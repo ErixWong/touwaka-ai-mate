@@ -165,6 +165,12 @@ const connectToExpert = (expert_id: string) => {
     try {
       const data = JSON.parse(event.data)
       console.log('SSE start:', data)
+
+      // 如果检测到新话题，刷新话题列表
+      if (data.is_new_topic) {
+        console.log('检测到新话题，刷新话题列表')
+        chatStore.loadTopics({ expert_id: currentExpertId.value })
+      }
     } catch (e) {
       console.error('Parse error:', e)
     }
