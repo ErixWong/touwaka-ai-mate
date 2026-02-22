@@ -443,7 +443,55 @@ delete_file({ path: "skills/xxx/unused.js" })
 create_dir({ path: "skills/xxx/subdir" })
 ```
 
-### 4.6 执行类
+### 4.6 压缩类
+
+#### zip - 创建ZIP压缩包
+
+```javascript
+zip({
+  source: "skills/xxx",        // 源文件或目录
+  dest: "backup/xxx.zip",      // 目标ZIP路径
+  recursive: true              // 递归压缩目录
+})
+
+// 返回
+{ success: true, filesCount: 15, compressedSize: 12345 }
+```
+
+#### unzip - 解压ZIP文件
+
+```javascript
+unzip({
+  source: "uploads/skill.zip", // ZIP文件路径
+  dest: "skills/xxx",          // 解压目标目录
+  overwrite: false             // 是否覆盖已存在的文件
+})
+
+// 返回
+{
+  success: true,
+  files: ["SKILL.md", "index.js", "config.json"],
+  extractedTo: "skills/xxx"
+}
+```
+
+**实现**：使用 `adm-zip` 库（纯JS，跨平台）
+
+```javascript
+import AdmZip from 'adm-zip';
+
+async function unzip(params) {
+  const { source, dest, overwrite = false } = params;
+  const zip = new AdmZip(source);
+  zip.extractAllTo(dest, overwrite);
+  return {
+    success: true,
+    files: zip.getEntries().map(e => e.entryName)
+  };
+}
+```
+
+### 4.7 执行类
 
 #### execute - 执行脚本
 
@@ -461,7 +509,7 @@ execute({
 // .js → node
 ```
 
-### 4.7 网络类
+### 4.8 网络类
 
 #### http_get - HTTP GET 请求
 
@@ -485,7 +533,7 @@ http_post({
 })
 ```
 
-### 4.8 工具清单汇总
+### 4.9 工具清单汇总
 
 | 类别 | 工具 | 说明 |
 |------|------|------|
@@ -503,11 +551,13 @@ http_post({
 | | `move_file` | 移动文件 |
 | | `delete_file` | 删除文件 |
 | | `create_dir` | 创建目录 |
+| **压缩** | `zip` | 创建ZIP压缩包 |
+| | `unzip` | 解压ZIP文件 |
 | **执行** | `execute` | 执行脚本 |
 | **网络** | `http_get` | GET请求 |
 | | `http_post` | POST请求 |
 
-### 4.9 安全措施
+### 4.10 安全措施
 
 1. **路径限制**：所有文件操作限制在 `skills` 目录内
 2. **大小限制**：读取默认50KB，防止上下文爆炸
