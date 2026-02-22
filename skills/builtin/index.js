@@ -67,35 +67,48 @@ function safePath(targetPath) {
     ? path.resolve(targetPath)
     : null;
   
-  // 如果是相对路径，尝试在每个允许的根目录下解析
+  // 如果是相对路径，分阶段解析
   if (!resolved) {
-    // 首先检查是否是根目录名称本身（如 "skills" 或 "work"）
-    const targetBasename = path.basename(targetPath);
     const normalizedTarget = targetPath.replace(/[/\\]$/, ''); // 移除末尾斜杠
     
+    // 阶段1：首先检查所有根目录的 basename（精确匹配）
     for (const root of ALLOWED_ROOTS) {
       const rootBasename = path.basename(root);
-      
-      // 如果传入的是根目录名称本身（如 "skills" 或 "work"）
       if (normalizedTarget === rootBasename) {
         resolved = root;
         break;
       }
-      
-      // 如果传入的路径以根目录名称开头（如 "skills/subdir"）
-      if (normalizedTarget.startsWith(rootBasename + '/') || normalizedTarget.startsWith(rootBasename + '\\')) {
-        const subPath = normalizedTarget.slice(rootBasename.length + 1);
-        resolved = path.join(root, subPath);
-        break;
+    }
+    
+    // 阶段2：检查是否以某个根目录名称开头（如 "skills/subdir" 或 "work/tmp"）
+    if (!resolved) {
+      for (const root of ALLOWED_ROOTS) {
+        const rootBasename = path.basename(root);
+        if (normalizedTarget.startsWith(rootBasename + '/') || normalizedTarget.startsWith(rootBasename + '\\')) {
+          const subPath = normalizedTarget.slice(rootBasename.length + 1);
+          resolved = path.join(root, subPath);
+          break;
+        }
       }
+    }
+    
+    // 阶段3：在根目录下解析相对路径（仅当路径不包含任何根目录名时）
+    if (!resolved) {
+      // 检查路径是否包含任何根目录名
+      const containsRootName = ALLOWED_ROOTS.some(root => {
+        const rootBasename = path.basename(root);
+        return normalizedTarget === rootBasename ||
+               normalizedTarget.startsWith(rootBasename + '/') ||
+               normalizedTarget.startsWith(rootBasename + '\\');
+      });
       
-      // 否则，在根目录下解析相对路径
-      const tryPath = path.resolve(root, targetPath);
-      const normalizedRoot = path.resolve(root);
-      
-      if (tryPath.startsWith(normalizedRoot)) {
-        resolved = tryPath;
-        break;
+      // 如果不包含根目录名，在第一个根目录下解析
+      if (!containsRootName) {
+        const tryPath = path.resolve(ALLOWED_ROOTS[0], targetPath);
+        const normalizedRoot = path.resolve(ALLOWED_ROOTS[0]);
+        if (tryPath.startsWith(normalizedRoot)) {
+          resolved = tryPath;
+        }
       }
     }
   }
