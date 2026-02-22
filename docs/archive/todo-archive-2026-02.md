@@ -420,3 +420,52 @@ eventSource.value.addEventListener('start', (event) => {
 **提交：** 84a939d
 
 ---
+
+## Expert 和 Skill ID 生成机制统一修复 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+Expert 和 Skill 的 ID 生成没有按照项目规范使用统一的 `Utils.newID()` 方法，而是使用了不一致的手动拼接方式。
+
+**问题代码：**
+```javascript
+// expert.controller.js:105
+const id = `expert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// skill.controller.js:184, 282
+const id = skillData.id || `skill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+```
+
+**修复内容：**
+
+### 1. Expert Controller ([`server/controllers/expert.controller.js:105`](../../server/controllers/expert.controller.js:105))
+```javascript
+// 修复前
+const id = `expert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// 修复后
+const id = Utils.newID(20);
+```
+
+### 2. Skill Controller ([`server/controllers/skill.controller.js:184, 282`](../../server/controllers/skill.controller.js:184))
+```javascript
+// 修复前
+const id = skillData.id || `skill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// 修复后
+const id = skillData.id || Utils.newID(20);
+```
+
+**`Utils.newID()` 的优势：**
+- 前 8 位使用时间戳（36进制），便于数据库排序
+- 使用 `crypto.randomBytes()` 生成加密安全的随机数
+- 与项目其他模块（topic、provider、model）保持一致
+
+**相关代码：**
+- [`lib/utils.js:13-24`](../../lib/utils.js:13) - Utils.newID() 实现
+- [`server/controllers/topic.controller.js:119`](../../server/controllers/topic.controller.js:119) - 正确用法示例
+- [`server/controllers/provider.controller.js:111`](../../server/controllers/provider.controller.js:111) - 正确用法示例
+- [`server/controllers/model.controller.js:124`](../../server/controllers/model.controller.js:124) - 正确用法示例
+
+---

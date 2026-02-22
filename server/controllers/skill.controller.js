@@ -180,8 +180,8 @@ class SkillController {
         // 目前使用简单的解析
         const skillData = this.parseSkillMd(skillMd);
 
-        // 生成 ID
-        const id = skillData.id || `skill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // 生成 ID（如果 SKILL.md 中没有指定）
+        const id = skillData.id || Utils.newID(20);
 
         // 检查是否已存在
         const existing = await this.Skill.findOne({ where: { id } });
@@ -278,8 +278,8 @@ class SkillController {
       // 解析技能
       const skillData = this.parseSkillMd(skillMd);
 
-      // 生成 ID
-      const id = skillData.id || `skill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // 生成 ID（如果 SKILL.md 中没有指定）
+      const id = skillData.id || Utils.newID(20);
 
       // 检查是否已存在
       const existing = await this.Skill.findOne({ where: { id } });

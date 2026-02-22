@@ -102,7 +102,7 @@ class ExpertController {
         return;
       }
 
-      const id = `expert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const id = Utils.newID(20);
 
       // 创建专家（字符串字段直接存储）
       await this.Expert.create({
