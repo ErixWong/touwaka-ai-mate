@@ -1,7 +1,17 @@
 <template>
   <div class="chat-window">
     <!-- 消息列表 -->
-    <div ref="messagesContainer" class="messages-container">
+    <div ref="messagesContainer" class="messages-container" @scroll="handleScroll">
+      <!-- 加载更多历史消息（顶部） -->
+      <div v-if="props.hasMoreMessages" class="load-more-top">
+        <button
+          class="btn-load-more"
+          :disabled="props.isLoadingMore"
+          @click="handleLoadMore"
+        >
+          {{ props.isLoadingMore ? $t('common.loading') : $t('chat.loadMoreHistory') }}
+        </button>
+      </div>
       <div v-if="messages.length === 0" class="empty-state">
         <p>{{ $t('chat.emptyState') }}</p>
       </div>
@@ -27,6 +37,9 @@
             <button class="retry-btn" @click="$emit('retry', message)">
               {{ $t('chat.retrySend') }}
             </button>
+          </div>
+          <div v-if="message.created_at && message.status !== 'streaming'" class="message-time">
+            {{ formatTime(message.created_at) }}
           </div>
         </div>
       </div>
@@ -75,17 +88,24 @@ const props = defineProps<{
   messages: ChatMessage[]
   isLoading?: boolean
   disabled?: boolean
+  hasMoreMessages?: boolean
+  isLoadingMore?: boolean
 }>()
 
 const emit = defineEmits<{
   send: [content: string]
   retry: [message: ChatMessage]
+  loadMore: []
 }>()
 
 const { t } = useI18n()
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+// 记录滚动位置，用于加载更多后恢复
+const scrollHeightBeforeLoad = ref(0)
+const isLoadingTriggered = ref(false)
 
 // 自动滚动到底部
 const scrollToBottom = () => {
@@ -96,11 +116,46 @@ const scrollToBottom = () => {
   })
 }
 
-// 监听消息变化，自动滚动
+// 滚动处理：检测是否滚动到顶部
+const handleScroll = () => {
+  if (!messagesContainer.value || !props.hasMoreMessages || props.isLoadingMore) return
+  
+  const { scrollTop } = messagesContainer.value
+  
+  // 距离顶部 100px 以内时自动触发加载
+  if (scrollTop < 100 && !isLoadingTriggered.value) {
+    isLoadingTriggered.value = true
+    // 记录当前滚动高度，用于加载后恢复位置
+    scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
+    emit('loadMore')
+  }
+}
+
+// 手动点击加载更多
+const handleLoadMore = () => {
+  if (!messagesContainer.value) return
+  scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
+  emit('loadMore')
+}
+
+// 监听消息变化
 watch(
   () => props.messages,
-  () => {
-    scrollToBottom()
+  (newMessages, oldMessages) => {
+    nextTick(() => {
+      if (!messagesContainer.value) return
+      
+      // 如果是加载更多（消息数量增加且之前正在加载）
+      if (props.isLoadingMore === false && isLoadingTriggered.value && newMessages.length > (oldMessages?.length || 0)) {
+        // 恢复滚动位置（保持在原来的消息位置）
+        const newScrollHeight = messagesContainer.value.scrollHeight
+        messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
+        isLoadingTriggered.value = false
+      } else {
+        // 新消息时滚动到底部
+        scrollToBottom()
+      }
+    })
   },
   { deep: true }
 )
@@ -147,6 +202,36 @@ const formatMessage = (content: string) => {
   return formatted
 }
 
+// 格式化时间显示
+const formatTime = (dateStr: string) => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  
+  // 1分钟内显示"刚刚"
+  if (diffMins < 1) return t('chat.timeJustNow') || '刚刚'
+  // 1小时内显示"X分钟前"
+  if (diffHours < 1) return t('chat.timeMinutesAgo', { n: diffMins }) || `${diffMins}分钟前`
+  // 今天显示"HH:mm"
+  if (diffDays < 1) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }
+  // 昨天显示"昨天 HH:mm"
+  if (diffDays === 1) {
+    return t('chat.timeYesterday') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }
+  // 一周内显示"X天前"
+  if (diffDays < 7) {
+    return t('chat.timeDaysAgo', { n: diffDays }) || `${diffDays}天前`
+  }
+  // 更早显示"MM-DD HH:mm"
+  return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' +
+         date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
 // 自动调整输入框高度
 const adjustTextareaHeight = () => {
   if (inputRef.value) {
@@ -182,6 +267,34 @@ defineExpose({
   overflow-y: auto;
   padding: 16px;
   scroll-behavior: smooth;
+}
+
+.load-more-top {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 16px;
+  margin-bottom: 8px;
+}
+
+.btn-load-more {
+  padding: 8px 16px;
+  background: var(--secondary-bg, #f5f5f5);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-load-more:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-load-more:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .empty-state {
@@ -259,6 +372,17 @@ defineExpose({
   background: var(--code-bg, #f0f0f0);
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--text-hint, #999);
+  margin-top: 6px;
+  text-align: right;
+}
+
+.message.assistant .message-time {
+  text-align: left;
 }
 
 .streaming-indicator {

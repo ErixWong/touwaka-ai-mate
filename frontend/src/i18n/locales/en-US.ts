@@ -47,6 +47,7 @@ export default {
     deleteTopicConfirm: 'Are you sure you want to delete this topic? This action cannot be undone.',
     noMoreHistory: 'No more history messages',
     loadMore: 'Load More',
+    loadMoreHistory: 'Load earlier messages',
     sendError: 'Failed to send',
     retrySend: 'Click to retry',
     selectExpert: 'Please select an expert to start chatting',
@@ -54,6 +55,11 @@ export default {
     connecting: 'Connecting...',
     connected: 'Connected',
     reconnecting: 'Connection lost, reconnecting...',
+    // Time display
+    timeJustNow: 'Just now',
+    timeMinutesAgo: '{n} min ago',
+    timeYesterday: 'Yesterday',
+    timeDaysAgo: '{n} days ago',
   },
 
   // Debug panel

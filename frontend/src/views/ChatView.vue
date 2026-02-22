@@ -22,8 +22,11 @@
             ref="chatWindowRef"
             :messages="chatStore.sortedMessages"
             :is-loading="isSending"
+            :has-more-messages="chatStore.hasMoreMessages"
+            :is-loading-more="chatStore.isLoadingMore"
             @send="handleSendMessage"
             @retry="handleRetry"
+            @load-more="loadMoreMessages"
           />
           
           <!-- SSE 连接状态指示器 -->
@@ -52,17 +55,6 @@
         @topic-select="handleTopicSelect"
         @doc-select="handleDocSelect"
       />
-    </div>
-
-    <!-- 加载更多历史消息 -->
-    <div v-if="chatStore.hasMoreMessages && currentExpertId" class="load-more">
-      <button
-        class="btn-load-more"
-        :disabled="chatStore.isLoadingMore"
-        @click="loadMoreMessages"
-      >
-        {{ chatStore.isLoadingMore ? $t('common.loading') : $t('chat.loadMore') }}
-      </button>
     </div>
   </div>
 </template>
@@ -640,30 +632,4 @@ onUnmounted(() => {
   background: #ff9800;
 }
 
-.load-more {
-  display: flex;
-  justify-content: center;
-  padding: 12px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  flex-shrink: 0;
-}
-
-.btn-load-more {
-  padding: 8px 16px;
-  background: var(--secondary-bg, #f5f5f5);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-}
-
-.btn-load-more:hover:not(:disabled) {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.btn-load-more:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 </style>

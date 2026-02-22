@@ -47,6 +47,7 @@ export default {
     deleteTopicConfirm: '确定要删除这个话题吗？此操作不可恢复。',
     noMoreHistory: '没有更多历史消息了',
     loadMore: '加载更多',
+    loadMoreHistory: '加载更早消息',
     sendError: '发送失败',
     retrySend: '点击重试',
     selectExpert: '请先选择一个专家开始对话',
@@ -54,6 +55,11 @@ export default {
     connecting: '连接中...',
     connected: '已连接',
     reconnecting: '连接断开，正在重连...',
+    // 时间显示
+    timeJustNow: '刚刚',
+    timeMinutesAgo: '{n}分钟前',
+    timeYesterday: '昨天',
+    timeDaysAgo: '{n}天前',
   },
 
   // 调试面板

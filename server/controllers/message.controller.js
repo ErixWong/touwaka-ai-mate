@@ -39,9 +39,11 @@ class MessageController {
         return;
       }
 
-      const offset = (parseInt(page) - 1) * parseInt(pageSize);
+      const limit = parseInt(pageSize);
+      const offset = (parseInt(page) - 1) * limit;
 
-      // 按 expert_id + user_id 获取消息，按时间正序排列（最早的在前）
+      // 先按时间倒序获取最近的消息，然后再反转成正序（最早的在前）
+      // 这样第1页返回的就是最近的50条消息
       const { count, rows } = await this.Message.findAndCountAll({
         where: {
           expert_id: expertId,
@@ -51,14 +53,17 @@ class MessageController {
           'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
-        order: [['created_at', 'ASC']],
-        limit: parseInt(pageSize),
+        order: [['created_at', 'DESC']],  // 先倒序获取最新的
+        limit,
         offset,
         raw: true,
       });
 
+      // 反转数组，使消息按时间正序返回（最早的在前，便于聊天界面显示）
+      const sortedRows = rows.reverse();
+
       ctx.success({
-        items: rows.map(m => ({
+        items: sortedRows.map(m => ({
           ...m,
           inner_voice: m.inner_voice ? JSON.parse(m.inner_voice) : null,
           tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : null,

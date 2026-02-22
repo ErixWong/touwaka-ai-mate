@@ -742,3 +742,95 @@ if (allToolCalls.length > 0) {
 ```
 
 ---
+
+## 聊天消息加载与显示优化 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+1. 后端获取"最近50条消息"的逻辑错误，实际返回的是最早的50条
+2. "加载更多"按钮放在页面底部，用户需要滚动到底部才能加载历史消息，体验不佳
+3. 消息没有显示时间戳
+
+**根本原因：**
+1. 后端使用 `ORDER BY created_at ASC` 配合 `OFFSET 0, LIMIT 50`，返回的是最早的50条消息
+2. 前端 ChatView.vue 将加载按钮放在聊天区域下方
+3. ChatWindow.vue 没有渲染消息时间
+
+**修复内容：**
+
+### 1. 后端消息获取逻辑修复 ([`server/controllers/message.controller.js:45-66`](../../server/controllers/message.controller.js:45))
+
+```javascript
+// 修复前（错误）
+order: [['created_at', 'ASC']],  // 返回最早的50条
+
+// 修复后（正确）
+order: [['created_at', 'DESC']],  // 先倒序获取最新的
+limit,
+offset,
+raw: true,
+});
+
+// 反转数组，使消息按时间正序返回（最早的在前，便于聊天界面显示）
+const sortedRows = rows.reverse();
+```
+
+**修复后的行为：**
+| 页码 | 修复前（错误） | 修复后（正确） |
+|------|---------------|---------------|
+| 第1页 | 消息 1-50（最早的） | 消息 51-100（最近的） |
+| 第2页 | 消息 51-100 | 消息 1-50（更早的历史） |
+
+### 2. "加载更多"按钮移到顶部 ([`frontend/src/components/ChatWindow.vue`](../../frontend/src/components/ChatWindow.vue))
+
+- 移除 ChatView.vue 底部的加载按钮
+- 在 ChatWindow 消息列表顶部添加加载按钮
+- 支持滚动到顶部（距顶部 100px 内）时**自动触发加载**
+- 加载后保持滚动位置（不会跳到顶部）
+
+新增 Props：
+- `hasMoreMessages?: boolean` - 是否有更多历史消息
+- `isLoadingMore?: boolean` - 是否正在加载
+
+新增 Emit：
+- `loadMore: []` - 加载更多事件
+
+### 3. 消息时间显示 ([`frontend/src/components/ChatWindow.vue:41-43`](../../frontend/src/components/ChatWindow.vue:41))
+
+每条消息下方显示时间：
+- 1分钟内：`刚刚`
+- 1小时内：`X分钟前`
+- 今天：`HH:mm`
+- 昨天：`昨天 HH:mm`
+- 一周内：`X天前`
+- 更早：`MM-DD HH:mm`
+
+### 4. i18n 翻译更新
+
+**中文 ([`frontend/src/i18n/locales/zh-CN.ts:57-61`](../../frontend/src/i18n/locales/zh-CN.ts:57))：**
+```typescript
+loadMoreHistory: '加载更早消息',
+timeJustNow: '刚刚',
+timeMinutesAgo: '{n}分钟前',
+timeYesterday: '昨天',
+timeDaysAgo: '{n}天前',
+```
+
+**英文 ([`frontend/src/i18n/locales/en-US.ts:57-61`](../../frontend/src/i18n/locales/en-US.ts:57))：**
+```typescript
+loadMoreHistory: 'Load earlier messages',
+timeJustNow: 'Just now',
+timeMinutesAgo: '{n} min ago',
+timeYesterday: 'Yesterday',
+timeDaysAgo: '{n} days ago',
+```
+
+**修改的文件：**
+- [`server/controllers/message.controller.js`](../../server/controllers/message.controller.js) - 修复消息获取排序逻辑
+- [`frontend/src/components/ChatWindow.vue`](../../frontend/src/components/ChatWindow.vue) - 顶部加载按钮、滚动检测、时间显示
+- [`frontend/src/views/ChatView.vue`](../../frontend/src/views/ChatView.vue) - 移除底部加载按钮、传递新 props
+- [`frontend/src/i18n/locales/zh-CN.ts`](../../frontend/src/i18n/locales/zh-CN.ts) - 中文翻译
+- [`frontend/src/i18n/locales/en-US.ts`](../../frontend/src/i18n/locales/en-US.ts) - 英文翻译
+
+---
