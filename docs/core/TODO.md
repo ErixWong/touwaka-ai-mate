@@ -71,25 +71,35 @@
 
 ---
 
-### 3. Skill 管理界面
+### 3. Skill 管理系统
 
 **状态：** ⏳ 待开始
 
-**描述：** 实现技能管理界面，包括技能市场Modal和专家技能关联配置。
+**描述：** 实现技能管理系统，支持多种来源安装、AI解析、工具清单生成。
 
-**方案：**
-- 技能源：官方仓库 + 社区仓库 + 自定义URL
-- 兼容ZeroClaw的open-skills格式
-- 使用GitHub API获取远程技能列表
+**核心理念：**
+- 技能来源：URL / 上传ZIP / 本地目录（不需要技能市场界面）
+- AI解析：注册时调用便宜AI（DeepSeek/通义）分析技能
+  - 安全检查（检测恶意代码）
+  - 提取工具清单（存入 skill_tools 表）
+  - 生成结构化元数据
+- 技能维护：通过对话维修、升级技能
+
+**数据库：**
+- `skills` 表：技能元数据 + 安全评分
+- `skill_tools` 表：工具清单（AI生成）
 
 **待办：**
-- [ ] 后端API：技能市场列表、安装、卸载
-- [ ] 前端组件：SkillMarketModal.vue
-- [ ] 设置页面添加"技能管理"Tab
-- [ ] 专家编辑中添加技能关联配置
+- [ ] 数据库：创建 `skills` 和 `skill_tools` 表
+- [ ] 后端：技能安装API（from-url / from-zip / from-path）
+- [ ] 后端：AI分析服务（调用便宜AI解析技能）
+- [ ] 后端：技能CRUD API
+- [ ] 前端：添加技能页面（三种来源表单）
+- [ ] 前端：技能列表页面
+- [ ] AI基础能力：`read` / `write` / `execute` / `http_get` / `http_post`
 
 **相关文档：**
-- [技能市场设计方案](../design/v2/skill-market-design.md)
+- [技能管理系统设计方案 v2.0](../design/v2/skill-market-design.md)
 
 ---
 
