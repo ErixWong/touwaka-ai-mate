@@ -1,0 +1,45 @@
+{
+  "name": "touwaka-mate",
+  "version": "2.0.0",
+  "description": "投瓦卡 (Touwaka) - AI 专家副本系统",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "api": "node server/index.js",
+    "init-db": "node scripts/init-database.js",
+    "dev": "concurrently \"npm run api\" \"cd frontend && npm run dev\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "chat",
+    "expert",
+    "llm",
+    "ai",
+    "bicameral-mind",
+    "inner-voice",
+    "koa"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@koa/cors": "^5.0.0",
+    "@koa/router": "^15.3.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.3",
+    "koa": "^3.1.1",
+    "koa-bodyparser": "^4.4.1",
+    "koa-cors": "^0.0.16",
+    "mysql2": "^3.11.3",
+    "sequelize": "^6.37.7"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "sequelize-auto": "^0.8.8"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

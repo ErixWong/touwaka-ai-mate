@@ -1,0 +1,113 @@
+import _sequelize from 'sequelize';
+const { Model, Sequelize } = _sequelize;
+
+export default class expert extends Model {
+  static init(sequelize, DataTypes) {
+  return super.init({
+    id: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      primaryKey: true
+    },
+    name: {
+      type: DataTypes.STRING(128),
+      allowNull: false
+    },
+    introduction: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    speaking_style: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    core_values: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    behavioral_guidelines: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    taboos: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    emotional_tone: {
+      type: DataTypes.STRING(256),
+      allowNull: true
+    },
+    expressive_model_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      references: {
+        model: 'ai_models',
+        key: 'id'
+      }
+    },
+    reflective_model_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      references: {
+        model: 'ai_models',
+        key: 'id'
+      }
+    },
+    prompt_template: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: true
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    }
+  }, {
+    sequelize,
+    tableName: 'experts',
+    timestamps: false,
+    freezeTableName: true,
+    indexes: [
+      {
+        name: "PRIMARY",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "id" },
+        ]
+      },
+      {
+        name: "expressive_model_id",
+        using: "BTREE",
+        fields: [
+          { name: "expressive_model_id" },
+        ]
+      },
+      {
+        name: "reflective_model_id",
+        using: "BTREE",
+        fields: [
+          { name: "reflective_model_id" },
+        ]
+      },
+      {
+        name: "idx_active",
+        using: "BTREE",
+        fields: [
+          { name: "is_active" },
+        ]
+      },
+    ]
+  });
+  }
+}
