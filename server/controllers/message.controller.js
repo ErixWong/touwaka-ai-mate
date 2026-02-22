@@ -204,6 +204,56 @@ class MessageController {
       ctx.error('获取消息失败', 500);
     }
   }
+
+  /**
+   * 清空指定 expert 与当前用户的所有消息（仅管理员）
+   */
+  async clearByExpert(ctx) {
+    try {
+      const { expertId } = ctx.params;
+      const userId = ctx.state.userId;
+
+      if (!expertId) {
+        ctx.error('缺少 expertId 参数');
+        return;
+      }
+
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
+
+      // 获取 Topic 模型
+      const Topic = this.db.getModel('topic');
+
+      // 删除该 expert 与该用户的所有消息
+      const deletedMessagesCount = await this.Message.destroy({
+        where: {
+          expert_id: expertId,
+          user_id: userId,
+        },
+      });
+
+      // 将该 expert 与该用户的所有话题标记为已删除
+      const deletedTopicsCount = await Topic.destroy({
+        where: {
+          expert_id: expertId,
+          user_id: userId,
+        },
+      });
+
+      logger.info(`Admin cleared ${deletedMessagesCount} messages and ${deletedTopicsCount} topics for expert ${expertId} and user ${userId}`);
+
+      ctx.success({
+        message: '对话历史和话题已清空',
+        deleted_messages_count: deletedMessagesCount,
+        deleted_topics_count: deletedTopicsCount,
+      });
+    } catch (error) {
+      logger.error('Clear messages by expert error:', error);
+      ctx.error('清空对话历史失败', 500);
+    }
+  }
 }
 
 export default MessageController;

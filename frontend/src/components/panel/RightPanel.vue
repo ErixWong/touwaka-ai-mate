@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { usePanelStore, type TabId } from '@/stores/panel'
 import { useUserStore } from '@/stores/user'
 import TopicsTab from './TopicsTab.vue'
@@ -54,6 +54,13 @@ const userStore = useUserStore()
 
 const isCollapsed = computed(() => panelStore.isCollapsed)
 const activeTab = computed(() => panelStore.activeTab)
+
+// 如果当前用户不是管理员，但 activeTab 是 debug，则自动切换到 topics
+watch(() => userStore.isAdmin, (isAdmin) => {
+  if (!isAdmin && activeTab.value === 'debug') {
+    panelStore.setActiveTab('topics')
+  }
+}, { immediate: true })
 
 interface Tab {
   id: TabId

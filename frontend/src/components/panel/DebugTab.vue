@@ -1,5 +1,14 @@
 <template>
   <div class="debug-tab">
+    <!-- 管理员操作区 -->
+    <div v-if="isAdmin" class="debug-section admin-section">
+      <h4>{{ $t('debug.adminOperations') }}</h4>
+      <button class="clear-history-btn" @click="handleClearHistory" :disabled="isClearing || !currentExpertId">
+        <span v-if="isClearing">{{ $t('debug.clearing') }}</span>
+        <span v-else>{{ $t('debug.clearHistory') }}</span>
+      </button>
+    </div>
+
     <!-- 当前消息统计 -->
     <div v-if="lastMessage" class="debug-section">
       <h4>{{ $t('debug.tokenCount') }}</h4>
@@ -77,14 +86,43 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
+import { useUserStore } from '@/stores/user'
+import { messageApi } from '@/api/services'
 
 const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()
+const userStore = useUserStore()
+
+const isAdmin = computed(() => userStore.isAdmin)
+const currentExpertId = computed(() => expertStore.currentExpert?.id)
+const isClearing = ref(false)
+
+const handleClearHistory = async () => {
+  if (!currentExpertId.value) return
+  
+  if (!confirm('确定要清空与当前专家的所有对话历史和话题吗？此操作不可恢复。')) {
+    return
+  }
+  
+  isClearing.value = true
+  try {
+    const result = await messageApi.clearMessagesByExpert(currentExpertId.value)
+    // 清空本地消息列表
+    chatStore.messages = []
+    // 清空本地话题列表
+    chatStore.topics = []
+    alert(`对话历史和话题已清空\n删除消息: ${result.deleted_messages_count} 条\n删除话题: ${result.deleted_topics_count} 个`)
+  } catch (error) {
+    alert('清空对话历史失败: ' + (error instanceof Error ? error.message : '未知错误'))
+  } finally {
+    isClearing.value = false
+  }
+}
 
 // 从当前专家获取模型
 const currentModel = computed(() => {
@@ -179,5 +217,32 @@ details summary {
   font-size: 12px;
   color: var(--text-secondary, #666);
   cursor: pointer;
+}
+
+.admin-section {
+  border-color: #dc3545;
+  background: #fff5f5;
+}
+
+.clear-history-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.clear-history-btn:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.clear-history-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
 }
 </style>

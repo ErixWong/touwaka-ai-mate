@@ -64,7 +64,9 @@ class AuthController {
         raw: true,
         nest: true,
       });
+      logger.info(`User ${user.username} roles query result:`, JSON.stringify(roles));
       const primaryRole = roles.length > 0 ? roles[0].role?.name : 'user';
+      logger.info(`User ${user.username} primaryRole: ${primaryRole}`);
 
       // 生成 Token
       const tokens = generateTokens(user.id, primaryRole);

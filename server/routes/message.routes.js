@@ -7,7 +7,7 @@
  */
 
 import Router from '@koa/router';
-import { authenticate, optionalAuth } from '../middlewares/auth.js';
+import { authenticate, optionalAuth, requireAdmin } from '../middlewares/auth.js';
 
 export default (controller) => {
   const router = new Router({ prefix: '/api/messages' });
@@ -20,6 +20,9 @@ export default (controller) => {
 
   // 获取单条消息详情（需要认证）
   router.get('/:id', authenticate(), controller.get.bind(controller));
+
+  // 删除指定 expert 与当前用户的所有消息（仅管理员）
+  router.delete('/expert/:expertId', authenticate(), requireAdmin(), controller.clearByExpert.bind(controller));
 
   return router;
 };

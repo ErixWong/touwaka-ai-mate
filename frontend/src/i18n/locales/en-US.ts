@@ -75,6 +75,9 @@ export default {
     estimatedCost: 'Estimated Cost',
     rawData: 'Raw Data',
     lastMessage: 'Last Message',
+    adminOperations: 'Admin Operations',
+    clearHistory: 'Clear Chat History',
+    clearing: 'Clearing...',
   },
 
   // Topic list

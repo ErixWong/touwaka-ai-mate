@@ -35,6 +35,7 @@ const authenticate = () => {
       const decoded = jwt.verify(token, JWT_SECRET);
       ctx.state.userId = decoded.userId;
       ctx.state.userRole = decoded.role;
+      console.log('[Auth] Token decoded:', { userId: decoded.userId, role: decoded.role });
       await next();
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
@@ -72,6 +73,7 @@ const optionalAuth = () => {
  */
 const requireAdmin = () => {
   return async (ctx, next) => {
+    console.log('[RequireAdmin] Checking role:', ctx.state.userRole);
     if (ctx.state.userRole !== 'admin') {
       ctx.error('需要管理员权限', 403);
       return;

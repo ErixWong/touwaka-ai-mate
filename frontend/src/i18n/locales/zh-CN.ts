@@ -75,6 +75,9 @@ export default {
     estimatedCost: '预估费用',
     rawData: '原始数据',
     lastMessage: '最后消息',
+    adminOperations: '管理员操作',
+    clearHistory: '清空对话历史',
+    clearing: '清空中...',
   },
 
   // 话题列表
