@@ -3,4 +3,5 @@ node_modules/
 data/  
 logs/  
 .env
-references/ 
+references/
+work/
