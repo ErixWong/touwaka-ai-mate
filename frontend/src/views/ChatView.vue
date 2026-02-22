@@ -29,7 +29,12 @@
           <!-- SSE 连接状态指示器 -->
           <div v-if="!isConnected" class="connection-status">
             <span class="status-dot disconnected"></span>
-            {{ $t('chat.connecting') || '连接中...' }}
+            <span v-if="isReconnecting">
+              {{ $t('chat.reconnecting') || `连接断开，正在重连... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})` }}
+            </span>
+            <span v-else>
+              {{ $t('chat.connecting') || '连接中...' }}
+            </span>
           </div>
         </template>
         
@@ -73,6 +78,7 @@ import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
 import { usePanelStore } from '@/stores/panel'
+import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { messageApi } from '@/api/services'
 import type { Message, Topic, Doc } from '@/types'
 
@@ -94,12 +100,20 @@ const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
 const panelStore = usePanelStore()
+const { isBackendAvailable, waitForBackend } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 const eventSource = ref<EventSource | null>(null)
 const isSending = ref(false)
 const isConnected = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
+
+// SSE 重连配置
+const RECONNECT_INTERVAL = 3000 // 重连间隔 3 秒
+const MAX_RECONNECT_ATTEMPTS = 10 // 最大重连次数
+const reconnectAttempts = ref(0)
+const reconnectTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const isReconnecting = ref(false)
 
 // 从路由参数获取 expertId
 const currentExpertId = computed(() => route.params.expertId as string)
@@ -141,8 +155,19 @@ const loadMoreMessages = async () => {
   await chatStore.loadMoreMessages()
 }
 
+// 清理重连定时器
+const clearReconnectTimer = () => {
+  if (reconnectTimer.value) {
+    clearTimeout(reconnectTimer.value)
+    reconnectTimer.value = null
+  }
+}
+
 // 建立 SSE 连接到 Expert
 const connectToExpert = (expert_id: string) => {
+  // 清理重连定时器
+  clearReconnectTimer()
+  
   // 关闭现有连接
   if (eventSource.value) {
     eventSource.value.close()
@@ -151,7 +176,7 @@ const connectToExpert = (expert_id: string) => {
 
   const token = localStorage.getItem('access_token')
   const sseUrl = `/api/chat/stream?expert_id=${expert_id}&token=${encodeURIComponent(token || '')}`
-  
+
   console.log('Connecting to SSE:', sseUrl)
   eventSource.value = new EventSource(sseUrl)
   isConnected.value = false
@@ -159,6 +184,8 @@ const connectToExpert = (expert_id: string) => {
   eventSource.value.addEventListener('connected', (event) => {
     console.log('SSE connected:', event.data)
     isConnected.value = true
+    reconnectAttempts.value = 0 // 重置重连计数
+    isReconnecting.value = false
   })
 
   eventSource.value.addEventListener('start', (event) => {
@@ -187,6 +214,52 @@ const connectToExpert = (expert_id: string) => {
       }
     } catch (e) {
       console.error('Parse error:', e)
+    }
+  })
+
+  // 处理工具调用事件
+  eventSource.value.addEventListener('tool_call', (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      console.log('Tool call:', data)
+      
+      // 在当前消息中显示工具调用信息
+      if (currentAssistantMessage.value && data.toolCalls) {
+        const toolNames = data.toolCalls.map((tc: any) =>
+          tc.function?.name || tc.name || 'unknown'
+        ).join(', ')
+        
+        chatStore.updateMessageContent(
+          currentAssistantMessage.value.id,
+          currentAssistantMessage.value.content + `\n\n🔧 调用工具: ${toolNames}\n`
+        )
+      }
+    } catch (e) {
+      console.error('Parse tool_call error:', e)
+    }
+  })
+
+  // 处理工具执行结果事件
+  eventSource.value.addEventListener('tool_results', (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      console.log('Tool results:', data)
+      
+      // 在当前消息中显示工具执行结果摘要
+      if (currentAssistantMessage.value && data.results) {
+        const resultSummary = data.results.map((r: any) => {
+          const name = r.toolName || 'unknown'
+          const success = r.success ? '✅' : '❌'
+          return `${success} ${name}`
+        }).join('\n')
+        
+        chatStore.updateMessageContent(
+          currentAssistantMessage.value.id,
+          currentAssistantMessage.value.content + `\n${resultSummary}\n\n---\n`
+        )
+      }
+    } catch (e) {
+      console.error('Parse tool_results error:', e)
     }
   })
 
@@ -233,16 +306,51 @@ const connectToExpert = (expert_id: string) => {
   eventSource.value.onerror = (error) => {
     console.error('SSE error:', error)
     isConnected.value = false
+    
+    // 自动重连逻辑
+    if (!isReconnecting.value && reconnectAttempts.value < MAX_RECONNECT_ATTEMPTS) {
+      isReconnecting.value = true
+      reconnectAttempts.value++
+      
+      console.log(`SSE connection lost. Reconnecting in ${RECONNECT_INTERVAL}ms... (attempt ${reconnectAttempts.value}/${MAX_RECONNECT_ATTEMPTS})`)
+      
+      reconnectTimer.value = setTimeout(() => {
+        if (currentExpertId.value) {
+          console.log(`Attempting to reconnect SSE... (${reconnectAttempts.value}/${MAX_RECONNECT_ATTEMPTS})`)
+          connectToExpert(currentExpertId.value)
+        }
+      }, RECONNECT_INTERVAL)
+    } else if (reconnectAttempts.value >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('SSE reconnection failed after maximum attempts')
+      // 可以在这里添加用户提示
+    }
   }
 }
 
 // 处理消息发送
 const handleSendMessage = async (content: string) => {
   const expert_id = currentExpertId.value
-  
+
   if (!expert_id) {
     console.error('No expert selected')
     return
+  }
+
+  // 如果后端不可用，等待后端恢复
+  if (!isBackendAvailable.value) {
+    console.log('Backend is not available, waiting for it to come back...')
+    const restored = await waitForBackend(30000) // 最多等待 30 秒
+    if (!restored) {
+      console.error('Backend is still not available after waiting')
+      // 添加错误消息提示用户
+      chatStore.addLocalMessage({
+        expert_id,
+        role: 'assistant',
+        content: t('error.backendUnavailable') || '后端服务暂时不可用，请稍后重试',
+        status: 'error',
+      })
+      return
+    }
   }
 
   const model_id = currentModel.value?.id || currentExpert.value?.expressive_model_id
@@ -272,9 +380,9 @@ const handleSendMessage = async (content: string) => {
       expert_id,
       model_id,
     })
-    
+
     console.log('Message sent:', result)
-    
+
   } catch (error) {
     console.error('Send message error:', error)
     if (currentAssistantMessage.value) {
@@ -315,12 +423,19 @@ const handleRetry = async (message: ChatMessage) => {
 
 // 初始化：加载 expert 的消息
 const initChat = async (expertId: string) => {
+  console.log('initChat called for expert:', expertId)
+  // 避免重复初始化同一个 expert
+  if (chatStore.currentExpertId === expertId && eventSource.value) {
+    console.log('Already initialized for expert:', expertId)
+    return
+  }
+
   // 设置当前专家并加载消息
   await chatStore.setCurrentExpert(expertId)
-  
+
   // 设置 expertStore 的当前专家
   expertStore.setCurrentExpert(expertId)
-  
+
   // 建立 SSE 连接
   connectToExpert(expertId)
 }
@@ -329,12 +444,13 @@ const initChat = async (expertId: string) => {
 watch(
   () => route.params.expertId as string,
   async (expertId) => {
+    console.log('Route expertId changed:', expertId, 'isLoggedIn:', userStore.isLoggedIn)
     // 必须等用户登录后再加载消息
     if (!userStore.isLoggedIn) {
       console.log('User not logged in, skip loading messages')
       return
     }
-    
+
     if (expertId) {
       await initChat(expertId)
     } else {
@@ -354,9 +470,27 @@ watch(
 watch(
   () => userStore.isLoggedIn,
   async (isLoggedIn) => {
+    console.log('User login state changed:', isLoggedIn, 'currentExpertId:', currentExpertId.value)
     if (isLoggedIn && currentExpertId.value) {
       // 用户登录后，如果有 expertId，加载消息
+      console.log('User logged in, initializing chat for expert:', currentExpertId.value)
       await initChat(currentExpertId.value)
+    }
+  }
+)
+
+// 监听后端可用性变化 - 当后端恢复时自动重连 SSE
+watch(
+  () => isBackendAvailable.value,
+  async (isAvailable, wasAvailable) => {
+    // 后端从不可用变为可用，且当前有 expertId
+    if (isAvailable && !wasAvailable && currentExpertId.value) {
+      console.log('Backend is back online, reconnecting SSE...')
+      // 重置重连计数
+      reconnectAttempts.value = 0
+      isReconnecting.value = false
+      // 重新建立 SSE 连接
+      connectToExpert(currentExpertId.value)
     }
   }
 )
@@ -372,7 +506,10 @@ onUnmounted(() => {
   // 清理 SSE 连接
   if (eventSource.value) {
     eventSource.value.close()
+    eventSource.value = null
   }
+  // 清理重连定时器
+  clearReconnectTimer()
 })
 </script>
 

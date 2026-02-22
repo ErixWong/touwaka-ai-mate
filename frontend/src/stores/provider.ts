@@ -64,7 +64,7 @@ export const useProviderStore = defineStore('provider', () => {
       const updatedProvider = await providerApi.updateProvider(id, data)
       const index = providers.value.findIndex(p => p.id === id)
       if (index !== -1) {
-        providers.value[index] = updatedProvider
+        providers.value.splice(index, 1, updatedProvider)
       }
       return updatedProvider
     } catch (err) {

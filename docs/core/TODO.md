@@ -106,7 +106,9 @@
 - [ ] 后端：URL下载安装功能
 - [ ] 后端：AI分析服务（调用便宜AI解析技能）
 - [ ] 测试：完整功能测试
-- [ ] AI基础能力：`read` / `write` / `execute` / `http_get` / `http_post`
+- [x] AI基础能力：`read` / `write` / `execute` / `http_get` / `http_post`
+  - 已创建 `skills/builtin/` 内置技能
+  - 实现 7 类 18 个工具：读取、写入、编辑、搜索、管理、压缩、执行、网络
 
 **数据库迁移脚本：**
 ```sql
@@ -159,6 +161,28 @@ CREATE TABLE skill_tools (
 
 **相关文档：**
 - [技能管理系统设计方案 v2.0](../design/v2/skill-market-design.md)
+
+---
+
+## 已完成
+
+### 1. SSE 连接自动重连机制
+
+**状态：** ✅ 已完成
+
+**描述：** 解决后端重启后前端无法连接的问题，实现 SSE 连接断开自动重连和 API 健康检查。
+
+**实现内容：**
+- **SSE 自动重连**：连接断开后每 3 秒自动重试，最多 10 次
+- **健康检查**：每 5 秒检测后端可用性
+- **智能等待**：发送消息时如后端不可用，自动等待后端恢复（最多 30 秒）
+- **状态提示**：UI 显示连接状态和重连进度
+
+**相关文件：**
+- [`frontend/src/views/ChatView.vue`](../../frontend/src/views/ChatView.vue) - SSE 连接管理和重连逻辑
+- [`frontend/src/composables/useNetworkStatus.ts`](../../frontend/src/composables/useNetworkStatus.ts) - 网络状态检测 composable
+- [`frontend/src/i18n/locales/zh-CN.ts`](../../frontend/src/i18n/locales/zh-CN.ts) - 中文翻译
+- [`frontend/src/i18n/locales/en-US.ts`](../../frontend/src/i18n/locales/en-US.ts) - 英文翻译
 
 ---
 

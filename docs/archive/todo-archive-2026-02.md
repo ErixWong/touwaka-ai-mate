@@ -469,3 +469,276 @@ const id = skillData.id || Utils.newID(20);
 - [`server/controllers/model.controller.js:124`](../../server/controllers/model.controller.js:124) - 正确用法示例
 
 ---
+
+## 流式模式工具调用累积修复 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+在流式模式下，LLM 返回的 `tool_calls` 是增量（delta）格式，每个 chunk 只包含部分信息，需要累积才能得到完整的工具调用。
+
+**根本原因：**
+`llm-client.js` 的 `callStream()` 方法中，`onToolCall` 回调只在 `data === '[DONE]'` 时触发，但有些 LLM 可能不会发送 `[DONE]` 事件，导致工具调用丢失。
+
+**修复内容：**
+
+### 1. 流式工具调用累积 ([`lib/llm-client.js:446-539`](../../lib/llm-client.js:446))
+```javascript
+// 累积工具调用（按 index 累积）
+let accumulatedToolCalls = {};
+
+res.on('data', (chunk) => {
+  // ...
+  if (delta?.tool_calls) {
+    for (const tc of delta.tool_calls) {
+      const idx = tc.index;
+      if (!accumulatedToolCalls[idx]) {
+        accumulatedToolCalls[idx] = { index: idx, function: {} };
+      }
+      // 累积各个字段
+      if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+      if (tc.function?.name) accumulatedToolCalls[idx].function.name = tc.function.name;
+      if (tc.function?.arguments) {
+        accumulatedToolCalls[idx].function.arguments +=
+          (accumulatedToolCalls[idx].function.arguments || '') + tc.function.arguments;
+      }
+    }
+  }
+});
+
+// 在 [DONE] 和 res.on('end') 时都处理累积的工具调用
+```
+
+### 2. 工具调用收集修复 ([`lib/chat-service.js:147-156`](../../lib/chat-service.js:147))
+```javascript
+onToolCall: (toolCalls) => {
+  // toolCalls 是数组，需要展开添加
+  if (Array.isArray(toolCalls)) {
+    collectedToolCalls.push(...toolCalls);
+  } else {
+    collectedToolCalls.push(toolCalls);
+  }
+}
+```
+
+---
+
+## 多轮工具调用支持 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+工具执行后，系统在 messages 里留下一个 content 为空的记录，没有返回任何消息。工具执行完成后没有把结果交给 LLM 处理。
+
+**根本原因：**
+1. 原代码只支持单轮工具调用，执行完工具后直接保存空内容
+2. 如果 LLM 决定再次调用工具，没有循环处理机制
+
+**解决方案：**
+实现多轮工具调用循环，最多支持 20 轮。
+
+**修复内容：**
+
+### 多轮工具调用循环 ([`lib/chat-service.js:112-210`](../../lib/chat-service.js:112))
+```javascript
+const MAX_TOOL_ROUNDS = 20;  // 最大工具调用轮数
+
+let currentMessages = [...context.messages];
+
+for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  let collectedToolCalls = [];
+  let roundContent = '';
+
+  // 流式调用 LLM
+  await expertService.llmClient.callStream(modelConfig, currentMessages, {
+    tools,
+    onDelta: (delta) => { roundContent += delta; fullContent += delta; },
+    onToolCall: (toolCalls) => { collectedToolCalls.push(...toolCalls); },
+  });
+
+  // 如果没有工具调用，退出循环
+  if (collectedToolCalls.length === 0) break;
+
+  // 执行工具
+  const toolResults = await expertService.handleToolCalls(collectedToolCalls, user_id);
+
+  // 更新消息历史
+  currentMessages = [
+    ...currentMessages,
+    { role: 'assistant', content: roundContent || null, tool_calls: collectedToolCalls },
+    ...expertService.toolManager.formatToolResultsForLLM(toolResults),
+  ];
+}
+
+// 如果最终没有内容，生成默认回复
+if (!fullContent || fullContent.trim() === '') {
+  fullContent = '我已处理您的请求，但没有生成具体的回复内容。';
+}
+```
+
+**特性：**
+- 支持多轮工具调用（最多 20 轮）
+- 每轮累积 LLM 返回的文本内容
+- 自动退出：当 LLM 不再调用工具时退出循环
+- 默认回复：如果最终没有内容，生成提示
+
+---
+
+## 工具结果格式化修复 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+`get_env_info` 工具返回的数据在根级别（`cwd`、`allowedRoots` 等），不在 `data` 字段里，导致 `formatToolResultsForLLM` 只返回空对象。
+
+**根本原因：**
+`formatToolResultsForLLM` 只取 `result.data` 字段，但某些工具返回的数据结构不同。
+
+**修复内容：**
+
+### 工具结果格式化 ([`lib/tool-manager.js:381-415`](../../lib/tool-manager.js:381))
+```javascript
+formatToolResultsForLLM(results) {
+  return results.map(result => {
+    const { toolCallId, toolName, duration, ...resultData } = result;
+    
+    // 智能判断数据结构
+    let content = JSON.stringify(
+      result.success !== undefined && result.data !== undefined
+        ? { success: result.success, data: result.data, error: result.error }
+        : resultData  // 如果没有 data 字段，使用整个结果
+    );
+    
+    return {
+      role: 'tool',
+      tool_call_id: toolCallId,
+      name: toolName,
+      content,
+    };
+  });
+}
+```
+
+---
+
+## Builtin 工具路径解析修复 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+调用 `list_files(path: "skills")` 时返回 "Directory not found: skills"，但 skills 目录确实存在。
+
+**根本原因：**
+1. 使用 `process.cwd()` 获取根目录，但服务器启动时的工作目录可能不同
+2. `safePath` 函数无法识别 "skills" 或 "work" 这样的根目录名称
+
+**修复内容：**
+
+### 1. 使用模块路径计算项目根目录 ([`skills/builtin/index.js:14-30`](../../skills/builtin/index.js:14))
+```javascript
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..'); // skills/builtin -> skills -> project_root
+
+const ALLOWED_ROOTS = [
+  process.env.SKILLS_ROOT || path.join(PROJECT_ROOT, 'skills'),
+  process.env.WORK_ROOT || path.join(PROJECT_ROOT, 'work'),
+];
+```
+
+### 2. 改进 safePath 函数 ([`skills/builtin/index.js:60-100`](../../skills/builtin/index.js:60))
+```javascript
+function safePath(targetPath) {
+  // ...
+  
+  // 首先检查是否是根目录名称本身（如 "skills" 或 "work"）
+  const normalizedTarget = targetPath.replace(/[/\\]$/, '');
+  
+  for (const root of ALLOWED_ROOTS) {
+    const rootBasename = path.basename(root);
+    
+    // 如果传入的是根目录名称本身
+    if (normalizedTarget === rootBasename) {
+      resolved = root;
+      break;
+    }
+    
+    // 如果传入的路径以根目录名称开头（如 "skills/subdir"）
+    if (normalizedTarget.startsWith(rootBasename + '/') || normalizedTarget.startsWith(rootBasename + '\\')) {
+      const subPath = normalizedTarget.slice(rootBasename.length + 1);
+      resolved = path.join(root, subPath);
+      break;
+    }
+    
+    // ...
+  }
+}
+```
+
+**支持的路径格式：**
+- `"skills"` → 根目录本身
+- `"skills/builtin"` → 子目录
+- `"work"` → 工作目录
+- `"work/projects"` → 工作目录子目录
+
+---
+
+## 流式模式 tool_calls 持久化修复 ✅
+
+**完成日期：** 2026-02-22
+
+**问题描述：**
+在流式模式下，LLM 调用的工具记录没有被保存到数据库的 `messages.tool_calls` 字段中，导致工具调用历史丢失。
+
+**根本原因：**
+非流式模式（`chat()` 方法）在保存消息时有 `tool_calls` 处理逻辑，但流式模式（`streamChat()` 方法）没有将收集到的工具调用保存到数据库。
+
+**修复内容：**
+
+### 1. 收集所有轮次的工具调用 ([`lib/chat-service.js:118`](../../lib/chat-service.js:118))
+```javascript
+// 修复前
+let fullContent = '';
+let tokenCount = 0;
+let currentMessages = [...context.messages];
+
+// 修复后
+let fullContent = '';
+let tokenCount = 0;
+let allToolCalls = [];  // 收集所有轮次的工具调用
+let currentMessages = [...context.messages];
+```
+
+### 2. 每轮累积工具调用 ([`lib/chat-service.js:177-178`](../../lib/chat-service.js:177))
+```javascript
+// 在工具执行循环中
+// 收集所有工具调用（用于保存到数据库）
+allToolCalls.push(...collectedToolCalls);
+```
+
+### 3. 保存到数据库 ([`lib/chat-service.js:216-219`](../../lib/chat-service.js:216))
+```javascript
+// 如果有工具调用，保存到数据库
+if (allToolCalls.length > 0) {
+  messageOptions.tool_calls = JSON.stringify(allToolCalls);
+}
+```
+
+**数据格式：**
+`messages.tool_calls` 字段存储的是 JSON 字符串，遵循 OpenAI Function Calling 格式：
+```json
+[
+  {
+    "id": "call_abc123",
+    "type": "function",
+    "function": {
+      "name": "list_files",
+      "arguments": "{\"path\":\"skills\"}"
+    }
+  }
+]
+```
+
+---

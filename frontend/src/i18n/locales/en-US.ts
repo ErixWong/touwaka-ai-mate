@@ -53,6 +53,7 @@ export default {
     goSelectExpert: 'Select Expert',
     connecting: 'Connecting...',
     connected: 'Connected',
+    reconnecting: 'Connection lost, reconnecting...',
   },
 
   // Debug panel
@@ -125,6 +126,7 @@ export default {
     unknownError: 'Unknown error occurred, please try again later',
     loadFailed: 'Failed to load',
     sendFailed: 'Failed to send',
+    backendUnavailable: 'Backend service temporarily unavailable, please try again later',
   },
 
   // Settings

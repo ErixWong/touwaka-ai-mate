@@ -53,6 +53,7 @@ export default {
     goSelectExpert: '选择专家',
     connecting: '连接中...',
     connected: '已连接',
+    reconnecting: '连接断开，正在重连...',
   },
 
   // 调试面板
@@ -125,6 +126,7 @@ export default {
     unknownError: '发生未知错误，请稍后重试',
     loadFailed: '加载失败',
     sendFailed: '发送失败',
+    backendUnavailable: '后端服务暂时不可用，请稍后重试',
   },
 
   // 设置页面
