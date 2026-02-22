@@ -9,6 +9,7 @@ import MessageController from './message.controller.js';
 import ExpertController from './expert.controller.js';
 import ModelController from './model.controller.js';
 import StreamController from './stream.controller.js';
+import SkillController from './skill.controller.js';
 
 export {
   AuthController,
@@ -18,4 +19,5 @@ export {
   ExpertController,
   ModelController,
   StreamController,
+  SkillController,
 };

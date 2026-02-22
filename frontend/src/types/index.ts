@@ -293,3 +293,88 @@ export interface DocFormData {
   content_type?: 'markdown' | 'code' | 'text'
   tags?: string[]
 }
+
+// ============================================
+// 技能管理相关类型
+// ============================================
+
+/**
+ * 技能来源类型
+ */
+export type SkillSourceType = 'url' | 'zip' | 'local'
+
+/**
+ * 工具类型
+ */
+export type SkillToolType = 'http' | 'script' | 'builtin'
+
+/**
+ * 技能工具（AI 解析生成）
+ */
+export interface SkillTool {
+  id: number
+  skill_id: string
+  name: string
+  description?: string
+  type: SkillToolType
+  usage?: string
+  command?: string
+  endpoint?: string
+  method?: string
+}
+
+/**
+ * 技能（匹配后端 skills 表）
+ */
+export interface Skill {
+  id: string
+  name: string
+  description?: string
+  version?: string
+  author?: string
+  tags?: string[]
+  
+  // 来源信息
+  source_type: SkillSourceType
+  source_path?: string
+  source_url?: string
+  
+  // 文件内容
+  skill_md?: string
+  
+  // 安全信息
+  security_score: number
+  security_warnings?: string[]
+  
+  // 配置
+  config?: string
+  
+  // 工具清单（关联查询）
+  tools?: SkillTool[]
+  
+  // 状态
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 创建/更新技能的请求数据
+ */
+export interface SkillFormData {
+  name?: string
+  description?: string
+  is_active?: boolean
+  config?: string
+}
+
+/**
+ * 安装技能的请求数据
+ */
+export interface InstallSkillFromUrlRequest {
+  url: string
+}
+
+export interface InstallSkillFromPathRequest {
+  path: string
+}

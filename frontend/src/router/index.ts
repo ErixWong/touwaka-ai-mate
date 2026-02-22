@@ -34,6 +34,11 @@ const router = createRouter({
           name: 'settings',
           component: () => import('@/views/SettingsView.vue'),
         },
+        {
+          path: 'skills',
+          name: 'skills',
+          component: () => import('@/views/SkillsView.vue'),
+        },
       ],
     },
     {

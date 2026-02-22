@@ -1,73 +1,50 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class skill extends Model {
+export default class skill_tool extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
-      type: DataTypes.STRING(64),
+      type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true
     },
+    skill_id: {
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      references: {
+        model: 'skills',
+        key: 'id'
+      }
+    },
     name: {
-      type: DataTypes.STRING(128),
+      type: DataTypes.STRING(64),
       allowNull: false
     },
     description: {
       type: DataTypes.TEXT,
       allowNull: true
     },
-    version: {
-      type: DataTypes.STRING(32),
-      allowNull: true
-    },
-    author: {
-      type: DataTypes.STRING(128),
-      allowNull: true
-    },
-    tags: {
-      type: DataTypes.JSON,
-      allowNull: true
-    },
-    // 来源信息
-    source_type: {
-      type: DataTypes.ENUM('url', 'zip', 'local'),
+    type: {
+      type: DataTypes.ENUM('http', 'script', 'builtin'),
       allowNull: true,
-      defaultValue: "local"
+      defaultValue: "http"
     },
-    source_path: {
-      type: DataTypes.STRING(512),
-      allowNull: true
-    },
-    source_url: {
-      type: DataTypes.STRING(512),
-      allowNull: true
-    },
-    // 文件内容
-    skill_md: {
+    usage: {
       type: DataTypes.TEXT,
       allowNull: true
     },
-    // 安全信息
-    security_score: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 100
-    },
-    security_warnings: {
-      type: DataTypes.JSON,
+    command: {
+      type: DataTypes.STRING(512),
       allowNull: true
     },
-    // 配置
-    config: {
-      type: DataTypes.TEXT,
+    endpoint: {
+      type: DataTypes.STRING(512),
       allowNull: true
     },
-    // 状态
-    is_active: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true
+    method: {
+      type: DataTypes.STRING(16),
+      allowNull: true
     },
     created_at: {
       type: DataTypes.DATE,
@@ -81,7 +58,7 @@ export default class skill extends Model {
     }
   }, {
     sequelize,
-    tableName: 'skills',
+    tableName: 'skill_tools',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -91,6 +68,22 @@ export default class skill extends Model {
         using: "BTREE",
         fields: [
           { name: "id" },
+        ]
+      },
+      {
+        name: "idx_skill_id",
+        using: "BTREE",
+        fields: [
+          { name: "skill_id" },
+        ]
+      },
+      {
+        name: "idx_skill_name",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "skill_id" },
+          { name: "name" },
         ]
       },
     ]

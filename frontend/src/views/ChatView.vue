@@ -297,9 +297,13 @@ const handleRetry = async (message: ChatMessage) => {
   // 重新发送
   if (message.role === 'assistant') {
     // 如果是助手消息失败，找到对应的用户消息重发
-    const userMessage = chatStore.messages.find(
-      m => m.role === 'user' && new Date(m.created_at).getTime() < new Date(message.created_at || 0).getTime()
+    // 注意：需要找最近的一条用户消息，而不是第一条
+    const messageTime = new Date(message.created_at || 0).getTime()
+    const userMessages = chatStore.messages.filter(
+      m => m.role === 'user' && new Date(m.created_at).getTime() < messageTime
     )
+    // 取最近的一条用户消息
+    const userMessage = userMessages[userMessages.length - 1]
     if (userMessage) {
       await handleSendMessage(userMessage.content)
     }

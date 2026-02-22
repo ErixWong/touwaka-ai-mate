@@ -32,6 +32,7 @@ import MessageController from './controllers/message.controller.js';
 import ExpertController from './controllers/expert.controller.js';
 import ModelController from './controllers/model.controller.js';
 import StreamController from './controllers/stream.controller.js';
+import SkillController from './controllers/skill.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -43,6 +44,7 @@ import modelRoutes from './routes/model.routes.js';
 import streamRoutes from './routes/stream.routes.js';
 import providerRoutes from './routes/provider.routes.js';
 import chatRoutes from './routes/chat.routes.js';
+import skillRoutes from './routes/skill.routes.js';
 
 class ApiServer {
   constructor() {
@@ -110,6 +112,7 @@ class ApiServer {
       expert: new ExpertController(this.db),
       model: new ModelController(this.db),
       stream: new StreamController(this.db, this.chatService),
+      skill: new SkillController(this.db),
     };
   }
 
@@ -200,6 +203,10 @@ class ApiServer {
     } catch (err) {
       logger.error('Failed to register provider routes:', err.message);
     }
+
+    // Skill 路由
+    this.app.use(skillRoutes(this.controllers.skill).routes());
+    this.app.use(skillRoutes(this.controllers.skill).allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {

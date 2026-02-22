@@ -75,17 +75,40 @@ const TABLES = [
 
   // 4. Skills 表
   `CREATE TABLE IF NOT EXISTS skills (
-    id VARCHAR(32) PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     description TEXT,
-    source_type ENUM('database', 'filesystem') DEFAULT 'filesystem',
-    source_path VARCHAR(256),
+    version VARCHAR(32),
+    author VARCHAR(128),
+    tags JSON,
+    source_type ENUM('url', 'zip', 'local') DEFAULT 'local',
+    source_path VARCHAR(512),
+    source_url VARCHAR(512),
     skill_md TEXT,
     index_js TEXT,
+    security_score INT DEFAULT 100,
+    security_warnings JSON,
     config JSON,
     is_active BIT(1) DEFAULT b'1',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`,
+
+  // 4.1 Skill_Tools 表（技能工具清单）
+  `CREATE TABLE IF NOT EXISTS skill_tools (
+    id VARCHAR(32) PRIMARY KEY,
+    skill_id VARCHAR(64) NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    description TEXT,
+    type ENUM('http', 'script', 'builtin') DEFAULT 'http',
+    \`usage\` TEXT,
+    command VARCHAR(512),
+    endpoint VARCHAR(512),
+    method VARCHAR(16),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY idx_skill_name (skill_id, name),
+    INDEX idx_skill_id (skill_id)
   )`,
 
   // 5. Expert_Skills 表
@@ -308,14 +331,18 @@ async function getInitialData() {
         id: Utils.newID(20),
         name: '搜索',
         description: '搜索互联网获取信息',
-        source_type: 'database',
+        version: '1.0.0',
+        author: 'System',
+        source_type: 'local',
         skill_md: '# Search Skill\n\n## 描述\n搜索互联网获取信息...',
       },
       {
         id: Utils.newID(20),
         name: '天气',
         description: '查询天气信息',
-        source_type: 'database',
+        version: '1.0.0',
+        author: 'System',
+        source_type: 'local',
         skill_md: '# Weather Skill\n\n## 描述\n查询指定城市的天气信息...',
       },
     ],
@@ -359,7 +386,7 @@ async function initDatabase() {
     // 按依赖顺序删除表（先删除有外键的表）
     const dropTables = [
       'messages', 'topics', 'user_profiles', 'user_roles', 'role_permissions',
-      'permissions', 'roles', 'users', 'expert_skills', 'skills', 'experts',
+      'permissions', 'roles', 'users', 'expert_skills', 'skill_tools', 'skills', 'experts',
       'ai_models', 'providers'
     ];
     for (const table of dropTables) {
@@ -422,9 +449,9 @@ async function initDatabase() {
     // 插入 skills
     for (const s of data.skills) {
       await connection.execute(
-        `INSERT INTO skills (id, name, description, source_type, skill_md) VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO skills (id, name, description, version, author, source_type, skill_md) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE name=VALUES(name)`,
-        [s.id, s.name, s.description, s.source_type, s.skill_md]
+        [s.id, s.name, s.description, s.version, s.author, s.source_type, s.skill_md]
       );
     }
     console.log(`  - ${data.skills.length} skills`);

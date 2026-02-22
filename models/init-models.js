@@ -9,6 +9,7 @@ import _provider from  "./provider.js";
 import _role_permission from  "./role_permission.js";
 import _role from  "./role.js";
 import _skill from  "./skill.js";
+import _skill_tool from  "./skill_tool.js";
 import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
 import _user_role from  "./user_role.js";
@@ -24,6 +25,7 @@ export default function initModels(sequelize) {
   const role_permission = _role_permission.init(sequelize, DataTypes);
   const role = _role.init(sequelize, DataTypes);
   const skill = _skill.init(sequelize, DataTypes);
+  const skill_tool = _skill_tool.init(sequelize, DataTypes);
   const topic = _topic.init(sequelize, DataTypes);
   const user_profile = _user_profile.init(sequelize, DataTypes);
   const user_role = _user_role.init(sequelize, DataTypes);
@@ -57,6 +59,8 @@ export default function initModels(sequelize) {
   role.hasMany(user_role, { as: "user_roles", foreignKey: "role_id"});
   expert_skill.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
   skill.hasMany(expert_skill, { as: "expert_skills", foreignKey: "skill_id"});
+  skill_tool.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
+  skill.hasMany(skill_tool, { as: "tools", foreignKey: "skill_id"});
   message.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
   topic.hasMany(message, { as: "messages", foreignKey: "topic_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
@@ -78,6 +82,7 @@ export default function initModels(sequelize) {
     role_permission,
     role,
     skill,
+    skill_tool,
     topic,
     user_profile,
     user_role,
