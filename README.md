@@ -6,8 +6,8 @@
 
 | 版本 | 名称 | 状态 | 文档 |
 |------|------|------|------|
-| **V1** | [Mind Core / 心智核心](docs/v1/) | ✅ 已实现 | [查看文档](docs/v1/README.md) |
-| **V2** | Task Orchestrator / 任务编排器 | 📝 设计中 | [查看设计](docs/v2/task-layer-design.md) |
+| **V1** | [Mind Core / 心智核心](docs/design/v1/) | ✅ 已实现 | [查看文档](docs/design/v1/README.md) |
+| **V2** | Task Orchestrator / 任务编排器 | 📝 设计中 | [查看设计](docs/design/v2/task-layer-design.md) |
 
 ## 架构演进
 
@@ -44,13 +44,13 @@ cp .env.example .env
 # 编辑 .env 填入数据库配置
 
 # 初始化数据库
-mysql -u root -p < scripts/init-database.sql
+node scripts/init-database.js
 
 # 启动
 EXPERT_ID=eric npm start
 ```
 
-详细说明见 [V1 文档](docs/v1/README.md)。
+详细说明见 [V1 文档](docs/design/v1/README.md)。
 
 ## 项目特点
 
@@ -70,8 +70,8 @@ EXPERT_ID=eric npm start
 
 ## 参考分析
 
-- [开源项目分析报告](docs/references-analysis-report.md) - NanoClaw/OpenClaw/PicoClaw/ZeroClaw 深度对比
-- [V1 改进建议](docs/improvement-suggestions.md)
+- [开源项目分析报告](docs/design/references-analysis-report.md) - NanoClaw/OpenClaw/PicoClaw/ZeroClaw 深度对比
+- [V1 改进建议](docs/design/improvement-suggestions.md)
 
 ## 许可证
 
