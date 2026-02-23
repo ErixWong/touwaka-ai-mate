@@ -154,7 +154,6 @@ export default {
     modelSettings: '模型设置',
     providerSettings: '提供商',
     expertSettings: '专家设置',
-    debugSettings: '调试设置',
     about: '关于',
     // 专家管理
     expertManagement: '专家管理',
@@ -182,9 +181,6 @@ export default {
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',
-    enableDebug: '启用调试',
-    showTokenCount: '显示 Token 数量',
-    showLatency: '显示延迟',
     // Provider 管理
     providerManagement: '模型提供商管理',
     addProvider: '添加提供商',

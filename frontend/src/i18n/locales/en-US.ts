@@ -154,7 +154,6 @@ export default {
     modelSettings: 'Model Settings',
     providerSettings: 'Providers',
     expertSettings: 'Expert Settings',
-    debugSettings: 'Debug Settings',
     about: 'About',
     // Expert Management
     expertManagement: 'Expert Management',
@@ -182,9 +181,6 @@ export default {
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
-    enableDebug: 'Enable Debug',
-    showTokenCount: 'Show Token Count',
-    showLatency: 'Show Latency',
     // Provider Management
     providerManagement: 'Model Provider Management',
     addProvider: 'Add Provider',

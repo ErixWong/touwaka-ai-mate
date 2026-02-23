@@ -743,6 +743,74 @@ if (allToolCalls.length > 0) {
 
 ---
 
+## Debug 面板 Token 数显示修复 ✅
+
+**完成日期：** 2026-02-23
+
+**问题描述：**
+Debug 面板中的 token 统计始终显示为 0，无法展示真实的 token 使用情况。
+
+**根本原因：**
+1. LLM Client 流式调用时没有设置 `stream_options: { include_usage: true }`，API 不返回 token 统计
+2. chat-service.js 使用 `tokenCount++` 简单累加 delta 次数，不是真实的 token 数
+3. message.controller.js 返回的消息没有将数据库 `tokens` 字段转换为前端期望的 `metadata.tokens` 格式
+
+**修复内容：**
+
+### 1. LLM Client 添加 usage 回调 ([`lib/llm-client.js`](../../lib/llm-client.js))
+- 添加 `stream_options: { include_usage: true }` 请求流式响应的 usage 信息
+- 添加 `onUsage` 回调参数
+- 解析流式响应中的 `usage` 字段并回调
+
+### 2. Chat Service 使用真实 token 数据 ([`lib/chat-service.js`](../../lib/chat-service.js))
+- 将 `tokenCount` 改为 `tokenUsage` 对象存储真实的 token 使用信息
+- 添加 `onUsage` 回调处理并累加多轮调用的 token 信息
+- 保存消息和发送完成事件时使用真实的 token 数据
+
+### 3. Message Controller 数据格式转换 ([`server/controllers/message.controller.js`](../../server/controllers/message.controller.js))
+- 在返回消息列表时，将数据库中的 `tokens` 和 `latency_ms` 字段转换为前端期望的 `metadata` 格式
+
+**数据流：**
+```
+LLM API 流式响应 
+  → llm-client.js 解析 usage 字段 
+    → chat-service.js 通过 onUsage 回调接收 
+      → saveAssistantMessage() 保存到数据库 tokens 字段
+        → message.controller.js 转换为 metadata 格式返回前端
+```
+
+**提交：** a5d5e64
+
+---
+
+## 移除无用的调试设置功能 ✅
+
+**完成日期：** 2026-02-23
+
+**问题描述：**
+前端设置界面的"调试设置"标签页是一个无用的占位符功能——可以切换开关并保存，但没有任何代码实际使用这个设置。
+
+**修复内容：**
+
+### 移除的代码
+| 文件 | 移除内容 |
+|------|----------|
+| `frontend/src/views/SettingsView.vue` | 调试设置标签页模板、`debugForm`、`saveDebug()` 函数 |
+| `frontend/src/types/index.ts` | `UserPreference.enable_debug` 类型定义 |
+| `frontend/src/stores/user.ts` | 默认 preferences 中的 `enable_debug: false` |
+| `frontend/src/i18n/locales/zh-CN.ts` | `debugSettings`、`enableDebug` 等翻译键 |
+| `frontend/src/i18n/locales/en-US.ts` | 对应英文翻译键 |
+
+### 保留的功能
+右侧面板的 **DebugTab 组件**（`frontend/src/components/panel/DebugTab.vue`）继续保留，它是真正有用的调试工具：
+- Token 消耗统计
+- 响应时间/延迟
+- 模型信息
+- 会话统计
+- 原始消息数据查看
+
+---
+
 ## 聊天消息加载与显示优化 ✅
 
 **完成日期：** 2026-02-22

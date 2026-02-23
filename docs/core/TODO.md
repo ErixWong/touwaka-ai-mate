@@ -4,7 +4,52 @@
 
 ## 待开始
 
-### 0. 工具调用可视化面板 + SearXNG 搜索技能
+### 0. 对话界面左右面板可拖拽调整比例
+
+**状态：** ⏳ 待开始
+
+**描述：** 实现对话界面左侧聊天窗口和右侧多功能面板之间的可拖拽分割条，允许用户自由调整两者比例。
+
+**方案对比：**
+
+| 对比项 | 使用现成库（推荐） | 手动实现 |
+|--------|-------------------|----------|
+| **开发时间** | 0.5-1 天 | 1-2 天 |
+| **代码量** | ~20 行 | ~150 行 |
+| **功能完整性** | 开箱即用：拖拽、键盘支持、触屏支持、双击重置、边界约束 | 需逐个实现 |
+| **可维护性** | 社区维护，定期更新 | 自行维护 |
+| **包体积** | +10-20KB（gzip） | 0 |
+| **定制性** | 通过 props/slots 定制 | 完全自由 |
+| **样式一致性** | 需覆盖默认样式 | 与现有风格完全一致 |
+| **Bug 风险** | 低（成熟库） | 中（需处理边界情况） |
+| **学习成本** | 低（API 简单） | 中（需理解拖拽细节） |
+
+**推荐方案：使用 splitpanes 库**
+
+理由：
+1. 项目已开发一半，快速交付优先
+2. splitpanes 是 Vue 生态最流行的分屏组件（1.5k+ stars）
+3. 支持水平/垂直、多面板、响应式、触屏
+4. 可通过 CSS 变量自定义样式
+
+```bash
+npm install splitpanes
+```
+
+**待办：**
+- [ ] 安装 splitpanes 依赖
+- [ ] 修改 `ChatView.vue` 引入 Splitpanes 组件
+- [ ] 添加分割条样式（与现有 UI 风格一致）
+- [ ] 实现宽度比例持久化（localStorage）
+- [ ] 处理面板折叠时的兼容逻辑
+
+**相关文件：**
+- [`views/ChatView.vue`](../../frontend/src/views/ChatView.vue) - 主布局
+- [`components/panel/RightPanel.vue`](../../frontend/src/components/panel/RightPanel.vue) - 右侧面板
+
+---
+
+### 1. 工具调用可视化面板 + SearXNG 搜索技能
 
 **状态：** ⏳ 待开始
 
@@ -582,7 +627,55 @@ panel: {
 
 ---
 
-### 1. 反思心智模板配置化
+### 2. 专家 LLM 参数配置化
+
+**状态：** ⏳ 待开始
+
+**描述：** 在专家设置界面添加 LLM 参数配置，支持每个专家独立配置 temperature、top_p、frequency_penalty 等参数。
+
+**当前问题：**
+1. Temperature 写死在代码中：
+   - Expressive Mind: 默认 `0.7`（[`llm-client.js:98`](../../lib/llm-client.js:98)）
+   - Reflective Mind: 写死 `0.3`（[`llm-client.js:79`](../../lib/llm-client.js:79)）
+2. `top_p` / `repeat_penalty` / `frequency_penalty` / `presence_penalty` 完全未实现
+3. 数据库 `experts` 表无相关字段
+
+**数据库迁移（添加字段到 `experts` 表）：**
+```sql
+ALTER TABLE experts ADD COLUMN temperature DECIMAL(3,2) DEFAULT 0.70 COMMENT 'Expressive Mind 温度';
+ALTER TABLE experts ADD COLUMN reflective_temperature DECIMAL(3,2) DEFAULT 0.30 COMMENT 'Reflective Mind 温度';
+ALTER TABLE experts ADD COLUMN top_p DECIMAL(3,2) DEFAULT 1.00;
+ALTER TABLE experts ADD COLUMN frequency_penalty DECIMAL(3,2) DEFAULT 0.00;
+ALTER TABLE experts ADD COLUMN presence_penalty DECIMAL(3,2) DEFAULT 0.00;
+```
+
+**参数说明：**
+| 参数 | 范围 | 默认值 | 说明 |
+|------|------|--------|------|
+| `temperature` | 0-2 | 0.7 | 较低更确定，较高更随机 |
+| `reflective_temperature` | 0-2 | 0.3 | 反思心智用较低值保证稳定 |
+| `top_p` | 0-1 | 1.0 | 核采样，1.0 表示不限制 |
+| `frequency_penalty` | -2 到 2 | 0 | 降低重复词频率 |
+| `presence_penalty` | -2 到 2 | 0 | 鼓励谈论新话题 |
+
+**待办：**
+- [ ] 数据库：添加 LLM 参数字段到 `experts` 表
+- [ ] 后端：更新 `models/expert.js` 模型定义
+- [ ] 后端：更新 `lib/config-loader.js` 读取新字段
+- [ ] 后端：更新 `lib/llm-client.js` 使用配置的参数
+- [ ] 后端：更新 `lib/reflective-mind.js` 使用配置的参数
+- [ ] 前端：更新 `types/index.ts` Expert 接口
+- [ ] 前端：更新 `SettingsView.vue` 添加高级参数表单
+- [ ] 国际化：添加中英文翻译
+
+**相关代码：**
+- [`lib/llm-client.js`](../../lib/llm-client.js) - LLM 调用，temperature 写死位置
+- [`lib/reflective-mind.js`](../../lib/reflective-mind.js) - 反思心智
+- [`models/expert.js`](../../models/expert.js) - 专家模型
+
+---
+
+### 3. 反思心智模板配置化
 
 **状态：** ⏳ 待开始
 
@@ -792,7 +885,7 @@ CREATE TABLE skill_tools (
 
 **待办：**
 - [ ] Topics Tab 支持加载更多/无限滚动
-- [ ] Debug Tab 显示更多调试信息（如 token 统计）
+- [x] Debug Tab 显示更多调试信息（如 token 统计）✅ 2026-02-23
 
 **相关文档：**
 - [右侧面板设计方案 v2](../design/v2/right-panel-design.md)

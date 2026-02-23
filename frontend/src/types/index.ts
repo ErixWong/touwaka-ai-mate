@@ -23,7 +23,6 @@ export interface UserPreference {
   theme: 'light' | 'dark' | 'auto'
   language: 'zh-CN' | 'en-US'
   enable_stream: boolean
-  enable_debug: boolean
   created_at: string
   updated_at: string
 }

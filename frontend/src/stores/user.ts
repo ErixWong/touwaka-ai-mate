@@ -183,7 +183,6 @@ export const useUserStore = defineStore('user', () => {
           theme,
           language: getLocale(),
           enable_stream: true,
-          enable_debug: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }

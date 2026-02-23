@@ -264,17 +264,6 @@
       </div>
     </div>
 
-    <!-- 调试设置 -->
-    <div v-if="activeTab === 'debug'" class="settings-section">
-      <div class="setting-item checkbox">
-        <label class="setting-label">
-          <input v-model="debugForm.enable_debug" type="checkbox" />
-          {{ $t('settings.enableDebug') }}
-        </label>
-      </div>
-      <button class="btn-save" @click="saveDebug">{{ $t('settings.save') }}</button>
-    </div>
-
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -664,17 +653,12 @@ const tabs = computed(() => [
   { key: 'profile', label: t('settings.profile') },
   { key: 'model', label: t('settings.modelAndProvider') },
   { key: 'expert', label: t('settings.expertSettings') },
-  { key: 'debug', label: t('settings.debugSettings') },
   { key: 'about', label: t('settings.about') },
 ])
 
 const profileForm = reactive({
   nickname: '',
   language: 'zh-CN',
-})
-
-const debugForm = reactive({
-  enable_debug: false,
 })
 
 // 专家分页
@@ -801,12 +785,6 @@ const saveProfile = async () => {
     language: profileForm.language as 'zh-CN' | 'en-US',
   })
   locale.value = profileForm.language
-}
-
-const saveDebug = async () => {
-  await userStore.updatePreferences({
-    enable_debug: debugForm.enable_debug,
-  })
 }
 
 // Provider 管理方法
@@ -1046,7 +1024,6 @@ onMounted(() => {
   if (userStore.user) {
     profileForm.nickname = userStore.user.nickname || ''
     profileForm.language = userStore.preferences?.language || 'zh-CN'
-    debugForm.enable_debug = userStore.preferences?.enable_debug || false
   }
   // 加载模型列表
   modelStore.loadModels()
