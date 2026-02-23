@@ -11,7 +11,7 @@ export default class message extends Model {
     },
     topic_id: {
       type: DataTypes.STRING(32),
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'topics',
         key: 'id'
