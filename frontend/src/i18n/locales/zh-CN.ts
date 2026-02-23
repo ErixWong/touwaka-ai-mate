@@ -164,6 +164,11 @@ export default {
     expertNamePlaceholder: '请输入专家名称',
     expertIntroduction: '专家简介',
     expertIntroductionPlaceholder: '请输入专家简介',
+    expertAvatar: '小头像',
+    expertAvatarLarge: '大头像',
+    uploadAvatar: '上传图片',
+    imageProcessFailed: '图片处理失败',
+    imageTooLarge: '图片文件过大，请选择小于 {size}KB 的图片',
     expertSpeakingStyle: '说话风格',
     expertSpeakingStylePlaceholder: '请输入说话风格描述',
     expertCoreValues: '核心价值观',
@@ -354,5 +359,20 @@ export default {
     toolsList: '工具清单',
     // 删除确认
     deleteConfirm: '确定要删除技能 "{name}" 吗？此操作不可恢复。',
+    // 参数管理
+    parameters: {
+      title: '参数管理',
+      empty: '暂无参数配置，点击下方按钮添加',
+      addParam: '添加参数',
+      paramName: '参数名',
+      paramNamePlaceholder: '例如：API_KEY',
+      paramValue: '参数值',
+      paramValuePlaceholder: '输入参数值',
+      isSecret: '敏感信息',
+      isSecretHint: '敏感信息将在界面中隐藏显示',
+      errorNameRequired: '参数名不能为空',
+      errorInvalidName: '参数名只能包含字母、数字、下划线，且不能以数字开头',
+    },
+    manageParams: '管理参数',
   },
 }

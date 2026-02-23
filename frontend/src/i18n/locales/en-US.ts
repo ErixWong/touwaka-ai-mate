@@ -164,6 +164,11 @@ export default {
     expertNamePlaceholder: 'Enter expert name',
     expertIntroduction: 'Introduction',
     expertIntroductionPlaceholder: 'Enter expert introduction',
+    expertAvatar: 'Small Avatar',
+    expertAvatarLarge: 'Large Avatar',
+    uploadAvatar: 'Upload Image',
+    imageProcessFailed: 'Image processing failed',
+    imageTooLarge: 'Image file too large, please select an image smaller than {size}KB',
     expertSpeakingStyle: 'Speaking Style',
     expertSpeakingStylePlaceholder: 'Enter speaking style description',
     expertCoreValues: 'Core Values',
@@ -354,5 +359,20 @@ export default {
     toolsList: 'Tools List',
     // Delete confirm
     deleteConfirm: 'Are you sure you want to delete skill "{name}"? This action cannot be undone.',
+    // Parameters management
+    parameters: {
+      title: 'Manage Parameters',
+      empty: 'No parameters configured. Click the button below to add one.',
+      addParam: 'Add Parameter',
+      paramName: 'Parameter Name',
+      paramNamePlaceholder: 'e.g., API_KEY',
+      paramValue: 'Parameter Value',
+      paramValuePlaceholder: 'Enter parameter value',
+      isSecret: 'Sensitive Data',
+      isSecretHint: 'Sensitive data will be hidden in the UI',
+      errorNameRequired: 'Parameter name is required',
+      errorInvalidName: 'Parameter name can only contain letters, numbers, underscores, and cannot start with a number',
+    },
+    manageParams: 'Manage Parameters',
   },
 }

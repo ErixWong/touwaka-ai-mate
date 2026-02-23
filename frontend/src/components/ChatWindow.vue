@@ -1,5 +1,11 @@
 <template>
   <div class="chat-window">
+    <!-- 专家大头像背景 -->
+    <div 
+      v-if="props.expertAvatarLarge" 
+      class="messages-bg-avatar"
+      :style="{ backgroundImage: `url(${props.expertAvatarLarge})` }"
+    ></div>
     <!-- 消息列表 -->
     <div ref="messagesContainer" class="messages-container" @scroll="handleScroll">
       <!-- 加载更多历史消息（顶部） -->
@@ -23,7 +29,13 @@
       >
         <div class="message-avatar">
           <span v-if="message.role === 'user'">👤</span>
-          <span v-else>🤖</span>
+          <div 
+            v-else
+            class="avatar-image"
+            :style="props.expertAvatar ? { backgroundImage: `url(${props.expertAvatar})` } : {}"
+          >
+            <span v-if="!props.expertAvatar">🤖</span>
+          </div>
         </div>
         <div class="message-content">
           <div class="message-text" v-html="formatMessage(message.content)"></div>
@@ -44,7 +56,14 @@
         </div>
       </div>
       <div v-if="isLoading" class="message assistant">
-        <div class="message-avatar">🤖</div>
+        <div class="message-avatar">
+          <div 
+            class="avatar-image"
+            :style="props.expertAvatar ? { backgroundImage: `url(${props.expertAvatar})` } : {}"
+          >
+            <span v-if="!props.expertAvatar">🤖</span>
+          </div>
+        </div>
         <div class="message-content">
           <div class="thinking-indicator">{{ $t('chat.thinking') }}</div>
         </div>
@@ -90,6 +109,8 @@ const props = defineProps<{
   disabled?: boolean
   hasMoreMessages?: boolean
   isLoadingMore?: boolean
+  expertAvatar?: string
+  expertAvatarLarge?: string
 }>()
 
 const emit = defineEmits<{
@@ -260,6 +281,7 @@ defineExpose({
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 12px;
   overflow: hidden;
+  position: relative;
 }
 
 .messages-container {
@@ -267,6 +289,22 @@ defineExpose({
   overflow-y: auto;
   padding: 16px;
   scroll-behavior: smooth;
+  position: relative;
+}
+
+.messages-bg-avatar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 65px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.15;
+  filter: blur(2px);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .load-more-top {
@@ -274,6 +312,8 @@ defineExpose({
   justify-content: center;
   padding: 8px 0 16px;
   margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .btn-load-more {
@@ -304,12 +344,16 @@ defineExpose({
   height: 100%;
   color: var(--text-secondary, #666);
   font-size: 14px;
+  position: relative;
+  z-index: 1;
 }
 
 .message {
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
 }
 
 .message.user {
@@ -326,6 +370,17 @@ defineExpose({
   background: var(--avatar-bg, #f0f0f0);
   border-radius: 50%;
   font-size: 18px;
+}
+
+.message-avatar .avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .message.user .message-avatar {

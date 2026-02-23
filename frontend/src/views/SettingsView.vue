@@ -502,6 +502,71 @@
             </div>
           </div>
           
+          <div class="form-row avatar-row">
+            <div class="form-item avatar-item">
+              <label class="form-label">{{ $t('settings.expertAvatar') }}</label>
+              <div class="avatar-upload">
+                <div 
+                  class="avatar-preview" 
+                  :style="expertForm.avatar_base64 ? { backgroundImage: `url(${expertForm.avatar_base64})` } : {}"
+                >
+                  <span v-if="!expertForm.avatar_base64">🤖</span>
+                </div>
+                <div class="avatar-actions">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref="smallAvatarInput"
+                    @change="handleSmallAvatarUpload"
+                    style="display: none"
+                  />
+                  <button type="button" class="btn-small" @click="smallAvatarInput?.click()">
+                    {{ $t('settings.uploadAvatar') }}
+                  </button>
+                  <button 
+                    v-if="expertForm.avatar_base64" 
+                    type="button" 
+                    class="btn-small btn-danger"
+                    @click="expertForm.avatar_base64 = ''"
+                  >
+                    {{ $t('common.delete') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="form-item avatar-item">
+              <label class="form-label">{{ $t('settings.expertAvatarLarge') }}</label>
+              <div class="avatar-upload">
+                <div 
+                  class="avatar-preview large" 
+                  :style="expertForm.avatar_large_base64 ? { backgroundImage: `url(${expertForm.avatar_large_base64})` } : {}"
+                >
+                  <span v-if="!expertForm.avatar_large_base64">🖼️</span>
+                </div>
+                <div class="avatar-actions">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref="largeAvatarInput"
+                    @change="handleLargeAvatarUpload"
+                    style="display: none"
+                  />
+                  <button type="button" class="btn-small" @click="largeAvatarInput?.click()">
+                    {{ $t('settings.uploadAvatar') }}
+                  </button>
+                  <button 
+                    v-if="expertForm.avatar_large_base64" 
+                    type="button" 
+                    class="btn-small btn-danger"
+                    @click="expertForm.avatar_large_base64 = ''"
+                  >
+                    {{ $t('common.delete') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <div class="form-item">
             <label class="form-label">{{ $t('settings.expertIntroduction') }}</label>
             <textarea
@@ -726,6 +791,7 @@ import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
+import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
 import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert } from '@/types'
 
 const { t, locale } = useI18n()
@@ -864,6 +930,9 @@ const expertForm = reactive({
   top_p: 1.0,
   frequency_penalty: 0.0,
   presence_penalty: 0.0,
+  // 头像
+  avatar_base64: '',
+  avatar_large_base64: '',
   is_active: true,
 })
 
@@ -874,6 +943,10 @@ const isExpertFormValid = computed(() => {
 // Expert 删除对话框
 const showDeleteExpertDialog = ref(false)
 const deletingExpert = ref<Expert | null>(null)
+
+// 头像上传 ref
+const smallAvatarInput = ref<HTMLInputElement | null>(null)
+const largeAvatarInput = ref<HTMLInputElement | null>(null)
 
 const saveProfile = async () => {
   await userStore.updatePreferences({
@@ -1049,6 +1122,9 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = expert.top_p ?? 1.0
     expertForm.frequency_penalty = expert.frequency_penalty ?? 0.0
     expertForm.presence_penalty = expert.presence_penalty ?? 0.0
+    // 头像
+    expertForm.avatar_base64 = expert.avatar_base64 || ''
+    expertForm.avatar_large_base64 = expert.avatar_large_base64 || ''
     expertForm.is_active = expert.is_active
   } else {
     editingExpert.value = null
@@ -1069,6 +1145,9 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = 1.0
     expertForm.frequency_penalty = 0.0
     expertForm.presence_penalty = 0.0
+    // 头像
+    expertForm.avatar_base64 = ''
+    expertForm.avatar_large_base64 = ''
     expertForm.is_active = true
   }
   showExpertDialog.value = true
@@ -1091,6 +1170,38 @@ const saveExpert = async () => {
   } catch (err) {
     // 错误已在 store 中处理
   }
+}
+
+const handleSmallAvatarUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  
+  try {
+    const result = await compressSmallAvatar(file)
+    expertForm.avatar_base64 = result.base64
+    console.log(`小头像压缩: ${Math.round(result.originalSize / 1024)}KB → ${Math.round(result.compressedSize / 1024)}KB`)
+  } catch (err) {
+    console.error('压缩小头像失败:', err)
+    alert(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
+  }
+  input.value = ''
+}
+
+const handleLargeAvatarUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  
+  try {
+    const result = await compressLargeAvatar(file)
+    expertForm.avatar_large_base64 = result.base64
+    console.log(`大头像压缩: ${Math.round(result.originalSize / 1024)}KB → ${Math.round(result.compressedSize / 1024)}KB`)
+  } catch (err) {
+    console.error('压缩大头像失败:', err)
+    alert(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
+  }
+  input.value = ''
 }
 
 const confirmDeleteExpert = (expert: Expert) => {
@@ -1855,5 +1966,73 @@ onMounted(() => {
     width: 100%;
     justify-content: center;
   }
+}
+
+.avatar-row {
+  align-items: flex-start;
+}
+
+.avatar-item {
+  flex: 1;
+}
+
+.avatar-upload {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 2px dashed var(--border-color, #e0e0e0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+}
+
+.avatar-preview.large {
+  width: 100px;
+  height: 100px;
+  border-radius: 12px;
+  font-size: 36px;
+}
+
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--card-bg, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-small:hover {
+  background: var(--hover-bg, #e8e8e8);
+}
+
+.btn-small.btn-danger {
+  color: var(--error-color, #c62828);
+  border-color: var(--error-color, #c62828);
+}
+
+.btn-small.btn-danger:hover {
+  background: var(--error-color, #c62828);
+  color: white;
 }
 </style>

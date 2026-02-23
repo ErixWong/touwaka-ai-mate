@@ -41,7 +41,9 @@ class ExpertController {
           'context_threshold',
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
-          'frequency_penalty', 'presence_penalty'
+          'frequency_penalty', 'presence_penalty',
+          // 头像
+          'avatar_base64', 'avatar_large_base64'
         ],
         order: [['created_at', 'DESC']],
         raw: true,
@@ -77,7 +79,9 @@ class ExpertController {
           'context_threshold',
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
-          'frequency_penalty', 'presence_penalty'
+          'frequency_penalty', 'presence_penalty',
+          // 头像
+          'avatar_base64', 'avatar_large_base64'
         ],
         raw: true,
       });
@@ -110,7 +114,9 @@ class ExpertController {
         context_threshold,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
-        frequency_penalty, presence_penalty
+        frequency_penalty, presence_penalty,
+        // 头像
+        avatar_base64, avatar_large_base64
       } = ctx.request.body;
 
       if (!name) {
@@ -142,6 +148,9 @@ class ExpertController {
         top_p: top_p ?? 1.0,
         frequency_penalty: frequency_penalty ?? 0.0,
         presence_penalty: presence_penalty ?? 0.0,
+        // 头像
+        avatar_base64: avatar_base64 || null,
+        avatar_large_base64: avatar_large_base64 || null,
       });
 
       ctx.success({
@@ -155,6 +164,8 @@ class ExpertController {
         top_p: top_p ?? 1.0,
         frequency_penalty: frequency_penalty ?? 0.0,
         presence_penalty: presence_penalty ?? 0.0,
+        // 头像
+        avatar_base64, avatar_large_base64,
       }, '专家创建成功');
     } catch (error) {
       logger.error('Create expert error:', error);
@@ -176,7 +187,9 @@ class ExpertController {
         context_threshold,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
-        frequency_penalty, presence_penalty
+        frequency_penalty, presence_penalty,
+        // 头像
+        avatar_base64, avatar_large_base64
       } = ctx.request.body;
 
       // 检查专家是否存在
@@ -208,6 +221,9 @@ class ExpertController {
       if (top_p !== undefined) updates.top_p = top_p;
       if (frequency_penalty !== undefined) updates.frequency_penalty = frequency_penalty;
       if (presence_penalty !== undefined) updates.presence_penalty = presence_penalty;
+      // 头像
+      if (avatar_base64 !== undefined) updates.avatar_base64 = avatar_base64 || null;
+      if (avatar_large_base64 !== undefined) updates.avatar_large_base64 = avatar_large_base64 || null;
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);

@@ -3,6 +3,12 @@
     <!-- 聊天头部 -->
     <div class="chat-header">
       <div class="expert-info">
+        <div 
+          class="expert-avatar"
+          :style="currentExpert?.avatar_base64 ? { backgroundImage: `url(${currentExpert.avatar_base64})` } : {}"
+        >
+          <span v-if="!currentExpert?.avatar_base64">🤖</span>
+        </div>
         <h2 class="expert-name">{{ currentExpert?.name || $t('chat.title') }}</h2>
         <span v-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
       </div>
@@ -14,13 +20,15 @@
         <!-- 聊天主体 -->
         <Pane :size="chatPaneSize" class="chat-pane">
           <div class="chat-body">
-            <template v-if="currentExpertId">
+            <div class="chat-content" v-if="currentExpertId">
               <ChatWindow
                 ref="chatWindowRef"
                 :messages="chatStore.sortedMessages"
                 :is-loading="isSending"
                 :has-more-messages="chatStore.hasMoreMessages"
                 :is-loading-more="chatStore.isLoadingMore"
+                :expert-avatar="currentExpert?.avatar_base64"
+                :expert-avatar-large="currentExpert?.avatar_large_base64"
                 @send="handleSendMessage"
                 @retry="handleRetry"
                 @load-more="loadMoreMessages"
@@ -36,7 +44,7 @@
                   {{ $t('chat.connecting') || '连接中...' }}
                 </span>
               </div>
-            </template>
+            </div>
             
             <div v-else class="no-expert-selected">
               <p>{{ $t('chat.selectExpert') }}</p>
@@ -548,6 +556,20 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.expert-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--secondary-bg, #f8f9fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
 .expert-name {
   font-size: 16px;
   font-weight: 600;
@@ -604,6 +626,14 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.chat-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .no-expert-selected {

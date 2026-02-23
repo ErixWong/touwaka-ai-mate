@@ -31,7 +31,12 @@
           :class="{ 'is-starting': startingExpertId === expert.id }"
           @click="startWithExpert(expert.id)"
         >
-          <div class="expert-icon">🤖</div>
+          <div 
+            class="expert-icon" 
+            :style="expert.avatar_base64 ? { backgroundImage: `url(${expert.avatar_base64})` } : {}"
+          >
+            <span v-if="!expert.avatar_base64">🤖</span>
+          </div>
           <div class="expert-name">{{ expert.name }}</div>
           <div class="expert-desc">{{ (expert.introduction || '').slice(0, 50) }}{{ (expert.introduction || '').length > 50 ? '...' : '' }}</div>
           <div v-if="startingExpertId === expert.id" class="card-loading-overlay">
@@ -143,8 +148,20 @@ onMounted(async () => {
 
 .expert-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .expert-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .expert-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .expert-card {
@@ -162,8 +179,17 @@ onMounted(async () => {
 }
 
 .expert-icon {
-  font-size: 32px;
+  width: 48px;
+  height: 48px;
+  font-size: 28px;
   margin-bottom: 8px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--secondary-bg, #f8f9fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .expert-name {

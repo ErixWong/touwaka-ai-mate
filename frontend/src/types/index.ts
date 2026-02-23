@@ -152,6 +152,9 @@ export interface Expert {
   top_p?: number                // 核采样，默认 1.0
   frequency_penalty?: number    // 频率惩罚，默认 0.0
   presence_penalty?: number     // 存在惩罚，默认 0.0
+  // 头像
+  avatar_base64?: string        // 小头像 Base64（日常使用）
+  avatar_large_base64?: string  // 大头像 Base64（对话框背景）
   is_active: boolean
   created_at: string
   updated_at?: string

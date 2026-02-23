@@ -903,6 +903,61 @@ timeDaysAgo: '{n} days ago',
 
 ---
 
+## 专家头像功能 ✅
+
+**完成日期：** 2026-02-23
+
+**成果：**
+- 数据库 `experts` 表添加 `avatar_base64` 和 `avatar_large_base64` 字段
+- 后端 Sequelize 模型自动生成
+- 前端 `types/index.ts` Expert 接口添加字段
+- `SettingsView.vue` 添加头像上传功能（Base64 转换）
+- `HomeView.vue` 专家卡片显示小头像
+- `ChatView.vue` 聊天头部显示小头像，对话区域背景显示大头像（半透明模糊效果）
+- 国际化翻译（中英文）
+
+**设计亮点：**
+- 使用 Base64 存储头像，无需文件上传服务
+- 大头像作为聊天背景，opacity: 0.08 + blur(2px) 实现淡雅效果
+
+**相关文档：**
+- [tasks/expert-avatar.md](../core/tasks/expert-avatar.md)
+
+---
+
+## 专家 LLM 参数配置化 ✅
+
+**完成日期：** 2026-02-23
+
+**成果：**
+- 数据库 `experts` 表添加 LLM 参数字段：`temperature`、`reflective_temperature`、`top_p`、`frequency_penalty`、`presence_penalty`
+- 后端 `models/expert.js` 模型定义更新
+- 后端 `lib/config-loader.js` 读取新字段
+- 后端 `lib/llm-client.js` 和 `lib/reflective-mind.js` 使用配置的参数
+- 前端 `types/index.ts` Expert 接口更新
+- 前端 `SettingsView.vue` 添加高级参数表单
+- 国际化中英文翻译
+
+**相关文档：**
+- [tasks/expert-llm-params.md](../core/tasks/expert-llm-params.md)
+
+---
+
+## 上下文压缩与话题总结重构 ✅
+
+**完成日期：** 2026-02-23
+
+**成果：**
+- 重构上下文压缩机制，基于 Token 阈值触发
+- 话题总结生成优化
+- 用户画像更新逻辑改进
+
+**相关文档：**
+- [tasks/context-compression.md](../core/tasks/context-compression.md)
+- [context-compression-design.md](../design/v2/context-compression-design.md)
+
+---
+
 ## 对话界面左右面板可拖拽调整比例 ✅
 
 **完成日期：** 2026-02-23
@@ -943,5 +998,45 @@ timeDaysAgo: '{n} days ago',
 - [`frontend/src/composables/useNetworkStatus.ts`](../../frontend/src/composables/useNetworkStatus.ts) - 网络状态检测 composable
 - [`frontend/src/i18n/locales/zh-CN.ts`](../../frontend/src/i18n/locales/zh-CN.ts) - 中文翻译
 - [`frontend/src/i18n/locales/en-US.ts`](../../frontend/src/i18n/locales/en-US.ts) - 英文翻译
+
+---
+
+## 专家头像功能 ✅
+
+**完成日期：** 2026-02-23
+
+**描述：** 为专家添加两种尺寸的头像支持，小头像用于日常显示，大头像用于聊天背景装饰。
+
+**实现内容：**
+
+### 数据库
+- `experts` 表添加 `avatar_base64`（TEXT）和 `avatar_large_base64`（MEDIUMTEXT）字段
+- 使用 Base64 存储而非 URL，简化部署和备份
+
+### 图片压缩
+- 新增 [`frontend/src/utils/imageCompress.ts`](../../frontend/src/utils/imageCompress.ts) 工具
+- 小头像：128×128，质量 80%，限制 100KB
+- 大头像：800×800，质量 70%，限制 500KB
+- 自动调整尺寸、智能降质、超限拒绝
+
+### 显示位置
+| 尺寸 | 位置 |
+|------|------|
+| 小头像 | 专家列表卡片、聊天头部、消息头像（AI） |
+| 大头像 | 消息区域背景（固定、模糊 2px、透明度 15%） |
+
+### 修改的文件
+- `models/expert.js` - 模型字段
+- `scripts/init-database.js` - 初始化脚本
+- `server/controllers/expert.controller.js` - API 支持
+- `frontend/src/types/index.ts` - 类型定义
+- `frontend/src/utils/imageCompress.ts` - 压缩工具（新增）
+- `frontend/src/views/HomeView.vue` - 卡片头像
+- `frontend/src/views/ChatView.vue` - 头部头像
+- `frontend/src/views/SettingsView.vue` - 上传功能
+- `frontend/src/components/ChatWindow.vue` - 消息头像和背景
+- `frontend/src/i18n/locales/*.ts` - 国际化
+
+**相关文档：** [tasks/expert-avatar.md](../core/tasks/expert-avatar.md)
 
 ---

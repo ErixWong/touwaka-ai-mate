@@ -62,6 +62,16 @@ export default class expert extends Model {
       allowNull: true,
       defaultValue: true
     },
+    avatar_base64: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "小头像Base64（日常使用，约2-5KB）"
+    },
+    avatar_large_base64: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "大头像Base64（对话框背景，约20-50KB）"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,

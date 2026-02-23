@@ -66,6 +66,8 @@ const TABLES = [
     reflective_model_id VARCHAR(32),
     prompt_template TEXT,
     is_active BIT(1) DEFAULT b'1',
+    avatar_base64 TEXT COMMENT '小头像Base64（日常使用）',
+    avatar_large_base64 MEDIUMTEXT COMMENT '大头像Base64（对话框背景）',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (expressive_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
