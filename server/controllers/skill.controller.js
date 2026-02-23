@@ -17,6 +17,7 @@ class SkillController {
     this.db = db;
     this.Skill = db.getModel('skill');
     this.SkillTool = db.getModel('skill_tool');
+    this.SkillParameter = db.getModel('skill_parameter');
   }
 
   /**
@@ -60,15 +61,32 @@ class SkillController {
         toolCountMap[t.skill_id] = parseInt(t.count);
       });
 
-      const formattedSkills = skills.map(s => ({
-        ...s,
-        is_active: !!s.is_active,
-        tags: s.tags ? (typeof s.tags === 'string' ? JSON.parse(s.tags) : s.tags) : [],
-        security_warnings: s.security_warnings 
-          ? (typeof s.security_warnings === 'string' ? JSON.parse(s.security_warnings) : s.security_warnings) 
-          : [],
-        tool_count: toolCountMap[s.id] || 0,
-      }));
+      const formattedSkills = skills.map(s => {
+        // 安全解析 JSON 字段
+        let tags = [];
+        try {
+          tags = s.tags ? (typeof s.tags === 'string' ? JSON.parse(s.tags) : s.tags) : [];
+        } catch (e) {
+          logger.warn(`Failed to parse tags for skill ${s.id}:`, e.message);
+        }
+        
+        let securityWarnings = [];
+        try {
+          securityWarnings = s.security_warnings
+            ? (typeof s.security_warnings === 'string' ? JSON.parse(s.security_warnings) : s.security_warnings)
+            : [];
+        } catch (e) {
+          logger.warn(`Failed to parse security_warnings for skill ${s.id}:`, e.message);
+        }
+        
+        return {
+          ...s,
+          is_active: !!s.is_active,
+          tags,
+          security_warnings: securityWarnings,
+          tool_count: toolCountMap[s.id] || 0,
+        };
+      });
 
       ctx.success({ skills: formattedSkills });
     } catch (error) {
@@ -100,14 +118,29 @@ class SkillController {
         raw: true,
       });
 
+      // 安全解析 JSON 字段
+      let tags = [];
+      try {
+        tags = skill.tags ? (typeof skill.tags === 'string' ? JSON.parse(skill.tags) : skill.tags) : [];
+      } catch (e) {
+        logger.warn(`Failed to parse tags for skill ${skill.id}:`, e.message);
+      }
+      
+      let securityWarnings = [];
+      try {
+        securityWarnings = skill.security_warnings
+          ? (typeof skill.security_warnings === 'string' ? JSON.parse(skill.security_warnings) : skill.security_warnings)
+          : [];
+      } catch (e) {
+        logger.warn(`Failed to parse security_warnings for skill ${skill.id}:`, e.message);
+      }
+      
       ctx.success({
         skill: {
           ...skill,
           is_active: !!skill.is_active,
-          tags: skill.tags ? (typeof skill.tags === 'string' ? JSON.parse(skill.tags) : skill.tags) : [],
-          security_warnings: skill.security_warnings 
-            ? (typeof skill.security_warnings === 'string' ? JSON.parse(skill.security_warnings) : skill.security_warnings) 
-            : [],
+          tags,
+          security_warnings: securityWarnings,
           tools: tools.map(t => ({
             ...t,
             type: t.type || 'http',
@@ -150,6 +183,7 @@ class SkillController {
    * 从 ZIP 文件安装技能
    */
   async installFromZip(ctx) {
+    let transaction = null;
     try {
       const file = ctx.request.files?.file;
       
@@ -173,7 +207,7 @@ class SkillController {
           throw new Error('ZIP 文件中未找到 SKILL.md');
         }
 
-        const skillDir = path.dirname(skillMdPath);
+        const tempSkillDir = path.dirname(skillMdPath);
         const skillMd = await fs.readFile(skillMdPath, 'utf-8');
 
         // TODO: 调用 AI 分析技能
@@ -183,20 +217,30 @@ class SkillController {
         // 生成 ID（如果 SKILL.md 中没有指定）
         const id = skillData.id || Utils.newID(20);
 
+        // 创建永久存储目录
+        const permanentDir = path.join(process.cwd(), 'skills', 'installed', id);
+        
+        // 复制技能文件到永久目录
+        await fs.mkdir(permanentDir, { recursive: true });
+        await this.copyDirectory(tempSkillDir, permanentDir);
+
+        // 开始事务
+        transaction = await this.db.sequelize.transaction();
+
         // 检查是否已存在
-        const existing = await this.Skill.findOne({ where: { id } });
+        const existing = await this.Skill.findOne({ where: { id }, transaction });
         if (existing) {
           // 更新现有技能
           await this.Skill.update({
             ...skillData,
             skill_md: skillMd,
             source_type: 'zip',
-            source_path: skillDir,
+            source_path: permanentDir,
             updated_at: new Date(),
-          }, { where: { id } });
+          }, { where: { id }, transaction });
 
           // 删除旧工具
-          await this.SkillTool.destroy({ where: { skill_id: id } });
+          await this.SkillTool.destroy({ where: { skill_id: id }, transaction });
         } else {
           // 创建新技能
           await this.Skill.create({
@@ -204,10 +248,10 @@ class SkillController {
             ...skillData,
             skill_md: skillMd,
             source_type: 'zip',
-            source_path: skillDir,
+            source_path: permanentDir,
             security_score: 100, // 默认安全评分
             is_active: true,
-          });
+          }, { transaction });
         }
 
         // 创建工具清单
@@ -222,9 +266,13 @@ class SkillController {
               usage: tool.usage,
               endpoint: tool.endpoint,
               method: tool.method,
-            });
+            }, { transaction });
           }
         }
+
+        // 提交事务
+        await transaction.commit();
+        transaction = null;
 
         // 获取完整技能信息
         const skill = await this.Skill.findOne({ where: { id } });
@@ -241,6 +289,10 @@ class SkillController {
         await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
       }
     } catch (error) {
+      // 回滚事务
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
       logger.error('Install skill from ZIP error:', error);
       ctx.error('从 ZIP 安装失败: ' + error.message, 500);
     }
@@ -250,6 +302,7 @@ class SkillController {
    * 从本地目录安装技能
    */
   async installFromPath(ctx) {
+    let transaction = null;
     try {
       const { path: skillPath } = ctx.request.body;
 
@@ -281,8 +334,11 @@ class SkillController {
       // 生成 ID（如果 SKILL.md 中没有指定）
       const id = skillData.id || Utils.newID(20);
 
+      // 开始事务
+      transaction = await this.db.sequelize.transaction();
+
       // 检查是否已存在
-      const existing = await this.Skill.findOne({ where: { id } });
+      const existing = await this.Skill.findOne({ where: { id }, transaction });
       if (existing) {
         // 更新现有技能
         await this.Skill.update({
@@ -291,10 +347,10 @@ class SkillController {
           source_type: 'local',
           source_path: skillPath,
           updated_at: new Date(),
-        }, { where: { id } });
+        }, { where: { id }, transaction });
 
         // 删除旧工具
-        await this.SkillTool.destroy({ where: { skill_id: id } });
+        await this.SkillTool.destroy({ where: { skill_id: id }, transaction });
       } else {
         // 创建新技能
         await this.Skill.create({
@@ -305,7 +361,7 @@ class SkillController {
           source_path: skillPath,
           security_score: 100,
           is_active: true,
-        });
+        }, { transaction });
       }
 
       // 创建工具清单
@@ -320,9 +376,13 @@ class SkillController {
             usage: tool.usage,
             endpoint: tool.endpoint,
             method: tool.method,
-          });
+          }, { transaction });
         }
       }
+
+      // 提交事务
+      await transaction.commit();
+      transaction = null;
 
       // 获取完整技能信息
       const skill = await this.Skill.findOne({ where: { id } });
@@ -335,6 +395,10 @@ class SkillController {
         }
       }, '技能安装成功');
     } catch (error) {
+      // 回滚事务
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
       logger.error('Install skill from path error:', error);
       ctx.error('从本地目录安装失败: ' + error.message, 500);
     }
@@ -391,6 +455,9 @@ class SkillController {
 
       // 删除关联的工具
       await this.SkillTool.destroy({ where: { skill_id: id } });
+      
+      // 删除关联的参数
+      await this.SkillParameter.destroy({ where: { skill_id: id } });
       
       // 删除技能
       await this.Skill.destroy({ where: { id } });
@@ -497,6 +564,25 @@ class SkillController {
   }
 
   /**
+   * 递归复制目录
+   */
+  async copyDirectory(src, dest) {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(src, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      
+      if (entry.isDirectory()) {
+        await this.copyDirectory(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
+  /**
    * 简单解析 SKILL.md
    * TODO: 使用 AI 进行更智能的解析
    */
@@ -596,6 +682,133 @@ class SkillController {
     }
 
     return skill;
+  }
+
+  /**
+   * 获取技能参数
+   * GET /api/skills/:id/parameters
+   */
+  async getParameters(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      // 检查技能是否存在
+      const skill = await this.Skill.findOne({ where: { id } });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      const parameters = await this.SkillParameter.findAll({
+        where: { skill_id: id },
+        order: [['created_at', 'ASC']],
+        raw: true,
+      });
+
+      ctx.success({
+        parameters: parameters.map(p => ({
+          id: p.id,
+          skill_id: p.skill_id,
+          param_name: p.param_name,
+          param_value: p.param_value,
+          is_secret: !!p.is_secret,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+        })),
+      });
+    } catch (error) {
+      logger.error('Get skill parameters error:', error);
+      ctx.error('获取技能参数失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 保存技能参数（全量替换）
+   * POST /api/skills/:id/parameters
+   */
+  async saveParameters(ctx) {
+    let transaction = null;
+    try {
+      const { id } = ctx.params;
+      const { parameters } = ctx.request.body;
+
+      if (!Array.isArray(parameters)) {
+        ctx.error('参数格式错误，需要数组', 400);
+        return;
+      }
+
+      // 检查技能是否存在
+      const skill = await this.Skill.findOne({ where: { id } });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      // 验证参数名格式（只允许字母、数字、下划线，不能以数字开头）
+      const paramNamePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+      for (const param of parameters) {
+        if (param.param_name && !paramNamePattern.test(param.param_name)) {
+          ctx.error(`参数名格式无效: ${param.param_name}（只允许字母、数字、下划线，且不能以数字开头）`, 400);
+          return;
+        }
+      }
+
+      // 验证参数名唯一性
+      const names = parameters.map(p => p.param_name);
+      const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+      if (duplicates.length > 0) {
+        ctx.error(`参数名重复: ${duplicates.join(', ')}`, 400);
+        return;
+      }
+
+      // 开始事务
+      transaction = await this.db.sequelize.transaction();
+
+      // 删除旧参数
+      await this.SkillParameter.destroy({
+        where: { skill_id: id },
+        transaction,
+      });
+
+      // 创建新参数
+      const createdParameters = [];
+      for (const param of parameters) {
+        if (!param.param_name || param.param_name.trim() === '') {
+          continue; // 跳过空参数名
+        }
+
+        const newParam = await this.SkillParameter.create({
+          id: Utils.newID(32),
+          skill_id: id,
+          param_name: param.param_name.trim(),
+          param_value: param.param_value || '',
+          is_secret: param.is_secret ? 1 : 0,
+        }, { transaction });
+
+        createdParameters.push(newParam.get({ plain: true }));
+      }
+
+      // 提交事务
+      await transaction.commit();
+      transaction = null;
+
+      ctx.success({
+        parameters: createdParameters.map(p => ({
+          id: p.id,
+          skill_id: p.skill_id,
+          param_name: p.param_name,
+          param_value: p.param_value,
+          is_secret: !!p.is_secret,
+        })),
+      }, '参数保存成功');
+    } catch (error) {
+      // 回滚事务
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
+      logger.error('Save skill parameters error:', error);
+      ctx.error('保存技能参数失败: ' + error.message, 500);
+    }
   }
 }
 

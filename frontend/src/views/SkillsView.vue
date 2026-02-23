@@ -94,6 +94,12 @@
           </button>
           <button 
             class="btn-action secondary" 
+            @click="openParamsDialog(skill)"
+          >
+            {{ $t('skills.manageParams') }}
+          </button>
+          <button 
+            class="btn-action secondary" 
             @click="toggleSkillActive(skill)"
           >
             {{ skill.is_active ? $t('skills.deactivate') : $t('skills.activate') }}
@@ -290,6 +296,14 @@
         </div>
       </div>
     </div>
+
+    <!-- 参数管理对话框 -->
+    <SkillParametersModal
+      :visible="showParamsDialog"
+      :skill="paramsSkill"
+      @close="closeParamsDialog"
+      @saved="closeParamsDialog"
+    />
   </div>
 </template>
 
@@ -298,6 +312,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSkillStore } from '@/stores/skill'
 import type { Skill } from '@/types'
+import SkillParametersModal from '@/components/SkillParametersModal.vue'
 
 const { t } = useI18n()
 const skillStore = useSkillStore()
@@ -309,9 +324,11 @@ const filterStatus = ref('')
 const showAddDialog = ref(false)
 const showDetailDialog = ref(false)
 const showDeleteDialog = ref(false)
+const showParamsDialog = ref(false)
 const selectedSkill = ref<Skill | null>(null)
 const deletingSkill = ref<Skill | null>(null)
 const isReanalyzing = ref<string | null>(null)
+const paramsSkill = ref<Skill | null>(null)
 
 // 添加表单
 const addForm = ref({
@@ -508,6 +525,17 @@ const deleteSkill = async () => {
   }
 }
 
+// 参数管理
+const openParamsDialog = (skill: Skill) => {
+  paramsSkill.value = skill
+  showParamsDialog.value = true
+}
+
+const closeParamsDialog = () => {
+  showParamsDialog.value = false
+  paramsSkill.value = null
+}
+
 onMounted(() => {
   skillStore.loadSkills()
 })
@@ -516,7 +544,7 @@ onMounted(() => {
 <style scoped>
 .skills-view {
   padding: 24px;
-  max-width: 1000px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -592,11 +620,11 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-/* 技能列表 */
+/* 技能列表 - 栅格布局 */
 .skills-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
 }
 
 .skill-card {
@@ -605,10 +633,13 @@ onMounted(() => {
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 12px;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
 }
 
 .skill-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .skill-card.inactive {
@@ -744,6 +775,8 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 12px;
 }
 
 .btn-action {
@@ -1133,6 +1166,10 @@ onMounted(() => {
     padding: 16px;
   }
 
+  .skills-list {
+    grid-template-columns: 1fr;
+  }
+
   .view-header {
     flex-direction: column;
     gap: 16px;
@@ -1163,6 +1200,18 @@ onMounted(() => {
 
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .skills-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .skills-list {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 </style>

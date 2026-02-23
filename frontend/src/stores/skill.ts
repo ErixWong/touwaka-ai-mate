@@ -38,12 +38,24 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
+  /**
+   * 更新或添加技能到列表（避免重复）
+   */
+  const upsertSkill = (skill: Skill) => {
+    const index = skills.value.findIndex(s => s.id === skill.id)
+    if (index !== -1) {
+      skills.value[index] = skill
+    } else {
+      skills.value.push(skill)
+    }
+  }
+
   const installFromUrl = async (url: string) => {
     isLoading.value = true
     error.value = null
     try {
       const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-url', { url }))
-      skills.value.push(response.skill)
+      upsertSkill(response.skill)
       return response.skill
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to install skill from URL'
@@ -63,7 +75,7 @@ export const useSkillStore = defineStore('skill', () => {
       const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-zip', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       }))
-      skills.value.push(response.skill)
+      upsertSkill(response.skill)
       return response.skill
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to install skill from ZIP'
@@ -78,7 +90,7 @@ export const useSkillStore = defineStore('skill', () => {
     error.value = null
     try {
       const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-path', { path }))
-      skills.value.push(response.skill)
+      upsertSkill(response.skill)
       return response.skill
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to install skill from path'

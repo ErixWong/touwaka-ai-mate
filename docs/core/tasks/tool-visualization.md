@@ -1,7 +1,8 @@
 # 工具调用可视化面板 + SearXNG 搜索技能
 
-**状态：** ⏳ 待开始  
+**状态：** 🔄 进行中
 **创建日期：** 2026-02-22
+**最后更新：** 2026-02-23
 
 ## 描述
 
@@ -534,11 +535,35 @@ panel: {
 
 ---
 
+## 完成度分析（2026-02-23）
+
+**总体完成度：约 20%**
+
+| 模块 | 状态 | 完成度 |
+|------|------|--------|
+| 后端 SSE 事件 | ✅ 已完成 | 100% |
+| 前端事件处理 | ⚠️ 部分完成 | 50% |
+| Panel Store | ❌ 未开始 | 0% |
+| ToolsTab 组件 | ❌ 未开始 | 0% |
+| 类型定义 | ❌ 未开始 | 0% |
+| SearXNG 技能 | ❌ 未开始 | 0% |
+| 国际化 | ❌ 未开始 | 0% |
+
+### 已完成项
+
+- ✅ `lib/chat-service.js`: `tool_call` SSE 事件发送（第 199 行）
+- ✅ `lib/chat-service.js`: `tool_results` SSE 事件发送（第 248 行）
+- ✅ `views/ChatView.vue`: `tool_call` 事件监听（第 232-250 行）
+- ✅ `views/ChatView.vue`: `tool_results` 事件监听（第 254-275 行）
+  - 当前实现：在消息气泡中简单显示工具调用信息
+
+---
+
 ## 待办清单
 
 **后端：**
-- [ ] `lib/chat-service.js`: 增强 `tool_call` SSE 事件，传递完整参数
-- [ ] `lib/chat-service.js`: 增强 `tool_results` SSE 事件，传递格式化摘要
+- [x] `lib/chat-service.js`: 增强 `tool_call` SSE 事件，传递完整参数
+- [x] `lib/chat-service.js`: 增强 `tool_results` SSE 事件，传递格式化摘要
 - [ ] `lib/tool-manager.js`: 添加 `formatResultSummary()` 方法
 
 **前端：**
@@ -546,7 +571,8 @@ panel: {
 - [ ] `stores/panel.ts`: 添加 `toolCalls` 状态和相关 actions
 - [ ] `components/panel/ToolsTab.vue`: 创建工具调用展示组件
 - [ ] `components/panel/RightPanel.vue`: 集成 ToolsTab
-- [ ] `views/ChatView.vue`: 处理 `tool_call` 和 `tool_results` 事件
+- [x] `views/ChatView.vue`: 处理 `tool_call` 和 `tool_results` 事件（基础版）
+- [ ] `views/ChatView.vue`: 将工具调用数据同步到 panel store
 - [ ] `types/index.ts`: 添加 `ToolCall` 和 `ToolResult` 类型
 
 **技能：**

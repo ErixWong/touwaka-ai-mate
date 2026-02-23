@@ -44,5 +44,11 @@ export default function createSkillRoutes(controller) {
   // POST /api/skills/:id/reanalyze - 重新分析技能
   router.post('/:id/reanalyze', controller.reanalyze.bind(controller));
 
+  // GET /api/skills/:id/parameters - 获取技能参数
+  router.get('/:id/parameters', controller.getParameters.bind(controller));
+
+  // POST /api/skills/:id/parameters - 保存技能参数（全量替换）
+  router.post('/:id/parameters', controller.saveParameters.bind(controller));
+
   return router;
 }
