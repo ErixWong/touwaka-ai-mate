@@ -275,9 +275,6 @@ class ApiServer {
       await this.initializeDatabase();
       logger.info('Database connected');
 
-      // 处理未回复的消息
-      await this.chatService.processUnrepliedMessages();
-
       this.initializeControllers();
       this.setupMiddlewares();
       this.setupRoutes();
@@ -297,6 +294,11 @@ class ApiServer {
         logger.info('  GET  /api/providers');
         logger.info('  POST /api/chat (非流式)');
         logger.info('  GET  /api/chat/stream (SSE 流式)');
+
+        // 异步处理未回复的消息（不阻塞服务器启动）
+        this.chatService.processUnrepliedMessages().catch(err => {
+          logger.error('[Startup] Failed to process unreplied messages:', err.message);
+        });
       });
     } catch (error) {
       logger.error('Failed to start server:', error.message);
