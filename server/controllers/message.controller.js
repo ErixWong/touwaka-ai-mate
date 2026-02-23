@@ -68,6 +68,15 @@ class MessageController {
           inner_voice: m.inner_voice ? JSON.parse(m.inner_voice) : null,
           tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : null,
           error_info: m.error_info ? JSON.parse(m.error_info) : null,
+          // 将数据库字段转换为前端期望的 metadata 格式
+          metadata: {
+            tokens: m.tokens ? {
+              total_tokens: m.tokens,
+              prompt_tokens: 0,  // 数据库中没有分开存储，设为 0
+              completion_tokens: m.tokens,
+            } : null,
+            latency: m.latency_ms || null,
+          },
         })),
         pagination: {
           page: parseInt(page),
