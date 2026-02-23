@@ -593,6 +593,21 @@
               :placeholder="$t('settings.expertPromptTemplatePlaceholder')"
             ></textarea>
           </div>
+          
+          <!-- 上下文压缩配置 -->
+          <div class="form-section-title">{{ $t('settings.contextCompression') }}</div>
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.contextThreshold') }}</label>
+            <input
+              v-model.number="expertForm.context_threshold"
+              type="number"
+              class="form-input"
+              step="0.05"
+              min="0.3"
+              max="0.95"
+            />
+            <p class="form-hint">{{ $t('settings.contextThresholdHint') }}</p>
+          </div>
         </div>
         <div class="dialog-footer">
           <div class="footer-left">
@@ -769,6 +784,8 @@ const expertForm = reactive({
   expressive_model_id: '',
   reflective_model_id: '',
   prompt_template: '',
+  // 上下文压缩配置
+  context_threshold: 0.70,
   is_active: true,
 })
 
@@ -947,6 +964,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = expert.expressive_model_id || ''
     expertForm.reflective_model_id = expert.reflective_model_id || ''
     expertForm.prompt_template = expert.prompt_template || ''
+    expertForm.context_threshold = expert.context_threshold ?? 0.70
     expertForm.is_active = expert.is_active
   } else {
     editingExpert.value = null
@@ -960,6 +978,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = ''
     expertForm.reflective_model_id = ''
     expertForm.prompt_template = ''
+    expertForm.context_threshold = 0.70
     expertForm.is_active = true
   }
   showExpertDialog.value = true
@@ -1497,6 +1516,15 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 0;
   cursor: pointer;
+}
+
+.form-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  margin: 20px 0 12px 0;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-color, #e0e0e0);
 }
 
 .form-label {

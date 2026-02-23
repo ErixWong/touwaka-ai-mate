@@ -1,20 +1,19 @@
-# 项目待办事项
+# 工具调用可视化面板 + SearXNG 搜索技能
 
-> 最后更新：2026-02-22
+**状态：** ⏳ 待开始  
+**创建日期：** 2026-02-22
 
-## 待开始
+## 描述
 
-### 1. 工具调用可视化面板 + SearXNG 搜索技能
+在右侧面板添加"工具调用"Tab，展示 LLM 的工具调用历史和结果。同时实现一个基于 SearXNG 的搜索技能作为示例。
 
-**状态：** ⏳ 待开始
+## 核心功能
 
-**描述：** 在右侧面板添加"工具调用"Tab，展示 LLM 的工具调用历史和结果。同时实现一个基于 SearXNG 的搜索技能作为示例。
-
-**核心功能：**
 1. **工具调用 Tab（ToolsTab）**：右侧面板新 Tab，展示当前对话的工具调用历史
 2. **SearXNG 搜索技能**：基于 SearXNG 的隐私搜索技能，作为复杂工具的示例
 
-**UI 设计：**
+## UI 设计
+
 ```
 ┌─────────────────────────────────────┐
 │ [💬 Topics] [🔧 Tools] [🐛 Debug]   │  <- 新增 Tools Tab
@@ -39,9 +38,9 @@
 
 ---
 
-### 0.1 后端改造
+## 0.1 后端改造
 
-#### 1. 增强工具调用事件数据
+### 1. 增强工具调用事件数据
 
 **文件：** `lib/chat-service.js`
 
@@ -79,7 +78,7 @@ onDelta?.({
 });
 ```
 
-#### 2. 添加结果摘要格式化
+### 2. 添加结果摘要格式化
 
 **文件：** `lib/tool-manager.js`
 
@@ -129,9 +128,9 @@ formatResultSummary(result) {
 
 ---
 
-### 0.2 前端改造
+## 0.2 前端改造
 
-#### 1. 新增 ToolsTab 组件
+### 1. 新增 ToolsTab 组件
 
 **文件：** `frontend/src/components/panel/ToolsTab.vue`
 
@@ -197,7 +196,7 @@ formatResultSummary(result) {
 </template>
 ```
 
-#### 2. 更新 panel store
+### 2. 更新 panel store
 
 **文件：** `frontend/src/stores/panel.ts`
 
@@ -230,7 +229,7 @@ const clearToolCalls = () => {
 }
 ```
 
-#### 3. 更新 ChatView 处理 SSE 事件
+### 3. 更新 ChatView 处理 SSE 事件
 
 **文件：** `frontend/src/views/ChatView.vue`
 
@@ -270,9 +269,9 @@ eventSource.value.addEventListener('tool_results', (event) => {
 
 ---
 
-### 0.3 SearXNG 搜索技能实现
+## 0.3 SearXNG 搜索技能实现
 
-#### 目录结构
+### 目录结构
 
 ```
 skills/
@@ -282,7 +281,7 @@ skills/
     └── package.json      # 依赖（可选）
 ```
 
-#### skill.md
+### skill.md
 
 ```markdown
 # SearXNG 搜索技能
@@ -312,7 +311,7 @@ skills/
 助手：[调用 searxng_search(query="今日科技新闻", category="news")]
 ```
 
-#### index.js
+### index.js
 
 ```javascript
 /**
@@ -510,13 +509,13 @@ export default {
 
 ---
 
-### 0.4 数据库更新
+## 0.4 数据库更新
 
 无需数据库改动，工具调用数据存储在 `messages.tool_calls` 字段中。
 
 ---
 
-### 0.5 国际化
+## 0.5 国际化
 
 **文件：** `frontend/src/i18n/locales/zh-CN.ts`
 
@@ -535,7 +534,7 @@ panel: {
 
 ---
 
-### 待办清单
+## 待办清单
 
 **后端：**
 - [ ] `lib/chat-service.js`: 增强 `tool_call` SSE 事件，传递完整参数
@@ -561,7 +560,7 @@ panel: {
 
 ---
 
-### 技术要点
+## 技术要点
 
 1. **工具调用数据流**：
    ```
@@ -579,316 +578,3 @@ panel: {
    - 文件列表：树形展示
    - 代码内容：语法高亮
    - 其他：JSON 格式化
-
----
-
-### 2. 专家 LLM 参数配置化
-
-**状态：** ⏳ 待开始
-
-**描述：** 在专家设置界面添加 LLM 参数配置，支持每个专家独立配置 temperature、top_p、frequency_penalty 等参数。
-
-**当前问题：**
-1. Temperature 写死在代码中：
-   - Expressive Mind: 默认 `0.7`（[`llm-client.js:98`](../../lib/llm-client.js:98)）
-   - Reflective Mind: 写死 `0.3`（[`llm-client.js:79`](../../lib/llm-client.js:79)）
-2. `top_p` / `repeat_penalty` / `frequency_penalty` / `presence_penalty` 完全未实现
-3. 数据库 `experts` 表无相关字段
-
-**数据库迁移（添加字段到 `experts` 表）：**
-```sql
-ALTER TABLE experts ADD COLUMN temperature DECIMAL(3,2) DEFAULT 0.70 COMMENT 'Expressive Mind 温度';
-ALTER TABLE experts ADD COLUMN reflective_temperature DECIMAL(3,2) DEFAULT 0.30 COMMENT 'Reflective Mind 温度';
-ALTER TABLE experts ADD COLUMN top_p DECIMAL(3,2) DEFAULT 1.00;
-ALTER TABLE experts ADD COLUMN frequency_penalty DECIMAL(3,2) DEFAULT 0.00;
-ALTER TABLE experts ADD COLUMN presence_penalty DECIMAL(3,2) DEFAULT 0.00;
-```
-
-**参数说明：**
-| 参数 | 范围 | 默认值 | 说明 |
-|------|------|--------|------|
-| `temperature` | 0-2 | 0.7 | 较低更确定，较高更随机 |
-| `reflective_temperature` | 0-2 | 0.3 | 反思心智用较低值保证稳定 |
-| `top_p` | 0-1 | 1.0 | 核采样，1.0 表示不限制 |
-| `frequency_penalty` | -2 到 2 | 0 | 降低重复词频率 |
-| `presence_penalty` | -2 到 2 | 0 | 鼓励谈论新话题 |
-
-**待办：**
-- [ ] 数据库：添加 LLM 参数字段到 `experts` 表
-- [ ] 后端：更新 `models/expert.js` 模型定义
-- [ ] 后端：更新 `lib/config-loader.js` 读取新字段
-- [ ] 后端：更新 `lib/llm-client.js` 使用配置的参数
-- [ ] 后端：更新 `lib/reflective-mind.js` 使用配置的参数
-- [ ] 前端：更新 `types/index.ts` Expert 接口
-- [ ] 前端：更新 `SettingsView.vue` 添加高级参数表单
-- [ ] 国际化：添加中英文翻译
-
-**相关代码：**
-- [`lib/llm-client.js`](../../lib/llm-client.js) - LLM 调用，temperature 写死位置
-- [`lib/reflective-mind.js`](../../lib/reflective-mind.js) - 反思心智
-- [`models/expert.js`](../../models/expert.js) - 专家模型
-
----
-
-### 3. 反思心智模板配置化
-
-**状态：** ⏳ 待开始
-
-**描述：** 将反思心智（ReflectiveMind）的硬编码模板改为可配置，允许在专家配置界面中自定义反思维度、权重和输出格式。
-
-**方案：**
-- 在 `experts` 表添加 `reflection_template` TEXT 字段
-- 支持变量替换：`{{core_values}}`, `{{behavioral_guidelines}}`, `{{taboos}}`, `{{emotional_tone}}`
-- 如果字段为空，使用默认模板
-
-**默认模板内容：**
-```text
-你是角色的"反思心智"，负责根据角色的 Soul 进行自我反思和评价。
-
-## 角色核心价值观
-{{core_values}}
-
-## 角色行为准则
-{{behavioral_guidelines}}
-
-## 角色禁忌
-{{taboos}}
-
-## 角色情感基调
-{{emotional_tone}}
-
-## 评分维度与权重
-1. 价值观一致性 (valueAlignment): 30% - 言行是否符合核心价值观
-2. 行为准则 (behaviorAdherence): 25% - 是否遵循行为准则
-3. 禁忌检查 (tabooCheck): 25% - 是否触犯禁忌
-4. 情感适当性 (emotionalTone): 20% - 情感表达是否符合情感基调
-
-## 你的任务
-根据以上信息，对角色的回复进行自我评价：
-1. 按四个维度评分（1-10分）
-2. 计算综合得分（加权平均）
-3. 给出下一轮的具体建议
-4. 用第一人称写内心独白（真实想法和感受）
-
-请严格返回以下 JSON 格式：
-{
-  "selfEvaluation": {
-    "score": 1-10,
-    "breakdown": {
-      "valueAlignment": 1-10,
-      "behaviorAdherence": 1-10,
-      "tabooCheck": 1-10,
-      "emotionalTone": 1-10
-    },
-    "reason": "评分理由"
-  },
-  "nextRoundAdvice": "下一轮的具体建议",
-  "monologue": "内心独白（第一人称）"
-}
-```
-
-**待办：**
-- [ ] 数据库添加 `reflection_template` 字段
-- [ ] 修改 `ReflectiveMind` 支持模板配置
-- [ ] 前端专家编辑界面添加配置入口
-
-**相关代码：**
-- [`lib/reflective-mind.js:109-153`](../../lib/reflective-mind.js:109) - 当前硬编码位置
-
----
-
-### 3. Skill 管理系统
-
-**状态：** 🔄 进行中
-
-**描述：** 实现技能管理系统，支持多种来源安装、AI解析、工具清单生成。
-
-**核心理念：**
-- 技能来源：URL / 上传ZIP / 本地目录（不需要技能市场界面）
-- AI解析：注册时调用便宜AI（DeepSeek/通义）分析技能
-  - 安全检查（检测恶意代码）
-  - 提取工具清单（存入 skill_tools 表）
-  - 生成结构化元数据
-- 技能维护：通过对话维修、升级技能
-
-**数据库：**
-- `skills` 表：技能元数据 + 安全评分
-- `skill_tools` 表：工具清单（AI生成）
-
-**已完成：**
-- [x] 数据库模型：更新 `skills` 表模型
-- [x] 数据库模型：创建 `skill_tools` 表模型
-- [x] 后端：技能CRUD API（`skill.controller.js`）
-- [x] 后端：技能路由（`skill.routes.js`）
-- [x] 后端：ZIP上传安装（使用 adm-zip）
-- [x] 后端：本地目录安装
-- [x] 前端：技能管理页面（`SkillsView.vue`）
-- [x] 前端：技能状态管理（`skill.ts` store）
-- [x] 前端：路由配置和导航入口
-- [x] 国际化：中英文翻译
-
-**待办：**
-- [ ] 数据库迁移：执行下方迁移脚本
-- [ ] 后端：URL下载安装功能
-- [ ] 后端：AI分析服务（调用便宜AI解析技能）
-- [ ] 测试：完整功能测试
-- [x] AI基础能力：`read` / `write` / `execute` / `http_get` / `http_post`
-  - 已创建 `skills/builtin/` 内置技能
-  - 实现 7 类 18 个工具：读取、写入、编辑、搜索、管理、压缩、执行、网络
-
-**数据库迁移脚本：**
-```sql
--- =============================================
--- Skills 表迁移（逐条执行，忽略已存在的列）
--- =============================================
-
--- 添加 version 字段
-ALTER TABLE skills ADD COLUMN version VARCHAR(32);
-
--- 添加 author 字段
-ALTER TABLE skills ADD COLUMN author VARCHAR(128);
-
--- 添加 tags 字段
-ALTER TABLE skills ADD COLUMN tags JSON;
-
--- 添加 source_url 字段
-ALTER TABLE skills ADD COLUMN source_url VARCHAR(512);
-
--- 添加 security_score 字段
-ALTER TABLE skills ADD COLUMN security_score INT DEFAULT 100;
-
--- 添加 security_warnings 字段
-ALTER TABLE skills ADD COLUMN security_warnings JSON;
-
--- =============================================
--- 创建 skill_tools 表（主键使用字符串类型）
--- =============================================
-CREATE TABLE skill_tools (
-  id VARCHAR(32) NOT NULL PRIMARY KEY,
-  skill_id VARCHAR(64) NOT NULL,
-  name VARCHAR(64) NOT NULL,
-  description TEXT,
-  type ENUM('http', 'script', 'builtin') DEFAULT 'http',
-  `usage` TEXT,
-  command VARCHAR(512),
-  endpoint VARCHAR(512),
-  method VARCHAR(16),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY idx_skill_name (skill_id, name),
-  INDEX idx_skill_id (skill_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-```
-
-> **注意：** 
-> - `usage` 是 MySQL 保留字，必须用反引号包裹
-> - 如果字段已存在会报错，可以忽略
-> - 主键 `id` 使用 VARCHAR(32) 字符串类型，与项目其他表一致
-
-**相关文档：**
-- [技能管理系统设计方案 v2.0](../design/v2/skill-market-design.md)
-
----
-
-## 进行中
-
-### 2. 对话窗口右侧多功能 Panel
-
-**状态：** ✅ 基础功能已完成
-
-**描述：** 在对话页面右侧实现一个固定显示的面板容器，采用 Tab 页形式组织多个功能模块。
-
-**Tab 页：**
-1. ~~**Docs Tab**~~ - ❌ 已移除（简化设计）
-2. **Topics Tab** - ✅ 历史话题列表（已完成）
-3. **Debug Tab** - ✅ 调试信息（已完成）
-
-**已完成：**
-- [x] 实现 `RightPanel.vue` 容器组件
-- [x] 迁移 `DebugPanel.vue` 到 `DebugTab.vue`
-- [x] 实现 `TopicsTab.vue` 组件
-- [x] 实现通用分页组件 `Pagination.vue`
-- [x] 创建 `panel.ts` 状态管理
-- [x] 更新 `types/index.ts` 添加分页类型
-- [x] 更新国际化文件（zh-CN, en-US）
-- [x] 修改 `ChatView.vue` 集成右侧面板
-- [x] 后端 Topics 分页 API 实现（`topic.controller.js`）
-- [x] Topic 消息计数和标题自动更新功能
-- [x] 移除 Docs Tab（简化设计）
-
-**待办：**
-- [ ] Topics Tab 支持加载更多/无限滚动
-- [x] Debug Tab 显示更多调试信息（如 token 统计）✅ 2026-02-23
-
-**相关文档：**
-- [右侧面板设计方案 v2](../design/v2/right-panel-design.md)
-- [API 查询设计规范](../guides/database/api-query-design.md)
-
----
-
-## 待开始（高优先级）
-
-### 0. 上下文压缩与话题总结重构
-
-**状态：** 🔄 进行中（基础设施已完成）
-
-**描述：** 重构上下文压缩和话题总结机制，解决当前实现的问题：
-- 话题检测阻塞主对话流程
-- 归档触发过于频繁（每 6 条消息）
-- 新消息立即分配 topic_id，无法真正压缩
-
-**核心改动：**
-1. **新消息 topic_id = NULL**：保存消息时不分配话题
-2. **阈值触发压缩**：Token >= 阈值 × 上下文大小（如 70% of 128k）
-3. **批量话题识别**：压缩时 1 次 LLM 调用识别所有话题
-4. **上下文结构**：System Prompt + Topic 总结 + 未归档消息
-
-**已完成：**
-- [x] 数据库迁移：添加 `experts.context_threshold` 字段（默认 0.70）
-- [x] Sequelize 模型：重新生成 `models/expert.js`
-- [x] 前端类型：`types/index.ts` 添加 `context_threshold` 字段
-- [x] 设置界面：`SettingsView.vue` 添加压缩阈值输入框
-- [x] 国际化：中/英文翻译
-
-**待办：**
-- [ ] 修改 `chat-service.js`：saveUserMessage/saveAssistantMessage 设置 topic_id = NULL
-- [ ] 添加 `db.js`：getUnarchivedMessages() 方法
-- [ ] 实现 `memory-system.js`：compressContext() 压缩流程
-- [ ] 修改 `memory-system.js`：buildContext() 加载 Topic 总结 + 未归档消息
-- [ ] 移除 `memory-system.js`：checkAndHandleTopicShift() 和旧 processHistory 逻辑
-
-**相关文档：**
-- [上下文压缩设计 v2](../design/v2/context-compression-design.md) ⭐ 核心设计
-- [LLM 调用场景分析](../design/v1/llm-call-scenarios.md) - 5 种 LLM 调用场景
-- [后台任务调度器设计](../design/v2/background-task-scheduler-design.md) - 串行任务执行
-
----
-
-## 文档索引
-
-### 数据库手册
-| 文档 | 描述 |
-|------|------|
-| [README.md](../guides/database/README.md) | 数据库概览与快速开始 |
-| [api-query-design.md](../guides/database/api-query-design.md) | 复杂查询 API 规范 |
-| [orm-analysis.md](../guides/database/orm-analysis.md) | ORM 选型分析 |
-
-### 设计文档
-| 文档 | 描述 |
-|------|------|
-| [context-compression-design.md](../design/v2/context-compression-design.md) | ⭐ 上下文压缩设计 v2 |
-| [llm-call-scenarios.md](../design/v1/llm-call-scenarios.md) | LLM 调用场景分析 |
-| [background-task-scheduler-design.md](../design/v2/background-task-scheduler-design.md) | 后台任务调度器设计 |
-| [right-panel-design.md](../design/v2/right-panel-design.md) | 右侧面板容器设计 |
-| [task-layer-design.md](../design/v2/task-layer-design.md) | 任务层设计 |
-| [api-design.md](../design/v1/api-design.md) | API 设计文档 (v1) |
-| [ui-design-draft.md](../design/v1/ui-design-draft.md) | UI 设计草稿 (v1) |
-| [i18n-design.md](../design/v1/i18n-design.md) | 国际化设计 (v1) |
-
----
-
-*使用说明：状态图标含义*
-- 🔄 进行中
-- ⏳ 待开始  
-- ✅ 已完成
-- ❌ 已取消

@@ -144,6 +144,8 @@ export interface Expert {
   expressive_model_id?: string
   reflective_model_id?: string
   prompt_template?: string
+  // 上下文压缩配置
+  context_threshold?: number    // 压缩阈值，默认 0.70
   is_active: boolean
   created_at: string
   updated_at?: string

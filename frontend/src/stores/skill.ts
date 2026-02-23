@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { apiCall } from '@/api/client'
-import type { Skill, SkillTool, SkillFormData } from '@/types'
+import { ref } from 'vue'
+import apiClient, { apiRequest } from '@/api/client'
+import type { Skill, SkillFormData } from '@/types'
 
 export const useSkillStore = defineStore('skill', () => {
   const skills = ref<Skill[]>([])
@@ -9,12 +9,11 @@ export const useSkillStore = defineStore('skill', () => {
   const error = ref<string | null>(null)
   const currentSkill = ref<Skill | null>(null)
 
-  // 获取技能列表
   const loadSkills = async () => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await apiCall<{ skills: Skill[] }>('/skills')
+      const response = await apiRequest<{ skills: Skill[] }>(apiClient.get('/skills'))
       skills.value = response.skills || []
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load skills'
@@ -24,12 +23,11 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 获取单个技能详情
   const loadSkill = async (skillId: string) => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await apiCall<{ skill: Skill }>(`/skills/${skillId}`)
+      const response = await apiRequest<{ skill: Skill }>(apiClient.get(`/skills/${skillId}`))
       currentSkill.value = response.skill
       return response.skill
     } catch (err) {
@@ -40,15 +38,11 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 从 URL 安装技能
   const installFromUrl = async (url: string) => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await apiCall<{ skill: Skill }>('/skills/from-url', {
-        method: 'POST',
-        body: { url }
-      })
+      const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-url', { url }))
       skills.value.push(response.skill)
       return response.skill
     } catch (err) {
@@ -59,7 +53,6 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 从 ZIP 文件安装技能
   const installFromZip = async (file: File) => {
     isLoading.value = true
     error.value = null
@@ -67,10 +60,9 @@ export const useSkillStore = defineStore('skill', () => {
       const formData = new FormData()
       formData.append('file', file)
       
-      const response = await apiCall<{ skill: Skill }>('/skills/from-zip', {
-        method: 'POST',
-        body: formData
-      })
+      const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-zip', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }))
       skills.value.push(response.skill)
       return response.skill
     } catch (err) {
@@ -81,15 +73,11 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 从本地路径安装技能
   const installFromPath = async (path: string) => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await apiCall<{ skill: Skill }>('/skills/from-path', {
-        method: 'POST',
-        body: { path }
-      })
+      const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-path', { path }))
       skills.value.push(response.skill)
       return response.skill
     } catch (err) {
@@ -100,15 +88,11 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 更新技能
   const updateSkill = async (skillId: string, data: Partial<SkillFormData>) => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await apiCall<{ skill: Skill }>(`/skills/${skillId}`, {
-        method: 'PUT',
-        body: data
-      })
+      const response = await apiRequest<{ skill: Skill }>(apiClient.put(`/skills/${skillId}`, data))
       const index = skills.value.findIndex(s => s.id === skillId)
       if (index !== -1) {
         skills.value[index] = response.skill
@@ -122,14 +106,11 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 删除技能
   const deleteSkill = async (skillId: string) => {
     isLoading.value = true
     error.value = null
     try {
-      await apiCall(`/skills/${skillId}`, {
-        method: 'DELETE'
-      })
+      await apiRequest<void>(apiClient.delete(`/skills/${skillId}`))
       skills.value = skills.value.filter(s => s.id !== skillId)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to delete skill'
@@ -139,14 +120,11 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 重新分析技能
   const reanalyzeSkill = async (skillId: string) => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await apiCall<{ skill: Skill }>(`/skills/${skillId}/reanalyze`, {
-        method: 'POST'
-      })
+      const response = await apiRequest<{ skill: Skill }>(apiClient.post(`/skills/${skillId}/reanalyze`))
       const index = skills.value.findIndex(s => s.id === skillId)
       if (index !== -1) {
         skills.value[index] = response.skill
@@ -160,7 +138,6 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 切换技能激活状态
   const toggleSkillActive = async (skillId: string) => {
     const skill = skills.value.find(s => s.id === skillId)
     if (skill) {
@@ -168,12 +145,10 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  // 按标签过滤
   const getSkillsByTag = (tag: string) => {
     return skills.value.filter(s => s.tags?.includes(tag))
   }
 
-  // 搜索技能
   const searchSkills = (query: string) => {
     const lowerQuery = query.toLowerCase()
     return skills.value.filter(s => 

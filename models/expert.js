@@ -71,6 +71,12 @@ export default class expert extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    context_threshold: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      defaultValue: 0.70,
+      comment: "上下文压缩阈值，Token >= 阈值 × context_size 时触发压缩"
     }
   }, {
     sequelize,

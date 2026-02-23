@@ -902,3 +902,46 @@ timeDaysAgo: '{n} days ago',
 - [`frontend/src/i18n/locales/en-US.ts`](../../frontend/src/i18n/locales/en-US.ts) - 英文翻译
 
 ---
+
+## 对话界面左右面板可拖拽调整比例 ✅
+
+**完成日期：** 2026-02-23
+
+**描述：** 实现对话界面左侧聊天窗口和右侧面板之间的可拖拽分割条，允许用户自由调整两者比例。
+
+**实现内容：**
+- **可拖拽分割条**：使用 splitpanes 库实现左右面板拖拽调整
+- **视觉反馈**：分割条悬停时高亮显示，带有 `⋮` 图标提示
+- **宽度持久化**：调整后的比例保存到 localStorage，刷新后保持
+- **默认比例**：右侧面板默认占 25%，聊天窗口占 75%
+
+**技术方案：**
+- 使用 `splitpanes` 库（Vue 生态最流行的分屏组件）
+- 直接保存百分比到 localStorage，简化计算逻辑
+- 移除原有的折叠功能，专注于拖拽调整
+
+**相关文件：**
+- [`frontend/src/views/ChatView.vue`](../../frontend/src/views/ChatView.vue) - 集成 Splitpanes 组件
+- [`frontend/src/types/splitpanes.d.ts`](../../frontend/src/types/splitpanes.d.ts) - 类型声明文件
+
+---
+
+## SSE 连接自动重连机制 ✅
+
+**完成日期：** 2026-02-23
+
+**描述：** 解决后端重启后前端无法连接的问题，实现 SSE 连接断开自动重连和 API 健康检查。
+
+**实现内容：**
+- **SSE 自动重连**：连接断开后每 3 秒自动重试，最多 10 次
+- **健康检查**：每 5 秒检测后端可用性
+- **智能等待**：发送消息时如后端不可用，自动等待后端恢复（最多 30 秒）
+- **状态提示**：UI 显示连接状态和重连进度
+
+**相关文件：**
+- [`frontend/src/views/ChatView.vue`](../../frontend/src/views/ChatView.vue) - SSE 连接管理和重连逻辑
+- [`frontend/src/composables/useNetworkStatus.ts`](../../frontend/src/composables/useNetworkStatus.ts) - 网络状态检测 composable
+- [`frontend/src/i18n/locales/zh-CN.ts`](../../frontend/src/i18n/locales/zh-CN.ts) - 中文翻译
+- [`frontend/src/i18n/locales/en-US.ts`](../../frontend/src/i18n/locales/en-US.ts) - 英文翻译
+
+---

@@ -6,55 +6,56 @@
         <h2 class="expert-name">{{ currentExpert?.name || $t('chat.title') }}</h2>
         <span v-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
       </div>
-      <div class="header-actions">
-        <button class="btn-toggle-panel" @click="togglePanel">
-          {{ panelStore.isCollapsed ? $t('panel.expand') : $t('panel.collapse') }}
-        </button>
-      </div>
     </div>
 
-    <!-- 聊天主体 + 右侧面板 -->
+    <!-- 聊天主体 + 右侧面板（可拖拽调整） -->
     <div class="chat-body-wrapper">
-      <!-- 聊天主体 -->
-      <div class="chat-body">
-        <template v-if="currentExpertId">
-          <ChatWindow
-            ref="chatWindowRef"
-            :messages="chatStore.sortedMessages"
-            :is-loading="isSending"
-            :has-more-messages="chatStore.hasMoreMessages"
-            :is-loading-more="chatStore.isLoadingMore"
-            @send="handleSendMessage"
-            @retry="handleRetry"
-            @load-more="loadMoreMessages"
-          />
-          
-          <!-- SSE 连接状态指示器 -->
-          <div v-if="!isConnected" class="connection-status">
-            <span class="status-dot disconnected"></span>
-            <span v-if="isReconnecting">
-              {{ $t('chat.reconnecting') || `连接断开，正在重连... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})` }}
-            </span>
-            <span v-else>
-              {{ $t('chat.connecting') || '连接中...' }}
-            </span>
+      <Splitpanes @resize="handlePanelResize">
+        <!-- 聊天主体 -->
+        <Pane :size="chatPaneSize" class="chat-pane">
+          <div class="chat-body">
+            <template v-if="currentExpertId">
+              <ChatWindow
+                ref="chatWindowRef"
+                :messages="chatStore.sortedMessages"
+                :is-loading="isSending"
+                :has-more-messages="chatStore.hasMoreMessages"
+                :is-loading-more="chatStore.isLoadingMore"
+                @send="handleSendMessage"
+                @retry="handleRetry"
+                @load-more="loadMoreMessages"
+              />
+              
+              <!-- SSE 连接状态指示器 -->
+              <div v-if="!isConnected" class="connection-status">
+                <span class="status-dot disconnected"></span>
+                <span v-if="isReconnecting">
+                  {{ $t('chat.reconnecting') || `连接断开，正在重连... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})` }}
+                </span>
+                <span v-else>
+                  {{ $t('chat.connecting') || '连接中...' }}
+                </span>
+              </div>
+            </template>
+            
+            <div v-else class="no-expert-selected">
+              <p>{{ $t('chat.selectExpert') }}</p>
+              <button class="btn-select-expert" @click="router.push('/experts')">
+                {{ $t('chat.goSelectExpert') }}
+              </button>
+            </div>
           </div>
-        </template>
-        
-        <div v-else class="no-expert-selected">
-          <p>{{ $t('chat.selectExpert') }}</p>
-          <button class="btn-select-expert" @click="router.push('/experts')">
-            {{ $t('chat.goSelectExpert') }}
-          </button>
-        </div>
-      </div>
+        </Pane>
 
-      <!-- 右侧多功能面板 -->
-      <RightPanel 
-        v-if="currentExpertId"
-        @topic-select="handleTopicSelect"
-        @doc-select="handleDocSelect"
-      />
+        <!-- 右侧多功能面板 -->
+        <Pane :size="panelPaneSize" class="panel-pane">
+          <RightPanel 
+            v-if="currentExpertId"
+            @topic-select="handleTopicSelect"
+            @doc-select="handleDocSelect"
+          />
+        </Pane>
+      </Splitpanes>
     </div>
   </div>
 </template>
@@ -63,13 +64,14 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { Splitpanes, Pane } from 'splitpanes'
+import 'splitpanes/dist/splitpanes.css'
 import ChatWindow, { type ChatMessage } from '@/components/ChatWindow.vue'
 import RightPanel from '@/components/panel/RightPanel.vue'
 import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
-import { usePanelStore } from '@/stores/panel'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { messageApi } from '@/api/services'
 import type { Message, Topic, Doc } from '@/types'
@@ -91,7 +93,6 @@ const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
-const panelStore = usePanelStore()
 const { isBackendAvailable, waitForBackend } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
@@ -125,9 +126,27 @@ const currentModel = computed(() => {
   return undefined
 })
 
-// 切换右侧面板
-const togglePanel = () => {
-  panelStore.toggleCollapse()
+// 面板比例相关
+const PANEL_WIDTH_KEY = 'chat_panel_width'
+const DEFAULT_PANEL_SIZE = 25
+
+const savedPanelSize = ref(
+  parseFloat(localStorage.getItem(PANEL_WIDTH_KEY) || String(DEFAULT_PANEL_SIZE))
+)
+
+const chatPaneSize = computed(() => {
+  return 100 - savedPanelSize.value
+})
+
+const panelPaneSize = computed(() => {
+  return savedPanelSize.value
+})
+
+const handlePanelResize = (panes: { size: number }[]) => {
+  if (panes.length === 2 && panes[1]) {
+    savedPanelSize.value = panes[1].size
+    localStorage.setItem(PANEL_WIDTH_KEY, String(panes[1].size))
+  }
 }
 
 // 处理 Topic 选择
@@ -570,8 +589,16 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.chat-pane {
+  height: 100%;
+}
+
+.panel-pane {
+  height: 100%;
+}
+
 .chat-body {
-  flex: 1;
+  height: 100%;
   overflow: hidden;
   padding: 16px;
   position: relative;
@@ -631,5 +658,55 @@ onUnmounted(() => {
 .status-dot.disconnected {
   background: #ff9800;
 }
+</style>
 
+<style>
+.splitpanes--horizontal > .splitpanes__splitter {
+  position: relative;
+  background: transparent;
+  cursor: col-resize;
+  width: 10px;
+  min-width: 10px;
+  margin: 0 -5px;
+  z-index: 10;
+}
+
+.splitpanes--horizontal > .splitpanes__splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 100%;
+  background: var(--border-color, #e0e0e0);
+  border-radius: 2px;
+  transition: background 0.2s, width 0.2s;
+}
+
+.splitpanes--horizontal > .splitpanes__splitter:hover::before,
+.splitpanes--horizontal > .splitpanes__splitter:active::before {
+  width: 6px;
+  background: var(--primary-color, #2196f3);
+}
+
+.splitpanes--horizontal > .splitpanes__splitter::after {
+  content: '⋮';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  color: var(--text-hint, #999);
+  pointer-events: none;
+  transition: color 0.2s;
+}
+
+.splitpanes--horizontal > .splitpanes__splitter:hover::after {
+  color: var(--primary-color, #2196f3);
+}
+
+.splitpanes__pane {
+  overflow: hidden;
+}
 </style>

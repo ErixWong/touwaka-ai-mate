@@ -178,6 +178,10 @@ export default {
     expertReflectiveModel: 'Reflective Model',
     expertPromptTemplate: 'Prompt Template',
     expertPromptTemplatePlaceholder: 'Enter prompt template',
+    // Context Compression
+    contextCompression: 'Context Compression',
+    contextThreshold: 'Compression Threshold',
+    contextThresholdHint: 'Trigger compression when token usage exceeds this ratio (0.3-0.95, default 0.70)',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',

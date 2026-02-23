@@ -10,7 +10,7 @@ export default class skill_tool extends Model {
       primaryKey: true
     },
     skill_id: {
-      type: DataTypes.STRING(64),
+      type: DataTypes.STRING(32),
       allowNull: false,
       references: {
         model: 'skills',
@@ -26,7 +26,7 @@ export default class skill_tool extends Model {
       allowNull: true
     },
     type: {
-      type: DataTypes.ENUM('http', 'script', 'builtin'),
+      type: DataTypes.ENUM('http','script','builtin'),
       allowNull: true,
       defaultValue: "http"
     },
@@ -71,19 +71,19 @@ export default class skill_tool extends Model {
         ]
       },
       {
-        name: "idx_skill_id",
-        using: "BTREE",
-        fields: [
-          { name: "skill_id" },
-        ]
-      },
-      {
         name: "idx_skill_name",
         unique: true,
         using: "BTREE",
         fields: [
           { name: "skill_id" },
           { name: "name" },
+        ]
+      },
+      {
+        name: "idx_skill_id",
+        using: "BTREE",
+        fields: [
+          { name: "skill_id" },
         ]
       },
     ]

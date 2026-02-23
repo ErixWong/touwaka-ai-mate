@@ -178,6 +178,10 @@ export default {
     expertReflectiveModel: '反思模型',
     expertPromptTemplate: '提示词模板',
     expertPromptTemplatePlaceholder: '请输入提示词模板',
+    // 上下文压缩配置
+    contextCompression: '上下文压缩',
+    contextThreshold: '压缩阈值',
+    contextThresholdHint: 'Token 占用超过此比例时触发压缩（0.3-0.95，默认 0.70）',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',

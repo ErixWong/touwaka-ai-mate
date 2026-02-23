@@ -325,9 +325,9 @@ const installResult = ref<{ skill?: Skill; error?: string } | null>(null)
 
 // 来源类型选项
 const sourceTypes = computed(() => [
-  { value: 'url', label: t('skills.fromUrl'), icon: '🔗' },
-  { value: 'zip', label: t('skills.fromZip'), icon: '📦' },
-  { value: 'local', label: t('skills.fromLocal'), icon: '📁' }
+  { value: 'url' as const, label: t('skills.fromUrl'), icon: '🔗' },
+  { value: 'zip' as const, label: t('skills.fromZip'), icon: '📦' },
+  { value: 'local' as const, label: t('skills.fromLocal'), icon: '📁' }
 ])
 
 // 过滤后的技能列表
@@ -405,7 +405,7 @@ const closeAddDialog = () => {
 const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   if (target.files && target.files.length > 0) {
-    addForm.value.file = target.files[0]
+    addForm.value.file = target.files[0] || null
   }
 }
 
