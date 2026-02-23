@@ -10,8 +10,9 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 
 class ExpertController {
-  constructor(db) {
+  constructor(db, chatService = null) {
     this.db = db;
+    this.chatService = chatService;
     this.Expert = db.getModel('expert');
     this.AiModel = db.getModel('ai_model');
   }
@@ -35,7 +36,12 @@ class ExpertController {
           'id', 'name', 'introduction', 'speaking_style', 'core_values',
           'behavioral_guidelines', 'taboos', 'emotional_tone',
           'expressive_model_id', 'reflective_model_id', 'prompt_template',
-          'is_active', 'created_at'
+          'is_active', 'created_at',
+          // 上下文压缩配置
+          'context_threshold',
+          // LLM 参数配置
+          'temperature', 'reflective_temperature', 'top_p',
+          'frequency_penalty', 'presence_penalty'
         ],
         order: [['created_at', 'DESC']],
         raw: true,
@@ -66,7 +72,12 @@ class ExpertController {
         attributes: [
           'id', 'name', 'introduction', 'speaking_style', 'core_values',
           'behavioral_guidelines', 'taboos', 'emotional_tone',
-          'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active'
+          'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active',
+          // 上下文压缩配置
+          'context_threshold',
+          // LLM 参数配置
+          'temperature', 'reflective_temperature', 'top_p',
+          'frequency_penalty', 'presence_penalty'
         ],
         raw: true,
       });
@@ -94,7 +105,12 @@ class ExpertController {
       const {
         name, introduction, speaking_style, core_values, behavioral_guidelines,
         taboos, emotional_tone, expressive_model_id, reflective_model_id,
-        prompt_template, is_active = true
+        prompt_template, is_active = true,
+        // 上下文压缩配置
+        context_threshold,
+        // LLM 参数配置
+        temperature, reflective_temperature, top_p,
+        frequency_penalty, presence_penalty
       } = ctx.request.body;
 
       if (!name) {
@@ -118,11 +134,27 @@ class ExpertController {
         reflective_model_id: reflective_model_id || null,
         prompt_template: prompt_template || null,
         is_active: is_active ? 1 : 0,
+        // 上下文压缩配置
+        context_threshold: context_threshold ?? 0.70,
+        // LLM 参数配置
+        temperature: temperature ?? 0.70,
+        reflective_temperature: reflective_temperature ?? 0.30,
+        top_p: top_p ?? 1.0,
+        frequency_penalty: frequency_penalty ?? 0.0,
+        presence_penalty: presence_penalty ?? 0.0,
       });
 
       ctx.success({
         id, name, introduction, speaking_style, core_values, behavioral_guidelines,
-        taboos, emotional_tone, expressive_model_id, reflective_model_id, prompt_template, is_active
+        taboos, emotional_tone, expressive_model_id, reflective_model_id, prompt_template, is_active,
+        // 上下文压缩配置
+        context_threshold: context_threshold ?? 0.70,
+        // LLM 参数配置
+        temperature: temperature ?? 0.70,
+        reflective_temperature: reflective_temperature ?? 0.30,
+        top_p: top_p ?? 1.0,
+        frequency_penalty: frequency_penalty ?? 0.0,
+        presence_penalty: presence_penalty ?? 0.0,
       }, '专家创建成功');
     } catch (error) {
       logger.error('Create expert error:', error);
@@ -139,7 +171,12 @@ class ExpertController {
       const {
         name, introduction, speaking_style, core_values, behavioral_guidelines,
         taboos, emotional_tone, expressive_model_id, reflective_model_id,
-        prompt_template, is_active
+        prompt_template, is_active,
+        // 上下文压缩配置
+        context_threshold,
+        // LLM 参数配置
+        temperature, reflective_temperature, top_p,
+        frequency_penalty, presence_penalty
       } = ctx.request.body;
 
       // 检查专家是否存在
@@ -163,6 +200,14 @@ class ExpertController {
       if (reflective_model_id !== undefined) updates.reflective_model_id = reflective_model_id || null;
       if (prompt_template !== undefined) updates.prompt_template = prompt_template;
       if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
+      // 上下文压缩配置
+      if (context_threshold !== undefined) updates.context_threshold = context_threshold;
+      // LLM 参数配置
+      if (temperature !== undefined) updates.temperature = temperature;
+      if (reflective_temperature !== undefined) updates.reflective_temperature = reflective_temperature;
+      if (top_p !== undefined) updates.top_p = top_p;
+      if (frequency_penalty !== undefined) updates.frequency_penalty = frequency_penalty;
+      if (presence_penalty !== undefined) updates.presence_penalty = presence_penalty;
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);
@@ -171,6 +216,11 @@ class ExpertController {
 
       // updated_at 会由 Sequelize 自动更新
       await this.Expert.update(updates, { where: { id } });
+
+      // 清除专家缓存，确保下次对话使用最新配置
+      if (this.chatService) {
+        this.chatService.clearExpertCache(id);
+      }
 
       ctx.success({ id }, '专家更新成功');
     } catch (error) {

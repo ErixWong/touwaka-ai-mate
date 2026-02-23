@@ -608,6 +608,78 @@
             />
             <p class="form-hint">{{ $t('settings.contextThresholdHint') }}</p>
           </div>
+          
+          <!-- LLM 参数配置 -->
+          <div class="form-section-title">{{ $t('settings.llmParams') }}</div>
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.temperature') }}</label>
+              <input
+                v-model.number="expertForm.temperature"
+                type="number"
+                class="form-input"
+                step="0.1"
+                min="0"
+                max="2"
+              />
+              <p class="form-hint">{{ $t('settings.temperatureHint') }}</p>
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.reflectiveTemperature') }}</label>
+              <input
+                v-model.number="expertForm.reflective_temperature"
+                type="number"
+                class="form-input"
+                step="0.1"
+                min="0"
+                max="2"
+              />
+              <p class="form-hint">{{ $t('settings.reflectiveTemperatureHint') }}</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.topP') }}</label>
+              <input
+                v-model.number="expertForm.top_p"
+                type="number"
+                class="form-input"
+                step="0.1"
+                min="0"
+                max="1"
+              />
+              <p class="form-hint">{{ $t('settings.topPHint') }}</p>
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.frequencyPenalty') }}</label>
+              <input
+                v-model.number="expertForm.frequency_penalty"
+                type="number"
+                class="form-input"
+                step="0.1"
+                min="-2"
+                max="2"
+              />
+              <p class="form-hint">{{ $t('settings.frequencyPenaltyHint') }}</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.presencePenalty') }}</label>
+              <input
+                v-model.number="expertForm.presence_penalty"
+                type="number"
+                class="form-input"
+                step="0.1"
+                min="-2"
+                max="2"
+              />
+              <p class="form-hint">{{ $t('settings.presencePenaltyHint') }}</p>
+            </div>
+            <div class="form-item">
+              <!-- 占位符，保持布局对称 -->
+            </div>
+          </div>
         </div>
         <div class="dialog-footer">
           <div class="footer-left">
@@ -786,6 +858,12 @@ const expertForm = reactive({
   prompt_template: '',
   // 上下文压缩配置
   context_threshold: 0.70,
+  // LLM 参数配置
+  temperature: 0.70,
+  reflective_temperature: 0.30,
+  top_p: 1.0,
+  frequency_penalty: 0.0,
+  presence_penalty: 0.0,
   is_active: true,
 })
 
@@ -965,6 +1043,12 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.reflective_model_id = expert.reflective_model_id || ''
     expertForm.prompt_template = expert.prompt_template || ''
     expertForm.context_threshold = expert.context_threshold ?? 0.70
+    // LLM 参数
+    expertForm.temperature = expert.temperature ?? 0.70
+    expertForm.reflective_temperature = expert.reflective_temperature ?? 0.30
+    expertForm.top_p = expert.top_p ?? 1.0
+    expertForm.frequency_penalty = expert.frequency_penalty ?? 0.0
+    expertForm.presence_penalty = expert.presence_penalty ?? 0.0
     expertForm.is_active = expert.is_active
   } else {
     editingExpert.value = null
@@ -979,6 +1063,12 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.reflective_model_id = ''
     expertForm.prompt_template = ''
     expertForm.context_threshold = 0.70
+    // LLM 参数默认值
+    expertForm.temperature = 0.70
+    expertForm.reflective_temperature = 0.30
+    expertForm.top_p = 1.0
+    expertForm.frequency_penalty = 0.0
+    expertForm.presence_penalty = 0.0
     expertForm.is_active = true
   }
   showExpertDialog.value = true

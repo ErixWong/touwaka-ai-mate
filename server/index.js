@@ -109,7 +109,7 @@ class ApiServer {
       user: new UserController(this.db),
       topic: new TopicController(this.db),
       message: new MessageController(this.db),
-      expert: new ExpertController(this.db),
+      expert: new ExpertController(this.db, this.chatService),
       model: new ModelController(this.db),
       stream: new StreamController(this.db, this.chatService),
       skill: new SkillController(this.db),

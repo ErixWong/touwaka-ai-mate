@@ -1,7 +1,8 @@
 # 专家 LLM 参数配置化
 
-**状态：** ⏳ 待开始  
+**状态：** ✅ 已完成
 **创建日期：** 2026-02-22
+**完成日期：** 2026-02-23
 
 ## 描述
 
@@ -45,14 +46,14 @@ ALTER TABLE experts ADD COLUMN presence_penalty DECIMAL(3,2) DEFAULT 0.00;
 
 ## 待办清单
 
-- [ ] 数据库：添加 LLM 参数字段到 `experts` 表
-- [ ] 后端：更新 `models/expert.js` 模型定义
-- [ ] 后端：更新 `lib/config-loader.js` 读取新字段
-- [ ] 后端：更新 `lib/llm-client.js` 使用配置的参数
-- [ ] 后端：更新 `lib/reflective-mind.js` 使用配置的参数
-- [ ] 前端：更新 `types/index.ts` Expert 接口
-- [ ] 前端：更新 `SettingsView.vue` 添加高级参数表单
-- [ ] 国际化：添加中英文翻译
+- [x] 数据库：添加 LLM 参数字段到 `experts` 表
+- [x] 后端：更新 `models/expert.js` 模型定义
+- [x] 后端：更新 `lib/config-loader.js` 读取新字段
+- [x] 后端：更新 `lib/llm-client.js` 使用配置的参数
+- [x] 后端：更新 `lib/reflective-mind.js` 使用配置的参数
+- [x] 前端：更新 `types/index.ts` Expert 接口
+- [x] 前端：更新 `SettingsView.vue` 添加高级参数表单
+- [x] 国际化：添加中英文翻译
 
 ---
 

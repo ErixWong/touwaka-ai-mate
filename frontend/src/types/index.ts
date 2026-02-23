@@ -146,6 +146,12 @@ export interface Expert {
   prompt_template?: string
   // 上下文压缩配置
   context_threshold?: number    // 压缩阈值，默认 0.70
+  // LLM 参数配置
+  temperature?: number          // Expressive Mind 温度，默认 0.70
+  reflective_temperature?: number // Reflective Mind 温度，默认 0.30
+  top_p?: number                // 核采样，默认 1.0
+  frequency_penalty?: number    // 频率惩罚，默认 0.0
+  presence_penalty?: number     // 存在惩罚，默认 0.0
   is_active: boolean
   created_at: string
   updated_at?: string

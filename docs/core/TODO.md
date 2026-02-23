@@ -9,7 +9,6 @@
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
 | [工具调用可视化面板 + SearXNG 搜索技能](tasks/tool-visualization.md) | ⏳ 待开始 | 中 |
-| [专家 LLM 参数配置化](tasks/expert-llm-params.md) | ⏳ 待开始 | 中 |
 | [反思心智模板配置化](tasks/reflective-mind-template.md) | ⏳ 待开始 | 中 |
 
 ---
@@ -27,6 +26,7 @@
 
 | 任务 | 状态 | 完成日期 |
 |------|------|----------|
+| [专家 LLM 参数配置化](tasks/expert-llm-params.md) | ✅ 已完成 | 2026-02-23 |
 | [上下文压缩与话题总结重构](tasks/context-compression.md) | ✅ 已完成 | 2026-02-23 |
 
 ---

@@ -77,6 +77,31 @@ export default class expert extends Model {
       allowNull: true,
       defaultValue: 0.70,
       comment: "上下文压缩阈值，Token >= 阈值 × context_size 时触发压缩"
+    },
+    temperature: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      defaultValue: 0.70
+    },
+    reflective_temperature: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      defaultValue: 0.30
+    },
+    top_p: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      defaultValue: 1.00
+    },
+    frequency_penalty: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      defaultValue: 0.00
+    },
+    presence_penalty: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      defaultValue: 0.00
     }
   }, {
     sequelize,
