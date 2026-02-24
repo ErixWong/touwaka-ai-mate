@@ -9,8 +9,12 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import fs from 'fs/promises';
+import fsOriginal from 'fs';
 import path from 'path';
+import https from 'https';
+import http from 'http';
 import AdmZip from 'adm-zip';
+import SkillAnalyzer from '../../lib/skill-analyzer.js';
 
 class SkillController {
   constructor(db) {
@@ -18,6 +22,7 @@ class SkillController {
     this.Skill = db.getModel('skill');
     this.SkillTool = db.getModel('skill_tool');
     this.SkillParameter = db.getModel('skill_parameter');
+    this.skillAnalyzer = new SkillAnalyzer();
   }
 
   /**
@@ -155,8 +160,15 @@ class SkillController {
 
   /**
    * 从 URL 安装技能
+   * 支持：
+   * - GitHub 仓库 ZIP 下载（https://github.com/user/repo/archive/refs/heads/main.zip）
+   * - GitHub Release 附件
+   * - 直接的 ZIP 文件 URL
    */
   async installFromUrl(ctx) {
+    let transaction = null;
+    let tempDir = null;
+    
     try {
       const { url } = ctx.request.body;
 
@@ -165,18 +177,211 @@ class SkillController {
         return;
       }
 
-      // TODO: 实现从 URL 下载技能文件
-      // 1. 下载文件
-      // 2. 如果是 ZIP，解压
-      // 3. 读取 SKILL.md
-      // 4. 调用 AI 分析
-      // 5. 存入数据库
+      // 验证 URL 格式
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        ctx.error('URL 格式无效', 400);
+        return;
+      }
 
-      ctx.error('从 URL 安装功能暂未实现', 501);
+      // 只允许 http/https 协议
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        ctx.error('只支持 HTTP/HTTPS 协议', 400);
+        return;
+      }
+
+      logger.info(`[SkillController] 开始从 URL 下载技能: ${url}`);
+
+      // 创建临时目录
+      tempDir = path.join(process.cwd(), 'temp', `skill_url_${Date.now()}`);
+      await fs.mkdir(tempDir, { recursive: true });
+
+      // 下载文件
+      const zipPath = path.join(tempDir, 'downloaded.zip');
+      await this.downloadFile(url, zipPath);
+
+      // 检查文件大小（限制 50MB）
+      const stats = await fs.stat(zipPath);
+      if (stats.size > 50 * 1024 * 1024) {
+        throw new Error('文件大小超过限制（50MB）');
+      }
+
+      logger.info(`[SkillController] 文件下载完成，大小: ${stats.size} bytes`);
+
+      // 解压 ZIP
+      const zip = new AdmZip(zipPath);
+      zip.extractAllTo(tempDir, true);
+
+      // 查找 SKILL.md
+      const skillMdPath = await this.findSkillMd(tempDir);
+      if (!skillMdPath) {
+        throw new Error('ZIP 文件中未找到 SKILL.md');
+      }
+
+      const tempSkillDir = path.dirname(skillMdPath);
+      const skillMd = await fs.readFile(skillMdPath, 'utf-8');
+
+      // 使用 AI 分析技能
+      const skillData = await this.analyzeSkill(tempSkillDir, skillMd);
+
+      // 生成 ID（如果 SKILL.md 中没有指定）
+      const id = skillData.id || Utils.newID(20);
+
+      // 创建永久存储目录
+      const permanentDir = path.join(process.cwd(), 'data', 'skills', 'installed', id);
+      
+      // 复制技能文件到永久目录
+      await fs.mkdir(permanentDir, { recursive: true });
+      await this.copyDirectory(tempSkillDir, permanentDir);
+
+      // 开始事务
+      transaction = await this.db.sequelize.transaction();
+
+      // 检查是否已存在
+      const existing = await this.Skill.findOne({ where: { id }, transaction });
+      if (existing) {
+        // 更新现有技能
+        await this.Skill.update({
+          name: skillData.name,
+          description: skillData.description,
+          version: skillData.version,
+          author: skillData.author,
+          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
+          skill_md: skillMd,
+          source_type: 'url',
+          source_path: permanentDir,
+          source_url: url,
+          security_score: skillData.security_score || 100,
+          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
+          updated_at: new Date(),
+        }, { where: { id }, transaction });
+
+        // 删除旧工具
+        await this.SkillTool.destroy({ where: { skill_id: id }, transaction });
+      } else {
+        // 创建新技能
+        await this.Skill.create({
+          id,
+          name: skillData.name,
+          description: skillData.description,
+          version: skillData.version,
+          author: skillData.author,
+          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
+          skill_md: skillMd,
+          source_type: 'url',
+          source_path: permanentDir,
+          source_url: url,
+          security_score: skillData.security_score || 100,
+          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
+          is_active: true,
+        }, { transaction });
+      }
+
+      // 创建工具清单
+      if (skillData.tools && skillData.tools.length > 0) {
+        for (const tool of skillData.tools) {
+          await this.SkillTool.create({
+            id: Utils.newID(32),
+            skill_id: id,
+            name: tool.name,
+            description: tool.description,
+            type: tool.type || 'http',
+            usage: tool.usage,
+            endpoint: tool.endpoint,
+            method: tool.method,
+          }, { transaction });
+        }
+      }
+
+      // 提交事务
+      await transaction.commit();
+      transaction = null;
+
+      // 获取完整技能信息
+      const skill = await this.Skill.findOne({ where: { id } });
+      const tools = await this.SkillTool.findAll({ where: { skill_id: id } });
+
+      logger.info(`[SkillController] 技能安装成功: ${id} - ${skillData.name}`);
+
+      ctx.success({
+        skill: {
+          ...skill.get({ plain: true }),
+          tools: tools.map(t => t.get({ plain: true })),
+        }
+      }, '技能安装成功');
     } catch (error) {
-      logger.error('Install skill from URL error:', error);
+      // 回滚事务
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
+      logger.error('[SkillController] Install skill from URL error:', error);
       ctx.error('从 URL 安装失败: ' + error.message, 500);
+    } finally {
+      // 清理临时目录
+      if (tempDir) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      }
     }
+  }
+
+  /**
+   * 下载文件
+   * @param {string} url - 文件 URL
+   * @param {string} destPath - 目标路径
+   */
+  async downloadFile(url, destPath) {
+    return new Promise((resolve, reject) => {
+      const parsedUrl = new URL(url);
+      const isHttps = parsedUrl.protocol === 'https:';
+      const httpModule = isHttps ? https : http;
+
+      const request = httpModule.get(url, {
+        headers: {
+          'User-Agent': 'TouwakaMate/2.0',
+          'Accept': '*/*',
+        },
+        timeout: 60000, // 60 秒超时
+      }, (response) => {
+        // 处理重定向
+        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303 || response.statusCode === 307 || response.statusCode === 308) {
+          const redirectUrl = response.headers.location;
+          if (redirectUrl) {
+            logger.info(`[SkillController] 重定向到: ${redirectUrl}`);
+            this.downloadFile(redirectUrl, destPath).then(resolve).catch(reject);
+            return;
+          }
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`下载失败: HTTP ${response.statusCode}`));
+          return;
+        }
+
+        const writeStream = fsOriginal.createWriteStream(destPath);
+        response.pipe(writeStream);
+
+        writeStream.on('finish', () => {
+          writeStream.close();
+          resolve();
+        });
+
+        writeStream.on('error', (err) => {
+          fs.unlink(destPath).catch(() => {});
+          reject(err);
+        });
+      });
+
+      request.on('error', (err) => {
+        reject(new Error(`下载失败: ${err.message}`));
+      });
+
+      request.on('timeout', () => {
+        request.destroy();
+        reject(new Error('下载超时'));
+      });
+    });
   }
 
   /**
@@ -210,15 +415,14 @@ class SkillController {
         const tempSkillDir = path.dirname(skillMdPath);
         const skillMd = await fs.readFile(skillMdPath, 'utf-8');
 
-        // TODO: 调用 AI 分析技能
-        // 目前使用简单的解析
-        const skillData = this.parseSkillMd(skillMd);
+        // 使用 AI 分析技能
+        const skillData = await this.analyzeSkill(tempSkillDir, skillMd);
 
         // 生成 ID（如果 SKILL.md 中没有指定）
         const id = skillData.id || Utils.newID(20);
 
         // 创建永久存储目录
-        const permanentDir = path.join(process.cwd(), 'skills', 'installed', id);
+        const permanentDir = path.join(process.cwd(), 'data', 'skills', 'installed', id);
         
         // 复制技能文件到永久目录
         await fs.mkdir(permanentDir, { recursive: true });
@@ -232,10 +436,16 @@ class SkillController {
         if (existing) {
           // 更新现有技能
           await this.Skill.update({
-            ...skillData,
+            name: skillData.name,
+            description: skillData.description,
+            version: skillData.version,
+            author: skillData.author,
+            tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
             skill_md: skillMd,
             source_type: 'zip',
             source_path: permanentDir,
+            security_score: skillData.security_score || 100,
+            security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
             updated_at: new Date(),
           }, { where: { id }, transaction });
 
@@ -245,11 +455,16 @@ class SkillController {
           // 创建新技能
           await this.Skill.create({
             id,
-            ...skillData,
+            name: skillData.name,
+            description: skillData.description,
+            version: skillData.version,
+            author: skillData.author,
+            tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
             skill_md: skillMd,
             source_type: 'zip',
             source_path: permanentDir,
-            security_score: 100, // 默认安全评分
+            security_score: skillData.security_score || 100,
+            security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
             is_active: true,
           }, { transaction });
         }
@@ -328,8 +543,9 @@ class SkillController {
 
       const skillMd = await fs.readFile(skillMdPath, 'utf-8');
 
-      // 解析技能
-      const skillData = this.parseSkillMd(skillMd);
+      // 使用 AI 分析技能
+      const skillDir = path.dirname(skillMdPath);
+      const skillData = await this.analyzeSkill(skillDir, skillMd);
 
       // 生成 ID（如果 SKILL.md 中没有指定）
       const id = skillData.id || Utils.newID(20);
@@ -342,10 +558,16 @@ class SkillController {
       if (existing) {
         // 更新现有技能
         await this.Skill.update({
-          ...skillData,
+          name: skillData.name,
+          description: skillData.description,
+          version: skillData.version,
+          author: skillData.author,
+          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
           skill_md: skillMd,
           source_type: 'local',
           source_path: skillPath,
+          security_score: skillData.security_score || 100,
+          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
           updated_at: new Date(),
         }, { where: { id }, transaction });
 
@@ -355,11 +577,16 @@ class SkillController {
         // 创建新技能
         await this.Skill.create({
           id,
-          ...skillData,
+          name: skillData.name,
+          description: skillData.description,
+          version: skillData.version,
+          author: skillData.author,
+          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
           skill_md: skillMd,
           source_type: 'local',
           source_path: skillPath,
-          security_score: 100,
+          security_score: skillData.security_score || 100,
+          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
           is_active: true,
         }, { transaction });
       }
@@ -483,19 +710,24 @@ class SkillController {
         return;
       }
 
-      // TODO: 调用 AI 重新分析技能
-      // 目前只是重新解析 SKILL.md
-
       if (!skill.skill_md) {
         ctx.error('技能没有 SKILL.md 内容', 400);
         return;
       }
 
-      const skillData = this.parseSkillMd(skill.skill_md);
+      // 使用 AI 重新分析技能
+      const skillDir = skill.source_path || path.dirname(skill.skill_md);
+      const skillData = await this.analyzeSkill(skillDir, skill.skill_md);
 
       // 更新技能
       await this.Skill.update({
-        ...skillData,
+        name: skillData.name,
+        description: skillData.description,
+        version: skillData.version,
+        author: skillData.author,
+        tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
+        security_score: skillData.security_score || 100,
+        security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
         updated_at: new Date(),
       }, { where: { id } });
 
@@ -561,6 +793,70 @@ class SkillController {
     }
 
     return null;
+  }
+
+  /**
+   * 分析技能（使用 AI 或基础解析）
+   * @param {string} skillDir - 技能目录
+   * @param {string} skillMd - SKILL.md 内容
+   * @param {Object} options - 选项
+   * @param {boolean} options.useAI - 是否使用 AI 分析
+   * @returns {Promise<Object>} 分析结果
+   */
+  async analyzeSkill(skillDir, skillMd, options = {}) {
+    const { useAI = true } = options;
+
+    // 读取可选文件
+    let indexJs = null;
+    let packageJson = null;
+
+    try {
+      indexJs = await fs.readFile(path.join(skillDir, 'index.js'), 'utf-8');
+    } catch {
+      // index.js 不存在
+    }
+
+    try {
+      packageJson = await fs.readFile(path.join(skillDir, 'package.json'), 'utf-8');
+    } catch {
+      // package.json 不存在
+    }
+
+    // 如果启用 AI 且已配置，使用 AI 分析
+    if (useAI && this.skillAnalyzer.isConfigured()) {
+      logger.info('[SkillController] 使用 AI 分析技能...');
+      try {
+        const result = await this.skillAnalyzer.analyzeSkill({
+          skillMd,
+          indexJs,
+          packageJson,
+        });
+        
+        // 如果有 index.js，进行额外的安全检查
+        if (indexJs) {
+          const securityCheck = this.skillAnalyzer.performSecurityCheck(indexJs);
+          result.security_score = Math.min(result.security_score || 100, securityCheck.score);
+          result.security_warnings = [...(result.security_warnings || []), ...securityCheck.warnings];
+        }
+        
+        return result;
+      } catch (error) {
+        logger.warn('[SkillController] AI 分析失败，降级到基础解析:', error.message);
+      }
+    }
+
+    // 降级到基础解析
+    logger.info('[SkillController] 使用基础解析技能...');
+    const result = this.skillAnalyzer.basicAnalysis({ skillMd });
+    
+    // 如果有 index.js，进行安全检查
+    if (indexJs) {
+      const securityCheck = this.skillAnalyzer.performSecurityCheck(indexJs);
+      result.security_score = securityCheck.score;
+      result.security_warnings = securityCheck.warnings;
+    }
+    
+    return result;
   }
 
   /**

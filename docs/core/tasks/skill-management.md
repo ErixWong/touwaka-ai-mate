@@ -27,10 +27,18 @@
 
 - [x] 数据库模型：更新 `skills` 表模型
 - [x] 数据库模型：创建 `skill_tools` 表模型
+- [x] 数据库迁移：`init-database.js` 已包含所有字段和表（2026-02-24 确认）
 - [x] 后端：技能CRUD API（`skill.controller.js`）
 - [x] 后端：技能路由（`skill.routes.js`）
 - [x] 后端：ZIP上传安装（使用 adm-zip）
+- [x] 后端：URL下载安装（2026-02-24 完成）
 - [x] 后端：本地目录安装
+- [x] 后端：AI分析服务（2026-02-24 完成）
+  - 创建 `lib/skill-analyzer.js`
+  - 支持 DeepSeek/通义等便宜 AI
+  - 安全检查（检测恶意代码）
+  - 提取工具清单
+  - 降级到基础解析（无 AI 配置时）
 - [x] 前端：技能管理页面（`SkillsView.vue`）
 - [x] 前端：技能状态管理（`skill.ts` store）
 - [x] 前端：路由配置和导航入口
@@ -43,62 +51,7 @@
 
 ## 待办
 
-- [ ] 数据库迁移：执行下方迁移脚本
-- [ ] 后端：URL下载安装功能
-- [ ] 后端：AI分析服务（调用便宜AI解析技能）
 - [ ] 测试：完整功能测试
-
----
-
-## 数据库迁移脚本
-
-```sql
--- =============================================
--- Skills 表迁移（逐条执行，忽略已存在的列）
--- =============================================
-
--- 添加 version 字段
-ALTER TABLE skills ADD COLUMN version VARCHAR(32);
-
--- 添加 author 字段
-ALTER TABLE skills ADD COLUMN author VARCHAR(128);
-
--- 添加 tags 字段
-ALTER TABLE skills ADD COLUMN tags JSON;
-
--- 添加 source_url 字段
-ALTER TABLE skills ADD COLUMN source_url VARCHAR(512);
-
--- 添加 security_score 字段
-ALTER TABLE skills ADD COLUMN security_score INT DEFAULT 100;
-
--- 添加 security_warnings 字段
-ALTER TABLE skills ADD COLUMN security_warnings JSON;
-
--- =============================================
--- 创建 skill_tools 表（主键使用字符串类型）
--- =============================================
-CREATE TABLE skill_tools (
-  id VARCHAR(32) NOT NULL PRIMARY KEY,
-  skill_id VARCHAR(64) NOT NULL,
-  name VARCHAR(64) NOT NULL,
-  description TEXT,
-  type ENUM('http', 'script', 'builtin') DEFAULT 'http',
-  `usage` TEXT,
-  command VARCHAR(512),
-  endpoint VARCHAR(512),
-  method VARCHAR(16),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY idx_skill_name (skill_id, name),
-  INDEX idx_skill_id (skill_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-```
-
-> **注意：** 
-> - `usage` 是 MySQL 保留字，必须用反引号包裹
-> - 如果字段已存在会报错，可以忽略
-> - 主键 `id` 使用 VARCHAR(32) 字符串类型，与项目其他表一致
 
 ---
 

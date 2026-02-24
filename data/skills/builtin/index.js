@@ -2,15 +2,13 @@
  * Builtin Tools - 内置工具集
  *
  * 提供完整的文件操作、搜索、管理和网络请求能力。
- * 所有文件操作限制在 skills 或 work 目录内。
+ * 所有文件操作限制在 data 目录内。
  *
  * 目录说明：
- * - skills/: 技能目录，用于存放 AI 技能包和自写技能
- * - work/: 工作目录，用于存放项目文件、代码仓库等（可通过 Docker 挂载）
+ * - data/: 数据目录，用于存放项目文件、代码仓库、技能等（可通过 Docker 挂载）
  *
  * 环境变量：
- * - SKILLS_ROOT: 自定义 skills 目录路径
- * - WORK_ROOT: 自定义 work 目录路径
+ * - DATA_ROOT: 自定义 data 目录路径（默认为 ./data）
  */
 
 import fs from 'fs';
@@ -25,12 +23,11 @@ import AdmZip from 'adm-zip';
 // 获取项目根目录（从当前模块位置向上查找）
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..'); // skills/builtin -> skills -> project_root
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..'); // data/skills/builtin -> data/skills -> data -> project_root
 
-// 允许访问的根目录列表
+// 允许访问的根目录列表（只允许 data 目录，避免 AI 搞混当前目录）
 const ALLOWED_ROOTS = [
-  process.env.SKILLS_ROOT || path.join(PROJECT_ROOT, 'skills'),
-  process.env.WORK_ROOT || path.join(PROJECT_ROOT, 'work'),
+  process.env.DATA_ROOT || path.join(PROJECT_ROOT, 'data'),
 ];
 
 // 默认配置
@@ -57,7 +54,7 @@ const DANGEROUS_COMMANDS = [
 
 /**
  * 安全路径检查
- * 确保路径在允许的目录内（skills 或 work）
+ * 确保路径在允许的目录内（data 目录）
  * @param {string} targetPath - 目标路径（可以是相对路径或绝对路径）
  * @returns {string} 解析后的绝对路径
  */
@@ -163,11 +160,11 @@ export default {
         type: 'function',
         function: {
           name: 'read_lines',
-          description: '按行读取文件内容，默认读取100行。路径可以是 skills/ 或 work/ 目录下的相对路径，也可以是绝对路径',
+          description: '按行读取文件内容，默认读取100行。路径相对于 data 目录，也可以使用绝对路径',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: '文件路径（skills 或 work 目录下的相对路径，或绝对路径）' },
+              path: { type: 'string', description: '文件路径（data 目录下的相对路径，或绝对路径）' },
               start: { type: 'number', description: '起始行（0-based），默认0', default: 0 },
               count: { type: 'number', description: '读取行数，默认100', default: DEFAULTS.readLinesCount }
             },
@@ -195,11 +192,11 @@ export default {
         type: 'function',
         function: {
           name: 'list_files',
-          description: '列出目录内容。路径可以是 skills/ 或 work/ 目录下的相对路径，也可以是绝对路径',
+          description: '列出目录内容。路径相对于 data 目录，也可以使用绝对路径',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: '目录路径（skills 或 work 目录下的相对路径，或绝对路径）' },
+              path: { type: 'string', description: '目录路径（data 目录下的相对路径，或绝对路径）' },
               recursive: { type: 'boolean', description: '是否递归列出', default: false },
               pattern: { type: 'string', description: '文件过滤模式（如 *.js）' }
             },
