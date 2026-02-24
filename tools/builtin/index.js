@@ -155,6 +155,25 @@ export default {
           }
         }
       },
+      // 技能检索
+      {
+        type: 'function',
+        function: {
+          name: 'list_skills',
+          description: '检索当前专家可用的外部技能列表。通过 expert_skills 表关联查询当前专家已启用的技能，返回技能名称、描述、工具列表等信息。',
+          parameters: {
+            type: 'object',
+            properties: {
+              include_tools: {
+                type: 'boolean',
+                description: '是否包含每个技能的工具列表（skill_tools 表），默认 true',
+                default: true
+              }
+            },
+            required: []
+          }
+        }
+      },
       // 读取类
       {
         type: 'function',
@@ -477,6 +496,10 @@ export default {
         case 'get_env_info':
           return await this.getEnvInfo(params);
         
+        // 技能检索
+        case 'list_skills':
+          return await this.listSkills(params, context);
+        
         // 读取类
         case 'read_lines':
           return await this.readLines(params);
@@ -553,6 +576,110 @@ export default {
       platform: process.platform,
       nodeVersion: process.version,
     };
+  },
+
+  // ==================== 技能检索 ====================
+
+  /**
+   * 检索当前专家可用的外部技能列表
+   * 从 expert_skills 表关联 skills 表和 skill_tools 表获取数据
+   * @param {object} params - 参数
+   * @param {boolean} params.include_tools - 是否包含工具列表，默认 true
+   * @param {object} context - 上下文，包含 db 实例和 expert_id
+   */
+  async listSkills(params, context) {
+    const { include_tools = true } = params;
+    
+    // 检查数据库实例是否可用
+    if (!context?.db) {
+      return {
+        success: false,
+        error: 'Database not available. This tool requires database context.'
+      };
+    }
+
+    // 检查专家ID是否可用
+    if (!context?.expert_id) {
+      return {
+        success: false,
+        error: 'Expert ID not available. This tool requires expert context.'
+      };
+    }
+
+    try {
+      const db = context.db;
+      const expertId = context.expert_id;
+      
+      // 1. 查询当前专家启用的技能（通过 expert_skills 表关联）
+      const skills = await db.query(
+        `SELECT s.id, s.name, s.description, s.source_type, s.source_path, s.version, s.author, s.tags,
+                s.created_at, s.updated_at, es.config as expert_config
+         FROM skills s
+         INNER JOIN expert_skills es ON s.id = es.skill_id
+         WHERE es.expert_id = ? AND es.is_enabled = 1 AND s.is_active = 1`,
+        [expertId]
+      );
+
+      // 2. 如果需要工具列表，查询 skill_tools 表
+      let skillTools = [];
+      if (include_tools && skills.length > 0) {
+        const skillIds = skills.map(s => s.id);
+        const placeholders = skillIds.map(() => '?').join(',');
+        skillTools = await db.query(
+          `SELECT id, skill_id, name, description, type, \`usage\`, command, endpoint, method, created_at
+           FROM skill_tools
+           WHERE skill_id IN (${placeholders})`,
+          skillIds
+        );
+      }
+
+      // 3. 组装结果
+      const result = skills.map(skill => {
+        const skillData = {
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          source_type: skill.source_type,
+          source_path: skill.source_path,
+          version: skill.version,
+          author: skill.author,
+          tags: skill.tags ? (typeof skill.tags === 'string' ? JSON.parse(skill.tags) : skill.tags) : [],
+          created_at: skill.created_at,
+          updated_at: skill.updated_at,
+        };
+
+        // 添加工具列表
+        if (include_tools) {
+          skillData.tools = skillTools
+            .filter(t => t.skill_id === skill.id)
+            .map(t => ({
+              id: t.id,
+              name: t.name,
+              description: t.description,
+              type: t.type,
+              usage: t.usage ? (typeof t.usage === 'string' ? JSON.parse(t.usage) : t.usage) : null,
+              command: t.command,
+              endpoint: t.endpoint,
+              method: t.method,
+            }));
+        }
+
+        return skillData;
+      });
+
+      return {
+        success: true,
+        expert_id: expertId,
+        total: result.length,
+        skills: result,
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to list skills: ${error.message}`
+      };
+    }
   },
 
   // ==================== 读取类 ====================

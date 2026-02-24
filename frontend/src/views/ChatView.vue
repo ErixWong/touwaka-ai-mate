@@ -245,7 +245,7 @@ const connectToExpert = (expert_id: string) => {
       // 在当前消息中显示工具调用信息
       if (currentAssistantMessage.value && data.toolCalls) {
         const toolNames = data.toolCalls.map((tc: any) =>
-          tc.function?.name || tc.name || 'unknown'
+          tc.displayName || tc.function?.name || tc.name || 'unknown'
         ).join(', ')
         
         chatStore.updateMessageContent(
