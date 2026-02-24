@@ -1,6 +1,6 @@
 # 项目待办事项
 
-> 最后更新：2026-02-24
+> 最后更新：2026-02-25
 
 ---
 
@@ -9,6 +9,7 @@
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
 | [反思心智模板配置化](tasks/reflective-mind-template.md) | ⏳ 待开始 | 中 |
+| [运行时参数配置界面](tasks/runtime-config.md) | ⏳ 待开始 | 中 |
 
 ---
 
@@ -26,6 +27,8 @@
 
 | 任务 | 完成日期 | 说明 |
 |------|----------|------|
+| [工具 ID 重构：使用 skill_tools.id](tasks/tool-id-refactor.md) | 2026-02-25 | 使用 skill_tools.id 作为 LLM 调用的 tool_name，显示层通过 toolRegistry 映射为友好名称 |
+| SearXNG 技能执行修复 | 2026-02-24 | 修复 8 个问题：SQL 保留字、moduleMap、路径解析、工具名称前缀、VM process.env、错误截断、工具调用重复发送 |
 | 更新代码以适配 builtin 工具迁移到 tools 目录 | 2026-02-24 | 1. 更新 lib/tool-manager.js 内置工具路径<br>2. 更新 tools/builtin/index.js PROJECT_ROOT 路径计算<br>3. 删除 data/skills/builtin/ 旧目录 |
 | 数据目录整合 | 2026-02-24 | 将 skills 和 work 目录整合到 data 目录下，builtin 工具默认访问 data 目录，便于容器化部署时挂载 |
 
