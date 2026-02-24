@@ -1087,3 +1087,56 @@ project/
 ```
 
 ---
+
+## LLM 上下文消息顺序修复 ✅
+
+**完成日期：** 2026-02-25
+
+**问题描述：**
+LLM 经常搞不清当前话题，把一开始的话题当作当前话题。
+
+**根本原因：**
+在 [`context-manager.js`](../../lib/context-manager.js) 的 `buildMessages()` 方法中，消息被错误地反转了：
+
+1. [`db.getUnarchivedMessages()`](../../lib/db.js:463) 返回 `order: [['created_at', 'ASC']]` - **正序（旧→新）**
+2. 但 `buildMessages()` 中的注释错误地认为返回的是 DESC 顺序，所以做了 `.reverse()`
+3. 结果：消息被反转成 **新→旧** 顺序发送给 LLM
+
+**影响：**
+- LLM 收到的消息顺序是：最新消息在前，最旧消息在后
+- 这导致 LLM 把一开始的话题当作当前话题（因为最早的消息在最后）
+
+**修复内容：**
+
+### [`lib/context-manager.js`](../../lib/context-manager.js:550)
+
+```javascript
+// 修复前（错误）
+// 历史消息（按时间顺序）
+// recentMessages 是从数据库获取的 DESC 顺序，需要反转
+const sortedMessages = [...recentMessages].reverse();
+
+for (const msg of sortedMessages) {
+  messages.push({
+    role: msg.role,
+    content: msg.content,
+  });
+}
+
+// 修复后（正确）
+// 历史消息（按时间正序：旧→新）
+// getUnarchivedMessages 返回 ASC 顺序，直接使用
+for (const msg of recentMessages) {
+  messages.push({
+    role: msg.role,
+    content: msg.content,
+  });
+}
+```
+
+**修复后的消息顺序：**
+1. System Prompt
+2. 历史消息（旧→新，正确的时间顺序）
+3. 当前用户消息
+
+---
