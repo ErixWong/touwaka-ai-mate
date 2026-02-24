@@ -148,7 +148,9 @@ const loadParameters = async () => {
   
   try {
     const response = await apiClient.get(`/skills/${props.skill.id}/parameters`)
-    parameters.value = (response.data || []).map((p: SkillParameter) => ({
+    // 后端返回格式: { code: 200, data: { parameters: [...] } }
+    const params = response.data.data?.parameters || []
+    parameters.value = params.map((p: SkillParameter) => ({
       ...p,
       _showValue: false,
       _isNew: false
@@ -222,7 +224,8 @@ const saveParameters = async () => {
       is_secret: p.is_secret
     }))
     
-    await apiClient.post(`/skills/${props.skill.id}/parameters`, data)
+    // 后端期望的格式是 { parameters: [...] }
+    await apiClient.post(`/skills/${props.skill.id}/parameters`, { parameters: data })
     
     saveStatus.value = {
       type: 'success',

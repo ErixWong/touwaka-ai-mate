@@ -16,6 +16,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,  // 监听所有网络接口（包括 localhost 和 127.0.0.1）
     port: 5173,
     proxy: {
       '/api': {

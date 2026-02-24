@@ -125,12 +125,6 @@ if (models.Permissions) {
   models.Permissions.belongsTo(models.Permissions, { foreignKey: 'parent_id', as: 'parent' });
 }
 
-// Skill -> SkillParameter
-if (models.Skills && models.SkillParameters) {
-  models.Skills.hasMany(models.SkillParameters, { foreignKey: 'skill_id', as: 'parameters' });
-  models.SkillParameters.belongsTo(models.Skills, { foreignKey: 'skill_id', as: 'skill' });
-}
-
 /**
  * 初始化数据库连接
  */

@@ -161,7 +161,9 @@ class SkillController {
   /**
    * 从 URL 安装技能
    * 支持：
-   * - GitHub 仓库 ZIP 下载（https://github.com/user/repo/archive/refs/heads/main.zip）
+   * - GitHub 仓库 URL（https://github.com/user/repo）
+   * - GitHub 目录 URL（https://github.com/user/repo/tree/main/path/to/skill）
+   * - GitHub ZIP 下载（https://github.com/user/repo/archive/refs/heads/main.zip）
    * - GitHub Release 附件
    * - 直接的 ZIP 文件 URL
    */
@@ -196,11 +198,32 @@ class SkillController {
 
       // 创建临时目录
       tempDir = path.join(process.cwd(), 'temp', `skill_url_${Date.now()}`);
+      logger.info(`[SkillController] 创建临时目录: ${tempDir}`);
       await fs.mkdir(tempDir, { recursive: true });
 
-      // 下载文件
-      const zipPath = path.join(tempDir, 'downloaded.zip');
-      await this.downloadFile(url, zipPath);
+      // 解析 URL 并获取下载链接
+      const downloadInfo = this.parseGitHubUrl(url);
+      let zipPath;
+      let skillSubDir = null;
+
+      if (downloadInfo) {
+        // GitHub URL
+        logger.info(`[SkillController] 检测到 GitHub URL，下载仓库: ${downloadInfo.downloadUrl}`);
+        if (downloadInfo.subDir) {
+          logger.info(`[SkillController] 技能子目录: ${downloadInfo.subDir}`);
+          skillSubDir = downloadInfo.subDir;
+        }
+        zipPath = path.join(tempDir, 'github.zip');
+        logger.info(`[SkillController] 开始下载文件到: ${zipPath}`);
+        await this.downloadFile(downloadInfo.downloadUrl, zipPath);
+        logger.info(`[SkillController] 文件下载完成`);
+      } else {
+        // 直接 ZIP URL
+        zipPath = path.join(tempDir, 'downloaded.zip');
+        logger.info(`[SkillController] 开始下载直接 ZIP: ${zipPath}`);
+        await this.downloadFile(url, zipPath);
+        logger.info(`[SkillController] 文件下载完成`);
+      }
 
       // 检查文件大小（限制 50MB）
       const stats = await fs.stat(zipPath);
@@ -208,23 +231,49 @@ class SkillController {
         throw new Error('文件大小超过限制（50MB）');
       }
 
-      logger.info(`[SkillController] 文件下载完成，大小: ${stats.size} bytes`);
+      logger.info(`[SkillController] 文件大小: ${stats.size} bytes`);
 
       // 解压 ZIP
+      logger.info(`[SkillController] 开始解压 ZIP 文件...`);
       const zip = new AdmZip(zipPath);
       zip.extractAllTo(tempDir, true);
+      logger.info(`[SkillController] ZIP 解压完成`);
+
+      // 列出解压后的文件结构
+      await this.logDirectoryStructure(tempDir, '');
 
       // 查找 SKILL.md
-      const skillMdPath = await this.findSkillMd(tempDir);
+      let skillMdPath;
+      if (skillSubDir) {
+        // 如果指定了子目录，先尝试在该目录中查找
+        logger.info(`[SkillController] 查找子目录: ${skillSubDir}`);
+        const subDirPath = await this.findSubDir(tempDir, skillSubDir);
+        if (subDirPath) {
+          logger.info(`[SkillController] 找到子目录: ${subDirPath}`);
+          skillMdPath = await this.findSkillMd(subDirPath);
+        } else {
+          logger.warn(`[SkillController] 未找到子目录: ${skillSubDir}`);
+        }
+      }
+      
+      // 如果没找到，在整个解压目录中查找
+      if (!skillMdPath) {
+        logger.info(`[SkillController] 在整个解压目录中查找 SKILL.md...`);
+        skillMdPath = await this.findSkillMd(tempDir);
+      }
+      
       if (!skillMdPath) {
         throw new Error('ZIP 文件中未找到 SKILL.md');
       }
 
+      logger.info(`[SkillController] 找到 SKILL.md: ${skillMdPath}`);
       const tempSkillDir = path.dirname(skillMdPath);
       const skillMd = await fs.readFile(skillMdPath, 'utf-8');
 
       // 使用 AI 分析技能
+      logger.info(`[SkillController] 开始分析技能...`);
       const skillData = await this.analyzeSkill(tempSkillDir, skillMd);
+      logger.info(`[SkillController] 技能分析完成: ${skillData.name}`);
 
       // 生成 ID（如果 SKILL.md 中没有指定）
       const id = skillData.id || Utils.newID(20);
@@ -316,7 +365,7 @@ class SkillController {
       if (transaction) {
         await transaction.rollback().catch(() => {});
       }
-      logger.error('[SkillController] Install skill from URL error:', error);
+      logger.error('[SkillController] Install skill from URL error:', error.message, error.stack);
       ctx.error('从 URL 安装失败: ' + error.message, 500);
     } finally {
       // 清理临时目录
@@ -324,6 +373,98 @@ class SkillController {
         await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
       }
     }
+  }
+
+  /**
+   * 解析 GitHub URL
+   * @param {string} url - GitHub URL
+   * @returns {Object|null} { downloadUrl, subDir } 或 null（非 GitHub URL）
+   */
+  parseGitHubUrl(url) {
+    try {
+      const parsedUrl = new URL(url);
+      
+      // 只处理 GitHub URL
+      if (!['github.com', 'www.github.com'].includes(parsedUrl.hostname)) {
+        return null;
+      }
+
+      const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+      
+      // 至少需要 user/repo
+      if (pathParts.length < 2) {
+        return null;
+      }
+
+      const owner = pathParts[0];
+      const repo = pathParts[1];
+      let branch = 'main';
+      let subDir = null;
+
+      // 解析不同类型的 GitHub URL
+      if (pathParts.length >= 4 && pathParts[2] === 'tree') {
+        // https://github.com/user/repo/tree/branch/path/to/skill
+        branch = pathParts[3];
+        if (pathParts.length > 4) {
+          subDir = pathParts.slice(4).join('/');
+        }
+      } else if (pathParts.length >= 4 && pathParts[2] === 'blob') {
+        // https://github.com/user/repo/blob/branch/path/to/file
+        // 转换为 tree 并取目录
+        branch = pathParts[3];
+        if (pathParts.length > 5) {
+          subDir = pathParts.slice(4, -1).join('/');
+        }
+      }
+
+      // 构建 ZIP 下载 URL
+      const downloadUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
+
+      return { downloadUrl, subDir };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 在解压目录中查找子目录
+   * GitHub ZIP 解压后通常会有一个根目录如 repo-branch/
+   * @param {string} extractDir - 解压目录
+   * @param {string} subDirPath - 子目录路径（如 skills/pptx）
+   * @returns {Promise<string|null>} 找到的目录路径
+   */
+  async findSubDir(extractDir, subDirPath) {
+    const subDirParts = subDirPath.split('/');
+    
+    // 首先尝试直接路径
+    const directPath = path.join(extractDir, subDirPath);
+    try {
+      const stat = await fs.stat(directPath);
+      if (stat.isDirectory()) {
+        return directPath;
+      }
+    } catch {
+      // 直接路径不存在
+    }
+
+    // 获取解压目录下的所有子目录（通常是 repo-branch/ 格式）
+    const entries = await fs.readdir(extractDir, { withFileTypes: true });
+    const subDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+
+    // 在每个一级子目录中查找
+    for (const dir of subDirs) {
+      const candidatePath = path.join(extractDir, dir, subDirPath);
+      try {
+        const stat = await fs.stat(candidatePath);
+        if (stat.isDirectory()) {
+          return candidatePath;
+        }
+      } catch {
+        // 不存在，继续查找
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -767,15 +908,38 @@ class SkillController {
   }
 
   /**
+   * 记录目录结构（用于调试）
+   */
+  async logDirectoryStructure(dir, indent = '') {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries.slice(0, 20)) { // 限制显示前20个
+        logger.info(`[SkillController] ${indent}${entry.isDirectory() ? '📁' : '📄'} ${entry.name}`);
+        if (entry.isDirectory() && indent.length < 4) { // 只递归2层
+          await this.logDirectoryStructure(path.join(dir, entry.name), indent + '  ');
+        }
+      }
+      if (entries.length > 20) {
+        logger.info(`[SkillController] ${indent}... 还有 ${entries.length - 20} 个文件/目录`);
+      }
+    } catch (error) {
+      logger.warn(`[SkillController] 无法读取目录 ${dir}: ${error.message}`);
+    }
+  }
+
+  /**
    * 查找 SKILL.md 文件
    */
   async findSkillMd(dir) {
+    logger.info(`[SkillController] findSkillMd: 搜索目录 ${dir}`);
     const entries = await fs.readdir(dir, { withFileTypes: true });
     
     // 先检查当前目录
     for (const entry of entries) {
       if (entry.isFile() && entry.name.toLowerCase() === 'skill.md') {
-        return path.join(dir, entry.name);
+        const foundPath = path.join(dir, entry.name);
+        logger.info(`[SkillController] findSkillMd: 在当前目录找到 ${foundPath}`);
+        return foundPath;
       }
     }
 
@@ -783,15 +947,22 @@ class SkillController {
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const subDir = path.join(dir, entry.name);
-        const subEntries = await fs.readdir(subDir, { withFileTypes: true });
-        for (const subEntry of subEntries) {
-          if (subEntry.isFile() && subEntry.name.toLowerCase() === 'skill.md') {
-            return path.join(subDir, subEntry.name);
+        try {
+          const subEntries = await fs.readdir(subDir, { withFileTypes: true });
+          for (const subEntry of subEntries) {
+            if (subEntry.isFile() && subEntry.name.toLowerCase() === 'skill.md') {
+              const foundPath = path.join(subDir, subEntry.name);
+              logger.info(`[SkillController] findSkillMd: 在子目录 ${entry.name} 找到 ${foundPath}`);
+              return foundPath;
+            }
           }
+        } catch (err) {
+          logger.warn(`[SkillController] findSkillMd: 无法读取子目录 ${subDir}: ${err.message}`);
         }
       }
     }
 
+    logger.warn(`[SkillController] findSkillMd: 在 ${dir} 及其子目录中未找到 SKILL.md`);
     return null;
   }
 

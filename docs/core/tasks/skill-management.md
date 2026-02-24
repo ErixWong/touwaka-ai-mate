@@ -32,6 +32,10 @@
 - [x] 后端：技能路由（`skill.routes.js`）
 - [x] 后端：ZIP上传安装（使用 adm-zip）
 - [x] 后端：URL下载安装（2026-02-24 完成）
+  - 支持 GitHub 仓库 URL（https://github.com/user/repo）
+  - 支持 GitHub 目录 URL（https://github.com/user/repo/tree/main/path/to/skill）
+  - 支持 GitHub ZIP 下载
+  - 支持直接的 ZIP 文件 URL
 - [x] 后端：本地目录安装
 - [x] 后端：AI分析服务（2026-02-24 完成）
   - 创建 `lib/skill-analyzer.js`

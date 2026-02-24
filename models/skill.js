@@ -18,7 +18,7 @@ export default class skill extends Model {
       allowNull: true
     },
     source_type: {
-      type: DataTypes.ENUM('database','filesystem'),
+      type: DataTypes.ENUM('database','filesystem','url','zip','local'),
       allowNull: true,
       defaultValue: "filesystem"
     },
