@@ -27,6 +27,8 @@
 
 | 任务 | 完成日期 | 说明 |
 |------|----------|------|
+| LLM Payload 调试功能 | 2026-02-25 | 在 Debug 面板显示发送给 LLM 的完整 Payload，包括模型参数、消息历史、工具定义等 |
+| 修复未归档消息 20 条限制 | 2026-02-25 | 移除 `getUnarchivedMessages` 的默认限制，让上下文压缩机制基于实际 token 数正确触发 |
 | [工具 ID 重构：使用 skill_tools.id](tasks/tool-id-refactor.md) | 2026-02-25 | 使用 skill_tools.id 作为 LLM 调用的 tool_name，显示层通过 toolRegistry 映射为友好名称 |
 | SearXNG 技能执行修复 | 2026-02-24 | 修复 8 个问题：SQL 保留字、moduleMap、路径解析、工具名称前缀、VM process.env、错误截断、工具调用重复发送 |
 | 更新代码以适配 builtin 工具迁移到 tools 目录 | 2026-02-24 | 1. 更新 lib/tool-manager.js 内置工具路径<br>2. 更新 tools/builtin/index.js PROJECT_ROOT 路径计算<br>3. 删除 data/skills/builtin/ 旧目录 |
