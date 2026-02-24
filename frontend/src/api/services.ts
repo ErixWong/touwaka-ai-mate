@@ -120,6 +120,14 @@ export const expertApi = {
   // 删除专家
   deleteExpert: (id: string) =>
     apiRequest<void>(apiClient.delete(`/experts/${id}`)),
+
+  // 获取专家技能列表（包含所有可用技能及启用状态）
+  getExpertSkills: (id: string) =>
+    apiRequest<{ skills: import('@/types').ExpertSkill[] }>(apiClient.get(`/experts/${id}/skills`)),
+
+  // 批量更新专家技能
+  updateExpertSkills: (id: string, skills: import('@/types').ExpertSkillConfig[]) =>
+    apiRequest<{ skills: import('@/types').ExpertSkillConfig[] }>(apiClient.post(`/experts/${id}/skills`, { skills })),
 }
 
 // 用户相关 API

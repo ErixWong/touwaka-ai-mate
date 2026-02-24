@@ -379,6 +379,29 @@ export interface SkillFormData {
 }
 
 /**
+ * 专家技能关联（用于配置界面）
+ */
+export interface ExpertSkill {
+  id: string
+  name: string
+  description?: string
+  source_type: SkillSourceType
+  is_builtin: boolean
+  is_enabled: boolean
+  expert_config?: string
+  created_at: string
+}
+
+/**
+ * 更新专家技能的请求数据
+ */
+export interface ExpertSkillConfig {
+  skill_id: string
+  is_enabled: boolean
+  config?: string
+}
+
+/**
  * 安装技能的请求数据
  */
 export interface InstallSkillFromUrlRequest {

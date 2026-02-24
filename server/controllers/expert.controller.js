@@ -267,6 +267,68 @@ class ExpertController {
       ctx.error('删除专家失败: ' + error.message, 500);
     }
   }
+
+  /**
+   * 获取专家技能列表（包含所有可用技能及启用状态）
+   * GET /api/experts/:id/skills
+   */
+  async getSkills(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      // 检查专家是否存在
+      const existing = await this.Expert.findOne({ where: { id } });
+      if (!existing) {
+        ctx.error('专家不存在', 404);
+        return;
+      }
+
+      // 获取所有技能及该专家的启用状态
+      const skills = await this.db.getAllSkillsWithExpertStatus(id);
+
+      ctx.success({ skills });
+    } catch (error) {
+      logger.error('Get expert skills error:', error);
+      ctx.error('获取专家技能失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 批量更新专家技能
+   * POST /api/experts/:id/skills
+   * Body: { skills: [{ skill_id, is_enabled, config? }] }
+   */
+  async updateSkills(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { skills } = ctx.request.body;
+
+      // 检查专家是否存在
+      const existing = await this.Expert.findOne({ where: { id } });
+      if (!existing) {
+        ctx.error('专家不存在', 404);
+        return;
+      }
+
+      if (!Array.isArray(skills)) {
+        ctx.error('skills 必须是数组', 400);
+        return;
+      }
+
+      // 批量更新技能关联
+      const results = await this.db.batchUpdateExpertSkills(id, skills);
+
+      // 清除专家缓存，确保下次对话使用最新配置
+      if (this.chatService) {
+        this.chatService.clearExpertCache(id);
+      }
+
+      ctx.success({ skills: results }, '专家技能更新成功');
+    } catch (error) {
+      logger.error('Update expert skills error:', error);
+      ctx.error('更新专家技能失败: ' + error.message, 500);
+    }
+  }
 }
 
 export default ExpertController;

@@ -23,5 +23,11 @@ export default (controller) => {
   // 删除专家（需要认证）
   router.delete('/:id', authenticate(), controller.delete.bind(controller));
 
+  // 获取专家技能列表（需要认证）
+  router.get('/:id/skills', authenticate(), controller.getSkills.bind(controller));
+
+  // 更新专家技能（需要认证）
+  router.post('/:id/skills', authenticate(), controller.updateSkills.bind(controller));
+
   return router;
 };

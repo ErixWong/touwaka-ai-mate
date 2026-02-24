@@ -223,6 +223,13 @@
               </div>
               <div class="expert-actions">
                 <button
+                  class="btn-skills"
+                  @click="openSkillsDialog(expert)"
+                  :title="$t('settings.manageSkills')"
+                >
+                  ⚡ {{ $t('settings.skills') }}
+                </button>
+                <button
                   class="btn-edit"
                   :class="{ 'btn-inactive': !expert.is_active }"
                   @click="openExpertDialog(expert)"
@@ -781,6 +788,77 @@
         </div>
       </div>
     </div>
+
+    <!-- 技能管理对话框 -->
+    <div v-if="showSkillsDialog" class="dialog-overlay">
+      <div class="dialog dialog-large">
+        <h3 class="dialog-title">
+          {{ $t('settings.manageSkillsFor', { name: currentExpertForSkills?.name }) }}
+        </h3>
+        <div class="dialog-body skills-dialog-body">
+          <!-- 搜索/筛选 -->
+          <div class="skills-search">
+            <input
+              v-model="skillsSearchQuery"
+              type="text"
+              class="form-input"
+              :placeholder="$t('settings.searchSkillsPlaceholder')"
+            />
+          </div>
+
+          <!-- 技能列表 -->
+          <div v-if="skillsLoading" class="loading-state">
+            {{ $t('common.loading') }}
+          </div>
+
+          <div v-else-if="filteredSkills.length === 0" class="empty-state">
+            {{ skillsSearchQuery ? $t('settings.noSkillsFound') : $t('settings.noSkillsAvailable') }}
+          </div>
+
+          <div v-else class="skills-list">
+            <div
+              v-for="skill in filteredSkills"
+              :key="skill.id"
+              class="skill-item"
+              :class="{ builtin: skill.is_builtin }"
+            >
+              <div class="skill-info">
+                <div class="skill-header">
+                  <span class="skill-name">{{ skill.name }}</span>
+                  <span v-if="skill.is_builtin" class="badge builtin">
+                    {{ $t('settings.builtinSkill') }}
+                  </span>
+                </div>
+                <p v-if="skill.description" class="skill-description">
+                  {{ skill.description }}
+                </p>
+              </div>
+              <label class="skill-toggle">
+                <input
+                  type="checkbox"
+                  v-model="skill.is_enabled"
+                  @change="handleSkillToggle(skill)"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <div class="footer-left">
+            <span class="skills-count">
+              {{ $t('settings.enabledSkillsCount', { count: enabledSkillsCount }) }}
+            </span>
+          </div>
+          <div class="footer-right">
+            <button class="btn-cancel" @click="closeSkillsDialog">{{ $t('common.cancel') }}</button>
+            <button class="btn-confirm" @click="saveSkills">
+              {{ $t('common.save') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -792,7 +870,8 @@ import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
-import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert } from '@/types'
+import { expertApi } from '@/api/services'
+import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig } from '@/types'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -943,6 +1022,14 @@ const isExpertFormValid = computed(() => {
 // Expert 删除对话框
 const showDeleteExpertDialog = ref(false)
 const deletingExpert = ref<Expert | null>(null)
+
+// 技能管理对话框
+const showSkillsDialog = ref(false)
+const currentExpertForSkills = ref<Expert | null>(null)
+const skillsList = ref<ExpertSkill[]>([])
+const skillsLoading = ref(false)
+const skillsSearchQuery = ref('')
+const skillsChanged = ref(false)
 
 // 头像上传 ref
 const smallAvatarInput = ref<HTMLInputElement | null>(null)
@@ -1232,12 +1319,81 @@ const deleteExpert = async () => {
   }
 }
 
+// 技能管理方法
+const openSkillsDialog = async (expert: Expert) => {
+  currentExpertForSkills.value = expert
+  skillsSearchQuery.value = ''
+  skillsChanged.value = false
+  showSkillsDialog.value = true
+  await loadExpertSkills(expert.id)
+}
+
+const closeSkillsDialog = () => {
+  showSkillsDialog.value = false
+  currentExpertForSkills.value = null
+  skillsList.value = []
+  skillsSearchQuery.value = ''
+  skillsChanged.value = false
+}
+
+const loadExpertSkills = async (expertId: string) => {
+  skillsLoading.value = true
+  try {
+    const response = await expertApi.getExpertSkills(expertId)
+    skillsList.value = response.skills || []
+  } catch (err) {
+    console.error('加载技能列表失败:', err)
+    alert(t('settings.loadSkillsFailed'))
+  } finally {
+    skillsLoading.value = false
+  }
+}
+
+const handleSkillToggle = (skill: ExpertSkill) => {
+  skillsChanged.value = true
+}
+
+const saveSkills = async () => {
+  if (!currentExpertForSkills.value) return
+
+  try {
+    const skillConfigs: ExpertSkillConfig[] = skillsList.value.map(skill => ({
+      skill_id: skill.id,
+      is_enabled: skill.is_enabled
+    }))
+
+    await expertApi.updateExpertSkills(currentExpertForSkills.value.id, skillConfigs)
+    skillsChanged.value = false
+    closeSkillsDialog()
+  } catch (err) {
+    console.error('保存技能配置失败:', err)
+    alert(t('settings.saveSkillsFailed'))
+  }
+}
+
 // 监听提供商列表变化，如果当前选中的提供商被删除，清空选择
 watch(() => providerStore.providers, (newProviders) => {
   if (selectedProvider.value && !newProviders.find(p => p.id === selectedProvider.value!.id)) {
     selectedProvider.value = null
   }
 }, { deep: true })
+
+// 技能筛选
+const filteredSkills = computed(() => {
+  if (!skillsSearchQuery.value.trim()) {
+    return skillsList.value
+  }
+  const query = skillsSearchQuery.value.toLowerCase()
+  return skillsList.value.filter(skill =>
+    skill.name.toLowerCase().includes(query) ||
+    (skill.description && skill.description.toLowerCase().includes(query))
+  )
+})
+
+// 启用的技能数量
+const enabledSkillsCount = computed(() => {
+  return skillsList.value.filter(s => s.is_enabled).length
+})
 
 onMounted(() => {
   // 加载用户设置
@@ -2034,5 +2190,170 @@ onMounted(() => {
 .btn-small.btn-danger:hover {
   background: var(--error-color, #c62828);
   color: white;
+}
+
+/* 技能按钮 */
+.btn-skills {
+  padding: 4px 10px;
+  background: white;
+  border: 1px solid var(--primary-color, #2196f3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--primary-color, #2196f3);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-skills:hover {
+  background: var(--primary-color, #2196f3);
+  color: white;
+}
+
+/* 技能管理对话框 */
+.skills-dialog-body {
+  padding: 16px 24px;
+}
+
+.skills-search {
+  margin-bottom: 16px;
+}
+
+.skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.skill-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+
+.skill-item:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--border-color, #e0e0e0);
+}
+
+.skill-item.builtin {
+  background: var(--secondary-bg, #f8f9fa);
+  border-color: var(--border-color, #e0e0e0);
+}
+
+.skill-item.builtin:hover {
+  background: var(--hover-bg, #e8e8e8);
+}
+
+.skill-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.skill-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.skill-description {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.badge.builtin {
+  background: var(--secondary-bg, #e8e8e8);
+  color: var(--text-secondary, #666);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* 切换开关 */
+.skill-toggle {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.skill-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .3s;
+  border-radius: 26px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+.skill-toggle input:checked + .toggle-slider {
+  background: var(--primary-color, #2196f3);
+}
+
+.skill-toggle input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+.skills-count {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .skill-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .skill-toggle {
+    margin-left: 0;
+    align-self: flex-end;
+  }
 }
 </style>
