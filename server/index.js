@@ -33,6 +33,7 @@ import ExpertController from './controllers/expert.controller.js';
 import ModelController from './controllers/model.controller.js';
 import StreamController from './controllers/stream.controller.js';
 import SkillController from './controllers/skill.controller.js';
+import DebugController from './controllers/debug.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -45,6 +46,7 @@ import streamRoutes from './routes/stream.routes.js';
 import providerRoutes from './routes/provider.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import skillRoutes from './routes/skill.routes.js';
+import debugRoutes from './routes/debug.routes.js';
 
 class ApiServer {
   constructor() {
@@ -113,6 +115,7 @@ class ApiServer {
       model: new ModelController(this.db),
       stream: new StreamController(this.db, this.chatService),
       skill: new SkillController(this.db),
+      debug: new DebugController(this.db, this.chatService),
     };
   }
 
@@ -207,6 +210,10 @@ class ApiServer {
     // Skill 路由
     this.app.use(skillRoutes(this.controllers.skill).routes());
     this.app.use(skillRoutes(this.controllers.skill).allowedMethods());
+
+    // Debug 路由
+    this.app.use(debugRoutes(this.controllers.debug).routes());
+    this.app.use(debugRoutes(this.controllers.debug).allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {

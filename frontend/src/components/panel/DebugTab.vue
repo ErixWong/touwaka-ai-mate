@@ -74,6 +74,49 @@
       </div>
     </div>
 
+    <!-- LLM Payload -->
+    <div class="debug-section">
+      <h4>LLM Payload</h4>
+      <button
+        class="load-payload-btn"
+        @click="loadLLMPayload"
+        :disabled="isLoadingPayload || !currentExpertId"
+      >
+        <span v-if="isLoadingPayload">加载中...</span>
+        <span v-else>刷新 Payload</span>
+      </button>
+      <div v-if="llmPayload" class="payload-info">
+        <div class="stat-row">
+          <span class="stat-label">Model</span>
+          <span class="stat-value">{{ llmPayload.model }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Messages</span>
+          <span class="stat-value">{{ llmPayload.messages?.length || 0 }} 条</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Temperature</span>
+          <span class="stat-value">{{ llmPayload.temperature }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Tools</span>
+          <span class="stat-value">{{ llmPayload.tools?.length || 0 }} 个</span>
+        </div>
+        <div class="stat-row" v-if="llmPayload.cached_at">
+          <span class="stat-label">缓存时间</span>
+          <span class="stat-value">{{ formatTime(llmPayload.cached_at) }}</span>
+        </div>
+        <details class="payload-details">
+          <summary>完整 Payload</summary>
+          <pre class="raw-data">{{ JSON.stringify(llmPayload, null, 2) }}</pre>
+        </details>
+      </div>
+      <div v-else class="no-payload">
+        <span v-if="!currentExpertId">请先选择专家</span>
+        <span v-else>暂无 Payload 数据，发送消息后将自动缓存</span>
+      </div>
+    </div>
+
     <!-- 原始数据 -->
     <div class="debug-section">
       <h4>{{ $t('debug.rawData') }}</h4>
@@ -86,12 +129,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
-import { messageApi } from '@/api/services'
+import { messageApi, debugApi } from '@/api/services'
 
 const chatStore = useChatStore()
 const modelStore = useModelStore()
@@ -101,6 +144,55 @@ const userStore = useUserStore()
 const isAdmin = computed(() => userStore.isAdmin)
 const currentExpertId = computed(() => expertStore.currentExpert?.id)
 const isClearing = ref(false)
+
+// LLM Payload 相关状态
+const llmPayload = ref<Record<string, unknown> | null>(null)
+const isLoadingPayload = ref(false)
+
+// 加载 LLM Payload
+const loadLLMPayload = async () => {
+  if (!currentExpertId.value) return
+  
+  isLoadingPayload.value = true
+  try {
+    const result = await debugApi.getLLMPayload(currentExpertId.value)
+    llmPayload.value = result.payload
+  } catch (error) {
+    console.error('加载 LLM Payload 失败:', error)
+    llmPayload.value = null
+  } finally {
+    isLoadingPayload.value = false
+  }
+}
+
+// 格式化时间
+const formatTime = (isoString: string) => {
+  const date = new Date(isoString)
+  return date.toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+// 监听专家切换，自动加载 Payload
+watch(currentExpertId, (newId) => {
+  if (newId) {
+    loadLLMPayload()
+  } else {
+    llmPayload.value = null
+  }
+})
+
+// 监听聊天消息变化，自动刷新 Payload（当有新消息时）
+watch(() => chatStore.messages.length, () => {
+  if (currentExpertId.value) {
+    // 延迟刷新，等待后端缓存完成
+    setTimeout(loadLLMPayload, 500)
+  }
+})
 
 const handleClearHistory = async () => {
   if (!currentExpertId.value) return
@@ -116,6 +208,8 @@ const handleClearHistory = async () => {
     chatStore.messages = []
     // 清空本地话题列表
     chatStore.topics = []
+    // 清空 Payload
+    llmPayload.value = null
     alert(`对话历史和话题已清空\n删除消息: ${result.deleted_messages_count} 条\n删除话题: ${result.deleted_topics_count} 个`)
   } catch (error) {
     alert('清空对话历史失败: ' + (error instanceof Error ? error.message : '未知错误'))
@@ -244,5 +338,45 @@ details summary {
 .clear-history-btn:disabled {
   background: #6c757d;
   cursor: not-allowed;
+}
+
+.load-payload-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 12px;
+}
+
+.load-payload-btn:hover:not(:disabled) {
+  background: #138496;
+}
+
+.load-payload-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.payload-info {
+  margin-top: 8px;
+}
+
+.payload-details {
+  margin-top: 12px;
+}
+
+.no-payload {
+  text-align: center;
+  color: var(--text-secondary, #666);
+  font-size: 12px;
+  padding: 16px;
+  background: var(--code-bg, #f5f5f5);
+  border-radius: 4px;
 }
 </style>

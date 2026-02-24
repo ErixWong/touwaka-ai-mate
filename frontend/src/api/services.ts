@@ -190,3 +190,12 @@ export const providerApi = {
   deleteProvider: (id: string) =>
     apiRequest<void>(apiClient.delete(`/providers/${id}`)),
 }
+
+// Debug 相关 API
+export const debugApi = {
+  // 获取最近一次 LLM Payload
+  getLLMPayload: (expert_id: string) =>
+    apiRequest<{ payload: Record<string, unknown> | null; cached_at?: string; message?: string }>(
+      apiClient.get('/debug/llm-payload', { params: { expert_id } })
+    ),
+}
