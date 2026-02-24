@@ -282,10 +282,26 @@ export default {
 
   // Right Panel
   panel: {
+    expert: 'Expert',
     topics: 'Topics',
     debug: 'Debug',
     collapse: 'Collapse Panel',
     expand: 'Expand Panel',
+  },
+
+  // Expert Info Tab
+  expert: {
+    noExpertSelected: 'No Expert Selected',
+    status: {
+      active: 'Active',
+      inactive: 'Inactive',
+    },
+    introduction: 'Introduction',
+    coreValues: 'Core Values',
+    speakingStyle: 'Speaking Style',
+    emotionalTone: 'Emotional Tone',
+    behavioralGuidelines: 'Behavioral Guidelines',
+    taboos: 'Taboos',
   },
 
   // Topics Tab (additional)

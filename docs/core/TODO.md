@@ -26,6 +26,7 @@
 
 | 任务 | 完成日期 | 说明 |
 |------|----------|------|
+| 更新代码以适配 builtin 工具迁移到 tools 目录 | 2026-02-24 | 1. 更新 lib/tool-manager.js 内置工具路径<br>2. 更新 tools/builtin/index.js PROJECT_ROOT 路径计算<br>3. 删除 data/skills/builtin/ 旧目录 |
 | 数据目录整合 | 2026-02-24 | 将 skills 和 work 目录整合到 data 目录下，builtin 工具默认访问 data 目录，便于容器化部署时挂载 |
 
 ---

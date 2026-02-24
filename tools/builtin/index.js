@@ -23,7 +23,7 @@ import AdmZip from 'adm-zip';
 // 获取项目根目录（从当前模块位置向上查找）
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..'); // data/skills/builtin -> data/skills -> data -> project_root
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..'); // tools/builtin -> tools -> project_root
 
 // 允许访问的根目录列表（只允许 data 目录，避免 AI 搞混当前目录）
 const ALLOWED_ROOTS = [

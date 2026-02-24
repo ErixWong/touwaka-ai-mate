@@ -21,9 +21,10 @@
     
     <!-- Tab 内容 -->
     <div class="panel-content">
-      <TopicsTab 
-        v-if="activeTab === 'topics'" 
-        @select="handleTopicSelect" 
+      <ExpertTab v-if="activeTab === 'expert'" />
+      <TopicsTab
+        v-if="activeTab === 'topics'"
+        @select="handleTopicSelect"
       />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
@@ -34,6 +35,7 @@
 import { computed, watch } from 'vue'
 import { usePanelStore, type TabId } from '@/stores/panel'
 import { useUserStore } from '@/stores/user'
+import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
@@ -60,6 +62,7 @@ interface Tab {
 
 const visibleTabs = computed<Tab[]>(() => {
   const tabs: Tab[] = [
+    { id: 'expert', label: t('panel.expert'), icon: '👤' },
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]

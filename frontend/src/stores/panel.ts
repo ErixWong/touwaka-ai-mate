@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type TabId = 'topics' | 'debug'
+export type TabId = 'expert' | 'topics' | 'debug'
 
 export const usePanelStore = defineStore('panel', () => {
   // State
   const isCollapsed = ref(false)
-  const activeTab = ref<TabId>('topics')  // 默认显示 topics
+  const activeTab = ref<TabId>('expert')  // 默认显示 expert
   const width = ref(320)
 
   // Actions
@@ -35,7 +35,7 @@ export const usePanelStore = defineStore('panel', () => {
       isCollapsed.value = collapsed === 'true'
     }
     const savedTab = localStorage.getItem('panel_active_tab') as TabId | null
-    if (savedTab && ['topics', 'debug'].includes(savedTab)) {
+    if (savedTab && ['expert', 'topics', 'debug'].includes(savedTab)) {
       activeTab.value = savedTab
     }
   }

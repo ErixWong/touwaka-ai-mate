@@ -1040,3 +1040,50 @@ timeDaysAgo: '{n} days ago',
 **相关文档：** [tasks/expert-avatar.md](../core/tasks/expert-avatar.md)
 
 ---
+
+## 更新代码以适配 builtin 工具迁移到 tools 目录 ✅
+
+**完成日期：** 2026-02-24
+
+**背景：**
+用户已将内置技能从 `data/skills/builtin` 迁移到 `tools/builtin`，考虑到 skills 里面是用户自行安装的技能，分开是很有必要的。
+
+**修改内容：**
+
+### 1. 更新 lib/tool-manager.js
+```javascript
+// 修复前
+const builtinPath = path.join(__dirname, '..', 'data', 'skills', 'builtin', 'index.js');
+
+// 修复后
+const builtinPath = path.join(__dirname, '..', 'tools', 'builtin', 'index.js');
+```
+
+### 2. 更新 tools/builtin/index.js
+```javascript
+// 修复前
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..'); // data/skills/builtin -> data/skills -> data -> project_root
+
+// 修复后
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..'); // tools/builtin -> tools -> project_root
+```
+
+### 3. 删除旧目录
+- 删除 `data/skills/builtin/` 目录（包含 index.js 和 skill.md）
+
+**目录结构变化：**
+```
+project/
+├── data/
+│   └── skills/          # 用户安装的技能
+│       ├── installed/
+│       ├── search/
+│       ├── searxng/
+│       └── weather/
+├── tools/
+│   └── builtin/         # 系统内置工具（从 data/skills/builtin 迁移过来）
+│       ├── index.js
+│       └── skill.md
+```
+
+---

@@ -282,10 +282,26 @@ export default {
 
   // 右侧面板
   panel: {
+    expert: '专家',
     topics: '话题',
     debug: '调试',
     collapse: '收起面板',
     expand: '展开面板',
+  },
+
+  // 专家信息 Tab
+  expert: {
+    noExpertSelected: '未选择专家',
+    status: {
+      active: '活跃',
+      inactive: '已停用',
+    },
+    introduction: '简介',
+    coreValues: '核心价值观',
+    speakingStyle: '说话风格',
+    emotionalTone: '情感基调',
+    behavioralGuidelines: '行为准则',
+    taboos: '禁忌话题',
   },
 
   // 话题 Tab（补充）
