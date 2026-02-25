@@ -1176,3 +1176,98 @@ for (const msg of recentMessages) {
 - [`server/controllers/model.controller.js`](../../server/controllers/model.controller.js) - provider_name 获取修复
 
 ---
+
+## Token 字段重构 ✅
+
+**完成日期：** 2026-02-25
+
+**问题描述：**
+数据库中存在模糊的 `tokens` 字段，无法区分 prompt tokens 和 completion tokens，导致 Debug 面板中 `prompt_tokens` 显示为 0。
+
+**解决方案：**
+删除歧义的 `tokens` 字段，分离存储 `prompt_tokens` 和 `completion_tokens`，前端计算 `total_tokens`。
+
+**修改内容：**
+
+### 1. 数据库模型 ([`models/message.js`](../../models/message.js))
+- 移除 `tokens` 字段
+- 保留 `prompt_tokens` 和 `completion_tokens` 字段
+
+### 2. Chat Service ([`lib/chat-service.js`](../../lib/chat-service.js))
+- 保存消息时使用 `prompt_tokens` 和 `completion_tokens`
+- 移除对 `tokens` 字段的写入
+
+### 3. Message Controller ([`server/controllers/message.controller.js`](../../server/controllers/message.controller.js))
+- 返回消息时转换 token 字段为 metadata 格式
+- 前端期望格式：`metadata.prompt_tokens`, `metadata.completion_tokens`, `metadata.total_tokens`
+
+### 4. Debug 面板 ([`frontend/src/components/panel/DebugTab.vue`](../../frontend/src/components/panel/DebugTab.vue))
+- 显示独立的 token 字段：Prompt Tokens、Completion Tokens、Total Tokens
+- 前端计算 total_tokens = prompt_tokens + completion_tokens
+
+### 5. 数据库迁移脚本 ([`scripts/migrations/001_add_token_columns.sql`](../../scripts/migrations/001_add_token_columns.sql))
+```sql
+-- 如果旧表有 tokens 字段但没有 prompt_tokens 字段，需要添加
+ALTER TABLE messages ADD COLUMN prompt_tokens INT DEFAULT 0;
+ALTER TABLE messages ADD COLUMN completion_tokens INT DEFAULT 0;
+```
+
+**提交：** 031e44d
+
+---
+
+## 工具 URL 检测保护 ✅
+
+**完成日期：** 2026-02-25
+
+**问题描述：**
+LLM 误用 `search_in_file` 工具处理网页 URL（如 `https://rsj.sh.gov.cn/`），导致文件系统错误。
+
+**解决方案：**
+1. 更新工具描述，明确声明只支持本地文件
+2. 添加运行时 URL 检测，返回友好错误提示
+
+**修改内容：**
+
+### 1. 工具描述更新 ([`tools/builtin/index.js`](../../tools/builtin/index.js))
+```javascript
+// search_in_file 工具
+description: '在【本地文件】中搜索文本内容（带上下文）。注意：此工具只能搜索本地文件系统中的文件，不能搜索网页或URL。如需获取网页内容，请使用 http_get 工具。'
+
+// grep 工具
+description: '在【本地文件】中跨文件正则搜索。注意：此工具只能搜索本地文件系统中的文件，不能搜索网页或URL。如需获取网页内容，请使用 http_get 工具。'
+```
+
+### 2. URL 检测函数
+```javascript
+_isUrl(path) {
+  return /^https?:\/\//i.test(path);
+}
+```
+
+### 3. 运行时检测
+```javascript
+async searchInFile(params) {
+  if (this._isUrl(searchPath)) {
+    return {
+      success: false,
+      error: `search_in_file 工具不支持 URL。如需获取网页内容，请使用 http_get 工具。收到 URL: ${searchPath}`
+    };
+  }
+  // ...
+}
+
+async grep(params) {
+  if (this._isUrl(searchPath)) {
+    return {
+      success: false,
+      error: `grep 工具不支持 URL。如需获取网页内容，请使用 http_get 工具。收到 URL: ${searchPath}`
+    };
+  }
+  // ...
+}
+```
+
+**提交：** 031e44d
+
+---

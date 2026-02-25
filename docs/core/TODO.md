@@ -27,8 +27,8 @@
 
 | 任务 | 完成日期 | 说明 |
 |------|----------|------|
-| Token 字段重构 | 2026-02-25 | 删除歧义的 `tokens` 字段，分离存储 `prompt_tokens` 和 `completion_tokens`。涉及文件：`models/message.js`, `lib/chat-service.js`, `server/controllers/message.controller.js`, `scripts/init-database.js`。迁移脚本：`scripts/migrations/001_add_token_columns.sql` |
-| | | |
+| Token 字段重构 | 2026-02-25 | 已归档 |
+| 工具 URL 检测保护 | 2026-02-25 | 已归档 |
 
 ---
 
