@@ -9,9 +9,23 @@
       </button>
     </div>
 
-    <!-- 当前消息统计 -->
+    <!-- 使用模型（移到顶部） -->
+    <div class="debug-section">
+      <h4>{{ $t('debug.model') }}</h4>
+      <div class="stat-row">
+        <span class="stat-label">{{ $t('model.title') }}</span>
+        <span class="stat-value">{{ currentModel?.name || '-' }}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">{{ $t('model.provider') }}</span>
+        <span class="stat-value">{{ providerName }}</span>
+      </div>
+      <!-- temperature 不在 AIModel 类型中，暂时隐藏 -->
+    </div>
+
+    <!-- 本次会话（原 TOKEN 消耗） -->
     <div v-if="lastMessage" class="debug-section">
-      <h4>{{ $t('debug.tokenCount') }}</h4>
+      <h4>{{ $t('debug.currentSession') }}</h4>
       <div class="stat-row">
         <span class="stat-label">{{ $t('debug.promptTokens') }}</span>
         <span class="stat-value">{{ lastMessage.metadata?.tokens?.prompt_tokens || 0 }}</span>
@@ -43,23 +57,9 @@
       </div>
     </div>
 
-    <!-- 模型信息 -->
+    <!-- 历史总计（原会话统计） -->
     <div class="debug-section">
-      <h4>{{ $t('debug.model') }}</h4>
-      <div class="stat-row">
-        <span class="stat-label">{{ $t('model.title') }}</span>
-        <span class="stat-value">{{ currentModel?.name || '-' }}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{{ $t('model.provider') }}</span>
-        <span class="stat-value">{{ currentModel?.provider_id || '-' }}</span>
-      </div>
-      <!-- temperature 不在 AIModel 类型中，暂时隐藏 -->
-    </div>
-
-    <!-- 会话统计 -->
-    <div class="debug-section">
-      <h4>{{ $t('debug.sessionStats') }}</h4>
+      <h4>{{ $t('debug.historyTotal') }}</h4>
       <div class="stat-row">
         <span class="stat-label">{{ $t('debug.messageCount') }}</span>
         <span class="stat-value">{{ chatStore.messages.length }}</span>
@@ -74,17 +74,20 @@
       </div>
     </div>
 
-    <!-- LLM Payload -->
+    <!-- Payload（原 LLM Payload） -->
     <div class="debug-section">
-      <h4>LLM Payload</h4>
-      <button
-        class="load-payload-btn"
-        @click="loadLLMPayload"
-        :disabled="isLoadingPayload || !currentExpertId"
-      >
-        <span v-if="isLoadingPayload">加载中...</span>
-        <span v-else>刷新 Payload</span>
-      </button>
+      <div class="section-header">
+        <h4>{{ $t('debug.payload') }}</h4>
+        <button
+          class="icon-btn"
+          @click="loadLLMPayload"
+          :disabled="isLoadingPayload || !currentExpertId"
+          :title="$t('debug.refreshPayload')"
+        >
+          <span v-if="isLoadingPayload" class="loading-icon">⟳</span>
+          <span v-else>🔄</span>
+        </button>
+      </div>
       <div v-if="llmPayload" class="payload-info">
         <div class="stat-row">
           <span class="stat-label">Model</span>
@@ -107,23 +110,28 @@
           <span class="stat-value">{{ formatTime(llmPayload.cached_at) }}</span>
         </div>
         <details class="payload-details">
-          <summary>完整 Payload</summary>
+          <summary>{{ $t('common.expand') }}</summary>
           <pre class="raw-data">{{ JSON.stringify(llmPayload, null, 2) }}</pre>
         </details>
       </div>
       <div v-else class="no-payload">
-        <span v-if="!currentExpertId">请先选择专家</span>
-        <span v-else>暂无 Payload 数据，发送消息后将自动缓存</span>
+        <span v-if="!currentExpertId">{{ $t('debug.selectExpertFirst') }}</span>
+        <span v-else>{{ $t('debug.noPayload') }}</span>
       </div>
     </div>
 
-    <!-- 原始数据 -->
+    <!-- Response（原原始数据） -->
     <div class="debug-section">
-      <h4>{{ $t('debug.rawData') }}</h4>
-      <details v-if="lastMessage">
-        <summary>{{ $t('debug.lastMessage') }}</summary>
+      <div class="section-header">
+        <h4>{{ $t('debug.response') }}</h4>
+      </div>
+      <details v-if="lastMessage" class="response-details">
+        <summary>{{ $t('common.expand') }}</summary>
         <pre class="raw-data">{{ JSON.stringify(lastMessage, null, 2) }}</pre>
       </details>
+      <div v-else class="no-payload">
+        <span>暂无响应数据</span>
+      </div>
     </div>
   </div>
 </template>
@@ -134,12 +142,14 @@ import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
+import { useProviderStore } from '@/stores/provider'
 import { messageApi, debugApi } from '@/api/services'
 
 const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
+const providerStore = useProviderStore()
 
 const isAdmin = computed(() => userStore.isAdmin)
 const currentExpertId = computed(() => expertStore.currentExpert?.id)
@@ -227,6 +237,21 @@ const currentModel = computed(() => {
   return undefined
 })
 
+// 获取提供商名称（优先使用 model 自带的 provider_name）
+const providerName = computed(() => {
+  if (!currentModel.value) return '-'
+  // 优先使用 model 自带的 provider_name
+  if (currentModel.value.provider_name) {
+    return currentModel.value.provider_name
+  }
+  // fallback: 从 provider store 查找
+  if (currentModel.value.provider_id) {
+    const provider = providerStore.getProviderById(currentModel.value.provider_id)
+    return provider?.name || currentModel.value.provider_id
+  }
+  return '-'
+})
+
 const lastMessage = computed(() => {
   const messages = chatStore.sortedMessages
   return messages.length > 0 ? messages[messages.length - 1] : null
@@ -268,6 +293,46 @@ const totalCost = computed(() => {
   margin: 0 0 8px 0;
   color: var(--text-secondary, #666);
   text-transform: uppercase;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.section-header h4 {
+  margin: 0;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-icon {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .stat-row {
@@ -340,34 +405,12 @@ details summary {
   cursor: not-allowed;
 }
 
-.load-payload-btn {
-  width: 100%;
-  padding: 8px 12px;
-  background: #17a2b8;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
-  margin-bottom: 12px;
-}
-
-.load-payload-btn:hover:not(:disabled) {
-  background: #138496;
-}
-
-.load-payload-btn:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
 .payload-info {
   margin-top: 8px;
 }
 
-.payload-details {
+.payload-details,
+.response-details {
   margin-top: 12px;
 }
 

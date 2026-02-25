@@ -50,7 +50,8 @@ class MessageController {
           user_id: userId,
         },
         attributes: [
-          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'tokens',
+          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content',
+          'prompt_tokens', 'completion_tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
         order: [['created_at', 'DESC']],  // 先倒序获取最新的
@@ -70,10 +71,10 @@ class MessageController {
           error_info: m.error_info ? JSON.parse(m.error_info) : null,
           // 将数据库字段转换为前端期望的 metadata 格式
           metadata: {
-            tokens: m.tokens ? {
-              total_tokens: m.tokens,
-              prompt_tokens: 0,  // 数据库中没有分开存储，设为 0
-              completion_tokens: m.tokens,
+            tokens: (m.prompt_tokens || m.completion_tokens) ? {
+              total_tokens: (m.prompt_tokens || 0) + (m.completion_tokens || 0),
+              prompt_tokens: m.prompt_tokens || 0,
+              completion_tokens: m.completion_tokens || 0,
             } : null,
             latency: m.latency_ms || null,
           },

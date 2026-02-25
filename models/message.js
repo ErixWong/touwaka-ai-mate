@@ -48,11 +48,6 @@ export default class message extends Model {
       allowNull: true,
       defaultValue: "text"
     },
-    tokens: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0
-    },
     cost: {
       type: DataTypes.DECIMAL(10,6),
       allowNull: true,
@@ -92,6 +87,16 @@ export default class message extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    prompt_tokens: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0
+    },
+    completion_tokens: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0
     }
   }, {
     sequelize,

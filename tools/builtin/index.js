@@ -309,11 +309,11 @@ export default {
         type: 'function',
         function: {
           name: 'search_in_file',
-          description: '在文件中搜索（带上下文）',
+          description: '在【本地文件】中搜索文本内容（带上下文）。注意：此工具只能搜索本地文件系统中的文件，不能搜索网页或URL。如需获取网页内容，请使用 http_get 工具。',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: '搜索路径' },
+              path: { type: 'string', description: '本地文件或目录路径（data 目录下的相对路径，或绝对路径）。不支持 URL。' },
               pattern: { type: 'string', description: '搜索模式（正则表达式）' },
               filePattern: { type: 'string', description: '文件过滤（如 *.js）' },
               contextLines: { type: 'number', description: '上下文行数', default: 2 }
@@ -326,11 +326,11 @@ export default {
         type: 'function',
         function: {
           name: 'grep',
-          description: '跨文件正则搜索',
+          description: '在【本地文件】中跨文件正则搜索。注意：此工具只能搜索本地文件系统中的文件，不能搜索网页或URL。如需获取网页内容，请使用 http_get 工具。',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: '搜索路径' },
+              path: { type: 'string', description: '本地目录路径（data 目录下的相对路径，或绝对路径）。不支持 URL。' },
               pattern: { type: 'string', description: '正则模式' },
               filePattern: { type: 'string', description: '文件过滤（如 *.{js,ts}）' },
               ignoreCase: { type: 'boolean', description: '忽略大小写', default: false }
@@ -880,8 +880,24 @@ export default {
 
   // ==================== 搜索类 ====================
 
+  /**
+   * 检测是否为 URL
+   */
+  _isUrl(path) {
+    return /^https?:\/\//i.test(path);
+  },
+
   async searchInFile(params) {
     const { path: searchPath, pattern, filePattern, contextLines = 2 } = params;
+    
+    // 检测是否为 URL
+    if (this._isUrl(searchPath)) {
+      return {
+        success: false,
+        error: `search_in_file 工具不支持 URL。如需获取网页内容，请使用 http_get 工具。收到 URL: ${searchPath}`
+      };
+    }
+    
     const fullPath = safePath(searchPath);
     const regex = new RegExp(pattern, 'g');
     const fileRegex = filePattern ? 
@@ -941,6 +957,15 @@ export default {
 
   async grep(params) {
     const { path: searchPath, pattern, filePattern, ignoreCase = false } = params;
+    
+    // 检测是否为 URL
+    if (this._isUrl(searchPath)) {
+      return {
+        success: false,
+        error: `grep 工具不支持 URL。如需获取网页内容，请使用 http_get 工具。收到 URL: ${searchPath}`
+      };
+    }
+    
     const fullPath = safePath(searchPath);
     const flags = ignoreCase ? 'gi' : 'g';
     const regex = new RegExp(pattern, flags);

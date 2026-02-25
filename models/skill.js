@@ -11,7 +11,8 @@ export default class skill extends Model {
     },
     name: {
       type: DataTypes.STRING(128),
-      allowNull: false
+      allowNull: false,
+      unique: "name"
     },
     description: {
       type: DataTypes.TEXT,
@@ -90,6 +91,14 @@ export default class skill extends Model {
         using: "BTREE",
         fields: [
           { name: "id" },
+        ]
+      },
+      {
+        name: "name",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "name" },
         ]
       },
     ]

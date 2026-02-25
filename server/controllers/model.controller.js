@@ -39,12 +39,22 @@ class ModelController {
       });
 
       // 将 bit 类型转换为 boolean，但保持字段名不变
-      const formattedModels = models.map(m => ({
-        ...m,
-        provider_name: m.provider?.name || m.provider?.provider_name,
-        provider_id: m.provider?.id || m.provider?.provider_id || m.provider_id,
-        is_active: !!m.is_active,
-      }));
+      const formattedModels = models.map(m => {
+        // 由于使用了 raw: true, nest: true 和别名，需要正确获取 provider_name
+        // Sequelize 在 raw 模式下可能返回别名或原始字段名，需要兼容处理
+        const providerName = m.provider?.provider_name || m.provider?.name || null;
+        const providerId = m.provider?.provider_id || m.provider?.id || m.provider_id;
+        
+        // 移除嵌套的 provider 对象，只保留顶层字段
+        const { provider, ...rest } = m;
+        
+        return {
+          ...rest,
+          provider_name: providerName,
+          provider_id: providerId,
+          is_active: !!rest.is_active,
+        };
+      });
 
       ctx.success(formattedModels);
     } catch (error) {

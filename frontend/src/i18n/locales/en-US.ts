@@ -65,7 +65,7 @@ export default {
   // Debug panel
   debug: {
     title: 'Debug Info',
-    tokenCount: 'Token Usage',
+    currentSession: 'Current Session',
     promptTokens: 'Prompt Tokens',
     completionTokens: 'Completion Tokens',
     totalTokens: 'Total Tokens',
@@ -78,14 +78,18 @@ export default {
     messageId: 'Message ID',
     latency: 'Latency',
     cached: 'Cached',
-    sessionStats: 'Session Stats',
+    historyTotal: 'History Total',
     messageCount: 'Messages',
     estimatedCost: 'Estimated Cost',
-    rawData: 'Raw Data',
+    response: 'Response',
     lastMessage: 'Last Message',
     adminOperations: 'Admin Operations',
     clearHistory: 'Clear Chat History',
     clearing: 'Clearing...',
+    payload: 'Payload',
+    refreshPayload: 'Refresh',
+    noPayload: 'No payload data. It will be cached automatically after sending a message.',
+    selectExpertFirst: 'Please select an expert first',
   },
 
   // Topic list

@@ -65,7 +65,7 @@ export default {
   // 调试面板
   debug: {
     title: '调试信息',
-    tokenCount: 'Token 消耗',
+    currentSession: '本次会话',
     promptTokens: 'Prompt Tokens',
     completionTokens: 'Completion Tokens',
     totalTokens: '总 Token 数',
@@ -78,14 +78,18 @@ export default {
     messageId: '消息 ID',
     latency: '延迟',
     cached: '已缓存',
-    sessionStats: '会话统计',
+    historyTotal: '历史总计',
     messageCount: '消息数',
     estimatedCost: '预估费用',
-    rawData: '原始数据',
+    response: 'Response',
     lastMessage: '最后消息',
     adminOperations: '管理员操作',
     clearHistory: '清空对话历史',
     clearing: '清空中...',
+    payload: 'Payload',
+    refreshPayload: '刷新',
+    noPayload: '暂无 Payload 数据，发送消息后将自动缓存',
+    selectExpertFirst: '请先选择专家',
   },
 
   // 话题列表

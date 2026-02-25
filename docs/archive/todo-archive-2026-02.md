@@ -1140,3 +1140,39 @@ for (const msg of recentMessages) {
 3. 当前用户消息
 
 ---
+
+## Debug 面板 UI 重构 ✅
+
+**完成日期：** 2026-02-25
+
+**描述：** 重构 Debug 面板的区域命名和布局，使其更加用户友好和清晰。
+
+**修改内容：**
+
+### 1. 区域名称调整
+| 原名称 | 新名称 | 说明 |
+|--------|--------|------|
+| TOKEN 消耗 | 本次会话 | 显示最后一次 LLM 调用的 token 消耗 |
+| 会话统计 | 历史总计 | 显示整个对话历史的累计数据 |
+| LLM Payload | Payload | 简化名称 |
+| 原始数据 | Response | 更直观的名称 |
+
+### 2. 布局调整
+- `使用模型` 区域移到顶部
+- 提供商显示 `provider.name` 而不是 `provider_id`
+
+### 3. UI 优化
+- Payload 刷新按钮改为图标（🔄），放在标题行右边
+- Payload 详情和 Response 都使用折叠显示，默认收起
+
+### 4. 后端修复
+- 修复 `model.controller.js` 中 `provider_name` 的获取逻辑
+- 兼容处理 Sequelize 在 raw 模式下返回的数据结构
+
+**修改的文件：**
+- [`frontend/src/i18n/locales/zh-CN.ts`](../../frontend/src/i18n/locales/zh-CN.ts) - 中文翻译
+- [`frontend/src/i18n/locales/en-US.ts`](../../frontend/src/i18n/locales/en-US.ts) - 英文翻译
+- [`frontend/src/components/panel/DebugTab.vue`](../../frontend/src/components/panel/DebugTab.vue) - 组件重构
+- [`server/controllers/model.controller.js`](../../server/controllers/model.controller.js) - provider_name 获取修复
+
+---
