@@ -31,14 +31,6 @@ export default class skill extends Model {
       type: DataTypes.TEXT,
       allowNull: true
     },
-    index_js: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    config: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
     is_active: {
       type: DataTypes.BOOLEAN,
       allowNull: true,

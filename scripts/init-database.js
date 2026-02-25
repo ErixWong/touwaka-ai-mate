@@ -76,6 +76,9 @@ const TABLES = [
   )`,
 
   // 4. Skills 表
+  // 注：index_js 和 config 字段已移除
+  // - 代码通过 source_path 从文件系统加载
+  // - 配置通过 skill_parameters 表管理
   `CREATE TABLE IF NOT EXISTS skills (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -87,10 +90,8 @@ const TABLES = [
     source_path VARCHAR(512),
     source_url VARCHAR(512),
     skill_md TEXT,
-    index_js TEXT,
     security_score INT DEFAULT 100,
     security_warnings JSON,
-    config JSON,
     is_active BIT(1) DEFAULT b'1',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

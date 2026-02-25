@@ -778,7 +778,7 @@ class SkillController {
   async update(ctx) {
     try {
       const { id } = ctx.params;
-      const { name, description, is_active, config } = ctx.request.body;
+      const { name, description, is_active } = ctx.request.body;
 
       // 检查技能是否存在
       const existing = await this.Skill.findOne({ where: { id } });
@@ -791,7 +791,6 @@ class SkillController {
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
       if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
-      if (config !== undefined) updates.config = typeof config === 'string' ? config : JSON.stringify(config);
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);
