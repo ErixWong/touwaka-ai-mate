@@ -8,6 +8,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [技能 LLM 分析功能](tasks/skill-llm-analysis.md) | ⏳ 待开始 | 高 |
 | [反思心智模板配置化](tasks/reflective-mind-template.md) | ⏳ 待开始 | 中 |
 | [运行时参数配置界面](tasks/runtime-config.md) | ⏳ 待开始 | 中 |
 
@@ -27,6 +28,7 @@
 
 | 任务 | 完成日期 | 说明 |
 |------|----------|------|
+| SKILL.md 解析器改进 | 2026-02-25 | 支持 Claude Code 标准的 frontmatter 解析 |
 | Token 字段重构 | 2026-02-25 | 已归档 |
 | 工具 URL 检测保护 | 2026-02-25 | 已归档 |
 

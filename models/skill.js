@@ -70,6 +70,29 @@ export default class skill extends Model {
     security_warnings: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    license: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    argument_hint: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      defaultValue: ""
+    },
+    disable_model_invocation: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false
+    },
+    user_invocable: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: true
+    },
+    allowed_tools: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   }, {
     sequelize,

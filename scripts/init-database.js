@@ -19,10 +19,10 @@ const DB_CONFIG = {
   database: process.env.DB_NAME,
 };
 
-// 表结构定义
+// 表结构定�?
 const TABLES = [
-  // 1. Providers 表
-  // timeout 字段单位为毫秒，默认 60 秒 = 60000 毫秒
+  // 1. Providers �?
+  // timeout 字段单位为毫秒，默认 60 �?= 60000 毫秒
   `CREATE TABLE IF NOT EXISTS providers (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -34,7 +34,7 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`,
 
-  // 2. AI Models 表（用于前端模型管理）
+  // 2. AI Models 表（用于前端模型管理�?
   `CREATE TABLE IF NOT EXISTS ai_models (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -52,7 +52,7 @@ const TABLES = [
     INDEX idx_active (is_active)
   )`,
 
-  // 3. Experts 表
+  // 3. Experts �?
   `CREATE TABLE IF NOT EXISTS experts (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -67,7 +67,7 @@ const TABLES = [
     prompt_template TEXT,
     is_active BIT(1) DEFAULT b'1',
     avatar_base64 TEXT COMMENT '小头像Base64（日常使用）',
-    avatar_large_base64 MEDIUMTEXT COMMENT '大头像Base64（对话框背景）',
+    avatar_large_base64 MEDIUMTEXT COMMENT '大头像Base64（对话框背景�?,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (expressive_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
@@ -75,10 +75,11 @@ const TABLES = [
     INDEX idx_active (is_active)
   )`,
 
-  // 4. Skills 表
-  // 注：index_js 和 config 字段已移除
-  // - 代码通过 source_path 从文件系统加载
-  // - 配置通过 skill_parameters 表管理
+  // 4. Skills �?
+  // 注：index_js �?config 字段已移�?
+  // - 代码通过 source_path 从文件系统加�?
+  // - 配置通过 skill_parameters 表管�?
+  // 扩展字段：license, argument_hint, disable_model_invocation, user_invocable, allowed_tools
   `CREATE TABLE IF NOT EXISTS skills (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -92,29 +93,32 @@ const TABLES = [
     skill_md TEXT,
     security_score INT DEFAULT 100,
     security_warnings JSON,
+    license TEXT COMMENT '许可证信�?,
+    argument_hint VARCHAR(128) DEFAULT '' COMMENT '参数提示',
+    disable_model_invocation BIT(1) DEFAULT b'0' COMMENT '禁用模型调用',
+    user_invocable BIT(1) DEFAULT b'1' COMMENT '用户可调�?,
+    allowed_tools TEXT COMMENT '允许的工具列表（JSON数组�?,
     is_active BIT(1) DEFAULT b'1',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`,
 
   // 4.1 Skill_Tools 表（技能工具清单）
+  // 注：type, command, endpoint, method 字段已移�?
+  // - 工具通过 index.js �?execute() 函数执行
   `CREATE TABLE IF NOT EXISTS skill_tools (
     id VARCHAR(32) PRIMARY KEY,
     skill_id VARCHAR(64) NOT NULL,
     name VARCHAR(64) NOT NULL,
     description TEXT,
-    type ENUM('http', 'script', 'builtin') DEFAULT 'http',
-    \`usage\` TEXT,
-    command VARCHAR(512),
-    endpoint VARCHAR(512),
-    method VARCHAR(16),
+    \`parameters\` TEXT COMMENT 'JSON Schema 格式的参数定义',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY idx_skill_name (skill_id, name),
     INDEX idx_skill_id (skill_id)
   )`,
 
-  // 5. Expert_Skills 表
+  // 5. Expert_Skills �?
   `CREATE TABLE IF NOT EXISTS expert_skills (
     id VARCHAR(32) PRIMARY KEY,
     expert_id VARCHAR(32) NOT NULL,
@@ -156,7 +160,7 @@ const TABLES = [
     expert_id VARCHAR(32) NOT NULL,
     preferred_name VARCHAR(128) COMMENT '用户希望被称呼的名字',
     introduction TEXT COMMENT '用户自我介绍',
-    background TEXT COMMENT '背景画像（LLM总结生成）',
+    background TEXT COMMENT '背景画像（LLM总结生成�?,
     notes TEXT COMMENT '专家对用户的笔记',
     first_met DATETIME,
     last_active DATETIME,
@@ -169,7 +173,7 @@ const TABLES = [
     INDEX idx_last_active (last_active)
   )`,
 
-  // 8. Topics 表（更新：添加 provider_name, model_name, status 等字段）
+  // 8. Topics 表（更新：添�?provider_name, model_name, status 等字段）
   `CREATE TABLE IF NOT EXISTS topics (
     id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
@@ -190,12 +194,12 @@ const TABLES = [
     INDEX idx_updated (updated_at)
   )`,
 
-  // 9. Messages 表（更新：添加 user_id, expert_id 字段）
+  // 9. Messages 表（更新：添�?user_id, expert_id 字段�?
   `CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(32) PRIMARY KEY,
     topic_id VARCHAR(32) NOT NULL,
-    user_id VARCHAR(32) NOT NULL COMMENT '消息所属用户ID，便于直接查询',
-    expert_id VARCHAR(32) COMMENT '专家ID，便于直接查询',
+    user_id VARCHAR(32) NOT NULL COMMENT '消息所属用户ID，便于直接查�?,
+    expert_id VARCHAR(32) COMMENT '专家ID，便于直接查�?,
     role ENUM('system', 'user', 'assistant') NOT NULL,
     content TEXT NOT NULL,
     content_type ENUM('text', 'image', 'file') DEFAULT 'text',
@@ -220,25 +224,25 @@ const TABLES = [
     INDEX idx_created (created_at)
   )`,
 
-  // 10. Roles 表（RBAC权限系统）
+  // 10. Roles 表（RBAC权限系统�?
   `CREATE TABLE IF NOT EXISTS roles (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL COMMENT '角色标识：admin/creator/user',
     label VARCHAR(100) NOT NULL COMMENT '角色显示名称',
     description TEXT COMMENT '角色描述',
-    is_system BIT(1) DEFAULT b'0' COMMENT '系统角色，不可删除',
+    is_system BIT(1) DEFAULT b'0' COMMENT '系统角色，不可删�?,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_name (name)
   )`,
 
-  // 11. Permissions 表（权限定义，含菜单路由配置）
+  // 11. Permissions 表（权限定义，含菜单路由配置�?
   `CREATE TABLE IF NOT EXISTS permissions (
     id VARCHAR(32) PRIMARY KEY,
-    code VARCHAR(100) UNIQUE NOT NULL COMMENT '权限码：user:create, expert:edit等',
+    code VARCHAR(100) UNIQUE NOT NULL COMMENT '权限码：user:create, expert:edit�?,
     name VARCHAR(100) NOT NULL COMMENT '权限名称',
     type ENUM('menu', 'button', 'api') DEFAULT 'api' COMMENT '权限类型',
-    parent_id VARCHAR(32) DEFAULT NULL COMMENT '父权限ID，用于菜单层级',
+    parent_id VARCHAR(32) DEFAULT NULL COMMENT '父权限ID，用于菜单层�?,
     route_path VARCHAR(255) COMMENT 'Vue路由路径，菜单权限用',
     route_component VARCHAR(255) COMMENT 'Vue组件路径',
     route_icon VARCHAR(100) COMMENT '菜单图标',
@@ -249,7 +253,7 @@ const TABLES = [
     INDEX idx_type (type)
   )`,
 
-  // 12. Role_Permissions 表（角色-权限关联）
+  // 12. Role_Permissions 表（角色-权限关联�?
   `CREATE TABLE IF NOT EXISTS role_permissions (
     role_id VARCHAR(32) NOT NULL,
     permission_id VARCHAR(32) NOT NULL,
@@ -259,7 +263,7 @@ const TABLES = [
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
   )`,
 
-  // 13. User_Roles 表（用户-角色关联，支持多角色）
+  // 13. User_Roles 表（用户-角色关联，支持多角色�?
   `CREATE TABLE IF NOT EXISTS user_roles (
     user_id VARCHAR(32) NOT NULL,
     role_id VARCHAR(32) NOT NULL,
@@ -277,14 +281,14 @@ async function getInitialData() {
   // 创建默认密码哈希
   const defaultPassword = await bcrypt.hash('password123', 10);
 
-  // 生成Provider ID（使用newID）
+  // 生成Provider ID（使用newID�?
   const providerIds = {
     openai: Utils.newID(20),
     deepseek: Utils.newID(20),
     ollama: Utils.newID(20),
   };
 
-  // 生成模型ID（使用newID）
+  // 生成模型ID（使用newID�?
   const modelIds = {
     deepseekChat: Utils.newID(20),
     deepseekReasoner: Utils.newID(20),
@@ -293,7 +297,7 @@ async function getInitialData() {
     llama3: Utils.newID(20),
   };
 
-  // 生成角色ID（使用newID）
+  // 生成角色ID（使用newID�?
   const roleIds = {
     admin: Utils.newID(20),
     creator: Utils.newID(20),
@@ -314,31 +318,31 @@ async function getInitialData() {
       { id: modelIds.llama3, name: 'Llama 3.1', model_name: 'llama3.1', provider_id: providerIds.ollama, max_tokens: 4096, cost_per_1k_input: 0, cost_per_1k_output: 0 },
     ],
     users: [
-      { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理员' },
+      { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理�? },
       { id: Utils.newID(20), username: 'test', email: 'test@example.com', password_hash: defaultPassword, nickname: '测试用户' },
     ],
     expert: {
       id: expertId,
       name: 'Eric',
-      introduction: '34岁，程序员，来自镇江，现在在上海B站工作。正在参加相亲。',
+      introduction: '34岁，程序员，来自镇江，现在在上海B站工作。正在参加相亲�?,
       speaking_style: '用程序员的方式表达，保持自信但不自负，偶尔说一些镇江话',
       core_values: '真诚待人，不欺骗\n尊重对方的选择和边界\n保持适度的幽默感',
-      behavioral_guidelines: '先倾听再回应\n保持礼貌和尊重\n展现真实的自己',
-      taboos: '不尊重对方\n强迫对方做不愿意的事\n说谎或欺骗',
-      emotional_tone: '温和、自信、幽默',
+      behavioral_guidelines: '先倾听再回应\n保持礼貌和尊重\n展现真实的自�?,
+      taboos: '不尊重对方\n强迫对方做不愿意的事\n说谎或欺�?,
+      emotional_tone: '温和、自信、幽�?,
       expressive_model_id: modelIds.deepseekChat,
       reflective_model_id: modelIds.gpt35,
-      prompt_template: '你是一个34岁的程序员，来自镇江，现在在上海工作。请用温和、自信、幽默的语气回答用户的问题。',
+      prompt_template: '你是一�?4岁的程序员，来自镇江，现在在上海工作。请用温和、自信、幽默的语气回答用户的问题�?,
     },
     skills: [
       {
         id: Utils.newID(20),
         name: '搜索',
-        description: '搜索互联网获取信息',
+        description: '搜索互联网获取信�?,
         version: '1.0.0',
         author: 'System',
         source_type: 'local',
-        skill_md: '# Search Skill\n\n## 描述\n搜索互联网获取信息...',
+        skill_md: '# Search Skill\n\n## 描述\n搜索互联网获取信�?..',
       },
       {
         id: Utils.newID(20),
@@ -347,13 +351,13 @@ async function getInitialData() {
         version: '1.0.0',
         author: 'System',
         source_type: 'local',
-        skill_md: '# Weather Skill\n\n## 描述\n查询指定城市的天气信息...',
+        skill_md: '# Weather Skill\n\n## 描述\n查询指定城市的天气信�?..',
       },
     ],
     roles: [
-      { id: roleIds.admin, name: 'admin', label: '平台管理员', description: '拥有所有权限', is_system: true },
-      { id: roleIds.creator, name: 'creator', label: '专家创作者', description: '可以创建和管理自己的专家', is_system: true },
-      { id: roleIds.user, name: 'user', label: '普通用户', description: '可以使用聊天功能', is_system: true },
+      { id: roleIds.admin, name: 'admin', label: '平台管理�?, description: '拥有所有权�?, is_system: true },
+      { id: roleIds.creator, name: 'creator', label: '专家创作�?, description: '可以创建和管理自己的专家', is_system: true },
+      { id: roleIds.user, name: 'user', label: '普通用�?, description: '可以使用聊天功能', is_system: true },
     ],
     roleIds: roleIds,
   };
@@ -363,7 +367,7 @@ async function initDatabase() {
   let connection;
 
   try {
-    // 先连接不指定数据库，创建数据库
+    // 先连接不指定数据库，创建数据�?
     connection = await mysql.createConnection({
       host: DB_CONFIG.host,
       port: DB_CONFIG.port,
@@ -377,7 +381,7 @@ async function initDatabase() {
     );
     await connection.end();
 
-    // 重新连接指定数据库
+    // 重新连接指定数据�?
     connection = await mysql.createConnection({
       host: DB_CONFIG.host,
       port: DB_CONFIG.port,
@@ -474,14 +478,14 @@ async function initDatabase() {
     const menuPermissions = [
       { code: 'menu:chat', name: '聊天', route_path: '/chat', component: 'ChatView.vue', icon: 'MessageOutlined', order: 1 },
       { code: 'menu:topics', name: '话题管理', route_path: '/topics', component: 'TopicsView.vue', icon: 'FolderOutlined', order: 2 },
-      { code: 'menu:studio', name: '专家工作室', route_path: '/studio', component: 'StudioView.vue', icon: 'EditOutlined', order: 10 },
+      { code: 'menu:studio', name: '专家工作�?, route_path: '/studio', component: 'StudioView.vue', icon: 'EditOutlined', order: 10 },
       { code: 'menu:studio:experts', name: '我的专家', route_path: '/studio/experts', component: 'StudioExperts.vue', icon: null, order: 11 },
       { code: 'menu:studio:models', name: '模型配置', route_path: '/studio/models', component: 'StudioModels.vue', icon: null, order: 12 },
-      { code: 'menu:studio:skills', name: '技能管理', route_path: '/studio/skills', component: 'StudioSkills.vue', icon: null, order: 13 },
+      { code: 'menu:studio:skills', name: '技能管�?, route_path: '/studio/skills', component: 'StudioSkills.vue', icon: null, order: 13 },
       { code: 'menu:admin', name: '管理后台', route_path: '/admin', component: 'AdminView.vue', icon: 'SettingOutlined', order: 20 },
       { code: 'menu:admin:users', name: '用户管理', route_path: '/admin/users', component: 'AdminUsers.vue', icon: null, order: 21 },
       { code: 'menu:admin:roles', name: '角色权限', route_path: '/admin/roles', component: 'AdminRoles.vue', icon: null, order: 22 },
-      { code: 'menu:admin:providers', name: '服务提供商', route_path: '/admin/providers', component: 'AdminProviders.vue', icon: null, order: 23 },
+      { code: 'menu:admin:providers', name: '服务提供�?, route_path: '/admin/providers', component: 'AdminProviders.vue', icon: null, order: 23 },
       { code: 'menu:admin:system', name: '系统设置', route_path: '/admin/system', component: 'AdminSystem.vue', icon: null, order: 24 },
     ];
 
@@ -514,10 +518,10 @@ async function initDatabase() {
     }
     console.log('  - permissions (menus & apis)');
 
-    // 为角色分配权限
+    // 为角色分配权�?
     const { roleIds } = data;
 
-    // admin: 所有权限
+    // admin: 所有权�?
     await connection.execute(
       `INSERT INTO role_permissions (role_id, permission_id)
        SELECT ?, id FROM permissions
@@ -525,7 +529,7 @@ async function initDatabase() {
       [roleIds.admin]
     );
 
-    // creator: 用户端 + 工作室权限
+    // creator: 用户�?+ 工作室权�?
     const creatorPermissions = [
       'menu:chat', 'menu:topics', 'menu:studio', 'menu:studio:experts',
       'menu:studio:models', 'menu:studio:skills',
@@ -562,7 +566,7 @@ async function initDatabase() {
     }
     console.log('  - role_permissions assigned');
 
-    // 为测试用户分配角色
+    // 为测试用户分配角�?
     const adminUserId = data.users[0].id;
     const testUserId = data.users[1].id;
     await connection.execute(
@@ -572,21 +576,21 @@ async function initDatabase() {
     );
     console.log('  - user_roles assigned');
 
-    console.log('\n✅ Database initialization completed successfully!');
+    console.log('\n�?Database initialization completed successfully!');
     console.log(`\nTest accounts:`);
     console.log(`  Admin:    admin / admin@example.com / password123`);
     console.log(`  User:     test / test@example.com / password123`);
     console.log(`\nExpert ID: ${data.expert.id}`);
 
   } catch (error) {
-    console.error('❌ Initialization failed:', error.message);
+    console.error('�?Initialization failed:', error.message);
     process.exit(1);
   } finally {
     if (connection) await connection.end();
   }
 }
 
-// 检查必需的环境变量
+// 检查必需的环境变�?
 if (!DB_CONFIG.user || !DB_CONFIG.password || !DB_CONFIG.database) {
   console.error('Error: DB_USER, DB_PASSWORD, DB_NAME environment variables are required');
   process.exit(1);

@@ -25,25 +25,8 @@ export default class skill_tool extends Model {
       type: DataTypes.TEXT,
       allowNull: true
     },
-    type: {
-      type: DataTypes.ENUM('http','script','builtin'),
-      allowNull: true,
-      defaultValue: "http"
-    },
-    usage: {
+    parameters: {
       type: DataTypes.TEXT,
-      allowNull: true
-    },
-    command: {
-      type: DataTypes.STRING(512),
-      allowNull: true
-    },
-    endpoint: {
-      type: DataTypes.STRING(512),
-      allowNull: true
-    },
-    method: {
-      type: DataTypes.STRING(16),
       allowNull: true
     },
     created_at: {
