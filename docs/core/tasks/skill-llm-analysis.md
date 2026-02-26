@@ -1,6 +1,7 @@
 # 技能 LLM 分析功能
 
 > 创建日期：2026-02-25
+> 更新日期：2026-02-25
 
 ## 背景
 
@@ -18,10 +19,50 @@
 
 阶段2: LLM 分析（异步/按需）
 - 读取 skills.skill_md
-- 扫描 source_path/scripts/ 目录
+- 智能扫描代码文件（见下方策略）
 - 调用 LLM 分析
 - 更新 skills 表：description, license, argument_hint 等
 - 写入 skill_tools 表：工具定义和参数
+```
+
+### 智能文件扫描策略
+
+#### 扫描规则
+
+| 规则 | 说明 |
+|------|------|
+| 扫描目录 | `scripts/` 及其子目录 |
+| 代码文件 | `.js`, `.py`, `.ts`, `.sh` |
+| 忽略文件 | `.xsd`, `.json`, `.md`, `.txt`, `.lock` |
+| 忽略目录 | `node_modules/`, `__pycache__/`, `.git/` |
+| 单文件限制 | < 50KB |
+| 总 Token 限制 | ~30K tokens（约 100KB 文本） |
+
+#### 扫描流程
+
+```javascript
+async function scanSkillFiles(skillDir, skillMd) {
+  const files = [];
+  
+  // 1. 始终包含 index.js（如果存在）
+  const indexJs = tryRead(path.join(skillDir, 'index.js'));
+  if (indexJs) files.push({ path: 'index.js', content: indexJs });
+  
+  // 2. 扫描 scripts/ 目录
+  const scriptsDir = path.join(skillDir, 'scripts');
+  if (exists(scriptsDir)) {
+    const codeFiles = await scanCodeFiles(scriptsDir, {
+      extensions: ['.js', '.py', '.ts', '.sh'],
+      maxSize: 50 * 1024,  // 50KB
+      ignoreDirs: ['node_modules', '__pycache__', '.git'],
+      ignoreExtensions: ['.xsd', '.json', '.md', '.txt'],
+    });
+    files.push(...codeFiles);
+  }
+  
+  // 3. Token 限制裁剪
+  return truncateToTokenLimit(files, 30000);
+}
 ```
 
 ### 前端界面
@@ -116,11 +157,46 @@ async function updateSkillFromAnalysis(skillId, analysis) {
 
 ## 任务清单
 
-- [ ] 后端：实现 `/api/skills/:id/analyze` 接口
-- [ ] 后端：增强 `skill-analyzer.js` 支持脚本扫描
+### 已完成 ✅
+
+- [x] 后端：实现 `/api/skills/:id/reanalyze` 接口（`skill.controller.js:842`）
+- [x] 后端：`SkillAnalyzer` 类基础框架（`skill-analyzer.js`）
+- [x] 后端：安全检查机制（`performSecurityCheck`）
+- [x] 后端：降级到基础解析（AI 失败时）
+
+### 待完成 ⏳
+
+- [ ] 后端：智能文件扫描（scripts/ 目录递归扫描）
+- [ ] 后端：文件类型过滤和大小限制
+- [ ] 后端：优化 LLM 提示词（包含多文件）
 - [ ] 前端：添加"重新分析"按钮
 - [ ] 前端：显示分析进度和结果
-- [ ] 测试：验证 PDF 技能的分析结果
+- [ ] 前端：模型选择功能
+- [ ] 测试：验证复杂技能（如 pptx）的分析结果
+
+### 模型选择设计
+
+前端应支持选择使用哪个模型进行分析：
+
+```javascript
+// POST /api/skills/:id/reanalyze
+{
+  "model_id": "deepseek-chat",  // 可选，指定模型
+  "provider": "deepseek"        // 可选，指定提供商
+}
+```
+
+后端根据选择动态配置 `SkillAnalyzer`：
+
+```javascript
+// 从数据库获取模型配置
+const modelConfig = await getModelConfig(modelId);
+this.skillAnalyzer = new SkillAnalyzer({
+  apiKey: modelConfig.api_key,
+  baseUrl: modelConfig.base_url,
+  model: modelConfig.model_name,
+});
+```
 
 ## 数据库优化
 
