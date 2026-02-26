@@ -143,6 +143,36 @@ export const userApi = {
   // 更新用户配置
   updatePreferences: (data: Partial<UserPreference>) =>
     apiRequest<UserPreference>(apiClient.put('/users/me/preferences', data)),
+
+  // ========== 用户管理 API（管理员专用） ==========
+
+  // 获取用户列表
+  getUsers: (params?: { page?: number; size?: number; search?: string }) =>
+    apiRequest<import('@/types').UserListResponse>(apiClient.get('/users', { params })),
+
+  // 创建用户
+  createUser: (data: import('@/types').CreateUserRequest) =>
+    apiRequest<import('@/types').UserListItem>(apiClient.post('/users', data)),
+
+  // 更新用户
+  updateUser: (id: string, data: import('@/types').UpdateUserRequest) =>
+    apiRequest<void>(apiClient.put(`/users/${id}`, data)),
+
+  // 删除用户
+  deleteUser: (id: string) =>
+    apiRequest<void>(apiClient.delete(`/users/${id}`)),
+
+  // 重置用户密码
+  resetPassword: (id: string, data: import('@/types').ResetPasswordRequest) =>
+    apiRequest<void>(apiClient.post(`/users/${id}/reset-password`, data)),
+
+  // 获取角色列表
+  getRoles: () =>
+    apiRequest<import('@/types').Role[]>(apiClient.get('/users/roles')),
+
+  // 更新用户角色
+  updateUserRoles: (id: string, data: import('@/types').UpdateUserRolesRequest) =>
+    apiRequest<void>(apiClient.put(`/users/${id}/roles`, data)),
 }
 
 // 认证相关 API

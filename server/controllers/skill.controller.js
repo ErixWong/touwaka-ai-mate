@@ -154,7 +154,7 @@ class SkillController {
       });
     } catch (error) {
       logger.error('Get skill error:', error);
-      ctx.error('获取技能详情失�?, 500);
+      ctx.error('获取技能详情失败', 500);
     }
   }
 
@@ -220,7 +220,7 @@ class SkillController {
       } else {
         // 直接 ZIP URL
         zipPath = path.join(tempDir, 'downloaded.zip');
-        logger.info(`[SkillController] 开始下载直�?ZIP: ${zipPath}`);
+        logger.info(`[SkillController] 开始下载ZIP: ${zipPath}`);
         await this.downloadFile(url, zipPath);
         logger.info(`[SkillController] 文件下载完成`);
       }
@@ -228,13 +228,13 @@ class SkillController {
       // 检查文件大小（限制 50MB�?
       const stats = await fs.stat(zipPath);
       if (stats.size > 50 * 1024 * 1024) {
-        throw new Error('文件大小超过限制�?0MB�?);
+        throw new Error('文件大小超过限制50MB');
       }
 
       logger.info(`[SkillController] 文件大小: ${stats.size} bytes`);
 
       // 解压 ZIP
-      logger.info(`[SkillController] 开始解�?ZIP 文件...`);
+      logger.info(`[SkillController] 开始解压缩ZIP 文件...`);
       const zip = new AdmZip(zipPath);
       zip.extractAllTo(tempDir, true);
       logger.info(`[SkillController] ZIP 解压完成`);
@@ -246,10 +246,10 @@ class SkillController {
       let skillMdPath;
       if (skillSubDir) {
         // 如果指定了子目录，先尝试在该目录中查�?
-        logger.info(`[SkillController] 查找子目�? ${skillSubDir}`);
+        logger.info(`[SkillController] 查找子目录： ${skillSubDir}`);
         const subDirPath = await this.findSubDir(tempDir, skillSubDir);
         if (subDirPath) {
-          logger.info(`[SkillController] 找到子目�? ${subDirPath}`);
+          logger.info(`[SkillController] 找到子目录： ${subDirPath}`);
           skillMdPath = await this.findSkillMd(subDirPath);
         } else {
           logger.warn(`[SkillController] 未找到子目录: ${skillSubDir}`);
@@ -357,21 +357,21 @@ class SkillController {
       const skill = await this.Skill.findOne({ where: { id } });
       const tools = await this.SkillTool.findAll({ where: { skill_id: id } });
 
-      logger.info(`[SkillController] 技能安装成�? ${id} - ${skillData.name}`);
+      logger.info(`[SkillController] 技能安装成功 ${id} - ${skillData.name}`);
 
       ctx.success({
         skill: {
           ...skill.get({ plain: true }),
           tools: tools.map(t => t.get({ plain: true })),
         }
-      }, '技能安装成�?);
+      }, '技能安装成功');
     } catch (error) {
       // 回滚事务
       if (transaction) {
         await transaction.rollback().catch(() => {});
       }
       logger.error('[SkillController] Install skill from URL error:', error.message, error.stack);
-      ctx.error('�?URL 安装失败: ' + error.message, 500);
+      ctx.error('URL 安装失败: ' + error.message, 500);
     } finally {
       // 清理临时目录
       if (tempDir) {
@@ -649,7 +649,7 @@ class SkillController {
             ...skill.get({ plain: true }),
             tools: tools.map(t => t.get({ plain: true })),
           }
-        }, '技能安装成�?);
+        }, '技能安装成功');
       } finally {
         // 清理临时目录
         await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
@@ -660,7 +660,7 @@ class SkillController {
         await transaction.rollback().catch(() => {});
       }
       logger.error('Install skill from ZIP error:', error);
-      ctx.error('�?ZIP 安装失败: ' + error.message, 500);
+      ctx.error('ZIP 安装失败: ' + error.message, 500);
     }
   }
 
@@ -771,7 +771,7 @@ class SkillController {
           ...skill.get({ plain: true }),
           tools: tools.map(t => t.get({ plain: true })),
         }
-      }, '技能安装成�?);
+      }, '技能安装成功');
     } catch (error) {
       // 回滚事务
       if (transaction) {
@@ -809,15 +809,15 @@ class SkillController {
 
       await this.Skill.update(updates, { where: { id } });
 
-      ctx.success({ id }, '技能更新成�?);
+      ctx.success({ id }, '技能更新成功');
     } catch (error) {
       logger.error('Update skill error:', error);
-      ctx.error('更新技能失�? ' + error.message, 500);
+      ctx.error('更新技能失败 ' + error.message, 500);
     }
   }
 
   /**
-   * 删除技�?
+   * 删除技能
    */
   async delete(ctx) {
     try {
@@ -839,10 +839,10 @@ class SkillController {
       // 删除技�?
       await this.Skill.destroy({ where: { id } });
 
-      ctx.success({ id }, '技能删除成�?);
+      ctx.success({ id }, '技能删除成功');
     } catch (error) {
       logger.error('Delete skill error:', error);
-      ctx.error('删除技能失�? ' + error.message, 500);
+      ctx.error('删除技能失败：' + error.message, 500);
     }
   }
 
@@ -909,10 +909,10 @@ class SkillController {
           ...updatedSkill.get({ plain: true }),
           tools: tools.map(t => t.get({ plain: true })),
         }
-      }, '技能重新分析成�?);
+      }, '技能重新分析成功');
     } catch (error) {
       logger.error('Reanalyze skill error:', error);
-      ctx.error('重新分析技能失�? ' + error.message, 500);
+      ctx.error('重新分析技能失败 ' + error.message, 500);
     }
   }
 
@@ -1209,7 +1209,7 @@ class SkillController {
       const { parameters } = ctx.request.body;
 
       if (!Array.isArray(parameters)) {
-        ctx.error('参数格式错误，需要数�?, 400);
+        ctx.error('参数格式错误，需要数组', 400);
         return;
       }
 
@@ -1224,7 +1224,7 @@ class SkillController {
       const paramNamePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
       for (const param of parameters) {
         if (param.param_name && !paramNamePattern.test(param.param_name)) {
-          ctx.error(`参数名格式无�? ${param.param_name}（只允许字母、数字、下划线，且不能以数字开头）`, 400);
+          ctx.error(`参数名格式无效 ${param.param_name}（只允许字母、数字、下划线，且不能以数字开头）`, 400);
           return;
         }
       }
@@ -1233,7 +1233,7 @@ class SkillController {
       const names = parameters.map(p => p.param_name);
       const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
       if (duplicates.length > 0) {
-        ctx.error(`参数名重�? ${duplicates.join(', ')}`, 400);
+        ctx.error(`参数名重复 ${duplicates.join(', ')}`, 400);
         return;
       }
 

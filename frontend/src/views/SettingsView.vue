@@ -271,6 +271,101 @@
       </div>
     </div>
 
+    <!-- 用户管理 -->
+    <div v-if="activeTab === 'user'" class="settings-section user-section">
+      <div class="panel-header">
+        <h3 class="panel-title">{{ $t('settings.userManagement') }}</h3>
+        <button class="btn-icon-add" @click="openUserDialog()" :title="$t('settings.addUser')">
+          <span class="icon">+</span>
+        </button>
+      </div>
+
+      <!-- 搜索过滤 -->
+      <div class="user-search">
+        <input
+          v-model="userSearchQuery"
+          type="text"
+          class="form-input"
+          :placeholder="$t('settings.searchUsersPlaceholder')"
+          @input="handleUserSearch"
+        />
+      </div>
+
+      <div v-if="usersLoading" class="loading-state">
+        {{ $t('common.loading') }}
+      </div>
+
+      <div v-else-if="usersList.length === 0" class="empty-state">
+        {{ userSearchQuery ? $t('settings.noUsersFound') : $t('settings.noUsers') }}
+      </div>
+
+      <div v-else class="user-list-container">
+        <div class="user-list">
+          <div
+            v-for="user in usersList"
+            :key="user.id"
+            class="user-item"
+            :class="{ inactive: user.status !== 'active' }"
+          >
+            <div class="user-avatar">
+              <span v-if="!user.avatar">👤</span>
+              <img v-else :src="user.avatar" alt="avatar" />
+            </div>
+            <div class="user-info">
+              <div class="user-header">
+                <span class="user-name">{{ user.nickname || user.username }}</span>
+                <span v-if="user.status !== 'active'" class="badge inactive">
+                  {{ $t(`settings.userStatus.${user.status}`) }}
+                </span>
+                <span v-if="user.roles && user.roles.length > 0" class="user-roles">
+                  {{ user.roles.join(', ') }}
+                </span>
+              </div>
+              <div class="user-meta">
+                <span class="user-email">{{ user.email }}</span>
+                <span class="user-username">@{{ user.username }}</span>
+              </div>
+            </div>
+            <div class="user-actions">
+              <button
+                class="btn-edit"
+                @click="openUserDialog(user)"
+                :title="$t('common.edit')"
+              >
+                {{ $t('common.edit') }}
+              </button>
+              <button
+                class="btn-delete-small"
+                @click="confirmDeleteUser(user)"
+                :title="$t('common.delete')"
+              >
+                {{ $t('common.delete') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 用户分页 -->
+        <div v-if="userTotalPages > 1" class="pagination">
+          <button
+            class="page-btn"
+            :disabled="userPage === 1"
+            @click="userPage--"
+          >
+            <
+          </button>
+          <span class="page-info">{{ userPage }} / {{ userTotalPages }}</span>
+          <button
+            class="page-btn"
+            :disabled="userPage === userTotalPages"
+            @click="userPage++"
+          >
+            >
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -859,6 +954,219 @@
         </div>
       </div>
     </div>
+
+    <!-- 用户添加/编辑对话框 -->
+    <div v-if="showUserDialog" class="dialog-overlay">
+      <div class="dialog dialog-large">
+        <h3 class="dialog-title">
+          {{ editingUser ? $t('settings.editUser') : $t('settings.addUser') }}
+        </h3>
+        <div class="dialog-body">
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.username') }} *</label>
+              <input
+                v-model="userForm.username"
+                type="text"
+                class="form-input"
+                :placeholder="$t('settings.usernamePlaceholder')"
+                :disabled="!!editingUser"
+              />
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.email') }} *</label>
+              <input
+                v-model="userForm.email"
+                type="email"
+                class="form-input"
+                :placeholder="$t('settings.emailPlaceholder')"
+                :disabled="!!editingUser"
+              />
+            </div>
+          </div>
+
+          <!-- 新增用户时显示密码字段 -->
+          <div v-if="!editingUser" class="form-item">
+            <label class="form-label">{{ $t('settings.password') }} *</label>
+            <input
+              v-model="userForm.password"
+              type="password"
+              class="form-input"
+              :placeholder="$t('settings.passwordPlaceholder')"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.userNickname') }}</label>
+              <input
+                v-model="userForm.nickname"
+                type="text"
+                class="form-input"
+                :placeholder="$t('settings.userNicknamePlaceholder')"
+              />
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.userStatusText') }}</label>
+              <select v-model="userForm.status" class="form-input">
+                <option value="active">{{ $t('settings.userStatus.active') }}</option>
+                <option value="inactive">{{ $t('settings.userStatus.inactive') }}</option>
+                <option value="banned">{{ $t('settings.userStatus.banned') }}</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 角色选择 -->
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.userRoles') }}</label>
+            <div v-if="rolesLoading" class="loading-state">{{ $t('common.loading') }}</div>
+            <div v-else class="roles-checkbox-group">
+              <label v-for="role in rolesList" :key="role.id" class="role-checkbox">
+                <input
+                  type="checkbox"
+                  :value="role.id"
+                  v-model="userForm.selectedRoleIds"
+                />
+                <span class="role-label">
+                  {{ role.label || role.name }}
+                  <span v-if="role.is_system" class="badge builtin">{{ $t('settings.builtinSkill') }}</span>
+                </span>
+              </label>
+            </div>
+            <p v-if="rolesList.length === 0 && !rolesLoading" class="form-hint">{{ $t('settings.noRolesAvailable') }}</p>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.gender') }}</label>
+              <select v-model="userForm.gender" class="form-input">
+                <option value="">{{ $t('settings.selectGender') }}</option>
+                <option value="male">{{ $t('settings.genderMale') }}</option>
+                <option value="female">{{ $t('settings.genderFemale') }}</option>
+                <option value="other">{{ $t('settings.genderOther') }}</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.birthday') }}</label>
+              <input
+                v-model="userForm.birthday"
+                type="date"
+                class="form-input"
+              />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.occupation') }}</label>
+              <input
+                v-model="userForm.occupation"
+                type="text"
+                class="form-input"
+                :placeholder="$t('settings.occupationPlaceholder')"
+              />
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.location') }}</label>
+              <input
+                v-model="userForm.location"
+                type="text"
+                class="form-input"
+                :placeholder="$t('settings.locationPlaceholder')"
+              />
+            </div>
+          </div>
+
+          <!-- 头像上传 -->
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.userAvatar') }}</label>
+            <div class="avatar-upload">
+              <div
+                class="avatar-preview"
+                :style="userForm.avatar ? { backgroundImage: `url(${userForm.avatar})` } : {}"
+              >
+                <span v-if="!userForm.avatar">👤</span>
+              </div>
+              <div class="avatar-actions">
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref="userAvatarInput"
+                  @change="handleUserAvatarUpload"
+                  style="display: none"
+                />
+                <button type="button" class="btn-small" @click="userAvatarInput?.click()">
+                  {{ $t('settings.uploadAvatar') }}
+                </button>
+                <button
+                  v-if="userForm.avatar"
+                  type="button"
+                  class="btn-small btn-danger"
+                  @click="userForm.avatar = ''"
+                >
+                  {{ $t('common.delete') }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 重置密码（编辑时显示） -->
+          <div v-if="editingUser" class="form-section-title">{{ $t('settings.resetPassword') }}</div>
+          <div v-if="editingUser" class="form-item">
+            <label class="form-label">{{ $t('settings.newPassword') }}</label>
+            <div class="reset-password-row">
+              <input
+                v-model="userForm.newPassword"
+                type="password"
+                class="form-input"
+                :placeholder="$t('settings.newPasswordPlaceholder')"
+              />
+              <button
+                type="button"
+                class="btn-small"
+                :disabled="!userForm.newPassword || userForm.newPassword.length < 6"
+                @click="handleResetPassword"
+              >
+                {{ $t('settings.resetPasswordBtn') }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <div class="footer-left">
+            <button
+              v-if="editingUser"
+              class="btn-delete"
+              @click="confirmDeleteUserFromDialog"
+            >
+              {{ $t('common.delete') }}
+            </button>
+          </div>
+          <div class="footer-right">
+            <button class="btn-cancel" @click="closeUserDialog">{{ $t('common.cancel') }}</button>
+            <button class="btn-confirm" :disabled="!isUserFormValid" @click="saveUser">
+              {{ $t('common.save') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 用户删除确认对话框 -->
+    <div v-if="showDeleteUserDialog" class="dialog-overlay">
+      <div class="dialog dialog-confirm">
+        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
+        <p class="dialog-message">
+          {{ $t('settings.deleteUserConfirm', { name: deletingUser?.nickname || deletingUser?.username }) }}
+        </p>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="closeDeleteUserDialog">{{ $t('common.cancel') }}</button>
+          <button class="btn-confirm delete" @click="deleteUser">
+            {{ $t('common.delete') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -870,8 +1178,8 @@ import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
-import { expertApi } from '@/api/services'
-import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig } from '@/types'
+import { expertApi, userApi } from '@/api/services'
+import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest } from '@/types'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -885,6 +1193,7 @@ const tabs = computed(() => [
   { key: 'profile', label: t('settings.profile') },
   { key: 'model', label: t('settings.modelAndProvider') },
   { key: 'expert', label: t('settings.expertSettings') },
+  { key: 'user', label: t('settings.userManagement') },
   { key: 'about', label: t('settings.about') },
 ])
 
@@ -1034,6 +1343,278 @@ const skillsChanged = ref(false)
 // 头像上传 ref
 const smallAvatarInput = ref<HTMLInputElement | null>(null)
 const largeAvatarInput = ref<HTMLInputElement | null>(null)
+
+// 用户管理状态
+const usersList = ref<UserListItem[]>([])
+const usersLoading = ref(false)
+const userSearchQuery = ref('')
+const userPage = ref(1)
+const userTotalPages = ref(1)
+const USER_PAGE_SIZE = 10
+
+// 用户对话框
+const showUserDialog = ref(false)
+const editingUser = ref<UserListItem | null>(null)
+const userForm = reactive({
+  username: '',
+  email: '',
+  password: '',
+  nickname: '',
+  gender: '',
+  birthday: '',
+  occupation: '',
+  location: '',
+  status: 'active' as 'active' | 'inactive' | 'banned',
+  avatar: '',
+  newPassword: '',
+  selectedRoleIds: [] as string[],
+})
+
+// 角色列表
+const rolesList = ref<import('@/types').Role[]>([])
+const rolesLoading = ref(false)
+
+// 用户删除对话框
+const showDeleteUserDialog = ref(false)
+const deletingUser = ref<UserListItem | null>(null)
+
+// 用户头像上传 ref
+const userAvatarInput = ref<HTMLInputElement | null>(null)
+
+// 用户表单验证
+const isUserFormValid = computed(() => {
+  if (!userForm.username.trim() || !userForm.email.trim()) {
+    return false
+  }
+  // 新增用户时需要密码
+  if (!editingUser.value && (!userForm.password || userForm.password.length < 6)) {
+    return false
+  }
+  // 验证邮箱格式
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(userForm.email)) {
+    return false
+  }
+  return true
+})
+
+// 加载用户列表
+const loadUsers = async () => {
+  usersLoading.value = true
+  try {
+    const response = await userApi.getUsers({
+      page: userPage.value,
+      size: USER_PAGE_SIZE,
+      search: userSearchQuery.value || undefined,
+    })
+    usersList.value = response.items
+    userTotalPages.value = response.pagination.pages
+  } catch (err) {
+    console.error('加载用户列表失败:', err)
+    alert(t('settings.loadUsersFailed'))
+  } finally {
+    usersLoading.value = false
+  }
+}
+
+// 用户搜索防抖
+let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+const handleUserSearch = () => {
+  if (userSearchTimeout) {
+    clearTimeout(userSearchTimeout)
+  }
+  userSearchTimeout = setTimeout(() => {
+    userPage.value = 1
+    loadUsers()
+  }, 300)
+}
+
+// 加载角色列表
+const loadRoles = async () => {
+  rolesLoading.value = true
+  try {
+    const roles = await userApi.getRoles()
+    rolesList.value = roles
+  } catch (err) {
+    console.error('加载角色列表失败:', err)
+  } finally {
+    rolesLoading.value = false
+  }
+}
+
+// 打开用户对话框
+const openUserDialog = async (user?: UserListItem) => {
+  // 加载角色列表
+  await loadRoles()
+  
+  if (user) {
+    editingUser.value = user
+    userForm.username = user.username
+    userForm.email = user.email
+    userForm.password = ''
+    userForm.nickname = user.nickname || ''
+    userForm.gender = user.gender || ''
+    userForm.birthday = user.birthday || ''
+    userForm.occupation = user.occupation || ''
+    userForm.location = user.location || ''
+    userForm.status = user.status
+    userForm.avatar = user.avatar || ''
+    userForm.newPassword = ''
+    // 设置用户当前角色：根据角色名称找到对应的角色ID
+    if (user.roles && user.roles.length > 0) {
+      const roleIds = rolesList.value
+        .filter(r => user.roles!.includes(r.name))
+        .map(r => r.id)
+      userForm.selectedRoleIds = roleIds
+    } else {
+      userForm.selectedRoleIds = []
+    }
+  } else {
+    editingUser.value = null
+    userForm.username = ''
+    userForm.email = ''
+    userForm.password = ''
+    userForm.nickname = ''
+    userForm.gender = ''
+    userForm.birthday = ''
+    userForm.occupation = ''
+    userForm.location = ''
+    userForm.status = 'active'
+    userForm.avatar = ''
+    userForm.newPassword = ''
+    userForm.selectedRoleIds = []
+  }
+  showUserDialog.value = true
+}
+
+// 关闭用户对话框
+const closeUserDialog = () => {
+  showUserDialog.value = false
+  editingUser.value = null
+}
+
+// 保存用户
+const saveUser = async () => {
+  try {
+    if (editingUser.value) {
+      // 更新用户
+      const updateData: UpdateUserRequest = {
+        nickname: userForm.nickname,
+        gender: userForm.gender || undefined,
+        birthday: userForm.birthday || undefined,
+        occupation: userForm.occupation || undefined,
+        location: userForm.location || undefined,
+        status: userForm.status,
+        avatar: userForm.avatar || undefined,
+      }
+      await userApi.updateUser(editingUser.value.id, updateData)
+      // 更新用户角色
+      await userApi.updateUserRoles(editingUser.value.id, { roleIds: userForm.selectedRoleIds })
+    } else {
+      // 创建用户
+      const createData: CreateUserRequest = {
+        username: userForm.username,
+        email: userForm.email,
+        password: userForm.password,
+        nickname: userForm.nickname || undefined,
+        gender: userForm.gender || undefined,
+        birthday: userForm.birthday || undefined,
+        occupation: userForm.occupation || undefined,
+        location: userForm.location || undefined,
+        status: userForm.status,
+        avatar: userForm.avatar || undefined,
+      }
+      const newUser = await userApi.createUser(createData)
+      // 为新用户设置角色
+      if (newUser && newUser.id && userForm.selectedRoleIds.length > 0) {
+        await userApi.updateUserRoles(newUser.id, { roleIds: userForm.selectedRoleIds })
+      }
+    }
+    closeUserDialog()
+    loadUsers()
+  } catch (err) {
+    console.error('保存用户失败:', err)
+    alert(t('settings.saveUserFailed'))
+  }
+}
+
+// 确认删除用户
+const confirmDeleteUser = (user: UserListItem) => {
+  deletingUser.value = user
+  showDeleteUserDialog.value = true
+}
+
+// 从对话框内确认删除
+const confirmDeleteUserFromDialog = () => {
+  if (editingUser.value) {
+    deletingUser.value = editingUser.value
+    showDeleteUserDialog.value = true
+  }
+}
+
+// 关闭删除确认对话框
+const closeDeleteUserDialog = () => {
+  showDeleteUserDialog.value = false
+  deletingUser.value = null
+}
+
+// 删除用户
+const deleteUser = async () => {
+  if (!deletingUser.value) return
+  try {
+    await userApi.deleteUser(deletingUser.value.id)
+    closeDeleteUserDialog()
+    closeUserDialog()
+    loadUsers()
+  } catch (err) {
+    console.error('删除用户失败:', err)
+    alert(t('settings.deleteUserFailed'))
+  }
+}
+
+// 重置密码
+const handleResetPassword = async () => {
+  if (!editingUser.value || !userForm.newPassword || userForm.newPassword.length < 6) return
+  
+  try {
+    await userApi.resetPassword(editingUser.value.id, { password: userForm.newPassword })
+    userForm.newPassword = ''
+    alert(t('settings.resetPasswordSuccess'))
+  } catch (err) {
+    console.error('重置密码失败:', err)
+    alert(t('settings.resetPasswordFailed'))
+  }
+}
+
+// 用户头像上传
+const handleUserAvatarUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  
+  try {
+    // 使用小头像压缩方法
+    const result = await compressSmallAvatar(file)
+    userForm.avatar = result.base64
+    console.log(`用户头像压缩: ${Math.round(result.originalSize / 1024)}KB → ${Math.round(result.compressedSize / 1024)}KB`)
+  } catch (err) {
+    console.error('压缩用户头像失败:', err)
+    alert(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
+  }
+  input.value = ''
+}
+
+// 监听用户分页变化
+watch(userPage, () => {
+  loadUsers()
+})
+
+// 监听用户管理 tab 切换
+watch(activeTab, (newTab) => {
+  if (newTab === 'user' && usersList.value.length === 0) {
+    loadUsers()
+  }
+})
 
 const saveProfile = async () => {
   await userStore.updatePreferences({
@@ -2355,5 +2936,217 @@ onMounted(() => {
     margin-left: 0;
     align-self: flex-end;
   }
+}
+
+/* 用户管理区域 */
+.user-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.user-section .panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--card-bg, #fff);
+}
+
+.user-search {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.user-search .form-input {
+  width: 100%;
+  max-width: 400px;
+}
+
+.user-list-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+}
+
+.user-list {
+  flex: 1;
+  padding: 16px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.user-item:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--border-color, #e0e0e0);
+}
+
+.user-item.inactive {
+  opacity: 0.6;
+}
+
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--border-color, #e0e0e0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.user-roles {
+  font-size: 12px;
+  color: var(--primary-color, #2196f3);
+  background: var(--primary-light, #e3f2fd);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.user-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+.user-email {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-username {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.user-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 重置密码行 */
+.reset-password-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.reset-password-row .form-input {
+  flex: 1;
+}
+
+.reset-password-row .btn-small {
+  flex-shrink: 0;
+}
+
+/* 响应式调整 - 用户管理 */
+@media (max-width: 768px) {
+  .user-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .user-actions {
+    align-self: flex-end;
+    margin-top: 8px;
+  }
+
+  .user-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .reset-password-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reset-password-row .btn-small {
+    width: 100%;
+  }
+}
+
+/* 角色选择样式 */
+.roles-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.role-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.role-checkbox:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.role-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary-color, #2196f3);
+}
+
+.role-checkbox input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.role-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-primary, #333);
 }
 </style>

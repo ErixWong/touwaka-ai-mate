@@ -138,7 +138,7 @@ const TABLES = [
     email VARCHAR(256) UNIQUE,
     password_hash VARCHAR(256),
     nickname VARCHAR(128),
-    avatar VARCHAR(512),
+    avatar TEXT COMMENT '用户头像Base64（约5-15KB）',
     gender VARCHAR(16) COMMENT '性别：male/female/other',
     birthday DATE COMMENT '生日',
     occupation VARCHAR(128) COMMENT '职业',

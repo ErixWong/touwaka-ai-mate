@@ -411,3 +411,97 @@ export interface InstallSkillFromUrlRequest {
 export interface InstallSkillFromPathRequest {
   path: string
 }
+
+// ============================================
+// 用户管理相关类型
+// ============================================
+
+/**
+ * 用户状态
+ */
+export type UserStatus = 'active' | 'inactive' | 'banned'
+
+/**
+ * 用户性别
+ */
+export type UserGender = 'male' | 'female' | 'other'
+
+/**
+ * 用户管理列表项（匹配后端返回）
+ */
+export interface UserListItem {
+  id: string
+  username: string
+  email: string
+  nickname: string
+  avatar?: string
+  gender?: UserGender
+  birthday?: string
+  occupation?: string
+  location?: string
+  status: UserStatus
+  roles?: string[]
+  last_login?: string
+  created_at: string
+  updated_at?: string
+}
+
+/**
+ * 创建用户的请求数据
+ */
+export interface CreateUserRequest {
+  username: string
+  email: string
+  password: string
+  nickname?: string
+  gender?: UserGender
+  birthday?: string
+  occupation?: string
+  location?: string
+  status?: UserStatus
+}
+
+/**
+ * 更新用户的请求数据
+ */
+export interface UpdateUserRequest {
+  username?: string
+  email?: string
+  nickname?: string
+  avatar?: string
+  gender?: UserGender
+  birthday?: string
+  occupation?: string
+  location?: string
+  status?: UserStatus
+}
+
+/**
+ * 重置密码的请求数据
+ */
+export interface ResetPasswordRequest {
+  password: string
+}
+
+/**
+ * 角色信息
+ */
+export interface Role {
+  id: string
+  name: string
+  label: string
+  description?: string
+  is_system: boolean
+}
+
+/**
+ * 更新用户角色的请求数据
+ */
+export interface UpdateUserRolesRequest {
+  roleIds: string[]
+}
+
+/**
+ * 用户列表响应（遵循项目 PageResponse 格式）
+ */
+export type UserListResponse = PageResponse<UserListItem>

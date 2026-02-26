@@ -28,7 +28,7 @@ export default class user extends Model {
       allowNull: true
     },
     avatar: {
-      type: DataTypes.STRING(512),
+      type: DataTypes.TEXT,
       allowNull: true
     },
     gender: {
