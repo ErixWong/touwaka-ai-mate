@@ -119,6 +119,12 @@ if (models.Roles && models.Permissions && models.RolePermissions) {
   models.Permissions.belongsToMany(models.Roles, { through: models.RolePermissions, foreignKey: 'permission_id', otherKey: 'role_id', as: 'roles' });
 }
 
+// Role <-> Expert (through RoleExpert)
+if (models.Roles && models.Experts && models.RoleExperts) {
+  models.Roles.belongsToMany(models.Experts, { through: models.RoleExperts, foreignKey: 'role_id', otherKey: 'expert_id', as: 'experts' });
+  models.Experts.belongsToMany(models.Roles, { through: models.RoleExperts, foreignKey: 'expert_id', otherKey: 'role_id', as: 'roles' });
+}
+
 // Permission self-reference
 if (models.Permissions) {
   models.Permissions.hasMany(models.Permissions, { foreignKey: 'parent_id', as: 'children' });

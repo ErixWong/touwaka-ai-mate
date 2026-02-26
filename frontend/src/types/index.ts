@@ -505,3 +505,70 @@ export interface UpdateUserRolesRequest {
  * 用户列表响应（遵循项目 PageResponse 格式）
  */
 export type UserListResponse = PageResponse<UserListItem>
+
+// ============================================
+// 角色管理相关类型
+// ============================================
+
+/**
+ * 权限类型
+ */
+export type PermissionType = 'menu' | 'button' | 'api'
+
+/**
+ * 权限信息
+ */
+export interface Permission {
+  id: string
+  code: string
+  name: string
+  description?: string
+  type: PermissionType
+  parent_id?: string
+  route_path?: string
+  route_component?: string
+  route_icon?: string
+  sort_order: number
+  children?: Permission[]
+}
+
+/**
+ * 角色详细信息（含权限和专家）
+ */
+export interface RoleDetail extends Role {
+  permission_ids?: string[]
+  expert_ids?: string[]
+  created_at: string
+  updated_at?: string
+}
+
+/**
+ * 更新角色的请求数据
+ */
+export interface UpdateRoleRequest {
+  label?: string
+  description?: string
+}
+
+/**
+ * 更新角色权限的请求数据
+ */
+export interface UpdateRolePermissionsRequest {
+  permission_ids: string[]
+}
+
+/**
+ * 更新角色专家访问权限的请求数据
+ */
+export interface UpdateRoleExpertsRequest {
+  expert_ids: string[]
+}
+
+/**
+ * 专家简表信息（用于角色管理）
+ */
+export interface ExpertSimple {
+  id: string
+  name: string
+  introduction?: string
+}

@@ -34,6 +34,7 @@ import ModelController from './controllers/model.controller.js';
 import StreamController from './controllers/stream.controller.js';
 import SkillController from './controllers/skill.controller.js';
 import DebugController from './controllers/debug.controller.js';
+import RoleController from './controllers/role.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -47,6 +48,7 @@ import providerRoutes from './routes/provider.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
+import roleRoutes from './routes/role.routes.js';
 
 class ApiServer {
   constructor() {
@@ -215,6 +217,10 @@ class ApiServer {
     this.app.use(debugRoutes(this.controllers.debug).routes());
     this.app.use(debugRoutes(this.controllers.debug).allowedMethods());
 
+    // Role 路由
+    this.app.use(roleRoutes(RoleController).routes());
+    this.app.use(roleRoutes(RoleController).allowedMethods());
+
     // 404 处理
     this.app.use(async (ctx) => {
       ctx.status = 404;
@@ -301,6 +307,13 @@ class ApiServer {
         logger.info('  GET  /api/providers');
         logger.info('  POST /api/chat (非流式)');
         logger.info('  GET  /api/chat/stream (SSE 流式)');
+        logger.info('  GET  /api/roles (角色管理)');
+        logger.info('  GET  /api/roles/:id');
+        logger.info('  PUT  /api/roles/:id');
+        logger.info('  GET  /api/roles/:id/permissions');
+        logger.info('  PUT  /api/roles/:id/permissions');
+        logger.info('  GET  /api/roles/:id/experts');
+        logger.info('  PUT  /api/roles/:id/experts');
 
         // 异步处理未回复的消息（不阻塞服务器启动）
         this.chatService.processUnrepliedMessages().catch(err => {

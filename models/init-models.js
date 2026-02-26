@@ -7,6 +7,7 @@ import _message from  "./message.js";
 import _permission from  "./permission.js";
 import _provider from  "./provider.js";
 import _role_permission from  "./role_permission.js";
+import _role_expert from  "./role_expert.js";
 import _role from  "./role.js";
 import _skill_parameter from  "./skill_parameter.js";
 import _skill_tool from  "./skill_tool.js";
@@ -24,6 +25,7 @@ export default function initModels(sequelize) {
   const permission = _permission.init(sequelize, DataTypes);
   const provider = _provider.init(sequelize, DataTypes);
   const role_permission = _role_permission.init(sequelize, DataTypes);
+  const role_expert = _role_expert.init(sequelize, DataTypes);
   const role = _role.init(sequelize, DataTypes);
   const skill_parameter = _skill_parameter.init(sequelize, DataTypes);
   const skill_tool = _skill_tool.init(sequelize, DataTypes);
@@ -37,6 +39,9 @@ export default function initModels(sequelize) {
   role.belongsToMany(permission, { as: 'permission_id_permissions', through: role_permission, foreignKey: "role_id", otherKey: "permission_id" });
   role.belongsToMany(user, { as: 'user_id_users', through: user_role, foreignKey: "role_id", otherKey: "user_id" });
   user.belongsToMany(role, { as: 'role_id_roles_user_roles', through: user_role, foreignKey: "user_id", otherKey: "role_id" });
+  // Role <-> Expert (through RoleExpert)
+  role.belongsToMany(expert, { as: 'expert_id_experts', through: role_expert, foreignKey: "role_id", otherKey: "expert_id" });
+  expert.belongsToMany(role, { as: 'role_id_roles', through: role_expert, foreignKey: "expert_id", otherKey: "role_id" });
   expert.belongsTo(ai_model, { as: "expressive_model", foreignKey: "expressive_model_id"});
   ai_model.hasMany(expert, { as: "experts", foreignKey: "expressive_model_id"});
   expert.belongsTo(ai_model, { as: "reflective_model", foreignKey: "reflective_model_id"});
@@ -57,6 +62,10 @@ export default function initModels(sequelize) {
   provider.hasMany(ai_model, { as: "ai_models", foreignKey: "provider_id"});
   role_permission.belongsTo(role, { as: "role", foreignKey: "role_id"});
   role.hasMany(role_permission, { as: "role_permissions", foreignKey: "role_id"});
+  role_expert.belongsTo(role, { as: "role", foreignKey: "role_id"});
+  role.hasMany(role_expert, { as: "role_experts", foreignKey: "role_id"});
+  role_expert.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
+  expert.hasMany(role_expert, { as: "role_experts", foreignKey: "expert_id"});
   user_role.belongsTo(role, { as: "role", foreignKey: "role_id"});
   role.hasMany(user_role, { as: "user_roles", foreignKey: "role_id"});
   expert_skill.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
@@ -84,6 +93,7 @@ export default function initModels(sequelize) {
     permission,
     provider,
     role_permission,
+    role_expert,
     role,
     skill_parameter,
     skill_tool,

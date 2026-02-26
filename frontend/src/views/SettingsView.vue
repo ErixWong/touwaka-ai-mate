@@ -366,6 +366,175 @@
       </div>
     </div>
 
+    <!-- 角色管理 -->
+    <div v-if="activeTab === 'role'" class="settings-section role-section">
+      <div class="split-panel">
+        <!-- 左侧：角色列表 -->
+        <div class="panel role-list-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">{{ $t('settings.roleManagement') }}</h3>
+          </div>
+
+          <div v-if="rolesLoading" class="loading-state">
+            {{ $t('common.loading') }}
+          </div>
+
+          <div v-else-if="rolesList.length === 0" class="empty-state">
+            {{ $t('settings.noRoles') }}
+          </div>
+
+          <div v-else class="role-list-container">
+            <div class="role-list">
+              <div
+                v-for="role in rolesList"
+                :key="role.id"
+                class="role-item"
+                :class="{ active: selectedRole?.id === role.id, system: role.is_system }"
+              >
+                <button
+                  class="role-name-btn"
+                  @click="selectRole(role)"
+                >
+                  <span class="role-name">{{ role.label || role.name }}</span>
+                  <span v-if="role.is_system" class="badge system">
+                    {{ $t('settings.builtinSkill') }}
+                  </span>
+                </button>
+                <button
+                  class="btn-edit"
+                  @click.stop="openRoleDialog(role)"
+                  :title="$t('common.edit')"
+                >
+                  {{ $t('common.edit') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：权限配置和专家访问权限 -->
+        <div class="panel role-detail-panel">
+          <div v-if="!selectedRole" class="empty-state select-role-hint">
+            {{ $t('settings.selectRoleHint') }}
+          </div>
+
+          <template v-else>
+            <!-- 子 Tab 切换 -->
+            <div class="role-sub-tabs">
+              <button
+                class="sub-tab-btn"
+                :class="{ active: roleSubTab === 'permissions' }"
+                @click="roleSubTab = 'permissions'"
+              >
+                {{ $t('settings.permissionConfig') }}
+              </button>
+              <button
+                class="sub-tab-btn"
+                :class="{ active: roleSubTab === 'experts' }"
+                @click="roleSubTab = 'experts'"
+              >
+                {{ $t('settings.expertAccess') }}
+              </button>
+            </div>
+
+            <!-- 权限配置 Tab -->
+            <div v-if="roleSubTab === 'permissions'" class="role-tab-content">
+              <div v-if="rolePermissionsLoading" class="loading-state">
+                {{ $t('common.loading') }}
+              </div>
+
+              <div v-else class="permissions-list">
+                <div
+                  v-for="permission in allPermissions"
+                  :key="permission.id"
+                  class="permission-item"
+                >
+                  <label class="permission-checkbox">
+                    <input
+                      type="checkbox"
+                      :value="permission.id"
+                      v-model="rolePermissionIds"
+                      @change="rolePermissionsChanged = true"
+                    />
+                    <span class="permission-info">
+                      <span class="permission-name">{{ permission.name }}</span>
+                      <span v-if="permission.description" class="permission-desc">
+                        {{ permission.description }}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div v-if="!rolePermissionsLoading && allPermissions.length === 0" class="empty-state">
+                {{ $t('settings.noPermissionsAvailable') }}
+              </div>
+
+              <div class="role-tab-footer">
+                <span class="permissions-count">
+                  {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
+                </span>
+                <button
+                  class="btn-confirm"
+                  :disabled="!rolePermissionsChanged"
+                  @click="saveRolePermissions"
+                >
+                  {{ $t('common.save') }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 专家访问权限 Tab -->
+            <div v-if="roleSubTab === 'experts'" class="role-tab-content">
+              <div v-if="roleExpertsLoading" class="loading-state">
+                {{ $t('common.loading') }}
+              </div>
+
+              <div v-else class="experts-list">
+                <div
+                  v-for="expert in allExperts"
+                  :key="expert.id"
+                  class="expert-access-item"
+                >
+                  <label class="expert-checkbox">
+                    <input
+                      type="checkbox"
+                      :value="expert.id"
+                      v-model="roleExpertIds"
+                      @change="roleExpertsChanged = true"
+                    />
+                    <span class="expert-info">
+                      <span class="expert-name">{{ expert.name }}</span>
+                      <span v-if="expert.introduction" class="expert-intro">
+                        {{ expert.introduction }}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div v-if="!roleExpertsLoading && allExperts.length === 0" class="empty-state">
+                {{ $t('settings.noExpertsAvailable') }}
+              </div>
+
+              <div class="role-tab-footer">
+                <span class="experts-count">
+                  {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
+                </span>
+                <button
+                  class="btn-confirm"
+                  :disabled="!roleExpertsChanged"
+                  @click="saveRoleExperts"
+                >
+                  {{ $t('common.save') }}
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1167,6 +1336,54 @@
         </div>
       </div>
     </div>
+
+    <!-- 角色编辑对话框 -->
+    <div v-if="showRoleDialog" class="dialog-overlay">
+      <div class="dialog">
+        <h3 class="dialog-title">
+          {{ $t('settings.editRole') }}
+        </h3>
+        <div class="dialog-body">
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.roleName') }}</label>
+            <input
+              v-model="roleForm.name"
+              type="text"
+              class="form-input"
+              disabled
+              :placeholder="$t('settings.roleNamePlaceholder')"
+            />
+            <p class="form-hint">{{ $t('settings.roleNameHint') }}</p>
+          </div>
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.roleLabel') }}</label>
+            <input
+              v-model="roleForm.label"
+              type="text"
+              class="form-input"
+              :placeholder="$t('settings.roleLabelPlaceholder')"
+            />
+          </div>
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.roleDescription') }}</label>
+            <textarea
+              v-model="roleForm.description"
+              class="form-input"
+              rows="3"
+              :placeholder="$t('settings.roleDescriptionPlaceholder')"
+            ></textarea>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <div class="footer-right">
+            <button class="btn-cancel" @click="closeRoleDialog">{{ $t('common.cancel') }}</button>
+            <button class="btn-confirm" :disabled="!isRoleFormValid" @click="saveRole">
+              {{ $t('common.save') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1178,8 +1395,8 @@ import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
-import { expertApi, userApi } from '@/api/services'
-import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest } from '@/types'
+import { expertApi, userApi, roleApi } from '@/api/services'
+import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest, Role, Permission, ExpertSimple, UpdateRoleRequest } from '@/types'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1194,6 +1411,7 @@ const tabs = computed(() => [
   { key: 'model', label: t('settings.modelAndProvider') },
   { key: 'expert', label: t('settings.expertSettings') },
   { key: 'user', label: t('settings.userManagement') },
+  { key: 'role', label: t('settings.roleManagement') },
   { key: 'about', label: t('settings.about') },
 ])
 
@@ -1380,6 +1598,32 @@ const deletingUser = ref<UserListItem | null>(null)
 
 // 用户头像上传 ref
 const userAvatarInput = ref<HTMLInputElement | null>(null)
+
+// 角色管理状态
+const selectedRole = ref<Role | null>(null)
+const roleSubTab = ref<'permissions' | 'experts'>('permissions')
+const allPermissions = ref<Permission[]>([])
+const allExperts = ref<ExpertSimple[]>([])
+const rolePermissionIds = ref<string[]>([])
+const roleExpertIds = ref<string[]>([])
+const rolePermissionsLoading = ref(false)
+const roleExpertsLoading = ref(false)
+const rolePermissionsChanged = ref(false)
+const roleExpertsChanged = ref(false)
+
+// 角色编辑对话框
+const showRoleDialog = ref(false)
+const editingRole = ref<Role | null>(null)
+const roleForm = reactive({
+  name: '',
+  label: '',
+  description: '',
+})
+
+// 角色表单验证
+const isRoleFormValid = computed(() => {
+  return roleForm.label?.trim()
+})
 
 // 用户表单验证
 const isUserFormValid = computed(() => {
@@ -1614,7 +1858,160 @@ watch(activeTab, (newTab) => {
   if (newTab === 'user' && usersList.value.length === 0) {
     loadUsers()
   }
+  if (newTab === 'role' && rolesList.value.length === 0) {
+    loadRolesForManagement()
+  }
 })
+
+// =====================
+// 角色管理方法
+// =====================
+
+// 加载角色列表（用于角色管理）
+const loadRolesForManagement = async () => {
+  rolesLoading.value = true
+  try {
+    const roles = await roleApi.getRoles()
+    rolesList.value = roles
+  } catch (err) {
+    console.error('加载角色列表失败:', err)
+    alert(t('settings.loadRolesFailed'))
+  } finally {
+    rolesLoading.value = false
+  }
+}
+
+// 加载所有权限列表
+const loadAllPermissions = async () => {
+  try {
+    const permissions = await roleApi.getAllPermissions()
+    allPermissions.value = permissions
+  } catch (err) {
+    console.error('加载权限列表失败:', err)
+    alert(t('settings.loadPermissionsFailed'))
+  }
+}
+
+// 加载所有专家列表
+const loadAllExperts = async () => {
+  try {
+    const experts = await roleApi.getAllExperts()
+    allExperts.value = experts
+  } catch (err) {
+    console.error('加载专家列表失败:', err)
+    alert(t('settings.loadExpertsFailed'))
+  }
+}
+
+// 选择角色
+const selectRole = async (role: Role) => {
+  selectedRole.value = role
+  roleSubTab.value = 'permissions'
+  
+  // 加载角色的权限配置
+  rolePermissionsLoading.value = true
+  roleExpertsLoading.value = true
+  
+  try {
+    const [permissionsData, expertsData] = await Promise.all([
+      roleApi.getRolePermissions(role.id),
+      roleApi.getRoleExperts(role.id),
+    ])
+    rolePermissionIds.value = permissionsData.permission_ids || []
+    roleExpertIds.value = expertsData.expert_ids || []
+    rolePermissionsChanged.value = false
+    roleExpertsChanged.value = false
+  } catch (err) {
+    console.error('加载角色配置失败:', err)
+  } finally {
+    rolePermissionsLoading.value = false
+    roleExpertsLoading.value = false
+  }
+}
+
+// 打开角色编辑对话框
+const openRoleDialog = (role: Role) => {
+  editingRole.value = role
+  roleForm.name = role.name
+  roleForm.label = role.label || ''
+  roleForm.description = role.description || ''
+  showRoleDialog.value = true
+}
+
+// 关闭角色编辑对话框
+const closeRoleDialog = () => {
+  showRoleDialog.value = false
+  editingRole.value = null
+}
+
+// 保存角色基本信息
+const saveRole = async () => {
+  if (!editingRole.value) return
+  
+  try {
+    const updateData: UpdateRoleRequest = {
+      label: roleForm.label,
+      description: roleForm.description,
+    }
+    await roleApi.updateRole(editingRole.value.id, updateData)
+    
+    // 更新本地列表
+    const index = rolesList.value.findIndex(r => r.id === editingRole.value!.id)
+    if (index !== -1) {
+      rolesList.value[index] = {
+        ...rolesList.value[index],
+        label: roleForm.label,
+        description: roleForm.description,
+      }
+    }
+    
+    // 更新选中角色
+    if (selectedRole.value?.id === editingRole.value.id) {
+      selectedRole.value = {
+        ...selectedRole.value,
+        label: roleForm.label,
+        description: roleForm.description,
+      }
+    }
+    
+    closeRoleDialog()
+  } catch (err) {
+    console.error('保存角色失败:', err)
+    alert(t('settings.saveRoleFailed'))
+  }
+}
+
+// 保存角色权限配置
+const saveRolePermissions = async () => {
+  if (!selectedRole.value) return
+  
+  try {
+    await roleApi.updateRolePermissions(selectedRole.value.id, {
+      permission_ids: rolePermissionIds.value,
+    })
+    rolePermissionsChanged.value = false
+    alert(t('settings.savePermissionsSuccess'))
+  } catch (err) {
+    console.error('保存权限配置失败:', err)
+    alert(t('settings.savePermissionsFailed'))
+  }
+}
+
+// 保存角色专家访问权限
+const saveRoleExperts = async () => {
+  if (!selectedRole.value) return
+  
+  try {
+    await roleApi.updateRoleExperts(selectedRole.value.id, {
+      expert_ids: roleExpertIds.value,
+    })
+    roleExpertsChanged.value = false
+    alert(t('settings.saveExpertsSuccess'))
+  } catch (err) {
+    console.error('保存专家访问权限失败:', err)
+    alert(t('settings.saveExpertsFailed'))
+  }
+}
 
 const saveProfile = async () => {
   await userStore.updatePreferences({
@@ -1988,6 +2385,9 @@ onMounted(() => {
   providerStore.loadProviders()
   // 加载所有专家列表（包括非活跃的）
   expertStore.loadExperts({})
+  // 加载权限列表和专家列表（用于角色管理）
+  loadAllPermissions()
+  loadAllExperts()
 })
 </script>
 
@@ -3148,5 +3548,242 @@ onMounted(() => {
   gap: 8px;
   font-size: 14px;
   color: var(--text-primary, #333);
+}
+
+/* 角色管理区域 */
+.role-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.role-list-panel {
+  flex: 0 0 280px;
+  border-right: 1px solid var(--border-color, #e0e0e0);
+  background: var(--secondary-bg, #f8f9fa);
+}
+
+.role-detail-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg, #fff);
+}
+
+.role-list-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.role-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.role-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: var(--card-bg, #fff);
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.role-item:hover {
+  background: var(--hover-bg, #e8e8e8);
+}
+
+.role-item.active {
+  background: var(--primary-light, #e3f2fd);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.role-item.system {
+  opacity: 0.8;
+}
+
+.role-name-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px;
+  min-width: 0;
+}
+
+.role-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge.system {
+  background: var(--secondary-bg, #e8e8e8);
+  color: var(--text-secondary, #666);
+}
+
+.select-role-hint {
+  color: var(--text-tertiary, #999);
+  font-style: italic;
+  padding: 60px 40px;
+}
+
+/* 子 Tab 切换 */
+.role-sub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--card-bg, #fff);
+}
+
+.sub-tab-btn {
+  padding: 14px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sub-tab-btn:hover {
+  color: var(--text-primary, #333);
+  background: var(--secondary-bg, #f5f5f5);
+}
+
+.sub-tab-btn.active {
+  color: var(--primary-color, #2196f3);
+  border-bottom-color: var(--primary-color, #2196f3);
+  background: var(--card-bg, #fff);
+}
+
+.role-tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.permissions-list,
+.experts-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  min-height: 0;
+  max-height: calc(100vh - 320px);
+}
+
+.permission-item,
+.expert-access-item {
+  margin-bottom: 8px;
+}
+
+.permission-checkbox,
+.expert-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.permission-checkbox:hover,
+.expert-checkbox:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--border-color, #e0e0e0);
+}
+
+.permission-checkbox input,
+.expert-checkbox input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--primary-color, #2196f3);
+}
+
+.permission-info,
+.expert-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.permission-name,
+.expert-access-item .expert-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+
+.permission-desc,
+.expert-access-item .expert-intro {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.role-tab-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  background: var(--card-bg, #fff);
+}
+
+.permissions-count,
+.experts-count {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+/* 响应式调整 - 角色管理 */
+@media (max-width: 768px) {
+  .role-list-panel {
+    flex: none;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+    max-height: 250px;
+  }
+
+  .role-detail-panel {
+    flex: none;
+    min-height: 300px;
+  }
+
+  .role-sub-tabs {
+    flex-wrap: wrap;
+  }
+
+  .sub-tab-btn {
+    flex: 1;
+    text-align: center;
+  }
 }
 </style>

@@ -229,3 +229,42 @@ export const debugApi = {
       apiClient.get('/debug/llm-payload', { params: { expert_id } })
     ),
 }
+
+// 角色管理相关 API（管理员专用）
+export const roleApi = {
+  // 获取角色列表
+  getRoles: () =>
+    apiRequest<import('@/types').Role[]>(apiClient.get('/roles')),
+
+  // 获取角色详情
+  getRole: (id: string) =>
+    apiRequest<import('@/types').RoleDetail>(apiClient.get(`/roles/${id}`)),
+
+  // 更新角色
+  updateRole: (id: string, data: import('@/types').UpdateRoleRequest) =>
+    apiRequest<import('@/types').Role>(apiClient.put(`/roles/${id}`, data)),
+
+  // 获取角色权限
+  getRolePermissions: (id: string) =>
+    apiRequest<{ permission_ids: string[] }>(apiClient.get(`/roles/${id}/permissions`)),
+
+  // 更新角色权限
+  updateRolePermissions: (id: string, data: import('@/types').UpdateRolePermissionsRequest) =>
+    apiRequest<void>(apiClient.put(`/roles/${id}/permissions`, data)),
+
+  // 获取角色专家访问权限
+  getRoleExperts: (id: string) =>
+    apiRequest<{ expert_ids: string[]; is_admin: boolean }>(apiClient.get(`/roles/${id}/experts`)),
+
+  // 更新角色专家访问权限
+  updateRoleExperts: (id: string, data: import('@/types').UpdateRoleExpertsRequest) =>
+    apiRequest<void>(apiClient.put(`/roles/${id}/experts`, data)),
+
+  // 获取所有权限列表（用于角色管理界面）
+  getAllPermissions: () =>
+    apiRequest<import('@/types').Permission[]>(apiClient.get('/roles/permissions/all')),
+
+  // 获取所有专家列表（用于角色管理界面）
+  getAllExperts: () =>
+    apiRequest<import('@/types').ExpertSimple[]>(apiClient.get('/roles/experts/all')),
+}
