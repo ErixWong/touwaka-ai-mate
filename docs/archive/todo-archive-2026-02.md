@@ -1271,3 +1271,91 @@ async grep(params) {
 **提交：** 031e44d
 
 ---
+
+## 设置界面用户管理 ✅
+
+**完成日期：** 2026-02-27
+
+**描述：** 在设置界面添加用户管理功能，支持用户 CRUD、角色选择和密码重置。
+
+**实现内容：**
+
+### 数据库
+- `users` 表添加 `role_id` 外键关联 `roles` 表
+
+### 后端 API
+- `GET /api/users` - 获取用户列表（支持分页）
+- `GET /api/users/:id` - 获取用户详情
+- `POST /api/users` - 创建用户
+- `PUT /api/users/:id` - 更新用户
+- `DELETE /api/users/:id` - 删除用户
+- `POST /api/users/:id/reset-password` - 重置密码
+
+### 前端功能
+- 用户管理 Tab（左侧用户列表，右侧编辑表单）
+- 用户创建/编辑 Modal
+- 角色选择下拉框
+- 密码重置功能
+- 国际化（中英文）
+
+**修改的文件：**
+- `models/user.js` - 添加 role_id 字段
+- `server/controllers/user.controller.js` - 用户 CRUD 控制器
+- `server/routes/user.routes.js` - 用户路由
+- `frontend/src/types/index.ts` - User 类型定义
+- `frontend/src/api/services.ts` - userApi 服务
+- `frontend/src/views/SettingsView.vue` - 用户管理 Tab
+- `frontend/src/i18n/locales/*.ts` - 国际化翻译
+
+**相关文档：** [tasks/user-management.md](../core/tasks/user-management.md)
+
+---
+
+## 角色管理界面 ✅
+
+**完成日期：** 2026-02-27
+
+**描述：** 在设置界面添加角色管理功能，支持角色权限配置和专家访问权限管理。
+
+**实现内容：**
+
+### 数据库
+- 新建 `role_experts` 关联表（角色-专家访问权限）
+
+### 后端 API
+- `GET /api/roles` - 获取角色列表
+- `GET /api/roles/:id` - 获取角色详情
+- `PUT /api/roles/:id` - 更新角色
+- `GET /api/roles/:id/permissions` - 获取角色权限
+- `PUT /api/roles/:id/permissions` - 更新角色权限
+- `GET /api/roles/:id/experts` - 获取角色专家访问权限
+- `PUT /api/roles/:id/experts` - 更新专家访问权限
+- `POST /api/roles` - 创建角色
+- `DELETE /api/roles/:id` - 删除角色
+
+### 前端功能
+- 角色管理 Tab（左侧角色列表，右侧权限配置）
+- 权限配置 Tab（勾选权限列表）
+- 专家访问权限 Tab（勾选可访问的专家）
+- 角色创建/编辑 Modal
+- 国际化（中英文）
+
+### Bug 修复
+- 权限列表滚动条问题：添加 `min-height: 0` 和 `max-height` 修复 Flexbox 滚动
+- 后端响应数据结构问题：将数据放入 `data` 字段，匹配前端 `apiRequest` 期望格式
+
+**修改的文件：**
+- `models/role_expert.js` - 新建模型
+- `models/init-models.js` - 添加 Role ↔ Expert 关联
+- `server/controllers/role.controller.js` - 角色控制器
+- `server/routes/role.routes.js` - 角色路由
+- `frontend/src/types/index.ts` - Role 类型定义
+- `frontend/src/api/services.ts` - roleApi 服务
+- `frontend/src/views/SettingsView.vue` - 角色管理 Tab
+- `frontend/src/i18n/locales/*.ts` - 国际化翻译
+
+**相关文档：** [tasks/role-management.md](../core/tasks/role-management.md)
+
+**提交：** abac8b7, df6131a
+
+---
