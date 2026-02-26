@@ -278,8 +278,13 @@ class SkillController {
       // 生成 ID（如�?SKILL.md 中没有指定）
       const id = skillData.id || Utils.newID(20);
 
-      // 创建永久存储目录
-      const permanentDir = path.join(process.cwd(), 'data', 'skills', 'installed', id);
+      // 创建永久存储目录（使用 DATA_BASE_PATH 环境变量）
+      const dataBasePath = process.env.DATA_BASE_PATH
+        ? (path.isAbsolute(process.env.DATA_BASE_PATH) 
+            ? process.env.DATA_BASE_PATH 
+            : path.join(process.cwd(), process.env.DATA_BASE_PATH))
+        : path.join(process.cwd(), 'data');
+      const permanentDir = path.join(dataBasePath, 'skills', 'installed', id);
       
       // 复制技能文件到永久目录
       await fs.mkdir(permanentDir, { recursive: true });
@@ -562,8 +567,13 @@ class SkillController {
         // 生成 ID（如�?SKILL.md 中没有指定）
         const id = skillData.id || Utils.newID(20);
 
-        // 创建永久存储目录
-        const permanentDir = path.join(process.cwd(), 'data', 'skills', 'installed', id);
+        // 创建永久存储目录（使用 DATA_BASE_PATH 环境变量）
+        const dataBasePath = process.env.DATA_BASE_PATH
+          ? (path.isAbsolute(process.env.DATA_BASE_PATH) 
+              ? process.env.DATA_BASE_PATH 
+              : path.join(process.cwd(), process.env.DATA_BASE_PATH))
+          : path.join(process.cwd(), 'data');
+        const permanentDir = path.join(dataBasePath, 'skills', 'installed', id);
         
         // 复制技能文件到永久目录
         await fs.mkdir(permanentDir, { recursive: true });

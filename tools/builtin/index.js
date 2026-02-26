@@ -26,8 +26,18 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..'); // tools/builtin -> tools -> project_root
 
 // 允许访问的根目录列表（只允许 data 目录，避�?AI 搞混当前目录�?
+// 解析 DATA_BASE_PATH（支持相对路径和绝对路径）
+function resolveDataBasePath() {
+  const basePath = process.env.DATA_BASE_PATH || './data';
+  if (path.isAbsolute(basePath)) {
+    return basePath;
+  }
+  return path.resolve(PROJECT_ROOT, basePath);
+}
+
+// 允许访问的根目录列表（只允许 data 目录，避免 AI 搞混当前目录）
 const ALLOWED_ROOTS = [
-  process.env.DATA_ROOT || path.join(PROJECT_ROOT, 'data'),
+  resolveDataBasePath(),
 ];
 
 // 默认配置

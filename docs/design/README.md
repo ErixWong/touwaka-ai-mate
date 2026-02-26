@@ -41,8 +41,10 @@ design/
 | [task-layer-design.md](./v2/task-layer-design.md) | Task Layer 核心设计 | 已采纳 |
 | [right-panel-design.md](./v2/right-panel-design.md) | 右侧多功能面板设计 | 已采纳 |
 | [context-compression-design.md](./v2/context-compression-design.md) | 上下文压缩设计 | 已采纳 |
+| [skill-management-tools-design.md](./v2/skill-management-tools-design.md) | 技能管理工具设计 | 已采纳 |
+| [skill-import-dialog-design.md](./v2/skill-import-dialog-design.md) | Skills Studio 专家设计 | 进行中 |
 | [skill-configuration-design.md](./v2/skill-configuration-design.md) | 技能配置化设计 | 进行中 |
-| [skill-market-design.md](./v2/skill-market-design.md) | 技能市场设计 | 草稿 |
+| [tool-permission-design.md](./v2/tool-permission-design.md) | 内置工具权限分级设计 | 进行中 |
 | [background-task-scheduler-design.md](./v2/background-task-scheduler-design.md) | 后台任务调度器 | 草稿 |
 | [code-review-2026-02-21.md](./v2/code-review-2026-02-21.md) | 代码审查记录 | - |
 
@@ -71,6 +73,22 @@ design/
 |------|------|
 | [readme-old.md](./archive/readme-old.md) | 旧版文档结构说明 |
 | [documentation-audit-report.md](./archive/documentation-audit-report.md) | 文档审查报告（已完成） |
+| [v2-obsolete/](./archive/v2-obsolete/) | 2026-02-26 归档的旧 Skill 设计 |
+
+#### v2-obsolete 归档（2026-02-26）
+
+这些文档基于旧的"LLM 分析导入"设计方案，已被新的"对话式导入"设计取代：
+
+| 文档 | 说明 |
+|------|------|
+| skill-market-design.md | 技能市场设计（复杂导入流程） |
+| skill-parameters-code-review.md | 参数配置代码审查 |
+| skill-fields-analysis.md | skills 表字段分析 |
+| skill-llm-analysis.md | LLM 异步分析方案 |
+
+新方案参见：
+- [skill-management-tools-design.md](./v2/skill-management-tools-design.md) - 技能管理工具设计
+- [skill-import-dialog-design.md](./v2/skill-import-dialog-design.md) - 对话式导入界面设计
 
 ---
 
@@ -83,4 +101,4 @@ design/
 
 ---
 
-*最后更新: 2026-02-24*
+*最后更新: 2026-02-26*
