@@ -797,7 +797,7 @@ async function initDatabase() {
     console.log(`\nTest accounts:`);
     console.log(`  Admin:    admin / admin@example.com / password123`);
     console.log(`  User:     test / test@example.com / password123`);
-    console.log(`\nExpert ID: ${data.expert.id}`);
+    console.log(`\nExpert ID: ${data.experts[0].id}`);
 
   } catch (error) {
     console.error('❌ Initialization failed:', error.message);
