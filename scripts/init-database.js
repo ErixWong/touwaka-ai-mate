@@ -199,7 +199,7 @@ const TABLES = [
   // 9. Messages 表（更新：添加 user_id, expert_id 字段）
   `CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(32) PRIMARY KEY,
-    topic_id VARCHAR(32) NOT NULL,
+    topic_id VARCHAR(32) DEFAULT NULL,
     user_id VARCHAR(32) NOT NULL COMMENT '消息所属用户ID，便于直接查询',
     expert_id VARCHAR(32) COMMENT '专家ID，便于直接查询',
     role ENUM('system', 'user', 'assistant') NOT NULL,
