@@ -31,6 +31,7 @@ export default {
     profile: 'Profile',
     logout: 'Logout',
     toggleSidebar: 'Toggle Sidebar',
+    skillsStudio: 'Skills Studio',
   },
 
   // Chat page
@@ -515,5 +516,21 @@ export default {
       errorInvalidName: 'Parameter name can only contain letters, numbers, underscores, and cannot start with a number',
     },
     manageParams: 'Manage Parameters',
+    // Skills Studio
+    registeredSkills: 'Registered Skills',
+    noSkills: 'No registered skills yet',
+    importHint: 'Type in the left panel: import skill [path]',
+    assignedExperts: 'Assigned Experts',
+    path: 'Path',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+  },
+  // Commands
+  commands: {
+    import: 'Import skill',
+    create: 'Create new skill',
+    list: 'List all skills',
+    assign: 'Assign skill to expert',
+    help: 'Show help',
   },
 }

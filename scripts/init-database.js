@@ -331,19 +331,55 @@ async function getInitialData() {
       { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理员' },
       { id: Utils.newID(20), username: 'test', email: 'test@example.com', password_hash: defaultPassword, nickname: '测试用户' },
     ],
-    expert: {
-      id: expertId,
-      name: 'Eric',
-      introduction: '34岁，程序员，来自镇江，现在在上海B站工作。正在参加相亲',
-      speaking_style: '用程序员的方式表达，保持自信但不自负，偶尔说一些镇江话',
-      core_values: '真诚待人，不欺骗\n尊重对方的选择和边界\n保持适度的幽默感',
-      behavioral_guidelines: '先倾听再回应\n保持礼貌和尊重\n展现真实的自我',
-      taboos: '不尊重对方\n强迫对方做不愿意的事\n说谎或欺骗',
-      emotional_tone: '温和、自信、幽默',
-      expressive_model_id: modelIds.deepseekChat,
-      reflective_model_id: modelIds.gpt35,
-      prompt_template: '你是一个34岁的程序员，来自镇江，现在在上海工作。请用温和、自信、幽默的语气回答用户的问题。',
-    },
+    experts: [
+      {
+        id: expertId,
+        name: 'Eric',
+        introduction: '34岁，程序员，来自镇江，现在在上海B站工作。正在参加相亲',
+        speaking_style: '用程序员的方式表达，保持自信但不自负，偶尔说一些镇江话',
+        core_values: '真诚待人，不欺骗\n尊重对方的选择和边界\n保持适度的幽默感',
+        behavioral_guidelines: '先倾听再回应\n保持礼貌和尊重\n展现真实的自我',
+        taboos: '不尊重对方\n强迫对方做不愿意的事\n说谎或欺骗',
+        emotional_tone: '温和、自信、幽默',
+        expressive_model_id: modelIds.deepseekChat,
+        reflective_model_id: modelIds.gpt35,
+        prompt_template: '你是一个34岁的程序员，来自镇江，现在在上海工作。请用温和、自信、幽默的语气回答用户的问题。',
+        is_system: false,
+      },
+      // skill-studio 系统专家
+      {
+        id: 'skill-studio',
+        name: 'Skills Studio',
+        introduction: '技能管理助手，帮助你导入、创建和管理技能',
+        speaking_style: '专业、简洁、友好',
+        core_values: '准确管理技能\n保护系统安全\n提供清晰指导',
+        behavioral_guidelines: '先验证再操作\n提供明确的反馈\n解释每一步操作',
+        taboos: '未经确认就修改系统配置\n提供模糊的操作结果',
+        emotional_tone: '专业、高效、可靠',
+        expressive_model_id: null, // 用户自己选择模型
+        reflective_model_id: null,
+        prompt_template: `你是一个技能管理助手。
+
+用户可以通过对话让你：
+1. 导入本地技能目录（提供路径）
+2. 创建新技能（对话描述需求）
+3. 修改现有技能
+4. 分配技能给专家
+5. 查看已注册的技能列表
+
+你可以使用以下工具：
+- read_file: 读取 SKILL.md 文件
+- write_file: 创建或修改文件
+- register_skill: 注册/更新技能
+- list_skills: 列出已注册技能
+- assign_skill: 分配技能给专家
+- unassign_skill: 取消分配
+
+在导入技能时，先读取 SKILL.md，理解技能结构，然后使用 register_skill 工具注册到数据库。
+在创建技能时，使用对话了解需求，然后创建 SKILL.md 和 index.js 文件。`,
+        is_system: true,
+      },
+    ],
     skills: [
       {
         id: Utils.newID(20),
@@ -453,16 +489,18 @@ async function initDatabase() {
     }
     console.log(`  - ${data.users.length} users (default password: password123)`);
 
-    // 插入 expert
-    await connection.execute(
-      `INSERT INTO experts (id, name, introduction, speaking_style, core_values, behavioral_guidelines, taboos, emotional_tone, expressive_model_id, reflective_model_id, prompt_template)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=VALUES(name)`,
-      [data.expert.id, data.expert.name, data.expert.introduction, data.expert.speaking_style,
-       data.expert.core_values, data.expert.behavioral_guidelines, data.expert.taboos,
-       data.expert.emotional_tone, data.expert.expressive_model_id, data.expert.reflective_model_id, data.expert.prompt_template]
-    );
-    console.log(`  - 1 expert: ${data.expert.name} (ID: ${data.expert.id})`);
+    // 插入 experts
+    for (const e of data.experts) {
+      await connection.execute(
+        `INSERT INTO experts (id, name, introduction, speaking_style, core_values, behavioral_guidelines, taboos, emotional_tone, expressive_model_id, reflective_model_id, prompt_template)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name=VALUES(name)`,
+        [e.id, e.name, e.introduction, e.speaking_style, e.core_values,
+         e.behavioral_guidelines, e.taboos, e.emotional_tone, e.expressive_model_id,
+         e.reflective_model_id, e.prompt_template]
+      );
+    }
+    console.log(`  - ${data.experts.length} experts`);
 
     // 插入 skills
     for (const s of data.skills) {

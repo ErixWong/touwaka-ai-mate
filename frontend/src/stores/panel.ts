@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type TabId = 'expert' | 'topics' | 'debug'
+export type TabId = 'expert' | 'topics' | 'debug' | 'skills'
 
 export const usePanelStore = defineStore('panel', () => {
   // State

@@ -26,30 +26,46 @@
         v-if="activeTab === 'topics'"
         @select="handleTopicSelect"
       />
+      <SkillsTab v-if="activeTab === 'skills'" />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { usePanelStore, type TabId } from '@/stores/panel'
 import { useUserStore } from '@/stores/user'
 import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
+import SkillsTab from './SkillsTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const route = useRoute()
 const panelStore = usePanelStore()
 const userStore = useUserStore()
 
 const activeTab = computed(() => panelStore.activeTab)
 
+// 判断是否是 skill-studio 专家模式
+const is_skill_studio = computed(() => {
+  return route.params.expertId === 'skill-studio'
+})
+
+// 根据当前专家自动切换默认 Tab
+onMounted(() => {
+  if (is_skill_studio.value && activeTab.value !== 'skills') {
+    panelStore.setActiveTab('skills')
+  }
+})
+
 watch(() => userStore.isAdmin, (isAdmin) => {
   if (!isAdmin && activeTab.value === 'debug') {
-    panelStore.setActiveTab('topics')
+    panelStore.setActiveTab(is_skill_studio.value ? 'skills' : 'topics')
   }
 }, { immediate: true })
 
@@ -58,9 +74,24 @@ interface Tab {
   label: string
   icon: string
   adminOnly?: boolean
+  skillStudioOnly?: boolean
 }
 
 const visibleTabs = computed<Tab[]>(() => {
+  // skill-studio 模式：显示 expert 和 skills Tab
+  if (is_skill_studio.value) {
+    const tabs: Tab[] = [
+      { id: 'expert', label: t('panel.expert'), icon: '👤' },
+      { id: 'skills', label: t('panel.skills') || '技能', icon: '🛠️' },
+      { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
+    ]
+    return tabs.filter(tab => {
+      if (tab.adminOnly && !userStore.isAdmin) return false
+      return true
+    })
+  }
+  
+  // 普通模式：显示 expert、topics Tab
   const tabs: Tab[] = [
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
@@ -68,9 +99,7 @@ const visibleTabs = computed<Tab[]>(() => {
   ]
   
   return tabs.filter(tab => {
-    if (tab.adminOnly && !userStore.isAdmin) {
-      return false
-    }
+    if (tab.adminOnly && !userStore.isAdmin) return false
     return true
   })
 })

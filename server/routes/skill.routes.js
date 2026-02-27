@@ -50,5 +50,19 @@ export default function createSkillRoutes(controller) {
   // POST /api/skills/:id/parameters - 保存技能参数（全量替换）
   router.post('/:id/parameters', controller.saveParameters.bind(controller));
 
+  // ==================== Skills Studio API ====================
+
+  // POST /api/skills/register - 注册技能（从本地路径）
+  router.post('/register', controller.register.bind(controller));
+
+  // POST /api/skills/assign - 分配技能给专家
+  router.post('/assign', controller.assign.bind(controller));
+
+  // POST /api/skills/unassign - 取消技能分配
+  router.post('/unassign', controller.unassign.bind(controller));
+
+  // PATCH /api/skills/:id/toggle - 启用/禁用技能
+  router.patch('/:id/toggle', controller.toggle.bind(controller));
+
   return router;
 }

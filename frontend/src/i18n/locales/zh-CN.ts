@@ -31,6 +31,7 @@ export default {
     profile: '个人中心',
     logout: '退出登录',
     toggleSidebar: '切换侧边栏',
+    skillsStudio: 'Skills Studio',
   },
 
   // 聊天页面
@@ -492,5 +493,21 @@ export default {
       errorInvalidName: '参数名只能包含字母、数字、下划线，且不能以数字开头',
     },
     manageParams: '管理参数',
+    // Skills Studio
+    registeredSkills: '已注册技能',
+    noSkills: '暂无已注册技能',
+    importHint: '在左侧对话中输入：帮我导入技能 [路径]',
+    assignedExperts: '已分配专家',
+    path: '路径',
+    enabled: '启用',
+    disabled: '禁用',
+  },
+  // 快捷指令
+  commands: {
+    import: '导入技能',
+    create: '创建新技能',
+    list: '列出所有技能',
+    assign: '分配技能给专家',
+    help: '显示帮助信息',
   },
 }

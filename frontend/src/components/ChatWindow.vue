@@ -70,15 +70,29 @@
       </div>
     </div>
 
+    <!-- 快捷指令提示 (skill-studio 模式) -->
+    <div v-if="showCommandHints && filteredCommands.length > 0" class="command-hints">
+      <div 
+        v-for="cmd in filteredCommands" 
+        :key="cmd.command"
+        class="command-item"
+        @click="applyCommand(cmd)"
+      >
+        <span class="command-name">{{ cmd.command }}</span>
+        <span class="command-desc">{{ cmd.description }}</span>
+      </div>
+    </div>
+
     <!-- 输入区域 -->
     <div class="input-area">
       <textarea
         ref="inputRef"
         v-model="inputText"
-        :placeholder="$t('chat.placeholder')"
+        :placeholder="placeholderText"
         :disabled="isLoading || disabled"
         @keydown.enter.exact.prevent="handleSend"
         @keydown.enter.shift.exact="() => {}"
+        @input="handleInput"
         rows="1"
         class="message-input"
       ></textarea>
@@ -95,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/types'
 
@@ -111,6 +125,8 @@ const props = defineProps<{
   isLoadingMore?: boolean
   expertAvatar?: string
   expertAvatarLarge?: string
+  showCommandHints?: boolean
+  customPlaceholder?: string
 }>()
 
 const emit = defineEmits<{
@@ -123,6 +139,46 @@ const { t } = useI18n()
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+// 快捷指令列表
+const commands = [
+  { command: '/import', description: t('commands.import') || '导入技能 (例: /import skills/searxng)', example: '/import skills/searxng' },
+  { command: '/create', description: t('commands.create') || '创建新技能', example: '/create 天气查询技能' },
+  { command: '/list', description: t('commands.list') || '列出所有技能', example: '/list' },
+  { command: '/assign', description: t('commands.assign') || '分配技能给专家 (例: /assign weather 给助手)', example: '/assign weather to expert_name' },
+  { command: '/help', description: t('commands.help') || '显示帮助信息', example: '/help' },
+]
+
+// 过滤后的指令
+const filteredCommands = computed(() => {
+  const text = inputText.value.trim()
+  if (!text.startsWith('/')) return []
+  
+  const query = text.toLowerCase()
+  return commands.filter(cmd => cmd.command.toLowerCase().startsWith(query))
+})
+
+// 占位符文本
+const placeholderText = computed(() => {
+  return props.customPlaceholder || t('chat.placeholder')
+})
+
+// 输入处理
+const handleInput = () => {
+  // 自动调整高度
+  nextTick(() => {
+    if (inputRef.value) {
+      inputRef.value.style.height = 'auto'
+      inputRef.value.style.height = inputRef.value.scrollHeight + 'px'
+    }
+  })
+}
+
+// 应用指令
+const applyCommand = (cmd: typeof commands[0]) => {
+  inputText.value = cmd.example
+  inputRef.value?.focus()
+}
 
 // 记录滚动位置，用于加载更多后恢复
 const scrollHeightBeforeLoad = ref(0)
@@ -560,5 +616,55 @@ defineExpose({
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* 快捷指令提示 */
+.command-hints {
+  position: absolute;
+  bottom: 100%;
+  left: 16px;
+  right: 16px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-bottom: 4px;
+}
+
+.command-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.command-item:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.command-item:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.command-item:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.command-name {
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color, #2196f3);
+  min-width: 80px;
+}
+
+.command-desc {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
 }
 </style>

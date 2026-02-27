@@ -19,6 +19,7 @@ import https from 'https';
 import { URL } from 'url';
 import { fileURLToPath } from 'url';
 import AdmZip from 'adm-zip';
+import skillManager from './skill-manager.js';
 
 // 获取项目根目录（从当前模块位置向上查找）
 const __filename = fileURLToPath(import.meta.url);
@@ -492,7 +493,9 @@ export default {
             required: ['url']
           }
         }
-      }
+      },
+      // 技能管理工具（仅 skill-studio 专家可用）
+      ...skillManager.getTools()
     ];
   },
 
@@ -563,6 +566,16 @@ export default {
           return await this.httpGet(params);
         case 'http_post':
           return await this.httpPost(params);
+        
+        // 技能管理工具
+        case 'register_skill':
+        case 'list_all_skills':
+        case 'get_skill_detail':
+        case 'assign_skill_to_expert':
+        case 'unassign_skill_from_expert':
+        case 'toggle_skill':
+        case 'delete_skill':
+          return await skillManager.execute(toolName, params, context);
         
         default:
           return { success: false, error: `Unknown tool: ${toolName}` };

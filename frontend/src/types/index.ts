@@ -353,11 +353,14 @@ export interface Skill {
   skill_md?: string
   
   // 安全信息
-  security_score: number
+  security_score?: number
   security_warnings?: string[]
   
   // 配置
   config?: string
+  
+  // 工具数量（列表查询时返回）
+  tool_count?: number
   
   // 工具清单（关联查询）
   tools?: SkillTool[]
@@ -366,6 +369,24 @@ export interface Skill {
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+/**
+ * 已分配专家信息（技能详情中返回）
+ */
+export interface SkillAssignedExpert {
+  id: string
+  name: string
+  introduction?: string
+  is_enabled: boolean
+}
+
+/**
+ * 技能详情（包含完整信息）
+ */
+export interface SkillDetail extends Skill {
+  tools: SkillTool[]
+  assigned_experts?: SkillAssignedExpert[]
 }
 
 /**

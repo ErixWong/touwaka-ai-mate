@@ -8,6 +8,7 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
+import { parseSkillMd, validateSkillPath } from '../../lib/skill-parser.js';
 import fs from 'fs/promises';
 import fsOriginal from 'fs';
 import path from 'path';
@@ -101,16 +102,25 @@ class SkillController {
   }
 
   /**
-   * 获取技能详情（含工具清单）
+   * 获取技能详情（含工具清单和已分配专家）
    */
   async get(ctx) {
     try {
       const { id } = ctx.params;
 
-      const skill = await this.Skill.findOne({
+      // 通过 ID 或名称查找
+      let skill = await this.Skill.findOne({
         where: { id },
         raw: true,
       });
+
+      if (!skill) {
+        // 尝试按名称查找
+        skill = await this.Skill.findOne({
+          where: { name: id },
+          raw: true,
+        });
+      }
 
       if (!skill) {
         ctx.error('技能不存在', 404);
@@ -119,7 +129,20 @@ class SkillController {
 
       // 获取工具清单
       const tools = await this.SkillTool.findAll({
-        where: { skill_id: id },
+        where: { skill_id: skill.id },
+        raw: true,
+      });
+
+      // 获取已分配的专家
+      const ExpertSkill = this.db.getModel('expert_skill');
+      const Expert = this.db.getModel('expert');
+      const assigned_experts = await ExpertSkill.findAll({
+        where: { skill_id: skill.id },
+        include: [{
+          model: Expert,
+          as: 'expert',
+          attributes: ['id', 'name', 'introduction'],
+        }],
         raw: true,
       });
 
@@ -130,7 +153,7 @@ class SkillController {
       } catch (e) {
         logger.warn(`Failed to parse tags for skill ${skill.id}:`, e.message);
       }
-      
+
       let securityWarnings = [];
       try {
         securityWarnings = skill.security_warnings
@@ -139,7 +162,7 @@ class SkillController {
       } catch (e) {
         logger.warn(`Failed to parse security_warnings for skill ${skill.id}:`, e.message);
       }
-      
+
       ctx.success({
         skill: {
           ...skill,
@@ -149,6 +172,12 @@ class SkillController {
           tools: tools.map(t => ({
             ...t,
             type: t.type || 'http',
+          })),
+          assigned_experts: assigned_experts.map(e => ({
+            id: e['expert.id'] || e.expert_id,
+            name: e['expert.name'] || 'Unknown',
+            introduction: e['expert.introduction'] || '',
+            is_enabled: !!e.is_enabled,
           })),
         }
       });
@@ -1284,6 +1313,281 @@ class SkillController {
       }
       logger.error('Save skill parameters error:', error);
       ctx.error('保存技能参数失�? ' + error.message, 500);
+    }
+  }
+
+  // ==================== Skills Studio API ====================
+
+  /**
+   * 注册技能（从本地路径）
+   * POST /api/skills/register
+   */
+  async register(ctx) {
+    try {
+      const { source_path, name: provided_name } = ctx.request.body;
+
+      if (!source_path) {
+        ctx.error('source_path is required', 400);
+        return;
+      }
+
+      // 安全验证：确保路径在允许的目录内
+      const PROJECT_ROOT = process.cwd();
+      const pathValidation = await validateSkillPath(source_path, PROJECT_ROOT, ['data', 'skills']);
+      
+      if (!pathValidation.valid) {
+        ctx.error(pathValidation.error || 'Invalid skill path', 400);
+        return;
+      }
+      
+      const full_path = pathValidation.fullPath;
+
+      // 读取 SKILL.md
+      const skill_md_path = path.join(full_path, 'SKILL.md');
+      if (!fsOriginal.existsSync(skill_md_path)) {
+        ctx.error(`SKILL.md not found in ${source_path}`, 404);
+        return;
+      }
+
+      const skill_md = fsOriginal.readFileSync(skill_md_path, 'utf-8');
+      const skill_info = parseSkillMd(skill_md);
+      const skill_name = provided_name || skill_info.name || path.basename(full_path);
+
+      // 检查 index.js 是否存在
+      const index_js_path = path.join(full_path, 'index.js');
+      if (!fsOriginal.existsSync(index_js_path)) {
+        ctx.error(`index.js not found in ${source_path}`, 404);
+        return;
+      }
+
+      // 检查是否已存在同名技能
+      const existing_skill = await this.Skill.findOne({
+        where: { name: skill_name },
+        raw: true,
+      });
+
+      const skill_id = existing_skill?.id || Utils.newID(20);
+      const is_update = !!existing_skill;
+
+      // 插入或更新技能
+      await this.Skill.upsert({
+        id: skill_id,
+        name: skill_name,
+        description: skill_info.description || '',
+        version: skill_info.version || '1.0.0',
+        author: skill_info.author || '',
+        tags: skill_info.tags ? JSON.stringify(skill_info.tags) : '[]',
+        source_type: 'local',
+        source_path: full_path,
+        skill_md,
+        is_active: true,
+      });
+
+      // 删除旧的工具定义
+      await this.SkillTool.destroy({ where: { skill_id } });
+
+      // 尝试加载 index.js 获取工具定义
+      try {
+        // 使用动态导入（添加时间戳避免缓存）
+        const index_module = await import(index_js_path + '?t=' + Date.now());
+        const skill_module = index_module.default || index_module;
+
+        if (skill_module.getTools && typeof skill_module.getTools === 'function') {
+          const tools = skill_module.getTools();
+
+          // 插入工具定义
+          for (const tool of tools) {
+            const tool_name = tool.function?.name || tool.name;
+            const tool_desc = tool.function?.description || tool.description;
+            const tool_params = tool.function?.parameters || tool.parameters;
+
+            await this.SkillTool.create({
+              id: Utils.newID(20),
+              skill_id,
+              name: tool_name,
+              description: tool_desc || '',
+              type: 'http',
+              parameters: tool_params ? JSON.stringify(tool_params) : '{}',
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn(`Could not parse tools from ${source_path}:`, err.message);
+      }
+
+      ctx.success({
+        skill_id,
+        name: skill_name,
+        action: is_update ? 'updated' : 'created',
+        message: `Skill "${skill_name}" ${is_update ? 'updated' : 'registered'} successfully`,
+      });
+    } catch (error) {
+      logger.error('Register skill error:', error);
+      ctx.error('注册技能失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 分配技能给专家
+   * POST /api/skills/assign
+   */
+  async assign(ctx) {
+    try {
+      const { skill_id, expert_id } = ctx.request.body;
+
+      if (!skill_id || !expert_id) {
+        ctx.error('skill_id and expert_id are required', 400);
+        return;
+      }
+
+      // 查找技能
+      const skill = await this.Skill.findOne({
+        where: { id: skill_id },
+        raw: true,
+      });
+      if (!skill) {
+        // 尝试按名称查找
+        const skill_by_name = await this.Skill.findOne({
+          where: { name: skill_id },
+          raw: true,
+        });
+        if (!skill_by_name) {
+          ctx.error(`Skill not found: ${skill_id}`, 404);
+          return;
+        }
+      }
+      const actual_skill_id = skill?.id || skill_id;
+
+      // 查找专家
+      const Expert = this.db.getModel('expert');
+      const expert = await Expert.findOne({
+        where: { id: expert_id },
+        raw: true,
+      });
+      if (!expert) {
+        // 尝试按名称查找
+        const expert_by_name = await Expert.findOne({
+          where: { name: expert_id },
+          raw: true,
+        });
+        if (!expert_by_name) {
+          ctx.error(`Expert not found: ${expert_id}`, 404);
+          return;
+        }
+      }
+      const actual_expert_id = expert?.id || expert_id;
+
+      // 检查是否已关联
+      const ExpertSkill = this.db.getModel('expert_skill');
+      const existing = await ExpertSkill.findOne({
+        where: { expert_id: actual_expert_id, skill_id: actual_skill_id },
+        raw: true,
+      });
+
+      if (existing) {
+        // 更新为启用状态
+        await ExpertSkill.update(
+          { is_enabled: true },
+          { where: { id: existing.id } }
+        );
+        ctx.success({ message: 'Skill already assigned, enabled now' });
+        return;
+      }
+
+      // 创建关联
+      await ExpertSkill.create({
+        id: Utils.newID(20),
+        expert_id: actual_expert_id,
+        skill_id: actual_skill_id,
+        is_enabled: true,
+      });
+
+      ctx.success({ message: 'Skill assigned to expert successfully' });
+    } catch (error) {
+      logger.error('Assign skill error:', error);
+      ctx.error('分配技能失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 取消技能分配
+   * POST /api/skills/unassign
+   */
+  async unassign(ctx) {
+    try {
+      const { skill_id, expert_id } = ctx.request.body;
+
+      if (!skill_id || !expert_id) {
+        ctx.error('skill_id and expert_id are required', 400);
+        return;
+      }
+
+      // 查找技能
+      const skill = await this.Skill.findOne({
+        where: { id: skill_id },
+        raw: true,
+      });
+      const actual_skill_id = skill?.id || skill_id;
+
+      // 查找专家
+      const Expert = this.db.getModel('expert');
+      const expert = await Expert.findOne({
+        where: { id: expert_id },
+        raw: true,
+      });
+      const actual_expert_id = expert?.id || expert_id;
+
+      // 删除关联
+      const ExpertSkill = this.db.getModel('expert_skill');
+      const result = await ExpertSkill.destroy({
+        where: {
+          expert_id: actual_expert_id,
+          skill_id: actual_skill_id,
+        },
+      });
+
+      if (result === 0) {
+        ctx.error('Skill was not assigned to this expert', 404);
+        return;
+      }
+
+      ctx.success({ message: 'Skill unassigned from expert successfully' });
+    } catch (error) {
+      logger.error('Unassign skill error:', error);
+      ctx.error('取消分配失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 启用/禁用技能
+   * PATCH /api/skills/:id/toggle
+   */
+  async toggle(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { is_active } = ctx.request.body;
+
+      const skill = await this.Skill.findOne({
+        where: { id },
+        raw: true,
+      });
+
+      if (!skill) {
+        ctx.error('Skill not found', 404);
+        return;
+      }
+
+      await this.Skill.update(
+        { is_active: is_active ? 1 : 0 },
+        { where: { id } }
+      );
+
+      ctx.success({
+        message: `Skill "${skill.name}" ${is_active ? 'enabled' : 'disabled'}`,
+      });
+    } catch (error) {
+      logger.error('Toggle skill error:', error);
+      ctx.error('切换技能状态失败: ' + error.message, 500);
     }
   }
 }

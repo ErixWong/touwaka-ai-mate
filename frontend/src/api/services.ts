@@ -12,6 +12,23 @@ import type {
   ModelProvider,
   ProviderFormData,
   ModelFormData,
+  ExpertSkill,
+  ExpertSkillConfig,
+  UserListResponse,
+  UserListItem,
+  CreateUserRequest,
+  UpdateUserRequest,
+  ResetPasswordRequest,
+  UpdateUserRolesRequest,
+  Role,
+  RoleDetail,
+  UpdateRoleRequest,
+  UpdateRolePermissionsRequest,
+  UpdateRoleExpertsRequest,
+  Permission,
+  ExpertSimple,
+  Skill,
+  SkillDetail,
 } from '@/types'
 
 /**
@@ -123,11 +140,11 @@ export const expertApi = {
 
   // 获取专家技能列表（包含所有可用技能及启用状态）
   getExpertSkills: (id: string) =>
-    apiRequest<{ skills: import('@/types').ExpertSkill[] }>(apiClient.get(`/experts/${id}/skills`)),
+    apiRequest<{ skills: ExpertSkill[] }>(apiClient.get(`/experts/${id}/skills`)),
 
   // 批量更新专家技能
-  updateExpertSkills: (id: string, skills: import('@/types').ExpertSkillConfig[]) =>
-    apiRequest<{ skills: import('@/types').ExpertSkillConfig[] }>(apiClient.post(`/experts/${id}/skills`, { skills })),
+  updateExpertSkills: (id: string, skills: ExpertSkillConfig[]) =>
+    apiRequest<{ skills: ExpertSkillConfig[] }>(apiClient.post(`/experts/${id}/skills`, { skills })),
 }
 
 // 用户相关 API
@@ -148,14 +165,14 @@ export const userApi = {
 
   // 获取用户列表
   getUsers: (params?: { page?: number; size?: number; search?: string }) =>
-    apiRequest<import('@/types').UserListResponse>(apiClient.get('/users', { params })),
+    apiRequest<UserListResponse>(apiClient.get('/users', { params })),
 
   // 创建用户
-  createUser: (data: import('@/types').CreateUserRequest) =>
-    apiRequest<import('@/types').UserListItem>(apiClient.post('/users', data)),
+  createUser: (data: CreateUserRequest) =>
+    apiRequest<UserListItem>(apiClient.post('/users', data)),
 
   // 更新用户
-  updateUser: (id: string, data: import('@/types').UpdateUserRequest) =>
+  updateUser: (id: string, data: UpdateUserRequest) =>
     apiRequest<void>(apiClient.put(`/users/${id}`, data)),
 
   // 删除用户
@@ -163,15 +180,15 @@ export const userApi = {
     apiRequest<void>(apiClient.delete(`/users/${id}`)),
 
   // 重置用户密码
-  resetPassword: (id: string, data: import('@/types').ResetPasswordRequest) =>
+  resetPassword: (id: string, data: ResetPasswordRequest) =>
     apiRequest<void>(apiClient.post(`/users/${id}/reset-password`, data)),
 
   // 获取角色列表
   getRoles: () =>
-    apiRequest<import('@/types').Role[]>(apiClient.get('/users/roles')),
+    apiRequest<Role[]>(apiClient.get('/users/roles')),
 
   // 更新用户角色
-  updateUserRoles: (id: string, data: import('@/types').UpdateUserRolesRequest) =>
+  updateUserRoles: (id: string, data: UpdateUserRolesRequest) =>
     apiRequest<void>(apiClient.put(`/users/${id}/roles`, data)),
 }
 
@@ -230,26 +247,71 @@ export const debugApi = {
     ),
 }
 
+// 技能管理相关 API（Skills Studio 使用）
+export const skill_api = {
+  // 列出所有已注册的技能
+  list_all_skills: (params?: { include_inactive?: boolean }) =>
+    apiRequest<{ success: boolean; total: number; skills: Skill[] }>(
+      apiClient.get('/skills', { params })
+    ),
+
+  // 获取技能详情
+  get_skill_detail: (skill_id: string) =>
+    apiRequest<{ success: boolean; skill: SkillDetail }>(
+      apiClient.get(`/skills/${skill_id}`)
+    ),
+
+  // 注册技能（从本地路径）
+  register_skill: (data: { source_path: string; name?: string }) =>
+    apiRequest<{ success: boolean; skill_id: string; name: string; action: string; message: string }>(
+      apiClient.post('/skills/register', data)
+    ),
+
+  // 分配技能给专家
+  assign_skill_to_expert: (data: { skill_id: string; expert_id: string }) =>
+    apiRequest<{ success: boolean; message: string }>(
+      apiClient.post('/skills/assign', data)
+    ),
+
+  // 取消技能分配
+  unassign_skill_from_expert: (data: { skill_id: string; expert_id: string }) =>
+    apiRequest<{ success: boolean; message: string }>(
+      apiClient.post('/skills/unassign', data)
+    ),
+
+  // 启用/禁用技能
+  toggle_skill: (skill_id: string, is_active: boolean) =>
+    apiRequest<{ success: boolean; message: string }>(
+      apiClient.patch(`/skills/${skill_id}/toggle`, { is_active })
+    ),
+
+  // 删除技能
+  delete_skill: (skill_id: string) =>
+    apiRequest<{ success: boolean; message: string }>(
+      apiClient.delete(`/skills/${skill_id}`)
+    ),
+}
+
 // 角色管理相关 API（管理员专用）
 export const roleApi = {
   // 获取角色列表
   getRoles: () =>
-    apiRequest<import('@/types').Role[]>(apiClient.get('/roles')),
+    apiRequest<Role[]>(apiClient.get('/roles')),
 
   // 获取角色详情
   getRole: (id: string) =>
-    apiRequest<import('@/types').RoleDetail>(apiClient.get(`/roles/${id}`)),
+    apiRequest<RoleDetail>(apiClient.get(`/roles/${id}`)),
 
   // 更新角色
-  updateRole: (id: string, data: import('@/types').UpdateRoleRequest) =>
-    apiRequest<import('@/types').Role>(apiClient.put(`/roles/${id}`, data)),
+  updateRole: (id: string, data: UpdateRoleRequest) =>
+    apiRequest<Role>(apiClient.put(`/roles/${id}`, data)),
 
   // 获取角色权限
   getRolePermissions: (id: string) =>
     apiRequest<{ permission_ids: string[] }>(apiClient.get(`/roles/${id}/permissions`)),
 
   // 更新角色权限
-  updateRolePermissions: (id: string, data: import('@/types').UpdateRolePermissionsRequest) =>
+  updateRolePermissions: (id: string, data: UpdateRolePermissionsRequest) =>
     apiRequest<void>(apiClient.put(`/roles/${id}/permissions`, data)),
 
   // 获取角色专家访问权限
@@ -257,14 +319,14 @@ export const roleApi = {
     apiRequest<{ expert_ids: string[]; is_admin: boolean }>(apiClient.get(`/roles/${id}/experts`)),
 
   // 更新角色专家访问权限
-  updateRoleExperts: (id: string, data: import('@/types').UpdateRoleExpertsRequest) =>
+  updateRoleExperts: (id: string, data: UpdateRoleExpertsRequest) =>
     apiRequest<void>(apiClient.put(`/roles/${id}/experts`, data)),
 
   // 获取所有权限列表（用于角色管理界面）
   getAllPermissions: () =>
-    apiRequest<import('@/types').Permission[]>(apiClient.get('/roles/permissions/all')),
+    apiRequest<Permission[]>(apiClient.get('/roles/permissions/all')),
 
   // 获取所有专家列表（用于角色管理界面）
   getAllExperts: () =>
-    apiRequest<import('@/types').ExpertSimple[]>(apiClient.get('/roles/experts/all')),
+    apiRequest<ExpertSimple[]>(apiClient.get('/roles/experts/all')),
 }
