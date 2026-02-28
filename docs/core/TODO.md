@@ -8,6 +8,8 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
+| [内置技能精简方案](tasks/builtin-skill-simplify.md) | ⏳ 待开始 | 高 |
 | [反思心智模板配置化](tasks/reflective-mind-template.md) | ⏳ 待开始 | 中 |
 | [运行时参数配置界面](tasks/runtime-config.md) | ⏳ 待开始 | 中 |
 
