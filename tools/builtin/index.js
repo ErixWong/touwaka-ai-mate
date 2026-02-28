@@ -20,6 +20,7 @@ import { URL } from 'url';
 import { fileURLToPath } from 'url';
 import AdmZip from 'adm-zip';
 import skillManager from './skill-manager.js';
+import { hasSkillAccess, filterSkillsByRole, SKILL_META } from '../../lib/skill-meta.js';
 
 // 获取项目根目录（从当前模块位置向上查找）
 const __filename = fileURLToPath(import.meta.url);
@@ -643,10 +644,20 @@ export default {
         [expertId]
       );
 
-      // 2. 如果需要工具列表，查询 skill_tools �?
+      // 2. 根据用户角色过滤技能（Phase 2 权限集成）
+      const filteredSkills = skills.filter(skill => {
+        const skillName = skill.name || skill.id;
+        const meta = SKILL_META[skillName];
+        if (meta) {
+          return hasSkillAccess(userRole, skillName);
+        }
+        return true;
+      });
+
+      // 3. 如果需要工具列表，查询 skill_tools �?
       let skillTools = [];
-      if (include_tools && skills.length > 0) {
-        const skillIds = skills.map(s => s.id);
+      if (include_tools && filteredSkills.length > 0) {
+        const skillIds = filteredSkills.map(s => s.id);
         const placeholders = skillIds.map(() => '?').join(',');
         skillTools = await db.query(
           `SELECT id, skill_id, name, description, type, \`parameters\`, command, endpoint, method, created_at
@@ -657,7 +668,7 @@ export default {
       }
 
       // 3. 组装结果
-      const result = skills.map(skill => {
+      const result = filteredSkills.map(skill => {
         const skillData = {
           id: skill.id,
           name: skill.name,
