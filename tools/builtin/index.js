@@ -20,7 +20,8 @@ import { URL } from 'url';
 import { fileURLToPath } from 'url';
 import AdmZip from 'adm-zip';
 import skillManager from './skill-manager.js';
-import { hasSkillAccess, filterSkillsByRole, SKILL_META } from '../../lib/skill-meta.js';
+import { hasSkillAccess, filterSkillsByRole, SKILL_META, validateSkillAccess } from '../../lib/skill-meta.js';
+import SandboxExecutor from '../../lib/sandbox-executor.js';
 
 // 获取项目根目录（从当前模块位置向上查找）
 const __filename = fileURLToPath(import.meta.url);
@@ -504,6 +505,17 @@ export default {
    * 执行工具调用
    */
   async execute(toolName, params, context) {
+    // Phase 2 权限检查（安全修复）
+    const userRole = context?.user_role || 'user';
+    const validation = validateSkillAccess(userRole, toolName);
+    if (!validation.allowed) {
+      return {
+        success: false,
+        error: validation.error,
+        permissionDenied: true,
+      };
+    }
+
     try {
       switch (toolName) {
         // 环境信息
@@ -1191,15 +1203,70 @@ export default {
 
   // ==================== 执行�?====================
 
-  async executeCommand(params) {
+  
+  /**
+   * 执行命令（使用沙箱隔离）
+   * 安全修复：所有命令都通过 SandboxExecutor 在沙箱中执行
+   */
+  async executeCommand(params, context) {
     const { command, args = [], timeout = DEFAULTS.executeTimeout, cwd } = params;
     
-    // 检查危险命�?
+    // 检查危险命令
     if (isDangerousCommand(command)) {
       return { success: false, error: `Dangerous command blocked: ${command}` };
     }
     
-    // 默认使用第一个允许的根目录（skills）作为工作目�?
+    // 获取用户信息（用于沙箱隔离）
+    const userId = context?.userId || 'anonymous';
+    const userRole = context?.user_role || 'user';
+    
+    // 构建完整命令
+    let fullCommand = command;
+    if (args && args.length > 0) {
+      fullCommand = `${command} ${args.map(a => `"${a}"`).join(' ')}`;
+    }
+    
+    try {
+      // 使用沙箱执行器
+      const sandboxExecutor = new SandboxExecutor();
+      const result = await sandboxExecutor.execute(userId, userRole, fullCommand, {
+        timeout,
+        cwd,
+      });
+      
+      return {
+        success: result.success,
+        exitCode: result.code,
+        stdout: result.stdout?.slice(0, 10000) || '',
+        stderr: result.stderr?.slice(0, 5000) || '',
+        timedOut: result.timedOut || false,
+        sandboxed: true,
+      };
+    } catch (error) {
+      // 沙箱不可用时的降级处理
+      if (error.message.includes('Unsupported platform')) {
+        console.warn(`[executeCommand] Sandbox not available: ${error.message}`);
+        return this.executeCommandFallback(params, context);
+      }
+      
+      return {
+        success: false,
+        error: error.message,
+        sandboxed: false,
+      };
+    }
+  }
+
+  /**
+   * 命令执行降级方案（无沙箱）
+   */
+  async executeCommandFallback(params, context) {
+    const { command, args = [], timeout = DEFAULTS.executeTimeout, cwd } = params;
+    
+    if (isDangerousCommand(command)) {
+      return { success: false, error: `Dangerous command blocked: ${command}` };
+    }
+    
     const workDir = cwd ? safePath(cwd) : ALLOWED_ROOTS[0];
     
     return new Promise((resolve) => {
@@ -1207,11 +1274,9 @@ export default {
       let stderr = '';
       let timedOut = false;
       
-      // 解析命令
       let cmd = command;
       let cmdArgs = [...args];
       
-      // 处理脚本文件
       if (command.endsWith('.sh')) {
         cmd = 'bash';
         cmdArgs = [command, ...args];
@@ -1229,32 +1294,24 @@ export default {
         timeout
       });
       
-      proc.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      proc.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
+      proc.stdout.on('data', (data) => stdout += data.toString());
+      proc.stderr.on('data', (data) => stderr += data.toString());
       
       proc.on('close', (code) => {
         resolve({
           success: code === 0,
           exitCode: code,
-          stdout: stdout.slice(0, 10000), // 限制输出大小
+          stdout: stdout.slice(0, 10000),
           stderr: stderr.slice(0, 5000),
-          timedOut
+          timedOut,
+          sandboxed: false,
         });
       });
       
       proc.on('error', (error) => {
-        resolve({
-          success: false,
-          error: error.message
-        });
+        resolve({ success: false, error: error.message, sandboxed: false });
       });
       
-      // 超时处理
       setTimeout(() => {
         timedOut = true;
         proc.kill();
