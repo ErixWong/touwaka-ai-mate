@@ -23,6 +23,15 @@ import skillManager from './skill-manager.js';
 import { hasSkillAccess, filterSkillsByRole, SKILL_META, validateSkillAccess } from '../../lib/skill-meta.js';
 import SandboxExecutor from '../../lib/sandbox-executor.js';
 
+// 沙箱执行器单例
+let sandboxExecutorInstance = null;
+function getSandboxExecutor() {
+  if (!sandboxExecutorInstance) {
+    sandboxExecutorInstance = new SandboxExecutor();
+  }
+  return sandboxExecutorInstance;
+}
+
 // 获取项目根目录（从当前模块位置向上查找）
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1227,8 +1236,8 @@ export default {
     }
     
     try {
-      // 使用沙箱执行器
-      const sandboxExecutor = new SandboxExecutor();
+      // 使用沙箱执行器（单例）
+      const sandboxExecutor = getSandboxExecutor();
       const result = await sandboxExecutor.execute(userId, userRole, fullCommand, {
         timeout,
         cwd,

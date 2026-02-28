@@ -14,7 +14,7 @@
 
 | 平台 | 沙箱方案 | 安装要求 |
 |------|----------|----------|
-| Windows | Sandboxie Plus | [下载地址](https://github.com/sandboxie-plus/Sandboxie) |
+| Windows | Sandboxie Plus | [GitHub Release](https://github.com/sandboxie-plus/Sandboxie/releases) *(链接验证: 2026-02-28)* |
 | Linux | Firejail | `sudo apt install firejail` |
 
 ---
