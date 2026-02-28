@@ -3,6 +3,43 @@
 **日期：** 2026-02-28
 **审查人：** Maria 🌸
 **范围：** 当前已完成的核心代码
+**最后更新：** 2026-02-28 18:25
+
+---
+
+## 🔧 修复记录 (2026-02-28 18:14)
+
+### ✅ 已修复问题
+
+| 优先级 | 问题 | 解决方案 | 状态 |
+|--------|------|----------|------|
+| 🔴 P0 | Firejail 环境变量占位符未替换 | 新增 `buildFirejailArgs()` 方法，动态构建权限参数 | ✅ 已修复 |
+| 🔴 P1 | Sandboxie 沙箱创建不完整 | 新增 `checkSandboxConfig()` + `generateSandboxConfig()` 方法 | ✅ 已修复 |
+| 🟡 P2 | 数据库回滚脚本缺失 | 创建 `20260228-add-role-level.rollback.sql` | ✅ 已添加 |
+
+### 修改的文件
+
+1. **`lib/firejail-executor.js`**
+   - 新增 `buildFirejailArgs()` - 根据角色动态构建 Firejail 参数
+   - 新增 `getProcessedProfileContent()` - 处理配置文件变量替换
+   - 移除对配置文件中 `${USER_ID}` 占位符的依赖
+
+2. **`lib/sandboxie-executor.js`**
+   - 新增 `checkSandboxConfig()` - 检测沙箱是否已配置
+   - 新增 `generateSandboxConfig()` - 生成沙箱配置内容
+   - 改进 `execute()` - 执行前检查配置，未配置则返回提示
+
+3. **`scripts/migrations/20260228-add-role-level.rollback.sql`**（新建）
+   - 数据库回滚脚本
+
+### Git 提交
+
+```
+commit d3a65c9
+feat: 用户隔离架构 Phase 1 - 沙箱执行器
+
+11 files changed, 1778 insertions(+)
+```
 
 ---
 
