@@ -111,7 +111,7 @@ const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
-const { isBackendAvailable, waitForBackend } = useNetworkStatus()
+const { isBackendAvailable, waitForBackend, pauseHealthCheck, resumeHealthCheck } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 const sseConnection = ref<ReturnType<typeof import('@/utils/fetchSSE').fetchSSE> | null>(null)
@@ -278,6 +278,8 @@ const connectToExpert = (expert_id: string) => {
           isConnected.value = true
           reconnectAttempts.value = 0
           isReconnecting.value = false
+          // SSE 连接活跃，暂停 health 检查（SSE 心跳已能检测后端可用性）
+          pauseHealthCheck()
           break
           
         case 'start':
@@ -427,6 +429,9 @@ const connectToExpert = (expert_id: string) => {
     onError: (error) => {
       console.error('SSE error:', error)
       isConnected.value = false
+      
+      // SSE 断开，恢复 health 检查
+      resumeHealthCheck()
       
       // 自动重连逻辑
       if (!isReconnecting.value && reconnectAttempts.value < MAX_RECONNECT_ATTEMPTS) {
@@ -584,6 +589,8 @@ watch(
         sseConnection.value.close()
         sseConnection.value = null
         isConnected.value = false
+        // SSE 断开，恢复 health 检查
+        resumeHealthCheck()
       }
     }
   },
@@ -632,6 +639,8 @@ onUnmounted(() => {
     sseConnection.value.close()
     sseConnection.value = null
   }
+  // SSE 断开，恢复 health 检查
+  resumeHealthCheck()
   // 清理重连定时器
   clearReconnectTimer()
   // 清理流式更新 RAF

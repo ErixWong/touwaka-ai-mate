@@ -3,11 +3,14 @@ import apiClient from '@/api/client'
 
 /**
  * 网络状态检测 Composable
- * 
+ *
  * 用于检测后端服务是否可用，支持：
- * - 定期健康检查
+ * - 定期健康检查（可被 SSE 心跳替代）
  * - 网络状态变化监听
  * - 后端恢复自动检测
+ *
+ * 当 SSE 连接活跃时，可以调用 pauseHealthCheck() 暂停健康检查，
+ * 因为 SSE 心跳已经能够检测后端可用性。
  */
 
 const CHECK_INTERVAL = 5000 // 健康检查间隔 5 秒
@@ -18,6 +21,7 @@ export function useNetworkStatus() {
   const isBackendAvailable = ref(true)
   const isChecking = ref(false)
   const lastCheckTime = ref<Date | null>(null)
+  const isHealthCheckPaused = ref(false) // 是否暂停健康检查（SSE 活跃时）
   
   let checkTimer: ReturnType<typeof setInterval> | null = null
   let abortController: AbortController | null = null
@@ -73,6 +77,10 @@ export function useNetworkStatus() {
     
     // 定期检查
     checkTimer = setInterval(() => {
+      // 如果健康检查被暂停（SSE 活跃），跳过本次检查
+      if (isHealthCheckPaused.value) {
+        return
+      }
       checkHealth()
     }, CHECK_INTERVAL)
   }
@@ -89,6 +97,26 @@ export function useNetworkStatus() {
       abortController.abort()
       abortController = null
     }
+  }
+
+  /**
+   * 暂停健康检查（当 SSE 连接活跃时调用）
+   * SSE 心跳已经能够检测后端可用性，无需额外的 health 检查
+   */
+  const pauseHealthCheck = () => {
+    isHealthCheckPaused.value = true
+    // 同时标记后端可用（因为 SSE 连接活跃）
+    isBackendAvailable.value = true
+    lastCheckTime.value = new Date()
+  }
+
+  /**
+   * 恢复健康检查（当 SSE 连接断开时调用）
+   */
+  const resumeHealthCheck = () => {
+    isHealthCheckPaused.value = false
+    // 立即执行一次检查
+    checkHealth()
   }
 
   /**
@@ -138,9 +166,12 @@ export function useNetworkStatus() {
     isBackendAvailable,
     isChecking,
     lastCheckTime,
+    isHealthCheckPaused,
     checkHealth,
     startHealthCheck,
     stopHealthCheck,
+    pauseHealthCheck,
+    resumeHealthCheck,
     waitForBackend,
   }
 }
