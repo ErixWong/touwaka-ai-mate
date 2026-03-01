@@ -376,6 +376,18 @@ const connectToExpert = (expert_id: string) => {
     }
   })
 
+  // 监听 topic_updated 事件，刷新 Topic 列表
+  eventSource.value.addEventListener('topic_updated', (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      console.log('Topic updated:', data)
+      // 刷新 Topic 列表
+      chatStore.loadTopics({ expert_id: currentExpertId.value })
+    } catch (e) {
+      console.error('Parse topic_updated error:', e)
+    }
+  })
+
   eventSource.value.onerror = (error) => {
     console.error('SSE error:', error)
     isConnected.value = false
