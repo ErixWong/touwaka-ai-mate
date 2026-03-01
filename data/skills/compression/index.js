@@ -2,15 +2,14 @@
  * Compression Skill - Node.js Implementation
  * 
  * ZIP file operations for creating and extracting archives.
- * Uses Node.js built-in zlib and archiver for ZIP operations.
+ * Uses PowerShell (Windows) or zip/unzip commands (Unix).
  * 
  * @module compression-skill
  */
 
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // Allowed base directories
 const ALLOWED_BASE_PATHS = [
@@ -86,15 +85,25 @@ async function zip(params) {
   try {
     // Use PowerShell on Windows, zip command on Linux/Mac
     if (process.platform === 'win32') {
-      // PowerShell Compress-Archive
-      const cmd = `powershell -Command "Compress-Archive -Path '${resolvedSource}' -DestinationPath '${resolvedDest}' -CompressionLevel ${getCompressionLevel(compression_level)} -Force"`;
-      execSync(cmd, { timeout: 60000 });
+      // PowerShell Compress-Archive - 使用 execFileSync 防止命令注入
+      execFileSync('powershell', [
+        '-Command',
+        'Compress-Archive',
+        '-Path', resolvedSource,
+        '-DestinationPath', resolvedDest,
+        '-CompressionLevel', getCompressionLevel(compression_level),
+        '-Force'
+      ], { timeout: 60000 });
     } else {
-      // zip command on Unix
-      const destDir = path.dirname(resolvedDest);
+      // zip command on Unix - 使用 execFileSync 防止命令注入
       const sourceName = path.basename(resolvedSource);
-      const cmd = `cd "${destDir}" && zip -${compression_level} -r "${path.basename(resolvedDest)}" "${sourceName}"`;
-      execSync(cmd, { timeout: 60000 });
+      const destName = path.basename(resolvedDest);
+      execFileSync('zip', [
+        `-${compression_level}`,
+        '-r',
+        destName,
+        sourceName
+      ], { cwd: destDir, timeout: 60000 });
     }
     
     const destStats = fs.statSync(resolvedDest);
@@ -139,13 +148,21 @@ async function unzip(params) {
   try {
     // Use PowerShell on Windows, unzip command on Linux/Mac
     if (process.platform === 'win32') {
-      // PowerShell Expand-Archive
-      const cmd = `powershell -Command "Expand-Archive -Path '${resolvedSource}' -DestinationPath '${resolvedDest}' -Force"`;
-      execSync(cmd, { timeout: 60000 });
+      // PowerShell Expand-Archive - 使用 execFileSync 防止命令注入
+      execFileSync('powershell', [
+        '-Command',
+        'Expand-Archive',
+        '-Path', resolvedSource,
+        '-DestinationPath', resolvedDest,
+        '-Force'
+      ], { timeout: 60000 });
     } else {
-      // unzip command on Unix
-      const cmd = `unzip -o "${resolvedSource}" -d "${resolvedDest}"`;
-      execSync(cmd, { timeout: 60000 });
+      // unzip command on Unix - 使用 execFileSync 防止命令注入
+      execFileSync('unzip', [
+        '-o',
+        resolvedSource,
+        '-d', resolvedDest
+      ], { timeout: 60000 });
     }
     
     // List extracted files
