@@ -433,6 +433,8 @@ export default {
     taboos: 'Taboos',
     refreshCache: 'Refresh Cache',
     refreshing: 'Refreshing...',
+    refreshSuccess: 'Cache refreshed successfully',
+    refreshFailed: 'Failed to refresh cache',
   },
 
   // Topics Tab (additional)

@@ -410,6 +410,8 @@ export default {
     taboos: '禁忌话题',
     refreshCache: '刷新缓存',
     refreshing: '刷新中...',
+    refreshSuccess: '缓存刷新成功',
+    refreshFailed: '刷新失败',
   },
 
   // 话题 Tab（补充）

@@ -301,6 +301,7 @@ class ExpertController {
   async refresh(ctx) {
     try {
       const { id } = ctx.params;
+      const userId = ctx.state.user?.id || 'unknown';
 
       // 检查专家是否存在
       const existing = await this.Expert.findOne({ where: { id } });
@@ -312,7 +313,7 @@ class ExpertController {
       // 清除专家缓存
       if (this.chatService) {
         this.chatService.clearExpertCache(id);
-        logger.info(`[ExpertController] 专家缓存已刷新: ${id}`);
+        logger.info(`[ExpertController] 专家缓存已刷新: ${id}, 操作者: ${userId}`);
       }
 
       ctx.success({ id }, '专家缓存刷新成功');
