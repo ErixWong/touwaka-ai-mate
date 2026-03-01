@@ -44,6 +44,17 @@ class StreamController {
 
       const user_id = ctx.state.userId;
 
+      // 检查 SSE 连接是否存在
+      const connections = this.expertConnections.get(expert_id);
+      const hasConnection = connections && [...connections].some(c => c.user_id === user_id);
+
+      if (!hasConnection) {
+        // 返回错误码告知前端需要重连 SSE
+        ctx.status = 410;
+        ctx.error('SSE 连接不存在，请重新建立连接', 410, { code: 'SSE_NOT_CONNECTED' });
+        return;
+      }
+
       // 获取或创建该用户与 Expert 的活跃 Topic
       const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id);
 
@@ -199,6 +210,32 @@ class StreamController {
     }
 
     const user_id = ctx.state.userId;
+
+    // 连接数限制
+    const MAX_CONNECTIONS_PER_USER = 5;
+    const MAX_CONNECTIONS_PER_EXPERT = 100;
+
+    // 检查用户连接数
+    let userConnectionCount = 0;
+    for (const [_, connections] of this.expertConnections) {
+      for (const conn of connections) {
+        if (conn.user_id === user_id) userConnectionCount++;
+      }
+    }
+
+    if (userConnectionCount >= MAX_CONNECTIONS_PER_USER) {
+      ctx.status = 429;
+      ctx.error('连接数超过限制', 429, { code: 'TOO_MANY_CONNECTIONS', max: MAX_CONNECTIONS_PER_USER });
+      return;
+    }
+
+    // 检查 Expert 连接数
+    const expertConnectionCount = this.expertConnections.get(expert_id)?.size || 0;
+    if (expertConnectionCount >= MAX_CONNECTIONS_PER_EXPERT) {
+      ctx.status = 429;
+      ctx.error('Expert 连接数超过限制', 429, { code: 'EXPERT_CONNECTION_LIMIT', max: MAX_CONNECTIONS_PER_EXPERT });
+      return;
+    }
 
     // 设置 SSE 响应头
     ctx.set({
