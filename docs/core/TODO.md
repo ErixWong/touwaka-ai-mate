@@ -50,6 +50,7 @@
 
 | 任务 | 完成日期 | 备注 |
 |------|----------|------|
+| Topic Updated Event 修复 | 2026-03-01 | 前端监听 topic_updated SSE 事件 |
 | 移除 tools/builtin 目录 | 2026-03-01 | 所有工具迁移为普通技能 |
 | register_skill 工具参数修复 | 2026-03-01 | 增加 tools 参数，由 LLM 传入工具定义 |
 | skill-loader.js 字段名修复 | 2026-03-01 | usage → parameters |

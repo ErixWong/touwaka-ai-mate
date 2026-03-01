@@ -1,6 +1,6 @@
 <template>
   <div class="topics-tab">
-    <!-- 搜索框 -->
+    <!-- 搜索框和刷新按钮 -->
     <div class="search-box">
       <input
         v-model="searchQuery"
@@ -8,6 +8,14 @@
         :placeholder="$t('topic.searchPlaceholder')"
         class="search-input"
       />
+      <button
+        class="refresh-btn"
+        @click="handleRefresh"
+        :disabled="chatStore.isLoadingTopics"
+        :title="$t('common.refresh')"
+      >
+        <span class="refresh-icon" :class="{ spinning: chatStore.isLoadingTopics }">🔄</span>
+      </button>
     </div>
     
     <!-- 加载状态 -->
@@ -101,6 +109,11 @@ const loadTopics = async () => {
   }
 }
 
+// 手动刷新
+const handleRefresh = async () => {
+  await loadTopics()
+}
+
 // 选择 Topic
 const selectTopic = (topic: Topic) => {
   chatStore.setCurrentTopic(topic.id)
@@ -167,18 +180,51 @@ const emit = defineEmits<{
 }
 
 .search-box {
+  display: flex;
+  gap: 8px;
   margin-bottom: 12px;
   flex-shrink: 0;
 }
 
 .search-input {
-  width: 100%;
+  flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px;
   font-size: 13px;
   background: var(--input-bg, #fff);
   color: var(--text-primary, #333);
+}
+
+.refresh-btn {
+  padding: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--input-bg, #fff);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--hover-bg, #f5f5f5);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  font-size: 14px;
+}
+
+.refresh-icon.spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
 }
 
 .search-input:focus {
