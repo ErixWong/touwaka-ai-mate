@@ -1,8 +1,9 @@
 # File Operations 技能精简方案
 
-> 状态：⏳ 待开始
+> 状态：✅ 第一阶段完成
 > 优先级：中
 > 创建日期：2026-03-01
+> 更新日期：2026-03-01
 
 ---
 
@@ -36,40 +37,63 @@
 
 ---
 
-## 精简方案
+## 精简方案（分阶段实施）
 
-### 可以合并的工具
+### 第一阶段：无争议合并（3 组）
 
-| 现有工具 | 建议合并为 | 理由 |
-|----------|------------|------|
-| `read_lines` + `read_bytes` | `read_file` | 都是读文件，用 `mode` 参数区分 |
-| `write_file` + `append_file` | `write_file` | 用 `mode: "write" \| "append"` 区分 |
-| `copy_file` + `move_file` | `transfer_file` | 底层逻辑相似，用 `operation` 参数 |
-| `search_in_file` + `grep` | `search` | 单文件只是多文件的特例 |
-| `delete_lines` + `delete_file` | `delete` | 统一删除操作 |
+| 现有工具 | 合并为 | 理由 | 状态 |
+|----------|--------|------|------|
+| `read_lines` + `read_bytes` | `read_file` | 都是读文件，用 `mode` 参数区分 | ✅ |
+| `write_file` + `append_file` | `write_file` | 用 `mode: "write" \| "append"` 区分 | ✅ |
+| `copy_file` + `move_file` | `transfer` | 底层逻辑相似，用 `operation` 参数 | ✅ |
 
-### 精简后的工具清单（9 个）
+### 第二阶段：待评估合并（2 组）
+
+| 现有工具 | 合并为 | 评估 | 状态 |
+|----------|--------|------|------|
+| `search_in_file` + `grep` | `search` | ⚠️ 单文件搜索带上下文，多文件不带，合并后参数复杂 | 🔍 待定 |
+| `delete_lines` + `delete_file` | `delete` | ⚠️ 删除文件和删除行语义差异大，LLM 可能混淆 | 🔍 待定 |
+
+### 保留独立的工具（5 个）
+
+| 工具 | 理由 |
+|------|------|
+| `replace_in_file` | 独立且高频使用 |
+| `insert_at_line` | 精确插入是独特操作 |
+| `list_files` | 目录列表是独立功能 |
+| `create_dir` | 创建目录是独立功能 |
+| `delete_lines` | 与 delete_file 语义差异大，建议保留 |
+
+---
+
+## 精简后的工具清单（11 个）
 
 | 工具 | 功能 | 参数 |
 |------|------|------|
 | `read_file` | 读取文件 | `path`, `mode: "lines" \| "bytes"`, `from`, `count` |
 | `write_file` | 写入文件 | `path`, `content`, `mode: "write" \| "append"` |
-| `search` | 搜索文本 | `path`, `pattern`, `file_pattern?`, `context_lines?` |
-| `replace` | 替换文本 | `path`, `search`, `replace`, `replace_all?` |
-| `insert` | 插入内容 | `path`, `line`, `content` |
-| `delete` | 删除 | `path`, `type?: "file" \| "lines"`, `from?`, `to?` |
-| `list` | 列出目录 | `path`, `recursive?`, `pattern?` |
 | `transfer` | 复制/移动 | `source`, `dest`, `operation: "copy" \| "move"` |
+| `search_in_file` | 单文件搜索 | `path`, `pattern`, `context_lines?` |
+| `grep` | 多文件搜索 | `path`, `pattern`, `file_pattern?` |
+| `replace_in_file` | 替换文本 | `path`, `search`, `replace`, `replace_all?` |
+| `insert_at_line` | 插入内容 | `path`, `line`, `content` |
+| `delete_lines` | 删除指定行 | `path`, `from`, `to` |
+| `delete_file` | 删除文件/目录 | `path` |
+| `list_files` | 列出目录 | `path`, `recursive?`, `pattern?` |
 | `create_dir` | 创建目录 | `path` |
 
-**从 14 个 → 9 个**（减少 36%）
+**从 14 个 → 11 个**（减少 21%）
 
 ---
 
 ## 实施步骤
 
+### 第一阶段（当前）
+
 1. **更新 `data/skills/file-operations/index.js`**
-   - 合并相关函数
+   - 合并 `read_lines` + `read_bytes` → `read_file`
+   - 合并 `write_file` + `append_file` → `write_file`
+   - 合并 `copy_file` + `move_file` → `transfer`
    - 保持向后兼容（旧工具名作为别名）
 
 2. **更新 `data/skills/file-operations/SKILL.md`**
@@ -82,6 +106,11 @@
    - 确保新旧工具名都能正常工作
    - 测试合并后的参数组合
 
+### 第二阶段（待评估）
+
+- 观察第一阶段效果
+- 评估是否继续合并 search 和 delete 相关工具
+
 ---
 
 ## 风险评估
@@ -91,6 +120,7 @@
 | LLM 不理解合并后的参数 | 中 | 提供清晰的参数描述和示例 |
 | 现有对话中的工具调用失败 | 低 | 保持旧工具名作为别名 |
 | 参数组合复杂度增加 | 低 | 使用 JSON Schema 枚举限制 |
+| 过度合并导致语义不清 | 高 | 分阶段实施，保留有争议的工具 |
 
 ---
 
