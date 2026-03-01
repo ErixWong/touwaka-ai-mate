@@ -45,6 +45,11 @@ export default class topic extends Model {
       type: DataTypes.STRING(128),
       allowNull: true
     },
+    keywords: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: '话题关键词数组，用于中长期记忆召回'
+    },
     status: {
       type: DataTypes.ENUM('active','archived','deleted'),
       allowNull: true,
