@@ -111,7 +111,7 @@ class ApiServer {
     this.controllers = {
       auth: new AuthController(this.db),
       user: new UserController(this.db),
-      topic: new TopicController(this.db),
+      topic: new TopicController(this.db, this.chatService),
       message: new MessageController(this.db),
       expert: new ExpertController(this.db, this.chatService),
       model: new ModelController(this.db),

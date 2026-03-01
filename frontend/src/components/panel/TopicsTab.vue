@@ -11,10 +11,10 @@
       <button
         class="refresh-btn"
         @click="handleRefresh"
-        :disabled="chatStore.isLoadingTopics"
+        :disabled="isCompressing"
         :title="$t('common.refresh')"
       >
-        <span class="refresh-icon" :class="{ spinning: chatStore.isLoadingTopics }">🔄</span>
+        <span class="refresh-icon" :class="{ spinning: isCompressing }">🔄</span>
       </button>
     </div>
     
@@ -76,6 +76,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { topicApi } from '@/api/services'
 import type { Topic } from '@/types'
 
 const { t } = useI18n()
@@ -83,6 +84,7 @@ const chatStore = useChatStore()
 
 const searchQuery = ref('')
 const expandedTopics = ref<Set<string>>(new Set())
+const isCompressing = ref(false)
 
 // 当前选中的 topic
 const activeTopicId = computed(() => chatStore.currentTopicId)
@@ -109,9 +111,20 @@ const loadTopics = async () => {
   }
 }
 
-// 手动刷新
+// 手动刷新 - 触发压缩检查并刷新列表
 const handleRefresh = async () => {
-  await loadTopics()
+  try {
+    isCompressing.value = true
+    // 调用压缩 API
+    const result = await topicApi.compress()
+    console.log('Compress result:', result)
+    // 刷新列表
+    await loadTopics()
+  } catch (error) {
+    console.error('Failed to compress topics:', error)
+  } finally {
+    isCompressing.value = false
+  }
 }
 
 // 选择 Topic

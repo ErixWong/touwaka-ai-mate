@@ -14,6 +14,9 @@ export default (controller, messageController) => {
   // 获取话题列表（需要认证）- 简单 GET 查询，保持向后兼容
   router.get('/', authenticate(), controller.list.bind(controller));
 
+  // 手动触发压缩（需要认证）- 检查并更新 topics
+  router.post('/compress', authenticate(), controller.compress.bind(controller));
+
   // 创建话题（需要认证）
   router.post('/', authenticate(), controller.create.bind(controller));
 

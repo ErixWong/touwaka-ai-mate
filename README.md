@@ -1,4 +1,4 @@
-# Touwaka Mate (投瓦卡)
+# Touwaka Mate
 
 一个具备自我反思能力的 AI 专家副本系统，采用渐进式架构设计。
 

@@ -23,8 +23,9 @@ const ALLOWED_SORT_FIELDS = [
 ];
 
 class TopicController {
-  constructor(db) {
+  constructor(db, chatService = null) {
     this.db = db;
+    this.chatService = chatService;
     this.Topic = db.getModel('topic');
     this.Message = db.getModel('message');
   }
@@ -228,6 +229,59 @@ class TopicController {
     } catch (error) {
       logger.error('Delete topic error:', error);
       ctx.error('删除话题失败', 500);
+    }
+  }
+
+  /**
+   * 手动触发压缩
+   * 检查并更新 topics 表
+   */
+  async compress(ctx) {
+    try {
+      const { expert_id } = ctx.request.body || {};
+      const userId = ctx.state.userId;
+
+      if (!this.chatService) {
+        ctx.error('ChatService 未初始化', 500);
+        return;
+      }
+
+      // 获取用户的所有专家
+      const experts = await this.db.models.expert_user.findAll({
+        where: { user_id: userId },
+        attributes: ['expert_id'],
+        raw: true,
+      });
+
+      const expertIds = experts.map(e => e.expert_id);
+      const targetExpertIds = expert_id ? [expert_id] : expertIds;
+
+      const results = [];
+      for (const eid of targetExpertIds) {
+        try {
+          const expertService = await this.chatService.getExpertService(eid);
+          const result = await expertService.checkAndCompressContext(userId);
+          results.push({
+            expert_id: eid,
+            ...result,
+          });
+        } catch (err) {
+          logger.error(`Compress failed for expert ${eid}:`, err.message);
+          results.push({
+            expert_id: eid,
+            success: false,
+            error: err.message,
+          });
+        }
+      }
+
+      ctx.success({
+        message: '压缩检查完成',
+        results,
+      });
+    } catch (error) {
+      logger.error('Compress topics error:', error);
+      ctx.error('压缩检查失败', 500);
     }
   }
 }

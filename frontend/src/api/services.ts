@@ -58,6 +58,10 @@ export const topicApi = {
   deleteTopic: (id: string) =>
     apiRequest<void>(apiClient.delete(`/topics/${id}`)),
 
+  // 手动触发压缩 - 检查并更新 topics
+  compress: (data?: { expert_id?: string }) =>
+    apiRequest<{ message: string; results: any[] }>(apiClient.post('/topics/compress', data || {})),
+
   // 归档话题
   archiveTopic: (id: string) =>
     apiRequest<Topic>(apiClient.post(`/topics/${id}/archive`)),
