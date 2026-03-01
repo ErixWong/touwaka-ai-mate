@@ -173,7 +173,7 @@ const TABLES = [
     INDEX idx_last_active (last_active)
   )`,
 
-  // 8. Topics 表（更新：添加 provider_name, model_name, status 等字段）
+  // 8. Topics 表（更新：添加 provider_name, model_name, status, keywords 等字段）
   `CREATE TABLE IF NOT EXISTS topics (
     id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
@@ -183,6 +183,7 @@ const TABLES = [
     title VARCHAR(256) NOT NULL,
     description TEXT,
     category VARCHAR(128),
+    keywords JSON DEFAULT NULL COMMENT '话题关键词数组，用于中长期记忆召回',
     status ENUM('active', 'archived', 'deleted') DEFAULT 'active',
     message_count INT DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
