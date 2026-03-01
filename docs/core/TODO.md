@@ -40,6 +40,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [技能参数配置界面](tasks/2026-03-01-skill-parameters-config/README.md) | 🔄 进行中（80%） | 高 |
 | [工具调用可视化面板 + SearXNG 搜索技能](tasks/2026-02-22-tool-visualization/README.md) | 🔄 进行中（20%） | 中 |
 | [核心架构升级：两层角色+沙箱池+专家编排](../design/v2/org-architecture.md) | 🔄 文档设计中 | 高 |
 
