@@ -187,20 +187,6 @@ function formatResultsTable(data, query) {
  * @param {string} [params.format='json'] - Output format: json or table
  * @param {object} context - Execution context (userId, expertId, etc.)
  * @returns {Promise<object>} Execution result
- * 
- * @example
- * // Basic search
- * execute('web_search', { query: 'hello world' })
- * 
- * @example
- * // Search with options
- * execute('web_search', {
- *   query: 'AI news',
- *   category: 'news',
- *   time_range: 'day',
- *   n: 20,
- *   format: 'table'
- * })
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
@@ -222,13 +208,13 @@ async function execute(toolName, params, context = {}) {
           success: !data.error,
           format: 'table',
           output: formatResultsTable(data, searchParams.query),
-          data: data,
+          data: data
         };
       }
 
       return {
         success: !data.error,
-        data: data,
+        data: data
       };
     }
 
