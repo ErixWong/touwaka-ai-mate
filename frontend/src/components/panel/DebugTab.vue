@@ -254,7 +254,13 @@ const providerName = computed(() => {
 
 const lastMessage = computed(() => {
   const messages = chatStore.sortedMessages
-  return messages.length > 0 ? messages[messages.length - 1] : null
+  // 取最后一条 assistant 消息（只有 assistant 消息才有 token 使用信息）
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') {
+      return messages[i]
+    }
+  }
+  return null
 })
 
 const totalTokens = computed(() => {
