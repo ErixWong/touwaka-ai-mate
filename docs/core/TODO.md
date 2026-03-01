@@ -41,7 +41,10 @@
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
 | [技能参数配置界面](tasks/2026-03-01-skill-parameters-config/README.md) | 🔄 进行中（80%） | 高 |
-| [工具调用可视化面板 + SearXNG 搜索技能](tasks/2026-02-22-tool-visualization/README.md) | 🔄 进行中（20%） | 中 |
+| [技能对话式导入](tasks/skill-import-dialog.md) | 🔄 进行中 | 高 |
+| [Health Check 与 SSE 心跳优化](tasks/2026-03-01-health-check-optimization/README.md) | 🔄 进行中 | 中 |
+| [对话窗口右侧多功能 Panel](tasks/right-panel.md) | ✅ 基础功能已完成 | 中 |
+| [工具调用可视化面板 + SearXNG 搜索技能](tasks/tool-visualization.md) | 🔄 进行中（20%） | 中 |
 | [核心架构升级：两层角色+沙箱池+专家编排](../design/v2/org-architecture.md) | 🔄 文档设计中 | 高 |
 
 ---
@@ -61,4 +64,4 @@
 
 *状态图标：🔄 进行中 | ⏳ 待开始 | ✅ 已完成 | ❌ 已取消*
 
-*已完成任务归档在 [archive/todo-archive-2026-02.md](../archive/todo-archive-2026-02.md)*
+*已完成任务归档在：[2026-02](../archive/todo-archive-2026-02.md) | [2026-03](../archive/todo-archive-2026-03.md)*

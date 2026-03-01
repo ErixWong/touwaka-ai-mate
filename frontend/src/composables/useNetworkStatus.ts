@@ -5,7 +5,8 @@ import apiClient from '@/api/client'
  * 网络状态检测 Composable
  *
  * 用于检测后端服务是否可用，支持：
- * - 定期健康检查（可被 SSE 心跳替代）
+ * - 定期健康检查（SSE 不活跃时）
+ * - SSE 心跳状态追踪（SSE 活跃时跳过 HTTP 检查）
  * - 网络状态变化监听
  * - 后端恢复自动检测
  *
@@ -14,7 +15,47 @@ import apiClient from '@/api/client'
  */
 
 const CHECK_INTERVAL = 5000 // 健康检查间隔 5 秒
-const MAX_RETRY_ATTEMPTS = 3 // 每次检查的最大重试次数
+const SSE_HEARTBEAT_TIMEOUT = 10000 // SSE 心跳超时时间（2 个心跳周期）
+
+// 全局 SSE 心跳状态（跨组件共享）
+let lastSSEHeartbeatTime: number | null = null
+let sseConnectionCount = 0
+
+/**
+ * 更新 SSE 心跳时间（由 SSE 连接调用）
+ */
+export function updateSSEHeartbeat() {
+  lastSSEHeartbeatTime = Date.now()
+}
+
+/**
+ * 注册 SSE 连接
+ */
+export function registerSSEConnection() {
+  sseConnectionCount++
+  lastSSEHeartbeatTime = Date.now()
+}
+
+/**
+ * 注销 SSE 连接
+ */
+export function unregisterSSEConnection() {
+  sseConnectionCount--
+  if (sseConnectionCount <= 0) {
+    sseConnectionCount = 0
+    lastSSEHeartbeatTime = null
+  }
+}
+
+/**
+ * 检查 SSE 是否活跃（最近收到过心跳）
+ */
+function isSSEActive(): boolean {
+  if (sseConnectionCount <= 0 || !lastSSEHeartbeatTime) {
+    return false
+  }
+  return Date.now() - lastSSEHeartbeatTime < SSE_HEARTBEAT_TIMEOUT
+}
 
 export function useNetworkStatus() {
   const isOnline = ref(navigator.onLine)
@@ -27,7 +68,7 @@ export function useNetworkStatus() {
   let abortController: AbortController | null = null
 
   /**
-   * 执行健康检查
+   * 执行健康检查（仅检查 /health，不 fallback）
    */
   const checkHealth = async (): Promise<boolean> => {
     if (isChecking.value) return isBackendAvailable.value
@@ -36,7 +77,7 @@ export function useNetworkStatus() {
     abortController = new AbortController()
     
     try {
-      // 尝试调用健康检查端点
+      // 仅调用健康检查端点
       await apiClient.get('/health', {
         timeout: 5000,
         signal: abortController.signal,
@@ -45,21 +86,10 @@ export function useNetworkStatus() {
       isBackendAvailable.value = true
       lastCheckTime.value = new Date()
       return true
-    } catch (error) {
-      // 如果健康检查端点不存在，尝试调用一个轻量级 API
-      try {
-        abortController = new AbortController()
-        await apiClient.get('/models', {
-          timeout: 5000,
-          signal: abortController.signal,
-        })
-        isBackendAvailable.value = true
-        lastCheckTime.value = new Date()
-        return true
-      } catch {
-        isBackendAvailable.value = false
-        return false
-      }
+    } catch {
+      // health 端点失败即认为后端不可用
+      isBackendAvailable.value = false
+      return false
     } finally {
       isChecking.value = false
       abortController = null
@@ -68,6 +98,7 @@ export function useNetworkStatus() {
 
   /**
    * 开始定期健康检查
+   * SSE 活跃时跳过 HTTP 检查
    */
   const startHealthCheck = () => {
     if (checkTimer) return
@@ -77,8 +108,9 @@ export function useNetworkStatus() {
     
     // 定期检查
     checkTimer = setInterval(() => {
-      // 如果健康检查被暂停（SSE 活跃），跳过本次检查
-      if (isHealthCheckPaused.value) {
+      // SSE 连接活跃且最近收到心跳，跳过 HTTP 检查
+      if (isSSEActive()) {
+        isBackendAvailable.value = true
         return
       }
       checkHealth()
