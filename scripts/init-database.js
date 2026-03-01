@@ -481,6 +481,30 @@ Make HTTP requests to fetch web content or call APIs.`,
         user_invocable: true,
         allowed_tools: JSON.stringify(['Bash(curl *)']),
       },
+      {
+        id: 'skill-manager',
+        name: 'Skill Manager',
+        description: '技能管理工具，用于注册、删除、分配技能到数据库。',
+        version: '1.0.0',
+        author: 'System',
+        tags: ['skill', 'management', 'built-in'],
+        source_type: 'local',
+        source_path: 'skills/skill-manager',
+        skill_md: `---
+name: skill-manager
+description: 技能管理工具，用于注册、删除、分配技能到数据库。
+argument-hint: "[register|delete|assign|toggle] [skill_id]"
+user-invocable: false
+allowed-tools: []
+---
+
+# Skill Manager
+
+技能管理核心工具，提供注册、删除、分配技能等功能。`,
+        argument_hint: '[register|delete|assign|toggle] [skill_id]',
+        user_invocable: false,
+        allowed_tools: JSON.stringify([]),
+      },
     ],
     // 内置技能的工具定义
     builtInSkillTools: {
@@ -507,6 +531,13 @@ Make HTTP requests to fetch web content or call APIs.`,
       'http-client': [
         { name: 'http_get', description: 'Send an HTTP GET request', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Request URL' }, headers: { type: 'object', description: 'Custom headers' }, timeout: { type: 'number', description: 'Timeout in ms (default: 10000)' } }, required: ['url'] } },
         { name: 'http_post', description: 'Send an HTTP POST request', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Request URL' }, body: { type: 'object', description: 'Request body' }, headers: { type: 'object', description: 'Custom headers' }, timeout: { type: 'number', description: 'Timeout in ms (default: 10000)' } }, required: ['url'] } },
+      ],
+      'skill-manager': [
+        { name: 'register_skill', description: '从本地目录注册或更新技能到数据库', parameters: { type: 'object', properties: { source_path: { type: 'string', description: '技能目录的相对路径' }, name: { type: 'string', description: '技能名称（可选）' }, description: { type: 'string', description: '技能描述（可选）' }, tools: { type: 'array', description: '工具定义数组', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, parameters: { type: 'object' } }, required: ['name', 'description', 'parameters'] } } }, required: ['source_path', 'tools'] } },
+        { name: 'delete_skill', description: '从数据库中删除技能', parameters: { type: 'object', properties: { skill_id: { type: 'string', description: '技能ID或名称' } }, required: ['skill_id'] } },
+        { name: 'assign_skill_to_expert', description: '将技能分配给指定专家', parameters: { type: 'object', properties: { skill_id: { type: 'string', description: '技能ID或名称' }, expert_id: { type: 'string', description: '专家ID或名称' } }, required: ['skill_id', 'expert_id'] } },
+        { name: 'unassign_skill_from_expert', description: '取消技能与专家的关联', parameters: { type: 'object', properties: { skill_id: { type: 'string', description: '技能ID或名称' }, expert_id: { type: 'string', description: '专家ID或名称' } }, required: ['skill_id', 'expert_id'] } },
+        { name: 'toggle_skill', description: '启用或禁用技能', parameters: { type: 'object', properties: { skill_id: { type: 'string', description: '技能ID或名称' }, is_active: { type: 'boolean', description: '是否启用' } }, required: ['skill_id', 'is_active'] } },
       ],
     },
     roles: [

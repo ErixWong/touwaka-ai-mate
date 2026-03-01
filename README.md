@@ -46,11 +46,27 @@ cp .env.example .env
 # 初始化数据库
 node scripts/init-database.js
 
+# 初始化核心技能（文件操作、HTTP客户端、技能管理等）
+node scripts/init-core-skills.js
+
 # 启动
 EXPERT_ID=eric npm start
 ```
 
 详细说明见 [V1 文档](docs/design/v1/README.md)。
+
+### 核心技能
+
+系统依赖以下核心技能（位于 `data/skills/` 目录）：
+
+| 技能 | 说明 |
+|------|------|
+| `file-operations` | 文件读写、搜索、管理 |
+| `compression` | ZIP 压缩/解压 |
+| `http-client` | HTTP GET/POST 请求 |
+| `skill-manager` | 技能注册、删除、分配 |
+
+如果核心技能被意外删除，可运行 `node scripts/init-core-skills.js` 修复。
 
 ## 项目特点
 
