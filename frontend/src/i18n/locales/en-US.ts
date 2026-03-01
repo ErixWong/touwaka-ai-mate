@@ -431,6 +431,8 @@ export default {
     emotionalTone: 'Emotional Tone',
     behavioralGuidelines: 'Behavioral Guidelines',
     taboos: 'Taboos',
+    refreshCache: 'Refresh Cache',
+    refreshing: 'Refreshing...',
   },
 
   // Topics Tab (additional)
