@@ -28,11 +28,17 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref<string | null>(null)
 
   // Getters
-  const sortedMessages = computed(() =>
-    [...messages.value].sort((a, b) =>
+  const sortedMessages = computed(() => {
+    // 先去重（按 ID），再排序
+    const uniqueMap = new Map<string, Message>()
+    for (const msg of messages.value) {
+      // 如果已存在相同 ID 的消息，保留最新的（后面的覆盖前面的）
+      uniqueMap.set(msg.id, msg)
+    }
+    return [...uniqueMap.values()].sort((a, b) =>
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
-  )
+  })
 
   // Actions
 
@@ -101,8 +107,23 @@ export const useChatStore = defineStore('chat', () => {
    */
   let messageCounter = 0
   const addLocalMessage = (message: Partial<Message>) => {
+    // 检查是否已存在相同 ID 的消息，避免重复添加
+    const messageId = message.id || `temp-${Date.now()}-${++messageCounter}`
+    const existingIndex = messages.value.findIndex(m => m.id === messageId)
+    
+    if (existingIndex >= 0) {
+      // 如果已存在，更新而不是添加新的
+      const existing = messages.value[existingIndex]
+      if (existing) {
+        existing.content = message.content || existing.content
+        existing.status = message.status || existing.status
+        existing.updated_at = new Date().toISOString()
+        return existing
+      }
+    }
+    
     const newMessage: Message = {
-      id: message.id || `temp-${Date.now()}-${++messageCounter}`,
+      id: messageId,
       expert_id: message.expert_id || currentExpertId.value || '',
       user_id: message.user_id || '',
       topic_id: message.topic_id,
