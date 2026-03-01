@@ -384,7 +384,98 @@ const EXPERT_ROLE_CONFIGS = {
 
 ## 4. 平台实现
 
-### 4.1 Firejail 实现
+> **更新（2026-03-01）**：推荐使用 **OpenSandbox** 作为统一沙箱方案。
+> - 跨平台支持（Linux/Windows/macOS 通过 Docker）
+> - 提供多语言 SDK（JavaScript/TypeScript 原生支持）
+> - 内置 Code Interpreter，完美适配技能执行场景
+>
+> 详见：[Skill Runner 多语言支持](../../core/tasks/2026-03-01-skill-runner-multi-language/README.md)
+
+### 4.0 OpenSandbox 实现（推荐）
+
+```javascript
+import { Sandbox } from "@alibaba-group/opensandbox";
+import { CodeInterpreter, SupportedLanguages } from "@alibaba-group/opensandbox-code-interpreter";
+
+class OpenSandboxExecutor {
+  constructor(config) {
+    this.config = config;
+    this.sandbox = null;
+    this.codeInterpreter = null;
+  }
+
+  async create(sandboxName, config) {
+    // 创建 OpenSandbox 沙箱
+    this.sandbox = await Sandbox.create({
+      connectionConfig: this.config.connectionConfig,
+      image: "opensandbox/code-interpreter:v1.0.1",
+      entrypoint: ["/opt/opensandbox/code-interpreter.sh"],
+      env: {
+        PYTHON_VERSION: "3.11",
+        NODE_VERSION: "20",
+      },
+      timeoutSeconds: config.timeout * 60,
+      // 资源限制
+      resource: {
+        cpu: "1",
+        memory: `${config.maxMemory}Mi`,
+      },
+    });
+
+    this.codeInterpreter = await CodeInterpreter.create(this.sandbox);
+    
+    return { sandboxName, created: true };
+  }
+
+  async execute(sandboxName, command, options = {}) {
+    // 使用 Code Interpreter 执行代码
+    const result = await this.codeInterpreter.codes.run(command, {
+      language: options.language || SupportedLanguages.PYTHON,
+    });
+    
+    return {
+      success: result.result?.length > 0,
+      stdout: result.logs.stdout.map(m => m.text).join('\n'),
+      stderr: result.logs.stderr.map(m => m.text).join('\n'),
+      data: result.result?.[0]?.text,
+    };
+  }
+
+  async writeFile(path, content) {
+    await this.sandbox.files.writeFiles([
+      { path, data: content, mode: 644 }
+    ]);
+  }
+
+  async readFile(path) {
+    return await this.sandbox.files.readFile(path);
+  }
+
+  async destroy(sandboxName) {
+    if (this.sandbox) {
+      await this.sandbox.kill();
+      await this.sandbox.close();
+      this.sandbox = null;
+      this.codeInterpreter = null;
+    }
+  }
+}
+```
+
+**OpenSandbox 优势**：
+- ✅ 跨平台一致（Docker 运行时）
+- ✅ 多语言 SDK（JavaScript/TypeScript 原生支持）
+- ✅ 内置 Code Interpreter（支持 Python, Node.js, Java, Go）
+- ✅ 生产级方案（阿里巴巴内部使用）
+- ✅ Apache 2.0 开源协议
+
+**部署要求**：
+- 需要部署 OpenSandbox Server（Docker 或 Kubernetes）
+- Core Service 通过 SDK 连接 OpenSandbox API
+
+---
+
+### 4.1 Firejail 实现（Linux 备选）
 
 ```javascript
 class FirejailExecutor {
@@ -651,6 +742,7 @@ INSERT INTO expert_role_defs (id, name, visibility, readonly_patterns, readwrite
 | 日期 | 变更内容 |
 |------|----------|
 | 2026-03-01 | 初始版本：两层角色模型、沙箱池管理、平台实现 |
+| 2026-03-01 | 新增 OpenSandbox 实现（推荐方案），支持跨平台沙箱隔离 |
 
 ---
 

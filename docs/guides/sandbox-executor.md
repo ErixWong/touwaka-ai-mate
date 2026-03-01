@@ -1,8 +1,8 @@
 # 沙箱执行器使用指南
 
 > 创建时间：2026-02-28
-> 最后更新：2026-02-28
-> 版本：1.0.0
+> 最后更新：2026-03-01
+> 版本：2.0.0
 
 ---
 
@@ -10,12 +10,21 @@
 
 沙箱执行器是用户隔离架构的核心组件，提供跨平台的命令隔离执行能力。
 
+### 方案选择
+
+> **推荐方案**：OpenSandbox（阿里巴巴开源）
+> - 跨平台支持（Linux/Windows/macOS 通过 Docker）
+> - 多语言 SDK（JavaScript/TypeScript 原生支持）
+> - 内置 Code Interpreter
+> - 详见：[Skill Runner 多语言支持](../core/tasks/2026-03-01-skill-runner-multi-language/README.md)
+
 ### 支持的平台
 
-| 平台 | 沙箱方案 | 安装要求 |
-|------|----------|----------|
-| Windows | Sandboxie Plus | [GitHub Release](https://github.com/sandboxie-plus/Sandboxie/releases) *(链接验证: 2026-02-28)* |
-| Linux | Firejail | `sudo apt install firejail` |
+| 方案 | 平台 | 安装要求 | 推荐度 |
+|------|------|----------|--------|
+| **OpenSandbox** | 全平台 | Docker + OpenSandbox Server | ⭐⭐⭐⭐⭐ 推荐 |
+| Firejail | Linux | `sudo apt install firejail` | ⭐⭐⭐ 备选 |
+| Sandboxie Plus | Windows | [GitHub Release](https://github.com/sandboxie-plus/Sandboxie/releases) | ⭐⭐⭐ 备选 |
 
 ---
 
