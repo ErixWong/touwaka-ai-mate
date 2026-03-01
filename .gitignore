@@ -1,8 +1,12 @@
   
 node_modules/  
-data/  
+data/work/
+data/skills/*
+!data/skills/file-operations/
+!data/skills/compression/
+!data/skills/http-client/
+!data/skills/searxng/
 logs/  
 .env
 references/
-skills/
 temp/
