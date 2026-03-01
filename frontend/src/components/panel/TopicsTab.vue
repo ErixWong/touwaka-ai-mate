@@ -1,6 +1,28 @@
 <template>
   <div class="topics-tab">
-    <!-- 搜索框和刷新按钮 -->
+    <!-- 操作按钮区 -->
+    <div class="action-bar">
+      <button
+        class="action-btn"
+        @click="handleRefresh"
+        :disabled="chatStore.isLoadingTopics"
+        :title="$t('common.refresh')"
+      >
+        <span class="btn-icon" :class="{ spinning: chatStore.isLoadingTopics }">🔄</span>
+        <span class="btn-text">{{ $t('common.refresh') }}</span>
+      </button>
+      <button
+        class="action-btn compress-btn"
+        @click="handleCompress"
+        :disabled="isCompressing"
+        :title="$t('topics.compressContext')"
+      >
+        <span class="btn-icon" :class="{ spinning: isCompressing }">📦</span>
+        <span class="btn-text">{{ $t('topics.compress') }}</span>
+      </button>
+    </div>
+    
+    <!-- 搜索框 -->
     <div class="search-box">
       <input
         v-model="searchQuery"
@@ -9,12 +31,10 @@
         class="search-input"
       />
       <button
-        class="refresh-btn"
-        @click="handleRefresh"
-        :disabled="isCompressing"
-        :title="$t('common.refresh')"
+        class="search-btn"
+        :title="$t('common.search')"
       >
-        <span class="refresh-icon" :class="{ spinning: isCompressing }">🔄</span>
+        <span class="search-icon">🔍</span>
       </button>
     </div>
     
@@ -111,14 +131,19 @@ const loadTopics = async () => {
   }
 }
 
-// 手动刷新 - 触发压缩检查并刷新列表
+// 刷新话题列表（仅刷新，不压缩）
 const handleRefresh = async () => {
+  await loadTopics()
+}
+
+// 压缩上下文（将未归档消息总结成 Topic）
+const handleCompress = async () => {
   try {
     isCompressing.value = true
     // 调用压缩 API
     const result = await topicApi.compress()
     console.log('Compress result:', result)
-    // 刷新列表
+    // 压缩后刷新列表
     await loadTopics()
   } catch (error) {
     console.error('Failed to compress topics:', error)
@@ -192,6 +217,62 @@ const emit = defineEmits<{
   padding: 12px;
 }
 
+.action-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--input-bg, #fff);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary, #333);
+  transition: all 0.2s;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--hover-bg, #f5f5f5);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-btn .btn-icon {
+  font-size: 14px;
+}
+
+.action-btn .btn-icon.spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+.action-btn .btn-text {
+  font-size: 12px;
+}
+
+.compress-btn {
+  background: var(--primary-light, #e3f2fd);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.compress-btn:hover:not(:disabled) {
+  background: var(--primary-color, #2196f3);
+  color: #fff;
+}
+
 .search-box {
   display: flex;
   gap: 8px;
@@ -209,8 +290,8 @@ const emit = defineEmits<{
   color: var(--text-primary, #333);
 }
 
-.refresh-btn {
-  padding: 8px;
+.search-btn {
+  padding: 8px 12px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px;
   background: var(--input-bg, #fff);
@@ -221,23 +302,13 @@ const emit = defineEmits<{
   transition: all 0.2s;
 }
 
-.refresh-btn:hover:not(:disabled) {
+.search-btn:hover {
   background: var(--hover-bg, #f5f5f5);
   border-color: var(--primary-color, #2196f3);
 }
 
-.refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.refresh-icon {
+.search-icon {
   font-size: 14px;
-}
-
-.refresh-icon.spinning {
-  display: inline-block;
-  animation: spin 1s linear infinite;
 }
 
 .search-input:focus {
