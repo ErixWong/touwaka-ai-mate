@@ -225,14 +225,15 @@ class StreamController {
 
     logger.info(`SSE connection established: user=${user_id}, expert=${expert_id}`);
 
-    // 心跳保活
+    // 心跳保活 - 5秒间隔，用于快速检测连接状态
     const heartbeat = setInterval(() => {
       if (ctx.res.writableEnded) {
         clearInterval(heartbeat);
         return;
       }
-      ctx.res.write(': heartbeat\n\n');
-    }, 30000);
+      // 发送命名事件而非注释，前端可以监听
+      ctx.res.write('event: heartbeat\ndata: {}\n\n');
+    }, 5000);
 
     // 清理连接
     const cleanup = () => {

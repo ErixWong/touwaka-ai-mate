@@ -89,7 +89,7 @@ import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
-import { useNetworkStatus } from '@/composables/useNetworkStatus'
+import { useNetworkStatus, updateSSEHeartbeat, registerSSEConnection, unregisterSSEConnection } from '@/composables/useNetworkStatus'
 import { messageApi } from '@/api/services'
 import type { Message, Topic, Doc } from '@/types'
 
@@ -218,6 +218,8 @@ const connectToExpert = (expert_id: string) => {
   if (eventSource.value) {
     eventSource.value.close()
     eventSource.value = null
+    // 注销旧的 SSE 连接
+    unregisterSSEConnection()
   }
 
   const token = localStorage.getItem('access_token')
@@ -232,6 +234,13 @@ const connectToExpert = (expert_id: string) => {
     isConnected.value = true
     reconnectAttempts.value = 0 // 重置重连计数
     isReconnecting.value = false
+    // 注册 SSE 连接，启用心跳检测
+    registerSSEConnection()
+  })
+
+  // 监听 SSE 心跳事件
+  eventSource.value.addEventListener('heartbeat', () => {
+    updateSSEHeartbeat()
   })
 
   eventSource.value.addEventListener('start', (event) => {
@@ -583,6 +592,8 @@ onUnmounted(() => {
   if (eventSource.value) {
     eventSource.value.close()
     eventSource.value = null
+    // 注销 SSE 连接
+    unregisterSSEConnection()
   }
   // 清理重连定时器
   clearReconnectTimer()
