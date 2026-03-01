@@ -26,21 +26,21 @@
           <div v-else class="avatar-placeholder">
             <span class="placeholder-text">{{ getInitials(currentExpert.name) }}</span>
           </div>
-        </div>
-        <!-- 刷新按钮 -->
-        <button
-          class="refresh-btn"
-          :disabled="isRefreshing"
-          :title="$t('expert.refreshCache')"
-          @click="handleRefresh"
-        >
-          <span class="refresh-icon" :class="{ spinning: isRefreshing }">🔄</span>
-          <span v-if="isRefreshing">{{ $t('expert.refreshing') }}</span>
-          <span v-else>{{ $t('expert.refreshCache') }}</span>
-        </button>
-        <!-- 刷新状态反馈 -->
-        <div v-if="refreshStatus" :class="['refresh-status', refreshStatus.type]">
-          {{ refreshStatus.message }}
+          <!-- 悬浮刷新按钮 -->
+          <button
+            class="refresh-btn-floating"
+            :disabled="isRefreshing"
+            :title="$t('expert.refreshCache')"
+            @click="handleRefresh"
+          >
+            <span class="refresh-icon" :class="{ spinning: isRefreshing }">🔄</span>
+          </button>
+          <!-- 刷新状态提示（toast风格） -->
+          <Transition name="toast">
+            <div v-if="refreshStatus" :class="['refresh-toast', refreshStatus.type]">
+              {{ refreshStatus.message }}
+            </div>
+          </Transition>
         </div>
       </div>
 
@@ -239,25 +239,23 @@ const getInitials = (name: string): string => {
   flex-direction: column;
   align-items: center;
   padding: 20px;
-  gap: 16px;
 }
 
 .avatar-container {
-  width: 160px;
-  height: 160px;
+  position: relative;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   background: var(--hover-bg, #f5f5f5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .expert-avatar-large {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
 }
 
 .avatar-placeholder {
@@ -267,75 +265,111 @@ const getInitials = (name: string): string => {
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, var(--primary-light, #e3f2fd), var(--primary-color, #2196f3));
+  border-radius: 50%;
 }
 
 .placeholder-text {
-  font-size: 48px;
+  font-size: 36px;
   font-weight: 600;
   color: white;
 }
 
-/* 刷新按钮 */
-.refresh-btn {
+/* 悬浮刷新按钮 */
+.refresh-btn-floating {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--card-bg, #fff);
+  border: 2px solid var(--border-color, #e0e0e0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: var(--secondary-bg, #f5f5f5);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
+  justify-content: center;
   transition: all 0.2s ease;
+  z-index: 10;
 }
 
-.refresh-btn:hover:not(:disabled) {
-  background: var(--hover-bg, #e8e8e8);
+.refresh-btn-floating:hover:not(:disabled) {
+  background: var(--primary-color, #2196f3);
   border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
+  transform: scale(1.1);
 }
 
-.refresh-btn:disabled {
-  opacity: 0.6;
+.refresh-btn-floating:hover:not(:disabled) .refresh-icon {
+  filter: brightness(0) invert(1);
+}
+
+.refresh-btn-floating:disabled {
+  opacity: 0.7;
   cursor: not-allowed;
 }
 
-.refresh-icon {
+.refresh-btn-floating .refresh-icon {
   font-size: 14px;
-  transition: transform 0.3s ease;
+  transition: filter 0.2s ease;
 }
 
 .refresh-icon.spinning {
   animation: spin 1s linear infinite;
 }
 
-/* 刷新状态反馈 */
-.refresh-status {
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 4px;
-  animation: fadeIn 0.3s ease;
+/* 刷新状态 toast */
+.refresh-toast {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  z-index: 10;
 }
 
-.refresh-status.success {
+.refresh-toast.success {
   color: var(--success-color, #4caf50);
   background: var(--success-bg, #e8f5e9);
+  border: 1px solid var(--success-color, #4caf50);
 }
 
-.refresh-status.error {
+.refresh-toast.error {
   color: var(--error-color, #f44336);
   background: var(--error-bg, #ffebee);
+  border: 1px solid var(--error-color, #f44336);
 }
 
-@keyframes fadeIn {
+/* Toast 动画 */
+.toast-enter-active {
+  animation: toastIn 0.3s ease;
+}
+
+.toast-leave-active {
+  animation: toastOut 0.3s ease;
+}
+
+@keyframes toastIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateX(-50%) translateY(-8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
   }
 }
 
