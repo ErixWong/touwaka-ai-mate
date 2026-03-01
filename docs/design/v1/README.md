@@ -199,13 +199,14 @@ POST /admin/reload-skills
 ├── scripts/
 │   ├── init-database.js       # 数据库初始化脚本
 │   └── seed-data.sql          # 种子数据
-├── skills/                    # 技能目录
-│   ├── search/                # 搜索技能
-│   │   ├── index.js
-│   │   └── skill.md
-│   └── weather/               # 天气技能
-│       ├── index.js
-│       └── skill.md
+├── data/
+│   └── skills/                # 技能目录
+│       ├── search/            # 搜索技能
+│       │   ├── index.js
+│       │   └── SKILL.md
+│       └── weather/           # 天气技能
+│           ├── index.js
+│           └── SKILL.md
 ├── docs/                      # 文档目录
 │   ├── v1/                    # V1 架构文档
 │   └── v2/                    # V2 设计文档

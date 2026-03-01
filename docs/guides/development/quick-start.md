@@ -89,7 +89,8 @@ frontend/         # Vue 3 前端
       Pagination.vue      # 通用分页组件
     stores/
       panel.ts    # 面板状态管理
-skills/           # 技能目录
+data/
+  skills/         # 技能目录
 models/           # Sequelize 模型（自动生成）
 scripts/          # 工具脚本
   init-database.js    # 数据库初始化

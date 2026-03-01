@@ -29,8 +29,8 @@ const DB_CONFIG = {
   database: process.env.DB_NAME,
 };
 
-// skills 目录路径
-const SKILLS_DIR = path.join(process.cwd(), 'skills');
+// skills 目录路径（统一使用 data/skills）
+const SKILLS_DIR = path.join(process.cwd(), 'data', 'skills');
 
 /**
  * 解析 SKILL.md 文件
@@ -176,7 +176,7 @@ function scanSkillsDirectory(targetSkill = null) {
       author: frontMatter.author || 'System',
       tags: Array.isArray(frontMatter.tags) ? frontMatter.tags : [],
       source_type: 'local',
-      source_path: `skills/${skillId}`,
+      source_path: skillId,  // 只保存技能目录名，由 skill-loader 拼接基础路径
       skill_md: content,
       argument_hint: frontMatter['argument-hint'] || '',
       user_invocable: frontMatter['user-invocable'] !== false,
