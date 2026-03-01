@@ -10,9 +10,10 @@
 |------|------|--------|
 | [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
 | [skill-runner 多语言支持](#skill-runner-多语言支持) | ⏳ 待开始 | 高 |
-| [反思心智模板配置化](tasks/reflective-mind-template.md) | ⏳ 待开始 | 中 |
-| [运行时参数配置界面](tasks/runtime-config.md) | ⏳ 待开始 | 中 |
+| [反思心智模板配置化](../archive/tasks/2026-02/2026-02-24-reflective-mind-template/README.md) | ⏳ 待开始 | 中 |
+| [运行时参数配置界面](../archive/tasks/2026-02/2026-02-24-runtime-config/README.md) | ⏳ 待开始 | 中 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
+| [技能对话式导入](../archive/tasks/2026-02/2026-02-24-skill-import-dialog/README.md) | ⏳ 待开始 | 高 |
 
 ### skill-runner 多语言支持
 
@@ -39,9 +40,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
-| [技能对话式导入](tasks/skill-import-dialog.md) | 🔄 进行中 | 高 |
-| [对话窗口右侧多功能 Panel](tasks/right-panel.md) | ✅ 基础功能已完成 | 中 |
-| [工具调用可视化面板 + SearXNG 搜索技能](tasks/tool-visualization.md) | 🔄 进行中（20%） | 中 |
+| [工具调用可视化面板 + SearXNG 搜索技能](tasks/2026-02-22-tool-visualization/README.md) | 🔄 进行中（20%） | 中 |
 | [核心架构升级：两层角色+沙箱池+专家编排](../design/v2/org-architecture.md) | 🔄 文档设计中 | 高 |
 
 ---
@@ -54,6 +53,7 @@
 | register_skill 工具参数修复 | 2026-03-01 | 增加 tools 参数，由 LLM 传入工具定义 |
 | skill-loader.js 字段名修复 | 2026-03-01 | usage → parameters |
 | migrate-skills.js 废弃 | 2026-03-01 | 改用 LLM 解析 SKILL.md |
+| 右侧面板基础功能 | 2026-02-22 | Topics/Debug Tab 已完成，归档于 [tasks/2026-02-22-right-panel](../archive/tasks/2026-02/2026-02-22-right-panel/README.md) |
 
 ---
 
