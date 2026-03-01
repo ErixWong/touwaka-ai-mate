@@ -2,10 +2,6 @@
   <div class="skills-view">
     <div class="view-header">
       <h1 class="view-title">{{ $t('skills.title') }}</h1>
-      <button class="btn-add" @click="openAddDialog">
-        <span class="icon">+</span>
-        {{ $t('skills.addSkill') }}
-      </button>
     </div>
 
     <!-- 搜索和过滤 -->
@@ -31,9 +27,6 @@
     <!-- 空状态 -->
     <div v-else-if="skillStore.skills.length === 0" class="empty-state">
       <p>{{ $t('skills.empty') }}</p>
-      <button class="btn-add" @click="openAddDialog">
-        {{ $t('skills.addFirstSkill') }}
-      </button>
     </div>
 
     <!-- 技能列表 -->
@@ -103,108 +96,6 @@
             @click="toggleSkillActive(skill)"
           >
             {{ skill.is_active ? $t('skills.deactivate') : $t('skills.activate') }}
-          </button>
-          <button 
-            class="btn-action" 
-            @click="reanalyzeSkill(skill)"
-            :disabled="isReanalyzing === skill.id"
-          >
-            {{ isReanalyzing === skill.id ? $t('common.loading') : $t('skills.reanalyze') }}
-          </button>
-          <button class="btn-action danger" @click="confirmDeleteSkill(skill)">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 添加技能对话框 -->
-    <div v-if="showAddDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">{{ $t('skills.addSkill') }}</h3>
-        <div class="dialog-body">
-          <!-- 来源选择 -->
-          <div class="source-tabs">
-            <button 
-              v-for="source in sourceTypes" 
-              :key="source.value"
-              class="source-tab"
-              :class="{ active: addForm.source_type === source.value }"
-              @click="addForm.source_type = source.value"
-            >
-              <span class="source-icon">{{ source.icon }}</span>
-              {{ source.label }}
-            </button>
-          </div>
-
-          <!-- URL 输入 -->
-          <div v-if="addForm.source_type === 'url'" class="form-item">
-            <label class="form-label">{{ $t('skills.skillUrl') }}</label>
-            <input
-              v-model="addForm.url"
-              type="text"
-              class="form-input"
-              :placeholder="$t('skills.skillUrlPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('skills.skillUrlHint') }}</p>
-          </div>
-
-          <!-- ZIP 上传 -->
-          <div v-if="addForm.source_type === 'zip'" class="form-item">
-            <label class="form-label">{{ $t('skills.uploadZip') }}</label>
-            <div class="file-upload">
-              <input
-                ref="fileInput"
-                type="file"
-                accept=".zip"
-                @change="handleFileSelect"
-                style="display: none"
-              />
-              <button class="btn-select-file" @click="($refs.fileInput as HTMLInputElement).click()">
-                {{ $t('skills.selectFile') }}
-              </button>
-              <span v-if="addForm.file" class="file-name">{{ addForm.file.name }}</span>
-            </div>
-          </div>
-
-          <!-- 本地路径 -->
-          <div v-if="addForm.source_type === 'local'" class="form-item">
-            <label class="form-label">{{ $t('skills.localPath') }}</label>
-            <input
-              v-model="addForm.path"
-              type="text"
-              class="form-input"
-              :placeholder="$t('skills.localPathPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('skills.localPathHint') }}</p>
-          </div>
-
-          <!-- 安装进度 -->
-          <div v-if="isInstalling" class="install-progress">
-            <span class="progress-icon">⏳</span>
-            {{ $t('skills.installing') }}
-          </div>
-
-          <!-- 安装结果 -->
-          <div v-if="installResult" class="install-result" :class="{ error: installResult.error }">
-            <template v-if="installResult.error">
-              <span class="result-icon">❌</span>
-              {{ installResult.error }}
-            </template>
-            <template v-else>
-              <span class="result-icon">✅</span>
-              {{ $t('skills.installSuccess', { name: installResult.skill?.name }) }}
-            </template>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeAddDialog">{{ $t('common.cancel') }}</button>
-          <button 
-            class="btn-confirm" 
-            :disabled="!canInstall || isInstalling" 
-            @click="installSkill"
-          >
-            {{ isInstalling ? $t('skills.installing') : $t('skills.install') }}
           </button>
         </div>
       </div>
@@ -281,22 +172,6 @@
       </div>
     </div>
 
-    <!-- 删除确认对话框 -->
-    <div v-if="showDeleteDialog && deletingSkill" class="dialog-overlay">
-      <div class="dialog dialog-confirm">
-        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
-        <p class="dialog-message">
-          {{ $t('skills.deleteConfirm', { name: deletingSkill.name }) }}
-        </p>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteSkill">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 参数管理对话框 -->
     <SkillParametersModal
       :visible="showParamsDialog"
@@ -321,31 +196,10 @@ const searchQuery = ref('')
 const filterStatus = ref('')
 
 // 对话框状态
-const showAddDialog = ref(false)
 const showDetailDialog = ref(false)
-const showDeleteDialog = ref(false)
 const showParamsDialog = ref(false)
 const selectedSkill = ref<Skill | null>(null)
-const deletingSkill = ref<Skill | null>(null)
-const isReanalyzing = ref<string | null>(null)
 const paramsSkill = ref<Skill | null>(null)
-
-// 添加表单
-const addForm = ref({
-  source_type: 'url' as 'url' | 'zip' | 'local',
-  url: '',
-  file: null as File | null,
-  path: ''
-})
-const isInstalling = ref(false)
-const installResult = ref<{ skill?: Skill; error?: string } | null>(null)
-
-// 来源类型选项
-const sourceTypes = computed(() => [
-  { value: 'url' as const, label: t('skills.fromUrl'), icon: '🔗' },
-  { value: 'zip' as const, label: t('skills.fromZip'), icon: '📦' },
-  { value: 'local' as const, label: t('skills.fromLocal'), icon: '📁' }
-])
 
 // 过滤后的技能列表
 const filteredSkills = computed(() => {
@@ -371,20 +225,6 @@ const filteredSkills = computed(() => {
   return skills
 })
 
-// 是否可以安装
-const canInstall = computed(() => {
-  switch (addForm.value.source_type) {
-    case 'url':
-      return addForm.value.url.trim().length > 0
-    case 'zip':
-      return addForm.value.file !== null
-    case 'local':
-      return addForm.value.path.trim().length > 0
-    default:
-      return false
-  }
-})
-
 // 获取安全等级样式类
 const getSecurityClass = (score: number) => {
   if (score >= 80) return 'high'
@@ -399,66 +239,6 @@ const getSourceLabel = (type: string) => {
     case 'zip': return t('skills.sourceZip')
     case 'local': return t('skills.sourceLocal')
     default: return type
-  }
-}
-
-// 打开添加对话框
-const openAddDialog = () => {
-  addForm.value = {
-    source_type: 'url',
-    url: '',
-    file: null,
-    path: ''
-  }
-  installResult.value = null
-  showAddDialog.value = true
-}
-
-const closeAddDialog = () => {
-  showAddDialog.value = false
-}
-
-// 文件选择
-const handleFileSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    addForm.value.file = target.files[0] || null
-  }
-}
-
-// 安装技能
-const installSkill = async () => {
-  isInstalling.value = true
-  installResult.value = null
-
-  try {
-    let skill: Skill
-    switch (addForm.value.source_type) {
-      case 'url':
-        skill = await skillStore.installFromUrl(addForm.value.url)
-        break
-      case 'zip':
-        if (addForm.value.file) {
-          skill = await skillStore.installFromZip(addForm.value.file)
-        } else {
-          throw new Error(t('skills.noFileSelected'))
-        }
-        break
-      case 'local':
-        skill = await skillStore.installFromPath(addForm.value.path)
-        break
-      default:
-        throw new Error(t('skills.invalidSourceType'))
-    }
-    installResult.value = { skill }
-    // 3秒后关闭对话框
-    setTimeout(() => {
-      closeAddDialog()
-    }, 2000)
-  } catch (err) {
-    installResult.value = { error: err instanceof Error ? err.message : t('skills.installFailed') }
-  } finally {
-    isInstalling.value = false
   }
 }
 
@@ -487,39 +267,6 @@ const closeDetailDialog = () => {
 const toggleSkillActive = async (skill: Skill) => {
   try {
     await skillStore.toggleSkillActive(skill.id)
-  } catch {
-    // 错误已在 store 中处理
-  }
-}
-
-// 重新分析技能
-const reanalyzeSkill = async (skill: Skill) => {
-  isReanalyzing.value = skill.id
-  try {
-    await skillStore.reanalyzeSkill(skill.id)
-  } catch {
-    // 错误已在 store 中处理
-  } finally {
-    isReanalyzing.value = null
-  }
-}
-
-// 删除确认
-const confirmDeleteSkill = (skill: Skill) => {
-  deletingSkill.value = skill
-  showDeleteDialog.value = true
-}
-
-const closeDeleteDialog = () => {
-  showDeleteDialog.value = false
-  deletingSkill.value = null
-}
-
-const deleteSkill = async () => {
-  if (!deletingSkill.value) return
-  try {
-    await skillStore.deleteSkill(deletingSkill.value.id)
-    closeDeleteDialog()
   } catch {
     // 错误已在 store 中处理
   }
@@ -560,28 +307,6 @@ onMounted(() => {
   font-weight: 600;
   margin: 0;
   color: var(--text-primary, #333);
-}
-
-.btn-add {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-add:hover {
-  background: var(--primary-hover, #1976d2);
-}
-
-.btn-add .icon {
-  font-size: 18px;
 }
 
 /* 过滤器 */
@@ -803,11 +528,6 @@ onMounted(() => {
   color: var(--text-secondary, #666);
 }
 
-.btn-action.danger {
-  background: #ef5350;
-  color: white;
-}
-
 /* 对话框 */
 .dialog-overlay {
   position: fixed;
@@ -836,10 +556,6 @@ onMounted(() => {
   max-width: 720px;
 }
 
-.dialog-confirm {
-  max-width: 400px;
-}
-
 .dialog-title {
   font-size: 18px;
   font-weight: 600;
@@ -855,137 +571,12 @@ onMounted(() => {
   max-height: 60vh;
 }
 
-.dialog-message {
-  padding: 24px;
-  margin: 0;
-  color: var(--text-secondary, #666);
-}
-
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
   border-top: 1px solid var(--border-color, #e0e0e0);
-}
-
-/* 来源选择 */
-.source-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.source-tab {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 12px;
-  background: var(--secondary-bg, #f5f5f5);
-  border: 2px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.source-tab:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.source-tab.active {
-  background: var(--primary-light, #e3f2fd);
-  border-color: var(--primary-color, #2196f3);
-}
-
-.source-icon {
-  font-size: 24px;
-}
-
-/* 表单 */
-.form-item {
-  margin-bottom: 16px;
-}
-
-.form-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  margin-bottom: 6px;
-}
-
-.form-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--text-tertiary, #999);
-  margin: 6px 0 0 0;
-}
-
-.file-upload {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.btn-select-file {
-  padding: 10px 16px;
-  background: var(--secondary-bg, #f5f5f5);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.btn-select-file:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.file-name {
-  font-size: 13px;
-  color: var(--text-primary, #333);
-}
-
-/* 安装进度和结果 */
-.install-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: var(--primary-light, #e3f2fd);
-  border-radius: 8px;
-  color: var(--primary-color, #2196f3);
-}
-
-.install-result {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 8px;
-  margin-top: 12px;
-}
-
-.install-result:not(.error) {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.install-result.error {
-  background: #ffebee;
-  color: #c62828;
 }
 
 /* 详情对话框 */
@@ -1132,34 +723,6 @@ onMounted(() => {
   background: var(--secondary-bg, #f5f5f5);
 }
 
-.btn-confirm {
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-confirm:hover:not(:disabled) {
-  background: var(--primary-hover, #1976d2);
-}
-
-.btn-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-confirm.delete {
-  background: var(--error-color, #c62828);
-}
-
-.btn-confirm.delete:hover {
-  background: var(--error-hover, #b71c1c);
-}
-
 /* 响应式 */
 @media (max-width: 768px) {
   .skills-view {
@@ -1192,10 +755,6 @@ onMounted(() => {
   .btn-action {
     width: 100%;
     text-align: center;
-  }
-
-  .source-tabs {
-    flex-direction: column;
   }
 
   .detail-grid {
