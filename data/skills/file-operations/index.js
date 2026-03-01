@@ -11,9 +11,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Allowed base directories (from environment or default)
+// 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 const ALLOWED_BASE_PATHS = [
-  process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data'),
-  process.env.SKILL_PATH || path.join(process.cwd(), 'data', 'skills'),
+  DATA_BASE_PATH,
+  path.join(DATA_BASE_PATH, 'skills'),
 ];
 
 // Maximum file size to read (50MB)
