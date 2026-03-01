@@ -118,6 +118,12 @@ const isSending = ref(false)
 const isConnected = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
 
+// 流式内容缓冲 - 用于节流 UI 更新
+const streamingBuffer = ref('')
+let streamingRafId: number | null = null
+const STREAMING_UPDATE_INTERVAL = 50 // 最小更新间隔（毫秒）
+let lastStreamingUpdate = 0
+
 // SSE 重连配置
 const RECONNECT_INTERVAL = 3000 // 重连间隔 3 秒
 const MAX_RECONNECT_ATTEMPTS = 10 // 最大重连次数
@@ -249,14 +255,43 @@ const connectToExpert = (expert_id: string) => {
     }
   })
 
+  // 节流更新流式内容到 UI
+  const flushStreamingBuffer = () => {
+    if (!currentAssistantMessage.value || !streamingBuffer.value) return
+    
+    const now = Date.now()
+    const timeSinceLastUpdate = now - lastStreamingUpdate
+    
+    if (timeSinceLastUpdate >= STREAMING_UPDATE_INTERVAL) {
+      // 直接更新
+      const newContent = currentAssistantMessage.value.content + streamingBuffer.value
+      chatStore.updateMessageContent(currentAssistantMessage.value.id, newContent)
+      streamingBuffer.value = ''
+      lastStreamingUpdate = now
+    } else {
+      // 使用 RAF 延迟更新
+      if (streamingRafId === null) {
+        streamingRafId = requestAnimationFrame(() => {
+          streamingRafId = null
+          if (currentAssistantMessage.value && streamingBuffer.value) {
+            const newContent = currentAssistantMessage.value.content + streamingBuffer.value
+            chatStore.updateMessageContent(currentAssistantMessage.value.id, newContent)
+            streamingBuffer.value = ''
+            lastStreamingUpdate = Date.now()
+          }
+        })
+      }
+    }
+  }
+
   eventSource.value.addEventListener('delta', (event) => {
     try {
       const data = JSON.parse(event.data)
       if (currentAssistantMessage.value) {
-        chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
-          currentAssistantMessage.value.content + data.content
-        )
+        // 将 delta 添加到缓冲区
+        streamingBuffer.value += data.content
+        // 节流更新 UI
+        flushStreamingBuffer()
       }
     } catch (e) {
       console.error('Parse error:', e)
@@ -598,6 +633,11 @@ onUnmounted(() => {
   }
   // 清理重连定时器
   clearReconnectTimer()
+  // 清理流式更新 RAF
+  if (streamingRafId !== null) {
+    cancelAnimationFrame(streamingRafId)
+    streamingRafId = null
+  }
 })
 </script>
 

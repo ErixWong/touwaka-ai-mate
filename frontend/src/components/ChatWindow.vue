@@ -109,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/types'
 
@@ -184,14 +184,21 @@ const applyCommand = (cmd: typeof commands[0]) => {
 const scrollHeightBeforeLoad = ref(0)
 const isLoadingTriggered = ref(false)
 
-// 自动滚动到底部
+// 节流滚动控制 - 使用 requestAnimationFrame 避免频繁滚动
+let scrollRafId: number | null = null
 const scrollToBottom = () => {
-  nextTick(() => {
+  if (scrollRafId !== null) return // 已有待处理的滚动请求
+  
+  scrollRafId = requestAnimationFrame(() => {
+    scrollRafId = null
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
   })
 }
+
+// 格式化缓存 - 避免重复格式化相同内容
+const formattedCache = new Map<string, string>()
 
 // 滚动处理：检测是否滚动到顶部
 const handleScroll = () => {
@@ -215,26 +222,35 @@ const handleLoadMore = () => {
   emit('loadMore')
 }
 
-// 监听消息变化
+// 监听消息数量变化（不使用 deep: true，只监听数组长度和最后一条消息）
 watch(
-  () => props.messages,
-  (newMessages, oldMessages) => {
+  () => props.messages.length,
+  (newLength, oldLength) => {
     nextTick(() => {
       if (!messagesContainer.value) return
       
       // 如果是加载更多（消息数量增加且之前正在加载）
-      if (props.isLoadingMore === false && isLoadingTriggered.value && newMessages.length > (oldMessages?.length || 0)) {
+      if (props.isLoadingMore === false && isLoadingTriggered.value && newLength > (oldLength || 0)) {
         // 恢复滚动位置（保持在原来的消息位置）
         const newScrollHeight = messagesContainer.value.scrollHeight
         messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
         isLoadingTriggered.value = false
-      } else {
+      } else if (newLength > (oldLength || 0)) {
         // 新消息时滚动到底部
         scrollToBottom()
       }
     })
-  },
-  { deep: true }
+  }
+)
+
+// 监听最后一条消息的状态变化（用于流式更新时的滚动）
+watch(
+  () => props.messages[props.messages.length - 1]?.status,
+  (status) => {
+    if (status === 'streaming') {
+      scrollToBottom()
+    }
+  }
 )
 
 // 发送消息
@@ -251,9 +267,15 @@ const handleSend = () => {
   }
 }
 
-// 格式化消息（支持简单的 markdown）
+// 格式化消息（支持简单的 markdown，带缓存）
 const formatMessage = (content: string) => {
   if (!content) return ''
+  
+  // 检查缓存
+  const cached = formattedCache.get(content)
+  if (cached !== undefined) {
+    return cached
+  }
   
   // 转义 HTML
   let formatted = content
@@ -275,6 +297,13 @@ const formatMessage = (content: string) => {
   
   // 换行
   formatted = formatted.replace(/\n/g, '<br>')
+  
+  // 缓存结果（限制缓存大小）
+  if (formattedCache.size > 100) {
+    const firstKey = formattedCache.keys().next().value
+    if (firstKey) formattedCache.delete(firstKey)
+  }
+  formattedCache.set(content, formatted)
   
   return formatted
 }
@@ -321,6 +350,16 @@ watch(inputText, adjustTextareaHeight)
 
 onMounted(() => {
   scrollToBottom()
+})
+
+onUnmounted(() => {
+  // 清理待处理的 RAF
+  if (scrollRafId !== null) {
+    cancelAnimationFrame(scrollRafId)
+    scrollRafId = null
+  }
+  // 清理格式化缓存
+  formattedCache.clear()
 })
 
 defineExpose({
