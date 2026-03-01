@@ -13,6 +13,11 @@
         <span class="nav-text">{{ $t('nav.experts') }}</span>
       </router-link>
 
+      <router-link to="/skills" class="nav-link" :class="{ active: isActive('/skills') }">
+        <span class="nav-icon">🧩</span>
+        <span class="nav-text">{{ $t('nav.skills') }}</span>
+      </router-link>
+
       <router-link to="/settings" class="nav-link" :class="{ active: isActive('/settings') }">
         <span class="nav-icon">⚙️</span>
         <span class="nav-text">{{ $t('nav.settings') }}</span>
