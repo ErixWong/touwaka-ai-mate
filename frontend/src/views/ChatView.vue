@@ -89,7 +89,8 @@ import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
-import { useNetworkStatus, updateSSEHeartbeat, registerSSEConnection, unregisterSSEConnection } from '@/composables/useNetworkStatus'
+import { useNetworkStatus } from '@/composables/useNetworkStatus'
+import { useSSE, type SSEEvent } from '@/composables/useSSE'
 import { messageApi } from '@/api/services'
 import type { Message, Topic, Doc } from '@/types'
 
@@ -113,17 +114,17 @@ const userStore = useUserStore()
 const { isBackendAvailable, waitForBackend } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
-const eventSource = ref<EventSource | null>(null)
 const isSending = ref(false)
-const isConnected = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
 
-// SSE 重连配置
-const RECONNECT_INTERVAL = 3000 // 重连间隔 3 秒
-const MAX_RECONNECT_ATTEMPTS = 10 // 最大重连次数
-const reconnectAttempts = ref(0)
-const reconnectTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const isReconnecting = ref(false)
+// 使用新的 SSE composable
+const {
+  isConnected,
+  isReconnecting,
+  reconnectAttempts,
+  connect: connectSSE,
+  disconnect: disconnectSSE,
+} = useSSE()
 
 // 从路由参数获取 expertId
 // skill-studio 作为一个普通专家，通过 /chat/skill-studio 访问
@@ -201,212 +202,152 @@ const loadMoreMessages = async () => {
   await chatStore.loadMoreMessages()
 }
 
-// 清理重连定时器
-const clearReconnectTimer = () => {
-  if (reconnectTimer.value) {
-    clearTimeout(reconnectTimer.value)
-    reconnectTimer.value = null
+// 处理 SSE 事件
+const handleSSEEvent = (event: SSEEvent) => {
+  // 心跳事件已在 useSSE 中处理
+  if (event.event === 'heartbeat') {
+    return
+  }
+
+  try {
+    const data = JSON.parse(event.data)
+
+    switch (event.event) {
+      case 'connected':
+        console.log('SSE connected:', data)
+        break
+
+      case 'start':
+        console.log('SSE start:', data)
+        // 如果检测到新话题，刷新话题列表
+        if (data.is_new_topic) {
+          console.log('检测到新话题，刷新话题列表')
+          chatStore.loadTopics({ expert_id: currentExpertId.value })
+        }
+        break
+
+      case 'delta':
+        if (currentAssistantMessage.value) {
+          chatStore.updateMessageContent(
+            currentAssistantMessage.value.id,
+            currentAssistantMessage.value.content + data.content
+          )
+        }
+        break
+
+      case 'tool_call':
+        console.log('Tool call:', data)
+        // 在当前消息中显示工具调用信息
+        if (currentAssistantMessage.value && data.toolCalls) {
+          const toolNames = data.toolCalls.map((tc: any) =>
+            tc.displayName || tc.function?.name || tc.name || 'unknown'
+          ).join(', ')
+          
+          chatStore.updateMessageContent(
+            currentAssistantMessage.value.id,
+            currentAssistantMessage.value.content + `\n\n🔧 调用工具: ${toolNames}\n`
+          )
+        }
+        break
+
+      case 'tool_results':
+        console.log('Tool results:', data)
+        // 在当前消息中显示工具执行结果摘要
+        if (currentAssistantMessage.value && data.results) {
+          const resultSummary = data.results.map((r: any) => {
+            const name = r.toolName || 'unknown'
+            const success = r.success ? '✅' : '❌'
+            return `${success} ${name}`
+          }).join('\n')
+          
+          chatStore.updateMessageContent(
+            currentAssistantMessage.value.id,
+            currentAssistantMessage.value.content + `\n${resultSummary}\n\n---\n`
+          )
+        }
+        break
+
+      case 'complete':
+        if (currentAssistantMessage.value) {
+          if (data.usage) {
+            chatStore.updateMessageMetadata(currentAssistantMessage.value.id, {
+              tokens: data.usage,
+              model: data.model,
+            })
+          }
+          chatStore.updateMessageContent(
+            currentAssistantMessage.value.id,
+            data.content || currentAssistantMessage.value.content,
+            'completed'
+          )
+          
+          // 检测技能相关操作，触发刷新事件
+          const content = data.content || currentAssistantMessage.value.content || ''
+          if (content.includes('Skill') && content.includes('successfully')) {
+            if (content.includes('registered') || content.includes('updated')) {
+              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
+                eventBus.emit(EVENTS.SKILL_REGISTERED)
+              })
+            } else if (content.includes('assigned')) {
+              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
+                eventBus.emit(EVENTS.SKILL_ASSIGNED)
+              })
+            } else if (content.includes('unassigned')) {
+              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
+                eventBus.emit(EVENTS.SKILL_UNASSIGNED)
+              })
+            } else if (content.includes('enabled') || content.includes('disabled')) {
+              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
+                eventBus.emit(EVENTS.SKILL_TOGGLED)
+              })
+            } else if (content.includes('deleted')) {
+              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
+                eventBus.emit(EVENTS.SKILL_DELETED)
+              })
+            }
+          }
+          
+          currentAssistantMessage.value = null
+        }
+        isSending.value = false
+        break
+
+      case 'error':
+        if (currentAssistantMessage.value) {
+          chatStore.updateMessageContent(
+            currentAssistantMessage.value.id,
+            data.message || t('error.unknownError'),
+            'error'
+          )
+          currentAssistantMessage.value = null
+        }
+        isSending.value = false
+        break
+
+      default:
+        console.log('Unknown SSE event:', event.event, data)
+    }
+  } catch (e) {
+    console.error('Parse SSE event error:', e)
   }
 }
 
 // 建立 SSE 连接到 Expert
-const connectToExpert = (expert_id: string) => {
-  // 清理重连定时器
-  clearReconnectTimer()
+const connectToExpert = async (expert_id: string) => {
+  console.log('Connecting to SSE for expert:', expert_id)
   
-  // 关闭现有连接
-  if (eventSource.value) {
-    eventSource.value.close()
-    eventSource.value = null
-    // 注销旧的 SSE 连接
-    unregisterSSEConnection()
-  }
-
-  const token = localStorage.getItem('access_token')
-  const sseUrl = `/api/chat/stream?expert_id=${expert_id}&token=${encodeURIComponent(token || '')}`
-
-  console.log('Connecting to SSE:', sseUrl)
-  eventSource.value = new EventSource(sseUrl)
-  isConnected.value = false
-
-  eventSource.value.addEventListener('connected', (event) => {
-    console.log('SSE connected:', event.data)
-    isConnected.value = true
-    reconnectAttempts.value = 0 // 重置重连计数
-    isReconnecting.value = false
-    // 注册 SSE 连接，启用心跳检测
-    registerSSEConnection()
+  await connectSSE(expert_id, {
+    timeout: 10000,
+    maxReconnectAttempts: 10,
+    reconnectInterval: 3000,
+    onEvent: handleSSEEvent,
+    onConnectionChange: (connected) => {
+      console.log('SSE connection state:', connected)
+    },
+    onError: (error) => {
+      console.error('SSE error:', error)
+    },
   })
-
-  // 监听 SSE 心跳事件
-  eventSource.value.addEventListener('heartbeat', () => {
-    updateSSEHeartbeat()
-  })
-
-  eventSource.value.addEventListener('start', (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      console.log('SSE start:', data)
-
-      // 如果检测到新话题，刷新话题列表
-      if (data.is_new_topic) {
-        console.log('检测到新话题，刷新话题列表')
-        chatStore.loadTopics({ expert_id: currentExpertId.value })
-      }
-    } catch (e) {
-      console.error('Parse error:', e)
-    }
-  })
-
-  eventSource.value.addEventListener('delta', (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      if (currentAssistantMessage.value) {
-        chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
-          currentAssistantMessage.value.content + data.content
-        )
-      }
-    } catch (e) {
-      console.error('Parse error:', e)
-    }
-  })
-
-  // 处理工具调用事件
-  eventSource.value.addEventListener('tool_call', (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      console.log('Tool call:', data)
-      
-      // 在当前消息中显示工具调用信息
-      if (currentAssistantMessage.value && data.toolCalls) {
-        const toolNames = data.toolCalls.map((tc: any) =>
-          tc.displayName || tc.function?.name || tc.name || 'unknown'
-        ).join(', ')
-        
-        chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
-          currentAssistantMessage.value.content + `\n\n🔧 调用工具: ${toolNames}\n`
-        )
-      }
-    } catch (e) {
-      console.error('Parse tool_call error:', e)
-    }
-  })
-
-  // 处理工具执行结果事件
-  eventSource.value.addEventListener('tool_results', (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      console.log('Tool results:', data)
-      
-      // 在当前消息中显示工具执行结果摘要
-      if (currentAssistantMessage.value && data.results) {
-        const resultSummary = data.results.map((r: any) => {
-          const name = r.toolName || 'unknown'
-          const success = r.success ? '✅' : '❌'
-          return `${success} ${name}`
-        }).join('\n')
-        
-        chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
-          currentAssistantMessage.value.content + `\n${resultSummary}\n\n---\n`
-        )
-      }
-    } catch (e) {
-      console.error('Parse tool_results error:', e)
-    }
-  })
-
-  eventSource.value.addEventListener('complete', (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      if (currentAssistantMessage.value) {
-        if (data.usage) {
-          chatStore.updateMessageMetadata(currentAssistantMessage.value.id, {
-            tokens: data.usage,
-            model: data.model,
-          })
-        }
-        chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
-          data.content || currentAssistantMessage.value.content,
-          'completed'
-        )
-        
-        // 检测技能相关操作，触发刷新事件
-        const content = data.content || currentAssistantMessage.value.content || ''
-        if (content.includes('Skill') && content.includes('successfully')) {
-          if (content.includes('registered') || content.includes('updated')) {
-            import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-              eventBus.emit(EVENTS.SKILL_REGISTERED)
-            })
-          } else if (content.includes('assigned')) {
-            import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-              eventBus.emit(EVENTS.SKILL_ASSIGNED)
-            })
-          } else if (content.includes('unassigned')) {
-            import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-              eventBus.emit(EVENTS.SKILL_UNASSIGNED)
-            })
-          } else if (content.includes('enabled') || content.includes('disabled')) {
-            import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-              eventBus.emit(EVENTS.SKILL_TOGGLED)
-            })
-          } else if (content.includes('deleted')) {
-            import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-              eventBus.emit(EVENTS.SKILL_DELETED)
-            })
-          }
-        }
-        
-        currentAssistantMessage.value = null
-      }
-      isSending.value = false
-    } catch (e) {
-      console.error('Parse error:', e)
-    }
-  })
-
-  eventSource.value.addEventListener('error', (event) => {
-    try {
-      const data = JSON.parse((event as MessageEvent).data)
-      if (currentAssistantMessage.value) {
-        chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
-          data.message || t('error.unknownError'),
-          'error'
-        )
-        currentAssistantMessage.value = null
-      }
-      isSending.value = false
-    } catch (e) {
-      console.error('Parse error:', e)
-    }
-  })
-
-  eventSource.value.onerror = (error) => {
-    console.error('SSE error:', error)
-    isConnected.value = false
-    
-    // 自动重连逻辑
-    if (!isReconnecting.value && reconnectAttempts.value < MAX_RECONNECT_ATTEMPTS) {
-      isReconnecting.value = true
-      reconnectAttempts.value++
-      
-      console.log(`SSE connection lost. Reconnecting in ${RECONNECT_INTERVAL}ms... (attempt ${reconnectAttempts.value}/${MAX_RECONNECT_ATTEMPTS})`)
-      
-      reconnectTimer.value = setTimeout(() => {
-        if (currentExpertId.value) {
-          console.log(`Attempting to reconnect SSE... (${reconnectAttempts.value}/${MAX_RECONNECT_ATTEMPTS})`)
-          connectToExpert(currentExpertId.value)
-        }
-      }, RECONNECT_INTERVAL)
-    } else if (reconnectAttempts.value >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('SSE reconnection failed after maximum attempts')
-      // 可以在这里添加用户提示
-    }
-  }
 }
 
 // 处理消息发送
@@ -429,6 +370,27 @@ const handleSendMessage = async (content: string) => {
         expert_id,
         role: 'assistant',
         content: t('error.backendUnavailable') || '后端服务暂时不可用，请稍后重试',
+        status: 'error',
+      })
+      return
+    }
+  }
+
+  // 检查 SSE 连接状态
+  if (!isConnected.value) {
+    console.log('SSE not connected, waiting for reconnection...')
+    // 等待 SSE 重连（最多 5 秒）
+    const startTime = Date.now()
+    while (!isConnected.value && Date.now() - startTime < 5000) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    
+    if (!isConnected.value) {
+      console.error('SSE connection not established after waiting')
+      chatStore.addLocalMessage({
+        expert_id,
+        role: 'assistant',
+        content: '连接已断开，正在重连中，请稍后重试',
         status: 'error',
       })
       return
@@ -541,11 +503,7 @@ watch(
     } else {
       // 没有 expertId，清除聊天状态
       chatStore.clearChat()
-      if (eventSource.value) {
-        eventSource.value.close()
-        eventSource.value = null
-        isConnected.value = false
-      }
+      await disconnectSSE()
     }
   },
   { immediate: true }
@@ -588,15 +546,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // 清理 SSE 连接
-  if (eventSource.value) {
-    eventSource.value.close()
-    eventSource.value = null
-    // 注销 SSE 连接
-    unregisterSSEConnection()
-  }
-  // 清理重连定时器
-  clearReconnectTimer()
+  // 清理 SSE 连接（useSSE 会自动处理）
+  disconnectSSE()
 })
 </script>
 
