@@ -11,9 +11,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Allowed base directories (from environment or default)
+// 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 const ALLOWED_BASE_PATHS = [
-  process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data'),
-  process.env.SKILL_PATH || path.join(process.cwd(), 'data', 'skills'),
+  DATA_BASE_PATH,
+  path.join(DATA_BASE_PATH, 'skills'),
 ];
 
 // Maximum file size to read (50MB)
@@ -55,10 +57,18 @@ function resolvePath(relativePath) {
 }
 
 /**
- * Read file content line by line
+ * Read file content - unified function with mode parameter
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.path - File path
+ * @param {string} params.mode - Read mode: "lines" (default) or "bytes"
+ * @param {number} params.from - Start line (for lines mode, 1-based)
+ * @param {number} params.lines - Number of lines to read (for lines mode)
+ * @param {number} params.offset - Byte offset (for bytes mode)
+ * @param {number} params.bytes - Number of bytes to read (for bytes mode)
  */
-async function readLines(params) {
-  const { path: filePath, from = 1, lines = 100 } = params;
+async function readFile(params) {
+  const { path: filePath, mode = 'lines', from = 1, lines = 100, offset = 0, bytes = 50000 } = params;
   const resolvedPath = resolvePath(filePath);
   
   if (!fs.existsSync(resolvedPath)) {
@@ -70,50 +80,42 @@ async function readLines(params) {
     throw new Error(`File too large: ${stats.size} bytes (max: ${MAX_FILE_SIZE})`);
   }
   
-  const content = fs.readFileSync(resolvedPath, 'utf-8');
-  const allLines = content.split('\n');
-  
-  const startLine = Math.max(1, from) - 1;
-  const endLine = Math.min(allLines.length, startLine + lines);
-  
-  const selectedLines = allLines.slice(startLine, endLine);
-  
-  return {
-    path: resolvedPath,
-    totalLines: allLines.length,
-    startLine: startLine + 1,
-    endLine: endLine,
-    lines: selectedLines,
-    content: selectedLines.join('\n'),
-  };
-}
-
-/**
- * Read file content by bytes
- */
-async function readBytes(params) {
-  const { path: filePath, offset = 0, bytes = 50000 } = params;
-  const resolvedPath = resolvePath(filePath);
-  
-  if (!fs.existsSync(resolvedPath)) {
-    throw new Error(`File not found: ${resolvedPath}`);
+  if (mode === 'bytes') {
+    // Bytes mode
+    const maxBytes = Math.min(bytes, MAX_FILE_SIZE);
+    const fd = fs.openSync(resolvedPath, 'r');
+    const buffer = Buffer.alloc(maxBytes);
+    const bytesRead = fs.readSync(fd, buffer, 0, maxBytes, offset);
+    fs.closeSync(fd);
+    
+    return {
+      path: resolvedPath,
+      mode: 'bytes',
+      totalSize: stats.size,
+      offset: offset,
+      bytesRead: bytesRead,
+      content: buffer.toString('utf-8', 0, bytesRead),
+    };
+  } else {
+    // Lines mode (default)
+    const content = fs.readFileSync(resolvedPath, 'utf-8');
+    const allLines = content.split('\n');
+    
+    const startLine = Math.max(1, from) - 1;
+    const endLine = Math.min(allLines.length, startLine + lines);
+    
+    const selectedLines = allLines.slice(startLine, endLine);
+    
+    return {
+      path: resolvedPath,
+      mode: 'lines',
+      totalLines: allLines.length,
+      startLine: startLine + 1,
+      endLine: endLine,
+      lines: selectedLines,
+      content: selectedLines.join('\n'),
+    };
   }
-  
-  const stats = fs.statSync(resolvedPath);
-  const maxBytes = Math.min(bytes, MAX_FILE_SIZE);
-  
-  const fd = fs.openSync(resolvedPath, 'r');
-  const buffer = Buffer.alloc(maxBytes);
-  const bytesRead = fs.readSync(fd, buffer, 0, maxBytes, offset);
-  fs.closeSync(fd);
-  
-  return {
-    path: resolvedPath,
-    totalSize: stats.size,
-    offset: offset,
-    bytesRead: bytesRead,
-    content: buffer.toString('utf-8', 0, bytesRead),
-  };
 }
 
 /**
@@ -283,10 +285,15 @@ async function grep(params) {
 }
 
 /**
- * Write content to a file
+ * Write content to a file - unified function with mode parameter
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.path - File path
+ * @param {string} params.content - Content to write
+ * @param {string} params.mode - Write mode: "write" (default, overwrite) or "append"
  */
-async function writeFile(params) {
-  const { path: filePath, content } = params;
+async function writeFileUnified(params) {
+  const { path: filePath, content, mode = 'write' } = params;
   const resolvedPath = resolvePath(filePath);
   
   // Ensure directory exists
@@ -295,37 +302,23 @@ async function writeFile(params) {
     fs.mkdirSync(dir, { recursive: true });
   }
   
-  fs.writeFileSync(resolvedPath, content, 'utf-8');
-  
-  return {
-    success: true,
-    path: resolvedPath,
-    bytesWritten: Buffer.byteLength(content, 'utf-8'),
-  };
-}
-
-/**
- * Append content to a file
- */
-async function appendFile(params) {
-  const { path: filePath, content } = params;
-  const resolvedPath = resolvePath(filePath);
-  
-  // Check if file exists, if not create it
-  if (!fs.existsSync(resolvedPath)) {
-    const dir = path.dirname(resolvedPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+  if (mode === 'append') {
+    fs.appendFileSync(resolvedPath, content, 'utf-8');
+    return {
+      success: true,
+      path: resolvedPath,
+      mode: 'append',
+      appendedBytes: Buffer.byteLength(content, 'utf-8'),
+    };
+  } else {
+    fs.writeFileSync(resolvedPath, content, 'utf-8');
+    return {
+      success: true,
+      path: resolvedPath,
+      mode: 'write',
+      bytesWritten: Buffer.byteLength(content, 'utf-8'),
+    };
   }
-  
-  fs.appendFileSync(resolvedPath, content, 'utf-8');
-  
-  return {
-    success: true,
-    path: resolvedPath,
-    appendedBytes: Buffer.byteLength(content, 'utf-8'),
-  };
 }
 
 /**
@@ -413,10 +406,15 @@ async function deleteLines(params) {
 }
 
 /**
- * Copy a file
+ * Transfer a file - unified function for copy and move operations
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.source - Source file path
+ * @param {string} params.destination - Destination file path
+ * @param {string} params.operation - Operation: "copy" (default) or "move"
  */
-async function copyFile(params) {
-  const { source, destination } = params;
+async function transferFile(params) {
+  const { source, destination, operation = 'copy' } = params;
   const resolvedSource = resolvePath(source);
   const resolvedDest = resolvePath(destination);
   
@@ -430,37 +428,15 @@ async function copyFile(params) {
     fs.mkdirSync(dir, { recursive: true });
   }
   
-  fs.copyFileSync(resolvedSource, resolvedDest);
+  if (operation === 'move') {
+    fs.renameSync(resolvedSource, resolvedDest);
+  } else {
+    fs.copyFileSync(resolvedSource, resolvedDest);
+  }
   
   return {
     success: true,
-    source: resolvedSource,
-    destination: resolvedDest,
-  };
-}
-
-/**
- * Move or rename a file
- */
-async function moveFile(params) {
-  const { source, destination } = params;
-  const resolvedSource = resolvePath(source);
-  const resolvedDest = resolvePath(destination);
-  
-  if (!fs.existsSync(resolvedSource)) {
-    throw new Error(`Source not found: ${resolvedSource}`);
-  }
-  
-  // Ensure destination directory exists
-  const dir = path.dirname(resolvedDest);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  
-  fs.renameSync(resolvedSource, resolvedDest);
-  
-  return {
-    success: true,
+    operation: operation,
     source: resolvedSource,
     destination: resolvedDest,
   };
@@ -527,13 +503,9 @@ async function createDir(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'read_lines':
-    case 'readLines':
-      return await readLines(params);
-      
-    case 'read_bytes':
-    case 'readBytes':
-      return await readBytes(params);
+    case 'read_file':
+    case 'readFile':
+      return await readFile(params);
       
     case 'list_files':
     case 'listFiles':
@@ -548,11 +520,7 @@ async function execute(toolName, params, context = {}) {
       
     case 'write_file':
     case 'writeFile':
-      return await writeFile(params);
-      
-    case 'append_file':
-    case 'appendFile':
-      return await appendFile(params);
+      return await writeFileUnified(params);
       
     case 'replace_in_file':
     case 'replaceInFile':
@@ -566,13 +534,10 @@ async function execute(toolName, params, context = {}) {
     case 'deleteLines':
       return await deleteLines(params);
       
-    case 'copy_file':
-    case 'copyFile':
-      return await copyFile(params);
-      
-    case 'move_file':
-    case 'moveFile':
-      return await moveFile(params);
+    case 'transfer':
+    case 'transfer_file':
+    case 'transferFile':
+      return await transferFile(params);
       
     case 'delete_file':
     case 'deleteFile':

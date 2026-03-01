@@ -27,6 +27,21 @@
             <span class="placeholder-text">{{ getInitials(currentExpert.name) }}</span>
           </div>
         </div>
+        <!-- 刷新按钮 -->
+        <button
+          class="refresh-btn"
+          :disabled="isRefreshing"
+          :title="$t('expert.refreshCache')"
+          @click="handleRefresh"
+        >
+          <span class="refresh-icon" :class="{ spinning: isRefreshing }">🔄</span>
+          <span v-if="isRefreshing">{{ $t('expert.refreshing') }}</span>
+          <span v-else>{{ $t('expert.refreshCache') }}</span>
+        </button>
+        <!-- 刷新状态反馈 -->
+        <div v-if="refreshStatus" :class="['refresh-status', refreshStatus.type]">
+          {{ refreshStatus.message }}
+        </div>
       </div>
 
       <!-- 基本信息区域 -->
@@ -72,10 +87,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useExpertStore } from '@/stores/expert'
+import { expertApi } from '@/api/services'
 
+const { t } = useI18n()
 const route = useRoute()
 const expertStore = useExpertStore()
 
@@ -91,6 +109,38 @@ const currentExpert = computed(() => {
   // 如果没有找到，返回 currentExpert（当从专家页面点击进入时）
   return expertStore.currentExpert
 })
+
+// 刷新状态
+const isRefreshing = ref(false)
+const refreshStatus = ref<{ type: 'success' | 'error', message: string } | null>(null)
+
+// 刷新专家缓存
+const handleRefresh = async () => {
+  if (!currentExpertId.value || isRefreshing.value) return
+
+  isRefreshing.value = true
+  refreshStatus.value = null
+
+  try {
+    await expertApi.refreshExpert(currentExpertId.value)
+    console.log('Expert cache refreshed:', currentExpertId.value)
+    // 显示成功消息
+    refreshStatus.value = { type: 'success', message: t('expert.refreshSuccess') }
+    // 重新加载专家数据
+    await expertStore.loadExperts()
+    expertStore.setCurrentExpert(currentExpertId.value)
+    // 3秒后自动清除状态消息
+    setTimeout(() => {
+      refreshStatus.value = null
+    }, 3000)
+  } catch (error) {
+    console.error('Failed to refresh expert cache:', error)
+    // 显示错误消息
+    refreshStatus.value = { type: 'error', message: t('expert.refreshFailed') }
+  } finally {
+    isRefreshing.value = false
+  }
+}
 
 // 加载专家数据
 const loadExpert = async () => {
@@ -186,8 +236,10 @@ const getInitials = (name: string): string => {
 /* 头像区域 */
 .avatar-section {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   padding: 20px;
+  gap: 16px;
 }
 
 .avatar-container {
@@ -221,6 +273,70 @@ const getInitials = (name: string): string => {
   font-size: 48px;
   font-weight: 600;
   color: white;
+}
+
+/* 刷新按钮 */
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--secondary-bg, #f5f5f5);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  font-size: 14px;
+  transition: transform 0.3s ease;
+}
+
+.refresh-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* 刷新状态反馈 */
+.refresh-status {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  animation: fadeIn 0.3s ease;
+}
+
+.refresh-status.success {
+  color: var(--success-color, #4caf50);
+  background: var(--success-bg, #e8f5e9);
+}
+
+.refresh-status.error {
+  color: var(--error-color, #f44336);
+  background: var(--error-bg, #ffebee);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 信息区域 */

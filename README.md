@@ -52,7 +52,7 @@ cd frontend && npm install
 
 ```bash
 cp .env.example .env
-# 编辑 .env 配置数据库连接
+# 编辑 .env 填入数据库配置
 ```
 
 ### 3. 初始化数据库
@@ -61,7 +61,24 @@ cp .env.example .env
 npm run init-db
 ```
 
-### 4. 启动服务
+### 4. 初始化核心技能
+
+```bash
+node scripts/init-core-skills.js
+```
+
+系统依赖以下核心技能（位于 `data/skills/` 目录）：
+
+| 技能 | 说明 |
+|------|------|
+| `file-operations` | 文件读写、搜索、管理 |
+| `compression` | ZIP 压缩/解压 |
+| `http-client` | HTTP GET/POST 请求 |
+| `skill-manager` | 技能注册、删除、分配 |
+
+如果核心技能被意外删除，可运行上述命令修复。
+
+### 5. 启动服务
 
 ```bash
 # 开发模式 (同时启动前后端)

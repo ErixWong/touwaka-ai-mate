@@ -5,9 +5,14 @@
 ```
 docs/
 ├── core/                        # 核心必读（每次开工必读）
-│   ├── SOUL.md                 # 人设
+│   ├── SOUL.md                 # 人设 + 工作规范
 │   ├── TODO.md                 # 任务列表
-│   └── tasks/                  # 任务详情文档
+│   └── tasks/                  # 进行中的任务文档
+│       ├── README.md           # 任务文档模板说明
+│       └── YYYY-MM-DD-task/    # 任务目录（日期-任务简述）
+│           ├── README.md       # 任务概述 + 需求分析
+│           ├── design.md       # 设计文档（可选）
+│           └── review.md       # Code Review 记录
 │
 ├── guides/                      # 开发手册（技术参考）
 │   ├── development/            # 开发手册
@@ -26,10 +31,13 @@ docs/
 │   ├── README.md               # 设计文档索引
 │   ├── v1/                     # v1 设计文档
 │   ├── v2/                     # v2 设计文档
-│   └── archive/                # 归档
+│   └── archive/                # 已废弃的设计文档
 │
-├── archive/                     # TODO 归档
-│   └── todo-archive-YYYY-MM.md # 月度任务归档
+├── archive/                     # 归档目录
+│   ├── todo-archive-YYYY-MM.md # 月度 TODO 归档
+│   └── tasks/                  # 任务文档归档
+│       └── YYYY-MM/            # 按月归档
+│           └── YYYY-MM-DD-task/
 │
 └── README.md                    # 本文件
 ```
@@ -53,13 +61,15 @@ docs/
 - [v1 设计文档](./design/v1/README.md) - v1 版本架构和设计
 - [v2 设计文档](./design/v2/README.md) - v2 版本设计（Task Layer、右侧面板等）
 
-### 📁 任务详情
+### 📁 任务文档
 
-- [core/tasks/](./core/tasks/) - 当前进行中的任务详情文档
+- [core/tasks/](./core/tasks/) - 进行中的任务（每个任务一个目录）
+- [任务文档模板说明](./core/tasks/README.md) - 如何创建和管理任务文档
 
 ### 🗄️ 归档
 
 - [TODO 归档](./archive/) - 已完成任务的月度归档
+- [任务文档归档](./archive/tasks/) - 已完成任务文档的月度归档
 - [设计归档](./design/archive/) - 已废弃的设计文档
 
 ## 项目概述
@@ -82,4 +92,4 @@ docs/
 
 ---
 
-*最后更新: 2026-02-24*
+*最后更新: 2026-03-01*
