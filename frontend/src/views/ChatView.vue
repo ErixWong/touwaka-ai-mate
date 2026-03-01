@@ -471,8 +471,8 @@ const handleRetry = async (message: ChatMessage) => {
 // 初始化：加载 expert 的消息
 const initChat = async (expertId: string) => {
   console.log('initChat called for expert:', expertId)
-  // 避免重复初始化同一个 expert
-  if (chatStore.currentExpertId === expertId && eventSource.value) {
+  // 避免重复初始化同一个 expert（检查 SSE 是否已连接）
+  if (chatStore.currentExpertId === expertId && isConnected.value) {
     console.log('Already initialized for expert:', expertId)
     return
   }
