@@ -275,9 +275,9 @@ eventSource.value.addEventListener('tool_results', (event) => {
 ### 目录结构
 
 ```
-skills/
+data/skills/
 └── searxng/
-    ├── skill.md          # 技能说明（给 LLM 看）
+    ├── SKILL.md          # 技能说明（给 LLM 看）
     ├── index.js          # 技能实现
     └── package.json      # 依赖（可选）
 ```
@@ -576,8 +576,8 @@ panel: {
 - [ ] `types/index.ts`: 添加 `ToolCall` 和 `ToolResult` 类型
 
 **技能：**
-- [ ] `skills/searxng/skill.md`: 创建技能说明
-- [ ] `skills/searxng/index.js`: 实现搜索功能
+- [ ] `data/skills/searxng/SKILL.md`: 创建技能说明
+- [ ] `data/skills/searxng/index.js`: 实现搜索功能
 - [ ] 测试 SearXNG 技能
 
 **国际化：**
