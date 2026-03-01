@@ -33,7 +33,7 @@
 | 文件操作 | 直接读写 | 阶段化目录隔离 |
 | AI约束 | 依赖提示词 | 规划-执行-Review循环 |
 | 技能加载 | 固定技能集 | RAG动态召回 |
-| 执行隔离 | 无 | Docker容器 |
+| 执行隔离 | 无 | 沙箱隔离 (Firejail/Sandboxie) |
 
 ---
 
@@ -204,171 +204,192 @@ ALTER TABLE messages ADD COLUMN phase VARCHAR(20) COMMENT '消息产生的阶段
 
 ---
 
-## 5. Docker 容器隔离
+## 5. 沙箱隔离机制
 
-### 5.1 容器角色
+### 5.1 架构概述
 
-| 角色 | 生命周期 | 挂载目录 | 职责 |
-|------|----------|----------|------|
-| **Butler** | 长期运行 | 只读访问所有Task | 协调、与用户对话、决策 |
-| **Analyst** | 按需创建 | 00-req(RO), 01-ana(RW) | 需求分析、生成plan |
-| **Worker** | 按需创建 | 00-req(RO), 01-ana(RO), 02-pro(RW) | 执行plan、生成产出 |
-| **Reviewer** | 按需创建 | 00-req(RO), 02-pro(RO), 03-rev(RW), 04-out(RW) | 审核、生成report |
+V2 采用轻量级沙箱隔离方案，替代 Docker 容器：
 
-### 5.2 容器启动配置
-
-```javascript
-// Analyst 容器
-{
-    name: `analyst-${taskId}`,
-    image: 'touwaka-expert:latest',
-    env: {
-        ROLE: 'analyst',
-        TASK_ID: taskId,
-        PHASE: 'ANALYSIS'
-    },
-    binds: [
-        `${taskDir}/00-requirements:/input:ro`,
-        `${taskDir}/01-analysis:/workspace:rw`
-    ]
-}
-
-// Worker 容器
-{
-    name: `worker-${taskId}`,
-    env: { ROLE: 'worker', PHASE: 'PROCESS' },
-    binds: [
-        `${taskDir}/00-requirements:/input:ro`,
-        `${taskDir}/01-analysis:/plan:ro`,
-        `${taskDir}/02-process:/workspace:rw`
-    ]
-}
-```
-
-### 5.3 容器与主进程通信协议（API + SSE）
-
-容器内的Expert需要与主进程通信以调用工具、上报进度。采用REST API + Server-Sent Events混合方案：
+- **Linux**: Firejail - 轻量级安全沙箱
+- **Windows**: Sandboxie Plus - 应用程序沙箱
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    通信架构                                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────┐    API Call     ┌─────────────────────┐   │
-│  │   Analyst   │ ──────────────→ │   Main Process      │   │
-│  │   Worker    │  HTTP POST/GET  │   (Butler核心)       │   │
-│  │  Container  │ ←────────────── │                     │   │
-│  └─────────────┘   API Response  └─────────────────────┘   │
-│         │                            │                      │
-│         │                            │                      │
-│         └──── SSE Stream ────────────┘                      │
-│                                                             │
-│  - 工具调用/状态查询：同步HTTP API                           │
-│  - 进度推送/实时通知：单向SSE流                              │
+│                    主进程 (Butler)                           │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              SandboxExecutor                         │    │
+│  │  ┌─────────────────┐    ┌──────────────────────┐   │    │
+│  │  │ SandboxieExecutor│    │  FirejailExecutor    │   │    │
+│  │  │   (Windows)      │    │    (Linux)           │   │    │
+│  │  └─────────────────┘    └──────────────────────┘   │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                            │                                 │
+│         ┌──────────────────┼──────────────────┐             │
+│         ▼                  ▼                  ▼             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐      │
+│  │   Analyst   │    │   Worker    │    │  Reviewer   │      │
+│  │  (沙箱进程)  │    │  (沙箱进程)  │    │  (沙箱进程)  │      │
+│  └─────────────┘    └─────────────┘    └─────────────┘      │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**API 端点设计：**
+### 5.2 角色与权限
 
-```javascript
-// lib/container-api.js - 主进程提供的API
-const express = require('express');
-const router = express.Router();
+| 角色 | 目录权限 | 资源限制 | 网络访问 |
+|------|----------|----------|----------|
+| **admin** | 完整项目读写 | 2GB 内存, 200 进程 | 允许 |
+| **power_user** | skills/读写, work/读写 | 1GB 内存, 100 进程 | 允许 |
+| **user** | skills/只读, work/读写 | 512MB 内存, 50 进程 | 允许 |
 
-// 工具调用（同步）
-router.post('/api/v1/tools/:toolName', async (req, res) => {
-    const { taskId, params } = req.body;
-    const result = await toolManager.execute(req.params.toolName, params, taskId);
-    res.json({ success: true, result });
-});
+### 5.3 Firejail 配置 (Linux)
 
-// 文件操作（同步）
-router.post('/api/v1/files/read', async (req, res) => {
-    const { taskId, path } = req.body;
-    const content = await fileManager.read(taskId, path);
-    res.json({ success: true, content });
-});
+```bash
+# 安装 Firejail
+sudo apt install firejail
 
-// 状态更新（同步响应 + SSE推送）
-router.post('/api/v1/tasks/:taskId/status', async (req, res) => {
-    const { status, message } = req.body;
-    await taskManager.updateStatus(req.params.taskId, status, message);
-    
-    // 同时通过SSE推送给前端
-    sseManager.broadcast(req.params.taskId, {
-        type: 'status_update',
-        status,
-        message,
-        timestamp: Date.now()
-    });
-    
-    res.json({ success: true });
-});
-
-// SSE 连接端点（实时流）
-router.get('/api/v1/events/:taskId', (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    
-    const clientId = sseManager.subscribe(req.params.taskId, (event) => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-    });
-    
-    req.on('close', () => {
-        sseManager.unsubscribe(clientId);
-    });
-});
+# 配置文件位置
+config/firejail/
+├── admin.profile
+├── power-user.profile
+└── user.profile
 ```
 
-**容器内SDK（Expert使用）：**
+**管理员配置 (admin.profile):**
+```ini
+# Firejail profile for admin
+private ${PROJECT_ROOT}
+netfilter
+```
+
+**普通用户配置 (user.profile):**
+```ini
+# Firejail profile for regular users
+whitelist ${PROJECT_ROOT}/data/work/${USER_ID}
+read-only ${PROJECT_ROOT}/skills
+blacklist ${PROJECT_ROOT}/.env
+blacklist ${PROJECT_ROOT}/*.key
+rlimit-as 512M
+rlimit-nproc 50
+netfilter
+```
+
+**Power User 配置 (power-user.profile):**
+```ini
+# Firejail profile for power users
+whitelist ${PROJECT_ROOT}/skills
+whitelist ${PROJECT_ROOT}/data/work/${USER_ID}
+blacklist ${PROJECT_ROOT}/.env
+rlimit-as 1G
+rlimit-nproc 100
+netfilter
+```
+
+### 5.4 Sandboxie 配置 (Windows)
+
+```ini
+# Sandboxie.ini 配置示例
+
+[user_{userId}]
+# 用户工作目录读写
+OpenFilePath=D:\projects\node\touwaka-mate-v2\data\work\{userId}\
+# 技能目录只读
+ReadFilePath=D:\projects\node\touwaka-mate-v2\skills\
+# 禁止访问敏感文件
+ClosedFilePath=D:\projects\node\touwaka-mate-v2\.env
+ClosedFilePath=*.key
+ClosedFilePath=*.pem
+AllowNetworkAccess=y
+Enabled=y
+```
+
+### 5.5 沙箱执行器接口
 
 ```javascript
-// sdk/container-client.js - 容器内Expert调用的客户端
-class ContainerClient {
-    constructor() {
-        this.apiBase = process.env.MAIN_PROCESS_API || 'http://host.docker.internal:3000';
-        this.taskId = process.env.TASK_ID;
-        this.sseConnection = null;
-    }
-    
-    // 调用工具（同步HTTP）
-    async callTool(toolName, params) {
-        const response = await fetch(`${this.apiBase}/api/v1/tools/${toolName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: this.taskId, params })
-        });
-        return await response.json();
-    }
-    
-    // 上报进度（HTTP + SSE）
-    async reportProgress(progress, message) {
-        await fetch(`${this.apiBase}/api/v1/tasks/${this.taskId}/status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                status: 'running',
-                progress,
-                message 
-            })
-        });
-    }
-    
-    // 流式输出（SSE）
-    streamOutput(chunk) {
-        // 通过stdout的特殊格式或HTTP SSE发送
-        process.stdout.write(`\x1b]1337;Stream=${JSON.stringify(chunk)}\x07`);
-    }
+// lib/sandbox-executor.js
+class SandboxExecutor {
+  constructor() {
+    this.platform = process.platform;
+    this.executor = this.platform === 'win32' 
+      ? new SandboxieExecutor() 
+      : new FirejailExecutor();
+  }
+
+  /**
+   * 在沙箱中执行命令
+   * @param {string} userId - 用户ID
+   * @param {string} role - 用户角色 (admin/power_user/user)
+   * @param {string} command - 要执行的命令
+   * @param {object} options - 执行选项
+   * @returns {Promise<{success, stdout, stderr, code}>}
+   */
+  async execute(userId, role, command, options = {}) {
+    return this.executor.execute(userId, role, command, options);
+  }
+
+  /**
+   * 检查沙箱是否可用
+   */
+  async isAvailable() {
+    return this.executor.isAvailable();
+  }
 }
 ```
 
-**选择API+SSE而非WebSocket的原因：**
-- **简单可靠**：HTTP API成熟稳定，容器到主进程的连接明确
-- **单向为主**：Expert主要是"上报结果"，不需要双向实时通信
-- **易于调试**：可以通过curl直接调用API测试
-- **兼容性好**：SSE在容器环境下穿透性优于WebSocket
+### 5.6 与主进程通信
+
+沙箱进程通过环境变量和文件系统与主进程通信：
+
+```javascript
+// 环境变量传递
+process.env.USER_ID = userId;
+process.env.WORK_DIR = workDir;
+process.env.ROLE = role;
+
+// 文件系统通信
+// 输入: 读取 00-requirements/input.json
+// 输出: 写入 02-process/interim/
+// 状态: 写入 .status 文件
+```
+
+**状态文件格式:**
+```json
+{
+  "phase": "PROCESS",
+  "step": 3,
+  "progress": 0.65,
+  "message": "正在处理数据...",
+  "timestamp": "2026-03-01T10:30:00Z"
+}
+```
+
+### 5.7 沙箱生命周期
+
+```
+任务创建
+    ↓
+分配用户ID和角色
+    ↓
+创建用户工作目录
+    ↓
+启动沙箱执行 (Firejail/Sandboxie)
+    ↓
+监控执行状态
+    ↓
+任务完成/失败
+    ↓
+清理临时文件
+```
+
+### 5.8 安全增强
+
+| 安全特性 | Firejail | Sandboxie |
+|----------|----------|-----------|
+| 文件系统隔离 | whitelist/blacklist | OpenFilePath/ClosedFilePath |
+| 网络过滤 | netfilter | AllowNetworkAccess |
+| 资源限制 | rlimit-as, rlimit-nproc | 通过配置限制 |
+| 系统调用过滤 | seccomp | 内置 |
+| 权限削减 | caps.drop=all | 内置 |
 
 ---
 
@@ -678,9 +699,10 @@ CREATE TABLE task_queue (
     started_at TIMESTAMP COMMENT '实际开始时间',
     completed_at TIMESTAMP COMMENT '完成时间',
     
-    -- 容器信息
-    container_id VARCHAR(100) COMMENT '运行的容器ID',
-    container_name VARCHAR(100) COMMENT '容器名称',
+    -- 沙箱信息
+    sandbox_user_id VARCHAR(100) COMMENT '沙箱用户ID',
+    sandbox_role VARCHAR(50) COMMENT '沙箱角色 (admin/power_user/user)',
+    sandbox_type VARCHAR(20) COMMENT 'sandboxie/firejail',
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
@@ -811,21 +833,19 @@ class TaskScheduler {
      * 启动任务
      */
     async startTask(task) {
-        // 1. 创建容器
-        const container = await docker.createContainer({
-            name: `${task.expert_role}-${task.task_id}`,
-            // ... 容器配置
-        });
+        const sandboxExecutor = new SandboxExecutor();
+        
+        // 1. 准备沙箱环境
+        const userId = task.created_by;
+        const role = await this.getUserRole(userId);
         
         // 2. 更新队列状态
         await db.query(`
             UPDATE task_queue 
             SET queue_status = 'RUNNING',
-                started_at = NOW(),
-                container_id = ?,
-                container_name = ?
+                started_at = NOW()
             WHERE task_id = ?
-        `, [container.id, container.name, task.task_id]);
+        `, [task.task_id]);
         
         // 3. 更新任务状态
         await db.query(`
@@ -834,8 +854,14 @@ class TaskScheduler {
             WHERE task_id = ?
         `, [task.phase, task.phase, task.task_id]);
         
-        // 4. 启动容器
-        await container.start();
+        // 4. 在沙箱中执行任务
+        const command = this.buildTaskCommand(task);
+        const result = await sandboxExecutor.execute(userId, role, command, {
+            cwd: task.work_dir,
+            timeout: task.timeout || 300000
+        });
+        
+        return result;
     }
 }
 ```
@@ -1390,10 +1416,11 @@ class InterventionStrategies {
 3. 基础目录结构
 4. 简单Reflective Mind（轮次触发）
 
-### Phase 2: 容器化
-1. Docker容器隔离
-2. API + SSE通信协议
-3. Analyst/Worker/Reviewer角色实现
+### Phase 2: 沙箱隔离
+1. Firejail 执行器 (Linux)
+2. Sandboxie 执行器 (Windows)
+3. SandboxExecutor 统一接口
+4. 角色权限配置
 
 ### Phase 3: 高级功能
 1. 解决方案库（数据库表）
@@ -1408,9 +1435,10 @@ class InterventionStrategies {
 - V1 任务设计：`D:\projects\node\touwaka-mate-v1\docs\task-design.md`
 - 开源项目分析：`docs/references-analysis-report.md`
 - 改进建议：`docs/improvement-suggestions.md`
+- 沙箱实现：`lib/sandbox-executor.js`, `lib/firejail-executor.js`, `lib/sandboxie-executor.js`
 
 ---
 
-*文档版本：v2.0*  
-*更新时间：2026-02-16*  
-*状态：已细化，待评审*
+*文档版本：v2.1*  
+*更新时间：2026-03-01*  
+*状态：已更新为沙箱隔离架构*
