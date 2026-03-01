@@ -23,6 +23,24 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // SSE 流式接口需要单独配置，禁用缓冲
+      '/api/chat/stream': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        // 禁用代理缓冲，确保 SSE 事件实时转发
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            // 设置 SSE 相关的请求头
+            proxyReq.setHeader('Cache-Control', 'no-cache');
+            proxyReq.setHeader('Accept', 'text/event-stream');
+          });
+          proxy.on('proxyRes', (proxyRes) => {
+            // 确保响应不被缓冲
+            proxyRes.headers['cache-control'] = 'no-cache';
+            proxyRes.headers['x-accel-buffering'] = 'no';
+          });
+        },
+      },
     },
   },
   build: {

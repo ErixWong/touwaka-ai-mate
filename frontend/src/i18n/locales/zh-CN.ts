@@ -23,6 +23,7 @@ export default {
     copy: '复制',
     copied: '已复制到剪贴板',
     copyFailed: '复制失败',
+    refresh: '刷新',
   },
 
   // 导航
