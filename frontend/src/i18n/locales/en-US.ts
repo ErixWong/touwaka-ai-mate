@@ -20,6 +20,9 @@ export default {
     confirmDelete: 'Confirm Delete',
     expand: 'Expand',
     collapse: 'Collapse',
+    copy: 'Copy',
+    copied: 'Copied to clipboard',
+    copyFailed: 'Copy failed',
   },
 
   // Navigation
