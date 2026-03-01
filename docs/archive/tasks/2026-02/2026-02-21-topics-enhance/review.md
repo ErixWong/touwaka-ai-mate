@@ -76,8 +76,8 @@
 **问题**：`zh-CN.ts` 和 `en-US.ts` 中移除了 `docs` 相关翻译，但未移除 `topics` 相关的 `daysAgo` 翻译键。
 
 **位置**：
-- [`frontend/src/i18n/locales/zh-CN.ts`](../../frontend/src/i18n/locales/zh-CN.ts) - 缺少 `daysAgo` 键
-- [`frontend/src/components/panel/TopicsTab.vue:126`](../../frontend/src/components/panel/TopicsTab.vue:126) - 使用了 `t('topic.daysAgo')`
+- `frontend/src/i18n/locales/zh-CN.ts` - 缺少 `daysAgo` 键
+- `frontend/src/components/panel/TopicsTab.vue:126` - 使用了 `t('topic.daysAgo')`
 
 **建议**：添加缺失的翻译键：
 ```typescript
@@ -96,7 +96,7 @@ topic: {
 
 ### 3. 代码逻辑问题
 
-**问题**：[`TopicsTab.vue:126`](../../frontend/src/components/panel/TopicsTab.vue:126) 使用了 fallback 值处理
+**问题**：`TopicsTab.vue:126` 使用了 fallback 值处理
 
 ```typescript
 if (days < 7) return `${days}${t('topic.daysAgo') || '天前'} ${time}`
@@ -108,7 +108,7 @@ if (days < 7) return `${days}${t('topic.daysAgo') || '天前'} ${time}`
 
 **问题**：`topic.controller.js` 的 `list` 方法返回格式从 `list` + `pageSize` + `totalPages` 改为 `items` + `size` + `pages`
 
-**位置**：[`server/controllers/topic.controller.js:90-93`](../../server/controllers/topic.controller.js:90)
+**位置**：`server/controllers/topic.controller.js:90-93`
 
 **影响**：可能导致前端分页组件显示异常
 
@@ -118,7 +118,7 @@ if (days < 7) return `${days}${t('topic.daysAgo') || '天前'} ${time}`
 
 ### 5. 潜在性能问题
 
-**问题**：[`memory-system.js:278`](../../lib/memory-system.js:278) 每次处理历史时都获取全部 100 条消息
+**问题**：`memory-system.js:278` 每次处理历史时都获取全部 100 条消息
 
 ```javascript
 const allMessages = await this.getRecentMessages(userId, 100);
@@ -130,7 +130,7 @@ const allMessages = await this.getRecentMessages(userId, 100);
 
 ### 6. 错误处理不完善
 
-**问题**：[`chat-service.js:339`](../../lib/chat-service.js:339) `incrementTopicMessageCount` 缺少错误处理
+**问题**：`chat-service.js:339` `incrementTopicMessageCount` 缺少错误处理
 
 ```javascript
 async incrementTopicMessageCount(topic_id) {
@@ -183,30 +183,6 @@ async incrementTopicMessageCount(topic_id) {
 
 6. **考虑缓存机制**：MemorySystem 历史消息获取
 7. **添加单元测试**：新增的 query 方法
-
----
-
-## 📝 提交建议
-
-建议将本次变更拆分为多个提交：
-
-```bash
-# 1. 后端 Topic 功能增强
-git add server/controllers/topic.controller.js server/routes/topic.routes.js lib/chat-service.js lib/db.js lib/memory-system.js
-git commit -m "feat: 增强 Topic 功能 - 添加复杂查询、消息计数、自动标题"
-
-# 2. 前端 TopicsTab 重构
-git add frontend/src/stores/chat.ts frontend/src/components/panel/TopicsTab.vue frontend/src/api/services.ts
-git commit -m "refactor: 重构 TopicsTab - 使用 chatStore 管理状态"
-
-# 3. 移除 DocsTab
-git add frontend/src/components/panel/RightPanel.vue frontend/src/stores/panel.ts
-git commit -m "refactor: 移除 DocsTab - 简化右侧面板"
-
-# 4. i18n 更新
-git add frontend/src/i18n/locales/
-git commit -m "chore: 更新国际化文件 - 移除 docs 相关翻译"
-```
 
 ---
 
