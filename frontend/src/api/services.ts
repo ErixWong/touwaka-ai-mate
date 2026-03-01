@@ -82,12 +82,6 @@ export const messageApi = {
   sendMessage: (data: { content: string; expert_id: string; model_id?: string }) =>
     apiRequest<{ message: string; topic_id: string }>(apiClient.post('/chat', data)),
 
-  // 获取 SSE 订阅 URL
-  getStreamUrl: (expert_id: string): string => {
-    const token = localStorage.getItem('access_token')
-    return `${apiClient.defaults.baseURL}/chat/stream?expert_id=${expert_id}&token=${encodeURIComponent(token || '')}`
-  },
-
   // 删除消息
   deleteMessage: (topic_id: string, message_id: string) =>
     apiRequest<void>(apiClient.delete(`/topics/${topic_id}/messages/${message_id}`)),
