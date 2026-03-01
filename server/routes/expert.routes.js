@@ -29,5 +29,8 @@ export default (controller) => {
   // 更新专家技能（需要认证）
   router.post('/:id/skills', authenticate(), controller.updateSkills.bind(controller));
 
+  // 刷新专家缓存（需要认证）
+  router.post('/:id/refresh', authenticate(), controller.refresh.bind(controller));
+
   return router;
 };

@@ -294,6 +294,36 @@ class ExpertController {
   }
 
   /**
+   * 刷新专家缓存
+   * POST /api/experts/:id/refresh
+   * 用于在技能/人设变更后刷新专家的运行时缓存
+   */
+  async refresh(ctx) {
+    try {
+      const { id } = ctx.params;
+      const userId = ctx.state.user?.id || 'unknown';
+
+      // 检查专家是否存在
+      const existing = await this.Expert.findOne({ where: { id } });
+      if (!existing) {
+        ctx.error('专家不存在', 404);
+        return;
+      }
+
+      // 清除专家缓存
+      if (this.chatService) {
+        this.chatService.clearExpertCache(id);
+        logger.info(`[ExpertController] 专家缓存已刷新: ${id}, 操作者: ${userId}`);
+      }
+
+      ctx.success({ id }, '专家缓存刷新成功');
+    } catch (error) {
+      logger.error('Refresh expert error:', error);
+      ctx.error('刷新专家缓存失败: ' + error.message, 500);
+    }
+  }
+
+  /**
    * 批量更新专家技能
    * POST /api/experts/:id/skills
    * Body: { skills: [{ skill_id, is_enabled, config? }] }

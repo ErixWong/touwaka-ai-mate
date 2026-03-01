@@ -145,6 +145,10 @@ export const expertApi = {
   // 批量更新专家技能
   updateExpertSkills: (id: string, skills: ExpertSkillConfig[]) =>
     apiRequest<{ skills: ExpertSkillConfig[] }>(apiClient.post(`/experts/${id}/skills`, { skills })),
+
+  // 刷新专家缓存（技能/人设变更后调用）
+  refreshExpert: (id: string) =>
+    apiRequest<{ id: string }>(apiClient.post(`/experts/${id}/refresh`)),
 }
 
 // 用户相关 API

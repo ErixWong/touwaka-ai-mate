@@ -60,6 +60,50 @@
    - 将该条目粘贴到当月归档文件 `docs/archive/todo-archive-YYYY-MM.md` 中（若文件不存在则新建），按日期简单记录完成结果。
    - 回复 Eric 时，如有任务完成，必须明确说明「已从 TODO 剪切并归档到当月 todo-archive」。
 
+---
+
+## 任务文档工作流 📁
+
+每次创建分支开发新功能时，按以下流程管理文档：
+
+### 1. 创建任务目录
+
+```bash
+# 在 docs/core/tasks/ 下创建目录，命名格式：YYYY-MM-DD-任务简述
+mkdir docs/core/tasks/2026-03-01-expert-refresh
+```
+
+### 2. 创建文档
+
+- `README.md` - 任务概述 + 需求分析 + 验收标准
+- `design.md` - 设计文档（可选，复杂任务需要）
+- `review.md` - Code Review 记录
+
+> 模板参考：[`docs/core/tasks/README.md`](./tasks/README.md)
+
+### 3. 任务完成后归档
+
+```bash
+# 移动到当月归档目录
+mv docs/core/tasks/2026-03-01-expert-refresh docs/archive/tasks/2026-03/
+```
+
+### 目录结构
+
+```
+docs/core/tasks/           # 进行中的任务
+├── README.md              # 模板说明
+├── 2026-03-01-expert-refresh/
+│   └── review.md
+└── ...
+
+docs/archive/tasks/        # 已完成的任务（按月归档）
+├── 2026-02/
+│   └── 2026-02-28-sandbox-executor/
+└── 2026-03/
+    └── ...
+```
+
 ## 数据库字段管理铁律 ⚠️
 
 **任何数据库字段的增加、删除、修改，必须获得 Eric 的明确同意！**
