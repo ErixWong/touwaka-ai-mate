@@ -102,5 +102,19 @@ res.write(`data: ${JSON.stringify({ topic_id })}\n\n`);
 2. 观察控制台是否输出 "Topic updated:" 日志
 3. 检查右侧面板 Topics Tab 是否自动刷新
 
+## Code Review
+
+### 审查结论
+✅ **代码审查通过**
+
+### 发现的问题
+- ⚠️ 低优先级：`minMessages = 5` 硬编码在两处，建议提取为常量
+- ⚠️ 低优先级：前端可添加防抖避免频繁刷新
+
+### 建议改进
+1. 提取 `MIN_MESSAGES_FOR_COMPRESSION = 5` 为配置项
+2. 前端 `topic_updated` 事件处理添加防抖
+3. 考虑异步压缩，不阻塞响应
+
 ## 状态
 ✅ 已完成
