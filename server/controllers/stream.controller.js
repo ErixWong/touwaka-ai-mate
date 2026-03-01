@@ -228,14 +228,14 @@ class StreamController {
 
     logger.info(`SSE connection established: user=${user_id}, expert=${expert_id}`);
 
-    // 心跳保活
+    // 心跳保活（10 秒间隔，用于检测后端可用性）
     const heartbeat = setInterval(() => {
       if (ctx.res.writableEnded) {
         clearInterval(heartbeat);
         return;
       }
       ctx.res.write(': heartbeat\n\n');
-    }, 30000);
+    }, 10000);
 
     // 清理连接
     const cleanup = () => {
