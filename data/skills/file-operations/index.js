@@ -119,22 +119,6 @@ async function readFile(params) {
 }
 
 /**
- * Read file content line by line (legacy, kept for backward compatibility)
- * @deprecated Use readFile with mode: "lines" instead
- */
-async function readLines(params) {
-  return readFile({ ...params, mode: 'lines' });
-}
-
-/**
- * Read file content by bytes (legacy, kept for backward compatibility)
- * @deprecated Use readFile with mode: "bytes" instead
- */
-async function readBytes(params) {
-  return readFile({ ...params, mode: 'bytes' });
-}
-
-/**
  * List directory contents
  */
 async function listFiles(params) {
@@ -338,21 +322,6 @@ async function writeFileUnified(params) {
 }
 
 /**
- * Write content to a file (legacy, supports both write and append via mode param)
- */
-async function writeFile(params) {
-  return writeFileUnified({ ...params, mode: 'write' });
-}
-
-/**
- * Append content to a file (legacy, kept for backward compatibility)
- * @deprecated Use writeFileUnified with mode: "append" instead
- */
-async function appendFile(params) {
-  return writeFileUnified({ ...params, mode: 'append' });
-}
-
-/**
  * Replace text in a file
  */
 async function replaceInFile(params) {
@@ -474,22 +443,6 @@ async function transferFile(params) {
 }
 
 /**
- * Copy a file (legacy, kept for backward compatibility)
- * @deprecated Use transferFile with operation: "copy" instead
- */
-async function copyFile(params) {
-  return transferFile({ ...params, operation: 'copy' });
-}
-
-/**
- * Move or rename a file (legacy, kept for backward compatibility)
- * @deprecated Use transferFile with operation: "move" instead
- */
-async function moveFile(params) {
-  return transferFile({ ...params, operation: 'move' });
-}
-
-/**
  * Delete a file or directory
  */
 async function deleteFile(params) {
@@ -550,20 +503,9 @@ async function createDir(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    // Unified read_file (new)
     case 'read_file':
     case 'readFile':
       return await readFile(params);
-      
-    // Legacy read_lines (deprecated)
-    case 'read_lines':
-    case 'readLines':
-      return await readLines(params);
-      
-    // Legacy read_bytes (deprecated)
-    case 'read_bytes':
-    case 'readBytes':
-      return await readBytes(params);
       
     case 'list_files':
     case 'listFiles':
@@ -576,19 +518,9 @@ async function execute(toolName, params, context = {}) {
     case 'grep':
       return await grep(params);
       
-    // Unified write_file with mode parameter (new)
     case 'write_file':
     case 'writeFile':
-      // Check if mode is explicitly set in params
-      if (params.mode) {
-        return await writeFileUnified(params);
-      }
-      return await writeFile(params);
-      
-    // Legacy append_file (deprecated)
-    case 'append_file':
-    case 'appendFile':
-      return await appendFile(params);
+      return await writeFileUnified(params);
       
     case 'replace_in_file':
     case 'replaceInFile':
@@ -602,21 +534,10 @@ async function execute(toolName, params, context = {}) {
     case 'deleteLines':
       return await deleteLines(params);
       
-    // Unified transfer (new)
     case 'transfer':
     case 'transfer_file':
     case 'transferFile':
       return await transferFile(params);
-      
-    // Legacy copy_file (deprecated)
-    case 'copy_file':
-    case 'copyFile':
-      return await copyFile(params);
-      
-    // Legacy move_file (deprecated)
-    case 'move_file':
-    case 'moveFile':
-      return await moveFile(params);
       
     case 'delete_file':
     case 'deleteFile':

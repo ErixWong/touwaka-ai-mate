@@ -18,35 +18,17 @@ Complete file system operations for reading, writing, searching, and managing fi
 
 ### Reading Files
 
-#### read_file (recommended)
+#### read_file
 
-Unified file reading with mode parameter.
+Read file content with mode parameter.
 
 **Parameters:**
 - `path` (string, required): File path
 - `mode` (string, optional): Read mode - `"lines"` (default) or `"bytes"`
 - `from` (number, optional): Start line for lines mode (default: 1)
-- `lines` (number, optional): Number of lines to read for lines mode (default: 100)
+- `lines` (number, optional): Number of lines for lines mode (default: 100)
 - `offset` (number, optional): Start byte for bytes mode (default: 0)
 - `bytes` (number, optional): Bytes to read for bytes mode (default: 50000)
-
-#### read_lines (legacy)
-
-Read file content line by line. *Deprecated: Use `read_file` with `mode: "lines"` instead.*
-
-**Parameters:**
-- `path` (string, required): File path
-- `from` (number, optional): Start line (default: 1)
-- `lines` (number, optional): Number of lines to read (default: 100)
-
-#### read_bytes (legacy)
-
-Read file content by bytes. *Deprecated: Use `read_file` with `mode: "bytes"` instead.*
-
-**Parameters:**
-- `path` (string, required): File path
-- `offset` (number, optional): Start byte (default: 0)
-- `bytes` (number, optional): Bytes to read (default: 50000)
 
 #### list_files
 
@@ -78,7 +60,7 @@ Search text across multiple files.
 
 ### Writing Files
 
-#### write_file (enhanced)
+#### write_file
 
 Write content to a file with optional append mode.
 
@@ -86,14 +68,6 @@ Write content to a file with optional append mode.
 - `path` (string, required): File path
 - `content` (string, required): Content to write
 - `mode` (string, optional): Write mode - `"write"` (default, overwrite) or `"append"`
-
-#### append_file (legacy)
-
-Append content to a file. *Deprecated: Use `write_file` with `mode: "append"` instead.*
-
-**Parameters:**
-- `path` (string, required): File path
-- `content` (string, required): Content to append
 
 #### replace_in_file
 
@@ -124,30 +98,14 @@ Delete specific lines from a file.
 
 ### File Management
 
-#### transfer (recommended)
+#### transfer
 
-Unified file transfer for copy and move operations.
+Copy or move a file.
 
 **Parameters:**
 - `source` (string, required): Source path
 - `destination` (string, required): Destination path
 - `operation` (string, optional): Operation - `"copy"` (default) or `"move"`
-
-#### copy_file (legacy)
-
-Copy a file. *Deprecated: Use `transfer` with `operation: "copy"` instead.*
-
-**Parameters:**
-- `source` (string, required): Source path
-- `destination` (string, required): Destination path
-
-#### move_file (legacy)
-
-Move or rename a file. *Deprecated: Use `transfer` with `operation: "move"` instead.*
-
-**Parameters:**
-- `source` (string, required): Source path
-- `destination` (string, required): Destination path
 
 #### delete_file
 
@@ -171,7 +129,7 @@ Use absolute paths carefully.
 ## Examples
 
 ```javascript
-// Read a file (new unified API)
+// Read a file (lines mode)
 { "tool": "read_file", "params": { "path": "data/example.txt" } }
 
 // Read file in bytes mode
@@ -183,24 +141,12 @@ Use absolute paths carefully.
 // Write a file
 { "tool": "write_file", "params": { "path": "data/output.txt", "content": "Hello!" } }
 
-// Append to a file (new API)
+// Append to a file
 { "tool": "write_file", "params": { "path": "data/log.txt", "content": "New entry\n", "mode": "append" } }
 
-// Copy a file (new unified API)
+// Copy a file
 { "tool": "transfer", "params": { "source": "data/file.txt", "destination": "data/backup.txt", "operation": "copy" } }
 
-// Move a file (new unified API)
+// Move a file
 { "tool": "transfer", "params": { "source": "data/old.txt", "destination": "data/new.txt", "operation": "move" } }
 ```
-
-## Migration Guide
-
-| Legacy Tool | New Tool | Notes |
-|-------------|----------|-------|
-| `read_lines` | `read_file` | Add `mode: "lines"` |
-| `read_bytes` | `read_file` | Add `mode: "bytes"` |
-| `append_file` | `write_file` | Add `mode: "append"` |
-| `copy_file` | `transfer` | Add `operation: "copy"` |
-| `move_file` | `transfer` | Add `operation: "move"` |
-
-Legacy tools are still supported for backward compatibility.
