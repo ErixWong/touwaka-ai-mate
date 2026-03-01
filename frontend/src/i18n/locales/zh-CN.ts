@@ -20,6 +20,9 @@ export default {
     confirmDelete: '确认删除',
     expand: '展开',
     collapse: '收起',
+    copy: '复制',
+    copied: '已复制到剪贴板',
+    copyFailed: '复制失败',
   },
 
   // 导航

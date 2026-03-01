@@ -111,7 +111,12 @@
         </div>
         <details class="payload-details">
           <summary>{{ $t('common.expand') }}</summary>
-          <pre class="raw-data">{{ JSON.stringify(llmPayload, null, 2) }}</pre>
+          <div class="raw-data-container">
+            <button class="copy-btn" @click="copyPayload" :title="$t('common.copy')">
+              📋
+            </button>
+            <pre class="raw-data">{{ JSON.stringify(llmPayload, null, 2) }}</pre>
+          </div>
         </details>
       </div>
       <div v-else class="no-payload">
@@ -138,6 +143,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
@@ -145,6 +151,7 @@ import { useUserStore } from '@/stores/user'
 import { useProviderStore } from '@/stores/provider'
 import { messageApi, debugApi } from '@/api/services'
 
+const { t } = useI18n()
 const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()
@@ -274,6 +281,20 @@ const totalCost = computed(() => {
     return sum + (msg.metadata?.cost || 0)
   }, 0)
 })
+
+// 复制 Payload 到剪贴板
+const copyPayload = async () => {
+  if (!llmPayload.value) return
+  
+  try {
+    const payloadStr = JSON.stringify(llmPayload.value, null, 2)
+    await navigator.clipboard.writeText(payloadStr)
+    alert(t('common.copied'))
+  } catch (error) {
+    console.error('复制失败:', error)
+    alert(t('common.copyFailed'))
+  }
+}
 </script>
 
 <style scoped>
@@ -365,15 +386,40 @@ const totalCost = computed(() => {
   font-family: monospace;
 }
 
+.raw-data-container {
+  position: relative;
+  margin-top: 8px;
+}
+
+.raw-data-container .copy-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s, background 0.2s;
+  z-index: 1;
+}
+
+.raw-data-container .copy-btn:hover {
+  opacity: 1;
+  background: var(--hover-bg, #f0f0f0);
+}
+
 .raw-data {
   font-size: 11px;
   background: var(--code-bg, #f5f5f5);
   padding: 8px;
+  padding-top: 24px;
   border-radius: 4px;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  margin-top: 8px;
   max-height: 200px;
   overflow-y: auto;
 }
