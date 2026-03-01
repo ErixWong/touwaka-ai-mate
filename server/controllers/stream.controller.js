@@ -112,13 +112,20 @@ class StreamController {
           
           if (delta.type === 'start') {
             res.write(`event: start\n`);
-            res.write(`data: ${JSON.stringify({ topic_id: delta.topic_id })}\n\n`);
+            res.write(`data: ${JSON.stringify({ 
+              topic_id: delta.topic_id,
+              is_new_topic: delta.is_new_topic || false 
+            })}\n\n`);
           } else if (delta.type === 'delta') {
             res.write(`event: delta\n`);
             res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
           } else if (delta.type === 'tool_call') {
             res.write(`event: tool_call\n`);
             res.write(`data: ${JSON.stringify(delta)}\n\n`);
+          } else if (delta.type === 'topic_updated') {
+            // 上下文压缩创建了新 Topic，通知前端刷新
+            res.write(`event: topic_updated\n`);
+            res.write(`data: ${JSON.stringify({ topicsCreated: delta.topicsCreated })}\n\n`);
           }
         },
         // onComplete - 完成回调
@@ -131,10 +138,6 @@ class StreamController {
             usage: result.usage,
             model: result.model,
           })}\n\n`);
-          
-          // 通知前端刷新 Topic 列表（如果需要）
-          res.write(`event: topic_updated\n`);
-          res.write(`data: ${JSON.stringify({ topic_id })}\n\n`);
         },
         // onError - 错误回调
         (error) => {
