@@ -17,7 +17,7 @@
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
 | [Tools 表执行路径字段](#tools-表执行路径字段) | ⏳ 待开始 | 中 |
 | [对话窗口停止按钮](#对话窗口停止按钮) | ⏳ 待开始 | 中 |
-| [QQ 机器人对接](#qq-机器人对接) | ⏳ 待开始 | 中 |
+| [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |
 
 ### Topic 状态管理机制
 
@@ -48,22 +48,27 @@
 - 保留已生成的内容，标记消息状态为"已停止"
 - 后端需要支持取消正在进行的 LLM 请求
 
-### QQ 机器人对接
+### QQ/Zoom 消息通道
 
-将 Touwaka Mate 对接到 QQ 平台，让用户可以通过 QQ 与专家对话。
+将 Touwaka Mate 对接到 QQ 和 Zoom 平台，让用户可以通过这些平台与专家对话。
 
-**实现方案**：
+**QQ 对接方案**：
 - 使用 [go-cqhttp](https://github.com/Mrs4s/go-cqhttp) 或 [OneBot](https://onebot.dev/) 协议
-- 实现 QQ 消息与 Expert Chat 的桥接
 - 支持私聊和群聊（群聊需要 @ 机器人）
 - 用户身份映射（QQ 号 → user_id）
 
+**Zoom 对接方案**：
+- 使用 Zoom Bot SDK 或 Webhook
+- 支持频道消息和私聊
+- 会议中@机器人触发专家
+
 **技术要点**：
-1. 搭建 QQ 机器人服务（独立进程）
-2. WebSocket 连接到主服务
-3. 消息格式转换（QQ 消息 ↔ Expert 消息）
-4. 流式响应分段发送（QQ 有消息长度限制）
-5. 权限控制（谁能使用哪些专家）
+1. 统一消息通道抽象层（MessageChannel Interface）
+2. 各平台适配器实现（QQAdapter, ZoomAdapter）
+3. WebSocket 连接到主服务
+4. 消息格式转换（平台消息 ↔ Expert 消息）
+5. 流式响应分段发送（各平台有消息长度限制）
+6. 权限控制（谁能使用哪些专家）
 
 ### skill-runner 多语言支持
 
