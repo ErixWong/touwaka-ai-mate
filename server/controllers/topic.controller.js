@@ -246,14 +246,14 @@ class TopicController {
         return;
       }
 
-      // 获取用户的所有专家
-      const experts = await this.db.models.expert_user.findAll({
+      // 获取用户的所有专家（通过 user_profile 表）
+      const experts = await this.db.models.user_profile.findAll({
         where: { user_id: userId },
         attributes: ['expert_id'],
         raw: true,
       });
 
-      const expertIds = experts.map(e => e.expert_id);
+      const expertIds = [...new Set(experts.map(e => e.expert_id))];  // 去重
       const targetExpertIds = expert_id ? [expert_id] : expertIds;
 
       const results = [];
