@@ -12,6 +12,7 @@
 | [skill-runner 多语言支持](#skill-runner-多语言支持) | ⏳ 待开始 | 高 |
 | [反思心智模板配置化](tasks/reflective-mind-template.md) | ⏳ 待开始 | 中 |
 | [运行时参数配置界面](tasks/runtime-config.md) | ⏳ 待开始 | 中 |
+| [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 
 ### skill-runner 多语言支持
 
@@ -41,6 +42,7 @@
 | [技能对话式导入](tasks/skill-import-dialog.md) | 🔄 进行中 | 高 |
 | [对话窗口右侧多功能 Panel](tasks/right-panel.md) | ✅ 基础功能已完成 | 中 |
 | [工具调用可视化面板 + SearXNG 搜索技能](tasks/tool-visualization.md) | 🔄 进行中（20%） | 中 |
+| [核心架构升级：两层角色+沙箱池+专家编排](../design/v2/org-architecture.md) | 🔄 文档设计中 | 高 |
 
 ---
 
