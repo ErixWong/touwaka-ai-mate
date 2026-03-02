@@ -6,6 +6,89 @@ license: Proprietary. LICENSE.txt has complete terms
 
 # PDF Processing Guide
 
+## 工具定义
+
+本技能提供以下可调用工具：
+
+### read_pdf
+
+读取 PDF 文件并提取文本内容。
+
+**参数**：
+- `file_path` (string, 必需): PDF 文件的完整路径
+- `pages` (array, 可选): 要读取的页码列表，从 0 开始。默认读取全部页面
+
+**返回**：
+- `library`: 使用的解析库
+- `total_pages`: 总页数
+- `pages`: 页面内容数组，包含页码和文本
+
+### extract_text
+
+只提取 PDF 的纯文本内容（简化版）。
+
+**参数**：
+- `file_path` (string, 必需): PDF 文件的完整路径
+- `pages` (array, 可选): 要提取的页码列表
+- `max_chars` (integer, 可选): 最大字符数，默认 10000
+
+**返回**：
+- `text`: 提取的文本
+- `total_chars`: 总字符数
+- `truncated`: 是否被截断
+
+### extract_tables
+
+提取 PDF 中的表格数据。
+
+**参数**：
+- `file_path` (string, 必需): PDF 文件的完整路径
+- `pages` (array, 可选): 要提取的页码列表
+
+**返回**：
+- `tables`: 表格数组，每个表格包含页码、行数和数据
+
+### get_info
+
+获取 PDF 文件的基本信息和元数据。
+
+**参数**：
+- `file_path` (string, 必需): PDF 文件的完整路径
+
+**返回**：
+- `file_size`: 文件大小（字节）
+- `total_pages`: 总页数
+- `metadata`: 元数据（标题、作者、创建者等）
+
+### pdf_to_markdown
+
+将 PDF 转换为 Markdown 格式，并提取图片到单独目录。
+
+**参数**：
+- `file_path` (string, 必需): PDF 文件的完整路径
+- `output_dir` (string, 可选): 输出目录，默认与 PDF 同目录
+- `image_dir` (string, 可选): 图片子目录名，默认 'images'
+- `pages` (array, 可选): 要转换的页码列表，默认全部
+- `extract_images` (boolean, 可选): 是否提取图片，默认 true
+
+**返回**：
+- `markdown_file`: 生成的 Markdown 文件路径
+- `images`: 提取的图片列表
+- `markdown_length`: Markdown 文本长度
+- `image_count`: 图片数量
+
+## 入口文件
+
+本技能使用 Python 实现，入口文件为 `index.py`。
+
+## 依赖库
+
+- `pypdf`: PDF 基础操作（必需）
+- `pdfplumber`: 文本和表格提取（推荐）
+- `PIL`: 图片处理（可选，用于提取图片）
+
+---
+
 ## Overview
 
 This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.
