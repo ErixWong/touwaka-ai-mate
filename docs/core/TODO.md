@@ -9,14 +9,11 @@
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
 | [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
-| ~~[skill-runner 多语言支持](#skill-runner-多语言支持)~~ | ✅ 已合并到 Python 技能支持 | ~~高~~ |
 | [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
-| ~~[技能对话式导入](../archive/tasks/2026-02/2026-02-24-skill-import-dialog/README.md)~~ | ✅ 已完成 | ~~高~~ |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
 | [对话窗口优化](#对话窗口优化) | ⏳ 待开始 | 高 |
 | [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |
-| ~~[本地开发环境轻量级沙箱](#本地开发环境轻量级沙箱)~~ | ✅ 已合并到 Python 技能支持 | ~~高~~ |
 
 ### Topic 状态管理机制
 
@@ -75,71 +72,13 @@
 5. 流式响应分段发送（各平台有消息长度限制）
 6. 权限控制（谁能使用哪些专家）
 
-### 本地开发环境轻量级沙箱
-
-为本地开发环境提供轻量级沙箱方案，生产环境使用 OpenSandbox 提供更强大的隔离支持。
-
-**背景**：
-- 当前 skill-runner 只支持 Node.js（使用 vm 模块）
-- 生产环境需要更强的隔离（OpenSandbox/Docker/Firejail）
-- 本地开发需要轻量级、易配置的方案
-
-**实现方案**：
-
-| 环境 | Node.js 沙箱 | Python 沙箱 |
-|------|-------------|-------------|
-| 本地开发 | vm2 模块 | subprocess + chdir + 危险函数黑名单 |
-| 生产环境 | OpenSandbox | OpenSandbox |
-
-**Python 本地沙箱实现要点**：
-1. 使用 subprocess 隔离进程
-2. chdir 到技能目录，限制文件访问范围
-3. 禁止危险函数：`os.system`, `subprocess`, `eval`, `exec`, `open`（写模式）等
-4. 通过 `__builtins__` 黑名单实现
-5. 超时控制（默认 30 秒）
-
-**Node.js 本地沙箱改进**：
-1. 从 vm 升级到 vm2（更强的隔离）
-2. 限制 require 访问范围
-3. 超时控制
-
-**代码结构**：
-```
-lib/sandbox/
-  ├── base-sandbox.js      # 抽象基类
-  ├── node-sandbox.js      # Node.js vm2 实现
-  ├── python-sandbox.js    # Python subprocess 实现
-  └── opensandbox.js       # OpenSandbox API 封装
-```
-
-### skill-runner 多语言支持
-
-扩展 `lib/skill-runner.js` 支持多种脚本语言和可执行文件：
-
-**目标**：
-- 支持 Python、Shell、Bash 等脚本语言
-- 支持编译型可执行文件
-- 使用沙箱（firejail 或类似实现）隔离执行
-
-**实现要点**：
-1. 检测技能目录中的入口文件类型（index.js, index.py, main.sh 等）
-2. 根据文件类型选择执行器（node, python, bash 等）
-3. 集成 firejail/sandboxie 进行沙箱隔离
-4. 统一 stdin/stdout JSON 通信协议
-
-**参考文档**：
-- [sandbox-architecture.md](../design/v2/sandbox-architecture.md)
-- [sandbox-executor.md](../guides/sandbox-executor.md)
-
 ---
 
 ## 进行中
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
-| ~~[Python 技能支持](tasks/2026-03-02-python-sandbox/README.md)~~ | ✅ 已完成 | ~~高~~ |
 | [技能参数配置界面](tasks/2026-03-01-skill-parameters-config/README.md) | 🔄 进行中（80%） | 高 |
-| ~~[技能对话式导入](tasks/skill-import-dialog.md)~~ | ✅ 已完成 | ~~高~~ |
 | [Health Check 与 SSE 心跳优化](tasks/2026-03-01-health-check-optimization/README.md) | 🔄 进行中 | 中 |
 | [对话窗口右侧多功能 Panel](tasks/right-panel.md) | ✅ 基础功能已完成 | 中 |
 | [工具调用可视化面板 + SearXNG 搜索技能](tasks/tool-visualization.md) | 🔄 进行中（20%） | 中 |
@@ -151,6 +90,8 @@ lib/sandbox/
 
 | 任务 | 完成日期 | 备注 |
 |------|----------|------|
+| Python 技能支持 | 2026-03-02 | skill-runner 支持 Python，PDF 技能实现 |
+| 技能对话式导入 | 2026-03-02 | 通过对话导入技能 |
 | Topic Updated Event 修复 | 2026-03-01 | 前端监听 topic_updated SSE 事件 |
 | 移除 tools/builtin 目录 | 2026-03-01 | 所有工具迁移为普通技能 |
 | register_skill 工具参数修复 | 2026-03-01 | 增加 tools 参数，由 LLM 传入工具定义 |
