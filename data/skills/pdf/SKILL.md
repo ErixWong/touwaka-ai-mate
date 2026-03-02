@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.
+description: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and converting PDFs to images for VL model recognition. If the user mentions a .pdf file or asks to produce one, use this skill.
 license: Proprietary. LICENSE.txt has complete terms
 argument-hint: "[operation] [path]"
 user-invocable: true
@@ -24,7 +24,6 @@ tools:
   - fill_pdf_form_with_annotations
   - check_bounding_boxes
   - extract_images
-  - ocr_pdf
 ---
 
 # PDF Processing Guide
@@ -218,14 +217,6 @@ Extract embedded images from PDF.
 **Parameters:**
 - `path` (string, required): PDF file path
 - `output_dir` (string, required): Output directory
-
-#### ocr_pdf
-
-Perform OCR on scanned PDF.
-
-**Parameters:**
-- `path` (string, required): PDF file path
-- `lang` (string, optional): Language for OCR (default: "eng")
 
 ## Quick Start
 
@@ -460,24 +451,13 @@ pdftk input.pdf rotate 1east output rotated.pdf
 
 ## Common Tasks
 
-### Extract Text from Scanned PDFs
+### Convert Scanned PDFs to Images for VL Model Recognition
+
+Use `convert_to_images` tool to convert PDF pages to images, then send images to VL (Vision-Language) model for text recognition.
 
 ```python
-# Requires: pip install pytesseract pdf2image
-import pytesseract
-from pdf2image import convert_from_path
-
-# Convert PDF to images
-images = convert_from_path('scanned.pdf')
-
-# OCR each page
-text = ""
-for i, image in enumerate(images):
-    text += f"Page {i+1}:\n"
-    text += pytesseract.image_to_string(image)
-    text += "\n\n"
-
-print(text)
+# First convert PDF to images using the tool
+# Then use VL model to recognize text from images
 ```
 
 ### Add Watermark
@@ -537,7 +517,7 @@ with open("encrypted.pdf", "wb") as output:
 | Extract tables     | pdfplumber                      | `page.extract_tables()`    |
 | Create PDFs        | reportlab                       | Canvas or Platypus           |
 | Command line merge | qpdf                            | `qpdf --empty --pages ...` |
-| OCR scanned PDFs   | pytesseract                     | Convert to image first       |
+| Scanned PDFs       | convert_to_images + VL model    | Convert to image first       |
 | Fill PDF forms     | pdf-lib or pypdf (see FORMS.md) | See FORMS.md                 |
 
 ## Next Steps

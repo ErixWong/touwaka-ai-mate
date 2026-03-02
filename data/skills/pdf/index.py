@@ -654,31 +654,6 @@ def extract_images(params):
     }
 
 
-def ocr_pdf(params):
-    """Perform OCR on scanned PDF"""
-    import pytesseract
-    from pdf2image import convert_from_path
-    
-    file_path = params['path']
-    lang = params.get('lang', 'eng')
-    
-    validate_pdf_file(file_path)
-    
-    images = convert_from_path(file_path)
-    text_parts = []
-    
-    for i, image in enumerate(images):
-        text_parts.append(f"--- Page {i+1} ---")
-        text_parts.append(pytesseract.image_to_string(image, lang=lang))
-    
-    return {
-        'success': True,
-        'input_file': file_path,
-        'pages_processed': len(images),
-        'text': '\n'.join(text_parts)
-    }
-
-
 # ============================================================
 # Tool Router
 # ============================================================
@@ -746,8 +721,6 @@ def execute(tool_name, params, context=None):
         # Other operations
         'extract_images': extract_images,
         'extractImages': extract_images,
-        'ocr_pdf': ocr_pdf,
-        'ocrPdf': ocr_pdf,
     }
     
     if tool_name not in tool_map:
