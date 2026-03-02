@@ -281,6 +281,6 @@ mysql -u root -p touwaka_mate < scripts/migrations/20260228-add-role-level.rollb
 
 ## 相关文档
 
-- [用户隔离架构设计](./user-isolation.md)
+- [沙箱架构设计](../design/v2/sandbox-architecture.md)
 - [技能元数据定义](../../lib/skill-meta.js)
 - [安全审计报告](./code-review-2026-02-28.md)

@@ -8,7 +8,6 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
-| ~~[用户隔离架构升级](../design/v2/user-isolation.md)~~ | ✅ 已合并到沙箱架构设计 | ~~高~~ |
 | [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
@@ -82,7 +81,7 @@
 | [Health Check 与 SSE 心跳优化](tasks/2026-03-01-health-check-optimization/README.md) | 🔄 进行中 | 中 |
 | [对话窗口右侧多功能 Panel](tasks/right-panel.md) | ✅ 基础功能已完成 | 中 |
 | [工具调用可视化面板 + SearXNG 搜索技能](tasks/tool-visualization.md) | 🔄 进行中（20%） | 中 |
-| [核心架构升级：两层角色+沙箱池+专家编排](../design/v2/org-architecture.md) | 🔄 文档设计中 | 高 |
+| [沙箱架构实现](../design/v2/sandbox-architecture.md) | 🔄 设计完成，本地开发环境已实现 | 高 |
 
 ---
 

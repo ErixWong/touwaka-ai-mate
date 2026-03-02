@@ -28,8 +28,7 @@
   - `right-panel-design.md`：Right Panel 总体交互、组件结构、通用分页协议与组件、Topics/Docs/Debug/Files 各 Tab 的前端与后端需求。
 
 - **沙箱架构设计**
-  - `sandbox-architecture.md`：两层角色模型（用户角色 + 专家角色）、SandboxPool 池化管理、权限计算、平台实现（Firejail/Sandboxie）。
-  - `user-isolation.md`：用户隔离概览，指向 sandbox-architecture.md。
+  - `sandbox-architecture.md`：两层角色模型（用户角色 + 专家角色）、SandboxPool 池化管理、权限计算、平台实现（Firejail/Sandboxie）、本地开发环境轻量级沙箱。
 
 - **专家编排设计**
   - `expert-orchestration.md`：TaskOrchestrator 主循环、专家-主循环通信协议、专家分身机制、完整流程示例。
@@ -59,7 +58,7 @@
 当前状态（人工维护）：
 - `task-layer-design.md`：**已采纳，部分内容待实现**
 - `right-panel-design.md`：**已采纳，按 TODO 推进中**
-- `sandbox-architecture.md`：**草稿，核心架构重大变更**
+- `sandbox-architecture.md`：**已采纳，本地开发环境已实现**
 - `expert-orchestration.md`：**草稿，核心架构重大变更**
 - `org-architecture.md`：**草稿，核心架构重大变更**
 
