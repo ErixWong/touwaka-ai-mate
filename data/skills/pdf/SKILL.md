@@ -81,6 +81,20 @@ license: Proprietary. LICENSE.txt has complete terms
 
 本技能使用 Python 实现，入口文件为 `index.py`。
 
+## 脚本工具
+
+- `scripts/pdf_to_markdown.py`: PDF 转 Markdown 独立脚本，可命令行调用
+  ```bash
+  # 基本用法
+  python scripts/pdf_to_markdown.py document.pdf
+  
+  # 指定输出目录
+  python scripts/pdf_to_markdown.py document.pdf ./output
+  
+  # 不提取图片
+  python scripts/pdf_to_markdown.py document.pdf ./output --no-images
+  ```
+
 ## 依赖库
 
 - `pypdf`: PDF 基础操作（必需）
