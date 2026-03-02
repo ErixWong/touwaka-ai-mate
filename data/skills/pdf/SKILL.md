@@ -453,12 +453,28 @@ pdftk input.pdf rotate 1east output rotated.pdf
 
 ### Convert Scanned PDFs to Images for VL Model Recognition
 
-Use `convert_to_images` tool to convert PDF pages to images, then send images to VL (Vision-Language) model for text recognition.
+For scanned PDFs or image-based PDFs where text extraction fails, use `convert_to_images` tool to convert PDF pages to images, then send images to VL (Vision-Language) model for text recognition.
 
-```python
-# First convert PDF to images using the tool
-# Then use VL model to recognize text from images
+**Workflow:**
+1. Use `convert_to_images` tool to convert PDF pages to PNG/JPEG images
+2. Send the generated images to VL model (e.g., GPT-4V, Claude Vision, Qwen-VL)
+3. VL model will recognize and extract text from the images
+
+**Example:**
 ```
+# Step 1: Convert PDF to images
+Tool: convert_to_images
+Params: { "path": "scanned.pdf", "output_dir": "./images", "dpi": 200 }
+
+# Step 2: Send images to VL model for recognition
+# The images are now ready for VL model processing
+```
+
+**Benefits of using VL model over traditional OCR:**
+- Better handling of complex layouts
+- Multi-language support without additional language packs
+- Understanding of tables, forms, and structured content
+- No need to install Tesseract or language packs
 
 ### Add Watermark
 
