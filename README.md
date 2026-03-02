@@ -2,6 +2,10 @@
 
 一个具备自我反思能力的 AI 专家副本系统，采用渐进式架构设计。
 
+![Touwaka Mate 界面预览](docs/images/main.png)
+
+![技能管理界面](docs/images/skill-manage.png)
+
 ## 项目状态
 
 | 版本 | 状态 | 描述 |
