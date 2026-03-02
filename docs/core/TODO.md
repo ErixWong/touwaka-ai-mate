@@ -8,7 +8,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
-| [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
+| ~~[用户隔离架构升级](../design/v2/user-isolation.md)~~ | ✅ 已合并到沙箱架构设计 | ~~高~~ |
 | [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
