@@ -18,6 +18,7 @@
 | [Tools 表执行路径字段](#tools-表执行路径字段) | ⏳ 待开始 | 中 |
 | [对话窗口停止按钮](#对话窗口停止按钮) | ⏳ 待开始 | 中 |
 | [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |
+| [本地开发环境轻量级沙箱](#本地开发环境轻量级沙箱) | ⏳ 待开始 | 高 |
 
 ### Topic 状态管理机制
 
@@ -69,6 +70,43 @@
 4. 消息格式转换（平台消息 ↔ Expert 消息）
 5. 流式响应分段发送（各平台有消息长度限制）
 6. 权限控制（谁能使用哪些专家）
+
+### 本地开发环境轻量级沙箱
+
+为本地开发环境提供轻量级沙箱方案，生产环境使用 OpenSandbox 提供更强大的隔离支持。
+
+**背景**：
+- 当前 skill-runner 只支持 Node.js（使用 vm 模块）
+- 生产环境需要更强的隔离（OpenSandbox/Docker/Firejail）
+- 本地开发需要轻量级、易配置的方案
+
+**实现方案**：
+
+| 环境 | Node.js 沙箱 | Python 沙箱 |
+|------|-------------|-------------|
+| 本地开发 | vm2 模块 | subprocess + chdir + 危险函数黑名单 |
+| 生产环境 | OpenSandbox | OpenSandbox |
+
+**Python 本地沙箱实现要点**：
+1. 使用 subprocess 隔离进程
+2. chdir 到技能目录，限制文件访问范围
+3. 禁止危险函数：`os.system`, `subprocess`, `eval`, `exec`, `open`（写模式）等
+4. 通过 `__builtins__` 黑名单实现
+5. 超时控制（默认 30 秒）
+
+**Node.js 本地沙箱改进**：
+1. 从 vm 升级到 vm2（更强的隔离）
+2. 限制 require 访问范围
+3. 超时控制
+
+**代码结构**：
+```
+lib/sandbox/
+  ├── base-sandbox.js      # 抽象基类
+  ├── node-sandbox.js      # Node.js vm2 实现
+  ├── python-sandbox.js    # Python subprocess 实现
+  └── opensandbox.js       # OpenSandbox API 封装
+```
 
 ### skill-runner 多语言支持
 
