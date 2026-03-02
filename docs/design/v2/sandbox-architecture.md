@@ -384,6 +384,92 @@ const EXPERT_ROLE_CONFIGS = {
 
 ## 4. 平台实现
 
+### 4.0 本地开发环境（轻量级沙箱）
+
+本地开发环境使用轻量级沙箱方案，生产环境使用 OpenSandbox 提供更强大的隔离支持。两套方案并行，默认使用本地方案。
+
+| 环境 | Node.js 沙箱 | Python 沙箱 |
+|------|-------------|-------------|
+| 本地开发 | vm 模块 | subprocess + chdir + 危险函数黑名单 |
+| 服务端部署 | OpenSandbox | OpenSandbox |
+
+#### 4.0.1 Node.js 本地沙箱
+
+使用 Node.js 内置的 `vm` 模块实现隔离：
+
+```javascript
+// 使用 vm.createContext 创建隔离上下文
+vm.createContext(context);
+
+// 使用 vm.runInContext 执行代码，设置超时
+vm.runInContext(code, context, {
+  timeout: 10000, // 10秒超时
+  displayErrors: true,
+});
+```
+
+**安全措施**：
+- 模块白名单：只允许加载特定模块
+- 禁止相对路径引用
+- 提供受限的 process 对象（只暴露 env 和 cwd）
+- 禁止访问 global, __dirname, __filename
+
+#### 4.0.2 Python 本地沙箱
+
+使用 subprocess 隔离进程，通过 Python 包装器禁止危险函数：
+
+```javascript
+// 使用 spawn 执行 Python
+const pythonProcess = spawn('python', ['-c', sandboxWrapper], {
+  cwd: skillPath,  // chdir 到技能目录
+  env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+  stdio: ['pipe', 'pipe', 'pipe'],
+});
+```
+
+**Python 危险函数黑名单**：
+- `os.system`, `os.spawn*`, `os.exec*`, `os.popen`
+- `subprocess.*`（禁止导入）
+- `eval()`, `exec()`
+
+**实现方式**：
+```python
+# 通过限制 __builtins__ 来禁止危险函数
+_BLACKLIST = {
+    'system', 'spawn', 'spawnl', 'spawnle', 'spawnlp', 'spawnlpe', 
+    'spawnv', 'spawnve', 'spawnvp', 'spawnvpe',
+    'exec', 'execl', 'execle', 'execlp', 'execlpe',
+    'execv', 'execve', 'execvp', 'execvpe',
+    'popen', 'fdopen',
+}
+
+# 限制 os 模块的危险函数
+class _RestrictedOS:
+    def __getattr__(self, name):
+        if name in _BLACKLIST:
+            raise PermissionError(f"Function os.{name} is not allowed in sandbox")
+        return getattr(_original_os, name)
+
+# 禁止导入 subprocess 模块
+def _restricted_import(name, *args, **kwargs):
+    if name == 'subprocess' or name.startswith('subprocess.'):
+        raise PermissionError("Import subprocess is not allowed in sandbox")
+    return _original_import(name, *args, **kwargs)
+```
+
+**超时控制**：默认 30 秒超时
+
+#### 4.0.3 入口文件检测
+
+skill-runner 自动检测技能入口文件类型：
+
+| 入口文件 | 执行器 | 语言 |
+|----------|--------|------|
+| `index.js` | Node.js vm | JavaScript |
+| `index.py` | Python subprocess | Python |
+
+检测优先级：`index.js` > `index.py`
+
 ### 4.1 Firejail 实现
 
 ```javascript
@@ -650,6 +736,7 @@ INSERT INTO expert_role_defs (id, name, visibility, readonly_patterns, readwrite
 
 | 日期 | 变更内容 |
 |------|----------|
+| 2026-03-02 | 添加本地开发环境轻量级沙箱方案（Node.js vm + Python subprocess） |
 | 2026-03-01 | 初始版本：两层角色模型、沙箱池管理、平台实现 |
 
 ---
