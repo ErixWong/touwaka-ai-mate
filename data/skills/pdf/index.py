@@ -1,329 +1,756 @@
 """
-PDF 技能 - Python 实现
-提供 PDF 文件的读取、解析、提取等功能
+PDF Tools Skill - Python Implementation
+
+Comprehensive PDF processing tools including:
+- Basic operations: read, extract text/tables
+- Editing: merge, split, rotate pages
+- Creation: create PDFs from content
+- Conversion: to images, to markdown
+- Security: encrypt, decrypt, watermark
+- Forms: fill and extract form data
+
+All tools use Python PDF libraries (pypdf, pdfplumber, reportlab, etc.)
+Form-related tools delegate to existing scripts in scripts/ directory.
 """
 
-import json
-import sys
 import os
-import base64
-import re
+import sys
+import subprocess
+from pathlib import Path
 
-# 添加 scripts 目录到路径
-scripts_dir = os.path.join(os.path.dirname(__file__), 'scripts')
-if scripts_dir not in sys.path:
-    sys.path.insert(0, scripts_dir)
+# Get skill directory
+SKILL_DIR = Path(__file__).parent.resolve()
+SCRIPTS_DIR = SKILL_DIR / "scripts"
 
-# 尝试导入 PDF 库
-try:
-    from pypdf import PdfReader
-    HAS_PYPDF = True
-except ImportError:
-    HAS_PYPDF = False
-
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
-
-try:
-    from pdf2image import convert_from_path
-    HAS_PDF2IMAGE = True
-except ImportError:
-    HAS_PDF2IMAGE = False
-
-try:
-    from PIL import Image
-    HAS_PIL = True
-except ImportError:
-    HAS_PIL = False
-
-# 导入 pdf_to_markdown 模块
-try:
-    from pdf_to_markdown import pdf_to_markdown as _pdf_to_markdown
-    HAS_PDF2MD = True
-except ImportError:
-    HAS_PDF2MD = False
+# Maximum file size to process (100MB)
+MAX_FILE_SIZE = 100 * 1024 * 1024
 
 
-def execute(tool_name, params, context):
-    """
-    技能入口函数
+def validate_pdf_file(file_path):
+    """Check if file exists and is a PDF"""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
     
-    Args:
-        tool_name: 工具名称
-        params: 工具参数
-        context: 执行上下文
+    file_size = os.path.getsize(file_path)
+    if file_size > MAX_FILE_SIZE:
+        raise ValueError(f"File too large: {file_size} bytes (max: {MAX_FILE_SIZE})")
     
-    Returns:
-        执行结果
-    """
-    if tool_name == 'read_pdf':
-        return read_pdf(params)
-    elif tool_name == 'extract_text':
-        return extract_text(params)
-    elif tool_name == 'extract_tables':
-        return extract_tables(params)
-    elif tool_name == 'get_info':
-        return get_pdf_info(params)
-    elif tool_name == 'pdf_to_markdown':
-        return pdf_to_markdown(params)
-    else:
-        raise ValueError(f'Unknown tool: {tool_name}')
+    if not file_path.lower().endswith('.pdf'):
+        raise ValueError(f"Not a PDF file: {file_path}")
+    
+    return True
 
+
+def run_script(script_name, args):
+    """Run a Python script from scripts/ directory and return output"""
+    script_path = SCRIPTS_DIR / script_name
+    
+    # 安全检查：防止命令注入
+    dangerous_chars = [';', '|', '`', '$', '&&', '||', '\n', '\r']
+    for arg in args:
+        for char in dangerous_chars:
+            if char in arg:
+                raise ValueError(f"Invalid character in argument: {repr(char)}")
+    
+    cmd = [sys.executable, str(script_path)] + args
+    
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(SKILL_DIR)
+    )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"Script error: {result.stderr}")
+    
+    return result.stdout
+
+
+# ============================================================
+# Basic PDF Operations
+# ============================================================
 
 def read_pdf(params):
-    """
-    读取 PDF 文件并提取文本
+    """Read PDF metadata and basic info"""
+    from pypdf import PdfReader
     
-    Args:
-        params.file_path: PDF 文件路径
-        params.pages: 要读取的页码列表（可选，默认全部）
-    
-    Returns:
-        提取的文本内容
-    """
-    file_path = params.get('file_path')
-    if not file_path:
-        raise ValueError('file_path is required')
-    
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f'PDF file not found: {file_path}')
-    
-    pages = params.get('pages')  # None 表示全部页面
-    
-    if HAS_PDFPLUMBER:
-        return _read_with_pdfplumber(file_path, pages)
-    elif HAS_PYPDF:
-        return _read_with_pypdf(file_path, pages)
-    else:
-        raise ImportError('No PDF library available. Please install pypdf or pdfplumber.')
-
-
-def _read_with_pdfplumber(file_path, pages=None):
-    """使用 pdfplumber 读取 PDF"""
-    result = {
-        'library': 'pdfplumber',
-        'file_path': file_path,
-        'pages': []
-    }
-    
-    with pdfplumber.open(file_path) as pdf:
-        result['total_pages'] = len(pdf.pages)
-        
-        page_indices = pages if pages else range(len(pdf.pages))
-        
-        for i in page_indices:
-            if i < 0 or i >= len(pdf.pages):
-                continue
-            
-            page = pdf.pages[i]
-            text = page.extract_text() or ''
-            
-            result['pages'].append({
-                'page_number': i + 1,
-                'text': text,
-                'char_count': len(text)
-            })
-    
-    return result
-
-
-def _read_with_pypdf(file_path, pages=None):
-    """使用 pypdf 读取 PDF"""
-    result = {
-        'library': 'pypdf',
-        'file_path': file_path,
-        'pages': []
-    }
+    file_path = params['path']
+    validate_pdf_file(file_path)
     
     reader = PdfReader(file_path)
-    result['total_pages'] = len(reader.pages)
+    meta = reader.metadata
     
-    page_indices = pages if pages else range(len(reader.pages))
-    
-    for i in page_indices:
-        if i < 0 or i >= len(reader.pages):
-            continue
-        
-        page = reader.pages[i]
-        text = page.extract_text() or ''
-        
-        result['pages'].append({
-            'page_number': i + 1,
-            'text': text,
-            'char_count': len(text)
-        })
-    
-    return result
+    return {
+        'page_count': len(reader.pages),
+        'metadata': {
+            'title': meta.title if meta else None,
+            'author': meta.author if meta else None,
+            'subject': meta.subject if meta else None,
+            'creator': meta.creator if meta else None,
+            'producer': meta.producer if meta else None,
+        },
+        'encrypted': reader.is_encrypted
+    }
 
 
 def extract_text(params):
-    """
-    只提取文本内容（简化版）
+    """Extract text from PDF pages"""
+    from pypdf import PdfReader
     
-    Args:
-        params.file_path: PDF 文件路径
-        params.max_chars: 最大字符数（可选，默认 10000）
+    file_path = params['path']
+    validate_pdf_file(file_path)
     
-    Returns:
-        纯文本内容
-    """
-    result = read_pdf(params)
+    from_page = params.get('from_page', 1)
+    to_page = params.get('to_page')
     
-    max_chars = params.get('max_chars', 10000)
+    reader = PdfReader(file_path)
+    total_pages = len(reader.pages)
     
-    all_text = []
-    total_chars = 0
+    start = max(1, from_page) - 1
+    end = min(to_page if to_page else total_pages, total_pages)
     
-    for page in result['pages']:
-        text = page['text']
-        if total_chars + len(text) > max_chars:
-            # 截断
-            remaining = max_chars - total_chars
-            if remaining > 0:
-                all_text.append(text[:remaining])
-            break
-        all_text.append(text)
-        total_chars += len(text)
+    text_parts = []
+    for i in range(start, end):
+        page = reader.pages[i]
+        text_parts.append(f"--- Page {i+1} ---")
+        text_parts.append(page.extract_text() or "")
     
     return {
-        'text': '\n\n'.join(all_text),
-        'total_chars': total_chars,
-        'truncated': total_chars >= max_chars
+        'page_count': total_pages,
+        'extracted_pages': end - start,
+        'text': '\n'.join(text_parts)
     }
 
 
 def extract_tables(params):
-    """
-    提取 PDF 中的表格
+    """Extract tables from PDF using pdfplumber"""
+    import pdfplumber
     
-    Args:
-        params.file_path: PDF 文件路径
-        params.pages: 要提取的页码列表（可选）
+    file_path = params['path']
+    validate_pdf_file(file_path)
     
-    Returns:
-        表格数据
-    """
-    file_path = params.get('file_path')
-    if not file_path:
-        raise ValueError('file_path is required')
+    page_num = params.get('page')
     
-    if not HAS_PDFPLUMBER:
-        raise ImportError('pdfplumber is required for table extraction')
-    
-    pages = params.get('pages')
-    
-    result = {
-        'file_path': file_path,
-        'tables': []
-    }
+    all_tables = []
     
     with pdfplumber.open(file_path) as pdf:
-        page_indices = pages if pages else range(len(pdf.pages))
+        if page_num:
+            pages_to_process = [page_num - 1]
+        else:
+            pages_to_process = range(len(pdf.pages))
         
-        for i in page_indices:
-            if i < 0 or i >= len(pdf.pages):
-                continue
-            
+        for i in pages_to_process:
             page = pdf.pages[i]
             tables = page.extract_tables()
-            
             for j, table in enumerate(tables):
                 if table:
-                    result['tables'].append({
-                        'page_number': i + 1,
-                        'table_index': j,
+                    all_tables.append({
+                        'page': i + 1,
+                        'table_index': j + 1,
                         'rows': len(table),
-                        'data': table
+                        'columns': len(table[0]) if table else 0,
+                        'data': table[:10]  # Limit to first 10 rows
                     })
     
-    return result
-
-
-def get_pdf_info(params):
-    """
-    获取 PDF 文件信息
-    
-    Args:
-        params.file_path: PDF 文件路径
-    
-    Returns:
-        PDF 元数据
-    """
-    file_path = params.get('file_path')
-    if not file_path:
-        raise ValueError('file_path is required')
-    
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f'PDF file not found: {file_path}')
-    
-    result = {
-        'file_path': file_path,
-        'file_size': os.path.getsize(file_path)
+    return {
+        'total_tables': len(all_tables),
+        'tables': all_tables
     }
+
+
+# ============================================================
+# PDF Editing Operations
+# ============================================================
+
+def merge_pdfs(params):
+    """Merge multiple PDFs into one"""
+    from pypdf import PdfWriter, PdfReader
     
-    if HAS_PYPDF:
-        reader = PdfReader(file_path)
-        result['total_pages'] = len(reader.pages)
+    file_paths = params['paths']
+    output_path = params['output']
+    
+    if not file_paths or len(file_paths) < 2:
+        raise ValueError('At least 2 PDF files are required for merging')
+    
+    for fp in file_paths:
+        validate_pdf_file(fp)
+    
+    writer = PdfWriter()
+    
+    for pdf_file in file_paths:
+        reader = PdfReader(pdf_file)
+        for page in reader.pages:
+            writer.add_page(page)
+    
+    with open(output_path, 'wb') as output:
+        writer.write(output)
+    
+    return {
+        'success': True,
+        'input_files': file_paths,
+        'output_file': output_path,
+        'total_pages': len(writer.pages)
+    }
+
+
+def split_pdf(params):
+    """Split PDF into multiple files"""
+    from pypdf import PdfWriter, PdfReader
+    
+    file_path = params['path']
+    output_dir = params['output_dir']
+    pages_per_file = params.get('pages_per_file', 1)
+    prefix = params.get('prefix', 'page')
+    
+    validate_pdf_file(file_path)
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    reader = PdfReader(file_path)
+    total_pages = len(reader.pages)
+    
+    output_files = []
+    for i in range(0, total_pages, pages_per_file):
+        writer = PdfWriter()
+        end = min(i + pages_per_file, total_pages)
+        for j in range(i, end):
+            writer.add_page(reader.pages[j])
         
-        if reader.metadata:
-            result['metadata'] = {
-                'title': reader.metadata.title,
-                'author': reader.metadata.author,
-                'subject': reader.metadata.subject,
-                'creator': reader.metadata.creator,
-                'producer': reader.metadata.producer,
-            }
-    elif HAS_PDFPLUMBER:
-        with pdfplumber.open(file_path) as pdf:
-            result['total_pages'] = len(pdf.pages)
-            result['metadata'] = pdf.metadata
+        output_path = os.path.join(output_dir, f"{prefix}_{i // pages_per_file + 1}.pdf")
+        with open(output_path, 'wb') as output:
+            writer.write(output)
+        output_files.append(output_path)
     
-    return result
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_dir': output_dir,
+        'total_pages': total_pages,
+        'pages_per_file': pages_per_file,
+        'output_files': output_files
+    }
+
+
+def rotate_pages(params):
+    """Rotate pages in PDF"""
+    from pypdf import PdfWriter, PdfReader
+    
+    file_path = params['path']
+    output_path = params['output']
+    pages = params.get('pages', [])
+    degrees = params.get('degrees', 90)
+    
+    validate_pdf_file(file_path)
+    
+    reader = PdfReader(file_path)
+    writer = PdfWriter()
+    
+    for i, page in enumerate(reader.pages):
+        if pages:
+            if (i + 1) in pages:
+                page.rotate(degrees)
+        else:
+            page.rotate(degrees)
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output:
+        writer.write(output)
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_file': output_path,
+        'rotated_pages': pages if pages else 'all',
+        'degrees': degrees
+    }
+
+
+# ============================================================
+# PDF Creation and Conversion
+# ============================================================
+
+def create_pdf(params):
+    """Create a new PDF with text content"""
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet
+    
+    output_path = params['output']
+    title = params.get('title', '')
+    content = params.get('content', [])
+    page_size = params.get('page_size', 'a4')
+    
+    page_sizes = {'letter': letter, 'a4': A4}
+    
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=page_sizes.get(page_size, A4),
+        title=title
+    )
+    
+    styles = getSampleStyleSheet()
+    story = []
+    
+    for i, page_content in enumerate(content):
+        if i > 0:
+            story.append(PageBreak())
+        
+        # Split content into paragraphs
+        paragraphs = page_content.split('\n\n')
+        for para in paragraphs:
+            if para.strip():
+                # Convert newlines to <br/> for proper rendering
+                formatted = para.strip().replace('\n', '<br/>')
+                story.append(Paragraph(formatted, styles['Normal']))
+                story.append(Spacer(1, 12))
+    
+    doc.build(story)
+    
+    return {
+        'success': True,
+        'output_file': output_path,
+        'pages': len(content)
+    }
+
+
+def convert_to_images(params):
+    """Convert PDF pages to images"""
+    file_path = params['path']
+    output_dir = params['output_dir']
+    dpi = params.get('dpi', 150)
+    image_format = params.get('format', 'png')  # 避免覆盖内置函数 format()
+    from_page = params.get('from_page')
+    to_page = params.get('to_page')
+    
+    validate_pdf_file(file_path)
+    
+    # Use the existing script
+    args = [file_path, output_dir, f'--dpi={dpi}', f'--format={image_format}']
+    if from_page:
+        args.append(f'--from={from_page}')
+    if to_page:
+        args.append(f'--to={to_page}')
+    
+    result = run_script('convert_pdf_to_images.py', args)
+    
+    return {
+        'success': True,
+        'output_dir': output_dir,
+        'format': image_format,
+        'dpi': dpi,
+        'message': result.strip()
+    }
 
 
 def pdf_to_markdown(params):
+    """Convert PDF to Markdown format"""
+    file_path = params['path']
+    output_path = params.get('output')
+    from_page = params.get('from_page')
+    to_page = params.get('to_page')
+    
+    validate_pdf_file(file_path)
+    
+    args = [file_path]
+    if output_path:
+        args.append(output_path)
+    if from_page:
+        args.append(f'--from={from_page}')
+    if to_page:
+        args.append(f'--to={to_page}')
+    
+    result = run_script('pdf_to_markdown.py', args)
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_file': output_path,
+        'markdown': result
+    }
+
+
+# ============================================================
+# PDF Security Operations
+# ============================================================
+
+def encrypt_pdf(params):
+    """Encrypt PDF with password"""
+    from pypdf import PdfWriter, PdfReader
+    
+    file_path = params['path']
+    output_path = params['output']
+    user_password = params['user_password']
+    owner_password = params.get('owner_password', user_password)
+    
+    validate_pdf_file(file_path)
+    
+    if not user_password:
+        raise ValueError('user_password is required')
+    
+    reader = PdfReader(file_path)
+    writer = PdfWriter()
+    
+    for page in reader.pages:
+        writer.add_page(page)
+    
+    writer.encrypt(user_password, owner_password)
+    
+    with open(output_path, 'wb') as output:
+        writer.write(output)
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_file': output_path,
+        'encrypted': True
+    }
+
+
+def decrypt_pdf(params):
+    """Remove password protection from PDF"""
+    from pypdf import PdfWriter, PdfReader
+    
+    file_path = params['path']
+    output_path = params['output']
+    password = params['password']
+    
+    validate_pdf_file(file_path)
+    
+    reader = PdfReader(file_path)
+    
+    if reader.is_encrypted:
+        reader.decrypt(password)
+    
+    writer = PdfWriter()
+    
+    for page in reader.pages:
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output:
+        writer.write(output)
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_file': output_path,
+        'decrypted': True
+    }
+
+
+def add_watermark(params):
+    """Add watermark to PDF"""
+    from pypdf import PdfWriter, PdfReader
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from io import BytesIO
+    
+    file_path = params['path']
+    output_path = params['output']
+    watermark = params['watermark']
+    is_text = params.get('is_text', True)
+    
+    validate_pdf_file(file_path)
+    
+    if is_text:
+        # Create text watermark using reportlab
+        packet = BytesIO()
+        c = canvas.Canvas(packet, pagesize=letter)
+        width, height = letter
+        
+        # Draw watermark text
+        c.setFont("Helvetica", 50)
+        c.setFillColorRGB(0.8, 0.8, 0.8, alpha=0.5)
+        c.saveState()
+        c.translate(width / 2, height / 2)
+        c.rotate(45)
+        c.drawCentredString(0, 0, watermark)
+        c.restoreState()
+        c.save()
+        
+        # Move to beginning
+        packet.seek(0)
+        watermark_pdf = PdfReader(packet)
+        watermark_page = watermark_pdf.pages[0]
+    else:
+        # Use existing PDF as watermark - 验证文件存在
+        if not os.path.exists(watermark):
+            raise FileNotFoundError(f"Watermark file not found: {watermark}")
+        validate_pdf_file(watermark)
+        watermark_page = PdfReader(watermark).pages[0]
+    
+    # Apply watermark
+    reader = PdfReader(file_path)
+    writer = PdfWriter()
+    
+    for page in reader.pages:
+        page.merge_page(watermark_page)
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output:
+        writer.write(output)
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_file': output_path,
+        'watermark': watermark if is_text else watermark
+    }
+
+
+# ============================================================
+# Form Operations (using Python scripts)
+# ============================================================
+
+def check_fillable_fields(params):
+    """Check if PDF has fillable form fields"""
+    file_path = params['path']
+    validate_pdf_file(file_path)
+    
+    result = run_script('check_fillable_fields.py', [file_path])
+    
+    return {
+        'success': True,
+        'file': file_path,
+        'result': result.strip()
+    }
+
+
+def extract_form_field_info(params):
+    """Extract form field information"""
+    file_path = params['path']
+    output_path = params['output']
+    
+    validate_pdf_file(file_path)
+    
+    result = run_script('extract_form_field_info.py', [file_path, output_path])
+    
+    return {
+        'success': True,
+        'file': file_path,
+        'output_file': output_path,
+        'result': result.strip()
+    }
+
+
+def fill_fillable_fields(params):
+    """Fill fillable form fields"""
+    file_path = params['path']
+    field_values = params['field_values']
+    output_path = params['output']
+    
+    validate_pdf_file(file_path)
+    
+    result = run_script('fill_fillable_fields.py', [file_path, field_values, output_path])
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'field_values_file': field_values,
+        'output_file': output_path,
+        'result': result.strip()
+    }
+
+
+def extract_form_structure(params):
+    """Extract form structure for non-fillable forms"""
+    file_path = params['path']
+    output_path = params['output']
+    
+    validate_pdf_file(file_path)
+    
+    result = run_script('extract_form_structure.py', [file_path, output_path])
+    
+    return {
+        'success': True,
+        'file': file_path,
+        'output_file': output_path,
+        'result': result.strip()
+    }
+
+
+def fill_pdf_form_with_annotations(params):
+    """Fill non-fillable PDF forms with text annotations"""
+    file_path = params['path']
+    fields_json = params['fields_json']
+    output_path = params['output']
+    
+    validate_pdf_file(file_path)
+    
+    result = run_script('fill_pdf_form_with_annotations.py', [file_path, fields_json, output_path])
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'fields_json_file': fields_json,
+        'output_file': output_path,
+        'result': result.strip()
+    }
+
+
+def check_bounding_boxes(params):
+    """Validate bounding boxes for form fields"""
+    fields_json = params['fields_json']
+    
+    result = run_script('check_bounding_boxes.py', [fields_json])
+    
+    return {
+        'success': True,
+        'fields_json_file': fields_json,
+        'result': result.strip()
+    }
+
+
+# ============================================================
+# Other Operations
+# ============================================================
+
+def extract_images(params):
+    """Extract embedded images from PDF"""
+    from pypdf import PdfReader
+    
+    file_path = params['path']
+    output_dir = params['output_dir']
+    
+    validate_pdf_file(file_path)
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    reader = PdfReader(file_path)
+    extracted = []
+    failed = []
+    
+    for page_num, page in enumerate(reader.pages):
+        # 安全访问 /Resources，避免 KeyError
+        resources = page.get('/Resources', {})
+        if not resources or '/XObject' not in resources:
+            continue
+        
+        try:
+            xobjects = resources['/XObject'].get_object()
+            for obj_name in xobjects:
+                obj = xobjects[obj_name]
+                if obj['/Subtype'] == '/Image':
+                    # Extract image data
+                    try:
+                        data = obj.get_data()
+                        img_path = os.path.join(output_dir, f"page{page_num+1}_{obj_name[1:]}.jpg")
+                        with open(img_path, 'wb') as f:
+                            f.write(data)
+                        extracted.append(img_path)
+                    except Exception as e:
+                        # 记录失败但继续处理其他图片
+                        failed.append(f"page{page_num+1}_{obj_name}: {str(e)}")
+        except Exception as e:
+            # 记录页面处理失败
+            failed.append(f"page{page_num+1}: {str(e)}")
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'output_dir': output_dir,
+        'images': extracted,
+        'failed': failed if failed else None
+    }
+
+
+def ocr_pdf(params):
+    """Perform OCR on scanned PDF"""
+    import pytesseract
+    from pdf2image import convert_from_path
+    
+    file_path = params['path']
+    lang = params.get('lang', 'eng')
+    
+    validate_pdf_file(file_path)
+    
+    images = convert_from_path(file_path)
+    text_parts = []
+    
+    for i, image in enumerate(images):
+        text_parts.append(f"--- Page {i+1} ---")
+        text_parts.append(pytesseract.image_to_string(image, lang=lang))
+    
+    return {
+        'success': True,
+        'input_file': file_path,
+        'pages_processed': len(images),
+        'text': '\n'.join(text_parts)
+    }
+
+
+# ============================================================
+# Tool Router
+# ============================================================
+
+def execute(tool_name, params, context=None):
     """
-    将 PDF 转换为 Markdown 格式，并提取图片
+    Execute a PDF tool.
     
     Args:
-        params.file_path: PDF 文件路径
-        params.output_dir: 输出目录（可选，默认与 PDF 同目录）
-        params.extract_images: 是否提取图片（默认 True）
-        params.pages: 要转换的页码列表（可选，默认全部）
+        tool_name: Name of the tool to execute
+        params: Tool parameters
+        context: Execution context (optional)
     
     Returns:
-        转换结果，包含 markdown 文件路径和图片列表
+        Tool execution result
     """
-    if not HAS_PDF2MD:
-        raise ImportError('pdf_to_markdown module not available')
-    
-    file_path = params.get('file_path')
-    if not file_path:
-        raise ValueError('file_path is required')
-    
-    return _pdf_to_markdown(
-        file_path=file_path,
-        output_dir=params.get('output_dir'),
-        extract_images=params.get('extract_images', True),
-        pages=params.get('pages')
-    )
-
-
-# 测试代码
-if __name__ == '__main__':
-    test_input = {
-        'tool': 'get_info',
-        'params': {'file_path': 'test.pdf'},
-        'context': {}
+    # Tool name mapping (support both snake_case and camelCase)
+    tool_map = {
+        # Basic operations
+        'read_pdf': read_pdf,
+        'readPdf': read_pdf,
+        'extract_text': extract_text,
+        'extractText': extract_text,
+        'extract_tables': extract_tables,
+        'extractTables': extract_tables,
+        
+        # Editing operations
+        'merge_pdfs': merge_pdfs,
+        'mergePdfs': merge_pdfs,
+        'split_pdf': split_pdf,
+        'splitPdf': split_pdf,
+        'rotate_pages': rotate_pages,
+        'rotatePages': rotate_pages,
+        
+        # Creation and conversion
+        'create_pdf': create_pdf,
+        'createPdf': create_pdf,
+        'convert_to_images': convert_to_images,
+        'convertToImages': convert_to_images,
+        'pdf_to_markdown': pdf_to_markdown,
+        'pdfToMarkdown': pdf_to_markdown,
+        
+        # Security operations
+        'encrypt_pdf': encrypt_pdf,
+        'encryptPdf': encrypt_pdf,
+        'decrypt_pdf': decrypt_pdf,
+        'decryptPdf': decrypt_pdf,
+        'add_watermark': add_watermark,
+        'addWatermark': add_watermark,
+        
+        # Form operations
+        'check_fillable_fields': check_fillable_fields,
+        'checkFillableFields': check_fillable_fields,
+        'extract_form_field_info': extract_form_field_info,
+        'extractFormFieldInfo': extract_form_field_info,
+        'fill_fillable_fields': fill_fillable_fields,
+        'fillFillableFields': fill_fillable_fields,
+        'extract_form_structure': extract_form_structure,
+        'extractFormStructure': extract_form_structure,
+        'fill_pdf_form_with_annotations': fill_pdf_form_with_annotations,
+        'fillPdfFormWithAnnotations': fill_pdf_form_with_annotations,
+        'check_bounding_boxes': check_bounding_boxes,
+        'checkBoundingBoxes': check_bounding_boxes,
+        
+        # Other operations
+        'extract_images': extract_images,
+        'extractImages': extract_images,
+        'ocr_pdf': ocr_pdf,
+        'ocrPdf': ocr_pdf,
     }
     
-    result = execute(
-        test_input['tool'],
-        test_input['params'],
-        test_input['context']
-    )
+    if tool_name not in tool_map:
+        raise ValueError(f"Unknown tool: {tool_name}")
     
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return tool_map[tool_name](params)
