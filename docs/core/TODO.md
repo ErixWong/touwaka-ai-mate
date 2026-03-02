@@ -88,6 +88,7 @@
 
 | 任务 | 完成日期 | 备注 |
 |------|----------|------|
+| Skill Manager 查询工具优化 | 2026-03-02 | 新增 list_skills、list_skill_details，移除 assign/unassign |
 | 沙箱架构实现（本地开发环境） | 2026-03-02 | Node.js vm + Python subprocess 轻量级沙箱 |
 | Python 技能支持 | 2026-03-02 | skill-runner 支持 Python，PDF 技能实现 |
 | 技能对话式导入 | 2026-03-02 | 通过对话导入技能 |

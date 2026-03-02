@@ -260,48 +260,6 @@ module.exports = {
       {
         type: 'function',
         function: {
-          name: 'assign_skill_to_expert',
-          description: '将技能分配给指定专家（下次对话生效）',
-          parameters: {
-            type: 'object',
-            properties: {
-              skill_id: {
-                type: 'string',
-                description: '技能ID或名称'
-              },
-              expert_id: {
-                type: 'string',
-                description: '专家ID或名称'
-              }
-            },
-            required: ['skill_id', 'expert_id']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'unassign_skill_from_expert',
-          description: '取消技能与专家的关联',
-          parameters: {
-            type: 'object',
-            properties: {
-              skill_id: {
-                type: 'string',
-                description: '技能ID或名称'
-              },
-              expert_id: {
-                type: 'string',
-                description: '专家ID或名称'
-              }
-            },
-            required: ['skill_id', 'expert_id']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
           name: 'toggle_skill',
           description: '启用或禁用技能（下次对话生效）',
           parameters: {
@@ -317,6 +275,44 @@ module.exports = {
               }
             },
             required: ['skill_id', 'is_active']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'list_skills',
+          description: '列出数据库中所有技能。可按启用状态过滤或按名称搜索。',
+          parameters: {
+            type: 'object',
+            properties: {
+              is_active: {
+                type: 'boolean',
+                description: '过滤启用/禁用状态（可选，不传则返回所有）'
+              },
+              search: {
+                type: 'string',
+                description: '按名称搜索（可选，模糊匹配）'
+              }
+            },
+            required: []
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'list_skill_details',
+          description: '获取指定技能的完整详情，包括技能所有字段和工具定义列表。',
+          parameters: {
+            type: 'object',
+            properties: {
+              skill_id: {
+                type: 'string',
+                description: '技能ID或名称'
+              }
+            },
+            required: ['skill_id']
           }
         }
       }
@@ -336,12 +332,12 @@ module.exports = {
           return await this.registerSkill(params, pool);
         case 'delete_skill':
           return await this.deleteSkill(params, pool);
-        case 'assign_skill_to_expert':
-          return await this.assignSkillToExpert(params, pool);
-        case 'unassign_skill_from_expert':
-          return await this.unassignSkillFromExpert(params, pool);
         case 'toggle_skill':
           return await this.toggleSkill(params, pool);
+        case 'list_skills':
+          return await this.listSkills(params, pool);
+        case 'list_skill_details':
+          return await this.listSkillDetails(params, pool);
         default:
           return { success: false, error: `Unknown tool: ${toolName}` };
       }
@@ -494,107 +490,6 @@ module.exports = {
   },
 
   /**
-   * 分配技能给专家
-   */
-  async assignSkillToExpert(params, pool) {
-    const { skill_id, expert_id } = params;
-
-    // 查找技能
-    const [skill] = await pool.query(
-      'SELECT id FROM skills WHERE id = ? OR name = ?',
-      [skill_id, skill_id]
-    );
-    if (skill.length === 0) {
-      return { success: false, error: `Skill not found: ${skill_id}` };
-    }
-    const actualSkillId = skill[0].id;
-
-    // 查找专家
-    const [expert] = await pool.query(
-      'SELECT id FROM experts WHERE id = ? OR name = ?',
-      [expert_id, expert_id]
-    );
-    if (expert.length === 0) {
-      return { success: false, error: `Expert not found: ${expert_id}` };
-    }
-    const actualExpertId = expert[0].id;
-
-    // 检查是否已关联
-    const [existing] = await pool.query(
-      'SELECT id FROM expert_skills WHERE expert_id = ? AND skill_id = ?',
-      [actualExpertId, actualSkillId]
-    );
-
-    if (existing.length > 0) {
-      // 更新为启用状态
-      await pool.execute(
-        'UPDATE expert_skills SET is_enabled = 1 WHERE expert_id = ? AND skill_id = ?',
-        [actualExpertId, actualSkillId]
-      );
-      return {
-        success: true,
-        message: `✅ Skill already assigned, enabled now`
-      };
-    }
-
-    // 创建关联
-    await pool.execute(
-      `INSERT INTO expert_skills (id, expert_id, skill_id, is_enabled) VALUES (?, ?, ?, 1)`,
-      [newID(), actualExpertId, actualSkillId]
-    );
-
-    return {
-      success: true,
-      message: `✅ Skill assigned to expert successfully`
-    };
-  },
-
-  /**
-   * 取消技能分配
-   */
-  async unassignSkillFromExpert(params, pool) {
-    const { skill_id, expert_id } = params;
-
-    // 查找技能
-    const [skill] = await pool.query(
-      'SELECT id FROM skills WHERE id = ? OR name = ?',
-      [skill_id, skill_id]
-    );
-    if (skill.length === 0) {
-      return { success: false, error: `Skill not found: ${skill_id}` };
-    }
-    const actualSkillId = skill[0].id;
-
-    // 查找专家
-    const [expert] = await pool.query(
-      'SELECT id FROM experts WHERE id = ? OR name = ?',
-      [expert_id, expert_id]
-    );
-    if (expert.length === 0) {
-      return { success: false, error: `Expert not found: ${expert_id}` };
-    }
-    const actualExpertId = expert[0].id;
-
-    // 删除关联
-    const [result] = await pool.execute(
-      'DELETE FROM expert_skills WHERE expert_id = ? AND skill_id = ?',
-      [actualExpertId, actualSkillId]
-    );
-
-    if (result.affectedRows === 0) {
-      return {
-        success: false,
-        error: `Skill was not assigned to this expert`
-      };
-    }
-
-    return {
-      success: true,
-      message: `✅ Skill unassigned from expert successfully`
-    };
-  },
-
-  /**
    * 启用/禁用技能
    */
   async toggleSkill(params, pool) {
@@ -616,6 +511,107 @@ module.exports = {
     return {
       success: true,
       message: `✅ Skill "${skill[0].name}" ${is_active ? 'enabled' : 'disabled'}`
+    };
+  },
+
+  /**
+   * 列出所有技能（精简列表，不含工具详情）
+   */
+  async listSkills(params, pool) {
+    const { is_active, search } = params;
+
+    // 简化查询：只查 skills 表，不 JOIN
+    let sql = 'SELECT id, name, description, version, is_active, source_path FROM skills';
+    const conditions = [];
+    const values = [];
+
+    if (is_active !== undefined) {
+      conditions.push('is_active = ?');
+      values.push(is_active ? 1 : 0);
+    }
+
+    if (search) {
+      conditions.push('name LIKE ?');
+      values.push(`%${search}%`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    sql += ' ORDER BY name';
+
+    const [skills] = await pool.query(sql, values);
+
+    return {
+      success: true,
+      total: skills.length,
+      skills: skills.map(s => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        version: s.version,
+        is_active: !!s.is_active,
+        source_path: s.source_path
+      }))
+    };
+  },
+
+  /**
+   * 获取技能完整详情（包含工具定义）
+   */
+  async listSkillDetails(params, pool) {
+    const { skill_id } = params;
+
+    // 查找技能（获取完整字段）
+    const [skill] = await pool.query(
+      'SELECT id, name, description, version, author, tags, is_active, source_path, created_at, updated_at FROM skills WHERE id = ? OR name = ?',
+      [skill_id, skill_id]
+    );
+    if (skill.length === 0) {
+      return { success: false, error: `Skill not found: ${skill_id}` };
+    }
+
+    const actualSkillId = skill[0].id;
+
+    // 查询工具
+    const [tools] = await pool.query(
+      'SELECT id, name, description, parameters, script_path FROM skill_tools WHERE skill_id = ?',
+      [actualSkillId]
+    );
+
+    // 安全解析 JSON
+    const safeParseJson = (str) => {
+      if (typeof str !== 'string') return str;
+      try {
+        return JSON.parse(str);
+      } catch (e) {
+        return null;
+      }
+    };
+
+    return {
+      success: true,
+      skill: {
+        id: skill[0].id,
+        name: skill[0].name,
+        description: skill[0].description,
+        version: skill[0].version,
+        author: skill[0].author,
+        tags: safeParseJson(skill[0].tags) || [],
+        is_active: !!skill[0].is_active,
+        source_path: skill[0].source_path,
+        created_at: skill[0].created_at,
+        updated_at: skill[0].updated_at
+      },
+      total: tools.length,
+      tools: tools.map(t => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        parameters: safeParseJson(t.parameters) || { type: 'object', properties: {} },
+        script_path: t.script_path
+      }))
     };
   }
 };
