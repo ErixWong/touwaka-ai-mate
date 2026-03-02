@@ -1,6 +1,6 @@
 # 项目待办事项
 
-> 最后更新：2026-03-01
+> 最后更新：2026-03-02
 
 ---
 
@@ -10,13 +10,11 @@
 |------|------|--------|
 | [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
 | [skill-runner 多语言支持](#skill-runner-多语言支持) | ⏳ 待开始 | 高 |
-| [技能工具入口脚本字段](tasks/2026-03-02-skill-tool-entry-file/README.md) | ⏳ 待开始 | 高 |
 | [反思心智模板配置化](../archive/tasks/2026-02/2026-02-24-reflective-mind-template/README.md) | ⏳ 待开始 | 中 |
 | [运行时参数配置界面](../archive/tasks/2026-02/2026-02-24-runtime-config/README.md) | ⏳ 待开始 | 中 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 | [技能对话式导入](../archive/tasks/2026-02/2026-02-24-skill-import-dialog/README.md) | ⏳ 待开始 | 高 |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
-| [Tools 表执行路径字段](#tools-表执行路径字段) | ⏳ 待开始 | 中 |
 | [对话窗口停止按钮](#对话窗口停止按钮) | ⏳ 待开始 | 中 |
 | [对话窗口消息分页加载](#对话窗口消息分页加载) | ⏳ 待开始 | 中 |
 | [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |
@@ -31,15 +29,6 @@
 - 设计状态转换规则（何时自动归档、何时关闭）
 - 前端展示不同状态的 Topic
 - 考虑基于时间/消息数的自动状态转换
-
-### Tools 表执行路径字段
-
-当前问题：`skills` 表有 `south_path` 字段，但 `skill_tools` 表没有相应的执行文件路径字段，导致 skill 系统只认 `index.js`。
-
-**改进方向**：
-- `skill_tools` 表增加 `entry_file` 字段（默认 `index.js`）
-- 支持指定其他入口文件（如 `main.py`、`run.sh`）
-- 与 skill-runner 多语言支持配合使用
 
 ### 对话窗口停止按钮
 
