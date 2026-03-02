@@ -115,6 +115,10 @@ function parseSkillMd(content) {
 /**
  * 验证技能路径是否安全（防止路径遍历攻击）
  * （内联实现，避免引用主程序代码）
+ *
+ * @param {string} sourcePath - 相对于 dataBasePath 的路径（如 "skills/file-operations"）
+ * @param {string} dataBasePath - 数据基础路径（如 "/shared" 或 "cwd/data"）
+ * @returns {{ valid: boolean, fullPath?: string, relativePath?: string, error?: string }}
  */
 function validateSkillPath(sourcePath, dataBasePath) {
   // 规范化路径
@@ -122,11 +126,12 @@ function validateSkillPath(sourcePath, dataBasePath) {
   if (path.isAbsolute(sourcePath)) {
     fullPath = path.normalize(sourcePath);
   } else {
-    // 相对路径：只允许在 data/skills 目录下
-    fullPath = path.normalize(path.join(dataBasePath, 'skills', sourcePath));
+    // 相对路径：source_path 是相对于 dataBasePath 的路径
+    // 例如：source_path = "skills/file-operations" → dataBasePath/skills/file-operations
+    fullPath = path.normalize(path.join(dataBasePath, sourcePath));
   }
 
-  // 检查路径是否在允许的目录内
+  // 检查路径是否在允许的目录内（dataBasePath 下的 skills 子目录）
   const allowedPath = path.join(dataBasePath, 'skills');
   const isAllowed = fullPath.startsWith(allowedPath + path.sep) || fullPath === allowedPath;
 
@@ -134,7 +139,7 @@ function validateSkillPath(sourcePath, dataBasePath) {
     return {
       valid: false,
       fullPath,
-      error: `Invalid path: skill must be in data/skills directory`,
+      error: `Invalid path: skill must be in dataBasePath/skills directory. source_path should be like "skills/your-skill-name"`,
     };
   }
 
@@ -147,9 +152,8 @@ function validateSkillPath(sourcePath, dataBasePath) {
     };
   }
 
-  // 计算相对于 data/skills 的相对路径
-  const skillsBasePath = path.join(dataBasePath, 'skills');
-  const relativePath = path.relative(skillsBasePath, fullPath);
+  // 计算相对于 dataBasePath 的相对路径（用于存储到数据库）
+  const relativePath = path.relative(dataBasePath, fullPath);
   
   return { valid: true, fullPath, relativePath };
 }
@@ -195,7 +199,7 @@ module.exports = {
             properties: {
               source_path: {
                 type: 'string',
-                description: '技能目录的相对路径（相对于 data/skills 目录）。例如：searxng'
+                description: '技能目录相对于 dataBasePath 的路径。例如：skills/searxng（注意：包含 skills/ 前缀）'
               },
               name: {
                 type: 'string',

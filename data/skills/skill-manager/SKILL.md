@@ -30,7 +30,7 @@ allowed-tools: []
 从本地目录注册或更新技能到数据库。需要先读取 SKILL.md，理解工具定义后调用此工具。
 
 **参数：**
-- `source_path`: 技能目录的相对路径（相对于 data/skills 目录）
+- `source_path`: 技能目录相对于 dataBasePath 的路径。例如：`skills/searxng`（注意：必须包含 `skills/` 前缀）
 - `name`: 技能名称（可选）
 - `description`: 技能描述（可选）
 - `tools`: 工具定义数组，每个工具包含 name、description、parameters 字段

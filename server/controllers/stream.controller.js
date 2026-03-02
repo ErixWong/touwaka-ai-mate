@@ -1,4 +1,4 @@
-/**
+/**e u
  * Stream Controller - SSE 流式聊天控制器
  * 
  * API 设计：
