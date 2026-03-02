@@ -9,7 +9,7 @@
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
 | [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
-| [skill-runner 多语言支持](#skill-runner-多语言支持) | ⏳ 待开始 | 高 |
+| ~~[skill-runner 多语言支持](#skill-runner-多语言支持)~~ | ✅ 已合并到 Python 技能支持 | ~~高~~ |
 | [反思心智模板配置化](../archive/tasks/2026-02/2026-02-24-reflective-mind-template/README.md) | ⏳ 待开始 | 中 |
 | [运行时参数配置界面](../archive/tasks/2026-02/2026-02-24-runtime-config/README.md) | ⏳ 待开始 | 中 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
@@ -18,7 +18,7 @@
 | [对话窗口停止按钮](#对话窗口停止按钮) | ⏳ 待开始 | 中 |
 | [对话窗口消息分页加载](#对话窗口消息分页加载) | ⏳ 待开始 | 中 |
 | [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |
-| [本地开发环境轻量级沙箱](#本地开发环境轻量级沙箱) | ⏳ 待开始 | 高 |
+| ~~[本地开发环境轻量级沙箱](#本地开发环境轻量级沙箱)~~ | ✅ 已合并到 Python 技能支持 | ~~高~~ |
 
 ### Topic 状态管理机制
 
@@ -144,6 +144,7 @@ lib/sandbox/
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [Python 技能支持](tasks/2026-03-02-python-sandbox/README.md) | 🔄 进行中（80%） | 高 |
 | [技能参数配置界面](tasks/2026-03-01-skill-parameters-config/README.md) | 🔄 进行中（80%） | 高 |
 | [技能对话式导入](tasks/skill-import-dialog.md) | 🔄 进行中 | 高 |
 | [Health Check 与 SSE 心跳优化](tasks/2026-03-01-health-check-optimization/README.md) | 🔄 进行中 | 中 |
