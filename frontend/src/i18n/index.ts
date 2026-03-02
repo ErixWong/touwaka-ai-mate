@@ -139,7 +139,7 @@ export const chatbotLanguageMap: Record<Locale, Record<string, string>> = {
     connecting: '连接中...',
   },
   'en-US': {
-    title: 'AI Assistant',
+    title: 'Touwaka Mate',
     placeholder: 'Type a message...',
     sendButton: 'Send',
     copyButton: 'Copy',

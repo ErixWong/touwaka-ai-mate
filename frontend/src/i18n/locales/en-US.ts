@@ -39,7 +39,7 @@ export default {
 
   // Chat page
   chat: {
-    title: 'AI Assistant',
+    title: 'Touwaka Mate',
     placeholder: 'Type a message...',
     send: 'Send',
     thinking: 'Thinking...',
@@ -393,7 +393,7 @@ export default {
 
   // Welcome page
   welcome: {
-    title: 'Welcome to AI Assistant',
+    title: 'Welcome to Touwaka Mate',
     subtitle: 'Select an expert below or type a question to start',
     quickStart: 'Quick Start',
     recentTopics: 'Recent Topics',
