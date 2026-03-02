@@ -3,7 +3,7 @@
     <div class="header-left">
       <router-link to="/experts" class="logo">
         <span class="logo-icon">🤖</span>
-        <span class="logo-text">AI Assistant</span>
+        <span class="logo-text">Touwaka Mate</span>
       </router-link>
     </div>
 

@@ -85,7 +85,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // 设置页面标题
-  const defaultTitle = 'AI Assistant'
+  const defaultTitle = 'Touwaka Mate'
   document.title = to.meta.title ? `${to.meta.title} - ${defaultTitle}` : defaultTitle
 
   // 设置 HTML lang 属性
