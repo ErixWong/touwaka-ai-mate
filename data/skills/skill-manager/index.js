@@ -157,8 +157,9 @@ function validateSkillPath(sourcePath, dataBasePath) {
 /**
  * 获取数据库连接
  */
+async function getConnection(pool) {
   try {
-    const connection = await mysql.getConnection();
+    const connection = await pool.getConnection();
     return connection;
   } catch (error) {
     throw new Error(`Database connection failed: ${error.message}`);
@@ -414,8 +415,7 @@ module.exports = {
         skillInfo.version || '1.0.0',
         skillInfo.author || '',
         skillInfo.tags ? JSON.stringify(skillInfo.tags) : '[]',
-        relativePath,
-
+        pathValidation.relativePath,
         skillMd
       ]
     );
@@ -612,40 +612,39 @@ module.exports = {
 };
 
 
+// 命令行入口点仅在直接运行时执行（非 vm 沙箱环境）
+// vm 沙箱中 process.argv 和 process.exit 不可用
+if (typeof process.argv !== 'undefined' && process.argv[1] && process.argv[1].endsWith('index.js')) {
+  async function main() {
+    const args = process.argv.slice(2);
+    if (args.length < 2) {
+      console.log(JSON.stringify({ success: false, error: 'Usage: node index.js <toolName> <paramsJSON>' }));
+      process.exit(1);
+    }
 
-/**
- * 命令行入口点（由技能执行器调用）
- * 用法: node index.js <toolName> <paramsJSON>
- */
-async function main() {
-  const args = process.argv.slice(2);
-  if (args.length < 2) {
-    console.log(JSON.stringify({ success: false, error: 'Usage: node index.js <toolName> <paramsJSON>' }));
-    process.exit(1);
+    const toolName = args[0];
+    let params = {};
+    
+    try {
+      params = JSON.parse(args[1]);
+    } catch (e) {
+      console.log(JSON.stringify({ success: false, error: 'Invalid JSON params' }));
+      process.exit(1);
+    }
+
+    const skill = module.exports;
+    const result = await skill.execute(toolName, params, {});
+    console.log(JSON.stringify(result));
   }
 
-  const toolName = args[0];
-  let params = {};
-  
-  try {
-    params = JSON.parse(args[1]);
-  } catch (e) {
-    console.log(JSON.stringify({ success: false, error: 'Invalid JSON params' }));
+  main().catch(err => {
+    console.log(JSON.stringify({ success: false, error: err.message, stack: err.stack }));
     process.exit(1);
-  }
+  });
 
-  const skill = module.exports;
-  const result = await skill.execute(toolName, params, {});
-  console.log(JSON.stringify(result));
+  // 确保 unhandled rejection 被捕获
+  process.on('unhandledRejection', (reason, promise) => {
+    console.log(JSON.stringify({ success: false, error: String(reason) }));
+    process.exit(1);
+  });
 }
-
-main().catch(err => {
-  console.log(JSON.stringify({ success: false, error: err.message, stack: err.stack }));
-  process.exit(1);
-});
-
-// 确保 unhandled rejection 被捕获
-process.on('unhandledRejection', (reason, promise) => {
-  console.log(JSON.stringify({ success: false, error: String(reason) }));
-  process.exit(1);
-});
