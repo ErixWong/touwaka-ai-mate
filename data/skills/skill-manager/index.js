@@ -211,7 +211,7 @@ module.exports = {
               },
               tools: {
                 type: 'array',
-                description: '工具定义数组。每个工具包含 name、description、parameters 字段。parameters 是 JSON Schema 格式。',
+                description: '工具定义数组。每个工具包含 name、description、parameters、script_path 字段。parameters 是 JSON Schema 格式。',
                 items: {
                   type: 'object',
                   properties: {
@@ -226,6 +226,10 @@ module.exports = {
                     parameters: {
                       type: 'object',
                       description: 'JSON Schema 格式的参数定义，包含 type、properties、required 字段'
+                    },
+                    script_path: {
+                      type: 'string',
+                      description: '工具入口脚本路径（相对于技能目录，默认 index.js）。例如：scripts/thumbnail.py'
                     }
                   },
                   required: ['name', 'description', 'parameters']
@@ -436,14 +440,15 @@ module.exports = {
       }
 
       await pool.execute(
-        `INSERT INTO skill_tools (id, skill_id, name, description, parameters)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           newID(),
           skillId,
           tool.name,
           tool.description,
-          JSON.stringify(tool.parameters || { type: 'object', properties: {} })
+          JSON.stringify(tool.parameters || { type: 'object', properties: {} }),
+          tool.script_path || 'index.js'  // 默认使用 index.js
         ]
       );
       registeredTools++;

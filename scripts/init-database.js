@@ -105,13 +105,14 @@ const TABLES = [
 
   // 4.1 Skill_Tools 表（技能工具清单）
   // 注：type, command, endpoint, method 字段已移除
-  // - 工具通过 index.js 的 execute() 函数执行
+  // - 工具通过 script_path 指定的脚本执行
   `CREATE TABLE IF NOT EXISTS skill_tools (
     id VARCHAR(32) PRIMARY KEY,
     skill_id VARCHAR(64) NOT NULL,
     name VARCHAR(64) NOT NULL,
     description TEXT,
     \`parameters\` TEXT COMMENT 'JSON Schema 格式的参数定义',
+    script_path VARCHAR(255) DEFAULT 'index.js' COMMENT '工具入口脚本路径（相对于技能目录）',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY idx_skill_name (skill_id, name),
