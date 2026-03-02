@@ -144,7 +144,7 @@ lib/sandbox/
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
-| [Python 技能支持](tasks/2026-03-02-python-sandbox/README.md) | 🔄 进行中（80%） | 高 |
+| ~~[Python 技能支持](tasks/2026-03-02-python-sandbox/README.md)~~ | ✅ 已完成 | ~~高~~ |
 | [技能参数配置界面](tasks/2026-03-01-skill-parameters-config/README.md) | 🔄 进行中（80%） | 高 |
 | [技能对话式导入](tasks/skill-import-dialog.md) | 🔄 进行中 | 高 |
 | [Health Check 与 SSE 心跳优化](tasks/2026-03-01-health-check-optimization/README.md) | 🔄 进行中 | 中 |
