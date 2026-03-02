@@ -10,8 +10,7 @@
 |------|------|--------|
 | [用户隔离架构升级](../design/v2/user-isolation.md) | ⏳ 待开始 | 高 |
 | ~~[skill-runner 多语言支持](#skill-runner-多语言支持)~~ | ✅ 已合并到 Python 技能支持 | ~~高~~ |
-| [反思心智模板配置化](../archive/tasks/2026-02/2026-02-24-reflective-mind-template/README.md) | ⏳ 待开始 | 中 |
-| [运行时参数配置界面](../archive/tasks/2026-02/2026-02-24-runtime-config/README.md) | ⏳ 待开始 | 中 |
+| [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 | ~~[技能对话式导入](../archive/tasks/2026-02/2026-02-24-skill-import-dialog/README.md)~~ | ✅ 已完成 | ~~高~~ |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
