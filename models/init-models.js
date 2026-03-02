@@ -12,6 +12,7 @@ import _role from  "./role.js";
 import _skill_parameter from  "./skill_parameter.js";
 import _skill_tool from  "./skill_tool.js";
 import _skill from  "./skill.js";
+import _task from  "./task.js";
 import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
 import _user_role from  "./user_role.js";
@@ -30,6 +31,7 @@ export default function initModels(sequelize) {
   const skill_parameter = _skill_parameter.init(sequelize, DataTypes);
   const skill_tool = _skill_tool.init(sequelize, DataTypes);
   const skill = _skill.init(sequelize, DataTypes);
+  const task = _task.init(sequelize, DataTypes);
   const topic = _topic.init(sequelize, DataTypes);
   const user_profile = _user_profile.init(sequelize, DataTypes);
   const user_role = _user_role.init(sequelize, DataTypes);
@@ -73,10 +75,14 @@ export default function initModels(sequelize) {
   skill.hasMany(skill_parameter, { as: "skill_parameters", foreignKey: "skill_id"});
   skill_tool.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
   skill.hasMany(skill_tool, { as: "skill_tools", foreignKey: "skill_id"});
+  topic.belongsTo(task, { as: "task", foreignKey: "task_id"});
+  task.hasMany(topic, { as: "topics", foreignKey: "task_id"});
   message.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
   topic.hasMany(message, { as: "messages", foreignKey: "topic_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(message, { as: "messages", foreignKey: "user_id"});
+  task.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
+  user.hasMany(task, { as: "tasks", foreignKey: "created_by"});
   topic.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(topic, { as: "topics", foreignKey: "user_id"});
   user_profile.belongsTo(user, { as: "user", foreignKey: "user_id"});
@@ -97,6 +103,7 @@ export default function initModels(sequelize) {
     skill_parameter,
     skill_tool,
     skill,
+    task,
     topic,
     user_profile,
     user_role,

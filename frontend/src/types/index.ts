@@ -593,3 +593,55 @@ export interface ExpertSimple {
   name: string
   introduction?: string
 }
+
+// ============================================
+// 任务工作空间相关类型
+// ============================================
+
+/**
+ * 任务状态
+ */
+export type TaskStatus = 'active' | 'archived' | 'deleted'
+
+/**
+ * 任务（匹配后端 tasks 表）
+ */
+export interface Task {
+  id: string
+  task_id: string              // 用户可见的唯一标识符
+  title: string
+  description?: string
+  workspace_path: string       // 工作空间目录路径
+  status: TaskStatus
+  created_by: string           // 创建者用户ID
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 创建任务的请求数据
+ */
+export interface CreateTaskRequest {
+  title: string
+  description?: string
+}
+
+/**
+ * 任务文件信息
+ */
+export interface TaskFile {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  modified_at?: string
+}
+
+/**
+ * 进入任务工作空间的响应
+ */
+export interface EnterTaskResponse {
+  task: Task
+  message: string
+  workspace_context: string    // 注入到 LLM 的上下文信息
+}

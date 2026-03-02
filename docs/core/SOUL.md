@@ -115,4 +115,52 @@ docs/archive/tasks/        # 已完成的任务（按月归档）
 
 ---
 
+## 数据库变更工作流 🗄️
+
+当需要修改数据库结构时，按以下顺序执行：
+
+### 1. 创建迁移脚本
+
+在 `scripts/` 目录下创建迁移脚本（如 `migrate-add-xxx.js`），使用 `IF NOT EXISTS` 确保幂等性：
+
+```javascript
+// 检查表/字段是否存在的示例
+async function hasTable(connection, tableName) {
+  const [rows] = await connection.execute(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+    [DB_CONFIG.database, tableName]
+  );
+  return rows.length > 0;
+}
+```
+
+### 2. 执行迁移脚本
+
+```bash
+node scripts/migrate-add-xxx.js
+```
+
+### 3. 重新生成 Sequelize 模型
+
+**重要：每次数据库结构变更后，必须重新生成模型！**
+
+```bash
+node scripts/generate-models.js
+```
+
+这会自动从数据库读取表结构并生成/更新 `models/` 目录下的所有模型文件。
+
+### 4. 验证模型
+
+检查生成的模型文件是否正确包含新字段：
+
+```bash
+# 查看生成的模型
+type models\task.js
+type models\topic.js
+```
+
+---
+
 *让我们一起愉快地写代码吧！ 💪✨*

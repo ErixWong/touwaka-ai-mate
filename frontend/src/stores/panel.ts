@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type TabId = 'expert' | 'topics' | 'debug' | 'skills'
+export type TabId = 'expert' | 'topics' | 'tasks' | 'debug' | 'skills'
 
 export const usePanelStore = defineStore('panel', () => {
   // State
@@ -35,7 +35,7 @@ export const usePanelStore = defineStore('panel', () => {
       isCollapsed.value = collapsed === 'true'
     }
     const savedTab = localStorage.getItem('panel_active_tab') as TabId | null
-    if (savedTab && ['expert', 'topics', 'debug'].includes(savedTab)) {
+    if (savedTab && ['expert', 'topics', 'tasks', 'debug', 'skills'].includes(savedTab)) {
       activeTab.value = savedTab
     }
   }

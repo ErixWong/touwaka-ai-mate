@@ -77,6 +77,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [Task 工作空间管理](tasks/2026-03-02-task-workspace/README.md) | 🔄 进行中（30%） | 高 |
 | [技能参数配置界面](tasks/2026-03-01-skill-parameters-config/README.md) | 🔄 进行中（80%） | 高 |
 | [Health Check 与 SSE 心跳优化](tasks/2026-03-01-health-check-optimization/README.md) | 🔄 进行中 | 中 |
 | [对话窗口右侧多功能 Panel](tasks/right-panel.md) | ✅ 基础功能已完成 | 中 |

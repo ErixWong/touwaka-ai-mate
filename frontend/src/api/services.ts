@@ -29,6 +29,10 @@ import type {
   ExpertSimple,
   Skill,
   SkillDetail,
+  Task,
+  CreateTaskRequest,
+  TaskFile,
+  EnterTaskResponse,
 } from '@/types'
 
 /**
@@ -331,4 +335,57 @@ export const roleApi = {
   // 获取所有专家列表（用于角色管理界面）
   getAllExperts: () =>
     apiRequest<ExpertSimple[]>(apiClient.get('/roles/experts/all')),
+}
+
+// 任务工作空间相关 API
+export const taskApi = {
+  // 获取任务列表
+  getTasks: (params?: { status?: string; page?: number; limit?: number }) =>
+    apiRequest<PaginatedResponse<Task>>(apiClient.get('/tasks', { params })),
+
+  // 获取单个任务
+  getTask: (id: string) =>
+    apiRequest<Task>(apiClient.get(`/tasks/${id}`)),
+
+  // 创建任务
+  createTask: (data: CreateTaskRequest) =>
+    apiRequest<Task>(apiClient.post('/tasks', data)),
+
+  // 更新任务
+  updateTask: (id: string, data: Partial<Task>) =>
+    apiRequest<Task>(apiClient.patch(`/tasks/${id}`, data)),
+
+  // 删除任务（归档）
+  deleteTask: (id: string) =>
+    apiRequest<void>(apiClient.delete(`/tasks/${id}`)),
+
+  // 进入任务工作空间
+  enterTask: (id: string) =>
+    apiRequest<EnterTaskResponse>(apiClient.post(`/tasks/${id}/enter`)),
+
+  // 退出任务工作空间
+  exitTask: () =>
+    apiRequest<{ message: string }>(apiClient.post('/tasks/exit')),
+
+  // 获取任务文件列表
+  getTaskFiles: (id: string, subdir?: string) =>
+    apiRequest<{ files: TaskFile[] }>(apiClient.get(`/tasks/${id}/files`, { params: { subdir } })),
+
+  // 上传文件到任务工作空间
+  uploadFile: (id: string, file: File, subdir?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (subdir) {
+      formData.append('subdir', subdir)
+    }
+    return apiRequest<{ path: string; size: number }>(
+      apiClient.post(`/tasks/${id}/files`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    )
+  },
+
+  // 下载文件
+  downloadFile: (id: string, filePath: string) =>
+    apiClient.get(`/tasks/${id}/files/download`, { params: { path: filePath }, responseType: 'blob' }),
 }

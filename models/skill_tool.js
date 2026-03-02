@@ -29,6 +29,12 @@ export default class skill_tool extends Model {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    script_path: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: "index.js",
+      comment: "工具入口脚本路径（相对于技能目录）"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,

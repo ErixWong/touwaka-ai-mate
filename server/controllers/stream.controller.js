@@ -30,7 +30,7 @@ class StreamController {
    */
   async sendMessage(ctx) {
     try {
-      const { content, expert_id, model_id } = ctx.request.body;
+      const { content, expert_id, model_id, task_id } = ctx.request.body;
 
       if (!content) {
         ctx.error('缺少必要参数：content');
@@ -55,8 +55,8 @@ class StreamController {
         return;
       }
 
-      // 获取或创建该用户与 Expert 的活跃 Topic
-      const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id);
+      // 获取或创建该用户与 Expert 的活跃 Topic（支持 task_id 关联）
+      const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id, task_id);
 
       // 异步处理消息，不等待完成
       this.processMessageAsync({
@@ -65,6 +65,7 @@ class StreamController {
         expert_id,
         content,
         model_id,
+        task_id,
       });
 
       // 立即返回成功，消息将通过 SSE 推送
@@ -82,7 +83,7 @@ class StreamController {
   /**
    * 异步处理消息并通过 SSE 推送响应
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id }) {
+  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id }) {
     // 获取该 Expert 的所有活跃连接
     const connections = this.expertConnections.get(expert_id);
     
@@ -116,6 +117,7 @@ class StreamController {
           expert_id,
           content,
           model_id,
+          task_id,
         },
         // onDelta - 流式数据回调
         (delta) => {
@@ -170,15 +172,27 @@ class StreamController {
 
   /**
    * 获取或创建用户与 Expert 的活跃 Topic
+   * @param {string} user_id - 用户ID
+   * @param {string} expert_id - 专家ID
+   * @param {string} task_id - 任务ID（可选，任务工作空间模式）
+   * @returns {Promise<string>} topic_id
    */
-  async getOrCreateActiveTopic(user_id, expert_id) {
+  async getOrCreateActiveTopic(user_id, expert_id, task_id = null) {
+    // 构建查询条件
+    const whereClause = {
+      user_id,
+      expert_id,
+      status: 'active',
+    };
+    
+    // 如果有 task_id，只查找同一任务的对话
+    if (task_id) {
+      whereClause.task_id = task_id;
+    }
+
     // 查找该用户与 Expert 的最近活跃 Topic
     const existingTopic = await this.Topic.findOne({
-      where: {
-        user_id,
-        expert_id,
-        status: 'active',
-      },
+      where: whereClause,
       order: [['updated_at', 'DESC']],
       raw: true,
     });
@@ -195,8 +209,10 @@ class StreamController {
       expert_id,
       title: '新对话',
       status: 'active',
+      task_id,  // 关联任务ID（如果有）
     });
 
+    logger.info(`StreamController: 创建新对话: ${topic_id}${task_id ? `, 任务: ${task_id}` : ''}`);
     return topic_id;
   }
 

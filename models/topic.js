@@ -25,6 +25,15 @@ export default class topic extends Model {
         key: 'id'
       }
     },
+    task_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "关联任务ID",
+      references: {
+        model: 'tasks',
+        key: 'id'
+      }
+    },
     provider_name: {
       type: DataTypes.STRING(128),
       allowNull: true
@@ -104,6 +113,13 @@ export default class topic extends Model {
         using: "BTREE",
         fields: [
           { name: "updated_at" },
+        ]
+      },
+      {
+        name: "idx_task",
+        using: "BTREE",
+        fields: [
+          { name: "task_id" },
         ]
       },
     ]
