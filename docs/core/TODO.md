@@ -8,6 +8,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [专家托管模式](tasks/2026-03-03-expert-trusteeship/README.md) | ⏳ 待讨论 | 中 |
 | [用户程序执行器](tasks/2026-03-03-user-program-executor/README.md) | ⏳ 待开始 | 中 |
 | [知识库系统实现](tasks/2026-03-03-knowledge-base/README.md) | ⏳ 设计完成，待实现 | 高 |
 | [场外专家技能](#场外专家技能) | ⏳ 待讨论 | 低 |
