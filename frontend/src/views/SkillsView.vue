@@ -293,6 +293,10 @@ onMounted(() => {
   padding: 24px;
   max-width: 1400px;
   margin: 0 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .view-header {
@@ -350,6 +354,10 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 20px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .skill-card {
@@ -772,5 +780,23 @@ onMounted(() => {
   .skills-list {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* 滚动条样式 */
+.skills-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.skills-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.skills-list::-webkit-scrollbar-thumb {
+  background: var(--border-color, #e0e0e0);
+  border-radius: 3px;
+}
+
+.skills-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary, #999);
 }
 </style>
