@@ -457,10 +457,28 @@ class TaskController {
       // 读取目录内容
       try {
         const entries = await fs.readdir(targetPath, { withFileTypes: true });
-        const files = entries.map(entry => ({
-          name: entry.name,
-          type: entry.isDirectory() ? 'directory' : 'file',
-          path: path.join(subdir, entry.name),
+
+        // 获取每个文件的详细信息（大小、修改时间）
+        const files = await Promise.all(entries.map(async (entry) => {
+          const entryPath = path.join(targetPath, entry.name);
+          try {
+            const stats = await fs.stat(entryPath);
+            return {
+              name: entry.name,
+              type: entry.isDirectory() ? 'directory' : 'file',
+              path: path.join(subdir, entry.name),
+              size: entry.isDirectory() ? 0 : stats.size,
+              modified_at: stats.mtime.toISOString(),
+            };
+          } catch {
+            return {
+              name: entry.name,
+              type: entry.isDirectory() ? 'directory' : 'file',
+              path: path.join(subdir, entry.name),
+              size: 0,
+              modified_at: null,
+            };
+          }
         }));
 
         ctx.success({
