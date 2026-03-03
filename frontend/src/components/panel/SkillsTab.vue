@@ -213,12 +213,13 @@ const select_skill = async (skill: Skill | SkillDetail) => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-height: 0;  /* 允许 flex 子元素收缩 */
 }
 
 /* 技能列表 */
 .skills-list {
   flex: 1;
+  min-height: 0;  /* 关键：允许滚动 */
   overflow-y: auto;
   padding: 12px;
 }
