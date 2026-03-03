@@ -83,7 +83,13 @@ export const messageApi = {
     apiRequest<PaginatedResponse<Message>>(apiClient.get(`/topics/${topic_id}/messages`, { params })),
 
   // 发送消息给 Expert
-  sendMessage: (data: { content: string; expert_id: string; model_id?: string }) =>
+  sendMessage: (data: {
+    content: string;
+    expert_id: string;
+    model_id?: string;
+    task_id?: string;
+    task_path?: string;  // 当前浏览的目录路径
+  }) =>
     apiRequest<{ message: string; topic_id: string }>(apiClient.post('/chat', data)),
 
   // 删除消息

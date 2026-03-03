@@ -30,7 +30,7 @@ class StreamController {
    */
   async sendMessage(ctx) {
     try {
-      const { content, expert_id, model_id, task_id } = ctx.request.body;
+      const { content, expert_id, model_id, task_id, task_path } = ctx.request.body;
 
       if (!content) {
         ctx.error('缺少必要参数：content');
@@ -66,6 +66,7 @@ class StreamController {
         content,
         model_id,
         task_id,
+        task_path,  // 传递当前浏览路径
       });
 
       // 立即返回成功，消息将通过 SSE 推送
@@ -83,7 +84,7 @@ class StreamController {
   /**
    * 异步处理消息并通过 SSE 推送响应
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id }) {
+  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path }) {
     // 获取该 Expert 的所有活跃连接
     const connections = this.expertConnections.get(expert_id);
     
@@ -118,6 +119,7 @@ class StreamController {
           content,
           model_id,
           task_id,
+          task_path,  // 传递当前浏览路径
         },
         // onDelta - 流式数据回调
         (delta) => {

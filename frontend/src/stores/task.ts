@@ -17,6 +17,7 @@ export const useTaskStore = defineStore('task', () => {
   const currentTask = ref<Task | null>(null)
   const isInTaskMode = ref(false)
   const workspaceContext = ref<string>('')
+  const currentBrowsePath = ref<string>('')  // 当前浏览的目录路径
   const isLoading = ref(false)
   const isLoadingFiles = ref(false)
   const currentFiles = ref<TaskFile[]>([])
@@ -30,6 +31,9 @@ export const useTaskStore = defineStore('task', () => {
   const currentTaskId = computed(() =>
     currentTask.value?.id || null
   )
+
+  // 当前浏览路径（用于传递给 LLM）
+  const currentPath = computed(() => currentBrowsePath.value)
 
   // Actions
 
@@ -143,6 +147,7 @@ export const useTaskStore = defineStore('task', () => {
       workspaceContext.value = ''
       isInTaskMode.value = false
       currentFiles.value = []
+      currentBrowsePath.value = ''  // 清除浏览路径
     }
   }
 
@@ -151,6 +156,9 @@ export const useTaskStore = defineStore('task', () => {
    */
   const loadTaskFiles = async (subdir?: string) => {
     if (!currentTask.value) return
+
+    // 更新当前浏览路径
+    currentBrowsePath.value = subdir || ''
 
     isLoadingFiles.value = true
     try {
@@ -196,6 +204,7 @@ export const useTaskStore = defineStore('task', () => {
     currentTask,
     isInTaskMode,
     workspaceContext,
+    currentBrowsePath,
     isLoading,
     isLoadingFiles,
     currentFiles,
@@ -204,6 +213,7 @@ export const useTaskStore = defineStore('task', () => {
     // Getters
     activeTasks,
     currentTaskId,
+    currentPath,
 
     // Actions
     loadTasks,
