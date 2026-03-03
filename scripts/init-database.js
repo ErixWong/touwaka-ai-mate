@@ -68,6 +68,12 @@ const TABLES = [
     is_active BIT(1) DEFAULT b'1',
     avatar_base64 TEXT COMMENT '小头像Base64（日常使用）',
     avatar_large_base64 MEDIUMTEXT COMMENT '大头像Base64（对话框背景）',
+    context_threshold INT DEFAULT 4000 COMMENT '上下文压缩阈值',
+    temperature DECIMAL(3,2) DEFAULT 0.7 COMMENT 'Expressive模型温度',
+    reflective_temperature DECIMAL(3,2) DEFAULT 0.3 COMMENT 'Reflective模型温度',
+    top_p DECIMAL(3,2) DEFAULT 1.0 COMMENT 'Top-p采样',
+    frequency_penalty DECIMAL(3,2) DEFAULT 0.0 COMMENT '频率惩罚',
+    presence_penalty DECIMAL(3,2) DEFAULT 0.0 COMMENT '存在惩罚',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (expressive_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
@@ -174,11 +180,29 @@ const TABLES = [
     INDEX idx_last_active (last_active)
   )`,
 
-  // 8. Topics 表（更新：添加 provider_name, model_name, status, keywords 等字段）
+  // 8. Tasks 表（任务工作空间）
+  `CREATE TABLE IF NOT EXISTS tasks (
+    id VARCHAR(32) PRIMARY KEY,
+    task_id VARCHAR(50) UNIQUE NOT NULL COMMENT '任务ID (12位随机字符)',
+    title VARCHAR(200) NOT NULL COMMENT '任务标题',
+    description TEXT COMMENT '任务描述',
+    workspace_path VARCHAR(500) NOT NULL COMMENT '工作目录路径（相对路径）',
+    status ENUM('active', 'archived', 'deleted') DEFAULT 'active',
+    created_by VARCHAR(32) NOT NULL COMMENT '创建者 user_id',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_task_id (task_id),
+    INDEX idx_user (created_by),
+    INDEX idx_status (status)
+  ) COMMENT='任务工作空间表'`,
+
+  // 9. Topics 表（更新：添加 provider_name, model_name, status, keywords, task_id 等字段）
   `CREATE TABLE IF NOT EXISTS topics (
     id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
     expert_id VARCHAR(32),
+    task_id VARCHAR(32) COMMENT '关联任务ID',
     provider_name VARCHAR(128),
     model_name VARCHAR(128),
     title VARCHAR(256) NOT NULL,
@@ -191,15 +215,17 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE SET NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
     INDEX idx_user_status (user_id, status),
     INDEX idx_expert (expert_id),
+    INDEX idx_task (task_id),
     INDEX idx_updated (updated_at)
   )`,
 
-  // 9. Messages 表（更新：添加 user_id, expert_id 字段）
+  // 10. Messages 表（更新：添加 user_id, expert_id 字段）
   `CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(32) PRIMARY KEY,
-    topic_id VARCHAR(32) NOT NULL,
+    topic_id VARCHAR(32) DEFAULT NULL,
     user_id VARCHAR(32) NOT NULL COMMENT '消息所属用户ID，便于直接查询',
     expert_id VARCHAR(32) COMMENT '专家ID，便于直接查询',
     role ENUM('system', 'user', 'assistant') NOT NULL,
@@ -226,7 +252,7 @@ const TABLES = [
     INDEX idx_created (created_at)
   )`,
 
-  // 10. Roles 表（RBAC权限系统）
+  // 11. Roles 表（RBAC权限系统）
   `CREATE TABLE IF NOT EXISTS roles (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL COMMENT '角色标识：admin/creator/user',
@@ -238,7 +264,7 @@ const TABLES = [
     INDEX idx_name (name)
   )`,
 
-  // 11. Permissions 表（权限定义，含菜单路由配置）
+  // 12. Permissions 表（权限定义，含菜单路由配置）
   `CREATE TABLE IF NOT EXISTS permissions (
     id VARCHAR(32) PRIMARY KEY,
     code VARCHAR(100) UNIQUE NOT NULL COMMENT '权限码：user:create, expert:edit等',
@@ -255,7 +281,7 @@ const TABLES = [
     INDEX idx_type (type)
   )`,
 
-  // 12. Role_Permissions 表（角色-权限关联）
+  // 13. Role_Permissions 表（角色-权限关联）
   `CREATE TABLE IF NOT EXISTS role_permissions (
     role_id VARCHAR(32) NOT NULL,
     permission_id VARCHAR(32) NOT NULL,
@@ -265,7 +291,7 @@ const TABLES = [
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
   )`,
 
-  // 13. User_Roles 表（用户-角色关联，支持多角色）
+  // 14. User_Roles 表（用户-角色关联，支持多角色）
   `CREATE TABLE IF NOT EXISTS user_roles (
     user_id VARCHAR(32) NOT NULL,
     role_id VARCHAR(32) NOT NULL,
@@ -275,7 +301,7 @@ const TABLES = [
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
   )`,
 
-  // 14. Role_Experts 表（角色-专家访问权限）
+  // 15. Role_Experts 表（角色-专家访问权限）
   `CREATE TABLE IF NOT EXISTS role_experts (
     role_id VARCHAR(32) NOT NULL,
     expert_id VARCHAR(32) NOT NULL,
@@ -581,7 +607,7 @@ async function initDatabase() {
     console.log('Dropping existing tables...');
     // 按依赖顺序删除表（先删除有外键的表）
     const dropTables = [
-      'messages', 'topics', 'user_profiles', 'user_roles', 'role_permissions', 'role_experts',
+      'messages', 'topics', 'tasks', 'user_profiles', 'user_roles', 'role_permissions', 'role_experts',
       'permissions', 'roles', 'users', 'expert_skills', 'skill_tools', 'skills', 'experts',
       'ai_models', 'providers'
     ];
@@ -797,7 +823,7 @@ async function initDatabase() {
     console.log(`\nTest accounts:`);
     console.log(`  Admin:    admin / admin@example.com / password123`);
     console.log(`  User:     test / test@example.com / password123`);
-    console.log(`\nExpert ID: ${data.expert.id}`);
+    console.log(`\nExpert ID: ${data.experts[0].id}`);
 
   } catch (error) {
     console.error('❌ Initialization failed:', error.message);

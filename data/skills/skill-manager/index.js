@@ -153,8 +153,9 @@ function validateSkillPath(sourcePath, dataBasePath) {
   }
 
   // 计算相对于 dataBasePath 的相对路径（用于存储到数据库）
-  const relativePath = path.relative(dataBasePath, fullPath);
-  
+  // 跨平台兼容：统一使用正斜杠（Windows path.relative 返回反斜杠）
+  const relativePath = path.relative(dataBasePath, fullPath).replace(/\\/g, '/');
+
   return { valid: true, fullPath, relativePath };
 }
 

@@ -133,5 +133,132 @@ export default (controller) => {
     }
   });
 
+  // 删除文件（需要认证，只能删除 input 目录下的文件）
+  router.delete('/:id/files', authenticate(), async (ctx) => {
+    try {
+      const { id } = ctx.params;
+      const { path: filePath } = ctx.query;
+
+      if (!filePath) {
+        ctx.error('文件路径不能为空');
+        return;
+      }
+
+      // 只允许删除 input 目录下的文件
+      if (!filePath.startsWith('input/')) {
+        ctx.error('只能删除 input 目录下的文件', 403);
+        return;
+      }
+
+      // 获取任务信息
+      controller.ensureModel();
+      const task = await controller.Task.findOne({
+        where: { id },
+        raw: true,
+      });
+
+      if (!task) {
+        ctx.error('任务不存在', 404);
+        return;
+      }
+
+      // 检查权限
+      if (task.created_by !== ctx.state.userId) {
+        ctx.error('无权限访问此任务', 403);
+        return;
+      }
+
+      // 构建完整文件路径
+      const fullPath = path.join(WORKSPACE_ROOT, task.workspace_path, filePath);
+
+      // 安全检查：确保路径在工作空间内
+      const resolvedPath = path.resolve(fullPath);
+      const workspacePath = path.resolve(WORKSPACE_ROOT, task.workspace_path);
+      if (!resolvedPath.startsWith(workspacePath)) {
+        ctx.error('非法路径访问', 403);
+        return;
+      }
+
+      // 检查文件是否存在
+      try {
+        const stats = await fs.stat(resolvedPath);
+        if (!stats.isFile()) {
+          ctx.error('只能删除文件', 400);
+          return;
+        }
+      } catch {
+        ctx.error('文件不存在', 404);
+        return;
+      }
+
+      // 删除文件
+      await fs.unlink(resolvedPath);
+
+      ctx.success({ message: '文件删除成功' });
+    } catch (error) {
+      ctx.error('文件删除失败', 500);
+    }
+  });
+
+  // 保存文件内容（需要认证，只能保存到 input 目录）
+  router.put('/:id/files/content', authenticate(), async (ctx) => {
+    try {
+      const { id } = ctx.params;
+      const { path: filePath, content } = ctx.request.body;
+
+      if (!filePath) {
+        ctx.error('文件路径不能为空');
+        return;
+      }
+
+      if (content === undefined) {
+        ctx.error('文件内容不能为空');
+        return;
+      }
+
+      // 只允许保存到 input 目录
+      if (!filePath.startsWith('input/')) {
+        ctx.error('只能保存到 input 目录', 403);
+        return;
+      }
+
+      // 获取任务信息
+      controller.ensureModel();
+      const task = await controller.Task.findOne({
+        where: { id },
+        raw: true,
+      });
+
+      if (!task) {
+        ctx.error('任务不存在', 404);
+        return;
+      }
+
+      // 检查权限
+      if (task.created_by !== ctx.state.userId) {
+        ctx.error('无权限访问此任务', 403);
+        return;
+      }
+
+      // 构建完整文件路径
+      const fullPath = path.join(WORKSPACE_ROOT, task.workspace_path, filePath);
+
+      // 安全检查：确保路径在工作空间内
+      const resolvedPath = path.resolve(fullPath);
+      const workspacePath = path.resolve(WORKSPACE_ROOT, task.workspace_path);
+      if (!resolvedPath.startsWith(workspacePath)) {
+        ctx.error('非法路径访问', 403);
+        return;
+      }
+
+      // 保存文件内容
+      await fs.writeFile(resolvedPath, content, 'utf-8');
+
+      ctx.success({ message: '文件保存成功' });
+    } catch (error) {
+      ctx.error('文件保存失败', 500);
+    }
+  });
+
   return router;
 };

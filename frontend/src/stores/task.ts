@@ -9,14 +9,18 @@ import type { Task, CreateTaskRequest, TaskFile } from '@/types'
  * 任务工作空间状态管理
  * - 管理用户的任务列表
  * - 跟踪当前进入的任务工作空间
- * - 提供工作空间上下文给 LLM
+ * - 在发送消息时附加任务上下文（task_id, task_path）
+ *
+ * 设计说明：
+ * - 进入/退出任务只更新本地状态，不调用 API
+ * - 任务上下文在 ChatView 发送消息时附加到消息参数中
+ * - 支持多标签页/多窗口场景
  */
 export const useTaskStore = defineStore('task', () => {
   // State
   const tasks = ref<Task[]>([])
   const currentTask = ref<Task | null>(null)
   const isInTaskMode = ref(false)
-  const workspaceContext = ref<string>('')
   const currentBrowsePath = ref<string>('')  // 当前浏览的目录路径
   const isLoading = ref(false)
   const isLoadingFiles = ref(false)
@@ -113,42 +117,31 @@ export const useTaskStore = defineStore('task', () => {
 
   /**
    * 进入任务工作空间
+   * 只更新本地状态，不调用 API
+   * 任务上下文在发送消息时附加到消息参数中
    */
-  const enterTask = async (id: string) => {
-    isLoading.value = true
-    error.value = null
-    try {
-      const response = await taskApi.enterTask(id)
-      currentTask.value = response.task
-      workspaceContext.value = response.workspace_context
-      isInTaskMode.value = true
-      return response
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to enter task'
-      throw err
-    } finally {
-      isLoading.value = false
+  const enterTask = (task: Task) => {
+    if (!task || !task.id) {
+      console.warn('enterTask called with invalid task')
+      return
     }
+    currentTask.value = task
+    isInTaskMode.value = true
+    currentBrowsePath.value = ''
+    currentFiles.value = []
   }
 
   /**
    * 退出任务工作空间
+   * 只清除本地状态，不调用 API
    */
-  const exitTask = async () => {
+  const exitTask = () => {
     if (!isInTaskMode.value) return
 
-    try {
-      await taskApi.exitTask()
-    } catch (err) {
-      // 即使 API 失败也清除本地状态
-      console.warn('Exit task API failed:', err)
-    } finally {
-      currentTask.value = null
-      workspaceContext.value = ''
-      isInTaskMode.value = false
-      currentFiles.value = []
-      currentBrowsePath.value = ''  // 清除浏览路径
-    }
+    currentTask.value = null
+    isInTaskMode.value = false
+    currentFiles.value = []
+    currentBrowsePath.value = ''
   }
 
   /**
@@ -192,6 +185,69 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   /**
+   * 下载文件
+   */
+  const downloadFile = async (filePath: string) => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    try {
+      const response = await taskApi.downloadFile(currentTask.value.id, filePath)
+      // 创建下载链接
+      const url = window.URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filePath.split('/').pop() || 'download'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to download file'
+      throw err
+    }
+  }
+
+  /**
+   * 获取文件预览 URL
+   */
+  const getFilePreviewUrl = (filePath: string) => {
+    if (!currentTask.value) return ''
+    return `/api/tasks/${currentTask.value.id}/files/download?path=${encodeURIComponent(filePath)}`
+  }
+
+  /**
+   * 删除文件
+   */
+  const deleteFile = async (filePath: string) => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    error.value = null
+    try {
+      await taskApi.deleteFile(currentTask.value.id, filePath)
+      // 刷新文件列表
+      await loadTaskFiles(currentBrowsePath.value || undefined)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to delete file'
+      throw err
+    }
+  }
+
+  /**
+   * 保存文件内容
+   */
+  const saveFileContent = async (filePath: string, content: string) => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    error.value = null
+    try {
+      await taskApi.saveFileContent(currentTask.value.id, filePath, content)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to save file'
+      throw err
+    }
+  }
+
+  /**
    * 清除错误
    */
   const clearError = () => {
@@ -203,7 +259,6 @@ export const useTaskStore = defineStore('task', () => {
     tasks,
     currentTask,
     isInTaskMode,
-    workspaceContext,
     currentBrowsePath,
     isLoading,
     isLoadingFiles,
@@ -224,6 +279,10 @@ export const useTaskStore = defineStore('task', () => {
     exitTask,
     loadTaskFiles,
     uploadFile,
+    downloadFile,
+    getFilePreviewUrl,
+    deleteFile,
+    saveFileContent,
     clearError,
   }
 })

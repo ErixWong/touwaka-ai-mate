@@ -32,7 +32,6 @@ import type {
   Task,
   CreateTaskRequest,
   TaskFile,
-  EnterTaskResponse,
 } from '@/types'
 
 /**
@@ -99,6 +98,10 @@ export const messageApi = {
   // 清空指定 expert 与当前用户的所有消息和话题（仅管理员）
   clearMessagesByExpert: (expert_id: string) =>
     apiRequest<{ message: string; deleted_messages_count: number; deleted_topics_count: number }>(apiClient.delete(`/messages/expert/${expert_id}`)),
+
+  // 停止生成
+  stopGeneration: (expert_id: string) =>
+    apiRequest<{ success: boolean }>(apiClient.post('/chat/stop', { expert_id })),
 }
 
 // 模型相关 API
@@ -359,19 +362,11 @@ export const taskApi = {
 
   // 更新任务
   updateTask: (id: string, data: Partial<Task>) =>
-    apiRequest<Task>(apiClient.patch(`/tasks/${id}`, data)),
+    apiRequest<Task>(apiClient.put(`/tasks/${id}`, data)),
 
   // 删除任务（归档）
   deleteTask: (id: string) =>
     apiRequest<void>(apiClient.delete(`/tasks/${id}`)),
-
-  // 进入任务工作空间
-  enterTask: (id: string) =>
-    apiRequest<EnterTaskResponse>(apiClient.post(`/tasks/${id}/enter`)),
-
-  // 退出任务工作空间
-  exitTask: () =>
-    apiRequest<{ message: string }>(apiClient.post('/tasks/exit')),
 
   // 获取任务文件列表
   getTaskFiles: (id: string, subdir?: string) =>
@@ -394,4 +389,12 @@ export const taskApi = {
   // 下载文件
   downloadFile: (id: string, filePath: string) =>
     apiClient.get(`/tasks/${id}/files/download`, { params: { path: filePath }, responseType: 'blob' }),
+
+  // 删除文件
+  deleteFile: (id: string, filePath: string) =>
+    apiRequest<void>(apiClient.delete(`/tasks/${id}/files`, { params: { path: filePath } })),
+
+  // 保存文件内容（更新文本文件）
+  saveFileContent: (id: string, filePath: string, content: string) =>
+    apiRequest<{ message: string }>(apiClient.put(`/tasks/${id}/files/content`, { path: filePath, content })),
 }
