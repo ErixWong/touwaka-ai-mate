@@ -3,8 +3,8 @@
     <!-- Tab 导航 -->
     <div class="panel-header">
       <div class="panel-tabs">
-        <button 
-          v-for="tab in visibleTabs" 
+        <button
+          v-for="tab in visibleTabs"
           :key="tab.id"
           class="tab-btn"
           :class="{ active: activeTab === tab.id }"
@@ -13,12 +13,19 @@
           <span class="tab-icon">{{ tab.icon }}</span>
           <span class="tab-label">{{ tab.label }}</span>
         </button>
+        <!-- 分屏按钮 -->
+        <button
+          class="split-btn"
+          :class="{ active: splitMode !== 'default' }"
+          @click="toggleSplit"
+          :title="splitButtonTitle"
+        >
+          <span class="split-icon">⬚</span>
+          <span class="split-label">{{ splitModeLabel }}</span>
+        </button>
       </div>
-      <button class="collapse-btn" @click="togglePanel" :title="$t('panel.collapse')">
-        ▶
-      </button>
     </div>
-    
+
     <!-- Tab 内容 -->
     <div class="panel-content">
       <ExpertTab v-if="activeTab === 'expert'" />
@@ -36,7 +43,7 @@
 <script setup lang="ts">
 import { computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { usePanelStore, type TabId } from '@/stores/panel'
+import { usePanelStore, type TabId, type SplitMode } from '@/stores/panel'
 import { useUserStore } from '@/stores/user'
 import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
@@ -52,6 +59,32 @@ const panelStore = usePanelStore()
 const userStore = useUserStore()
 
 const activeTab = computed(() => panelStore.activeTab)
+const splitMode = computed(() => panelStore.splitMode)
+
+// 分屏模式标签
+const splitModeLabel = computed(() => {
+  switch (splitMode.value) {
+    case '5:5': return '1:1'
+    case '3:2': return '3:2'
+    default: return '≡'
+  }
+})
+
+// 分屏按钮提示
+const splitButtonTitle = computed(() => {
+  const labels: Record<SplitMode, string> = {
+    'default': '默认比例',
+    '5:5': '1:1 分屏',
+    '3:2': '3:2 分屏',
+  }
+  const nextMode = splitMode.value === 'default' ? '5:5' : splitMode.value === '5:5' ? '3:2' : 'default'
+  return `当前: ${labels[splitMode.value]} (点击切换为: ${labels[nextMode]})`
+})
+
+// 切换分屏模式
+const toggleSplit = () => {
+  panelStore.toggleSplitMode()
+}
 
 // 判断是否是 skill-studio 专家模式
 const is_skill_studio = computed(() => {
@@ -92,7 +125,7 @@ const visibleTabs = computed<Tab[]>(() => {
       return true
     })
   }
-  
+
   // 普通模式：显示 expert、topics、tasks Tab
   const tabs: Tab[] = [
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
@@ -100,16 +133,12 @@ const visibleTabs = computed<Tab[]>(() => {
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]
-  
+
   return tabs.filter(tab => {
     if (tab.adminOnly && !userStore.isAdmin) return false
     return true
   })
 })
-
-const togglePanel = () => {
-  panelStore.toggleCollapse()
-}
 
 const setActiveTab = (tabId: TabId) => {
   panelStore.setActiveTab(tabId)
@@ -147,6 +176,7 @@ const emit = defineEmits<{
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .tab-btn {
@@ -180,18 +210,43 @@ const emit = defineEmits<{
   white-space: nowrap;
 }
 
-.collapse-btn {
-  padding: 4px 8px;
-  border: none;
+/* 分屏按钮样式 */
+.split-btn {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  margin-left: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
   background: transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-secondary, #666);
   cursor: pointer;
-  border-radius: 4px;
-  flex-shrink: 0;
+  transition: all 0.2s;
 }
 
-.collapse-btn:hover {
+.split-btn:hover {
   background: var(--hover-bg, #f5f5f5);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.split-btn.active {
+  background: var(--primary-light, #e3f2fd);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.split-icon {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.split-label {
+  min-width: 24px;
+  text-align: center;
 }
 
 .panel-content {

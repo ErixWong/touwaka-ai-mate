@@ -90,6 +90,7 @@ import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
 import { useTaskStore } from '@/stores/task'
+import { usePanelStore } from '@/stores/panel'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { useSSE, type SSEEvent } from '@/composables/useSSE'
 import { messageApi } from '@/api/services'
@@ -113,6 +114,7 @@ const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
 const taskStore = useTaskStore()
+const panelStore = usePanelStore()
 const { isBackendAvailable, waitForBackend } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
@@ -167,26 +169,20 @@ const currentModel = computed(() => {
   return undefined
 })
 
-// 面板比例相关
-const PANEL_WIDTH_KEY = 'chat_panel_width'
-const DEFAULT_PANEL_SIZE = 25
-
-const savedPanelSize = ref(
-  parseFloat(localStorage.getItem(PANEL_WIDTH_KEY) || String(DEFAULT_PANEL_SIZE))
-)
-
+// 面板比例相关 - 使用 panelStore 的分屏模式
 const chatPaneSize = computed(() => {
-  return 100 - savedPanelSize.value
+  return 100 - panelStore.panelSize
 })
 
 const panelPaneSize = computed(() => {
-  return savedPanelSize.value
+  return panelStore.panelSize
 })
 
 const handlePanelResize = (panes: { size: number }[]) => {
+  // 用户手动调整大小时，切换为 default 模式并保存
   if (panes.length === 2 && panes[1]) {
-    savedPanelSize.value = panes[1].size
-    localStorage.setItem(PANEL_WIDTH_KEY, String(panes[1].size))
+    panelStore.setSplitMode('default')
+    localStorage.setItem('chat_panel_width', String(panes[1].size))
   }
 }
 

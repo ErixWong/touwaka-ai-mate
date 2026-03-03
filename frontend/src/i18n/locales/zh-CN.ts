@@ -397,6 +397,10 @@ export default {
     debug: '调试',
     collapse: '收起面板',
     expand: '展开面板',
+    split: '分屏',
+    splitDefault: '默认',
+    splitHalf: '1:1',
+    splitRatio: '3:2',
   },
 
   // 专家信息 Tab

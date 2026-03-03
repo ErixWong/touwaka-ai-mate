@@ -60,8 +60,8 @@
             <div class="file-info">
               <div class="file-name">{{ file.name }}</div>
               <div class="file-meta">
-                <span v-if="file.type === 'file'" class="file-size">{{ formatSize(file.size) }}</span>
-                <span class="file-date">{{ formatDate(file.modified_at) }}</span>
+                <span v-if="file.type === 'file'" class="file-size">{{ formatSize(file.size || 0) }}</span>
+                <span class="file-date">{{ formatDate(file.modified_at || '') }}</span>
               </div>
             </div>
           </div>
