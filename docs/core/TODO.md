@@ -8,6 +8,7 @@
 
 | 任务 | 状态 | 优先级 |
 |------|------|--------|
+| [知识库系统设计](tasks/2026-03-03-knowledge-base/README.md) | ⏳ 待开始 | 高 |
 | [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
