@@ -40,6 +40,7 @@
                 @send="handleSendMessage"
                 @retry="handleRetry"
                 @load-more="loadMoreMessages"
+                @stop="handleStopGenerate"
               />
               
               <!-- SSE 连接状态指示器 -->
@@ -90,6 +91,7 @@ import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
 import { useTaskStore } from '@/stores/task'
+import { usePanelStore } from '@/stores/panel'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { useSSE, type SSEEvent } from '@/composables/useSSE'
 import { messageApi } from '@/api/services'
@@ -113,6 +115,7 @@ const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
 const taskStore = useTaskStore()
+const panelStore = usePanelStore()
 const { isBackendAvailable, waitForBackend } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
@@ -167,26 +170,20 @@ const currentModel = computed(() => {
   return undefined
 })
 
-// 面板比例相关
-const PANEL_WIDTH_KEY = 'chat_panel_width'
-const DEFAULT_PANEL_SIZE = 25
-
-const savedPanelSize = ref(
-  parseFloat(localStorage.getItem(PANEL_WIDTH_KEY) || String(DEFAULT_PANEL_SIZE))
-)
-
+// 面板比例相关 - 使用 panelStore 的分屏模式
 const chatPaneSize = computed(() => {
-  return 100 - savedPanelSize.value
+  return 100 - panelStore.panelSize
 })
 
 const panelPaneSize = computed(() => {
-  return savedPanelSize.value
+  return panelStore.panelSize
 })
 
 const handlePanelResize = (panes: { size: number }[]) => {
+  // 用户手动调整大小时，切换为 default 模式并保存
   if (panes.length === 2 && panes[1]) {
-    savedPanelSize.value = panes[1].size
-    localStorage.setItem(PANEL_WIDTH_KEY, String(panes[1].size))
+    panelStore.setSplitMode('default')
+    localStorage.setItem('chat_panel_width', String(panes[1].size))
   }
 }
 
@@ -462,8 +459,8 @@ const handleSendMessage = async (content: string) => {
     }
     
     // 如果在任务模式下，添加 task_id 和 task_path
-    if (taskStore.isInTaskMode && taskStore.currentTaskId) {
-      messageParams.task_id = taskStore.currentTaskId
+    if (taskStore.isInTaskMode && taskStore.currentTask) {
+      messageParams.task_id = taskStore.currentTask.id  // 使用数据库主键
       // 添加当前浏览路径
       if (taskStore.currentPath) {
         messageParams.task_path = taskStore.currentPath
@@ -493,7 +490,7 @@ const handleSendMessage = async (content: string) => {
 const handleRetry = async (message: ChatMessage) => {
   // 删除失败的消息
   chatStore.removeMessage(message.id)
-  
+
   // 重新发送
   if (message.role === 'assistant') {
     // 如果是助手消息失败，找到对应的用户消息重发
@@ -510,6 +507,32 @@ const handleRetry = async (message: ChatMessage) => {
   } else {
     // 直接重发原消息
     await handleSendMessage(message.content)
+  }
+}
+
+// 停止生成
+const handleStopGenerate = async () => {
+  if (!isSending.value) return
+
+  console.log('Stopping generation...')
+
+  // 标记当前正在流式输出的消息为已停止
+  if (currentAssistantMessage.value) {
+    chatStore.updateMessageContent(
+      currentAssistantMessage.value.id,
+      currentAssistantMessage.value.content || '',
+      'stopped'
+    )
+    currentAssistantMessage.value = null
+  }
+
+  isSending.value = false
+
+  // 调用后端停止 API
+  try {
+    await messageApi.stopGeneration(currentExpertId.value!)
+  } catch (error) {
+    console.warn('Stop generation API not available:', error)
   }
 }
 

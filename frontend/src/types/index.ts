@@ -610,7 +610,7 @@ export interface Task {
   id: string
   task_id: string              // 用户可见的唯一标识符
   title: string
-  description?: string
+  description?: string | null
   workspace_path: string       // 工作空间目录路径
   status: TaskStatus
   created_by: string           // 创建者用户ID
@@ -635,13 +635,4 @@ export interface TaskFile {
   type: 'file' | 'directory'
   size?: number
   modified_at?: string
-}
-
-/**
- * 进入任务工作空间的响应
- */
-export interface EnterTaskResponse {
-  task: Task
-  message: string
-  workspace_context: string    // 注入到 LLM 的上下文信息
 }

@@ -3,8 +3,8 @@
     <!-- Tab 导航 -->
     <div class="panel-header">
       <div class="panel-tabs">
-        <button 
-          v-for="tab in visibleTabs" 
+        <button
+          v-for="tab in visibleTabs"
           :key="tab.id"
           class="tab-btn"
           :class="{ active: activeTab === tab.id }"
@@ -14,11 +14,21 @@
           <span class="tab-label">{{ tab.label }}</span>
         </button>
       </div>
-      <button class="collapse-btn" @click="togglePanel" :title="$t('panel.collapse')">
-        ▶
-      </button>
+      <!-- 分屏下拉菜单 - 居右对齐 -->
+      <div class="split-dropdown">
+        <select
+          :value="splitMode"
+          @change="onSplitChange"
+          class="split-select"
+          title="选择分屏比例"
+        >
+          <option v-for="mode in splitModes" :key="mode.value" :value="mode.value">
+            {{ mode.label }}
+          </option>
+        </select>
+      </div>
     </div>
-    
+
     <!-- Tab 内容 -->
     <div class="panel-content">
       <ExpertTab v-if="activeTab === 'expert'" />
@@ -36,7 +46,7 @@
 <script setup lang="ts">
 import { computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { usePanelStore, type TabId } from '@/stores/panel'
+import { usePanelStore, type TabId, type SplitMode } from '@/stores/panel'
 import { useUserStore } from '@/stores/user'
 import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
@@ -52,6 +62,25 @@ const panelStore = usePanelStore()
 const userStore = useUserStore()
 
 const activeTab = computed(() => panelStore.activeTab)
+const splitMode = computed(() => panelStore.splitMode)
+
+// 分屏模式选项
+const splitModes = [
+  { value: 'default' as SplitMode, label: '默认', title: '默认比例 (左侧 75% : 右侧 25%)' },
+  { value: '5:5' as SplitMode, label: '1:1', title: '1:1 分屏 (左右各 50%)' },
+  { value: '3:2' as SplitMode, label: '3:2', title: '3:2 分屏 (左侧 60% : 右侧 40%)' },
+]
+
+// 设置分屏模式
+const setSplitMode = (mode: SplitMode) => {
+  panelStore.setSplitMode(mode)
+}
+
+// 下拉菜单变更
+const onSplitChange = (event: Event) => {
+  const target = event.target as HTMLSelectElement
+  setSplitMode(target.value as SplitMode)
+}
 
 // 判断是否是 skill-studio 专家模式
 const is_skill_studio = computed(() => {
@@ -92,7 +121,7 @@ const visibleTabs = computed<Tab[]>(() => {
       return true
     })
   }
-  
+
   // 普通模式：显示 expert、topics、tasks Tab
   const tabs: Tab[] = [
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
@@ -100,16 +129,12 @@ const visibleTabs = computed<Tab[]>(() => {
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]
-  
+
   return tabs.filter(tab => {
     if (tab.adminOnly && !userStore.isAdmin) return false
     return true
   })
 })
-
-const togglePanel = () => {
-  panelStore.toggleCollapse()
-}
 
 const setActiveTab = (tabId: TabId) => {
   panelStore.setActiveTab(tabId)
@@ -141,12 +166,15 @@ const emit = defineEmits<{
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .panel-tabs {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
 }
 
 .tab-btn {
@@ -180,18 +208,36 @@ const emit = defineEmits<{
   white-space: nowrap;
 }
 
-.collapse-btn {
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  border-radius: 4px;
+/* 分屏下拉菜单 - 居右 */
+.split-dropdown {
   flex-shrink: 0;
 }
 
-.collapse-btn:hover {
-  background: var(--hover-bg, #f5f5f5);
+.split-select {
+  padding: 4px 8px;
+  padding-right: 24px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--secondary-bg, #f5f5f5);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+
+.split-select:hover {
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.split-select:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
 }
 
 .panel-content {

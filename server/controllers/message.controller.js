@@ -60,15 +60,27 @@ class MessageController {
         raw: true,
       });
 
+      // 安全解析 JSON
+      const safeParseJSON = (value) => {
+        if (!value) return null;
+        try {
+          const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+          return parsed;
+        } catch (e) {
+          logger.warn('JSON parse failed:', value);
+          return null;
+        }
+      };
+
       // 反转数组，使消息按时间正序返回（最早的在前，便于聊天界面显示）
       const sortedRows = rows.reverse();
 
       ctx.success({
         items: sortedRows.map(m => ({
           ...m,
-          inner_voice: m.inner_voice ? JSON.parse(m.inner_voice) : null,
-          tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : null,
-          error_info: m.error_info ? JSON.parse(m.error_info) : null,
+          inner_voice: safeParseJSON(m.inner_voice),
+          tool_calls: safeParseJSON(m.tool_calls),
+          error_info: safeParseJSON(m.error_info),
           // 将数据库字段转换为前端期望的 metadata 格式
           metadata: {
             tokens: (m.prompt_tokens || m.completion_tokens) ? {
@@ -87,7 +99,7 @@ class MessageController {
         },
       });
     } catch (error) {
-      logger.error('Get messages by expert error:', error);
+      console.error('Get messages by expert error:', error.stack || error);
       ctx.error('获取消息失败', 500);
     }
   }
