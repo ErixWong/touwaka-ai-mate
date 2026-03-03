@@ -310,8 +310,8 @@ interface TaskState {
 - [x] 文件下载功能
 - [x] 进入 Task 后 Topic 关联 task_id
 - [x] Task 上下文注入到 LLM
-- [ ] 顶部通栏显示当前 Task
-- [ ] 退出/切换 Task 功能
+- [ ] 顶部浮动 Task 指示器（聊天框顶部显示当前任务）
+- [x] 退出/切换 Task 功能（在 Tasks 面板操作）
 
 ---
 
