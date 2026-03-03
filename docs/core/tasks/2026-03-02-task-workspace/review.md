@@ -579,6 +579,114 @@ logger.debug(`[ChatService] 目标目录: ${targetDir}`);
 
 ---
 
+## 🔄 优化：跨平台兼容性与路径修复（第二轮）
+
+> 审计日期：2026-03-03
+> 审计人：Claude Code Reviewer
+> 变更类型：Bug 修复 + 跨平台兼容
+> 分支：feature/task-state-management
+> 提交：877c1a9
+
+### 变更概述
+
+1. **路径上下文修复** - AI 路径多一层 `data/` 的问题
+2. **跨平台路径分隔符** - Windows 反斜杠兼容
+3. **Python 命令检测** - macOS/Linux `python3` 支持
+4. **任务文件管理** - 删除、编辑、下载功能
+
+---
+
+### 🔧 修复记录
+
+#### 1. 路径多一层 data/ 问题
+
+**问题：** AI 创建文件时路径变成 `data/data/work/...`
+
+**原因：** 提示词说"包含 `data/work/` 前缀"，但 `fullPath` 已经是相对于 `data/` 的路径
+
+**修复：**
+```javascript
+// context-manager.js - 修改提示词说明
+### 路径使用规则
+- 路径是相对于系统 data/ 目录的，不需要再加 data/ 前缀
+- ⚠️ 注意：路径已经是相对于 data/ 的，不要再加 data/ 前缀！
+```
+
+#### 2. 技能路径反斜杠问题
+
+**问题：** PDF 技能无法运行，错误 `Skill directory not found: .../skills\pdf`
+
+**原因：** Windows 上注册的技能 `source_path` 使用反斜杠 `\`
+
+**修复：**
+```javascript
+// skill-loader.js - 读取时规范化
+const normalizedPath = skill.source_path.replace(/\\/g, '/');
+
+// skill-manager/index.js - 存储时规范化
+const relativePath = path.relative(dataBasePath, fullPath).replace(/\\/g, '/');
+```
+
+**数据库修复：**
+```sql
+UPDATE skills SET source_path = REPLACE(source_path, CHAR(92), '/');
+```
+
+#### 3. Python 命令跨平台兼容
+
+**问题：** `spawn python ENOENT` - macOS 没有 `python` 命令
+
+**原因：** macOS 只有 `python3`，Windows 通常用 `python`
+
+**修复：**
+```javascript
+// skill-runner.js - 添加 Python 命令检测
+function detectPythonCommand() {
+  if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+  return 'python3';  // 默认使用 python3
+}
+```
+
+**Windows 用户配置：** 在 `.env` 中添加 `PYTHON_PATH=python`
+
+---
+
+### 📋 任务文件管理功能
+
+| 功能 | 文件 | 说明 |
+|------|------|------|
+| 文件删除 | `task.routes.js` | DELETE `/tasks/:id/files` |
+| 文件编辑 | `task.routes.js` | PUT `/tasks/:id/files/content` |
+| 文件下载 | `TasksTab.vue` | 下载按钮 + 预览功能 |
+| 三点菜单 | `TasksTab.vue` | 删除、编辑操作入口 |
+| 刷新按钮 | `TasksTab.vue` | 刷新工作空间文件列表 |
+
+---
+
+### ✅ 验收结果
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| 路径正确性 | ✅ 通过 | AI 使用 `work/userId/taskId` 格式 |
+| 技能路径 | ✅ 通过 | 数据库已修复，代码已规范化 |
+| Python 执行 | ✅ 通过 | 使用 `python3` 命令 |
+| 文件管理 | ✅ 通过 | 删除、编辑、下载功能正常 |
+
+---
+
+### 📝 后续建议
+
+1. **共享配置模块** - 抽取 `WORKSPACE_ROOT` 到统一配置
+2. **单元测试** - 添加路径拼接测试用例
+3. **Docker 部署** - 确保 Docker 环境中 Python 路径正确
+
+---
+
+*修复完成时间：2026-03-03*
+*提交：877c1a9 feat(task): 增强任务工作空间路径上下文和跨平台兼容性*
+
+---
+
 ### 🔧 2026-03-03 修复记录 (第二轮)
 
 #### 问题描述
