@@ -98,6 +98,10 @@ export const messageApi = {
   // 清空指定 expert 与当前用户的所有消息和话题（仅管理员）
   clearMessagesByExpert: (expert_id: string) =>
     apiRequest<{ message: string; deleted_messages_count: number; deleted_topics_count: number }>(apiClient.delete(`/messages/expert/${expert_id}`)),
+
+  // 停止生成
+  stopGeneration: (expert_id: string) =>
+    apiRequest<{ success: boolean }>(apiClient.post('/chat/stop', { expert_id })),
 }
 
 // 模型相关 API

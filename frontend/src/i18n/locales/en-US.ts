@@ -44,6 +44,8 @@ export default {
     placeholder: 'Type a message...',
     send: 'Send',
     thinking: 'Thinking...',
+    stopGenerate: 'Stop generating',
+    stopped: 'Stopped',
     emptyState: 'Send a message to start chatting with the expert',
     scrollToBottom: 'Scroll to bottom',
     newTopic: 'New Topic',

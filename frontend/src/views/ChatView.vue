@@ -40,6 +40,7 @@
                 @send="handleSendMessage"
                 @retry="handleRetry"
                 @load-more="loadMoreMessages"
+                @stop="handleStopGenerate"
               />
               
               <!-- SSE 连接状态指示器 -->
@@ -489,7 +490,7 @@ const handleSendMessage = async (content: string) => {
 const handleRetry = async (message: ChatMessage) => {
   // 删除失败的消息
   chatStore.removeMessage(message.id)
-  
+
   // 重新发送
   if (message.role === 'assistant') {
     // 如果是助手消息失败，找到对应的用户消息重发
@@ -506,6 +507,32 @@ const handleRetry = async (message: ChatMessage) => {
   } else {
     // 直接重发原消息
     await handleSendMessage(message.content)
+  }
+}
+
+// 停止生成
+const handleStopGenerate = async () => {
+  if (!isSending.value) return
+
+  console.log('Stopping generation...')
+
+  // 标记当前正在流式输出的消息为已停止
+  if (currentAssistantMessage.value) {
+    chatStore.updateMessageContent(
+      currentAssistantMessage.value.id,
+      currentAssistantMessage.value.content || '',
+      'stopped'
+    )
+    currentAssistantMessage.value = null
+  }
+
+  isSending.value = false
+
+  // 调用后端停止 API
+  try {
+    await messageApi.stopGeneration(currentExpertId.value!)
+  } catch (error) {
+    console.warn('Stop generation API not available:', error)
   }
 }
 
