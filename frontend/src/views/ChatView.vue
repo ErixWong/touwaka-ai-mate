@@ -89,6 +89,7 @@ import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
+import { useTaskStore } from '@/stores/task'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { useSSE, type SSEEvent } from '@/composables/useSSE'
 import { messageApi } from '@/api/services'
@@ -111,6 +112,7 @@ const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
+const taskStore = useTaskStore()
 const { isBackendAvailable, waitForBackend } = useNetworkStatus()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
@@ -240,15 +242,37 @@ const handleSSEEvent = (event: SSEEvent) => {
 
       case 'tool_call':
         console.log('Tool call:', data)
-        // 在当前消息中显示工具调用信息
+        // 在当前消息中显示工具调用信息（包含参数）
         if (currentAssistantMessage.value && data.toolCalls) {
-          const toolNames = data.toolCalls.map((tc: any) =>
-            tc.displayName || tc.function?.name || tc.name || 'unknown'
-          ).join(', ')
+          const toolDetails = data.toolCalls.map((tc: any) => {
+            const name = tc.displayName || tc.function?.name || tc.name || 'unknown'
+            // 尝试解析参数
+            let params = ''
+            if (tc.function?.arguments) {
+              try {
+                const args = typeof tc.function.arguments === 'string'
+                  ? JSON.parse(tc.function.arguments)
+                  : tc.function.arguments
+                // 显示关键参数（截断过长的值）
+                const keys = Object.keys(args).slice(0, 3)
+                if (keys.length > 0) {
+                  const summary = keys.map(k => {
+                    const val = String(args[k])
+                    const truncated = val.length > 30 ? val.substring(0, 30) + '...' : val
+                    return `${k}=${truncated}`
+                  }).join(', ')
+                  params = ` (${summary})`
+                }
+              } catch {
+                // 解析失败则忽略参数
+              }
+            }
+            return `🔧 ${name}${params}`
+          }).join('\n')
           
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
-            currentAssistantMessage.value.content + `\n\n🔧 调用工具: ${toolNames}\n`
+            currentAssistantMessage.value.content + `\n\n${toolDetails}\n`
           )
         }
         break
@@ -424,12 +448,30 @@ const handleSendMessage = async (content: string) => {
   isSending.value = true
 
   try {
-    // 使用 messageApi 发送消息（自动处理认证）
-    const result = await messageApi.sendMessage({
+    // 构建消息参数
+    const messageParams: {
+      content: string;
+      expert_id: string;
+      model_id?: string;
+      task_id?: string;
+      task_path?: string;
+    } = {
       content,
       expert_id,
       model_id,
-    })
+    }
+    
+    // 如果在任务模式下，添加 task_id 和 task_path
+    if (taskStore.isInTaskMode && taskStore.currentTaskId) {
+      messageParams.task_id = taskStore.currentTaskId
+      // 添加当前浏览路径
+      if (taskStore.currentPath) {
+        messageParams.task_path = taskStore.currentPath
+      }
+    }
+    
+    // 使用 messageApi 发送消息（自动处理认证）
+    const result = await messageApi.sendMessage(messageParams)
 
     console.log('Message sent:', result)
 
