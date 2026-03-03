@@ -217,3 +217,184 @@ const enterTask = (task: Task) => {
 ---
 
 *优化审查完成时间：2026-03-03*
+
+---
+
+## 🔄 优化：任务列表 UI 增强与功能完善
+
+> 审计日期：2026-03-03
+> 审计人：Claude Code Reviewer
+> 变更类型：功能增强 + Bug 修复
+> 分支：feature/task-state-management
+
+### 变更概述
+
+1. **任务列表视觉优化** - 状态颜色区分、卡片样式、操作按钮
+2. **编辑和删除功能** - 任务编辑对话框、归档/恢复/删除功能
+3. **分页组件接入** - 使用现有 Pagination 组件实现分页显示
+4. **Bug 修复** - HTTP 方法不匹配（PATCH→PUT）、ID 响应式引用问题
+
+### 变更文件
+
+| 文件 | 变更内容 |
+|------|----------|
+| `frontend/src/components/panel/TasksTab.vue` | 任务列表 UI 重构，添加编辑/删除/分页功能 |
+| `frontend/src/stores/task.ts` | 任务状态管理重构 |
+| `frontend/src/api/services.ts` | 移除废弃 API，修复 HTTP 方法 (PATCH→PUT) |
+| `frontend/src/types/index.ts` | 移除废弃类型 `EnterTaskResponse` |
+| `frontend/src/views/ChatView.vue` | 修复 task_id 字段使用 |
+| `frontend/src/i18n/locales/zh-CN.ts` | 添加新的翻译 key |
+| `lib/chat-service.js` | 修复查询字段 (task_id → id) |
+| `server/controllers/task.controller.js` | 修复 update 方法返回值和错误处理 |
+
+---
+
+### 📊 审查结果摘要
+
+| 严重程度 | 数量 | 主要问题 |
+|---------|------|---------|
+| 🔴 Critical | 2 | TaskFile 类型不匹配、客户端分页 |
+| 🟡 Important | 4 | 缺少错误反馈、调试日志、HTTP 方法、验证 |
+| 🔵 Suggestion | 4 | 可复用对话框、乐观 UI、防抖、i18n |
+
+---
+
+### 🔴 Critical (必须修复)
+
+#### 1. TaskFile 类型定义不匹配
+
+**问题**：类型定义使用 `type: 'file' | 'directory'` 但组件检查 `file.is_directory`
+
+```typescript
+// 类型定义 (types/index.ts)
+export interface TaskFile {
+  type: 'file' | 'directory'  // <-- 错误的属性
+}
+
+// 组件使用 (TasksTab.vue)
+<span>{{ file.is_directory ? '📁' : getFileIcon(file.name) }}</span>
+```
+
+**修复建议**：统一使用 `is_directory: boolean` 或 `type` 字段
+
+#### 2. 分页为客户端实现
+
+**问题**：当前加载所有任务后在前端分页，任务量大时会有性能问题
+
+```typescript
+const paginatedTasks = computed(() => {
+  return filteredTasks.value.slice(start, end)  // 内存切片
+})
+```
+
+**说明**：MVP 阶段可接受，但应记录为已知限制
+
+---
+
+### 🟡 Important (应该修复)
+
+#### 1. 缺少错误处理用户反馈
+
+**问题**：CRUD 操作失败只 console.error，用户看不到错误提示
+
+```typescript
+const handleArchiveTask = async (task: Task) => {
+  try {
+    await taskStore.updateTask(task.id, { status: 'archived' })
+  } catch (error) {
+    console.error('Failed to archive task:', error)  // 无用户反馈！
+  }
+}
+```
+
+**修复建议**：添加 toast/notification 组件显示错误
+
+#### 2. 调试日志应移除
+
+**问题**：多处 `console.log` 残留
+
+```typescript
+console.log('归档任务:', task.id, task.title)
+console.log('归档结果:', result)
+console.log('编辑任务 - ID:', ...)
+```
+
+**修复建议**：移除或使用可配置的日志工具
+
+#### 3. HTTP 方法语义
+
+**问题**：从 `PATCH` 改为 `PUT`
+
+- `PUT` = 替换整个资源
+- `PATCH` = 部分更新
+
+后端支持部分更新，语义上 `PATCH` 更合适，但为匹配后端路由使用 `PUT`
+
+#### 4. Vue 响应式引用问题 ✅ 已修复
+
+**问题**：`editingTask.value.id` 可能在编辑期间被其他操作更新
+
+**修复**：在提交时先捕获任务 ID
+```typescript
+const taskId = editingTask.value.id  // 先捕获
+const updated = await taskStore.updateTask(taskId, { ... })
+```
+
+---
+
+### 🔵 Suggestion (建议改进)
+
+1. **提取可复用组件**：删除确认对话框可提取为通用组件
+2. **乐观 UI 更新**：归档/恢复操作可先更新 UI 再同步服务器
+3. **搜索防抖**：大量任务时可添加 debounce
+4. **组件拆分**：TasksTab.vue 约 1120 行，可拆分为子组件
+
+---
+
+### ✅ 做得好的地方
+
+1. **干净的重构** - 任务状态管理从 API 驱动改为本地状态
+2. **完整的功能集** - 编辑、归档、恢复、删除、筛选、搜索、分页
+3. **良好的 UI/UX** - 状态指示器、卡片样式、操作按钮
+4. **正确的授权检查** - 后端 update 端点添加了所有权验证
+5. **路径遍历保护** - 文件操作中保持了完善的安全检查
+
+---
+
+### 📋 修复优先级
+
+| 优先级 | 问题 | 工作量 | 状态 |
+|--------|------|--------|------|
+| P0 | TaskFile 类型不匹配 | 0.5h | ✅ 已修复 |
+| P1 | 错误处理用户反馈 | 1h | 待修复 |
+| P1 | 移除调试日志 | 0.5h | ✅ 已修复 |
+| P2 | 组件拆分 | 2h | 可选 |
+
+---
+
+### 🔧 2026-03-03 修复记录
+
+#### P0: TaskFile 类型不匹配 ✅
+- **问题**：类型定义使用 `type: 'file' | 'directory'` 但组件检查 `file.is_directory`
+- **修复**：将 `file.is_directory` 改为 `file.type === 'directory'`
+- **文件**：`frontend/src/components/panel/TasksTab.vue` (lines 59, 63, 465)
+
+#### P1: 移除调试日志 ✅
+- **问题**：多处 `console.log` 残留
+- **修复**：移除所有调试日志，保留错误日志
+- **文件**：`frontend/src/components/panel/TasksTab.vue`
+  - 移除 `openEditDialog` 中的调试日志 (原 348-349 行)
+  - 移除 `handleSubmitTask` 中的调试日志 (原 375, 381 行)
+  - 移除 `handleArchiveTask` 中的调试日志 (原 401, 404 行)
+  - 移除 `handleRestoreTask` 中的调试日志 (原 408, 411 行)
+
+---
+
+### 最终评估
+
+**通过** - 代码质量良好，功能完整。建议修复 Critical 和 Important 问题后合并。
+
+---
+
+*审查完成时间：2026-03-03*
+*修复完成时间：2026-03-03*

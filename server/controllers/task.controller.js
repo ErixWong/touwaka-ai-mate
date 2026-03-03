@@ -143,9 +143,11 @@ class TaskController {
       const { status, page = 1, pageSize = 20 } = ctx.query;
 
       const where = { created_by: ctx.state.userId };
-      if (status) {
+      if (status && status !== 'all') {
         where.status = status;
       }
+      // 如果没有指定 status 或 status='all'，则获取所有非删除的任务
+      // 注意：前端会过滤，这里我们返回所有任务让前端处理
 
       const offset = (parseInt(page) - 1) * parseInt(pageSize);
 
@@ -261,6 +263,9 @@ class TaskController {
       this.ensureModel();
       const { id } = ctx.params;
       const { title, description, status } = ctx.request.body;
+      const userId = ctx.state.userId;
+
+      logger.info(`[TaskController] 更新任务: id=${id}, userId=${userId}`);
 
       const updates = {};
       if (title !== undefined) updates.title = title;
@@ -272,19 +277,43 @@ class TaskController {
         return;
       }
 
+      // 先检查任务是否存在
+      const existingTask = await this.Task.findOne({
+        where: { id },
+        raw: true,
+      });
+
+      if (!existingTask) {
+        logger.warn(`[TaskController] 任务不存在: id=${id}`);
+        ctx.error('任务不存在', 404);
+        return;
+      }
+
+      if (existingTask.created_by !== userId) {
+        logger.warn(`[TaskController] 无权限: task.created_by=${existingTask.created_by}, userId=${userId}`);
+        ctx.error('无权限修改此任务', 403);
+        return;
+      }
+
       const result = await this.Task.update(updates, {
         where: {
           id,
-          created_by: ctx.state.userId,
+          created_by: userId,
         },
       });
 
       if (result[0] === 0) {
-        ctx.error('任务不存在或无权限', 404);
+        ctx.error('任务更新失败', 500);
         return;
       }
 
-      ctx.success(null, '更新成功');
+      // 返回更新后的任务对象
+      const updatedTask = await this.Task.findOne({
+        where: { id },
+        raw: true,
+      });
+
+      ctx.success(updatedTask, '更新成功');
     } catch (error) {
       logger.error('Update task error:', error);
       ctx.error('更新任务失败', 500);

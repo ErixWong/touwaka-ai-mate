@@ -358,7 +358,7 @@ export const taskApi = {
 
   // 更新任务
   updateTask: (id: string, data: Partial<Task>) =>
-    apiRequest<Task>(apiClient.patch(`/tasks/${id}`, data)),
+    apiRequest<Task>(apiClient.put(`/tasks/${id}`, data)),
 
   // 删除任务（归档）
   deleteTask: (id: string) =>
