@@ -12,9 +12,14 @@
             <span class="task-name">{{ taskStore.currentTask.title }}</span>
           </div>
         </div>
-        <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
-          <span class="icon">↑</span>
-        </button>
+        <div class="workspace-actions">
+          <button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
+            <span class="icon">↻</span>
+          </button>
+          <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
+            <span class="icon">↑</span>
+          </button>
+        </div>
         <input
           ref="fileInputRef"
           type="file"
@@ -62,6 +67,26 @@
               <div class="file-meta">
                 <span v-if="file.type === 'file'" class="file-size">{{ formatSize(file.size || 0) }}</span>
                 <span class="file-date">{{ formatDate(file.modified_at || '') }}</span>
+              </div>
+            </div>
+            <!-- 文件操作菜单 -->
+            <div v-if="file.type === 'file'" class="file-menu" @click.stop>
+              <button class="btn-menu-trigger" @click="toggleFileMenu(file)" :title="$t('tasks.moreActions') || '更多操作'">
+                ⋯
+              </button>
+              <div v-if="activeMenuFile?.path === file.path" class="file-menu-dropdown">
+                <button class="menu-item" @click="handleDownload(file)">
+                  <span class="menu-icon">↓</span>
+                  <span>{{ $t('tasks.download') || '下载' }}</span>
+                </button>
+                <button
+                  v-if="canDeleteFile(file)"
+                  class="menu-item menu-item-danger"
+                  @click="confirmDeleteFile(file)"
+                >
+                  <span class="menu-icon">🗑</span>
+                  <span>{{ $t('tasks.delete') || '删除' }}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -240,6 +265,102 @@
         </div>
       </div>
     </div>
+
+    <!-- 文件预览对话框 -->
+    <div v-if="showPreview" class="dialog-overlay preview-overlay" @click.self="closePreview">
+      <div class="dialog preview-dialog">
+        <div class="dialog-header">
+          <h3>{{ previewFile?.name }}</h3>
+          <div class="header-actions">
+            <span v-if="isEditing" class="edit-indicator">{{ $t('tasks.editing') || '编辑中' }}</span>
+            <button class="btn-close" @click="closePreview">×</button>
+          </div>
+        </div>
+        <div class="dialog-body preview-body">
+          <!-- 加载中 -->
+          <div v-if="previewLoading" class="preview-loading">
+            {{ $t('common.loading') || '加载中...' }}
+          </div>
+          <!-- 保存中 -->
+          <div v-else-if="previewSaving" class="preview-loading">
+            {{ $t('common.saving') || '保存中...' }}
+          </div>
+          <!-- 预览/编辑内容 -->
+          <template v-else>
+            <!-- 文本/代码编辑 -->
+            <template v-if="previewType === 'text' || previewType === 'code'">
+              <textarea
+                v-if="isEditing"
+                v-model="previewContent"
+                class="preview-editor"
+                :class="{ 'code-editor': previewType === 'code' }"
+              ></textarea>
+              <pre v-else class="preview-code" :class="{ 'code-preview': previewType === 'code' }">{{ previewContent }}</pre>
+            </template>
+            <!-- 图片预览 -->
+            <div v-else-if="previewType === 'image'" class="preview-image">
+              <img :src="previewUrl" :alt="previewFile?.name" />
+            </div>
+            <!-- PDF 预览 -->
+            <iframe v-else-if="previewType === 'pdf'" :src="previewUrl" class="preview-pdf"></iframe>
+            <!-- 不支持的类型 -->
+            <div v-else class="preview-unsupported">
+              <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
+              <button class="btn-confirm" @click="handleDownload(previewFile!)">
+                {{ $t('tasks.download') || '下载文件' }}
+              </button>
+            </div>
+          </template>
+        </div>
+        <div class="dialog-footer">
+          <template v-if="previewType === 'text' || previewType === 'code'">
+            <!-- 文本文件可编辑 -->
+            <template v-if="canEditFile">
+              <button v-if="!isEditing" class="btn-cancel" @click="startEdit">
+                {{ $t('tasks.edit') || '编辑' }}
+              </button>
+              <template v-else>
+                <button class="btn-cancel" @click="cancelEdit">
+                  {{ $t('common.cancel') || '取消' }}
+                </button>
+                <button class="btn-confirm" @click="saveEdit" :disabled="previewSaving">
+                  {{ $t('common.save') || '保存' }}
+                </button>
+              </template>
+            </template>
+            <button class="btn-confirm" @click="handleDownload(previewFile!)">
+              {{ $t('tasks.download') || '下载' }}
+            </button>
+          </template>
+          <template v-else>
+            <button class="btn-confirm" @click="handleDownload(previewFile!)">
+              {{ $t('tasks.download') || '下载文件' }}
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除文件确认对话框 -->
+    <div v-if="showDeleteFileConfirm" class="dialog-overlay" @click.self="showDeleteFileConfirm = false">
+      <div class="dialog dialog-small">
+        <div class="dialog-header">
+          <h3>{{ $t('tasks.deleteConfirm') || '确认删除' }}</h3>
+          <button class="btn-close" @click="showDeleteFileConfirm = false">×</button>
+        </div>
+        <div class="dialog-body">
+          <p>{{ $t('tasks.deleteFileConfirmMessage', { name: fileToDelete?.name }) || `确定要删除文件"${fileToDelete?.name}"吗？此操作不可恢复。` }}</p>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="showDeleteFileConfirm = false">
+            {{ $t('common.cancel') || '取消' }}
+          </button>
+          <button class="btn-confirm btn-danger" @click="handleDeleteFile">
+            {{ $t('common.delete') || '删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -273,6 +394,22 @@ const taskForm = ref({
   title: '',
   description: ''
 })
+
+// 文件预览相关
+const showPreview = ref(false)
+const previewFile = ref<TaskFile | null>(null)
+const previewType = ref<'text' | 'code' | 'image' | 'pdf' | 'unsupported'>('text')
+const previewContent = ref('')
+const previewOriginalContent = ref('')  // 保存原始内容，用于取消编辑
+const previewUrl = ref('')
+const previewLoading = ref(false)
+const previewSaving = ref(false)
+const isEditing = ref(false)
+
+// 文件菜单相关
+const activeMenuFile = ref<TaskFile | null>(null)
+const showDeleteFileConfirm = ref(false)
+const fileToDelete = ref<TaskFile | null>(null)
 
 // 允许的文件类型
 const allowedFileTypes = '.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.json'
@@ -439,13 +576,25 @@ const triggerUpload = () => {
   fileInputRef.value?.click()
 }
 
+// 刷新文件列表
+const handleRefreshFiles = async () => {
+  await taskStore.loadTaskFiles(currentPath.value || undefined)
+}
+
 const handleFileUpload = async (event: Event) => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
 
   try {
-    await taskStore.uploadFile(file, currentPath.value || undefined)
+    // 只允许上传到 input 目录
+    // 如果当前在 input 子目录下，上传到该子目录；否则上传到 input 根目录
+    let uploadPath = 'input'
+    if (currentPath.value.startsWith('input')) {
+      uploadPath = currentPath.value
+    }
+
+    await taskStore.uploadFile(file, uploadPath)
     // 清空 input 以便重复上传同一文件
     input.value = ''
   } catch (error) {
@@ -460,9 +609,172 @@ const handleFileClick = async (file: TaskFile) => {
       ? `${currentPath.value}/${file.name}`
       : file.name
     await taskStore.loadTaskFiles(currentPath.value)
+  } else {
+    // 打开预览
+    await openPreview(file)
   }
-  // TODO: 处理文件点击（下载或预览）
 }
+
+// 判断文件预览类型
+const getPreviewType = (filename: string): 'text' | 'code' | 'image' | 'pdf' | 'unsupported' => {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+
+  const textExts = ['txt', 'md', 'csv', 'log']
+  const codeExts = ['js', 'ts', 'vue', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'html', 'json', 'xml', 'yaml', 'yml', 'sh', 'sql']
+  const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg']
+
+  if (textExts.includes(ext)) return 'text'
+  if (codeExts.includes(ext)) return 'code'
+  if (imageExts.includes(ext)) return 'image'
+  if (ext === 'pdf') return 'pdf'
+
+  return 'unsupported'
+}
+
+// 打开文件预览
+const openPreview = async (file: TaskFile) => {
+  previewFile.value = file
+  previewType.value = getPreviewType(file.name)
+  previewContent.value = ''
+  previewUrl.value = ''
+  previewLoading.value = true
+  showPreview.value = true
+
+  try {
+    const url = taskStore.getFilePreviewUrl(file.path)
+    const token = localStorage.getItem('access_token')
+
+    if (previewType.value === 'text' || previewType.value === 'code') {
+      // 获取文本内容
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (!response.ok) throw new Error('Failed to load file')
+      previewContent.value = await response.text()
+    } else if (previewType.value === 'image' || previewType.value === 'pdf') {
+      // 获取 blob 并创建对象 URL
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (!response.ok) throw new Error('Failed to load file')
+      const blob = await response.blob()
+      previewUrl.value = URL.createObjectURL(blob)
+    }
+  } catch (error) {
+    console.error('Failed to load preview:', error)
+    previewType.value = 'unsupported'
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+// 关闭预览
+const closePreview = () => {
+  // 释放 blob URL
+  if (previewUrl.value && previewUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
+  showPreview.value = false
+  previewFile.value = null
+  previewContent.value = ''
+  previewOriginalContent.value = ''
+  previewUrl.value = ''
+  isEditing.value = false
+}
+
+// 下载文件
+const handleDownload = async (file: TaskFile) => {
+  activeMenuFile.value = null  // 关闭菜单
+  try {
+    await taskStore.downloadFile(file.path)
+  } catch (error) {
+    console.error('Failed to download file:', error)
+  }
+}
+
+// 判断文件是否可编辑（在 input 目录下的文本文件）
+const canEditFile = computed(() => {
+  if (!previewFile.value) return false
+  const path = previewFile.value.path
+  // 只允许编辑 input 目录下的文件
+  return (path.startsWith('input/') || path === previewFile.value.name || currentPath.value.startsWith('input')) &&
+         (previewType.value === 'text' || previewType.value === 'code')
+})
+
+// 判断文件是否可删除（在 input 目录下）
+const canDeleteFile = (file: TaskFile) => {
+  const path = file.path
+  // 文件在 input 目录下，或者当前在 input 目录中浏览
+  return path.startsWith('input/') || currentPath.value.startsWith('input') || !path.includes('/')
+}
+
+// 开始编辑
+const startEdit = () => {
+  previewOriginalContent.value = previewContent.value
+  isEditing.value = true
+}
+
+// 取消编辑
+const cancelEdit = () => {
+  previewContent.value = previewOriginalContent.value
+  isEditing.value = false
+}
+
+// 保存编辑
+const saveEdit = async () => {
+  if (!previewFile.value) return
+
+  previewSaving.value = true
+  try {
+    await taskStore.saveFileContent(previewFile.value.path, previewContent.value)
+    isEditing.value = false
+    previewOriginalContent.value = previewContent.value
+  } catch (error) {
+    console.error('Failed to save file:', error)
+  } finally {
+    previewSaving.value = false
+  }
+}
+
+// 切换文件菜单
+const toggleFileMenu = (file: TaskFile) => {
+  if (activeMenuFile.value?.path === file.path) {
+    activeMenuFile.value = null
+  } else {
+    activeMenuFile.value = file
+  }
+}
+
+// 确认删除文件
+const confirmDeleteFile = (file: TaskFile) => {
+  activeMenuFile.value = null
+  fileToDelete.value = file
+  showDeleteFileConfirm.value = true
+}
+
+// 执行删除文件
+const handleDeleteFile = async () => {
+  if (!fileToDelete.value) return
+
+  try {
+    await taskStore.deleteFile(fileToDelete.value.path)
+    showDeleteFileConfirm.value = false
+    fileToDelete.value = null
+  } catch (error) {
+    console.error('Failed to delete file:', error)
+  }
+}
+
+// 点击外部关闭菜单
+onMounted(() => {
+  document.addEventListener('click', () => {
+    activeMenuFile.value = null
+  })
+})
 
 const navigateTo = async (path?: string) => {
   currentPath.value = path || ''
@@ -606,6 +918,46 @@ onMounted(() => {
 
 .btn-upload:hover {
   background: var(--primary-hover, #1976d2);
+}
+
+.workspace-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-refresh {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  color: var(--primary-color, #2196f3);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-refresh .icon {
+  font-size: 16px;
+  transition: transform 0.3s;
+}
+
+.btn-refresh:hover:not(:disabled) .icon {
+  transform: rotate(180deg);
 }
 
 /* Breadcrumb */
@@ -991,6 +1343,20 @@ onMounted(() => {
   color: var(--text-primary, #333);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-indicator {
+  font-size: 12px;
+  color: var(--primary-color, #2196f3);
+  background: rgba(33, 150, 243, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 .btn-close {
   width: 28px;
   height: 28px;
@@ -1107,5 +1473,215 @@ onMounted(() => {
 
 .btn-confirm.btn-danger:hover {
   background: #d32f2f;
+}
+
+/* Download Button */
+.btn-download {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  opacity: 0;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.file-item:hover .btn-download {
+  opacity: 1;
+}
+
+.btn-download:hover {
+  background: var(--primary-color, #2196f3);
+  border-color: var(--primary-color, #2196f3);
+  color: white;
+}
+
+/* File Menu */
+.file-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.btn-menu-trigger {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text-secondary, #666);
+  opacity: 0;
+  transition: all 0.2s;
+  letter-spacing: 2px;
+}
+
+.file-item:hover .btn-menu-trigger {
+  opacity: 1;
+}
+
+.btn-menu-trigger:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--border-color, #e0e0e0);
+}
+
+.file-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: var(--dialog-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.menu-item:hover {
+  background: var(--hover-bg, #f5f5f5);
+}
+
+.menu-item-danger {
+  color: #f44336;
+}
+
+.menu-item-danger:hover {
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.menu-icon {
+  font-size: 14px;
+}
+
+/* Preview Dialog */
+.preview-overlay {
+  z-index: 1001;
+}
+
+.preview-dialog {
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-body {
+  flex: 1;
+  overflow: auto;
+  min-height: 300px;
+  max-height: 60vh;
+}
+
+.preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary, #666);
+}
+
+.preview-code {
+  margin: 0;
+  padding: 16px;
+  background: var(--code-bg, #f5f5f5);
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+}
+
+.preview-code.code-preview {
+  white-space: pre;
+}
+
+.preview-editor {
+  width: 100%;
+  min-height: 300px;
+  padding: 16px;
+  background: var(--code-bg, #f5f5f5);
+  border: 1px solid var(--primary-color, #2196f3);
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.preview-editor.code-editor {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.preview-editor:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.preview-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.preview-image img {
+  max-width: 100%;
+  max-height: 50vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.preview-pdf {
+  width: 100%;
+  height: 50vh;
+  border: none;
+  border-radius: 4px;
+}
+
+.preview-unsupported {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 16px;
+}
+
+.preview-unsupported p {
+  margin: 0;
+  color: var(--text-secondary, #666);
 }
 </style>

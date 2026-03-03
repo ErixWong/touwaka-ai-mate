@@ -185,6 +185,69 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   /**
+   * 下载文件
+   */
+  const downloadFile = async (filePath: string) => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    try {
+      const response = await taskApi.downloadFile(currentTask.value.id, filePath)
+      // 创建下载链接
+      const url = window.URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filePath.split('/').pop() || 'download'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to download file'
+      throw err
+    }
+  }
+
+  /**
+   * 获取文件预览 URL
+   */
+  const getFilePreviewUrl = (filePath: string) => {
+    if (!currentTask.value) return ''
+    return `/api/tasks/${currentTask.value.id}/files/download?path=${encodeURIComponent(filePath)}`
+  }
+
+  /**
+   * 删除文件
+   */
+  const deleteFile = async (filePath: string) => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    error.value = null
+    try {
+      await taskApi.deleteFile(currentTask.value.id, filePath)
+      // 刷新文件列表
+      await loadTaskFiles(currentBrowsePath.value || undefined)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to delete file'
+      throw err
+    }
+  }
+
+  /**
+   * 保存文件内容
+   */
+  const saveFileContent = async (filePath: string, content: string) => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    error.value = null
+    try {
+      await taskApi.saveFileContent(currentTask.value.id, filePath, content)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to save file'
+      throw err
+    }
+  }
+
+  /**
    * 清除错误
    */
   const clearError = () => {
@@ -216,6 +279,10 @@ export const useTaskStore = defineStore('task', () => {
     exitTask,
     loadTaskFiles,
     uploadFile,
+    downloadFile,
+    getFilePreviewUrl,
+    deleteFile,
+    saveFileContent,
     clearError,
   }
 })

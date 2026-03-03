@@ -591,5 +591,12 @@ export default {
       input: 'Input',
       output: 'Output',
     },
+    download: 'Download',
+    preview: 'Preview',
+    previewNotSupported: 'Preview not supported for this file type',
+    refresh: 'Refresh',
+    moreActions: 'More actions',
+    deleteFileConfirmMessage: 'Are you sure you want to delete "{name}"? This action cannot be undone.',
+    editing: 'Editing',
   },
 }

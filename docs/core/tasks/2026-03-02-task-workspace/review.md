@@ -398,3 +398,231 @@ const updated = await taskStore.updateTask(taskId, { ... })
 
 *审查完成时间：2026-03-03*
 *修复完成时间：2026-03-03*
+
+---
+
+## 🔄 优化：路径上下文注入增强
+
+> 审计日期：2026-03-03
+> 审计人：Claude Code Reviewer
+> 变更类型：Bug 修复 + 功能增强
+> 分支：feature/task-state-management
+
+### 问题描述
+
+在任务工作空间模式下，AI 多次搞错文件路径，不知道完整的 `data/work/userId/taskId` 结构。
+
+**对话记录示例：**
+```
+AI: 工作空间根目录: mma5xbpi1eysy2idlzs2/m33hk632pc  (❌ 缺少 data/work/ 前缀)
+用户: 但是你写的时候放在了 data/mma5xbpi1eysy2idlzs2/m33hk632pc/output/...
+用户: data/work/mma5xbpi1eysy2idlzs2/m33hk632pc 但其实应该是这个 (✅ 正确路径)
+```
+
+### 变更文件
+
+| 文件 | 变更内容 |
+|------|----------|
+| `lib/chat-service.js` | 修复路径拼接 Bug，添加 `fullWorkspacePath`、`systemRoot`、`userId` 字段 |
+| `lib/context-manager.js` | 增强上下文格式，添加目录树、完整路径、路径使用规则 |
+
+---
+
+### 📊 审查结果摘要
+
+| 严重程度 | 数量 | 主要问题 |
+|---------|------|---------|
+| 🔴 Critical | 0 | 无 |
+| 🟡 Important | 1 | WORKSPACE_ROOT 常量重复定义 |
+| 🔵 Suggestion | 2 | 日志增强、单元测试 |
+
+---
+
+### ✅ 代码变更审查
+
+#### 1. chat-service.js (lines 805-828)
+
+**修复内容：**
+```javascript
+// 工作空间根目录
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+
+// 构建任务上下文（包含完整路径信息）
+const taskContext = {
+  id: task.task_id,
+  title: task.title,
+  description: task.description,
+  workspacePath: task.workspace_path,
+  fullWorkspacePath: path.join(WORKSPACE_ROOT, task.workspace_path),  // ✅ 新增
+  systemRoot: WORKSPACE_ROOT,                                           // ✅ 新增
+  userId: user_id,                                                      // ✅ 新增
+  currentPath: task_path || '',
+  status: task.status,
+};
+
+// 确定要读取的目录（使用完整路径）
+const targetDir = task_path
+  ? path.join(WORKSPACE_ROOT, task.workspace_path, task_path)  // ✅ 修复
+  : path.join(WORKSPACE_ROOT, task.workspace_path, 'input');   // ✅ 修复
+```
+
+**审查结果：** ✅ 通过
+- Bug 修复正确：原来缺少 `WORKSPACE_ROOT` 前缀
+- 新增字段合理：`fullWorkspacePath`、`systemRoot`、`userId` 为上下文增强提供数据
+- 向后兼容：保留了原有 `workspacePath` 字段
+
+#### 2. context-manager.js (lines 280-345)
+
+**修复内容：**
+- 添加可视化目录树结构
+- 显示完整路径信息 (`fullPath`)
+- 添加路径使用规则说明
+- 引导 AI 使用 `data/work/` 前缀
+
+**审查结果：** ✅ 通过
+- 目录树清晰展示层级关系
+- 路径规则明确，减少 AI 混淆
+- 示例路径包含完整前缀
+- 添加了路径探测引导
+
+---
+
+### 🟡 Important (建议改进)
+
+#### I1. WORKSPACE_ROOT 常量重复定义
+
+**问题：** `WORKSPACE_ROOT` 在多个文件中重复定义
+
+```javascript
+// task.controller.js:18
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+
+// chat-service.js:810 (新增)
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+
+// task.routes.js (可能也有)
+```
+
+**建议：** 抽取到共享配置模块
+
+```javascript
+// config/workspace.js
+module.exports = {
+  WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || './data/work'
+};
+```
+
+**优先级：** P2 (可后续优化)
+
+---
+
+### 🔵 Suggestion (建议改进)
+
+#### S1. 添加路径调试日志
+
+**建议：** 在 `getTaskContext` 中添加路径日志，便于调试
+
+```javascript
+logger.debug(`[ChatService] 任务上下文路径: ${fullPath}`);
+logger.debug(`[ChatService] 目标目录: ${targetDir}`);
+```
+
+#### S2. 补充单元测试
+
+**建议：** 添加测试用例验证路径拼接正确性
+
+---
+
+### ✅ 验收标准检查
+
+| 标准 | 状态 | 说明 |
+|------|------|------|
+| AI 能正确说出完整路径 | ⏳ 待验证 | 需手动测试 |
+| 文件写入到正确目录 | ⏳ 待验证 | 需手动测试 |
+| 文件列表读取正常 | ⏳ 待验证 | 需手动测试 |
+| 非任务模式无影响 | ✅ 通过 | 修改仅在 task 模式下生效 |
+
+---
+
+### 📋 测试计划
+
+1. **重启服务**
+   ```bash
+   npm run dev
+   ```
+
+2. **创建/打开任务**
+   - 打开一个现有任务
+
+3. **验证路径显示**
+   - 发送消息："当前的任务目录是什么"
+   - 预期：AI 返回 `data/work/{userId}/{taskId}` 完整路径
+
+4. **验证文件操作**
+   - 发送消息："创建一个测试文件到 output 目录"
+   - 预期：文件创建在 `data/work/{userId}/{taskId}/output/`
+
+5. **验证文件列表**
+   - 发送消息："列出当前目录的文件"
+   - 预期：正确列出文件
+
+---
+
+### 最终评估
+
+**通过** - Bug 修复正确，上下文增强设计合理。建议进行手动测试验证功能正常。
+
+---
+
+*审查完成时间：2026-03-03*
+*待验证：手动测试*
+
+---
+
+### 🔧 2026-03-03 修复记录 (第二轮)
+
+#### 问题描述
+AI 创建文件时路径重复：`data/data/work/...` 而非 `data/work/...`
+
+#### 根本原因
+- AI 执行文件操作时，基础工作目录已经是 `data/`
+- 注入的路径包含 `data/work/` 前缀
+- 实际拼接结果：`data/` + `data/work/...` = `data/data/work/...` ❌
+
+#### 修复内容
+
+**文件：** `lib/chat-service.js`
+```javascript
+// 修复前
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+fullWorkspacePath: path.join(WORKSPACE_ROOT, task.workspace_path),  // ❌
+systemRoot: WORKSPACE_ROOT,                                          // ❌
+
+// 修复后
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';  // 后端用
+const AI_BASE_PATH = 'work';                                          // AI 用
+fullWorkspacePath: path.join(AI_BASE_PATH, task.workspace_path),     // ✅
+systemRoot: AI_BASE_PATH,                                             // ✅
+```
+
+**文件：** `lib/context-manager.js`
+```javascript
+// 修复前
+const fullPath = taskContext.fullWorkspacePath || `data/work/${relativePath}`;  // ❌
+const systemRoot = taskContext.systemRoot || 'data/work';                        // ❌
+
+// 修复后
+const fullPath = taskContext.fullWorkspacePath || `work/${relativePath}`;  // ✅
+const systemRoot = taskContext.systemRoot || 'work';                        // ✅
+```
+
+#### 清理
+- 删除错误创建的 `data/data/` 目录
+
+#### 验证
+- 重启服务后测试文件创建功能
+- 确认文件创建在 `data/work/userId/taskId/output/` 而非 `data/data/work/...`
+
+---
+
+*修复完成时间：2026-03-03*

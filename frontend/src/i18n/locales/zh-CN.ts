@@ -583,5 +583,12 @@ export default {
       input: '输入',
       output: '输出',
     },
+    download: '下载',
+    preview: '预览',
+    previewNotSupported: '暂不支持此文件类型预览',
+    refresh: '刷新',
+    moreActions: '更多操作',
+    deleteFileConfirmMessage: '确定要删除文件"{name}"吗？此操作不可恢复。',
+    editing: '编辑中',
   },
 }

@@ -385,4 +385,12 @@ export const taskApi = {
   // 下载文件
   downloadFile: (id: string, filePath: string) =>
     apiClient.get(`/tasks/${id}/files/download`, { params: { path: filePath }, responseType: 'blob' }),
+
+  // 删除文件
+  deleteFile: (id: string, filePath: string) =>
+    apiRequest<void>(apiClient.delete(`/tasks/${id}/files`, { params: { path: filePath } })),
+
+  // 保存文件内容（更新文本文件）
+  saveFileContent: (id: string, filePath: string, content: string) =>
+    apiRequest<{ message: string }>(apiClient.put(`/tasks/${id}/files/content`, { path: filePath, content })),
 }
