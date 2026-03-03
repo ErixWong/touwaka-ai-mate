@@ -39,7 +39,10 @@
 | [background-task-scheduler-design.md](../../design/v2/background-task-scheduler-design.md) | 后台任务调度器设计 |
 | [right-panel-design.md](../../design/v2/right-panel-design.md) | 右侧面板容器设计 |
 | [task-layer-design.md](../../design/v2/task-layer-design.md) | 任务层设计 |
+| [sandbox-architecture.md](../../design/v2/sandbox-architecture.md) | 沙箱架构设计 |
 | [skill-market-design.md](../../design/v2/skill-market-design.md) | 技能管理系统设计 |
+
+---
 
 ## 技术栈
 
@@ -51,6 +54,8 @@
 | 认证 | JWT 双 Token |
 | 流式 | SSE |
 
+---
+
 ## 架构
 
 ```
@@ -59,12 +64,42 @@ Frontend (Vue 3) ←→ API Server (Koa) ←→ Service Layer ←→ MySQL
 
 核心服务：`ChatService` → `ExpertChatService` → `LLMClient`/`MemorySystem`/`ReflectiveMind`
 
+---
+
+## 核心模块概览
+
+### 后端核心模块
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| ChatService | `lib/chat-service.js` | 对话流程控制 |
+| ExpertChatService | `lib/expert-chat-service.js` | 专家对话服务 |
+| LLMClient | `lib/llm-client.js` | LLM API 调用封装 |
+| MemorySystem | `lib/memory-system.js` | 记忆管理、上下文压缩 |
+| ReflectiveMind | `lib/reflective-mind.js` | 反思心智实现 |
+| SkillLoader | `lib/skill-loader.js` | 技能加载、解析 SKILL.md |
+| SkillRunner | `lib/skill-runner.js` | 技能执行（JS/Python） |
+| ToolManager | `lib/tool-manager.js` | 工具调用管理 |
+
+### 前端核心组件
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| RightPanel | `components/panel/RightPanel.vue` | 右侧面板容器 |
+| TopicsTab | `components/panel/TopicsTab.vue` | 话题列表 |
+| DebugTab | `components/panel/DebugTab.vue` | 调试信息 |
+| Pagination | `components/Pagination.vue` | 通用分页组件 |
+
+---
+
 ## 相关资源
 
+- [项目 README](../../../README.md) - 项目概览与快速开始
+- [V2 设计总览](../../design/v2/README.md) - V2 架构设计索引
 - [项目待办事项](../../core/TODO.md) - 当前任务状态
-- [已完成任务归档](../../archive/todo-archive-2026-02.md) - 历史完成记录
+- [已完成任务归档](../../archive/todo-archive-2026-03.md) - 历史完成记录
 - [经验教训](../../design/lessons-learned.md) - 常见问题和解决方案
 
 ---
 
-*最后更新: 2026-02-24*
+*最后更新: 2026-03-03*
