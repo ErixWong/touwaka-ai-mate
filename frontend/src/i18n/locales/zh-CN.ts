@@ -46,6 +46,8 @@ export default {
     placeholder: '请输入消息...',
     send: '发送',
     thinking: '正在思考...',
+    stopGenerate: '停止生成',
+    stopped: '已停止',
     emptyState: '发送消息开始与专家对话',
     scrollToBottom: '滚动到底部',
     newTopic: '新建话题',

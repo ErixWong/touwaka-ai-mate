@@ -96,13 +96,23 @@
         rows="1"
         class="message-input"
       ></textarea>
+      <!-- 停止按钮（加载中显示） -->
       <button
+        v-if="isLoading"
+        class="stop-button"
+        @click="handleStop"
+        :title="$t('chat.stopGenerate') || '停止生成'"
+      >
+        <span class="stop-icon">⏹</span>
+      </button>
+      <!-- 发送按钮 -->
+      <button
+        v-else
         class="send-button"
-        :disabled="!inputText.trim() || isLoading || disabled"
+        :disabled="!inputText.trim() || disabled"
         @click="handleSend"
       >
-        <span v-if="isLoading" class="loading-spinner"></span>
-        <span v-else>📤</span>
+        <span>📤</span>
       </button>
     </div>
   </div>
@@ -133,6 +143,7 @@ const emit = defineEmits<{
   send: [content: string]
   retry: [message: ChatMessage]
   loadMore: []
+  stop: []
 }>()
 
 const { t } = useI18n()
@@ -260,11 +271,16 @@ const handleSend = () => {
 
   emit('send', content)
   inputText.value = ''
-  
+
   // 调整输入框高度
   if (inputRef.value) {
     inputRef.value.style.height = 'auto'
   }
+}
+
+// 停止生成
+const handleStop = () => {
+  emit('stop')
 }
 
 // 格式化消息（支持简单的 markdown，带缓存）
@@ -642,6 +658,33 @@ defineExpose({
 .send-button:disabled {
   background: var(--disabled-bg, #ccc);
   cursor: not-allowed;
+}
+
+.stop-button {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--danger-color, #ef4444);
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.stop-button:hover {
+  background: var(--danger-hover, #dc2626);
+  transform: scale(1.05);
+}
+
+.stop-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .loading-spinner {
