@@ -13,16 +13,19 @@
           <span class="tab-icon">{{ tab.icon }}</span>
           <span class="tab-label">{{ tab.label }}</span>
         </button>
-        <!-- 分屏按钮 -->
-        <button
-          class="split-btn"
-          :class="{ active: splitMode !== 'default' }"
-          @click="toggleSplit"
-          :title="splitButtonTitle"
+      </div>
+      <!-- 分屏下拉菜单 - 居右对齐 -->
+      <div class="split-dropdown">
+        <select
+          :value="splitMode"
+          @change="onSplitChange"
+          class="split-select"
+          title="选择分屏比例"
         >
-          <span class="split-icon">⬚</span>
-          <span class="split-label">{{ splitModeLabel }}</span>
-        </button>
+          <option v-for="mode in splitModes" :key="mode.value" :value="mode.value">
+            {{ mode.label }}
+          </option>
+        </select>
       </div>
     </div>
 
@@ -61,29 +64,22 @@ const userStore = useUserStore()
 const activeTab = computed(() => panelStore.activeTab)
 const splitMode = computed(() => panelStore.splitMode)
 
-// 分屏模式标签
-const splitModeLabel = computed(() => {
-  switch (splitMode.value) {
-    case '5:5': return '1:1'
-    case '3:2': return '3:2'
-    default: return '≡'
-  }
-})
+// 分屏模式选项
+const splitModes = [
+  { value: 'default' as SplitMode, label: '默认', title: '默认比例 (左侧 75% : 右侧 25%)' },
+  { value: '5:5' as SplitMode, label: '1:1', title: '1:1 分屏 (左右各 50%)' },
+  { value: '3:2' as SplitMode, label: '3:2', title: '3:2 分屏 (左侧 60% : 右侧 40%)' },
+]
 
-// 分屏按钮提示
-const splitButtonTitle = computed(() => {
-  const labels: Record<SplitMode, string> = {
-    'default': '默认比例',
-    '5:5': '1:1 分屏',
-    '3:2': '3:2 分屏',
-  }
-  const nextMode = splitMode.value === 'default' ? '5:5' : splitMode.value === '5:5' ? '3:2' : 'default'
-  return `当前: ${labels[splitMode.value]} (点击切换为: ${labels[nextMode]})`
-})
+// 设置分屏模式
+const setSplitMode = (mode: SplitMode) => {
+  panelStore.setSplitMode(mode)
+}
 
-// 切换分屏模式
-const toggleSplit = () => {
-  panelStore.toggleSplitMode()
+// 下拉菜单变更
+const onSplitChange = (event: Event) => {
+  const target = event.target as HTMLSelectElement
+  setSplitMode(target.value as SplitMode)
 }
 
 // 判断是否是 skill-studio 专家模式
@@ -170,6 +166,7 @@ const emit = defineEmits<{
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .panel-tabs {
@@ -177,6 +174,7 @@ const emit = defineEmits<{
   gap: 4px;
   flex-wrap: wrap;
   align-items: center;
+  flex: 1;
 }
 
 .tab-btn {
@@ -210,43 +208,36 @@ const emit = defineEmits<{
   white-space: nowrap;
 }
 
-/* 分屏按钮样式 */
-.split-btn {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 8px;
-  margin-left: 8px;
+/* 分屏下拉菜单 - 居右 */
+.split-dropdown {
+  flex-shrink: 0;
+}
+
+.split-select {
+  padding: 4px 8px;
+  padding-right: 24px;
   border: 1px solid var(--border-color, #e0e0e0);
-  background: transparent;
   border-radius: 6px;
+  background: var(--secondary-bg, #f5f5f5);
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
 }
 
-.split-btn:hover {
-  background: var(--hover-bg, #f5f5f5);
+.split-select:hover {
   border-color: var(--primary-color, #2196f3);
   color: var(--primary-color, #2196f3);
 }
 
-.split-btn.active {
-  background: var(--primary-light, #e3f2fd);
+.split-select:focus {
+  outline: none;
   border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
-
-.split-icon {
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.split-label {
-  min-width: 24px;
-  text-align: center;
 }
 
 .panel-content {
