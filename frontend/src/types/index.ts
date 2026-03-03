@@ -636,12 +636,3 @@ export interface TaskFile {
   size?: number
   modified_at?: string
 }
-
-/**
- * 进入任务工作空间的响应
- */
-export interface EnterTaskResponse {
-  task: Task
-  message: string
-  workspace_context: string    // 注入到 LLM 的上下文信息
-}

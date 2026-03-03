@@ -208,13 +208,13 @@ watch(() => taskStore.isInTaskMode, async (isInMode) => {
   }
 })
 
-const handleSelectTask = async (task: Task) => {
-  // 直接进入任务
-  await taskStore.enterTask(task.id)
+const handleSelectTask = (task: Task) => {
+  // 直接进入任务（同步操作，只更新本地状态）
+  taskStore.enterTask(task)
 }
 
-const handleExitTask = async () => {
-  await taskStore.exitTask()
+const handleExitTask = () => {
+  taskStore.exitTask()
 }
 
 const handleCreateTask = async () => {
@@ -229,8 +229,8 @@ const handleCreateTask = async () => {
     // 创建成功后清空表单并关闭对话框
     newTask.value = { title: '', description: '' }
     showCreateDialog.value = false
-    // 自动进入新创建的任务
-    await taskStore.enterTask(task.id)
+    // 自动进入新创建的任务（同步操作）
+    taskStore.enterTask(task)
   } catch (error) {
     console.error('Failed to create task:', error)
   } finally {

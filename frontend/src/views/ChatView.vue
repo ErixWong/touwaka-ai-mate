@@ -462,8 +462,8 @@ const handleSendMessage = async (content: string) => {
     }
     
     // 如果在任务模式下，添加 task_id 和 task_path
-    if (taskStore.isInTaskMode && taskStore.currentTaskId) {
-      messageParams.task_id = taskStore.currentTaskId
+    if (taskStore.isInTaskMode && taskStore.currentTask) {
+      messageParams.task_id = taskStore.currentTask.id  // 使用数据库主键
       // 添加当前浏览路径
       if (taskStore.currentPath) {
         messageParams.task_path = taskStore.currentPath

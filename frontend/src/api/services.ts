@@ -32,7 +32,6 @@ import type {
   Task,
   CreateTaskRequest,
   TaskFile,
-  EnterTaskResponse,
 } from '@/types'
 
 /**
@@ -364,14 +363,6 @@ export const taskApi = {
   // 删除任务（归档）
   deleteTask: (id: string) =>
     apiRequest<void>(apiClient.delete(`/tasks/${id}`)),
-
-  // 进入任务工作空间
-  enterTask: (id: string) =>
-    apiRequest<EnterTaskResponse>(apiClient.post(`/tasks/${id}/enter`)),
-
-  // 退出任务工作空间
-  exitTask: () =>
-    apiRequest<{ message: string }>(apiClient.post('/tasks/exit')),
 
   // 获取任务文件列表
   getTaskFiles: (id: string, subdir?: string) =>
