@@ -36,6 +36,7 @@ import SkillController from './controllers/skill.controller.js';
 import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
+import KnowledgeBaseController from './controllers/knowledge-base.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -51,6 +52,7 @@ import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
+import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
 
 class ApiServer {
   constructor() {
@@ -121,6 +123,7 @@ class ApiServer {
       skill: new SkillController(this.db),
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
+      knowledgeBase: new KnowledgeBaseController(this.db),
     };
   }
 
@@ -228,6 +231,10 @@ class ApiServer {
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
 
+    // Knowledge Base 路由
+    this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).routes());
+    this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).allowedMethods());
+
     // 404 处理
     this.app.use(async (ctx) => {
       ctx.status = 404;
@@ -321,6 +328,11 @@ class ApiServer {
         logger.info('  PUT  /api/roles/:id/permissions');
         logger.info('  GET  /api/roles/:id/experts');
         logger.info('  PUT  /api/roles/:id/experts');
+        logger.info('  GET  /api/kb (知识库)');
+        logger.info('  POST /api/kb');
+        logger.info('  GET  /api/kb/:id');
+        logger.info('  GET  /api/kb/:kb_id/knowledges/tree');
+        logger.info('  GET  /api/kb/:kb_id/knowledges/:id/points');
 
         // 异步处理未回复的消息（不阻塞服务器启动）
         this.chatService.processUnrepliedMessages().catch(err => {
