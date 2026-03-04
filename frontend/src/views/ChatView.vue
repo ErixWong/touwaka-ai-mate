@@ -3,7 +3,7 @@
     <!-- 聊天头部 -->
     <div class="chat-header">
       <div class="expert-info">
-        <div 
+        <div
           class="expert-avatar"
           :style="currentExpert?.avatar_base64 ? { backgroundImage: `url(${currentExpert.avatar_base64})` } : {}"
         >
@@ -11,12 +11,27 @@
         </div>
         <h2 class="expert-name">{{ currentExpert?.name || $t('chat.title') }}</h2>
         <!-- skill-studio 显示模型选择器 -->
-        <ModelSelector 
-          v-if="is_skill_studio" 
+        <ModelSelector
+          v-if="is_skill_studio"
           v-model="selected_model_id"
           class="model-selector"
         />
         <span v-else-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
+        <!-- Task 模式状态 -->
+        <span
+          class="task-mode-tag"
+          :class="{ 'in-task': taskStore.isInTaskMode }"
+          @click="taskStore.isInTaskMode && handleExitTaskMode()"
+          :title="taskStore.isInTaskMode ? '点击退出任务模式' : ''"
+        >
+          <template v-if="taskStore.isInTaskMode && taskStore.currentTask">
+            📁 {{ taskStore.currentTask.title }}
+            <span class="exit-icon">✕</span>
+          </template>
+          <template v-else>
+            💬 闲聊
+          </template>
+        </span>
       </div>
     </div>
 
@@ -606,6 +621,11 @@ watch(
   }
 )
 
+// 退出任务模式
+const handleExitTaskMode = () => {
+  taskStore.exitTask()
+}
+
 onMounted(async () => {
   // 加载模型列表
   await modelStore.loadModels()
@@ -778,6 +798,40 @@ onUnmounted(() => {
 
 .status-dot.disconnected {
   background: #ff9800;
+}
+
+/* Task 模式标签（融合到头部） */
+.task-mode-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--secondary-bg, #f0f0f0);
+  color: var(--text-hint, #999);
+  border-radius: 10px;
+  margin-left: 8px;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-mode-tag.in-task {
+  background: var(--primary-color, #2196f3);
+  color: white;
+  cursor: pointer;
+}
+
+.task-mode-tag.in-task:hover {
+  background: var(--primary-hover, #1976d2);
+}
+
+.task-mode-tag .exit-icon {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.task-mode-tag.in-task:hover .exit-icon {
+  opacity: 1;
 }
 </style>
 
