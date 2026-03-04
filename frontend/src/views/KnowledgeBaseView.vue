@@ -372,58 +372,78 @@ onUnmounted(() => {
 
 /* Knowledge Base Grid */
 .kb-grid {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
   flex: 1;
   width: 100%;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px;
+  padding: 8px;
   align-content: start;
   box-sizing: border-box;
-  border: 2px dashed red !important;
 }
 
 .kb-card {
-  padding: 16px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 10px;
+  position: relative;
+  padding: 20px;
+  padding-left: 24px;
+  background: linear-gradient(135deg, #fefefe 0%, #f8f9fa 100%);
+  border: none;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
-  min-height: 120px;
+  min-height: 140px;
   box-sizing: border-box;
-  border: 2px dashed blue !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+/* 书脊效果 - 左侧彩色条 */
+.kb-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: linear-gradient(180deg, var(--primary-color, #2196f3) 0%, #1565c0 100%);
+  border-radius: 12px 0 0 12px;
+  transition: width 0.3s ease;
 }
 
 .kb-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-  border-color: var(--primary-color, #2196f3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-4px);
+  background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%);
+}
+
+.kb-card:hover::before {
+  width: 8px;
 }
 
 .kb-card-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
+  font-size: 36px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
 }
 
 .kb-card-name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary, #333);
-  margin-bottom: 4px;
+  color: var(--text-primary, #1a1a2e);
+  margin-bottom: 6px;
   word-break: break-word;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 .kb-card-desc {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  margin-bottom: 8px;
-  line-height: 1.4;
+  font-size: 13px;
+  color: var(--text-secondary, #5a6a7a);
+  margin-bottom: 12px;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -433,16 +453,32 @@ onUnmounted(() => {
 
 .kb-card-stats {
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, #6b7c8c);
   margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color, #f0f0f0);
+  padding-top: 12px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kb-card-stats::before {
+  content: '📝';
+  font-size: 14px;
 }
 
 .kb-card-time {
   font-size: 11px;
-  color: var(--text-tertiary, #999);
-  margin-top: 4px;
+  color: var(--text-tertiary, #9aa5b1);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kb-card-time::before {
+  content: '🕐';
+  font-size: 12px;
 }
 
 /* Dialog */
@@ -556,52 +592,60 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
+  padding: 10px 20px;
+  background: linear-gradient(135deg, var(--primary-color, #2196f3) 0%, #1976d2 100%);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
+  box-shadow: 0 4px 16px rgba(33, 150, 243, 0.4);
+  transform: translateY(-1px);
 }
 
 .btn-primary:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-cancel {
-  padding: 8px 16px;
-  background: white;
+  padding: 10px 20px;
+  background: #f8f9fa;
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, #5a6a7a);
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .btn-cancel:hover {
-  background: var(--secondary-bg, #f5f5f5);
+  background: #e9ecef;
+  border-color: #ced4da;
 }
 
 .btn-danger {
-  padding: 8px 16px;
-  background: #f44336;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
   cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
 }
 
 .btn-danger:hover {
-  background: #d32f2f;
+  box-shadow: 0 4px 16px rgba(244, 67, 54, 0.4);
+  transform: translateY(-1px);
 }
 
 /* Context Menu */
