@@ -34,12 +34,6 @@
 
     <!-- Knowledge Base Grid -->
     <div v-else class="kb-grid">
-      <!-- New KB Card -->
-      <div class="kb-card kb-card-new" @click="showCreateDialog = true">
-        <div class="kb-card-icon">➕</div>
-        <div class="kb-card-name">{{ $t('knowledgeBase.createNew') }}</div>
-      </div>
-
       <!-- KB Cards -->
       <div
         v-for="kb in filteredKnowledgeBases"
@@ -50,6 +44,7 @@
       >
         <div class="kb-card-icon">{{ getKbIcon(kb) }}</div>
         <div class="kb-card-name">{{ kb.name }}</div>
+        <div class="kb-card-desc" v-if="kb.description">{{ kb.description }}</div>
         <div class="kb-card-stats">
           <span>{{ $t('knowledgeBase.pointCount', { count: kb.point_count || 0 }) }}</span>
         </div>
@@ -304,14 +299,22 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.kb-view *,
+.kb-view *::before,
+.kb-view *::after {
+  box-sizing: border-box;
+}
+
 .kb-view {
   padding: 24px;
   max-width: 1400px;
+  width: 100%;
   margin: 0 auto;
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .view-header {
@@ -319,6 +322,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .view-title {
@@ -367,65 +372,77 @@ onUnmounted(() => {
 
 /* Knowledge Base Grid */
 .kb-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 20px;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  gap: 16px;
   flex: 1;
+  width: 100%;
   min-height: 0;
   overflow-y: auto;
   padding: 4px;
+  align-content: start;
+  box-sizing: border-box;
+  border: 2px dashed red !important;
 }
 
 .kb-card {
-  padding: 24px 16px;
+  padding: 16px;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  min-height: 160px;
+  min-height: 120px;
+  box-sizing: border-box;
+  border: 2px dashed blue !important;
 }
 
 .kb-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   transform: translateY(-2px);
-}
-
-.kb-card-new {
-  background: var(--secondary-bg, #f8f9fa);
-  border-style: dashed;
-}
-
-.kb-card-new:hover {
-  background: var(--primary-light, #e3f2fd);
+  border-color: var(--primary-color, #2196f3);
 }
 
 .kb-card-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
+  font-size: 32px;
+  margin-bottom: 8px;
 }
 
 .kb-card-name {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary, #333);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   word-break: break-word;
+  line-height: 1.3;
+}
+
+.kb-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin-bottom: 8px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
 }
 
 .kb-card-stats {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary, #666);
-  margin-bottom: 4px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, #f0f0f0);
 }
 
 .kb-card-time {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-tertiary, #999);
+  margin-top: 4px;
 }
 
 /* Dialog */
@@ -621,13 +638,24 @@ onUnmounted(() => {
 
   .kb-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
+    gap: 12px;
   }
 
   .view-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
+  }
+
+  .kb-card {
+    min-height: 100px;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .kb-grid {
+    grid-template-columns: 1fr;
   }
 }
 
