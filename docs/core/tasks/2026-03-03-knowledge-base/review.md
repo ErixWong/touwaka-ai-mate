@@ -47,7 +47,21 @@
 - [x] 添加专家知识库配置字段 `knowledge_config`
 - [x] 创建迁移脚本 `scripts/migrate-add-knowledge-config.js`
 
-### Phase 5: 前端界面 ⏳ 待开始
+### Phase 5: 前端界面 ✅ 已完成
+
+**完成日期**：2026-03-04
+
+**实现内容**：
+
+- [x] 添加知识库类型定义 `frontend/src/types/index.ts`
+- [x] 添加知识库 API `frontend/src/api/services.ts`
+- [x] 创建知识库 Store `frontend/src/stores/knowledgeBase.ts`
+- [x] 添加 i18n 翻译（zh-CN, en-US）
+- [x] 创建知识库列表页 `frontend/src/views/KnowledgeBaseView.vue`
+- [x] 创建知识库详情页 `frontend/src/views/KnowledgeDetailView.vue`
+- [x] 创建树形组件 `frontend/src/components/KnowledgeTreeNode.vue`
+- [x] 添加路由配置
+- [x] 更新顶部导航
 
 ---
 
@@ -384,6 +398,148 @@ if (knowledgeConfig?.enabled && this.ragService) {
 3. **文章编辑器**：支持 Markdown 编辑和知识点管理
 4. **搜索界面**：语义搜索知识库内容
 5. **专家知识库配置**：在专家设置中配置关联的知识库
+
+---
+
+### 2026-03-04: Phase 5 - 前端界面实现
+
+**实现内容**：创建知识库前端界面
+
+**代码位置**：`frontend/src/views/`, `frontend/src/components/`, `frontend/src/stores/`
+
+**新增文件**：
+
+| 文件 | 说明 |
+|------|------|
+| `stores/knowledgeBase.ts` | 知识库 Pinia Store |
+| `views/KnowledgeBaseView.vue` | 知识库列表页 |
+| `views/KnowledgeDetailView.vue` | 知识库详情页 |
+| `components/KnowledgeTreeNode.vue` | 文章树形节点组件 |
+
+**修改文件**：
+
+| 文件 | 修改内容 |
+|------|----------|
+| `types/index.ts` | 添加知识库相关类型定义 |
+| `api/services.ts` | 添加知识库 API 方法 |
+| `i18n/locales/zh-CN.ts` | 添加中文翻译 |
+| `i18n/locales/en-US.ts` | 添加英文翻译 |
+| `router/index.ts` | 添加知识库路由 |
+| `components/AppHeader.vue` | 添加知识库导航入口 |
+
+**页面结构**：
+
+1. **知识库列表页** (`KnowledgeBaseView.vue`)
+   - 大图标卡片网格布局
+   - 创建/编辑/删除知识库
+   - 右键上下文菜单
+   - 搜索过滤
+
+2. **知识库详情页** (`KnowledgeDetailView.vue`)
+   - 左侧：文章树形导航
+   - 右侧：知识点内容展示
+   - Markdown 渲染
+   - 语义搜索对话框
+
+3. **树形节点组件** (`KnowledgeTreeNode.vue`)
+   - 递归渲染树形结构
+   - 展开/折叠
+   - 右键菜单操作
+   - 选中高亮
+
+**类型定义** (`types/index.ts`)：
+
+```typescript
+// 核心类型
+interface KnowledgeBase { ... }
+interface Knowledge { ... }
+interface KnowledgePoint { ... }
+interface KnowledgeRelation { ... }
+
+// 请求类型
+interface CreateKnowledgeBaseRequest { ... }
+interface UpdateKnowledgeBaseRequest { ... }
+interface CreateKnowledgeRequest { ... }
+interface CreateKnowledgePointRequest { ... }
+
+// 搜索类型
+interface KnowledgeSearchRequest { ... }
+interface KnowledgeSearchResult { ... }
+
+// 专家配置
+interface ExpertKnowledgeConfig { ... }
+```
+
+**Store 设计** (`stores/knowledgeBase.ts`)：
+
+| 状态 | 说明 |
+|------|------|
+| `knowledgeBases` | 知识库列表 |
+| `currentKb` | 当前知识库 |
+| `knowledgeTree` | 文章树 |
+| `currentKnowledge` | 当前文章 |
+| `currentPoints` | 当前知识点列表 |
+| `searchResults` | 搜索结果 |
+
+| 方法 | 说明 |
+|------|------|
+| `loadKnowledgeBases()` | 加载知识库列表 |
+| `createKnowledgeBase()` | 创建知识库 |
+| `loadKnowledgeTree()` | 加载文章树 |
+| `createKnowledge()` | 创建文章 |
+| `createKnowledgePoint()` | 创建知识点 |
+| `search()` | 语义搜索 |
+
+**代码质量**：
+
+| 项目 | 评价 | 说明 |
+|------|------|------|
+| 组件拆分 | ✅ | 树形组件独立，可复用 |
+| 类型安全 | ✅ | 所有接口都有类型定义 |
+| 国际化 | ✅ | 中英文翻译完整 |
+| 响应式 | ✅ | 支持移动端布局 |
+| 错误处理 | ✅ | Store 统一错误处理 |
+
+**设计亮点**：
+
+1. **卡片式布局**：类似 macOS Launchpad，直观易用
+2. **树形导航**：递归组件，支持无限层级
+3. **右键菜单**：原生右键体验，操作便捷
+4. **Markdown 渲染**：使用 marked 库，支持富文本
+5. **语义搜索**：支持向量相似度搜索
+
+**待优化项**：
+
+| 问题 | 严重程度 | 建议 |
+|------|----------|------|
+| 文章编辑器 | 中 | 当前仅支持简单表单，可升级为富文本编辑器 |
+| 知识图谱可视化 | 建议 | 后续可添加 vis-network 图谱视图 |
+| 拖拽排序 | 建议 | 支持拖拽调整文章顺序 |
+| 批量操作 | 建议 | 支持批量导入/删除 |
+
+---
+
+## 完成总结
+
+知识库系统已完成全部 5 个阶段的开发：
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | 数据库表设计 | ✅ 完成 |
+| Phase 2 | 后端 API | ✅ 完成 |
+| Phase 3 | 文档导入技能 | ✅ 完成 |
+| Phase 4 | RAG 集成 | ✅ 完成 |
+| Phase 5 | 前端界面 | ✅ 完成 |
+
+**功能清单**：
+
+- [x] 多知识库管理
+- [x] 树状文章结构
+- [x] 知识点 CRUD
+- [x] 文档导入技能
+- [x] 向量检索
+- [x] RAG 上下文注入
+- [x] 前端界面
 
 ---
 

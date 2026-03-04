@@ -593,4 +593,124 @@ export default {
     deleteFileConfirmMessage: '确定要删除文件"{name}"吗？此操作不可恢复。',
     editing: '编辑中',
   },
+
+  // 知识库
+  knowledgeBase: {
+    title: '知识库',
+    searchPlaceholder: '搜索知识库...',
+    empty: '暂无知识库，点击 + 创建',
+    createNew: '新建知识库',
+    addFirst: '添加第一个知识库',
+
+    // 卡片信息
+    pointCount: '{count} 知识点',
+    knowledgeCount: '{count} 篇文章',
+    updatedAgo: '更新于 {time}',
+
+    // 创建/编辑对话框
+    createTitle: '创建知识库',
+    editTitle: '编辑知识库',
+    nameLabel: '知识库名称',
+    namePlaceholder: '请输入知识库名称',
+    descriptionLabel: '描述（可选）',
+    descriptionPlaceholder: '请输入知识库描述...',
+    embeddingModel: '向量模型',
+    selectEmbeddingModel: '选择向量模型',
+    createSuccess: '知识库创建成功',
+    createFailed: '创建知识库失败',
+    updateSuccess: '知识库更新成功',
+    updateFailed: '更新知识库失败',
+
+    // 删除
+    deleteConfirm: '确认删除',
+    deleteConfirmMessage: '确定要删除知识库"{name}"吗？此操作将删除所有文章和知识点，不可恢复。',
+
+    // 详情页
+    backToList: '返回知识库列表',
+    importFile: '导入文件',
+    importWeb: '导入网页',
+    newArticle: '新建文章',
+    search: '搜索',
+    searchHint: '输入关键词进行语义搜索...',
+
+    // 文章树
+    articleTree: '文章目录',
+    noArticles: '暂无文章，点击导入或新建',
+    expandAll: '全部展开',
+    collapseAll: '全部收起',
+
+    // 文章
+    article: {
+      create: '新建文章',
+      edit: '编辑文章',
+      titlePlaceholder: '请输入文章标题',
+      parent: '父级文章',
+      noParent: '无（根级文章）',
+      summary: '摘要',
+      summaryPlaceholder: '请输入文章摘要...',
+      createSuccess: '文章创建成功',
+      createFailed: '创建文章失败',
+      updateSuccess: '文章更新成功',
+      updateFailed: '更新文章失败',
+      deleteConfirm: '确定要删除文章"{title}"吗？子文章和知识点也会被删除。',
+    },
+
+    // 知识点
+    point: {
+      title: '知识点',
+      noPoints: '暂无知识点',
+      create: '添加知识点',
+      edit: '编辑知识点',
+      titleLabel: '标题（可选）',
+      titlePlaceholder: '请输入知识点标题',
+      contentLabel: '内容',
+      contentPlaceholder: '请输入知识点内容（支持 Markdown）...',
+      contextLabel: '上下文',
+      contextPlaceholder: '补充上下文信息，用于提高检索精度...',
+      createSuccess: '知识点创建成功',
+      createFailed: '创建知识点失败',
+      updateSuccess: '知识点更新成功',
+      updateFailed: '更新知识点失败',
+      deleteConfirm: '确定要删除这个知识点吗？',
+      tokenCount: '{count} tokens',
+    },
+
+    // 搜索结果
+    searchResult: {
+      title: '搜索结果',
+      empty: '未找到相关内容',
+      score: '相关度',
+      location: '位置',
+    },
+
+    // 状态
+    status: {
+      pending: '待处理',
+      processing: '处理中',
+      ready: '就绪',
+      failed: '处理失败',
+    },
+
+    // 来源类型
+    sourceType: {
+      file: '文件导入',
+      web: '网页导入',
+      manual: '手动创建',
+    },
+
+    // 知识图谱
+    graph: {
+      title: '知识图谱',
+      showGraph: '查看知识图谱',
+      hideGraph: '关闭知识图谱',
+      noRelations: '暂无关联关系',
+      clickNode: '点击节点查看详情',
+      dragNode: '拖拽节点调整布局',
+    },
+
+    // 更多操作
+    moreActions: '更多操作',
+    export: '导出',
+    settings: '设置',
+  },
 }

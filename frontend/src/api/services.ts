@@ -32,6 +32,18 @@ import type {
   Task,
   CreateTaskRequest,
   TaskFile,
+  // 知识库相关类型
+  KnowledgeBase,
+  Knowledge,
+  KnowledgePoint,
+  CreateKnowledgeBaseRequest,
+  UpdateKnowledgeBaseRequest,
+  CreateKnowledgeRequest,
+  UpdateKnowledgeRequest,
+  CreateKnowledgePointRequest,
+  UpdateKnowledgePointRequest,
+  KnowledgeSearchRequest,
+  KnowledgeSearchResult,
 } from '@/types'
 
 /**
@@ -397,4 +409,82 @@ export const taskApi = {
   // 保存文件内容（更新文本文件）
   saveFileContent: (id: string, filePath: string, content: string) =>
     apiRequest<{ message: string }>(apiClient.put(`/tasks/${id}/files/content`, { path: filePath, content })),
+}
+
+// ============================================
+// 知识库相关 API
+// ============================================
+
+export const knowledgeBaseApi = {
+  // ========== 知识库管理 ==========
+
+  // 获取知识库列表
+  getKnowledgeBases: (params?: PaginationParams) =>
+    apiRequest<PaginatedResponse<KnowledgeBase>>(apiClient.get('/kb', { params })),
+
+  // 获取知识库详情
+  getKnowledgeBase: (id: number) =>
+    apiRequest<KnowledgeBase>(apiClient.get(`/kb/${id}`)),
+
+  // 创建知识库
+  createKnowledgeBase: (data: CreateKnowledgeBaseRequest) =>
+    apiRequest<KnowledgeBase>(apiClient.post('/kb', data)),
+
+  // 更新知识库
+  updateKnowledgeBase: (id: number, data: UpdateKnowledgeBaseRequest) =>
+    apiRequest<KnowledgeBase>(apiClient.put(`/kb/${id}`, data)),
+
+  // 删除知识库
+  deleteKnowledgeBase: (id: number) =>
+    apiRequest<void>(apiClient.delete(`/kb/${id}`)),
+
+  // ========== 文章管理 ==========
+
+  // 获取文章树
+  getKnowledgeTree: (kbId: number) =>
+    apiRequest<Knowledge[]>(apiClient.get(`/kb/${kbId}/knowledges/tree`)),
+
+  // 获取文章详情
+  getKnowledge: (kbId: number, knowledgeId: number) =>
+    apiRequest<Knowledge>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}`)),
+
+  // 创建文章
+  createKnowledge: (kbId: number, data: CreateKnowledgeRequest) =>
+    apiRequest<Knowledge>(apiClient.post(`/kb/${kbId}/knowledges`, data)),
+
+  // 更新文章
+  updateKnowledge: (kbId: number, knowledgeId: number, data: UpdateKnowledgeRequest) =>
+    apiRequest<Knowledge>(apiClient.put(`/kb/${kbId}/knowledges/${knowledgeId}`, data)),
+
+  // 删除文章
+  deleteKnowledge: (kbId: number, knowledgeId: number) =>
+    apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}`)),
+
+  // ========== 知识点管理 ==========
+
+  // 获取知识点列表
+  getKnowledgePoints: (kbId: number, knowledgeId: number, params?: PaginationParams) =>
+    apiRequest<PaginatedResponse<KnowledgePoint>>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}/points`, { params })),
+
+  // 获取知识点详情
+  getKnowledgePoint: (kbId: number, knowledgeId: number, pointId: number) =>
+    apiRequest<KnowledgePoint>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
+
+  // 创建知识点
+  createKnowledgePoint: (kbId: number, knowledgeId: number, data: CreateKnowledgePointRequest) =>
+    apiRequest<KnowledgePoint>(apiClient.post(`/kb/${kbId}/knowledges/${knowledgeId}/points`, data)),
+
+  // 更新知识点
+  updateKnowledgePoint: (kbId: number, knowledgeId: number, pointId: number, data: UpdateKnowledgePointRequest) =>
+    apiRequest<KnowledgePoint>(apiClient.put(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`, data)),
+
+  // 删除知识点
+  deleteKnowledgePoint: (kbId: number, knowledgeId: number, pointId: number) =>
+    apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
+
+  // ========== 搜索 ==========
+
+  // 语义搜索
+  search: (kbId: number, data: KnowledgeSearchRequest) =>
+    apiRequest<KnowledgeSearchResult[]>(apiClient.post(`/kb/${kbId}/search`, data)),
 }
