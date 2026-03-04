@@ -273,7 +273,7 @@ interface TaskState {
 2. [x] 实现任务列表展示
 3. [x] 实现创建任务对话框
 4. [x] 实现进入/退出 Task 模式
-5. [ ] 顶部通栏显示当前 Task
+5. [x] 聊天头部显示 Task 模式状态标签
 6. [x] 实现文件上传/下载（只能上传到 input/）
 
 ### Phase 3: 对话集成
@@ -310,10 +310,76 @@ interface TaskState {
 - [x] 文件下载功能
 - [x] 进入 Task 后 Topic 关联 task_id
 - [x] Task 上下文注入到 LLM
-- [ ] 顶部浮动 Task 指示器（聊天框顶部显示当前任务）
+- [x] 聊天头部 Task 模式状态标签（显示当前任务名称，可点击退出）
 - [x] 退出/切换 Task 功能（在 Tasks 面板操作）
 
 ---
 
+## Code Review 记录
+
+### 2026-03-04: Task 模式状态标签实现
+
+**实现内容**：在聊天头部添加 Task 模式状态标签
+
+**代码位置**：`frontend/src/views/ChatView.vue`
+
+**实现方式**：
+1. 在 `.expert-info` 中添加 `.task-mode-tag` 标签
+2. 根据 `taskStore.isInTaskMode` 显示不同状态
+3. 任务模式下点击标签可退出
+
+**UI 设计**：
+| 模式 | 显示 | 样式 |
+|------|------|------|
+| 闲聊 | 💬 闲聊 | 淡灰色圆角标签 |
+| 任务 | 📁 任务名称 ✕ | 蓝色圆角标签，带叉号 |
+
+**代码片段**：
+```vue
+<!-- Task 模式状态 -->
+<span
+  class="task-mode-tag"
+  :class="{ 'in-task': taskStore.isInTaskMode }"
+  @click="taskStore.isInTaskMode && handleExitTaskMode()"
+>
+  <template v-if="taskStore.isInTaskMode && taskStore.currentTask">
+    📁 {{ taskStore.currentTask.title }}
+    <span class="exit-icon">✕</span>
+  </template>
+  <template v-else>
+    💬 闲聊
+  </template>
+</span>
+```
+
+**样式实现**：
+```css
+.task-mode-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--secondary-bg, #f0f0f0);
+  color: var(--text-hint, #999);
+  border-radius: 10px;
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-mode-tag.in-task {
+  background: var(--primary-color, #2196f3);
+  color: white;
+  cursor: pointer;
+}
+```
+
+**优点**：
+- 不单独占一行，融合到头部，紧凑
+- 与头部其他元素（模型 badge）风格统一
+- 闲聊模式低调，任务模式醒目
+- 任务模式下点击标签即可退出
+
+---
+
 *创建时间: 2026-03-02*
-*最后更新: 2026-03-02*
+*最后更新: 2026-03-04*
