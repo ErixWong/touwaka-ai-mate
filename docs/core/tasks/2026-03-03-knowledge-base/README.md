@@ -1,7 +1,8 @@
 # 知识库系统设计
 
 > 创建日期：2026-03-03
-> 状态：⏳ 设计阶段
+> 最后更新：2026-03-04
+> 状态：⏳ 设计完成，待实现
 
 ## 需求概述
 
@@ -16,17 +17,40 @@
 
 ---
 
-## 概念模型（初步）
+## 概念模型（南瓜模型）
+
+> **核心隐喻**：知识库像南瓜藤，藤蔓有很多分支，每个分支可以是花（待完善）或瓜（知识点）。路径很重要，通过路径可以实现漫游。枝蔓向上追溯可以获得更大图景，找到相邻知识。知识更多富集于末端。
 
 ```
 KnowledgeBase（知识库）
-├── Knowledge（知识）- 相当于一篇论文/文档
-│   ├── 摘要/概述
-│   ├── 元数据（来源、作者、创建时间等）
-│   └── KnowledgePoint[]（知识点）- 相当于章节
-│       ├── 内容片段
-│       ├── 向量嵌入
-│       └── 关联知识点
+└── Knowledge（文章，自关联形成树状结构）
+    │   parent_id → 父文章（NULL 表示根文章）
+    │   中间节点：目录 + 简略知识点（如模块介绍、版本、scope）
+    │   叶子节点：详细知识点
+    │
+    └── KnowledgePoint（知识点，属于某篇文章）
+            content → 原子化的知识点内容（Markdown）
+            context → 上下文信息（用于向量化，提高检索精度）
+```
+
+### 示例结构
+
+```
+📚 SAP运维手册知识库
+├── 📁 MM采购模块（文章，parent_id=NULL）
+│   │   📖 知识点：模块介绍、当前版本、scope（简略）
+│   │
+│   ├── 📁 采购计划维护（文章，parent_id=MM采购模块）
+│   │   │   📖 知识点：章节介绍（简略）
+│   │   ├── 📖 段落1：采购计划类型说明（知识点，详细）
+│   │   ├── 📖 段落2：创建采购计划步骤（知识点，详细）
+│   │   └── 📖 段落3：修改采购计划（知识点，详细）
+│   │
+│   └── 📁 价格管理（文章，parent_id=MM采购模块）
+│       └── ...
+│
+└── 📁 SD销售模块（文章，parent_id=NULL）
+    └── ...
 ```
 
 ### 实体关系
@@ -39,9 +63,9 @@ KnowledgeBase（知识库）
 │  name               │
 │  description        │
 │  owner_id (FK)      │
-│  embedding_model    │  ← 使用的嵌入模型
+│  embedding_model_id │  ← 关联 ai_models 表
 │  embedding_dim      │  ← 向量维度（如 1536）
-│  is_public          │
+│  is_public          │  ← 预留，暂不使用
 │  created_at         │
 │  updated_at         │
 └──────────┬──────────┘
@@ -52,12 +76,14 @@ KnowledgeBase（知识库）
 │    ─────────────    │
 │  id (PK)            │
 │  kb_id (FK)         │
+│  parent_id (FK)     │  ← 自关联，形成树状结构 ⭐
 │  title              │
 │  summary            │  ← LLM 生成的摘要
 │  source_type        │  ← 'file' | 'web' | 'manual'
 │  source_url         │
 │  file_path          │  ← 原始文件存储路径
 │  status             │  ← 'pending' | 'processing' | 'ready' | 'failed'
+│  position           │  ← 同级排序
 │  created_at         │
 │  updated_at         │
 └──────────┬──────────┘
@@ -68,18 +94,17 @@ KnowledgeBase（知识库）
 │  ─────────────────  │
 │  id (PK)            │
 │  knowledge_id (FK)  │
-│  parent_id (FK)     │  ← 自关联，支持树状结构
 │  title              │
-│  content            │  ← 实际内容
-│  content_type       │  ← 'text' | 'code' | 'table' | 'image'
-│  embedding          │  ← 向量字段（BLOB 或 VECTOR）
+│  content            │  ← 实际内容（Markdown，媒体用 URL 嵌入）
+│  context            │  ← 上下文信息（纯文本，用于向量化）⭐
+│  embedding          │  ← 向量字段（BLOB）
 │  position           │  ← 同级排序
 │  token_count        │  ← Token 数量（用于统计）
 │  created_at         │
 │  updated_at         │
 └──────────┬──────────┘
            │
-           │ N:M（语义关联）
+           │ N:M（语义关联，后期实现）
            ▼
 ┌─────────────────────┐
 │  KnowledgeRelation  │
@@ -87,14 +112,14 @@ KnowledgeBase（知识库）
 │  id (PK)            │
 │  source_id (FK)     │
 │  target_id (FK)     │
-│  relation_type      │  ← 'references' | 'related_to' | 'depends_on'
+│  relation_type      │  ← 'depends_on' | 'references' | 'related_to' | 'extends' | 'example_of'
 │  confidence         │  ← LLM 置信度 (0-1)
 │  created_by         │  ← 'llm' | 'manual'
 │  created_at         │
 └─────────────────────┘
 ```
 
-### 表结构 SQL（草案）
+### 表结构 SQL（最终版）
 
 ```sql
 -- 知识库表
@@ -103,52 +128,60 @@ CREATE TABLE knowledge_bases (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     owner_id INT NOT NULL,
-    embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
+    embedding_model_id VARCHAR(50),  -- 关联 ai_models 表
     embedding_dim INT DEFAULT 1536,
-    is_public BOOLEAN DEFAULT FALSE,
+    is_public BOOLEAN DEFAULT FALSE,  -- 预留，暂不使用
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (owner_id) REFERENCES users(id)
 );
 
--- 知识表
+CREATE INDEX idx_kb_owner ON knowledge_bases(owner_id);
+
+-- 文章表（自关联形成树状结构）
 CREATE TABLE knowledges (
     id INT PRIMARY KEY AUTO_INCREMENT,
     kb_id INT NOT NULL,
+    parent_id INT DEFAULT NULL,  -- 自关联，形成树状结构
     title VARCHAR(500) NOT NULL,
     summary TEXT,
     source_type ENUM('file', 'web', 'manual') DEFAULT 'manual',
     source_url VARCHAR(1000),
     file_path VARCHAR(500),
     status ENUM('pending', 'processing', 'ready', 'failed') DEFAULT 'pending',
+    position INT DEFAULT 0,  -- 同级排序
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
+    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES knowledges(id) ON DELETE CASCADE
 );
 
--- 知识点表
+CREATE INDEX idx_knowledge_kb ON knowledges(kb_id);
+CREATE INDEX idx_knowledge_parent ON knowledges(parent_id);
+
+-- 知识点表（属于某篇文章）
 CREATE TABLE knowledge_points (
     id INT PRIMARY KEY AUTO_INCREMENT,
     knowledge_id INT NOT NULL,
-    parent_id INT DEFAULT NULL,
     title VARCHAR(500),
-    content MEDIUMTEXT NOT NULL,
-    content_type ENUM('text', 'code', 'table', 'image') DEFAULT 'text',
-    embedding BLOB,  -- 或使用 MySQL 向量扩展
+    content MEDIUMTEXT NOT NULL,  -- Markdown 格式，媒体用 URL 嵌入
+    context TEXT,  -- 上下文信息（纯文本，用于向量化）
+    embedding BLOB,  -- 向量（JSON 序列化）
     position INT DEFAULT 0,
     token_count INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (knowledge_id) REFERENCES knowledges(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_id) REFERENCES knowledge_points(id) ON DELETE CASCADE
+    FOREIGN KEY (knowledge_id) REFERENCES knowledges(id) ON DELETE CASCADE
 );
 
--- 知识点关联表（语义关系）
+CREATE INDEX idx_kp_knowledge ON knowledge_points(knowledge_id);
+
+-- 知识点关联表（语义关系，后期实现）
 CREATE TABLE knowledge_relations (
     id INT PRIMARY KEY AUTO_INCREMENT,
     source_id INT NOT NULL,
     target_id INT NOT NULL,
-    relation_type ENUM('references', 'related_to', 'depends_on', 'contradicts') NOT NULL,
+    relation_type ENUM('depends_on', 'references', 'related_to', 'contradicts', 'extends', 'example_of') NOT NULL,
     confidence DECIMAL(3,2) DEFAULT 1.00,
     created_by ENUM('llm', 'manual') DEFAULT 'llm',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -157,13 +190,17 @@ CREATE TABLE knowledge_relations (
     UNIQUE KEY unique_relation (source_id, target_id, relation_type)
 );
 
--- 索引
-CREATE INDEX idx_kp_knowledge ON knowledge_points(knowledge_id);
-CREATE INDEX idx_kp_parent ON knowledge_points(parent_id);
 CREATE INDEX idx_kr_source ON knowledge_relations(source_id);
 CREATE INDEX idx_kr_target ON knowledge_relations(target_id);
 CREATE INDEX idx_kr_type ON knowledge_relations(relation_type);
 ```
+
+### 设计要点说明
+
+1. **文章自关联（parent_id）**：文章通过 parent_id 形成树状结构，便于组织和漫游
+2. **知识点属于文章**：知识点不再有层级，都属于某篇文章
+3. **上下文字段（context）**：纯文本格式，用于向量化时提供语境，提高检索精度
+4. **内容统一 Markdown**：媒体文件通过 URL 嵌入在 Markdown 中，不再区分 content_type
 
 ---
 
@@ -190,18 +227,20 @@ CREATE INDEX idx_kr_type ON knowledge_relations(relation_type);
 ```
 
 **关系类型枚举**：
+
 ```javascript
 const RELATION_TYPES = {
-  // 物理层级（系统维护）
-  PARENT_CHILD: 'parent_child',
-  
   // 语义关联（LLM 维护）
   REFERENCES: 'references',    // 引用关系
   RELATED_TO: 'related_to',    // 相关关系
   DEPENDS_ON: 'depends_on',    // 依赖关系
   CONTRADICTS: 'contradicts',  // 矛盾关系
+  EXTENDS: 'extends',          // 扩展关系
+  EXAMPLE_OF: 'example_of',    // 例证关系
 }
 ```
+
+> ⚠️ **注意**：物理层级关系通过 `knowledges` 表的 `parent_id` 字段实现，不需要在 `knowledge_relations` 表中存储。
 
 ---
 
@@ -245,14 +284,14 @@ const RELATION_TYPES = {
 
 ### 关系类型详解
 
-| 关系类型 | 方向 | 含义 | 示例 |
-|---------|------|------|------|
-| `depends_on` | 有向 | A 依赖 B（理解 A 需要先理解 B） | "闭包" depends_on "作用域" |
-| `references` | 有向 | A 引用/提及 B | "详见第三章" references "第三章" |
-| `related_to` | 无向 | A 与 B 主题相关 | "React Hooks" related_to "Vue Composition API" |
-| `contradicts` | 无向 | A 与 B 观点矛盾 | "地心说" contradicts "日心说" |
-| `extends` | 有向 | A 是 B 的扩展/深化 | "高级优化" extends "基础优化" |
-| `example_of` | 有向 | A 是 B 的例子 | "快速排序代码" example_of "快速排序算法" |
+| 关系类型        | 方向 | 含义                            | 示例                                           |
+| --------------- | ---- | ------------------------------- | ---------------------------------------------- |
+| `depends_on`  | 有向 | A 依赖 B（理解 A 需要先理解 B） | "闭包" depends_on "作用域"                     |
+| `references`  | 有向 | A 引用/提及 B                   | "详见第三章" references "第三章"               |
+| `related_to`  | 无向 | A 与 B 主题相关                 | "React Hooks" related_to "Vue Composition API" |
+| `contradicts` | 无向 | A 与 B 观点矛盾                 | "地心说" contradicts "日心说"                  |
+| `extends`     | 有向 | A 是 B 的扩展/深化              | "高级优化" extends "基础优化"                  |
+| `example_of`  | 有向 | A 是 B 的例子                   | "快速排序代码" example_of "快速排序算法"       |
 
 ### 关系存储设计
 
@@ -322,12 +361,12 @@ const EXTRACT_RELATIONS_PROMPT = `
 
 ### 与传统知识库的区别
 
-| 维度 | 传统知识库 | 知识图谱 |
-|------|-----------|---------|
-| 结构 | 树状/扁平 | 网状图 |
-| 关系 | 只有层级 | 多种语义关系 |
-| 查询 | 按目录导航 | 按关系探索 |
-| 发现 | 被动查找 | 主动推荐 |
+| 维度 | 传统知识库 | 知识图谱     |
+| ---- | ---------- | ------------ |
+| 结构 | 树状/扁平  | 网状图       |
+| 关系 | 只有层级   | 多种语义关系 |
+| 查询 | 按目录导航 | 按关系探索   |
+| 发现 | 被动查找   | 主动推荐     |
 
 ### 可视化示例
 
@@ -372,6 +411,7 @@ const EXTRACT_RELATIONS_PROMPT = `
 ```
 
 **两者结合**：
+
 - 文章树提供**组织结构**（方便管理）
 - 知识图谱提供**语义关联**（方便发现）
 
@@ -381,7 +421,7 @@ const EXTRACT_RELATIONS_PROMPT = `
 
 ### 3. 图片存储方案 ✅ 新增
 
-**决策：本地文件系统 + 知识点引用**
+**决策：本地文件系统 + Markdown 嵌入**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -392,20 +432,27 @@ const EXTRACT_RELATIONS_PROMPT = `
 │   文件命名：{knowledge_id}_{timestamp}_{hash}.png                    │
 │                                                                     │
 │   ┌─────────────────────────────────────────────────────────────┐   │
-│   │  knowledge_points 表（content_type = 'image'）               │   │
+│   │  knowledge_points 表（统一 Markdown 格式）                   │   │
 │   │  ─────────────────────────────────────────────────────────  │   │
-│   │  content = JSON.stringify({                                  │   │
+│   │  content = "![React 组件生命周期图](/kb-images/123_xxx.png)  │   │
+│   │                                                          "    │   │
+│   │  context = "本文档属于React教程 > 第三章 > 生命周期"          │   │
+│   │                                                              │   │
+│   │  图片元数据存储在关联的 media 表中（可选）：                   │   │
+│   │  {                                                            │   │
 │   │    path: "/kb-images/123_1709123456_abc123.png",            │   │
 │   │    alt: "React 组件生命周期图",    // LLM 生成的描述          │   │
 │   │    ocr_text: "Mounting...",       // OCR 提取的文字（可选）   │   │
 │   │    width: 800,                                               │   │
 │   │    height: 600,                                              │   │
 │   │    original_name: "lifecycle.png"                            │   │
-│   │  })                                                          │   │
+│   │  }                                                          │   │
 │   └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+> ⚠️ **设计决策 #4 说明**：所有知识点内容统一使用 Markdown 格式，媒体通过 URL 嵌入。不再区分 `content_type`。
 
 **图片处理流程**：
 
@@ -442,11 +489,11 @@ async function processImage(imageBuffer, knowledgeId, originalName) {
 
 **图片检索策略**：
 
-| 检索方式 | 实现方式 | 说明 |
-|----------|----------|------|
-| 文本检索 | 搜索 `alt` 和 `ocr_text` | 基于图片描述搜索 |
-| 语义检索 | 对 `alt` 生成 embedding | 图片本身不做向量嵌入 |
-| 上下文关联 | 关联到父知识点 | 随文档章节一起展示 |
+| 检索方式   | 实现方式                     | 说明                 |
+| ---------- | ---------------------------- | -------------------- |
+| 文本检索   | 搜索 `alt` 和 `ocr_text` | 基于图片描述搜索     |
+| 语义检索   | 对 `alt` 生成 embedding    | 图片本身不做向量嵌入 |
+| 上下文关联 | 关联到父知识点               | 随文档章节一起展示   |
 
 **API 服务图片**：
 
@@ -466,59 +513,13 @@ router.get('/api/kb-images/:filename', auth, (req, res) => {
 - 迁移到对象存储（S3/OSS）时，只需修改 `path` 字段为完整 URL
 - 支持图片向量嵌入（CLIP 模型）实现"以图搜图"
 
-### 4. 内容类型存储格式 ✅ 新增
+### 4. 内容存储格式 ✅ 确定
 
 **决策：统一使用 Markdown 格式**
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    内容类型存储策略                                   │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  content_type = 'text'                                              │
-│  ─────────────────────                                              │
-│  content = "普通文本内容，支持 **Markdown** 格式"                     │
-│                                                                     │
-│  content_type = 'code'                                              │
-│  ─────────────────────                                              │
-│  content = "```javascript\nconst x = 1;\n```"                       │
-│  // 使用 Markdown 代码块，保留语言标识                                │
-│                                                                     │
-│  content_type = 'table'                                             │
-│  ─────────────────────                                              │
-│  content = "| 列1 | 列2 |\n|---|---|\n| A | B |"                     │
-│  // 使用 Markdown 表格语法                                           │
-│                                                                     │
-│  content_type = 'image'                                             │
-│  ─────────────────────                                              │
-│  content = JSON.stringify({ path, alt, ... })                       │
-│  // 图片特殊处理，存储元数据 JSON                                     │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**关于代码入库的原则**：
-
-| 场景 | 是否入库 | 说明 |
-|------|----------|------|
-| 教程中的代码片段 | ✅ 入库 | 作为知识点的一部分，有上下文说明 |
-| 纯代码文件（无注释） | ❌ 不建议 | 缺乏语义上下文，检索效果差 |
-| 带注释的代码 | ✅ 入库 | 注释提供语义信息 |
-| API 文档示例 | ✅ 入库 | 有说明文字配合 |
-
-**代码片段的向量化策略**：
-
-```javascript
-// 代码片段向量化时，拼接说明文字
-const textForEmbedding = `
-${point.title}
-
-${point.content}  // 包含代码块
-
-// 如果有父级上下文，也可以加入
-${parentContext ? `上下文：${parentContext}` : ''}
-`;
-```
+- 所有知识点内容统一用 Markdown 格式存储
+- 媒体文件（图片、视频）通过 URL 嵌入在 Markdown 中
+- 不再区分 content_type，简化存储结构
 
 **为什么用 Markdown？**
 
@@ -527,12 +528,47 @@ ${parentContext ? `上下文：${parentContext}` : ''}
 3. **灵活性**：支持代码、表格、图片、公式等多种内容
 4. **兼容性**：与现有文档格式（PDF、DOCX）转换容易
 5. **渲染友好**：前端可直接用 Markdown 渲染器展示
-|------|------|------|
-| MVP | MySQL BLOB + 内存计算 | 向量存为 BLOB，检索时加载到内存计算余弦相似度 |
-| 优化 | MySQL HeatWave 或 pgvector | 数据量大时迁移 |
-| 生产 | Milvus/Qdrant | 百万级向量时考虑 |
+
+### 5. 上下文字段（context）✅ 确定
+
+**决策：添加 context 字段，纯文本格式**
+
+**问题**：知识点原子化后，检索时缺乏语境，容易误判
+
+**解决方案**：
+
+- 存储时保持原子化（content 是纯净的知识点）
+- 添加 `context` 字段存储上下文信息（纯文本）
+- 向量化时拼接 `context + content`
+
+**context 内容示例**：
+
+```
+本文档属于"SAP运维手册 > MM采购模块 > 采购计划维护"章节。
+本章介绍 SAP 采购计划的创建和维护流程，适用于采购员角色。
+```
+
+**向量化时的拼接**：
+
+```javascript
+const textForEmbedding = `
+[上下文] ${context}
+
+[内容] ${title}
+${content}
+`;
+```
+
+### 6. 向量存储方案 ✅ 确定
+
+| 阶段 | 方案                       | 说明                                          |
+| ---- | -------------------------- | --------------------------------------------- |
+| MVP  | MySQL BLOB + 内存计算      | 向量存为 BLOB，检索时加载到内存计算余弦相似度 |
+| 优化 | MySQL HeatWave 或 pgvector | 数据量大时迁移                                |
+| 生产 | Milvus/Qdrant              | 百万级向量时考虑                              |
 
 **MVP 实现思路**：
+
 ```javascript
 // 向量存储（序列化为 JSON）
 async function saveEmbedding(pointId, embedding) {
@@ -562,25 +598,48 @@ async function searchSimilar(embedding, limit = 10) {
 
 ### 技能分类
 
-技能分为两类：
-1. **管理技能**：用于知识库管理（导入、分块、向量化等），主要由"图书管理员"专家使用
-2. **检索技能**：用于知识检索（搜索、读取等），供所有专家使用
+技能分为三类：
+
+| 类别                     | 说明                              | 使用者       | 命名前缀 |
+| ------------------------ | --------------------------------- | ------------ | -------- |
+| **通用技能**       | 文档处理、OCR、媒体上传等基础能力 | 所有专家     | 无前缀   |
+| **知识库管理技能** | 知识库的创建、导入、整理等        | 知识整理专家 | `kb-`  |
+| **知识库检索技能** | 知识检索、读取等                  | 所有专家     | `kb-`  |
 
 ---
 
-### 管理技能（图书管理员专用）
+### 通用技能（非知识库专用）
 
-| 技能名 | 功能 | 输入 | 输出 |
-|--------|------|------|------|
-| `kb-import-file` | 导入文件到知识库 | file_path, kb_id | knowledge_id |
-| `kb-import-web` | 导入网页到知识库 | url, kb_id | knowledge_id |
-| `kb-chunk` | 智能分块 | knowledge_id | point_ids[] |
-| `kb-embed` | 生成向量嵌入 | kb_id 或 point_ids | 更新 embedding |
-| `kb-relate` | LLM 分析知识点关联 | kb_id | 创建 relations |
+> ⚠️ 这些技能是通用的文档处理能力，不仅限于知识库使用。它们应该放在 `data/skills/` 目录下作为独立技能存在。
+
+| 技能名           | 功能             | 输入                 | 输出                         | 说明                           |
+| ---------------- | ---------------- | -------------------- | ---------------------------- | ------------------------------ |
+| `file-parse`   | 解析各类文件格式 | file_path            | { markdown, media[] }        | 支持 PDF、DOCX、HTML、Markdown |
+| `ocr-image`    | 图片 OCR + 描述  | image_data           | { text, alt, ocr_text }      | 调用 VL 模型                   |
+| `media-upload` | 上传媒体到存储   | image_data, filename | { url, path }                | 支持本地/S3/OSS                |
+| `web-fetch`    | 抓取网页内容     | url                  | { title, content, markdown } | 网页内容提取                   |
+
+**通用技能位置**：`data/skills/file-operations/`, `data/skills/http-client/` 等
 
 ---
 
-### 检索技能（所有专家可用）
+### 知识库管理技能（知识整理专家专用）
+
+| 技能名              | 功能               | 输入                                  | 输出           | 依赖       |
+| ------------------- | ------------------ | ------------------------------------- | -------------- | ---------- |
+| `kb-create`       | 创建知识库         | name, description, embedding_model_id | kb_id          | -          |
+| `kb-import-file`  | 导入文件到知识库   | file_path, kb_id                      | knowledge_id   | file-parse |
+| `kb-import-web`   | 导入网页到知识库   | url, kb_id                            | knowledge_id   | web-fetch  |
+| `kb-chunk`        | 智能分块           | knowledge_id                          | point_ids[]    | -          |
+| `kb-embed`        | 生成向量嵌入       | kb_id 或 point_ids                    | 更新 embedding | -          |
+| `kb-relate`       | LLM 分析知识点关联 | kb_id                                 | 创建 relations | -          |
+| `kb-update-point` | 更新知识点         | point_id, content                     | 更新结果       | -          |
+| `kb-delete-point` | 删除知识点         | point_id                              | 删除结果       | -          |
+| `kb-merge-points` | 合并知识点         | point_ids[]                           | new_point_id   | -          |
+
+---
+
+### 知识库检索技能（所有专家可用）
 
 #### kb-list：获取知识库清单
 
@@ -651,8 +710,9 @@ async function searchSimilar(embedding, limit = 10) {
   - point_id: 知识点ID
   - include_relations: 是否包含关联知识点（默认true）
 输出:
-  - id, title, content, content_type
-  - parent_id, position, token_count
+  - id, title, content          # content 为 Markdown 格式
+  - context                      # 上下文信息（用于向量化）
+  - position, token_count
   - knowledge_id, knowledge_title
   - relations: 关联知识点列表
 ```
@@ -728,6 +788,7 @@ async function searchSimilar(embedding, limit = 10) {
 ### 问题背景
 
 检索结果可能存在噪音问题：
+
 1. **语义相似但实际无关**：向量相似度高，但内容与问题不相关
 2. **信息过载**：检索结果太多，上下文被无关信息填满
 3. **信噪比低**：有用信息太少，噪音太多
@@ -867,13 +928,13 @@ kb-search-vector:
 
 LLM 审阅和压缩会增加调用成本，需要权衡：
 
-| 场景 | 是否启用过滤 | 说明 |
-|------|-------------|------|
-| 检索结果 ≤ 3 条 | 否 | 结果少，噪音影响小 |
-| 检索结果 > 5 条 | 是（审阅） | 需要过滤噪音 |
-| 内容 > 4000 token | 是（压缩） | 避免上下文溢出 |
-| 高精度场景 | 是（全部） | 如法律、医疗知识库 |
-| 快速响应场景 | 否 | 优先速度而非精度 |
+| 场景              | 是否启用过滤 | 说明               |
+| ----------------- | ------------ | ------------------ |
+| 检索结果 ≤ 3 条  | 否           | 结果少，噪音影响小 |
+| 检索结果 > 5 条   | 是（审阅）   | 需要过滤噪音       |
+| 内容 > 4000 token | 是（压缩）   | 避免上下文溢出     |
+| 高精度场景        | 是（全部）   | 如法律、医疗知识库 |
+| 快速响应场景      | 否           | 优先速度而非精度   |
 
 ---
 
@@ -910,13 +971,46 @@ LLM 审阅和压缩会增加调用成本，需要权衡：
 
 ## 知识图谱生成流程（核心）
 
-### 完整流程图
+### 复杂度问题
+
+**朴素方法**：每个知识点与所有其他知识点比较
+
+- 100 个知识点 → 100 × 100 = 10,000 次 LLM 调用
+- 1000 个知识点 → 1,000,000 次 LLM 调用
+- **不可接受！**
+
+### 优化策略：向量预筛选 + 批量分析
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        知识入库 + 图谱构建                            │
+│                    知识图谱构建优化策略                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  新知识点入库                                                        │
+│       │                                                             │
+│       ▼                                                             │
+│  Step 1: 向量检索 Top-K 相似知识点（K=10）                           │
+│       │                                                             │
+│       ▼                                                             │
+│  Step 2: 批量 LLM 分析（一次调用分析多个关系）                        │
+│       │                                                             │
+│       ▼                                                             │
+│  Step 3: 写入 knowledge_relations 表                                │
+│       │                                                             │
+│       ▼                                                             │
+│  完成（O(1) 复杂度，而不是 O(n²)）                                   │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
+```
 
+**成本估算**：
+
+- 每个新知识点：1 次向量检索 + 1 次 LLM 调用
+- 1000 个知识点 → 1000 次 LLM 调用（而不是 1,000,000 次）
+
+### 完整流程图
+
+```
 用户上传 PDF/DOCX
          │
          ▼
@@ -931,27 +1025,26 @@ LLM 审阅和压缩会增加调用成本，需要权衡：
          │
          ▼
 ┌─────────────────┐
-│  Step 3: 向量化 │  为每个知识点生成 Embedding
+│  Step 3: 向量化 │  为每个知识点生成 Embedding（context + content）
 └────────┬────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Step 4: 定位（关键步骤）                                            │
+│  Step 4: 图谱构建（增量，优化后）                                     │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  4a. 向量检索：找出与新知识点相似的现有知识点（Top-K）          │   │
+│  │  4a. 向量检索：找出与新知识点相似的现有知识点（Top-10）         │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                          │                                        │
 │                          ▼                                        │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  4b. LLM 分析：对比新知识点与候选知识点，判断关系类型          │   │
+│  │  4b. 批量 LLM 分析：一次调用分析新知识点与所有候选的关系        │   │
 │  │                                                              │   │
-│  │  Prompt: "新知识点 A 与现有知识点 B 是什么关系？               │   │
-│  │           - A 是 B 的子概念？(extends)                       │   │
-│  │           - A 依赖 B？(depends_on)                           │   │
-│  │           - A 与 B 相关？(related_to)                        │   │
-│  │           - A 是 B 的例子？(example_of)                      │   │
-│  │           - 无关系？"                                        │   │
+│  │  Prompt: "分析新知识点与以下候选知识点的关系：                 │   │
+│  │           候选1: [p-001] 作用域的概念                         │   │
+│  │           候选2: [p-002] 函数的定义                           │   │
+│  │           ...                                                │   │
+│  │           输出每个候选与新知识点的关系（或无关系）。"           │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                          │                                        │
 │                          ▼                                        │
@@ -959,11 +1052,6 @@ LLM 审阅和压缩会增加调用成本，需要权衡：
 │  │  4c. 建立关系：将判断结果写入 knowledge_relations 表          │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Step 5: 入库   │  知识点 + 关系持久化
-└─────────────────┘
          │
          ▼
     知识图谱更新完成
@@ -1134,130 +1222,295 @@ GET    /api/knowledge-bases/:kbId/graph            获取知识图谱
 
 ---
 
-## 用户界面设计
+## 用户界面设计 ✅ 已确定
 
-### 整体布局
+### 入口位置
+
+新增顶部 Tab，与"专家列表"、"对话"并列：
+
+```
+[专家列表]    [对话]    [知识库]    [任务]    [设置]
+```
+
+### 页面结构
+
+#### 知识库列表页（大图标卡片布局）
+
+类似 macOS Launchpad 或 Windows 开始菜单的风格：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  [知识库]    专家列表    对话    任务    设置              用户头像   │
-├───────────────────┬─────────────────────────────────────────────────┤
-│                   │                                                 │
-│  📚 知识库列表     │           知识库内容区                           │
-│  ─────────────    │                                                 │
-│                   │  📖 SAP运维手册知识库                            │
-│  🔰 公共知识库     │  ─────────────────────                          │
-│  ├─ 📖 SAP运维    │                                                 │
-│  ├─ 📖 质量体系   │     📁 MM采购模块                                │
-│  └─ 📖 IT制度     │     ├── 📁 采购计划维护                          │
-│                   │     │   ├── 📖 采购计划类型说明                   │
-│  🔒 私有知识库     │     │   ├── 🔧 创建采购计划                      │
-│  ├─ 📖 个人笔记   │     │   └── 🔧 修改采购计划                      │
-│  └─ 📖 项目文档   │     ├── 📁 价格管理                              │
-│                   │     │   └── ...                                  │
-│                   │     └── 📁 供应商管理                            │
-│                   │                                                 │
-│                   │  ─────────────────────────────────────────────  │
-│                   │  选中: 📖 采购计划类型说明                        │
-│                   │  ─────────────────────────────────────────────  │
-│                   │                                                 │
-│                   │  SAP 支持以下几种采购计划类型：                   │
-│                   │  1. 手工采购计划                                 │
-│                   │  2. MRP 自动生成计划                             │
-│                   │  3. ...                                         │
-│                   │                                                 │
-└───────────────────┴─────────────────────────────────────────────────┘
-```
-
-### 知识库列表（左侧面板）
-
-```
-┌─────────────────────┐
-│ 📚 知识库            │
-├─────────────────────┤
-│ 🔰 公共知识库        │
-│ ├─ 📖 SAP运维手册    │
-│ ├─ 📖 质量体系文件   │
-│ ├─ 📖 IT制度规范     │
-│ └─ 📖 员工培训体系   │
-├─────────────────────┤
-│ 🔒 私有知识库        │
-│ ├─ 📖 个人笔记       │
-│ └─ 📖 项目文档       │
-├─────────────────────┤
-│ ➕ 新建知识库        │
-└─────────────────────┘
-```
-
-### 知识库内容区（右侧主区域）
-
-#### 树状结构视图
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  📖 SAP运维手册知识库                              [导入] [搜索] [⋮] │
+│  [专家列表]    [对话]    [知识库]    [任务]    [设置]      用户头像   │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  📁 MM 采购模块                                 45 知识点           │
-│  ├── 📁 采购计划维护                            12 知识点           │
-│  │   ├── 📖 采购计划类型说明                                        │
-│  │   ├── 🔧 创建手工采购计划                                        │
-│  │   ├── 🔧 修改采购计划                                            │
-│  │   └── ❓ 采购计划常见问题                                        │
-│  ├── 📁 价格管理                                8 知识点            │
-│  │   └── ...                                                        │
-│  └── 📁 供应商管理                              10 知识点           │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
+│  │   📚             │  │   📖             │  │   📁             │     │
+│  │   SAP运维手册    │  │   质量体系文件   │  │   IT制度规范     │     │
+│  │   156 知识点     │  │   89 知识点      │  │   234 知识点     │     │
+│  │   更新于 3天前   │  │   更新于 1周前   │  │   更新于 2天前   │     │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘     │
 │                                                                     │
-│  📁 SD 销售模块                                 38 知识点           │
-│  ├── 📁 客户管理                                15 知识点           │
-│  └── 📁 销售订单                                23 知识点           │
-│                                                                     │
-│  📁 FI 财务模块                                 52 知识点           │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
+│  │   📝             │  │   🔧             │  │   ➕             │     │
+│  │   个人笔记       │  │   项目文档       │  │   新建知识库     │     │
+│  │   45 知识点      │  │   12 知识点      │  │                  │     │
+│  │   更新于 今天    │  │   更新于 1月前   │  │                  │     │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘     │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 知识点详情视图
+**卡片内容**：
+
+- 图标（可自定义或自动生成）
+- 知识库名称
+- 知识点数量
+- 最后更新时间
+
+**交互**：
+
+- 点击卡片 → 进入知识库详情页
+- 右键卡片 → 编辑、删除、导出等操作
+- 点击"新建知识库"卡片 → 创建新知识库
+
+#### 知识库详情页（左侧树 + 右侧内容）
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  ← 返回    📖 采购计划类型说明                                       │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  📍 位置：SAP运维手册 > MM采购模块 > 采购计划维护                    │
-│  📅 更新：2026-03-01                                               │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  ## 概述                                                            │
-│                                                                     │
-│  SAP 系统支持多种采购计划类型，根据业务需求选择：                     │
-│                                                                     │
-│  | 计划类型 | 代码 | 适用场景 |                                      │
-│  |---------|------|---------|                                      │
-│  | 手工采购计划 | UB | 临时性采购 |                                  │
-│  | MRP 计划 | PD | 常规物料 |                                       │
-│  | 预测计划 | VB | 季节性物料 |                                     │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  🔗 相关操作                                                         │
-│  ├─ 🔧 创建手工采购计划 →                                           │
-│  ├─ 🔧 修改采购计划 →                                               │
-│  └─ ❓ 采购计划常见问题 →                                           │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+│  ← 返回    📖 SAP运维手册知识库                    [导入] [搜索] [⋮] │
+├───────────────────────┬─────────────────────────────────────────────┤
+│                       │                                             │
+│  📁 MM 采购模块       │  📖 采购计划类型说明                         │
+│  ├── 📁 采购计划维护   │  ─────────────────────────                 │
+│  │   ├── 📖 类型说明   │                                             │
+│  │   ├── 📖 创建计划   │  **位置**：MM采购模块 > 采购计划维护         │
+│  │   └── 📖 修改计划   │  **更新**：2026-03-01                       │
+│  ├── 📁 价格管理       │                                             │
+│  │   └── ...          │  ---                                        │
+│  └── 📁 供应商管理     │                                             │
+│                       │  SAP 系统支持多种采购计划类型：               │
+│  📁 SD 销售模块       │                                             │
+│  ├── 📁 客户管理       │  | 计划类型 | 代码 | 适用场景 |              │
+│  └── 📁 销售订单       │  |---------|------|---------|              │
+│                       │  | 手工采购计划 | UB | 临时性采购 |          │
+│  📁 FI 财务模块       │  | MRP 计划 | PD | 常规物料 |               │
+│                       │  | 预测计划 | VB | 季节性物料 |             │
+│                       │                                             │
+│                       │  ![流程图](/kb-images/flow.png)              │
+│                       │                                             │
+└───────────────────────┴─────────────────────────────────────────────┘
 ```
+
+**左侧导航树**：
+
+- 使用 Element Plus Tree 组件
+- 显示文章的树状结构
+- 点击文章节点 → 右侧显示该文章的知识点列表
+- 点击知识点 → 右侧显示知识点详情
+
+**右侧内容区**：
+
+- 文章节点：显示文章摘要 + 知识点列表
+- 知识点：显示 Markdown 渲染后的内容
+
+### 交互说明
+
+| 操作           | 效果                         |
+| -------------- | ---------------------------- |
+| 点击知识库卡片 | 进入知识库详情页             |
+| 点击左侧树节点 | 右侧显示对应内容             |
+| 点击"导入"按钮 | 打开导入对话框（上传文件）   |
+| 点击"搜索"按钮 | 打开搜索面板（支持语义搜索） |
+| 右键树节点     | 编辑、删除、新增子节点等操作 |
 
 ### 知识库案例参考
 
 不同类型的知识库有不同的结构特点，详见 [案例集](./cases/README.md)：
 
-| 案例 | 类型 | 结构特点 |
-|------|------|---------|
-| [SAP运维手册](./cases/case-sap-operations.md) | 系统操作手册 | 模块→功能→操作，三级结构 |
-| [AI论文库](./cases/case-ai-papers.md) | 学术论文 | 主题分类+引用关系图谱 |
-| [员工培训体系](./cases/case-employee-training.md) | 培训/SOP | 岗位→流程→操作，三级结构 |
+| 案例                                           | 类型         | 结构特点                   |
+| ---------------------------------------------- | ------------ | -------------------------- |
+| [SAP运维手册](./cases/case-sap-operations.md)     | 系统操作手册 | 模块→功能→操作，三级结构 |
+| [AI论文库](./cases/case-ai-papers.md)             | 学术论文     | 主题分类+引用关系图谱      |
+| [员工培训体系](./cases/case-employee-training.md) | 培训/SOP     | 岗位→流程→操作，三级结构 |
+
+---
+
+## 知识图谱可视化 ✅ 已确定
+
+### 入口位置
+
+在左侧树状结构导航栏底部添加"知识图谱"面板入口：
+
+```
+┌───────────────────────┐
+│  📁 MM 采购模块       │
+│  ├── 📁 采购计划维护   │
+│  ├── 📁 价格管理       │
+│  └── 📁 供应商管理     │
+│                       │
+│  📁 SD 销售模块       │
+│  └── ...              │
+│                       │
+├───────────────────────┤
+│  📊 知识图谱           │  ← 底部面板入口
+└───────────────────────┘
+```
+
+### 右侧展示
+
+点击"知识图谱"后，右侧切换为图谱视图：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  ← 返回    📊 SAP运维手册知识库 - 知识图谱                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│                     ┌──────────┐                                   │
+│                     │ 闭包概念  │                                   │
+│                     └────┬─────┘                                   │
+│                          │ depends_on                              │
+│           ┌──────────────┼──────────────┐                          │
+│           ▼              ▼              ▼                          │
+│     ┌──────────┐   ┌──────────┐   ┌──────────┐                    │
+│     │ 作用域    │   │ 函数     │   │ 变量     │                    │
+│     └────┬─────┘   └────┬─────┘   └────┬─────┘                    │
+│          │              │              │                            │
+│          │ related_to   │ example_of   │                            │
+│          ▼              ▼              ▼                          │
+│     ┌──────────┐   ┌──────────┐   ┌──────────┐                    │
+│     │ 全局变量  │   │回调函数   │   │局部变量   │                    │
+│     └──────────┘   └──────────┘   └──────────┘                    │
+│                                                                     │
+│  ─────────────────────────────────────────────────────────────────  │
+│  点击节点查看详情 | 拖拽节点重新布局 | 双击节点跳转             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 技术选型（待定）
+
+> ⚠️ **开放问题**：最终选择哪个控件需要在实现时确定，以下是各控件的详细对比。
+
+#### 方案对比
+
+| 库                     | 特点                   | 包体积 | 学习曲线 | 性能 | 推荐场景     |
+| ---------------------- | ---------------------- | ------ | -------- | ---- | ------------ |
+| **vis-network**  | 简单易用，开箱即用     | ~200KB | 低       | 中   | MVP 快速实现 |
+| **D3.js**        | 最灵活，可定制性强     | ~500KB | 高       | 高   | 复杂定制需求 |
+| **Cytoscape.js** | 专为图分析设计         | ~1MB   | 中       | 高   | 大规模图谱   |
+| **AntV G6**      | 中文文档友好，功能丰富 | ~800KB | 中       | 高   | 企业级应用   |
+
+#### 详细分析
+
+##### 1. vis-network（推荐 MVP 使用）
+
+**优点**：
+
+- ✅ 开箱即用，上手快
+- ✅ 文档友好，示例丰富
+- ✅ 支持拖拽、缩放、点击等交互
+- ✅ 轻量级（~200KB）
+
+**缺点**：
+
+- ❌ 定制性一般
+- ❌ 复杂布局算法有限
+
+**代码示例**：
+
+```javascript
+import { Network } from 'vis-network';
+
+const nodes = [
+  { id: 1, label: '闭包概念' },
+  { id: 2, label: '作用域' },
+  { id: 3, label: '函数' }
+];
+
+const edges = [
+  { from: 1, to: 2, label: 'depends_on' },
+  { from: 1, to: 3, label: 'depends_on' }
+];
+
+new Network(container, { nodes, edges }, {
+  nodes: { shape: 'box' },
+  edges: { arrows: 'to' }
+});
+```
+
+##### 2. D3.js（推荐后期迁移）
+
+**优点**：
+
+- ✅ 最灵活，完全可控
+- ✅ 社区活跃，生态丰富
+- ✅ 可以实现任何自定义效果
+
+**缺点**：
+
+- ❌ 学习曲线陡峭
+- ❌ 需要自己实现很多功能
+- ❌ 代码量大
+
+**适用场景**：需要高度定制化的知识图谱可视化，如自定义节点样式、复杂动画、特殊布局等。
+
+##### 3. Cytoscape.js
+
+**优点**：
+
+- ✅ 专为图分析设计
+- ✅ 性能好，支持大规模图谱（10000+ 节点）
+- ✅ 内置多种布局算法（力导向、层次、圆形等）
+- ✅ 支持图分析算法（最短路径、聚类等）
+
+**缺点**：
+
+- ❌ 包体积较大（~1MB）
+- ❌ 对于简单场景有点重
+
+**适用场景**：知识库规模大（1000+ 知识点），需要进行图分析（如社区发现、关键路径分析）。
+
+##### 4. AntV G6（蚂蚁集团）
+
+**优点**：
+
+- ✅ 中文文档友好
+- ✅ 功能丰富（图分析、树图、流程图等）
+- ✅ 企业级方案，经过大规模验证
+- ✅ 内置多种布局和分析算法
+
+**缺点**：
+
+- ❌ 包体积大（~800KB）
+- ❌ 某些高级功能需要配置
+
+**适用场景**：国内团队，需要中文支持，企业级应用。
+
+#### 推荐方案
+
+| 阶段           | 推荐控件              | 理由                             |
+| -------------- | --------------------- | -------------------------------- |
+| **MVP**  | vis-network           | 快速实现，满足基本需求           |
+| **后期** | D3.js 或 Cytoscape.js | 需要更复杂的定制或分析功能时迁移 |
+
+#### 决策因素
+
+选择时需要考虑：
+
+1. **知识库规模**：100 个知识点以内用 vis-network，1000+ 考虑 Cytoscape.js
+2. **定制需求**：简单展示用 vis-network，复杂交互用 D3.js
+3. **团队熟悉度**：D3.js 需要学习成本
+4. **性能要求**：大规模图谱优先 Cytoscape.js
+
+### 交互功能
+
+| 功能      | 说明                        |
+| --------- | --------------------------- |
+| 节点点击  | 显示节点详情预览（Tooltip） |
+| 节点双击  | 跳转到该知识点详情页        |
+| 拖拽节点  | 重新布局                    |
+| 缩放/平移 | 浏览大型图谱                |
+| 关系高亮  | 悬停时高亮相关关系          |
+| 筛选      | 按关系类型筛选显示          |
 
 ---
 
@@ -1371,11 +1624,13 @@ GET    /api/knowledge-bases/:kbId/graph            获取知识图谱
 
 ### 技能清单
 
-| 技能名 | 功能 | 输入 | 输出 |
-|--------|------|------|------|
-| `kb-clean-file` | 解析文件，提取文本和媒体 | file_path | { markdown, media[] } |
-| `kb-ocr-image` | VL模型 OCR + 描述 | image_data | { text, alt, ocr_text } |
-| `kb-upload-media` | 上传媒体到对象存储 | image_data, filename | { url, path } |
+> 💡 **注意**：数据清洗阶段使用的是**通用技能**，不属于知识库专用技能，因此不带 `kb-` 前缀。
+
+| 技能名           | 功能                     | 输入                 | 输出                    | 说明               |
+| ---------------- | ------------------------ | -------------------- | ----------------------- | ------------------ |
+| `file-parse`   | 解析文件，提取文本和媒体 | file_path            | { markdown, media[] }   | PDF/DOCX/HTML 解析 |
+| `ocr-image`    | VL模型 OCR + 描述        | image_data           | { text, alt, ocr_text } | 调用 VL 模型       |
+| `media-upload` | 上传媒体到对象存储       | image_data, filename | { url, path }           | 本地/S3/OSS        |
 
 ### VL模型调用示例
 
@@ -1516,12 +1771,14 @@ async function processImage(imageBuffer, context) {
 
 ### 技能清单
 
-| 技能名 | 功能 | 输入 | 输出 |
-|--------|------|------|------|
-| `kb-analyze-topic` | 分析文档主题，判断归属 | markdown, kb_id | { topic, suggested_parent, is_relevant } |
-| `kb-chunk-smart` | 智能分段 + 上下文补充 | markdown, options | { chunks[] } |
-| `kb-create-point` | 创建知识点记录 | chunk, parent_id | { point_id } |
-| `kb-create-knowledge` | 创建知识记录 | title, summary, kb_id | { knowledge_id } |
+> 💡 **说明**：以下技能是知识构造阶段的内部实现步骤，属于 [`kb-import-file`](#知识库管理技能知识整理专家专用) 和 [`kb-chunk`](#知识库管理技能知识整理专家专用) 的子流程。
+
+| 技能名                  | 功能                   | 输入                  | 输出                                     | 对应主技能        |
+| ----------------------- | ---------------------- | --------------------- | ---------------------------------------- | ----------------- |
+| `kb-analyze-topic`    | 分析文档主题，判断归属 | markdown, kb_id       | { topic, suggested_parent, is_relevant } | kb-import-file    |
+| `kb-chunk`            | 智能分段 + 上下文补充  | markdown, options     | { chunks[] }                             | kb-chunk          |
+| `kb-create-point`     | 创建知识点记录         | chunk, parent_id      | { point_id }                             | kb-import-file    |
+| `kb-create-knowledge` | 创建知识记录           | title, summary, kb_id | { knowledge_id }                         | kb-import-file    |
 
 ### 智能分段 Prompt
 
@@ -1598,8 +1855,8 @@ const CHUNK_PROMPT = `
 
 ### 技能清单
 
-| 技能名 | 功能 | 执行方式 |
-|--------|------|----------|
+| 技能名       | 功能         | 执行方式 |
+| ------------ | ------------ | -------- |
 | `kb-embed` | 生成向量嵌入 | 后台异步 |
 
 ---
@@ -1636,37 +1893,92 @@ const CHUNK_PROMPT = `
 
 ### 技能清单
 
-| 技能名 | 功能 | 执行方式 |
-|--------|------|----------|
+| 技能名        | 功能                     | 执行方式 |
+| ------------- | ------------------------ | -------- |
 | `kb-relate` | 分析知识点关联，建立关系 | 后台异步 |
 
 ---
 
 ## 专家技能汇总
 
-### 文档清洗专家技能
+### 技能分类总览
 
-| 技能名 | 功能 | 阶段 |
-|--------|------|------|
-| `kb-clean-file` | 解析文件，提取文本和媒体 | 清洗 |
-| `kb-ocr-image` | VL模型 OCR + 描述 | 清洗 |
-| `kb-upload-media` | 上传媒体到对象存储 | 清洗 |
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         技能分类总览                                  │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  通用技能（所有专家可用）                                              │
+│  ─────────────────────                                              │
+│  - file-parse: 文件解析（PDF/DOCX/HTML/Markdown）                    │
+│  - ocr-image: 图片 OCR + 描述（VL 模型）                             │
+│  - media-upload: 媒体上传（本地/S3/OSS）                             │
+│  - web-fetch: 网页抓取                                              │
+│                                                                     │
+│  知识库管理技能（知识整理专家专用）                                     │
+│  ─────────────────────────────────                                  │
+│  - kb-create: 创建知识库                                            │
+│  - kb-import-file: 导入文件                                         │
+│  - kb-import-web: 导入网页                                          │
+│  - kb-chunk: 智能分块                                               │
+│  - kb-embed: 向量化                                                 │
+│  - kb-relate: 关系分析                                              │
+│  - kb-update-point: 更新知识点                                      │
+│  - kb-delete-point: 删除知识点                                      │
+│  - kb-merge-points: 合并知识点                                      │
+│                                                                     │
+│  知识库检索技能（所有专家可用）                                        │
+│  ─────────────────────────────────                                  │
+│  - kb-list: 列出知识库                                              │
+│  - kb-search-vector: 向量检索                                       │
+│  - kb-search-graph: 图谱检索                                        │
+│  - kb-get-point: 获取知识点                                         │
+│  - kb-get-knowledge: 获取知识                                       │
+│  - kb-search-hybrid: 混合检索                                       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-### 知识整理专家技能
+### 通用技能详情
 
-| 技能名 | 功能 | 阶段 |
-|--------|------|------|
-| `kb-analyze-topic` | 分析文档主题，判断归属 | 构造 |
-| `kb-chunk-smart` | 智能分段 + 上下文补充 | 构造 |
-| `kb-create-point` | 创建知识点记录 | 构造 |
-| `kb-create-knowledge` | 创建知识记录 | 构造 |
+| 技能名           | 功能             | 输入                 | 输出                         | 实现位置                     |
+| ---------------- | ---------------- | -------------------- | ---------------------------- | ---------------------------- |
+| `file-parse`   | 解析各类文件格式 | file_path            | { markdown, media[] }        | data/skills/file-operations/ |
+| `ocr-image`    | 图片 OCR + 描述  | image_data           | { text, alt, ocr_text }      | 调用 VL 模型 API             |
+| `media-upload` | 上传媒体到存储   | image_data, filename | { url, path }                | data/skills/file-operations/ |
+| `web-fetch`    | 抓取网页内容     | url                  | { title, content, markdown } | data/skills/http-client/     |
+
+### 知识库管理技能详情
+
+| 技能名              | 功能       | 输入                                  | 输出         | 执行方式 |
+| ------------------- | ---------- | ------------------------------------- | ------------ | -------- |
+| `kb-create`       | 创建知识库 | name, description, embedding_model_id | kb_id        | 同步     |
+| `kb-import-file`  | 导入文件   | file_path, kb_id                      | knowledge_id | 同步     |
+| `kb-import-web`   | 导入网页   | url, kb_id                            | knowledge_id | 同步     |
+| `kb-chunk`        | 智能分块   | knowledge_id                          | point_ids[]  | 同步     |
+| `kb-embed`        | 向量化     | kb_id 或 point_ids                    | -            | 异步     |
+| `kb-relate`       | 关系分析   | kb_id                                 | -            | 异步     |
+| `kb-update-point` | 更新知识点 | point_id, content                     | -            | 同步     |
+| `kb-delete-point` | 删除知识点 | point_id                              | -            | 同步     |
+| `kb-merge-points` | 合并知识点 | point_ids[]                           | new_point_id | 同步     |
+
+### 知识库检索技能详情
+
+| 技能名               | 功能       | 输入                | 输出                  |
+| -------------------- | ---------- | ------------------- | --------------------- |
+| `kb-list`          | 列出知识库 | -                   | kb[]                  |
+| `kb-search-vector` | 向量检索   | query, kb_id, top_k | points[]              |
+| `kb-search-graph`  | 图谱检索   | point_id, depth     | points[], relations[] |
+| `kb-get-point`     | 获取知识点 | point_id            | point                 |
+| `kb-get-knowledge` | 获取知识   | knowledge_id        | knowledge             |
+| `kb-search-hybrid` | 混合检索   | query, kb_id        | points[]              |
 
 ### 后台异步技能
 
-| 技能名 | 功能 | 阶段 |
-|--------|------|------|
-| `kb-embed` | 生成向量嵌入 | 向量化 |
-| `kb-relate` | 分析知识点关联 | 图谱构建 |
+| 技能名        | 功能           | 触发条件             |
+| ------------- | -------------- | -------------------- |
+| `kb-embed`  | 生成向量嵌入   | 知识点创建后自动触发 |
+| `kb-relate` | 分析知识点关联 | 向量化完成后自动触发 |
 
 ---
 
@@ -1757,9 +2069,11 @@ const CHUNK_PROMPT = `
 
 ## 可用技能
 
-- kb-clean-file: 解析文件
-- kb-ocr-image: VL模型处理图片
-- kb-upload-media: 上传媒体文件
+> ⚠️ 注意：以下为通用技能，不带 `kb-` 前缀。
+
+- file-parse: 解析文件（PDF/DOCX/HTML/Markdown）
+- ocr-image: VL模型处理图片（OCR + 描述）
+- media-upload: 上传媒体文件（本地/S3/OSS）
 ```
 
 ### 知识整理专家
@@ -1791,35 +2105,35 @@ const CHUNK_PROMPT = `
 
 ### Phase 1: 基础架构（MVP）
 
-| 任务 | 预估工时 | 依赖 |
-|------|----------|------|
-| 创建数据库表 | 1h | - |
-| 知识库 CRUD API | 2h | 数据库表 |
-| 知识 CRUD API | 2h | 知识库 API |
-| 知识点 CRUD API | 2h | 知识 API |
-| kb-import-file 技能 | 3h | 知识点 API |
-| kb-chunk 技能 | 2h | kb-import-file |
-| kb-embed 技能 | 2h | kb-chunk |
-| kb-search 技能 | 2h | kb-embed |
+| 任务                | 预估工时 | 依赖           |
+| ------------------- | -------- | -------------- |
+| 创建数据库表        | 1h       | -              |
+| 知识库 CRUD API     | 2h       | 数据库表       |
+| 知识 CRUD API       | 2h       | 知识库 API     |
+| 知识点 CRUD API     | 2h       | 知识 API       |
+| kb-import-file 技能 | 3h       | 知识点 API     |
+| kb-chunk 技能       | 2h       | kb-import-file |
+| kb-embed 技能       | 2h       | kb-chunk       |
+| kb-search 技能      | 2h       | kb-embed       |
 
 **MVP 目标**：能导入文档、分块、生成向量、进行语义检索
 
 ### Phase 2: 智能化
 
-| 任务 | 预估工时 | 依赖 |
-|------|----------|------|
-| kb-relate 技能（LLM 关联分析） | 4h | Phase 1 |
-| kb-import-web 技能 | 2h | kb-import-file |
-| 知识图谱可视化 | 4h | kb-relate |
-| 混合检索（向量 + 关键词） | 3h | kb-search |
+| 任务                           | 预估工时 | 依赖           |
+| ------------------------------ | -------- | -------------- |
+| kb-relate 技能（LLM 关联分析） | 4h       | Phase 1        |
+| kb-import-web 技能             | 2h       | kb-import-file |
+| 知识图谱可视化                 | 4h       | kb-relate      |
+| 混合检索（向量 + 关键词）      | 3h       | kb-search      |
 
 ### Phase 3: 优化
 
-| 任务 | 预估工时 | 依赖 |
-|------|----------|------|
-| 向量数据库迁移 | 4h | Phase 2 |
-| 增量更新机制 | 2h | - |
-| 知识库权限控制 | 2h | - |
+| 任务           | 预估工时 | 依赖    |
+| -------------- | -------- | ------- |
+| 向量数据库迁移 | 4h       | Phase 2 |
+| 增量更新机制   | 2h       | -       |
+| 知识库权限控制 | 2h       | -       |
 
 ---
 
@@ -1827,10 +2141,11 @@ const CHUNK_PROMPT = `
 
 1. ~~**Embedding 模型选择**~~ → 已解决，见下方设计决策 #5
 2. ~~**专家集成方式**~~ → 已解决，见下方 RAG 集成方案
+
    - 知识库如何与专家对话结合？
    - 检索结果如何注入到 Prompt？
-
 3. **多租户隔离**
+
    - 知识库是否需要支持团队/组织级别？
 
 ---
@@ -2036,7 +2351,7 @@ const expertConfig = {
   knowledge_bases: {
     // 允许访问的知识库ID列表
     allowed: ['kb-finance', 'kb-company-policy'],
-    
+  
     // 默认知识库（可选，用于简化调用）
     default: 'kb-finance'
   },
@@ -2130,19 +2445,19 @@ const EXPERT_SYSTEM_PROMPT_TEMPLATE = `
 
 ### 实现优先级
 
-| 优先级 | 功能 | 说明 |
-|--------|------|------|
-| P0 | 检索技能实现 | kb-list, kb-search-vector, kb-get-point |
-| P1 | 专家知识库配置 | 专家配置中设置可访问的知识库 |
-| P1 | 技能权限控制 | 根据专家配置过滤可访问的知识库 |
-| P2 | kb-search-graph | 知识图谱检索 |
-| P2 | kb-search-hybrid | 混合检索 |
+| 优先级 | 功能             | 说明                                    |
+| ------ | ---------------- | --------------------------------------- |
+| P0     | 检索技能实现     | kb-list, kb-search-vector, kb-get-point |
+| P1     | 专家知识库配置   | 专家配置中设置可访问的知识库            |
+| P1     | 技能权限控制     | 根据专家配置过滤可访问的知识库          |
+| P2     | kb-search-graph  | 知识图谱检索                            |
+| P2     | kb-search-hybrid | 混合检索                                |
 
 ---
 
 ## 设计决策（补充）
 
-### 5. 模型类型扩展 ✅ 新增
+### 6. 模型类型扩展 ✅ 新增
 
 **背景**：当前 `ai_models` 表没有区分模型类型，无法在创建知识库时选择 Embedding 模型。
 
@@ -2161,11 +2476,11 @@ CREATE INDEX idx_model_type ON ai_models(model_type);
 
 **模型类型说明**：
 
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `text` | 文字模型（用于对话/生成） | GPT-4, DeepSeek Chat, Claude |
-| `multimodal` | 多模态模型（支持图片/音频） | GPT-4V, Claude 3, Gemini |
-| `embedding` | 嵌入式模型（用于向量化） | text-embedding-3-small, BGE |
+| 类型           | 说明                        | 示例                         |
+| -------------- | --------------------------- | ---------------------------- |
+| `text`       | 文字模型（用于对话/生成）   | GPT-4, DeepSeek Chat, Claude |
+| `multimodal` | 多模态模型（支持图片/音频） | GPT-4V, Claude 3, Gemini     |
+| `embedding`  | 嵌入式模型（用于向量化）    | text-embedding-3-small, BGE  |
 
 **初始 Embedding 模型数据**：
 
