@@ -67,83 +67,7 @@
 
 ## Code Review 记录
 
-### 2026-03-04: Phase 3 - 知识库技能实现
-
-**实现内容**：创建知识库管理技能
-
-**代码位置**：`data/skills/knowledge-base/`
-
-**文件结构**：
-
-```
-data/skills/knowledge-base/
-├── SKILL.md        # 技能定义文档
-└── index.js        # 技能实现
-```
-
-**工具列表**：
-
-| 工具名 | 功能 | 状态 |
-|--------|------|------|
-| `kb-list` | 获取知识库列表 | ✅ |
-| `kb-get` | 获取知识库详情 | ✅ |
-| `kb-create` | 创建知识库 | ✅ |
-| `kb-import-file` | 导入文件到知识库 | ✅ |
-| `kb-import-web` | 导入网页内容 | ✅ |
-| `kb-chunk-text` | 文本智能分块 | ✅ |
-| `kb-create-point` | 创建知识点 | ✅ |
-| `kb-embed` | 生成向量嵌入 | ✅ |
-| `kb-search-vector` | 向量语义检索 | ✅ |
-| `kb-get-point` | 获取知识点详情 | ✅ |
-| `kb-get-knowledge` | 获取文章详情 | ✅ |
-
-**后端 API 扩展**：
-
-| 新增路由 | 功能 |
-|----------|------|
-| `GET /api/kb/:kb_id/points/:id` | 获取知识点（含 embedding） |
-| `GET /api/kb/:kb_id/points-without-embedding` | 获取未向量化知识点 |
-| `PUT /api/kb/:kb_id/knowledges/:knowledge_id/points/:id` | 支持更新 embedding |
-
-**设计亮点**：
-
-1. **智能分块**：`chunkText()` 按段落分割，支持重叠，自动处理大段落
-2. **Token 估算**：区分中英文，准确估算 token 数量
-3. **向量存储**：使用 BLOB 存储 JSON 序列化的向量
-4. **相似度计算**：实现余弦相似度算法
-5. **API 集成**：通过 HTTP 调用后端 API，支持认证
-
-**代码质量**：
-
-| 项目 | 评价 | 说明 |
-|------|------|------|
-| 文件解析 | ✅ | 支持 .md, .txt, .html 直接解析 |
-| PDF/DOCX | ⚠️ | 需要调用对应的 PDF/DOCX 技能 |
-| 错误处理 | ✅ | 所有工具都有完善的错误处理 |
-| 文件验证 | ✅ | 检查文件大小、类型 |
-| 参数验证 | ✅ | 检查必填参数 |
-
-**配置说明**：
-
-```javascript
-// 环境变量配置
-EMBEDDING_API_URL   // Embedding API 地址
-EMBEDDING_API_KEY   // API 密钥
-EMBEDDING_MODEL     // 模型名称（默认 text-embedding-3-small）
-KB_API_BASE         // 后端 API 地址（默认 http://localhost:3000/api）
-```
-
-**待优化项**：
-
-| 问题 | 严重程度 | 建议 |
-|------|----------|------|
-| 向量检索性能 | 中 | 数据量大时应迁移到专业向量库 |
-| PDF/DOCX 解析 | 低 | 当前需要手动调用对应技能 |
-| 批量操作 | 建议 | 可添加批量创建知识点接口 |
-
----
-
-### 2026-03-04: 数据库迁移脚本实现
+### 2026-03-04: Phase 1 - 数据库迁移脚本实现
 
 **实现内容**：创建知识库数据库表结构
 
@@ -190,7 +114,7 @@ Checking knowledge_relations table...
 
 ---
 
-### 2026-03-04: 后端 API 实现
+### 2026-03-04: Phase 2 - 后端 API 实现
 
 #### 1. Sequelize 模型
 
@@ -293,6 +217,82 @@ knowledge_point (N) ↔ (N) knowledge_point (通过 knowledge_relation)
 
 ---
 
+### 2026-03-04: Phase 3 - 知识库技能实现
+
+**实现内容**：创建知识库管理技能
+
+**代码位置**：`data/skills/knowledge-base/`
+
+**文件结构**：
+
+```
+data/skills/knowledge-base/
+├── SKILL.md        # 技能定义文档
+└── index.js        # 技能实现
+```
+
+**工具列表**：
+
+| 工具名 | 功能 | 状态 |
+|--------|------|------|
+| `kb-list` | 获取知识库列表 | ✅ |
+| `kb-get` | 获取知识库详情 | ✅ |
+| `kb-create` | 创建知识库 | ✅ |
+| `kb-import-file` | 导入文件到知识库 | ✅ |
+| `kb-import-web` | 导入网页内容 | ✅ |
+| `kb-chunk-text` | 文本智能分块 | ✅ |
+| `kb-create-point` | 创建知识点 | ✅ |
+| `kb-embed` | 生成向量嵌入 | ✅ |
+| `kb-search-vector` | 向量语义检索 | ✅ |
+| `kb-get-point` | 获取知识点详情 | ✅ |
+| `kb-get-knowledge` | 获取文章详情 | ✅ |
+
+**后端 API 扩展**：
+
+| 新增路由 | 功能 |
+|----------|------|
+| `GET /api/kb/:kb_id/points/:id` | 获取知识点（含 embedding） |
+| `GET /api/kb/:kb_id/points-without-embedding` | 获取未向量化知识点 |
+| `PUT /api/kb/:kb_id/knowledges/:knowledge_id/points/:id` | 支持更新 embedding |
+
+**设计亮点**：
+
+1. **智能分块**：`chunkText()` 按段落分割，支持重叠，自动处理大段落
+2. **Token 估算**：区分中英文，准确估算 token 数量
+3. **向量存储**：使用 BLOB 存储 JSON 序列化的向量
+4. **相似度计算**：实现余弦相似度算法
+5. **API 集成**：通过 HTTP 调用后端 API，支持认证
+
+**代码质量**：
+
+| 项目 | 评价 | 说明 |
+|------|------|------|
+| 文件解析 | ✅ | 支持 .md, .txt, .html 直接解析 |
+| PDF/DOCX | ⚠️ | 需要调用对应的 PDF/DOCX 技能 |
+| 错误处理 | ✅ | 所有工具都有完善的错误处理 |
+| 文件验证 | ✅ | 检查文件大小、类型 |
+| 参数验证 | ✅ | 检查必填参数 |
+
+**配置说明**：
+
+```javascript
+// 环境变量配置
+EMBEDDING_API_URL   // Embedding API 地址
+EMBEDDING_API_KEY   // API 密钥
+EMBEDDING_MODEL     // 模型名称（默认 text-embedding-3-small）
+KB_API_BASE         // 后端 API 地址（默认 http://localhost:3000/api）
+```
+
+**待优化项**：
+
+| 问题 | 严重程度 | 建议 |
+|------|----------|------|
+| 向量检索性能 | 中 | 数据量大时应迁移到专业向量库 |
+| PDF/DOCX 解析 | 低 | 当前需要手动调用对应技能 |
+| 批量操作 | 建议 | 可添加批量创建知识点接口 |
+
+---
+
 ### 2026-03-04: Phase 4 - RAG 集成实现
 
 **实现内容**：创建 RAG 服务并集成到 Chat 流程
@@ -384,20 +384,6 @@ if (knowledgeConfig?.enabled && this.ragService) {
 | `lib/rag-service.js` | RAG 服务 | ✅ 已创建 |
 | `lib/chat-service.js` | Chat 服务 | ✅ 已修改 |
 | `lib/context-manager.js` | 上下文管理 | ✅ 已修改 |
-
----
-
-## 下一步计划
-
-### Phase 5: 前端界面
-
-需要实现以下页面：
-
-1. **知识库列表页**：显示用户的所有知识库
-2. **知识库详情页**：显示文章树和知识点
-3. **文章编辑器**：支持 Markdown 编辑和知识点管理
-4. **搜索界面**：语义搜索知识库内容
-5. **专家知识库配置**：在专家设置中配置关联的知识库
 
 ---
 
@@ -516,6 +502,42 @@ interface ExpertKnowledgeConfig { ... }
 | 知识图谱可视化 | 建议 | 后续可添加 vis-network 图谱视图 |
 | 拖拽排序 | 建议 | 支持拖拽调整文章顺序 |
 | 批量操作 | 建议 | 支持批量导入/删除 |
+
+---
+
+## 测试与修复记录
+
+### 2026-03-04: Phase 5 测试
+
+**问题 1**：聊天时报错 `Unknown column 'knowledge_config' in 'SELECT'`
+
+**原因**：数据库迁移脚本未执行，`experts` 表缺少 `knowledge_config` 字段
+
+**修复**：
+- 修复迁移脚本 `scripts/migrate-add-knowledge-config.js`，添加 DB_PORT 支持
+- 执行迁移脚本添加字段
+- 迁移脚本已包含 DB_PORT 配置
+
+**问题 2**：前端构建报错 `failed to resolve import "marked"`
+
+**原因**：`KnowledgeDetailView.vue` 使用 `marked` 库但未安装
+
+**修复**：
+- 执行 `npm install marked` 安装依赖
+- 前端构建成功
+
+**测试结果**：
+
+| 项目 | 结果 |
+|------|------|
+| 数据库迁移 | ✅ knowledge_config 字段已添加 |
+| Expert 模型 | ✅ 已包含 knowledge_config 字段 |
+| RAG 服务 | ✅ rag-service.js 正确集成到 chat-service |
+| 前端 API | ✅ knowledgeBaseApi 已导出 |
+| 前端 Store | ✅ knowledgeBase.ts 状态管理正确 |
+| 前端路由 | ✅ /knowledge 和 /knowledge/:kbId 已配置 |
+| 前端导航 | ✅ AppHeader 已添加知识库入口 |
+| 前端构建 | ✅ 构建成功（68 modules） |
 
 ---
 
