@@ -61,11 +61,16 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载知识库列表
    */
-  const loadKnowledgeBases = async (params?: { page?: number; limit?: number }) => {
+  const loadKnowledgeBases = async (params?: { page?: number; pageSize?: number; limit?: number }) => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await knowledgeBaseApi.getKnowledgeBases(params)
+      // 统一使用 pageSize 参数
+      const apiParams = {
+        page: params?.page,
+        pageSize: params?.pageSize || params?.limit,
+      }
+      const response = await knowledgeBaseApi.getKnowledgeBases(apiParams)
       knowledgeBases.value = response.items || []
       return response
     } catch (err) {
@@ -79,7 +84,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载知识库详情
    */
-  const loadKnowledgeBase = async (id: number) => {
+  const loadKnowledgeBase = async (id: string | number) => {
     isLoading.value = true
     error.value = null
     try {
@@ -115,7 +120,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 更新知识库
    */
-  const updateKnowledgeBase = async (id: number, data: UpdateKnowledgeBaseRequest) => {
+  const updateKnowledgeBase = async (id: string | number, data: UpdateKnowledgeBaseRequest) => {
     error.value = null
     try {
       const updated = await knowledgeBaseApi.updateKnowledgeBase(id, data)
@@ -136,7 +141,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 删除知识库
    */
-  const deleteKnowledgeBase = async (id: number) => {
+  const deleteKnowledgeBase = async (id: string | number) => {
     error.value = null
     try {
       await knowledgeBaseApi.deleteKnowledgeBase(id)
@@ -166,7 +171,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载文章树
    */
-  const loadKnowledgeTree = async (kbId: number) => {
+  const loadKnowledgeTree = async (kbId: string | number) => {
     isLoadingTree.value = true
     error.value = null
     try {
@@ -184,7 +189,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载文章详情
    */
-  const loadKnowledge = async (kbId: number, knowledgeId: number) => {
+  const loadKnowledge = async (kbId: string | number, knowledgeId: string | number) => {
     isLoading.value = true
     error.value = null
     try {
@@ -204,7 +209,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 创建文章
    */
-  const createKnowledge = async (kbId: number, data: CreateKnowledgeRequest) => {
+  const createKnowledge = async (kbId: string | number, data: CreateKnowledgeRequest) => {
     isLoading.value = true
     error.value = null
     try {
@@ -223,7 +228,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 更新文章
    */
-  const updateKnowledge = async (kbId: number, knowledgeId: number, data: UpdateKnowledgeRequest) => {
+  const updateKnowledge = async (kbId: string | number, knowledgeId: string | number, data: UpdateKnowledgeRequest) => {
     error.value = null
     try {
       const updated = await knowledgeBaseApi.updateKnowledge(kbId, knowledgeId, data)
@@ -242,7 +247,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 删除文章
    */
-  const deleteKnowledge = async (kbId: number, knowledgeId: number) => {
+  const deleteKnowledge = async (kbId: string | number, knowledgeId: string | number) => {
     error.value = null
     try {
       await knowledgeBaseApi.deleteKnowledge(kbId, knowledgeId)
@@ -263,7 +268,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载知识点列表
    */
-  const loadKnowledgePoints = async (kbId: number, knowledgeId: number) => {
+  const loadKnowledgePoints = async (kbId: string | number, knowledgeId: string | number) => {
     isLoadingPoints.value = true
     error.value = null
     try {
@@ -281,7 +286,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载知识点详情
    */
-  const loadKnowledgePoint = async (kbId: number, knowledgeId: number, pointId: number) => {
+  const loadKnowledgePoint = async (kbId: string | number, knowledgeId: string | number, pointId: string | number) => {
     isLoading.value = true
     error.value = null
     try {
@@ -299,7 +304,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 创建知识点
    */
-  const createKnowledgePoint = async (kbId: number, knowledgeId: number, data: CreateKnowledgePointRequest) => {
+  const createKnowledgePoint = async (kbId: string | number, knowledgeId: string | number, data: CreateKnowledgePointRequest) => {
     isLoading.value = true
     error.value = null
     try {
@@ -317,7 +322,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 更新知识点
    */
-  const updateKnowledgePoint = async (kbId: number, knowledgeId: number, pointId: number, data: UpdateKnowledgePointRequest) => {
+  const updateKnowledgePoint = async (kbId: string | number, knowledgeId: string | number, pointId: string | number, data: UpdateKnowledgePointRequest) => {
     error.value = null
     try {
       const updated = await knowledgeBaseApi.updateKnowledgePoint(kbId, knowledgeId, pointId, data)
@@ -338,7 +343,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 删除知识点
    */
-  const deleteKnowledgePoint = async (kbId: number, knowledgeId: number, pointId: number) => {
+  const deleteKnowledgePoint = async (kbId: string | number, knowledgeId: string | number, pointId: string | number) => {
     error.value = null
     try {
       await knowledgeBaseApi.deleteKnowledgePoint(kbId, knowledgeId, pointId)
@@ -358,7 +363,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
    * 语义搜索（单个知识库内）
    * 注意：默认阈值设为 0.1，因为 all-MiniLM-L6-v2 的相似度通常在 0.1-0.5 之间
    */
-  const search = async (kbId: number, query: string, topK = 5, threshold = 0.1) => {
+  const search = async (kbId: string | number, query: string, topK = 5, threshold = 0.1) => {
     isSearching.value = true
     error.value = null
     try {

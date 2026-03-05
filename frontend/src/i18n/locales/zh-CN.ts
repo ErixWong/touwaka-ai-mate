@@ -69,6 +69,8 @@ export default {
     timeMinutesAgo: '{n}分钟前',
     timeYesterday: '昨天',
     timeDaysAgo: '{n}天前',
+    uploadImage: '上传图片',
+    selectModel: '选择模型',
   },
 
   // 调试面板
@@ -403,6 +405,7 @@ export default {
     expert: '专家',
     topics: '话题',
     tasks: '任务',
+    skills: '技能',
     debug: '调试',
     collapse: '收起面板',
     expand: '展开面板',

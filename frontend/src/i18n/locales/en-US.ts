@@ -67,6 +67,8 @@ export default {
     timeMinutesAgo: '{n} min ago',
     timeYesterday: 'Yesterday',
     timeDaysAgo: '{n} days ago',
+    uploadImage: 'Upload image',
+    selectModel: 'Select Model',
   },
 
   // Debug panel
@@ -424,6 +426,7 @@ export default {
     expert: 'Expert',
     topics: 'Topics',
     tasks: 'Tasks',
+    skills: 'Skills',
     debug: 'Debug',
     collapse: 'Collapse Panel',
     expand: 'Expand Panel',

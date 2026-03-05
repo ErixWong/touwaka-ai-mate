@@ -104,31 +104,55 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 添加本地消息（用于 SSE 流式显示）
+   * 支持多模态消息格式
    */
   let messageCounter = 0
-  const addLocalMessage = (message: Partial<Message>) => {
+  const addLocalMessage = (message: Partial<Message> & { images?: Array<{ url: string; name: string; base64?: string }> }) => {
     // 检查是否已存在相同 ID 的消息，避免重复添加
     const messageId = message.id || `temp-${Date.now()}-${++messageCounter}`
     const existingIndex = messages.value.findIndex(m => m.id === messageId)
-    
+
+    // 处理多模态内容
+    let content = message.content || ''
+    if (message.images && message.images.length > 0) {
+      // 将图片转换为 OpenAI 多模态格式并序列化为 JSON
+      const multimodalContent = []
+
+      if (content) {
+        multimodalContent.push({ type: 'text', text: content })
+      }
+
+      for (const img of message.images) {
+        // 使用 base64 或 URL
+        const imageUrl = img.base64 || img.url
+        multimodalContent.push({
+          type: 'image_url',
+          image_url: { url: imageUrl }
+        })
+      }
+
+      // 序列化为 JSON 字符串存储
+      content = JSON.stringify({ type: 'multimodal', content: multimodalContent })
+    }
+
     if (existingIndex >= 0) {
       // 如果已存在，更新而不是添加新的
       const existing = messages.value[existingIndex]
       if (existing) {
-        existing.content = message.content || existing.content
+        existing.content = content || existing.content
         existing.status = message.status || existing.status
         existing.updated_at = new Date().toISOString()
         return existing
       }
     }
-    
+
     const newMessage: Message = {
       id: messageId,
       expert_id: message.expert_id || currentExpertId.value || '',
       user_id: message.user_id || '',
       topic_id: message.topic_id,
       role: message.role || 'assistant',
-      content: message.content || '',
+      content: content,
       status: message.status || 'streaming',
       metadata: message.metadata,
       created_at: message.created_at || new Date().toISOString(),
