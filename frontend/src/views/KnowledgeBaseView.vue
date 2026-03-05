@@ -473,7 +473,11 @@ onUnmounted(() => {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  min-height: 100%;
+  height: calc(100vh - 120px);
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
@@ -635,6 +639,9 @@ onUnmounted(() => {
   padding: 8px;
   align-content: start;
   box-sizing: border-box;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .kb-card {
