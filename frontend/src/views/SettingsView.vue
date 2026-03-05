@@ -916,7 +916,7 @@
               <label class="form-label">{{ $t('settings.expertExpressiveModel') }}</label>
               <select v-model="expertForm.expressive_model_id" class="form-input">
                 <option value="">{{ $t('settings.selectModel') }}</option>
-                <option v-for="model in modelStore.models" :key="model.id" :value="model.id">
+                <option v-for="model in expertAvailableModels" :key="model.id" :value="model.id">
                   {{ model.name }}
                 </option>
               </select>
@@ -925,7 +925,7 @@
               <label class="form-label">{{ $t('settings.expertReflectiveModel') }}</label>
               <select v-model="expertForm.reflective_model_id" class="form-input">
                 <option value="">{{ $t('settings.selectModel') }}</option>
-                <option v-for="model in modelStore.models" :key="model.id" :value="model.id">
+                <option v-for="model in expertAvailableModels" :key="model.id" :value="model.id">
                   {{ model.name }}
                 </option>
               </select>
@@ -1443,6 +1443,14 @@ const expertTotalPages = computed(() =>
 const paginatedExperts = computed(() => {
   const start = (expertPage.value - 1) * EXPERT_PAGE_SIZE
   return expertStore.experts.slice(start, start + EXPERT_PAGE_SIZE)
+})
+
+// 专家可用的模型（只显示对话模型和多模态模型）
+const expertAvailableModels = computed(() => {
+  return modelStore.models.filter(m =>
+    m.is_active &&
+    (m.model_type === 'chat' || m.model_type === 'image')
+  )
 })
 
 // Provider 选择
