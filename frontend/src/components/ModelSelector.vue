@@ -33,7 +33,11 @@ const emit = defineEmits<{
 const modelStore = useModelStore()
 
 const availableModels = computed(() => {
-  return modelStore.models.filter(m => m.is_active)
+  // 只显示对话模型和多模态模型，向量模型不在专家中使用
+  return modelStore.models.filter(m =>
+    m.is_active &&
+    (m.model_type === 'chat' || m.model_type === 'image')
+  )
 })
 
 const handleChange = (event: Event) => {
