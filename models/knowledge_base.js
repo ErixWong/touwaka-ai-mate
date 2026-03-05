@@ -5,10 +5,9 @@ export default class knowledge_base extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
-        primaryKey: true,
-        autoIncrement: true
+        primaryKey: true
       },
       name: {
         type: DataTypes.STRING(255),

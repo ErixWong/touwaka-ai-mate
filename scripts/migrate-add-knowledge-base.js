@@ -33,7 +33,7 @@ const KB_IMAGES_ROOT = process.env.KB_IMAGES_ROOT || './data/kb-images';
  */
 const CREATE_KNOWLEDGE_BASES_TABLE = `
 CREATE TABLE IF NOT EXISTS knowledge_bases (
-  id INT PRIMARY KEY AUTO_INCREMENT,
+  id VARCHAR(20) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   description TEXT,
   owner_id VARCHAR(32) NOT NULL,
@@ -52,9 +52,9 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
  */
 const CREATE_KNOWLEDGES_TABLE = `
 CREATE TABLE IF NOT EXISTS knowledges (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  kb_id INT NOT NULL,
-  parent_id INT DEFAULT NULL COMMENT '自关联，形成树状结构',
+  id VARCHAR(20) PRIMARY KEY,
+  kb_id VARCHAR(20) NOT NULL,
+  parent_id VARCHAR(20) DEFAULT NULL COMMENT '自关联，形成树状结构',
   title VARCHAR(500) NOT NULL,
   summary TEXT COMMENT 'LLM 生成的摘要',
   source_type ENUM('file', 'web', 'manual') DEFAULT 'manual',
@@ -77,8 +77,8 @@ CREATE TABLE IF NOT EXISTS knowledges (
  */
 const CREATE_KNOWLEDGE_POINTS_TABLE = `
 CREATE TABLE IF NOT EXISTS knowledge_points (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  knowledge_id INT NOT NULL,
+  id VARCHAR(20) PRIMARY KEY,
+  knowledge_id VARCHAR(20) NOT NULL,
   title VARCHAR(500),
   content MEDIUMTEXT NOT NULL COMMENT 'Markdown 格式',
   context TEXT COMMENT '上下文信息（用于向量化）',
@@ -97,9 +97,9 @@ CREATE TABLE IF NOT EXISTS knowledge_points (
  */
 const CREATE_KNOWLEDGE_RELATIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS knowledge_relations (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  source_id INT NOT NULL,
-  target_id INT NOT NULL,
+  id VARCHAR(20) PRIMARY KEY,
+  source_id VARCHAR(20) NOT NULL,
+  target_id VARCHAR(20) NOT NULL,
   relation_type ENUM('depends_on', 'references', 'related_to', 'contradicts', 'extends', 'example_of') NOT NULL,
   confidence DECIMAL(3,2) DEFAULT 1.00 COMMENT 'LLM 置信度 (0-1)',
   created_by ENUM('llm', 'manual') DEFAULT 'llm',

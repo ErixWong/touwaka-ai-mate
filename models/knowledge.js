@@ -5,13 +5,12 @@ export default class knowledge extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
-        primaryKey: true,
-        autoIncrement: true
+        primaryKey: true
       },
       kb_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
         references: {
           model: 'knowledge_bases',
@@ -20,7 +19,7 @@ export default class knowledge extends Model {
         comment: '所属知识库'
       },
       parent_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: true,
         references: {
           model: 'knowledges',

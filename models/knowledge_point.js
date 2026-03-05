@@ -5,13 +5,12 @@ export default class knowledge_point extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
-        primaryKey: true,
-        autoIncrement: true
+        primaryKey: true
       },
       knowledge_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
         references: {
           model: 'knowledges',
