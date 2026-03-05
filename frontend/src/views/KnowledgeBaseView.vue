@@ -44,7 +44,7 @@
     <div v-else class="kb-grid">
       <!-- KB Cards -->
       <div
-        v-for="kb in filteredKnowledgeBases"
+        v-for="kb in kbStore.knowledgeBases"
         :key="kb.id"
         class="kb-card"
         @click="openKbDetail(kb)"
@@ -266,19 +266,6 @@ const contextMenu = ref({
 })
 
 // Computed
-const filteredKnowledgeBases = computed(() => {
-  // 如果有搜索词，在本地过滤
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    return kbStore.knowledgeBases.filter(
-      kb =>
-        kb.name.toLowerCase().includes(query) ||
-        kb.description?.toLowerCase().includes(query)
-    )
-  }
-  return kbStore.knowledgeBases
-})
-
 // 可见的页码
 const visiblePages = computed(() => {
   const pages: number[] = []
@@ -484,10 +471,7 @@ onUnmounted(() => {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  min-height: 100%;
   box-sizing: border-box;
 }
 
@@ -645,10 +629,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
-  flex: 1;
   width: 100%;
-  min-height: 0;
-  overflow-y: auto;
   padding: 8px;
   align-content: start;
   box-sizing: border-box;
