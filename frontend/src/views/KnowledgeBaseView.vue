@@ -64,7 +64,10 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="totalPages > 1" class="pagination">
+      <div class="pagination">
+        <div class="pagination-debug" v-if="false">
+          totalPages: {{ totalPages }}, currentPage: {{ currentPage }}, totalCount: {{ totalCount }}
+        </div>
         <button
           class="page-btn"
           :disabled="currentPage === 1"
@@ -434,9 +437,11 @@ const loadKbsWithPagination = async () => {
       page: currentPage.value,
       limit: pageSize,
     })
+    console.log('[KB] API response:', response)
     if (response && response.pagination) {
       totalCount.value = response.pagination.total
       totalPages.value = response.pagination.pages
+      console.log('[KB] Pagination:', { total: totalCount.value, pages: totalPages.value, current: currentPage.value })
     }
   } catch (error) {
     console.error('Failed to load knowledge bases:', error)
@@ -639,9 +644,6 @@ onUnmounted(() => {
   padding: 8px;
   align-content: start;
   box-sizing: border-box;
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 .kb-card {
