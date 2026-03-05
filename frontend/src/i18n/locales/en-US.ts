@@ -272,7 +272,7 @@ export default {
     selectModelType: 'Select Model Type',
     modelTypeChat: 'Chat Model',
     modelTypeEmbedding: 'Embedding Model',
-    modelTypeImage: 'Image Model',
+    modelTypeImage: 'Multimodal Model',
     modelTypeAudio: 'Audio Model',
     maxTokens: 'Max Tokens',
     maxTokensPlaceholder: 'e.g., 4096',

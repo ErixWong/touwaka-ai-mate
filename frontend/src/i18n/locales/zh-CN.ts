@@ -274,7 +274,7 @@ export default {
     selectModelType: '选择模型类型',
     modelTypeChat: '对话模型',
     modelTypeEmbedding: '向量模型',
-    modelTypeImage: '图像模型',
+    modelTypeImage: '多模态模型',
     modelTypeAudio: '语音模型',
     maxTokens: '最大 Token',
     maxTokensPlaceholder: '例如：4096',
