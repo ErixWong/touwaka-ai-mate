@@ -10,6 +10,7 @@
  */
 
 import logger from '../../lib/logger.js';
+import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import {
   buildQueryOptions,
@@ -139,17 +140,12 @@ class KnowledgeBaseController {
         return;
       }
 
-      // 生成随机 ID（8位数字）
-      const generateRandomId = () => {
-        return Math.floor(10000000 + Math.random() * 90000000);
-      };
-
-      // 确保生成的 ID 不冲突
-      let newId = generateRandomId();
+      // 生成唯一 ID（20位字母数字，与技能 ID 一致）
+      let newId = Utils.newID(20);
       let exists = await this.KnowledgeBase.findOne({ where: { id: newId } });
       let attempts = 0;
       while (exists && attempts < 10) {
-        newId = generateRandomId();
+        newId = Utils.newID(20);
         exists = await this.KnowledgeBase.findOne({ where: { id: newId } });
         attempts++;
       }
@@ -307,6 +303,50 @@ class KnowledgeBaseController {
   // ==================== 文章 CRUD ====================
 
   /**
+   * 获取文章列表（GET /:kb_id/knowledges）
+   */
+  async listKnowledges(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+      const { page = 1, pageSize = 20 } = ctx.query;
+
+      // 验证知识库权限
+      const kb = await this.KnowledgeBase.findOne({
+        where: { id: kb_id, owner_id: ctx.state.userId },
+        raw: true,
+      });
+      if (!kb) {
+        ctx.error('知识库不存在或无权限', 404);
+        return;
+      }
+
+      const offset = (parseInt(page) - 1) * parseInt(pageSize);
+
+      const { count, rows } = await this.Knowledge.findAndCountAll({
+        where: { kb_id },
+        order: [['position', 'ASC']],
+        limit: parseInt(pageSize),
+        offset,
+        raw: true,
+      });
+
+      ctx.success({
+        items: rows,
+        pagination: {
+          page: parseInt(page),
+          size: parseInt(pageSize),
+          total: count,
+          pages: Math.ceil(count / parseInt(pageSize)),
+        },
+      });
+    } catch (error) {
+      logger.error('List knowledges error:', error);
+      ctx.error('获取文章列表失败', 500);
+    }
+  }
+
+  /**
    * 查询文章列表（POST /query）
    */
   async queryKnowledges(ctx) {
@@ -431,8 +471,12 @@ class KnowledgeBaseController {
         where: { kb_id, parent_id: parent_id || null },
       }) || 0;
 
+      // 生成唯一 ID（20位字母数字）
+      const newId = Utils.newID(20);
+
       const knowledge = await this.Knowledge.create({
-        kb_id: parseInt(kb_id),
+        id: newId,
+        kb_id: kb_id,
         parent_id: parent_id || null,
         title,
         summary: summary || null,
@@ -689,9 +733,13 @@ class KnowledgeBaseController {
         where: { knowledge_id },
       }) || 0;
 
+      // 生成唯一 ID（20位字母数字）
+      const newId = Utils.newID(20);
+
       // 创建知识点
       const point = await this.KnowledgePoint.create({
-        knowledge_id: parseInt(knowledge_id),
+        id: newId,
+        knowledge_id: knowledge_id,
         title: title || null,
         content,
         context: context || null,

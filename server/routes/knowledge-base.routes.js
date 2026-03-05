@@ -41,6 +41,9 @@ export default (controller) => {
 
   // ==================== 文章路由 ====================
 
+  // 获取文章列表（支持分页）
+  router.get('/:kb_id/knowledges', authenticate(), controller.listKnowledges.bind(controller));
+
   // 复杂查询文章列表
   router.post('/:kb_id/knowledges/query', authenticate(), controller.queryKnowledges.bind(controller));
 
