@@ -52,11 +52,13 @@ function parseEmbedding(embedding) {
       if (Array.isArray(parsed)) return parsed;
     } catch {
       // JSON 解析失败，可能是 VECTOR 类型的二进制数据
-      // 直接从 buffer 创建 Float32Array
       try {
-        const float32 = new Float32Array(embedding);
+        // 创建新的 Buffer 副本，避免 offset 问题
+        const buf = Buffer.from(embedding);
+        const float32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
         return Array.from(float32);
-      } catch {
+      } catch (e) {
+        logger.error('[KB] parseEmbedding error:', e.message);
         return null;
       }
     }
