@@ -33,6 +33,48 @@ function toVectorSQL(embedding) {
   return `VEC_FromText('${jsonStr}')`;
 }
 
+/**
+ * 将数据库中的 embedding 转换为数组
+ * @param {Buffer|Array|string} embedding 从数据库读取的 embedding
+ * @returns {Array|null} 向量数组
+ */
+function parseEmbedding(embedding) {
+  if (!embedding) return null;
+  // 如果已经是数组，直接返回
+  if (Array.isArray(embedding)) return embedding;
+
+  // 如果是 Buffer，先尝试当作 JSON 字符串解析
+  if (Buffer.isBuffer(embedding)) {
+    try {
+      const str = embedding.toString('utf8');
+      // 尝试 JSON 解析
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // JSON 解析失败，可能是 VECTOR 类型的二进制数据
+      // 直接从 buffer 创建 Float32Array
+      try {
+        const float32 = new Float32Array(embedding);
+        return Array.from(float32);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  // 如果是字符串，尝试 JSON 解析（旧格式）
+  if (typeof embedding === 'string') {
+    try {
+      return JSON.parse(embedding);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 // 允许过滤的字段白名单
 const KB_FILTER_FIELDS = [
   'id', 'name', 'description', 'owner_id',
@@ -1013,7 +1055,7 @@ class KnowledgeBaseController {
 
       // 解析 embedding
       if (point.embedding) {
-        point.embedding = JSON.parse(point.embedding.toString());
+        point.embedding = parseEmbedding(point.embedding);
       }
 
       ctx.success(point);
@@ -1299,10 +1341,7 @@ class KnowledgeBaseController {
       // 计算相似度并排序
       const results = points
         .map(point => {
-          let pointEmbedding = point.embedding;
-          if (Buffer.isBuffer(pointEmbedding)) {
-            pointEmbedding = JSON.parse(pointEmbedding.toString());
-          }
+          const pointEmbedding = parseEmbedding(point.embedding);
           const similarity = this.cosineSimilarity(queryEmbedding, pointEmbedding);
           return {
             point: {
@@ -1418,10 +1457,7 @@ class KnowledgeBaseController {
       // 计算相似度并排序
       const results = points
         .map(point => {
-          let pointEmbedding = point.embedding;
-          if (Buffer.isBuffer(pointEmbedding)) {
-            pointEmbedding = JSON.parse(pointEmbedding.toString());
-          }
+          const pointEmbedding = parseEmbedding(point.embedding);
           const similarity = this.cosineSimilarity(queryEmbedding, pointEmbedding);
           const knowledge = knowledgeMap.get(point.knowledge_id);
           const kb = knowledge ? kbMap.get(knowledge.kb_id) : null;
@@ -1609,7 +1645,8 @@ class KnowledgeBaseController {
       }
 
       const data = await response.json();
-      return data.data?.[0]?.embedding || null;
+      // 支持 OpenAI 格式 (data[0].embedding) 和 Ollama 格式 (embeddings[0])
+      return data.data?.[0]?.embedding || data.embeddings?.[0] || null;
     } catch (error) {
       logger.error('[KB] Generate embedding error:', error);
       return null;

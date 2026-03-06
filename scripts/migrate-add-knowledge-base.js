@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS knowledge_points (
   title VARCHAR(500),
   content MEDIUMTEXT NOT NULL COMMENT 'Markdown 格式',
   context TEXT COMMENT '上下文信息（用于向量化）',
-  embedding BLOB COMMENT '向量（JSON 序列化）',
+  embedding VECTOR(1024) COMMENT '向量（1024维）',
   position INT DEFAULT 0,
   token_count INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
