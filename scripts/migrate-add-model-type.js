@@ -15,6 +15,15 @@ const DB_CONFIG = {
   database: process.env.DB_NAME,
 };
 
+async function hasColumn(connection, tableName, columnName) {
+  const [rows] = await connection.execute(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [DB_CONFIG.database, tableName, columnName]
+  );
+  return rows.length > 0;
+}
+
 async function migrate() {
   let connection;
 
@@ -22,11 +31,15 @@ async function migrate() {
     connection = await mysql.createConnection(DB_CONFIG);
     console.log('Connected to database:', DB_CONFIG.database);
 
-    // Drop the existing column and recreate with correct ENUM values
-    console.log('Dropping old model_type column...');
-    await connection.execute(`
-      ALTER TABLE ai_models DROP COLUMN model_type
-    `);
+    const modelTypeExists = await hasColumn(connection, 'ai_models', 'model_type');
+
+    if (modelTypeExists) {
+      // Drop the existing column and recreate with correct ENUM values
+      console.log('Dropping old model_type column...');
+      await connection.execute(`
+        ALTER TABLE ai_models DROP COLUMN model_type
+      `);
+    }
 
     console.log('Adding new model_type column with correct ENUM values...');
     await connection.execute(`
