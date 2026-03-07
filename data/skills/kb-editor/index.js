@@ -351,7 +351,6 @@ async function execute(toolName, params, context = {}) {
   const tools = {
     // 知识库操作
     'list_my_kbs': listMyKnowledgeBases,
-    'list_kbs': listMyKnowledgeBases,
     'list_embedding_models': listEmbeddingModels,
     'get_kb': getKnowledgeBase,
     'create_kb': createKnowledgeBase,

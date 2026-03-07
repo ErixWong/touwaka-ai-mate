@@ -270,7 +270,6 @@ async function execute(toolName, params, context = {}) {
   const tools = {
     // 知识库查询
     'list_my_kbs': listMyKnowledgeBases,
-    'list_kbs': listMyKnowledgeBases,
     'get_kb': getKnowledgeBase,
 
     // 文章查询
