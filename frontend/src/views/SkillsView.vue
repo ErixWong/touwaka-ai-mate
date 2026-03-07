@@ -43,12 +43,12 @@
             <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
           </div>
           <div class="skill-badges">
-            <span 
-              class="security-badge" 
-              :class="getSecurityClass(skill.security_score)"
+            <span
+              class="security-badge"
+              :class="getSecurityClass(skill.security_score ?? 0)"
               :title="$t('skills.securityScore')"
             >
-              {{ skill.security_score }}
+              {{ skill.security_score ?? '-' }}
             </span>
             <span class="status-badge" :class="{ active: skill.is_active }">
               {{ skill.is_active ? $t('skills.active') : $t('skills.inactive') }}
@@ -131,8 +131,8 @@
           <div class="detail-section">
             <h4 class="section-title">{{ $t('skills.securityInfo') }}</h4>
             <div class="security-info">
-              <div class="security-score" :class="getSecurityClass(selectedSkill.security_score)">
-                {{ $t('skills.securityScore') }}: {{ selectedSkill.security_score }}/100
+              <div class="security-score" :class="getSecurityClass(selectedSkill.security_score ?? 0)">
+                {{ $t('skills.securityScore') }}: {{ selectedSkill.security_score ?? '-' }}/100
               </div>
               <div v-if="selectedSkill.security_warnings && selectedSkill.security_warnings.length > 0">
                 <p class="warnings-title">{{ $t('skills.warnings') }}:</p>

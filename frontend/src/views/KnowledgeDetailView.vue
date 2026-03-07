@@ -330,7 +330,17 @@ const getRouteParam = (param: string | string[] | undefined): string | undefined
 
 // Computed
 // 支持字符串(UUID)和数字类型的 kbId
+// 注意：kbId 可能为 undefined（直接访问 URL 时），但组件会在 onMounted 中处理
 const kbId = computed(() => getRouteParam(route.params.kbId))
+
+// 获取确保非空的 kbId，用于 API 调用
+const requireKbId = (): string => {
+  const id = kbId.value
+  if (!id) {
+    throw new Error('Knowledge base ID is required')
+  }
+  return id
+}
 
 const flatKnowledgeList = computed(() => {
   const flatten = (nodes: Knowledge[]): Knowledge[] => {
@@ -370,7 +380,7 @@ const handleRevectorize = async () => {
       if (!revectorizeJobId) return
 
       try {
-        const progress = await knowledgeBaseApi.getRevectorizeProgress(kbId.value, revectorizeJobId)
+        const progress = await knowledgeBaseApi.getRevectorizeProgress(requireKbId(), revectorizeJobId)
         revectorizeProgress.value = progress
 
         if (progress.status === 'running') {
@@ -381,7 +391,7 @@ const handleRevectorize = async () => {
           alert(`重新向量化完成！\n总计: ${progress.total}\n成功: ${progress.success}\n失败: ${progress.failed}\n向量维度: ${progress.embedding_dim}`)
           // 刷新知识点列表（如果有选中文章）
           if (selectedKnowledge.value?.id) {
-            await kbStore.loadKnowledgePoints(kbId.value, selectedKnowledge.value.id)
+            await kbStore.loadKnowledgePoints(requireKbId(), selectedKnowledge.value.id)
           }
           isRevectorizing.value = false
           revectorizeJobId = ''
@@ -416,7 +426,7 @@ const selectKnowledge = async (knowledge: Knowledge) => {
   selectedKnowledge.value = knowledge
   selectedPoint.value = null
   // Load points for this knowledge
-  await kbStore.loadKnowledge(kbId.value, knowledge.id)
+  await kbStore.loadKnowledge(requireKbId(), knowledge.id)
 }
 
 const selectPoint = (point: KnowledgePoint) => {
@@ -458,7 +468,7 @@ const deleteKnowledge = async (knowledge: Knowledge) => {
   if (!confirm(t('knowledgeBase.article.deleteConfirm', { title: knowledge.title }))) return
 
   try {
-    await kbStore.deleteKnowledge(kbId.value, knowledge.id)
+    await kbStore.deleteKnowledge(requireKbId(), knowledge.id)
     if (selectedKnowledge.value?.id === knowledge.id) {
       selectedKnowledge.value = null
     }
@@ -478,12 +488,12 @@ const submitArticle = async () => {
 
   try {
     if (editingKnowledge.value) {
-      await kbStore.updateKnowledge(kbId.value, editingKnowledge.value.id, {
+      await kbStore.updateKnowledge(requireKbId(), editingKnowledge.value.id, {
         title: articleForm.value.title,
         summary: articleForm.value.summary,
       })
     } else {
-      await kbStore.createKnowledge(kbId.value, {
+      await kbStore.createKnowledge(requireKbId(), {
         title: articleForm.value.title,
         parent_id: articleForm.value.parent_id,
         summary: articleForm.value.summary,
@@ -508,7 +518,7 @@ const submitPoint = async () => {
   try {
     if (editingPoint.value) {
       await kbStore.updateKnowledgePoint(
-        kbId.value,
+        requireKbId(),
         selectedKnowledge.value.id,
         editingPoint.value.id,
         {
@@ -518,7 +528,7 @@ const submitPoint = async () => {
         }
       )
     } else {
-      await kbStore.createKnowledgePoint(kbId.value, selectedKnowledge.value.id, {
+      await kbStore.createKnowledgePoint(requireKbId(), selectedKnowledge.value.id, {
         title: pointForm.value.title,
         content: pointForm.value.content,
         context: pointForm.value.context,
@@ -535,7 +545,7 @@ const performSearch = async () => {
   if (!searchQuery.value.trim()) return
 
   hasSearched.value = true
-  await kbStore.search(kbId.value, searchQuery.value)
+  await kbStore.search(requireKbId(), searchQuery.value)
 }
 
 const closeSearchDialog = () => {
@@ -548,8 +558,9 @@ const closeSearchDialog = () => {
 // Initialize
 onMounted(async () => {
   try {
-    await kbStore.loadKnowledgeBase(kbId.value)
-    await kbStore.loadKnowledgeTree(kbId.value)
+    const id = requireKbId()
+    await kbStore.loadKnowledgeBase(id)
+    await kbStore.loadKnowledgeTree(id)
   } catch (error) {
     console.error('Failed to load knowledge base:', error)
     goBack()
