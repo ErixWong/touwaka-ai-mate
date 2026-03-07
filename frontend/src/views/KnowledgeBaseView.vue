@@ -56,11 +56,19 @@
             <div class="kb-card-header">
               <div class="kb-card-icon">{{ getKbIcon(kb) }}</div>
               <div class="kb-card-name">{{ kb.name }}</div>
+              <div class="kb-card-actions">
+                <button class="kb-action-btn" @click.stop="editKb(kb)" :title="$t('common.edit')">✏️</button>
+                <button class="kb-action-btn danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">🗑️</button>
+              </div>
             </div>
             <div class="kb-card-desc" v-if="kb.description">{{ kb.description }}</div>
             <div class="kb-card-stats">
               <span>{{ $t('knowledgeBase.pointCount', { count: kb.point_count || 0 }) }}</span>
+              <span class="kb-card-dim">{{ kb.embedding_dim || 384 }}D</span>
               <span class="kb-card-time">{{ formatUpdatedTime(kb.updated_at) }}</span>
+            </div>
+            <div class="kb-card-model" v-if="kb.embedding_model_id && kb.embedding_model_id !== 'local'">
+              <span class="model-badge">{{ getModelName(kb.embedding_model_id) }}</span>
             </div>
           </div>
         </div>
@@ -274,6 +282,17 @@ const embeddingModels = computed(() => {
   )
 })
 
+// 获取选中模型的 embedding_dim
+const selectedEmbeddingDim = computed(() => {
+  if (!formData.value.embedding_model_id) {
+    return 384 // 默认本地模型维度
+  }
+  const model = embeddingModels.value.find(
+    (m: any) => m.id === formData.value.embedding_model_id
+  )
+  return model?.embedding_dim || 384
+})
+
 // Context menu
 const contextMenu = ref({
   visible: false,
@@ -317,6 +336,12 @@ const getKbIcon = (kb: KnowledgeBase) => {
   return icons[index]
 }
 
+// 获取模型名称
+const getModelName = (modelId: string) => {
+  const model = modelStore.models.find((m: any) => m.id === modelId)
+  return model?.name || modelId
+}
+
 const formatUpdatedTime = (dateStr: string) => {
   const date = new Date(dateStr)
   const now = new Date()
@@ -346,19 +371,21 @@ const submitForm = async () => {
     // 转换 embedding_model_id 为字符串
     const embeddingModelId = formData.value.embedding_model_id
       ? String(formData.value.embedding_model_id)
-      : undefined
+      : 'local'
 
     if (editingKb.value) {
       await kbStore.updateKnowledgeBase(editingKb.value.id, {
         name: formData.value.name,
         description: formData.value.description,
         embedding_model_id: embeddingModelId,
+        embedding_dim: selectedEmbeddingDim.value,
       })
     } else {
       await kbStore.createKnowledgeBase({
         name: formData.value.name,
         description: formData.value.description,
         embedding_model_id: embeddingModelId,
+        embedding_dim: selectedEmbeddingDim.value,
       })
       // 创建后刷新当前页
       await loadKbsWithPagination()
@@ -758,6 +785,45 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   margin-bottom: 4px;
+  position: relative;
+}
+
+.kb-card-actions {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.kb-card:hover .kb-card-actions {
+  opacity: 1;
+}
+
+.kb-action-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.kb-action-btn:hover {
+  background: #fff;
+  transform: scale(1.1);
+}
+
+.kb-action-btn.danger:hover {
+  background: #fee2e2;
 }
 
 .kb-card-name {
@@ -793,6 +859,29 @@ onUnmounted(() => {
 .kb-card-time {
   font-size: 10px;
   color: var(--text-tertiary, #9aa5b1);
+}
+
+.kb-card-dim {
+  font-size: 10px;
+  color: var(--text-tertiary, #9aa5b1);
+  background: var(--secondary-bg, #f0f0f0);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.kb-card-model {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.model-badge {
+  font-size: 10px;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 /* Dialog */

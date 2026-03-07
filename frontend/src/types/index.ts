@@ -756,6 +756,7 @@ export interface UpdateKnowledgeBaseRequest {
   name?: string
   description?: string
   embedding_model_id?: string
+  embedding_dim?: number
 }
 
 /**
