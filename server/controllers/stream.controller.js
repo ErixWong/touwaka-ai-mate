@@ -120,6 +120,7 @@ class StreamController {
           model_id,
           task_id,
           task_path,  // 传递当前浏览路径
+          access_token: ctx.state.accessToken,  // 传递用户 Token，用于 skill 调用后台 API
         },
         // onDelta - 流式数据回调
         (delta) => {

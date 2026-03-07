@@ -171,10 +171,49 @@ describe('skill-manager', () => {
 2. **返回值格式兼容性** - ⚠️ 需要确认调用方是否依赖特定返回格式
 3. **环境变量注入** - ✅ skill-loader 会自动注入 `USER_ACCESS_TOKEN` 和 `API_BASE`（第 518-520 行）
 
+### ⚠️ 框架级别问题：用户 Token 未传递（已修复）
+
+**问题描述**：虽然 skill-loader 支持注入 `USER_ACCESS_TOKEN`，但后端在调用链中没有传递用户的 access token。
+
+**调用链分析**：
+
+```
+stream.controller.js::processMessageAsync()
+  ↓ 没有传递 accessToken
+chat-service.js::streamChat()
+  ↓ 没有传递 accessToken
+chat-service.js::handleToolCalls()  (第 1130-1138 行)
+  ↓ context 没有 accessToken
+tool-manager.js::executeToolCalls()  (第 300-323 行)
+  ↓ context.accessToken 为 undefined
+tool-manager.js::executeTool()  (第 255 行)
+  ↓ accessToken = context.accessToken (undefined)
+skill-loader.js::executeSkillTool()
+  ↓ userContext.accessToken 为 undefined
+skill-loader.js::buildSkillEnvironment()  (第 518 行)
+  ↓ USER_ACCESS_TOKEN: userContext.accessToken || ''  (空字符串!)
+```
+
+**根本原因**：
+1. `server/middlewares/auth.js` 只保存 `userId` 和 `userRole`，**没有保存原始 token**
+2. `chat-service.js::handleToolCalls()` 创建的 context 没有 accessToken
+
+**修复内容**：
+1. ✅ `server/middlewares/auth.js` - 保存原始 token 到 `ctx.state.accessToken`
+2. ✅ `server/controllers/stream.controller.js` - 传递 `access_token` 到 `streamChat()`
+3. ✅ `lib/chat-service.js::streamChat()` - 接收 `access_token` 参数
+4. ✅ `lib/chat-service.js::handleToolCalls()` - 传递 `accessToken` 到 context
+
+**影响范围**：
+- ✅ **kb-search** - 修复后可以正常调用后台 API
+- ✅ **skill-manager** - 修复后可以正常调用后台 API
+- ✅ **kb-editor** - 修复后可以正常调用后台 API
+
 ### 合并前需完成
 
-1. [ ] 集成测试 - 测试所有工具功能
-2. [ ] 更新 skill_parameters 表配置（移除 SKILL_DB_* 参数）
+1. [x] **修复 Token 传递问题** - 在调用链中传递用户的 access token（框架级别修复）
+2. [ ] 集成测试 - 测试所有工具功能
+3. [ ] 更新 skill_parameters 表配置（移除 SKILL_DB_* 参数）
 
 ### 建议的后续工作
 
