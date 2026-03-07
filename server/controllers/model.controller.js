@@ -25,7 +25,7 @@ class ModelController {
     try {
       const models = await this.AiModel.findAll({
         attributes: [
-          'id', 'name', 'model_name', 'provider_id', 'max_tokens',
+          'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'embedding_dim',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active'
         ],
         include: [{
@@ -73,7 +73,7 @@ class ModelController {
       const model = await this.AiModel.findOne({
         where: { id },
         attributes: [
-          'id', 'name', 'model_name', 'provider_id', 'max_tokens',
+          'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active',
           'created_at', 'updated_at'
         ],
@@ -140,9 +140,11 @@ class ModelController {
         model_name: body.model_name,
         provider_id: body.provider_id,
         max_tokens: body.max_tokens || 4096,
+        embedding_dim: body.embedding_dim || null,
         cost_per_1k_input: body.cost_per_1k_input || 0,
         cost_per_1k_output: body.cost_per_1k_output || 0,
         description: body.description || null,
+        model_type: body.model_type || 'chat',
         is_active: body.is_active !== undefined ? body.is_active : true,
       });
 
@@ -150,7 +152,7 @@ class ModelController {
       const newModel = await this.AiModel.findOne({
         where: { id },
         attributes: [
-          'id', 'name', 'model_name', 'provider_id', 'max_tokens',
+          'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'embedding_dim',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active'
         ],
         include: [{
@@ -216,7 +218,9 @@ class ModelController {
       if (body.name !== undefined) updates.name = body.name;
       if (body.model_name !== undefined) updates.model_name = body.model_name;
       if (body.provider_id !== undefined) updates.provider_id = body.provider_id;
+      if (body.model_type !== undefined) updates.model_type = body.model_type;
       if (body.max_tokens !== undefined) updates.max_tokens = body.max_tokens;
+      if (body.embedding_dim !== undefined) updates.embedding_dim = body.embedding_dim || null;
       if (body.cost_per_1k_input !== undefined) updates.cost_per_1k_input = body.cost_per_1k_input;
       if (body.cost_per_1k_output !== undefined) updates.cost_per_1k_output = body.cost_per_1k_output;
       if (body.description !== undefined) updates.description = body.description;
@@ -233,7 +237,7 @@ class ModelController {
       const updatedModel = await this.AiModel.findOne({
         where: { id },
         attributes: [
-          'id', 'name', 'model_name', 'provider_id', 'max_tokens',
+          'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'embedding_dim',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active'
         ],
         include: [{

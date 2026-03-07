@@ -6,7 +6,9 @@ export type Locale = 'zh-CN' | 'en-US'
 
 const messages = {
   'zh-CN': zhCN,
+  'zh': zhCN, // 别名
   'en-US': enUS,
+  'en': enUS, // 别名
 }
 
 // 从 localStorage 或浏览器语言获取默认语言

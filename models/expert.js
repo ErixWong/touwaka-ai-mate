@@ -112,6 +112,11 @@ export default class expert extends Model {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
       defaultValue: 0.00
+    },
+    knowledge_config: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "知识库配置（JSON格式）：{enabled, kb_id, top_k, threshold, max_tokens, style}"
     }
   }, {
     sequelize,

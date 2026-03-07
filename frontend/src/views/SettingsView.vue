@@ -149,6 +149,9 @@
               >
                 <div class="model-info">
                   <span class="model-name">{{ model.name }}</span>
+                  <span v-if="(model as any).model_type === 'embedding'" class="badge embedding">
+                    {{ $t('settings.modelTypeEmbedding') }}
+                  </span>
                   <span v-if="!model.is_active" class="badge inactive">
                     {{ $t('settings.inactive') }}
                   </span>
@@ -652,12 +655,32 @@
             </select>
           </div>
           <div class="form-item">
+            <label class="form-label">{{ $t('settings.modelType') }}</label>
+            <select v-model="modelForm.model_type" class="form-input">
+              <option value="chat">{{ $t('settings.modelTypeChat') }}</option>
+              <option value="embedding">{{ $t('settings.modelTypeEmbedding') }}</option>
+              <option value="image">{{ $t('settings.modelTypeImage') }}</option>
+              <option value="audio">{{ $t('settings.modelTypeAudio') }}</option>
+            </select>
+          </div>
+          <!-- 对话/多模态/语音模型显示最大 Token -->
+          <div v-if="modelForm.model_type === 'chat' || modelForm.model_type === 'image' || modelForm.model_type === 'audio'" class="form-item">
             <label class="form-label">{{ $t('settings.maxTokens') }}</label>
             <input
               v-model.number="modelForm.max_tokens"
               type="number"
               class="form-input"
               :placeholder="$t('settings.maxTokensPlaceholder')"
+            />
+          </div>
+          <!-- 嵌入模型显示向量维度 -->
+          <div v-if="modelForm.model_type === 'embedding'" class="form-item">
+            <label class="form-label">{{ $t('settings.embeddingDim') }}</label>
+            <input
+              v-model.number="modelForm.embedding_dim"
+              type="number"
+              class="form-input"
+              :placeholder="$t('settings.embeddingDimPlaceholder')"
             />
           </div>
           <div class="form-item">
@@ -904,7 +927,7 @@
               <label class="form-label">{{ $t('settings.expertExpressiveModel') }}</label>
               <select v-model="expertForm.expressive_model_id" class="form-input">
                 <option value="">{{ $t('settings.selectModel') }}</option>
-                <option v-for="model in modelStore.models" :key="model.id" :value="model.id">
+                <option v-for="model in expertAvailableModels" :key="model.id" :value="model.id">
                   {{ model.name }}
                 </option>
               </select>
@@ -913,7 +936,7 @@
               <label class="form-label">{{ $t('settings.expertReflectiveModel') }}</label>
               <select v-model="expertForm.reflective_model_id" class="form-input">
                 <option value="">{{ $t('settings.selectModel') }}</option>
-                <option v-for="model in modelStore.models" :key="model.id" :value="model.id">
+                <option v-for="model in expertAvailableModels" :key="model.id" :value="model.id">
                   {{ model.name }}
                 </option>
               </select>
@@ -1433,6 +1456,14 @@ const paginatedExperts = computed(() => {
   return expertStore.experts.slice(start, start + EXPERT_PAGE_SIZE)
 })
 
+// 专家可用的模型（只显示对话模型和多模态模型）
+const expertAvailableModels = computed(() => {
+  return modelStore.models.filter(m =>
+    m.is_active &&
+    (m.model_type === 'chat' || m.model_type === 'image')
+  )
+})
+
 // Provider 选择
 const selectedProvider = ref<ModelProvider | null>(null)
 const providerPage = ref(1)
@@ -1499,7 +1530,9 @@ const modelForm = reactive<ModelFormData>({
   name: '',
   model_name: '',
   provider_id: '',
+  model_type: 'chat',
   max_tokens: undefined,
+  embedding_dim: undefined,
   cost_per_1k_input: undefined,
   cost_per_1k_output: undefined,
   description: '',
@@ -2105,7 +2138,9 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.name = model.name
     modelForm.model_name = model.model_name || ''
     modelForm.provider_id = model.provider_id || ''
+    modelForm.model_type = (model as any).model_type || 'chat'
     modelForm.max_tokens = model.max_tokens
+    modelForm.embedding_dim = (model as any).embedding_dim
     modelForm.cost_per_1k_input = model.cost_per_1k_input
     modelForm.cost_per_1k_output = model.cost_per_1k_output
     modelForm.description = model.description || ''
@@ -2116,7 +2151,9 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.model_name = ''
     // 如果已选择提供商，默认使用该提供商
     modelForm.provider_id = selectedProvider.value?.id || ''
+    modelForm.model_type = 'chat'
     modelForm.max_tokens = undefined
+    modelForm.embedding_dim = undefined
     modelForm.cost_per_1k_input = undefined
     modelForm.cost_per_1k_output = undefined
     modelForm.description = ''
@@ -2617,6 +2654,16 @@ onMounted(() => {
 .badge.inactive {
   background: var(--error-bg, #ffebee);
   color: var(--error-color, #c62828);
+}
+
+.badge.embedding {
+  background: var(--primary-light-bg, #e8f4fe);
+  color: var(--primary-color, #7c5c3d);
+}
+
+.badge.chat {
+  background: var(--bg-secondary, #e9ecef);
+  color: var(--text-secondary, #6c7780);
 }
 
 .btn-edit {

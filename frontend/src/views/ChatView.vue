@@ -423,7 +423,7 @@ const handleSendMessage = async (content: string) => {
     while (!isConnected.value && Date.now() - startTime < 5000) {
       await new Promise(resolve => setTimeout(resolve, 500))
     }
-    
+
     if (!isConnected.value) {
       console.error('SSE connection not established after waiting')
       chatStore.addLocalMessage({
@@ -437,12 +437,12 @@ const handleSendMessage = async (content: string) => {
   }
 
   // skill-studio 使用用户选择的模型，其他专家使用绑定的模型
-  const model_id = is_skill_studio.value 
-    ? selected_model_id.value 
+  const model_id = is_skill_studio.value
+    ? selected_model_id.value
     : (currentModel.value?.id || currentExpert.value?.expressive_model_id)
 
   // 添加用户消息到本地
-  chatStore.addLocalMessage({
+  const userMessage = chatStore.addLocalMessage({
     expert_id,
     role: 'user',
     content,
@@ -461,6 +461,7 @@ const handleSendMessage = async (content: string) => {
 
   try {
     // 构建消息参数
+    // 注意：如果有图片，userMessage.content 已经是多模态 JSON 格式
     const messageParams: {
       content: string;
       expert_id: string;
@@ -468,7 +469,7 @@ const handleSendMessage = async (content: string) => {
       task_id?: string;
       task_path?: string;
     } = {
-      content,
+      content: userMessage.content,  // 使用 chatStore 中处理后的内容（可能包含多模态 JSON）
       expert_id,
       model_id,
     }

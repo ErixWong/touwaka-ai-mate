@@ -69,6 +69,8 @@ export default {
     timeMinutesAgo: '{n}分钟前',
     timeYesterday: '昨天',
     timeDaysAgo: '{n}天前',
+    uploadImage: '上传图片',
+    selectModel: '选择模型',
   },
 
   // 调试面板
@@ -270,7 +272,16 @@ export default {
     modelIdentifierHint: '调用 API 时使用的模型 ID',
     provider: '所属提供商',
     selectProvider: '选择提供商',
+    modelType: '模型类型',
+    selectModelType: '选择模型类型',
+    modelTypeChat: '对话模型',
+    modelTypeEmbedding: '嵌入模型',
+    modelTypeImage: '多模态模型',
+    modelTypeAudio: '语音模型',
+    maxTokens: '最大 Token',
     maxTokensPlaceholder: '例如：4096',
+    embeddingDim: '向量维度',
+    embeddingDimPlaceholder: '例如：1024，可为空',
     costPer1kInput: '每千输入 Token 成本',
     costPer1kOutput: '每千输出 Token 成本',
     costPlaceholder: '例如：0.01',
@@ -396,6 +407,7 @@ export default {
     expert: '专家',
     topics: '话题',
     tasks: '任务',
+    skills: '技能',
     debug: '调试',
     collapse: '收起面板',
     expand: '展开面板',
@@ -592,5 +604,159 @@ export default {
     moreActions: '更多操作',
     deleteFileConfirmMessage: '确定要删除文件"{name}"吗？此操作不可恢复。',
     editing: '编辑中',
+  },
+
+  // 知识库
+  knowledgeBase: {
+    title: '知识库',
+    searchPlaceholder: '搜索知识库...',
+    empty: '暂无知识库，点击 + 创建',
+    createNew: '新建知识库',
+    addFirst: '添加第一个知识库',
+
+    // 卡片信息
+    pointCount: '{count} 知识点',
+    knowledgeCount: '{count} 篇文章',
+    updatedAgo: '更新于 {time}',
+
+    // 创建/编辑对话框
+    createTitle: '创建知识库',
+    editTitle: '编辑知识库',
+    nameLabel: '知识库名称',
+    namePlaceholder: '请输入知识库名称',
+    descriptionLabel: '描述（可选）',
+    descriptionPlaceholder: '请输入知识库描述...',
+    embeddingModelLabel: 'Embedding 模型',
+    embeddingModelHint: '选择用于生成向量嵌入的模型，如不选择则使用内置模型',
+    useBuiltinModel: '使用内置模型',
+    embeddingModel: '嵌入模型',
+    selectEmbeddingModel: '选择嵌入模型',
+    createSuccess: '知识库创建成功',
+    createFailed: '创建知识库失败',
+    updateSuccess: '知识库更新成功',
+    updateFailed: '更新知识库失败',
+
+    // 删除
+    deleteConfirm: '确认删除',
+    deleteConfirmMessage: '确定要删除知识库"{name}"吗？此操作将删除所有文章和知识点，不可恢复。',
+
+    // 详情页
+    backToList: '返回知识库列表',
+    importFile: '导入文件',
+    importWeb: '导入网页',
+    newArticle: '新建文章',
+    search: '搜索',
+    searchHint: '输入关键词进行语义搜索...',
+    globalSearch: '全局搜索',
+    searchResult: {
+      title: '搜索结果',
+      empty: '未找到相关知识点',
+    },
+
+    // 文章树
+    articleTree: '文章目录',
+    noArticles: '暂无文章，点击导入或新建',
+    selectArticleHint: '请从左侧选择一篇文章',
+    expandAll: '全部展开',
+    collapseAll: '全部收起',
+
+    // 批量嵌入
+    batchEmbed: '批量生成向量',
+    embedding: '生成向量中...',
+    noPointsToEmbed: '没有需要向量化的知识点',
+    embedSuccess: '成功生成 {count} 个向量',
+    embedFailed: '向量生成失败',
+    embedError: '向量生成出错',
+
+    // 重新向量化
+    revectorize: '重新向量化',
+    revectorizing: '向量化中...',
+    embedCompleted: '向量生成完成',
+
+    // 批量嵌入范围选择
+    batchEmbedScope: {
+      title: '选择向量化范围',
+      hint: '请选择要向量化的知识点范围：',
+      entireKB: '整个知识库',
+      currentArticle: '指定文章',
+      selectArticle: '选择文章',
+      selectArticlePlaceholder: '请选择一篇文章',
+    },
+
+    // 文章
+    article: {
+      create: '新建文章',
+      edit: '编辑文章',
+      titlePlaceholder: '请输入文章标题',
+      parent: '父级文章',
+      noParent: '无（根级文章）',
+      summary: '摘要',
+      summaryPlaceholder: '请输入文章摘要...',
+      createSuccess: '文章创建成功',
+      createFailed: '创建文章失败',
+      updateSuccess: '文章更新成功',
+      updateFailed: '更新文章失败',
+      deleteConfirm: '确定要删除文章"{title}"吗？子文章和知识点也会被删除。',
+    },
+
+    // 知识点
+    point: {
+      title: '知识点',
+      noPoints: '暂无知识点',
+      create: '添加知识点',
+      edit: '编辑知识点',
+      titleLabel: '标题（可选）',
+      titlePlaceholder: '请输入知识点标题',
+      contentLabel: '内容',
+      contentPlaceholder: '请输入知识点内容（支持 Markdown）...',
+      contextLabel: '上下文',
+      contextPlaceholder: '补充上下文信息，用于提高检索精度...',
+      createSuccess: '知识点创建成功',
+      createFailed: '创建知识点失败',
+      updateSuccess: '知识点更新成功',
+      updateFailed: '更新知识点失败',
+      deleteConfirm: '确定要删除这个知识点吗？',
+      tokenCount: '{count} tokens',
+      vectorized: '已向量化',
+      notVectorized: '未向量化',
+    },
+
+    // 搜索结果
+    searchResult: {
+      title: '搜索结果',
+      empty: '未找到相关内容',
+      score: '相关度',
+      location: '位置',
+    },
+
+    // 状态
+    status: {
+      pending: '待处理',
+      processing: '处理中',
+      ready: '就绪',
+      failed: '处理失败',
+    },
+
+    // 来源类型
+    sourceType: {
+      file: '文件导入',
+      web: '网页导入',
+      manual: '手动创建',
+    },
+
+    // 知识图谱
+    graph: {
+      title: '知识图谱',
+      showGraph: '查看知识图谱',
+      hideGraph: '关闭知识图谱',
+      noRelations: '暂无关联关系',
+      clickNode: '点击节点查看详情',
+      dragNode: '拖拽节点调整布局',
+    },
+
+    // 更多操作
+    moreActions: '更多操作',
+    export: '导出',
+    settings: '设置',
   },
 }

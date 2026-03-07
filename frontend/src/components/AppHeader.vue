@@ -18,6 +18,11 @@
         <span class="nav-text">{{ $t('nav.skills') }}</span>
       </router-link>
 
+      <router-link to="/knowledge" class="nav-link" :class="{ active: isActive('/knowledge') }">
+        <span class="nav-icon">📚</span>
+        <span class="nav-text">{{ $t('knowledgeBase.title') }}</span>
+      </router-link>
+
       <router-link to="/settings" class="nav-link" :class="{ active: isActive('/settings') }">
         <span class="nav-icon">⚙️</span>
         <span class="nav-text">{{ $t('nav.settings') }}</span>

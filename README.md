@@ -64,7 +64,7 @@
 
 ### 环境要求
 - Node.js 18+
-- MySQL 8.0+ / MariaDB
+- MySQL 8.0+ / MariaDB 11.7+ (支持原生向量类型)
 - (可选) Python 3.10+ - 用于 Python 技能支持
 
 ### 1. 安装依赖
@@ -128,7 +128,7 @@ npm run dev:frontend # 前端 :5173
 |------|------|
 | 前端 | Vue 3 + TypeScript + Vite + Pinia |
 | 后端 | Node.js + Koa + Sequelize |
-| 数据库 | MySQL 8.0+ / MariaDB |
+| 数据库 | MySQL 8.0+ / MariaDB 11.7+ |
 | 认证 | JWT 双 Token |
 | 流式 | SSE (Server-Sent Events) |
 | 沙箱 | Node.js vm + Python subprocess (本地) / OpenSandbox (生产) |

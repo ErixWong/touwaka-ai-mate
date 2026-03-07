@@ -85,41 +85,47 @@
 
     <!-- 输入区域 -->
     <div class="input-area">
-      <textarea
-        ref="inputRef"
-        v-model="inputText"
-        :placeholder="placeholderText"
-        :disabled="isLoading || disabled"
-        @keydown.enter.exact.prevent="handleSend"
-        @keydown.enter.shift.exact="() => {}"
-        @input="handleInput"
-        rows="1"
-        class="message-input"
-      ></textarea>
-      <!-- 停止按钮（加载中显示） -->
-      <button
-        v-if="isLoading"
-        class="stop-button"
-        @click="handleStop"
-        :title="$t('chat.stopGenerate') || '停止生成'"
-      >
-        <span class="stop-icon">⏹</span>
-      </button>
-      <!-- 发送按钮 -->
-      <button
-        v-else
-        class="send-button"
-        :disabled="!inputText.trim() || disabled"
-        @click="handleSend"
-      >
-        <span>📤</span>
-      </button>
+      <div class="input-row">
+        <textarea
+          ref="inputRef"
+          v-model="inputText"
+          :placeholder="placeholderText"
+          :disabled="isLoading || disabled"
+          @keydown.enter.exact="handleEnterKey"
+          @compositionstart="isComposing = true"
+          @compositionend="isComposing = false"
+          @blur="isComposing = false"
+          @input="handleInput"
+          rows="1"
+          class="message-input"
+        ></textarea>
+        <!-- 停止按钮（加载中显示） -->
+        <button
+          v-if="isLoading"
+          class="stop-button"
+          @click="handleStop"
+          :title="$t('chat.stopGenerate') || '停止生成'"
+        >
+          <svg class="stop-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+          </svg>
+        </button>
+        <!-- 发送按钮 -->
+        <button
+          v-else
+          class="send-button"
+          :disabled="!inputText.trim() || disabled"
+          @click="handleSend"
+        >
+          <span>📤</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted, shallowRef } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/types'
 
@@ -150,6 +156,7 @@ const { t } = useI18n()
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+const isComposing = ref(false) // 中文输入法组合状态
 
 // 快捷指令列表
 const commands = [
@@ -265,8 +272,9 @@ watch(
 )
 
 // 发送消息
-const handleSend = () => {
+const handleSend = async () => {
   const content = inputText.value.trim()
+
   if (!content || props.isLoading || props.disabled) return
 
   emit('send', content)
@@ -276,6 +284,16 @@ const handleSend = () => {
   if (inputRef.value) {
     inputRef.value.style.height = 'auto'
   }
+}
+
+// 处理 Enter 键（检测输入法状态）
+const handleEnterKey = (event: KeyboardEvent) => {
+  // 检查自定义状态和原生事件属性，确保输入法组合期间不发送
+  // event.isComposing 在现代浏览器中于 IME 组合期间为 true
+  if (isComposing.value || event.isComposing) return
+
+  event.preventDefault()
+  handleSend()
 }
 
 // 停止生成
@@ -601,90 +619,153 @@ defineExpose({
 
 .input-area {
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  padding: 16px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color, #e8e8e8);
   background: var(--input-area-bg, #fafafa);
+  position: relative;
+}
+
+/* 输入框容器 - 增加精致边框效果 */
+.input-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  background: var(--input-row-bg, #fff);
+  border: 1.5px solid var(--input-border, #e0e0e0);
+  border-radius: 28px;
+  padding: 6px 8px 6px 20px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.input-row:focus-within {
+  border-color: var(--primary-color, #2196f3);
+  box-shadow: 0 4px 16px rgba(33, 150, 243, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .message-input {
   flex: 1;
-  padding: 12px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  padding: 12px 0;
+  border: none;
   border-radius: 24px;
-  font-size: 14px;
+  font-size: 15px;
   resize: none;
   outline: none;
-  background: var(--input-bg, #fff);
-  color: var(--text-primary, #333);
+  background: transparent;
+  color: var(--text-primary, #1a1a1a);
   font-family: inherit;
   line-height: 1.5;
   max-height: 150px;
   overflow-y: auto;
+  letter-spacing: 0.01em;
 }
 
 .message-input:focus {
-  border-color: var(--primary-color, #2196f3);
+  border-color: transparent;
 }
 
 .message-input:disabled {
-  background: var(--disabled-bg, #f5f5f5);
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .message-input::placeholder {
-  color: var(--text-secondary, #999);
+  color: var(--text-placeholder, #a0a0a0);
+}
+
+/* 现代滚动条样式 */
+.message-input::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-input::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, #ccc);
+  border-radius: 3px;
+}
+
+.message-input::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, #aaa);
 }
 
 .send-button {
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--primary-color, #2196f3);
+  background: linear-gradient(135deg, var(--primary-color, #2196f3), var(--primary-gradient-end, #42a5f5));
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 18px;
-  transition: background 0.2s;
+  font-size: 16px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
 }
 
 .send-button:hover:not(:disabled) {
-  background: var(--primary-hover, #1976d2);
+  background: linear-gradient(135deg, var(--primary-hover, #1976d2), var(--primary-color, #2196f3));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+}
+
+.send-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
 }
 
 .send-button:disabled {
-  background: var(--disabled-bg, #ccc);
+  background: var(--disabled-bg, #e0e0e0);
   cursor: not-allowed;
+  box-shadow: none;
+}
+
+.send-button span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stop-button {
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: var(--danger-color, #ef4444);
+  background: linear-gradient(135deg, var(--danger-color, #ef4444), var(--danger-gradient-end, #f87171));
   color: white;
   cursor: pointer;
   font-size: 16px;
-  transition: background 0.2s, transform 0.1s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
 .stop-button:hover {
-  background: var(--danger-hover, #dc2626);
-  transform: scale(1.05);
+  background: linear-gradient(135deg, var(--danger-hover, #dc2626), var(--danger-color, #ef4444));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+}
+
+.stop-button:active {
+  transform: translateY(0) scale(0.96);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
 }
 
 .stop-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
 }
 
 .loading-spinner {
