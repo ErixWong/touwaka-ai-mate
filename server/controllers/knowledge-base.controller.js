@@ -819,11 +819,13 @@ class KnowledgeBaseController {
       });
 
       // 处理结果：添加 is_vectorized 字段，移除 embedding 字段
+      // 判断逻辑：embedding 必须是非空 Buffer 才算已向量化
       const items = rows.map(point => {
         const { embedding, ...rest } = point;
+        const isVectorized = embedding && Buffer.isBuffer(embedding) && embedding.length > 0;
         return {
           ...rest,
-          is_vectorized: !!embedding,
+          is_vectorized: isVectorized,
         };
       });
 
