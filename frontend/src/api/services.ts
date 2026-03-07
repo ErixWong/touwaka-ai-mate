@@ -484,6 +484,12 @@ export const knowledgeBaseApi = {
   deleteKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string) =>
     apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
 
+  // 清除单个知识点向量（触发重新向量化）
+  clearPointEmbedding: (kbId: string, knowledgeId: string, pointId: string) =>
+    apiRequest<{ message: string; point_id: string }>(
+      apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}/embedding`)
+    ),
+
   // ========== 搜索 ==========
 
   // 语义搜索（单个知识库内）

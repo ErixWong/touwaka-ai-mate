@@ -24,7 +24,17 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
  */
 function httpRequest(method, path, data) {
   return new Promise((resolve, reject) => {
+    // [DEBUG] 请求开始
+    console.log('[KB-EDITOR DEBUG] ========== REQUEST START ==========');
+    console.log('[KB-EDITOR DEBUG] Method:', method);
+    console.log('[KB-EDITOR DEBUG] Path:', path);
+    console.log('[KB-EDITOR DEBUG] API_BASE:', API_BASE);
+    console.log('[KB-EDITOR DEBUG] TOKEN exists:', !!USER_ACCESS_TOKEN);
+    console.log('[KB-EDITOR DEBUG] TOKEN (first 20 chars):', USER_ACCESS_TOKEN ? USER_ACCESS_TOKEN.substring(0, 20) + '...' : 'EMPTY');
+    console.log('[KB-EDITOR DEBUG] Request Data:', JSON.stringify(data, null, 2));
+
     if (!USER_ACCESS_TOKEN) {
+      console.log('[KB-EDITOR DEBUG] ERROR: Missing USER_ACCESS_TOKEN');
       reject(new Error('用户未登录，无法访问知识库（缺少 USER_ACCESS_TOKEN）'));
       return;
     }
@@ -47,6 +57,8 @@ function httpRequest(method, path, data) {
       rejectUnauthorized: NODE_ENV === 'production',
     };
 
+    console.log('[KB-EDITOR DEBUG] Full URL:', parsedUrl.toString());
+
     const req = httpModule.request(requestOptions, (res) => {
       let body = '';
 
@@ -55,8 +67,13 @@ function httpRequest(method, path, data) {
       });
 
       res.on('end', () => {
+        console.log('[KB-EDITOR DEBUG] Response Status:', res.statusCode);
+        console.log('[KB-EDITOR DEBUG] Response Body (first 500 chars):', body.substring(0, 500));
+
         // 处理 204 No Content（删除操作成功）
         if (res.statusCode === 204) {
+          console.log('[KB-EDITOR DEBUG] 204 No Content - Success');
+          console.log('[KB-EDITOR DEBUG] ========== REQUEST END ==========');
           resolve({ success: true });
           return;
         }
@@ -64,21 +81,31 @@ function httpRequest(method, path, data) {
         try {
           const json = body ? JSON.parse(body) : {};
           if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log('[KB-EDITOR DEBUG] Success! Parsed data:', JSON.stringify(json.data || json, null, 2).substring(0, 500));
+            console.log('[KB-EDITOR DEBUG] ========== REQUEST END ==========');
             resolve(json.data || json);
           } else {
+            console.log('[KB-EDITOR DEBUG] HTTP Error:', res.statusCode, json.message || json.error);
+            console.log('[KB-EDITOR DEBUG] ========== REQUEST END ==========');
             reject(new Error(json.message || json.error || `HTTP ${res.statusCode}`));
           }
         } catch (e) {
+          console.log('[KB-EDITOR DEBUG] JSON Parse Error:', e.message);
+          console.log('[KB-EDITOR DEBUG] ========== REQUEST END ==========');
           reject(new Error(`Failed to parse response: ${e.message}`));
         }
       });
     });
 
     req.on('error', (e) => {
+      console.log('[KB-EDITOR DEBUG] Request ERROR:', e.message);
+      console.log('[KB-EDITOR DEBUG] ========== REQUEST END ==========');
       reject(new Error(`Request failed: ${e.message}`));
     });
 
     req.on('timeout', () => {
+      console.log('[KB-EDITOR DEBUG] Request TIMEOUT');
+      console.log('[KB-EDITOR DEBUG] ========== REQUEST END ==========');
       req.destroy();
       reject(new Error('Request timeout'));
     });
@@ -88,6 +115,7 @@ function httpRequest(method, path, data) {
     }
 
     req.end();
+    console.log('[KB-EDITOR DEBUG] Request sent, waiting for response...');
   });
 }
 

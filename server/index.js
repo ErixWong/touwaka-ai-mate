@@ -19,6 +19,8 @@ const __dirname = path.dirname(__filename);
 
 import Database from '../lib/db.js';
 import ChatService from '../lib/chat-service.js';
+import BackgroundTaskScheduler from '../lib/background-scheduler.js';
+import { createEmbeddingTask } from '../lib/embedding-worker.js';
 import logger from '../lib/logger.js';
 
 // 中间件
@@ -59,6 +61,7 @@ class ApiServer {
     this.app = new Koa();
     this.db = null;
     this.chatService = null;
+    this.scheduler = null;
     this.controllers = {};
   }
 
@@ -122,6 +125,18 @@ class ApiServer {
     // 初始化 ChatService
     this.chatService = new ChatService(this.db);
     logger.info('ChatService initialized');
+
+    // 初始化后台任务调度器
+    this.scheduler = new BackgroundTaskScheduler(this.db);
+
+    // 注册向量化任务
+    this.scheduler.register({
+      name: 'embedding-worker',
+      interval: 30000, // 30秒
+      handler: createEmbeddingTask({ batchSize: 10 }),
+    });
+
+    logger.info('BackgroundTaskScheduler initialized with embedding-worker task');
   }
 
   /**
@@ -356,6 +371,11 @@ class ApiServer {
         this.chatService.processUnrepliedMessages().catch(err => {
           logger.error('[Startup] Failed to process unreplied messages:', err.message);
         });
+
+        // 启动后台任务调度器
+        if (this.scheduler) {
+          this.scheduler.startAll();
+        }
       });
     } catch (error) {
       logger.error('Failed to start server:', error.message);
@@ -371,10 +391,16 @@ server.start(process.env.API_PORT || 3000);
 // 优雅关闭
 process.on('SIGINT', async () => {
   logger.info('Shutting down API server...');
+  if (server.scheduler) {
+    server.scheduler.stopAll();
+  }
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   logger.info('Shutting down API server...');
+  if (server.scheduler) {
+    server.scheduler.stopAll();
+  }
   process.exit(0);
 });
