@@ -189,9 +189,25 @@ tools:
 **参数:**
 - `kb_id` (string, required): 知识库 ID
 - `knowledge_id` (string, required): 文章 ID
-- `content` (string, required): 知识点内容（核心字段）
+- `content` (string, required): 知识点原文内容（完整的原文，不要提炼或总结）
 - `title` (string, optional): 知识点标题
-- `context` (string, optional): 上下文信息
+- `context` (string, optional): 上下文信息/背景总结（用于向量化增强检索精度）
+
+**重要：content 与 context 的区别**：
+- `content`：存放知识点的**原文内容**，保持原文完整性和细节
+- `context`：存放**提炼的背景描述、总结或上下文信息**，帮助 AI 理解知识点所属领域和关联
+
+**错误示例**：
+```
+content: "技能是一个包含SKILL.md的文件夹，核心设计原则包括渐进式披露。"  // 这是提炼后的摘要
+context: ""  // 空的
+```
+
+**正确示例**：
+```
+content: "技能是一个包含SKILL.md（必需）、scripts/（可选）、references/（可选）、assets/（可选）的文件夹。核心设计原则包括渐进式披露（三级系统）、可组合性和可移植性。SKILL.md是技能的核心，定义了技能的名称、描述、工具和实现方式..."  // 完整原文
+context: "关于技能开发的基础概念，涉及文件结构和设计原则。"  // 提炼的背景总结
+```
 
 #### update_point
 
@@ -202,8 +218,8 @@ tools:
 - `knowledge_id` (string, required): 文章 ID
 - `id` (string, required): 知识点 ID
 - `title` (string, optional): 新标题
-- `content` (string, optional): 新内容
-- `context` (string, optional): 新上下文
+- `content` (string, optional): 新原文内容（完整的原文）
+- `context` (string, optional): 新上下文/背景总结
 
 #### delete_point
 
