@@ -1,6 +1,6 @@
 # 项目待办事项
 
-> 最后更新：2026-03-03
+> 最后更新：2026-03-07
 
 ---
 
@@ -15,7 +15,7 @@
 | [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
 | [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
-| [对话窗口优化](#对话窗口优化) | ⏳ 待开始 | 高 |
+| [对话窗口优化](#对话窗口优化) | 🔄 部分完成 | 高 |
 | [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |
 
 ### Topic 状态管理机制
@@ -126,6 +126,7 @@
 
 | 任务 | 完成日期 | 备注 |
 |------|----------|------|
+| 对话窗口修复 | 2026-03-07 | 滚动到底部功能 + HTML 转义修复 + 分页参数统一 |
 | Skill Manager 查询工具优化 | 2026-03-02 | 新增 list_skills、list_skill_details，移除 assign/unassign |
 | 沙箱架构实现（本地开发环境） | 2026-03-02 | Node.js vm + Python subprocess 轻量级沙箱 |
 | Python 技能支持 | 2026-03-02 | skill-runner 支持 Python，PDF 技能实现 |
