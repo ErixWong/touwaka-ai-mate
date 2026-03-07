@@ -31,6 +31,11 @@ export default class ai_model extends Model {
       allowNull: true,
       defaultValue: 4096
     },
+    embedding_dim: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "向量化模型的嵌入维度（仅 embedding 类型模型使用）"
+    },
     cost_per_1k_input: {
       type: DataTypes.DECIMAL(10,6),
       allowNull: true,
