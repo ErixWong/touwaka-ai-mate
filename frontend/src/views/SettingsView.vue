@@ -657,14 +657,13 @@
           <div class="form-item">
             <label class="form-label">{{ $t('settings.modelType') }}</label>
             <select v-model="modelForm.model_type" class="form-input">
-              <option value="chat">{{ $t('settings.modelTypeChat') }}</option>
+              <option value="text">{{ $t('settings.modelTypeText') }}</option>
+              <option value="multimodal">{{ $t('settings.modelTypeMultimodal') }}</option>
               <option value="embedding">{{ $t('settings.modelTypeEmbedding') }}</option>
-              <option value="image">{{ $t('settings.modelTypeImage') }}</option>
-              <option value="audio">{{ $t('settings.modelTypeAudio') }}</option>
             </select>
           </div>
-          <!-- 对话/多模态/语音模型显示最大 Token -->
-          <div v-if="modelForm.model_type === 'chat' || modelForm.model_type === 'image' || modelForm.model_type === 'audio'" class="form-item">
+          <!-- 文本/多模态模型显示最大 Token -->
+          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-item">
             <label class="form-label">{{ $t('settings.maxTokens') }}</label>
             <input
               v-model.number="modelForm.max_tokens"
@@ -1456,11 +1455,11 @@ const paginatedExperts = computed(() => {
   return expertStore.experts.slice(start, start + EXPERT_PAGE_SIZE)
 })
 
-// 专家可用的模型（只显示对话模型和多模态模型）
+// 专家可用的模型（只显示文本模型和多模态模型）
 const expertAvailableModels = computed(() => {
   return modelStore.models.filter(m =>
     m.is_active &&
-    (m.model_type === 'chat' || m.model_type === 'image')
+    (m.model_type === 'text' || m.model_type === 'multimodal')
   )
 })
 
@@ -1530,7 +1529,7 @@ const modelForm = reactive<ModelFormData>({
   name: '',
   model_name: '',
   provider_id: '',
-  model_type: 'chat',
+  model_type: 'text',
   max_tokens: undefined,
   embedding_dim: undefined,
   cost_per_1k_input: undefined,
@@ -2143,7 +2142,7 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.name = model.name
     modelForm.model_name = model.model_name || ''
     modelForm.provider_id = model.provider_id || ''
-    modelForm.model_type = (model as any).model_type || 'chat'
+    modelForm.model_type = (model as any).model_type || 'text'
     modelForm.max_tokens = model.max_tokens
     modelForm.embedding_dim = (model as any).embedding_dim
     modelForm.cost_per_1k_input = model.cost_per_1k_input
@@ -2156,7 +2155,7 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.model_name = ''
     // 如果已选择提供商，默认使用该提供商
     modelForm.provider_id = selectedProvider.value?.id || ''
-    modelForm.model_type = 'chat'
+    modelForm.model_type = 'text'
     modelForm.max_tokens = undefined
     modelForm.embedding_dim = undefined
     modelForm.cost_per_1k_input = undefined
