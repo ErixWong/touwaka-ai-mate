@@ -46,10 +46,10 @@ export default class ai_model extends Model {
       allowNull: true
     },
     model_type: {
-      type: DataTypes.ENUM('chat', 'embedding', 'image', 'audio'),
+      type: DataTypes.ENUM('text', 'multimodal', 'embedding'),
       allowNull: true,
-      defaultValue: 'chat',
-      comment: "模型类型: chat=对话, embedding=向量化, image=图像, audio=语音"
+      defaultValue: 'text',
+      comment: "模型类型: text=文本, multimodal=多模态, embedding=向量化"
     },
     is_active: {
       type: DataTypes.BOOLEAN,

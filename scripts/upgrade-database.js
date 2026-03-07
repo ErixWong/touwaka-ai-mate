@@ -61,8 +61,8 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE ai_models
-        ADD COLUMN model_type ENUM('chat', 'embedding', 'image', 'audio') DEFAULT 'chat'
-        COMMENT '模型类型: chat=对话, embedding=向量化, image=图像, audio=语音'
+        ADD COLUMN model_type ENUM('text', 'multimodal', 'embedding') DEFAULT 'text'
+        COMMENT '模型类型: text=文本, multimodal=多模态, embedding=向量化'
         AFTER model_name
       `);
       // 添加索引

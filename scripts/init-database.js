@@ -39,7 +39,7 @@ const TABLES = [
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     model_name VARCHAR(128) NOT NULL COMMENT 'API调用使用的模型标识符',
-    model_type ENUM('chat', 'embedding', 'image', 'audio') DEFAULT 'chat' COMMENT '模型类型: chat=对话, embedding=向量化, image=图像, audio=语音',
+    model_type ENUM('text', 'multimodal', 'embedding') DEFAULT 'text' COMMENT '模型类型: text=文本, multimodal=多模态, embedding=向量化',
     provider_id VARCHAR(32),
     max_tokens INT DEFAULT 4096,
     cost_per_1k_input DECIMAL(10, 6) DEFAULT 0,
