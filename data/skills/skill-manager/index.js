@@ -1,656 +1,236 @@
 /**
  * Skill Manager - 技能管理技能
- * 
+ *
  * 用于管理技能的注册、删除、分配等操作
  * 仅供技能管理专家（如 skill-studio）使用
- * 
- * 注意：此技能运行在沙箱中，需要通过环境变量获取数据库配置
- * 数据库配置通过 skill_parameters 表注入，格式为：
- * - SKILL_DB_HOST: 数据库主机
- * - SKILL_DB_PORT: 数据库端口
- * - SKILL_DB_NAME: 数据库名称
- * - SKILL_DB_USER: 数据库用户
- * - SKILL_DB_PASSWORD: 数据库密码
+ *
+ * 重构说明：此技能现在通过 API 调用后台服务，不再直接访问数据库
+ * 业务逻辑集中在 server/controllers/skill.controller.js
+ *
+ * @module skill-manager
  */
 
-const fs = require('fs');
-const path = require('path');
-const mysql = require('mysql2/promise');
+const https = require('https');
+const http = require('http');
 
-// 从环境变量获取数据库配置（由 skill-loader 注入）
-const DB_CONFIG = {
-  host: process.env.SKILL_DB_HOST || 'localhost',
-  port: parseInt(process.env.SKILL_DB_PORT || '3306'),
-  database: process.env.SKILL_DB_NAME || 'touwaka_mate',
-  user: process.env.SKILL_DB_USER || 'root',
-  password: process.env.SKILL_DB_PASSWORD || '',
-  waitForConnections: true,
-  connectionLimit: 2,  // 技能只需要少量连接
-};
+// API 配置（从环境变量获取，由 skill-loader 注入）
+const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const USER_ACCESS_TOKEN = process.env.USER_ACCESS_TOKEN || '';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 /**
- * 生成唯一ID
+ * 发起 HTTP 请求
+ * @param {string} method - HTTP 方法
+ * @param {string} path - 请求路径
+ * @param {object} data - 请求数据
+ * @returns {Promise<object>} 响应数据
  */
-function newID(length = 20) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+function httpRequest(method, path, data) {
+  return new Promise((resolve, reject) => {
+    if (!USER_ACCESS_TOKEN) {
+      reject(new Error('用户未登录，无法管理技能（缺少 USER_ACCESS_TOKEN）'));
+      return;
+    }
+
+    const parsedUrl = new URL(path, API_BASE);
+    const isHttps = parsedUrl.protocol === 'https:';
+    const httpModule = isHttps ? https : http;
+
+    const requestOptions = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (isHttps ? 443 : 3000),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
+      },
+      timeout: 30000,
+      // 生产环境启用 SSL 证书验证，开发环境可禁用（自签名证书）
+      rejectUnauthorized: NODE_ENV === 'production',
+    };
+
+    const req = httpModule.request(requestOptions, (res) => {
+      let body = '';
+
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+
+      res.on('end', () => {
+        // 处理 204 No Content
+        if (res.statusCode === 204) {
+          resolve({ success: true });
+          return;
+        }
+
+        try {
+          const json = body ? JSON.parse(body) : {};
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(json.data || json);
+          } else {
+            reject(new Error(json.message || json.error || `HTTP ${res.statusCode}`));
+          }
+        } catch (e) {
+          reject(new Error(`Failed to parse response: ${e.message}`));
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      reject(new Error(`Request failed: ${e.message}`));
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    if (data) {
+      req.write(JSON.stringify(data));
+    }
+
+    req.end();
+  });
+}
+
+// ==================== 技能管理操作 ====================
+
+/**
+ * 列出所有技能（精简列表，不含工具详情）
+ */
+async function listSkills(params) {
+  const { is_active, search } = params;
+  let query = '?';
+  if (is_active !== undefined) {
+    query += `is_active=${is_active ? 1 : 0}&`;
   }
-  return result;
+  if (search) {
+    query += `search=${encodeURIComponent(search)}&`;
+  }
+  return await httpRequest('GET', `/api/skills${query}`);
 }
 
 /**
- * 解析 SKILL.md 内容，提取技能元信息
- * （内联实现，避免引用主程序代码）
+ * 获取技能完整详情（包含工具定义）
  */
-function parseSkillMd(content) {
-  const info = {
-    name: '',
-    description: '',
-    version: '',
-    author: '',
-    tags: [],
+async function listSkillDetails(params) {
+  const { skill_id } = params;
+  if (!skill_id) {
+    throw new Error('技能 ID 不能为空');
+  }
+  return await httpRequest('GET', `/api/skills/${skill_id}`);
+}
+
+/**
+ * 注册技能（从本地目录）
+ */
+async function registerSkill(params) {
+  const { source_path, name, description, tools } = params;
+  
+  if (!source_path) {
+    throw new Error('source_path 不能为空');
+  }
+  if (!tools || !Array.isArray(tools) || tools.length === 0) {
+    throw new Error('tools 参数是必需的。请先读取 SKILL.md，理解工具定义后传入 tools 数组。');
+  }
+
+  return await httpRequest('POST', '/api/skills/register', {
+    source_path,
+    name,
+    description,
+    tools,
+  });
+}
+
+/**
+ * 删除技能
+ */
+async function deleteSkill(params) {
+  const { skill_id } = params;
+  if (!skill_id) {
+    throw new Error('技能 ID 不能为空');
+  }
+  return await httpRequest('DELETE', `/api/skills/${skill_id}`);
+}
+
+/**
+ * 启用/禁用技能
+ */
+async function toggleSkill(params) {
+  const { skill_id, is_active } = params;
+  if (!skill_id) {
+    throw new Error('技能 ID 不能为空');
+  }
+  if (is_active === undefined) {
+    throw new Error('is_active 不能为空');
+  }
+  return await httpRequest('PATCH', `/api/skills/${skill_id}/toggle`, { is_active });
+}
+
+/**
+ * 分配技能给专家
+ */
+async function assignSkill(params) {
+  const { skill_id, expert_id } = params;
+  if (!skill_id || !expert_id) {
+    throw new Error('skill_id 和 expert_id 不能为空');
+  }
+  return await httpRequest('POST', '/api/skills/assign', { skill_id, expert_id });
+}
+
+/**
+ * 取消技能分配
+ */
+async function unassignSkill(params) {
+  const { skill_id, expert_id } = params;
+  if (!skill_id || !expert_id) {
+    throw new Error('skill_id 和 expert_id 不能为空');
+  }
+  return await httpRequest('POST', '/api/skills/unassign', { skill_id, expert_id });
+}
+
+/**
+ * Skill execute function - 被 skill-runner 调用
+ *
+ * @param {string} toolName - 工具名称
+ * @param {object} params - 工具参数
+ * @param {object} context - 执行上下文（由 skill-loader 注入环境变量，context 可为空）
+ * @returns {Promise<object>} 执行结果
+ */
+async function execute(toolName, params, context = {}) {
+  // 验证用户认证
+  if (!USER_ACCESS_TOKEN) {
+    throw new Error('用户未登录，无法管理技能。请确保 USER_ACCESS_TOKEN 环境变量已设置。');
+  }
+
+  const tools = {
+    'list_skills': listSkills,
+    'list_skill_details': listSkillDetails,
+    'register_skill': registerSkill,
+    'delete_skill': deleteSkill,
+    'toggle_skill': toggleSkill,
+    'assign_skill': assignSkill,
+    'unassign_skill': unassignSkill,
   };
 
-  if (!content || typeof content !== 'string') {
-    return info;
+  const tool = tools[toolName];
+  if (!tool) {
+    const availableTools = Object.keys(tools).join(', ');
+    throw new Error(`未知工具: ${toolName}. 可用工具: ${availableTools}`);
   }
 
-  const lines = content.split('\n');
+  const result = await tool(params);
 
-  // 提取标题（第一个 # 开头的行）
-  const titleMatch = content.match(/^#\s+(.+)$/m);
-  if (titleMatch) {
-    info.name = titleMatch[1].trim();
-  }
-
-  // 提取描述（第一个 ## 描述/Description 下的内容）
-  const descMatch = content.match(/##\s*(?:描述|Description)\s*\n+([^#]+)/i);
-  if (descMatch) {
-    info.description = descMatch[1].trim();
-  }
-
-  // 尝试解析 YAML frontmatter
-  const yamlMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (yamlMatch) {
-    const yaml = yamlMatch[1];
-    const versionMatch = yaml.match(/version:\s*(.+)/);
-    const authorMatch = yaml.match(/author:\s*(.+)/);
-    const tagsMatch = yaml.match(/tags:\s*\[(.*?)\]/);
-
-    if (versionMatch) info.version = versionMatch[1].trim();
-    if (authorMatch) info.author = authorMatch[1].trim();
-    if (tagsMatch) {
-      info.tags = tagsMatch[1].split(',').map(t => t.trim().replace(/['"]/g, ''));
-    }
-  }
-
-  // 遍历行解析元数据（支持行内格式）
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // 解析版本（version: 或 版本:）
-    if (/^(version|版本)\s*:/i.test(trimmed)) {
-      info.version = trimmed.split(':')[1]?.trim() || info.version;
-    }
-
-    // 解析作者（author: 或 作者:）
-    if (/^(author|作者)\s*:/i.test(trimmed)) {
-      info.author = trimmed.split(':')[1]?.trim() || info.author;
-    }
-
-    // 解析标签（tags: 或 标签:）
-    if (/^(tags|标签)\s*:/i.test(trimmed)) {
-      const tagsStr = trimmed.split(':')[1]?.trim() || '';
-      if (tagsStr && info.tags.length === 0) {
-        info.tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
-      }
-    }
-  }
-
-  return info;
+  return {
+    success: true,
+    data: result,
+  };
 }
 
-/**
- * 验证技能路径是否安全（防止路径遍历攻击）
- * （内联实现，避免引用主程序代码）
- *
- * @param {string} sourcePath - 相对于 dataBasePath 的路径（如 "skills/file-operations"）
- * @param {string} dataBasePath - 数据基础路径（如 "/shared" 或 "cwd/data"）
- * @returns {{ valid: boolean, fullPath?: string, relativePath?: string, error?: string }}
- */
-function validateSkillPath(sourcePath, dataBasePath) {
-  // 规范化路径
-  let fullPath;
-  if (path.isAbsolute(sourcePath)) {
-    fullPath = path.normalize(sourcePath);
-  } else {
-    // 相对路径：source_path 是相对于 dataBasePath 的路径
-    // 例如：source_path = "skills/file-operations" → dataBasePath/skills/file-operations
-    fullPath = path.normalize(path.join(dataBasePath, sourcePath));
-  }
-
-  // 检查路径是否在允许的目录内（dataBasePath 下的 skills 子目录）
-  const allowedPath = path.join(dataBasePath, 'skills');
-  const isAllowed = fullPath.startsWith(allowedPath + path.sep) || fullPath === allowedPath;
-
-  if (!isAllowed) {
-    return {
-      valid: false,
-      fullPath,
-      error: `Invalid path: skill must be in dataBasePath/skills directory. source_path should be like "skills/your-skill-name"`,
-    };
-  }
-
-  // 检查路径是否存在
-  if (!fs.existsSync(fullPath)) {
-    return {
-      valid: false,
-      fullPath,
-      error: `Directory not found: ${sourcePath}`,
-    };
-  }
-
-  // 计算相对于 dataBasePath 的相对路径（用于存储到数据库）
-  // 跨平台兼容：统一使用正斜杠（Windows path.relative 返回反斜杠）
-  const relativePath = path.relative(dataBasePath, fullPath).replace(/\\/g, '/');
-
-  return { valid: true, fullPath, relativePath };
-}
-
-/**
- * 获取数据库连接
- */
-async function getConnection(pool) {
-  try {
-    const connection = await pool.getConnection();
-    return connection;
-  } catch (error) {
-    throw new Error(`Database connection failed: ${error.message}`);
-  }
-}
-
-// 创建连接池（延迟初始化）
-let _pool = null;
-
-function getPool() {
-  if (!_pool) {
-    _pool = mysql.createPool(DB_CONFIG);
-  }
-  return _pool;
-}
-
+// Export for skill-runner
 module.exports = {
+  execute,
   name: 'skill-manager',
-  description: '技能管理工具：注册、删除、分配技能',
-
-  /**
-   * 定义工具清单
-   */
-  getTools() {
-    return [
-      {
-        type: 'function',
-        function: {
-          name: 'register_skill',
-          description: '从本地目录注册或更新技能到数据库。需要先读取 SKILL.md，理解工具定义后调用此工具。同名技能会覆盖更新。',
-          parameters: {
-            type: 'object',
-            properties: {
-              source_path: {
-                type: 'string',
-                description: '技能目录相对于 dataBasePath 的路径。例如：skills/searxng（注意：包含 skills/ 前缀）'
-              },
-              name: {
-                type: 'string',
-                description: '技能名称（可选，默认从 SKILL.md 的 name 字段提取）'
-              },
-              description: {
-                type: 'string',
-                description: '技能描述（可选，默认从 SKILL.md 的 description 字段提取）'
-              },
-              tools: {
-                type: 'array',
-                description: '工具定义数组。每个工具包含 name、description、parameters、script_path 字段。parameters 是 JSON Schema 格式。',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: {
-                      type: 'string',
-                      description: '工具名称，如 web_search、read_lines'
-                    },
-                    description: {
-                      type: 'string',
-                      description: '工具功能描述'
-                    },
-                    parameters: {
-                      type: 'object',
-                      description: 'JSON Schema 格式的参数定义，包含 type、properties、required 字段'
-                    },
-                    script_path: {
-                      type: 'string',
-                      description: '工具入口脚本路径（相对于技能目录，默认 index.js）。例如：scripts/thumbnail.py'
-                    }
-                  },
-                  required: ['name', 'description', 'parameters']
-                }
-              }
-            },
-            required: ['source_path', 'tools']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'delete_skill',
-          description: '从数据库中删除技能（谨慎使用，会同时删除关联的工具定义）',
-          parameters: {
-            type: 'object',
-            properties: {
-              skill_id: {
-                type: 'string',
-                description: '技能ID或名称'
-              }
-            },
-            required: ['skill_id']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'toggle_skill',
-          description: '启用或禁用技能（下次对话生效）',
-          parameters: {
-            type: 'object',
-            properties: {
-              skill_id: {
-                type: 'string',
-                description: '技能ID或名称'
-              },
-              is_active: {
-                type: 'boolean',
-                description: '是否启用'
-              }
-            },
-            required: ['skill_id', 'is_active']
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'list_skills',
-          description: '列出数据库中所有技能。可按启用状态过滤或按名称搜索。',
-          parameters: {
-            type: 'object',
-            properties: {
-              is_active: {
-                type: 'boolean',
-                description: '过滤启用/禁用状态（可选，不传则返回所有）'
-              },
-              search: {
-                type: 'string',
-                description: '按名称搜索（可选，模糊匹配）'
-              }
-            },
-            required: []
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'list_skill_details',
-          description: '获取指定技能的完整详情，包括技能所有字段和工具定义列表。',
-          parameters: {
-            type: 'object',
-            properties: {
-              skill_id: {
-                type: 'string',
-                description: '技能ID或名称'
-              }
-            },
-            required: ['skill_id']
-          }
-        }
-      }
-    ];
-  },
-
-  /**
-   * 执行工具调用
-   */
-  async execute(toolName, params, context) {
-    // 获取数据库连接池
-    const pool = getPool();
-    
-    try {
-      switch (toolName) {
-        case 'register_skill':
-          return await this.registerSkill(params, pool);
-        case 'delete_skill':
-          return await this.deleteSkill(params, pool);
-        case 'toggle_skill':
-          return await this.toggleSkill(params, pool);
-        case 'list_skills':
-          return await this.listSkills(params, pool);
-        case 'list_skill_details':
-          return await this.listSkillDetails(params, pool);
-        default:
-          return { success: false, error: `Unknown tool: ${toolName}` };
-      }
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  },
-
-  /**
-   * 注册技能
-   *
-   * 新流程：由专家（LLM）读取 SKILL.md，理解工具定义后调用此工具
-   * 工具定义通过 tools 参数传入，不再从 index.js 的 getTools() 获取
-   */
-  async registerSkill(params, pool) {
-    const { source_path, name: providedName, description: providedDesc, tools: providedTools } = params;
-
-    // 验证必须提供 tools 参数
-    if (!providedTools || !Array.isArray(providedTools) || providedTools.length === 0) {
-      return {
-        success: false,
-        error: 'tools 参数是必需的。请先读取 SKILL.md，理解工具定义后传入 tools 数组。'
-      };
-    }
-
-    // 获取数据基础路径（从环境变量）
-    const dataBasePath = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
-    
-    // 安全验证：确保路径在允许的目录内
-    const pathValidation = validateSkillPath(source_path, dataBasePath);
-    if (!pathValidation.valid) {
-      return {
-        success: false,
-        error: pathValidation.error || 'Invalid skill path'
-      };
-    }
-    const fullPath = pathValidation.fullPath;
-
-    // 读取 SKILL.md
-    const skillMdPath = path.join(fullPath, 'SKILL.md');
-    if (!fs.existsSync(skillMdPath)) {
-      return {
-        success: false,
-        error: `SKILL.md not found in ${source_path}. Each skill must have a SKILL.md file.`
-      };
-    }
-
-    const skillMd = fs.readFileSync(skillMdPath, 'utf-8');
-
-    // 使用内联函数解析 SKILL.md 的基本信息
-    const skillInfo = parseSkillMd(skillMd);
-    const skillName = providedName || skillInfo.name || path.basename(fullPath);
-    const skillDesc = providedDesc || skillInfo.description || '';
-
-    // 检查是否已存在同名技能
-    const [existingSkill] = await pool.query(
-      'SELECT id FROM skills WHERE name = ?',
-      [skillName]
-    );
-
-    const skillId = existingSkill.length > 0 ? existingSkill[0].id : newID();
-
-    // 插入或更新技能
-    await pool.execute(
-      `INSERT INTO skills (id, name, description, version, author, tags, source_type, source_path, skill_md, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, 'local', ?, ?, 1)
-       ON DUPLICATE KEY UPDATE
-       description = VALUES(description),
-       version = VALUES(version),
-       author = VALUES(author),
-       tags = VALUES(tags),
-       source_path = VALUES(source_path),
-       skill_md = VALUES(skill_md),
-       updated_at = CURRENT_TIMESTAMP`,
-      [
-        skillId,
-        skillName,
-        skillDesc,
-        skillInfo.version || '1.0.0',
-        skillInfo.author || '',
-        skillInfo.tags ? JSON.stringify(skillInfo.tags) : '[]',
-        pathValidation.relativePath,
-        skillMd
-      ]
-    );
-
-    // 删除旧的工具定义
-    await pool.execute('DELETE FROM skill_tools WHERE skill_id = ?', [skillId]);
-
-    // 使用传入的 tools 参数插入工具定义
-    let registeredTools = 0;
-    for (const tool of providedTools) {
-      if (!tool.name || !tool.description) {
-        console.warn(`Skipping invalid tool definition:`, tool);
-        continue;
-      }
-
-      await pool.execute(
-        `INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          newID(),
-          skillId,
-          tool.name,
-          tool.description,
-          JSON.stringify(tool.parameters || { type: 'object', properties: {} }),
-          tool.script_path || 'index.js'  // 默认使用 index.js
-        ]
-      );
-      registeredTools++;
-    }
-
-    const isUpdate = existingSkill.length > 0;
-    return {
-      success: true,
-      skill_id: skillId,
-      name: skillName,
-      action: isUpdate ? 'updated' : 'created',
-      tools_registered: registeredTools,
-      message: `✅ Skill "${skillName}" ${isUpdate ? 'updated' : 'registered'} with ${registeredTools} tools`
-    };
-  },
-
-  /**
-   * 删除技能
-   */
-  async deleteSkill(params, pool) {
-    const { skill_id } = params;
-
-    const [skill] = await pool.query(
-      'SELECT id, name FROM skills WHERE id = ? OR name = ?',
-      [skill_id, skill_id]
-    );
-    if (skill.length === 0) {
-      return { success: false, error: `Skill not found: ${skill_id}` };
-    }
-
-    const actualSkillId = skill[0].id;
-    const skillName = skill[0].name;
-
-    // 先删除关联
-    await pool.execute('DELETE FROM expert_skills WHERE skill_id = ?', [actualSkillId]);
-    await pool.execute('DELETE FROM skill_tools WHERE skill_id = ?', [actualSkillId]);
-    await pool.execute('DELETE FROM skills WHERE id = ?', [actualSkillId]);
-
-    return {
-      success: true,
-      message: `✅ Skill "${skillName}" deleted successfully`
-    };
-  },
-
-  /**
-   * 启用/禁用技能
-   */
-  async toggleSkill(params, pool) {
-    const { skill_id, is_active } = params;
-
-    const [skill] = await pool.query(
-      'SELECT id, name FROM skills WHERE id = ? OR name = ?',
-      [skill_id, skill_id]
-    );
-    if (skill.length === 0) {
-      return { success: false, error: `Skill not found: ${skill_id}` };
-    }
-
-    await pool.execute(
-      'UPDATE skills SET is_active = ? WHERE id = ?',
-      [is_active ? 1 : 0, skill[0].id]
-    );
-
-    return {
-      success: true,
-      message: `✅ Skill "${skill[0].name}" ${is_active ? 'enabled' : 'disabled'}`
-    };
-  },
-
-  /**
-   * 列出所有技能（精简列表，不含工具详情）
-   */
-  async listSkills(params, pool) {
-    const { is_active, search } = params;
-
-    // 简化查询：只查 skills 表，不 JOIN
-    let sql = 'SELECT id, name, description, version, is_active, source_path FROM skills';
-    const conditions = [];
-    const values = [];
-
-    if (is_active !== undefined) {
-      conditions.push('is_active = ?');
-      values.push(is_active ? 1 : 0);
-    }
-
-    if (search) {
-      conditions.push('name LIKE ?');
-      values.push(`%${search}%`);
-    }
-
-    if (conditions.length > 0) {
-      sql += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    sql += ' ORDER BY name';
-
-    const [skills] = await pool.query(sql, values);
-
-    return {
-      success: true,
-      total: skills.length,
-      skills: skills.map(s => ({
-        id: s.id,
-        name: s.name,
-        description: s.description,
-        version: s.version,
-        is_active: !!s.is_active,
-        source_path: s.source_path
-      }))
-    };
-  },
-
-  /**
-   * 获取技能完整详情（包含工具定义）
-   */
-  async listSkillDetails(params, pool) {
-    const { skill_id } = params;
-
-    // 查找技能（获取完整字段）
-    const [skill] = await pool.query(
-      'SELECT id, name, description, version, author, tags, is_active, source_path, created_at, updated_at FROM skills WHERE id = ? OR name = ?',
-      [skill_id, skill_id]
-    );
-    if (skill.length === 0) {
-      return { success: false, error: `Skill not found: ${skill_id}` };
-    }
-
-    const actualSkillId = skill[0].id;
-
-    // 查询工具
-    const [tools] = await pool.query(
-      'SELECT id, name, description, parameters, script_path FROM skill_tools WHERE skill_id = ?',
-      [actualSkillId]
-    );
-
-    // 安全解析 JSON
-    const safeParseJson = (str) => {
-      if (typeof str !== 'string') return str;
-      try {
-        return JSON.parse(str);
-      } catch (e) {
-        return null;
-      }
-    };
-
-    return {
-      success: true,
-      skill: {
-        id: skill[0].id,
-        name: skill[0].name,
-        description: skill[0].description,
-        version: skill[0].version,
-        author: skill[0].author,
-        tags: safeParseJson(skill[0].tags) || [],
-        is_active: !!skill[0].is_active,
-        source_path: skill[0].source_path,
-        created_at: skill[0].created_at,
-        updated_at: skill[0].updated_at
-      },
-      total: tools.length,
-      tools: tools.map(t => ({
-        id: t.id,
-        name: t.name,
-        description: t.description,
-        parameters: safeParseJson(t.parameters) || { type: 'object', properties: {} },
-        script_path: t.script_path
-      }))
-    };
-  }
+  description: '技能管理工具：注册、删除、分配技能（通过 API 调用）',
 };
-
-
-// 命令行入口点仅在直接运行时执行（非 vm 沙箱环境）
-// vm 沙箱中 process.argv 和 process.exit 不可用
-if (typeof process.argv !== 'undefined' && process.argv[1] && process.argv[1].endsWith('index.js')) {
-  async function main() {
-    const args = process.argv.slice(2);
-    if (args.length < 2) {
-      console.log(JSON.stringify({ success: false, error: 'Usage: node index.js <toolName> <paramsJSON>' }));
-      process.exit(1);
-    }
-
-    const toolName = args[0];
-    let params = {};
-    
-    try {
-      params = JSON.parse(args[1]);
-    } catch (e) {
-      console.log(JSON.stringify({ success: false, error: 'Invalid JSON params' }));
-      process.exit(1);
-    }
-
-    const skill = module.exports;
-    const result = await skill.execute(toolName, params, {});
-    console.log(JSON.stringify(result));
-  }
-
-  main().catch(err => {
-    console.log(JSON.stringify({ success: false, error: err.message, stack: err.stack }));
-    process.exit(1);
-  });
-
-  // 确保 unhandled rejection 被捕获
-  process.on('unhandledRejection', (reason, promise) => {
-    console.log(JSON.stringify({ success: false, error: String(reason) }));
-    process.exit(1);
-  });
-}
