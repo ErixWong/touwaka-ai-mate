@@ -92,6 +92,28 @@ Frontend (Vue 3) ←→ API Server (Koa) ←→ Service Layer ←→ MySQL
 
 ---
 
+## Git 工作流
+
+详见 [SOUL.md - Git 工作流](../../core/SOUL.md#git-工作流-)
+
+### 快速参考
+
+| 操作 | 命令 |
+|------|------|
+| 创建分支 | `git checkout -b {type}/{编号}-{描述}` |
+| 提交 | `git commit -m "[T{编号}] {type}: 描述"` |
+| 推送 | `git push -u origin {分支名}` |
+| 创建 PR | 访问 GitHub，关联 Issue |
+
+### 分支类型
+
+- `feature` - 新功能
+- `fix` - Bug 修复
+- `refactor` - 代码重构
+- `docs` - 文档更新
+
+---
+
 ## 相关资源
 
 - [项目 README](../../../README.md) - 项目概览与快速开始
@@ -99,7 +121,8 @@ Frontend (Vue 3) ←→ API Server (Koa) ←→ Service Layer ←→ MySQL
 - [项目待办事项](../../core/TODO.md) - 当前任务状态
 - [已完成任务归档](../../archive/todo-archive-2026-03.md) - 历史完成记录
 - [经验教训](../../design/lessons-learned.md) - 常见问题和解决方案
+- [Git 工作流](../../core/SOUL.md#git-工作流-) - 分支策略和 PR 规范
 
 ---
 
-*最后更新: 2026-03-03*
+*最后更新: 2026-03-07*

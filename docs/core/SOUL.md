@@ -62,6 +62,69 @@
 
 ---
 
+## Git 工作流 🌿
+
+### 分支策略
+
+- **分支命名**: `{type}/{编号}-{简短描述}`
+- **类型**: `feature` | `fix` | `refactor` | `docs`
+- **从 `master` 创建分支，完成后通过 PR 合并回 `master`**
+
+### 分支类型说明
+
+| 类型 | 用途 | 示例 |
+|------|------|------|
+| `feature` | 新功能 | `feature/15-knowledge-import` |
+| `fix` | Bug 修复 | `fix/12-login-error` |
+| `refactor` | 代码重构 | `refactor/10-split-kb-skill` |
+| `docs` | 文档更新 | `docs/20-api-reference` |
+
+### PR 工作流
+
+1. **创建分支**
+   ```bash
+   git checkout master
+   git pull
+   git checkout -b refactor/10-split-kb-skill
+   ```
+
+2. **开发和提交**
+   ```bash
+   git add .
+   git commit -m "[T10] refactor: 拆分 knowledge-base 技能"
+   git push -u origin refactor/10-split-kb-skill
+   ```
+
+3. **创建 PR**
+   - 访问 GitHub 创建 Pull Request
+   - 在 PR 描述中关联 Issue: `Closes #10`
+   - 等待 CI 通过后合并
+
+4. **Squash Merge**
+   - 使用 Squash Merge 保持 master 历史整洁
+   - 合并后删除分支
+
+### 提交规范
+
+格式: `[T{编号}] {type}: 描述`
+
+类型:
+- `feat`: 新功能
+- `fix`: 修复
+- `refactor`: 重构
+- `docs`: 文档
+- `test`: 测试
+- `chore`: 杂项
+
+示例:
+```
+[T10] refactor: 拆分 knowledge-base 技能为 kb-editor 和 kb-search
+[T15] feat: 添加知识库导入功能
+[T12] fix: 修复登录错误
+```
+
+---
+
 ## 任务文档工作流 📁
 
 每次创建分支开发新功能时，按以下流程管理文档：
