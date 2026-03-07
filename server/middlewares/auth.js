@@ -9,21 +9,38 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secre
 
 /**
  * 必须认证中间件
- * 支持从 Authorization header 或 URL query 参数中获取 token
+ * 支持从 Authorization header、URL query 参数或 X-User-Id header（内部服务调用）获取认证信息
  */
 const authenticate = () => {
   return async (ctx, next) => {
     // 优先从 Authorization header 获取 token
     let token = null;
     const authHeader = ctx.headers.authorization;
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
     }
-    
+
     // 如果 header 中没有，尝试从 query 参数获取（支持 SSE EventSource）
     if (!token && ctx.query.token) {
       token = ctx.query.token;
+    }
+
+    // 内部服务调用：支持 X-User-Id header（来自技能执行等内部调用）
+    const internalUserId = ctx.headers['x-user-id'];
+    const internalSecret = ctx.headers['x-internal-secret'];
+    const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || 'internal-api-secret';
+
+    if (!token && internalUserId && internalSecret === INTERNAL_SECRET) {
+      // 内部服务调用认证成功
+      // 支持数字和字符串（UUID）类型的 userId
+      const parsedUserId = parseInt(internalUserId, 10);
+      ctx.state.userId = isNaN(parsedUserId) ? internalUserId : parsedUserId;
+      ctx.state.userRole = 'user';
+      ctx.state.authType = 'internal';
+      console.log('[Auth] Internal auth:', { userId: ctx.state.userId });
+      await next();
+      return;
     }
 
     if (!token) {

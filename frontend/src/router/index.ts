@@ -39,6 +39,16 @@ const router = createRouter({
           name: 'skills',
           component: () => import('@/views/SkillsView.vue'),
         },
+        {
+          path: 'knowledge',
+          name: 'knowledge',
+          component: () => import('@/views/KnowledgeBaseView.vue'),
+        },
+        {
+          path: 'knowledge/:kbId',
+          name: 'knowledge-detail',
+          component: () => import('@/views/KnowledgeDetailView.vue'),
+        },
       ],
     },
     {

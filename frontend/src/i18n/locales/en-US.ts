@@ -67,6 +67,8 @@ export default {
     timeMinutesAgo: '{n} min ago',
     timeYesterday: 'Yesterday',
     timeDaysAgo: '{n} days ago',
+    uploadImage: 'Upload image',
+    selectModel: 'Select Model',
   },
 
   // Debug panel
@@ -268,6 +270,13 @@ export default {
     modelIdentifierHint: 'The model ID used when calling the API',
     provider: 'Provider',
     selectProvider: 'Select Provider',
+    modelType: 'Model Type',
+    selectModelType: 'Select Model Type',
+    modelTypeChat: 'Chat Model',
+    modelTypeEmbedding: 'Embedding Model',
+    modelTypeImage: 'Multimodal Model',
+    modelTypeAudio: 'Audio Model',
+    maxTokens: 'Max Tokens',
     maxTokensPlaceholder: 'e.g., 4096',
     costPer1kInput: 'Cost per 1K Input Tokens',
     costPer1kOutput: 'Cost per 1K Output Tokens',
@@ -417,6 +426,7 @@ export default {
     expert: 'Expert',
     topics: 'Topics',
     tasks: 'Tasks',
+    skills: 'Skills',
     debug: 'Debug',
     collapse: 'Collapse Panel',
     expand: 'Expand Panel',
@@ -600,5 +610,152 @@ export default {
     moreActions: 'More actions',
     deleteFileConfirmMessage: 'Are you sure you want to delete "{name}"? This action cannot be undone.',
     editing: 'Editing',
+  },
+
+  // Knowledge Base
+  knowledgeBase: {
+    title: 'Knowledge Base',
+    searchPlaceholder: 'Search knowledge bases...',
+    empty: 'No knowledge bases yet. Click + to create one.',
+    createNew: 'New Knowledge Base',
+    addFirst: 'Add your first knowledge base',
+
+    // Card info
+    pointCount: '{count} points',
+    knowledgeCount: '{count} articles',
+    updatedAgo: 'Updated {time}',
+
+    // Create/Edit dialog
+    createTitle: 'Create Knowledge Base',
+    editTitle: 'Edit Knowledge Base',
+    nameLabel: 'Name',
+    namePlaceholder: 'Enter knowledge base name',
+    descriptionLabel: 'Description (optional)',
+    descriptionPlaceholder: 'Enter description...',
+    embeddingModel: 'Embedding Model',
+    selectEmbeddingModel: 'Select embedding model',
+    createSuccess: 'Knowledge base created successfully',
+    createFailed: 'Failed to create knowledge base',
+    updateSuccess: 'Knowledge base updated successfully',
+    updateFailed: 'Failed to update knowledge base',
+
+    // Delete
+    deleteConfirm: 'Confirm Delete',
+    deleteConfirmMessage: 'Are you sure you want to delete "{name}"? All articles and knowledge points will be permanently deleted.',
+
+    // Detail page
+    backToList: 'Back to Knowledge Bases',
+    importFile: 'Import File',
+    importWeb: 'Import Web',
+    newArticle: 'New Article',
+    search: 'Search',
+    searchHint: 'Enter keywords for semantic search...',
+    globalSearch: 'Global Search',
+    searchResult: {
+      title: 'Search Results',
+      empty: 'No matching knowledge points found',
+    },
+
+    // Article tree
+    articleTree: 'Article Tree',
+    noArticles: 'No articles yet. Import or create one.',
+    selectArticleHint: 'Select an article from the left',
+    expandAll: 'Expand All',
+    collapseAll: 'Collapse All',
+
+    // Batch embed
+    batchEmbed: 'Generate Embeddings',
+    embedding: 'Generating embeddings...',
+    noPointsToEmbed: 'No knowledge points to embed',
+    embedSuccess: 'Successfully embedded {count} points',
+    embedFailed: 'Failed to generate embeddings',
+    embedError: 'Error generating embeddings',
+    embedCompleted: 'Embedding generation completed',
+
+    // Batch embed scope selection
+    batchEmbedScope: {
+      title: 'Select Embedding Scope',
+      hint: 'Select the scope for embedding generation:',
+      entireKB: 'Entire Knowledge Base',
+      currentArticle: 'Specific Article',
+      selectArticle: 'Select Article',
+      selectArticlePlaceholder: 'Please select an article',
+    },
+
+    // Article
+    article: {
+      create: 'New Article',
+      edit: 'Edit Article',
+      titlePlaceholder: 'Enter article title',
+      parent: 'Parent Article',
+      noParent: 'None (Root Level)',
+      summary: 'Summary',
+      summaryPlaceholder: 'Enter article summary...',
+      createSuccess: 'Article created successfully',
+      createFailed: 'Failed to create article',
+      updateSuccess: 'Article updated successfully',
+      updateFailed: 'Failed to update article',
+      deleteConfirm: 'Are you sure you want to delete "{title}"? Child articles and knowledge points will also be deleted.',
+    },
+
+    // Knowledge Point
+    point: {
+      title: 'Knowledge Points',
+      noPoints: 'No knowledge points yet',
+      create: 'Add Knowledge Point',
+      edit: 'Edit Knowledge Point',
+      titleLabel: 'Title (optional)',
+      titlePlaceholder: 'Enter knowledge point title',
+      contentLabel: 'Content',
+      contentPlaceholder: 'Enter knowledge point content (Markdown supported)...',
+      contextLabel: 'Context',
+      contextPlaceholder: 'Additional context for better search accuracy...',
+      createSuccess: 'Knowledge point created successfully',
+      createFailed: 'Failed to create knowledge point',
+      updateSuccess: 'Knowledge point updated successfully',
+      updateFailed: 'Failed to update knowledge point',
+      deleteConfirm: 'Are you sure you want to delete this knowledge point?',
+      tokenCount: '{count} tokens',
+      vectorized: 'Vectorized',
+      notVectorized: 'Not Vectorized',
+    },
+
+    // Search results
+    searchResult: {
+      title: 'Search Results',
+      empty: 'No relevant content found',
+      score: 'Relevance',
+      location: 'Location',
+    },
+
+    // Status
+    status: {
+      pending: 'Pending',
+      processing: 'Processing',
+      ready: 'Ready',
+      failed: 'Failed',
+    },
+
+    // Source type
+    sourceType: {
+      file: 'File Import',
+      web: 'Web Import',
+      manual: 'Manual Creation',
+    },
+
+    // Knowledge Graph
+    graph: {
+      title: 'Knowledge Graph',
+      showGraph: 'View Knowledge Graph',
+      hideGraph: 'Close Knowledge Graph',
+      noRelations: 'No relations yet',
+      clickNode: 'Click node to view details',
+      dragNode: 'Drag node to reposition',
+    },
+
+    // More actions
+    moreActions: 'More Actions',
+    export: 'Export',
+    settings: 'Settings',
   },
 }

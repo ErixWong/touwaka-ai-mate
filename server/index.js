@@ -6,6 +6,7 @@
 import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
+import serve from 'koa-static';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -36,6 +37,7 @@ import SkillController from './controllers/skill.controller.js';
 import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
+import KnowledgeBaseController from './controllers/knowledge-base.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -51,6 +53,9 @@ import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
+import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
+import uploadRoutes from './routes/upload.routes.js';
+import UploadController from './controllers/upload.controller.js';
 
 class ApiServer {
   constructor() {
@@ -121,6 +126,7 @@ class ApiServer {
       skill: new SkillController(this.db),
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
+      knowledgeBase: new KnowledgeBaseController(this.db),
     };
   }
 
@@ -156,8 +162,13 @@ class ApiServer {
       }
     });
 
-    // Body 解析
-    this.app.use(bodyParser());
+    // Body 解析（增加限制以支持图片等多模态内容）
+    this.app.use(bodyParser({
+      jsonLimit: '50mb',  // 允许更大的 JSON 请求体
+    }));
+
+    // 静态文件服务 - 上传的图片
+    this.app.use(serve(path.join(__dirname, '..', 'public', 'uploads')));
 
     // 统一响应格式
     this.app.use(responseMiddleware());
@@ -227,6 +238,14 @@ class ApiServer {
     // Task 路由
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
+
+    // Knowledge Base 路由
+    this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).routes());
+    this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).allowedMethods());
+
+    // Upload 路由
+    this.app.use(uploadRoutes(UploadController).routes());
+    this.app.use(uploadRoutes(UploadController).allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {
@@ -321,6 +340,11 @@ class ApiServer {
         logger.info('  PUT  /api/roles/:id/permissions');
         logger.info('  GET  /api/roles/:id/experts');
         logger.info('  PUT  /api/roles/:id/experts');
+        logger.info('  GET  /api/kb (知识库)');
+        logger.info('  POST /api/kb');
+        logger.info('  GET  /api/kb/:id');
+        logger.info('  GET  /api/kb/:kb_id/knowledges/tree');
+        logger.info('  GET  /api/kb/:kb_id/knowledges/:id/points');
 
         // 异步处理未回复的消息（不阻塞服务器启动）
         this.chatService.processUnrepliedMessages().catch(err => {

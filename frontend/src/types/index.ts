@@ -88,8 +88,10 @@ export interface AIModel {
   model_name: string  // API调用使用的模型标识符
   provider_id: string
   provider_name: string
+  model_type?: 'chat' | 'embedding' | 'image' | 'audio'
   description?: string
   max_tokens: number
+  embedding_dim?: number
   cost_per_1k_input: number
   cost_per_1k_output: number
   is_active: boolean
@@ -103,7 +105,9 @@ export interface ModelFormData {
   name: string
   model_name: string  // API调用使用的模型标识符
   provider_id: string
+  model_type?: 'chat' | 'embedding' | 'image' | 'audio'
   max_tokens?: number
+  embedding_dim?: number
   cost_per_1k_input?: number
   cost_per_1k_output?: number
   description?: string
@@ -196,7 +200,7 @@ export enum ErrorCode {
 // 分页参数
 export interface PaginationParams {
   page?: number
-  limit?: number
+  pageSize?: number
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }
@@ -208,6 +212,12 @@ export interface PaginatedResponse<T> {
   page: number
   limit: number
   total_pages: number
+  pagination?: {
+    page: number
+    size: number
+    total: number
+    pages: number
+  }
 }
 
 // 聊天请求
@@ -635,4 +645,185 @@ export interface TaskFile {
   type: 'file' | 'directory'
   size?: number
   modified_at?: string
+}
+
+// ============================================
+// 知识库相关类型
+// ============================================
+
+/**
+ * 知识库（匹配后端 knowledge_bases 表）
+ */
+export interface KnowledgeBase {
+  id: string | number
+  name: string
+  description?: string
+  owner_id: string
+  embedding_model_id?: string
+  embedding_dim: number
+  is_public: boolean
+  // 统计信息（API 返回时附带）
+  knowledge_count?: number
+  point_count?: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 文章状态
+ */
+export type KnowledgeStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+/**
+ * 文章来源类型
+ */
+export type KnowledgeSourceType = 'file' | 'web' | 'manual'
+
+/**
+ * 文章（匹配后端 knowledges 表，树状结构）
+ */
+export interface Knowledge {
+  id: string | number
+  kb_id: string | number
+  parent_id?: string | number
+  title: string
+  summary?: string
+  source_type: KnowledgeSourceType
+  source_url?: string
+  file_path?: string
+  status: KnowledgeStatus
+  position: number
+  // 子节点（树形结构时填充）
+  children?: Knowledge[]
+  // 知识点列表（查询时填充）
+  points?: KnowledgePoint[]
+  // 知识点数量
+  point_count?: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 知识点（匹配后端 knowledge_points 表）
+ */
+export interface KnowledgePoint {
+  id: string | number
+  knowledge_id: string | number
+  title?: string
+  content: string
+  context?: string
+  embedding?: number[]  // 向量，可选
+  position: number
+  token_count: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 知识点关系类型
+ */
+export type KnowledgeRelationType = 'depends_on' | 'references' | 'related_to' | 'contradicts' | 'extends' | 'example_of'
+
+/**
+ * 知识点关联（匹配后端 knowledge_relations 表）
+ */
+export interface KnowledgeRelation {
+  id: string | number
+  source_id: string | number
+  target_id: string | number
+  relation_type: KnowledgeRelationType
+  confidence: number
+  created_by: 'llm' | 'manual'
+  created_at: string
+}
+
+/**
+ * 创建知识库请求数据
+ */
+export interface CreateKnowledgeBaseRequest {
+  name: string
+  description?: string
+  embedding_model_id?: string
+  embedding_dim?: number
+}
+
+/**
+ * 更新知识库请求数据
+ */
+export interface UpdateKnowledgeBaseRequest {
+  name?: string
+  description?: string
+  embedding_model_id?: string
+}
+
+/**
+ * 创建文章请求数据
+ */
+export interface CreateKnowledgeRequest {
+  title: string
+  parent_id?: number
+  summary?: string
+  source_type?: KnowledgeSourceType
+  source_url?: string
+}
+
+/**
+ * 更新文章请求数据
+ */
+export interface UpdateKnowledgeRequest {
+  title?: string
+  summary?: string
+  position?: number
+}
+
+/**
+ * 创建知识点请求数据
+ */
+export interface CreateKnowledgePointRequest {
+  title?: string
+  content: string
+  context?: string
+  position?: number
+}
+
+/**
+ * 更新知识点请求数据
+ */
+export interface UpdateKnowledgePointRequest {
+  title?: string
+  content?: string
+  context?: string
+  position?: number
+}
+
+/**
+ * 语义搜索请求参数
+ */
+export interface KnowledgeSearchRequest {
+  query: string
+  kb_id?: string | number
+  top_k?: number
+  threshold?: number
+}
+
+/**
+ * 语义搜索结果
+ */
+export interface KnowledgeSearchResult {
+  point: KnowledgePoint
+  knowledge: Knowledge
+  knowledge_base?: KnowledgeBase
+  score: number
+}
+
+/**
+ * 专家知识库配置
+ */
+export interface ExpertKnowledgeConfig {
+  enabled: boolean
+  kb_id?: string | number
+  top_k?: number
+  threshold?: number
+  max_tokens?: number
+  style?: 'default' | 'concise' | 'detailed'
 }
