@@ -14,10 +14,6 @@
           <span>🔍</span>
           {{ $t('knowledgeBase.search') }}
         </button>
-        <button class="btn-action" @click="showArticleDialog = true">
-          <span>📝</span>
-          {{ $t('knowledgeBase.newArticle') }}
-        </button>
         <button class="btn-action btn-revectorize" @click="handleRevectorize" :disabled="isRevectorizing">
           <span>🔄</span>
           {{ isRevectorizing ? $t('knowledgeBase.revectorizing') : $t('knowledgeBase.revectorize') }}
@@ -85,10 +81,17 @@
         <!-- Knowledge Content -->
         <div v-else class="content-main">
           <div class="content-header">
-            <h2 class="content-title">{{ selectedKnowledge.title }}</h2>
-            <button class="btn-edit-title" @click="editCurrentKnowledge" :title="$t('knowledgeBase.article.edit')">
-              ✏️
-            </button>
+            <div class="title-row">
+              <h2 class="content-title">{{ selectedKnowledge.title }}</h2>
+              <div class="title-actions">
+                <button class="btn-icon-action btn-edit" @click="editCurrentKnowledge" :title="$t('knowledgeBase.article.edit')">
+                  ✏️
+                </button>
+                <button class="btn-icon-action btn-delete" @click="deleteCurrentKnowledge" :title="$t('common.delete')">
+                  🗑️
+                </button>
+              </div>
+            </div>
             <div class="content-meta">
               <span class="meta-item">
                 {{ $t('knowledgeBase.status.' + selectedKnowledge.status) }}
@@ -453,6 +456,12 @@ const editCurrentKnowledge = () => {
   }
 }
 
+const deleteCurrentKnowledge = () => {
+  if (selectedKnowledge.value) {
+    deleteKnowledge(selectedKnowledge.value)
+  }
+}
+
 const editKnowledge = (knowledge: Knowledge) => {
   editingKnowledge.value = knowledge
   articleForm.value = {
@@ -793,33 +802,55 @@ onMounted(async () => {
 }
 
 .content-header {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
   margin-bottom: 24px;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
 .content-title {
   font-size: 24px;
   font-weight: 600;
-  margin: 0 0 8px 0;
+  margin: 0;
   color: var(--text-primary, #333);
+  flex: 1;
 }
 
-.btn-edit-title {
-  background: none;
+.title-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon-action {
+  background: var(--secondary-bg, #f5f5f5);
   border: none;
-  cursor: pointer;
-  padding: 4px 8px;
+  border-radius: 6px;
+  padding: 6px 10px;
   font-size: 16px;
+  cursor: pointer;
   opacity: 0.6;
-  transition: opacity 0.2s, transform 0.2s;
-  margin-left: 8px;
+  transition: opacity 0.2s, background 0.2s;
 }
 
-.btn-edit-title:hover {
+.btn-icon-action:hover {
   opacity: 1;
-  transform: scale(1.1);
+}
+
+.btn-icon-action.btn-edit:hover {
+  background: var(--primary-light, #e3f2fd);
+}
+
+.btn-icon-action.btn-delete {
+  opacity: 0.4;
+}
+
+.btn-icon-action.btn-delete:hover {
+  opacity: 1;
+  background: #ffebee;
 }
 
 .content-meta {
