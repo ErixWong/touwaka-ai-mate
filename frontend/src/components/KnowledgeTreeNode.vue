@@ -5,7 +5,6 @@
       :style="{ paddingLeft: level * 16 + 'px' }"
       :class="{ selected: selectedId === node.id, expanded: isExpanded }"
       @click.stop="emit('select', node)"
-      @contextmenu.prevent="showContextMenu"
     >
       <!-- Expand/Collapse Button -->
       <span
@@ -51,29 +50,11 @@
         @add-child="emit('add-child', $event)"
       />
     </div>
-
-    <!-- Context Menu -->
-    <div
-      v-if="contextMenuVisible"
-      class="context-menu"
-      :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }"
-    >
-      <div class="context-item" @click="handleEdit">
-        ✏️ {{ $t('common.edit') }}
-      </div>
-      <div class="context-item" @click="handleAddChild">
-        ➕ {{ $t('knowledgeBase.article.create') }}
-      </div>
-      <div class="context-item danger" @click="handleDelete">
-        🗑️ {{ $t('common.delete') }}
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
 import type { Knowledge } from '@/types'
 
 const props = defineProps<{
@@ -90,8 +71,6 @@ const emit = defineEmits<{
   'add-child': [parent: Knowledge]
 }>()
 
-const { t } = useI18n()
-
 // State
 const isExpanded = ref(true)
 
@@ -101,9 +80,6 @@ watch(() => props.forceExpand, (newVal) => {
     isExpanded.value = newVal
   }
 }, { immediate: true })
-const contextMenuVisible = ref(false)
-const contextMenuX = ref(0)
-const contextMenuY = ref(0)
 
 // Computed
 const hasChildren = computed(() => {
@@ -113,36 +89,6 @@ const hasChildren = computed(() => {
 // Methods
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value
-}
-
-const showContextMenu = (event: MouseEvent) => {
-  contextMenuVisible.value = true
-  contextMenuX.value = event.clientX
-  contextMenuY.value = event.clientY
-
-  // Close on next click
-  setTimeout(() => {
-    document.addEventListener('click', closeContextMenu, { once: true })
-  }, 0)
-}
-
-const closeContextMenu = () => {
-  contextMenuVisible.value = false
-}
-
-const handleEdit = () => {
-  closeContextMenu()
-  emit('edit', props.node)
-}
-
-const handleAddChild = () => {
-  closeContextMenu()
-  emit('add-child', props.node)
-}
-
-const handleDelete = () => {
-  closeContextMenu()
-  emit('delete', props.node)
 }
 </script>
 
@@ -228,37 +174,5 @@ const handleDelete = () => {
 
 .node-children {
   /* Children styling handled by recursion */
-}
-
-/* Context Menu */
-.context-menu {
-  position: fixed;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 4px 0;
-  z-index: 1001;
-  min-width: 160px;
-}
-
-.context-item {
-  padding: 10px 16px;
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.context-item:hover {
-  background: var(--secondary-bg, #f5f5f5);
-}
-
-.context-item.danger {
-  color: #f44336;
-}
-
-.context-item.danger:hover {
-  background: #ffebee;
 }
 </style>
