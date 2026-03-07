@@ -45,7 +45,7 @@ export interface Topic {
 export type MessageRole = 'user' | 'assistant' | 'system'
 
 // 消息状态
-export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'cancelled'
+export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'cancelled' | 'stopped' | 'stopped'
 
 // 消息类型
 // 核心设计：消息按 expert + user 组织，topic_id 只是对话历史的阶段性总结标记
@@ -201,6 +201,7 @@ export enum ErrorCode {
 export interface PaginationParams {
   page?: number
   pageSize?: number
+  limit?: number  // 别名，与 pageSize 等价
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }
@@ -655,7 +656,7 @@ export interface TaskFile {
  * 知识库（匹配后端 knowledge_bases 表）
  */
 export interface KnowledgeBase {
-  id: string | number
+  id: string
   name: string
   description?: string
   owner_id: string
@@ -683,9 +684,9 @@ export type KnowledgeSourceType = 'file' | 'web' | 'manual'
  * 文章（匹配后端 knowledges 表，树状结构）
  */
 export interface Knowledge {
-  id: string | number
-  kb_id: string | number
-  parent_id?: string | number
+  id: string
+  kb_id: string
+  parent_id?: string
   title: string
   summary?: string
   source_type: KnowledgeSourceType
@@ -707,8 +708,8 @@ export interface Knowledge {
  * 知识点（匹配后端 knowledge_points 表）
  */
 export interface KnowledgePoint {
-  id: string | number
-  knowledge_id: string | number
+  id: string
+  knowledge_id: string
   title?: string
   content: string
   context?: string
@@ -728,9 +729,9 @@ export type KnowledgeRelationType = 'depends_on' | 'references' | 'related_to' |
  * 知识点关联（匹配后端 knowledge_relations 表）
  */
 export interface KnowledgeRelation {
-  id: string | number
-  source_id: string | number
-  target_id: string | number
+  id: string
+  source_id: string
+  target_id: string
   relation_type: KnowledgeRelationType
   confidence: number
   created_by: 'llm' | 'manual'
@@ -761,7 +762,7 @@ export interface UpdateKnowledgeBaseRequest {
  */
 export interface CreateKnowledgeRequest {
   title: string
-  parent_id?: number
+  parent_id?: string
   summary?: string
   source_type?: KnowledgeSourceType
   source_url?: string
@@ -801,7 +802,7 @@ export interface UpdateKnowledgePointRequest {
  */
 export interface KnowledgeSearchRequest {
   query: string
-  kb_id?: string | number
+  kb_id?: string
   top_k?: number
   threshold?: number
 }
@@ -821,7 +822,7 @@ export interface KnowledgeSearchResult {
  */
 export interface ExpertKnowledgeConfig {
   enabled: boolean
-  kb_id?: string | number
+  kb_id?: string
   top_k?: number
   threshold?: number
   max_tokens?: number

@@ -79,7 +79,7 @@ import type { Knowledge } from '@/types'
 const props = defineProps<{
   node: Knowledge
   level: number
-  selectedId?: string
+  selectedId?: string | number
   forceExpand?: boolean | null
 }>()
 

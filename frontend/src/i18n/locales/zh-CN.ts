@@ -648,10 +648,6 @@ export default {
     search: '搜索',
     searchHint: '输入关键词进行语义搜索...',
     globalSearch: '全局搜索',
-    searchResult: {
-      title: '搜索结果',
-      empty: '未找到相关知识点',
-    },
 
     // 文章树
     articleTree: '文章目录',

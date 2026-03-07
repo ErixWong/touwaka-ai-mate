@@ -313,7 +313,7 @@ const visiblePages = computed(() => {
 const getKbIcon = (kb: KnowledgeBase) => {
   // 可以根据知识库名称或类型返回不同图标
   const icons = ['📚', '📖', '📁', '📝', '🔧', '💡', '📊', '🎯']
-  const index = kb.id % icons.length
+  const index = Number(kb.id) % icons.length
   return icons[index]
 }
 

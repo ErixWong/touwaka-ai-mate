@@ -312,7 +312,7 @@ const hasSearched = ref(false)
 // Forms
 const articleForm = ref({
   title: '',
-  parent_id: undefined as number | undefined,
+  parent_id: undefined as string | undefined,
   summary: '',
 })
 
@@ -322,9 +322,15 @@ const pointForm = ref({
   context: '',
 })
 
+// Helper function to get route param as string
+const getRouteParam = (param: string | string[] | undefined): string | undefined => {
+  if (param === undefined) return undefined
+  return Array.isArray(param) ? param[0] : param
+}
+
 // Computed
 // 支持字符串(UUID)和数字类型的 kbId
-const kbId = computed(() => route.params.kbId)
+const kbId = computed(() => getRouteParam(route.params.kbId))
 
 const flatKnowledgeList = computed(() => {
   const flatten = (nodes: Knowledge[]): Knowledge[] => {
@@ -432,7 +438,7 @@ const editKnowledge = (knowledge: Knowledge) => {
   editingKnowledge.value = knowledge
   articleForm.value = {
     title: knowledge.title,
-    parent_id: knowledge.parent_id,
+    parent_id: knowledge.parent_id ?? undefined,
     summary: knowledge.summary || '',
   }
   showArticleDialog.value = true
@@ -442,7 +448,7 @@ const addChildKnowledge = (parent: Knowledge) => {
   editingKnowledge.value = null
   articleForm.value = {
     title: '',
-    parent_id: parent.id,
+    parent_id: parent.id ?? undefined,
     summary: '',
   }
   showArticleDialog.value = true
@@ -464,7 +470,7 @@ const deleteKnowledge = async (knowledge: Knowledge) => {
 const closeArticleDialog = () => {
   showArticleDialog.value = false
   editingKnowledge.value = null
-  articleForm.value = { title: '', parent_id: undefined, summary: '' }
+  articleForm.value = { title: '', parent_id: undefined as string | undefined, summary: '' }
 }
 
 const submitArticle = async () => {

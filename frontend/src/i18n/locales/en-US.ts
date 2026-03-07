@@ -651,10 +651,6 @@ export default {
     search: 'Search',
     searchHint: 'Enter keywords for semantic search...',
     globalSearch: 'Global Search',
-    searchResult: {
-      title: 'Search Results',
-      empty: 'No matching knowledge points found',
-    },
 
     // Article tree
     articleTree: 'Article Tree',

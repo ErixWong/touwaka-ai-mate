@@ -162,8 +162,17 @@ const isAdmin = computed(() => userStore.isAdmin)
 const currentExpertId = computed(() => expertStore.currentExpert?.id)
 const isClearing = ref(false)
 
+// LLM Payload 类型
+interface LLMPayload {
+  model?: string
+  messages?: Array<unknown>
+  temperature?: number
+  tools?: Array<unknown>
+  cached_at?: string
+}
+
 // LLM Payload 相关状态
-const llmPayload = ref<Record<string, unknown> | null>(null)
+const llmPayload = ref<LLMPayload | null>(null)
 const isLoadingPayload = ref(false)
 
 // 加载 LLM Payload
@@ -263,8 +272,9 @@ const lastMessage = computed(() => {
   const messages = chatStore.sortedMessages
   // 取最后一条 assistant 消息（只有 assistant 消息才有 token 使用信息）
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'assistant') {
-      return messages[i]
+    const msg = messages[i]
+    if (msg && msg.role === 'assistant') {
+      return msg
     }
   }
   return null

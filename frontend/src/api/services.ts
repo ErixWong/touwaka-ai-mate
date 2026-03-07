@@ -423,7 +423,7 @@ export const knowledgeBaseApi = {
     apiRequest<PaginatedResponse<KnowledgeBase>>(apiClient.get('/kb', { params })),
 
   // 获取知识库详情
-  getKnowledgeBase: (id: string | number) =>
+  getKnowledgeBase: (id: string) =>
     apiRequest<KnowledgeBase>(apiClient.get(`/kb/${id}`)),
 
   // 创建知识库
@@ -431,61 +431,61 @@ export const knowledgeBaseApi = {
     apiRequest<KnowledgeBase>(apiClient.post('/kb', data)),
 
   // 更新知识库
-  updateKnowledgeBase: (id: string | number, data: UpdateKnowledgeBaseRequest) =>
+  updateKnowledgeBase: (id: string, data: UpdateKnowledgeBaseRequest) =>
     apiRequest<KnowledgeBase>(apiClient.put(`/kb/${id}`, data)),
 
   // 删除知识库
-  deleteKnowledgeBase: (id: string | number) =>
+  deleteKnowledgeBase: (id: string) =>
     apiRequest<void>(apiClient.delete(`/kb/${id}`)),
 
   // ========== 文章管理 ==========
 
   // 获取文章树
-  getKnowledgeTree: (kbId: string | number) =>
+  getKnowledgeTree: (kbId: string) =>
     apiRequest<Knowledge[]>(apiClient.get(`/kb/${kbId}/knowledges/tree`)),
 
   // 获取文章详情
-  getKnowledge: (kbId: string | number, knowledgeId: string | number) =>
+  getKnowledge: (kbId: string, knowledgeId: string) =>
     apiRequest<Knowledge>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}`)),
 
   // 创建文章
-  createKnowledge: (kbId: string | number, data: CreateKnowledgeRequest) =>
+  createKnowledge: (kbId: string, data: CreateKnowledgeRequest) =>
     apiRequest<Knowledge>(apiClient.post(`/kb/${kbId}/knowledges`, data)),
 
   // 更新文章
-  updateKnowledge: (kbId: string | number, knowledgeId: string | number, data: UpdateKnowledgeRequest) =>
+  updateKnowledge: (kbId: string, knowledgeId: string, data: UpdateKnowledgeRequest) =>
     apiRequest<Knowledge>(apiClient.put(`/kb/${kbId}/knowledges/${knowledgeId}`, data)),
 
   // 删除文章
-  deleteKnowledge: (kbId: string | number, knowledgeId: string | number) =>
+  deleteKnowledge: (kbId: string, knowledgeId: string) =>
     apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}`)),
 
   // ========== 知识点管理 ==========
 
   // 获取知识点列表
-  getKnowledgePoints: (kbId: string | number, knowledgeId: string | number, params?: PaginationParams) =>
+  getKnowledgePoints: (kbId: string, knowledgeId: string, params?: PaginationParams) =>
     apiRequest<PaginatedResponse<KnowledgePoint>>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}/points`, { params })),
 
   // 获取知识点详情
-  getKnowledgePoint: (kbId: string | number, knowledgeId: string | number, pointId: string | number) =>
+  getKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string) =>
     apiRequest<KnowledgePoint>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
 
   // 创建知识点
-  createKnowledgePoint: (kbId: string | number, knowledgeId: string | number, data: CreateKnowledgePointRequest) =>
+  createKnowledgePoint: (kbId: string, knowledgeId: string, data: CreateKnowledgePointRequest) =>
     apiRequest<KnowledgePoint>(apiClient.post(`/kb/${kbId}/knowledges/${knowledgeId}/points`, data)),
 
   // 更新知识点
-  updateKnowledgePoint: (kbId: string | number, knowledgeId: string | number, pointId: string | number, data: UpdateKnowledgePointRequest) =>
+  updateKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string, data: UpdateKnowledgePointRequest) =>
     apiRequest<KnowledgePoint>(apiClient.put(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`, data)),
 
   // 删除知识点
-  deleteKnowledgePoint: (kbId: string | number, knowledgeId: string | number, pointId: string | number) =>
+  deleteKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string) =>
     apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
 
   // ========== 搜索 ==========
 
   // 语义搜索（单个知识库内）
-  search: (kbId: string | number, data: KnowledgeSearchRequest) =>
+  search: (kbId: string, data: KnowledgeSearchRequest) =>
     apiRequest<KnowledgeSearchResult[]>(apiClient.post(`/kb/${kbId}/search`, data)),
 
   // 全局语义搜索（跨所有知识库）
@@ -495,13 +495,13 @@ export const knowledgeBaseApi = {
   // ========== 向量化 ==========
 
   // 重新向量化知识库所有知识点
-  revectorize: (kbId: string | number) =>
+  revectorize: (kbId: string) =>
     apiRequest<{ job_id: string; total: number; success: number; failed: number; embedding_dim: number }>(
       apiClient.post(`/kb/${kbId}/revectorize`, {}, { timeout: 600000 })
     ),
 
   // 获取重新向量化进度
-  getRevectorizeProgress: (kbId: string | number, jobId: string) =>
+  getRevectorizeProgress: (kbId: string, jobId: string) =>
     apiRequest<{ total: number; success: number; failed: number; current: number; status: string; embedding_dim: number }>(
       apiClient.get(`/kb/${kbId}/revectorize/${jobId}`)
     ),
