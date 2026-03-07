@@ -67,6 +67,7 @@ class StreamController {
         model_id,
         task_id,
         task_path,  // 传递当前浏览路径
+        access_token: ctx.state.accessToken,  // 传递用户 Token
       });
 
       // 立即返回成功，消息将通过 SSE 推送
@@ -84,7 +85,7 @@ class StreamController {
   /**
    * 异步处理消息并通过 SSE 推送响应
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path }) {
+  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path, access_token }) {
     // 获取该 Expert 的所有活跃连接
     const connections = this.expertConnections.get(expert_id);
     
@@ -120,7 +121,7 @@ class StreamController {
           model_id,
           task_id,
           task_path,  // 传递当前浏览路径
-          access_token: ctx.state.accessToken,  // 传递用户 Token，用于 skill 调用后台 API
+          access_token,  // 传递用户 Token，用于 skill 调用后台 API
         },
         // onDelta - 流式数据回调
         (delta) => {
