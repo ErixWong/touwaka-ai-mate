@@ -5,13 +5,12 @@ export default class knowledge_relation extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
-        primaryKey: true,
-        autoIncrement: true
+        primaryKey: true
       },
       source_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
         references: {
           model: 'knowledge_points',
@@ -20,7 +19,7 @@ export default class knowledge_relation extends Model {
         comment: '源知识点'
       },
       target_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
         references: {
           model: 'knowledge_points',

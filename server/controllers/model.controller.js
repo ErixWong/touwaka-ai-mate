@@ -144,7 +144,7 @@ class ModelController {
         cost_per_1k_input: body.cost_per_1k_input || 0,
         cost_per_1k_output: body.cost_per_1k_output || 0,
         description: body.description || null,
-        model_type: body.model_type || 'chat',
+        model_type: body.model_type || 'text',
         is_active: body.is_active !== undefined ? body.is_active : true,
       });
 

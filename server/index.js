@@ -100,7 +100,23 @@ class ApiServer {
         throw error;
       }
     } else {
-      logger.info('Database tables already exist, skipping initialization');
+      logger.info('Database tables already exist, checking for upgrades...');
+      
+      // 自动检查并执行数据库升级
+      try {
+        const { upgrade, needsUpgrade } = await import('../scripts/upgrade-database.js');
+        if (await needsUpgrade()) {
+          logger.info('Database schema upgrade needed, running upgrade...');
+          await upgrade();
+          logger.info('Database upgraded successfully');
+        } else {
+          logger.info('Database schema is up to date');
+        }
+      } catch (error) {
+        logger.error('Failed to upgrade database:', error.message);
+        // 升级失败不阻止服务器启动，只记录警告
+        logger.warn('Server will continue with current schema');
+      }
     }
 
     // 初始化 ChatService
