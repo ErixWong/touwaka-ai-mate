@@ -387,7 +387,9 @@ export const taskApi = {
   // 上传文件到任务工作空间
   uploadFile: (id: string, file: File, subdir?: string) => {
     const formData = new FormData()
-    formData.append('file', file)
+    // 创建新 File 对象，文件名用 encodeURIComponent 编码，解决中文文件名乱码问题
+    const encodedFile = new File([file], encodeURIComponent(file.name), { type: file.type })
+    formData.append('file', encodedFile)
     if (subdir) {
       formData.append('subdir', subdir)
     }

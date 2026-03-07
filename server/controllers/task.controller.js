@@ -552,8 +552,8 @@ class TaskController {
       // 确保目标目录存在
       await fs.mkdir(targetDir, { recursive: true });
 
-      // 获取文件名
-      const originalName = file.originalname || 'uploaded_file';
+      // 获取文件名（前端已用 encodeURIComponent 编码，这里解码）
+      const originalName = decodeURIComponent(file.originalname || 'uploaded_file');
       const targetPath = path.join(targetDir, originalName);
 
       // 使用 buffer 写入文件（memoryStorage 模式）
