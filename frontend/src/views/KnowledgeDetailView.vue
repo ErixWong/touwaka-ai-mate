@@ -133,26 +133,26 @@
               >
                 <div class="point-header">
                   <div v-if="point.title" class="point-title">{{ point.title }}</div>
-                  <div class="point-status-col">
-                      <span v-if="(point as any).is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.point.vectorized')">
-                        ✅ {{ $t('knowledgeBase.point.vectorized') }}
-                      </span>
-                      <span v-else class="status-badge not-vectorized" :title="$t('knowledgeBase.point.notVectorized')">
-                        ⏳ {{ $t('knowledgeBase.point.notVectorized') }}
-                      </span>
-                      <button
-                        v-if="(point as any).is_vectorized"
-                        class="status-badge revectorize-btn"
-                        @click.stop="handlePointRevectorize(point)"
-                        :title="$t('knowledgeBase.point.revectorizeHint')"
-                      >
-                        🔄
-                      </button>
-                    </div>
                 </div>
                 <div class="point-content" v-html="renderMarkdown(point.content)"></div>
                 <div class="point-meta">
                   <span>{{ $t('knowledgeBase.point.tokenCount', { count: point.token_count }) }}</span>
+                  <div class="point-status-actions">
+                    <span v-if="(point as any).is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.point.vectorized')">
+                      ✅ {{ $t('knowledgeBase.point.vectorized') }}
+                    </span>
+                    <span v-else class="status-badge not-vectorized" :title="$t('knowledgeBase.point.notVectorized')">
+                      ⏳ {{ $t('knowledgeBase.point.notVectorized') }}
+                    </span>
+                    <button
+                      v-if="(point as any).is_vectorized"
+                      class="status-badge revectorize-btn"
+                      @click.stop="handlePointRevectorize(point)"
+                      :title="$t('knowledgeBase.point.revectorizeHint')"
+                    >
+                      🔄
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1052,20 +1052,10 @@ onMounted(async () => {
   color: var(--text-tertiary, #999);
 }
 
-/* 重新向量化单个知识点按钮 */
-.btn-revectorize-point {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 8px;
-  font-size: 14px;
-  opacity: 0.6;
-  transition: opacity 0.2s, transform 0.2s;
-}
-
-.btn-revectorize-point:hover {
-  opacity: 1;
-  transform: scale(1.1);
+.point-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Dialogs */
