@@ -52,6 +52,7 @@ const authenticate = () => {
       const decoded = jwt.verify(token, JWT_SECRET);
       ctx.state.userId = decoded.userId;
       ctx.state.userRole = decoded.role;
+      ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
       console.log('[Auth] Token decoded:', { userId: decoded.userId, role: decoded.role });
       await next();
     } catch (error) {
@@ -77,6 +78,7 @@ const optionalAuth = () => {
         const decoded = jwt.verify(token, JWT_SECRET);
         ctx.state.userId = decoded.userId;
         ctx.state.userRole = decoded.role;
+        ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
       } catch (error) {
         // Token 无效但不阻止请求
       }

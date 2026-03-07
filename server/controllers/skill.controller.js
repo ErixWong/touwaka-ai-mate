@@ -1324,7 +1324,16 @@ class SkillController {
    */
   async register(ctx) {
     try {
-      const { source_path, name: provided_name } = ctx.request.body;
+      const { source_path, name: provided_name, description: provided_desc, tools: provided_tools } = ctx.request.body;
+
+      logger.info('[SkillController] register() called with:', {
+        source_path,
+        provided_name,
+        provided_desc,
+        provided_tools_type: typeof provided_tools,
+        provided_tools_is_array: Array.isArray(provided_tools),
+        provided_tools_length: provided_tools?.length,
+      });
 
       if (!source_path) {
         ctx.error('source_path is required', 400);
@@ -1352,6 +1361,7 @@ class SkillController {
       const skill_md = fsOriginal.readFileSync(skill_md_path, 'utf-8');
       const skill_info = parseSkillMd(skill_md);
       const skill_name = provided_name || skill_info.name || path.basename(full_path);
+      const skill_desc = provided_desc || skill_info.description || '';
 
       // 检查 index.js 是否存在
       const index_js_path = path.join(full_path, 'index.js');
@@ -1373,7 +1383,7 @@ class SkillController {
       await this.Skill.upsert({
         id: skill_id,
         name: skill_name,
-        description: skill_info.description || '',
+        description: skill_desc,
         version: skill_info.version || '1.0.0',
         author: skill_info.author || '',
         tags: skill_info.tags ? JSON.stringify(skill_info.tags) : '[]',
@@ -1386,40 +1396,78 @@ class SkillController {
       // 删除旧的工具定义
       await this.SkillTool.destroy({ where: { skill_id } });
 
-      // 尝试加载 index.js 获取工具定义
-      try {
-        // 使用动态导入（添加时间戳避免缓存）
-        const index_module = await import(index_js_path + '?t=' + Date.now());
-        const skill_module = index_module.default || index_module;
+      // 使用传入的 tools 参数，如果没有则尝试从 index.js 加载
+      let tools_to_register = provided_tools;
+      
+      logger.info('[SkillController] tools_to_register initial:', {
+        type: typeof tools_to_register,
+        isArray: Array.isArray(tools_to_register),
+        length: tools_to_register?.length,
+      });
+      
+      if (!tools_to_register || (Array.isArray(tools_to_register) && tools_to_register.length === 0)) {
+        // 尝试加载 index.js 获取工具定义
+        logger.info('[SkillController] No tools provided, trying to load from index.js');
+        try {
+          const index_module = await import(index_js_path + '?t=' + Date.now());
+          const skill_module = index_module.default || index_module;
 
-        if (skill_module.getTools && typeof skill_module.getTools === 'function') {
-          const tools = skill_module.getTools();
-
-          // 插入工具定义
-          for (const tool of tools) {
-            const tool_name = tool.function?.name || tool.name;
-            const tool_desc = tool.function?.description || tool.description;
-            const tool_params = tool.function?.parameters || tool.parameters;
-
-            await this.SkillTool.create({
-              id: Utils.newID(20),
-              skill_id,
-              name: tool_name,
-              description: tool_desc || '',
-              type: 'http',
-              parameters: tool_params ? JSON.stringify(tool_params) : '{}',
-            });
+          if (skill_module.getTools && typeof skill_module.getTools === 'function') {
+            tools_to_register = skill_module.getTools();
+            logger.info('[SkillController] Loaded tools from index.js:', tools_to_register?.length);
           }
+        } catch (err) {
+          logger.warn(`Could not parse tools from ${source_path}:`, err.message);
         }
-      } catch (err) {
-        logger.warn(`Could not parse tools from ${source_path}:`, err.message);
       }
+
+      // 插入工具定义
+      let registered_tools = 0;
+      if (tools_to_register && Array.isArray(tools_to_register)) {
+        logger.info('[SkillController] Processing tools:', tools_to_register.length);
+        for (const tool of tools_to_register) {
+          const tool_name = tool.function?.name || tool.name;
+          const tool_desc = tool.function?.description || tool.description;
+          const tool_params = tool.function?.parameters || tool.parameters;
+          const tool_script_path = tool.script_path || 'index.js';
+
+          logger.info('[SkillController] Processing tool:', {
+            tool_name,
+            tool_desc: tool_desc?.substring(0, 50),
+            tool_script_path,
+          });
+
+          if (!tool_name) {
+            logger.warn(`Skipping tool without name:`, tool);
+            continue;
+          }
+
+          await this.SkillTool.create({
+            id: Utils.newID(20),
+            skill_id,
+            name: tool_name,
+            description: tool_desc || '',
+            type: 'http',
+            parameters: tool_params ? JSON.stringify(tool_params) : '{}',
+            script_path: tool_script_path,
+          });
+          registered_tools++;
+        }
+      } else {
+        logger.warn('[SkillController] No tools to register:', {
+          tools_to_register,
+          isArray: Array.isArray(tools_to_register),
+        });
+      }
+
+      logger.info('[SkillController] Registered tools count:', registered_tools);
 
       ctx.success({
         skill_id,
         name: skill_name,
         action: is_update ? 'updated' : 'created',
-        message: `Skill "${skill_name}" ${is_update ? 'updated' : 'registered'} successfully`,
+        tools_registered: registered_tools,
+        message: `Skill "${skill_name}" ${is_update ? 'updated' : 'registered'} with ${registered_tools} tools`,
       });
     } catch (error) {
       logger.error('Register skill error:', error);

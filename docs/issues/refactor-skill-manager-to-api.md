@@ -60,88 +60,125 @@ await pool.execute('INSERT INTO skills (...) VALUES (...)');
 - ❌ 权限控制逻辑需要在 skill 中重复实现
 - ❌ 不便于统一审计
 
+## 好消息：后台 API 已存在！
+
+经过分析，后台已经有完整的技能管理 API：
+
+### 现有 API 端点（`server/routes/skill.routes.js`）
+
+| 端点 | 方法 | 功能 | 对应 skill-manager 工具 |
+|------|------|------|------------------------|
+| `/api/skills` | GET | 获取技能列表 | `list_skills` |
+| `/api/skills/:id` | GET | 获取技能详情 | `list_skill_details` |
+| `/api/skills/register` | POST | 注册技能 | `register_skill` |
+| `/api/skills/:id` | DELETE | 删除技能 | `delete_skill` |
+| `/api/skills/:id/toggle` | PATCH | 启用/禁用技能 | `toggle_skill` |
+| `/api/skills/assign` | POST | 分配技能给专家 | - |
+| `/api/skills/unassign` | POST | 取消技能分配 | - |
+
+### 现有控制器（`server/controllers/skill.controller.js`）
+
+- `list()` - 列出技能
+- `get()` - 获取技能详情
+- `register()` - 注册技能
+- `delete()` - 删除技能
+- `toggle()` - 启用/禁用技能
+- `assign()` - 分配技能
+- `unassign()` - 取消分配
+
 ## 改进方案
 
-### 1. 创建后台 API 端点
-
-在 `server/routes/` 和 `server/controllers/` 中添加技能管理 API：
-
-```javascript
-// server/routes/skill.js
-router.get('/api/skills', authMiddleware, skillController.listSkills);
-router.get('/api/skills/:id', authMiddleware, skillController.getSkillDetails);
-router.post('/api/skills/register', authMiddleware, skillController.registerSkill);
-router.delete('/api/skills/:id', authMiddleware, skillController.deleteSkill);
-router.patch('/api/skills/:id/toggle', authMiddleware, skillController.toggleSkill);
-```
-
-### 2. 重构 skill-manager/index.js
+### 重构 skill-manager/index.js
 
 改为 API 调用模式，参考 kb-search 的实现：
 
 ```javascript
+const https = require('https');
+const http = require('http');
+
+// API 配置（从环境变量获取，由 skill-loader 注入）
 const API_BASE = process.env.API_BASE || 'http://localhost:3000';
 const USER_ACCESS_TOKEN = process.env.USER_ACCESS_TOKEN || '';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-async function httpRequest(method, path, data) {
+/**
+ * 发起 HTTP 请求（复用 kb-search 的实现）
+ */
+function httpRequest(method, path, data) {
   // ... 与 kb-search 相同的实现
 }
 
+/**
+ * 列出所有技能
+ */
 async function listSkills(params) {
   const { is_active, search } = params;
-  let query = `?`;
-  if (is_active !== undefined) query += `is_active=${is_active}&`;
+  let query = '?';
+  if (is_active !== undefined) query += `is_active=${is_active ? 1 : 0}&`;
   if (search) query += `search=${encodeURIComponent(search)}&`;
   return await httpRequest('GET', `/api/skills${query}`);
 }
 
+/**
+ * 获取技能详情
+ */
+async function listSkillDetails(params) {
+  const { skill_id } = params;
+  return await httpRequest('GET', `/api/skills/${skill_id}`);
+}
+
+/**
+ * 注册技能
+ */
 async function registerSkill(params) {
   return await httpRequest('POST', '/api/skills/register', params);
 }
 
-// ... 其他方法
-```
+/**
+ * 删除技能
+ */
+async function deleteSkill(params) {
+  const { skill_id } = params;
+  return await httpRequest('DELETE', `/api/skills/${skill_id}`);
+}
 
-### 3. 权限控制
-
-在 API 层实现权限验证：
-
-```javascript
-// 只有管理员或特定角色可以管理技能
-async function registerSkill(req, res) {
-  if (!req.user.roles.includes('admin')) {
-    return res.status(403).json({ error: 'Permission denied' });
-  }
-  // ...
+/**
+ * 启用/禁用技能
+ */
+async function toggleSkill(params) {
+  const { skill_id, is_active } = params;
+  return await httpRequest('PATCH', `/api/skills/${skill_id}/toggle`, { is_active });
 }
 ```
 
 ## 迁移步骤
 
-1. **创建 API 端点** - 在后台服务中实现技能管理 API
+1. ✅ **后台 API 已存在** - 无需新建
 2. **重构 skill-manager** - 改为 API 调用模式
-3. **更新环境变量** - 移除 `SKILL_DB_*` 变量，使用 `API_BASE` 和 `USER_ACCESS_TOKEN`
-4. **更新 skill_parameters 配置** - 移除数据库参数配置
+3. **更新 SKILL.md** - 移除数据库参数配置说明
+4. **更新 skill_parameters 配置** - 移除 `SKILL_DB_*` 参数
 5. **测试验证** - 确保所有功能正常工作
 
 ## 影响范围
 
 - `data/skills/skill-manager/index.js` - 需要完全重写
-- `server/routes/skill.js` - 新增路由文件
-- `server/controllers/skill.controller.js` - 新增控制器文件
-- `skill_parameters` 表 - 需要更新配置
+- `data/skills/skill-manager/SKILL.md` - 更新配置说明
+- `skill_parameters` 表 - 需要更新配置（移除数据库参数）
 
 ## 优先级
 
-**中等** - 当前实现可以工作，但存在安全隐患和维护成本。建议在下次迭代中处理。
+**高** - 后台 API 已就绪，只需重构 skill 代码即可完成
 
 ## 相关文档
 
 - [kb-search 实现](../../data/skills/kb-search/index.js) - API 调用模式参考
 - [skill-manager 当前实现](../../data/skills/skill-manager/index.js) - 待重构
+- [skill.controller.js](../../server/controllers/skill.controller.js) - 后台 API 控制器
+- [skill.routes.js](../../server/routes/skill.routes.js) - 后台 API 路由
 - [知识库技能拆分 Issue](./split-knowledge-base-skill.md) - 类似的重构工作
 
 ---
 
 *创建时间: 2026-03-07*
 *状态: 待处理*
+*更新时间: 2026-03-07 - 发现后台 API 已存在，简化了迁移工作*
