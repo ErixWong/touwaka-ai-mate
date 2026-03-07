@@ -133,6 +133,15 @@
               >
                 <div class="point-header">
                   <div v-if="point.title" class="point-title">{{ point.title }}</div>
+                  <div class="point-actions">
+                    <button 
+                      class="btn-point-revectorize" 
+                      @click.stop="handlePointRevectorize(point)"
+                      :title="$t('knowledgeBase.point.revectorize')"
+                    >
+                      🔄
+                    </button>
+                  </div>
                   <div class="point-status">
                     <span v-if="(point as any).is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.point.vectorized')">
                       ✅ {{ $t('knowledgeBase.point.vectorized') }}
@@ -436,8 +445,26 @@ const selectKnowledge = async (knowledge: Knowledge) => {
 }
 
 const selectPoint = (point: KnowledgePoint) => {
-  selectedPoint.value = point
-}
+    selectedPoint.value = point
+  }
+
+  // 单个知识点重新向量化
+  const handlePointRevectorize = async (point: KnowledgePoint) => {
+    if (!selectedKnowledge.value) return
+
+    try {
+      await knowledgeBaseApi.deletePointEmbedding(
+        requireKbId(),
+        selectedKnowledge.value.id,
+        point.id
+      )
+      // 刷新知识点列表
+      await kbStore.loadKnowledgePoints(requireKbId(), selectedKnowledge.value.id)
+      alert('知识点重新向量化完成！')
+    } catch (error: any) {
+      alert('重新向量化失败: ' + (error.message || '未知错误'))
+    }
+  }
 
 const expandAll = () => {
   forceExpand.value = true
@@ -951,6 +978,27 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-primary, #333);
   flex: 1;
+}
+
+.point-actions {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.btn-point-revectorize {
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.4;
+  border-radius: 4px;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.btn-point-revectorize:hover {
+  opacity: 1;
+  background: var(--accent-light, #ffe0b2);
 }
 
 .point-status {
