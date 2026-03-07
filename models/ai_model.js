@@ -31,6 +31,11 @@ export default class ai_model extends Model {
       allowNull: true,
       defaultValue: 4096
     },
+    embedding_dim: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "向量化模型的嵌入维度（仅 embedding 类型模型使用）"
+    },
     cost_per_1k_input: {
       type: DataTypes.DECIMAL(10,6),
       allowNull: true,
@@ -46,10 +51,10 @@ export default class ai_model extends Model {
       allowNull: true
     },
     model_type: {
-      type: DataTypes.ENUM('chat', 'embedding', 'image', 'audio'),
+      type: DataTypes.ENUM('text', 'multimodal', 'embedding'),
       allowNull: true,
-      defaultValue: 'chat',
-      comment: "模型类型: chat=对话, embedding=向量化, image=图像, audio=语音"
+      defaultValue: 'text',
+      comment: "模型类型: text=纯文本/音频, multimodal=多模态(图文/音视频), embedding=向量化"
     },
     is_active: {
       type: DataTypes.BOOLEAN,
