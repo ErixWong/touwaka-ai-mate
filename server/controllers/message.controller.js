@@ -26,7 +26,7 @@ class MessageController {
   async listByExpert(ctx) {
     try {
       const { expertId } = ctx.params;
-      const { page = 1, pageSize = 50 } = ctx.query;
+      const { page = 1, pageSize = 30 } = ctx.query;
       const userId = ctx.state.userId;  // auth 中间件设置的 userId
 
       if (!expertId) {
