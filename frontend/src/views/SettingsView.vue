@@ -1685,7 +1685,7 @@ const loadUsers = async () => {
       search: userSearchQuery.value || undefined,
     })
     usersList.value = response.items
-    userTotalPages.value = response.pagination.pages
+    userTotalPages.value = response.pages
   } catch (err) {
     console.error('加载用户列表失败:', err)
     alert(t('settings.loadUsersFailed'))
@@ -1777,7 +1777,7 @@ const saveUser = async () => {
       // 更新用户
       const updateData: UpdateUserRequest = {
         nickname: userForm.nickname,
-        gender: userForm.gender || undefined,
+        gender: userForm.gender as import('@/types').UserGender || undefined,
         birthday: userForm.birthday || undefined,
         occupation: userForm.occupation || undefined,
         location: userForm.location || undefined,
@@ -1794,7 +1794,7 @@ const saveUser = async () => {
         email: userForm.email,
         password: userForm.password,
         nickname: userForm.nickname || undefined,
-        gender: userForm.gender || undefined,
+        gender: userForm.gender as import('@/types').UserGender || undefined,
         birthday: userForm.birthday || undefined,
         occupation: userForm.occupation || undefined,
         location: userForm.location || undefined,
@@ -1991,10 +1991,15 @@ const saveRole = async () => {
     // 更新本地列表
     const index = rolesList.value.findIndex(r => r.id === editingRole.value!.id)
     if (index !== -1) {
-      rolesList.value[index] = {
-        ...rolesList.value[index],
-        label: roleForm.label,
-        description: roleForm.description,
+      const existingRole = rolesList.value[index]
+      if (existingRole) {
+        rolesList.value[index] = {
+          id: existingRole.id,
+          name: existingRole.name,
+          label: roleForm.label,
+          description: roleForm.description,
+          is_system: existingRole.is_system,
+        }
       }
     }
     

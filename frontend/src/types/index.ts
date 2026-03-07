@@ -486,6 +486,7 @@ export interface CreateUserRequest {
   email: string
   password: string
   nickname?: string
+  avatar?: string
   gender?: UserGender
   birthday?: string
   occupation?: string
