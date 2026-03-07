@@ -49,7 +49,7 @@ export default class ai_model extends Model {
       type: DataTypes.ENUM('text', 'multimodal', 'embedding'),
       allowNull: true,
       defaultValue: 'text',
-      comment: "模型类型: text=文本, multimodal=多模态, embedding=向量化"
+      comment: "模型类型: text=纯文本/音频, multimodal=多模态(图文/音视频), embedding=向量化"
     },
     is_active: {
       type: DataTypes.BOOLEAN,
