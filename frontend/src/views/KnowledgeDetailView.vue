@@ -133,22 +133,20 @@
               >
                 <div class="point-header">
                   <div v-if="point.title" class="point-title">{{ point.title }}</div>
-                  <div class="point-actions">
-                    <button 
-                      class="btn-point-revectorize" 
-                      @click.stop="handlePointRevectorize(point)"
-                      :title="$t('knowledgeBase.point.revectorize')"
-                    >
-                      🔄
-                    </button>
-                  </div>
-                  <div class="point-status">
+                  <div class="point-status-col">
                     <span v-if="(point as any).is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.point.vectorized')">
                       ✅ {{ $t('knowledgeBase.point.vectorized') }}
                     </span>
                     <span v-else class="status-badge not-vectorized" :title="$t('knowledgeBase.point.notVectorized')">
                       ⏳ {{ $t('knowledgeBase.point.notVectorized') }}
                     </span>
+                    <button 
+                      class="status-badge revectorize-btn" 
+                      @click.stop="handlePointRevectorize(point)"
+                      :title="$t('knowledgeBase.point.revectorize')"
+                    >
+                      🔄 {{ $t('knowledgeBase.point.revectorize') }}
+                    </button>
                   </div>
                 </div>
                 <div class="point-content" v-html="renderMarkdown(point.content)"></div>
@@ -980,30 +978,34 @@ onMounted(async () => {
   flex: 1;
 }
 
-.point-actions {
+.point-status-col {
   flex-shrink: 0;
-  margin-left: 8px;
-}
-
-.btn-point-revectorize {
-  background: transparent;
-  border: none;
-  padding: 4px 6px;
-  font-size: 14px;
-  cursor: pointer;
-  opacity: 0.4;
-  border-radius: 4px;
-  transition: opacity 0.2s, background 0.2s;
-}
-
-.btn-point-revectorize:hover {
-  opacity: 1;
-  background: var(--accent-light, #ffe0b2);
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
 }
 
 .point-status {
   flex-shrink: 0;
   margin-left: 12px;
+}
+
+.revectorize-btn {
+  background: #f5f5f5;
+  color: #666;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.6;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.revectorize-btn:hover {
+  opacity: 1;
+  background: #fff3e0;
+  color: #e65100;
 }
 
 .status-badge {
