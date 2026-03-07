@@ -497,10 +497,14 @@ const submitArticle = async () => {
 
   try {
     if (editingKnowledge.value) {
-      await kbStore.updateKnowledge(requireKbId(), editingKnowledge.value.id, {
+      const updated = await kbStore.updateKnowledge(requireKbId(), editingKnowledge.value.id, {
         title: articleForm.value.title,
         summary: articleForm.value.summary,
       })
+      // 更新当前选中的文章
+      if (selectedKnowledge.value?.id === editingKnowledge.value.id) {
+        selectedKnowledge.value = updated
+      }
     } else {
       await kbStore.createKnowledge(requireKbId(), {
         title: articleForm.value.title,
