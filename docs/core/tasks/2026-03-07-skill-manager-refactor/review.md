@@ -4,9 +4,19 @@
 
 - **任务**: 重构 skill-manager 为 API 调用模式
 - **分支**: `refactor/skill-manager-to-api`
-- **提交**: `9f29101`
+- **提交范围**: `415c97c..c97d11b` (5 commits)
 - **审查日期**: 2026-03-07
 - **审查人**: Maria
+
+## 提交历史
+
+| 提交 | 描述 |
+|------|------|
+| `c97d11b` | security: 保护系统参数不被 skill_parameters 覆盖 |
+| `67e7ab7` | fix: 修复用户 Token 在调用链中未传递的问题 |
+| `295ad6a` | refactor: 移除 list_kbs 别名，只保留 list_my_kbs |
+| `7e51e7f` | docs: 添加 skill-manager 重构的代码审计报告 |
+| `9f29101` | refactor: 重构 skill-manager 为 API 调用模式 |
 
 ## 变更概览
 
@@ -14,7 +24,10 @@
 |------|------|
 | `data/skills/skill-manager/index.js` | 完全重写，656→236 行 |
 | `data/skills/skill-manager/SKILL.md` | 更新配置说明 |
-| `docs/issues/refactor-skill-manager-to-api.md` | 新建 issue 文档 |
+| `lib/chat-service.js` | 添加 access_token 参数传递 |
+| `lib/skill-loader.js` | 保护系统参数不被覆盖 |
+| `server/middlewares/auth.js` | 保存原始 token |
+| `server/controllers/stream.controller.js` | 传递 access_token |
 
 ## 代码审查清单
 
@@ -212,13 +225,107 @@ skill-loader.js::buildSkillEnvironment()  (第 518 行)
 ### 合并前需完成
 
 1. [x] **修复 Token 传递问题** - 在调用链中传递用户的 access token（框架级别修复）
-2. [ ] 集成测试 - 测试所有工具功能
-3. [ ] 更新 skill_parameters 表配置（移除 SKILL_DB_* 参数）
+2. [x] **保护系统参数** - `API_BASE`、`USER_ACCESS_TOKEN` 等不可被 skill_parameters 覆盖
+3. [ ] 集成测试 - 测试所有工具功能
+4. [ ] 更新 skill_parameters 表配置（移除 SKILL_DB_* 参数）
 
-### 建议的后续工作
+---
+
+## 详细代码审查
+
+### 1. skill-manager/index.js
+
+#### ✅ 优点
+
+1. **代码量大幅减少**: 656→236 行，降低 64%
+2. **职责清晰**: 只负责 API 调用，业务逻辑在后台
+3. **与 kb-search 风格一致**: 使用相同的 `httpRequest` 模式
+4. **错误处理完善**: 参数验证、HTTP 错误、超时处理
+
+#### 检查项
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| 模块依赖 | ✅ | 只使用 http/https，无外部依赖 |
+| 环境变量 | ✅ | API_BASE, USER_ACCESS_TOKEN, NODE_ENV |
+| 错误消息 | ✅ | 中文提示，用户友好 |
+| 超时设置 | ✅ | 30秒，合理 |
+| SSL 验证 | ✅ | 生产启用，开发禁用 |
+
+#### 代码片段审查
+
+```javascript
+// 第 28-94 行: httpRequest 函数
+// ✅ 正确处理了 204 No Content
+// ✅ 正确解析响应体
+// ✅ 错误消息传递正确
+// ✅ 超时处理完善
+```
+
+### 2. skill-loader.js 变更
+
+#### 检查项
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| RESERVED_ENV_VARS | ✅ | 包含所有安全关键参数 |
+| 日志输出 | ✅ | 冲突时记录警告 |
+| 向后兼容 | ✅ | 不影响现有配置 |
+
+```javascript
+// 第 477-480 行
+const RESERVED_ENV_VARS = [
+  'SKILL_ID', 'DATA_BASE_PATH', 'SKILL_CONFIG', 'NODE_OPTIONS', 'SCRIPT_PATH',
+  'USER_ACCESS_TOKEN', 'USER_ID', 'API_BASE',  // 安全关键参数
+];
+```
+
+### 3. chat-service.js 变更
+
+#### 检查项
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| streamChat 参数 | ✅ | 新增 access_token 参数 |
+| chat 参数 | ✅ | 新增 access_token 参数 |
+| handleToolCalls 参数 | ✅ | 新增 access_token 参数 |
+| context 传递 | ✅ | accessToken 正确传递 |
+
+### 4. auth.js 变更
+
+#### 检查项
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| authenticate | ✅ | 保存 token 到 ctx.state.accessToken |
+| optionalAuth | ✅ | 同样保存 token |
+
+---
+
+## 安全审查
+
+### ✅ 安全增强
+
+1. **移除数据库凭证**: skill 不再需要 `SKILL_DB_*` 参数
+2. **用户 Token 认证**: 使用 `USER_ACCESS_TOKEN` 替代内部认证
+3. **参数保护**: 安全关键参数不可被配置覆盖
+4. **Token 不传递给 LLM**: 只在 skill 执行时注入
+
+### 潜在风险分析
+
+| 风险 | 等级 | 说明 |
+|------|------|------|
+| Token 泄露 | 低 | 只在服务端内部传递，不暴露给 LLM |
+| 恶意 Skill | 中 | 需要信任内置 Skill；第三方 Skill 需审查 |
+| 参数覆盖 | 已修复 | RESERVED_ENV_VARS 保护 |
+
+---
+
+## 建议的后续工作
 
 1. 添加单元测试
 2. 通知相关开发者 API 变更
+3. 更新部署文档，说明 `API_BASE` 环境变量
 
 ---
 
