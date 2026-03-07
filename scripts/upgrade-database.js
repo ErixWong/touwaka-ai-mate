@@ -12,6 +12,7 @@ dotenv.config();
 import mysql from 'mysql2/promise';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -306,7 +307,12 @@ if (!DB_CONFIG.user || !DB_CONFIG.password || !DB_CONFIG.database) {
 }
 
 // 如果直接运行此脚本，执行升级
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+// 使用 import.meta.url 检测是否为主模块
+const __filename = fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] &&
+  path.resolve(process.argv[1]) === __filename;
+
+if (isMainModule) {
   upgrade().catch(err => {
     console.error(err);
     process.exit(1);
