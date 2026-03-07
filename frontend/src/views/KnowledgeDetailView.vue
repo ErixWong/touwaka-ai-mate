@@ -14,10 +14,6 @@
           <span>🔍</span>
           {{ $t('knowledgeBase.search') }}
         </button>
-        <button class="btn-action" @click="showArticleDialog = true">
-          <span>📝</span>
-          {{ $t('knowledgeBase.newArticle') }}
-        </button>
         <button class="btn-action btn-revectorize" @click="handleRevectorize" :disabled="isRevectorizing">
           <span>🔄</span>
           {{ isRevectorizing ? $t('knowledgeBase.revectorizing') : $t('knowledgeBase.revectorize') }}
@@ -85,7 +81,17 @@
         <!-- Knowledge Content -->
         <div v-else class="content-main">
           <div class="content-header">
-            <h2 class="content-title">{{ selectedKnowledge.title }}</h2>
+            <div class="title-row">
+              <h2 class="content-title">{{ selectedKnowledge.title }}</h2>
+              <div class="title-actions">
+                <button class="btn-icon-action btn-edit" @click="editCurrentKnowledge" :title="$t('knowledgeBase.article.edit')">
+                  ✏️
+                </button>
+                <button class="btn-icon-action btn-delete" @click="deleteCurrentKnowledge" :title="$t('common.delete')">
+                  🗑️
+                </button>
+              </div>
+            </div>
             <div class="content-meta">
               <span class="meta-item">
                 {{ $t('knowledgeBase.status.' + selectedKnowledge.status) }}
@@ -127,13 +133,20 @@
               >
                 <div class="point-header">
                   <div v-if="point.title" class="point-title">{{ point.title }}</div>
-                  <div class="point-status">
+                  <div class="point-status-col">
                     <span v-if="(point as any).is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.point.vectorized')">
                       ✅ {{ $t('knowledgeBase.point.vectorized') }}
                     </span>
                     <span v-else class="status-badge not-vectorized" :title="$t('knowledgeBase.point.notVectorized')">
                       ⏳ {{ $t('knowledgeBase.point.notVectorized') }}
                     </span>
+                    <button 
+                      class="status-badge revectorize-btn" 
+                      @click.stop="handlePointRevectorize(point)"
+                      :title="$t('knowledgeBase.point.revectorize')"
+                    >
+                      🔄 {{ $t('knowledgeBase.point.revectorize') }}
+                    </button>
                   </div>
                 </div>
                 <div class="point-content" v-html="renderMarkdown(point.content)"></div>
@@ -456,8 +469,26 @@ const selectKnowledge = async (knowledge: Knowledge) => {
 }
 
 const selectPoint = (point: KnowledgePoint) => {
-  selectedPoint.value = point
-}
+    selectedPoint.value = point
+  }
+
+  // 单个知识点重新向量化
+  const handlePointRevectorize = async (point: KnowledgePoint) => {
+    if (!selectedKnowledge.value) return
+
+    try {
+      await knowledgeBaseApi.deletePointEmbedding(
+        requireKbId(),
+        selectedKnowledge.value.id,
+        point.id
+      )
+      // 刷新知识点列表
+      await kbStore.loadKnowledgePoints(requireKbId(), selectedKnowledge.value.id)
+      alert('知识点重新向量化完成！')
+    } catch (error: any) {
+      alert('重新向量化失败: ' + (error.message || '未知错误'))
+    }
+  }
 
 const expandAll = () => {
   forceExpand.value = true
@@ -470,6 +501,18 @@ const collapseAll = () => {
 }
 
 // Article operations
+const editCurrentKnowledge = () => {
+  if (selectedKnowledge.value) {
+    editKnowledge(selectedKnowledge.value)
+  }
+}
+
+const deleteCurrentKnowledge = () => {
+  if (selectedKnowledge.value) {
+    deleteKnowledge(selectedKnowledge.value)
+  }
+}
+
 const editKnowledge = (knowledge: Knowledge) => {
   editingKnowledge.value = knowledge
   articleForm.value = {
@@ -514,10 +557,14 @@ const submitArticle = async () => {
 
   try {
     if (editingKnowledge.value) {
-      await kbStore.updateKnowledge(requireKbId(), editingKnowledge.value.id, {
+      const updated = await kbStore.updateKnowledge(requireKbId(), editingKnowledge.value.id, {
         title: articleForm.value.title,
         summary: articleForm.value.summary,
       })
+      // 更新当前选中的文章
+      if (selectedKnowledge.value?.id === editingKnowledge.value.id) {
+        selectedKnowledge.value = updated
+      }
     } else {
       await kbStore.createKnowledge(requireKbId(), {
         title: articleForm.value.title,
@@ -809,11 +856,52 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
 .content-title {
   font-size: 24px;
   font-weight: 600;
-  margin: 0 0 8px 0;
+  margin: 0;
   color: var(--text-primary, #333);
+  flex: 1;
+}
+
+.title-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon-action {
+  background: var(--secondary-bg, #f5f5f5);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.btn-icon-action:hover {
+  opacity: 1;
+}
+
+.btn-icon-action.btn-edit:hover {
+  background: var(--primary-light, #e3f2fd);
+}
+
+.btn-icon-action.btn-delete {
+  opacity: 0.4;
+}
+
+.btn-icon-action.btn-delete:hover {
+  opacity: 1;
+  background: #ffebee;
 }
 
 .content-meta {
@@ -916,9 +1004,34 @@ onMounted(async () => {
   flex: 1;
 }
 
+.point-status-col {
+  flex-shrink: 0;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
 .point-status {
   flex-shrink: 0;
   margin-left: 12px;
+}
+
+.revectorize-btn {
+  background: #f5f5f5;
+  color: #666;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.6;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.revectorize-btn:hover {
+  opacity: 1;
+  background: #fff3e0;
+  color: #e65100;
 }
 
 .status-badge {

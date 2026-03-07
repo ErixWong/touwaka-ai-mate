@@ -713,6 +713,7 @@ export default {
       tokenCount: '{count} tokens',
       vectorized: 'Vectorized',
       notVectorized: 'Not Vectorized',
+      revectorize: 'Re-vectorize',
       revectorizeHint: 'Re-vectorize this knowledge point',
     },
 

@@ -513,4 +513,10 @@ export const knowledgeBaseApi = {
     apiRequest<{ total: number; success: number; failed: number; current: number; status: string; embedding_dim: number }>(
       apiClient.get(`/kb/${kbId}/revectorize/${jobId}`)
     ),
+
+  // 删除单个知识点的向量（触发重新向量化）
+  deletePointEmbedding: (kbId: string, knowledgeId: string, pointId: string) =>
+    apiRequest<{ success: boolean }>(
+      apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}/embedding`)
+    ),
 }
