@@ -293,11 +293,11 @@ const formatMessage = (content: string) => {
     return cached
   }
   
-  // 转义 HTML
+  // 转义 HTML（防止 XSS 攻击）
   let formatted = content
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
   
   // 代码块
   formatted = formatted.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
