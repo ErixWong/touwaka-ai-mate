@@ -819,11 +819,13 @@ class KnowledgeBaseController {
       });
 
       // 处理结果：添加 is_vectorized 字段，移除 embedding 字段
+      // 判断逻辑：embedding 必须是非空 Buffer 才算已向量化
       const items = rows.map(point => {
         const { embedding, ...rest } = point;
+        const isVectorized = embedding && Buffer.isBuffer(embedding) && embedding.length > 0;
         return {
           ...rest,
-          is_vectorized: !!embedding,
+          is_vectorized: isVectorized,
         };
       });
 
@@ -843,7 +845,7 @@ class KnowledgeBaseController {
   }
 
   /**
-   * 创建知识点（自动生成向量）
+   * 创建知识点（不自动生成向量，由后台 EmbeddingWorker 处理）
    */
   async createPoint(ctx) {
     try {
@@ -884,7 +886,7 @@ class KnowledgeBaseController {
       // 生成唯一 ID（20位字母数字）
       const newId = Utils.newID(20);
 
-      // 创建知识点
+      // 创建知识点（不自动生成向量，由后台 EmbeddingWorker 处理）
       const point = await this.KnowledgePoint.create({
         id: newId,
         knowledge_id: knowledge_id,
@@ -893,41 +895,10 @@ class KnowledgeBaseController {
         context: context || null,
         position: maxPos + 1,
         token_count: 0,
+        // embedding 为 null，等待后台向量化
       });
 
-      // 自动生成嵌入向量
-      let is_vectorized = false;
-      let actualEmbeddingDim = null;
-
-      try {
-        // 构建上下文增强的文本：文章摘要 + 知识点标题 + 知识点正文
-        const summary = knowledge.summary || '';
-        const contextText = summary ? `[文章摘要] ${summary}\n[知识点] ${title || ''}\n${content}` : (content || title);
-        if (contextText) {
-          const embedding = await this.generateQueryEmbedding(contextText, kb.embedding_model_id);
-          if (embedding) {
-            actualEmbeddingDim = embedding.length;
-            const vectorSQL = toVectorSQL(embedding);
-            await this.KnowledgePoint.update(
-              { embedding: this.db.sequelize.literal(vectorSQL) },
-              { where: { id: point.id } }
-            );
-            is_vectorized = true;
-            logger.info(`[KB] Auto-generated embedding for point ${point.id}, dimension: ${actualEmbeddingDim}`);
-
-            // 自动更新知识库的 embedding_dim（如果与实际维度不一致）
-            if (actualEmbeddingDim && (!kb.embedding_dim || kb.embedding_dim !== actualEmbeddingDim)) {
-              await this.KnowledgeBase.update(
-                { embedding_dim: actualEmbeddingDim },
-                { where: { id: kb_id } }
-              );
-              logger.info(`[KB] Updated knowledge base ${kb_id} embedding_dim to ${actualEmbeddingDim}`);
-            }
-          }
-        }
-      } catch (embedError) {
-        logger.warn(`[KB] Failed to auto-generate embedding for point ${point.id}:`, embedError.message);
-      }
+      logger.info(`[KB] 知识点 ${point.id} 创建成功，等待后台向量化`);
 
       // 递归更新文章及其所有祖先节点的状态
       try {
@@ -943,7 +914,7 @@ class KnowledgeBaseController {
       });
 
       ctx.status = 201;
-      ctx.success({ ...result, is_vectorized }, '知识点创建成功');
+      ctx.success({ ...result, is_vectorized: false }, '知识点创建成功');
     } catch (error) {
       logger.error('Create knowledge point error:', error);
       ctx.error('创建知识点失败', 500);
@@ -1128,11 +1099,52 @@ class KnowledgeBaseController {
     }
   }
 
+  /**
+   * 清空单个知识点的向量（触发重新向量化）
+   * DELETE /api/kb/:kb_id/knowledges/:knowledge_id/points/:id/embedding
+   */
+  async clearPointEmbedding(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id, knowledge_id, id } = ctx.params;
+
+      // 验证知识库权限
+      const kb = await this.KnowledgeBase.findOne({
+        where: { id: kb_id, owner_id: ctx.state.userId },
+        raw: true,
+      });
+      if (!kb) {
+        ctx.error('知识库不存在或无权限', 404);
+        return;
+      }
+
+      // 清除单个知识点的 embedding
+      const result = await this.KnowledgePoint.update(
+        { embedding: null },
+        { where: { id, knowledge_id } }
+      );
+
+      if (result[0] === 0) {
+        ctx.error('知识点不存在', 404);
+        return;
+      }
+
+      logger.info(`[KB] Cleared embedding for point ${id}, waiting for background EmbeddingWorker`);
+
+      ctx.success({ message: '已清除知识点向量，后台将自动重新生成', point_id: id });
+    } catch (error) {
+      logger.error('Clear point embedding error:', error);
+      ctx.error('清除知识点向量失败', 500);
+    }
+  }
+
   // ==================== 向量化功能 ====================
 
   /**
-   * 重新向量化知识库所有知识点
+   * 清除知识库所有知识点的向量标记，触发后台重新向量化
    * POST /api/kb/:kb_id/revectorize
+   *
+   * 注意：此方法只清除 embedding 字段，实际的向量化由后台 EmbeddingWorker 处理
    */
   async revectorize(ctx) {
     try {
@@ -1149,120 +1161,42 @@ class KnowledgeBaseController {
         return;
       }
 
-      // 获取知识库下的所有知识点（含摘要）
+      // 获取知识库下的所有文章 ID
       const knowledges = await this.Knowledge.findAll({
         where: { kb_id },
-        attributes: ['id', 'summary'],
+        attributes: ['id'],
         raw: true,
       });
 
       if (knowledges.length === 0) {
-        ctx.success({ message: '知识库没有文章' });
+        ctx.success({ message: '知识库没有文章', total: 0, cleared: 0 });
         return;
       }
 
       const knowledgeIds = knowledges.map(k => k.id);
-      const knowledgeSummaryMap = {};
-      knowledges.forEach(k => {
-        knowledgeSummaryMap[k.id] = k.summary || '';
-      });
 
-      const points = await this.KnowledgePoint.findAll({
+      // 统计知识点数量
+      const totalPoints = await this.KnowledgePoint.count({
         where: { knowledge_id: knowledgeIds },
-        attributes: ['id', 'knowledge_id', 'title', 'content'],
-        raw: true,
       });
 
-      if (points.length === 0) {
-        ctx.success({ message: '知识库没有知识点', total: 0, success: 0 });
+      if (totalPoints === 0) {
+        ctx.success({ message: '知识库没有知识点', total: 0, cleared: 0 });
         return;
       }
 
-      // 初始化进度
-      const progressKey = `${kb_id}_${Date.now()}`;
-      revectorizeProgress.set(progressKey, {
-        total: points.length,
-        success: 0,
-        failed: 0,
-        current: 0,
-        status: 'running',
-        embedding_dim: kb.embedding_dim,
-      });
+      // 清除所有知识点的 embedding 字段
+      await this.KnowledgePoint.update(
+        { embedding: null },
+        { where: { knowledge_id: knowledgeIds } }
+      );
 
-      logger.info(`[KB] Revectorize started: ${progressKey}, total: ${points.length}`);
-
-      // 重新生成所有知识点向量
-      let successCount = 0;
-      let failCount = 0;
-
-      for (let i = 0; i < points.length; i++) {
-        const point = points[i];
-        try {
-          const pointText = point.content || point.title;
-          if (!pointText) {
-            failCount++;
-            continue;
-          }
-
-          // 构建上下文增强的文本：文章摘要 + 知识点标题 + 知识点正文
-          const summary = knowledgeSummaryMap[point.knowledge_id] || '';
-          const contextText = summary ? `[文章摘要] ${summary}\n[知识点] ${point.title || ''}\n${point.content}` : pointText;
-
-          const embedding = await this.generateQueryEmbedding(contextText, kb.embedding_model_id);
-          if (embedding) {
-            const actualDim = embedding.length;
-            const vectorSQL = toVectorSQL(embedding);
-            await this.KnowledgePoint.update(
-              { embedding: this.db.sequelize.literal(vectorSQL) },
-              { where: { id: point.id } }
-            );
-            successCount++;
-
-            // 更新知识库维度（如果不一致）
-            if (kb.embedding_dim !== actualDim) {
-              await this.KnowledgeBase.update(
-                { embedding_dim: actualDim },
-                { where: { id: kb_id } }
-              );
-              kb.embedding_dim = actualDim;
-            }
-          } else {
-            failCount++;
-          }
-        } catch (err) {
-          logger.warn(`[KB] Failed to revectorize point ${point.id}:`, err.message);
-          failCount++;
-        }
-
-        // 更新进度
-        revectorizeProgress.set(progressKey, {
-          total: points.length,
-          success: successCount,
-          failed: failCount,
-          current: i + 1,
-          status: 'running',
-          embedding_dim: kb.embedding_dim,
-        });
-      }
-
-      // 完成进度
-      revectorizeProgress.set(progressKey, {
-        total: points.length,
-        success: successCount,
-        failed: failCount,
-        current: points.length,
-        status: 'completed',
-        embedding_dim: kb.embedding_dim,
-      });
-
-      logger.info(`[KB] Revectorize completed: ${successCount} success, ${failCount} failed`);
+      logger.info(`[KB] Cleared embedding for ${totalPoints} points in KB ${kb_id}, waiting for background EmbeddingWorker`);
 
       ctx.success({
-        job_id: progressKey,
-        total: points.length,
-        success: successCount,
-        failed: failCount,
-        embedding_dim: kb.embedding_dim,
+        message: '已清除所有知识点向量，后台将自动重新生成',
+        total: totalPoints,
+        cleared: totalPoints,
       });
     } catch (error) {
       logger.error('Revectorize error:', error);
