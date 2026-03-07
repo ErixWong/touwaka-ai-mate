@@ -714,6 +714,7 @@ export default {
       tokenCount: '{count} tokens',
       vectorized: '已向量化',
       notVectorized: '未向量化',
+      revectorize: '重新向量化',
     },
 
     // 搜索结果
