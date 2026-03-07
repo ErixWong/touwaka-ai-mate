@@ -86,6 +86,9 @@
         <div v-else class="content-main">
           <div class="content-header">
             <h2 class="content-title">{{ selectedKnowledge.title }}</h2>
+            <button class="btn-edit-title" @click="editCurrentKnowledge" :title="$t('knowledgeBase.article.edit')">
+              ✏️
+            </button>
             <div class="content-meta">
               <span class="meta-item">
                 {{ $t('knowledgeBase.status.' + selectedKnowledge.status) }}
@@ -444,6 +447,12 @@ const collapseAll = () => {
 }
 
 // Article operations
+const editCurrentKnowledge = () => {
+  if (selectedKnowledge.value) {
+    editKnowledge(selectedKnowledge.value)
+  }
+}
+
 const editKnowledge = (knowledge: Knowledge) => {
   editingKnowledge.value = knowledge
   articleForm.value = {
@@ -780,6 +789,9 @@ onMounted(async () => {
 }
 
 .content-header {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
   margin-bottom: 24px;
 }
 
@@ -788,6 +800,22 @@ onMounted(async () => {
   font-weight: 600;
   margin: 0 0 8px 0;
   color: var(--text-primary, #333);
+}
+
+.btn-edit-title {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+  margin-left: 8px;
+}
+
+.btn-edit-title:hover {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .content-meta {
