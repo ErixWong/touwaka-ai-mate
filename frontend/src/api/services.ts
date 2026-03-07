@@ -506,20 +506,3 @@ export const knowledgeBaseApi = {
       apiClient.get(`/kb/${kbId}/revectorize/${jobId}`)
     ),
 }
-
-// ============================================
-// 图片上传相关 API
-// ============================================
-
-export const uploadApi = {
-  // 上传图片
-  uploadImage: (file: File) => {
-    const formData = new FormData()
-    formData.append('image', file)
-    return apiRequest<{ url: string; filename: string; size: number }>(
-      apiClient.post('/upload/image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-    )
-  },
-}

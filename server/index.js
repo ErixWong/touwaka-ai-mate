@@ -6,7 +6,6 @@
 import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
-import serve from 'koa-static';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -54,8 +53,6 @@ import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
 import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
-import uploadRoutes from './routes/upload.routes.js';
-import UploadController from './controllers/upload.controller.js';
 
 class ApiServer {
   constructor() {
@@ -167,9 +164,6 @@ class ApiServer {
       jsonLimit: '50mb',  // 允许更大的 JSON 请求体
     }));
 
-    // 静态文件服务 - 上传的图片
-    this.app.use(serve(path.join(__dirname, '..', 'public', 'uploads')));
-
     // 统一响应格式
     this.app.use(responseMiddleware());
   }
@@ -242,10 +236,6 @@ class ApiServer {
     // Knowledge Base 路由
     this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).routes());
     this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).allowedMethods());
-
-    // Upload 路由
-    this.app.use(uploadRoutes(UploadController).routes());
-    this.app.use(uploadRoutes(UploadController).allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {
