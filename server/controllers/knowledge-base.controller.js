@@ -1099,6 +1099,45 @@ class KnowledgeBaseController {
     }
   }
 
+  /**
+   * 清空单个知识点的向量（触发重新向量化）
+   * DELETE /api/kb/:kb_id/knowledges/:knowledge_id/points/:id/embedding
+   */
+  async clearPointEmbedding(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id, knowledge_id, id } = ctx.params;
+
+      // 验证知识库权限
+      const kb = await this.KnowledgeBase.findOne({
+        where: { id: kb_id, owner_id: ctx.state.userId },
+        raw: true,
+      });
+      if (!kb) {
+        ctx.error('知识库不存在或无权限', 404);
+        return;
+      }
+
+      // 清除单个知识点的 embedding
+      const result = await this.KnowledgePoint.update(
+        { embedding: null },
+        { where: { id, knowledge_id } }
+      );
+
+      if (result[0] === 0) {
+        ctx.error('知识点不存在', 404);
+        return;
+      }
+
+      logger.info(`[KB] Cleared embedding for point ${id}, waiting for background EmbeddingWorker`);
+
+      ctx.success({ message: '已清除知识点向量，后台将自动重新生成', point_id: id });
+    } catch (error) {
+      logger.error('Clear point embedding error:', error);
+      ctx.error('清除知识点向量失败', 500);
+    }
+  }
+
   // ==================== 向量化功能 ====================
 
   /**
