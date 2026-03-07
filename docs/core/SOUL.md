@@ -50,6 +50,7 @@
 ## 📋 任务管理（GitHub Issues 驱动）
 
 > **GitHub Issues 是任务管理的唯一真相源**
+> **不再使用 docs/core/tasks/ 目录创建任务文档**
 
 ### 开工前必读
 
@@ -79,34 +80,35 @@
 
 类型：`feat` | `fix` | `refactor` | `docs` | `test` | `chore`
 
-### PR 工作流
+### PR/Issue 工作流
 
 > **工具：** GitHub CLI (`gh`)，路径：`C:\Program Files\GitHub CLI`
 
-1. 创建分支 → 开发提交 → `gh pr create` 创建 PR
-2. PR 描述关联 Issue：`Closes #<number>`
-3. CI 通过后 squash merge，删除分支
+```powershell
+# 创建分支
+git checkout -b fix/xxx-feature
 
----
+# 开发完成后提交
+git add . && git commit -m "[fix]: 描述"
 
-## 📁 任务文档工作流
+# 推送分支
+git push -u origin fix/xxx-feature
 
-### 目录结构
+# 创建 PR
+"C:\Program Files\GitHub CLI\gh.exe" pr create --title "标题" --body "描述"
 
+# 创建 Issue（用于跟踪发现的问题）
+"C:\Program Files\GitHub CLI\gh.exe" issue create --title "标题" --body "描述" --label "enhancement"
+
+# 关闭 Issue（问题已在 PR 中修复）
+"C:\Program Files\GitHub CLI\gh.exe" issue close #编号 --comment "已在 PR #xx 中修复"
 ```
-docs/core/tasks/           # 进行中的任务
-├── README.md              # 模板说明
-└── YYYY-MM-DD-任务简述/   # 任务文档
 
-docs/archive/tasks/        # 已完成任务（按月归档）
-└── YYYY-MM/
-```
+### Code Review 发现问题的处理
 
-### 文档要求
-
-- `README.md` - 任务概述 + 需求分析 + 验收标准
-- `design.md` - 设计文档（复杂任务）
-- `review.md` - Code Review 记录
+1. **立即修复的问题** - 直接在当前分支修复，推送更新
+2. **后续处理的问题** - 用 `gh issue create` 创建 Issue 跟踪
+3. **不要创建** docs/core/tasks/ 目录下的任务文档
 
 ---
 
