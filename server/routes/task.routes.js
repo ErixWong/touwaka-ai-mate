@@ -144,8 +144,11 @@ export default (controller) => {
         return;
       }
 
+      // 统一路径分隔符（Windows 反斜杠转正斜杠），解决跨平台兼容问题
+      const normalizedPath = filePath.replace(/\\/g, '/');
+
       // 只允许删除 input 目录下的文件
-      if (!filePath.startsWith('input/')) {
+      if (!normalizedPath.startsWith('input/')) {
         ctx.error('只能删除 input 目录下的文件', 403);
         return;
       }
@@ -216,8 +219,11 @@ export default (controller) => {
         return;
       }
 
+      // 统一路径分隔符（Windows 反斜杠转正斜杠），解决跨平台兼容问题
+      const normalizedPath = filePath.replace(/\\/g, '/');
+
       // 只允许保存到 input 目录
-      if (!filePath.startsWith('input/')) {
+      if (!normalizedPath.startsWith('input/')) {
         ctx.error('只能保存到 input 目录', 403);
         return;
       }
