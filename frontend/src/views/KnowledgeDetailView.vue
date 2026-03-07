@@ -152,6 +152,14 @@
                 <div class="point-content" v-html="renderMarkdown(point.content)"></div>
                 <div class="point-meta">
                   <span>{{ $t('knowledgeBase.point.tokenCount', { count: point.token_count }) }}</span>
+                  <button
+                    v-if="(point as any).is_vectorized"
+                    class="btn-revectorize-point"
+                    @click.stop="handleRevectorizePoint(point)"
+                    :title="$t('knowledgeBase.point.revectorizeHint')"
+                  >
+                    🔄
+                  </button>
                 </div>
               </div>
             </div>
@@ -420,6 +428,24 @@ const handleRevectorize = async () => {
     alert('重新向量化失败: ' + (error.message || '未知错误'))
     isRevectorizing.value = false
     revectorizeJobId = ''
+  }
+}
+
+// 重新向量化单个知识点
+const handleRevectorizePoint = async (point: KnowledgePoint) => {
+  if (!kbId.value || !selectedKnowledge.value?.id) return
+
+  if (!confirm(`确定要重新向量化该知识点吗？\n\n${point.title || point.content.substring(0, 50)}...`)) {
+    return
+  }
+
+  try {
+    await knowledgeBaseApi.clearPointEmbedding(kbId.value, selectedKnowledge.value.id, point.id)
+    // 刷新知识点列表
+    await kbStore.loadKnowledgePoints(kbId.value, selectedKnowledge.value.id)
+    alert('已清除知识点向量，后台将自动重新生成')
+  } catch (error: any) {
+    alert('清除知识点向量失败: ' + (error.message || '未知错误'))
   }
 }
 
@@ -1043,9 +1069,28 @@ onMounted(async () => {
 }
 
 .point-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 12px;
   font-size: 12px;
   color: var(--text-tertiary, #999);
+}
+
+/* 重新向量化单个知识点按钮 */
+.btn-revectorize-point {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 14px;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.btn-revectorize-point:hover {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 /* Dialogs */

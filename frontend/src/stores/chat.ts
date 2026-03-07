@@ -46,37 +46,38 @@ export const useChatStore = defineStore('chat', () => {
    * 加载指定 expert 与当前用户的对话历史
    * 这是主要的加载方法，替代原来的 loadMessages(topic_id)
    */
-  const loadMessagesByExpert = async (expert_id: string, page: number = 1, limit: number = 50) => {
-    if (page === 1) {
-      isLoading.value = true
-      messages.value = []
-      currentExpertId.value = expert_id
-    } else {
-      isLoadingMore.value = true
-    }
-    error.value = null
-
-    try {
-      const response = await messageApi.getMessagesByExpert(expert_id, { page, limit })
-      const items = response.items || []
-      
-      if (page === 1) {
-        messages.value = items
-      } else {
-        // 加载更多历史消息，插入到前面
-        messages.value = [...items, ...messages.value]
-      }
-      
-      hasMoreMessages.value = items.length === limit
-      currentPage.value = page
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load messages'
-      throw err
-    } finally {
-      isLoading.value = false
-      isLoadingMore.value = false
-    }
+  const loadMessagesByExpert = async (expert_id: string, page: number = 1, pageSize: number = 30) => {
+  if (page === 1) {
+    isLoading.value = true
+    messages.value = []
+    currentExpertId.value = expert_id
+  } else {
+    isLoadingMore.value = true
   }
+  error.value = null
+
+  try {
+    // 统一使用 pageSize 参数
+    const response = await messageApi.getMessagesByExpert(expert_id, { page, pageSize })
+    const items = response.items || []
+    
+    if (page === 1) {
+      messages.value = items
+    } else {
+      // 加载更多历史消息，插入到前面
+      messages.value = [...items, ...messages.value]
+    }
+    
+    hasMoreMessages.value = items.length === pageSize
+    currentPage.value = page
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to load messages'
+    throw err
+  } finally {
+    isLoading.value = false
+    isLoadingMore.value = false
+  }
+}
 
   /**
    * 加载更多历史消息

@@ -70,6 +70,18 @@
       </div>
     </div>
 
+    <!-- 滚动到底部按钮 -->
+    <button
+      v-if="showScrollToBottom"
+      class="scroll-to-bottom-btn"
+      @click="handleScrollToBottom"
+      :title="$t('chat.scrollToBottom') || '滚动到底部'"
+    >
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 16L6 10H18L12 16Z" fill="currentColor"/>
+      </svg>
+    </button>
+
     <!-- 快捷指令提示 (skill-studio 模式) -->
     <div v-if="showCommandHints && filteredCommands.length > 0" class="command-hints">
       <div 
@@ -157,6 +169,7 @@ const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const isComposing = ref(false) // 中文输入法组合状态
+const showScrollToBottom = ref(false) // 是否显示滚动到底部按钮
 
 // 快捷指令列表
 const commands = [
@@ -218,9 +231,21 @@ const scrollToBottom = () => {
 // 格式化缓存 - 避免重复格式化相同内容
 const formattedCache = new Map<string, string>()
 
-// 滚动处理：检测是否滚动到顶部
+// 检测是否在底部（距离底部 100px 以内视为在底部）
+const isAtBottom = () => {
+  if (!messagesContainer.value) return true
+  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
+  return scrollHeight - scrollTop - clientHeight < 100
+}
+
+// 滚动处理：检测是否滚动到顶部 + 更新滚动到底部按钮状态
 const handleScroll = () => {
-  if (!messagesContainer.value || !props.hasMoreMessages || props.isLoadingMore) return
+  if (!messagesContainer.value) return
+  
+  // 更新滚动到底部按钮状态
+  showScrollToBottom.value = !isAtBottom()
+  
+  if (!props.hasMoreMessages || props.isLoadingMore) return
   
   const { scrollTop } = messagesContainer.value
   
@@ -233,6 +258,12 @@ const handleScroll = () => {
   }
 }
 
+// 点击滚动到底部按钮
+const handleScrollToBottom = () => {
+  scrollToBottom()
+  showScrollToBottom.value = false
+}
+
 // 手动点击加载更多
 const handleLoadMore = () => {
   if (!messagesContainer.value) return
@@ -240,25 +271,30 @@ const handleLoadMore = () => {
   emit('loadMore')
 }
 
-// 监听消息数量变化（不使用 deep: true，只监听数组长度和最后一条消息）
+// 监听消息数量变化（处理初始加载、新消息、加载更多）
 watch(
   () => props.messages.length,
   (newLength, oldLength) => {
     nextTick(() => {
-      if (!messagesContainer.value) return
+      if (!messagesContainer.value || newLength === 0) return
       
-      // 如果是加载更多（消息数量增加且之前正在加载）
+      // 情况1：加载更多（消息数量增加且之前正在加载）
       if (props.isLoadingMore === false && isLoadingTriggered.value && newLength > (oldLength || 0)) {
         // 恢复滚动位置（保持在原来的消息位置）
         const newScrollHeight = messagesContainer.value.scrollHeight
         messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
         isLoadingTriggered.value = false
-      } else if (newLength > (oldLength || 0)) {
-        // 新消息时滚动到底部
+        return
+      }
+      
+      // 情况2：初始加载或新消息 -> 滚动到底部
+      if (newLength > (oldLength || 0)) {
         scrollToBottom()
+        showScrollToBottom.value = false
       }
     })
-  }
+  },
+  { immediate: true } // 立即执行以处理初始加载
 )
 
 // 监听最后一条消息的状态变化（用于流式更新时的滚动）
@@ -311,7 +347,7 @@ const formatMessage = (content: string) => {
     return cached
   }
   
-  // 转义 HTML
+  // 转义 HTML（注意顺序：先转义 &，再转义 < 和 >）
   let formatted = content
     .replace(/&/g, '&')
     .replace(/</g, '<')
@@ -829,5 +865,42 @@ defineExpose({
 .command-desc {
   font-size: 13px;
   color: var(--text-secondary, #666);
+}
+
+/* 滚动到底部按钮 */
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 90px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: var(--primary-color, #2196f3);
+  border-color: var(--primary-color, #2196f3);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.3);
+}
+
+.scroll-to-bottom-btn:hover svg {
+  color: white;
+}
+
+.scroll-to-bottom-btn svg {
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary, #666);
+  transition: color 0.2s;
 }
 </style>

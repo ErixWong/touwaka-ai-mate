@@ -79,6 +79,9 @@ export default (controller) => {
   // 删除知识点
   router.delete('/:kb_id/knowledges/:knowledge_id/points/:id', authenticate(), controller.deletePoint.bind(controller));
 
+  // 清空单个知识点的向量（触发重新向量化）
+  router.delete('/:kb_id/knowledges/:knowledge_id/points/:id/embedding', authenticate(), controller.clearPointEmbedding.bind(controller));
+
   // ==================== 向量化相关路由 ====================
 
   // 重新向量化知识库所有知识点

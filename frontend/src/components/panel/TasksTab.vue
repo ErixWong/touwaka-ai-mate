@@ -17,7 +17,7 @@
             <span class="icon">↻</span>
           </button>
           <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
-            <span class="icon">↑</span>
+            <span class="icon">📤</span>
           </button>
         </div>
         <input

@@ -387,7 +387,9 @@ export const taskApi = {
   // 上传文件到任务工作空间
   uploadFile: (id: string, file: File, subdir?: string) => {
     const formData = new FormData()
-    formData.append('file', file)
+    // 创建新 File 对象，文件名用 encodeURIComponent 编码，解决中文文件名乱码问题
+    const encodedFile = new File([file], encodeURIComponent(file.name), { type: file.type })
+    formData.append('file', encodedFile)
     if (subdir) {
       formData.append('subdir', subdir)
     }
@@ -481,6 +483,12 @@ export const knowledgeBaseApi = {
   // 删除知识点
   deleteKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string) =>
     apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
+
+  // 清除单个知识点向量（触发重新向量化）
+  clearPointEmbedding: (kbId: string, knowledgeId: string, pointId: string) =>
+    apiRequest<{ message: string; point_id: string }>(
+      apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}/embedding`)
+    ),
 
   // ========== 搜索 ==========
 

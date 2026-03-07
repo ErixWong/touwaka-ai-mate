@@ -9,6 +9,7 @@
 import Utils from '../../lib/utils.js';
 import logger from '../../lib/logger.js';
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import path from 'path';
 import {
   buildQueryOptions,
@@ -552,9 +553,24 @@ class TaskController {
       // 确保目标目录存在
       await fs.mkdir(targetDir, { recursive: true });
 
-      // 获取文件名
-      const originalName = file.originalname || 'uploaded_file';
+      // 获取文件名（前端已用 encodeURIComponent 编码，这里解码）
+      const originalName = decodeURIComponent(file.originalname || 'uploaded_file');
       const targetPath = path.join(targetDir, originalName);
+
+      // 检查文件是否已存在
+      let fileExists = false;
+      try {
+        await fs.access(targetPath);
+        fileExists = true;
+      } catch {
+        // 文件不存在，可以继续
+      }
+
+      // 如果文件已存在，返回错误提示用户
+      if (fileExists) {
+        ctx.error(`文件"${originalName}" 已存在，请重命名后上传`, 409);
+        return;
+      }
 
       // 使用 buffer 写入文件（memoryStorage 模式）
       if (file.buffer) {
@@ -631,11 +647,12 @@ class TaskController {
         return;
       }
 
-      // 设置响应头并发送文件
+      // 设置响应头并发送文件（使用 RFC 5987 格式支持中文文件名）
       const fileName = path.basename(filePath);
-      ctx.set('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      const encodedFileName = encodeURIComponent(fileName);
+      ctx.set('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${encodedFileName}`);
       ctx.set('Content-Type', 'application/octet-stream');
-      ctx.body = require('fs').createReadStream(targetPath);
+      ctx.body = createReadStream(targetPath);
     } catch (error) {
       logger.error('Download file error:', error);
       ctx.error('文件下载失败', 500);
