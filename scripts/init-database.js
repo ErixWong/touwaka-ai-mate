@@ -39,6 +39,7 @@ const TABLES = [
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     model_name VARCHAR(128) NOT NULL COMMENT 'API调用使用的模型标识符',
+    model_type ENUM('chat', 'embedding', 'image', 'audio') DEFAULT 'chat' COMMENT '模型类型: chat=对话, embedding=向量化, image=图像, audio=语音',
     provider_id VARCHAR(32),
     max_tokens INT DEFAULT 4096,
     cost_per_1k_input DECIMAL(10, 6) DEFAULT 0,
@@ -49,7 +50,8 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE SET NULL,
     INDEX idx_provider (provider_id),
-    INDEX idx_active (is_active)
+    INDEX idx_active (is_active),
+    INDEX idx_model_type (model_type)
   )`,
 
   // 3. Experts 表
@@ -74,6 +76,7 @@ const TABLES = [
     top_p DECIMAL(3,2) DEFAULT 1.0 COMMENT 'Top-p采样',
     frequency_penalty DECIMAL(3,2) DEFAULT 0.0 COMMENT '频率惩罚',
     presence_penalty DECIMAL(3,2) DEFAULT 0.0 COMMENT '存在惩罚',
+    knowledge_config TEXT COMMENT '知识库配置（JSON格式）：{enabled, kb_id, top_k, threshold, max_tokens, style}',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (expressive_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
@@ -229,7 +232,7 @@ const TABLES = [
     user_id VARCHAR(32) NOT NULL COMMENT '消息所属用户ID，便于直接查询',
     expert_id VARCHAR(32) COMMENT '专家ID，便于直接查询',
     role ENUM('system', 'user', 'assistant') NOT NULL,
-    content TEXT NOT NULL,
+    content LONGTEXT NOT NULL COMMENT '消息内容，支持长文本',
     content_type ENUM('text', 'image', 'file') DEFAULT 'text',
     prompt_tokens INT DEFAULT 0 COMMENT '输入 token 数量',
     completion_tokens INT DEFAULT 0 COMMENT '输出 token 数量',
@@ -309,6 +312,75 @@ const TABLES = [
     PRIMARY KEY (role_id, expert_id),
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE
+  )`,
+
+  // 16. Knowledge_Bases 表（知识库）
+  `CREATE TABLE IF NOT EXISTS knowledge_bases (
+    id VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    owner_id VARCHAR(32) NOT NULL COMMENT '创建者 user_id',
+    embedding_model_id VARCHAR(50) COMMENT '关联 ai_models 表',
+    embedding_dim INT DEFAULT 1536,
+    is_public BIT(1) DEFAULT b'0' COMMENT '预留，暂不使用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_kb_owner (owner_id),
+    INDEX idx_kb_public (is_public)
+  )`,
+
+  // 17. Knowledges 表（文章，树状结构）
+  `CREATE TABLE IF NOT EXISTS knowledges (
+    id VARCHAR(20) PRIMARY KEY,
+    kb_id VARCHAR(20) NOT NULL COMMENT '所属知识库',
+    parent_id VARCHAR(20) DEFAULT NULL COMMENT '父文章 ID（树状结构）',
+    title VARCHAR(500) NOT NULL COMMENT '文章标题',
+    summary TEXT COMMENT 'LLM 生成的摘要',
+    source_type ENUM('file', 'web', 'manual') DEFAULT 'manual' COMMENT '来源类型',
+    source_url VARCHAR(1000) COMMENT '来源 URL',
+    file_path VARCHAR(500) COMMENT '原始文件存储路径',
+    status ENUM('pending', 'processing', 'ready', 'failed') DEFAULT 'pending' COMMENT '处理状态',
+    position INT DEFAULT 0 COMMENT '同级排序',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES knowledges(id) ON DELETE CASCADE,
+    INDEX idx_knowledge_kb (kb_id),
+    INDEX idx_knowledge_parent (parent_id),
+    INDEX idx_knowledge_status (status)
+  )`,
+
+  // 18. Knowledge_Points 表（知识点）
+  `CREATE TABLE IF NOT EXISTS knowledge_points (
+    id VARCHAR(20) PRIMARY KEY,
+    knowledge_id VARCHAR(20) NOT NULL COMMENT '所属文章',
+    title VARCHAR(500) COMMENT '知识点标题',
+    content MEDIUMTEXT NOT NULL COMMENT 'Markdown 格式内容',
+    context TEXT COMMENT '上下文信息（用于向量化）',
+    embedding VECTOR(1024) COMMENT '向量（1024维）',
+    position INT DEFAULT 0 COMMENT '排序位置',
+    token_count INT DEFAULT 0 COMMENT 'Token 数量',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_id) REFERENCES knowledges(id) ON DELETE CASCADE,
+    INDEX idx_kp_knowledge (knowledge_id)
+  )`,
+
+  // 19. Knowledge_Relations 表（知识点关联）
+  `CREATE TABLE IF NOT EXISTS knowledge_relations (
+    id VARCHAR(20) PRIMARY KEY,
+    source_id VARCHAR(20) NOT NULL COMMENT '源知识点',
+    target_id VARCHAR(20) NOT NULL COMMENT '目标知识点',
+    relation_type ENUM('depends_on', 'references', 'related_to', 'contradicts', 'extends', 'example_of') NOT NULL COMMENT '关系类型',
+    confidence DECIMAL(3,2) DEFAULT 1.00 COMMENT 'LLM 置信度 (0-1)',
+    created_by ENUM('llm', 'manual') DEFAULT 'llm' COMMENT '创建方式',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES knowledge_points(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_id) REFERENCES knowledge_points(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_relation (source_id, target_id, relation_type),
+    INDEX idx_kr_source (source_id),
+    INDEX idx_kr_target (target_id),
+    INDEX idx_kr_type (relation_type)
   )`,
 ];
 
@@ -607,6 +679,7 @@ async function initDatabase() {
     console.log('Dropping existing tables...');
     // 按依赖顺序删除表（先删除有外键的表）
     const dropTables = [
+      'knowledge_relations', 'knowledge_points', 'knowledges', 'knowledge_bases',
       'messages', 'topics', 'tasks', 'user_profiles', 'user_roles', 'role_permissions', 'role_experts',
       'permissions', 'roles', 'users', 'expert_skills', 'skill_tools', 'skills', 'experts',
       'ai_models', 'providers'
