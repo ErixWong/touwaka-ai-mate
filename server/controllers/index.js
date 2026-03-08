@@ -10,7 +10,7 @@ import ExpertController from './expert.controller.js';
 import ModelController from './model.controller.js';
 import StreamController from './stream.controller.js';
 import SkillController from './skill.controller.js';
-import KnowledgeBaseController from './knowledge-base.controller.js';
+import KbController from './kb.controller.js';
 
 export {
   AuthController,
@@ -21,5 +21,5 @@ export {
   ModelController,
   StreamController,
   SkillController,
-  KnowledgeBaseController,
+  KbController,
 };

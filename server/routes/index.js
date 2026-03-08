@@ -12,7 +12,7 @@ import streamRoutes from './stream.routes.js';
 import providerRoutes from './provider.routes.js';
 import chatRoutes from './chat.routes.js';
 import createSkillRoutes from './skill.routes.js';
-import createKnowledgeBaseRoutes from './knowledge-base.routes.js';
+import createKbRoutes from './kb.routes.js';
 
 export {
   authRoutes,
@@ -25,5 +25,5 @@ export {
   providerRoutes,
   chatRoutes,
   createSkillRoutes,
-  createKnowledgeBaseRoutes,
+  createKbRoutes,
 };
