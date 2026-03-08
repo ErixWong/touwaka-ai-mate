@@ -212,7 +212,8 @@ export interface PaginatedResponse<T> {
   total: number
   page: number
   limit: number
-  total_pages: number
+  pages: number  // 总页数，与 PageResponse 统一
+  total_pages?: number  // 兼容旧代码
   pagination?: {
     page: number
     size: number
