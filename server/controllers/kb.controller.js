@@ -70,7 +70,182 @@ class KbController {
       this.KbParagraph = this.db.getModel('kb_paragraph');
       this.KbTag = this.db.getModel('kb_tag');
       this.KbArticleTag = this.db.getModel('kb_article_tag');
-      this.KnowledgeBase = this.db.getModel('knowledge_base');
+      this.KnowledgeBase = this.db.getModel('knowledge_basis');
+    }
+  }
+
+  // ==================== Knowledge Base CRUD ====================
+
+  /**
+   * 获取知识库列表
+   * GET /api/kb
+   */
+  async listKnowledgeBases(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const { page = 1, pageSize = 12, search } = ctx.query;
+
+      const where = {};
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { description: { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      const limit = Math.min(parseInt(pageSize) || 12, 100);
+      const offset = (parseInt(page) - 1) * limit;
+
+      const { rows, count } = await this.KnowledgeBase.findAndCountAll({
+        where,
+        limit,
+        offset,
+        order: [['created_at', 'DESC']],
+      });
+
+      // 获取每个知识库的文章数和段落数
+      const kbIds = rows.map(kb => kb.id);
+      const articleCounts = await this.KbArticle.findAll({
+        where: { kb_id: { [Op.in]: kbIds } },
+        attributes: ['kb_id', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
+        group: ['kb_id'],
+        raw: true,
+      });
+      const articleCountMap = new Map(articleCounts.map(a => [a.kb_id, parseInt(a.count)]));
+
+      // 添加统计信息
+      const result = rows.map(kb => ({
+        ...kb.toJSON(),
+        article_count: articleCountMap.get(kb.id) || 0,
+      }));
+
+      ctx.success({
+        items: result,
+        total: count,
+        page: parseInt(page),
+        limit,
+        pages: Math.ceil(count / limit),
+      });
+      logger.info(`[KB] listKnowledgeBases: ${count} kbs, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] listKnowledgeBases error:', error);
+      ctx.throw(500, error.message);
+    }
+  }
+
+  /**
+   * 创建知识库
+   * POST /api/kb
+   */
+  async createKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const data = ctx.request.body;
+      const userId = ctx.state.userId;
+
+      if (!data.name || !data.name.trim()) {
+        ctx.throw(400, 'Knowledge base name is required');
+      }
+
+      const id = Utils.newID(20);
+      const kb = await this.KnowledgeBase.create({
+        id,
+        name: data.name.trim(),
+        description: data.description,
+        owner_id: userId,
+        embedding_dim: data.embedding_dim || 1536,
+        is_public: data.is_public || false,
+      });
+
+      ctx.success(kb);
+      ctx.status = 201;
+    } catch (error) {
+      logger.error('[KB] createKnowledgeBase error:', error.message, error.stack);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 获取知识库详情
+   * GET /api/kb/:kb_id
+   */
+  async getKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 获取文章数
+      const articleCount = await this.KbArticle.count({
+        where: { kb_id },
+      });
+
+      ctx.success({
+        ...kb.toJSON(),
+        article_count: articleCount,
+      });
+    } catch (error) {
+      logger.error('[KB] getKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 更新知识库
+   * PUT /api/kb/:kb_id
+   */
+  async updateKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+      const data = ctx.request.body;
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      await kb.update({
+        name: data.name !== undefined ? data.name : kb.name,
+        description: data.description !== undefined ? data.description : kb.description,
+        embedding_model_id: data.embedding_model_id !== undefined ? data.embedding_model_id : kb.embedding_model_id,
+        embedding_dim: data.embedding_dim !== undefined ? data.embedding_dim : kb.embedding_dim,
+        is_public: data.is_public !== undefined ? data.is_public : kb.is_public,
+      });
+
+      ctx.success(kb);
+    } catch (error) {
+      logger.error('[KB] updateKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 删除知识库
+   * DELETE /api/kb/:kb_id
+   */
+  async deleteKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 级联删除文章、节、段落、标签（由数据库外键处理）
+      await kb.destroy();
+
+      ctx.success({ success: true });
+    } catch (error) {
+      logger.error('[KB] deleteKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
     }
   }
 
@@ -78,14 +253,18 @@ class KbController {
 
   /**
    * 查询文章列表
-   * POST /api/kb/:kb_id/articles/query
+   * POST /api/kb/:kb_id/articles/query (复杂查询)
+   * GET /api/kb/:kb_id/articles (简单查询)
    */
   async queryArticles(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
-      const queryRequest = ctx.request.body || {};
+      
+      // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
+      const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
+      const queryRequest = queryParams || {};
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
@@ -99,7 +278,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] queryArticles: ${count} articles, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryArticles error:', error);
@@ -129,7 +308,7 @@ class KbController {
         ctx.throw(404, 'Article not found');
       }
 
-      ctx.body = article;
+      ctx.success(article);
     } catch (error) {
       logger.error('[KB] getArticle error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -152,7 +331,7 @@ class KbController {
         ctx.throw(404, 'Knowledge base not found');
       }
 
-      const id = Utils.generateId('art');
+      const id = Utils.newID(20);
       const article = await this.KbArticle.create({
         id,
         kb_id,
@@ -169,13 +348,13 @@ class KbController {
         await this._setArticleTags(article.id, data.tags, kb_id);
       }
 
-      ctx.body = await this.KbArticle.findByPk(id, {
+      ctx.success(await this.KbArticle.findByPk(id, {
         include: [{
           model: this.KbTag,
           as: 'tags',
           through: { attributes: [] },
         }],
-      });
+      }));
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createArticle error:', error);
@@ -212,13 +391,13 @@ class KbController {
         await this._setArticleTags(id, data.tags, kb_id);
       }
 
-      ctx.body = await this.KbArticle.findByPk(id, {
+      ctx.success(await this.KbArticle.findByPk(id, {
         include: [{
           model: this.KbTag,
           as: 'tags',
           through: { attributes: [] },
         }],
-      });
+      }));
     } catch (error) {
       logger.error('[KB] updateArticle error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -255,7 +434,7 @@ class KbController {
         );
       }
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteArticle error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -284,7 +463,7 @@ class KbController {
       const articleIds = articles.map(a => a.id);
 
       if (articleIds.length === 0) {
-        ctx.body = buildPaginatedResponse([], 0, queryRequest.pagination || {});
+        ctx.success(buildPaginatedResponse([], 0, queryRequest.pagination || {}));
         return;
       }
 
@@ -300,7 +479,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] querySections: ${count} sections, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] querySections error:', error);
@@ -343,10 +522,10 @@ class KbController {
       // 构建树结构
       const tree = this._buildSectionTree(sections, paragraphs);
 
-      ctx.body = {
+      ctx.success({
         article,
         tree,
-      };
+      });
     } catch (error) {
       logger.error('[KB] getArticleTree error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -395,7 +574,7 @@ class KbController {
         },
       }) || 0;
 
-      const id = Utils.generateId('sec');
+      const id = Utils.newID(20);
       const section = await this.KbSection.create({
         id,
         article_id: data.article_id,
@@ -405,7 +584,7 @@ class KbController {
         position: maxPosition + 1,
       });
 
-      ctx.body = section;
+      ctx.success(section);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createSection error:', error);
@@ -434,7 +613,7 @@ class KbController {
         title: data.title !== undefined ? data.title : section.title,
       });
 
-      ctx.body = section;
+      ctx.success(section);
     } catch (error) {
       logger.error('[KB] updateSection error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -488,7 +667,7 @@ class KbController {
         { where: { id: section.id } }
       );
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] moveSection error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -514,7 +693,7 @@ class KbController {
       // 级联删除子节和段（由数据库外键处理）
       await section.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteSection error:', error);
       // 外键约束错误友好提示
@@ -559,7 +738,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] queryParagraphs: ${count} paragraphs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryParagraphs error:', error);
@@ -590,7 +769,7 @@ class KbController {
         where: { section_id: data.section_id },
       }) || 0;
 
-      const id = Utils.generateId('para');
+      const id = Utils.newID(20);
       const paragraph = await this.KbParagraph.create({
         id,
         section_id: data.section_id,
@@ -601,7 +780,7 @@ class KbController {
         token_count: data.token_count || 0,
       });
 
-      ctx.body = paragraph;
+      ctx.success(paragraph);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createParagraph error:', error);
@@ -639,7 +818,7 @@ class KbController {
           ? data.token_count : paragraph.token_count,
       });
 
-      ctx.body = paragraph;
+      ctx.success(paragraph);
     } catch (error) {
       logger.error('[KB] updateParagraph error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -697,7 +876,7 @@ class KbController {
         { where: { id: paragraph.id } }
       );
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] moveParagraph error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -726,7 +905,7 @@ class KbController {
 
       await paragraph.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteParagraph error:', error);
       // 外键约束错误友好提示
@@ -741,14 +920,18 @@ class KbController {
 
   /**
    * 查询标签列表
-   * POST /api/kb/:kb_id/tags/query
+   * POST /api/kb/:kb_id/tags/query (复杂查询)
+   * GET /api/kb/:kb_id/tags (简单查询)
    */
   async queryTags(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
-      const queryRequest = ctx.request.body || {};
+      
+      // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
+      const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
+      const queryRequest = queryParams || {};
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
@@ -762,7 +945,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] queryTags: ${count} tags, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryTags error:', error);
@@ -794,7 +977,7 @@ class KbController {
         ctx.throw(400, 'Tag already exists');
       }
 
-      const id = Utils.generateId('tag');
+      const id = Utils.newID(20);
       const tag = await this.KbTag.create({
         id,
         kb_id,
@@ -803,7 +986,7 @@ class KbController {
         article_count: 0,
       });
 
-      ctx.body = tag;
+      ctx.success(tag);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createTag error:', error);
@@ -841,7 +1024,7 @@ class KbController {
         description: data.description !== undefined ? data.description : tag.description,
       });
 
-      ctx.body = tag;
+      ctx.success(tag);
     } catch (error) {
       logger.error('[KB] updateTag error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -865,7 +1048,7 @@ class KbController {
       // 级联删除关联（由数据库外键处理）
       await tag.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteTag error:', error);
       // 外键约束错误友好提示
@@ -904,7 +1087,7 @@ class KbController {
         if (existingTagMap.has(tagName)) {
           tagIds.push(existingTagMap.get(tagName).id);
         } else {
-          const id = Utils.generateId('tag');
+          const id = Utils.newID(20);
           newTags.push({
             id,
             kb_id: kbId,
@@ -929,7 +1112,7 @@ class KbController {
       // 批量创建新关联
       if (tagIds.length > 0) {
         const articleTagAssociations = tagIds.map(tagId => ({
-          id: Utils.generateId('at'),
+          id: Utils.newID(20),
           article_id: articleId,
           tag_id: tagId,
         }));

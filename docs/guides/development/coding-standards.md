@@ -1,75 +1,128 @@
 # 编码规范
 
-## 🔴 铁律：全栈统一使用 snake_case 字段名
+> **最后更新**: 2026-03-08
+> **维护者**: 开发团队
 
-**这是不可违反的铁律，没有任何例外！**
+---
 
-从数据库到后端到前端，所有字段名必须保持一致，使用数据库的 snake_case 命名，**禁止任何形式的字段名转换**。
+## 🔴 铁律：全栈统一 snake_case
+
+从数据库到前端，所有字段名保持一致，**禁止任何形式的字段名转换**。
 
 ```
 数据库 (snake_case) → 后端 (snake_case) → API (snake_case) → 前端 (snake_case)
 ```
 
-### 为什么这是铁律？
-
-1. 字段名转换是 bug 的温床（如 `expressive_model` vs `expressive_model_id` 的问题）
-2. 增加心智负担，开发者需要记住两套名称
-3. 代码搜索和维护困难
-4. 没有任何实际收益，只是"看起来像 JavaScript 风格"
-
-### 命名规范
-
 | 层级 | 命名格式 | 示例 |
 |------|---------|------|
 | 数据库列名 | snake_case | `expressive_model_id` |
-| SQL 查询结果 | snake_case | `row.expressive_model_id` |
 | API 响应 JSON | snake_case | `{ "expressive_model_id": "..." }` |
 | 前端 TypeScript | snake_case | `expert.expressive_model_id` |
 
-### 正确示例
+**唯一允许的转换**：类型转换（如 BIT → boolean），但字段名不变。
+
+---
+
+## 🔴 铁律：响应格式统一
+
+### 后端响应格式
+
+**必须使用 `ctx.success()` 包装响应数据**：
 
 ```javascript
-// ✅ 正确 - 全栈统一
-// 数据库: expressive_model_id VARCHAR(32)
-// 后端: const modelId = expert.expressive_model_id
-// API: { "expressive_model_id": "mls393gx4l140xr2yvju" }
-// 前端: const modelId = expert.expressive_model_id
+// ✅ 正确 - 使用 ctx.success()
+ctx.success({ items: [], total: 0 });
+// 返回: { code: 200, message: 'success', data: { items: [], total: 0 } }
+
+// ❌ 错误 - 直接赋值 ctx.body
+ctx.body = { items: [], total: 0 };
+// 返回: { items: [], total: 0 } - 缺少 data 包装层
 ```
 
-### 错误示例
+**原因**：前端 `apiRequest` 期望 `response.data.data` 格式：
 
-```javascript
-// ❌ 错误 - 禁止转换
-// 后端 Controller 做转换:
-// expressiveModelId: e.expressive_model_id  // 禁止！
-
-// 前端 TypeScript 使用驼峰:
-// interface Expert { expressiveModelId: string }  // 禁止！
+```typescript
+// frontend/src/api/client.ts
+export async function apiRequest<T>(
+  request: Promise<{ data: { data: T } }>
+): Promise<T> {
+  const response = await request;
+  return response.data.data;  // 期望 data 包装层
+}
 ```
 
-### 唯一允许的转换
+### 分页响应格式
 
-- `is_active` 等布尔字段从 MySQL BIT 转换为 JavaScript boolean（但字段名保持不变）
-- JSON 字符串解析为对象（如 `core_values: JSON.parse(row.core_values)`）
+使用 `buildPaginatedResponse()` 构建分页响应：
 
 ```javascript
-// ✅ 允许的类型转换，但字段名不变
-const expert = {
-  ...row,
-  is_active: row.is_active === 1,  // BIT → boolean
-  core_values: JSON.parse(row.core_values || '[]'),  // JSON string → array
-};
+import { buildPaginatedResponse } from '../../lib/query-builder.js';
+
+// ✅ 正确 - 包装在 ctx.success() 中
+ctx.success(buildPaginatedResponse(rows, count, pagination));
+// 返回: { code: 200, message: 'success', data: { items: [...], pagination: {...} } }
+
+// ❌ 错误 - 直接赋值 ctx.body
+ctx.body = buildPaginatedResponse(rows, count, pagination);
+```
+
+**响应结构**：
+
+```javascript
+{
+  code: 200,
+  message: 'success',
+  data: {
+    items: [...],
+    pagination: {
+      page: 1,
+      size: 10,
+      total: 100,
+      pages: 10,
+      has_next: true,
+      has_prev: false
+    }
+  }
+}
+```
+
+### 前端处理
+
+```typescript
+// 前端 store 中提取 items
+const response = await knowledgeBaseApi.getArticles(kbId);
+articles.value = response.items || [];  // response 已经是 data 内的对象
 ```
 
 ---
 
 ## ⚠️ 强制：Utils.newID()
 
-所有数据库记录主键必须使用 `Utils.newID()` 生成，**禁止**使用自增 ID：
+所有数据库主键必须使用 `Utils.newID()` 生成，**禁止**自增 ID：
 
 ```javascript
-const Utils = require('../lib/utils');
 const id = Utils.newID();  // 返回如：ym2zbgr7ocdkkgy3wivj
+const id = Utils.newID(20);  // 指定长度
+```
+
+---
+
+## ⚠️ 强制：GET/POST 双请求支持
+
+对于需要支持复杂查询的列表接口，应同时支持 GET 和 POST 请求：
+
+```javascript
+// 路由定义
+router.get('/:kb_id/articles', authenticate(), controller.queryArticles);
+router.post('/:kb_id/articles/query', authenticate(), controller.queryArticles);
+
+// Controller 实现
+async queryArticles(ctx) {
+  // 支持 GET (ctx.query) 和 POST (ctx.request.body)
+  const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
+  const queryRequest = queryParams || {};
+  // ...
+}
 ```
 
 ---
@@ -81,15 +134,6 @@ const id = Utils.newID();  // 返回如：ym2zbgr7ocdkkgy3wivj
 | `query()` | SELECT | 结果数组 |
 | `execute()` | UPDATE/DELETE | `{ affectedRows }` |
 | `getOne()` | 单条查询 | 对象或 null |
-
----
-
-## 响应格式
-
-```javascript
-ctx.success(data);          // 成功
-ctx.error(message, code);   // 失败
-```
 
 ---
 
@@ -115,20 +159,12 @@ router.get('/', controller.list);
 | 创建 | POST | `/api/resources` |
 | 更新 | PUT | `/api/resources/:id` |
 | 删除 | DELETE | `/api/resources/:id` |
+| 复杂查询 | POST | `/api/resources/query` |
 
 ---
 
-## Git 提交规范
+## 相关文档
 
-```
-type: description
-```
-
-示例：
-- `feat: 添加文档管理功能`
-- `fix: 修复话题切换时的消息丢失问题`
-- `refactor: 重构 ChatService`
-
----
-
-*最后更新: 2026-02-22*
+- [代码审计清单](./code-review-checklist.md) - 提交 PR 前的检查清单
+- [API 参考](./api-reference.md) - API 设计规范
+- [核心模块](./core-modules.md) - 后端核心模块说明

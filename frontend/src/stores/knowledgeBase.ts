@@ -474,9 +474,9 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   const loadTags = async (kbId: string) => {
     error.value = null
     try {
-      const tagList = await knowledgeBaseApi.getTags(kbId)
-      tags.value = tagList
-      return tagList
+      const response = await knowledgeBaseApi.getTags(kbId)
+      tags.value = response.items || []
+      return response
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load tags'
       throw err
