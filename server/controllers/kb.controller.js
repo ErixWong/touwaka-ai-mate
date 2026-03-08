@@ -158,7 +158,7 @@ class KbController {
         is_public: data.is_public || false,
       });
 
-      ctx.body = kb;
+      ctx.success(kb);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createKnowledgeBase error:', error.message, error.stack);
@@ -185,10 +185,10 @@ class KbController {
         where: { kb_id },
       });
 
-      ctx.body = {
+      ctx.success({
         ...kb.toJSON(),
         article_count: articleCount,
-      };
+      });
     } catch (error) {
       logger.error('[KB] getKnowledgeBase error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -218,7 +218,7 @@ class KbController {
         is_public: data.is_public !== undefined ? data.is_public : kb.is_public,
       });
 
-      ctx.body = kb;
+      ctx.success(kb);
     } catch (error) {
       logger.error('[KB] updateKnowledgeBase error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -242,7 +242,7 @@ class KbController {
       // 级联删除文章、节、段落、标签（由数据库外键处理）
       await kb.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteKnowledgeBase error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -253,14 +253,18 @@ class KbController {
 
   /**
    * 查询文章列表
-   * POST /api/kb/:kb_id/articles/query
+   * POST /api/kb/:kb_id/articles/query (复杂查询)
+   * GET /api/kb/:kb_id/articles (简单查询)
    */
   async queryArticles(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
-      const queryRequest = ctx.request.body || {};
+      
+      // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
+      const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
+      const queryRequest = queryParams || {};
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
@@ -274,7 +278,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] queryArticles: ${count} articles, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryArticles error:', error);
@@ -304,7 +308,7 @@ class KbController {
         ctx.throw(404, 'Article not found');
       }
 
-      ctx.body = article;
+      ctx.success(article);
     } catch (error) {
       logger.error('[KB] getArticle error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -344,13 +348,13 @@ class KbController {
         await this._setArticleTags(article.id, data.tags, kb_id);
       }
 
-      ctx.body = await this.KbArticle.findByPk(id, {
+      ctx.success(await this.KbArticle.findByPk(id, {
         include: [{
           model: this.KbTag,
           as: 'tags',
           through: { attributes: [] },
         }],
-      });
+      }));
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createArticle error:', error);
@@ -387,13 +391,13 @@ class KbController {
         await this._setArticleTags(id, data.tags, kb_id);
       }
 
-      ctx.body = await this.KbArticle.findByPk(id, {
+      ctx.success(await this.KbArticle.findByPk(id, {
         include: [{
           model: this.KbTag,
           as: 'tags',
           through: { attributes: [] },
         }],
-      });
+      }));
     } catch (error) {
       logger.error('[KB] updateArticle error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -430,7 +434,7 @@ class KbController {
         );
       }
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteArticle error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -459,7 +463,7 @@ class KbController {
       const articleIds = articles.map(a => a.id);
 
       if (articleIds.length === 0) {
-        ctx.body = buildPaginatedResponse([], 0, queryRequest.pagination || {});
+        ctx.success(buildPaginatedResponse([], 0, queryRequest.pagination || {}));
         return;
       }
 
@@ -475,7 +479,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] querySections: ${count} sections, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] querySections error:', error);
@@ -518,10 +522,10 @@ class KbController {
       // 构建树结构
       const tree = this._buildSectionTree(sections, paragraphs);
 
-      ctx.body = {
+      ctx.success({
         article,
         tree,
-      };
+      });
     } catch (error) {
       logger.error('[KB] getArticleTree error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -580,7 +584,7 @@ class KbController {
         position: maxPosition + 1,
       });
 
-      ctx.body = section;
+      ctx.success(section);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createSection error:', error);
@@ -609,7 +613,7 @@ class KbController {
         title: data.title !== undefined ? data.title : section.title,
       });
 
-      ctx.body = section;
+      ctx.success(section);
     } catch (error) {
       logger.error('[KB] updateSection error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -663,7 +667,7 @@ class KbController {
         { where: { id: section.id } }
       );
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] moveSection error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -689,7 +693,7 @@ class KbController {
       // 级联删除子节和段（由数据库外键处理）
       await section.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteSection error:', error);
       // 外键约束错误友好提示
@@ -734,7 +738,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] queryParagraphs: ${count} paragraphs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryParagraphs error:', error);
@@ -776,7 +780,7 @@ class KbController {
         token_count: data.token_count || 0,
       });
 
-      ctx.body = paragraph;
+      ctx.success(paragraph);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createParagraph error:', error);
@@ -814,7 +818,7 @@ class KbController {
           ? data.token_count : paragraph.token_count,
       });
 
-      ctx.body = paragraph;
+      ctx.success(paragraph);
     } catch (error) {
       logger.error('[KB] updateParagraph error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -872,7 +876,7 @@ class KbController {
         { where: { id: paragraph.id } }
       );
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] moveParagraph error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -901,7 +905,7 @@ class KbController {
 
       await paragraph.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteParagraph error:', error);
       // 外键约束错误友好提示
@@ -916,14 +920,18 @@ class KbController {
 
   /**
    * 查询标签列表
-   * POST /api/kb/:kb_id/tags/query
+   * POST /api/kb/:kb_id/tags/query (复杂查询)
+   * GET /api/kb/:kb_id/tags (简单查询)
    */
   async queryTags(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
-      const queryRequest = ctx.request.body || {};
+      
+      // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
+      const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
+      const queryRequest = queryParams || {};
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
@@ -937,7 +945,7 @@ class KbController {
         distinct: true,
       });
 
-      ctx.body = buildPaginatedResponse(rows, count, pagination);
+      ctx.success(buildPaginatedResponse(rows, count, pagination));
       logger.info(`[KB] queryTags: ${count} tags, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryTags error:', error);
@@ -978,7 +986,7 @@ class KbController {
         article_count: 0,
       });
 
-      ctx.body = tag;
+      ctx.success(tag);
       ctx.status = 201;
     } catch (error) {
       logger.error('[KB] createTag error:', error);
@@ -1016,7 +1024,7 @@ class KbController {
         description: data.description !== undefined ? data.description : tag.description,
       });
 
-      ctx.body = tag;
+      ctx.success(tag);
     } catch (error) {
       logger.error('[KB] updateTag error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -1040,7 +1048,7 @@ class KbController {
       // 级联删除关联（由数据库外键处理）
       await tag.destroy();
 
-      ctx.body = { success: true };
+      ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteTag error:', error);
       // 外键约束错误友好提示

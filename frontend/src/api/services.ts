@@ -528,7 +528,7 @@ export const knowledgeBaseApi = {
 
   // 获取标签列表
   getTags: (kbId: string) =>
-    apiRequest<KbTag[]>(apiClient.get(`/kb/${kbId}/tags`)),
+    apiRequest<PaginatedResponse<KbTag>>(apiClient.get(`/kb/${kbId}/tags`)),
 
   // 创建标签
   createTag: (kbId: string, data: CreateKbTagRequest) =>
