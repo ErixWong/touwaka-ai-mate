@@ -808,7 +808,9 @@ export interface KbParagraph {
   section_id: string
   title?: string
   content: string
+  context?: string
   is_knowledge_point: boolean
+  is_vectorized?: boolean
   position: number
   token_count: number
   created_at: string
@@ -819,8 +821,10 @@ export interface KbParagraph {
  * 创建段落请求
  */
 export interface CreateKbParagraphRequest {
+  section_id: string
   title?: string
   content: string
+  context?: string
   is_knowledge_point?: boolean
 }
 
@@ -830,7 +834,9 @@ export interface CreateKbParagraphRequest {
 export interface UpdateKbParagraphRequest {
   title?: string
   content?: string
+  context?: string
   is_knowledge_point?: boolean
+  section_id?: string
 }
 
 /**

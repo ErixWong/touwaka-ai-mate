@@ -70,7 +70,182 @@ class KbController {
       this.KbParagraph = this.db.getModel('kb_paragraph');
       this.KbTag = this.db.getModel('kb_tag');
       this.KbArticleTag = this.db.getModel('kb_article_tag');
-      this.KnowledgeBase = this.db.getModel('knowledge_base');
+      this.KnowledgeBase = this.db.getModel('knowledge_basis');
+    }
+  }
+
+  // ==================== Knowledge Base CRUD ====================
+
+  /**
+   * 获取知识库列表
+   * GET /api/kb
+   */
+  async listKnowledgeBases(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const { page = 1, pageSize = 12, search } = ctx.query;
+
+      const where = {};
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { description: { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      const limit = Math.min(parseInt(pageSize) || 12, 100);
+      const offset = (parseInt(page) - 1) * limit;
+
+      const { rows, count } = await this.KnowledgeBase.findAndCountAll({
+        where,
+        limit,
+        offset,
+        order: [['created_at', 'DESC']],
+      });
+
+      // 获取每个知识库的文章数和段落数
+      const kbIds = rows.map(kb => kb.id);
+      const articleCounts = await this.KbArticle.findAll({
+        where: { kb_id: { [Op.in]: kbIds } },
+        attributes: ['kb_id', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
+        group: ['kb_id'],
+        raw: true,
+      });
+      const articleCountMap = new Map(articleCounts.map(a => [a.kb_id, parseInt(a.count)]));
+
+      // 添加统计信息
+      const result = rows.map(kb => ({
+        ...kb.toJSON(),
+        article_count: articleCountMap.get(kb.id) || 0,
+      }));
+
+      ctx.body = {
+        items: result,
+        total: count,
+        page: parseInt(page),
+        limit,
+        pages: Math.ceil(count / limit),
+      };
+      logger.info(`[KB] listKnowledgeBases: ${count} kbs, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] listKnowledgeBases error:', error);
+      ctx.throw(500, error.message);
+    }
+  }
+
+  /**
+   * 创建知识库
+   * POST /api/kb
+   */
+  async createKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const data = ctx.request.body;
+      const userId = ctx.state.user?.id;
+
+      if (!data.name || !data.name.trim()) {
+        ctx.throw(400, 'Knowledge base name is required');
+      }
+
+      const id = Utils.generateId('kb');
+      const kb = await this.KnowledgeBase.create({
+        id,
+        name: data.name.trim(),
+        description: data.description,
+        owner_id: userId,
+        embedding_dim: data.embedding_dim || 1536,
+        is_public: data.is_public || false,
+      });
+
+      ctx.body = kb;
+      ctx.status = 201;
+    } catch (error) {
+      logger.error('[KB] createKnowledgeBase error:', error);
+      ctx.throw(500, error.message);
+    }
+  }
+
+  /**
+   * 获取知识库详情
+   * GET /api/kb/:kb_id
+   */
+  async getKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 获取文章数
+      const articleCount = await this.KbArticle.count({
+        where: { kb_id },
+      });
+
+      ctx.body = {
+        ...kb.toJSON(),
+        article_count: articleCount,
+      };
+    } catch (error) {
+      logger.error('[KB] getKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 更新知识库
+   * PUT /api/kb/:kb_id
+   */
+  async updateKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+      const data = ctx.request.body;
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      await kb.update({
+        name: data.name !== undefined ? data.name : kb.name,
+        description: data.description !== undefined ? data.description : kb.description,
+        embedding_model_id: data.embedding_model_id !== undefined ? data.embedding_model_id : kb.embedding_model_id,
+        embedding_dim: data.embedding_dim !== undefined ? data.embedding_dim : kb.embedding_dim,
+        is_public: data.is_public !== undefined ? data.is_public : kb.is_public,
+      });
+
+      ctx.body = kb;
+    } catch (error) {
+      logger.error('[KB] updateKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 删除知识库
+   * DELETE /api/kb/:kb_id
+   */
+  async deleteKnowledgeBase(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 级联删除文章、节、段落、标签（由数据库外键处理）
+      await kb.destroy();
+
+      ctx.body = { success: true };
+    } catch (error) {
+      logger.error('[KB] deleteKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
     }
   }
 

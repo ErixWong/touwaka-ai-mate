@@ -101,7 +101,7 @@
             <SectionTreeNode
               v-for="section in kbStore.sectionTree"
               :key="sectionKey + '-' + section.id"
-              :section="section"
+              :node="section"
               :level="0"
               :selected-id="selectedSection?.id"
               :force-expand="forceExpandSections"
