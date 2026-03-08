@@ -84,35 +84,12 @@
 
 ### PR/Issue 工作流
 
-> **工具：** GitHub CLI (`gh`)，路径：`C:\Program Files\GitHub CLI`
+> **GitHub CLI 路径：** `C:\Program Files\GitHub CLI\gh.exe`
+> **注意：** 多行文本必须用 `--body-file`，Windows 会截断 `--body` 参数
 
 ```powershell
-# 创建分支
-git checkout -b fix/xxx-feature
-
-# 开发完成后提交
-git add . && git commit -m "[fix]: 描述"
-
-# 推送分支
-git push -u origin fix/xxx-feature
-
-# 创建 PR
-"C:\Program Files\GitHub CLI\gh.exe" pr create --title "标题" --body "描述"
-
-# 创建 Issue（用于跟踪发现的问题）
-"C:\Program Files\GitHub CLI\gh.exe" issue create --title "标题" --body "描述" --label "enhancement"
-
-# 关闭 Issue（问题已在 PR 中修复）
-"C:\Program Files\GitHub CLI\gh.exe" issue close #编号 --comment "已在 PR #xx 中修复"
-```
-
-### ⚠️ GitHub CLI 多行文本
-
-Windows cmd.exe 中 `--body` 多行文本会被截断，改用 `--body-file`：
-
-```powershell
-gh issue create --title "标题" --body-file issue-body.md
-gh issue edit #编号 --body-file issue-body.md
+# 多行文本用文件
+"C:\Program Files\GitHub CLI\gh.exe" issue create --title "标题" --body-file issue-body.md
 ```
 
 ### Code Review 发现问题的处理
@@ -126,6 +103,28 @@ gh issue edit #编号 --body-file issue-body.md
 > **详见**：[`docs/guides/development/code-review-checklist.md`](../guides/development/code-review-checklist.md)
 > 
 > 提交 PR 前必须逐项检查！
+
+---
+
+## 🔧 调试工具
+
+在 `tests/` 目录下提供了便捷的命令行调试工具：
+
+### 脚本对比
+
+| 脚本 | 执行方式 | 适用场景 | 示例 |
+|------|---------|---------|------|
+| `run-skill.js` | 直接在 VM 沙箱执行技能代码 | 测试技能逻辑、调试技能内部问题 | `node tests/run-skill.js kb-search search --kb_id=xxx --query="test"` |
+| `skill-admin.js` | 通过 HTTP 调用后端管理 API | 管理技能（注册/分配/启用/禁用）| `node tests/skill-admin.js skill list` |
+| `db-query.js` | 直接查询数据库 | 验证数据、排查数据问题 | `node tests/db-query.js kb_articles --limit=10` |
+
+### 认证说明
+
+- `run-skill.js`：自动生成管理员 JWT Token（`admin_00000000000000000000`）
+- `skill-admin.js`：自动生成管理员 JWT Token，也可通过 `USER_ACCESS_TOKEN` 环境变量指定
+- `db-query.js`：直接连接数据库，无需认证
+
+> **详见**：[`docs/issues/add-debug-scripts.md`](../issues/add-debug-scripts.md)
 
 ---
 
