@@ -63,7 +63,7 @@
             </div>
             <div class="kb-card-desc" v-if="kb.description">{{ kb.description }}</div>
             <div class="kb-card-stats">
-              <span>{{ $t('knowledgeBase.pointCount', { count: kb.point_count || 0 }) }}</span>
+              <span>{{ $t('knowledgeBase.paragraphCount', { count: kb.paragraph_count || 0 }) }}</span>
               <span class="kb-card-dim">{{ kb.embedding_dim || 384 }}D</span>
               <span class="kb-card-time">{{ formatUpdatedTime(kb.updated_at) }}</span>
             </div>
@@ -208,7 +208,7 @@
             <h4>{{ $t('knowledgeBase.searchResult.title') }} ({{ kbStore.searchResults.length }})</h4>
             <div
               v-for="result in kbStore.searchResults"
-              :key="result.point.id"
+              :key="result.paragraph.id"
               class="search-result-item"
             >
               <div class="result-score">
@@ -218,10 +218,10 @@
                 <div class="result-kb" v-if="result.knowledge_base">
                   📚 {{ result.knowledge_base.name }}
                 </div>
-                <div class="result-location" v-if="result.knowledge">
-                  📖 {{ result.knowledge.title }}
+                <div class="result-location" v-if="result.article">
+                  📖 {{ result.article.title }}<span v-if="result.section"> > {{ result.section.title }}</span>
                 </div>
-                <div class="result-text" v-html="renderMarkdown(result.point.content)"></div>
+                <div class="result-text" v-html="renderMarkdown(result.paragraph.content)"></div>
               </div>
             </div>
           </div>
