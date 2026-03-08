@@ -1,25 +1,25 @@
 /**
- * Skill 调试脚本 - 通过 HTTP API 调用各种技能
- * 
+ * 技能管理脚本 - 通过 HTTP API 管理技能
+ *
  * 使用方法：
- * node tests/call-skill.js <技能类别> <操作> [参数]
- * 
+ * node tests/skill-admin.js <类别> <操作> [参数]
+ *
  * 示例：
  * # 列出知识库
- * node tests/call-skill.js kb list
- * 
+ * node tests/skill-admin.js kb list
+ *
  * # 搜索知识点
- * node tests/call-skill.js kb search --kb_id=xxx --query="测试"
- * 
+ * node tests/skill-admin.js kb search --kb_id=xxx --query="测试"
+ *
  * # 列出技能
- * node tests/call-skill.js skill list
- * 
+ * node tests/skill-admin.js skill list
+ *
  * # 获取技能详情
- * node tests/call-skill.js skill get --id=kb-search
- * 
+ * node tests/skill-admin.js skill get --id=kb-search
+ *
  * # 注册技能
- * node tests/call-skill.js skill register --path=data/skills/kb-search
- * 
+ * node tests/skill-admin.js skill register --path=data/skills/kb-search
+ *
  * 环境变量：
  * - API_BASE: API 地址，默认 http://localhost:3000
  * - USER_ACCESS_TOKEN: 用户访问令牌（可选，脚本会自动生成管理员 token）
@@ -48,9 +48,9 @@ const category = process.argv[2];
 const action = process.argv[3];
 
 if (!category || !action) {
-  console.error('❌ 请提供技能类别和操作');
+  console.error('❌ 请提供类别和操作');
   console.log('\n使用方法:');
-  console.log('  node tests/call-skill.js <类别> <操作> [参数]');
+  console.log('  node tests/skill-admin.js <类别> <操作> [参数]');
   console.log('\n类别和操作:');
   console.log('  kb list              - 列出知识库');
   console.log('  kb get               - 获取知识库详情 (--id)');
@@ -68,10 +68,10 @@ if (!category || !action) {
   console.log('  expert get           - 获取专家详情 (--id)');
   console.log('');
   console.log('示例:');
-  console.log('  node tests/call-skill.js kb list');
-  console.log('  node tests/call-skill.js kb search --kb_id=xxx --query="测试"');
-  console.log('  node tests/call-skill.js skill list');
-  console.log('  node tests/call-skill.js skill register --path=data/skills/kb-search');
+  console.log('  node tests/skill-admin.js kb list');
+  console.log('  node tests/skill-admin.js kb search --kb_id=xxx --query="测试"');
+  console.log('  node tests/skill-admin.js skill list');
+  console.log('  node tests/skill-admin.js skill register --path=data/skills/kb-search');
   process.exit(1);
 }
 
@@ -275,7 +275,7 @@ const expertActions = {
  */
 async function main() {
   try {
-    console.log('🔧 Skill/API 调试工具');
+    console.log('🔧 技能管理工具');
     console.log('='.repeat(50));
     console.log(`📌 类别: ${category}`);
     console.log(`📌 操作: ${action}`);

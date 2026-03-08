@@ -114,14 +114,14 @@
 
 | 脚本 | 执行方式 | 适用场景 | 示例 |
 |------|---------|---------|------|
-| `test-skill.js` | 直接在 VM 沙箱执行技能代码 | 测试技能逻辑、调试技能内部问题 | `node tests/test-skill.js kb-search search --kb_id=xxx --query="test"` |
-| `call-skill.js` | 通过 HTTP 调用后端 API | 测试 API 接口、验证前后端集成 | `node tests/call-skill.js kb search --kb_id=xxx --query="test"` |
+| `run-skill.js` | 直接在 VM 沙箱执行技能代码 | 测试技能逻辑、调试技能内部问题 | `node tests/run-skill.js kb-search search --kb_id=xxx --query="test"` |
+| `skill-admin.js` | 通过 HTTP 调用后端管理 API | 管理技能（注册/分配/启用/禁用）| `node tests/skill-admin.js skill list` |
 | `db-query.js` | 直接查询数据库 | 验证数据、排查数据问题 | `node tests/db-query.js kb_articles --limit=10` |
 
 ### 认证说明
 
-- `test-skill.js`：自动生成管理员 JWT Token（`admin_00000000000000000000`）
-- `call-skill.js`：自动生成管理员 JWT Token，也可通过 `USER_ACCESS_TOKEN` 环境变量指定
+- `run-skill.js`：自动生成管理员 JWT Token（`admin_00000000000000000000`）
+- `skill-admin.js`：自动生成管理员 JWT Token，也可通过 `USER_ACCESS_TOKEN` 环境变量指定
 - `db-query.js`：直接连接数据库，无需认证
 
 > **详见**：[`docs/issues/add-debug-scripts.md`](../issues/add-debug-scripts.md)

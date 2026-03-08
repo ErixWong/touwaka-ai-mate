@@ -1,19 +1,19 @@
 /**
- * Skill 测试脚本 - 使用与 skill-runner 相同的 vm 沙箱执行技能
- * 
+ * 技能执行脚本 - 使用与 skill-runner 相同的 vm 沙箱执行技能
+ *
  * 使用方法：
- * node tests/test-skill.js <skill名称> <工具名称> [参数]
- * 
+ * node tests/run-skill.js <skill名称> <工具名称> [参数]
+ *
  * 示例：
  * # 列出知识库
- * node tests/test-skill.js kb-search list_my_kbs
- * 
+ * node tests/run-skill.js kb-search list_my_kbs
+ *
  * # 搜索知识点
- * node tests/test-skill.js kb-search search --kb_id=xxx --query="测试"
- * 
+ * node tests/run-skill.js kb-search search --kb_id=xxx --query="测试"
+ *
  * # 列出技能
- * node tests/test-skill.js skill-manager list_skills
- * 
+ * node tests/run-skill.js skill-manager list_skills
+ *
  * 环境变量：
  * - API_BASE: API 地址，默认 http://localhost:3000
  * - USER_ACCESS_TOKEN: 用户访问令牌（可选，脚本会自动生成管理员 token）
@@ -57,11 +57,11 @@ const toolName = process.argv[3];
 if (!skillName || !toolName) {
   console.error('❌ 请提供技能名称和工具名称');
   console.log('\n使用方法:');
-  console.log('  node tests/test-skill.js <skill名称> <工具名称> [参数]');
+  console.log('  node tests/run-skill.js <skill名称> <工具名称> [参数]');
   console.log('\n示例:');
-  console.log('  node tests/test-skill.js kb-search list_my_kbs');
-  console.log('  node tests/test-skill.js kb-search search --kb_id=xxx --query="测试"');
-  console.log('  node tests/test-skill.js skill-manager list_skills');
+  console.log('  node tests/run-skill.js kb-search list_my_kbs');
+  console.log('  node tests/run-skill.js kb-search search --kb_id=xxx --query="测试"');
+  console.log('  node tests/run-skill.js skill-manager list_skills');
   console.log('\n可用的技能目录:');
   listAvailableSkills();
   process.exit(1);
@@ -228,7 +228,7 @@ function executeSkill(code, skillId) {
  */
 async function main() {
   try {
-    console.log('🔧 Skill 测试工具');
+    console.log('🔧 技能执行工具');
     console.log('='.repeat(50));
     console.log(`📌 技能: ${skillName}`);
     console.log(`📌 工具: ${toolName}`);
