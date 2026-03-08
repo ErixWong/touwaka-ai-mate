@@ -506,7 +506,10 @@ export const knowledgeBaseApi = {
 
   // 查询段落列表
   queryParagraphs: (kbId: string, data: { section_id?: string; pagination?: PaginationParams }) =>
-    apiRequest<PaginatedResponse<KbParagraph>>(apiClient.post(`/kb/${kbId}/paragraphs/query`, data)),
+    apiRequest<PaginatedResponse<KbParagraph>>(apiClient.post(`/kb/${kbId}/paragraphs/query`, {
+      filter: data.section_id ? { section_id: data.section_id } : undefined,
+      pagination: data.pagination,
+    })),
 
   // 创建段落
   createParagraph: (kbId: string, data: CreateKbParagraphRequest) =>

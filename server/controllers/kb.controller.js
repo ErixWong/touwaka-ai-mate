@@ -724,8 +724,11 @@ class KbController {
       });
 
       // 如果有 section_id 过滤，验证其属于该知识库
-      if (queryOptions.where?.section_id) {
-        const section = await this.KbSection.findByPk(queryOptions.where.section_id, {
+      // 注意：queryOptions.where.section_id 是 Sequelize 条件对象 { [Op.eq]: 'xxx' }
+      // 需要从原始请求中获取 section_id 的值
+      const sectionId = queryRequest.filter?.section_id;
+      if (sectionId) {
+        const section = await this.KbSection.findByPk(sectionId, {
           include: [{ model: this.KbArticle, as: 'article' }],
         });
         if (!section || section.article.kb_id !== kb_id) {

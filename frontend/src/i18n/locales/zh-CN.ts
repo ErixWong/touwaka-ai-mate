@@ -764,6 +764,10 @@ export default {
       contextLabel: '上下文（可选）',
       contextPlaceholder: '补充上下文信息，用于提高检索精度...',
       noParagraphs: '暂无段落，点击 + 添加',
+      tokenCount: '{count} tokens',
+      vectorized: '已向量化',
+      notVectorized: '未向量化',
+      revectorizeHint: '重新向量化此段落',
     },
 
     // 知识点
