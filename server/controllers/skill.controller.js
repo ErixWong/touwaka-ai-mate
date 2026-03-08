@@ -1409,7 +1409,12 @@ class SkillController {
         // 尝试加载 index.js 获取工具定义
         logger.info('[SkillController] No tools provided, trying to load from index.js');
         try {
-          const index_module = await import(index_js_path + '?t=' + Date.now());
+          // Windows 需要使用 file:// URL 格式
+          const { pathToFileURL } = await import('url');
+          const index_js_url = pathToFileURL(index_js_path).href + '?t=' + Date.now();
+          logger.info('[SkillController] Loading from:', index_js_url);
+          
+          const index_module = await import(index_js_url);
           const skill_module = index_module.default || index_module;
 
           if (skill_module.getTools && typeof skill_module.getTools === 'function') {
