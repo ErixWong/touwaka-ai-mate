@@ -55,7 +55,7 @@
         @select="$emit('select', $event)"
         @edit="$emit('edit', $event)"
         @delete="$emit('delete', $event)"
-        @add-child="$emit('add-child', $event, $arguments[1])"
+        @add-child="(dept, parentId) => $emit('add-child', dept, parentId)"
       />
     </div>
   </div>

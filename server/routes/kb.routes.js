@@ -2,6 +2,7 @@
  * KB Routes - 新知识库路由
  *
  * 层级结构：
+ * /api/kb - 知识库列表
  * /api/kb/:kb_id/articles - 文章列表
  * /api/kb/:kb_id/articles/:article_id/tree - 文章节树
  * /api/kb/:kb_id/sections - 节列表
@@ -14,6 +15,23 @@ import { authenticate } from '../middlewares/auth.js';
 
 export default (controller) => {
   const router = new Router({ prefix: '/api/kb' });
+
+  // ==================== 知识库路由 ====================
+
+  // 获取知识库列表
+  router.get('/', authenticate(), controller.listKnowledgeBases.bind(controller));
+
+  // 创建知识库
+  router.post('/', authenticate(), controller.createKnowledgeBase.bind(controller));
+
+  // 获取知识库详情
+  router.get('/:kb_id', authenticate(), controller.getKnowledgeBase.bind(controller));
+
+  // 更新知识库
+  router.put('/:kb_id', authenticate(), controller.updateKnowledgeBase.bind(controller));
+
+  // 删除知识库
+  router.delete('/:kb_id', authenticate(), controller.deleteKnowledgeBase.bind(controller));
 
   // ==================== 文章路由 ====================
 
