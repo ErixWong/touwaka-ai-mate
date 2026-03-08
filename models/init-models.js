@@ -1,10 +1,16 @@
 import _sequelize from "sequelize";
 const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
+import _department from  "./department.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
+import _knowledge_base from  "./knowledge_base.js";
+import _knowledge_point from  "./knowledge_point.js";
+import _knowledge_relation from  "./knowledge_relation.js";
+import _knowledge from  "./knowledge.js";
 import _message from  "./message.js";
 import _permission from  "./permission.js";
+import _position from  "./position.js";
 import _provider from  "./provider.js";
 import _role_expert from  "./role_expert.js";
 import _role_permission from  "./role_permission.js";
@@ -17,19 +23,19 @@ import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
 import _user_role from  "./user_role.js";
 import _user from  "./user.js";
-import _knowledge_base from  "./knowledge_base.js";
-import _knowledge from  "./knowledge.js";
-import _knowledge_point from  "./knowledge_point.js";
-import _knowledge_relation from  "./knowledge_relation.js";
-import _department from  "./department.js";
-import _position from  "./position.js";
 
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
+  const department = _department.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
+  const knowledge_base = _knowledge_base.init(sequelize, DataTypes);
+  const knowledge_point = _knowledge_point.init(sequelize, DataTypes);
+  const knowledge_relation = _knowledge_relation.init(sequelize, DataTypes);
+  const knowledge = _knowledge.init(sequelize, DataTypes);
   const message = _message.init(sequelize, DataTypes);
   const permission = _permission.init(sequelize, DataTypes);
+  const position = _position.init(sequelize, DataTypes);
   const provider = _provider.init(sequelize, DataTypes);
   const role_expert = _role_expert.init(sequelize, DataTypes);
   const role_permission = _role_permission.init(sequelize, DataTypes);
@@ -42,12 +48,6 @@ export default function initModels(sequelize) {
   const user_profile = _user_profile.init(sequelize, DataTypes);
   const user_role = _user_role.init(sequelize, DataTypes);
   const user = _user.init(sequelize, DataTypes);
-  const knowledge_base = _knowledge_base.init(sequelize, DataTypes);
-  const knowledge = _knowledge.init(sequelize, DataTypes);
-  const knowledge_point = _knowledge_point.init(sequelize, DataTypes);
-  const knowledge_relation = _knowledge_relation.init(sequelize, DataTypes);
-  const department = _department.init(sequelize, DataTypes);
-  const position = _position.init(sequelize, DataTypes);
 
   expert.belongsToMany(role, { as: 'role_id_roles', through: role_expert, foreignKey: "expert_id", otherKey: "role_id" });
   permission.belongsToMany(role, { as: 'role_id_roles_role_permissions', through: role_permission, foreignKey: "permission_id", otherKey: "role_id" });
@@ -59,6 +59,10 @@ export default function initModels(sequelize) {
   ai_model.hasMany(expert, { as: "experts", foreignKey: "expressive_model_id"});
   expert.belongsTo(ai_model, { as: "reflective_model", foreignKey: "reflective_model_id"});
   ai_model.hasMany(expert, { as: "reflective_model_experts", foreignKey: "reflective_model_id"});
+  position.belongsTo(department, { as: "department", foreignKey: "department_id"});
+  department.hasMany(position, { as: "positions", foreignKey: "department_id"});
+  user.belongsTo(department, { as: "department", foreignKey: "department_id"});
+  department.hasMany(user, { as: "users", foreignKey: "department_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(expert_skill, { as: "expert_skills", foreignKey: "expert_id"});
   message.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -69,10 +73,22 @@ export default function initModels(sequelize) {
   expert.hasMany(topic, { as: "topics", foreignKey: "expert_id"});
   user_profile.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(user_profile, { as: "user_profiles", foreignKey: "expert_id"});
+  knowledge.belongsTo(knowledge_base, { as: "kb", foreignKey: "kb_id"});
+  knowledge_base.hasMany(knowledge, { as: "knowledges", foreignKey: "kb_id"});
+  knowledge_relation.belongsTo(knowledge_point, { as: "source", foreignKey: "source_id"});
+  knowledge_point.hasMany(knowledge_relation, { as: "knowledge_relations", foreignKey: "source_id"});
+  knowledge_relation.belongsTo(knowledge_point, { as: "target", foreignKey: "target_id"});
+  knowledge_point.hasMany(knowledge_relation, { as: "target_knowledge_relations", foreignKey: "target_id"});
+  knowledge_point.belongsTo(knowledge, { as: "knowledge", foreignKey: "knowledge_id"});
+  knowledge.hasMany(knowledge_point, { as: "knowledge_points", foreignKey: "knowledge_id"});
+  knowledge.belongsTo(knowledge, { as: "parent", foreignKey: "parent_id"});
+  knowledge.hasMany(knowledge, { as: "knowledges", foreignKey: "parent_id"});
   permission.belongsTo(permission, { as: "parent", foreignKey: "parent_id"});
   permission.hasMany(permission, { as: "permissions", foreignKey: "parent_id"});
   role_permission.belongsTo(permission, { as: "permission", foreignKey: "permission_id"});
   permission.hasMany(role_permission, { as: "role_permissions", foreignKey: "permission_id"});
+  user.belongsTo(position, { as: "position", foreignKey: "position_id"});
+  position.hasMany(user, { as: "users", foreignKey: "position_id"});
   ai_model.belongsTo(provider, { as: "provider", foreignKey: "provider_id"});
   provider.hasMany(ai_model, { as: "ai_models", foreignKey: "provider_id"});
   role_expert.belongsTo(role, { as: "role", foreignKey: "role_id"});
@@ -102,24 +118,18 @@ export default function initModels(sequelize) {
   user_role.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(user_role, { as: "user_roles", foreignKey: "user_id"});
 
-  // Knowledge Base associations
-  knowledge.belongsTo(knowledge_base, { as: "kb", foreignKey: "kb_id"});
-  knowledge_base.hasMany(knowledge, { as: "knowledges", foreignKey: "kb_id"});
-  knowledge.belongsTo(knowledge, { as: "parent", foreignKey: "parent_id"});
-  knowledge.hasMany(knowledge, { as: "children", foreignKey: "parent_id"});
-  knowledge_point.belongsTo(knowledge, { as: "knowledge", foreignKey: "knowledge_id"});
-  knowledge.hasMany(knowledge_point, { as: "points", foreignKey: "knowledge_id"});
-  knowledge_relation.belongsTo(knowledge_point, { as: "source", foreignKey: "source_id"});
-  knowledge_point.hasMany(knowledge_relation, { as: "outgoing_relations", foreignKey: "source_id"});
-  knowledge_relation.belongsTo(knowledge_point, { as: "target", foreignKey: "target_id"});
-  knowledge_point.hasMany(knowledge_relation, { as: "incoming_relations", foreignKey: "target_id"});
-
   return {
     ai_model,
+    department,
     expert_skill,
     expert,
+    knowledge_base,
+    knowledge_point,
+    knowledge_relation,
+    knowledge,
     message,
     permission,
+    position,
     provider,
     role_expert,
     role_permission,
@@ -132,9 +142,5 @@ export default function initModels(sequelize) {
     user_profile,
     user_role,
     user,
-    knowledge_base,
-    knowledge,
-    knowledge_point,
-    knowledge_relation,
   };
 }

@@ -73,25 +73,39 @@ async function migrate() {
     `, [process.env.DB_NAME]);
 
     if (columns.length === 0) {
-      // 步骤1：添加 department_id 字段和外键
+      // 步骤1：添加 department_id 字段（显式指定排序规则与departments表一致）
       console.log('📦 Adding department_id to users table...');
       await connection.execute(`
-        ALTER TABLE users 
-        ADD COLUMN department_id VARCHAR(20) NULL COMMENT '所属部门' AFTER status,
-        ADD INDEX idx_department (department_id),
-        ADD CONSTRAINT fk_user_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+        ALTER TABLE users
+        ADD COLUMN department_id VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '所属部门' AFTER status
+      `);
+      await connection.execute(`
+        ALTER TABLE users ADD INDEX idx_department (department_id)
       `);
       console.log('✅ department_id added');
 
-      // 步骤2：添加 position_id 字段和外键（positions表已创建）
+      // 步骤2：添加 position_id 字段
       console.log('📦 Adding position_id to users table...');
       await connection.execute(`
-        ALTER TABLE users 
-        ADD COLUMN position_id VARCHAR(20) NULL COMMENT '职位ID' AFTER department_id,
-        ADD INDEX idx_position (position_id),
-        ADD CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL
+        ALTER TABLE users
+        ADD COLUMN position_id VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '职位ID' AFTER department_id
+      `);
+      await connection.execute(`
+        ALTER TABLE users ADD INDEX idx_position (position_id)
       `);
       console.log('✅ position_id added');
+
+      // 步骤3：添加外键约束
+      console.log('📦 Adding foreign key constraints...');
+      await connection.execute(`
+        ALTER TABLE users
+        ADD CONSTRAINT fk_user_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+      `);
+      await connection.execute(`
+        ALTER TABLE users
+        ADD CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL
+      `);
+      console.log('✅ Foreign keys added');
     } else {
       console.log('⏭️  department_id already exists in users table');
     }
