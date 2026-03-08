@@ -27,12 +27,20 @@
 - **对话式导入**：通过自然对话即可导入新技能
 - **灵活配置**：支持自定义工具定义和参数
 
-### 📚 知识库系统 (RAG)
+### 📚 知识库系统 (RAG) ⭐ 重构完成
 - **多知识库支持**：用户可创建多个独立的知识库
+- **新层级结构**：文章(Article) → 节(Section, 无限层级) → 段(Paragraph)
+- **标签系统**：灵活的标签分类，替代传统树状分类
+- **知识点标记**：段落可标记为知识点，支持向量化检索
 - **智能文档处理**：文档清洗专家 + 知识整理专家协作
 - **向量检索**：语义相似度搜索，支持混合检索
-- **知识图谱**：自动构建知识点关联（depends_on / related_to / references）
 - **Tool-based RAG**：LLM 主动调用检索工具，自主决定检索策略
+
+### 🏢 组织架构管理 ⭐ 新增
+- **部门树形结构**：最多4级部门层级，支持无限扩展
+- **职位管理**：职位归属部门，支持负责人标识
+- **用户关联**：用户-部门-职位关联（简化版：一个用户一个部门）
+- **权限控制**：管理员统一管理（部门负责人权限预留扩展）
 
 ### 🤖 专家托管模式
 - **双专家协作**：Worker 执行 + Supervisor 监督
@@ -198,7 +206,8 @@ touwaka-mate-v2/
 | [沙箱架构设计](docs/design/v2/sandbox-architecture.md) | 两层角色模型、SandboxPool、平台实现 |
 | [上下文压缩设计](docs/design/v2/context-compression-design.md) | 话题识别、渐进式压缩、分层上下文 |
 | [专家编排设计](docs/design/v2/expert-orchestration.md) | TaskOrchestrator、专家分身机制 |
-| [知识库系统设计](docs/core/tasks/2026-03-03-knowledge-base/README.md) | RAG、知识图谱、文档处理流程 |
+| [知识库重构设计](docs/design/kb-refactor-design.md) | 新知识库结构：文章/节/段/标签 ⭐ |
+| [组织架构设计](docs/design/v2/org-architecture.md) | 部门树、职位管理、用户关联 ⭐ |
 | [专家托管模式](docs/core/tasks/2026-03-03-expert-trusteeship/README.md) | 双专家协作、后台自主运行 |
 
 ### 开发指南
@@ -220,7 +229,8 @@ touwaka-mate-v2/
 | [Sandbox Architecture](docs/design/v2/sandbox-architecture.md) | Two-layer role model, SandboxPool, platform implementations |
 | [Context Compression](docs/design/v2/context-compression-design.md) | Topic detection, progressive compression |
 | [Expert Orchestration](docs/design/v2/expert-orchestration.md) | TaskOrchestrator, expert clone mechanism |
-| [Knowledge Base System](docs/core/tasks/2026-03-03-knowledge-base/README.md) | RAG, knowledge graph, document processing |
+| [KB Refactor Design](docs/design/kb-refactor-design.md) | New KB structure: Article/Section/Paragraph/Tags ⭐ |
+| [Organization Architecture](docs/design/v2/org-architecture.md) | Department tree, position management ⭐ |
 | [Expert Trusteeship Mode](docs/core/tasks/2026-03-03-expert-trusteeship/README.md) | Dual-expert collaboration, autonomous background execution |
 
 ### Development Guides
@@ -245,10 +255,12 @@ touwaka-mate-v2/
 - [x] 沙箱池管理 (本地开发环境)
 
 ### V2 - Task Layer 🚧 (开发中)
+- [x] 知识库系统重构 (文章/节/段/标签) ⭐ 新增
+- [x] 组织架构管理 (部门/职位) ⭐ 新增
 - [ ] 任务生命周期管理
 - [ ] 专家编排 (Orchestrator)
-- [ ] 知识库系统 (RAG)
 - [ ] 专家托管模式
+- [ ] 部门级知识库权限控制
 - [ ] 多平台消息通道 (QQ/Zoom)
 
 ---
