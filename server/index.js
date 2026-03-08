@@ -164,6 +164,12 @@ class ApiServer {
    * 设置中间件
    */
   setupMiddlewares() {
+    // 将数据库实例附加到 ctx 上，供中间件使用
+    this.app.use(async (ctx, next) => {
+      ctx.db = this.db;
+      await next();
+    });
+
     // CORS 配置
     this.app.use(cors({
       origin: process.env.FRONTEND_URL || 'http://localhost:5173',

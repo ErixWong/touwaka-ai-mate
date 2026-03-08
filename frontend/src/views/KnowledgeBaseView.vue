@@ -245,6 +245,7 @@ import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
 import { useModelStore } from '@/stores/model'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import type { KnowledgeBase } from '@/types'
 
 const { t } = useI18n()
@@ -463,7 +464,9 @@ const closeGlobalSearchDialog = () => {
 
 const renderMarkdown = (content: string) => {
   try {
-    return marked(content)
+    // 使用 DOMPurify 净化 HTML，防止 XSS 攻击
+    const rawHtml = marked(content) as string
+    return DOMPurify.sanitize(rawHtml)
   } catch {
     return content
   }
