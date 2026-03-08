@@ -53,6 +53,8 @@ import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
 import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
+import departmentRoutes from './routes/department.routes.js';
+import positionRoutes from './routes/position.routes.js';
 
 class ApiServer {
   constructor() {
@@ -252,6 +254,14 @@ class ApiServer {
     // Knowledge Base 路由
     this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).routes());
     this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).allowedMethods());
+
+    // Department 路由
+    this.app.use(departmentRoutes.routes());
+    this.app.use(departmentRoutes.allowedMethods());
+
+    // Position 路由
+    this.app.use(positionRoutes.routes());
+    this.app.use(positionRoutes.allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {
