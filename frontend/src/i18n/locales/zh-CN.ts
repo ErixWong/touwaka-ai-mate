@@ -656,6 +656,7 @@ export default {
     // 卡片信息
     pointCount: '{count} 知识点',
     knowledgeCount: '{count} 篇文章',
+    paragraphCount: '{count} 个段落',
     updatedAgo: '更新于 {time}',
 
     // 创建/编辑对话框

@@ -662,6 +662,7 @@ export default {
     // Card info
     pointCount: '{count} points',
     knowledgeCount: '{count} articles',
+    paragraphCount: '{count} paragraphs',
     updatedAgo: 'Updated {time}',
 
     // Create/Edit dialog
