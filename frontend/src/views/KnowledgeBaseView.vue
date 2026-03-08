@@ -487,9 +487,10 @@ const loadKbsWithPagination = async () => {
       pageSize: pageSize.value,
     })
     console.log('[KB] API response:', response)
-    if (response && response.pagination) {
-      totalCount.value = response.pagination.total
-      totalPages.value = response.pagination.pages
+    if (response) {
+      // 后端返回的是 { items, total, page, limit, pages }，不是 pagination 嵌套结构
+      totalCount.value = response.total || 0
+      totalPages.value = response.pages || 1
 
       // 如果删除后当前页没有数据，且不是第一页，则跳转到前一页
       if (kbStore.knowledgeBases.length === 0 && currentPage.value > 1) {

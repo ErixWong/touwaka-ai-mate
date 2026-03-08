@@ -56,6 +56,7 @@
 
 - `docs/core/SOUL.md` - 人设与工作规范
 - GitHub Issues - 当前任务状态
+- `docs/guides/development/coding-standards.md` - 编码规范（铁律）
 - `docs/guides/development/README.md` - 开发指南
 
 ### Issue 工作流

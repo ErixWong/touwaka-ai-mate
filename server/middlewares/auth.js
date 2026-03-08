@@ -48,20 +48,25 @@ const authenticate = () => {
       return;
     }
 
+    // JWT 验证的 try-catch 只包裹验证逻辑，不包裹 await next()
+    let decoded;
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      ctx.state.userId = decoded.userId;
-      ctx.state.userRole = decoded.role;
-      ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
-      console.log('[Auth] Token decoded:', { userId: decoded.userId, role: decoded.role });
-      await next();
+      decoded = jwt.verify(token, JWT_SECRET);
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         ctx.error('令牌已过期', 401, { type: 'TokenExpired' });
       } else {
         ctx.error('无效的令牌', 403);
       }
+      return;
     }
+
+    // JWT 验证成功，设置用户信息并调用下游
+    ctx.state.userId = decoded.userId;
+    ctx.state.userRole = decoded.role;
+    ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
+    console.log('[Auth] Token decoded:', { userId: decoded.userId, role: decoded.role });
+    await next();
   };
 };
 

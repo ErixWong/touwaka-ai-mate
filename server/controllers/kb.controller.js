@@ -120,13 +120,13 @@ class KbController {
         article_count: articleCountMap.get(kb.id) || 0,
       }));
 
-      ctx.body = {
+      ctx.success({
         items: result,
         total: count,
         page: parseInt(page),
         limit,
         pages: Math.ceil(count / limit),
-      };
+      });
       logger.info(`[KB] listKnowledgeBases: ${count} kbs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] listKnowledgeBases error:', error);
@@ -142,13 +142,13 @@ class KbController {
     try {
       this.ensureModels();
       const data = ctx.request.body;
-      const userId = ctx.state.user?.id;
+      const userId = ctx.state.userId;
 
       if (!data.name || !data.name.trim()) {
         ctx.throw(400, 'Knowledge base name is required');
       }
 
-      const id = Utils.generateId('kb');
+      const id = Utils.newID(20);
       const kb = await this.KnowledgeBase.create({
         id,
         name: data.name.trim(),
@@ -161,8 +161,8 @@ class KbController {
       ctx.body = kb;
       ctx.status = 201;
     } catch (error) {
-      logger.error('[KB] createKnowledgeBase error:', error);
-      ctx.throw(500, error.message);
+      logger.error('[KB] createKnowledgeBase error:', error.message, error.stack);
+      ctx.throw(error.status || 500, error.message);
     }
   }
 
@@ -327,7 +327,7 @@ class KbController {
         ctx.throw(404, 'Knowledge base not found');
       }
 
-      const id = Utils.generateId('art');
+      const id = Utils.newID(20);
       const article = await this.KbArticle.create({
         id,
         kb_id,
@@ -570,7 +570,7 @@ class KbController {
         },
       }) || 0;
 
-      const id = Utils.generateId('sec');
+      const id = Utils.newID(20);
       const section = await this.KbSection.create({
         id,
         article_id: data.article_id,
@@ -765,7 +765,7 @@ class KbController {
         where: { section_id: data.section_id },
       }) || 0;
 
-      const id = Utils.generateId('para');
+      const id = Utils.newID(20);
       const paragraph = await this.KbParagraph.create({
         id,
         section_id: data.section_id,
@@ -969,7 +969,7 @@ class KbController {
         ctx.throw(400, 'Tag already exists');
       }
 
-      const id = Utils.generateId('tag');
+      const id = Utils.newID(20);
       const tag = await this.KbTag.create({
         id,
         kb_id,
@@ -1079,7 +1079,7 @@ class KbController {
         if (existingTagMap.has(tagName)) {
           tagIds.push(existingTagMap.get(tagName).id);
         } else {
-          const id = Utils.generateId('tag');
+          const id = Utils.newID(20);
           newTags.push({
             id,
             kb_id: kbId,
@@ -1104,7 +1104,7 @@ class KbController {
       // 批量创建新关联
       if (tagIds.length > 0) {
         const articleTagAssociations = tagIds.map(tagId => ({
-          id: Utils.generateId('at'),
+          id: Utils.newID(20),
           article_id: articleId,
           tag_id: tagId,
         }));
