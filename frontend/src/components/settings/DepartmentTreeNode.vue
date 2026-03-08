@@ -113,9 +113,7 @@ const toggleExpand = () => {
 }
 
 .node-content.selected {
-  background: var(--primary-color-light, #e3f2fd);
-  border-left: 3px solid var(--primary-color, #2196f3);
-  font-weight: 500;
+  background: var(--primary-color-light);
 }
 
 .expand-btn {

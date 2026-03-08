@@ -4,7 +4,9 @@
 
 import Router from '@koa/router';
 import DepartmentController from '../controllers/department.controller.js';
-import { authenticate, requireAdmin } from '../middlewares/auth.js';
+import authMiddleware from '../middlewares/auth.js';
+
+const router = new Router({ prefix: '/api/departments' });
 
 let departmentController = null;
 
@@ -16,43 +18,39 @@ const initController = (db) => {
   return departmentController;
 };
 
-export default (db) => {
-  const router = new Router({ prefix: '/api/departments' });
+// 获取部门树（需要登录）
+router.get('/tree', authMiddleware, async (ctx) => {
+  await initController(ctx.db).getDepartmentTree(ctx);
+});
 
-  // 获取部门树（需要登录）
-  router.get('/tree', authenticate(), async (ctx) => {
-    await initController(db).getDepartmentTree(ctx);
-  });
+// 创建部门（管理员）
+router.post('/', authMiddleware, async (ctx) => {
+  await initController(ctx.db).createDepartment(ctx);
+});
 
-  // 创建部门（管理员）
-  router.post('/', authenticate(), requireAdmin(), async (ctx) => {
-    await initController(db).createDepartment(ctx);
-  });
+// 获取部门详情
+router.get('/:id', authMiddleware, async (ctx) => {
+  await initController(ctx.db).getDepartment(ctx);
+});
 
-  // 获取部门详情
-  router.get('/:id', authenticate(), async (ctx) => {
-    await initController(db).getDepartment(ctx);
-  });
+// 更新部门（管理员）
+router.put('/:id', authMiddleware, async (ctx) => {
+  await initController(ctx.db).updateDepartment(ctx);
+});
 
-  // 更新部门（管理员）
-  router.put('/:id', authenticate(), requireAdmin(), async (ctx) => {
-    await initController(db).updateDepartment(ctx);
-  });
+// 删除部门（管理员）
+router.delete('/:id', authMiddleware, async (ctx) => {
+  await initController(ctx.db).deleteDepartment(ctx);
+});
 
-  // 删除部门（管理员）
-  router.delete('/:id', authenticate(), requireAdmin(), async (ctx) => {
-    await initController(db).deleteDepartment(ctx);
-  });
+// 获取部门职位列表
+router.get('/:id/positions', authMiddleware, async (ctx) => {
+  await initController(ctx.db).getDepartmentPositions(ctx);
+});
 
-  // 获取部门职位列表
-  router.get('/:id/positions', authenticate(), async (ctx) => {
-    await initController(db).getDepartmentPositions(ctx);
-  });
+// 获取部门负责人
+router.get('/:id/managers', authMiddleware, async (ctx) => {
+  await initController(ctx.db).getDepartmentManagers(ctx);
+});
 
-  // 获取部门负责人
-  router.get('/:id/managers', authenticate(), async (ctx) => {
-    await initController(db).getDepartmentManagers(ctx);
-  });
-
-  return router;
-};
+export default router;

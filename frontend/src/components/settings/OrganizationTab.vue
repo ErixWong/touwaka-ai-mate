@@ -69,33 +69,19 @@
             :key="position.id"
             class="position-item"
           >
-            <div class="position-main">
-              <div class="position-info">
-                <span class="position-name">{{ position.name }}</span>
-                <span v-if="position.is_manager" class="badge manager">
-                  {{ $t('settings.manager') }}
-                </span>
-              </div>
-              <div class="position-actions">
-                <button class="btn-small btn-assign" @click="openAssignDialog(position)" :title="$t('settings.assignUser')">
-                  👤
-                </button>
-                <button class="btn-small btn-edit" @click="openPositionDialog(position)" :title="$t('common.edit')">
-                  ✎
-                </button>
-                <button class="btn-small btn-delete" @click="deletePosition(position)" :title="$t('common.delete')">
-                  ×
-                </button>
-              </div>
+            <div class="position-info">
+              <span class="position-name">{{ position.name }}</span>
+              <span v-if="position.is_manager" class="badge manager">
+                {{ $t('settings.manager') }}
+              </span>
             </div>
-            <!-- 成员列表 -->
-            <div v-if="position.members && position.members.length > 0" class="member-list">
-              <div v-for="member in position.members" :key="member.id" class="member-item">
-                <span class="member-name">{{ member.nickname || member.username }}</span>
-                <button class="btn-small btn-remove-member" @click="removeMember(member, position)" :title="$t('settings.removeMember')">
-                  ×
-                </button>
-              </div>
+            <div class="position-actions">
+              <button class="btn-edit" @click="openPositionDialog(position)">
+                {{ $t('common.edit') }}
+              </button>
+              <button class="btn-delete" @click="deletePosition(position)">
+                {{ $t('common.delete') }}
+              </button>
             </div>
           </div>
         </div>
@@ -195,62 +181,14 @@
         </div>
       </div>
     </div>
-
-    <!-- 分配人员对话框 -->
-    <div v-if="showAssignDialog" class="dialog-overlay" @click.self="closeAssignDialog">
-      <div class="dialog dialog-large">
-        <h3 class="dialog-title">
-          {{ $t('settings.assignUserToPosition', { position: assignPosition?.name }) }}
-        </h3>
-        <div class="dialog-content">
-          <div class="form-item">
-            <input
-              v-model="userSearchQuery"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.searchUser')"
-            />
-          </div>
-          <div v-if="userLoading" class="loading-state">
-            {{ $t('common.loading') }}
-          </div>
-          <div v-else-if="filteredUsers.length === 0" class="empty-state">
-            {{ $t('settings.noUsersFound') }}
-          </div>
-          <div v-else class="user-list">
-            <div
-              v-for="user in filteredUsers"
-              :key="user.id"
-              class="user-item"
-              :class="{ selected: selectedUser?.id === user.id }"
-              @click="selectedUser = user"
-            >
-              <div class="user-avatar">{{ (user.nickname || user.username || '?').charAt(0).toUpperCase() }}</div>
-              <div class="user-info">
-                <div class="user-name">{{ user.nickname || user.username }}</div>
-                <div class="user-email">{{ user.email }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn-cancel" @click="closeAssignDialog">
-            {{ $t('common.cancel') }}
-          </button>
-          <button class="btn-save" @click="assignUser" :disabled="!selectedUser">
-            {{ $t('settings.assign') }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { departmentApi, positionApi, userApi, organizationApi } from '@/api/services'
-import type { Department, Position, CreateDepartmentRequest, CreatePositionRequest, UserListItem } from '@/types'
+import { departmentApi, positionApi } from '@/api/services'
+import type { Department, Position, CreateDepartmentRequest, CreatePositionRequest } from '@/types'
 import DepartmentTreeNode from './DepartmentTreeNode.vue'
 
 const { t } = useI18n()
@@ -278,24 +216,6 @@ const positionForm = reactive({
   name: '',
   is_manager: false,
   description: '',
-})
-
-// 分配人员对话框
-const showAssignDialog = ref(false)
-const assignPosition = ref<Position | null>(null)
-const userLoading = ref(false)
-const users = ref<UserListItem[]>([])
-const userSearchQuery = ref('')
-const selectedUser = ref<UserListItem | null>(null)
-
-// 过滤后的用户列表
-const filteredUsers = computed(() => {
-  if (!userSearchQuery.value) return users.value
-  const query = userSearchQuery.value.toLowerCase()
-  return users.value.filter(user =>
-    (user.nickname || user.username || '').toLowerCase().includes(query) ||
-    (user.email || '').toLowerCase().includes(query)
-  )
 })
 
 // 可选的父部门列表（扁平化）
@@ -462,72 +382,6 @@ const deletePosition = async (position: Position) => {
   }
 }
 
-// 打开分配人员对话框
-const openAssignDialog = async (position: Position) => {
-  assignPosition.value = position
-  selectedUser.value = null
-  userSearchQuery.value = ''
-  showAssignDialog.value = true
-  
-  // 加载用户列表
-  userLoading.value = true
-  try {
-    const response = await userApi.getUsers({ size: 1000 })
-    users.value = response.items || []
-  } catch (error) {
-    console.error('Failed to load users:', error)
-  } finally {
-    userLoading.value = false
-  }
-}
-
-// 关闭分配人员对话框
-const closeAssignDialog = () => {
-  showAssignDialog.value = false
-  assignPosition.value = null
-  selectedUser.value = null
-  userSearchQuery.value = ''
-}
-
-// 分配用户到职位
-const assignUser = async () => {
-  if (!selectedUser.value || !assignPosition.value || !selectedDepartment.value) return
-
-  try {
-    await organizationApi.updateUserOrganization(selectedUser.value.id, {
-      department_id: selectedDepartment.value.id,
-      position_id: assignPosition.value.id,
-    })
-    closeAssignDialog()
-    // 刷新职位列表以显示新成员
-    await loadPositions(selectedDepartment.value.id)
-    alert(t('settings.assignSuccess'))
-  } catch (error: any) {
-    console.error('Failed to assign user:', error)
-    alert(error.response?.data?.message || t('common.saveFailed'))
-  }
-}
-
-// 移除成员
-const removeMember = async (member: UserListItem, position: Position) => {
-  if (!confirm(t('settings.confirmRemoveMember', { name: member.nickname || member.username }))) return
-
-  try {
-    // 清除用户的部门和职位
-    await organizationApi.updateUserOrganization(member.id, {
-      department_id: null,
-      position_id: null,
-    })
-    // 刷新职位列表
-    if (selectedDepartment.value) {
-      await loadPositions(selectedDepartment.value.id)
-    }
-  } catch (error: any) {
-    console.error('Failed to remove member:', error)
-    alert(error.response?.data?.message || t('common.deleteFailed'))
-  }
-}
-
 // 初始化
 onMounted(() => {
   loadDepartmentTree()
@@ -613,18 +467,15 @@ onMounted(() => {
 }
 
 .position-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .position-item:last-child {
   border-bottom: none;
-}
-
-.position-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .position-info {
@@ -650,52 +501,34 @@ onMounted(() => {
 
 .position-actions {
   display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  gap: 8px;
 }
 
-.position-item:hover .position-actions {
-  opacity: 1;
-}
-
-.btn-small {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.btn-edit,
+.btn-delete {
+  padding: 4px 12px;
   font-size: 12px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.btn-small.btn-edit {
+.btn-edit {
   background: var(--primary-color);
   color: white;
 }
 
-.btn-small.btn-edit:hover {
+.btn-edit:hover {
   background: var(--primary-color-dark);
 }
 
-.btn-small.btn-delete {
+.btn-delete {
   background: var(--danger-color);
   color: white;
 }
 
-.btn-small.btn-delete:hover {
+.btn-delete:hover {
   background: var(--danger-color-dark);
-}
-
-.btn-small.btn-assign {
-  background: var(--success-color);
-  color: white;
-}
-
-.btn-small.btn-assign:hover {
-  background: var(--success-color-dark, #388e3c);
 }
 
 /* 对话框样式 */
@@ -717,19 +550,6 @@ onMounted(() => {
   border-radius: 8px;
   width: 400px;
   max-width: 90vw;
-}
-
-.dialog-large {
-  width: 500px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.dialog-large .dialog-content {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 400px;
 }
 
 .dialog-title {
@@ -833,100 +653,5 @@ onMounted(() => {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: not-allowed;
-}
-
-/* 用户列表样式 */
-.user-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.user-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.user-item:hover {
-  background: var(--bg-secondary);
-}
-
-.user-item.selected {
-  background: var(--primary-color-light);
-  border: 1px solid var(--primary-color);
-}
-
-.user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--primary-color);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.user-info {
-  flex: 1;
-}
-
-.user-name {
-  font-weight: 500;
-  font-size: 14px;
-}
-
-.user-email {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-/* 成员列表样式 */
-.member-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border-color);
-}
-
-.member-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: var(--bg-secondary);
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.member-name {
-  color: var(--text-primary);
-}
-
-.btn-small.btn-remove-member {
-  width: 16px;
-  height: 16px;
-  font-size: 10px;
-  background: transparent;
-  color: var(--text-secondary);
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-small.btn-remove-member:hover {
-  background: var(--danger-color);
-  color: white;
-  border-radius: 50%;
 }
 </style>
