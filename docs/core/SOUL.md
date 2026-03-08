@@ -84,35 +84,12 @@
 
 ### PR/Issue 工作流
 
-> **工具：** GitHub CLI (`gh`)，路径：`C:\Program Files\GitHub CLI`
+> **GitHub CLI 路径：** `C:\Program Files\GitHub CLI\gh.exe`
+> **注意：** 多行文本必须用 `--body-file`，Windows 会截断 `--body` 参数
 
 ```powershell
-# 创建分支
-git checkout -b fix/xxx-feature
-
-# 开发完成后提交
-git add . && git commit -m "[fix]: 描述"
-
-# 推送分支
-git push -u origin fix/xxx-feature
-
-# 创建 PR
-"C:\Program Files\GitHub CLI\gh.exe" pr create --title "标题" --body "描述"
-
-# 创建 Issue（用于跟踪发现的问题）
-"C:\Program Files\GitHub CLI\gh.exe" issue create --title "标题" --body "描述" --label "enhancement"
-
-# 关闭 Issue（问题已在 PR 中修复）
-"C:\Program Files\GitHub CLI\gh.exe" issue close #编号 --comment "已在 PR #xx 中修复"
-```
-
-### ⚠️ GitHub CLI 多行文本
-
-Windows cmd.exe 中 `--body` 多行文本会被截断，改用 `--body-file`：
-
-```powershell
-gh issue create --title "标题" --body-file issue-body.md
-gh issue edit #编号 --body-file issue-body.md
+# 多行文本用文件
+"C:\Program Files\GitHub CLI\gh.exe" issue create --title "标题" --body-file issue-body.md
 ```
 
 ### Code Review 发现问题的处理
