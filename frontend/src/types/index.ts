@@ -830,3 +830,110 @@ export interface ExpertKnowledgeConfig {
   max_tokens?: number
   style?: 'default' | 'concise' | 'detailed'
 }
+
+// ============================================
+// 组织架构相关类型
+// ============================================
+
+/**
+ * 部门状态
+ */
+export type DepartmentStatus = 'active' | 'inactive'
+
+/**
+ * 部门（匹配后端 departments 表）
+ */
+export interface Department {
+  id: string
+  name: string
+  parent_id?: string
+  path?: string
+  level: number
+  sort_order?: number
+  description?: string
+  status: DepartmentStatus
+  created_at?: string
+  updated_at?: string
+  // 树形结构时使用
+  children?: Department[]
+  // 关联数据
+  positions?: Position[]
+  members?: UserListItem[]
+}
+
+/**
+ * 创建部门的请求数据
+ */
+export interface CreateDepartmentRequest {
+  name: string
+  parent_id?: string
+  description?: string
+}
+
+/**
+ * 更新部门的请求数据
+ */
+export interface UpdateDepartmentRequest {
+  name?: string
+  description?: string
+}
+
+/**
+ * 职位状态
+ */
+export type PositionStatus = 'active' | 'inactive'
+
+/**
+ * 职位（匹配后端 positions 表）
+ */
+export interface Position {
+  id: string
+  name: string
+  department_id: string
+  is_manager: boolean
+  sort_order?: number
+  description?: string
+  status: PositionStatus
+  created_at?: string
+  updated_at?: string
+  // 关联数据
+  department?: Department
+  members?: UserListItem[]
+}
+
+/**
+ * 创建职位的请求数据
+ */
+export interface CreatePositionRequest {
+  name: string
+  department_id: string
+  is_manager?: boolean
+  description?: string
+}
+
+/**
+ * 更新职位的请求数据
+ */
+export interface UpdatePositionRequest {
+  name?: string
+  is_manager?: boolean
+  description?: string
+}
+
+/**
+ * 用户组织信息
+ */
+export interface UserOrganization {
+  department_id?: string
+  position_id?: string
+  department?: Department
+  position?: Position
+}
+
+/**
+ * 更新用户组织信息的请求数据
+ */
+export interface UpdateUserOrganizationRequest {
+  department_id?: string
+  position_id?: string
+}

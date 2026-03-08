@@ -511,6 +511,135 @@ class UserController {
       ctx.error('更新角色失败', 500);
     }
   }
+
+  /**
+   * 更新用户组织信息（部门、职位）
+   * 管理员专用
+   */
+  async updateUserOrganization(ctx) {
+    try {
+      // 检查管理员权限
+      if (ctx.state.userRole !== 'admin') {
+        ctx.error('无权限访问', 403);
+        return;
+      }
+
+      const { id } = ctx.params;
+      const { department_id, position_id } = ctx.request.body;
+
+      // 检查用户是否存在
+      const user = await this.User.findOne({ where: { id }, raw: true });
+      if (!user) {
+        ctx.error('用户不存在', 404);
+        return;
+      }
+
+      // 如果设置了职位，必须同时设置部门
+      if (position_id && !department_id) {
+        ctx.error('设置职位时必须同时设置部门', 400);
+        return;
+      }
+
+      // 验证部门是否存在
+      if (department_id) {
+        const Department = this.db.getModel('department');
+        const department = await Department.findOne({
+          where: { id: department_id, status: 'active' },
+          raw: true,
+        });
+        if (!department) {
+          ctx.error('部门不存在', 404);
+          return;
+        }
+      }
+
+      // 验证职位是否存在，且属于所选部门
+      if (position_id) {
+        const Position = this.db.getModel('position');
+        const position = await Position.findOne({
+          where: { id: position_id, status: 'active' },
+          raw: true,
+        });
+        if (!position) {
+          ctx.error('职位不存在', 404);
+          return;
+        }
+        if (position.department_id !== department_id) {
+          ctx.error('职位不属于所选部门', 400);
+          return;
+        }
+      }
+
+      // 更新用户的组织信息
+      await this.User.update(
+        { department_id: department_id || null, position_id: position_id || null },
+        { where: { id } }
+      );
+
+      ctx.success({ department_id, position_id }, '组织信息更新成功');
+    } catch (error) {
+      logger.error('Update user organization error:', error);
+      ctx.error('更新组织信息失败', 500);
+    }
+  }
+
+  /**
+   * 获取用户组织信息
+   */
+  async getUserOrganization(ctx) {
+    try {
+      const { id } = ctx.params;
+
+      // 只能查看自己或管理员查看任何人
+      if (id !== ctx.state.userId && ctx.state.userRole !== 'admin') {
+        ctx.error('无权限访问', 403);
+        return;
+      }
+
+      const user = await this.User.findOne({
+        where: { id },
+        attributes: ['id', 'department_id', 'position_id'],
+        raw: true,
+      });
+
+      if (!user) {
+        ctx.error('用户不存在', 404);
+        return;
+      }
+
+      const result = {
+        department_id: user.department_id,
+        position_id: user.position_id,
+        department: null,
+        position: null,
+      };
+
+      // 获取部门信息
+      if (user.department_id) {
+        const Department = this.db.getModel('department');
+        result.department = await Department.findOne({
+          where: { id: user.department_id },
+          attributes: ['id', 'name', 'level', 'path'],
+          raw: true,
+        });
+      }
+
+      // 获取职位信息
+      if (user.position_id) {
+        const Position = this.db.getModel('position');
+        result.position = await Position.findOne({
+          where: { id: user.position_id },
+          attributes: ['id', 'name', 'is_manager'],
+          raw: true,
+        });
+      }
+
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Get user organization error:', error);
+      ctx.error('获取组织信息失败', 500);
+    }
+  }
 }
 
 export default UserController;
