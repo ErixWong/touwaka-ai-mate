@@ -239,20 +239,21 @@ class KbController {
         ctx.throw(404, 'Article not found');
       }
 
-      // 获取文章关联的标签ID，批量更新计数
+      // 获取文章关联的标签ID（用于后续递减计数）
       const tags = await article.getTags();
       const tagIds = tags.map(tag => tag.id);
-      
-      // 批量递减标签计数（避免 N+1 查询）
+
+      // 1. 先删除文章（级联删除 sections, paragraphs, article_tags）
+      await article.destroy();
+
+      // 2. 再批量递减标签计数（避免 N+1 查询）
+      // 注意：必须先删除文章再递减，保证数据一致性
       if (tagIds.length > 0) {
         await this.KbTag.update(
           { article_count: Sequelize.literal('article_count - 1') },
           { where: { id: { [Op.in]: tagIds } } }
         );
       }
-
-      // 删除文章（级联删除 sections, paragraphs, article_tags）
-      await article.destroy();
 
       ctx.body = { success: true };
     } catch (error) {
