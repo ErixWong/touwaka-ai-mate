@@ -40,7 +40,7 @@ export default class message extends Model {
       allowNull: false
     },
     content: {
-      type: DataTypes.TEXT('long'),
+      type: DataTypes.TEXT,
       allowNull: false
     },
     content_type: {

@@ -56,6 +56,24 @@ export default class user extends Model {
       allowNull: true,
       defaultValue: "active"
     },
+    department_id: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      comment: "所属部门",
+      references: {
+        model: 'departments',
+        key: 'id'
+      }
+    },
+    position_id: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      comment: "职位ID",
+      references: {
+        model: 'positions',
+        key: 'id'
+      }
+    },
     preferences: {
       type: DataTypes.TEXT,
       allowNull: true
@@ -123,6 +141,20 @@ export default class user extends Model {
         using: "BTREE",
         fields: [
           { name: "status" },
+        ]
+      },
+      {
+        name: "idx_department",
+        using: "BTREE",
+        fields: [
+          { name: "department_id" },
+        ]
+      },
+      {
+        name: "fk_user_position",
+        using: "BTREE",
+        fields: [
+          { name: "position_id" },
         ]
       },
     ]

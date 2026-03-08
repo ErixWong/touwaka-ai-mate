@@ -107,47 +107,23 @@ if (models.Experts && models.Messages) {
   models.Messages.belongsTo(models.Experts, { foreignKey: 'expert_id', as: 'expert' });
 }
 
-  // User <-> Role (through UserRole)
-  if (models.Users && models.Roles && models.UserRoles) {
-    models.Users.belongsToMany(models.Roles, { through: models.UserRoles, foreignKey: 'user_id', otherKey: 'role_id', as: 'roles' });
-    models.Roles.belongsToMany(models.Users, { through: models.UserRoles, foreignKey: 'role_id', otherKey: 'user_id', as: 'users' });
-  }
+// User <-> Role (through UserRole)
+if (models.Users && models.Roles && models.UserRoles) {
+  models.Users.belongsToMany(models.Roles, { through: models.UserRoles, foreignKey: 'user_id', otherKey: 'role_id', as: 'roles' });
+  models.Roles.belongsToMany(models.Users, { through: models.UserRoles, foreignKey: 'role_id', otherKey: 'user_id', as: 'users' });
+}
 
-  // Role <-> Permission (through RolePermission)
-  if (models.Roles && models.Permissions && models.RolePermissions) {
-    models.Roles.belongsToMany(models.Permissions, { through: models.RolePermissions, foreignKey: 'role_id', otherKey: 'permission_id', as: 'permissions' });
-    models.Permissions.belongsToMany(models.Roles, { through: models.RolePermissions, foreignKey: 'permission_id', otherKey: 'role_id', as: 'roles' });
-  }
+// Role <-> Permission (through RolePermission)
+if (models.Roles && models.Permissions && models.RolePermissions) {
+  models.Roles.belongsToMany(models.Permissions, { through: models.RolePermissions, foreignKey: 'role_id', otherKey: 'permission_id', as: 'permissions' });
+  models.Permissions.belongsToMany(models.Roles, { through: models.RolePermissions, foreignKey: 'permission_id', otherKey: 'role_id', as: 'roles' });
+}
 
-  // Permission self-reference
-  if (models.Permissions) {
-    models.Permissions.hasMany(models.Permissions, { foreignKey: 'parent_id', as: 'children' });
-    models.Permissions.belongsTo(models.Permissions, { foreignKey: 'parent_id', as: 'parent' });
-  }
-
-  // Department self-reference (tree structure)
-  if (models.Departments) {
-    models.Departments.hasMany(models.Departments, { foreignKey: 'parent_id', as: 'children' });
-    models.Departments.belongsTo(models.Departments, { foreignKey: 'parent_id', as: 'parent' });
-  }
-
-  // Department -> Position
-  if (models.Departments && models.Positions) {
-    models.Departments.hasMany(models.Positions, { foreignKey: 'department_id', as: 'positions' });
-    models.Positions.belongsTo(models.Departments, { foreignKey: 'department_id', as: 'department' });
-  }
-
-  // Department -> User
-  if (models.Departments && models.Users) {
-    models.Departments.hasMany(models.Users, { foreignKey: 'department_id', as: 'members' });
-    models.Users.belongsTo(models.Departments, { foreignKey: 'department_id', as: 'department' });
-  }
-
-  // Position -> User
-  if (models.Positions && models.Users) {
-    models.Positions.hasMany(models.Users, { foreignKey: 'position_id', as: 'members' });
-    models.Users.belongsTo(models.Positions, { foreignKey: 'position_id', as: 'position' });
-  }
+// Permission self-reference
+if (models.Permissions) {
+  models.Permissions.hasMany(models.Permissions, { foreignKey: 'parent_id', as: 'children' });
+  models.Permissions.belongsTo(models.Permissions, { foreignKey: 'parent_id', as: 'parent' });
+}
 
 /**
  * 初始化数据库连接
