@@ -1,12 +1,13 @@
 /**
  * Auth Controller - 认证控制器
- * 
+ *
  * 使用 Sequelize ORM 进行数据库操作
  */
 
 import bcrypt from 'bcryptjs';
 import { generateTokens, verifyRefreshToken } from '../middlewares/auth.js';
 import logger from '../../lib/logger.js';
+import { getSystemSettingService } from '../services/system-setting.service.js';
 
 class AuthController {
   constructor(db) {
@@ -14,6 +15,7 @@ class AuthController {
     this.User = db.getModel('user');
     this.UserRole = db.getModel('user_role');
     this.Role = db.getModel('role');
+    this.systemSettingService = getSystemSettingService(db);
   }
 
   /**
@@ -68,8 +70,12 @@ class AuthController {
       const primaryRole = roles.length > 0 ? roles[0].role?.name : 'user';
       logger.info(`User ${user.username} primaryRole: ${primaryRole}`);
 
-      // 生成 Token
-      const tokens = generateTokens(user.id, primaryRole);
+      // 获取 Token 配置并生成 Token
+      const tokenConfig = await this.systemSettingService.getTokenConfig();
+      const tokens = generateTokens(user.id, primaryRole, {
+        accessExpiry: tokenConfig.access_expiry,
+        refreshExpiry: tokenConfig.refresh_expiry,
+      });
 
       // 更新最后登录时间
       await this.User.update(
@@ -125,7 +131,12 @@ class AuthController {
       });
       const primaryRole = roles.length > 0 ? roles[0].role?.name : decoded.role || 'user';
 
-      const tokens = generateTokens(decoded.userId, primaryRole);
+      // 获取 Token 配置并生成 Token
+      const tokenConfig = await this.systemSettingService.getTokenConfig();
+      const tokens = generateTokens(decoded.userId, primaryRole, {
+        accessExpiry: tokenConfig.access_expiry,
+        refreshExpiry: tokenConfig.refresh_expiry,
+      });
       ctx.success(tokens);
     } catch (error) {
       logger.error('Refresh token error:', error);

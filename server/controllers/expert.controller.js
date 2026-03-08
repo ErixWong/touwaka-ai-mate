@@ -1,13 +1,14 @@
 /**
  * Expert Controller - 专家控制器
- * 
+ *
  * 字段名规则：全栈统一使用数据库字段名（snake_case），不做任何转换
- * 
+ *
  * 使用 Sequelize ORM 进行数据库操作
  */
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
+import { getSystemSettingService } from '../services/system-setting.service.js';
 
 class ExpertController {
   constructor(db, chatService = null) {
@@ -15,6 +16,7 @@ class ExpertController {
     this.chatService = chatService;
     this.Expert = db.getModel('expert');
     this.AiModel = db.getModel('ai_model');
+    this.systemSettingService = getSystemSettingService(db);
   }
 
   /**
@@ -124,10 +126,13 @@ class ExpertController {
         return;
       }
 
+      // 获取系统默认配置
+      const llmDefaults = await this.systemSettingService.getLLMDefaults();
+
       const id = Utils.newID(20);
 
-      // 创建专家（字符串字段直接存储）
-      await this.Expert.create({
+      // 创建专家（使用系统默认值作为回退）
+      const expertData = {
         id,
         name,
         introduction: introduction || null,
@@ -140,30 +145,32 @@ class ExpertController {
         reflective_model_id: reflective_model_id || null,
         prompt_template: prompt_template || null,
         is_active: is_active ? 1 : 0,
-        // 上下文压缩配置
-        context_threshold: context_threshold ?? 0.70,
-        // LLM 参数配置
-        temperature: temperature ?? 0.70,
-        reflective_temperature: reflective_temperature ?? 0.30,
-        top_p: top_p ?? 1.0,
-        frequency_penalty: frequency_penalty ?? 0.0,
-        presence_penalty: presence_penalty ?? 0.0,
+        // 上下文压缩配置（使用系统默认值）
+        context_threshold: context_threshold ?? llmDefaults.context_threshold,
+        // LLM 参数配置（使用系统默认值）
+        temperature: temperature ?? llmDefaults.temperature,
+        reflective_temperature: reflective_temperature ?? llmDefaults.reflective_temperature,
+        top_p: top_p ?? llmDefaults.top_p,
+        frequency_penalty: frequency_penalty ?? llmDefaults.frequency_penalty,
+        presence_penalty: presence_penalty ?? llmDefaults.presence_penalty,
         // 头像
         avatar_base64: avatar_base64 || null,
         avatar_large_base64: avatar_large_base64 || null,
-      });
+      };
+
+      await this.Expert.create(expertData);
 
       ctx.success({
         id, name, introduction, speaking_style, core_values, behavioral_guidelines,
         taboos, emotional_tone, expressive_model_id, reflective_model_id, prompt_template, is_active,
         // 上下文压缩配置
-        context_threshold: context_threshold ?? 0.70,
+        context_threshold: expertData.context_threshold,
         // LLM 参数配置
-        temperature: temperature ?? 0.70,
-        reflective_temperature: reflective_temperature ?? 0.30,
-        top_p: top_p ?? 1.0,
-        frequency_penalty: frequency_penalty ?? 0.0,
-        presence_penalty: presence_penalty ?? 0.0,
+        temperature: expertData.temperature,
+        reflective_temperature: expertData.reflective_temperature,
+        top_p: expertData.top_p,
+        frequency_penalty: expertData.frequency_penalty,
+        presence_penalty: expertData.presence_penalty,
         // 头像
         avatar_base64, avatar_large_base64,
       }, '专家创建成功');
