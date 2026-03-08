@@ -31,6 +31,18 @@ class PositionController {
         return;
       }
 
+      // 检查名称长度
+      if (name.length > 100) {
+        ctx.error('职位名称不能超过100字符');
+        return;
+      }
+
+      // 检查描述长度
+      if (description && description.length > 500) {
+        ctx.error('职位描述不能超过500字符');
+        return;
+      }
+
       // 检查部门是否存在
       const department = await this.Department.findOne({
         where: { id: department_id },
@@ -119,9 +131,21 @@ class PositionController {
 
       // 构建更新对象，只更新传入的字段
       const updates = {};
-      if (name !== undefined) updates.name = name;
+      if (name !== undefined) {
+        if (name.length > 100) {
+          ctx.error('职位名称不能超过100字符');
+          return;
+        }
+        updates.name = name;
+      }
       if (is_manager !== undefined) updates.is_manager = is_manager;
-      if (description !== undefined) updates.description = description;
+      if (description !== undefined) {
+        if (description.length > 500) {
+          ctx.error('职位描述不能超过500字符');
+          return;
+        }
+        updates.description = description;
+      }
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段');

@@ -39,7 +39,8 @@ async function migrate() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_parent (parent_id),
         INDEX idx_path (path),
-        INDEX idx_status (status)
+        INDEX idx_status (status),
+        UNIQUE INDEX uk_path (path)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门表'
     `);
     console.log('✅ departments table created');
@@ -72,17 +73,25 @@ async function migrate() {
     `, [process.env.DB_NAME]);
 
     if (columns.length === 0) {
-      console.log('📦 Adding department_id and position_id to users table...');
+      // 步骤1：添加 department_id 字段和外键
+      console.log('📦 Adding department_id to users table...');
       await connection.execute(`
         ALTER TABLE users 
         ADD COLUMN department_id VARCHAR(20) NULL COMMENT '所属部门' AFTER status,
-        ADD COLUMN position_id VARCHAR(20) NULL COMMENT '职位ID' AFTER department_id,
         ADD INDEX idx_department (department_id),
+        ADD CONSTRAINT fk_user_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+      `);
+      console.log('✅ department_id added');
+
+      // 步骤2：添加 position_id 字段和外键（positions表已创建）
+      console.log('📦 Adding position_id to users table...');
+      await connection.execute(`
+        ALTER TABLE users 
+        ADD COLUMN position_id VARCHAR(20) NULL COMMENT '职位ID' AFTER department_id,
         ADD INDEX idx_position (position_id),
-        ADD CONSTRAINT fk_user_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
         ADD CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL
       `);
-      console.log('✅ users table updated');
+      console.log('✅ position_id added');
     } else {
       console.log('⏭️  department_id already exists in users table');
     }

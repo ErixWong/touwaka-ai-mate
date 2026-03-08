@@ -60,6 +60,18 @@ class DepartmentController {
         return;
       }
 
+      // 检查名称长度
+      if (name.length > 100) {
+        ctx.error('部门名称不能超过100字符');
+        return;
+      }
+
+      // 检查描述长度
+      if (description && description.length > 500) {
+        ctx.error('部门描述不能超过500字符');
+        return;
+      }
+
       // 检查同级是否已有同名部门
       const existingDept = await this.Department.findOne({
         where: {
@@ -175,6 +187,11 @@ class DepartmentController {
       // 构建更新对象，只更新传入的字段
       const updates = {};
       if (name !== undefined) {
+        // 检查名称长度
+        if (name.length > 100) {
+          ctx.error('部门名称不能超过100字符');
+          return;
+        }
         // 检查同级是否已有同名部门（排除自己）
         const existingDept = await this.Department.findOne({
           where: {
@@ -191,6 +208,10 @@ class DepartmentController {
         updates.name = name;
       }
       if (description !== undefined) {
+        if (description.length > 500) {
+          ctx.error('部门描述不能超过500字符');
+          return;
+        }
         updates.description = description;
       }
 
