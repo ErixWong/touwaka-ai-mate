@@ -273,12 +273,12 @@ class KbController {
         defaultSort: [{ field: 'created_at', order: 'DESC' }],
       });
 
-      const { rows, count } = await this.KbArticle.findAndCountAll({
+      const result = await this.KbArticle.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
       logger.info(`[KB] queryArticles: ${count} articles, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryArticles error:', error);
@@ -463,7 +463,7 @@ class KbController {
       const articleIds = articles.map(a => a.id);
 
       if (articleIds.length === 0) {
-        ctx.success(buildPaginatedResponse([], 0, queryRequest.pagination || {}));
+        ctx.success(buildPaginatedResponse({ rows: [], count: 0 }, queryRequest.pagination || {}, startTime));
         return;
       }
 
@@ -474,12 +474,12 @@ class KbController {
         defaultSort: [{ field: 'position', order: 'ASC' }],
       });
 
-      const { rows, count } = await this.KbSection.findAndCountAll({
+      const result = await this.KbSection.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
       logger.info(`[KB] querySections: ${count} sections, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] querySections error:', error);
@@ -733,12 +733,12 @@ class KbController {
         }
       }
 
-      const { rows, count } = await this.KbParagraph.findAndCountAll({
+      const result = await this.KbParagraph.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
       logger.info(`[KB] queryParagraphs: ${count} paragraphs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryParagraphs error:', error);
@@ -940,12 +940,12 @@ class KbController {
         defaultSort: [{ field: 'article_count', order: 'DESC' }],
       });
 
-      const { rows, count } = await this.KbTag.findAndCountAll({
+      const result = await this.KbTag.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
       logger.info(`[KB] queryTags: ${count} tags, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryTags error:', error);

@@ -10,7 +10,8 @@
     "init-db": "node scripts/init-database.js",
     "dev": "concurrently \"npm run api\" \"cd frontend && npm run dev\"",
     "dev:frontend": "cd frontend && npm run dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "node scripts/check-buildPaginatedResponse.js"
   },
   "keywords": [
     "chat",
