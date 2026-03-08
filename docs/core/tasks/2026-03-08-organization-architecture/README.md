@@ -5,6 +5,12 @@
 - GitHub Issue: [#31](https://github.com/ErixWong/touwaka-ai-mate/issues/31)
 - Pull Request: [#32](https://github.com/ErixWong/touwaka-ai-mate/pull/32)
 - 创建日期: 2026-03-08
+- **最后更新: 2026-03-08**（同步实际实现）
+
+## 当前状态
+
+**Phase 1 已完成**：基础组织架构（部门+职位）
+**Phase 2 待实现**：知识库权限控制
 
 ## 背景
 
@@ -16,10 +22,10 @@
 ## 目标
 
 建立完整的组织架构体系，支持：
-1. 部门树形结构管理
-2. 职位/角色定义
-3. 用户-部门-职位的关联
-4. 部门级知识库与权限控制
+1. 部门树形结构管理 ✅ 已实现
+2. 职位定义（含负责人标识） ✅ 已实现
+3. 用户-部门-职位的关联 ✅ 已实现（简化版：一个用户只能属于一个部门）
+4. 部门级知识库与权限控制 ⏳ 待实现
 
 ## 前端设计
 
@@ -73,63 +79,61 @@
 └──────────────────────┴──────────────────────────────────────┘
 ```
 
-## 数据库设计
+## 数据库设计（已实现）
 
-### 1. 部门表 (departments)
+> **注意**：以下为实际实现的数据库结构，与原始设计有简化。
+
+### 1. 部门表 (departments) ✅
 
 ```sql
 CREATE TABLE departments (
   id VARCHAR(20) PRIMARY KEY,
   name VARCHAR(100) NOT NULL COMMENT '部门名称',
-  parent_id VARCHAR(20) NULL COMMENT '父部门ID，NULL表示顶级部门',
-  path VARCHAR(255) NULL COMMENT '层级路径，如 /1/2/3，用于快速查询子树',
-  level INT DEFAULT 1 COMMENT '层级深度',
-  manager_id VARCHAR(32) NULL COMMENT '部门负责人用户ID',
+  parent_id VARCHAR(20) NULL COMMENT '父部门ID',
+  path VARCHAR(255) NULL COMMENT '层级路径，如 /1/2/3',
+  level INT DEFAULT 1 COMMENT '层级深度(1-4)',
+  sort_order INT DEFAULT 0 COMMENT '同级排序',
   description TEXT NULL COMMENT '部门描述',
   status ENUM('active', 'inactive') DEFAULT 'active',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_parent (parent_id),
   INDEX idx_path (path),
-  INDEX idx_manager (manager_id)
+  INDEX idx_status (status)
 );
 ```
 
-### 2. 职位表 (positions)
+### 2. 职位表 (positions) ✅
 
 ```sql
 CREATE TABLE positions (
   id VARCHAR(20) PRIMARY KEY,
   name VARCHAR(100) NOT NULL COMMENT '职位名称',
-  department_id VARCHAR(20) NULL COMMENT '所属部门，NULL表示全局职位',
-  level INT DEFAULT 1 COMMENT '职级，用于权限比较',
+  department_id VARCHAR(20) NOT NULL COMMENT '所属部门',
+  is_manager BOOLEAN DEFAULT FALSE COMMENT '是否为负责人职位',
+  sort_order INT DEFAULT 0 COMMENT '排序',
   description TEXT NULL COMMENT '职位描述',
-  permissions JSON NULL COMMENT '职位特定权限',
   status ENUM('active', 'inactive') DEFAULT 'active',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_department (department_id)
+  INDEX idx_department (department_id),
+  INDEX idx_status (status)
 );
 ```
 
-### 3. 用户部门关联表 (user_departments)
+### 3. 用户表扩展 (users) ✅
+
+在 users 表直接添加字段（简化设计，一个用户只属于一个部门）：
 
 ```sql
-CREATE TABLE user_departments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id VARCHAR(32) NOT NULL,
-  department_id VARCHAR(20) NOT NULL,
-  position_id VARCHAR(20) NULL COMMENT '用户在该部门的职位',
-  is_primary BOOLEAN DEFAULT FALSE COMMENT '是否主部门',
-  joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_user_dept (user_id, department_id),
-  INDEX idx_user (user_id),
-  INDEX idx_department (department_id),
-  INDEX idx_position (position_id)
-);
+ALTER TABLE users 
+  ADD COLUMN department_id VARCHAR(20) NULL COMMENT '所属部门',
+  ADD COLUMN position_id VARCHAR(20) NULL COMMENT '职位ID',
+  ADD INDEX idx_department (department_id),
+  ADD INDEX idx_position (position_id);
 ```
 
-### 4. 知识库权限扩展
+### 4. 知识库权限扩展 ⏳待实现
 
 修改 `knowledge_bases` 表：
 
@@ -157,37 +161,49 @@ CREATE TABLE kb_permissions (
 );
 ```
 
-## API 设计
+### 设计变更说明
 
-### 部门管理 API
+| 原设计 | 实际实现 | 原因 |
+|--------|----------|------|
+| `departments.manager_id` | 通过职位的 `is_manager` 标识 | 更灵活，一个部门可有多个负责人 |
+| `positions.level` | 未实现 | 简化第一版 |
+| `positions.permissions` | 未实现 | 简化第一版 |
+| 独立 `user_departments` 表 | 直接在 `users` 表添加字段 | 简化设计，一个用户只属于一个部门 |
 
-```
-GET    /api/departments           # 获取部门树
-POST   /api/departments           # 创建部门（需管理员权限）
-GET    /api/departments/:id       # 获取部门详情
-PUT    /api/departments/:id       # 更新部门
-DELETE /api/departments/:id       # 删除部门
-GET    /api/departments/:id/users # 获取部门成员
-```
+## API 设计（已实现）
 
-### 职位管理 API
+### 部门管理 API ✅
 
 ```
-GET    /api/positions             # 获取职位列表
-POST   /api/positions             # 创建职位（需管理员权限）
-GET    /api/positions/:id         # 获取职位详情
-PUT    /api/positions/:id         # 更新职位
-DELETE /api/positions/:id         # 删除职位
+GET    /api/departments/tree        # 获取部门树
+POST   /api/departments             # 创建部门（需管理员权限）
+GET    /api/departments/:id         # 获取部门详情
+PUT    /api/departments/:id         # 更新部门
+DELETE /api/departments/:id         # 删除部门
+GET    /api/departments/:id/positions  # 获取部门职位列表（含成员）
+GET    /api/departments/:id/managers   # 获取部门负责人
 ```
 
-### 用户组织信息 API
+### 职位管理 API ✅
 
 ```
-GET    /api/users/:id/departments # 获取用户所属部门
-PUT    /api/users/:id/departments # 设置用户部门关联
+GET    /api/positions               # 获取职位列表（可按部门筛选）
+POST   /api/positions               # 创建职位（需管理员权限）
+GET    /api/positions/:id           # 获取职位详情
+PUT    /api/positions/:id           # 更新职位
+DELETE /api/positions/:id           # 删除职位
+GET    /api/positions/:id/members   # 获取该职位的用户
 ```
 
-### 知识库权限 API
+### 用户组织信息 API ✅
+
+```
+PUT    /api/users/:id/organization  # 设置用户的部门和职位
+DELETE /api/users/:id/organization  # 移除用户的部门关联
+GET    /api/users/unassigned        # 获取未分配部门的用户
+```
+
+### 知识库权限 API ⏳待实现
 
 ```
 GET    /api/knowledge-bases/:kb_id/permissions  # 获取知识库权限列表
@@ -251,28 +267,28 @@ async function checkKbAccess(userId, kbId, requiredLevel) {
 
 ## 实施步骤
 
-### Phase 1: 基础架构 (预计 2-3 天)
-- [ ] 创建数据库表
-- [ ] 生成 Sequelize 模型
-- [ ] 创建基础 Controller 和 Routes
+### Phase 1: 基础架构 ✅ 已完成
+- [x] 创建数据库表
+- [x] 生成 Sequelize 模型
+- [x] 创建基础 Controller 和 Routes
 
-### Phase 2: 部门管理 (预计 1-2 天)
-- [ ] 部门 CRUD API
-- [ ] 部门树形结构查询
-- [ ] 前端部门管理界面
+### Phase 2: 部门管理 ✅ 已完成
+- [x] 部门 CRUD API
+- [x] 部门树形结构查询
+- [x] 前端部门管理界面
 
-### Phase 3: 职位管理 (预计 1-2 天)
-- [ ] 职位 CRUD API
-- [ ] 用户-部门-职位关联
-- [ ] 前端职位管理界面
+### Phase 3: 职位管理 ✅ 已完成
+- [x] 职位 CRUD API
+- [x] 用户-部门-职位关联
+- [x] 前端职位管理界面
 
-### Phase 4: 知识库权限 (预计 2-3 天)
+### Phase 4: 知识库权限 ⏳ 待实现
 - [ ] 修改知识库模型
 - [ ] 权限检查中间件
 - [ ] 权限管理 API
 - [ ] 前端权限设置界面
 
-### Phase 5: 测试与文档 (预计 1-2 天)
+### Phase 5: 测试与文档 ⏳ 待实现
 - [ ] 单元测试
 - [ ] 集成测试
 - [ ] API 文档更新

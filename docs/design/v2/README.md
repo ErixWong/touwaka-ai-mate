@@ -33,8 +33,8 @@
 - **专家编排设计**
   - `expert-orchestration.md`：TaskOrchestrator 主循环、专家-主循环通信协议、专家分身机制、完整流程示例。
 
-- **组织架构设计** ⭐ 新增
-  - `org-architecture.md`：职位与专家分离、当前职位列表（Orchestrator/Analyst/Worker/Reviewer）、专家分身机制、真人专家扩展（预留）。
+- **组织架构设计** ⭐ 已实现
+  - `org-architecture.md`：公司组织架构设计（部门树、职位、用户关联），Phase 1 已实现。
 
 - **其他设计**
   - `tool-permission-design.md`：技能权限设计。
@@ -60,7 +60,7 @@
 - `right-panel-design.md`：**已采纳，按 TODO 推进中**
 - `sandbox-architecture.md`：**已采纳，本地开发环境已实现**
 - `expert-orchestration.md`：**草稿，核心架构重大变更**
-- `org-architecture.md`：**草稿，核心架构重大变更**
+- `org-architecture.md`：**已实现（Phase 1），公司组织架构**
 
 ---
 
