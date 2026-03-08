@@ -13,7 +13,7 @@
 | [知识库系统实现](tasks/2026-03-03-knowledge-base/README.md) | ⏳ 设计完成，待实现 | 高 |
 | [场外专家技能](#场外专家技能) | ⏳ 待讨论 | 低 |
 | [运行时配置统一管理](tasks/2026-03-02-runtime-configuration/README.md) | ⏳ 待开始 | 高 |
-| [组织架构配置界面](../design/v2/org-architecture.md) | ⏳ 待开始 | 中 |
+| [组织架构配置界面](tasks/2026-03-08-organization-architecture/README.md) | ✅ 已完成 | 中 |
 | [Topic 状态管理机制](#topic-状态管理机制) | ⏳ 待开始 | 中 |
 | [对话窗口优化](#对话窗口优化) | 🔄 部分完成 | 高 |
 | [QQ/Zoom 消息通道](#qqzoom-消息通道) | ⏳ 待开始 | 中 |

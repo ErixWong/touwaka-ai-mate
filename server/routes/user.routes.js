@@ -25,6 +25,9 @@ export default (controller) => {
   // 更新用户角色（需要管理员权限）
   router.put('/:id/roles', authenticate(), controller.updateUserRoles.bind(controller));
 
+  // 更新用户组织信息（需要管理员权限）
+  router.put('/:id/organization', authenticate(), controller.updateUserOrganization.bind(controller));
+
   // ========== 角色管理路由 ==========
   
   // 获取所有角色列表（需要管理员权限）
@@ -42,6 +45,9 @@ export default (controller) => {
   
   // 获取用户信息（需要认证）
   router.get('/:id', authenticate(), controller.getUser.bind(controller));
+
+  // 获取用户组织信息（需要认证）
+  router.get('/:id/organization', authenticate(), controller.getUserOrganization.bind(controller));
 
   // 更新用户信息（需要认证）
   router.put('/:id', authenticate(), controller.updateUser.bind(controller));
