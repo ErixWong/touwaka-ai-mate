@@ -34,16 +34,24 @@ import type {
   TaskFile,
   // 知识库相关类型
   KnowledgeBase,
-  Knowledge,
-  KnowledgePoint,
+  KbArticle,
+  KbSection,
+  KbParagraph,
+  KbTag,
   CreateKnowledgeBaseRequest,
   UpdateKnowledgeBaseRequest,
-  CreateKnowledgeRequest,
-  UpdateKnowledgeRequest,
-  CreateKnowledgePointRequest,
-  UpdateKnowledgePointRequest,
-  KnowledgeSearchRequest,
-  KnowledgeSearchResult,
+  CreateKbArticleRequest,
+  UpdateKbArticleRequest,
+  CreateKbSectionRequest,
+  UpdateKbSectionRequest,
+  MoveKbSectionRequest,
+  CreateKbParagraphRequest,
+  UpdateKbParagraphRequest,
+  MoveKbParagraphRequest,
+  CreateKbTagRequest,
+  UpdateKbTagRequest,
+  KbSearchRequest,
+  KbSearchResult,
 } from '@/types'
 
 /**
@@ -419,6 +427,7 @@ export const taskApi = {
 
 export const knowledgeBaseApi = {
   // ========== 知识库管理 ==========
+  // 注意：知识库本身的 CRUD 仍使用旧 API（后续可迁移）
 
   // 获取知识库列表
   getKnowledgeBases: (params?: PaginationParams) =>
@@ -442,67 +451,101 @@ export const knowledgeBaseApi = {
 
   // ========== 文章管理 ==========
 
-  // 获取文章树
-  getKnowledgeTree: (kbId: string) =>
-    apiRequest<Knowledge[]>(apiClient.get(`/kb/${kbId}/knowledges/tree`)),
+  // 获取文章列表
+  getArticles: (kbId: string, params?: PaginationParams) =>
+    apiRequest<PaginatedResponse<KbArticle>>(apiClient.get(`/kb/${kbId}/articles`, { params })),
 
   // 获取文章详情
-  getKnowledge: (kbId: string, knowledgeId: string) =>
-    apiRequest<Knowledge>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}`)),
+  getArticle: (kbId: string, articleId: string) =>
+    apiRequest<KbArticle>(apiClient.get(`/kb/${kbId}/articles/${articleId}`)),
 
   // 创建文章
-  createKnowledge: (kbId: string, data: CreateKnowledgeRequest) =>
-    apiRequest<Knowledge>(apiClient.post(`/kb/${kbId}/knowledges`, data)),
+  createArticle: (kbId: string, data: CreateKbArticleRequest) =>
+    apiRequest<KbArticle>(apiClient.post(`/kb/${kbId}/articles`, data)),
 
   // 更新文章
-  updateKnowledge: (kbId: string, knowledgeId: string, data: UpdateKnowledgeRequest) =>
-    apiRequest<Knowledge>(apiClient.put(`/kb/${kbId}/knowledges/${knowledgeId}`, data)),
+  updateArticle: (kbId: string, articleId: string, data: UpdateKbArticleRequest) =>
+    apiRequest<KbArticle>(apiClient.put(`/kb/${kbId}/articles/${articleId}`, data)),
 
   // 删除文章
-  deleteKnowledge: (kbId: string, knowledgeId: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}`)),
+  deleteArticle: (kbId: string, articleId: string) =>
+    apiRequest<void>(apiClient.delete(`/kb/${kbId}/articles/${articleId}`)),
 
-  // ========== 知识点管理 ==========
+  // 获取文章节树
+  getArticleTree: (kbId: string, articleId: string) =>
+    apiRequest<{ article: KbArticle; tree: KbSection[] }>(apiClient.get(`/kb/${kbId}/articles/${articleId}/tree`)),
 
-  // 获取知识点列表
-  getKnowledgePoints: (kbId: string, knowledgeId: string, params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<KnowledgePoint>>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}/points`, { params })),
+  // ========== 章节管理 ==========
 
-  // 获取知识点详情
-  getKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string) =>
-    apiRequest<KnowledgePoint>(apiClient.get(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
+  // 创建章节
+  createSection: (kbId: string, data: CreateKbSectionRequest) =>
+    apiRequest<KbSection>(apiClient.post(`/kb/${kbId}/sections`, data)),
 
-  // 创建知识点
-  createKnowledgePoint: (kbId: string, knowledgeId: string, data: CreateKnowledgePointRequest) =>
-    apiRequest<KnowledgePoint>(apiClient.post(`/kb/${kbId}/knowledges/${knowledgeId}/points`, data)),
+  // 更新章节
+  updateSection: (kbId: string, sectionId: string, data: UpdateKbSectionRequest) =>
+    apiRequest<KbSection>(apiClient.put(`/kb/${kbId}/sections/${sectionId}`, data)),
 
-  // 更新知识点
-  updateKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string, data: UpdateKnowledgePointRequest) =>
-    apiRequest<KnowledgePoint>(apiClient.put(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`, data)),
+  // 删除章节
+  deleteSection: (kbId: string, sectionId: string) =>
+    apiRequest<void>(apiClient.delete(`/kb/${kbId}/sections/${sectionId}`)),
 
-  // 删除知识点
-  deleteKnowledgePoint: (kbId: string, knowledgeId: string, pointId: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}`)),
+  // 移动章节（上移/下移）
+  moveSection: (kbId: string, sectionId: string, data: MoveKbSectionRequest) =>
+    apiRequest<{ success: boolean }>(apiClient.post(`/kb/${kbId}/sections/${sectionId}/move`, data)),
 
-  // 清除单个知识点向量（触发重新向量化）
-  clearPointEmbedding: (kbId: string, knowledgeId: string, pointId: string) =>
-    apiRequest<{ message: string; point_id: string }>(
-      apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}/embedding`)
-    ),
+  // ========== 段落管理 ==========
+
+  // 查询段落列表
+  queryParagraphs: (kbId: string, data: { section_id?: string; pagination?: PaginationParams }) =>
+    apiRequest<PaginatedResponse<KbParagraph>>(apiClient.post(`/kb/${kbId}/paragraphs/query`, data)),
+
+  // 创建段落
+  createParagraph: (kbId: string, data: CreateKbParagraphRequest) =>
+    apiRequest<KbParagraph>(apiClient.post(`/kb/${kbId}/paragraphs`, data)),
+
+  // 更新段落
+  updateParagraph: (kbId: string, paragraphId: string, data: UpdateKbParagraphRequest) =>
+    apiRequest<KbParagraph>(apiClient.put(`/kb/${kbId}/paragraphs/${paragraphId}`, data)),
+
+  // 删除段落
+  deleteParagraph: (kbId: string, paragraphId: string) =>
+    apiRequest<void>(apiClient.delete(`/kb/${kbId}/paragraphs/${paragraphId}`)),
+
+  // 移动段落（上移/下移）
+  moveParagraph: (kbId: string, paragraphId: string, data: MoveKbParagraphRequest) =>
+    apiRequest<{ success: boolean }>(apiClient.post(`/kb/${kbId}/paragraphs/${paragraphId}/move`, data)),
+
+  // ========== 标签管理 ==========
+
+  // 获取标签列表
+  getTags: (kbId: string) =>
+    apiRequest<KbTag[]>(apiClient.get(`/kb/${kbId}/tags`)),
+
+  // 创建标签
+  createTag: (kbId: string, data: CreateKbTagRequest) =>
+    apiRequest<KbTag>(apiClient.post(`/kb/${kbId}/tags`, data)),
+
+  // 更新标签
+  updateTag: (kbId: string, tagId: string, data: UpdateKbTagRequest) =>
+    apiRequest<KbTag>(apiClient.put(`/kb/${kbId}/tags/${tagId}`, data)),
+
+  // 删除标签
+  deleteTag: (kbId: string, tagId: string) =>
+    apiRequest<void>(apiClient.delete(`/kb/${kbId}/tags/${tagId}`)),
 
   // ========== 搜索 ==========
 
   // 语义搜索（单个知识库内）
-  search: (kbId: string, data: KnowledgeSearchRequest) =>
-    apiRequest<KnowledgeSearchResult[]>(apiClient.post(`/kb/${kbId}/search`, data)),
+  search: (kbId: string, data: KbSearchRequest) =>
+    apiRequest<KbSearchResult[]>(apiClient.post(`/kb/${kbId}/search`, data)),
 
   // 全局语义搜索（跨所有知识库）
-  globalSearch: (data: KnowledgeSearchRequest) =>
-    apiRequest<KnowledgeSearchResult[]>(apiClient.post('/kb/search', data)),
+  globalSearch: (data: KbSearchRequest) =>
+    apiRequest<KbSearchResult[]>(apiClient.post('/kb/search', data)),
 
-  // ========== 向量化 ==========
+  // ========== 向量化（待实现） ==========
 
-  // 重新向量化知识库所有知识点
+  // 重新向量化知识库所有段落
   revectorize: (kbId: string) =>
     apiRequest<{ job_id: string; total: number; success: number; failed: number; embedding_dim: number }>(
       apiClient.post(`/kb/${kbId}/revectorize`, {}, { timeout: 600000 })
@@ -512,11 +555,5 @@ export const knowledgeBaseApi = {
   getRevectorizeProgress: (kbId: string, jobId: string) =>
     apiRequest<{ total: number; success: number; failed: number; current: number; status: string; embedding_dim: number }>(
       apiClient.get(`/kb/${kbId}/revectorize/${jobId}`)
-    ),
-
-  // 删除单个知识点的向量（触发重新向量化）
-  deletePointEmbedding: (kbId: string, knowledgeId: string, pointId: string) =>
-    apiRequest<{ success: boolean }>(
-      apiClient.delete(`/kb/${kbId}/knowledges/${knowledgeId}/points/${pointId}/embedding`)
     ),
 }

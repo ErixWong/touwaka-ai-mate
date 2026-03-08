@@ -159,54 +159,49 @@ kb_sections (树状结构):
 ### 排序 API
 
 ```javascript
-// 移动节（同级调整 / 跨级移动）
+// 移动节（与相邻节交换位置）
 POST /api/kb/:kb_id/sections/:id/move
 {
-  "parent_id": "new_parent_id",  // 新的父节ID（可选）
-  "position": 2                   // 新的位置
+  "direction": "up"  // 或 "down"
 }
 
-// 移动段
+// 移动段（与相邻段交换位置）
 POST /api/kb/:kb_id/paragraphs/:id/move
 {
-  "section_id": "new_section_id",  // 新的节ID（可选）
-  "position": 3                     // 新的位置
+  "direction": "up"  // 或 "down"
 }
 ```
 
 ### 调整排序的后端逻辑
 
 ```javascript
-async function moveSection(sectionId, newParentId, newPosition) {
+async function moveSection(sectionId, direction) {
   const section = await kb_sections.findByPk(sectionId);
-  const oldParentId = section.parent_id;
-  const oldPosition = section.position;
+  const parentId = section.parent_id;
+  const position = section.position;
   
-  if (oldParentId !== newParentId) {
-    // 跨级移动
-    await kb_sections.decrement('position', {
-      where: { parent_id: oldParentId, position: { [Op.gt]: oldPosition } }
-    });
-    await kb_sections.increment('position', {
-      where: { parent_id: newParentId, position: { [Op.gte]: newPosition } }
-    });
-    await kb_sections.update(
-      { parent_id: newParentId, position: newPosition },
-      { where: { id: sectionId } }
-    );
-  } else {
-    // 同级调整
-    if (newPosition > oldPosition) {
-      await kb_sections.decrement('position', {
-        where: { parent_id: oldParentId, position: { [Op.gt]: oldPosition, [Op.lte]: newPosition } }
+  // 找到相邻节
+  const adjacent = direction === 'up'
+    ? await kb_sections.findOne({
+        where: { parent_id: parentId, position: position - 1 }
+      })
+    : await kb_sections.findOne({
+        where: { parent_id: parentId, position: position + 1 }
       });
-    } else {
-      await kb_sections.increment('position', {
-        where: { parent_id: oldParentId, position: { [Op.gte]: newPosition, [Op.lt]: oldPosition } }
-      });
-    }
-    await kb_sections.update({ position: newPosition }, { where: { id: sectionId } });
+  
+  if (!adjacent) {
+    throw new Error('无法移动：已到达边界');
   }
+  
+  // 交换 position
+  await kb_sections.update(
+    { position: position },
+    { where: { id: adjacent.id } }
+  );
+  await kb_sections.update(
+    { position: direction === 'up' ? position - 1 : position + 1 },
+    { where: { id: sectionId } }
+  );
 }
 ```
 

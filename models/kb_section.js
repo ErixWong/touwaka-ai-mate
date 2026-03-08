@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class knowledge_relation extends Model {
+export default class kb_section extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
@@ -9,49 +9,54 @@ export default class knowledge_relation extends Model {
         allowNull: false,
         primaryKey: true
       },
-      source_id: {
+      article_id: {
         type: DataTypes.STRING(20),
         allowNull: false,
         references: {
-          model: 'knowledge_points',
+          model: 'kb_articles',
           key: 'id'
         },
-        comment: '源知识点'
+        comment: '所属文章'
       },
-      target_id: {
+      parent_id: {
         type: DataTypes.STRING(20),
-        allowNull: false,
+        allowNull: true,
         references: {
-          model: 'knowledge_points',
+          model: 'kb_sections',
           key: 'id'
         },
-        comment: '目标知识点'
+        comment: '父节ID（自指向，形成无限层级）'
       },
-      relation_type: {
-        type: DataTypes.ENUM('depends_on', 'references', 'related_to', 'contradicts', 'extends', 'example_of'),
+      title: {
+        type: DataTypes.STRING(500),
         allowNull: false,
-        comment: '关系类型'
+        comment: '节标题'
       },
-      confidence: {
-        type: DataTypes.DECIMAL(3, 2),
+      level: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: 1.00,
-        comment: 'LLM 置信度 (0-1)'
+        defaultValue: 1,
+        comment: '层级深度（1=章, 2=节, 3=小节...）'
       },
-      created_by: {
-        type: DataTypes.ENUM('llm', 'manual'),
+      position: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: 'llm',
-        comment: '创建方式'
+        defaultValue: 0,
+        comment: '排序位置（同级内的顺序）'
       },
       created_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+      },
+      updated_at: {
         type: DataTypes.DATE,
         allowNull: true,
         defaultValue: Sequelize.Sequelize.fn('current_timestamp')
       }
     }, {
       sequelize,
-      tableName: 'knowledge_relations',
+      tableName: 'kb_sections',
       timestamps: false,
       freezeTableName: true,
       indexes: [
@@ -62,25 +67,24 @@ export default class knowledge_relation extends Model {
           fields: [{ name: 'id' }]
         },
         {
-          name: 'unique_relation',
-          unique: true,
+          name: 'idx_section_article',
           using: 'BTREE',
-          fields: [{ name: 'source_id' }, { name: 'target_id' }, { name: 'relation_type' }]
+          fields: [{ name: 'article_id' }]
         },
         {
-          name: 'idx_kr_source',
+          name: 'idx_section_parent',
           using: 'BTREE',
-          fields: [{ name: 'source_id' }]
+          fields: [{ name: 'parent_id' }]
         },
         {
-          name: 'idx_kr_target',
+          name: 'idx_section_level',
           using: 'BTREE',
-          fields: [{ name: 'target_id' }]
+          fields: [{ name: 'level' }]
         },
         {
-          name: 'idx_kr_type',
+          name: 'idx_section_position',
           using: 'BTREE',
-          fields: [{ name: 'relation_type' }]
+          fields: [{ name: 'position' }]
         }
       ]
     });

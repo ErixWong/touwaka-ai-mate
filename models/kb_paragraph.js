@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class knowledge extends Model {
+export default class kb_paragraph extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
@@ -9,61 +9,47 @@ export default class knowledge extends Model {
         allowNull: false,
         primaryKey: true
       },
-      kb_id: {
+      section_id: {
         type: DataTypes.STRING(20),
         allowNull: false,
         references: {
-          model: 'knowledge_bases',
+          model: 'kb_sections',
           key: 'id'
         },
-        comment: '所属知识库'
-      },
-      parent_id: {
-        type: DataTypes.STRING(20),
-        allowNull: true,
-        references: {
-          model: 'knowledges',
-          key: 'id'
-        },
-        comment: '父文章 ID（树状结构）'
+        comment: '所属节'
       },
       title: {
         type: DataTypes.STRING(500),
-        allowNull: false,
-        comment: '文章标题'
+        allowNull: true,
+        comment: '段落标题（可选）'
       },
-      summary: {
+      content: {
         type: DataTypes.TEXT,
-        allowNull: true,
-        comment: 'LLM 生成的摘要'
+        allowNull: false,
+        comment: '段落内容'
       },
-      source_type: {
-        type: DataTypes.ENUM('file', 'web', 'manual'),
+      is_knowledge_point: {
+        type: DataTypes.BOOLEAN,
         allowNull: true,
-        defaultValue: 'manual',
-        comment: '来源类型'
+        defaultValue: false,
+        comment: '是否是知识点'
       },
-      source_url: {
-        type: DataTypes.STRING(1000),
+      embedding: {
+        type: 'VECTOR(384)',
         allowNull: true,
-        comment: '来源 URL'
-      },
-      file_path: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: '原始文件存储路径'
-      },
-      status: {
-        type: DataTypes.ENUM('pending', 'processing', 'ready', 'failed'),
-        allowNull: true,
-        defaultValue: 'pending',
-        comment: '处理状态'
+        comment: '向量（只有知识点才向量化）'
       },
       position: {
         type: DataTypes.INTEGER,
         allowNull: true,
         defaultValue: 0,
-        comment: '同级排序'
+        comment: '排序位置（同一节内的顺序）'
+      },
+      token_count: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 0,
+        comment: 'Token 数量'
       },
       created_at: {
         type: DataTypes.DATE,
@@ -77,7 +63,7 @@ export default class knowledge extends Model {
       }
     }, {
       sequelize,
-      tableName: 'knowledges',
+      tableName: 'kb_paragraphs',
       timestamps: false,
       freezeTableName: true,
       indexes: [
@@ -88,19 +74,19 @@ export default class knowledge extends Model {
           fields: [{ name: 'id' }]
         },
         {
-          name: 'idx_knowledge_kb',
+          name: 'idx_paragraph_section',
           using: 'BTREE',
-          fields: [{ name: 'kb_id' }]
+          fields: [{ name: 'section_id' }]
         },
         {
-          name: 'idx_knowledge_parent',
+          name: 'idx_paragraph_kp',
           using: 'BTREE',
-          fields: [{ name: 'parent_id' }]
+          fields: [{ name: 'is_knowledge_point' }]
         },
         {
-          name: 'idx_knowledge_status',
+          name: 'idx_paragraph_position',
           using: 'BTREE',
-          fields: [{ name: 'status' }]
+          fields: [{ name: 'position' }]
         }
       ]
     });

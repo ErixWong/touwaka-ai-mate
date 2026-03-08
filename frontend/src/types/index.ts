@@ -650,7 +650,7 @@ export interface TaskFile {
 }
 
 // ============================================
-// 知识库相关类型
+// 知识库相关类型（重构后）
 // ============================================
 
 /**
@@ -665,8 +665,8 @@ export interface KnowledgeBase {
   embedding_dim: number
   is_public: boolean
   // 统计信息（API 返回时附带）
-  knowledge_count?: number
-  point_count?: number
+  article_count?: number
+  paragraph_count?: number
   created_at: string
   updated_at: string
 }
@@ -674,73 +674,19 @@ export interface KnowledgeBase {
 /**
  * 文章状态
  */
-export type KnowledgeStatus = 'pending' | 'processing' | 'ready' | 'failed'
+export type KbStatus = 'pending' | 'processing' | 'ready' | 'error'
 
 /**
  * 文章来源类型
  */
-export type KnowledgeSourceType = 'file' | 'web' | 'manual'
+export type KbSourceType = 'upload' | 'url' | 'manual'
+
+// ============================================
+// 知识库管理请求类型
+// ============================================
 
 /**
- * 文章（匹配后端 knowledges 表，树状结构）
- */
-export interface Knowledge {
-  id: string
-  kb_id: string
-  parent_id?: string
-  title: string
-  summary?: string
-  source_type: KnowledgeSourceType
-  source_url?: string
-  file_path?: string
-  status: KnowledgeStatus
-  position: number
-  // 子节点（树形结构时填充）
-  children?: Knowledge[]
-  // 知识点列表（查询时填充）
-  points?: KnowledgePoint[]
-  // 知识点数量
-  point_count?: number
-  created_at: string
-  updated_at: string
-}
-
-/**
- * 知识点（匹配后端 knowledge_points 表）
- */
-export interface KnowledgePoint {
-  id: string
-  knowledge_id: string
-  title?: string
-  content: string
-  context?: string
-  embedding?: number[]  // 向量，可选
-  position: number
-  token_count: number
-  created_at: string
-  updated_at: string
-}
-
-/**
- * 知识点关系类型
- */
-export type KnowledgeRelationType = 'depends_on' | 'references' | 'related_to' | 'contradicts' | 'extends' | 'example_of'
-
-/**
- * 知识点关联（匹配后端 knowledge_relations 表）
- */
-export interface KnowledgeRelation {
-  id: string
-  source_id: string
-  target_id: string
-  relation_type: KnowledgeRelationType
-  confidence: number
-  created_by: 'llm' | 'manual'
-  created_at: string
-}
-
-/**
- * 创建知识库请求数据
+ * 创建知识库请求
  */
 export interface CreateKnowledgeBaseRequest {
   name: string
@@ -750,7 +696,7 @@ export interface CreateKnowledgeBaseRequest {
 }
 
 /**
- * 更新知识库请求数据
+ * 更新知识库请求
  */
 export interface UpdateKnowledgeBaseRequest {
   name?: string
@@ -759,52 +705,185 @@ export interface UpdateKnowledgeBaseRequest {
   embedding_dim?: number
 }
 
+// ============================================
+// 文章相关类型
+// ============================================
+
 /**
- * 创建文章请求数据
+ * 文章（匹配后端 kb_articles 表）
  */
-export interface CreateKnowledgeRequest {
+export interface KbArticle {
+  id: string
+  kb_id: string
+  title: string
+  summary?: string
+  source_type?: KbSourceType
+  source_url?: string
+  file_path?: string
+  status: KbStatus
+  // 关联数据（查询时填充）
+  tags?: KbTag[]
+  sections?: KbSection[]
+  section_count?: number
+  paragraph_count?: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 创建文章请求
+ */
+export interface CreateKbArticleRequest {
+  title: string
+  summary?: string
+  source_type?: KbSourceType
+  source_url?: string
+  tag_ids?: string[]
+}
+
+/**
+ * 更新文章请求
+ */
+export interface UpdateKbArticleRequest {
+  title?: string
+  summary?: string
+  tag_ids?: string[]
+}
+
+// ============================================
+// 节相关类型
+// ============================================
+
+/**
+ * 节（匹配后端 kb_sections 表，树状结构）
+ */
+export interface KbSection {
+  id: string
+  article_id: string
+  parent_id?: string
+  title: string
+  level: number
+  position: number
+  // 子节点（树形结构时填充）
+  children?: KbSection[]
+  // 段落列表（查询时填充）
+  paragraphs?: KbParagraph[]
+  paragraph_count?: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 创建节请求
+ */
+export interface CreateKbSectionRequest {
+  article_id: string
   title: string
   parent_id?: string
-  summary?: string
-  source_type?: KnowledgeSourceType
-  source_url?: string
 }
 
 /**
- * 更新文章请求数据
+ * 更新节请求
  */
-export interface UpdateKnowledgeRequest {
+export interface UpdateKbSectionRequest {
   title?: string
-  summary?: string
-  position?: number
 }
 
 /**
- * 创建知识点请求数据
+ * 移动节请求
  */
-export interface CreateKnowledgePointRequest {
+export interface MoveKbSectionRequest {
+  direction: 'up' | 'down'
+}
+
+// ============================================
+// 段落相关类型
+// ============================================
+
+/**
+ * 段落（匹配后端 kb_paragraphs 表）
+ */
+export interface KbParagraph {
+  id: string
+  section_id: string
   title?: string
   content: string
-  context?: string
-  position?: number
+  is_knowledge_point: boolean
+  position: number
+  token_count: number
+  created_at: string
+  updated_at: string
 }
 
 /**
- * 更新知识点请求数据
+ * 创建段落请求
  */
-export interface UpdateKnowledgePointRequest {
+export interface CreateKbParagraphRequest {
+  title?: string
+  content: string
+  is_knowledge_point?: boolean
+}
+
+/**
+ * 更新段落请求
+ */
+export interface UpdateKbParagraphRequest {
   title?: string
   content?: string
-  context?: string
-  position?: number
+  is_knowledge_point?: boolean
 }
+
+/**
+ * 移动段落请求
+ */
+export interface MoveKbParagraphRequest {
+  direction: 'up' | 'down'
+}
+
+// ============================================
+// 标签相关类型
+// ============================================
+
+/**
+ * 标签（匹配后端 kb_tags 表）
+ */
+export interface KbTag {
+  id: string
+  kb_id: string
+  name: string
+  color?: string
+  article_count?: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 创建标签请求
+ */
+export interface CreateKbTagRequest {
+  name: string
+  color?: string
+}
+
+/**
+ * 更新标签请求
+ */
+export interface UpdateKbTagRequest {
+  name?: string
+  color?: string
+}
+
+// ============================================
+// 搜索相关类型
+// ============================================
 
 /**
  * 语义搜索请求参数
  */
-export interface KnowledgeSearchRequest {
+export interface KbSearchRequest {
   query: string
   kb_id?: string
+  article_id?: string
   top_k?: number
   threshold?: number
 }
@@ -812,12 +891,38 @@ export interface KnowledgeSearchRequest {
 /**
  * 语义搜索结果
  */
-export interface KnowledgeSearchResult {
-  point: KnowledgePoint
-  knowledge: Knowledge
+export interface KbSearchResult {
+  paragraph: KbParagraph
+  section: KbSection
+  article: KbArticle
   knowledge_base?: KnowledgeBase
   score: number
 }
+
+// ============================================
+// 兼容性别名（过渡期使用，后续可删除）
+// ============================================
+
+/** @deprecated 使用 KbStatus 代替 */
+export type KnowledgeStatus = KbStatus
+/** @deprecated 使用 KbSourceType 代替 */
+export type KnowledgeSourceType = KbSourceType
+/** @deprecated 使用 KbArticle 代替 */
+export type Knowledge = KbArticle
+/** @deprecated 使用 KbParagraph 代替 */
+export type KnowledgePoint = KbParagraph
+/** @deprecated 使用 CreateKbArticleRequest 代替 */
+export type CreateKnowledgeRequest = CreateKbArticleRequest
+/** @deprecated 使用 UpdateKbArticleRequest 代替 */
+export type UpdateKnowledgeRequest = UpdateKbArticleRequest
+/** @deprecated 使用 CreateKbParagraphRequest 代替 */
+export type CreateKnowledgePointRequest = CreateKbParagraphRequest
+/** @deprecated 使用 UpdateKbParagraphRequest 代替 */
+export type UpdateKnowledgePointRequest = UpdateKbParagraphRequest
+/** @deprecated 使用 KbSearchRequest 代替 */
+export type KnowledgeSearchRequest = KbSearchRequest
+/** @deprecated 使用 KbSearchResult 代替 */
+export type KnowledgeSearchResult = KbSearchResult
 
 /**
  * 专家知识库配置

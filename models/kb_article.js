@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class knowledge_point extends Model {
+export default class kb_article extends Model {
   static init(sequelize, DataTypes) {
     return super.init({
       id: {
@@ -9,46 +9,46 @@ export default class knowledge_point extends Model {
         allowNull: false,
         primaryKey: true
       },
-      knowledge_id: {
+      kb_id: {
         type: DataTypes.STRING(20),
         allowNull: false,
         references: {
-          model: 'knowledges',
+          model: 'knowledge_bases',
           key: 'id'
         },
-        comment: '所属文章'
+        comment: '所属知识库'
       },
       title: {
         type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: '知识点标题'
-      },
-      content: {
-        type: DataTypes.TEXT('medium'),
         allowNull: false,
-        comment: 'Markdown 格式内容'
+        comment: '文章标题'
       },
-      context: {
+      summary: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: '上下文信息（用于向量化）'
+        comment: '文章摘要'
       },
-      embedding: {
-        type: 'VECTOR(1024)',
+      source_type: {
+        type: DataTypes.ENUM('upload', 'url', 'manual'),
         allowNull: true,
-        comment: '向量（1024维）'
+        defaultValue: 'manual',
+        comment: '来源类型：upload/url/manual'
       },
-      position: {
-        type: DataTypes.INTEGER,
+      source_url: {
+        type: DataTypes.STRING(1000),
         allowNull: true,
-        defaultValue: 0,
-        comment: '排序位置'
+        comment: '来源URL'
       },
-      token_count: {
-        type: DataTypes.INTEGER,
+      file_path: {
+        type: DataTypes.STRING(500),
         allowNull: true,
-        defaultValue: 0,
-        comment: 'Token 数量'
+        comment: '本地文件路径'
+      },
+      status: {
+        type: DataTypes.ENUM('pending', 'processing', 'ready', 'error'),
+        allowNull: true,
+        defaultValue: 'pending',
+        comment: '状态'
       },
       created_at: {
         type: DataTypes.DATE,
@@ -62,7 +62,7 @@ export default class knowledge_point extends Model {
       }
     }, {
       sequelize,
-      tableName: 'knowledge_points',
+      tableName: 'kb_articles',
       timestamps: false,
       freezeTableName: true,
       indexes: [
@@ -73,9 +73,14 @@ export default class knowledge_point extends Model {
           fields: [{ name: 'id' }]
         },
         {
-          name: 'idx_kp_knowledge',
+          name: 'idx_article_kb',
           using: 'BTREE',
-          fields: [{ name: 'knowledge_id' }]
+          fields: [{ name: 'kb_id' }]
+        },
+        {
+          name: 'idx_article_status',
+          using: 'BTREE',
+          fields: [{ name: 'status' }]
         }
       ]
     });
