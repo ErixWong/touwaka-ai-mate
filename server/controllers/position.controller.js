@@ -3,7 +3,7 @@
  */
 
 import Utils from '../../lib/utils.js';
-import { logger } from '../../lib/logger.js';
+import logger from '../../lib/logger.js';
 
 class PositionController {
   constructor(db) {
@@ -229,7 +229,41 @@ class PositionController {
         raw: true,
       });
 
-      ctx.success(positions);
+      // 如果没有职位，直接返回空数组
+      if (positions.length === 0) {
+        ctx.success([]);
+        return;
+      }
+
+      // 批量获取所有职位的成员（优化 N+1 查询）
+      const positionIds = positions.map(p => p.id);
+      const allMembers = await this.User.findAll({
+        where: {
+          position_id: positionIds,
+          status: 'active',
+        },
+        attributes: ['id', 'username', 'nickname', 'avatar', 'email', 'position_id'],
+        raw: true,
+      });
+
+      // 按职位 ID 分组
+      const membersByPosition = {};
+      allMembers.forEach(member => {
+        if (!membersByPosition[member.position_id]) {
+          membersByPosition[member.position_id] = [];
+        }
+        // 移除 position_id 字段，不暴露给前端
+        const { position_id, ...memberData } = member;
+        membersByPosition[position_id].push(memberData);
+      });
+
+      // 组装结果
+      const positionsWithMembers = positions.map(position => ({
+        ...position,
+        members: membersByPosition[position.id] || [],
+      }));
+
+      ctx.success(positionsWithMembers);
     } catch (error) {
       logger.error('Get department positions error:', error);
       ctx.error('获取部门职位失败', 500);

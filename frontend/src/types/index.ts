@@ -934,6 +934,6 @@ export interface UserOrganization {
  * 更新用户组织信息的请求数据
  */
 export interface UpdateUserOrganizationRequest {
-  department_id?: string
-  position_id?: string
+  department_id?: string | null
+  position_id?: string | null
 }

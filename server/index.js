@@ -271,12 +271,14 @@ class ApiServer {
     this.app.use(knowledgeBaseRoutes(this.controllers.knowledgeBase).allowedMethods());
 
     // Department 路由
-    this.app.use(departmentRoutes.routes());
-    this.app.use(departmentRoutes.allowedMethods());
+    const departmentRouter = departmentRoutes(this.db);
+    this.app.use(departmentRouter.routes());
+    this.app.use(departmentRouter.allowedMethods());
 
     // Position 路由
-    this.app.use(positionRoutes.routes());
-    this.app.use(positionRoutes.allowedMethods());
+    const positionRouter = positionRoutes(this.db);
+    this.app.use(positionRouter.routes());
+    this.app.use(positionRouter.allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {

@@ -44,11 +44,15 @@ body {
 :root {
   /* 主色调 */
   --primary-color: #2196f3;
+  --primary-color-dark: #1976d2;
   --primary-hover: #1976d2;
   --primary-light: #e3f2fd;
 
   /* 背景色 */
   --main-bg: #f5f5f5;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #e8e8e8;
   --card-bg: #ffffff;
   --header-bg: #ffffff;
   --sidebar-bg: #ffffff;
@@ -67,6 +71,8 @@ body {
   /* 状态色 */
   --success-color: #4caf50;
   --warning-color: #ff9800;
+  --danger-color: #f44336;
+  --danger-color-dark: #d32f2f;
   --error-color: #f44336;
 
   /* 间距 */
@@ -85,6 +91,9 @@ body {
 /* 暗色主题 */
 [data-theme="dark"] {
   --main-bg: #1a1a2e;
+  --bg-primary: #16213e;
+  --bg-secondary: #0f3460;
+  --bg-tertiary: #1f4068;
   --card-bg: #16213e;
   --header-bg: #0f3460;
   --sidebar-bg: #16213e;
@@ -97,6 +106,9 @@ body {
 
   --border-color: #1f4068;
   --border-light: #16213e;
+
+  --danger-color: #f44336;
+  --danger-color-dark: #d32f2f;
 }
 
 /* 通用样式 */
