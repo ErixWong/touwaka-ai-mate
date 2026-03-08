@@ -11,11 +11,14 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
-import { Op } from 'sequelize';
+import { Op, Sequelize, ForeignKeyConstraintError } from 'sequelize';
 import {
   buildQueryOptions,
   buildPaginatedResponse,
 } from '../../lib/query-builder.js';
+
+// 最大章节层级深度限制
+const MAX_SECTION_DEPTH = 10; // 允许 10 层深度（1-10）
 
 // 允许过滤的字段白名单
 const ARTICLE_FILTER_FIELDS = [
@@ -236,10 +239,16 @@ class KbController {
         ctx.throw(404, 'Article not found');
       }
 
-      // 获取文章关联的标签，更新计数
+      // 获取文章关联的标签ID，批量更新计数
       const tags = await article.getTags();
-      for (const tag of tags) {
-        await tag.decrement('article_count');
+      const tagIds = tags.map(tag => tag.id);
+      
+      // 批量递减标签计数（避免 N+1 查询）
+      if (tagIds.length > 0) {
+        await this.KbTag.update(
+          { article_count: Sequelize.literal('article_count - 1') },
+          { where: { id: { [Op.in]: tagIds } } }
+        );
       }
 
       // 删除文章（级联删除 sections, paragraphs, article_tags）
@@ -368,6 +377,12 @@ class KbController {
         if (!parent || parent.article_id !== data.article_id) {
           ctx.throw(400, 'Invalid parent section');
         }
+        
+        // 检查层级深度限制
+        if (parent.level >= MAX_SECTION_DEPTH) {
+          ctx.throw(400, `Section depth exceeds maximum limit of ${MAX_SECTION_DEPTH} levels`);
+        }
+        
         level = parent.level + 1;
       }
 
@@ -501,6 +516,10 @@ class KbController {
       ctx.body = { success: true };
     } catch (error) {
       logger.error('[KB] deleteSection error:', error);
+      // 外键约束错误友好提示
+      if (error instanceof ForeignKeyConstraintError) {
+        ctx.throw(409, 'Cannot delete section: it has child sections or paragraphs');
+      }
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -709,6 +728,10 @@ class KbController {
       ctx.body = { success: true };
     } catch (error) {
       logger.error('[KB] deleteParagraph error:', error);
+      // 外键约束错误友好提示
+      if (error instanceof ForeignKeyConstraintError) {
+        ctx.throw(409, 'Cannot delete paragraph: it is referenced by other records');
+      }
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -844,6 +867,10 @@ class KbController {
       ctx.body = { success: true };
     } catch (error) {
       logger.error('[KB] deleteTag error:', error);
+      // 外键约束错误友好提示
+      if (error instanceof ForeignKeyConstraintError) {
+        ctx.throw(409, 'Cannot delete tag: it is still referenced by articles');
+      }
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -857,53 +884,79 @@ class KbController {
    * @param {string} kbId 知识库ID
    */
   async _setArticleTags(articleId, tags, kbId) {
-    // 获取现有标签
-    const existingTags = await this.KbTag.findAll({
-      where: { kb_id: kbId, name: { [Op.in]: tags } },
-    });
-    const existingTagMap = new Map(existingTags.map(t => [t.name, t]));
+    // 使用事务包裹整个标签设置过程
+    const transaction = await this.db.sequelize.transaction();
+    
+    try {
+      // 获取现有标签
+      const existingTags = await this.KbTag.findAll({
+        where: { kb_id: kbId, name: { [Op.in]: tags } },
+        transaction,
+      });
+      const existingTagMap = new Map(existingTags.map(t => [t.name, t]));
 
-    // 创建不存在的标签
-    const tagIds = [];
-    for (const tagName of tags) {
-      if (existingTagMap.has(tagName)) {
-        tagIds.push(existingTagMap.get(tagName).id);
-      } else {
-        const id = Utils.generateId('tag');
-        const newTag = await this.KbTag.create({
-          id,
-          kb_id: kbId,
-          name: tagName,
-          article_count: 0,
-        });
-        tagIds.push(newTag.id);
+      // 批量创建不存在的标签
+      const tagIds = [];
+      const newTags = [];
+      
+      for (const tagName of tags) {
+        if (existingTagMap.has(tagName)) {
+          tagIds.push(existingTagMap.get(tagName).id);
+        } else {
+          const id = Utils.generateId('tag');
+          newTags.push({
+            id,
+            kb_id: kbId,
+            name: tagName,
+            article_count: 0,
+          });
+          tagIds.push(id);
+        }
       }
-    }
 
-    // 删除现有关联
-    await this.KbArticleTag.destroy({
-      where: { article_id: articleId },
-    });
+      // 批量创建新标签
+      if (newTags.length > 0) {
+        await this.KbTag.bulkCreate(newTags, { transaction });
+      }
 
-    // 创建新关联
-    for (const tagId of tagIds) {
-      const id = Utils.generateId('at');
-      await this.KbArticleTag.create({
-        id,
-        article_id: articleId,
-        tag_id: tagId,
+      // 删除现有关联
+      await this.KbArticleTag.destroy({
+        where: { article_id: articleId },
+        transaction,
       });
-    }
 
-    // 更新标签的 article_count
-    for (const tagId of tagIds) {
-      const count = await this.KbArticleTag.count({
-        where: { tag_id: tagId },
-      });
-      await this.KbTag.update(
-        { article_count: count },
-        { where: { id: tagId } }
-      );
+      // 批量创建新关联
+      if (tagIds.length > 0) {
+        const articleTagAssociations = tagIds.map(tagId => ({
+          id: Utils.generateId('at'),
+          article_id: articleId,
+          tag_id: tagId,
+        }));
+        await this.KbArticleTag.bulkCreate(articleTagAssociations, { transaction });
+      }
+
+      // 批量更新标签的 article_count（使用子查询避免 N+1）
+      if (tagIds.length > 0) {
+        await this.KbTag.update(
+          {
+            article_count: Sequelize.literal(`(
+              SELECT COUNT(*) FROM kb_article_tags
+              WHERE tag_id = kb_tags.id
+            )`)
+          },
+          {
+            where: { id: { [Op.in]: tagIds } },
+            transaction
+          }
+        );
+      }
+
+      // 提交事务
+      await transaction.commit();
+    } catch (error) {
+      // 回滚事务
+      await transaction.rollback();
+      throw error;
     }
   }
 
