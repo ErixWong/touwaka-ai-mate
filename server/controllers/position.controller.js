@@ -3,7 +3,7 @@
  */
 
 import Utils from '../../lib/utils.js';
-import { logger } from '../../lib/logger.js';
+import logger from '../../lib/logger.js';
 
 class PositionController {
   constructor(db) {
