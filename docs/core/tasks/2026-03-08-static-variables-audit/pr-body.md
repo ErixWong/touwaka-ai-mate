@@ -86,4 +86,5 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 ---
 
-Closes #N/A（此 PR 为分析报告，具体实现将创建新的 Issue）
+**实施任务**: #46
+**本 PR 为分析报告和设计方案，具体实现将在 Issue #46 中跟踪**
