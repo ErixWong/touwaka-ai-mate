@@ -763,6 +763,10 @@ export default {
       contextLabel: 'Context (optional)',
       contextPlaceholder: 'Additional context for better search accuracy...',
       noParagraphs: 'No paragraphs yet. Click + to add',
+      tokenCount: '{count} tokens',
+      vectorized: 'Vectorized',
+      notVectorized: 'Not Vectorized',
+      revectorizeHint: 'Re-vectorize this paragraph',
     },
 
     // Knowledge Point
