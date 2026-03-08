@@ -16,28 +16,23 @@
       </span>
       <span v-else class="node-toggle placeholder"></span>
 
-      <!-- Icon -->
+      <!-- Icon based on level -->
       <span class="node-icon">
-        {{ hasChildren ? '📁' : '📄' }}
+        {{ getNodeIcon() }}
       </span>
 
       <!-- Title -->
       <span class="node-title">{{ node.title }}</span>
 
-      <!-- Status Badge: 只在未完全向量化时显示 -->
-      <span v-if="node.status !== 'ready'" class="status-badge" :class="node.status">
-        {{ node.status === 'pending' ? '待处理' : node.status === 'processing' ? '处理中' : '失败' }}
-      </span>
-
-      <!-- Point Count -->
-      <span v-if="node.point_count" class="point-count">
-        {{ node.point_count }}
+      <!-- Paragraph Count -->
+      <span v-if="node.paragraph_count" class="paragraph-count">
+        {{ node.paragraph_count }}
       </span>
     </div>
 
     <!-- Children -->
     <div v-if="hasChildren && isExpanded" class="node-children">
-      <KnowledgeTreeNode
+      <SectionTreeNode
         v-for="child in node.children"
         :key="child.id"
         :node="child"
@@ -55,20 +50,20 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { Knowledge } from '@/types'
+import type { KbSection } from '@/types'
 
 const props = defineProps<{
-  node: Knowledge
+  node: KbSection
   level: number
   selectedId?: string | number
   forceExpand?: boolean | null
 }>()
 
 const emit = defineEmits<{
-  select: [knowledge: Knowledge]
-  edit: [knowledge: Knowledge]
-  delete: [knowledge: Knowledge]
-  'add-child': [parent: Knowledge]
+  select: [section: KbSection]
+  edit: [section: KbSection]
+  delete: [section: KbSection]
+  'add-child': [parent: KbSection]
 }>()
 
 // State
@@ -89,6 +84,16 @@ const hasChildren = computed(() => {
 // Methods
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value
+}
+
+const getNodeIcon = () => {
+  // 根据层级返回不同图标
+  switch (props.node.level) {
+    case 1: return '📕'// 章
+    case 2: return '📖'// 节
+    case 3: return '📄'// 小节
+    default: return '📝' // 更深层级
+  }
 }
 </script>
 
@@ -142,29 +147,7 @@ const toggleExpand = () => {
   text-overflow: ellipsis;
 }
 
-.status-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  text-transform: uppercase;
-}
-
-.status-badge.pending {
-  background: #fff3e0;
-  color: #ef6c00;
-}
-
-.status-badge.processing {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
-.status-badge.failed {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.point-count {
+.paragraph-count {
   font-size: 11px;
   color: var(--text-tertiary, #999);
   background: var(--secondary-bg, #f0f0f0);

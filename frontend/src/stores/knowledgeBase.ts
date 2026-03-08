@@ -3,24 +3,33 @@ import { defineStore } from 'pinia'
 import { knowledgeBaseApi } from '@/api/services'
 import type {
   KnowledgeBase,
-  Knowledge,
-  KnowledgePoint,
+  KbArticle,
+  KbSection,
+  KbParagraph,
+  KbTag,
   CreateKnowledgeBaseRequest,
   UpdateKnowledgeBaseRequest,
-  CreateKnowledgeRequest,
-  UpdateKnowledgeRequest,
-  CreateKnowledgePointRequest,
-  UpdateKnowledgePointRequest,
-  KnowledgeSearchResult,
+  CreateKbArticleRequest,
+  UpdateKbArticleRequest,
+  CreateKbSectionRequest,
+  UpdateKbSectionRequest,
+  MoveKbSectionRequest,
+  CreateKbParagraphRequest,
+  UpdateKbParagraphRequest,
+  MoveKbParagraphRequest,
+  CreateKbTagRequest,
+  UpdateKbTagRequest,
+  KbSearchResult,
 } from '@/types'
 
 /**
  * KnowledgeBase Store
  *
- * 知识库状态管理
+ * 知识库状态管理（重构后）
  * - 管理用户的知识库列表
  * - 当前选中的知识库
- * - 文章树和知识点
+ * - 文章、章节、段落管理
+ * - 标签管理
  * - 搜索功能
  */
 export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
@@ -30,31 +39,41 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   const knowledgeBases = ref<KnowledgeBase[]>([])
   const currentKb = ref<KnowledgeBase | null>(null)
 
-  // 文章树
-  const knowledgeTree = ref<Knowledge[]>([])
-  const currentKnowledge = ref<Knowledge | null>(null)
+  // 文章
+  const articles = ref<KbArticle[]>([])
+  const currentArticle = ref<KbArticle | null>(null)
 
-  // 知识点
-  const currentPoints = ref<KnowledgePoint[]>([])
-  const currentPoint = ref<KnowledgePoint | null>(null)
+  // 章节树
+  const sectionTree = ref<KbSection[]>([])
+  const currentSection = ref<KbSection | null>(null)
+
+  // 段落
+  const paragraphs = ref<KbParagraph[]>([])
+  const currentParagraph = ref<KbParagraph | null>(null)
+
+  // 标签
+  const tags = ref<KbTag[]>([])
 
   // 搜索结果
-  const searchResults = ref<KnowledgeSearchResult[]>([])
+  const searchResults = ref<KbSearchResult[]>([])
 
   // 状态
   const isLoading = ref(false)
-  const isLoadingTree = ref(false)
-  const isLoadingPoints = ref(false)
+  const isLoadingArticles = ref(false)
+  const isLoadingSections = ref(false)
+  const isLoadingParagraphs = ref(false)
   const isSearching = ref(false)
   const error = ref<string | null>(null)
 
   // ========== Getters ==========
 
-  const totalPointCount = computed(() =>
-    knowledgeBases.value.reduce((sum, kb) => sum + (kb.point_count || 0), 0)
+  const totalParagraphCount = computed(() =>
+    knowledgeBases.value.reduce((sum, kb) => sum + (kb.paragraph_count || 0), 0)
   )
 
   const hasCurrentKb = computed(() => currentKb.value !== null)
+
+  const hasCurrentArticle = computed(() => currentArticle.value !== null)
 
   // ========== Actions - 知识库管理 ==========
 
@@ -65,7 +84,6 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     isLoading.value = true
     error.value = null
     try {
-      // 统一使用 pageSize 参数
       const apiParams = {
         page: params?.page,
         pageSize: params?.pageSize || params?.limit,
@@ -160,46 +178,48 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
    */
   const clearCurrentKb = () => {
     currentKb.value = null
-    knowledgeTree.value = []
-    currentKnowledge.value = null
-    currentPoints.value = []
-    currentPoint.value = null
+    articles.value = []
+    currentArticle.value = null
+    sectionTree.value = []
+    currentSection.value = null
+    paragraphs.value = []
+    currentParagraph.value = null
+    tags.value = []
   }
 
   // ========== Actions - 文章管理 ==========
 
   /**
-   * 加载文章树
+   * 加载文章列表
    */
-  const loadKnowledgeTree = async (kbId: string) => {
-    isLoadingTree.value = true
+  const loadArticles = async (kbId: string, params?: { page?: number; pageSize?: number }) => {
+    isLoadingArticles.value = true
     error.value = null
     try {
-      const tree = await knowledgeBaseApi.getKnowledgeTree(kbId)
-      knowledgeTree.value = tree
-      return tree
+      const response = await knowledgeBaseApi.getArticles(kbId, params)
+      articles.value = response.items || []
+      return response
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load knowledge tree'
+      error.value = err instanceof Error ? err.message : 'Failed to load articles'
       throw err
     } finally {
-      isLoadingTree.value = false
+      isLoadingArticles.value = false
     }
   }
 
   /**
-   * 加载文章详情
+   * 加载文章详情（含章节树）
    */
-  const loadKnowledge = async (kbId: string, knowledgeId: string) => {
+  const loadArticle = async (kbId: string, articleId: string) => {
     isLoading.value = true
     error.value = null
     try {
-      const knowledge = await knowledgeBaseApi.getKnowledge(kbId, knowledgeId)
-      currentKnowledge.value = knowledge
-      // 同时加载知识点列表
-      await loadKnowledgePoints(kbId, knowledgeId)
-      return knowledge
+      const result = await knowledgeBaseApi.getArticleTree(kbId, articleId)
+      currentArticle.value = result.article
+      sectionTree.value = result.tree || []
+      return result
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load knowledge'
+      error.value = err instanceof Error ? err.message : 'Failed to load article'
       throw err
     } finally {
       isLoading.value = false
@@ -209,16 +229,15 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 创建文章
    */
-  const createKnowledge = async (kbId: string, data: CreateKnowledgeRequest) => {
+  const createArticle = async (kbId: string, data: CreateKbArticleRequest) => {
     isLoading.value = true
     error.value = null
     try {
-      const knowledge = await knowledgeBaseApi.createKnowledge(kbId, data)
-      // 刷新文章树
-      await loadKnowledgeTree(kbId)
-      return knowledge
+      const article = await knowledgeBaseApi.createArticle(kbId, data)
+      articles.value.unshift(article)
+      return article
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to create knowledge'
+      error.value = err instanceof Error ? err.message : 'Failed to create article'
       throw err
     } finally {
       isLoading.value = false
@@ -228,18 +247,20 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 更新文章
    */
-  const updateKnowledge = async (kbId: string, knowledgeId: string, data: UpdateKnowledgeRequest) => {
+  const updateArticle = async (kbId: string, articleId: string, data: UpdateKbArticleRequest) => {
     error.value = null
     try {
-      const updated = await knowledgeBaseApi.updateKnowledge(kbId, knowledgeId, data)
-      if (currentKnowledge.value?.id === knowledgeId) {
-        currentKnowledge.value = updated
+      const updated = await knowledgeBaseApi.updateArticle(kbId, articleId, data)
+      const index = articles.value.findIndex(a => a.id === articleId)
+      if (index !== -1) {
+        articles.value[index] = updated
       }
-      // 刷新文章树
-      await loadKnowledgeTree(kbId)
+      if (currentArticle.value?.id === articleId) {
+        currentArticle.value = updated
+      }
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to update knowledge'
+      error.value = err instanceof Error ? err.message : 'Failed to update article'
       throw err
     }
   }
@@ -247,54 +268,57 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 删除文章
    */
-  const deleteKnowledge = async (kbId: string, knowledgeId: string) => {
+  const deleteArticle = async (kbId: string, articleId: string) => {
     error.value = null
     try {
-      await knowledgeBaseApi.deleteKnowledge(kbId, knowledgeId)
-      if (currentKnowledge.value?.id === knowledgeId) {
-        currentKnowledge.value = null
-        currentPoints.value = []
+      await knowledgeBaseApi.deleteArticle(kbId, articleId)
+      articles.value = articles.value.filter(a => a.id !== articleId)
+      if (currentArticle.value?.id === articleId) {
+        currentArticle.value = null
+        sectionTree.value = []
+        paragraphs.value = []
       }
-      // 刷新文章树
-      await loadKnowledgeTree(kbId)
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to delete knowledge'
+      error.value = err instanceof Error ? err.message : 'Failed to delete article'
       throw err
     }
   }
 
-  // ========== Actions - 知识点管理 ==========
+  // ========== Actions - 章节管理 ==========
 
   /**
-   * 加载知识点列表
+   * 加载章节树
    */
-  const loadKnowledgePoints = async (kbId: string, knowledgeId: string) => {
-    isLoadingPoints.value = true
+  const loadSectionTree = async (kbId: string, articleId: string) => {
+    isLoadingSections.value = true
     error.value = null
     try {
-      const response = await knowledgeBaseApi.getKnowledgePoints(kbId, knowledgeId)
-      currentPoints.value = response.items || []
-      return response
+      const result = await knowledgeBaseApi.getArticleTree(kbId, articleId)
+      sectionTree.value = result.tree || []
+      return result.tree
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load knowledge points'
+      error.value = err instanceof Error ? err.message : 'Failed to load section tree'
       throw err
     } finally {
-      isLoadingPoints.value = false
+      isLoadingSections.value = false
     }
   }
 
   /**
-   * 加载知识点详情
+   * 创建章节
    */
-  const loadKnowledgePoint = async (kbId: string, knowledgeId: string, pointId: string) => {
+  const createSection = async (kbId: string, data: CreateKbSectionRequest) => {
     isLoading.value = true
     error.value = null
     try {
-      const point = await knowledgeBaseApi.getKnowledgePoint(kbId, knowledgeId, pointId)
-      currentPoint.value = point
-      return point
+      const section = await knowledgeBaseApi.createSection(kbId, data)
+      // 刷新章节树
+      if (currentArticle.value) {
+        await loadSectionTree(kbId, data.article_id)
+      }
+      return section
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load knowledge point'
+      error.value = err instanceof Error ? err.message : 'Failed to create section'
       throw err
     } finally {
       isLoading.value = false
@@ -302,57 +326,209 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   }
 
   /**
-   * 创建知识点
+   * 更新章节
    */
-  const createKnowledgePoint = async (kbId: string, knowledgeId: string, data: CreateKnowledgePointRequest) => {
-    isLoading.value = true
+  const updateSection = async (kbId: string, sectionId: string, data: UpdateKbSectionRequest) => {
     error.value = null
     try {
-      const point = await knowledgeBaseApi.createKnowledgePoint(kbId, knowledgeId, data)
-      currentPoints.value.push(point)
-      return point
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to create knowledge point'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * 更新知识点
-   */
-  const updateKnowledgePoint = async (kbId: string, knowledgeId: string, pointId: string, data: UpdateKnowledgePointRequest) => {
-    error.value = null
-    try {
-      const updated = await knowledgeBaseApi.updateKnowledgePoint(kbId, knowledgeId, pointId, data)
-      const index = currentPoints.value.findIndex(p => p.id === pointId)
-      if (index !== -1) {
-        currentPoints.value[index] = updated
-      }
-      if (currentPoint.value?.id === pointId) {
-        currentPoint.value = updated
+      const updated = await knowledgeBaseApi.updateSection(kbId, sectionId, data)
+      if (currentSection.value?.id === sectionId) {
+        currentSection.value = updated
       }
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to update knowledge point'
+      error.value = err instanceof Error ? err.message : 'Failed to update section'
       throw err
     }
   }
 
   /**
-   * 删除知识点
+   * 删除章节
    */
-  const deleteKnowledgePoint = async (kbId: string, knowledgeId: string, pointId: string) => {
+  const deleteSection = async (kbId: string, sectionId: string) => {
     error.value = null
     try {
-      await knowledgeBaseApi.deleteKnowledgePoint(kbId, knowledgeId, pointId)
-      currentPoints.value = currentPoints.value.filter(p => p.id !== pointId)
-      if (currentPoint.value?.id === pointId) {
-        currentPoint.value = null
+      await knowledgeBaseApi.deleteSection(kbId, sectionId)
+      if (currentSection.value?.id === sectionId) {
+        currentSection.value = null
+        paragraphs.value = []
       }
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to delete knowledge point'
+      error.value = err instanceof Error ? err.message : 'Failed to delete section'
+      throw err
+    }
+  }
+
+  /**
+   * 移动章节（上移/下移）
+   */
+  const moveSection = async (kbId: string, sectionId: string, direction: 'up' | 'down') => {
+    error.value = null
+    try {
+      const result = await knowledgeBaseApi.moveSection(kbId, sectionId, { direction })
+      return result
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to move section'
+      throw err
+    }
+  }
+
+  // ========== Actions - 段落管理 ==========
+
+  /**
+   * 加载段落列表
+   */
+  const loadParagraphs = async (kbId: string, sectionId: string, params?: { page?: number; pageSize?: number }) => {
+    isLoadingParagraphs.value = true
+    error.value = null
+    try {
+      const response = await knowledgeBaseApi.queryParagraphs(kbId, {
+        section_id: sectionId,
+        pagination: params,
+      })
+      paragraphs.value = response.items || []
+      return response
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load paragraphs'
+      throw err
+    } finally {
+      isLoadingParagraphs.value = false
+    }
+  }
+
+  /**
+   * 创建段落
+   */
+  const createParagraph = async (kbId: string, data: CreateKbParagraphRequest) => {
+    isLoading.value = true
+    error.value = null
+    try {
+      const paragraph = await knowledgeBaseApi.createParagraph(kbId, data)
+      paragraphs.value.push(paragraph)
+      return paragraph
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to create paragraph'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * 更新段落
+   */
+  const updateParagraph = async (kbId: string, paragraphId: string, data: UpdateKbParagraphRequest) => {
+    error.value = null
+    try {
+      const updated = await knowledgeBaseApi.updateParagraph(kbId, paragraphId, data)
+      const index = paragraphs.value.findIndex(p => p.id === paragraphId)
+      if (index !== -1) {
+        paragraphs.value[index] = updated
+      }
+      if (currentParagraph.value?.id === paragraphId) {
+        currentParagraph.value = updated
+      }
+      return updated
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update paragraph'
+      throw err
+    }
+  }
+
+  /**
+   * 删除段落
+   */
+  const deleteParagraph = async (kbId: string, paragraphId: string) => {
+    error.value = null
+    try {
+      await knowledgeBaseApi.deleteParagraph(kbId, paragraphId)
+      paragraphs.value = paragraphs.value.filter(p => p.id !== paragraphId)
+      if (currentParagraph.value?.id === paragraphId) {
+        currentParagraph.value = null
+      }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to delete paragraph'
+      throw err
+    }
+  }
+
+  /**
+   * 移动段落（上移/下移）
+   */
+  const moveParagraph = async (kbId: string, paragraphId: string, direction: 'up' | 'down') => {
+    error.value = null
+    try {
+      const result = await knowledgeBaseApi.moveParagraph(kbId, paragraphId, { direction })
+      return result
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to move paragraph'
+      throw err
+    }
+  }
+
+  // ========== Actions - 标签管理 ==========
+
+  /**
+   * 加载标签列表
+   */
+  const loadTags = async (kbId: string) => {
+    error.value = null
+    try {
+      const tagList = await knowledgeBaseApi.getTags(kbId)
+      tags.value = tagList
+      return tagList
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load tags'
+      throw err
+    }
+  }
+
+  /**
+   * 创建标签
+   */
+  const createTag = async (kbId: string, data: CreateKbTagRequest) => {
+    isLoading.value = true
+    error.value = null
+    try {
+      const tag = await knowledgeBaseApi.createTag(kbId, data)
+      tags.value.push(tag)
+      return tag
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to create tag'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * 更新标签
+   */
+  const updateTag = async (kbId: string, tagId: string, data: UpdateKbTagRequest) => {
+    error.value = null
+    try {
+      const updated = await knowledgeBaseApi.updateTag(kbId, tagId, data)
+      const index = tags.value.findIndex(t => t.id === tagId)
+      if (index !== -1) {
+        tags.value[index] = updated
+      }
+      return updated
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update tag'
+      throw err
+    }
+  }
+
+  /**
+   * 删除标签
+   */
+  const deleteTag = async (kbId: string, tagId: string) => {
+    error.value = null
+    try {
+      await knowledgeBaseApi.deleteTag(kbId, tagId)
+      tags.value = tags.value.filter(t => t.id !== tagId)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to delete tag'
       throw err
     }
   }
@@ -361,7 +537,6 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
 
   /**
    * 语义搜索（单个知识库内）
-   * 注意：默认阈值设为 0.1，因为 all-MiniLM-L6-v2 的相似度通常在 0.1-0.5 之间
    */
   const search = async (kbId: string, query: string, topK = 5, threshold = 0.1) => {
     isSearching.value = true
@@ -385,7 +560,6 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
 
   /**
    * 全局语义搜索（跨所有知识库）
-   * 注意：默认阈值设为 0.1，因为 all-MiniLM-L6-v2 的相似度通常在 0.1-0.5 之间
    */
   const globalSearch = async (query: string, topK = 10, threshold = 0.1) => {
     isSearching.value = true
@@ -424,20 +598,25 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     // State
     knowledgeBases,
     currentKb,
-    knowledgeTree,
-    currentKnowledge,
-    currentPoints,
-    currentPoint,
+    articles,
+    currentArticle,
+    sectionTree,
+    currentSection,
+    paragraphs,
+    currentParagraph,
+    tags,
     searchResults,
     isLoading,
-    isLoadingTree,
-    isLoadingPoints,
+    isLoadingArticles,
+    isLoadingSections,
+    isLoadingParagraphs,
     isSearching,
     error,
 
     // Getters
-    totalPointCount,
+    totalParagraphCount,
     hasCurrentKb,
+    hasCurrentArticle,
 
     // Actions - 知识库管理
     loadKnowledgeBases,
@@ -448,18 +627,31 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     clearCurrentKb,
 
     // Actions - 文章管理
-    loadKnowledgeTree,
-    loadKnowledge,
-    createKnowledge,
-    updateKnowledge,
-    deleteKnowledge,
+    loadArticles,
+    loadArticle,
+    createArticle,
+    updateArticle,
+    deleteArticle,
 
-    // Actions - 知识点管理
-    loadKnowledgePoints,
-    loadKnowledgePoint,
-    createKnowledgePoint,
-    updateKnowledgePoint,
-    deleteKnowledgePoint,
+    // Actions - 章节管理
+    loadSectionTree,
+    createSection,
+    updateSection,
+    deleteSection,
+    moveSection,
+
+    // Actions - 段落管理
+    loadParagraphs,
+    createParagraph,
+    updateParagraph,
+    deleteParagraph,
+    moveParagraph,
+
+    // Actions - 标签管理
+    loadTags,
+    createTag,
+    updateTag,
+    deleteTag,
 
     // Actions - 搜索
     search,

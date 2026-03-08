@@ -38,117 +38,156 @@
 
     <!-- Main Content -->
     <div v-else class="detail-content">
-      <!-- Left: Article Tree -->
-      <div class="tree-panel">
-        <div class="tree-header">
-          <h3>{{ $t('knowledgeBase.articleTree') }}</h3>
-          <div class="tree-actions">
-            <button class="btn-icon" @click="expandAll" :title="$t('knowledgeBase.expandAll')">+⊟</button>
-            <button class="btn-icon" @click="collapseAll" :title="$t('knowledgeBase.collapseAll')">⊟-</button>
+      <!-- Left: Article List -->
+      <div class="article-panel">
+        <div class="panel-header">
+          <h3>{{ $t('knowledgeBase.articles') || '文章列表' }}</h3>
+          <button class="btn-icon" @click="showArticleDialog = true" :title="$t('knowledgeBase.article.create')">+</button>
+        </div>
+
+        <!-- Article List -->
+        <div class="article-list">
+          <div v-if="kbStore.articles.length === 0" class="list-empty">
+            {{ $t('knowledgeBase.noArticles') }}
+          </div>
+          <div
+            v-else
+            v-for="article in kbStore.articles"
+            :key="article.id"
+            class="article-item"
+            :class="{ selected: selectedArticle?.id === article.id }"
+            @click="selectArticle(article)"
+          >
+            <div class="article-item-content">
+              <span class="article-icon">📄</span>
+              <span class="article-title">{{ article.title }}</span>
+              <span v-if="article.status !== 'ready'" class="status-badge" :class="article.status">
+                {{ article.status === 'pending' ? '待处理' : article.status === 'processing' ? '处理中' : '失败' }}
+              </span>
+            </div>
+            <div class="article-item-actions">
+              <button class="btn-sm-icon" @click.stop="editArticle(article)" :title="$t('common.edit')">✏️</button>
+              <button class="btn-sm-icon danger" @click.stop="deleteArticle(article)" :title="$t('common.delete')">🗑️</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Middle: Section Tree -->
+      <div class="section-panel">
+        <div class="panel-header">
+          <h3>{{ $t('knowledgeBase.sections') || '章节结构' }}</h3>
+          <div class="panel-actions">
+            <button class="btn-icon" @click="expandAllSections" :title="$t('knowledgeBase.expandAll')">+⊟</button>
+            <button class="btn-icon" @click="collapseAllSections" :title="$t('knowledgeBase.collapseAll')">⊟-</button>
+            <button
+              class="btn-icon"
+              @click="showSectionDialog = true"
+              :title="$t('knowledgeBase.section.create') || '创建章节'"
+              :disabled="!selectedArticle"
+            >+</button>
           </div>
         </div>
 
-        <!-- Tree -->
-        <div class="tree-content">
-          <div v-if="kbStore.knowledgeTree.length === 0" class="tree-empty">
-            {{ $t('knowledgeBase.noArticles') }}
+        <!-- Section Tree -->
+        <div class="section-tree">
+          <div v-if="!selectedArticle" class="tree-empty">
+            {{ $t('knowledgeBase.selectArticleHint') || '请先选择一篇文章' }}
           </div>
-          <div v-else class="knowledge-tree">
-            <KnowledgeTreeNode
-              v-for="node in kbStore.knowledgeTree"
-              :key="treeKey + '-' + node.id"
-              :node="node"
+          <div v-else-if="kbStore.sectionTree.length === 0" class="tree-empty">
+            {{ $t('knowledgeBase.noSections') || '暂无章节，点击 + 创建' }}
+          </div>
+          <div v-else class="section-list">
+            <SectionTreeNode
+              v-for="section in kbStore.sectionTree"
+              :key="sectionKey + '-' + section.id"
+              :section="section"
               :level="0"
-              :selected-id="selectedKnowledge?.id"
-              :force-expand="forceExpand"
-              @select="selectKnowledge"
-              @edit="editKnowledge"
-              @delete="deleteKnowledge"
-              @add-child="addChildKnowledge"
+              :selected-id="selectedSection?.id"
+              :force-expand="forceExpandSections"
+              @select="selectSection"
+              @edit="editSection"
+              @delete="deleteSection"
+              @add-child="addChildSection"
             />
           </div>
         </div>
       </div>
 
-      <!-- Right: Content Panel -->
+      <!-- Right: Paragraph Content -->
       <div class="content-panel">
         <!-- Empty State -->
-        <div v-if="!selectedKnowledge" class="content-empty">
+        <div v-if="!selectedSection" class="content-empty">
           <div class="empty-icon">📖</div>
-          <p>{{ $t('knowledgeBase.selectArticleHint') || 'Select an article from the left' }}</p>
+          <p>{{ $t('knowledgeBase.selectSectionHint') || '请从中间选择一个章节查看内容' }}</p>
         </div>
 
-        <!-- Knowledge Content -->
+        <!-- Section Content -->
         <div v-else class="content-main">
           <div class="content-header">
             <div class="title-row">
-              <h2 class="content-title">{{ selectedKnowledge.title }}</h2>
+              <h2 class="content-title">{{ selectedSection.title || '未命名章节' }}</h2>
               <div class="title-actions">
-                <button class="btn-icon-action btn-edit" @click="editCurrentKnowledge" :title="$t('knowledgeBase.article.edit')">
+                <button class="btn-icon-action btn-edit" @click="editSection(selectedSection)" :title="$t('common.edit')">
                   ✏️
                 </button>
-                <button class="btn-icon-action btn-delete" @click="deleteCurrentKnowledge" :title="$t('common.delete')">
+                <button class="btn-icon-action btn-delete" @click="deleteSection(selectedSection)" :title="$t('common.delete')">
                   🗑️
                 </button>
               </div>
             </div>
             <div class="content-meta">
               <span class="meta-item">
-                {{ $t('knowledgeBase.status.' + selectedKnowledge.status) }}
+                {{ $t('knowledgeBase.paragraphCount', { count: kbStore.paragraphs.length }) || `${kbStore.paragraphs.length} 个段落` }}
               </span>
               <span class="meta-item">
-                {{ $t('knowledgeBase.sourceType.' + selectedKnowledge.source_type) }}
-              </span>
-              <span class="meta-item">
-                {{ $t('knowledgeBase.point.tokenCount', { count: totalTokens }) }}
+                {{ $t('knowledgeBase.tokenCount', { count: totalTokens }) || `${totalTokens} tokens` }}
               </span>
             </div>
           </div>
 
-          <!-- Summary -->
-          <div v-if="selectedKnowledge.summary" class="content-section">
-            <h4 class="section-title">{{ $t('expert.introduction') }}</h4>
-            <p class="summary-text">{{ selectedKnowledge.summary }}</p>
-          </div>
-
-          <!-- Knowledge Points -->
+          <!-- Paragraphs -->
           <div class="content-section">
             <div class="section-header">
-              <h4 class="section-title">{{ $t('knowledgeBase.point.title') }}</h4>
-              <button class="btn-sm" @click="showPointDialog = true">
-                + {{ $t('knowledgeBase.point.create') }}
+              <h4 class="section-title">{{ $t('knowledgeBase.paragraphs') || '段落列表' }}</h4>
+              <button class="btn-sm" @click="showParagraphDialog = true">
+                + {{ $t('knowledgeBase.paragraph.create') || '添加段落' }}
               </button>
             </div>
 
-            <div v-if="kbStore.currentPoints.length === 0" class="points-empty">
-              {{ $t('knowledgeBase.point.noPoints') }}
+            <div v-if="kbStore.paragraphs.length === 0" class="points-empty">
+              {{ $t('knowledgeBase.paragraph.noParagraphs') || '暂无段落，点击 + 添加' }}
             </div>
-            <div v-else class="points-list">
+            <div v-else class="paragraphs-list">
               <div
-                v-for="point in kbStore.currentPoints"
-                :key="point.id"
-                class="point-card"
-                :class="{ 'point-vectorized': (point as any).is_vectorized }"
-                @click="selectPoint(point)"
+                v-for="paragraph in kbStore.paragraphs"
+                :key="paragraph.id"
+                class="paragraph-card"
+                :class="{ 'paragraph-vectorized': paragraph.is_vectorized }"
+                @click="selectParagraph(paragraph)"
               >
-                <div class="point-header">
-                  <div v-if="point.title" class="point-title">{{ point.title }}</div>
+                <div class="paragraph-header">
+                  <div v-if="paragraph.title" class="paragraph-title">{{ paragraph.title }}</div>
+                  <div class="paragraph-actions">
+                    <button class="btn-sm-icon" @click.stop="editParagraph(paragraph)" :title="$t('common.edit')">✏️</button>
+                    <button class="btn-sm-icon danger" @click.stop="deleteParagraph(paragraph)" :title="$t('common.delete')">🗑️</button>
+                  </div>
                 </div>
-                <div class="point-content" v-html="renderMarkdown(point.content)"></div>
-                <div class="point-meta">
-                  <span>{{ $t('knowledgeBase.point.tokenCount', { count: point.token_count }) }}</span>
-                  <div class="point-status-actions">
-                    <span v-if="(point as any).is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.point.vectorized')">
-                      ✅ {{ $t('knowledgeBase.point.vectorized') }}
+                <div class="paragraph-content" v-html="renderMarkdown(paragraph.content)"></div>
+                <div class="paragraph-meta">
+                  <span>{{ $t('knowledgeBase.paragraph.tokenCount', { count: paragraph.token_count }) }}</span>
+                  <div class="paragraph-status-actions">
+                    <span v-if="paragraph.is_vectorized" class="status-badge vectorized" :title="$t('knowledgeBase.paragraph.vectorized')">
+                      ✅ {{ $t('knowledgeBase.paragraph.vectorized') }}
                     </span>
-                    <span v-else class="status-badge not-vectorized" :title="$t('knowledgeBase.point.notVectorized')">
-                      ⏳ {{ $t('knowledgeBase.point.notVectorized') }}
+                    <span v-else class="status-badge not-vectorized" :title="$t('knowledgeBase.paragraph.notVectorized')">
+                      ⏳ {{ $t('knowledgeBase.paragraph.notVectorized') }}
                     </span>
                     <button
-                      v-if="(point as any).is_vectorized"
+                      v-if="paragraph.is_vectorized"
                       class="status-badge revectorize-btn"
-                      @click.stop="handlePointRevectorize(point)"
-                      :title="$t('knowledgeBase.point.revectorizeHint')"
+                      @click.stop="handleParagraphRevectorize(paragraph)"
+                      :title="$t('knowledgeBase.paragraph.revectorizeHint')"
                     >
                       🔄
                     </button>
@@ -182,7 +221,7 @@
             <h4>{{ $t('knowledgeBase.searchResult.title') }}</h4>
             <div
               v-for="result in kbStore.searchResults"
-              :key="result.point.id"
+              :key="result.paragraph.id"
               class="search-result-item"
             >
               <div class="result-score">
@@ -190,9 +229,9 @@
               </div>
               <div class="result-content">
                 <div class="result-location">
-                  {{ result.knowledge.title }}
+                  {{ result.article?.title || 'Unknown' }}<span v-if="result.section"> > {{ result.section.title }}</span>
                 </div>
-                <div class="result-text" v-html="renderMarkdown(result.point.content)"></div>
+                <div class="result-text" v-html="renderMarkdown(result.paragraph.content)"></div>
               </div>
             </div>
           </div>
@@ -214,25 +253,16 @@
     <div v-if="showArticleDialog" class="dialog-overlay">
       <div class="dialog">
         <h3 class="dialog-title">
-          {{ editingKnowledge ? $t('knowledgeBase.article.edit') : $t('knowledgeBase.article.create') }}
+          {{ editingArticle ? $t('knowledgeBase.article.edit') : $t('knowledgeBase.article.create') }}
         </h3>
         <div class="dialog-body">
           <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.article.titlePlaceholder') }}</label>
-            <input v-model="articleForm.title" type="text" class="form-input" />
-          </div>
-          <div v-if="!editingKnowledge" class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.article.parent') }}</label>
-            <select v-model="articleForm.parent_id" class="form-select">
-              <option :value="undefined">{{ $t('knowledgeBase.article.noParent') }}</option>
-              <option v-for="k in flatKnowledgeList" :key="k.id" :value="k.id">
-                {{ k.title }}
-              </option>
-            </select>
+            <label class="form-label">{{ $t('knowledgeBase.article.titleLabel') || '标题' }}</label>
+            <input v-model="articleForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.article.titlePlaceholder')" />
           </div>
           <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.article.summary') }}</label>
-            <textarea v-model="articleForm.summary" class="form-textarea" rows="3"></textarea>
+            <label class="form-label">{{ $t('knowledgeBase.article.summaryLabel') || '摘要' }}</label>
+            <textarea v-model="articleForm.summary" class="form-textarea" rows="3" :placeholder="$t('knowledgeBase.article.summaryPlaceholder')"></textarea>
           </div>
         </div>
         <div class="dialog-footer">
@@ -244,39 +274,69 @@
       </div>
     </div>
 
-    <!-- Point Dialog -->
-    <div v-if="showPointDialog" class="dialog-overlay">
-      <div class="dialog dialog-large">
+    <!-- Section Dialog -->
+    <div v-if="showSectionDialog" class="dialog-overlay">
+      <div class="dialog">
         <h3 class="dialog-title">
-          {{ editingPoint ? $t('knowledgeBase.point.edit') : $t('knowledgeBase.point.create') }}
+          {{ editingSection ? $t('knowledgeBase.section.edit') || '编辑章节' : $t('knowledgeBase.section.create') || '创建章节' }}
         </h3>
         <div class="dialog-body">
           <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.point.titleLabel') }}</label>
-            <input v-model="pointForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.point.titlePlaceholder')" />
+            <label class="form-label">{{ $t('knowledgeBase.section.titleLabel') || '标题' }}</label>
+            <input v-model="sectionForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.section.titlePlaceholder') || '输入章节标题'"/>
+          </div>
+          <div v-if="!editingSection" class="form-group">
+            <label class="form-label">{{ $t('knowledgeBase.section.parent') || '父章节' }}</label>
+            <select v-model="sectionForm.parent_id" class="form-select">
+              <option :value="undefined">{{ $t('knowledgeBase.section.noParent') || '无（顶级章节）' }}</option>
+              <option v-for="s in flatSectionList" :key="s.id" :value="s.id">
+                {{ '　'.repeat(s.level || 0) }}{{ s.title }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="closeSectionDialog">{{ $t('common.cancel') }}</button>
+          <button class="btn-primary" @click="submitSection" :disabled="!sectionForm.title.trim()">
+            {{ $t('common.save') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paragraph Dialog -->
+    <div v-if="showParagraphDialog" class="dialog-overlay">
+      <div class="dialog dialog-large">
+        <h3 class="dialog-title">
+          {{ editingParagraph ? $t('knowledgeBase.paragraph.edit') || '编辑段落' : $t('knowledgeBase.paragraph.create') || '创建段落' }}
+        </h3>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label class="form-label">{{ $t('knowledgeBase.paragraph.titleLabel') || '标题（可选）' }}</label>
+            <input v-model="paragraphForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.paragraph.titlePlaceholder')" />
           </div>
           <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.point.contentLabel') }}</label>
+            <label class="form-label">{{ $t('knowledgeBase.paragraph.contentLabel') || '内容' }}</label>
             <textarea
-              v-model="pointForm.content"
+              v-model="paragraphForm.content"
               class="form-textarea"
               rows="8"
-              :placeholder="$t('knowledgeBase.point.contentPlaceholder')"
+              :placeholder="$t('knowledgeBase.paragraph.contentPlaceholder')"
             ></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.point.contextLabel') }}</label>
+            <label class="form-label">{{ $t('knowledgeBase.paragraph.contextLabel') || '上下文（可选）' }}</label>
             <textarea
-              v-model="pointForm.context"
+              v-model="paragraphForm.context"
               class="form-textarea"
               rows="2"
-              :placeholder="$t('knowledgeBase.point.contextPlaceholder')"
+              :placeholder="$t('knowledgeBase.paragraph.contextPlaceholder')"
             ></textarea>
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closePointDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="submitPoint" :disabled="!pointForm.content.trim()">
+          <button class="btn-cancel" @click="closeParagraphDialog">{{ $t('common.cancel') }}</button>
+          <button class="btn-primary" @click="submitParagraph" :disabled="!paragraphForm.content.trim()">
             {{ $t('common.save') }}
           </button>
         </div>
@@ -290,8 +350,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
-import KnowledgeTreeNode from '@/components/KnowledgeTreeNode.vue'
-import type { Knowledge, KnowledgePoint } from '@/types'
+import SectionTreeNode from '@/components/SectionTreeNode.vue'
+import type { KbArticle, KbSection, KbParagraph } from '@/types'
 import { marked } from 'marked'
 import { knowledgeBaseApi } from '@/api/services'
 
@@ -302,19 +362,22 @@ const kbStore = useKnowledgeBaseStore()
 
 // State
 const isLoading = ref(true)
-const selectedKnowledge = ref<Knowledge | null>(null)
-const selectedPoint = ref<KnowledgePoint | null>(null)
+const selectedArticle = ref<KbArticle | null>(null)
+const selectedSection = ref<KbSection | null>(null)
+const selectedParagraph = ref<KbParagraph | null>(null)
 
 // Tree expansion state
-const forceExpand = ref<boolean | null>(null)
-const treeKey = ref(0)
+const forceExpandSections = ref<boolean | null>(null)
+const sectionKey = ref(0)
 
 // Dialogs
 const showSearchDialog = ref(false)
 const showArticleDialog = ref(false)
-const showPointDialog = ref(false)
-const editingKnowledge = ref<Knowledge | null>(null)
-const editingPoint = ref<KnowledgePoint | null>(null)
+const showSectionDialog = ref(false)
+const showParagraphDialog = ref(false)
+const editingArticle = ref<KbArticle | null>(null)
+const editingSection = ref<KbSection | null>(null)
+const editingParagraph = ref<KbParagraph | null>(null)
 const isRevectorizing = ref(false)
 const revectorizeProgress = ref({ total: 0, success: 0, failed: 0, current: 0, status: '' })
 let revectorizeJobId = ''
@@ -326,11 +389,15 @@ const hasSearched = ref(false)
 // Forms
 const articleForm = ref({
   title: '',
-  parent_id: undefined as string | undefined,
   summary: '',
 })
 
-const pointForm = ref({
+const sectionForm = ref({
+  title: '',
+  parent_id: undefined as string | undefined,
+})
+
+const paragraphForm = ref({
   title: '',
   content: '',
   context: '',
@@ -343,8 +410,6 @@ const getRouteParam = (param: string | string[] | undefined): string | undefined
 }
 
 // Computed
-// 支持字符串(UUID)和数字类型的 kbId
-// 注意：kbId 可能为 undefined（直接访问 URL 时），但组件会在 onMounted 中处理
 const kbId = computed(() => getRouteParam(route.params.kbId))
 
 // 获取确保非空的 kbId，用于 API 调用
@@ -356,28 +421,29 @@ const requireKbId = (): string => {
   return id
 }
 
-const flatKnowledgeList = computed(() => {
-  const flatten = (nodes: Knowledge[]): Knowledge[] => {
-    return nodes.reduce<Knowledge[]>((acc, node) => {
-      acc.push(node)
-      if (node.children) {
-        acc.push(...flatten(node.children))
+// 扁平化章节列表（用于父章节选择器）
+const flatSectionList = computed(() => {
+  const flatten = (sections: KbSection[], level = 0): (KbSection & { level: number })[] => {
+    return sections.reduce<(KbSection & { level: number })[]>((acc, section) => {
+      acc.push({ ...section, level })
+      if (section.children && section.children.length > 0) {
+        acc.push(...flatten(section.children, level + 1))
       }
       return acc
     }, [])
   }
-  return flatten(kbStore.knowledgeTree)
+  return flatten(kbStore.sectionTree)
 })
 
 const totalTokens = computed(() => {
-  return kbStore.currentPoints.reduce((sum, p) => sum + p.token_count, 0)
+  return kbStore.paragraphs.reduce((sum, p) => sum + (p.token_count || 0), 0)
 })
 
 // Methods
 const handleRevectorize = async () => {
   if (!kbId.value) return
 
-  if (!confirm('确定要重新向量化所有知识点吗？这将使用当前配置的嵌入模型重新生成所有向量。')) {
+  if (!confirm('确定要重新向量化所有段落吗？这将使用当前配置的嵌入模型重新生成所有向量。')) {
     return
   }
 
@@ -403,9 +469,9 @@ const handleRevectorize = async () => {
         } else if (progress.status === 'completed') {
           // 完成
           alert(`重新向量化完成！\n总计: ${progress.total}\n成功: ${progress.success}\n失败: ${progress.failed}\n向量维度: ${progress.embedding_dim}`)
-          // 刷新知识点列表（如果有选中文章）
-          if (selectedKnowledge.value?.id) {
-            await kbStore.loadKnowledgePoints(requireKbId(), selectedKnowledge.value.id)
+          // 刷新段落列表（如果有选中章节）
+          if (selectedSection.value?.id) {
+            await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id)
           }
           isRevectorizing.value = false
           revectorizeJobId = ''
@@ -436,155 +502,223 @@ const renderMarkdown = (content: string) => {
   }
 }
 
-const selectKnowledge = async (knowledge: Knowledge) => {
-  selectedKnowledge.value = knowledge
-  selectedPoint.value = null
-  // Load points for this knowledge
-  await kbStore.loadKnowledge(requireKbId(), knowledge.id)
-}
-
-const selectPoint = (point: KnowledgePoint) => {
-    selectedPoint.value = point
-  }
-
-  // 单个知识点重新向量化
-  const handlePointRevectorize = async (point: KnowledgePoint) => {
-    if (!selectedKnowledge.value) return
-
-    try {
-      await knowledgeBaseApi.deletePointEmbedding(
-        requireKbId(),
-        selectedKnowledge.value.id,
-        point.id
-      )
-      // 刷新知识点列表
-      await kbStore.loadKnowledgePoints(requireKbId(), selectedKnowledge.value.id)
-      alert('知识点重新向量化完成！')
-    } catch (error: any) {
-      alert('重新向量化失败: ' + (error.message || '未知错误'))
-    }
-  }
-
-const expandAll = () => {
-  forceExpand.value = true
-  treeKey.value++ // Force re-render
-}
-
-const collapseAll = () => {
-  forceExpand.value = false
-  treeKey.value++ // Force re-render
-}
-
 // Article operations
-const editCurrentKnowledge = () => {
-  if (selectedKnowledge.value) {
-    editKnowledge(selectedKnowledge.value)
-  }
+const selectArticle = async (article: KbArticle) => {
+  selectedArticle.value = article
+  selectedSection.value = null
+  selectedParagraph.value = null
+  // Load sections for this article
+  await kbStore.loadSectionTree(requireKbId(), article.id)
 }
 
-const deleteCurrentKnowledge = () => {
-  if (selectedKnowledge.value) {
-    deleteKnowledge(selectedKnowledge.value)
-  }
-}
-
-const editKnowledge = (knowledge: Knowledge) => {
-  editingKnowledge.value = knowledge
+const editArticle = (article: KbArticle) => {
+  editingArticle.value = article
   articleForm.value = {
-    title: knowledge.title,
-    parent_id: knowledge.parent_id ?? undefined,
-    summary: knowledge.summary || '',
+    title: article.title,
+    summary: article.summary || '',
   }
   showArticleDialog.value = true
 }
 
-const addChildKnowledge = (parent: Knowledge) => {
-  editingKnowledge.value = null
-  articleForm.value = {
-    title: '',
-    parent_id: parent.id ?? undefined,
-    summary: '',
-  }
-  showArticleDialog.value = true
-}
-
-const deleteKnowledge = async (knowledge: Knowledge) => {
-  if (!confirm(t('knowledgeBase.article.deleteConfirm', { title: knowledge.title }))) return
+const deleteArticle = async (article: KbArticle) => {
+  if (!confirm(t('knowledgeBase.article.deleteConfirm', { title: article.title }))) return
 
   try {
-    await kbStore.deleteKnowledge(requireKbId(), knowledge.id)
-    if (selectedKnowledge.value?.id === knowledge.id) {
-      selectedKnowledge.value = null
+    await kbStore.deleteArticle(requireKbId(), article.id)
+    if (selectedArticle.value?.id === article.id) {
+      selectedArticle.value = null
+      selectedSection.value = null
     }
   } catch (error) {
-    console.error('Failed to delete knowledge:', error)
+    console.error('Failed to delete article:', error)
   }
 }
 
 const closeArticleDialog = () => {
   showArticleDialog.value = false
-  editingKnowledge.value = null
-  articleForm.value = { title: '', parent_id: undefined as string | undefined, summary: '' }
+  editingArticle.value = null
+  articleForm.value = { title: '', summary: '' }
 }
 
 const submitArticle = async () => {
   if (!articleForm.value.title.trim()) return
 
   try {
-    if (editingKnowledge.value) {
-      const updated = await kbStore.updateKnowledge(requireKbId(), editingKnowledge.value.id, {
+    if (editingArticle.value) {
+      const updated = await kbStore.updateArticle(requireKbId(), editingArticle.value.id, {
         title: articleForm.value.title,
         summary: articleForm.value.summary,
       })
       // 更新当前选中的文章
-      if (selectedKnowledge.value?.id === editingKnowledge.value.id) {
-        selectedKnowledge.value = updated
+      if (selectedArticle.value?.id === editingArticle.value.id) {
+        selectedArticle.value = updated
       }
     } else {
-      await kbStore.createKnowledge(requireKbId(), {
+      await kbStore.createArticle(requireKbId(), {
         title: articleForm.value.title,
-        parent_id: articleForm.value.parent_id,
         summary: articleForm.value.summary,
       })
     }
     closeArticleDialog()
   } catch (error) {
-    console.error('Failed to save knowledge:', error)
+    console.error('Failed to save article:', error)
   }
 }
 
-// Point operations
-const closePointDialog = () => {
-  showPointDialog.value = false
-  editingPoint.value = null
-  pointForm.value = { title: '', content: '', context: '' }
+// Section operations
+const selectSection = async (section: KbSection) => {
+  selectedSection.value = section
+  selectedParagraph.value = null
+  // Load paragraphs for this section
+  await kbStore.loadParagraphs(requireKbId(), section.id)
 }
 
-const submitPoint = async () => {
-  if (!pointForm.value.content.trim() || !selectedKnowledge.value) return
+const editSection = (section: KbSection) => {
+  editingSection.value = section
+  sectionForm.value = {
+    title: section.title,
+    parent_id: section.parent_id ?? undefined,
+  }
+  showSectionDialog.value = true
+}
+
+const deleteSection = async (section: KbSection) => {
+  if (!confirm(t('knowledgeBase.section.deleteConfirm', { title: section.title }))) return
 
   try {
-    if (editingPoint.value) {
-      await kbStore.updateKnowledgePoint(
+    await kbStore.deleteSection(requireKbId(), section.id)
+    if (selectedSection.value?.id === section.id) {
+      selectedSection.value = null
+    }
+  } catch (error) {
+    console.error('Failed to delete section:', error)
+  }
+}
+
+const addChildSection = (parent: KbSection) => {
+  editingSection.value = null
+  sectionForm.value = {
+    title: '',
+    parent_id: parent.id,
+  }
+  showSectionDialog.value = true
+}
+
+const closeSectionDialog = () => {
+  showSectionDialog.value = false
+  editingSection.value = null
+  sectionForm.value = { title: '', parent_id: undefined }
+}
+
+const submitSection = async () => {
+  if (!sectionForm.value.title.trim() || !selectedArticle.value) return
+
+  try {
+    if (editingSection.value) {
+      const updated = await kbStore.updateSection(requireKbId(), editingSection.value.id, {
+        title: sectionForm.value.title,
+      })
+      // 更新当前选中的章节
+      if (selectedSection.value?.id === editingSection.value.id) {
+        selectedSection.value = updated
+      }
+    } else {
+      await kbStore.createSection(requireKbId(), {
+        article_id: selectedArticle.value.id,
+        title: sectionForm.value.title,
+        parent_id: sectionForm.value.parent_id,
+      })
+    }
+    closeSectionDialog()
+  } catch (error) {
+    console.error('Failed to save section:', error)
+  }
+}
+
+const expandAllSections = () => {
+  forceExpandSections.value = true
+  sectionKey.value++
+}
+
+const collapseAllSections = () => {
+  forceExpandSections.value = false
+  sectionKey.value++
+}
+
+// Paragraph operations
+const selectParagraph = (paragraph: KbParagraph) => {
+  selectedParagraph.value = paragraph
+}
+
+const editParagraph = (paragraph: KbParagraph) => {
+  editingParagraph.value = paragraph
+  paragraphForm.value = {
+    title: paragraph.title || '',
+    content: paragraph.content,
+    context: paragraph.context || '',
+  }
+  showParagraphDialog.value = true
+}
+
+const deleteParagraph = async (paragraph: KbParagraph) => {
+  if (!confirm(t('knowledgeBase.paragraph.deleteConfirm'))) return
+
+  try {
+    await kbStore.deleteParagraph(requireKbId(), paragraph.id)
+  } catch (error) {
+    console.error('Failed to delete paragraph:', error)
+  }
+}
+
+const closeParagraphDialog = () => {
+  showParagraphDialog.value = false
+  editingParagraph.value = null
+  paragraphForm.value = { title: '', content: '', context: '' }
+}
+
+const submitParagraph = async () => {
+  if (!paragraphForm.value.content.trim() || !selectedSection.value) return
+
+  try {
+    if (editingParagraph.value) {
+      await kbStore.updateParagraph(
         requireKbId(),
-        selectedKnowledge.value.id,
-        editingPoint.value.id,
+        editingParagraph.value.id,
         {
-          title: pointForm.value.title,
-          content: pointForm.value.content,
-          context: pointForm.value.context,
+          title: paragraphForm.value.title,
+          content: paragraphForm.value.content,
+          context: paragraphForm.value.context,
         }
       )
     } else {
-      await kbStore.createKnowledgePoint(requireKbId(), selectedKnowledge.value.id, {
-        title: pointForm.value.title,
-        content: pointForm.value.content,
-        context: pointForm.value.context,
+      await kbStore.createParagraph(requireKbId(), {
+        section_id: selectedSection.value.id,
+        title: paragraphForm.value.title,
+        content: paragraphForm.value.content,
+        context: paragraphForm.value.context,
       })
     }
-    closePointDialog()
+    closeParagraphDialog()
   } catch (error) {
-    console.error('Failed to save knowledge point:', error)
+    console.error('Failed to save paragraph:', error)
+  }
+}
+
+// 单个段落重新向量化（通过更新段落触发）
+const handleParagraphRevectorize = async (paragraph: KbParagraph) => {
+  if (!selectedSection.value) return
+
+  try {
+    // 通过更新段落内容（不变）来触发重新向量化
+    // 后台任务会自动处理未向量化的段落
+    await kbStore.updateParagraph(requireKbId(), paragraph.id, {
+      content: paragraph.content, // 保持内容不变
+    })
+    // 刷新段落列表
+    await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id)
+    alert('已触发段落重新向量化，请稍后刷新查看结果')
+  } catch (error: any) {
+    alert('重新向量化失败: ' + (error.message || '未知错误'))
   }
 }
 
@@ -608,7 +742,7 @@ onMounted(async () => {
   try {
     const id = requireKbId()
     await kbStore.loadKnowledgeBase(id)
-    await kbStore.loadKnowledgeTree(id)
+    await kbStore.loadArticles(id)
   } catch (error) {
     console.error('Failed to load knowledge base:', error)
     goBack()
@@ -669,6 +803,7 @@ onMounted(async () => {
 .header-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 .btn-action {
@@ -734,7 +869,7 @@ onMounted(async () => {
   text-align: center;
 }
 
-/* Main Content */
+/* Main Content - Three Column Layout */
 .detail-content {
   flex: 1;
   display: flex;
@@ -742,8 +877,17 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* Tree Panel */
-.tree-panel {
+/* Article Panel (Left) */
+.article-panel {
+  width: 220px;
+  border-right: 1px solid var(--border-color, #e0e0e0);
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg, #fff);
+}
+
+/* Section Panel (Middle) */
+.section-panel {
   width: 280px;
   border-right: 1px solid var(--border-color, #e0e0e0);
   display: flex;
@@ -751,7 +895,17 @@ onMounted(async () => {
   background: var(--card-bg, #fff);
 }
 
-.tree-header {
+/* Content Panel (Right) */
+.content-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--secondary-bg, #fafafa);
+}
+
+/* Panel Header */
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -759,14 +913,14 @@ onMounted(async () => {
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.tree-header h3 {
+.panel-header h3 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary, #333);
 }
 
-.tree-actions {
+.panel-actions {
   display: flex;
   gap: 4px;
 }
@@ -780,11 +934,98 @@ onMounted(async () => {
   font-size: 14px;
 }
 
-.btn-icon:hover {
+.btn-icon:hover:not(:disabled) {
   background: var(--secondary-bg, #f5f5f5);
 }
 
-.tree-content {
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Article List */
+.article-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.list-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-tertiary, #999);
+  font-size: 14px;
+}
+
+.article-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 4px;
+}
+
+.article-item:hover {
+  background: var(--secondary-bg, #f5f5f5);
+}
+
+.article-item.selected {
+  background: var(--primary-light, #e3f2fd);
+}
+
+.article-item-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.article-icon {
+  font-size: 14px;
+}
+
+.article-title {
+  flex: 1;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.article-item-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.article-item:hover .article-item-actions {
+  opacity: 1;
+}
+
+.btn-sm-icon {
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-sm-icon:hover {
+  background: var(--border-color, #e0e0e0);
+}
+
+.btn-sm-icon.danger:hover {
+  background: var(--danger-light, #ffebee);
+}
+
+/* Section Tree */
+.section-tree {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
@@ -797,15 +1038,11 @@ onMounted(async () => {
   font-size: 14px;
 }
 
-/* Content Panel */
-.content-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--secondary-bg, #f8f9fa);
+.section-list {
+  user-select: none;
 }
 
+/* Content Panel */
 .content-empty {
   flex: 1;
   display: flex;
@@ -815,35 +1052,36 @@ onMounted(async () => {
   color: var(--text-tertiary, #999);
 }
 
-.content-empty .empty-icon {
-  font-size: 48px;
+.empty-icon {
+  font-size: 64px;
   margin-bottom: 16px;
   opacity: 0.5;
 }
 
 .content-main {
   flex: 1;
-  overflow-y: auto;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .content-header {
-  margin-bottom: 24px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--card-bg, #fff);
 }
 
 .title-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
 }
 
 .content-title {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 600;
   margin: 0;
   color: var(--text-primary, #333);
-  flex: 1;
 }
 
 .title-actions {
@@ -852,51 +1090,38 @@ onMounted(async () => {
 }
 
 .btn-icon-action {
-  background: var(--secondary-bg, #f5f5f5);
+  padding: 6px 10px;
+  background: transparent;
   border: none;
   border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 16px;
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s, background 0.2s;
+  font-size: 14px;
 }
 
 .btn-icon-action:hover {
-  opacity: 1;
-}
-
-.btn-icon-action.btn-edit:hover {
-  background: var(--primary-light, #e3f2fd);
-}
-
-.btn-icon-action.btn-delete {
-  opacity: 0.4;
+  background: var(--secondary-bg, #f5f5f5);
 }
 
 .btn-icon-action.btn-delete:hover {
-  opacity: 1;
-  background: #ffebee;
+  background: var(--danger-light, #ffebee);
 }
 
 .content-meta {
   display: flex;
   gap: 16px;
+  margin-top: 8px;
+}
+
+.meta-item {
   font-size: 13px;
   color: var(--text-secondary, #666);
 }
 
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
+/* Content Section */
 .content-section {
-  background: var(--card-bg, #fff);
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
 }
 
 .section-header {
@@ -907,20 +1132,10 @@ onMounted(async () => {
 }
 
 .section-title {
-  font-size: 16px;
+  margin: 0;
+  font-size: 14px;
   font-weight: 600;
-  margin: 0 0 16px 0;
   color: var(--text-primary, #333);
-}
-
-.section-header .section-title {
-  margin: 0;
-}
-
-.summary-text {
-  color: var(--text-secondary, #666);
-  line-height: 1.6;
-  margin: 0;
 }
 
 .btn-sm {
@@ -934,86 +1149,115 @@ onMounted(async () => {
 }
 
 .btn-sm:hover {
-  opacity: 0.9;
+  background: var(--primary-dark, #1976d2);
 }
 
+/* Paragraphs */
 .points-empty {
   text-align: center;
   padding: 24px;
   color: var(--text-tertiary, #999);
 }
 
-.points-list {
+.paragraphs-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.point-card {
+.paragraph-card {
   padding: 16px;
-  background: var(--secondary-bg, #f8f9fa);
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
-  border-left: 3px solid transparent;
 }
 
-.point-card:hover {
-  background: var(--primary-light, #e3f2fd);
+.paragraph-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.point-card.point-vectorized {
-  border-left-color: #4caf50;
+.paragraph-card.paragraph-vectorized {
+  border-left: 3px solid var(--success-color, #4caf50);
 }
 
-.point-header {
+.paragraph-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 8px;
 }
 
-.point-title {
+.paragraph-title {
   font-weight: 600;
+  font-size: 14px;
   color: var(--text-primary, #333);
-  flex: 1;
 }
 
-.point-status-col {
-  flex-shrink: 0;
-  margin-left: 12px;
+.paragraph-actions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
   gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
-.point-status {
-  flex-shrink: 0;
-  margin-left: 12px;
-}
-
-.revectorize-btn {
-  background: #f5f5f5;
-  color: #666;
-  border: none;
-  cursor: pointer;
-  font-size: 11px;
-  opacity: 0.6;
-  transition: opacity 0.2s, background 0.2s;
-}
-
-.revectorize-btn:hover {
+.paragraph-card:hover .paragraph-actions {
   opacity: 1;
-  background: #fff3e0;
-  color: #e65100;
+}
+
+.paragraph-content {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  line-height: 1.6;
+}
+
+.paragraph-content :deep(p) {
+  margin: 0 0 8px 0;
+}
+
+.paragraph-content :deep(code) {
+  background: var(--border-color, #e0e0e0);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.paragraph-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.paragraph-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .status-badge {
-  font-size: 11px;
+  font-size: 10px;
   padding: 2px 8px;
-  border-radius: 12px;
-  white-space: nowrap;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.status-badge.pending {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.status-badge.processing {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.status-badge.failed {
+  background: #ffebee;
+  color: #c62828;
 }
 
 .status-badge.vectorized {
@@ -1022,43 +1266,23 @@ onMounted(async () => {
 }
 
 .status-badge.not-vectorized {
-  background: #fff3e0;
-  color: #e65100;
+  background: #fff8e1;
+  color: #f57c00;
 }
 
-.point-content {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-secondary, #666);
+.revectorize-btn {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
 }
 
-.point-content :deep(p) {
-  margin: 0 0 8px 0;
-}
-
-.point-content :deep(code) {
-  background: var(--border-color, #e0e0e0);
-  padding: 2px 6px;
+.revectorize-btn:hover {
+  background: var(--secondary-bg, #f5f5f5);
   border-radius: 4px;
-  font-size: 13px;
 }
 
-.point-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-tertiary, #999);
-}
-
-.point-status-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Dialogs */
+/* Dialog */
 .dialog-overlay {
   position: fixed;
   top: 0;
@@ -1073,13 +1297,14 @@ onMounted(async () => {
 }
 
 .dialog {
-  background: white;
+  background: var(--card-bg, #fff);
   border-radius: 12px;
-  width: 100%;
+  width: 90%;
   max-width: 480px;
   max-height: 90vh;
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
 }
 
 .dialog-large {
@@ -1087,26 +1312,113 @@ onMounted(async () => {
 }
 
 .dialog-title {
+  margin: 0;
+  padding: 16px 20px;
   font-size: 18px;
   font-weight: 600;
-  margin: 0;
-  padding: 20px 24px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
-  color: var(--text-primary, #333);
 }
 
 .dialog-body {
-  padding: 24px;
+  padding: 20px;
   overflow-y: auto;
-  max-height: 60vh;
 }
 
 .dialog-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--card-bg, #fff);
+  color: var(--text-primary, #333);
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.btn-cancel {
+  padding: 10px 20px;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+}
+
+.btn-cancel:hover {
+  background: var(--secondary-bg, #f5f5f5);
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  background: var(--primary-color, #2196f3);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark, #1976d2);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  padding: 10px 20px;
+  background: var(--danger-color, #f44336);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: var(--danger-dark, #d32f2f);
 }
 
 /* Search */
@@ -1117,6 +1429,11 @@ onMounted(async () => {
   border-radius: 8px;
   font-size: 14px;
   margin-bottom: 16px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
 }
 
 .search-loading,
@@ -1165,74 +1482,8 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-/* Form */
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 8px;
-  color: var(--text-primary, #333);
-}
-
-.form-input,
-.form-textarea,
-.form-select {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: inherit;
-}
-
-.form-input:focus,
-.form-textarea:focus,
-.form-select:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.form-textarea {
-  resize: vertical;
-}
-
-/* Buttons */
-.btn-primary {
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-cancel {
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-}
-
-.btn-cancel:hover {
-  background: var(--secondary-bg, #f5f5f5);
+.result-text :deep(p) {
+  margin: 0 0 8px 0;
 }
 
 /* Loading */
