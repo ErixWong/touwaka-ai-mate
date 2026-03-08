@@ -511,13 +511,21 @@ class KbController {
 
       // 获取所有段落
       const sectionIds = sections.map(s => s.id);
-      const paragraphs = sectionIds.length > 0 
-        ? await this.KbParagraph.findAll({
-            where: { section_id: { [Op.in]: sectionIds } },
-            order: [['position', 'ASC']],
-            raw: true,
-          })
-        : [];
+      let paragraphs = [];
+      if (sectionIds.length > 0) {
+        const paragraphRows = await this.KbParagraph.findAll({
+          where: { section_id: { [Op.in]: sectionIds } },
+          order: [['position', 'ASC']],
+        });
+        // 添加 is_vectorized 字段
+        paragraphs = paragraphRows.map(p => {
+          const pJson = p.toJSON();
+          return {
+            ...pJson,
+            is_vectorized: pJson.embedding !== null && pJson.embedding !== undefined,
+          };
+        });
+      }
 
       // 构建树结构
       const tree = this._buildSectionTree(sections, paragraphs);
@@ -741,7 +749,19 @@ class KbController {
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(result, pagination, startTime));
+      // 添加 is_vectorized 字段（根据 embedding 是否为 NULL 判断）
+      const rowsWithVectorizedStatus = result.rows.map(p => {
+        const pJson = p.toJSON();
+        return {
+          ...pJson,
+          is_vectorized: pJson.embedding !== null && pJson.embedding !== undefined,
+        };
+      });
+
+      ctx.success(buildPaginatedResponse({
+        rows: rowsWithVectorizedStatus,
+        count: result.count,
+      }, pagination, startTime));
       logger.info(`[KB] queryParagraphs: ${result.count} paragraphs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryParagraphs error:', error);
