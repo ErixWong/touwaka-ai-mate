@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class kb_tag extends Model {
+export default class knowledge_basis extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
@@ -9,39 +9,47 @@ export default class kb_tag extends Model {
       allowNull: false,
       primaryKey: true
     },
-    kb_id: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      comment: "所属知识库",
-      references: {
-        model: 'knowledge_bases',
-        key: 'id'
-      }
-    },
     name: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      comment: "标签名"
+      type: DataTypes.STRING(255),
+      allowNull: false
     },
     description: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-      comment: "标签描述"
+      type: DataTypes.TEXT,
+      allowNull: true
     },
-    article_count: {
+    owner_id: {
+      type: DataTypes.STRING(32),
+      allowNull: false
+    },
+    embedding_model_id: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: "关联 ai_models 表"
+    },
+    embedding_dim: {
       type: DataTypes.INTEGER,
       allowNull: true,
+      defaultValue: 1536
+    },
+    is_public: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
       defaultValue: 0,
-      comment: "关联文章数（缓存）"
+      comment: "预留，暂不使用"
     },
     created_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     }
   }, {
     sequelize,
-    tableName: 'kb_tags',
+    tableName: 'knowledge_bases',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -54,19 +62,17 @@ export default class kb_tag extends Model {
         ]
       },
       {
-        name: "uk_kb_tag",
-        unique: true,
+        name: "idx_kb_owner",
         using: "BTREE",
         fields: [
-          { name: "kb_id" },
-          { name: "name" },
+          { name: "owner_id" },
         ]
       },
       {
-        name: "idx_tag_kb",
+        name: "idx_kb_public",
         using: "BTREE",
         fields: [
-          { name: "kb_id" },
+          { name: "is_public" },
         ]
       },
     ]
