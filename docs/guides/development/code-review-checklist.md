@@ -123,6 +123,39 @@ interface PaginatedResponse<T> {
 
 ---
 
+## 第七步：i18n 国际化检查
+
+### 翻译键完整性检查
+
+**必须检查项**：
+- [ ] 所有 `$t()` 调用的 key 在 locale 文件中存在
+- [ ] 新增功能同时更新 `zh-CN.ts` 和 `en-US.ts`
+- [ ] 没有硬编码的中文/英文文本
+
+**快速检查命令**：
+```bash
+# 查找所有 $t() 调用
+grep -rn "\$t(" frontend/src/views/ frontend/src/components/
+
+# 检查是否有硬编码中文（排除注释和字符串中的英文）
+grep -rn "[一-龥]" frontend/src/views/*.vue frontend/src/components/*.vue
+```
+
+**修复示例**：
+```typescript
+// ❌ 错误 - 硬编码中文
+<h1>知识库文章</h1>
+
+// ❌ 错误 - key 不存在
+<h1>{{ $t('knowledgeBase.articles') }}</h1>  // 如果 locales 中没有这个 key
+
+// ✅ 正确
+<h1>{{ $t('knowledgeBase.articles') }}</h1>
+// 同时在 zh-CN.ts 和 en-US.ts 中添加：
+// knowledgeBase: { articles: '知识库文章' / 'Knowledge Base Articles' }
+
+---
+
 ## 常见问题快速修复
 
 ### 分页数据不显示

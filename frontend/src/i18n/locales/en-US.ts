@@ -693,11 +693,17 @@ export default {
     globalSearch: 'Global Search',
 
     // Article tree
+    articles: 'Articles',
+    sections: 'Sections',
+    paragraphs: 'Paragraphs',
     articleTree: 'Article Tree',
     noArticles: 'No articles yet. Import or create one.',
-    selectArticleHint: 'Select an article from the left',
+    noSections: 'No sections yet. Click + to create',
+    selectArticleHint: 'Please select an article first',
+    selectSectionHint: 'Select a section from the middle to view content',
     expandAll: 'Expand All',
     collapseAll: 'Collapse All',
+    tokenCount: '{count} tokens',
 
     // Batch embed
     batchEmbed: 'Generate Embeddings',
@@ -722,16 +728,41 @@ export default {
     article: {
       create: 'New Article',
       edit: 'Edit Article',
+      titleLabel: 'Title',
       titlePlaceholder: 'Enter article title',
+      summaryLabel: 'Summary',
+      summaryPlaceholder: 'Enter article summary...',
       parent: 'Parent Article',
       noParent: 'None (Root Level)',
       summary: 'Summary',
-      summaryPlaceholder: 'Enter article summary...',
       createSuccess: 'Article created successfully',
       createFailed: 'Failed to create article',
       updateSuccess: 'Article updated successfully',
       updateFailed: 'Failed to update article',
       deleteConfirm: 'Are you sure you want to delete "{title}"? Child articles and knowledge points will also be deleted.',
+    },
+
+    // Section
+    section: {
+      create: 'Create Section',
+      edit: 'Edit Section',
+      titleLabel: 'Title',
+      titlePlaceholder: 'Enter section title',
+      parent: 'Parent Section',
+      noParent: 'None (Top Level)',
+    },
+
+    // Paragraph
+    paragraph: {
+      create: 'Add Paragraph',
+      edit: 'Edit Paragraph',
+      titleLabel: 'Title (optional)',
+      titlePlaceholder: 'Enter paragraph title',
+      contentLabel: 'Content',
+      contentPlaceholder: 'Enter paragraph content (Markdown supported)...',
+      contextLabel: 'Context (optional)',
+      contextPlaceholder: 'Additional context for better search accuracy...',
+      noParagraphs: 'No paragraphs yet. Click + to add',
     },
 
     // Knowledge Point
