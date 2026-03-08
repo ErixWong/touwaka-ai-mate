@@ -279,7 +279,7 @@ class KbController {
       });
 
       ctx.success(buildPaginatedResponse(result, pagination, startTime));
-      logger.info(`[KB] queryArticles: ${count} articles, ${Date.now() - startTime}ms`);
+      logger.info(`[KB] queryArticles: ${result.count} articles, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryArticles error:', error);
       ctx.throw(500, error.message);
@@ -480,7 +480,7 @@ class KbController {
       });
 
       ctx.success(buildPaginatedResponse(result, pagination, startTime));
-      logger.info(`[KB] querySections: ${count} sections, ${Date.now() - startTime}ms`);
+      logger.info(`[KB] querySections: ${result.count} sections, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] querySections error:', error);
       ctx.throw(500, error.message);
@@ -739,7 +739,7 @@ class KbController {
       });
 
       ctx.success(buildPaginatedResponse(result, pagination, startTime));
-      logger.info(`[KB] queryParagraphs: ${count} paragraphs, ${Date.now() - startTime}ms`);
+      logger.info(`[KB] queryParagraphs: ${result.count} paragraphs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryParagraphs error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -946,7 +946,7 @@ class KbController {
       });
 
       ctx.success(buildPaginatedResponse(result, pagination, startTime));
-      logger.info(`[KB] queryTags: ${count} tags, ${Date.now() - startTime}ms`);
+      logger.info(`[KB] queryTags: ${result.count} tags, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryTags error:', error);
       ctx.throw(500, error.message);
