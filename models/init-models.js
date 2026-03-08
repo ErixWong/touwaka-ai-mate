@@ -21,6 +21,8 @@ import _knowledge_base from  "./knowledge_base.js";
 import _knowledge from  "./knowledge.js";
 import _knowledge_point from  "./knowledge_point.js";
 import _knowledge_relation from  "./knowledge_relation.js";
+import _department from  "./department.js";
+import _position from  "./position.js";
 
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
@@ -44,6 +46,8 @@ export default function initModels(sequelize) {
   const knowledge = _knowledge.init(sequelize, DataTypes);
   const knowledge_point = _knowledge_point.init(sequelize, DataTypes);
   const knowledge_relation = _knowledge_relation.init(sequelize, DataTypes);
+  const department = _department.init(sequelize, DataTypes);
+  const position = _position.init(sequelize, DataTypes);
 
   expert.belongsToMany(role, { as: 'role_id_roles', through: role_expert, foreignKey: "expert_id", otherKey: "role_id" });
   permission.belongsToMany(role, { as: 'role_id_roles_role_permissions', through: role_permission, foreignKey: "permission_id", otherKey: "role_id" });

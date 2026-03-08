@@ -538,6 +538,11 @@
       </div>
     </div>
 
+    <!-- 组织架构管理 -->
+    <div v-if="activeTab === 'organization'" class="settings-section organization-section">
+      <OrganizationTab />
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1419,6 +1424,7 @@ import { useExpertStore } from '@/stores/expert'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
 import { expertApi, userApi, roleApi } from '@/api/services'
 import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest, Role, Permission, ExpertSimple, UpdateRoleRequest } from '@/types'
+import OrganizationTab from '@/components/settings/OrganizationTab.vue'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1434,6 +1440,7 @@ const tabs = computed(() => [
   { key: 'expert', label: t('settings.expertSettings') },
   { key: 'user', label: t('settings.userManagement') },
   { key: 'role', label: t('settings.roleManagement') },
+  { key: 'organization', label: t('settings.organizationManagement') },
   { key: 'about', label: t('settings.about') },
 ])
 
