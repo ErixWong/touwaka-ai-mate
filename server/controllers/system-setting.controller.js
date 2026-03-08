@@ -6,6 +6,7 @@
 
 import Utils from '../../lib/utils.js';
 import logger from '../../lib/logger.js';
+import { getSystemSettingService } from '../services/system-setting.service.js';
 
 const DEFAULT_SETTINGS = {
   llm: {
@@ -35,6 +36,7 @@ class SystemSettingController {
   constructor(db) {
     this.db = db;
     this.SystemSetting = db.getModel('system_setting');
+    this.systemSettingService = getSystemSettingService(db);
   }
 
   _checkAdmin(ctx) {
@@ -109,6 +111,10 @@ class SystemSettingController {
           updated_at: new Date(),
         });
       }
+      // 清除 Service 缓存，确保配置更新立即生效
+      if (this.systemSettingService) {
+        this.systemSettingService.clearCache();
+      }
       const records = await this.SystemSetting.findAll({ raw: true });
       ctx.success(this._parseSettings(records));
     } catch (error) {
@@ -144,6 +150,10 @@ class SystemSettingController {
             });
           }
         }
+      }
+      // 清除 Service 缓存，确保配置更新立即生效
+      if (this.systemSettingService) {
+        this.systemSettingService.clearCache();
       }
       const records = await this.SystemSetting.findAll({ raw: true });
       ctx.success(this._parseSettings(records));
