@@ -109,6 +109,7 @@ class PositionController {
 
       const position = await this.Position.findOne({
         where: { id },
+        raw: true,
       });
 
       if (!position) {
@@ -116,12 +117,20 @@ class PositionController {
         return;
       }
 
-      await this.Position.update(
-        { name, is_manager, description },
-        { where: { id } }
-      );
+      // 构建更新对象，只更新传入的字段
+      const updates = {};
+      if (name !== undefined) updates.name = name;
+      if (is_manager !== undefined) updates.is_manager = is_manager;
+      if (description !== undefined) updates.description = description;
 
-      ctx.success({ id, name, is_manager, description });
+      if (Object.keys(updates).length === 0) {
+        ctx.error('没有要更新的字段');
+        return;
+      }
+
+      await this.Position.update(updates, { where: { id } });
+
+      ctx.success({ id, ...updates });
     } catch (error) {
       logger.error('Update position error:', error);
       ctx.error('更新职位失败', 500);

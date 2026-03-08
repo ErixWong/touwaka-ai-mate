@@ -60,6 +60,20 @@ class DepartmentController {
         return;
       }
 
+      // 检查同级是否已有同名部门
+      const existingDept = await this.Department.findOne({
+        where: {
+          name,
+          parent_id: parent_id || null,
+          status: 'active',
+        },
+        raw: true,
+      });
+      if (existingDept) {
+        ctx.error('同级部门已存在同名部门', 409);
+        return;
+      }
+
       // 检查层级深度
       let level = 1;
       let path = `/${Utils.newID()}`;
@@ -150,6 +164,7 @@ class DepartmentController {
 
       const department = await this.Department.findOne({
         where: { id },
+        raw: true,
       });
 
       if (!department) {
@@ -157,12 +172,36 @@ class DepartmentController {
         return;
       }
 
-      await this.Department.update(
-        { name, description },
-        { where: { id } }
-      );
+      // 构建更新对象，只更新传入的字段
+      const updates = {};
+      if (name !== undefined) {
+        // 检查同级是否已有同名部门（排除自己）
+        const existingDept = await this.Department.findOne({
+          where: {
+            name,
+            parent_id: department.parent_id,
+            status: 'active',
+          },
+          raw: true,
+        });
+        if (existingDept && existingDept.id !== id) {
+          ctx.error('同级部门已存在同名部门', 409);
+          return;
+        }
+        updates.name = name;
+      }
+      if (description !== undefined) {
+        updates.description = description;
+      }
 
-      ctx.success({ id, name, description });
+      if (Object.keys(updates).length === 0) {
+        ctx.error('没有要更新的字段');
+        return;
+      }
+
+      await this.Department.update(updates, { where: { id } });
+
+      ctx.success({ id, ...updates });
     } catch (error) {
       logger.error('Update department error:', error);
       ctx.error('更新部门失败', 500);

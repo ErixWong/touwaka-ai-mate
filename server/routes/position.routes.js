@@ -23,6 +23,11 @@ router.post('/', authMiddleware, async (ctx) => {
   await initController(ctx.db).createPosition(ctx);
 });
 
+// 获取部门下的所有职位（放在 /:id 前面，避免路由冲突）
+router.get('/department/:department_id', authMiddleware, async (ctx) => {
+  await initController(ctx.db).getDepartmentPositions(ctx);
+});
+
 // 获取职位详情
 router.get('/:id', authMiddleware, async (ctx) => {
   await initController(ctx.db).getPosition(ctx);
@@ -41,11 +46,6 @@ router.delete('/:id', authMiddleware, async (ctx) => {
 // 获取职位成员列表
 router.get('/:id/members', authMiddleware, async (ctx) => {
   await initController(ctx.db).getPositionMembers(ctx);
-});
-
-// 获取部门下的所有职位
-router.get('/department/:department_id', authMiddleware, async (ctx) => {
-  await initController(ctx.db).getDepartmentPositions(ctx);
 });
 
 export default router;
