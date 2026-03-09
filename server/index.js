@@ -57,6 +57,7 @@ import taskRoutes from './routes/task.routes.js';
 import kbRoutes from './routes/kb.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
+import systemSettingRoutes from './routes/system-setting.routes.js';
 
 class ApiServer {
   constructor() {
@@ -285,6 +286,11 @@ class ApiServer {
     const positionRouter = positionRoutes(this.db);
     this.app.use(positionRouter.routes());
     this.app.use(positionRouter.allowedMethods());
+
+    // System Setting 路由
+    const systemSettingRouter = systemSettingRoutes(this.db);
+    this.app.use(systemSettingRouter.routes());
+    this.app.use(systemSettingRouter.allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {
