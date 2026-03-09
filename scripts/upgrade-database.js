@@ -203,6 +203,50 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // 8. system_settings 表
+  {
+    name: 'system_settings table',
+    check: async (conn) => await hasTable(conn, 'system_settings'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          setting_key VARCHAR(100) UNIQUE NOT NULL,
+          setting_value TEXT NOT NULL,
+          value_type VARCHAR(20) DEFAULT 'string',
+          description VARCHAR(500),
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      
+      // 插入默认配置数据
+      const defaultSettings = [
+        { key: 'llm.context_threshold', value: '0.70', type: 'number', desc: '上下文压缩阈值' },
+        { key: 'llm.temperature', value: '0.70', type: 'number', desc: '表达温度默认值' },
+        { key: 'llm.reflective_temperature', value: '0.30', type: 'number', desc: '反思温度默认值' },
+        { key: 'llm.top_p', value: '1.0', type: 'number', desc: 'Top-p 采样默认值' },
+        { key: 'llm.frequency_penalty', value: '0.0', type: 'number', desc: '频率惩罚默认值' },
+        { key: 'llm.presence_penalty', value: '0.0', type: 'number', desc: '存在惩罚默认值' },
+        { key: 'llm.max_tokens', value: '4096', type: 'number', desc: '最大 Token 默认值' },
+        { key: 'connection.max_per_user', value: '5', type: 'number', desc: '每用户最大 SSE 连接数' },
+        { key: 'connection.max_per_expert', value: '100', type: 'number', desc: '每 Expert 最大 SSE 连接数' },
+        { key: 'token.access_expiry', value: '15m', type: 'string', desc: 'Access Token 过期时间' },
+        { key: 'token.refresh_expiry', value: '7d', type: 'string', desc: 'Refresh Token 过期时间' },
+        { key: 'pagination.default_size', value: '20', type: 'number', desc: '默认分页大小' },
+        { key: 'pagination.max_size', value: '100', type: 'number', desc: '最大分页大小' },
+      ];
+      
+      for (const setting of defaultSettings) {
+        await conn.execute(
+          `INSERT IGNORE INTO system_settings (setting_key, setting_value, value_type, description)
+           VALUES (?, ?, ?, ?)`,
+          [setting.key, setting.value, setting.type, setting.desc]
+        );
+      }
+    }
+  },
 ];
 
 /**
