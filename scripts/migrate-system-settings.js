@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = [
   { key: 'llm.top_p', value: '1.0', type: 'number', desc: 'Top-p 采样默认值' },
   { key: 'llm.frequency_penalty', value: '0.0', type: 'number', desc: '频率惩罚默认值' },
   { key: 'llm.presence_penalty', value: '0.0', type: 'number', desc: '存在惩罚默认值' },
-  { key: 'llm.max_tokens', value: '4096', type: 'number', desc: '最大 Token 默认值' },
+  // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   
   // 连接限制
   { key: 'connection.max_per_user', value: '5', type: 'number', desc: '每用户最大 SSE 连接数' },
@@ -65,19 +65,14 @@ async function migrate() {
 
     // 插入默认数据
     console.log('\n📋 插入默认配置数据...');
-    const [insertStmt] = await connection.prepare(`
-      INSERT IGNORE INTO system_settings (setting_key, setting_value, value_type, description)
-      VALUES (?, ?, ?, ?)
-    `);
 
     let inserted = 0;
     for (const setting of DEFAULT_SETTINGS) {
-      const [result] = await insertStmt.execute([
-        setting.key,
-        setting.value,
-        setting.type,
-        setting.desc,
-      ]);
+      const [result] = await connection.execute(
+        `INSERT IGNORE INTO system_settings (setting_key, setting_value, value_type, description)
+         VALUES (?, ?, ?, ?)`,
+        [setting.key, setting.value, setting.type, setting.desc]
+      );
       if (result.affectedRows > 0) {
         inserted++;
         console.log(`  ✅ ${setting.key} = ${setting.value}`);
@@ -89,8 +84,6 @@ async function migrate() {
     // 验证
     const [rows] = await connection.execute('SELECT COUNT(*) as count FROM system_settings');
     console.log(`\n✅ 迁移完成！当前共有 ${rows[0].count} 条系统配置`);
-
-    await insertStmt.close();
   } catch (error) {
     console.error('❌ 迁移失败:', error.message);
     process.exit(1);

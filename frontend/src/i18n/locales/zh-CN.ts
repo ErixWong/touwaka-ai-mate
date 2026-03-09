@@ -277,8 +277,12 @@ export default {
     modelTypeText: '文本模型',
     modelTypeMultimodal: '多模态模型',
     modelTypeEmbedding: '嵌入模型',
-    maxTokens: '最大 Token',
-    maxTokensPlaceholder: '例如：4096',
+    maxTokens: '最大上下文',
+    maxTokensPlaceholder: '例如：65536',
+    maxTokensHint: '模型支持的最大上下文窗口大小',
+    maxOutputTokens: '最大输出',
+    maxOutputTokensPlaceholder: '例如：32768',
+    maxOutputTokensHint: '每次请求最多生成的 Token 数',
     embeddingDim: '向量维度',
     embeddingDimPlaceholder: '例如：1024，可为空',
     costPer1kInput: '每千输入 Token 成本',
@@ -416,6 +420,20 @@ export default {
     systemConfigResetConfirm: '确定要重置此配置项为默认值吗？',
     systemConfigResetSuccess: '配置已重置为默认值',
     systemConfigResetFailed: '重置配置失败',
+    // LLM 默认参数
+    llmDefaults: 'LLM 默认参数',
+    // 连接限制
+    connectionLimits: '连接限制',
+    maxConnectionsPerUser: '每用户最大连接数',
+    maxConnectionsPerExpert: '每专家最大连接数',
+    // Token 配置
+    tokenConfig: 'Token 配置',
+    accessTokenExpiry: 'Access Token 过期时间',
+    refreshTokenExpiry: 'Refresh Token 过期时间',
+    // 操作按钮
+    resetAll: '重置全部',
+    saveChanges: '保存更改',
+    confirmResetAll: '确定要重置所有配置为默认值吗？',
     // 配置项
     config_default_temperature: '默认温度',
     config_default_temperature_hint: '控制回复的随机性，0-2，默认 0.7',

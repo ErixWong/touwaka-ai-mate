@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class kb_paragraph extends Model {
+export default class knowledge_point extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
@@ -9,52 +9,42 @@ export default class kb_paragraph extends Model {
       allowNull: false,
       primaryKey: true
     },
-    section_id: {
+    knowledge_id: {
       type: DataTypes.STRING(20),
       allowNull: false,
-      comment: "所属节",
       references: {
-        model: 'kb_sections',
+        model: 'knowledges',
         key: 'id'
       }
     },
     title: {
       type: DataTypes.STRING(500),
-      allowNull: true,
-      comment: "段落标题（可选）"
+      allowNull: true
     },
     content: {
       type: DataTypes.TEXT,
       allowNull: false,
-      comment: "段落内容"
+      comment: "Markdown 格式"
     },
     context: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "知识点上下文，用于语义检索。用一两句话总结该知识点及其所在文章（中文）"
-    },
-    is_knowledge_point: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: 0,
-      comment: "是否是知识点"
+      comment: "上下文信息（用于向量化）"
     },
     embedding: {
       type: "VECTOR(1024)",
       allowNull: true,
-      comment: "向量（只有知识点才向量化）"
+      comment: "向量（1024维）"
     },
     position: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0,
-      comment: "排序位置（同一节内的顺序）"
+      defaultValue: 0
     },
     token_count: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0,
-      comment: "Token 数量"
+      defaultValue: 0
     },
     created_at: {
       type: DataTypes.DATE,
@@ -68,7 +58,7 @@ export default class kb_paragraph extends Model {
     }
   }, {
     sequelize,
-    tableName: 'kb_paragraphs',
+    tableName: 'knowledge_points',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -81,24 +71,10 @@ export default class kb_paragraph extends Model {
         ]
       },
       {
-        name: "idx_paragraph_section",
+        name: "idx_kp_knowledge",
         using: "BTREE",
         fields: [
-          { name: "section_id" },
-        ]
-      },
-      {
-        name: "idx_paragraph_kp",
-        using: "BTREE",
-        fields: [
-          { name: "is_knowledge_point" },
-        ]
-      },
-      {
-        name: "idx_paragraph_position",
-        using: "BTREE",
-        fields: [
-          { name: "position" },
+          { name: "knowledge_id" },
         ]
       },
     ]

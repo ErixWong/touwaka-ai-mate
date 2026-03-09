@@ -16,7 +16,7 @@ const DEFAULT_SETTINGS = {
     top_p: 1.0,
     frequency_penalty: 0.0,
     presence_penalty: 0.0,
-    max_tokens: 4096,
+    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   },
   connection: {
     max_per_user: 5,
@@ -26,10 +26,6 @@ const DEFAULT_SETTINGS = {
     access_expiry: '15m',
     refresh_expiry: '7d',
   },
-  pagination: {
-    default_size: 20,
-    max_size: 100,
-  },
 };
 
 // 配置值验证规则
@@ -38,13 +34,11 @@ const VALIDATION_RULES = {
   'llm.temperature': { min: 0, max: 2 },
   'llm.reflective_temperature': { min: 0, max: 2 },
   'llm.top_p': { min: 0, max: 1 },
-  'llm.frequency_penalty': { min: 0, max: 2 },
-  'llm.presence_penalty': { min: 0, max: 2 },
-  'llm.max_tokens': { min: 1, max: 128000 },
+  'llm.frequency_penalty': { min: -2, max: 2 },
+  'llm.presence_penalty': { min: -2, max: 2 },
+  // Note: max_tokens 不在系统设置中管理
   'connection.max_per_user': { min: 1, max: 100 },
   'connection.max_per_expert': { min: 1, max: 1000 },
-  'pagination.default_size': { min: 1, max: 100 },
-  'pagination.max_size': { min: 1, max: 500 },
 };
 
 class SystemSettingService {

@@ -275,8 +275,12 @@ export default {
     modelTypeText: 'Text Model',
     modelTypeMultimodal: 'Multimodal Model',
     modelTypeEmbedding: 'Embedding Model',
-    maxTokens: 'Max Tokens',
-    maxTokensPlaceholder: 'e.g., 4096',
+    maxTokens: 'Max Context',
+    maxTokensPlaceholder: 'e.g., 65536',
+    maxTokensHint: 'Maximum context window size supported by the model',
+    maxOutputTokens: 'Max Output',
+    maxOutputTokensPlaceholder: 'e.g., 32768',
+    maxOutputTokensHint: 'Maximum tokens to generate per request',
     costPer1kInput: 'Cost per 1K Input Tokens',
     costPer1kOutput: 'Cost per 1K Output Tokens',
     costPlaceholder: 'e.g., 0.01',
@@ -435,6 +439,20 @@ export default {
     systemConfigResetConfirm: 'Are you sure you want to reset this setting to default value?',
     systemConfigResetSuccess: 'Configuration reset to default',
     systemConfigResetFailed: 'Failed to reset configuration',
+    // LLM Defaults
+    llmDefaults: 'LLM Default Parameters',
+    // Connection Limits
+    connectionLimits: 'Connection Limits',
+    maxConnectionsPerUser: 'Max Connections Per User',
+    maxConnectionsPerExpert: 'Max Connections Per Expert',
+    // Token Config
+    tokenConfig: 'Token Configuration',
+    accessTokenExpiry: 'Access Token Expiry',
+    refreshTokenExpiry: 'Refresh Token Expiry',
+    // Action Buttons
+    resetAll: 'Reset All',
+    saveChanges: 'Save Changes',
+    confirmResetAll: 'Are you sure you want to reset all settings to default values?',
     // Config items
     config_default_temperature: 'Default Temperature',
     config_default_temperature_hint: 'Controls response randomness, 0-2, default 0.7',
