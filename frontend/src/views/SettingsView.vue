@@ -681,6 +681,17 @@
               class="form-input"
               :placeholder="$t('settings.maxTokensPlaceholder')"
             />
+            <p class="form-hint">{{ $t('settings.maxTokensHint') }}</p>
+          </div>
+          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-item">
+            <label class="form-label">{{ $t('settings.maxOutputTokens') }}</label>
+            <input
+              v-model.number="modelForm.max_output_tokens"
+              type="number"
+              class="form-input"
+              :placeholder="$t('settings.maxOutputTokensPlaceholder')"
+            />
+            <p class="form-hint">{{ $t('settings.maxOutputTokensHint') }}</p>
           </div>
           <!-- 嵌入模型显示向量维度 -->
           <div v-if="modelForm.model_type === 'embedding'" class="form-item">
@@ -1548,6 +1559,7 @@ const modelForm = reactive<ModelFormData>({
   provider_id: '',
   model_type: 'text',
   max_tokens: undefined,
+  max_output_tokens: undefined,
   embedding_dim: undefined,
   cost_per_1k_input: undefined,
   cost_per_1k_output: undefined,
@@ -2161,6 +2173,7 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.provider_id = model.provider_id || ''
     modelForm.model_type = (model as any).model_type || 'text'
     modelForm.max_tokens = model.max_tokens
+    modelForm.max_output_tokens = model.max_output_tokens
     modelForm.embedding_dim = (model as any).embedding_dim
     modelForm.cost_per_1k_input = model.cost_per_1k_input
     modelForm.cost_per_1k_output = model.cost_per_1k_output
@@ -2174,6 +2187,7 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.provider_id = selectedProvider.value?.id || ''
     modelForm.model_type = 'text'
     modelForm.max_tokens = undefined
+    modelForm.max_output_tokens = undefined
     modelForm.embedding_dim = undefined
     modelForm.cost_per_1k_input = undefined
     modelForm.cost_per_1k_output = undefined

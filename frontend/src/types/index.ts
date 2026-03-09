@@ -90,7 +90,8 @@ export interface AIModel {
   provider_name: string
   model_type?: 'text' | 'multimodal' | 'embedding'
   description?: string
-  max_tokens: number
+  max_tokens: number           // 模型最大上下文窗口大小
+  max_output_tokens?: number   // 每次请求最多生成的 token 数
   embedding_dim?: number
   cost_per_1k_input: number
   cost_per_1k_output: number
@@ -106,7 +107,8 @@ export interface ModelFormData {
   model_name: string  // API调用使用的模型标识符
   provider_id: string
   model_type?: 'text' | 'multimodal' | 'embedding'
-  max_tokens?: number
+  max_tokens?: number            // 模型最大上下文窗口大小
+  max_output_tokens?: number     // 每次请求最多生成的 token 数
   embedding_dim?: number
   cost_per_1k_input?: number
   cost_per_1k_output?: number

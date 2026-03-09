@@ -4,7 +4,6 @@
  * 仅管理员可访问
  */
 
-import Utils from '../../lib/utils.js';
 import logger from '../../lib/logger.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 
@@ -16,7 +15,7 @@ const DEFAULT_SETTINGS = {
     top_p: 1.0,
     frequency_penalty: 0.0,
     presence_penalty: 0.0,
-    max_tokens: 4096,
+    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   },
   connection: {
     max_per_user: 5,
@@ -25,10 +24,6 @@ const DEFAULT_SETTINGS = {
   token: {
     access_expiry: '15m',
     refresh_expiry: '7d',
-  },
-  pagination: {
-    default_size: 20,
-    max_size: 100,
   },
 };
 
@@ -40,8 +35,7 @@ class SystemSettingController {
   }
 
   _checkAdmin(ctx) {
-    if (ctx.state.role !== 'admin') {
-      ctx.status = 403;
+    if (ctx.state.userRole !== 'admin') {
       ctx.error('需要管理员权限', 403);
       return false;
     }

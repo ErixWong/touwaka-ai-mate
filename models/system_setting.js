@@ -5,15 +5,15 @@ export default class system_setting extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
+      autoIncrement: true,
       type: DataTypes.INTEGER,
       allowNull: false,
-      primaryKey: true,
-      autoIncrement: true
+      primaryKey: true
     },
     setting_key: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true
+      unique: "setting_key"
     },
     setting_value: {
       type: DataTypes.TEXT,

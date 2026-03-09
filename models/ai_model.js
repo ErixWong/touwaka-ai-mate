@@ -35,7 +35,14 @@ export default class ai_model extends Model {
     max_tokens: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 4096
+      defaultValue: 65536,
+      comment: "模型最大上下文窗口大小"
+    },
+    max_output_tokens: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 32768,
+      comment: "每次请求最多生成的 token 数"
     },
     embedding_dim: {
       type: DataTypes.INTEGER,
