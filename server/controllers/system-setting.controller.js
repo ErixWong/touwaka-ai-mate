@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS = {
     top_p: 1.0,
     frequency_penalty: 0.0,
     presence_penalty: 0.0,
-    max_tokens: 4096,
+    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   },
   connection: {
     max_per_user: 5,
@@ -24,10 +24,6 @@ const DEFAULT_SETTINGS = {
   token: {
     access_expiry: '15m',
     refresh_expiry: '7d',
-  },
-  pagination: {
-    default_size: 20,
-    max_size: 100,
   },
 };
 

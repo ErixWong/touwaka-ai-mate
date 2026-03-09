@@ -105,15 +105,6 @@
             </div>
           </div>
 
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.maxTokens') }}</label>
-            <input
-              type="number"
-              v-model.number="form.llm.max_tokens"
-              min="1"
-              class="config-input"
-            />
-          </div>
         </div>
       </div>
 
@@ -181,38 +172,6 @@
         </div>
       </div>
 
-      <!-- 分页配置 -->
-      <div class="config-section">
-        <div class="section-header">
-          <h3 class="section-title">📄 {{ $t('settings.paginationConfig') }}</h3>
-          <button class="btn-reset-section" @click="resetSection('pagination')">
-            {{ $t('common.reset') }}
-          </button>
-        </div>
-
-        <div class="config-grid">
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.defaultPageSize') }}</label>
-            <input
-              type="number"
-              v-model.number="form.pagination.default_size"
-              min="1"
-              class="config-input"
-            />
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.maxPageSize') }}</label>
-            <input
-              type="number"
-              v-model.number="form.pagination.max_size"
-              min="1"
-              class="config-input"
-            />
-          </div>
-        </div>
-      </div>
-
       <!-- 底部操作按钮 -->
       <div class="config-actions">
         <button class="btn-reset-all" @click="resetAll">
@@ -247,7 +206,7 @@ const form = reactive({
     top_p: 1.0,
     frequency_penalty: 0.0,
     presence_penalty: 0.0,
-    max_tokens: 4096,
+    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   },
   connection: {
     max_per_user: 5,
@@ -256,10 +215,6 @@ const form = reactive({
   token: {
     access_expiry: '15m',
     refresh_expiry: '7d',
-  },
-  pagination: {
-    default_size: 20,
-    max_size: 100,
   },
 })
 
@@ -276,7 +231,6 @@ const syncFromStore = () => {
   Object.assign(form.llm, settings.llm)
   Object.assign(form.connection, settings.connection)
   Object.assign(form.token, settings.token)
-  Object.assign(form.pagination, settings.pagination)
 }
 
 // 保存配置
@@ -287,7 +241,6 @@ const saveConfig = async () => {
       llm: { ...form.llm },
       connection: { ...form.connection },
       token: { ...form.token },
-      pagination: { ...form.pagination },
     })
     alert(t('settings.saveSuccess'))
   } catch (error) {
@@ -306,8 +259,6 @@ const resetSection = async (section: string) => {
     Object.assign(form.connection, defaults.connection)
   } else if (section === 'token') {
     Object.assign(form.token, defaults.token)
-  } else if (section === 'pagination') {
-    Object.assign(form.pagination, defaults.pagination)
   }
 }
 

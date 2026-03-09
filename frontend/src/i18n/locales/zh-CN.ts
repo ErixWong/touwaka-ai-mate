@@ -430,10 +430,6 @@ export default {
     tokenConfig: 'Token 配置',
     accessTokenExpiry: 'Access Token 过期时间',
     refreshTokenExpiry: 'Refresh Token 过期时间',
-    // 分页配置
-    paginationConfig: '分页配置',
-    defaultPageSize: '默认分页大小',
-    maxPageSize: '最大分页大小',
     // 操作按钮
     resetAll: '重置全部',
     saveChanges: '保存更改',

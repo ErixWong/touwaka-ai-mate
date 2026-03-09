@@ -449,10 +449,6 @@ export default {
     tokenConfig: 'Token Configuration',
     accessTokenExpiry: 'Access Token Expiry',
     refreshTokenExpiry: 'Refresh Token Expiry',
-    // Pagination Config
-    paginationConfig: 'Pagination Configuration',
-    defaultPageSize: 'Default Page Size',
-    maxPageSize: 'Max Page Size',
     // Action Buttons
     resetAll: 'Reset All',
     saveChanges: 'Save Changes',

@@ -13,7 +13,7 @@ export interface SystemSettings {
     top_p: number
     frequency_penalty: number
     presence_penalty: number
-    max_tokens: number
+    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   }
   connection: {
     max_per_user: number
@@ -22,10 +22,6 @@ export interface SystemSettings {
   token: {
     access_expiry: string
     refresh_expiry: string
-  }
-  pagination: {
-    default_size: number
-    max_size: number
   }
 }
 
@@ -48,7 +44,6 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       top_p: 1.0,
       frequency_penalty: 0.0,
       presence_penalty: 0.0,
-      max_tokens: 4096,
     },
     connection: {
       max_per_user: 5,
@@ -58,17 +53,12 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       access_expiry: '15m',
       refresh_expiry: '7d',
     },
-    pagination: {
-      default_size: 20,
-      max_size: 100,
-    },
   }
 
   // Getters
   const llmSettings = computed(() => settings.value?.llm || defaultSettings.llm)
   const connectionSettings = computed(() => settings.value?.connection || defaultSettings.connection)
   const tokenSettings = computed(() => settings.value?.token || defaultSettings.token)
-  const paginationSettings = computed(() => settings.value?.pagination || defaultSettings.pagination)
 
   // Actions
   // 加载系统配置
@@ -147,7 +137,6 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     llmSettings,
     connectionSettings,
     tokenSettings,
-    paginationSettings,
     // Actions
     loadSettings,
     updateSettings,
