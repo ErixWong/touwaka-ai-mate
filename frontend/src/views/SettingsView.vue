@@ -274,6 +274,11 @@
       </div>
     </div>
 
+    <!-- 系统配置（仅管理员） -->
+    <div v-if="activeTab === 'system' && isAdmin" class="settings-section system-section">
+      <SystemConfigTab />
+    </div>
+
     <!-- 用户管理 -->
     <div v-if="activeTab === 'user'" class="settings-section user-section">
       <div class="panel-header">
@@ -1425,6 +1430,7 @@ import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
 import { expertApi, userApi, roleApi } from '@/api/services'
 import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest, Role, Permission, ExpertSimple, UpdateRoleRequest } from '@/types'
 import OrganizationTab from '@/components/settings/OrganizationTab.vue'
+import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1438,6 +1444,7 @@ const tabs = computed(() => [
   { key: 'profile', label: t('settings.profile') },
   { key: 'model', label: t('settings.modelAndProvider') },
   { key: 'expert', label: t('settings.expertSettings') },
+  { key: 'system', label: t('settings.systemConfig'), adminOnly: true },
   { key: 'user', label: t('settings.userManagement') },
   { key: 'role', label: t('settings.roleManagement') },
   { key: 'organization', label: t('settings.organizationManagement') },
@@ -1469,6 +1476,9 @@ const expertAvailableModels = computed(() => {
     (m.model_type === 'text' || m.model_type === 'multimodal')
   )
 })
+
+// 是否为管理员
+const isAdmin = computed(() => userStore.isAdmin)
 
 // Provider 选择
 const selectedProvider = ref<ModelProvider | null>(null)

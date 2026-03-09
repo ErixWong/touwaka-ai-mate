@@ -136,10 +136,16 @@ const requireAdmin = () => {
 /**
  * 生成 Token
  * 字段名规则：全栈统一使用 snake_case
+ * @param {string|number} userId - 用户ID
+ * @param {string} role - 用户角色
+ * @param {Object} options - 可选配置
+ * @param {string} options.accessExpiry - Access Token 过期时间（如 '15m', '1h', '1d'）
+ * @param {string} options.refreshExpiry - Refresh Token 过期时间（如 '7d', '30d'）
  */
-const generateTokens = (userId, role) => {
-  const access_token = jwt.sign({ userId, role }, getJwtSecret(), { expiresIn: '15m' });
-  const refresh_token = jwt.sign({ userId, role }, getJwtRefreshSecret(), { expiresIn: '7d' });
+const generateTokens = (userId, role, options = {}) => {
+  const { accessExpiry = '15m', refreshExpiry = '7d' } = options;
+  const access_token = jwt.sign({ userId, role }, getJwtSecret(), { expiresIn: accessExpiry });
+  const refresh_token = jwt.sign({ userId, role }, getJwtRefreshSecret(), { expiresIn: refreshExpiry });
   return { access_token, refresh_token };
 };
 

@@ -1,25 +1,27 @@
-/**e u
+/**
  * Stream Controller - SSE 流式聊天控制器
- * 
+ *
  * API 设计：
  * - POST /api/chat - 发送消息给 Expert（content 在 body 中）
  * - GET /api/chat/stream?expertId=xxx - SSE 订阅 Expert 的消息流
- * 
+ *
  * 核心概念：
  * - 用户与 Expert 对话，不是与 Topic 对话
  * - Topic 是后端自动管理的，通过 SSE 事件通知前端刷新
- * 
+ *
  * 使用 Sequelize ORM 进行数据库操作
  */
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
+import { getSystemSettingService } from '../services/system-setting.service.js';
 
 class StreamController {
   constructor(db, chatService) {
     this.db = db;
     this.chatService = chatService;
     this.Topic = db.getModel('topic');
+    this.systemSettingService = getSystemSettingService(db);
     // 存储活跃的 SSE 连接：Map<expertId, Set<{userId, res}>>
     this.expertConnections = new Map();
   }
@@ -234,9 +236,10 @@ class StreamController {
 
     const user_id = ctx.state.userId;
 
-    // 连接数限制
-    const MAX_CONNECTIONS_PER_USER = 5;
-    const MAX_CONNECTIONS_PER_EXPERT = 100;
+    // 从系统配置获取连接数限制
+    const connectionLimits = await this.systemSettingService.getConnectionLimits();
+    const MAX_CONNECTIONS_PER_USER = connectionLimits.max_per_user;
+    const MAX_CONNECTIONS_PER_EXPERT = connectionLimits.max_per_expert;
 
     // 检查用户连接数
     let userConnectionCount = 0;
