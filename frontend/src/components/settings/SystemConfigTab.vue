@@ -341,6 +341,8 @@ onMounted(async () => {
 .system-config-tab {
   padding: 20px;
   max-width: 800px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
 }
 
 .loading-state {
