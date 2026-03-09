@@ -4,7 +4,6 @@
  * 仅管理员可访问
  */
 
-import Utils from '../../lib/utils.js';
 import logger from '../../lib/logger.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 
@@ -40,8 +39,7 @@ class SystemSettingController {
   }
 
   _checkAdmin(ctx) {
-    if (ctx.state.role !== 'admin') {
-      ctx.status = 403;
+    if (ctx.state.userRole !== 'admin') {
       ctx.error('需要管理员权限', 403);
       return false;
     }

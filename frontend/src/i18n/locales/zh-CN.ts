@@ -416,6 +416,24 @@ export default {
     systemConfigResetConfirm: '确定要重置此配置项为默认值吗？',
     systemConfigResetSuccess: '配置已重置为默认值',
     systemConfigResetFailed: '重置配置失败',
+    // LLM 默认参数
+    llmDefaults: 'LLM 默认参数',
+    // 连接限制
+    connectionLimits: '连接限制',
+    maxConnectionsPerUser: '每用户最大连接数',
+    maxConnectionsPerExpert: '每专家最大连接数',
+    // Token 配置
+    tokenConfig: 'Token 配置',
+    accessTokenExpiry: 'Access Token 过期时间',
+    refreshTokenExpiry: 'Refresh Token 过期时间',
+    // 分页配置
+    paginationConfig: '分页配置',
+    defaultPageSize: '默认分页大小',
+    maxPageSize: '最大分页大小',
+    // 操作按钮
+    resetAll: '重置全部',
+    saveChanges: '保存更改',
+    confirmResetAll: '确定要重置所有配置为默认值吗？',
     // 配置项
     config_default_temperature: '默认温度',
     config_default_temperature_hint: '控制回复的随机性，0-2，默认 0.7',

@@ -20,6 +20,7 @@ import _role from  "./role.js";
 import _skill_parameter from  "./skill_parameter.js";
 import _skill_tool from  "./skill_tool.js";
 import _skill from  "./skill.js";
+import _system_setting from  "./system-setting.js";
 import _task from  "./task.js";
 import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
@@ -47,6 +48,7 @@ export default function initModels(sequelize) {
   const skill_parameter = _skill_parameter.init(sequelize, DataTypes);
   const skill_tool = _skill_tool.init(sequelize, DataTypes);
   const skill = _skill.init(sequelize, DataTypes);
+  const system_setting = _system_setting.init(sequelize, DataTypes);
   const task = _task.init(sequelize, DataTypes);
   const topic = _topic.init(sequelize, DataTypes);
   const user_profile = _user_profile.init(sequelize, DataTypes);
@@ -150,6 +152,7 @@ export default function initModels(sequelize) {
     skill_parameter,
     skill_tool,
     skill,
+    system_setting,
     task,
     topic,
     user_profile,

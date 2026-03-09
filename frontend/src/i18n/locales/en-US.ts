@@ -435,6 +435,24 @@ export default {
     systemConfigResetConfirm: 'Are you sure you want to reset this setting to default value?',
     systemConfigResetSuccess: 'Configuration reset to default',
     systemConfigResetFailed: 'Failed to reset configuration',
+    // LLM Defaults
+    llmDefaults: 'LLM Default Parameters',
+    // Connection Limits
+    connectionLimits: 'Connection Limits',
+    maxConnectionsPerUser: 'Max Connections Per User',
+    maxConnectionsPerExpert: 'Max Connections Per Expert',
+    // Token Config
+    tokenConfig: 'Token Configuration',
+    accessTokenExpiry: 'Access Token Expiry',
+    refreshTokenExpiry: 'Refresh Token Expiry',
+    // Pagination Config
+    paginationConfig: 'Pagination Configuration',
+    defaultPageSize: 'Default Page Size',
+    maxPageSize: 'Max Page Size',
+    // Action Buttons
+    resetAll: 'Reset All',
+    saveChanges: 'Save Changes',
+    confirmResetAll: 'Are you sure you want to reset all settings to default values?',
     // Config items
     config_default_temperature: 'Default Temperature',
     config_default_temperature_hint: 'Controls response randomness, 0-2, default 0.7',

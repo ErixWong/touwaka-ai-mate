@@ -1,49 +1,66 @@
-import { Sequelize, DataTypes } from 'sequelize';
-import { sequelize } from './index.js';
+import _sequelize from 'sequelize';
+const { Model, Sequelize } = _sequelize;
 
-/**
- * SystemSetting 模型 - 系统配置
- */
-export const SystemSetting = sequelize.define('SystemSetting', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-  },
-  setting_key: {
-    type: DataTypes.STRING(100),
-    allowNull: false,
-    unique: true,
-    field: 'setting_key',
-  },
-  setting_value: {
-    type: DataTypes.TEXT,
-    allowNull: false,
-    field: 'setting_value',
-  },
-  value_type: {
-    type: DataTypes.STRING(20),
-    defaultValue: 'string',
-    field: 'value_type',
-  },
-  description: {
-    type: DataTypes.STRING(500),
-    allowNull: true,
-    field: 'description',
-  },
-  created_at: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'created_at',
-  },
-  updated_at: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
-    field: 'updated_at',
-  },
-}, {
-  tableName: 'system_settings',
-  timestamps: false,
-});
-
-export default SystemSetting;
+export default class system_setting extends Model {
+  static init(sequelize, DataTypes) {
+  return super.init({
+    id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    setting_key: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      unique: true
+    },
+    setting_value: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    value_type: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: "string"
+    },
+    description: {
+      type: DataTypes.STRING(500),
+      allowNull: true
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    }
+  }, {
+    sequelize,
+    tableName: 'system_settings',
+    timestamps: false,
+    freezeTableName: true,
+    indexes: [
+      {
+        name: "PRIMARY",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "id" },
+        ]
+      },
+      {
+        name: "setting_key",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "setting_key" },
+        ]
+      },
+    ]
+  });
+  }
+}
