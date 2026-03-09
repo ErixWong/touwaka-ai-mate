@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = [
   { key: 'llm.top_p', value: '1.0', type: 'number', desc: 'Top-p 采样默认值' },
   { key: 'llm.frequency_penalty', value: '0.0', type: 'number', desc: '频率惩罚默认值' },
   { key: 'llm.presence_penalty', value: '0.0', type: 'number', desc: '存在惩罚默认值' },
-  { key: 'llm.max_tokens', value: '4096', type: 'number', desc: '最大 Token 默认值' },
+  // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   
   // 连接限制
   { key: 'connection.max_per_user', value: '5', type: 'number', desc: '每用户最大 SSE 连接数' },

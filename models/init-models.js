@@ -10,6 +10,9 @@ import _kb_paragraph from  "./kb_paragraph.js";
 import _kb_section from  "./kb_section.js";
 import _kb_tag from  "./kb_tag.js";
 import _knowledge_basis from  "./knowledge_basis.js";
+import _knowledge_point from  "./knowledge_point.js";
+import _knowledge_relation from  "./knowledge_relation.js";
+import _knowledge from  "./knowledge.js";
 import _message from  "./message.js";
 import _permission from  "./permission.js";
 import _position from  "./position.js";
@@ -20,7 +23,7 @@ import _role from  "./role.js";
 import _skill_parameter from  "./skill_parameter.js";
 import _skill_tool from  "./skill_tool.js";
 import _skill from  "./skill.js";
-import _system_setting from  "./system-setting.js";
+import _system_setting from  "./system_setting.js";
 import _task from  "./task.js";
 import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
@@ -38,6 +41,9 @@ export default function initModels(sequelize) {
   const kb_section = _kb_section.init(sequelize, DataTypes);
   const kb_tag = _kb_tag.init(sequelize, DataTypes);
   const knowledge_basis = _knowledge_basis.init(sequelize, DataTypes);
+  const knowledge_point = _knowledge_point.init(sequelize, DataTypes);
+  const knowledge_relation = _knowledge_relation.init(sequelize, DataTypes);
+  const knowledge = _knowledge.init(sequelize, DataTypes);
   const message = _message.init(sequelize, DataTypes);
   const permission = _permission.init(sequelize, DataTypes);
   const position = _position.init(sequelize, DataTypes);
@@ -89,13 +95,20 @@ export default function initModels(sequelize) {
   kb_section.hasMany(kb_section, { as: "kb_sections", foreignKey: "parent_id"});
   kb_article_tag.belongsTo(kb_tag, { as: "tag", foreignKey: "tag_id"});
   kb_tag.hasMany(kb_article_tag, { as: "kb_article_tags", foreignKey: "tag_id"});
-  // 多对多关联：文章和标签
-  kb_article.belongsToMany(kb_tag, { as: "tags", through: kb_article_tag, foreignKey: "article_id", otherKey: "tag_id" });
-  kb_tag.belongsToMany(kb_article, { as: "articles", through: kb_article_tag, foreignKey: "tag_id", otherKey: "article_id" });
   kb_article.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});
   knowledge_basis.hasMany(kb_article, { as: "kb_articles", foreignKey: "kb_id"});
   kb_tag.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});
   knowledge_basis.hasMany(kb_tag, { as: "kb_tags", foreignKey: "kb_id"});
+  knowledge.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});
+  knowledge_basis.hasMany(knowledge, { as: "knowledges", foreignKey: "kb_id"});
+  knowledge_relation.belongsTo(knowledge_point, { as: "source", foreignKey: "source_id"});
+  knowledge_point.hasMany(knowledge_relation, { as: "knowledge_relations", foreignKey: "source_id"});
+  knowledge_relation.belongsTo(knowledge_point, { as: "target", foreignKey: "target_id"});
+  knowledge_point.hasMany(knowledge_relation, { as: "target_knowledge_relations", foreignKey: "target_id"});
+  knowledge_point.belongsTo(knowledge, { as: "knowledge", foreignKey: "knowledge_id"});
+  knowledge.hasMany(knowledge_point, { as: "knowledge_points", foreignKey: "knowledge_id"});
+  knowledge.belongsTo(knowledge, { as: "parent", foreignKey: "parent_id"});
+  knowledge.hasMany(knowledge, { as: "knowledges", foreignKey: "parent_id"});
   permission.belongsTo(permission, { as: "parent", foreignKey: "parent_id"});
   permission.hasMany(permission, { as: "permissions", foreignKey: "parent_id"});
   role_permission.belongsTo(permission, { as: "permission", foreignKey: "permission_id"});
@@ -142,6 +155,9 @@ export default function initModels(sequelize) {
     kb_section,
     kb_tag,
     knowledge_basis,
+    knowledge_point,
+    knowledge_relation,
+    knowledge,
     message,
     permission,
     position,
