@@ -114,10 +114,29 @@ class KbController {
       });
       const articleCountMap = new Map(articleCounts.map(a => [a.kb_id, parseInt(a.count)]));
 
+      // 获取段落数量（需要通过 article -> section -> paragraph 关联）
+      const paragraphCounts = await this.KbParagraph.findAll({
+        include: [{
+          model: this.KbSection,
+          as: 'section',
+          include: [{
+            model: this.KbArticle,
+            as: 'article',
+            where: { kb_id: { [Op.in]: kbIds } },
+            attributes: ['kb_id'],
+          }],
+        }],
+        attributes: ['section.article.kb_id', [Sequelize.fn('COUNT', Sequelize.col('kb_paragraph.id')), 'count']],
+        group: ['section.article.kb_id'],
+        raw: true,
+      });
+      const paragraphCountMap = new Map(paragraphCounts.map(p => [p.kb_id, parseInt(p.count)]));
+
       // 添加统计信息
       const result = rows.map(kb => ({
         ...kb.toJSON(),
         article_count: articleCountMap.get(kb.id) || 0,
+        paragraph_count: paragraphCountMap.get(kb.id) || 0,
       }));
 
       ctx.success({
@@ -255,16 +274,30 @@ class KbController {
    * 查询文章列表
    * POST /api/kb/:kb_id/articles/query (复杂查询)
    * GET /api/kb/:kb_id/articles (简单查询)
+   * 支持参数：
+   * - tag_ids: 标签ID数组，用于过滤包含指定标签的文章
    */
   async queryArticles(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
-      
+
       // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
       const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
       const queryRequest = queryParams || {};
+
+      // 提取 tag_ids 参数，并确保是数组
+      // GET 请求中 tag_ids 可能是字符串（逗号分隔），POST 请求中是数组
+      let tagIds = queryRequest.tag_ids;
+      if (tagIds) {
+        if (typeof tagIds === 'string') {
+          // GET 请求中可能是逗号分隔的字符串
+          tagIds = tagIds.split(',').map(t => t.trim()).filter(t => t);
+        } else if (!Array.isArray(tagIds)) {
+          tagIds = [tagIds];
+        }
+      }
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
@@ -273,8 +306,24 @@ class KbController {
         defaultSort: [{ field: 'created_at', order: 'DESC' }],
       });
 
+      // 始终包含 tags 关联，用于显示文章标签
+      // 如果有 tag_ids 参数，添加 where 条件过滤
+      const include = [{
+        model: this.KbTag,
+        as: 'tags',
+        through: { attributes: [] },
+      }];
+
+      // 如果有 tag_ids 参数，修改 include 中的 where 条件
+      if (tagIds && Array.isArray(tagIds) && tagIds.length > 0) {
+        include[0].where = {
+          id: { [Op.in]: tagIds },
+        };
+      }
+
       const result = await this.KbArticle.findAndCountAll({
         ...queryOptions,
+        include,
         distinct: true,
       });
 
@@ -1450,6 +1499,156 @@ class KbController {
     }
 
     return roots;
+  }
+
+  // ==================== Revectorize ====================
+
+  // 内存中的任务存储（生产环境应该用 Redis 或数据库）
+  static revectorizeJobs = new Map();
+
+  /**
+   * 启动知识库重新向量化任务
+   * POST /api/kb/:kb_id/revectorize
+   */
+  async startRevectorize(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+
+      // 验证知识库存在
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 获取所有段落
+      const paragraphs = await this.KbParagraph.findAll({
+        include: [{
+          model: this.KbSection,
+          as: 'section',
+          include: [{
+            model: this.KbArticle,
+            as: 'article',
+            where: { kb_id },
+            attributes: ['id'],
+          }],
+        }],
+        attributes: ['id', 'content'],
+      });
+
+      if (paragraphs.length === 0) {
+        ctx.throw(400, 'No paragraphs to revectorize');
+      }
+
+      // 创建任务
+      const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      const job = {
+        id: jobId,
+        kb_id,
+        total: paragraphs.length,
+        success: 0,
+        failed: 0,
+        current: 0,
+        status: 'running',
+        embedding_dim: kb.embedding_dim || 384,
+        started_at: new Date(),
+      };
+
+      KbController.revectorizeJobs.set(jobId, job);
+
+      // 异步执行向量化
+      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || 384);
+
+      ctx.success({
+        job_id: jobId,
+        total: job.total,
+        success: 0,
+        failed: 0,
+        embedding_dim: job.embedding_dim,
+      });
+      logger.info(`[KB] startRevectorize: job ${jobId} started for ${paragraphs.length} paragraphs, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] startRevectorize error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 获取重新向量化进度
+   * GET /api/kb/:kb_id/revectorize/:jobId
+   */
+  async getRevectorizeProgress(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id, jobId } = ctx.params;
+
+      const job = KbController.revectorizeJobs.get(jobId);
+      if (!job) {
+        ctx.throw(404, 'Job not found');
+      }
+
+      // 验证 job 属于该知识库
+      if (job.kb_id !== kb_id) {
+        ctx.throw(404, 'Job not found');
+      }
+
+      ctx.success({
+        total: job.total,
+        success: job.success,
+        failed: job.failed,
+        current: job.current,
+        status: job.status,
+        embedding_dim: job.embedding_dim,
+      });
+    } catch (error) {
+      logger.error('[KB] getRevectorizeProgress error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 异步执行向量化任务
+   * @private
+   */
+  async _runRevectorizeJob(jobId, paragraphs, modelId, embeddingDim) {
+    const job = KbController.revectorizeJobs.get(jobId);
+    if (!job) return;
+
+    try {
+      for (let i = 0; i < paragraphs.length; i++) {
+        const paragraph = paragraphs[i];
+
+        try {
+          // 生成嵌入向量
+          const embedding = await this._generateEmbedding(paragraph.content, modelId);
+
+          if (embedding && embedding.length === embeddingDim) {
+            // 更新段落向量
+            await this.KbParagraph.update(
+              { embedding: JSON.stringify(embedding) },
+              { where: { id: paragraph.id } }
+            );
+            job.success++;
+          } else {
+            job.failed++;
+          }
+        } catch (e) {
+          logger.error(`[KB] _runRevectorizeJob: failed paragraph ${paragraph.id}:`, e.message);
+          job.failed++;
+        }
+
+        job.current = i + 1;
+      }
+
+      job.status = 'completed';
+      job.completed_at = new Date();
+      logger.info(`[KB] _runRevectorizeJob: job ${jobId} completed: ${job.success} success, ${job.failed} failed`);
+    } catch (error) {
+      logger.error('[KB] _runRevectorizeJob error:', error);
+      job.status = 'failed';
+      job.error = error.message;
+    }
   }
 }
 
