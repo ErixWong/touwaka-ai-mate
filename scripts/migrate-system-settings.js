@@ -65,19 +65,14 @@ async function migrate() {
 
     // 插入默认数据
     console.log('\n📋 插入默认配置数据...');
-    const [insertStmt] = await connection.prepare(`
-      INSERT IGNORE INTO system_settings (setting_key, setting_value, value_type, description)
-      VALUES (?, ?, ?, ?)
-    `);
 
     let inserted = 0;
     for (const setting of DEFAULT_SETTINGS) {
-      const [result] = await insertStmt.execute([
-        setting.key,
-        setting.value,
-        setting.type,
-        setting.desc,
-      ]);
+      const [result] = await connection.execute(
+        `INSERT IGNORE INTO system_settings (setting_key, setting_value, value_type, description)
+         VALUES (?, ?, ?, ?)`,
+        [setting.key, setting.value, setting.type, setting.desc]
+      );
       if (result.affectedRows > 0) {
         inserted++;
         console.log(`  ✅ ${setting.key} = ${setting.value}`);
@@ -89,8 +84,6 @@ async function migrate() {
     // 验证
     const [rows] = await connection.execute('SELECT COUNT(*) as count FROM system_settings');
     console.log(`\n✅ 迁移完成！当前共有 ${rows[0].count} 条系统配置`);
-
-    await insertStmt.close();
   } catch (error) {
     console.error('❌ 迁移失败:', error.message);
     process.exit(1);
