@@ -798,6 +798,7 @@ class KbController {
         section_id: data.section_id,
         title: data.title,
         content: data.content,
+        context: data.context, // 知识点的上下文，用于检索
         is_knowledge_point: data.is_knowledge_point || false,
         position: maxPosition + 1,
         token_count: data.token_count || 0,
@@ -835,9 +836,10 @@ class KbController {
       await paragraph.update({
         title: data.title !== undefined ? data.title : paragraph.title,
         content: data.content !== undefined ? data.content : paragraph.content,
-        is_knowledge_point: data.is_knowledge_point !== undefined 
+        context: data.context !== undefined ? data.context : paragraph.context,
+        is_knowledge_point: data.is_knowledge_point !== undefined
           ? data.is_knowledge_point : paragraph.is_knowledge_point,
-        token_count: data.token_count !== undefined 
+        token_count: data.token_count !== undefined
           ? data.token_count : paragraph.token_count,
       });
 
