@@ -107,5 +107,13 @@ export default (controller) => {
   // 删除标签
   router.delete('/:kb_id/tags/:id', authenticate(), controller.deleteTag.bind(controller));
 
+  // ==================== 搜索路由 ====================
+
+  // 在指定知识库中搜索
+  router.post('/:kb_id/search', authenticate(), controller.searchInKnowledgeBase.bind(controller));
+
+  // 全局搜索（搜索用户所有知识库）
+  router.post('/search', authenticate(), controller.globalSearch.bind(controller));
+
   return router;
 };

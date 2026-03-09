@@ -273,13 +273,13 @@ class KbController {
         defaultSort: [{ field: 'created_at', order: 'DESC' }],
       });
 
-      const { rows, count } = await this.KbArticle.findAndCountAll({
+      const result = await this.KbArticle.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
-      logger.info(`[KB] queryArticles: ${count} articles, ${Date.now() - startTime}ms`);
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
+      logger.info(`[KB] queryArticles: ${result.count} articles, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryArticles error:', error);
       ctx.throw(500, error.message);
@@ -463,7 +463,7 @@ class KbController {
       const articleIds = articles.map(a => a.id);
 
       if (articleIds.length === 0) {
-        ctx.success(buildPaginatedResponse([], 0, queryRequest.pagination || {}));
+        ctx.success(buildPaginatedResponse({ rows: [], count: 0 }, queryRequest.pagination || {}, startTime));
         return;
       }
 
@@ -474,13 +474,13 @@ class KbController {
         defaultSort: [{ field: 'position', order: 'ASC' }],
       });
 
-      const { rows, count } = await this.KbSection.findAndCountAll({
+      const result = await this.KbSection.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
-      logger.info(`[KB] querySections: ${count} sections, ${Date.now() - startTime}ms`);
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
+      logger.info(`[KB] querySections: ${result.count} sections, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] querySections error:', error);
       ctx.throw(500, error.message);
@@ -511,13 +511,21 @@ class KbController {
 
       // 获取所有段落
       const sectionIds = sections.map(s => s.id);
-      const paragraphs = sectionIds.length > 0 
-        ? await this.KbParagraph.findAll({
-            where: { section_id: { [Op.in]: sectionIds } },
-            order: [['position', 'ASC']],
-            raw: true,
-          })
-        : [];
+      let paragraphs = [];
+      if (sectionIds.length > 0) {
+        const paragraphRows = await this.KbParagraph.findAll({
+          where: { section_id: { [Op.in]: sectionIds } },
+          order: [['position', 'ASC']],
+        });
+        // 添加 is_vectorized 字段
+        paragraphs = paragraphRows.map(p => {
+          const pJson = p.toJSON();
+          return {
+            ...pJson,
+            is_vectorized: pJson.embedding !== null && pJson.embedding !== undefined,
+          };
+        });
+      }
 
       // 构建树结构
       const tree = this._buildSectionTree(sections, paragraphs);
@@ -724,8 +732,11 @@ class KbController {
       });
 
       // 如果有 section_id 过滤，验证其属于该知识库
-      if (queryOptions.where?.section_id) {
-        const section = await this.KbSection.findByPk(queryOptions.where.section_id, {
+      // 注意：queryOptions.where.section_id 是 Sequelize 条件对象 { [Op.eq]: 'xxx' }
+      // 需要从原始请求中获取 section_id 的值
+      const sectionId = queryRequest.filter?.section_id;
+      if (sectionId) {
+        const section = await this.KbSection.findByPk(sectionId, {
           include: [{ model: this.KbArticle, as: 'article' }],
         });
         if (!section || section.article.kb_id !== kb_id) {
@@ -733,13 +744,25 @@ class KbController {
         }
       }
 
-      const { rows, count } = await this.KbParagraph.findAndCountAll({
+      const result = await this.KbParagraph.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
-      logger.info(`[KB] queryParagraphs: ${count} paragraphs, ${Date.now() - startTime}ms`);
+      // 添加 is_vectorized 字段（根据 embedding 是否为 NULL 判断）
+      const rowsWithVectorizedStatus = result.rows.map(p => {
+        const pJson = p.toJSON();
+        return {
+          ...pJson,
+          is_vectorized: pJson.embedding !== null && pJson.embedding !== undefined,
+        };
+      });
+
+      ctx.success(buildPaginatedResponse({
+        rows: rowsWithVectorizedStatus,
+        count: result.count,
+      }, pagination, startTime));
+      logger.info(`[KB] queryParagraphs: ${result.count} paragraphs, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryParagraphs error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -940,13 +963,13 @@ class KbController {
         defaultSort: [{ field: 'article_count', order: 'DESC' }],
       });
 
-      const { rows, count } = await this.KbTag.findAndCountAll({
+      const result = await this.KbTag.findAndCountAll({
         ...queryOptions,
         distinct: true,
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, pagination));
-      logger.info(`[KB] queryTags: ${count} tags, ${Date.now() - startTime}ms`);
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
+      logger.info(`[KB] queryTags: ${result.count} tags, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[KB] queryTags error:', error);
       ctx.throw(500, error.message);
@@ -1056,6 +1079,255 @@ class KbController {
         ctx.throw(409, 'Cannot delete tag: it is still referenced by articles');
       }
       ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  // ==================== Search ====================
+
+  /**
+   * 在指定知识库中搜索
+   * POST /api/kb/:kb_id/search
+   */
+  async searchInKnowledgeBase(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+      const { query, top_k = 5, threshold = 0.1, article_id } = ctx.request.body;
+
+      if (!query || !query.trim()) {
+        ctx.throw(400, 'Search query is required');
+      }
+
+      // 验证知识库存在
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 生成查询向量
+      const queryEmbedding = await this._generateEmbedding(query, kb.embedding_model_id);
+      if (!queryEmbedding) {
+        ctx.throw(500, 'Failed to generate query embedding');
+      }
+
+      // 构建搜索条件
+      const articleFilter = article_id 
+        ? `AND s.article_id = '${article_id}'` 
+        : '';
+
+      // 执行向量搜索（使用 MariaDB VECTOR 功能）
+      const results = await this.db.sequelize.query(
+        `SELECT 
+          p.id, p.title, p.content, p.is_knowledge_point, p.token_count,
+          s.id as section_id, s.title as section_title, s.level as section_level,
+          a.id as article_id, a.title as article_title,
+          k.id as kb_id, k.name as kb_name,
+          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText('${JSON.stringify(queryEmbedding)}')) as distance
+        FROM kb_paragraphs p
+        JOIN kb_sections s ON p.section_id = s.id
+        JOIN kb_articles a ON s.article_id = a.id
+        JOIN knowledge_bases k ON a.kb_id = k.id
+        WHERE k.id = ? ${articleFilter}
+          AND p.embedding IS NOT NULL
+          AND p.is_knowledge_point = 1
+        ORDER BY distance ASC
+        LIMIT ?`,
+        {
+          replacements: [kb_id, top_k],
+          type: this.db.sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      // 过滤低于阈值的结果并格式化
+      const filteredResults = results
+        .filter(r => (1 - r.distance) >= threshold)
+        .map(r => ({
+          score: 1 - r.distance,
+          paragraph: {
+            id: r.id,
+            title: r.title,
+            content: r.content?.substring(0, 500), // 截取前 500 字符
+            is_knowledge_point: r.is_knowledge_point,
+            token_count: r.token_count,
+          },
+          section: {
+            id: r.section_id,
+            title: r.section_title,
+            level: r.section_level,
+          },
+          article: {
+            id: r.article_id,
+            title: r.article_title,
+          },
+          knowledge_base: {
+            id: r.kb_id,
+            name: r.kb_name,
+          },
+        }));
+
+      ctx.success(filteredResults);
+      logger.info(`[KB] searchInKnowledgeBase: ${filteredResults.length} results, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] searchInKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 全局搜索（搜索用户所有知识库）
+   * POST /api/kb/search
+   */
+  async globalSearch(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const userId = ctx.state.userId;
+      const { query, top_k = 10, threshold = 0.1 } = ctx.request.body;
+
+      if (!query || !query.trim()) {
+        ctx.throw(400, 'Search query is required');
+      }
+
+      // 获取用户的知识库列表
+      const userKBs = await this.KnowledgeBase.findAll({
+        where: { owner_id: userId },
+        attributes: ['id', 'name', 'embedding_model_id'],
+        raw: true,
+      });
+
+      if (userKBs.length === 0) {
+        ctx.success([]);
+        return;
+      }
+
+      // 使用第一个知识库的 embedding_model_id（假设用户使用统一的嵌入模型）
+      const embeddingModelId = userKBs[0].embedding_model_id;
+
+      // 生成查询向量
+      const queryEmbedding = await this._generateEmbedding(query, embeddingModelId);
+      if (!queryEmbedding) {
+        ctx.throw(500, 'Failed to generate query embedding');
+      }
+
+      const kbIds = userKBs.map(kb => kb.id);
+
+      // 执行向量搜索
+      const results = await this.db.sequelize.query(
+        `SELECT 
+          p.id, p.title, p.content, p.is_knowledge_point, p.token_count,
+          s.id as section_id, s.title as section_title, s.level as section_level,
+          a.id as article_id, a.title as article_title,
+          k.id as kb_id, k.name as kb_name,
+          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText('${JSON.stringify(queryEmbedding)}')) as distance
+        FROM kb_paragraphs p
+        JOIN kb_sections s ON p.section_id = s.id
+        JOIN kb_articles a ON s.article_id = a.id
+        JOIN knowledge_bases k ON a.kb_id = k.id
+        WHERE k.id IN (?)
+          AND p.embedding IS NOT NULL
+          AND p.is_knowledge_point = 1
+        ORDER BY distance ASC
+        LIMIT ?`,
+        {
+          replacements: [kbIds, top_k],
+          type: this.db.sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      // 过滤低于阈值的结果并格式化
+      const filteredResults = results
+        .filter(r => (1 - r.distance) >= threshold)
+        .map(r => ({
+          score: 1 - r.distance,
+          paragraph: {
+            id: r.id,
+            title: r.title,
+            content: r.content?.substring(0, 500),
+            is_knowledge_point: r.is_knowledge_point,
+            token_count: r.token_count,
+          },
+          section: {
+            id: r.section_id,
+            title: r.section_title,
+            level: r.section_level,
+          },
+          article: {
+            id: r.article_id,
+            title: r.article_title,
+          },
+          knowledge_base: {
+            id: r.kb_id,
+            name: r.kb_name,
+          },
+        }));
+
+      ctx.success(filteredResults);
+      logger.info(`[KB] globalSearch: ${filteredResults.length} results, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] globalSearch error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 生成文本的嵌入向量
+   * @param {string} text - 要生成嵌入的文本
+   * @param {string} modelId - 嵌入模型 ID
+   * @returns {Promise<number[]|null>} 嵌入向量
+   */
+  async _generateEmbedding(text, modelId) {
+    try {
+      // 优先尝试本地模型
+      const { isLocalModelAvailable, generateEmbedding } = await import('../../lib/local-embedding.js');
+      
+      if (isLocalModelAvailable()) {
+        const embeddings = await generateEmbedding(text);
+        return embeddings?.[0] || null;
+      }
+
+      // 获取 API 配置
+      const AiModel = this.db.getModel('ai_model');
+      const Provider = this.db.getModel('provider');
+
+      const model = await AiModel.findOne({
+        where: { id: modelId },
+        include: [{
+          model: Provider,
+          as: 'provider',
+          attributes: ['base_url', 'api_key'],
+        }],
+        raw: true,
+        nest: true,
+      });
+
+      if (!model?.provider) {
+        logger.warn('[KB] No embedding API configured');
+        return null;
+      }
+
+      const response = await fetch(model.provider.base_url + '/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${model.provider.api_key}`,
+        },
+        body: JSON.stringify({
+          input: text,
+          model: model.model_name || 'text-embedding-3-small',
+        }),
+      });
+
+      if (!response.ok) {
+        logger.error('[KB] Embedding API error:', response.status);
+        return null;
+      }
+
+      const data = await response.json();
+      return data.data?.[0]?.embedding || data.embeddings?.[0] || null;
+    } catch (error) {
+      logger.error('[KB] _generateEmbedding error:', error);
+      return null;
     }
   }
 

@@ -729,11 +729,17 @@ export default {
     globalSearch: '全局搜索',
 
     // 文章树
+    articles: '文章列表',
+    sections: '章节结构',
+    paragraphs: '段落列表',
     articleTree: '文章目录',
     noArticles: '暂无文章，点击导入或新建',
-    selectArticleHint: '请从左侧选择一篇文章',
+    noSections: '暂无章节，点击 + 创建',
+    selectArticleHint: '请先选择一篇文章',
+    selectSectionHint: '请从中间选择一个章节查看内容',
     expandAll: '全部展开',
     collapseAll: '全部收起',
+    tokenCount: '{count} tokens',
 
     // 批量嵌入
     batchEmbed: '批量生成向量',
@@ -762,16 +768,45 @@ export default {
     article: {
       create: '新建文章',
       edit: '编辑文章',
+      titleLabel: '标题',
       titlePlaceholder: '请输入文章标题',
+      summaryLabel: '摘要',
+      summaryPlaceholder: '请输入文章摘要...',
       parent: '父级文章',
       noParent: '无（根级文章）',
       summary: '摘要',
-      summaryPlaceholder: '请输入文章摘要...',
       createSuccess: '文章创建成功',
       createFailed: '创建文章失败',
       updateSuccess: '文章更新成功',
       updateFailed: '更新文章失败',
       deleteConfirm: '确定要删除文章"{title}"吗？子文章和知识点也会被删除。',
+    },
+
+    // 章节
+    section: {
+      create: '创建章节',
+      edit: '编辑章节',
+      titleLabel: '标题',
+      titlePlaceholder: '输入章节标题',
+      parent: '父章节',
+      noParent: '无（顶级章节）',
+    },
+
+    // 段落
+    paragraph: {
+      create: '添加段落',
+      edit: '编辑段落',
+      titleLabel: '标题（可选）',
+      titlePlaceholder: '请输入段落标题',
+      contentLabel: '内容',
+      contentPlaceholder: '请输入段落内容（支持 Markdown）...',
+      contextLabel: '上下文（可选）',
+      contextPlaceholder: '补充上下文信息，用于提高检索精度...',
+      noParagraphs: '暂无段落，点击 + 添加',
+      tokenCount: '{count} tokens',
+      vectorized: '已向量化',
+      notVectorized: '未向量化',
+      revectorizeHint: '重新向量化此段落',
     },
 
     // 知识点

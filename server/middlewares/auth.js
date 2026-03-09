@@ -4,8 +4,9 @@
 
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
+// 延迟读取环境变量（因为 ES Modules 的 import 会在 dotenv.config() 之前执行）
+const getJwtSecret = () => process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
 
 /**
  * 必须认证中间件
@@ -51,7 +52,7 @@ const authenticate = () => {
     // JWT 验证的 try-catch 只包裹验证逻辑，不包裹 await next()
     let decoded;
     try {
-      decoded = jwt.verify(token, JWT_SECRET);
+      decoded = jwt.verify(token, getJwtSecret());
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         ctx.error('令牌已过期', 401, { type: 'TokenExpired' });
@@ -59,6 +60,32 @@ const authenticate = () => {
         ctx.error('无效的令牌', 403);
       }
       return;
+    }
+
+    // 验证用户是否存在（防止伪造 userId）
+    if (ctx.db) {
+      try {
+        const User = ctx.db.getModel('user');
+        const user = await User.findOne({
+          where: { id: decoded.userId },
+          attributes: ['id', 'status'],
+          raw: true,
+        });
+        
+        if (!user) {
+          ctx.error('用户不存在', 401);
+          return;
+        }
+        
+        // 可选：检查用户状态（如被封禁）
+        if (user.status === 'disabled' || user.status === 'banned') {
+          ctx.error('账户已被禁用', 403);
+          return;
+        }
+      } catch (err) {
+        console.error('[Auth] Error verifying user:', err.message);
+        // 数据库查询失败不阻止请求，记录警告
+      }
     }
 
     // JWT 验证成功，设置用户信息并调用下游
@@ -80,7 +107,7 @@ const optionalAuth = () => {
 
     if (token) {
       try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, getJwtSecret());
         ctx.state.userId = decoded.userId;
         ctx.state.userRole = decoded.role;
         ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
@@ -117,8 +144,8 @@ const requireAdmin = () => {
  */
 const generateTokens = (userId, role, options = {}) => {
   const { accessExpiry = '15m', refreshExpiry = '7d' } = options;
-  const access_token = jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: accessExpiry });
-  const refresh_token = jwt.sign({ userId, role }, JWT_REFRESH_SECRET, { expiresIn: refreshExpiry });
+  const access_token = jwt.sign({ userId, role }, getJwtSecret(), { expiresIn: accessExpiry });
+  const refresh_token = jwt.sign({ userId, role }, getJwtRefreshSecret(), { expiresIn: refreshExpiry });
   return { access_token, refresh_token };
 };
 
@@ -127,7 +154,7 @@ const generateTokens = (userId, role, options = {}) => {
  */
 const verifyRefreshToken = (refreshToken) => {
   try {
-    return jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+    return jwt.verify(refreshToken, getJwtRefreshSecret());
   } catch (error) {
     return null;
   }
