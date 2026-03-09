@@ -741,6 +741,10 @@ export default {
     collapseAll: '全部收起',
     tokenCount: '{count} tokens',
 
+    // 标签筛选
+    tagFilter: '标签筛选',
+    clearTagFilter: '清除',
+
     // 批量嵌入
     batchEmbed: '批量生成向量',
     embedding: '生成向量中...',
