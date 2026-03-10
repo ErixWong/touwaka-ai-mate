@@ -24,7 +24,7 @@ async function migrate() {
   const { default: Database } = await import('../lib/db.js');
   
   const db = new Database();
-  await db.initialize();
+  await db.connect();
   
   const sequelize = db.sequelize;
   
