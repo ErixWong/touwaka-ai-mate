@@ -45,6 +45,25 @@
           <button class="btn-icon" @click="showArticleDialog = true" :title="$t('knowledgeBase.article.create')">+</button>
         </div>
 
+        <!-- Tag Filter -->
+        <div v-if="kbStore.tags.length > 0" class="tag-filter">
+          <div class="tag-filter-header">
+            <span class="tag-filter-label">{{ $t('knowledgeBase.tagFilter') }}</span>
+            <button v-if="selectedTagIds.length > 0" class="tag-clear-btn" @click="clearTagFilter">{{ $t('knowledgeBase.clearTagFilter') }}</button>
+          </div>
+          <div class="tag-list">
+            <span
+              v-for="tag in kbStore.tags"
+              :key="tag.id"
+              class="tag-chip"
+              :class="{ selected: selectedTagIds.includes(tag.id) }"
+              @click="toggleTag(tag.id)"
+            >
+              {{ tag.name }}({{ tag.article_count || 0 }})
+            </span>
+          </div>
+        </div>
+
         <!-- Article List -->
         <div class="article-list">
           <div v-if="kbStore.articles.length === 0" class="list-empty">
@@ -60,9 +79,14 @@
           >
             <div class="article-item-content">
               <span class="article-icon">📄</span>
-              <span class="article-title">{{ article.title }}</span>
-              <span v-if="article.status !== 'ready'" class="status-badge" :class="article.status">
-                {{ article.status === 'pending' ? '待处理' : article.status === 'processing' ? '处理中' : '失败' }}
+              <div class="article-info">
+                <span class="article-title">{{ article.title }}</span>
+                <div v-if="article.tags && article.tags.length > 0" class="article-tags">
+                  <span v-for="tag in article.tags" :key="tag.id" class="article-tag">{{ tag.name }}</span>
+                </div>
+              </div>
+              <span v-if="article.status === 'failed'" class="status-badge failed">
+                {{ $t('knowledgeBase.article.status.failed') }}
               </span>
             </div>
             <div class="article-item-actions">
@@ -365,6 +389,9 @@ const isLoading = ref(true)
 const selectedArticle = ref<KbArticle | null>(null)
 const selectedSection = ref<KbSection | null>(null)
 const selectedParagraph = ref<KbParagraph | null>(null)
+
+// Tag filter state
+const selectedTagIds = ref<string[]>([])
 
 // Tree expansion state
 const forceExpandSections = ref<boolean | null>(null)
@@ -737,12 +764,45 @@ const closeSearchDialog = () => {
   kbStore.clearSearchResults()
 }
 
+// Tag filter methods
+const toggleTag = (tagId: string) => {
+  const index = selectedTagIds.value.indexOf(tagId)
+  if (index === -1) {
+    selectedTagIds.value.push(tagId)
+  } else {
+    selectedTagIds.value.splice(index, 1)
+  }
+  // Reload articles with tag filter
+  loadArticlesWithFilter()
+}
+
+const clearTagFilter = () => {
+  selectedTagIds.value = []
+  // Reload articles without tag filter
+  loadArticlesWithFilter()
+}
+
+const loadArticlesWithFilter = async () => {
+  try {
+    const id = requireKbId()
+    await kbStore.loadArticles(id, {
+      tag_ids: selectedTagIds.value.length > 0 ? selectedTagIds.value : undefined,
+    })
+  } catch (error) {
+    console.error('Failed to load articles:', error)
+  }
+}
+
 // Initialize
 onMounted(async () => {
   try {
     const id = requireKbId()
     await kbStore.loadKnowledgeBase(id)
-    await kbStore.loadArticles(id)
+    // 同时加载 tags 和 articles
+    await Promise.all([
+      kbStore.loadTags(id),
+      kbStore.loadArticles(id),
+    ])
   } catch (error) {
     console.error('Failed to load knowledge base:', error)
     goBack()
@@ -943,6 +1003,67 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
+/* Tag Filter */
+.tag-filter {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--secondary-bg, #fafafa);
+}
+
+.tag-filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.tag-filter-label {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.tag-clear-btn {
+  font-size: 11px;
+  color: var(--primary-color, #2196f3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.tag-clear-btn:hover {
+  text-decoration: underline;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #666);
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-chip:hover {
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.tag-chip.selected {
+  background: var(--primary-color, #2196f3);
+  border-color: var(--primary-color, #2196f3);
+  color: white;
+}
+
 /* Article List */
 .article-list {
   flex: 1;
@@ -978,7 +1099,7 @@ onMounted(async () => {
 
 .article-item-content {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   flex: 1;
   min-width: 0;
@@ -986,14 +1107,41 @@ onMounted(async () => {
 
 .article-icon {
   font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.article-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.article-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 32px;
+  overflow: hidden;
+}
+
+.article-tag {
+  font-size: 9px;
+  padding: 1px 4px;
+  background: var(--secondary-bg, #f0f0f0);
+  color: var(--text-tertiary, #999);
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 .article-title {
   flex: 1;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .article-item-actions {

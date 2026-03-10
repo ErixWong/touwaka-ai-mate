@@ -115,5 +115,13 @@ export default (controller) => {
   // 全局搜索（搜索用户所有知识库）
   router.post('/search', authenticate(), controller.globalSearch.bind(controller));
 
+  // ==================== 向量化路由 ====================
+
+  // 重新向量化知识库所有段落
+  router.post('/:kb_id/revectorize', authenticate(), controller.startRevectorize.bind(controller));
+
+  // 获取重新向量化进度
+  router.get('/:kb_id/revectorize/:jobId', authenticate(), controller.getRevectorizeProgress.bind(controller));
+
   return router;
 };

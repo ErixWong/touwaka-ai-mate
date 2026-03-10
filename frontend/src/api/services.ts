@@ -462,7 +462,23 @@ export const knowledgeBaseApi = {
 
   // 获取文章列表
   getArticles: (kbId: string, params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<KbArticle>>(apiClient.get(`/kb/${kbId}/articles`, { params })),
+    apiRequest<PaginatedResponse<KbArticle>>(apiClient.get(`/kb/${kbId}/articles`, {
+      params,
+      // 序列化数组为逗号分隔的字符串，如 tag_ids=xxx,yyy
+      paramsSerializer: (p: any) => {
+        const searchParams = new URLSearchParams()
+        for (const [key, value] of Object.entries(p)) {
+          if (value !== undefined && value !== null) {
+            if (Array.isArray(value)) {
+              searchParams.append(key, value.join(','))
+            } else {
+              searchParams.append(key, String(value))
+            }
+          }
+        }
+        return searchParams.toString()
+      },
+    })),
 
   // 获取文章详情
   getArticle: (kbId: string, articleId: string) =>

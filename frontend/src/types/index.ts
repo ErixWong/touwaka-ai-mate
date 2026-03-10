@@ -206,6 +206,7 @@ export interface PaginationParams {
   limit?: number  // 别名，与 pageSize 等价
   sort_by?: string
   sort_order?: 'asc' | 'desc'
+  tag_ids?: string[]  // 标签ID数组，用于过滤文章
 }
 
 // 分页响应
