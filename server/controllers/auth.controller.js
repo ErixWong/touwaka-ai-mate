@@ -61,14 +61,20 @@ class AuthController {
         include: [{
           model: this.Role,
           as: 'role',
-          attributes: ['name'],
+          attributes: ['mark', 'name'],  // mark: 角色标识，name: 显示名称
         }],
         raw: true,
         nest: true,
       });
       logger.info(`User ${user.username} roles query result:`, JSON.stringify(roles));
-      const primaryRole = roles.length > 0 ? roles[0].role?.name : 'user';
-      logger.info(`User ${user.username} primaryRole: ${primaryRole}`);
+      
+      // 提取所有角色标识（mark 字段）
+      const roleMarks = roles.map(r => r.role?.mark).filter(Boolean);
+      // 检查是否有管理员角色（用户可以有多个角色，通过 mark 字段判断）
+      const isAdmin = roleMarks.includes('admin');
+      // JWT 中的 role 字段：如果有 admin 角色则为 'admin'，否则取第一个角色
+      const primaryRole = isAdmin ? 'admin' : (roleMarks[0] || 'user');
+      logger.info(`User ${user.username} roles: ${roleMarks.join(',')}, primaryRole: ${primaryRole}`);
 
       // 获取 Token 配置并生成 Token
       const tokenConfig = await this.systemSettingService.getTokenConfig();
@@ -124,12 +130,16 @@ class AuthController {
         include: [{
           model: this.Role,
           as: 'role',
-          attributes: ['name'],
+          attributes: ['mark', 'name'],
         }],
         raw: true,
         nest: true,
       });
-      const primaryRole = roles.length > 0 ? roles[0].role?.name : decoded.role || 'user';
+      
+      // 提取所有角色标识（mark 字段），检查是否包含 admin
+      const roleMarks = roles.map(r => r.role?.mark).filter(Boolean);
+      const isAdmin = roleMarks.includes('admin');
+      const primaryRole = isAdmin ? 'admin' : (roleMarks[0] || decoded.role || 'user');
 
       // 获取 Token 配置并生成 Token
       const tokenConfig = await this.systemSettingService.getTokenConfig();
@@ -166,7 +176,7 @@ class AuthController {
         include: [{
           model: this.Role,
           as: 'role',
-          attributes: ['name'],
+          attributes: ['mark', 'name'],  // mark: 角色标识，name: 显示名称
         }],
         raw: true,
         nest: true,
@@ -174,7 +184,8 @@ class AuthController {
 
       ctx.success({
         ...user,
-        roles: roles.map(r => r.role?.name).filter(Boolean),
+        roles: roles.map(r => r.role?.mark).filter(Boolean),  // 返回角色标识列表
+        roleNames: roles.map(r => ({ mark: r.role?.mark, name: r.role?.name })),  // 返回完整角色信息
         preferences: user.preferences ? JSON.parse(user.preferences) : {},
       });
     } catch (error) {

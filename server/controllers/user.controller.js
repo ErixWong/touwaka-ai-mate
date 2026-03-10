@@ -64,14 +64,15 @@ class UserController {
             include: [{
               model: this.Role,
               as: 'role',
-              attributes: ['name'],
+              attributes: ['mark', 'name'],  // mark: 角色标识，name: 显示名称
             }],
             raw: true,
             nest: true,
           });
           return {
             ...user,
-            roles: roles.map(r => r.role?.name).filter(Boolean),
+            roles: roles.map(r => r.role?.mark).filter(Boolean),  // 返回角色标识
+            roleNames: roles.map(r => ({ mark: r.role?.mark, name: r.role?.name })),  // 返回完整角色信息
           };
         })
       );
@@ -454,8 +455,8 @@ class UserController {
       }
 
       const roles = await this.Role.findAll({
-        attributes: ['id', 'name', 'label', 'description', 'is_system'],
-        order: [['name', 'ASC']],
+        attributes: ['id', 'mark', 'name', 'description', 'is_system'],  // mark: 角色标识，name: 显示名称
+        order: [['mark', 'ASC']],
         raw: true,
       });
 

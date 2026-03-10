@@ -10,13 +10,19 @@
 const fs = require('fs');
 const path = require('path');
 
+// 用户角色检查（管理员有特殊权限）
+const USER_ROLE = process.env.USER_ROLE || 'user';
+const IS_ADMIN = USER_ROLE === 'admin';
+
 // Allowed base directories (from environment or default)
 // 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
-const ALLOWED_BASE_PATHS = [
-  DATA_BASE_PATH,
-  path.join(DATA_BASE_PATH, 'skills'),
-];
+
+// 管理员可以访问项目根目录
+const PROJECT_ROOT = process.cwd();
+const ALLOWED_BASE_PATHS = IS_ADMIN
+  ? [PROJECT_ROOT, DATA_BASE_PATH]  // 管理员：项目根目录 + data 目录
+  : [DATA_BASE_PATH, path.join(DATA_BASE_PATH, 'skills')];  // 普通用户：仅 data 目录
 
 // Maximum file size to read (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;

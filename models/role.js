@@ -9,13 +9,13 @@ export default class role extends Model {
       allowNull: false,
       primaryKey: true
     },
-    name: {
+    mark: {
       type: DataTypes.STRING(50),
       allowNull: false,
-      comment: "角色标识：admin\/creator\/user",
-      unique: "name"
+      comment: "角色标识（不可编辑）：admin\/creator\/user",
+      unique: "mark"
     },
-    label: {
+    name: {
       type: DataTypes.STRING(100),
       allowNull: false,
       comment: "角色显示名称"
@@ -56,18 +56,18 @@ export default class role extends Model {
         ]
       },
       {
-        name: "name",
+        name: "mark",
         unique: true,
         using: "BTREE",
         fields: [
-          { name: "name" },
+          { name: "mark" },
         ]
       },
       {
-        name: "idx_name",
+        name: "idx_mark",
         using: "BTREE",
         fields: [
-          { name: "name" },
+          { name: "mark" },
         ]
       },
     ]
