@@ -451,6 +451,22 @@ export default {
     tokenConfig: 'Token Configuration',
     accessTokenExpiry: 'Access Token Expiry',
     refreshTokenExpiry: 'Refresh Token Expiry',
+    // General Config
+    generalConfig: 'General Config',
+    // Package Whitelist
+    packageWhitelist: 'Package Whitelist',
+    moduleWhitelist: 'Module Whitelist',
+    searchPackages: 'Search packages...',
+    customModules: 'Custom Modules',
+    customModulePlaceholder: 'Enter module name, e.g., lodash',
+    customPackages: 'Custom Packages',
+    customPackagePlaceholder: 'Enter package name, e.g., numpy',
+    selectAll: 'Select All',
+    selectDefault: 'Add Default',
+    clearAll: 'Clear All',
+    selectedCount: '{count} selected',
+    resetToDefault: 'Reset to Default',
+    confirmResetWhitelist: 'Are you sure you want to reset the whitelist to default?',
     // Action Buttons
     resetAll: 'Reset All',
     saveChanges: 'Save Changes',

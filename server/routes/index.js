@@ -14,6 +14,7 @@ import chatRoutes from './chat.routes.js';
 import createSkillRoutes from './skill.routes.js';
 import createKbRoutes from './kb.routes.js';
 import systemSettingRoutes from './system-setting.routes.js';
+import createPackageRoutes from './package.routes.js';
 
 export {
   authRoutes,
@@ -28,4 +29,5 @@ export {
   createSkillRoutes,
   createKbRoutes,
   systemSettingRoutes,
+  createPackageRoutes,
 };

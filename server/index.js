@@ -58,6 +58,7 @@ import kbRoutes from './routes/kb.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
+import packageRoutes from './routes/package.routes.js';
 
 class ApiServer {
   constructor() {
@@ -291,6 +292,11 @@ class ApiServer {
     const systemSettingRouter = systemSettingRoutes(this.db);
     this.app.use(systemSettingRouter.routes());
     this.app.use(systemSettingRouter.allowedMethods());
+
+    // Package 白名单路由
+    const packageRouter = packageRoutes(this.db);
+    this.app.use(packageRouter.routes());
+    this.app.use(packageRouter.allowedMethods());
 
     // 404 处理
     this.app.use(async (ctx) => {

@@ -1,0 +1,9 @@
+{
+  "name": "compression-skill",
+  "version": "1.0.0",
+  "description": "ZIP file operations skill",
+  "main": "index.js",
+  "dependencies": {
+    "adm-zip": "^0.5.10"
+  }
+}

@@ -156,6 +156,40 @@ grep -rn "[一-龥]" frontend/src/views/*.vue frontend/src/components/*.vue
 
 ---
 
+## 第八步：前端 API 客户端检查
+
+### 使用 apiClient 而非原生 fetch
+
+**必须使用项目统一的 `apiClient`**：
+- `apiClient` 自动处理 `access_token` 认证
+- `apiClient` 支持 Token 过期自动刷新
+- `apiClient` 统一错误处理
+
+```typescript
+// ❌ 错误 - 使用原生 fetch 和错误的 token 键名
+const token = localStorage.getItem('token')  // 错误键名
+const response = await fetch('/api/system/packages', {
+  headers: { 'Authorization': `Bearer ${token}` },
+})
+
+// ✅ 正确 - 使用项目标准的 apiClient
+import apiClient, { apiRequest } from '@/api/client'
+const result = await apiRequest<PackageList>(apiClient.get('/system/packages'))
+```
+
+**快速检查命令**：
+```bash
+# 检查是否有直接使用 fetch 调用 API 的代码（应该无结果）
+grep -rn "fetch('/api" frontend/src/stores/
+grep -rn 'fetch("/api' frontend/src/stores/
+```
+
+**Token 存储键名**：
+- ✅ 正确：`localStorage.getItem('access_token')`（由 apiClient 自动处理）
+- ❌ 错误：`localStorage.getItem('token')`
+
+---
+
 ## 常见问题快速修复
 
 ### 分页数据不显示
