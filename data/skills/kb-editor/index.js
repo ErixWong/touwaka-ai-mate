@@ -385,9 +385,11 @@ async function listParagraphs(params) {
 
 /**
  * 创建段落
+ * @param {string} context - 知识点上下文（可选）。用于语义检索。
+ *        当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文）。
  */
 async function createParagraph(params) {
-  const { kb_id, section_id, title, content, is_knowledge_point, token_count } = params;
+  const { kb_id, section_id, title, content, context, is_knowledge_point, token_count } = params;
   if (!kb_id) {
     throw new Error('知识库 ID 不能为空');
   }
@@ -401,6 +403,7 @@ async function createParagraph(params) {
     section_id,
     title,
     content,
+    context, // 知识点的上下文，用于语义检索
     is_knowledge_point: is_knowledge_point || false,
     token_count: token_count || 0,
   });
@@ -408,15 +411,18 @@ async function createParagraph(params) {
 
 /**
  * 更新段落
+ * @param {string} context - 知识点上下文（可选）。用于语义检索。
+ *        当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文）。
  */
 async function updateParagraph(params) {
-  const { kb_id, id, title, content, is_knowledge_point, token_count } = params;
+  const { kb_id, id, title, content, context, is_knowledge_point, token_count } = params;
   if (!kb_id || !id) {
     throw new Error('知识库 ID 和段落 ID 不能为空');
   }
   const updates = {};
   if (title !== undefined) updates.title = title;
   if (content !== undefined) updates.content = content;
+  if (context !== undefined) updates.context = context;
   if (is_knowledge_point !== undefined) updates.is_knowledge_point = is_knowledge_point;
   if (token_count !== undefined) updates.token_count = token_count;
 
@@ -826,6 +832,7 @@ function getTools() {
           section_id: { type: 'string', description: '所属节 ID' },
           title: { type: 'string', description: '段落标题' },
           content: { type: 'string', description: '段落内容（完整的原文，不要提炼或总结）' },
+          context: { type: 'string', description: '知识点上下文（可选）。当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索' },
           is_knowledge_point: { type: 'boolean', description: '是否为知识点，默认 false' },
           token_count: { type: 'integer', description: 'Token 数量，默认 0' },
         },
@@ -842,6 +849,7 @@ function getTools() {
           id: { type: 'string', description: '段落 ID' },
           title: { type: 'string', description: '新标题' },
           content: { type: 'string', description: '新内容' },
+          context: { type: 'string', description: '知识点上下文（可选）。当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索' },
           is_knowledge_point: { type: 'boolean', description: '是否为知识点' },
           token_count: { type: 'integer', description: 'Token 数量' },
         },
