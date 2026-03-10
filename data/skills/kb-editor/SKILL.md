@@ -258,12 +258,18 @@ knowledge_bases (知识库)
 - `section_id` (string, required): 所属节 ID
 - `title` (string, optional): 段落标题
 - `content` (string, required): 段落内容（完整的原文，不要提炼或总结）
+- `context` (string, optional): 知识点上下文。当 `is_knowledge_point` 为 `true` 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索
 - `is_knowledge_point` (boolean, optional): 是否为知识点，默认 false
 - `token_count` (integer, optional): Token 数量，默认 0
 
 **重要：知识点段落**：
 - 设置 `is_knowledge_point: true` 的段落会被向量化，可用于语义搜索
 - 普通段落不会被向量化，只作为上下文展示
+
+**Context 字段说明**：
+- **用途**：用于语义检索时提供上下文信息，帮助技能更准确地定位知识点
+- **生成原则**：用一两句话总结该知识点和知识点所处的文章（中文）
+- **示例**：如果知识点是"Python 是一种解释型语言"，Context 可以是"Python 编程语言简介 - 介绍 Python 的基本特性和应用场景"
 
 #### update_paragraph
 
@@ -273,7 +279,8 @@ knowledge_bases (知识库)
 - `kb_id` (string, required): 知识库 ID
 - `id` (string, required): 段落 ID
 - `title` (string, optional): 新标题
-- `content` (string, optional): 新内容
+- `content` (string, optional): 新内容（原文，不要提炼或总结）
+- `context` (string, optional): 知识点上下文。当 `is_knowledge_point` 为 `true` 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索
 - `is_knowledge_point` (boolean, optional): 是否为知识点
 - `token_count` (integer, optional): Token 数量
 
