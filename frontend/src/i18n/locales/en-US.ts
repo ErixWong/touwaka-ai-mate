@@ -762,6 +762,10 @@ export default {
     collapseAll: 'Collapse All',
     tokenCount: '{count} tokens',
 
+    // Tag filter
+    tagFilter: 'Filter by Tag',
+    clearTagFilter: 'Clear',
+
     // Batch embed
     batchEmbed: 'Generate Embeddings',
     embedding: 'Generating embeddings...',

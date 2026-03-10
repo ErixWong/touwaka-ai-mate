@@ -191,8 +191,10 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
 
   /**
    * 加载文章列表
+   * @param kbId 知识库ID
+   * @param params 查询参数，支持 page, pageSize, tag_ids
    */
-  const loadArticles = async (kbId: string, params?: { page?: number; pageSize?: number }) => {
+  const loadArticles = async (kbId: string, params?: { page?: number; pageSize?: number; tag_ids?: string[] }) => {
     isLoadingArticles.value = true
     error.value = null
     try {

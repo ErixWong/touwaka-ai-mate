@@ -28,6 +28,11 @@ export default class kb_paragraph extends Model {
       allowNull: false,
       comment: "段落内容"
     },
+    context: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "知识点上下文，用于语义检索。用一两句话总结该知识点及其所在文章（中文）"
+    },
     is_knowledge_point: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
