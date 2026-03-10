@@ -113,7 +113,7 @@ class TaskController {
 
       // 构建查询选项，自动添加用户ID过滤
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
-        baseWhere: { created_by: ctx.state.userId },
+        baseWhere: { created_by: ctx.state.session.id },
         filterOptions: { allowedFields: ALLOWED_FILTER_FIELDS },
         sortOptions: { allowedFields: ALLOWED_SORT_FIELDS },
         pageOptions: { defaultSize: 10, maxSize: 100 },
@@ -143,7 +143,7 @@ class TaskController {
       this.ensureModel();
       const { status, page = 1, pageSize = 20 } = ctx.query;
 
-      const where = { created_by: ctx.state.userId };
+      const where = { created_by: ctx.state.session.id };
       if (status && status !== 'all') {
         where.status = status;
       }
@@ -189,7 +189,7 @@ class TaskController {
         return;
       }
 
-      const userId = ctx.state.userId;
+      const userId = ctx.state.session.id;
       const taskId = this.generateTaskId();
       const id = Utils.newID(20);
 
@@ -244,7 +244,7 @@ class TaskController {
       }
 
       // 检查权限：只有创建者可以查看
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }
@@ -264,7 +264,7 @@ class TaskController {
       this.ensureModel();
       const { id } = ctx.params;
       const { title, description, status } = ctx.request.body;
-      const userId = ctx.state.userId;
+      const userId = ctx.state.session.id;
 
       logger.info(`[TaskController] 更新任务: id=${id}, userId=${userId}`);
 
@@ -335,7 +335,7 @@ class TaskController {
         {
           where: {
             id,
-            created_by: ctx.state.userId,
+            created_by: ctx.state.session.id,
           },
         }
       );
@@ -371,7 +371,7 @@ class TaskController {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }
@@ -439,7 +439,7 @@ class TaskController {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }
@@ -521,7 +521,7 @@ class TaskController {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }
@@ -619,7 +619,7 @@ class TaskController {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }

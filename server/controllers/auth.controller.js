@@ -160,7 +160,7 @@ class AuthController {
   async me(ctx) {
     try {
       const user = await this.User.findOne({
-        where: { id: ctx.state.userId },
+        where: { id: ctx.state.session.id },
         attributes: ['id', 'username', 'email', 'nickname', 'avatar', 'preferences', 'created_at'],
         raw: true,
       });
@@ -172,7 +172,7 @@ class AuthController {
 
       // 获取用户角色
       const roles = await this.UserRole.findAll({
-        where: { user_id: ctx.state.userId },
+        where: { user_id: ctx.state.session.id },
         include: [{
           model: this.Role,
           as: 'role',

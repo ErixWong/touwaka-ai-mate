@@ -44,7 +44,7 @@ class StreamController {
         return;
       }
 
-      const user_id = ctx.state.userId;
+      const user_id = ctx.state.session.id;
 
       // 检查 SSE 连接是否存在
       const connections = this.expertConnections.get(expert_id);
@@ -69,7 +69,7 @@ class StreamController {
         model_id,
         task_id,
         task_path,  // 传递当前浏览路径
-        access_token: ctx.state.accessToken,  // 传递用户 Token
+        access_token: ctx.state.session.accessToken,  // 传递用户 Token
       });
 
       // 立即返回成功，消息将通过 SSE 推送
@@ -234,7 +234,7 @@ class StreamController {
       return;
     }
 
-    const user_id = ctx.state.userId;
+    const user_id = ctx.state.session.id;
 
     // 从系统配置获取连接数限制
     const connectionLimits = await this.systemSettingService.getConnectionLimits();

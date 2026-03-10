@@ -161,7 +161,7 @@ class KbController {
     try {
       this.ensureModels();
       const data = ctx.request.body;
-      const userId = ctx.state.userId;
+      const userId = ctx.state.session.id;
 
       if (!data.name || !data.name.trim()) {
         ctx.throw(400, 'Knowledge base name is required');
@@ -1233,7 +1233,7 @@ class KbController {
     const startTime = Date.now();
     try {
       this.ensureModels();
-      const userId = ctx.state.userId;
+      const userId = ctx.state.session.id;
       const { query, top_k = 10, threshold = 0.1 } = ctx.request.body;
 
       if (!query || !query.trim()) {

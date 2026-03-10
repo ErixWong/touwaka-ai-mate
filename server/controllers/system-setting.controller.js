@@ -35,7 +35,7 @@ class SystemSettingController {
   }
 
   _checkAdmin(ctx) {
-    if (ctx.state.userRole !== 'admin') {
+    if (!ctx.state.session?.isAdmin) {
       ctx.error('需要管理员权限', 403);
       return false;
     }
