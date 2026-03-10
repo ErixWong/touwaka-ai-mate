@@ -432,6 +432,22 @@ export default {
     tokenConfig: 'Token 配置',
     accessTokenExpiry: 'Access Token 过期时间',
     refreshTokenExpiry: 'Refresh Token 过期时间',
+    // 通用配置
+    generalConfig: '通用配置',
+    // 包白名单配置
+    packageWhitelist: '包白名单',
+    moduleWhitelist: '模块白名单',
+    searchPackages: '搜索包...',
+    customModules: '自定义模块',
+    customModulePlaceholder: '输入模块名，如：lodash',
+    customPackages: '自定义包',
+    customPackagePlaceholder: '输入包名，如：numpy',
+    selectAll: '全选',
+    selectDefault: '添加默认',
+    clearAll: '清空',
+    selectedCount: '已选择 {count} 个',
+    resetToDefault: '恢复默认',
+    confirmResetWhitelist: '确定要恢复默认白名单配置吗？',
     // 操作按钮
     resetAll: '重置全部',
     saveChanges: '保存更改',

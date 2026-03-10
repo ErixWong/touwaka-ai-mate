@@ -85,7 +85,7 @@
                   <span v-for="tag in article.tags" :key="tag.id" class="article-tag">{{ tag.name }}</span>
                 </div>
               </div>
-              <span v-if="article.status === 'failed'" class="status-badge failed">
+              <span v-if="article.status === 'error'" class="status-badge failed">
                 {{ $t('knowledgeBase.article.status.failed') }}
               </span>
             </div>

@@ -5,185 +5,211 @@
     </div>
 
     <template v-else>
-      <!-- LLM 默认参数 -->
-      <div class="config-section">
-        <div class="section-header">
-          <h3 class="section-title">📊 {{ $t('settings.llmDefaults') }}</h3>
-          <button class="btn-reset-section" @click="resetSection('llm')">
-            {{ $t('common.reset') }}
-          </button>
-        </div>
-
-        <div class="config-grid">
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.contextThreshold') }}</label>
-            <div class="config-input-group">
-              <input
-                type="number"
-                v-model.number="form.llm.context_threshold"
-                min="0"
-                max="1"
-                step="0.05"
-                class="config-input"
-              />
-              <span class="config-hint">0-1</span>
-            </div>
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.temperature') }}</label>
-            <div class="config-input-group">
-              <input
-                type="number"
-                v-model.number="form.llm.temperature"
-                min="0"
-                max="2"
-                step="0.1"
-                class="config-input"
-              />
-              <span class="config-hint">0-2</span>
-            </div>
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.reflectiveTemperature') }}</label>
-            <div class="config-input-group">
-              <input
-                type="number"
-                v-model.number="form.llm.reflective_temperature"
-                min="0"
-                max="2"
-                step="0.1"
-                class="config-input"
-              />
-              <span class="config-hint">0-2</span>
-            </div>
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.topP') }}</label>
-            <div class="config-input-group">
-              <input
-                type="number"
-                v-model.number="form.llm.top_p"
-                min="0"
-                max="1"
-                step="0.1"
-                class="config-input"
-              />
-              <span class="config-hint">0-1</span>
-            </div>
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.frequencyPenalty') }}</label>
-            <div class="config-input-group">
-              <input
-                type="number"
-                v-model.number="form.llm.frequency_penalty"
-                min="0"
-                max="2"
-                step="0.1"
-                class="config-input"
-              />
-              <span class="config-hint">0-2</span>
-            </div>
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.presencePenalty') }}</label>
-            <div class="config-input-group">
-              <input
-                type="number"
-                v-model.number="form.llm.presence_penalty"
-                min="0"
-                max="2"
-                step="0.1"
-                class="config-input"
-              />
-              <span class="config-hint">0-2</span>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- 连接限制 -->
-      <div class="config-section">
-        <div class="section-header">
-          <h3 class="section-title">🔗 {{ $t('settings.connectionLimits') }}</h3>
-          <button class="btn-reset-section" @click="resetSection('connection')">
-            {{ $t('common.reset') }}
-          </button>
-        </div>
-
-        <div class="config-grid">
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.maxConnectionsPerUser') }}</label>
-            <input
-              type="number"
-              v-model.number="form.connection.max_per_user"
-              min="1"
-              class="config-input"
-            />
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.maxConnectionsPerExpert') }}</label>
-            <input
-              type="number"
-              v-model.number="form.connection.max_per_expert"
-              min="1"
-              class="config-input"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- Token 配置 -->
-      <div class="config-section">
-        <div class="section-header">
-          <h3 class="section-title">🔐 {{ $t('settings.tokenConfig') }}</h3>
-          <button class="btn-reset-section" @click="resetSection('token')">
-            {{ $t('common.reset') }}
-          </button>
-        </div>
-
-        <div class="config-grid">
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.accessTokenExpiry') }}</label>
-            <input
-              type="text"
-              v-model="form.token.access_expiry"
-              class="config-input"
-              placeholder="15m, 1h, 1d"
-            />
-          </div>
-
-          <div class="config-item">
-            <label class="config-label">{{ $t('settings.refreshTokenExpiry') }}</label>
-            <input
-              type="text"
-              v-model="form.token.refresh_expiry"
-              class="config-input"
-              placeholder="1d, 7d, 30d"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 底部操作按钮 -->
-      <div class="config-actions">
-        <button class="btn-reset-all" @click="resetAll">
-          {{ $t('settings.resetAll') }}
+      <!-- 子 Tab 切换 -->
+      <div class="sub-tabs">
+        <button
+          class="sub-tab-btn"
+          :class="{ active: activeSubTab === 'general' }"
+          @click="activeSubTab = 'general'"
+        >
+          ⚙️ {{ $t('settings.generalConfig') }}
         </button>
         <button
-          class="btn-save"
-          @click="saveConfig"
-          :disabled="!hasChanges || saving"
+          class="sub-tab-btn"
+          :class="{ active: activeSubTab === 'packages' }"
+          @click="activeSubTab = 'packages'"
         >
-          {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+          📦 {{ $t('settings.packageWhitelist') }}
         </button>
+      </div>
+
+      <!-- 通用配置 -->
+      <div v-if="activeSubTab === 'general'" class="tab-content">
+        <!-- LLM 默认参数 -->
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">📊 {{ $t('settings.llmDefaults') }}</h3>
+            <button class="btn-reset-section" @click="resetSection('llm')">
+              {{ $t('common.reset') }}
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.contextThreshold') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.llm.context_threshold"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  class="config-input"
+                />
+                <span class="config-hint">0-1</span>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.temperature') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.llm.temperature"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  class="config-input"
+                />
+                <span class="config-hint">0-2</span>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.reflectiveTemperature') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.llm.reflective_temperature"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  class="config-input"
+                />
+                <span class="config-hint">0-2</span>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.topP') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.llm.top_p"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  class="config-input"
+                />
+                <span class="config-hint">0-1</span>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.frequencyPenalty') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.llm.frequency_penalty"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  class="config-input"
+                />
+                <span class="config-hint">0-2</span>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.presencePenalty') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.llm.presence_penalty"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  class="config-input"
+                />
+                <span class="config-hint">0-2</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 连接限制 -->
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">🔗 {{ $t('settings.connectionLimits') }}</h3>
+            <button class="btn-reset-section" @click="resetSection('connection')">
+              {{ $t('common.reset') }}
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.maxConnectionsPerUser') }}</label>
+              <input
+                type="number"
+                v-model.number="form.connection.max_per_user"
+                min="1"
+                class="config-input"
+              />
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.maxConnectionsPerExpert') }}</label>
+              <input
+                type="number"
+                v-model.number="form.connection.max_per_expert"
+                min="1"
+                class="config-input"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Token 配置 -->
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">🔐 {{ $t('settings.tokenConfig') }}</h3>
+            <button class="btn-reset-section" @click="resetSection('token')">
+              {{ $t('common.reset') }}
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.accessTokenExpiry') }}</label>
+              <input
+                type="text"
+                v-model="form.token.access_expiry"
+                class="config-input"
+                placeholder="15m, 1h, 1d"
+              />
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.refreshTokenExpiry') }}</label>
+              <input
+                type="text"
+                v-model="form.token.refresh_expiry"
+                class="config-input"
+                placeholder="1d, 7d, 30d"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作按钮 -->
+        <div class="config-actions">
+          <button class="btn-reset-all" @click="resetAll">
+            {{ $t('settings.resetAll') }}
+          </button>
+          <button
+            class="btn-save"
+            @click="saveConfig"
+            :disabled="!hasChanges || saving"
+          >
+            {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 包白名单配置 -->
+      <div v-if="activeSubTab === 'packages'" class="tab-content">
+        <PackageWhitelistTab />
       </div>
     </template>
   </div>
@@ -193,9 +219,13 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useI18n } from 'vue-i18n'
+import PackageWhitelistTab from './PackageWhitelistTab.vue'
 
 const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
+
+// 子 Tab 状态
+const activeSubTab = ref<'general' | 'packages'>('general')
 
 // 表单数据
 const form = reactive({
@@ -300,6 +330,39 @@ onMounted(async () => {
   text-align: center;
   padding: 40px;
   color: var(--text-secondary, #666);
+}
+
+/* 子 Tab 样式 */
+.sub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  margin-bottom: 20px;
+}
+
+.sub-tab-btn {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sub-tab-btn:hover {
+  color: var(--text-primary, #333);
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.sub-tab-btn.active {
+  color: var(--primary-color, #2196f3);
+  border-bottom-color: var(--primary-color, #2196f3);
+}
+
+.tab-content {
+  /* 内容区域样式 */
 }
 
 .config-section {
