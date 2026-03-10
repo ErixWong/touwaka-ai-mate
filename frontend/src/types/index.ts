@@ -522,11 +522,13 @@ export interface ResetPasswordRequest {
 
 /**
  * 角色信息
+ * - mark: 角色标识符（唯一，不可变），如 'admin', 'user'
+ * - name: 显示名称（可编辑），如 '管理员', '普通用户'
  */
 export interface Role {
   id: string
+  mark: string
   name: string
-  label: string
   description?: string
   is_system: boolean
 }
@@ -581,9 +583,10 @@ export interface RoleDetail extends Role {
 
 /**
  * 更新角色的请求数据
+ * - name: 显示名称（可编辑）
  */
 export interface UpdateRoleRequest {
-  label?: string
+  name?: string
   description?: string
 }
 
