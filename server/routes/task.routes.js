@@ -101,7 +101,7 @@ export default (controller) => {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }
@@ -166,7 +166,7 @@ export default (controller) => {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }
@@ -241,7 +241,7 @@ export default (controller) => {
       }
 
       // 检查权限
-      if (task.created_by !== ctx.state.userId) {
+      if (task.created_by !== ctx.state.session.id) {
         ctx.error('无权限访问此任务', 403);
         return;
       }

@@ -23,7 +23,7 @@ class UserController {
   async getUsers(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -64,14 +64,15 @@ class UserController {
             include: [{
               model: this.Role,
               as: 'role',
-              attributes: ['name'],
+              attributes: ['mark', 'name'],  // mark: 角色标识，name: 显示名称
             }],
             raw: true,
             nest: true,
           });
           return {
             ...user,
-            roles: roles.map(r => r.role?.name).filter(Boolean),
+            roles: roles.map(r => r.role?.mark).filter(Boolean),  // 返回角色标识
+            roleNames: roles.map(r => ({ mark: r.role?.mark, name: r.role?.name })),  // 返回完整角色信息
           };
         })
       );
@@ -98,7 +99,7 @@ class UserController {
   async createUser(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -178,9 +179,10 @@ class UserController {
   async getUser(ctx) {
     try {
       const { id } = ctx.params;
+      const session = ctx.state.session;
 
       // 只能查看自己或管理员查看任何人
-      if (id !== ctx.state.userId && ctx.state.userRole !== 'admin') {
+      if (id !== session.id && !session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -212,10 +214,10 @@ class UserController {
   async updateUser(ctx) {
     try {
       const { id } = ctx.params;
-      const isAdmin = ctx.state.userRole === 'admin';
-      const isSelf = id === ctx.state.userId;
+      const session = ctx.state.session;
+      const isSelf = id === session.id;
 
-      if (!isSelf && !isAdmin) {
+      if (!isSelf && !session.isAdmin) {
         ctx.error('无权限修改', 403);
         return;
       }
@@ -228,7 +230,7 @@ class UserController {
       const updates = {};
 
       // 管理员可修改所有字段
-      if (isAdmin) {
+      if (session.isAdmin) {
         if (username !== undefined) updates.username = username;
         if (email !== undefined) updates.email = email;
         if (status !== undefined) updates.status = status;
@@ -288,7 +290,7 @@ class UserController {
   async deleteUser(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -296,7 +298,7 @@ class UserController {
       const { id } = ctx.params;
 
       // 不能删除自己
-      if (id === ctx.state.userId) {
+      if (id === ctx.state.session.id) {
         ctx.error('不能删除自己的账户');
         return;
       }
@@ -327,7 +329,7 @@ class UserController {
   async resetPassword(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -369,7 +371,7 @@ class UserController {
     try {
       const { id } = ctx.params;
 
-      if (id !== ctx.state.userId) {
+      if (id !== ctx.state.session.id) {
         ctx.error('无权限修改', 403);
         return;
       }
@@ -394,7 +396,7 @@ class UserController {
   async getMyPreferences(ctx) {
     try {
       const user = await this.User.findOne({
-        where: { id: ctx.state.userId },
+        where: { id: ctx.state.session.id },
         attributes: ['preferences'],
         raw: true,
       });
@@ -420,12 +422,12 @@ class UserController {
       const preferences = JSON.stringify(ctx.request.body);
       await this.User.update(
         { preferences },
-        { where: { id: ctx.state.userId } }
+        { where: { id: ctx.state.session.id } }
       );
 
       // 返回更新后的偏好设置
       const user = await this.User.findOne({
-        where: { id: ctx.state.userId },
+        where: { id: ctx.state.session.id },
         attributes: ['preferences'],
         raw: true,
       });
@@ -448,14 +450,14 @@ class UserController {
   async getRoles(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
 
       const roles = await this.Role.findAll({
-        attributes: ['id', 'name', 'label', 'description', 'is_system'],
-        order: [['name', 'ASC']],
+        attributes: ['id', 'mark', 'name', 'description', 'is_system'],  // mark: 角色标识，name: 显示名称
+        order: [['mark', 'ASC']],
         raw: true,
       });
 
@@ -473,7 +475,7 @@ class UserController {
   async updateUserRoles(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -519,7 +521,7 @@ class UserController {
   async updateUserOrganization(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -591,7 +593,7 @@ class UserController {
       const { id } = ctx.params;
 
       // 只能查看自己或管理员查看任何人
-      if (id !== ctx.state.userId && ctx.state.userRole !== 'admin') {
+      if (id !== ctx.state.session.id && !ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }

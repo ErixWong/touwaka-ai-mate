@@ -41,7 +41,7 @@ class TopicController {
 
       // 构建查询选项，自动添加用户ID过滤
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
-        baseWhere: { user_id: ctx.state.userId },
+        baseWhere: { user_id: ctx.state.session.id },
         filterOptions: { allowedFields: ALLOWED_FILTER_FIELDS },
         sortOptions: { allowedFields: ALLOWED_SORT_FIELDS },
         pageOptions: { defaultSize: 10, maxSize: 100 },
@@ -71,7 +71,7 @@ class TopicController {
       const { status, expert_id, page = 1, pageSize = 20 } = ctx.query;
       const { Op } = this.db;
 
-      const where = { user_id: ctx.state.userId };
+      const where = { user_id: ctx.state.session.id };
       if (status) {
         where.status = status;
       }
@@ -121,7 +121,7 @@ class TopicController {
 
       await this.Topic.create({
         id: topicId,
-        user_id: ctx.state.userId,
+        user_id: ctx.state.session.id,
         expert_id: expertId || null,
         provider_name: providerName || null,
         model_name: modelName || null,
@@ -186,7 +186,7 @@ class TopicController {
       const result = await this.Topic.update(updates, {
         where: {
           id,
-          user_id: ctx.state.userId,
+          user_id: ctx.state.session.id,
         },
       });
 
@@ -216,7 +216,7 @@ class TopicController {
       const result = await this.Topic.destroy({
         where: {
           id,
-          user_id: ctx.state.userId,
+          user_id: ctx.state.session.id,
         },
       });
 
@@ -239,7 +239,7 @@ class TopicController {
   async compress(ctx) {
     try {
       const { expert_id } = ctx.request.body || {};
-      const userId = ctx.state.userId;
+      const userId = ctx.state.session.id;
 
       if (!this.chatService) {
         ctx.error('ChatService 未初始化', 500);

@@ -36,10 +36,15 @@ const authenticate = () => {
       // 内部服务调用认证成功
       // 支持数字和字符串（UUID）类型的 userId
       const parsedUserId = parseInt(internalUserId, 10);
-      ctx.state.userId = isNaN(parsedUserId) ? internalUserId : parsedUserId;
-      ctx.state.userRole = 'user';
+      const userId = isNaN(parsedUserId) ? internalUserId : parsedUserId;
+      ctx.state.session = {
+        id: userId,
+        roles: ['user'],
+        isAdmin: false,
+        accessToken: null,
+      };
       ctx.state.authType = 'internal';
-      console.log('[Auth] Internal auth:', { userId: ctx.state.userId });
+      console.log('[Auth] Internal auth:', { userId });
       await next();
       return;
     }
@@ -62,7 +67,8 @@ const authenticate = () => {
       return;
     }
 
-    // 验证用户是否存在（防止伪造 userId）
+    // 验证用户是否存在，并获取角色列表
+    let roles = [];
     if (ctx.db) {
       try {
         const User = ctx.db.getModel('user');
@@ -82,17 +88,39 @@ const authenticate = () => {
           ctx.error('账户已被禁用', 403);
           return;
         }
+
+        // 查询用户角色列表
+        const UserRole = ctx.db.getModel('user_role');
+        const Role = ctx.db.getModel('role');
+        const roleRecords = await UserRole.findAll({
+          where: { user_id: decoded.userId },
+          include: [{
+            model: Role,
+            as: 'role',
+            attributes: ['mark'],
+          }],
+          raw: true,
+          nest: true,
+        });
+        roles = roleRecords.map(r => r.role?.mark).filter(Boolean);
       } catch (err) {
         console.error('[Auth] Error verifying user:', err.message);
         // 数据库查询失败不阻止请求，记录警告
       }
     }
 
-    // JWT 验证成功，设置用户信息并调用下游
-    ctx.state.userId = decoded.userId;
-    ctx.state.userRole = decoded.role;
-    ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
-    console.log('[Auth] Token decoded:', { userId: decoded.userId, role: decoded.role });
+    // 计算是否为管理员
+    const isAdmin = roles.includes('admin');
+
+    // JWT 验证成功，设置 session 对象
+    ctx.state.session = {
+      id: decoded.userId,
+      roles: roles,
+      isAdmin: isAdmin,
+      accessToken: token,
+    };
+    
+    console.log('[Auth] Token decoded:', { userId: decoded.userId, roles, isAdmin });
     await next();
   };
 };
@@ -108,9 +136,34 @@ const optionalAuth = () => {
     if (token) {
       try {
         const decoded = jwt.verify(token, getJwtSecret());
-        ctx.state.userId = decoded.userId;
-        ctx.state.userRole = decoded.role;
-        ctx.state.accessToken = token;  // 保存原始 token，用于 skill 调用后台 API
+        // 尝试获取角色列表
+        let roles = [];
+        if (ctx.db) {
+          try {
+            const UserRole = ctx.db.getModel('user_role');
+            const Role = ctx.db.getModel('role');
+            const roleRecords = await UserRole.findAll({
+              where: { user_id: decoded.userId },
+              include: [{
+                model: Role,
+                as: 'role',
+                attributes: ['mark'],
+              }],
+              raw: true,
+              nest: true,
+            });
+            roles = roleRecords.map(r => r.role?.mark).filter(Boolean);
+          } catch (err) {
+            // 查询失败，使用 JWT 中的角色
+          }
+        }
+        const isAdmin = roles.includes('admin');
+        ctx.state.session = {
+          id: decoded.userId,
+          roles: roles.length > 0 ? roles : [decoded.role || 'user'],
+          isAdmin: isAdmin,
+          accessToken: token,
+        };
       } catch (error) {
         // Token 无效但不阻止请求
       }
@@ -124,8 +177,9 @@ const optionalAuth = () => {
  */
 const requireAdmin = () => {
   return async (ctx, next) => {
-    console.log('[RequireAdmin] Checking role:', ctx.state.userRole);
-    if (ctx.state.userRole !== 'admin') {
+    const session = ctx.state.session;
+    console.log('[RequireAdmin] Checking session:', session?.id, 'isAdmin:', session?.isAdmin);
+    if (!session || !session.isAdmin) {
       ctx.error('需要管理员权限', 403);
       return;
     }

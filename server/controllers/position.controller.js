@@ -19,7 +19,7 @@ class PositionController {
   async createPosition(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -111,7 +111,7 @@ class PositionController {
   async updatePosition(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -167,7 +167,7 @@ class PositionController {
   async deletePosition(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }

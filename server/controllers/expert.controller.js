@@ -308,7 +308,7 @@ class ExpertController {
   async refresh(ctx) {
     try {
       const { id } = ctx.params;
-      const userId = ctx.state.user?.id || 'unknown';
+      const userId = ctx.state.session?.id || 'unknown';
 
       // 检查专家是否存在
       const existing = await this.Expert.findOne({ where: { id } });

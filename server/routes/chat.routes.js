@@ -17,7 +17,7 @@ export default (controller) => {
   // 停止生成（需要认证）
   router.post('/stop', authenticate(), async (ctx) => {
     const { expert_id } = ctx.request.body || {};
-    const user_id = ctx.state.userId;
+    const user_id = ctx.state.session.id;
 
     // 简化实现：返回成功，前端会标记消息为已停止
     ctx.body = {

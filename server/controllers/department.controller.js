@@ -48,7 +48,7 @@ class DepartmentController {
   async createDepartment(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -166,7 +166,7 @@ class DepartmentController {
   async updateDepartment(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
@@ -235,7 +235,7 @@ class DepartmentController {
   async deleteDepartment(ctx) {
     try {
       // 检查管理员权限
-      if (ctx.state.userRole !== 'admin') {
+      if (!ctx.state.session.isAdmin) {
         ctx.error('无权限访问', 403);
         return;
       }
