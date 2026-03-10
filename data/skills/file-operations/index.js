@@ -11,8 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 用户角色检查（管理员有特殊权限）
-const USER_ROLE = process.env.USER_ROLE || 'user';
-const IS_ADMIN = USER_ROLE === 'admin';
+const IS_ADMIN = process.env.IS_ADMIN === 'true';
 
 // Allowed base directories (from environment or default)
 // 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
