@@ -23,7 +23,18 @@ async function migrate() {
   // 动态导入数据库模块
   const { default: Database } = await import('../lib/db.js');
   
-  const db = new Database();
+  // 加载数据库配置并替换环境变量
+  const dbConfigPath = path.join(__dirname, '..', 'config', 'database.json');
+  let dbConfigStr = fs.readFileSync(dbConfigPath, 'utf8');
+  
+  // 替换环境变量占位符
+  dbConfigStr = dbConfigStr.replace(/\$\{(\w+)\}/g, (match, envVar) => {
+    return process.env[envVar] || match;
+  });
+  
+  const dbConfig = JSON.parse(dbConfigStr);
+  
+  const db = new Database(dbConfig);
   await db.connect();
   
   const sequelize = db.sequelize;
