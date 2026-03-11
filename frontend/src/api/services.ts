@@ -61,6 +61,11 @@ import type {
   UpdatePositionRequest,
   UserOrganization,
   UpdateUserOrganizationRequest,
+  // 助理系统相关类型
+  Assistant,
+  AssistantRequest,
+  AssistantSummonRequest,
+  AssistantSummonResponse,
 } from '@/types'
 
 /**
@@ -654,4 +659,32 @@ export const organizationApi = {
   // 更新用户组织信息
   updateUserOrganization: (userId: string, data: UpdateUserOrganizationRequest) =>
     apiRequest<UserOrganization>(apiClient.put(`/users/${userId}/organization`, data)),
+}
+
+// ============================================
+// 助理系统相关 API
+// ============================================
+
+export const assistantApi = {
+  // 获取可用助理列表
+  getAssistants: () =>
+    apiRequest<Assistant[]>(apiClient.get('/assistants')),
+
+  // 召唤助理
+  summon: (data: AssistantSummonRequest) =>
+    apiRequest<AssistantSummonResponse>(apiClient.post('/assistants/call', data)),
+
+  // 查询委托状态
+  getRequest: (requestId: string) =>
+    apiRequest<AssistantRequest>(apiClient.get(`/assistants/requests/${requestId}`)),
+
+  // 查询委托列表
+  getRequests: (params?: {
+    status?: string
+    expert_id?: string
+    user_id?: string
+    assistant_type?: string
+    limit?: number
+  }) =>
+    apiRequest<AssistantRequest[]>(apiClient.get('/assistants/requests', { params })),
 }
