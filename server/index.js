@@ -21,6 +21,7 @@ import Database from '../lib/db.js';
 import ChatService from '../lib/chat-service.js';
 import BackgroundTaskScheduler from '../lib/background-scheduler.js';
 import { createEmbeddingTask } from '../lib/embedding-worker.js';
+import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import logger from '../lib/logger.js';
 
 // 中间件
@@ -69,6 +70,7 @@ class ApiServer {
     this.db = null;
     this.chatService = null;
     this.scheduler = null;
+    this.residentSkillManager = null;
     this.controllers = {};
   }
 
@@ -144,6 +146,10 @@ class ApiServer {
     });
 
     logger.info('BackgroundTaskScheduler initialized with embedding-worker task');
+
+    // 初始化驻留式技能管理器
+    this.residentSkillManager = new ResidentSkillManager(this.db);
+    await this.residentSkillManager.initialize();
   }
 
   /**
@@ -437,6 +443,9 @@ process.on('SIGINT', async () => {
   if (server.scheduler) {
     server.scheduler.stopAll();
   }
+  if (server.residentSkillManager) {
+    await server.residentSkillManager.shutdown();
+  }
   process.exit(0);
 });
 
@@ -444,6 +453,9 @@ process.on('SIGTERM', async () => {
   logger.info('Shutting down API server...');
   if (server.scheduler) {
     server.scheduler.stopAll();
+  }
+  if (server.residentSkillManager) {
+    await server.residentSkillManager.shutdown();
   }
   process.exit(0);
 });
