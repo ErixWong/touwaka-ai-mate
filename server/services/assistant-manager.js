@@ -567,6 +567,7 @@ class AssistantManager {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${model.api_key}`,
         'Content-Length': Buffer.byteLength(requestBody),
+        'User-Agent': 'Version: 5.10.0 (c3d4709c)',
       },
       timeout: options.timeout || 120000,
     };
