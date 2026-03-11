@@ -1055,3 +1055,81 @@ export interface UpdateUserOrganizationRequest {
   department_id?: string | null
   position_id?: string | null
 }
+
+// ============================================
+// 助理系统相关类型
+// ============================================
+
+/**
+ * 助理执行模式
+ */
+export type AssistantExecutionMode = 'direct' | 'llm' | 'hybrid'
+
+/**
+ * 助理委托状态
+ */
+export type AssistantRequestStatus = 'pending' | 'running' | 'completed' | 'failed' | 'timeout'
+
+/**
+ * 助理配置（匹配后端 assistants 表）
+ */
+export interface Assistant {
+  assistant_type: string
+  name: string
+  icon?: string
+  description?: string
+  model_id?: string
+  prompt_template?: string
+  max_tokens: number
+  temperature: number
+  estimated_time: number
+  timeout: number
+  tool_name?: string
+  tool_description?: string
+  tool_parameters?: string
+  can_use_skills: boolean
+  execution_mode: AssistantExecutionMode
+  is_active: boolean
+}
+
+/**
+ * 助理委托请求（匹配后端 assistant_requests 表）
+ */
+export interface AssistantRequest {
+  request_id: string
+  assistant_type: string
+  expert_id?: string
+  contact_id?: string
+  user_id?: string
+  topic_id?: string
+  status: AssistantRequestStatus
+  input: Record<string, unknown>
+  result?: string
+  error_message?: string
+  tokens_input?: number
+  tokens_output?: number
+  model_used?: string
+  latency_ms?: number
+  created_at: string
+  started_at?: string
+  completed_at?: string
+}
+
+/**
+ * 召唤助理的请求
+ */
+export interface AssistantSummonRequest {
+  assistant_type: string
+  input: Record<string, unknown>
+}
+
+/**
+ * 召唤助理的响应
+ */
+export interface AssistantSummonResponse {
+  request_id: string
+  assistant_type: string
+  status: AssistantRequestStatus
+  estimated_time: number
+  message: string
+}

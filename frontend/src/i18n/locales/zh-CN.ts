@@ -911,4 +911,44 @@ export default {
     export: '导出',
     settings: '设置',
   },
+
+  // 助理系统
+  assistant: {
+    rosterTitle: '助理列表',
+    noAssistants: '暂无可用助理',
+    totalAssistants: '共 {count} 个助理',
+    activeAssistants: '{count} 个活跃',
+    active: '活跃',
+    inactive: '停用',
+    executionMode: '执行模式',
+    model: '模型',
+    estimatedTime: '预估时间',
+
+    // 状态
+    statusPending: '等待处理...',
+    statusRunning: '处理中...',
+    statusCompleted: '{time}秒完成',
+    statusFailed: '执行失败',
+    statusTimeout: '执行超时',
+    statusPendingText: '等待中',
+    statusRunningText: '执行中',
+    statusCompletedText: '已完成',
+    statusFailedText: '失败',
+    statusTimeoutText: '超时',
+
+    // 进度
+    estimatedWait: '预计等待: ~{time} 秒',
+    elapsedTime: '已运行: {elapsed} 秒 / 预计 {estimated} 秒',
+
+    // 结果
+    resultTitle: '执行结果',
+    noResult: '无结果',
+    viewDetail: '查看详情',
+    tokensInput: '输入 Tokens',
+    tokensOutput: '输出 Tokens',
+    latency: '耗时',
+    modelUsed: '模型',
+    warning: '警告',
+    warningTitle: '警告信息',
+  },
 }

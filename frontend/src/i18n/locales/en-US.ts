@@ -910,4 +910,44 @@ export default {
     export: 'Export',
     settings: 'Settings',
   },
+
+  // Assistant System
+  assistant: {
+    rosterTitle: 'Assistant Roster',
+    noAssistants: 'No assistants available',
+    totalAssistants: '{count} assistants total',
+    activeAssistants: '{count} active',
+    active: 'Active',
+    inactive: 'Inactive',
+    executionMode: 'Execution Mode',
+    model: 'Model',
+    estimatedTime: 'Estimated Time',
+
+    // Status
+    statusPending: 'Waiting...',
+    statusRunning: 'Processing...',
+    statusCompleted: 'Completed in {time}s',
+    statusFailed: 'Execution failed',
+    statusTimeout: 'Execution timeout',
+    statusPendingText: 'Pending',
+    statusRunningText: 'Running',
+    statusCompletedText: 'Completed',
+    statusFailedText: 'Failed',
+    statusTimeoutText: 'Timeout',
+
+    // Progress
+    estimatedWait: 'Estimated wait: ~{time} seconds',
+    elapsedTime: 'Running: {elapsed}s / estimated {estimated}s',
+
+    // Result
+    resultTitle: 'Result',
+    noResult: 'No result',
+    viewDetail: 'View Detail',
+    tokensInput: 'Input Tokens',
+    tokensOutput: 'Output Tokens',
+    latency: 'Latency',
+    modelUsed: 'Model',
+    warning: 'Warning',
+    warningTitle: 'Warning',
+  },
 }
