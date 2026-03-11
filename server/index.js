@@ -170,6 +170,7 @@ class ApiServer {
       kb: new KbController(this.db),
       internal: new InternalController(this.db, {
         expertConnections: null, // 稍后在 setupRoutes 中设置
+        chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
     };
   }

@@ -211,9 +211,16 @@ async function callRemoteLLM(modelConfig, params) {
 
 /**
  * 通过内部 API 将结果推送给专家
+ * @param {Object} params - 参数对象
+ * @param {string} params.user_id - 用户ID
+ * @param {string} params.expert_id - 专家ID
+ * @param {string} params.content - 消息内容
+ * @param {string} [params.task_id] - 任务ID
+ * @param {boolean} [params.trigger_expert=true] - 是否触发专家响应
+ * @param {string} [params.error] - 错误信息（可选）
  */
 async function notifyExpert(params) {
-  const { user_id, expert_id, content, task_id, error } = params;
+  const { user_id, expert_id, content, task_id, trigger_expert = true, error } = params;
 
   const url = `${CONFIG.internalApiBase}/internal/messages/insert`;
   
@@ -227,6 +234,7 @@ async function notifyExpert(params) {
     expert_id,
     content,
     role: 'assistant',
+    trigger_expert,  // 传递触发专家标志
   };
   
   // 如果有 task_id，可以添加到 metadata
@@ -234,6 +242,8 @@ async function notifyExpert(params) {
     body.metadata = { task_id };
   }
 
+  log(`Notifying expert: ${expert_id}, trigger_expert: ${trigger_expert}`);
+  
   const response = await httpRequest(url, {
     method: 'POST',
     headers,

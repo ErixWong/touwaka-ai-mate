@@ -256,6 +256,22 @@ VALUES (
 
 插入消息并通知专家（用于结果推送）。
 
+**请求体：**
+```json
+{
+  "user_id": "user_xxx",
+  "expert_id": "expert_xxx",
+  "content": "消息内容",
+  "role": "assistant",
+  "trigger_expert": true  // 可选，是否触发专家响应
+}
+```
+
+**trigger_expert 参数说明：**
+- `true`: 插入消息后，自动触发专家进行响应（专家会"看到"这条消息并生成回复）
+- `false` 或不传: 仅插入消息，不触发专家响应
+- 默认值: `true`（远程 LLM 调用完成后默认触发专家响应）
+
 ## 错误处理
 
 - 模型不存在：返回 404 错误
