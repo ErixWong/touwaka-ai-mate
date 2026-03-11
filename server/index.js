@@ -39,6 +39,7 @@ import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
+import InternalController from './controllers/internal.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -59,6 +60,8 @@ import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
 import packageRoutes from './routes/package.routes.js';
+
+import internalRoutes from './routes/internal.routes.js';
 
 class ApiServer {
   constructor() {
@@ -159,6 +162,9 @@ class ApiServer {
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
       kb: new KbController(this.db),
+      internal: new InternalController(this.db, {
+        expertConnections: null, // 稍后在 setupRoutes 中设置
+      }),
     };
   }
 
@@ -297,6 +303,13 @@ class ApiServer {
     const packageRouter = packageRoutes(this.db);
     this.app.use(packageRouter.routes());
     this.app.use(packageRouter.allowedMethods());
+
+    // Internal 内部 API 路由（驻留进程调用）
+    // 将 StreamController 的 SSE 连接池共享给 InternalController
+    this.controllers.internal.setExpertConnections(this.controllers.stream.expertConnections);
+    this.app.use(internalRoutes(this.controllers.internal).routes());
+    this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
+    logger.info('Internal routes registered (POST /internal/messages/insert)');
 
     // 404 处理
     this.app.use(async (ctx) => {
