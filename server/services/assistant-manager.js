@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import https from 'https';
 import http from 'http';
 import logger from '../../lib/logger.js';
+import AssistantMessageService from './assistant-message-service.js';
 
 class AssistantManager {
   /**
@@ -29,6 +30,9 @@ class AssistantManager {
     // 模型
     this.Assistant = db.getModel('assistant');
     this.AssistantRequest = db.getModel('assistant_request');
+
+    // 消息服务
+    this.messageService = new AssistantMessageService(db.models);
 
     // 内存缓存
     this.assistantsCache = null;
@@ -137,16 +141,43 @@ class AssistantManager {
   /**
    * 召唤助理（异步委托）
    *
-   * @param {string} assistantType - 助理类型
-   * @param {object} input - 输入参数
-   * @param {object} context - 上下文
-   * @param {string} context.expertId - 专家ID
-   * @param {string} context.contactId - 联系人ID
-   * @param {string} context.userId - 用户ID
-   * @param {string} context.topicId - 话题ID
+   * @param {object} summonRequest - 召唤请求对象
+   * @param {string} summonRequest.assistant_type - 助理类型（必填）
+   * @param {string} summonRequest.task - 任务描述（必填）
+   * @param {string} [summonRequest.background] - 任务背景（可选）
+   * @param {object} summonRequest.input - 输入数据（必填）
+   * @param {object} [summonRequest.expected_output] - 期望输出格式（可选）
+   * @param {object} [summonRequest.workspace] - 工作空间上下文（可选）
+   * @param {string[]} [summonRequest.inherited_tools] - 继承的工具列表（可选）
+   * @param {string} [summonRequest.userId] - 用户ID
+   * @param {string} [summonRequest.contactId] - 联系人ID
    * @returns {Promise<{request_id: string, status: string, estimated_time: number, message: string}>}
    */
-  async summon(assistantType, input, context = {}) {
+  async summon(summonRequest) {
+    // 兼容旧版调用方式：summon(assistantType, input, context)
+    let assistantType, input, context;
+
+    if (typeof summonRequest === 'string') {
+      // 旧版调用：summon(assistantType, input, context)
+      assistantType = arguments[0];
+      input = arguments[1];
+      context = arguments[2] || {};
+    } else {
+      // 新版调用：summon(requestObject)
+      assistantType = summonRequest.assistant_type;
+      input = summonRequest.input;
+      context = {
+        expertId: summonRequest.workspace?.expert_id,
+        contactId: summonRequest.contactId,
+        userId: summonRequest.userId,
+        topicId: summonRequest.workspace?.topic_id,
+        task: summonRequest.task,
+        background: summonRequest.background,
+        expected_output: summonRequest.expected_output,
+        inherited_tools: summonRequest.inherited_tools,
+      };
+    }
+
     // 获取助理配置
     const assistant = this.getAssistant(assistantType);
     if (!assistant) {
@@ -155,6 +186,19 @@ class AssistantManager {
 
     // 生成请求 ID
     const requestId = `req_${uuidv4().replace(/-/g, '').substring(0, 16)}`;
+
+    // 构建完整的输入结构（存储到数据库）
+    const fullInput = {
+      task: context.task || `执行 ${assistantType} 任务`,
+      background: context.background,
+      input: input,
+      expected_output: context.expected_output,
+      workspace: {
+        topic_id: context.topicId,
+        expert_id: context.expertId,
+      },
+      inherited_tools: context.inherited_tools,
+    };
 
     // 创建委托记录（数据库 + 内存）
     const request = {
@@ -165,15 +209,27 @@ class AssistantManager {
       user_id: context.userId || null,
       topic_id: context.topicId || null,
       status: 'pending',
-      input: JSON.stringify(input),
+      input: JSON.stringify(fullInput),
       created_at: new Date(),
     };
 
     // 保存到数据库
     await this.AssistantRequest.create(request);
 
+    // 写入任务消息
+    await this.messageService.appendTaskMessage(requestId, {
+      task: context.task || `执行 ${assistantType} 任务`,
+      background: context.background,
+      input: input,
+      expectedOutput: context.expected_output,
+      workspace: {
+        topic_id: context.topicId,
+        expert_id: context.expertId,
+      },
+    });
+
     // 添加到内存队列
-    this.requests.set(requestId, { ...request, input });
+    this.requests.set(requestId, { ...request, input: fullInput });
 
     // 启动异步执行（不等待）
     this.executeRequest(requestId).catch(err => {
@@ -251,6 +307,16 @@ class AssistantManager {
   }
 
   /**
+   * 获取请求的消息列表
+   * @param {string} requestId - 请求ID
+   * @param {boolean} debugMode - 是否返回完整内容
+   * @returns {Promise<Array>}
+   */
+  async getMessages(requestId, debugMode = false) {
+    return await this.messageService.getMessagesByRequestId(requestId, debugMode);
+  }
+
+  /**
    * 异步执行请求
    * @param {string} requestId - 请求ID
    */
@@ -295,6 +361,9 @@ class AssistantManager {
         { where: { request_id: requestId } }
       );
 
+      // 写入状态消息
+      await this.messageService.appendStatusMessage(requestId, 'running', 'Assistant 开始执行');
+
       request.status = 'running';
       request.started_at = new Date();
       this.requests.set(requestId, request);
@@ -312,6 +381,19 @@ class AssistantManager {
       }
 
       const latencyMs = Date.now() - startTime;
+
+      // 写入最终消息
+      if (result.error) {
+        await this.messageService.appendErrorMessage(requestId, result.error);
+      } else {
+        await this.messageService.appendFinalMessage(
+          requestId,
+          typeof result.result === 'string' ? result.result : JSON.stringify(result.result),
+          result.tokens_input,
+          result.tokens_output,
+          latencyMs
+        );
+      }
 
       // 更新完成状态
       const finalStatus = result.error ? 'failed' : 'completed';
@@ -337,6 +419,9 @@ class AssistantManager {
     } catch (error) {
       logger.error(`[AssistantManager] 执行请求失败: ${requestId}`, error.message);
 
+      // 写入错误消息
+      await this.messageService.appendErrorMessage(requestId, error);
+
       await this.AssistantRequest.update(
         {
           status: 'failed',
@@ -353,20 +438,36 @@ class AssistantManager {
   /**
    * 执行助理逻辑
    * @param {object} assistant - 助理配置
-   * @param {object} input - 输入参数
+   * @param {object} input - 输入参数（新版结构，包含 task, background, input, expected_output, inherited_tools）
    * @param {object} context - 上下文
    * @returns {Promise<object>} 执行结果
    */
   async executeAssistant(assistant, input, context) {
     const { execution_mode } = assistant;
 
+    // 提取新版输入结构
+    const task = input.task || '执行任务';
+    const background = input.background;
+    const actualInput = input.input || input; // 兼容旧版
+    const expectedOutput = input.expected_output;
+    const inheritedTools = input.inherited_tools;
+
+    // 构建增强上下文
+    const enhancedContext = {
+      ...context,
+      task,
+      background,
+      expectedOutput,
+      inheritedTools,
+    };
+
     switch (execution_mode) {
       case 'direct':
-        return this.executeDirect(assistant, input, context);
+        return this.executeDirect(assistant, actualInput, enhancedContext);
       case 'llm':
-        return this.executeLLM(assistant, input, context);
+        return this.executeLLM(assistant, actualInput, enhancedContext);
       case 'hybrid':
-        return this.executeHybrid(assistant, input, context);
+        return this.executeHybrid(assistant, actualInput, enhancedContext);
       default:
         throw new Error(`Unknown execution mode: ${execution_mode}`);
     }
@@ -383,6 +484,15 @@ class AssistantManager {
 
     // 如果配置了 tool_name，尝试通过 ToolManager 执行
     if (assistant.tool_name) {
+      // 写入工具调用消息
+      const toolCallId = `call_${Date.now()}`;
+      await this.messageService.appendToolCallMessage(
+        context.requestId,
+        assistant.tool_name,
+        input,
+        toolCallId
+      );
+
       try {
         // 动态导入 ToolManager 避免循环依赖
         const ToolManager = (await import('../../lib/tool-manager.js')).default;
@@ -396,9 +506,29 @@ class AssistantManager {
           is_admin: true, // 助理作为内部服务，具有较高权限
         });
 
+        // 写入工具结果消息
+        const resultSummary = result
+          ? (typeof result === 'string' ? result.substring(0, 200) : '执行成功')
+          : '执行成功';
+        await this.messageService.appendToolResultMessage(
+          context.requestId,
+          assistant.tool_name,
+          resultSummary,
+          toolCallId
+        );
+
         return result;
       } catch (toolError) {
         logger.error(`[AssistantManager] 工具执行失败: ${assistant.tool_name}`, toolError.message);
+
+        // 写入工具结果消息（失败）
+        await this.messageService.appendToolResultMessage(
+          context.requestId,
+          assistant.tool_name,
+          `执行失败: ${toolError.message}`,
+          toolCallId
+        );
+
         return {
           success: false,
           error: `工具执行失败: ${toolError.message}`,
@@ -438,6 +568,19 @@ class AssistantManager {
       };
     }
 
+    // 获取继承的工具定义（如果有）
+    let toolDefinitions = [];
+    if (context.inheritedTools && context.inheritedTools.length > 0) {
+      toolDefinitions = await this.getInheritedToolDefinitions(
+        context.inheritedTools,
+        context.expertId
+      );
+
+      if (toolDefinitions.length > 0) {
+        logger.info(`[AssistantManager] 加载了 ${toolDefinitions.length} 个继承工具`);
+      }
+    }
+
     // 构建消息
     const messages = [];
 
@@ -449,27 +592,62 @@ class AssistantManager {
       });
     }
 
-    // 添加用户输入
+    // 构建用户消息（包含任务描述和背景）
+    let userContent = '';
+
+    // 添加任务描述
+    if (context.task) {
+      userContent += `**任务**: ${context.task}\n\n`;
+    }
+
+    // 添加任务背景
+    if (context.background) {
+      userContent += `**背景**: ${context.background}\n\n`;
+    }
+
+    // 添加具体输入数据
+    userContent += `**输入数据**:\n${typeof input === 'string' ? input : JSON.stringify(input, null, 2)}`;
+
+    // 添加期望输出格式
+    if (context.expectedOutput) {
+      userContent += '\n\n**期望输出格式**:';
+      if (context.expectedOutput.format) {
+        userContent += `\n格式: ${context.expectedOutput.format}`;
+      }
+      if (context.expectedOutput.focus && context.expectedOutput.focus.length > 0) {
+        userContent += `\n关注点: ${context.expectedOutput.focus.join(', ')}`;
+      }
+      if (context.expectedOutput.max_length) {
+        userContent += `\n最大长度: ${context.expectedOutput.max_length} 字符`;
+      }
+    }
+
     messages.push({
       role: 'user',
-      content: typeof input === 'string' ? input : JSON.stringify(input),
+      content: userContent,
     });
 
-    try {
-      // 调用 LLM
-      const response = await this.callLLM(modelConfig, messages, {
-        temperature: parseFloat(assistant.temperature) || 0.7,
-        max_tokens: assistant.max_tokens || 4096,
-        timeout: (assistant.timeout || 120) * 1000,
-      });
+    // 工具执行上下文
+    const toolExecutionContext = {
+      requestId: context.requestId,
+      expertId: context.expertId,
+      userId: context.userId,
+    };
 
-      return {
-        success: true,
-        result: response.content,
-        tokens_input: response.usage?.prompt_tokens,
-        tokens_output: response.usage?.completion_tokens,
-        model_used: modelConfig.model_name,
-      };
+    try {
+      // 调用 LLM（支持多轮工具调用）
+      return await this.executeLLMWithTools(
+        modelConfig,
+        messages,
+        toolDefinitions,
+        toolExecutionContext,
+        {
+          temperature: parseFloat(assistant.temperature) || 0.7,
+          max_tokens: assistant.max_tokens || 4096,
+          timeout: (assistant.timeout || 120) * 1000,
+          maxToolRounds: 5, // 最多 5 轮工具调用
+        }
+      );
     } catch (llmError) {
       logger.error(`[AssistantManager] LLM 调用失败:`, llmError.message);
       return {
@@ -477,6 +655,127 @@ class AssistantManager {
         error: `LLM 调用失败: ${llmError.message}`,
       };
     }
+  }
+
+  /**
+   * 执行 LLM 并处理工具调用（支持多轮）
+   * @param {object} modelConfig - 模型配置
+   * @param {Array} messages - 消息数组
+   * @param {Array} tools - 工具定义
+   * @param {object} toolContext - 工具执行上下文
+   * @param {object} options - 配置选项
+   * @returns {Promise<object>}
+   */
+  async executeLLMWithTools(modelConfig, messages, tools, toolContext, options = {}) {
+    const { maxToolRounds = 5 } = options;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let toolCallMessages = []; // 记录工具调用消息
+
+    for (let round = 0; round <= maxToolRounds; round++) {
+      // 调用 LLM
+      const response = await this.callLLM(modelConfig, messages, {
+        ...options,
+        tools: tools.length > 0 ? tools : undefined,
+      });
+
+      // 累计 token 使用
+      totalInputTokens += response.usage?.prompt_tokens || 0;
+      totalOutputTokens += response.usage?.completion_tokens || 0;
+
+      // 检查是否有工具调用
+      if (!response.tool_calls || response.tool_calls.length === 0) {
+        // 没有工具调用，返回最终结果
+        return {
+          success: true,
+          result: response.content,
+          tokens_input: totalInputTokens,
+          tokens_output: totalOutputTokens,
+          model_used: modelConfig.model_name,
+          tool_calls: toolCallMessages.length > 0 ? toolCallMessages : undefined,
+        };
+      }
+
+      logger.info(`[AssistantManager] LLM 请求工具调用 (轮次 ${round + 1}):`,
+        response.tool_calls.map(t => t.function?.name));
+
+      // 将 assistant 消息添加到对话历史
+      messages.push({
+        role: 'assistant',
+        content: response.content,
+        tool_calls: response.tool_calls,
+      });
+
+      // 执行每个工具调用
+      for (const toolCall of response.tool_calls) {
+        const toolId = toolCall.function?.name;
+        const callId = toolCall.id;
+
+        if (!toolId) continue;
+
+        // 解析工具参数
+        let toolParams = {};
+        try {
+          toolParams = JSON.parse(toolCall.function.arguments || '{}');
+        } catch (e) {
+          logger.warn(`[AssistantManager] 工具参数解析失败: ${toolId}`, e.message);
+        }
+
+        // 写入工具调用消息
+        if (toolContext.requestId) {
+          await this.messageService.appendToolCallMessage(
+            toolContext.requestId,
+            toolId,
+            toolParams,
+            callId
+          );
+        }
+
+        // 执行工具
+        logger.info(`[AssistantManager] 执行继承工具: ${toolId}`);
+        const toolResult = await this.executeInheritedTool(toolId, toolParams, toolContext);
+
+        // 记录工具调用
+        toolCallMessages.push({
+          tool_id: toolId,
+          params: toolParams,
+          result: toolResult,
+        });
+
+        // 写入工具结果消息
+        if (toolContext.requestId) {
+          const resultSummary = toolResult
+            ? (typeof toolResult === 'string'
+                ? toolResult.substring(0, 200)
+                : JSON.stringify(toolResult).substring(0, 200))
+            : '执行成功';
+          await this.messageService.appendToolResultMessage(
+            toolContext.requestId,
+            toolId,
+            resultSummary,
+            callId
+          );
+        }
+
+        // 将工具结果添加到对话历史
+        messages.push({
+          role: 'tool',
+          tool_call_id: callId,
+          content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+        });
+      }
+    }
+
+    // 达到最大轮次，返回最后的结果
+    logger.warn(`[AssistantManager] 达到最大工具调用轮次: ${maxToolRounds}`);
+    return {
+      success: true,
+      result: '工具调用达到最大轮次限制，请简化任务或减少工具依赖。',
+      tokens_input: totalInputTokens,
+      tokens_output: totalOutputTokens,
+      model_used: modelConfig.model_name,
+      tool_calls: toolCallMessages,
+    };
   }
 
   /**
@@ -497,6 +796,15 @@ class AssistantManager {
 
     // 第二步：如果有配置工具，调用工具
     if (assistant.tool_name) {
+      // 写入工具调用消息
+      const toolCallId = `call_${Date.now()}`;
+      await this.messageService.appendToolCallMessage(
+        context.requestId,
+        assistant.tool_name,
+        { llm_analysis: llmResult.result?.substring(0, 100) + '...' },
+        toolCallId
+      );
+
       try {
         const ToolManager = (await import('../../lib/tool-manager.js')).default;
         const toolManager = new ToolManager(this.db, context.expertId || 'system');
@@ -513,6 +821,17 @@ class AssistantManager {
           is_admin: true,
         });
 
+        // 写入工具结果消息
+        const resultSummary = toolResult
+          ? (typeof toolResult === 'string' ? toolResult.substring(0, 200) : '执行成功')
+          : '执行成功';
+        await this.messageService.appendToolResultMessage(
+          context.requestId,
+          assistant.tool_name,
+          resultSummary,
+          toolCallId
+        );
+
         return {
           success: true,
           result: toolResult,
@@ -523,6 +842,15 @@ class AssistantManager {
         };
       } catch (toolError) {
         logger.error(`[AssistantManager] 混合模式工具执行失败:`, toolError.message);
+
+        // 写入工具结果消息（失败）
+        await this.messageService.appendToolResultMessage(
+          context.requestId,
+          assistant.tool_name,
+          `执行失败: ${toolError.message}`,
+          toolCallId
+        );
+
         // 工具失败时，返回 LLM 结果
         return {
           success: true,
@@ -544,15 +872,26 @@ class AssistantManager {
    * @param {object} model - 模型配置
    * @param {Array} messages - 消息数组
    * @param {object} options - 可选参数
+   * @param {Array} [options.tools] - 工具定义（可选）
+   * @param {object} [options.toolContext] - 工具执行上下文（可选）
    * @returns {Promise<object>}
    */
   async callLLM(model, messages, options = {}) {
-    const requestBody = JSON.stringify({
+    // 构建请求体
+    const requestObj = {
       model: model.model_name,
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.max_tokens ?? 4096,
-    });
+    };
+
+    // 如果有工具定义，添加到请求中
+    if (options.tools && options.tools.length > 0) {
+      requestObj.tools = options.tools;
+      // 不强制工具调用，让 LLM 自行决定
+    }
+
+    const requestBody = JSON.stringify(requestObj);
 
     const url = new URL(model.base_url);
     const isHttps = url.protocol === 'https:';
@@ -576,6 +915,7 @@ class AssistantManager {
       model: model.model_name,
       url: `${requestOptions.hostname}${requestOptions.path}`,
       messages_count: messages.length,
+      tools_count: options.tools?.length || 0,
     });
 
     return new Promise((resolve, reject) => {
@@ -594,10 +934,21 @@ class AssistantManager {
             }
 
             const response = JSON.parse(data);
-            resolve({
-              content: response.choices?.[0]?.message?.content,
-              usage: response.usage,
-            });
+            const message = response.choices?.[0]?.message;
+
+            // 检查是否有工具调用
+            if (message?.tool_calls && message.tool_calls.length > 0) {
+              resolve({
+                content: message.content,
+                tool_calls: message.tool_calls,
+                usage: response.usage,
+              });
+            } else {
+              resolve({
+                content: message?.content,
+                usage: response.usage,
+              });
+            }
           } catch (parseError) {
             reject(new Error(`解析响应失败: ${parseError.message}`));
           }
@@ -636,9 +987,31 @@ class AssistantManager {
                 type: 'string',
                 description: '助理类型，如 ocr, drawing, coding, vision 等',
               },
+              task: {
+                type: 'string',
+                description: '任务描述（一句话说明要做什么）',
+              },
+              background: {
+                type: 'string',
+                description: '任务背景（为什么需要这个任务）',
+              },
               input: {
                 type: 'object',
                 description: '输入参数，根据助理类型不同而不同',
+              },
+              expected_output: {
+                type: 'object',
+                properties: {
+                  format: { type: 'string', description: '输出格式：markdown/json/text' },
+                  focus: { type: 'array', items: { type: 'string' }, description: '关注点列表' },
+                  max_length: { type: 'number', description: '最大输出长度' },
+                },
+                description: '期望的输出格式',
+              },
+              inherited_tools: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '要继承的工具ID列表，助理可以调用这些工具',
               },
             },
             required: ['type', 'input'],
@@ -677,6 +1050,72 @@ class AssistantManager {
   }
 
   /**
+   * 根据工具ID列表获取工具定义
+   * @param {string[]} toolIds - 工具ID列表
+   * @param {string} expertId - 专家ID（用于加载专家的工具配置）
+   * @returns {Promise<Array>} 工具定义数组
+   */
+  async getInheritedToolDefinitions(toolIds, expertId) {
+    if (!toolIds || toolIds.length === 0) {
+      return [];
+    }
+
+    logger.info(`[AssistantManager] 获取继承工具定义:`, toolIds);
+
+    try {
+      // 动态导入 ToolManager 避免循环依赖
+      const ToolManager = (await import('../../lib/tool-manager.js')).default;
+      const toolManager = new ToolManager(this.db, expertId || 'system');
+      await toolManager.initialize();
+
+      // 获取所有工具定义
+      const allTools = toolManager.getToolDefinitions();
+
+      // 过滤出需要的工具
+      const inheritedTools = allTools.filter(tool => {
+        const toolName = tool.function?.name || tool.name;
+        return toolIds.includes(toolName);
+      });
+
+      logger.info(`[AssistantManager] 找到 ${inheritedTools.length}/${toolIds.length} 个继承工具`);
+
+      return inheritedTools;
+    } catch (error) {
+      logger.error('[AssistantManager] 获取继承工具定义失败:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 执行继承的工具调用
+   * @param {string} toolId - 工具ID
+   * @param {object} params - 工具参数
+   * @param {object} context - 执行上下文
+   * @returns {Promise<object>} 工具执行结果
+   */
+  async executeInheritedTool(toolId, params, context) {
+    logger.info(`[AssistantManager] 执行继承工具: ${toolId}`, params);
+
+    try {
+      const ToolManager = (await import('../../lib/tool-manager.js')).default;
+      const toolManager = new ToolManager(this.db, context.expertId || 'system');
+      await toolManager.initialize();
+
+      const result = await toolManager.executeTool(toolId, params, {
+        userId: context.userId,
+        expertId: context.expertId,
+        is_admin: true, // 助理执行继承工具具有较高权限
+        requestId: context.requestId,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error(`[AssistantManager] 执行继承工具失败: ${toolId}`, error.message);
+      return { error: error.message };
+    }
+  }
+
+  /**
    * 执行工具调用
    * @param {string} toolName - 工具名称
    * @param {object} params - 参数
@@ -686,11 +1125,20 @@ class AssistantManager {
   async executeTool(toolName, params, context = {}) {
     switch (toolName) {
       case 'assistant_summon':
-        return this.summon(params.type, params.input, {
-          expertId: context.expertId,
-          contactId: context.contactId,
+        // 支持新版和旧版参数
+        return this.summon({
+          assistant_type: params.type,
+          task: params.task,
+          background: params.background,
+          input: params.input,
+          expected_output: params.expected_output,
+          inherited_tools: params.inherited_tools,
           userId: context.userId,
-          topicId: context.topicId,
+          contactId: context.contactId,
+          workspace: {
+            expert_id: context.expertId,
+            topic_id: context.topicId,
+          },
         });
 
       case 'assistant_status':

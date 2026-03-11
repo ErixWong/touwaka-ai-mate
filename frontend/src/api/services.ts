@@ -66,6 +66,7 @@ import type {
   AssistantRequest,
   AssistantSummonRequest,
   AssistantSummonResponse,
+  AssistantMessage,
 } from '@/types'
 
 /**
@@ -687,4 +688,10 @@ export const assistantApi = {
     limit?: number
   }) =>
     apiRequest<AssistantRequest[]>(apiClient.get('/assistants/requests', { params })),
+
+  // 获取委托消息列表
+  getMessages: (requestId: string, debug = false) =>
+    apiRequest<{ request_id: string; messages: AssistantMessage[] }>(
+      apiClient.get(`/assistants/requests/${requestId}/messages`, { params: { debug } })
+    ),
 }

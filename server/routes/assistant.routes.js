@@ -17,11 +17,14 @@ export default function createAssistantRoutes(controller) {
   // POST /api/assistants/call - 召唤助理
   router.post('/call', controller.call.bind(controller));
 
-  // GET /api/assistants/requests/:request_id - 查询委托状态
-  router.get('/requests/:request_id', controller.getRequest.bind(controller));
-
   // GET /api/assistants/requests - 查询委托列表
   router.get('/requests', controller.listRequests.bind(controller));
+
+  // GET /api/assistants/requests/:request_id/messages - 查询委托消息列表
+  router.get('/requests/:request_id/messages', controller.getMessages.bind(controller));
+
+  // GET /api/assistants/requests/:request_id - 查询委托状态
+  router.get('/requests/:request_id', controller.getRequest.bind(controller));
 
   return router;
 }

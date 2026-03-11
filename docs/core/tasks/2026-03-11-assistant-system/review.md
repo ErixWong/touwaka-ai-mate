@@ -224,3 +224,25 @@ export const assistantApi = {
 **✅ 代码审查通过** - 所有检查项通过
 
 代码整体质量良好，架构设计合理，命名规范正确，i18n 完整，前后端契约一致。三种执行模式（direct/llm/hybrid）已完成实现，支持助理系统的核心功能。
+
+---
+
+## 待办事项 (TODO)
+
+### 前端集成
+
+**问题**: 助理系统的前端组件已创建，但尚未集成到任何页面中。
+
+**已创建的组件**:
+
+- `frontend/src/components/assistant/AssistantRoster.vue` - 助理列表管理组件
+- `frontend/src/components/assistant/AssistantRequestCard.vue` - 委托卡片组件
+- `frontend/src/components/assistant/AssistantResult.vue` - 结果展示组件
+
+**集成方案选项**:
+
+1. 添加到设置页面 - 作为新的 Tab
+2. 添加到聊天页面侧边栏 - 显示助理列表和委托状态
+3. 创建独立页面 - `/assistants` 路由
+
+**状态**: ⏳ 待定 - 需要确定集成位置
