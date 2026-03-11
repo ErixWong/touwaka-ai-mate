@@ -45,10 +45,11 @@ async function get(ctx) {
 
 /**
  * 更新角色基本信息
+ * 注意：mark（角色标识）不可修改，只能修改 name（显示名称）和 description
  */
 async function update(ctx) {
   const { id } = ctx.params;
-  const { label, description } = ctx.request.body;
+  const { name, description } = ctx.request.body;  // name 是显示名称，mark 不可修改
 
   try {
     const roleData = await role.findByPk(id);
@@ -57,9 +58,9 @@ async function update(ctx) {
       return;
     }
 
-    // 系统角色只允许修改 label 和 description
+    // 只允许修改 name（显示名称）和 description，mark（角色标识）不可修改
     const updates = {};
-    if (label !== undefined) updates.label = label;
+    if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
 
     await roleData.update(updates);
@@ -116,8 +117,8 @@ async function updatePermissions(ctx) {
       return;
     }
 
-    // 管理员角色拥有所有权限，不允许修改
-    if (roleData.name === 'admin') {
+    // 管理员角色拥有所有权限，不允许修改（通过 mark 字段判断）
+    if (roleData.mark === 'admin') {
       ctx.error('管理员角色权限不可修改', 403);
       return;
     }
@@ -155,8 +156,8 @@ async function getExperts(ctx) {
       return;
     }
 
-    // 管理员角色可以访问所有专家
-    if (roleData.name === 'admin') {
+    // 管理员角色可以访问所有专家（通过 mark 字段判断）
+    if (roleData.mark === 'admin') {
       const allExperts = await expert.findAll({
         attributes: ['id', 'name'],
         where: { is_active: true },
@@ -201,8 +202,8 @@ async function updateExperts(ctx) {
       return;
     }
 
-    // 管理员角色可以访问所有专家，不允许修改
-    if (roleData.name === 'admin') {
+    // 管理员角色可以访问所有专家，不允许修改（通过 mark 字段判断）
+    if (roleData.mark === 'admin') {
       ctx.error('管理员角色专家访问权限不可修改', 403);
       return;
     }

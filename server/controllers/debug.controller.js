@@ -19,7 +19,7 @@ class DebugController {
   async getLLMPayload(ctx) {
     try {
       const { expert_id } = ctx.query;
-      const user_id = ctx.state.userId;
+      const user_id = ctx.state.session.id;
 
       if (!expert_id) {
         ctx.error('缺少必要参数：expert_id');

@@ -27,7 +27,7 @@ class MessageController {
     try {
       const { expertId } = ctx.params;
       const { page = 1, pageSize = 30 } = ctx.query;
-      const userId = ctx.state.userId;  // auth 中间件设置的 userId
+      const userId = ctx.state.session.id;  // auth 中间件设置的 userId
 
       if (!expertId) {
         ctx.error('缺少 expertId 参数');
@@ -238,7 +238,7 @@ class MessageController {
   async clearByExpert(ctx) {
     try {
       const { expertId } = ctx.params;
-      const userId = ctx.state.userId;
+      const userId = ctx.state.session.id;
 
       if (!expertId) {
         ctx.error('缺少 expertId 参数');

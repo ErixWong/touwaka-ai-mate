@@ -403,7 +403,7 @@
                   class="role-name-btn"
                   @click="selectRole(role)"
                 >
-                  <span class="role-name">{{ role.label || role.name }}</span>
+                  <span class="role-name">{{ role.name }}</span>
                   <span v-if="role.is_system" class="badge system">
                     {{ $t('settings.builtinSkill') }}
                   </span>
@@ -1240,7 +1240,7 @@
                   v-model="userForm.selectedRoleIds"
                 />
                 <span class="role-label">
-                  {{ role.label || role.name }}
+                  {{ role.name }}
                   <span v-if="role.is_system" class="badge builtin">{{ $t('settings.builtinSkill') }}</span>
                 </span>
               </label>
@@ -1388,23 +1388,23 @@
         </h3>
         <div class="dialog-body">
           <div class="form-item">
+            <label class="form-label">{{ $t('settings.roleMark') }}</label>
+            <input
+              v-model="roleForm.mark"
+              type="text"
+              class="form-input"
+              disabled
+              :placeholder="$t('settings.roleMarkPlaceholder')"
+            />
+            <p class="form-hint">{{ $t('settings.roleMarkHint') }}</p>
+          </div>
+          <div class="form-item">
             <label class="form-label">{{ $t('settings.roleName') }}</label>
             <input
               v-model="roleForm.name"
               type="text"
               class="form-input"
-              disabled
               :placeholder="$t('settings.roleNamePlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.roleNameHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleLabel') }}</label>
-            <input
-              v-model="roleForm.label"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.roleLabelPlaceholder')"
             />
           </div>
           <div class="form-item">
@@ -1676,14 +1676,14 @@ const roleExpertsChanged = ref(false)
 const showRoleDialog = ref(false)
 const editingRole = ref<Role | null>(null)
 const roleForm = reactive({
-  name: '',
-  label: '',
+  mark: '',   // 角色标识符（不可变）
+  name: '',   // 显示名称（可编辑）
   description: '',
 })
 
 // 角色表单验证
 const isRoleFormValid = computed(() => {
-  return roleForm.label?.trim()
+  return roleForm.name?.trim()
 })
 
 // 用户表单验证
@@ -1765,10 +1765,10 @@ const openUserDialog = async (user?: UserListItem) => {
     userForm.status = user.status
     userForm.avatar = user.avatar || ''
     userForm.newPassword = ''
-    // 设置用户当前角色：根据角色名称找到对应的角色ID
+    // 设置用户当前角色：根据角色标识符(mark)找到对应的角色ID
     if (user.roles && user.roles.length > 0) {
       const roleIds = rolesList.value
-        .filter(r => user.roles!.includes(r.name))
+        .filter(r => user.roles!.includes(r.mark))
         .map(r => r.id)
       userForm.selectedRoleIds = roleIds
     } else {
@@ -1993,8 +1993,8 @@ const selectRole = async (role: Role) => {
 // 打开角色编辑对话框
 const openRoleDialog = (role: Role) => {
   editingRole.value = role
+  roleForm.mark = role.mark
   roleForm.name = role.name
-  roleForm.label = role.label || ''
   roleForm.description = role.description || ''
   showRoleDialog.value = true
 }
@@ -2011,7 +2011,7 @@ const saveRole = async () => {
   
   try {
     const updateData: UpdateRoleRequest = {
-      label: roleForm.label,
+      name: roleForm.name,
       description: roleForm.description,
     }
     await roleApi.updateRole(editingRole.value.id, updateData)
@@ -2023,8 +2023,8 @@ const saveRole = async () => {
       if (existingRole) {
         rolesList.value[index] = {
           id: existingRole.id,
-          name: existingRole.name,
-          label: roleForm.label,
+          mark: existingRole.mark,
+          name: roleForm.name,
           description: roleForm.description,
           is_system: existingRole.is_system,
         }
@@ -2035,7 +2035,7 @@ const saveRole = async () => {
     if (selectedRole.value?.id === editingRole.value.id) {
       selectedRole.value = {
         ...selectedRole.value,
-        label: roleForm.label,
+        name: roleForm.name,
         description: roleForm.description,
       }
     }
