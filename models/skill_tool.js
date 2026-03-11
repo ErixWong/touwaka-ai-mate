@@ -35,6 +35,12 @@ export default class skill_tool extends Model {
       defaultValue: "index.js",
       comment: "工具入口脚本路径（相对于技能目录）"
     },
+    is_resident: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: "是否驻留进程：0=普通工具（执行后返回），1=驻留工具（持续运行，stdio通信）"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,
