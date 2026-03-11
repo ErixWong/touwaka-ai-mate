@@ -15,6 +15,7 @@ import createSkillRoutes from './skill.routes.js';
 import createKbRoutes from './kb.routes.js';
 import systemSettingRoutes from './system-setting.routes.js';
 import createPackageRoutes from './package.routes.js';
+import createInternalRoutes from './internal.routes.js';
 
 export {
   authRoutes,
@@ -30,4 +31,5 @@ export {
   createKbRoutes,
   systemSettingRoutes,
   createPackageRoutes,
+  createInternalRoutes,
 };

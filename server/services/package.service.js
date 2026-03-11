@@ -10,19 +10,10 @@ import logger from '../../lib/logger.js';
 
 const execAsync = promisify(exec);
 
-// 默认白名单配置
+// 默认白名单配置（空数组，实际值从数据库加载）
 const DEFAULT_WHITELIST = {
-  allowed_node_modules: [
-    'fs', 'path', 'url', 'querystring', 'crypto',
-    'util', 'stream', 'http', 'https', 'zlib',
-    'string_decoder', 'buffer', 'events', 'os',
-    'mysql2', 'mysql2/promise',
-  ],
-  allowed_python_packages: [
-    'os', 'sys', 'json', 're', 'pathlib', 'typing',
-    'datetime', 'collections', 'itertools', 'functools',
-    'io', 'math', 'copy', 'tempfile', 'shutil',
-  ],
+  allowed_node_modules: [],
+  allowed_python_packages: [],
 };
 
 class PackageService {
