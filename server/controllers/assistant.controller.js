@@ -30,33 +30,79 @@ class AssistantController {
   /**
    * 召唤助理
    * POST /api/assistants/call
+   *
+   * 新版请求结构 (推荐):
+   * {
+   *   assistant_type: string,      // 必填
+   *   task: string,                // 必填：任务描述
+   *   background?: string,         // 可选：任务背景
+   *   input: object,               // 必填：具体输入数据
+   *   expected_output?: object,    // 可选：期望输出格式
+   *   workspace?: object,          // 可选：工作空间上下文
+   *   inherited_tools?: string[]   // 可选：继承的工具列表
+   * }
+   *
+   * 旧版请求结构 (兼容):
+   * {
+   *   assistant_type: string,
+   *   input: object
+   * }
    */
   async call(ctx) {
     try {
-      const { assistant_type, input } = ctx.request.body;
+      const body = ctx.request.body;
 
-      if (!assistant_type) {
+      // 必填参数校验
+      if (!body.assistant_type) {
         ctx.error('缺少 assistant_type 参数', 400);
         return;
       }
 
-      if (!input) {
+      if (!body.input) {
         ctx.error('缺少 input 参数', 400);
         return;
       }
 
-      // 从 session 获取上下文
+      // 新版参数
+      const {
+        assistant_type,
+        task,
+        background,
+        input,
+        expected_output,
+        workspace,
+        inherited_tools,
+      } = body;
+
+      // 从 session 获取上下文（作为默认值）
       const userId = ctx.state.session?.userId;
       const expertId = ctx.state.session?.expertId;
       const contactId = ctx.state.session?.contactId;
       const topicId = ctx.state.topicId;
 
-      const result = await this.assistantManager.summon(assistant_type, input, {
-        expertId,
-        contactId,
+      // 合并 workspace 参数
+      const workspaceContext = {
+        topic_id: workspace?.topic_id || topicId,
+        expert_id: workspace?.expert_id || expertId,
+        workdir: workspace?.workdir,
+      };
+
+      // 构建完整的召唤请求
+      const summonRequest = {
+        assistant_type,
+        // 向后兼容：如果没有 task，生成默认描述
+        task: task || `执行 ${assistant_type} 任务`,
+        background,
+        input,
+        expected_output,
+        workspace: workspaceContext,
+        inherited_tools,
+        // 额外上下文
         userId,
-        topicId,
-      });
+        contactId,
+      };
+
+      const result = await this.assistantManager.summon(summonRequest);
 
       ctx.success(result);
     } catch (error) {

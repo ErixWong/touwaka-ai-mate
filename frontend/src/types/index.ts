@@ -1119,8 +1119,28 @@ export interface AssistantRequest {
  * 召唤助理的请求
  */
 export interface AssistantSummonRequest {
+  /** 助理类型（必填） */
   assistant_type: string
+  /** 任务描述（必填）：一句话说明要做什么 */
+  task: string
+  /** 任务背景（可选）：为什么需要这个任务 */
+  background?: string
+  /** 具体输入数据（必填） */
   input: Record<string, unknown>
+  /** 期望输出格式（可选） */
+  expected_output?: {
+    format?: 'markdown' | 'json' | 'text'
+    focus?: string[]
+    max_length?: number
+  }
+  /** 工作空间上下文（可选） */
+  workspace?: {
+    topic_id?: string
+    expert_id?: string
+    workdir?: string
+  }
+  /** 继承的工具列表（可选）：助理可调用的工具ID */
+  inherited_tools?: string[]
 }
 
 /**

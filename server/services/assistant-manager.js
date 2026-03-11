@@ -137,16 +137,43 @@ class AssistantManager {
   /**
    * 召唤助理（异步委托）
    *
-   * @param {string} assistantType - 助理类型
-   * @param {object} input - 输入参数
-   * @param {object} context - 上下文
-   * @param {string} context.expertId - 专家ID
-   * @param {string} context.contactId - 联系人ID
-   * @param {string} context.userId - 用户ID
-   * @param {string} context.topicId - 话题ID
+   * @param {object} summonRequest - 召唤请求对象
+   * @param {string} summonRequest.assistant_type - 助理类型（必填）
+   * @param {string} summonRequest.task - 任务描述（必填）
+   * @param {string} [summonRequest.background] - 任务背景（可选）
+   * @param {object} summonRequest.input - 输入数据（必填）
+   * @param {object} [summonRequest.expected_output] - 期望输出格式（可选）
+   * @param {object} [summonRequest.workspace] - 工作空间上下文（可选）
+   * @param {string[]} [summonRequest.inherited_tools] - 继承的工具列表（可选）
+   * @param {string} [summonRequest.userId] - 用户ID
+   * @param {string} [summonRequest.contactId] - 联系人ID
    * @returns {Promise<{request_id: string, status: string, estimated_time: number, message: string}>}
    */
-  async summon(assistantType, input, context = {}) {
+  async summon(summonRequest) {
+    // 兼容旧版调用方式：summon(assistantType, input, context)
+    let assistantType, input, context;
+
+    if (typeof summonRequest === 'string') {
+      // 旧版调用：summon(assistantType, input, context)
+      assistantType = arguments[0];
+      input = arguments[1];
+      context = arguments[2] || {};
+    } else {
+      // 新版调用：summon(requestObject)
+      assistantType = summonRequest.assistant_type;
+      input = summonRequest.input;
+      context = {
+        expertId: summonRequest.workspace?.expert_id,
+        contactId: summonRequest.contactId,
+        userId: summonRequest.userId,
+        topicId: summonRequest.workspace?.topic_id,
+        task: summonRequest.task,
+        background: summonRequest.background,
+        expected_output: summonRequest.expected_output,
+        inherited_tools: summonRequest.inherited_tools,
+      };
+    }
+
     // 获取助理配置
     const assistant = this.getAssistant(assistantType);
     if (!assistant) {
@@ -155,6 +182,19 @@ class AssistantManager {
 
     // 生成请求 ID
     const requestId = `req_${uuidv4().replace(/-/g, '').substring(0, 16)}`;
+
+    // 构建完整的输入结构（存储到数据库）
+    const fullInput = {
+      task: context.task || `执行 ${assistantType} 任务`,
+      background: context.background,
+      input: input,
+      expected_output: context.expected_output,
+      workspace: {
+        topic_id: context.topicId,
+        expert_id: context.expertId,
+      },
+      inherited_tools: context.inherited_tools,
+    };
 
     // 创建委托记录（数据库 + 内存）
     const request = {
@@ -165,7 +205,7 @@ class AssistantManager {
       user_id: context.userId || null,
       topic_id: context.topicId || null,
       status: 'pending',
-      input: JSON.stringify(input),
+      input: JSON.stringify(fullInput),
       created_at: new Date(),
     };
 
@@ -173,7 +213,7 @@ class AssistantManager {
     await this.AssistantRequest.create(request);
 
     // 添加到内存队列
-    this.requests.set(requestId, { ...request, input });
+    this.requests.set(requestId, { ...request, input: fullInput });
 
     // 启动异步执行（不等待）
     this.executeRequest(requestId).catch(err => {
@@ -353,20 +393,36 @@ class AssistantManager {
   /**
    * 执行助理逻辑
    * @param {object} assistant - 助理配置
-   * @param {object} input - 输入参数
+   * @param {object} input - 输入参数（新版结构，包含 task, background, input, expected_output, inherited_tools）
    * @param {object} context - 上下文
    * @returns {Promise<object>} 执行结果
    */
   async executeAssistant(assistant, input, context) {
     const { execution_mode } = assistant;
 
+    // 提取新版输入结构
+    const task = input.task || '执行任务';
+    const background = input.background;
+    const actualInput = input.input || input; // 兼容旧版
+    const expectedOutput = input.expected_output;
+    const inheritedTools = input.inherited_tools;
+
+    // 构建增强上下文
+    const enhancedContext = {
+      ...context,
+      task,
+      background,
+      expectedOutput,
+      inheritedTools,
+    };
+
     switch (execution_mode) {
       case 'direct':
-        return this.executeDirect(assistant, input, context);
+        return this.executeDirect(assistant, actualInput, enhancedContext);
       case 'llm':
-        return this.executeLLM(assistant, input, context);
+        return this.executeLLM(assistant, actualInput, enhancedContext);
       case 'hybrid':
-        return this.executeHybrid(assistant, input, context);
+        return this.executeHybrid(assistant, actualInput, enhancedContext);
       default:
         throw new Error(`Unknown execution mode: ${execution_mode}`);
     }
@@ -449,10 +505,39 @@ class AssistantManager {
       });
     }
 
-    // 添加用户输入
+    // 构建用户消息（包含任务描述和背景）
+    let userContent = '';
+
+    // 添加任务描述
+    if (context.task) {
+      userContent += `**任务**: ${context.task}\n\n`;
+    }
+
+    // 添加任务背景
+    if (context.background) {
+      userContent += `**背景**: ${context.background}\n\n`;
+    }
+
+    // 添加具体输入数据
+    userContent += `**输入数据**:\n${typeof input === 'string' ? input : JSON.stringify(input, null, 2)}`;
+
+    // 添加期望输出格式
+    if (context.expectedOutput) {
+      userContent += '\n\n**期望输出格式**:';
+      if (context.expectedOutput.format) {
+        userContent += `\n格式: ${context.expectedOutput.format}`;
+      }
+      if (context.expectedOutput.focus && context.expectedOutput.focus.length > 0) {
+        userContent += `\n关注点: ${context.expectedOutput.focus.join(', ')}`;
+      }
+      if (context.expectedOutput.max_length) {
+        userContent += `\n最大长度: ${context.expectedOutput.max_length} 字符`;
+      }
+    }
+
     messages.push({
       role: 'user',
-      content: typeof input === 'string' ? input : JSON.stringify(input),
+      content: userContent,
     });
 
     try {
@@ -461,6 +546,8 @@ class AssistantManager {
         temperature: parseFloat(assistant.temperature) || 0.7,
         max_tokens: assistant.max_tokens || 4096,
         timeout: (assistant.timeout || 120) * 1000,
+        // 传递继承的工具（如果有）
+        tools: context.inheritedTools,
       });
 
       return {
@@ -636,9 +723,31 @@ class AssistantManager {
                 type: 'string',
                 description: '助理类型，如 ocr, drawing, coding, vision 等',
               },
+              task: {
+                type: 'string',
+                description: '任务描述（一句话说明要做什么）',
+              },
+              background: {
+                type: 'string',
+                description: '任务背景（为什么需要这个任务）',
+              },
               input: {
                 type: 'object',
                 description: '输入参数，根据助理类型不同而不同',
+              },
+              expected_output: {
+                type: 'object',
+                properties: {
+                  format: { type: 'string', description: '输出格式：markdown/json/text' },
+                  focus: { type: 'array', items: { type: 'string' }, description: '关注点列表' },
+                  max_length: { type: 'number', description: '最大输出长度' },
+                },
+                description: '期望的输出格式',
+              },
+              inherited_tools: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '要继承的工具ID列表，助理可以调用这些工具',
               },
             },
             required: ['type', 'input'],
@@ -686,11 +795,20 @@ class AssistantManager {
   async executeTool(toolName, params, context = {}) {
     switch (toolName) {
       case 'assistant_summon':
-        return this.summon(params.type, params.input, {
-          expertId: context.expertId,
-          contactId: context.contactId,
+        // 支持新版和旧版参数
+        return this.summon({
+          assistant_type: params.type,
+          task: params.task,
+          background: params.background,
+          input: params.input,
+          expected_output: params.expected_output,
+          inherited_tools: params.inherited_tools,
           userId: context.userId,
-          topicId: context.topicId,
+          contactId: context.contactId,
+          workspace: {
+            expert_id: context.expertId,
+            topic_id: context.topicId,
+          },
         });
 
       case 'assistant_status':
