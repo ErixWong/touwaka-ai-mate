@@ -540,6 +540,7 @@ export default {
     expert: 'Expert',
     topics: 'Topics',
     tasks: 'Tasks',
+    assistants: 'Assistants',
     skills: 'Skills',
     debug: 'Debug',
     collapse: 'Collapse Panel',
