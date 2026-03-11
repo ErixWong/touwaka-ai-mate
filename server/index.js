@@ -21,6 +21,7 @@ import Database from '../lib/db.js';
 import ChatService from '../lib/chat-service.js';
 import BackgroundTaskScheduler from '../lib/background-scheduler.js';
 import { createEmbeddingTask } from '../lib/embedding-worker.js';
+import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import logger from '../lib/logger.js';
 
 // 中间件
@@ -39,6 +40,7 @@ import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
+import InternalController from './controllers/internal.controller.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -60,12 +62,15 @@ import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
 import packageRoutes from './routes/package.routes.js';
 
+import internalRoutes from './routes/internal.routes.js';
+
 class ApiServer {
   constructor() {
     this.app = new Koa();
     this.db = null;
     this.chatService = null;
     this.scheduler = null;
+    this.residentSkillManager = null;
     this.controllers = {};
   }
 
@@ -141,6 +146,10 @@ class ApiServer {
     });
 
     logger.info('BackgroundTaskScheduler initialized with embedding-worker task');
+
+    // 初始化驻留式技能管理器
+    this.residentSkillManager = new ResidentSkillManager(this.db);
+    await this.residentSkillManager.initialize();
   }
 
   /**
@@ -159,6 +168,9 @@ class ApiServer {
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
       kb: new KbController(this.db),
+      internal: new InternalController(this.db, {
+        expertConnections: null, // 稍后在 setupRoutes 中设置
+      }),
     };
   }
 
@@ -298,6 +310,13 @@ class ApiServer {
     this.app.use(packageRouter.routes());
     this.app.use(packageRouter.allowedMethods());
 
+    // Internal 内部 API 路由（驻留进程调用）
+    // 将 StreamController 的 SSE 连接池共享给 InternalController
+    this.controllers.internal.setExpertConnections(this.controllers.stream.expertConnections);
+    this.app.use(internalRoutes(this.controllers.internal).routes());
+    this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
+    logger.info('Internal routes registered (POST /internal/messages/insert)');
+
     // 404 处理
     this.app.use(async (ctx) => {
       ctx.status = 404;
@@ -424,6 +443,9 @@ process.on('SIGINT', async () => {
   if (server.scheduler) {
     server.scheduler.stopAll();
   }
+  if (server.residentSkillManager) {
+    await server.residentSkillManager.shutdown();
+  }
   process.exit(0);
 });
 
@@ -431,6 +453,9 @@ process.on('SIGTERM', async () => {
   logger.info('Shutting down API server...');
   if (server.scheduler) {
     server.scheduler.stopAll();
+  }
+  if (server.residentSkillManager) {
+    await server.residentSkillManager.shutdown();
   }
   process.exit(0);
 });
