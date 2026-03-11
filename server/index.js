@@ -39,6 +39,8 @@ import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
+import AssistantController from './controllers/assistant.controller.js';
+import { getAssistantManager } from './services/assistant-manager.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -59,6 +61,7 @@ import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
 import packageRoutes from './routes/package.routes.js';
+import assistantRoutes from './routes/assistant.routes.js';
 
 class ApiServer {
   constructor() {
@@ -159,6 +162,7 @@ class ApiServer {
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
       kb: new KbController(this.db),
+      assistant: new AssistantController(this.db),
     };
   }
 
@@ -298,6 +302,11 @@ class ApiServer {
     this.app.use(packageRouter.routes());
     this.app.use(packageRouter.allowedMethods());
 
+    // Assistant 助理路由
+    const assistantRouter = assistantRoutes(this.controllers.assistant);
+    this.app.use(assistantRouter.routes());
+    this.app.use(assistantRouter.allowedMethods());
+
     // 404 处理
     this.app.use(async (ctx) => {
       ctx.status = 404;
@@ -366,6 +375,11 @@ class ApiServer {
       logger.info('Database connected');
 
       this.initializeControllers();
+
+      // Initialize Assistant Manager
+      const assistantManager = getAssistantManager(this.db);
+      await assistantManager.initialize();
+      logger.info('Assistant Manager initialized');
       this.setupMiddlewares();
       this.setupRoutes();
 
