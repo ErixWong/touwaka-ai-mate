@@ -11,5 +11,8 @@ export default (controller) => {
   // 获取最近一次 LLM Payload（需要认证）
   router.get('/llm-payload', authenticate(), controller.getLLMPayload.bind(controller));
 
+  // 获取驻留进程状态（需要认证）
+  router.get('/resident-status', authenticate(), controller.getResidentStatus.bind(controller));
+
   return router;
 };

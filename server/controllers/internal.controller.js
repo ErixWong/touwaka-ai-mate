@@ -21,6 +21,8 @@ class InternalController {
     this.db = db;
     this.Message = db.getModel('message');
     this.Topic = db.getModel('topic');
+    this.AiModel = db.getModel('ai_model');
+    this.Provider = db.getModel('provider');
     this.expertConnections = options.expertConnections || new Map();
     this.internalKey = process.env.INTERNAL_API_KEY || null;
   }
@@ -199,6 +201,194 @@ class InternalController {
    */
   setExpertConnections(connections) {
     this.expertConnections = connections;
+  }
+
+  /**
+   * 获取模型配置（包含 Provider 信息）
+   * GET /internal/models/:model_id
+   * 
+   * @param {string} ctx.params.model_id - 模型ID
+   * @returns {Object} 模型配置（含 base_url, api_key）
+   */
+  async getModelConfig(ctx) {
+    try {
+      // 1. 验证内部调用权限
+      if (!this.validateInternalAccess(ctx)) {
+        ctx.status = 403;
+        ctx.error('无权访问内部 API', 403, { code: 'FORBIDDEN' });
+        return;
+      }
+
+      const { model_id } = ctx.params;
+
+      if (!model_id) {
+        ctx.error('缺少 model_id 参数');
+        return;
+      }
+
+      // 2. 查询模型配置
+      const model = await this.AiModel.findOne({
+        where: { id: model_id },
+        raw: true,
+      });
+
+      if (!model) {
+        ctx.status = 404;
+        ctx.error('模型不存在');
+        return;
+      }
+
+      // 3. 查询 Provider 配置
+      let provider = null;
+      if (model.provider_id) {
+        provider = await this.Provider.findOne({
+          where: { id: model.provider_id },
+          raw: true,
+        });
+      }
+
+      // 4. 返回配置
+      ctx.success({
+        model: {
+          id: model.id,
+          name: model.name,
+          model_name: model.model_name,
+          model_type: model.model_type,
+          max_tokens: model.max_tokens,
+          max_output_tokens: model.max_output_tokens,
+        },
+        provider: provider ? {
+          id: provider.id,
+          name: provider.name,
+          base_url: provider.base_url,
+          api_key: provider.api_key,
+          timeout: provider.timeout,
+        } : null,
+      });
+
+    } catch (error) {
+      logger.error('Internal API get model config error:', error);
+      ctx.error(error.message || '获取模型配置失败', 500);
+    }
+  }
+
+  /**
+   * 通过名称解析模型 ID
+   * GET /internal/models/resolve?name=xxx
+   * 
+   * @param {string} ctx.query.name - 模型名称（name 或 model_name）
+   * @returns {Object} { model_id, model_name }
+   */
+  async resolveModelName(ctx) {
+    try {
+      // 1. 验证内部调用权限
+      if (!this.validateInternalAccess(ctx)) {
+        ctx.status = 403;
+        ctx.error('无权访问内部 API', 403, { code: 'FORBIDDEN' });
+        return;
+      }
+
+      const { name } = ctx.query;
+
+      if (!name) {
+        ctx.error('缺少 name 参数');
+        return;
+      }
+
+      // 2. 按名称查找（支持 name 或 model_name）
+      const model = await this.AiModel.findOne({
+        where: {
+          is_active: true,
+        },
+        raw: true,
+      });
+
+      // 尝试匹配 name 或 model_name（不区分大小写）
+      const allModels = await this.AiModel.findAll({
+        where: { is_active: true },
+        raw: true,
+      });
+
+      const found = allModels.find(m => 
+        m.name?.toLowerCase() === name.toLowerCase() ||
+        m.model_name?.toLowerCase() === name.toLowerCase()
+      );
+
+      if (!found) {
+        ctx.status = 404;
+        ctx.error(`模型 "${name}" 不存在`);
+        return;
+      }
+
+      // 3. 返回模型 ID
+      ctx.success({
+        model_id: found.id,
+        model_name: found.model_name,
+        name: found.name,
+      });
+
+    } catch (error) {
+      logger.error('Internal API resolve model name error:', error);
+      ctx.error(error.message || '解析模型名称失败', 500);
+    }
+  }
+
+  /**
+   * 调用驻留式技能工具
+   * POST /internal/resident/invoke
+   * 
+   * @param {Object} ctx.request.body - 请求体
+   * @param {string} ctx.request.body.skill_id - 技能ID
+   * @param {string} ctx.request.body.tool_name - 工具名称
+   * @param {Object} ctx.request.body.params - 调用参数
+   * @param {number} ctx.request.body.timeout - 超时时间（可选）
+   */
+  async invokeResidentTool(ctx) {
+    try {
+      // 1. 验证内部调用权限
+      if (!this.validateInternalAccess(ctx)) {
+        ctx.status = 403;
+        ctx.error('无权访问内部 API', 403, { code: 'FORBIDDEN' });
+        return;
+      }
+
+      // 2. 获取参数
+      const { skill_id, tool_name, params, timeout } = ctx.request.body;
+
+      if (!skill_id || !tool_name) {
+        ctx.error('缺少必要参数：skill_id, tool_name');
+        return;
+      }
+
+      // 3. 获取 ResidentSkillManager
+      if (!this.residentSkillManager) {
+        ctx.status = 503;
+        ctx.error('驻留式技能管理器未初始化');
+        return;
+      }
+
+      // 4. 调用驻留工具
+      const result = await this.residentSkillManager.invokeByName(
+        skill_id,
+        tool_name,
+        params,
+        timeout || 60000
+      );
+
+      // 5. 返回结果
+      ctx.success(result);
+
+    } catch (error) {
+      logger.error('Internal API invoke resident tool error:', error);
+      ctx.error(error.message || '调用驻留工具失败', 500);
+    }
+  }
+
+  /**
+   * 设置 ResidentSkillManager 引用（在 server 初始化时调用）
+   */
+  setResidentSkillManager(manager) {
+    this.residentSkillManager = manager;
   }
 }
 
