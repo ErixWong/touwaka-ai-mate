@@ -105,13 +105,57 @@ npm run lint
 1. 在 `SystemSettingService` 添加静态方法 `getDefaultTimeouts()` 返回毫秒格式的默认值
 2. `skill-loader.js` 导入并使用该静态方法
 
+### ✅ 已修复: ES 模块命名导出缺失
+
+**发现时间**: 2026-03-12 00:21
+**错误信息**:
+```
+SyntaxError: The requested module '../server/services/system-setting.service.js'
+does not provide an export named 'SystemSettingService'
+```
+
+**原因分析**:
+- `skill-loader.js` 使用命名导入: `import { SystemSettingService } from ...`
+- `system-setting.service.js` 只有默认导出: `export default SystemSettingService;`
+- 缺少命名导出: `export { SystemSettingService };`
+
+**修复方案**:
+```javascript
+// server/services/system-setting.service.js
+// 修复前
+export { DEFAULT_SETTINGS };
+export default SystemSettingService;
+
+// 修复后
+export { DEFAULT_SETTINGS, SystemSettingService };
+export default SystemSettingService;
+```
+
+**验证方法**:
+```bash
+node -e "import('./server/services/system-setting.service.js').then(m => console.log('Exports:', Object.keys(m)))"
+# 输出: Exports: [ 'DEFAULT_SETTINGS', 'SystemSettingService', 'default', 'getSystemSettingService' ]
+
+node -e "import('./lib/skill-loader.js').then(() => console.log('OK')).catch(e => console.error(e.message))"
+# 输出: OK
+```
+
+**教训总结**:
+1. **ESLint 不检查模块导入/导出匹配** - lint 通过不代表模块导入正确
+2. **即使认为"不涉及启动流程变更"，只要改了 import/export 就必须验证后端启动**
+3. **已更新 `docs/guides/development/code-review-checklist.md`**，添加 ES 模块导入验证步骤
+
 ---
 
 ## 结论
 
-### ✅ 审计通过
+### ✅ 审计通过（经修复后）
 
-所有检查项均通过，代码质量良好，架构设计合理。
+所有检查项均通过，发现并修复了 2 个问题：
+1. 默认值重复定义 - 已修复
+2. ES 模块命名导出缺失 - 已修复
+
+**建议**: 以后任何涉及 `import`/`export` 的修改，都必须用 `node -e "import(...)"` 验证模块导入正确性。
 
 ---
 
