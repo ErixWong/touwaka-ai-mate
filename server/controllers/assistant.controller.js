@@ -158,6 +158,36 @@ class AssistantController {
       ctx.app.emit('error', error, ctx);
     }
   }
+
+  /**
+   * 查询委托的消息列表
+   * GET /api/assistants/requests/:request_id/messages
+   *
+   * Query params:
+   * - debug: boolean - 是否返回完整内容（默认 false，只返回摘要）
+   */
+  async getMessages(ctx) {
+    try {
+      const { request_id } = ctx.params;
+      const { debug } = ctx.query;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const debugMode = debug === 'true' || debug === '1';
+      const messages = await this.assistantManager.getMessages(request_id, debugMode);
+
+      ctx.success({
+        request_id,
+        messages,
+      });
+    } catch (error) {
+      logger.error('Get messages error:', error);
+      ctx.app.emit('error', error, ctx);
+    }
+  }
 }
 
 export default AssistantController;
