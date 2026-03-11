@@ -639,44 +639,84 @@ export default router;
 
 ## 实现步骤
 
-### Phase 1: 基础设施
+### Phase 1: 基础设施 ✅ 已完成
 
-1. **数据库迁移**
+1. **数据库迁移** ✅
    - `skill_tools` 表添加 `is_resident` 字段
-   - `messages` 表添加 `processed` 字段（可选）
+   - 迁移脚本: `scripts/migrate-skill-tools-resident.js`
+   - 模型更新: `models/skill_tool.js`
 
-2. **创建 ResidentSkillManager**
+2. **创建 ResidentSkillManager** ✅
    - `lib/resident-skill-manager.js`
+   - 支持进程启动、停止、任务调用
+   - stdio 通信协议实现
 
-3. **创建内部 API 路由**
+3. **创建内部 API 路由** ✅
    - `server/routes/internal.routes.js`
-   - 注册到 `server/index.js`
+   - `server/controllers/internal.controller.js`
+   - 端点: `POST /internal/messages/insert`
 
-### Phase 2: SSE 集成
+### Phase 2: SSE 集成 ✅ 已完成
 
-1. **扩展 SSE Manager**
-   - 添加 `getConnection(userId, expertId)` 方法
-   - 添加 `push(userId, expertId, event)` 方法
+1. **扩展 SSE Manager** ✅
+   - `StreamController.expertConnections` Map
+   - `InternalController.setExpertConnections()` 共享连接池
 
-2. **修改 ChatService**
-   - 添加 `insertSystemMessage()` 方法
-   - 集成 SSE 推送逻辑
+2. **消息插入服务** ✅
+   - `InternalController.insertMessage()` 方法
+   - SSE 推送触发逻辑
 
-### Phase 3: 驻留技能
+### Phase 3: 驻留技能 ✅ 已完成
 
-1. **创建 remote-llm 技能**
+1. **创建 remote-llm 技能** ✅
    - `data/skills/remote-llm/index.js`
    - `data/skills/remote-llm/SKILL.md`
+   - `data/skills/remote-llm/package.json`
 
-2. **注册技能和工具**
-   - 插入 `skills` 表
-   - 插入 `skill_tools` 表（设置 `is_resident = 1`）
+2. **服务器集成** ✅
+   - `server/index.js` 导入并初始化 `ResidentSkillManager`
+   - 优雅关闭处理
+
+### Phase 4: 注册技能（待执行）
+
+需要通过管理 API 或数据库插入注册技能：
+
+```sql
+-- 1. 注册技能
+INSERT INTO skills (id, name, source_path, description)
+VALUES ('remote-llm', 'remote-llm', 'remote-llm', '远程 LLM 调用驻留技能');
+
+-- 2. 注册工具
+INSERT INTO skill_tools (id, skill_id, name, description, is_resident, script_path)
+VALUES (
+  'tool_remote_llm_call',
+  'remote-llm',
+  'call_llm',
+  '调用远程 LLM API',
+  1,  -- is_resident = 1
+  'index.js'
+);
+```
+
+## 已实现文件清单
+
+| 文件 | 说明 | 状态 |
+|------|------|------|
+| `lib/resident-skill-manager.js` | 驻留进程管理器 | ✅ |
+| `server/index.js` | 集成初始化和关闭处理 | ✅ |
+| `server/controllers/internal.controller.js` | 内部 API 控制器 | ✅ |
+| `server/routes/internal.routes.js` | 内部 API 路由 | ✅ |
+| `models/skill_tool.js` | 添加 is_resident 字段 | ✅ |
+| `scripts/migrate-skill-tools-resident.js` | 迁移脚本 | ✅ |
+| `data/skills/remote-llm/index.js` | 远程 LLM 技能实现 | ✅ |
+| `data/skills/remote-llm/SKILL.md` | 技能文档 | ✅ |
+| `data/skills/remote-llm/package.json` | 技能配置 | ✅ |
 
 ## 待讨论
 
-1. **驻留进程崩溃恢复**：是否需要自动重启？
-2. **任务状态持久化**：是否需要在数据库记录任务状态？
-3. **并发限制**：每个驻留进程的最大并发任务数？
+1. **驻留进程崩溃恢复**：是否需要自动重启？ - 建议：Phase 5 实现
+2. **任务状态持久化**：是否需要在数据库记录任务状态？ - 建议：Phase 5 实现
+3. **并发限制**：每个驻留进程的最大并发任务数？ - 建议：Phase 5 实现
 
 ---
 
