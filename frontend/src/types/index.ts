@@ -1153,3 +1153,40 @@ export interface AssistantSummonResponse {
   estimated_time: number
   message: string
 }
+
+/**
+ * 助理消息类型
+ */
+export type AssistantMessageType =
+  | 'task'       // 任务描述
+  | 'status'     // 状态更新
+  | 'tool_call'  // 工具调用
+  | 'tool_result' // 工具结果
+  | 'final'      // 最终结果
+  | 'error'      // 错误消息
+
+/**
+ * 助理消息角色
+ */
+export type AssistantMessageRole = 'expert' | 'system' | 'assistant' | 'tool'
+
+/**
+ * 助理消息（匹配后端 assistant_messages 表）
+ */
+export interface AssistantMessage {
+  id: number
+  request_id: string
+  role: AssistantMessageRole
+  message_type: AssistantMessageType
+  content_preview?: string  // 普通模式返回摘要
+  content?: string          // 调试模式返回完整内容
+  tool_name?: string
+  tool_call_id?: string
+  status?: string
+  sequence_no: number
+  metadata?: Record<string, unknown>
+  tokens_input?: number
+  tokens_output?: number
+  latency_ms?: number
+  created_at: string
+}
