@@ -521,6 +521,7 @@ export default {
     expert: '专家',
     topics: '话题',
     tasks: '任务',
+    assistants: '助理',
     skills: '技能',
     debug: '调试',
     collapse: '收起面板',
@@ -950,5 +951,24 @@ export default {
     modelUsed: '模型',
     warning: '警告',
     warningTitle: '警告信息',
+
+    // 助理面板
+    availableAssistants: '可用助理',
+    currentRequests: '当前委托',
+    noRequests: '暂无委托记录',
+    requestDetail: '委托详情',
+
+    // 时间
+    justNow: '刚刚',
+    minutesAgo: '分钟前',
+    hoursAgo: '小时前',
+
+    // 消息类型
+    msgTask: '任务',
+    msgStatus: '状态',
+    msgToolCall: '工具调用',
+    msgToolResult: '工具结果',
+    msgFinal: '完成',
+    msgError: '错误',
   },
 }

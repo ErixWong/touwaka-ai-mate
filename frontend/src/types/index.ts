@@ -1119,8 +1119,28 @@ export interface AssistantRequest {
  * 召唤助理的请求
  */
 export interface AssistantSummonRequest {
+  /** 助理类型（必填） */
   assistant_type: string
+  /** 任务描述（必填）：一句话说明要做什么 */
+  task: string
+  /** 任务背景（可选）：为什么需要这个任务 */
+  background?: string
+  /** 具体输入数据（必填） */
   input: Record<string, unknown>
+  /** 期望输出格式（可选） */
+  expected_output?: {
+    format?: 'markdown' | 'json' | 'text'
+    focus?: string[]
+    max_length?: number
+  }
+  /** 工作空间上下文（可选） */
+  workspace?: {
+    topic_id?: string
+    expert_id?: string
+    workdir?: string
+  }
+  /** 继承的工具列表（可选）：助理可调用的工具ID */
+  inherited_tools?: string[]
 }
 
 /**
@@ -1132,4 +1152,41 @@ export interface AssistantSummonResponse {
   status: AssistantRequestStatus
   estimated_time: number
   message: string
+}
+
+/**
+ * 助理消息类型
+ */
+export type AssistantMessageType =
+  | 'task'       // 任务描述
+  | 'status'     // 状态更新
+  | 'tool_call'  // 工具调用
+  | 'tool_result' // 工具结果
+  | 'final'      // 最终结果
+  | 'error'      // 错误消息
+
+/**
+ * 助理消息角色
+ */
+export type AssistantMessageRole = 'expert' | 'system' | 'assistant' | 'tool'
+
+/**
+ * 助理消息（匹配后端 assistant_messages 表）
+ */
+export interface AssistantMessage {
+  id: number
+  request_id: string
+  role: AssistantMessageRole
+  message_type: AssistantMessageType
+  content_preview?: string  // 普通模式返回摘要
+  content?: string          // 调试模式返回完整内容
+  tool_name?: string
+  tool_call_id?: string
+  status?: string
+  sequence_no: number
+  metadata?: Record<string, unknown>
+  tokens_input?: number
+  tokens_output?: number
+  latency_ms?: number
+  created_at: string
 }
