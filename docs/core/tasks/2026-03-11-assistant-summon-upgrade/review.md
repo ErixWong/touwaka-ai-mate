@@ -182,10 +182,16 @@ summon: (data: AssistantSummonRequest) =>
 
 1. **向后兼容设计** - 同时支持新旧两种调用方式
 2. **完整的上下文传递** - task、background、expected_output 增强了 Assistant 的理解能力
-3. **工具继承机制** - inherited_tools 为后续功能预留接口
+3. **工具继承机制** - inherited_tools 完整实现工具调用链
 4. **清晰的契约定义** - 前后端类型定义一致
+5. **多轮工具调用** - 支持LLM多次调用工具并返回结果
 
 ### 建议（低优先级）
 
-1. 添加 `inherited_tools` 的实际使用逻辑（当前只传递，未在 LLM 调用中使用）
+1. ~~添加 `inherited_tools` 的实际使用逻辑（当前只传递，未在 LLM 调用中使用）~~ ✅ **已实现**
+   - 新增 `getInheritedToolDefinitions()` 方法获取工具定义
+   - 新增 `executeInheritedTool()` 方法执行工具调用
+   - 新增 `executeLLMWithTools()` 方法支持多轮工具调用
+   - LLM 请求中正确包含工具定义
+   - 支持工具调用结果的多轮对话（最多5轮）
 2. 考虑为 `expected_output.format` 添加结果格式验证
