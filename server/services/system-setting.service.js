@@ -280,5 +280,5 @@ export function getSystemSettingService(db) {
   return instance;
 }
 
-export { DEFAULT_SETTINGS };
+export { DEFAULT_SETTINGS, SystemSettingService };
 export default SystemSettingService;
