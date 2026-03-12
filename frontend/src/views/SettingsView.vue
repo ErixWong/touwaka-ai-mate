@@ -2133,7 +2133,8 @@ const saveProvider = async () => {
     }
     closeProviderDialog()
   } catch (err) {
-    // 错误已在 store 中处理
+    const errorMsg = err instanceof Error ? err.message : t('settings.saveProviderFailed')
+    alert(errorMsg)
   }
 }
 
@@ -2213,7 +2214,8 @@ const saveModel = async () => {
     }
     closeModelDialog()
   } catch (err) {
-    // 错误已在 store 中处理
+    const errorMsg = err instanceof Error ? err.message : t('settings.saveModelFailed')
+    alert(errorMsg)
   }
 }
 
@@ -2309,7 +2311,8 @@ const saveExpert = async () => {
     }
     closeExpertDialog()
   } catch (err) {
-    // 错误已在 store 中处理
+    const errorMsg = err instanceof Error ? err.message : t('settings.saveExpertFailed')
+    alert(errorMsg)
   }
 }
 
