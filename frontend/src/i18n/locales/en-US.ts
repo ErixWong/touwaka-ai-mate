@@ -288,6 +288,9 @@ export default {
     descriptionPlaceholder: 'Enter model description (optional)',
     noModels: 'No models yet. Click the button above to add one.',
     deleteModelConfirm: 'Are you sure you want to delete model "{name}"? This action cannot be undone.',
+    deleteModelFailed: 'Failed to delete model',
+    deleteProviderFailed: 'Failed to delete provider',
+    deleteExpertFailed: 'Failed to delete expert',
     // User Management
     userManagement: 'User Management',
     addUser: 'Add User',
@@ -451,6 +454,16 @@ export default {
     tokenConfig: 'Token Configuration',
     accessTokenExpiry: 'Access Token Expiry',
     refreshTokenExpiry: 'Refresh Token Expiry',
+    // Timeout Config
+    timeoutConfig: 'Timeout Configuration',
+    vmExecutionTimeout: 'VM Execution Timeout',
+    vmExecutionTimeoutHint: 'Maximum time for JavaScript skill execution (seconds)',
+    pythonExecutionTimeout: 'Python Execution Timeout',
+    pythonExecutionTimeoutHint: 'Maximum time for Python skill execution (seconds)',
+    skillCallTimeout: 'Skill Call Timeout',
+    skillCallTimeoutHint: 'Maximum wait time for a single skill call (seconds)',
+    remoteLlmTimeout: 'Remote LLM Timeout',
+    remoteLlmTimeoutHint: 'Maximum wait time for remote LLM service calls (seconds)',
     // General Config
     generalConfig: 'General Config',
     // Package Whitelist

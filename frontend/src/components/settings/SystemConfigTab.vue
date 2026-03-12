@@ -16,6 +16,13 @@
         </button>
         <button
           class="sub-tab-btn"
+          :class="{ active: activeSubTab === 'timeout' }"
+          @click="activeSubTab = 'timeout'"
+        >
+          ⏱️ {{ $t('settings.timeoutConfig') }}
+        </button>
+        <button
+          class="sub-tab-btn"
           :class="{ active: activeSubTab === 'packages' }"
           @click="activeSubTab = 'packages'"
         >
@@ -207,6 +214,94 @@
         </div>
       </div>
 
+      <!-- 超时配置 -->
+      <div v-if="activeSubTab === 'timeout'" class="tab-content">
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">⏱️ {{ $t('settings.timeoutConfig') }}</h3>
+            <button class="btn-reset-section" @click="resetSection('timeout')">
+              {{ $t('common.reset') }}
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.vmExecutionTimeout') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.timeout.vm_execution"
+                  min="5"
+                  max="300"
+                  class="config-input"
+                />
+                <span class="config-hint">5-300s</span>
+              </div>
+              <p class="config-description">{{ $t('settings.vmExecutionTimeoutHint') }}</p>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.pythonExecutionTimeout') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.timeout.python_execution"
+                  min="10"
+                  max="1800"
+                  class="config-input"
+                />
+                <span class="config-hint">10-1800s</span>
+              </div>
+              <p class="config-description">{{ $t('settings.pythonExecutionTimeoutHint') }}</p>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.skillCallTimeout') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.timeout.skill_call"
+                  min="10"
+                  max="600"
+                  class="config-input"
+                />
+                <span class="config-hint">10-600s</span>
+              </div>
+              <p class="config-description">{{ $t('settings.skillCallTimeoutHint') }}</p>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.remoteLlmTimeout') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.timeout.remote_llm"
+                  min="30"
+                  max="600"
+                  class="config-input"
+                />
+                <span class="config-hint">30-600s</span>
+              </div>
+              <p class="config-description">{{ $t('settings.remoteLlmTimeoutHint') }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作按钮 -->
+        <div class="config-actions">
+          <button class="btn-reset-all" @click="resetAll">
+            {{ $t('settings.resetAll') }}
+          </button>
+          <button
+            class="btn-save"
+            @click="saveConfig"
+            :disabled="!hasChanges || saving"
+          >
+            {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+          </button>
+        </div>
+      </div>
+
       <!-- 包白名单配置 -->
       <div v-if="activeSubTab === 'packages'" class="tab-content">
         <PackageWhitelistTab />
@@ -225,7 +320,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 
 // 子 Tab 状态
-const activeSubTab = ref<'general' | 'packages'>('general')
+const activeSubTab = ref<'general' | 'timeout' | 'packages'>('general')
 
 // 表单数据
 const form = reactive({
@@ -246,6 +341,12 @@ const form = reactive({
     access_expiry: '15m',
     refresh_expiry: '7d',
   },
+  timeout: {
+    vm_execution: 30,
+    python_execution: 300,
+    skill_call: 60,
+    remote_llm: 120,
+  },
 })
 
 const saving = ref(false)
@@ -261,6 +362,7 @@ const syncFromStore = () => {
   Object.assign(form.llm, settings.llm)
   Object.assign(form.connection, settings.connection)
   Object.assign(form.token, settings.token)
+  Object.assign(form.timeout, settings.timeout)
 }
 
 // 保存配置
@@ -271,6 +373,7 @@ const saveConfig = async () => {
       llm: { ...form.llm },
       connection: { ...form.connection },
       token: { ...form.token },
+      timeout: { ...form.timeout },
     })
     alert(t('settings.saveSuccess'))
   } catch (error) {
@@ -289,6 +392,8 @@ const resetSection = async (section: string) => {
     Object.assign(form.connection, defaults.connection)
   } else if (section === 'token') {
     Object.assign(form.token, defaults.token)
+  } else if (section === 'timeout') {
+    Object.assign(form.timeout, defaults.timeout)
   }
 }
 
@@ -321,8 +426,9 @@ onMounted(async () => {
 <style scoped>
 .system-config-tab {
   padding: 20px;
+  padding-bottom: 80px; /* 确保底部按钮有足够空间 */
   max-width: 800px;
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 160px);
   overflow-y: auto;
 }
 
@@ -450,6 +556,12 @@ onMounted(async () => {
   font-size: 11px;
   color: var(--text-tertiary, #999);
   min-width: 30px;
+}
+
+.config-description {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  margin: 4px 0 0 0;
 }
 
 .config-actions {
