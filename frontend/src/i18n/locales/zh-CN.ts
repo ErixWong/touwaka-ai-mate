@@ -292,6 +292,9 @@ export default {
     descriptionPlaceholder: '输入模型描述（可选）',
     noModels: '暂无模型，点击上方按钮添加',
     deleteModelConfirm: '确定要删除模型 "{name}" 吗？此操作不可恢复。',
+    deleteModelFailed: '删除模型失败',
+    deleteProviderFailed: '删除提供商失败',
+    deleteExpertFailed: '删除专家失败',
     // 用户管理
     userManagement: '用户管理',
     addUser: '添加用户',
@@ -432,6 +435,16 @@ export default {
     tokenConfig: 'Token 配置',
     accessTokenExpiry: 'Access Token 过期时间',
     refreshTokenExpiry: 'Refresh Token 过期时间',
+    // 超时配置
+    timeoutConfig: '超时配置',
+    vmExecutionTimeout: 'VM 执行超时',
+    vmExecutionTimeoutHint: 'JavaScript 技能执行的最大时间（秒）',
+    pythonExecutionTimeout: 'Python 执行超时',
+    pythonExecutionTimeoutHint: 'Python 技能执行的最大时间（秒）',
+    skillCallTimeout: '技能调用超时',
+    skillCallTimeoutHint: '单个技能调用的最大等待时间（秒）',
+    remoteLlmTimeout: '远程 LLM 超时',
+    remoteLlmTimeoutHint: '远程 LLM 服务调用的最大等待时间（秒）',
     // 通用配置
     generalConfig: '通用配置',
     // 包白名单配置

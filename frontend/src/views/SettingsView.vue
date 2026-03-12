@@ -2160,7 +2160,9 @@ const deleteProvider = async () => {
     closeDeleteProviderDialog()
     closeProviderDialog()
   } catch (err) {
-    // 错误已在 store 中处理
+    // 显示错误信息给用户
+    const errorMsg = err instanceof Error ? err.message : t('settings.deleteProviderFailed')
+    alert(errorMsg)
   }
 }
 
@@ -2234,7 +2236,9 @@ const deleteModel = async () => {
     closeDeleteModelDialog()
     closeModelDialog()
   } catch (err) {
-    // 错误已在 store 中处理
+    // 显示错误信息给用户
+    const errorMsg = err instanceof Error ? err.message : t('settings.deleteModelFailed')
+    alert(errorMsg)
   }
 }
 
@@ -2365,7 +2369,9 @@ const deleteExpert = async () => {
     closeDeleteExpertDialog()
     closeExpertDialog()
   } catch (err) {
-    // 错误已在 store 中处理
+    // 显示错误信息给用户
+    const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
+    alert(errorMsg)
   }
 }
 
