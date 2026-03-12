@@ -958,6 +958,15 @@ export default {
     noRequests: '暂无委托记录',
     requestDetail: '委托详情',
 
+    // 归档与删除
+    archive: '归档',
+    unarchive: '取消归档',
+    delete: '删除',
+    archived: '已归档',
+    showArchived: '显示归档',
+    hideArchived: '隐藏归档',
+    confirmDelete: '确定要删除此委托吗？此操作不可撤销。',
+
     // 时间
     justNow: '刚刚',
     minutesAgo: '分钟前',

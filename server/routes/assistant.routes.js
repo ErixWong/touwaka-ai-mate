@@ -20,6 +20,15 @@ export default function createAssistantRoutes(controller) {
   // GET /api/assistants/requests - 查询委托列表
   router.get('/requests', controller.listRequests.bind(controller));
 
+  // POST /api/assistants/requests/:request_id/archive - 归档委托
+  router.post('/requests/:request_id/archive', controller.archive.bind(controller));
+
+  // POST /api/assistants/requests/:request_id/unarchive - 取消归档
+  router.post('/requests/:request_id/unarchive', controller.unarchive.bind(controller));
+
+  // DELETE /api/assistants/requests/:request_id - 删除委托
+  router.delete('/requests/:request_id', controller.delete.bind(controller));
+
   // GET /api/assistants/requests/:request_id/messages - 查询委托消息列表
   router.get('/requests/:request_id/messages', controller.getMessages.bind(controller));
 

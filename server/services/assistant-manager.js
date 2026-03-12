@@ -13,10 +13,22 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { Sequelize } from 'sequelize';
 import https from 'https';
 import http from 'http';
+import fs from 'fs/promises';
+import path from 'path';
 import logger from '../../lib/logger.js';
 import AssistantMessageService from './assistant-message-service.js';
+
+// 支持的图片格式
+const IMAGE_EXTENSIONS = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
 
 class AssistantManager {
   /**
@@ -30,6 +42,7 @@ class AssistantManager {
     // 模型
     this.Assistant = db.getModel('assistant');
     this.AssistantRequest = db.getModel('assistant_request');
+    this.AssistantMessage = db.getModel('assistant_message');
 
     // 消息服务
     this.messageService = new AssistantMessageService(db.models);
@@ -66,8 +79,9 @@ class AssistantManager {
    * 刷新助理配置缓存
    */
   async refreshAssistantsCache() {
+    // 使用 Sequelize.literal 处理 BIT 类型字段
     const assistants = await this.Assistant.findAll({
-      where: { is_active: true },
+      where: Sequelize.literal('is_active = 1'),
       raw: true,
     });
 
@@ -133,8 +147,11 @@ class AssistantManager {
       name: a.name,
       icon: a.icon,
       description: a.description,
+      model_id: a.model_id,
+      prompt_template: a.prompt_template,
       estimated_time: a.estimated_time,
       execution_mode: a.execution_mode,
+      is_active: a.is_active,
     }));
   }
 
@@ -171,6 +188,7 @@ class AssistantManager {
         contactId: summonRequest.contactId,
         userId: summonRequest.userId,
         topicId: summonRequest.workspace?.topic_id,
+        workdir: summonRequest.workspace?.workdir,  // 工作目录
         task: summonRequest.task,
         background: summonRequest.background,
         expected_output: summonRequest.expected_output,
@@ -196,6 +214,7 @@ class AssistantManager {
       workspace: {
         topic_id: context.topicId,
         expert_id: context.expertId,
+        workdir: context.workdir,  // 工作目录
       },
       inherited_tools: context.inherited_tools,
     };
@@ -303,7 +322,109 @@ class AssistantManager {
       status: r.status,
       created_at: r.created_at,
       completed_at: r.completed_at,
+      is_archived: r.is_archived,
     }));
+  }
+
+  /**
+   * 归档请求
+   * @param {string} requestId - 请求ID
+   * @returns {Promise<object>}
+   */
+  async archive(requestId) {
+    const request = await this.AssistantRequest.findOne({
+      where: { request_id: requestId },
+      raw: true,
+    });
+
+    if (!request) {
+      throw new Error(`Request not found: ${requestId}`);
+    }
+
+    await this.AssistantRequest.update(
+      { is_archived: 1 },
+      { where: { request_id: requestId } }
+    );
+
+    // 从内存移除
+    this.requests.delete(requestId);
+
+    logger.info(`[AssistantManager] Request archived: ${requestId}`);
+
+    return {
+      request_id: requestId,
+      is_archived: true,
+    };
+  }
+
+  /**
+   * 取消归档请求
+   * @param {string} requestId - 请求ID
+   * @returns {Promise<object>}
+   */
+  async unarchive(requestId) {
+    const request = await this.AssistantRequest.findOne({
+      where: { request_id: requestId },
+      raw: true,
+    });
+
+    if (!request) {
+      throw new Error(`Request not found: ${requestId}`);
+    }
+
+    await this.AssistantRequest.update(
+      { is_archived: 0 },
+      { where: { request_id: requestId } }
+    );
+
+    logger.info(`[AssistantManager] Request unarchived: ${requestId}`);
+
+    return {
+      request_id: requestId,
+      is_archived: false,
+    };
+  }
+
+  /**
+   * 删除请求（物理删除）
+   * @param {string} requestId - 请求ID
+   * @returns {Promise<object>}
+   */
+  async delete(requestId) {
+    const request = await this.AssistantRequest.findOne({
+      where: { request_id: requestId },
+      raw: true,
+    });
+
+    if (!request) {
+      throw new Error(`Request not found: ${requestId}`);
+    }
+
+    // 只允许删除已完成、失败或已取消的请求
+    const deletableStatuses = ['completed', 'failed', 'timeout', 'cancelled'];
+    if (!deletableStatuses.includes(request.status)) {
+      throw new Error(`Cannot delete request with status: ${request.status}`);
+    }
+
+    // 删除关联的消息
+    await this.AssistantMessage.destroy({
+      where: { request_id: requestId },
+    });
+
+    // 删除请求
+    await this.AssistantRequest.destroy({
+      where: { request_id: requestId },
+    });
+
+    // 从内存移除
+    this.requests.delete(requestId);
+
+    logger.info(`[AssistantManager] Request deleted: ${requestId}`);
+
+    return {
+      request_id: requestId,
+      deleted: true,
+    };
   }
 
   /**
@@ -375,6 +496,9 @@ class AssistantManager {
       try {
         result = await this.executeAssistant(assistant, request.input, {
           requestId,
+          workdir: request.input?.workspace?.workdir,  // 传递工作目录
+          topicId: request.topic_id,
+          expertId: request.expert_id,
         });
       } catch (execError) {
         result = { error: execError.message };
@@ -787,6 +911,11 @@ class AssistantManager {
   async executeHybrid(assistant, input, context) {
     logger.info(`[AssistantManager] 混合模式执行: ${assistant.assistant_type}`, input);
 
+    // 特殊处理：doc_image_analyzer 需要先读取图片再调用视觉模型
+    if (assistant.assistant_type === 'doc_image_analyzer') {
+      return this.executeHybridVision(assistant, input, context);
+    }
+
     // 第一步：LLM 推理
     const llmResult = await this.executeLLM(assistant, input, context);
 
@@ -865,6 +994,388 @@ class AssistantManager {
 
     // 没有配置工具，直接返回 LLM 结果
     return llmResult;
+  }
+
+  /**
+   * 视觉混合模式：先读取图片，再调用视觉模型分析
+   * @param {object} assistant
+   * @param {object} input
+   * @param {object} context
+   */
+  async executeHybridVision(assistant, input, context) {
+    logger.info(`[AssistantManager] 视觉混合模式执行: ${assistant.assistant_type}`);
+
+    // 验证输入包含 file_path
+    const filePath = input.file_path;
+    if (!filePath) {
+      return {
+        success: false,
+        error: '缺少必需参数: file_path',
+      };
+    }
+
+    // 第一步：读取图片文件（内置实现，不需要 skill）
+    const toolCallId = `call_${Date.now()}`;
+    const toolName = 'read_image_for_vision';
+
+    // 写入工具调用消息
+    await this.messageService.appendToolCallMessage(
+      context.requestId,
+      toolName,
+      { file_path: filePath },
+      toolCallId
+    );
+
+    let imageAsset;
+    try {
+      // 直接调用内置的图片读取方法
+      imageAsset = await this.readImageFile(filePath, {
+        topicId: context.topicId,
+        workdir: context.workdir,  // 传递工作目录
+      });
+
+      logger.info(`[AssistantManager] 图片读取成功: ${imageAsset.file_name}, ${imageAsset.size_bytes} bytes`);
+
+      // 写入工具结果消息
+      await this.messageService.appendToolResultMessage(
+        context.requestId,
+        toolName,
+        `读取成功: ${imageAsset.file_name} (${(imageAsset.size_bytes / 1024).toFixed(1)}KB)`,
+        toolCallId
+      );
+    } catch (readError) {
+      logger.error(`[AssistantManager] 图片读取失败:`, readError.message);
+
+      // 写入工具结果消息（失败）
+      await this.messageService.appendToolResultMessage(
+        context.requestId,
+        toolName,
+        `读取失败: ${readError.message}`,
+        toolCallId
+      );
+
+      return {
+        success: false,
+        error: `图片读取失败: ${readError.message}`,
+      };
+    }
+
+    // 第二步：获取模型配置
+    if (!assistant.model_id) {
+      return {
+        success: false,
+        error: '视觉模式需要配置 model_id',
+      };
+    }
+
+    const modelConfig = await this.db.getModelConfig(assistant.model_id);
+    if (!modelConfig) {
+      return {
+        success: false,
+        error: `模型配置不存在: ${assistant.model_id}`,
+      };
+    }
+
+    // 第三步：构建多模态消息
+    const messages = [];
+
+    // 添加系统提示词
+    if (assistant.prompt_template) {
+      messages.push({
+        role: 'system',
+        content: assistant.prompt_template,
+      });
+    }
+
+    // 构建用户消息（包含图片和文本）
+    const userContent = [];
+
+    // 添加图片
+    userContent.push({
+      type: 'image_url',
+      image_url: {
+        url: imageAsset.data_url,
+      },
+    });
+
+    // 构建文本内容
+    let textContent = '';
+    if (context.task) {
+      textContent += `**任务**: ${context.task}\n\n`;
+    }
+    if (context.background) {
+      textContent += `**背景**: ${context.background}\n\n`;
+    }
+    if (input.analysis_hint) {
+      textContent += `**分析提示**: ${input.analysis_hint}\n\n`;
+    }
+    if (input.expected_output) {
+      textContent += `**期望输出**: ${typeof input.expected_output === 'string' ? input.expected_output : JSON.stringify(input.expected_output)}\n\n`;
+    }
+    if (!textContent) {
+      textContent = '请分析这张图片的内容。';
+    }
+
+    userContent.push({
+      type: 'text',
+      text: textContent,
+    });
+
+    messages.push({
+      role: 'user',
+      content: userContent,
+    });
+
+    // 第四步：调用视觉模型
+    const startTime = Date.now();
+    try {
+      const response = await this.callVisionLLM(modelConfig, messages, {
+        temperature: parseFloat(assistant.temperature) || 0.7,
+        max_tokens: assistant.max_tokens || 4096,
+        timeout: (assistant.timeout || 120) * 1000,
+      });
+
+      const latencyMs = Date.now() - startTime;
+
+      logger.info(`[AssistantManager] 视觉模型调用完成, 耗时: ${latencyMs}ms`);
+
+      return {
+        success: true,
+        result: response.content,
+        tokens_input: response.usage?.prompt_tokens || 0,
+        tokens_output: response.usage?.completion_tokens || 0,
+        model_used: modelConfig.model_name,
+        image_asset: {
+          file_name: imageAsset.file_name,
+          mime_type: imageAsset.mime_type,
+          size_bytes: imageAsset.size_bytes,
+        },
+      };
+    } catch (llmError) {
+      logger.error(`[AssistantManager] 视觉模型调用失败:`, llmError.message);
+      return {
+        success: false,
+        error: `视觉模型调用失败: ${llmError.message}`,
+      };
+    }
+  }
+
+  /**
+   * 调用视觉 LLM API（支持多模态消息）
+   * @param {object} model - 模型配置
+   * @param {Array} messages - 消息数组（可能包含图片）
+   * @param {object} options - 可选参数
+   * @returns {Promise<object>}
+   */
+  async callVisionLLM(model, messages, options = {}) {
+    // 构建请求体
+    const requestObj = {
+      model: model.model_name,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.max_tokens ?? 4096,
+    };
+
+    const requestBody = JSON.stringify(requestObj);
+
+    const url = new URL(model.base_url);
+    const isHttps = url.protocol === 'https:';
+    const httpModule = isHttps ? https : http;
+
+    const requestOptions = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: `${url.pathname}/chat/completions`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${model.api_key}`,
+        'Content-Length': Buffer.byteLength(requestBody),
+        'User-Agent': 'Version: 5.10.0 (c3d4709c)',
+      },
+      timeout: options.timeout || 120000,
+    };
+
+    logger.info(`[AssistantManager] 视觉 LLM 调用:`, {
+      model: model.model_name,
+      url: `${requestOptions.hostname}${requestOptions.path}`,
+      messages_count: messages.length,
+    });
+
+    return new Promise((resolve, reject) => {
+      const req = httpModule.request(requestOptions, (res) => {
+        let data = '';
+
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+
+        res.on('end', () => {
+          try {
+            if (res.statusCode !== 200) {
+              reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 500)}`));
+              return;
+            }
+
+            const response = JSON.parse(data);
+            const message = response.choices?.[0]?.message;
+
+            resolve({
+              content: message?.content,
+              usage: response.usage,
+            });
+          } catch (parseError) {
+            reject(new Error(`解析响应失败: ${parseError.message}`));
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        reject(error);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('请求超时'));
+      });
+
+      req.write(requestBody);
+      req.end();
+    });
+  }
+
+  /**
+   * 读取图片文件并转换为 data URL
+   * @param {string} filePath - 图片文件路径
+   * @param {object} context - 上下文（包含 topicId 等）
+   * @returns {Promise<object>} image_asset 对象
+   */
+  async readImageFile(filePath, context = {}) {
+    // 获取白名单目录
+    const allowedPaths = this.getAllowedImagePaths(context);
+
+    // 验证路径
+    const resolvedPath = this.validateImagePath(filePath, allowedPaths);
+
+    // 检查文件扩展名
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (!IMAGE_EXTENSIONS[ext]) {
+      throw new Error(`不支持的图片格式: ${ext}。支持: ${Object.keys(IMAGE_EXTENSIONS).join(', ')}`);
+    }
+
+    // 读取文件
+    let stats;
+    try {
+      stats = await fs.stat(resolvedPath);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        throw new Error(`文件不存在: ${filePath}`);
+      }
+      throw new Error(`无法访问文件: ${err.message}`);
+    }
+
+    // 检查文件大小（默认最大 10MB）
+    const maxBytes = 10 * 1024 * 1024;
+    if (stats.size > maxBytes) {
+      throw new Error(`文件大小超过限制: ${(stats.size / 1024 / 1024).toFixed(2)}MB > 10MB`);
+    }
+
+    // 读取并转换为 base64
+    const buffer = await fs.readFile(resolvedPath);
+    const base64 = buffer.toString('base64');
+    const mimeType = IMAGE_EXTENSIONS[ext];
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+
+    return {
+      kind: 'image_asset',
+      source: 'local_file',
+      file_path: resolvedPath,
+      file_name: path.basename(resolvedPath),
+      mime_type: mimeType,
+      data_url: dataUrl,
+      size_bytes: stats.size,
+    };
+  }
+
+  /**
+   * 获取允许读取图片的白名单目录
+   * @param {object} context - 上下文
+   * @returns {string[]}
+   */
+  getAllowedImagePaths(context) {
+    const paths = [];
+
+    // 数据目录（主要路径，优先级最高）
+    const dataPath = process.env.DATA_BASE_PATH || './data';
+    paths.push(path.resolve(dataPath));
+
+    // work 目录（AI 工作空间）
+    paths.push(path.resolve(dataPath, 'work'));
+
+    // 工作区根目录
+    if (process.env.WORKSPACE_ROOT) {
+      paths.push(path.resolve(process.env.WORKSPACE_ROOT));
+    }
+
+    // 上传目录
+    if (process.env.UPLOAD_DIR) {
+      paths.push(path.resolve(process.env.UPLOAD_DIR));
+    }
+
+    // 临时目录
+    paths.push(path.resolve('/tmp'));
+
+    // 从 context 获取工作目录
+    if (context?.workdir) {
+      // workdir 可能是相对路径（work/...），需要加上 data 前缀
+      const workdir = context.workdir;
+      if (workdir.startsWith('work/')) {
+        paths.push(path.resolve(dataPath, workdir));
+      } else {
+        paths.push(path.resolve(workdir));
+      }
+    }
+
+    if (context?.topicId) {
+      paths.push(path.resolve(dataPath, 'work', context.topicId));
+    }
+
+    return paths;
+  }
+
+  /**
+   * 验证图片路径是否在白名单内
+   * @param {string} filePath - 文件路径
+   * @param {string[]} allowedPaths - 白名单目录
+   * @returns {string} 解析后的绝对路径
+   */
+  validateImagePath(filePath, allowedPaths) {
+    const dataPath = process.env.DATA_BASE_PATH || './data';
+
+    // 尝试多种路径解析方式
+    const candidatePaths = [
+      path.resolve(filePath),                           // 直接解析
+      path.resolve(dataPath, filePath),                 // 相对于 data 目录
+    ];
+
+    // 如果路径以 work/ 开头，额外尝试
+    if (filePath.startsWith('work/')) {
+      candidatePaths.push(path.resolve(dataPath, filePath));
+    }
+
+    // 找到第一个存在的路径
+    for (const resolved of candidatePaths) {
+      const isAllowed = allowedPaths.some(allowedPath =>
+        resolved.startsWith(allowedPath + path.sep) || resolved === allowedPath
+      );
+
+      if (isAllowed) {
+        return resolved;
+      }
+    }
+
+    // 如果都不在白名单内，抛出错误
+    throw new Error(`路径不在允许的目录范围内: ${filePath}`);
   }
 
   /**
@@ -979,7 +1490,7 @@ class AssistantManager {
         type: 'function',
         function: {
           name: 'assistant_summon',
-          description: '召唤助理来处理特定任务。助理是异步执行的，返回委托ID后需要通过 assistant_status 查询结果。',
+          description: '召唤助理来处理特定任务。助理是异步执行的，会立即返回委托ID。【重要规则】召唤成功后必须立即回复用户：任务已提交，请稍后查看结果，然后继续与用户对话。不要轮询等待结果。',
           parameters: {
             type: 'object',
             properties: {
@@ -1022,7 +1533,7 @@ class AssistantManager {
         type: 'function',
         function: {
           name: 'assistant_status',
-          description: '查询助理委托的状态和结果',
+          description: '查询助理委托的状态和结果。【限制使用】此工具仅供用户明确要求查询某个特定委托状态时使用。禁止用于轮询检查刚提交的任务。用户可以在右侧助理面板实时查看所有委托的进度和结果，无需 Expert 代为查询。',
           parameters: {
             type: 'object',
             properties: {
@@ -1138,6 +1649,8 @@ class AssistantManager {
           workspace: {
             expert_id: context.expertId,
             topic_id: context.topicId,
+            // 从 taskContext 提取工作空间路径
+            workdir: context.taskContext?.fullWorkspacePath || context.taskContext?.workspacePath,
           },
         });
 

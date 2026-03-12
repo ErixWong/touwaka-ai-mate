@@ -43,13 +43,27 @@
           <span v-if="assistantStore.pendingRequests.length > 0" class="badge">
             {{ assistantStore.pendingRequests.length }}
           </span>
+          <button
+            v-if="showArchived"
+            class="toggle-archive-btn active"
+            @click="showArchived = false"
+          >
+            {{ $t('assistant.hideArchived') || '隐藏归档' }}
+          </button>
+          <button
+            v-else
+            class="toggle-archive-btn"
+            @click="showArchived = true"
+          >
+            {{ $t('assistant.showArchived') || '显示归档' }}
+          </button>
         </h4>
         <div class="requests-list">
           <div
-            v-for="request in sortedRequests"
+            v-for="request in filteredRequests"
             :key="request.request_id"
             class="request-card"
-            :class="{ active: selectedRequestId === request.request_id }"
+            :class="{ active: selectedRequestId === request.request_id, archived: request.is_archived }"
             @click="selectRequest(request)"
           >
             <div class="request-header">
@@ -64,9 +78,39 @@
               <span v-if="request.status === 'running'" class="elapsed">
                 {{ elapsedTime(request) }}s
               </span>
+              <span v-if="request.is_archived" class="archived-badge">
+                {{ $t('assistant.archived') || '已归档' }}
+              </span>
+            </div>
+            <!-- 操作按钮 -->
+            <div class="request-actions" @click.stop>
+              <button
+                v-if="canDelete(request)"
+                class="action-btn delete"
+                @click="handleDelete(request)"
+                :title="$t('assistant.delete') || '删除'"
+              >
+                🗑️
+              </button>
+              <button
+                v-if="canArchive(request) && !request.is_archived"
+                class="action-btn archive"
+                @click="handleArchive(request)"
+                :title="$t('assistant.archive') || '归档'"
+              >
+                📦
+              </button>
+              <button
+                v-if="request.is_archived"
+                class="action-btn unarchive"
+                @click="handleUnarchive(request)"
+                :title="$t('assistant.unarchive') || '取消归档'"
+              >
+                📤
+              </button>
             </div>
           </div>
-          <div v-if="assistantStore.requests.length === 0" class="empty-hint">
+          <div v-if="filteredRequests.length === 0" class="empty-hint">
             {{ $t('assistant.noRequests') || '暂无委托记录' }}
           </div>
         </div>
@@ -139,6 +183,9 @@ const currentExpertId = computed(() => route.params.expertId as string)
 // 选中的委托ID
 const selectedRequestId = ref<string | null>(null)
 
+// 是否显示已归档
+const showArchived = ref(false)
+
 // 选中的委托
 const selectedRequest = computed(() => {
   if (!selectedRequestId.value) return null
@@ -150,6 +197,14 @@ const sortedRequests = computed(() => {
   return [...assistantStore.requests].sort((a, b) => {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
+})
+
+// 过滤后的委托列表（根据归档状态）
+const filteredRequests = computed(() => {
+  if (showArchived.value) {
+    return sortedRequests.value
+  }
+  return sortedRequests.value.filter(r => !r.is_archived)
 })
 
 // 获取助理图标
@@ -234,6 +289,46 @@ async function selectRequest(request: AssistantRequest) {
 function closeDetail() {
   selectedRequestId.value = null
   assistantStore.clearActiveRequest()
+}
+
+// 判断是否可以删除
+function canDelete(request: AssistantRequest): boolean {
+  return ['completed', 'failed', 'timeout', 'cancelled'].includes(request.status)
+}
+
+// 判断是否可以归档
+function canArchive(request: AssistantRequest): boolean {
+  return ['completed', 'failed', 'timeout', 'cancelled'].includes(request.status)
+}
+
+// 处理删除
+async function handleDelete(request: AssistantRequest) {
+  if (!confirm(t('assistant.confirmDelete') || '确定要删除此委托吗？')) {
+    return
+  }
+  try {
+    await assistantStore.deleteRequest(request.request_id)
+  } catch (e) {
+    console.error('Delete failed:', e)
+  }
+}
+
+// 处理归档
+async function handleArchive(request: AssistantRequest) {
+  try {
+    await assistantStore.archiveRequest(request.request_id)
+  } catch (e) {
+    console.error('Archive failed:', e)
+  }
+}
+
+// 处理取消归档
+async function handleUnarchive(request: AssistantRequest) {
+  try {
+    await assistantStore.unarchiveRequest(request.request_id)
+  } catch (e) {
+    console.error('Unarchive failed:', e)
+  }
 }
 
 // 加载数据
@@ -450,6 +545,71 @@ onUnmounted(() => {
 .elapsed {
   color: var(--primary-color, #2196f3);
   font-weight: 500;
+}
+
+.archived-badge {
+  background: var(--border-color, #e0e0e0);
+  color: var(--text-secondary, #666);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.toggle-archive-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+}
+
+.toggle-archive-btn.active {
+  background: var(--primary-color, #2196f3);
+  color: white;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.request-card.archived {
+  opacity: 0.7;
+  background: var(--bg-secondary, #f9f9f9);
+}
+
+.request-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, #eee);
+}
+
+.action-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.action-btn:hover {
+  opacity: 1;
+}
+
+.action-btn.delete:hover {
+  background: var(--error-bg, #ffebee);
+}
+
+.action-btn.archive:hover {
+  background: var(--warning-bg, #fff8e1);
+}
+
+.action-btn.unarchive:hover {
+  background: var(--success-bg, #e8f5e9);
 }
 
 .empty-hint {

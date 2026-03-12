@@ -1,380 +1,588 @@
-> # 助理系统设计方案
-> > 作为核心服务的助理系统，与 Skill 系统并行，支持异步委托和状态查询
-> 
-> ## 1. 概述
-> ### 1.1 设计理念
-> 在专家系统中，Expert（专家）是主角，而 Assistants（助理）是专家的辅助团队。
-> 
-> ```
-> ┌─────────────────────────────────────────────┐
-> │                  Expert (专家)               │
-> │                                             │
-> │  "我是法律专家，遇到图像分析问题时           │
-> │   我会召唤我的视觉助理来帮忙"               │
-> │                                             │
-> │  ┌─────────────────────────────────────┐   │
-> │  │         Assistants (助理团队)        │   │
-> │  │                                     │   │
-> │  │  📝 OCR 助理     💻 编程助理         │   │
-> │  │  🎨 画图助理     🔢 数学助理         │   │
-> │  │  🖼️ 视觉助理     ...                │   │
-> │  └─────────────────────────────────────┘   │
-> └─────────────────────────────────────────────┘
-> ```
-> 
-> ### 1.2 术语定义
-> 中文	英文	说明
-> **委托**	Request	Expert 发起的助理调用
-> **助理**	Assistant	执行特定能力的 AI 角色
-> **结果**	Result	助理完成委托后返回的内容
-> **任务**	Task	用户工作目录中的任务（右侧 TabPage），与委托概念不同
-> > **注意**：使用"委托"而非"任务"，避免与现有工作目录任务混淆。
-> 
-> ### 1.3 与 Skill 系统的关系
-> **助理系统与 Skill 系统是两套并行的系统：**
-> 
-> ```
-> ┌─────────────────────────────────────────────────────────────────────┐
-> │                     Touwaka Mate (主进程)                            │
-> │                                                                     │
-> │  ┌─────────────────────────────┐  ┌─────────────────────────────┐   │
-> │  │     Assistant System        │  │       Skill System          │   │
-> │  │     (助理系统)              │  │       (技能系统)             │   │
-> │  │                             │  │                             │   │
-> │  │  • 核心服务，主进程内执行    │  │  • 可插拔，子进程执行        │   │
-> │  │  • 异步委托模式             │  │  • 同步调用模式             │   │
-> │  │  • 状态持久化到数据库        │  │  • 无状态                   │   │
-> │  │                             │  │                             │   │
-> │  │  工具：assistant_summon     │  │  工具：kb-search_query      │   │
-> │  │        assistant_status     │  │        docx_create          │   │
-> │  │        assistant_roster     │  │        pptx_add_slide       │   │
-> │  └─────────────────────────────┘  └─────────────────────────────┘   │
-> │                                                                     │
-> │  ┌─────────────────────────────────────────────────────────────┐    │
-> │  │                     ToolManager                              │    │
-> │  │                                                              │    │
-> │  │  统一管理两类工具：                                          │    │
-> │  │  ├── 核心工具（Assistant）→ 直接在主进程执行                 │    │
-> │  │  └── 技能工具（Skill）→ 通过 skill-runner 子进程执行         │    │
-> │  └─────────────────────────────────────────────────────────────┘    │
-> └─────────────────────────────────────────────────────────────────────┘
-> ```
-> 
-> ### 1.4 两套系统对比
-> 维度	助理系统 (Assistant)	技能系统 (Skill)
-> **定位**	核心服务	可插拔功能
-> **执行位置**	主进程内	子进程 (skill-runner)
-> **调用模式**	异步委托	同步调用
-> **流式支持**	✅ 内部流式执行	❌ 同步阻塞
-> **状态管理**	数据库持久化	无状态
-> **生命周期**	随主进程	调用期间
-> **配置方式**	数据库	SKILL.md + 数据库
-> **典型用途**	LLM 调用、图像生成	文档处理、知识库搜索
-> ## 2. 架构设计
-> ### 2.1 整体架构
-> ```
-> ┌─────────────────────────────────────────────────────────────────────┐
-> │                     Touwaka Mate (主进程)                            │
-> │                                                                     │
-> │  ┌──────────────────────────────────────────────────────────────┐   │
-> │  │                   Core Services                               │   │
-> │  │                                                               │   │
-> │  │  Database Pool    Logger        ModelClient                  │   │
-> │  │                                                               │   │
-> │  │  ┌────────────────────────────────────────────────────────┐  │   │
-> │  │  │            AssistantManager                             │  │   │
-> │  │  │                                                        │  │   │
-> │  │  │  • requests: Map<requestId, Request>  内存委托队列     │  │   │
-> │  │  │  • assistants: Map<type, Config>     助理配置缓存      │  │   │
-> │  │  │                                                        │  │   │
-> │  │  │  Methods:                                              │  │   │
-> │  │  │  • summon(type, input) → requestId  召唤助理           │  │   │
-> │  │  │  • status(requestId) → Status       查询状态           │  │   │
-> │  │  │  • roster() → Assistant[]          列出助理            │  │   │
-> │  │  │  • executeRequest(requestId)       异步执行            │  │   │
-> │  │  └────────────────────────────────────────────────────────┘  │   │
-> │  └──────────────────────────────────────────────────────────────┘   │
-> │                                                                     │
-> │  ┌──────────────────────────────────────────────────────────────┐   │
-> │  │                    HTTP API Layer                             │   │
-> │  │                                                               │   │
-> │  │  POST /api/assistants/call              → summon()           │   │
-> │  │  GET  /api/assistants/requests/:id      → status()           │   │
-> │  │  GET  /api/assistants                   → roster()           │   │
-> │  └──────────────────────────────────────────────────────────────┘   │
-> └─────────────────────────────────────────────────────────────────────┘
-> ```
-> 
-> ### 2.2 执行流程
-> ```
-> Expert 调用 assistant_summon 工具
->         │
->         ▼
-> ┌───────────────────────────────────────────────────────────────────────┐
-> │                     Touwaka Mate 主进程                                │
-> │                                                                       │
-> │  ToolManager.executeTool('assistant_summon', params)                  │
-> │      │                                                                │
-> │      ▼                                                                │
-> │  AssistantManager.summon(type, input)                                 │
-> │      │                                                                │
-> │      ├─► 创建委托记录（DB + 内存）                                     │
-> │      ├─► 启动异步执行 executeRequest(requestId) ◄── 不等待             │
-> │      └─► 立即返回 request_id                                          │
-> │                                                                       │
-> │  [后台执行中...]                                                       │
-> │      │                                                                │
-> │      ▼                                                                │
-> │  executeRequest(requestId)                                            │
-> │      │                                                                │
-> │      ├─► 更新状态为 running                                            │
-> │      ├─► 流式调用模型 API ◄── 支持流式                                 │
-> │      ├─► （可选）流式执行工具调用 ◄── 支持流式                         │
-> │      ├─► 存储结果到数据库                                              │
-> │      └─► 更新状态为 completed/failed                                   │
-> └───────────────────────────────────────────────────────────────────────┘
-> ```
-> 
-> **关键点**：
-> 
-> 1. 整个流程都在主进程内完成，不涉及子进程
-> 2. 助理内部调用 LLM 和工具时支持流式执行
-> 
-> ### 2.3 流式执行设计
-> **助理内部支持流式执行**：
-> 
-> 场景	流式支持	说明
-> **LLM 调用**	✅ 支持	助理内部流式获取 LLM 响应，完成后返回最终结果
-> **工具调用链**	✅ 支持	助理内部流式执行多个工具，逐个处理
-> **结果推送**	可选	通过 SSE/WebSocket 向前端推送进度
-> **流式执行流程**：
-> 
-> ```
-> AssistantManager.executeRequest(requestId)
->         │
->         ▼
->     执行模式判断
->         │
->         ├── direct 模式 ──► 直接调用 API，等待结果
->         │
->         └── llm 模式 ──► 流式调用 LLM
->                               │
->                               ├── 收到 token → 可选：推送进度
->                               │
->                               ├── 需要工具调用？ ──► 执行工具 ──► 继续流式调用
->                               │
->                               └── 完成 → 存储最终结果
-> ```
-> 
-> **注意**：流式执行是助理内部的实现细节，对 Expert 而言仍然是异步委托模式。Expert 只通过 `assistant_status` 获取最终结果。
-> 
-> ### 2.4 工具注册
-> AssistantManager 作为核心服务，直接向 ToolManager 注册工具：
-> 
-> 工具名	说明	参数
-> `assistant_summon`	召唤助理，立即返回委托ID	`type`, `input`
-> `assistant_status`	查询委托状态和结果	`request_id`
-> `assistant_roster`	列出所有可用助理类型	无
-> **ToolManager 执行逻辑**：
-> 
-> ```
-> ToolManager.executeTool(toolId, params)
->     │
->     ├─► 是核心工具？ ──► 直接调用 handler（主进程内）
->     │
->     └─► 是技能工具？ ──► 启动 skill-runner 子进程执行
-> ```
-> 
-> ### 2.5 执行模式
-> 模式	描述	示例助理
-> **direct**	直接调用 API，无 LLM 推理	drawing, ocr
-> **llm**	嵌套 LLM 调用，可选工具	coding, math
-> **hybrid**	先 LLM 推理，再调用 API	image_analysis
-> ### 2.6 上下文隔离
-> **问题**：如果 Assistant 的工具调用细节暴露给 Expert，会造成上下文爆炸、Token 浪费。
-> 
-> **解决方案**：完全隔离
-> 
-> ```
-> ┌─────────────────────────────────────────────────────────────────────┐
-> │                     Expert 对话上下文                                │
-> │                                                                     │
-> │  ├── Tool: assistant_summon(type="ocr", input={image: "..."})       │
-> │  ├── Result: { request_id: "req_123" }                              │
-> │  │                                                                  │
-> │  ├── Tool: assistant_status(request_id="req_123")                   │
-> │  ├── Result: {                                                      │
-> │  │     status: "completed",                                         │
-> │  │     result: "合同关键条款：1. 租期三年..."  ◄── 只有最终结果      │
-> │  │   }                                                              │
-> │  └── Expert: "根据识别结果，这份合同需要注意..."                     │
-> │                                                                     │
-> │  Expert 只知道：召唤助理 → 获得结果                                  │
-> └─────────────────────────────────────────────────────────────────────┘
-> 
->                     ║
->                     ║ 完全隔离
->                     ║
-> 
-> ┌─────────────────────────────────────────────────────────────────────┐
-> │                     Assistant 内部上下文（独立）                     │
-> │                                                                     │
-> │  ├── System: "你是 OCR 助理，擅长识别文档..."                        │
-> │  ├── User: { image: "合同扫描件" }                                   │
-> │  ├── Tool: ocr_detect → "识别到文字..."                              │
-> │  └── 最终结果: "合同关键条款：1. 租期三年..."                         │
-> │                                                                     │
-> │  这个上下文对 Expert 不可见！完成后即销毁。                           │
-> └─────────────────────────────────────────────────────────────────────┘
-> ```
-> 
-> ## 3. 前端设计
-> ### 3.1 用户交互流程
-> ```
-> 用户输入："帮我分析这张图片"
->         │
->         ▼
-> ┌─────────────────────────────────────────────────────────────────────┐
-> │  Chat Interface                                                     │
-> │                                                                     │
-> │  User: 帮我分析这张图片                                              │
-> │                                                                     │
-> │  Expert: 我来召唤视觉助理处理...                                     │
-> │  ┌──────────────────────────────────────────────────────────────┐   │
-> │  │  🖼️ 视觉助理工作中...                              [查看详情] │   │
-> │  │                                                              │   │
-> │  │  🔄 处理中...                                                │   │
-> │  │  已运行: 5 秒 / 预计 30 秒                                    │   │
-> │  └──────────────────────────────────────────────────────────────┘   │
-> │                                                                     │
-> │  [用户可以继续输入其他内容，不阻塞]                                   │
-> └─────────────────────────────────────────────────────────────────────┘
-> ```
-> 
-> ### 3.2 组件清单
-> 组件	文件	职责
-> **AssistantRequestCard**	`AssistantRequestCard.vue`	委托卡片，显示状态、时间、结果
-> **AssistantResult**	`AssistantResult.vue`	结果展示组件
-> **AssistantRoster**	`AssistantRoster.vue`	助理列表（管理界面）
-> ### 3.3 状态展示
-> 状态	展示内容
-> **pending**	⏳ 等待处理... 预计等待: ~30 秒
-> **running**	🔄 处理中... 已运行: 15 秒 / 预计 30 秒 [取消]
-> **completed**	✅ 12秒完成 [查看详情]
-> **failed**	❌ 失败 错误: 图片格式不支持 [重试]
-> ## 4. 数据库设计
-> ### 4.1 assistants 表（助理配置）
-> 字段	类型	说明
-> `assistant_type`	VARCHAR(32)	主键，助理类型
-> `name`	VARCHAR(128)	显示名称
-> `icon`	VARCHAR(32)	图标
-> `description`	TEXT	能力描述
-> `model_id`	VARCHAR(32)	关联 ai_models.id
-> `prompt_template`	TEXT	系统提示词模板
-> `max_tokens`	INT	默认 4096
-> `temperature`	DECIMAL(3,2)	默认 0.7
-> `estimated_time`	INT	预估执行时间（秒），默认 30
-> `timeout`	INT	超时时间（秒），默认 120
-> `tool_name`	VARCHAR(64)	工具名称，如 ocr_analyze
-> `tool_description`	TEXT	工具描述
-> `tool_parameters`	JSON	JSON Schema 格式的参数定义
-> `can_use_skills`	BIT	是否允许助理调用 Expert 的技能，默认 0
-> `execution_mode`	ENUM	执行模式：direct/llm/hybrid
-> `is_active`	BIT	是否启用
-> ### 4.2 assistant_requests 表（委托记录）
-> 字段	类型	说明
-> `request_id`	VARCHAR(64)	主键，委托ID
-> `assistant_type`	VARCHAR(32)	助理类型
-> `expert_id`	VARCHAR(32)	调用专家ID
-> `contact_id`	VARCHAR(64)	联系人ID
-> `user_id`	VARCHAR(32)	用户ID
-> `topic_id`	VARCHAR(32)	话题ID
-> `status`	ENUM	pending/running/completed/failed/timeout
-> `input`	JSON	输入参数
-> `result`	LONGTEXT	执行结果
-> `error_message`	TEXT	错误信息
-> `tokens_input`	INT	输入 Token 数
-> `tokens_output`	INT	输出 Token 数
-> `model_used`	VARCHAR(128)	实际使用的模型
-> `latency_ms`	INT	执行耗时（毫秒）
-> `created_at`	DATETIME	创建时间
-> `started_at`	DATETIME	开始执行时间
-> `completed_at`	DATETIME	完成时间
-> ## 5. API 设计
-> ### 5.1 端点列表
-> 端点	方法	说明
-> `/api/assistants`	GET	列出可用助理
-> `/api/assistants/call`	POST	召唤助理
-> `/api/assistants/requests/:request_id`	GET	查询委托状态
-> `/api/assistants/requests`	GET	查询委托列表
-> ### 5.2 召唤助理
-> **请求**：`POST /api/assistants/call`
-> 
-> {
->   "assistant_type": "ocr",
->   "input": {
->     "image": "https://example.com/image.png"
->   }
-> }
-> **响应**：
-> 
-> {
->   "request_id": "req_abc123",
->   "assistant_type": "ocr",
->   "status": "pending",
->   "estimated_time": 30,
->   "message": "助理已召唤，预计 30 秒完成"
-> }
-> ### 5.3 查询委托状态
-> **请求**：`GET /api/assistants/requests/:request_id`
-> 
-> **响应**：
-> 
-> {
->   "request_id": "req_abc123",
->   "assistant_type": "ocr",
->   "status": "completed",
->   "result": "识别到的文字内容...",
->   "tokens_input": 150,
->   "tokens_output": 500,
->   "latency_ms": 3200,
->   "created_at": "2024-01-01T10:00:00Z",
->   "completed_at": "2024-01-01T10:00:03Z"
-> }
-> ## 6. 实施步骤
-> 步骤	任务	文件	时间
-> 1	创建数据库表	`scripts/migrate-assistants.js`	0.5h
-> 2	实现 AssistantManager 服务	`services/assistant-manager.js`	2h
-> 3	实现 HTTP API 路由	`routes/assistants.js`	1h
-> 4	注册核心工具到 ToolManager	`lib/tool-manager.js`	0.5h
-> 5	前端组件实现	`src/components/`	2h
-> 6	测试验证	-	1h
-> **总计**			**7h**
-> > **注意**：助理由管理员通过后台界面创建，使用 `ai_models` 表中已配置的模型。
-> 
-> ## 7. 风险与缓解
-> ### 8.1 主进程崩溃风险
-> **风险**：Assistant Manager 在主进程中，崩溃可能影响整个服务。
-> 
-> **缓解措施**：
-> 
-> 1. **单任务隔离**：每个任务独立 try-catch
-> 2. **模型调用超时**：防止模型 API 阻塞
-> 3. **数据库持久化**：任务状态实时写入，主进程重启后可恢复
-> 
-> ### 8.2 内存占用
-> **风险**：大量并发任务占用内存。
-> 
-> **缓解措施**：
-> 
-> 1. **任务队列限制**：最大并发数（如 10 个）
-> 2. **任务完成后清理**：释放内存
-> 
-> ## 术语对照表
-> 中文	英文	说明
-> **委托**	Request	Expert 发起的助理调用
-> **助理**	Assistant	执行特定能力的 AI 角色
-> **结果**	Result	助理返回的内容
-> **任务**	Task	用户工作目录中的任务（右侧 TabPage）
-> _创建时间: 2026-03-10_ _更新时间: 2026-03-10_ _状态: 设计方案 v7（精简：移除初始数据，说明助理由管理员创建）_
+# 助理系统架构说明
 
+> **版本**: v1.0
+> **创建时间**: 2026-03-11
+> **相关任务**: #67 助理系统设计, #87 内部消息链路, #88 Summon 输入优化, #91 前端面板
+
+---
+
+## 1. 概述
+
+### 1.1 设计理念
+
+在 Touwaka Mate 的双心智架构中，**Expert（专家）是主角，Assistant（助理）是专家调度的执行单元**。
+
+```
+┌─────────────────────────────────────────────┐
+│                  Expert (专家)               │
+│                                             │
+│  "我是法律专家，遇到图像分析问题时           │
+│   我会召唤我的视觉助理来帮忙"               │
+│                                             │
+│  ┌─────────────────────────────────────┐   │
+│  │         Assistants (助理团队)        │   │
+│  │                                     │   │
+│  │  📝 OCR 助理     💻 编程助理         │   │
+│  │  🎨 画图助理     🔢 数学助理         │   │
+│  │  🖼️ 视觉助理     ...                │   │
+│  └─────────────────────────────────────┘   │
+└─────────────────────────────────────────────┘
+```
+
+**核心原则**：
+- 助理不是用户直接使用的主角色，而是 Expert 的外援
+- 用户始终与 Expert 对话，由 Expert 决定何时委托助理
+- 委托完成后结果回到 Expert，继续与用户对话
+
+### 1.2 术语定义
+
+| 中文 | 英文 | 说明 |
+|------|------|------|
+| **委托** | Request | Expert 发起的助理调用 |
+| **助理** | Assistant | 执行特定能力的 AI 角色 |
+| **结果** | Result | 助理完成委托后返回的内容 |
+| **任务** | Task | 用户工作目录中的任务（右侧 TabPage），与委托概念不同 |
+
+---
+
+## 2. 系统架构
+
+### 2.1 与 Skill 系统的关系
+
+助理系统与 Skill 系统是**两套并行的系统**：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Touwaka Mate (主进程)                            │
+│                                                                     │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐   │
+│  │     Assistant System        │  │       Skill System          │   │
+│  │     (助理系统)              │  │       (技能系统)             │   │
+│  │                             │  │                             │   │
+│  │  • 核心服务，主进程内执行    │  │  • 可插拔，子进程执行        │   │
+│  │  • 异步委托模式             │  │  • 同步调用模式             │   │
+│  │  • 状态持久化到数据库        │  │  • 无状态                   │   │
+│  │                             │  │                             │   │
+│  │  工具：assistant_summon     │  │  工具：kb-search_query      │   │
+│  │        assistant_status     │  │        docx_create          │   │
+│  │        assistant_roster     │  │        pptx_add_slide       │   │
+│  └─────────────────────────────┘  └─────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                     ToolManager                              │    │
+│  │                                                              │    │
+│  │  统一管理两类工具：                                          │    │
+│  │  ├── 核心工具（Assistant）→ 直接在主进程执行                 │    │
+│  │  └── 技能工具（Skill）→ 通过 skill-runner 子进程执行         │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 两套系统对比
+
+| 维度 | 助理系统 (Assistant) | 技能系统 (Skill) |
+|------|---------------------|------------------|
+| **定位** | 核心服务 | 可插拔功能 |
+| **执行位置** | 主进程内 | 子进程 (skill-runner) |
+| **调用模式** | 异步委托 | 同步调用 |
+| **流式支持** | ✅ 内部流式执行 | ❌ 同步阻塞 |
+| **状态管理** | 数据库持久化 | 无状态 |
+| **生命周期** | 随主进程 | 调用期间 |
+| **配置方式** | 数据库 | SKILL.md + 数据库 |
+| **典型用途** | LLM 调用、图像分析 | 文档处理、知识库搜索 |
+
+### 2.3 核心服务架构
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Touwaka Mate (主进程)                            │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                   Core Services                               │   │
+│  │                                                               │   │
+│  │  Database Pool    Logger        ModelClient                  │   │
+│  │                                                               │   │
+│  │  ┌────────────────────────────────────────────────────────┐  │   │
+│  │  │            AssistantManager                             │  │   │
+│  │  │                                                        │  │   │
+│  │  │  • requests: Map<requestId, Request>  内存委托队列     │  │   │
+│  │  │  • assistants: Map<type, Config>     助理配置缓存      │  │   │
+│  │  │                                                        │  │   │
+│  │  │  Methods:                                              │  │   │
+│  │  │  • summon(type, input) → requestId  召唤助理           │  │   │
+│  │  │  • status(requestId) → Status       查询状态           │  │   │
+│  │  │  • roster() → Assistant[]          列出助理            │  │   │
+│  │  │  • executeRequest(requestId)       异步执行            │  │   │
+│  │  └────────────────────────────────────────────────────────┘  │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                    HTTP API Layer                             │   │
+│  │                                                               │   │
+│  │  POST /api/assistants/call              → summon()           │   │
+│  │  GET  /api/assistants/requests/:id      → status()           │   │
+│  │  GET  /api/assistants                   → roster()           │   │
+│  │  GET  /api/assistants/requests/:id/messages → messages()    │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. 执行流程
+
+### 3.1 整体流程
+
+```
+Expert 调用 assistant_summon 工具
+        │
+        ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                     Touwaka Mate 主进程                                │
+│                                                                       │
+│  ToolManager.executeTool('assistant_summon', params)                  │
+│      │                                                                │
+│      ▼                                                                │
+│  AssistantManager.summon(type, input)                                 │
+│      │                                                                │
+│      ├─► 创建委托记录（DB + 内存）                                     │
+│      ├─► 写入 assistant_messages (task)                               │
+│      ├─► 启动异步执行 executeRequest(requestId) ◄── 不等待             │
+│      └─► 立即返回 request_id                                          │
+│                                                                       │
+│  [后台执行中...]                                                       │
+│      │                                                                │
+│      ▼                                                                │
+│  executeRequest(requestId)                                            │
+│      │                                                                │
+│      ├─► 更新状态为 running                                            │
+│      ├─► 写入 assistant_messages (status)                             │
+│      ├─► 根据执行模式处理                                              │
+│      │       ├─► direct: 直接调用 API                                  │
+│      │       ├─► llm: 流式调用 LLM                                     │
+│      │       └─► hybrid: 先工具，再 LLM                                │
+│      ├─► 写入工具调用消息 (tool_call / tool_result)                    │
+│      ├─► 存储结果到数据库                                              │
+│      ├─► 写入 assistant_messages (final)                              │
+│      └─► 更新状态为 completed/failed                                   │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 执行模式
+
+| 模式 | 描述 | 示例助理 |
+|------|------|----------|
+| **direct** | 直接调用 API，无 LLM 推理 | drawing, ocr |
+| **llm** | 嵌套 LLM 调用，可选工具 | coding, math |
+| **hybrid** | 先工具/推理，再调用 LLM | doc_image_analyzer |
+
+### 3.3 上下文隔离
+
+Assistant 的内部执行过程对 Expert 完全隔离：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Expert 对话上下文                                │
+│                                                                     │
+│  ├── Tool: assistant_summon(type="vision", input={image: "..."})   │
+│  ├── Result: { request_id: "req_123" }                              │
+│  │                                                                  │
+│  ├── Tool: assistant_status(request_id="req_123")                   │
+│  ├── Result: {                                                      │
+│  │     status: "completed",                                         │
+│  │     result: "合同关键条款：1. 租期三年..."  ◄── 只有最终结果      │
+│  │   }                                                              │
+│  └── Expert: "根据识别结果，这份合同需要注意..."                     │
+│                                                                     │
+│  Expert 只知道：召唤助理 → 获得结果                                  │
+└─────────────────────────────────────────────────────────────────────┘
+
+                    ║
+                    ║ 完全隔离
+                    ║
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Assistant 内部上下文（独立）                     │
+│                                                                     │
+│  ├── System: "你是视觉助理，擅长分析图片..."                         │
+│  ├── User: { image: "合同扫描件" }                                   │
+│  ├── Tool: read_image_for_vision → "已读取图片..."                   │
+│  ├── LLM: 调用多模态模型                                             │
+│  └── 最终结果: "合同关键条款：1. 租期三年..."                         │
+│                                                                     │
+│  这个上下文对 Expert 不可见！完成后即销毁。                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. 工具系统
+
+### 4.1 核心工具
+
+AssistantManager 向 ToolManager 注册三个核心工具：
+
+| 工具名 | 说明 | 参数 |
+|--------|------|------|
+| `assistant_summon` | 召唤助理，立即返回委托ID | `type`, `task`, `background`, `input`, `expected_output`, `workspace` |
+| `assistant_status` | 查询委托状态和结果 | `request_id` |
+| `assistant_roster` | 列出所有可用助理类型 | 无 |
+
+### 4.2 LLM 可见的工具定义
+
+```json
+{
+  "tools": [
+    {
+      "name": "assistant_summon",
+      "description": "召唤助理来处理特定任务。助理是异步执行的，会立即返回委托ID。",
+      "parameters": {
+        "type": { "type": "string", "description": "助理类型" },
+        "task": { "type": "string", "description": "任务描述" },
+        "input": { "type": "object", "description": "具体输入数据" }
+      }
+    },
+    {
+      "name": "assistant_status",
+      "description": "查询委托状态和结果",
+      "parameters": {
+        "request_id": { "type": "string", "description": "委托ID" }
+      }
+    },
+    {
+      "name": "assistant_roster",
+      "description": "列出所有可用的助理类型",
+      "parameters": {}
+    }
+  ]
+}
+```
+
+### 4.3 工具继承机制
+
+Assistant 可以继承 Expert 的工具，以便在执行任务时调用：
+
+```json
+{
+  "assistant_type": "coding",
+  "task": "分析代码并生成文档",
+  "input": { "file_path": "/src/main.js" },
+  "inherited_tools": ["fs-read", "fs-write", "docx-create"],
+  "workspace": {
+    "expert_id": "expert_dev",
+    "workdir": "/workspace/project"
+  }
+}
+```
+
+---
+
+## 5. 输入结构
+
+### 5.1 Summon 请求结构
+
+```typescript
+interface AssistantSummonRequest {
+  // 必填：助理类型
+  assistant_type: string
+
+  // 必填：任务描述（一句话说明要做什么）
+  task: string
+
+  // 可选：任务背景（为什么需要这个任务）
+  background?: string
+
+  // 必填：具体输入数据
+  input: Record<string, any>
+
+  // 可选：期望输出格式
+  expected_output?: {
+    format?: string          // "markdown" | "json" | "text"
+    focus?: string[]         // 关注点列表
+    max_length?: number      // 最大输出长度
+  }
+
+  // 可选：工作空间上下文
+  workspace?: {
+    topic_id?: string        // 话题ID
+    expert_id?: string       // 调用专家ID
+    workdir?: string         // 工作目录
+  }
+
+  // 可选：继承的工具列表
+  inherited_tools?: string[]
+}
+```
+
+### 5.2 完整示例
+
+```json
+{
+  "assistant_type": "doc_image_analyzer",
+  "task": "识别图片中的合同关键条款",
+  "background": "这是用户上传的租赁合同截图，需要后续做法律风险分析",
+  "input": {
+    "file_path": "/workspace/topic_123/contract.png"
+  },
+  "expected_output": {
+    "format": "markdown",
+    "focus": ["租期", "付款方式", "违约责任"]
+  },
+  "workspace": {
+    "topic_id": "topic_123",
+    "expert_id": "expert_lawyer",
+    "workdir": "/workspace/topic_123"
+  }
+}
+```
+
+---
+
+## 6. 数据模型
+
+### 6.1 表结构关系
+
+```
+assistants (1) ──────── (N) assistant_requests
+                              │
+                              └── (1) ──────── (N) assistant_messages
+```
+
+### 6.2 assistants 表（助理配置）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `assistant_type` | VARCHAR(32) | 主键，助理类型 |
+| `name` | VARCHAR(128) | 显示名称 |
+| `icon` | VARCHAR(32) | 图标 |
+| `description` | TEXT | 能力描述 |
+| `model_id` | VARCHAR(32) | 关联 ai_models.id |
+| `prompt_template` | TEXT | 系统提示词模板 |
+| `execution_mode` | ENUM | 执行模式：direct/llm/hybrid |
+| `can_use_skills` | BIT | 是否允许调用 Expert 的技能 |
+| `is_active` | BIT | 是否启用 |
+
+### 6.3 assistant_requests 表（委托记录）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `request_id` | VARCHAR(64) | 主键，委托ID |
+| `assistant_type` | VARCHAR(32) | 助理类型 |
+| `expert_id` | VARCHAR(32) | 调用专家ID |
+| `user_id` | VARCHAR(32) | 用户ID |
+| `topic_id` | VARCHAR(32) | 话题ID |
+| `status` | ENUM | pending/running/completed/failed/timeout |
+| `input` | JSON | 输入参数（完整请求结构） |
+| `result` | LONGTEXT | 执行结果 |
+| `error_message` | TEXT | 错误信息 |
+| `latency_ms` | INT | 执行耗时（毫秒） |
+
+### 6.4 assistant_messages 表（内部消息）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | BIGINT | 主键 |
+| `request_id` | VARCHAR(64) | 关联委托ID |
+| `role` | ENUM | expert/assistant/tool/system |
+| `message_type` | ENUM | task/tool_call/tool_result/final/error/status |
+| `content` | LONGTEXT | 文本内容 |
+| `tool_name` | VARCHAR(128) | 工具名称 |
+| `sequence_no` | INT | 顺序号 |
+
+---
+
+## 7. 内部消息链路
+
+### 7.1 消息类型
+
+| message_type | 说明 | MVP |
+|--------------|------|:---:|
+| `task` | Expert 委托任务包 | ✅ |
+| `tool_call` | Assistant 发起工具调用 | ✅ |
+| `tool_result` | 工具返回结果摘要 | ✅ |
+| `final` | Assistant 最终结果 | ✅ |
+| `error` | 错误消息 | ✅ |
+| `status` | 状态变更记录 | ✅ |
+
+### 7.2 执行时间线示例
+
+```
+T0 ── Expert 委托
+T1 ── 系统状态变更 (running)
+T2 ── 工具调用 (read_image_for_vision)
+T3 ── 工具返回 (图片已读取)
+T4 ── 调用视觉模型
+T5 ── 最终结果
+```
+
+| seq | role | message_type | content_preview |
+|:---:|------|--------------|-----------------|
+| 1 | expert | task | 任务：识别图片中的合同关键条款 |
+| 2 | system | status | Assistant 开始执行 |
+| 3 | tool | tool_call | 调用 read_image_for_vision |
+| 4 | tool | tool_result | 已读取图片 (image/png, 120KB) |
+| 5 | assistant | final | 合同关键条款如下：1. 租期三年... |
+
+### 7.3 消息服务
+
+```javascript
+// 便捷写入方法
+await messageService.appendTaskMessage(requestId, { task, background, input })
+await messageService.appendStatusMessage(requestId, 'running', 'Assistant 开始执行')
+await messageService.appendToolCallMessage(requestId, toolName, argsSummary, toolCallId)
+await messageService.appendToolResultMessage(requestId, toolName, resultSummary, toolCallId)
+await messageService.appendFinalMessage(requestId, content, tokens, latency)
+await messageService.appendErrorMessage(requestId, error)
+```
+
+---
+
+## 8. 前端集成
+
+### 8.1 位置：专家页右侧面板
+
+```
+┌─────────────────────────────────────────────────────┐
+│ 专家页                                              │
+├─────────────────────┬───────────────────────────────┤
+│                     │  [专家] [话题] [任务] [助理] [调试] │
+│    主聊天区          ├───────────────────────────────┤
+│                     │                               │
+│  用户: 帮我看看     │   助理面板                    │
+│  这张合同...        │                               │
+│                     │   ┌─────────────────────────┐ │
+│  专家: 我来调用     │   │ 可用助理列表            │ │
+│  视觉助理...        │   │ ├─ 视觉助理  ✅ 可用    │ │
+│                     │   │ └─ OCR助理   ✅ 可用    │ │
+│                     │   └─────────────────────────┘ │
+│                     │                               │
+│                     │   ┌─────────────────────────┐ │
+│                     │   │ 当前委托列表            │ │
+│                     │   │ ├─ 视觉助理  处理中 3s  │ │
+│                     │   │ └─ OCR助理   ✅ 已完成  │ │
+│                     │   └─────────────────────────┘ │
+└─────────────────────┴───────────────────────────────┘
+```
+
+### 8.2 面板内容
+
+1. **可用助理列表** - 显示所有 `is_active = true` 的助理
+2. **当前委托列表** - 显示当前专家最近发起的委托
+3. **委托详情** - 点击后展开消息时间线
+
+### 8.3 数据流
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                        专家页                                 │
+│  ┌────────────────────┐    ┌────────────────────────────┐   │
+│  │                    │    │  助理 Tab                   │   │
+│  │    主聊天区         │    │                            │   │
+│  │                    │    │  GET /assistants           │   │
+│  │  Expert 调用        │    │  GET /requests?expert_id= │   │
+│  │  assistant_summon  │    │  GET /requests/:id/messages│   │
+│  │        │           │    │                            │   │
+│  │        ▼           │    │  轮询更新处理中的委托       │   │
+│  │  [助理已完成]       │    │                            │   │
+│  │  显示结果          │    │                            │   │
+│  └────────────────────┘    └────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. API 参考
+
+### 9.1 端点列表
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/assistants` | GET | 列出可用助理 |
+| `/api/assistants/call` | POST | 召唤助理 |
+| `/api/assistants/requests` | GET | 查询委托列表 |
+| `/api/assistants/requests/:request_id` | GET | 查询委托状态 |
+| `/api/assistants/requests/:request_id/messages` | GET | 查询委托内部消息 |
+
+### 9.2 召唤助理
+
+**请求**: `POST /api/assistants/call`
+
+```json
+{
+  "assistant_type": "doc_image_analyzer",
+  "task": "识别图片中的合同关键条款",
+  "background": "这是用户上传的租赁合同截图",
+  "input": {
+    "file_path": "/workspace/contract.png"
+  },
+  "expected_output": {
+    "format": "markdown",
+    "focus": ["租期", "违约责任"]
+  }
+}
+```
+
+**响应**:
+
+```json
+{
+  "request_id": "req_abc123",
+  "assistant_type": "doc_image_analyzer",
+  "status": "pending",
+  "estimated_time": 20
+}
+```
+
+### 9.3 查询委托状态
+
+**请求**: `GET /api/assistants/requests/:request_id`
+
+**响应**:
+
+```json
+{
+  "request_id": "req_abc123",
+  "status": "completed",
+  "result": "合同关键条款：\n1. 租期三年\n2. 月租金...",
+  "latency_ms": 5200,
+  "tokens_input": 150,
+  "tokens_output": 500
+}
+```
+
+---
+
+## 10. 实现文件
+
+### 10.1 后端
+
+| 文件 | 说明 |
+|------|------|
+| `server/services/assistant-manager.js` | 核心服务，管理助理生命周期 |
+| `server/controllers/assistant.controller.js` | HTTP API 控制器 |
+| `models/assistant.js` | 助理配置模型 |
+| `models/assistant_request.js` | 委托记录模型 |
+| `models/assistant_message.js` | 内部消息模型 |
+| `lib/tool-manager.js` | 工具注册与执行 |
+
+### 10.2 前端
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/stores/assistant.ts` | 状态管理 |
+| `frontend/src/components/panel/AssistantTab.vue` | 助理面板主组件 |
+| `frontend/src/api/services.ts` | API 调用 |
+
+---
+
+## 11. 后续扩展
+
+1. **多轮追问** - 通过 `parent_request_id` 串联关联委托
+2. **子委托链路** - 助理召唤助理
+3. **手动召唤** - 用户手动点击助理卡片发起委托
+4. **统计面板** - 助理调用频率、成功率、耗时统计
+5. **Expert Prompt 增强** - 在 Expert 提示词中引导 LLM 调用助理
+
+---
+
+*创建时间: 2026-03-11*

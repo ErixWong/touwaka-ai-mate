@@ -1113,6 +1113,7 @@ export interface AssistantRequest {
   created_at: string
   started_at?: string
   completed_at?: string
+  is_archived?: number
 }
 
 /**

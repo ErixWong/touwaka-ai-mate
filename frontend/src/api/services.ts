@@ -694,4 +694,22 @@ export const assistantApi = {
     apiRequest<{ request_id: string; messages: AssistantMessage[] }>(
       apiClient.get(`/assistants/requests/${requestId}/messages`, { params: { debug } })
     ),
+
+  // 归档委托
+  archiveRequest: (requestId: string) =>
+    apiRequest<{ request_id: string; is_archived: boolean }>(
+      apiClient.post(`/assistants/requests/${requestId}/archive`)
+    ),
+
+  // 取消归档
+  unarchiveRequest: (requestId: string) =>
+    apiRequest<{ request_id: string; is_archived: boolean }>(
+      apiClient.post(`/assistants/requests/${requestId}/unarchive`)
+    ),
+
+  // 删除委托
+  deleteRequest: (requestId: string) =>
+    apiRequest<{ request_id: string; deleted: boolean }>(
+      apiClient.delete(`/assistants/requests/${requestId}`)
+    ),
 }

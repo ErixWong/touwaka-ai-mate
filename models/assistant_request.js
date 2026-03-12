@@ -90,6 +90,12 @@ export default class assistant_request extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       comment: "完成时间"
+    },
+    is_archived: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+      comment: "是否已归档"
     }
   }, {
     sequelize,
