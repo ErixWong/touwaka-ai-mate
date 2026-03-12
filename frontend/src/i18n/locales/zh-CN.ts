@@ -295,6 +295,9 @@ export default {
     deleteModelFailed: '删除模型失败',
     deleteProviderFailed: '删除提供商失败',
     deleteExpertFailed: '删除专家失败',
+    saveProviderFailed: '保存提供商失败',
+    saveModelFailed: '保存模型失败',
+    saveExpertFailed: '保存专家失败',
     // 用户管理
     userManagement: '用户管理',
     addUser: '添加用户',
@@ -608,6 +611,7 @@ export default {
     viewDetail: '查看详情',
     activate: '启用',
     deactivate: '禁用',
+    toggleFailed: '切换技能状态失败',
     reanalyze: '重新分析',
     noDescription: '暂无描述',
     // 来源类型

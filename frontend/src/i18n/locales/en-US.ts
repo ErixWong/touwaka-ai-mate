@@ -291,6 +291,9 @@ export default {
     deleteModelFailed: 'Failed to delete model',
     deleteProviderFailed: 'Failed to delete provider',
     deleteExpertFailed: 'Failed to delete expert',
+    saveProviderFailed: 'Failed to save provider',
+    saveModelFailed: 'Failed to save model',
+    saveExpertFailed: 'Failed to save expert',
     // User Management
     userManagement: 'User Management',
     addUser: 'Add User',
@@ -623,6 +626,7 @@ export default {
     viewDetail: 'View Details',
     activate: 'Activate',
     deactivate: 'Deactivate',
+    toggleFailed: 'Failed to toggle skill status',
     reanalyze: 'Reanalyze',
     noDescription: 'No description',
     // Source types
