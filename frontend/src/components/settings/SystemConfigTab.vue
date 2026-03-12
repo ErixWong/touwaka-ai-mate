@@ -16,6 +16,13 @@
         </button>
         <button
           class="sub-tab-btn"
+          :class="{ active: activeSubTab === 'timeout' }"
+          @click="activeSubTab = 'timeout'"
+        >
+          ⏱️ {{ $t('settings.timeoutConfig') }}
+        </button>
+        <button
+          class="sub-tab-btn"
           :class="{ active: activeSubTab === 'packages' }"
           @click="activeSubTab = 'packages'"
         >
@@ -192,7 +199,23 @@
           </div>
         </div>
 
-        <!-- 超时配置 -->
+        <!-- 底部操作按钮 -->
+        <div class="config-actions">
+          <button class="btn-reset-all" @click="resetAll">
+            {{ $t('settings.resetAll') }}
+          </button>
+          <button
+            class="btn-save"
+            @click="saveConfig"
+            :disabled="!hasChanges || saving"
+          >
+            {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 超时配置 -->
+      <div v-if="activeSubTab === 'timeout'" class="tab-content">
         <div class="config-section">
           <div class="section-header">
             <h3 class="section-title">⏱️ {{ $t('settings.timeoutConfig') }}</h3>
@@ -297,7 +320,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 
 // 子 Tab 状态
-const activeSubTab = ref<'general' | 'packages'>('general')
+const activeSubTab = ref<'general' | 'timeout' | 'packages'>('general')
 
 // 表单数据
 const form = reactive({
