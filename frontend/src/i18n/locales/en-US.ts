@@ -288,6 +288,9 @@ export default {
     descriptionPlaceholder: 'Enter model description (optional)',
     noModels: 'No models yet. Click the button above to add one.',
     deleteModelConfirm: 'Are you sure you want to delete model "{name}"? This action cannot be undone.',
+    deleteModelFailed: 'Failed to delete model',
+    deleteProviderFailed: 'Failed to delete provider',
+    deleteExpertFailed: 'Failed to delete expert',
     // User Management
     userManagement: 'User Management',
     addUser: 'Add User',
