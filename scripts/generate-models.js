@@ -85,6 +85,9 @@ auto.run()
     console.log(`\n📊 Tables (${tables.length}):`);
     tables.forEach(table => console.log(`   - ${table}`));
     
+    // 注入多对多关联到 init-models.js
+    injectManyToManyAssociations(outputDir);
+    
     // 创建自定义索引文件（包含关联关系）
     createIndexFile(outputDir, tables);
     
@@ -98,6 +101,63 @@ auto.run()
     }
     process.exit(1);
   });
+
+/**
+ * 注入多对多关联到 init-models.js
+ * sequelize-auto 只会生成 belongsTo 和 hasMany，需要手动添加 belongsToMany
+ */
+function injectManyToManyAssociations(outputDir) {
+  const initModelsPath = path.join(outputDir, 'init-models.js');
+  
+  if (!fs.existsSync(initModelsPath)) {
+    console.log('⚠️  init-models.js not found, skipping many-to-many injection');
+    return;
+  }
+  
+  let content = fs.readFileSync(initModelsPath, 'utf-8');
+  
+  // 定义需要注入的多对多关联
+  // 格式: { through: 中间表, left: 左表, right: 右表, leftKey: 左外键, rightKey: 右外键, leftAs: 左别名, rightAs: 右别名 }
+  const manyToManyAssociations = [
+    {
+      through: 'kb_article_tag',
+      left: 'kb_article',
+      right: 'kb_tag',
+      leftKey: 'article_id',
+      rightKey: 'tag_id',
+      leftAs: 'tags',
+      rightAs: 'articles',
+    },
+    // 可以在这里添加更多多对多关联
+  ];
+  
+  // 检查是否已经注入过
+  if (content.includes('// 多对多关联：文章 <-> 标签')) {
+    console.log('✓ Many-to-many associations already injected');
+    return;
+  }
+  
+  // 找到注入点：在 kb_tag.hasMany(kb_article_tag, ...) 之后
+  const injectPatterns = [
+    {
+      search: /kb_tag\.hasMany\(kb_article_tag, \{ as: "kb_article_tags", foreignKey: "tag_id"\}\);/,
+      replacement: `kb_tag.hasMany(kb_article_tag, { as: "kb_article_tags", foreignKey: "tag_id"});
+  // 多对多关联：文章 <-> 标签
+  kb_article.belongsToMany(kb_tag, { as: "tags", through: kb_article_tag, foreignKey: "article_id", otherKey: "tag_id" });
+  kb_tag.belongsToMany(kb_article, { as: "articles", through: kb_article_tag, foreignKey: "tag_id", otherKey: "article_id" });`,
+    },
+  ];
+  
+  for (const pattern of injectPatterns) {
+    if (pattern.search.test(content)) {
+      content = content.replace(pattern.search, pattern.replacement);
+      break;
+    }
+  }
+  
+  fs.writeFileSync(initModelsPath, content);
+  console.log('✓ Injected many-to-many associations into init-models.js');
+}
 
 /**
  * 创建模型索引文件（包含关联关系）
