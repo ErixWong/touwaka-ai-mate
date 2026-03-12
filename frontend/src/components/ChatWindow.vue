@@ -228,6 +228,69 @@ const scrollToBottom = () => {
   })
 }
 
+// MutationObserver 用于检测消息 DOM 变化（处理异步内容加载）
+let mutationObserver: MutationObserver | null = null
+let isInitialLoad = ref(true) // 标记是否是初始加载
+let scrollStabilizeTimer: ReturnType<typeof setTimeout> | null = null
+
+// 强制滚动到底部（禁用 smooth 动画）
+const forceScrollToBottom = () => {
+  if (!messagesContainer.value) return
+  
+  // 临时禁用 smooth 滚动
+  const originalBehavior = messagesContainer.value.style.scrollBehavior
+  messagesContainer.value.style.scrollBehavior = 'auto'
+  
+  // 立即滚动
+  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  
+  // 恢复 smooth 滚动
+  requestAnimationFrame(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.style.scrollBehavior = originalBehavior
+    }
+  })
+}
+
+// 设置 MutationObserver 来处理异步内容渲染后的滚动
+const setupMutationObserver = () => {
+  if (!messagesContainer.value) return
+  
+  // 清理旧的 observer
+  if (mutationObserver) {
+    mutationObserver.disconnect()
+  }
+  
+  mutationObserver = new MutationObserver((mutations) => {
+    // 只在初始加载时自动滚动到底部
+    if (isInitialLoad.value) {
+      // 清除之前的定时器
+      if (scrollStabilizeTimer) {
+        clearTimeout(scrollStabilizeTimer)
+      }
+      
+      // 延迟滚动，等待所有 DOM 更新完成
+      scrollStabilizeTimer = setTimeout(() => {
+        if (messagesContainer.value && isInitialLoad.value) {
+          forceScrollToBottom()
+        }
+      }, 100)
+      
+      // 经过一段时间后（内容基本稳定），结束初始加载状态
+      setTimeout(() => {
+        isInitialLoad.value = false
+      }, 1500)
+    }
+  })
+  
+  // 监听子元素变化
+  mutationObserver.observe(messagesContainer.value, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  })
+}
+
 // 格式化缓存 - 避免重复格式化相同内容
 const formattedCache = new Map<string, string>()
 
@@ -241,6 +304,15 @@ const isAtBottom = () => {
 // 滚动处理：检测是否滚动到顶部 + 更新滚动到底部按钮状态
 const handleScroll = () => {
   if (!messagesContainer.value) return
+  
+  // 用户手动滚动时，取消初始加载状态
+  if (isInitialLoad.value && !isAtBottom()) {
+    isInitialLoad.value = false
+    if (scrollStabilizeTimer) {
+      clearTimeout(scrollStabilizeTimer)
+      scrollStabilizeTimer = null
+    }
+  }
   
   // 更新滚动到底部按钮状态
   showScrollToBottom.value = !isAtBottom()
@@ -287,9 +359,16 @@ watch(
         return
       }
       
-      // 情况2：初始加载或新消息 -> 滚动到底部
+      // 情况2：初始加载或新消息 -> 设置 MutationObserver 来处理
       if (newLength > (oldLength || 0)) {
-        scrollToBottom()
+        // 标记为初始加载状态，MutationObserver 会处理滚动
+        if (oldLength === 0 || oldLength === undefined) {
+          isInitialLoad.value = true
+          setupMutationObserver()
+        } else {
+          // 非初始加载的新消息，直接滚动
+          scrollToBottom()
+        }
         showScrollToBottom.value = false
       }
     })
@@ -419,7 +498,8 @@ const adjustTextareaHeight = () => {
 watch(inputText, adjustTextareaHeight)
 
 onMounted(() => {
-  scrollToBottom()
+  // 设置 MutationObserver 来处理初始加载后的滚动
+  setupMutationObserver()
 })
 
 onUnmounted(() => {
@@ -427,6 +507,16 @@ onUnmounted(() => {
   if (scrollRafId !== null) {
     cancelAnimationFrame(scrollRafId)
     scrollRafId = null
+  }
+  // 清理 MutationObserver
+  if (mutationObserver) {
+    mutationObserver.disconnect()
+    mutationObserver = null
+  }
+  // 清理定时器
+  if (scrollStabilizeTimer) {
+    clearTimeout(scrollStabilizeTimer)
+    scrollStabilizeTimer = null
   }
   // 清理格式化缓存
   formattedCache.clear()
