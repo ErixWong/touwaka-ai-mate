@@ -313,7 +313,7 @@ class ApiServer {
     this.app.use(packageRouter.routes());
     this.app.use(packageRouter.allowedMethods());
 
-    // Assistant 助理路由
+// Assistant 助理路由
     const assistantRouter = assistantRoutes(this.controllers.assistant);
     this.app.use(assistantRouter.routes());
     this.app.use(assistantRouter.allowedMethods());

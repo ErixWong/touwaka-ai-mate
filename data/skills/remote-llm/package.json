@@ -1,0 +1,14 @@
+{
+  "name": "remote-llm",
+  "version": "1.0.0",
+  "description": "驻留式远程 LLM 调用技能",
+  "main": "index.js",
+  "type": "module",
+  "keywords": [
+    "skill",
+    "llm",
+    "resident"
+  ],
+  "author": "Touwaka Mate Team",
+  "license": "MIT"
+}

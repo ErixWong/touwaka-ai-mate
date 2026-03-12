@@ -115,6 +115,7 @@ const TABLES = [
   // 4.1 Skill_Tools 表（技能工具清单）
   // 注：type, command, endpoint, method 字段已移除
   // - 工具通过 script_path 指定的脚本执行
+  // is_resident: 0=普通工具（执行后返回），1=驻留工具（持续运行，stdio通信）
   `CREATE TABLE IF NOT EXISTS skill_tools (
     id VARCHAR(32) PRIMARY KEY,
     skill_id VARCHAR(64) NOT NULL,
@@ -122,6 +123,7 @@ const TABLES = [
     description TEXT,
     \`parameters\` TEXT COMMENT 'JSON Schema 格式的参数定义',
     script_path VARCHAR(255) DEFAULT 'index.js' COMMENT '工具入口脚本路径（相对于技能目录）',
+    is_resident BIT(1) DEFAULT b'0' COMMENT '是否驻留进程：0=普通工具，1=驻留工具',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY idx_skill_name (skill_id, name),
