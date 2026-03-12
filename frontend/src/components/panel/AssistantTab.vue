@@ -308,8 +308,9 @@ async function handleDelete(request: AssistantRequest) {
   }
   try {
     await assistantStore.deleteRequest(request.request_id)
-  } catch (e) {
-    console.error('Delete failed:', e)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.deleteFailed')
+    alert(errorMsg)
   }
 }
 
@@ -317,8 +318,9 @@ async function handleDelete(request: AssistantRequest) {
 async function handleArchive(request: AssistantRequest) {
   try {
     await assistantStore.archiveRequest(request.request_id)
-  } catch (e) {
-    console.error('Archive failed:', e)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.archiveFailed')
+    alert(errorMsg)
   }
 }
 
@@ -326,8 +328,9 @@ async function handleArchive(request: AssistantRequest) {
 async function handleUnarchive(request: AssistantRequest) {
   try {
     await assistantStore.unarchiveRequest(request.request_id)
-  } catch (e) {
-    console.error('Unarchive failed:', e)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.unarchiveFailed')
+    alert(errorMsg)
   }
 }
 

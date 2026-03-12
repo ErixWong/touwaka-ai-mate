@@ -185,8 +185,9 @@ async function pollStatus() {
   try {
     const updated = await assistantApi.getRequest(props.request.request_id)
     emit('update', updated)
-  } catch (error) {
-    console.error('Failed to poll assistant status:', error)
+  } catch (err) {
+    // 轮询失败不需要弹窗提示，只记录日志
+    console.error('Failed to poll assistant status:', err)
   }
 }
 

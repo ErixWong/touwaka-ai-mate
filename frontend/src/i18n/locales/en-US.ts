@@ -950,5 +950,12 @@ export default {
     modelUsed: 'Model',
     warning: 'Warning',
     warningTitle: 'Warning',
+
+    // Error messages
+    copyFailed: 'Failed to copy',
+    loadFailed: 'Failed to load assistants',
+    deleteFailed: 'Failed to delete request',
+    archiveFailed: 'Failed to archive request',
+    unarchiveFailed: 'Failed to unarchive request',
   },
 }

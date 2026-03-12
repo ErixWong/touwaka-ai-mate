@@ -979,5 +979,12 @@ export default {
     msgToolResult: '工具结果',
     msgFinal: '完成',
     msgError: '错误',
+
+    // 错误提示
+    copyFailed: '复制失败',
+    loadFailed: '加载助理列表失败',
+    deleteFailed: '删除委托失败',
+    archiveFailed: '归档委托失败',
+    unarchiveFailed: '取消归档失败',
   },
 }

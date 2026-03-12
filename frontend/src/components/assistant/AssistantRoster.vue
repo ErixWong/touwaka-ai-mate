@@ -120,8 +120,9 @@ async function loadAssistants() {
   isLoading.value = true
   try {
     assistants.value = await assistantApi.getAssistants()
-  } catch (error) {
-    console.error('Failed to load assistants:', error)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.loadFailed')
+    alert(errorMsg)
   } finally {
     isLoading.value = false
   }

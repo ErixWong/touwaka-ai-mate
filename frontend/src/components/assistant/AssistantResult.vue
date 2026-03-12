@@ -129,9 +129,9 @@ const renderedContent = computed(() => {
 async function handleCopy() {
   try {
     await navigator.clipboard.writeText(props.content)
-    // 可以添加 toast 提示
-  } catch (error) {
-    console.error('Failed to copy:', error)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.copyFailed')
+    alert(errorMsg)
   }
 }
 </script>
