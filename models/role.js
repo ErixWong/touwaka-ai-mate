@@ -63,13 +63,6 @@ export default class role extends Model {
           { name: "mark" },
         ]
       },
-      {
-        name: "idx_mark",
-        using: "BTREE",
-        fields: [
-          { name: "mark" },
-        ]
-      },
     ]
   });
   }

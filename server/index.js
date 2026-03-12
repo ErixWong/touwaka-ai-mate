@@ -170,6 +170,7 @@ class ApiServer {
       kb: new KbController(this.db),
       internal: new InternalController(this.db, {
         expertConnections: null, // 稍后在 setupRoutes 中设置
+        chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
     };
   }
@@ -313,9 +314,13 @@ class ApiServer {
     // Internal 内部 API 路由（驻留进程调用）
     // 将 StreamController 的 SSE 连接池共享给 InternalController
     this.controllers.internal.setExpertConnections(this.controllers.stream.expertConnections);
+    // 将 ResidentSkillManager 共享给 InternalController
+    this.controllers.internal.setResidentSkillManager(this.residentSkillManager);
+    // 将 ResidentSkillManager 共享给 DebugController
+    this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
     this.app.use(internalRoutes(this.controllers.internal).routes());
     this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
-    logger.info('Internal routes registered (POST /internal/messages/insert)');
+    logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke)');
 
     // 404 处理
     this.app.use(async (ctx) => {

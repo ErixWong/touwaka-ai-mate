@@ -46,6 +46,44 @@ class DebugController {
       ctx.error(error.message || '获取 LLM Payload 失败');
     }
   }
+
+  /**
+   * 获取驻留进程状态
+   * GET /api/debug/resident-status
+   */
+  async getResidentStatus(ctx) {
+    try {
+      // 从全局获取 ResidentSkillManager
+      const residentSkillManager = global.residentSkillManager;
+      
+      if (!residentSkillManager) {
+        ctx.success({
+          initialized: false,
+          message: 'ResidentSkillManager 未初始化',
+          processes: [],
+        });
+        return;
+      }
+
+      const status = residentSkillManager.getStatus();
+      
+      ctx.success({
+        initialized: true,
+        process_count: status.length,
+        processes: status,
+      });
+    } catch (error) {
+      logger.error('[DebugController] 获取驻留进程状态失败:', error);
+      ctx.error(error.message || '获取驻留进程状态失败');
+    }
+  }
+
+  /**
+   * 设置 ResidentSkillManager 引用
+   */
+  setResidentSkillManager(manager) {
+    global.residentSkillManager = manager;
+  }
 }
 
 export default DebugController;
