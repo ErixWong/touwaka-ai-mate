@@ -292,6 +292,9 @@ export default {
     descriptionPlaceholder: '输入模型描述（可选）',
     noModels: '暂无模型，点击上方按钮添加',
     deleteModelConfirm: '确定要删除模型 "{name}" 吗？此操作不可恢复。',
+    deleteModelFailed: '删除模型失败',
+    deleteProviderFailed: '删除提供商失败',
+    deleteExpertFailed: '删除专家失败',
     // 用户管理
     userManagement: '用户管理',
     addUser: '添加用户',
