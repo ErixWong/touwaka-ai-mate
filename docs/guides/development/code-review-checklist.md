@@ -287,8 +287,235 @@ ctx.success(buildPaginatedResponse(result, pagination, startTime));
 
 ---
 
+## 第九步：技能（Skill）代码审计
+
+### 技能类型区分
+
+| 类型 | `is_resident` | 执行方式 | 入口脚本 |
+|------|--------------|---------|---------|
+| **普通工具** | 0 | VM 沙箱，一次性执行 | 通过 `script_path` 指定 |
+| **驻留进程** | 1 | 独立子进程，常驻内存 | 固定使用 `index.js` |
+
+### 普通工具（is_resident=0）审计清单
+
+#### 1. 模块格式检查
+
+**必须使用 CommonJS 格式**（VM 沙箱要求）：
+
+```javascript
+// ✅ 正确 - CommonJS
+const fs = require('fs');
+const path = require('path');
+
+async function execute(toolName, params, context = {}) {
+  // 处理逻辑
+}
+
+module.exports = { execute };
+
+// ❌ 错误 - ES Module（VM 沙箱不支持）
+import fs from 'fs';
+export async function execute(toolName, params, context) { }
+```
+
+#### 2. execute 函数签名检查
+
+**必须包含 toolName 参数**：
+
+```javascript
+// ✅ 正确 - 三个参数
+async function execute(toolName, params, context = {}) {
+  if (toolName !== 'expected_tool') {
+    return { success: false, error: `Unknown tool: ${toolName}` };
+  }
+  // ...
+}
+
+// ❌ 错误 - 缺少 toolName
+async function execute(params, context) {
+  // ...
+}
+```
+
+#### 3. package.json 检查
+
+- **有外部依赖**：需要 `package.json`（如 `compression` 依赖 `adm-zip`）
+- **无外部依赖**：不需要 `package.json`（只用内置模块如 `fs`, `http`）
+
+```bash
+# 检查是否有不必要的 package.json
+# 如果技能只用内置模块，删除 package.json
+```
+
+#### 4. 数据库 skill_tools 表检查
+
+| 字段 | 检查项 |
+|------|--------|
+| `script_path` | 必须正确指向入口脚本（如 `submit.js`） |
+| `is_resident` | 普通工具为 `0` |
+| `parameters` | JSON Schema 格式正确 |
+
+### 驻留进程（is_resident=1）审计清单
+
+#### 0. 模块格式检查（关键！）
+
+**必须使用 ES Module 格式**（独立子进程运行，继承项目 `"type": "module"`）：
+
+```javascript
+// ✅ 正确 - ES Module
+import https from 'https';
+import http from 'http';
+import { URL } from 'url';
+import readline from 'readline';
+
+async function main() {
+  // ...
+}
+
+main().catch(err => {
+  process.stderr.write(`Fatal error: ${err.message}\n`);
+  process.exit(1);
+});
+
+// ❌ 错误 - CommonJS（子进程会报错：require is not defined）
+const https = require('https');
+const readline = require('readline');
+```
+
+**原因**：项目根目录 `package.json` 有 `"type": "module"`，驻留进程作为独立子进程运行时会继承这个设置。
+
+#### 1. 通信协议检查
+
+**必须使用 stdio 通信**：
+
+```javascript
+// ✅ 正确 - stdout 返回结果，stderr 输出日志
+function sendResponse(data) {
+  process.stdout.write(JSON.stringify(data) + '\n');
+}
+
+function log(message) {
+  process.stderr.write(`[${timestamp}] ${message}\n`);
+}
+
+// ❌ 错误 - 使用 console.log（会污染 stdout）
+console.log('result');
+```
+
+#### 2. 命令处理检查
+
+**必须支持基本命令**：
+
+```javascript
+// 必须处理的命令
+switch (command.command) {
+  case 'invoke':  // 调用任务
+    handleInvoke(command.task_id, command.params);
+    break;
+  case 'ping':    // 健康检查
+    sendResponse({ type: 'pong', timestamp: Date.now() });
+    break;
+  case 'exit':    // 退出命令
+    process.exit(0);
+    break;
+}
+```
+
+#### 3. 任务队列检查
+
+**异步处理，立即返回确认**：
+
+```javascript
+// ✅ 正确 - 立即返回确认，异步处理
+async function handleInvoke(taskId, params) {
+  // 立即返回确认
+  sendResponse({
+    task_id: taskId,
+    result: { status: 'queued' }
+  });
+  
+  // 添加到队列异步处理
+  taskQueue.push({ task_id: taskId, params });
+  processQueue();
+}
+
+// ❌ 错误 - 同步等待结果
+async function handleInvoke(taskId, params) {
+  const result = await longRunningTask(params);
+  sendResponse({ task_id: taskId, result });  // 可能超时
+}
+```
+
+#### 4. 启动就绪信号
+
+**必须发送 ready 信号**：
+
+```javascript
+// 主函数最后
+async function main() {
+  // 初始化...
+  
+  // 发送启动就绪信号
+  sendResponse({ type: 'ready', timestamp: Date.now() });
+}
+```
+
+### 内部 API 响应格式检查
+
+**内部 API 统一使用 `{ code, message, data }` 格式**：
+
+```javascript
+// ✅ 正确 - 检查 code 字段
+const response = await httpRequest(url, options);
+if (response.code === 200 && response.data?.model_id) {
+  return response.data.model_id;
+}
+
+// ❌ 错误 - 检查 success 字段（不存在）
+if (response.success) {  // success 字段不存在
+  return response.data.model_id;
+}
+```
+
+**API 响应格式对比**：
+
+| API 类型 | 响应格式 |
+|---------|---------|
+| 外部 API（`/api/*`） | `{ code: 200, message: 'success', data: {...} }` |
+| 内部 API（`/internal/*`） | `{ code: 200, message: 'success', data: {...} }` |
+
+**注意**：项目中不使用 `response.success` 字段，统一使用 `response.code === 200` 判断成功。
+
+### 通用检查项
+
+| 检查项 | 说明 |
+|--------|------|
+| **语法检查** | `node --check data/skills/{skill}/index.js` |
+| **依赖白名单** | 只使用 `MODULE_WHITELIST` 中的模块 |
+| **错误处理** | 所有异步操作有 try-catch |
+| **参数验证** | 检查必要参数是否存在 |
+| **日志输出** | 驻留进程用 stderr，普通工具可用 console |
+| **API 响应格式** | 使用 `response.code === 200` 而非 `response.success` |
+
+### 快速检查命令
+
+```bash
+# 检查技能语法
+node --check data/skills/remote-llm/index.js
+node --check data/skills/remote-llm/submit.js
+
+# 检查数据库工具配置
+node tests/db-query.js skill_tools --where="skill_id='remote-llm'" --format=json
+
+# 检查是否有不必要的 package.json（只用内置模块的技能）
+ls data/skills/*/package.json
+```
+
+---
+
 ## 相关文档
 
 - [编码规范](./coding-standards.md)
 - [API 参考](./api-reference.md)
 - [SOUL.md](../../core/SOUL.md)
+- [驻留式技能设计](../../design/resident-skill-design.md)
