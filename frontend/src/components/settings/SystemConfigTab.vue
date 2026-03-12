@@ -403,8 +403,9 @@ onMounted(async () => {
 <style scoped>
 .system-config-tab {
   padding: 20px;
+  padding-bottom: 80px; /* 确保底部按钮有足够空间 */
   max-width: 800px;
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 160px);
   overflow-y: auto;
 }
 
