@@ -28,10 +28,12 @@ const DEFAULT_SETTINGS = {
   },
   // 技能执行超时配置（单位：秒）
   timeout: {
-    vm_execution: 60,        // VM 沙箱执行超时（默认60秒）
-    python_execution: 120,   // Python 执行超时（默认120秒）
-    skill_http: 180,         // 技能 HTTP 调用超时（默认180秒）
-    resident_skill: 300,     // 驻留技能超时（默认300秒/5分钟）
+    vm_execution: 30,       // VM 执行超时（秒）
+    python_execution: 300,  // Python 执行超时（秒）
+    skill_call: 60,         // 技能调用超时（秒）
+    skill_http: 180,        // 技能 HTTP 调用超时（秒）
+    resident_skill: 300,    // 驻留技能超时（秒/5分钟）
+    remote_llm: 120,        // 远程 LLM 调用超时（秒）
   },
 };
 
@@ -47,10 +49,12 @@ const VALIDATION_RULES = {
   'connection.max_per_user': { min: 1, max: 100 },
   'connection.max_per_expert': { min: 1, max: 1000 },
   // 超时配置验证规则（单位：秒）
-  'timeout.vm_execution': { min: 5, max: 3600 },        // 5秒 - 1小时
-  'timeout.python_execution': { min: 10, max: 3600 },   // 10秒 - 1小时
-  'timeout.skill_http': { min: 10, max: 1800 },         // 10秒 - 30分钟
-  'timeout.resident_skill': { min: 30, max: 7200 },     // 30秒 - 2小时
+  'timeout.vm_execution': { min: 5, max: 300 },
+  'timeout.python_execution': { min: 10, max: 1800 },
+  'timeout.skill_call': { min: 10, max: 600 },
+  'timeout.skill_http': { min: 10, max: 1800 },
+  'timeout.resident_skill': { min: 30, max: 7200 },
+  'timeout.remote_llm': { min: 30, max: 600 },
 };
 
 class SystemSettingService {
@@ -161,33 +165,22 @@ class SystemSettingService {
   }
 
   /**
-   * 获取超时配置（返回毫秒值，便于直接使用）
-   * @returns {Promise<Object>} 超时配置对象（毫秒）
+   * 获取超时配置
+   * @returns {Promise<Object>} 超时配置对象（单位：秒）
    */
   async getTimeoutConfig() {
     const settings = await this.getAllSettings();
-    const timeoutConfig = settings.timeout || DEFAULT_SETTINGS.timeout;
-    // 转换为毫秒
-    return {
-      vm_execution: timeoutConfig.vm_execution * 1000,
-      python_execution: timeoutConfig.python_execution * 1000,
-      skill_http: timeoutConfig.skill_http * 1000,
-      resident_skill: timeoutConfig.resident_skill * 1000,
-    };
+    return settings.timeout || DEFAULT_SETTINGS.timeout;
   }
 
   /**
-   * 获取默认超时配置（毫秒值）
-   * 用于 skill-loader 等模块在数据库不可用时使用
-   * @returns {Object} 超时配置对象（毫秒）
+   * 获取单个超时配置值
+   * @param {string} key - 超时配置键名（如 'vm_execution'）
+   * @returns {Promise<number>} 超时值（单位：秒）
    */
-  static getDefaultTimeouts() {
-    return {
-      vm_execution: DEFAULT_SETTINGS.timeout.vm_execution * 1000,
-      python_execution: DEFAULT_SETTINGS.timeout.python_execution * 1000,
-      skill_http: DEFAULT_SETTINGS.timeout.skill_http * 1000,
-      resident_skill: DEFAULT_SETTINGS.timeout.resident_skill * 1000,
-    };
+  async getTimeout(key) {
+    const timeoutConfig = await this.getTimeoutConfig();
+    return timeoutConfig[key] || DEFAULT_SETTINGS.timeout[key];
   }
 
   /**
