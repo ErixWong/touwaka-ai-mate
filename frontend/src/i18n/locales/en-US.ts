@@ -451,6 +451,16 @@ export default {
     tokenConfig: 'Token Configuration',
     accessTokenExpiry: 'Access Token Expiry',
     refreshTokenExpiry: 'Refresh Token Expiry',
+    // Timeout Config
+    timeoutConfig: 'Timeout Configuration',
+    vmExecutionTimeout: 'VM Execution Timeout',
+    vmExecutionTimeoutHint: 'Maximum time for JavaScript skill execution (seconds)',
+    pythonExecutionTimeout: 'Python Execution Timeout',
+    pythonExecutionTimeoutHint: 'Maximum time for Python skill execution (seconds)',
+    skillCallTimeout: 'Skill Call Timeout',
+    skillCallTimeoutHint: 'Maximum wait time for a single skill call (seconds)',
+    remoteLlmTimeout: 'Remote LLM Timeout',
+    remoteLlmTimeoutHint: 'Maximum wait time for remote LLM service calls (seconds)',
     // General Config
     generalConfig: 'General Config',
     // Package Whitelist
