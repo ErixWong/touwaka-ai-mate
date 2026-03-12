@@ -17,14 +17,15 @@ const http = require('http');
 const { URL } = require('url');
 // const readline = require('readline'); // 沙箱禁止使用，改用 stdin 事件
 
-// 配置
+// 配置（超时从环境变量读取，由 skill-loader 通过数据库设置）
 const CONFIG = {
   // 内部 API 配置
   internalApiBase: process.env.INTERNAL_API_BASE || 'http://localhost:3000',
   internalApiKey: process.env.INTERNAL_KEY || '',
   
-  // 默认超时（毫秒）
-  defaultTimeout: 120000,
+  // 超时配置（毫秒）- 支持环境变量覆盖
+  // TIMEOUT_RESIDENT_SKILL 来自 system_settings.timeout.resident_skill（秒）-> 转换为毫秒
+  defaultTimeout: parseInt(process.env.TIMEOUT_RESIDENT_SKILL || '300000', 10),
 };
 
 // 任务队列

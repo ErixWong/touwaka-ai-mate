@@ -26,6 +26,15 @@ const DEFAULT_SETTINGS = {
     access_expiry: '15m',
     refresh_expiry: '7d',
   },
+  // 技能执行超时配置（单位：秒）
+  timeout: {
+    vm_execution: 30,       // VM 执行超时（秒）
+    python_execution: 300,  // Python 执行超时（秒）
+    skill_call: 60,         // 技能调用超时（秒）
+    skill_http: 180,        // 技能 HTTP 调用超时（秒）
+    resident_skill: 300,    // 驻留技能超时（秒/5分钟）
+    remote_llm: 120,        // 远程 LLM 调用超时（秒）
+  },
 };
 
 // 配置值验证规则
@@ -39,6 +48,13 @@ const VALIDATION_RULES = {
   // Note: max_tokens 不在系统设置中管理
   'connection.max_per_user': { min: 1, max: 100 },
   'connection.max_per_expert': { min: 1, max: 1000 },
+  // 超时配置验证规则（单位：秒）
+  'timeout.vm_execution': { min: 5, max: 300 },
+  'timeout.python_execution': { min: 10, max: 1800 },
+  'timeout.skill_call': { min: 10, max: 600 },
+  'timeout.skill_http': { min: 10, max: 1800 },
+  'timeout.resident_skill': { min: 30, max: 7200 },
+  'timeout.remote_llm': { min: 30, max: 600 },
 };
 
 class SystemSettingService {
@@ -149,6 +165,25 @@ class SystemSettingService {
   }
 
   /**
+   * 获取超时配置
+   * @returns {Promise<Object>} 超时配置对象（单位：秒）
+   */
+  async getTimeoutConfig() {
+    const settings = await this.getAllSettings();
+    return settings.timeout || DEFAULT_SETTINGS.timeout;
+  }
+
+  /**
+   * 获取单个超时配置值
+   * @param {string} key - 超时配置键名（如 'vm_execution'）
+   * @returns {Promise<number>} 超时值（单位：秒）
+   */
+  async getTimeout(key) {
+    const timeoutConfig = await this.getTimeoutConfig();
+    return timeoutConfig[key] || DEFAULT_SETTINGS.timeout[key];
+  }
+
+  /**
    * 清除缓存
    */
   clearCache() {
@@ -238,5 +273,5 @@ export function getSystemSettingService(db) {
   return instance;
 }
 
-export { DEFAULT_SETTINGS };
+export { DEFAULT_SETTINGS, SystemSettingService };
 export default SystemSettingService;

@@ -95,7 +95,7 @@ export default function initModels(sequelize) {
   kb_section.hasMany(kb_section, { as: "kb_sections", foreignKey: "parent_id"});
   kb_article_tag.belongsTo(kb_tag, { as: "tag", foreignKey: "tag_id"});
   kb_tag.hasMany(kb_article_tag, { as: "kb_article_tags", foreignKey: "tag_id"});
-  // Many-to-Many: kb_article <-> kb_tag through kb_article_tag
+  // 多对多关联：文章 <-> 标签
   kb_article.belongsToMany(kb_tag, { as: "tags", through: kb_article_tag, foreignKey: "article_id", otherKey: "tag_id" });
   kb_tag.belongsToMany(kb_article, { as: "articles", through: kb_article_tag, foreignKey: "tag_id", otherKey: "article_id" });
   kb_article.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});

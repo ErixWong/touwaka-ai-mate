@@ -25,6 +25,12 @@ const DEFAULT_SETTINGS = {
     access_expiry: '15m',
     refresh_expiry: '7d',
   },
+  timeout: {
+    vm_execution: 30,       // VM 执行超时（秒）
+    python_execution: 300,  // Python 执行超时（秒）
+    skill_call: 60,         // 技能调用超时（秒）
+    remote_llm: 120,        // 远程 LLM 调用超时（秒）
+  },
 };
 
 class SystemSettingController {

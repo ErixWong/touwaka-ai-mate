@@ -23,6 +23,12 @@ export interface SystemSettings {
     access_expiry: string
     refresh_expiry: string
   }
+  timeout: {
+    vm_execution: number      // VM 执行超时（秒）
+    python_execution: number  // Python 执行超时（秒）
+    skill_call: number        // 技能调用超时（秒）
+    remote_llm: number        // 远程 LLM 调用超时（秒）
+  }
 }
 
 /**
@@ -53,12 +59,19 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       access_expiry: '15m',
       refresh_expiry: '7d',
     },
+    timeout: {
+      vm_execution: 30,
+      python_execution: 300,
+      skill_call: 60,
+      remote_llm: 120,
+    },
   }
 
   // Getters
   const llmSettings = computed(() => settings.value?.llm || defaultSettings.llm)
   const connectionSettings = computed(() => settings.value?.connection || defaultSettings.connection)
   const tokenSettings = computed(() => settings.value?.token || defaultSettings.token)
+  const timeoutSettings = computed(() => settings.value?.timeout || defaultSettings.timeout)
 
   // Actions
   // 加载系统配置
@@ -137,6 +150,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     llmSettings,
     connectionSettings,
     tokenSettings,
+    timeoutSettings,
     // Actions
     loadSettings,
     updateSettings,

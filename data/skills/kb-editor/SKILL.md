@@ -257,10 +257,16 @@ knowledge_bases (知识库)
 - `kb_id` (string, required): 知识库 ID
 - `section_id` (string, required): 所属节 ID
 - `title` (string, optional): 段落标题
-- `content` (string, required): 段落内容（完整的原文，不要提炼或总结）
+- `content` (string, required): 段落内容
 - `context` (string, optional): 知识点上下文。当 `is_knowledge_point` 为 `true` 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索
 - `is_knowledge_point` (boolean, optional): 是否为知识点，默认 false
 - `token_count` (integer, optional): Token 数量，默认 0
+
+⚠️ **核心原则：严格保留原文**：
+- `content` 必须是**原文完整复制**，禁止提炼、总结、改写或省略
+- 即使原文很长，也要完整录入，不能截断
+- 如果原文有多个段落，每个段落应单独创建一条记录
+- **完整性优先**：宁可多录入也不要遗漏任何内容
 
 **重要：知识点段落**：
 - 设置 `is_knowledge_point: true` 的段落会被向量化，可用于语义搜索

@@ -267,8 +267,9 @@ const closeDetailDialog = () => {
 const toggleSkillActive = async (skill: Skill) => {
   try {
     await skillStore.toggleSkillActive(skill.id)
-  } catch {
-    // 错误已在 store 中处理
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('skills.toggleFailed')
+    alert(errorMsg)
   }
 }
 

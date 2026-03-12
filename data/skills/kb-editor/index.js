@@ -824,14 +824,14 @@ function getTools() {
     },
     {
       name: 'create_paragraph',
-      description: '创建段落（可标记为知识点）',
+      description: '创建段落（可标记为知识点）。⚠️核心原则：content必须是原文完整复制，禁止提炼、总结、改写或省略。即使原文很长也要完整录入。',
       parameters: {
         type: 'object',
         properties: {
           kb_id: { type: 'string', description: '知识库 ID' },
           section_id: { type: 'string', description: '所属节 ID' },
           title: { type: 'string', description: '段落标题' },
-          content: { type: 'string', description: '段落内容（完整的原文，不要提炼或总结）' },
+          content: { type: 'string', description: '段落内容（必须是原文完整复制，禁止提炼、总结、改写、省略或截断）' },
           context: { type: 'string', description: '知识点上下文（可选）。当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索' },
           is_knowledge_point: { type: 'boolean', description: '是否为知识点，默认 false' },
           token_count: { type: 'integer', description: 'Token 数量，默认 0' },
@@ -841,14 +841,14 @@ function getTools() {
     },
     {
       name: 'update_paragraph',
-      description: '更新段落',
+      description: '更新段落。⚠️核心原则：content必须是原文完整复制，禁止提炼、总结、改写或省略。',
       parameters: {
         type: 'object',
         properties: {
           kb_id: { type: 'string', description: '知识库 ID' },
           id: { type: 'string', description: '段落 ID' },
           title: { type: 'string', description: '新标题' },
-          content: { type: 'string', description: '新内容' },
+          content: { type: 'string', description: '新内容（必须是原文完整复制，禁止提炼、总结、改写、省略或截断）' },
           context: { type: 'string', description: '知识点上下文（可选）。当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索' },
           is_knowledge_point: { type: 'boolean', description: '是否为知识点' },
           token_count: { type: 'integer', description: 'Token 数量' },

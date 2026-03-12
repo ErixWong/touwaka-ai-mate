@@ -1,6 +1,6 @@
 # 代码审计清单
 
-> **最后更新**: 2026-03-08
+> **最后更新**: 2026-03-12
 > **来源**: `docs/core/SOUL.md` 自我代码审计清单
 
 ---
@@ -26,6 +26,34 @@ cd frontend && npm run build
 - [ ] 前端构建成功
 
 **⚠️ `npm run lint` 必须通过后才能提交 PR！**
+
+### ⚠️ ES 模块导入验证（重要）
+
+**ESLint 不检查模块导入/导出是否匹配！** 任何涉及 `import`/`export` 的修改都必须验证：
+
+```bash
+# 验证模块导入是否正确（替换为实际修改的文件）
+node -e "import('./server/services/system-setting.service.js').then(m => console.log('Exports:', Object.keys(m)))"
+node -e "import('./lib/skill-loader.js').then(() => console.log('OK')).catch(e => console.error(e.message))"
+```
+
+**常见错误**：
+```javascript
+// ❌ 错误 - 使用命名导入但模块只有默认导出
+import { SystemSettingService } from './service.js';
+// service.js 只有: export default class SystemSettingService {}
+
+// ✅ 正确 - 添加命名导出
+// service.js:
+export { SystemSettingService };  // 添加命名导出
+export default SystemSettingService;
+```
+
+**何时必须验证**：
+- 新增或修改 `export` 语句
+- 新增或修改 `import` 语句
+- 重构模块导出方式
+- **即使认为"不涉及启动流程变更"，只要改了 import/export 就必须验证！**
 
 ---
 
@@ -69,6 +97,52 @@ ctx.success(buildPaginatedResponse(rows, count, pagination));
 | **资源泄漏** | 连接/文件/定时器是否正确释放？ |
 | **N+1 查询** | 循环中有数据库调用？改用批量查询 |
 | **路由顺序** | 动态路由 `/:id` 是否在静态路由之后？ |
+
+### 前端错误处理专项检查
+
+**禁止静默吞掉错误**：
+
+```typescript
+// ❌ 错误 - 空 catch 块静默吞掉错误
+} catch {
+  // 错误已在 store 中处理
+}
+
+// ❌ 错误 - 只有注释没有实际处理
+} catch (err) {
+  // 错误已处理
+}
+
+// ✅ 正确 - 显示错误信息给用户
+} catch (err) {
+  const errorMsg = err instanceof Error ? err.message : t('xxx.failed')
+  alert(errorMsg)  // 或使用 toast/notification 组件
+}
+```
+
+**快速检查命令**：
+```bash
+# 查找可能静默吞掉错误的 catch 块
+grep -rn "} catch {" frontend/src/views/ frontend/src/components/
+grep -rn "// 错误已在" frontend/src/views/ frontend/src/components/
+```
+
+**错误处理最佳实践**：
+
+1. **优先显示后端返回的具体错误信息**
+   ```typescript
+   const errorMsg = err instanceof Error ? err.message : t('xxx.failed')
+   ```
+
+2. **为每个可能失败的操作添加 i18n 翻译键**
+   ```typescript
+   // zh-CN.ts
+   saveModelFailed: '保存模型失败'
+   // en-US.ts
+   saveModelFailed: 'Failed to save model'
+   ```
+
+3. **删除/保存等关键操作必须给用户明确的成功/失败反馈**
 
 ---
 
