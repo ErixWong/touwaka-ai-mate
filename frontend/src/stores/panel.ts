@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-export type TabId = 'expert' | 'topics' | 'tasks' | 'debug' | 'skills'
+export type TabId = 'expert' | 'topics' | 'tasks' | 'assistants' | 'debug' | 'skills'
 
 // 分屏比例模式
 export type SplitMode = 'default' | '5:5' | '3:2'
@@ -66,7 +66,7 @@ export const usePanelStore = defineStore('panel', () => {
       isCollapsed.value = collapsed === 'true'
     }
     const savedTab = localStorage.getItem('panel_active_tab') as TabId | null
-    if (savedTab && ['expert', 'topics', 'tasks', 'debug', 'skills'].includes(savedTab)) {
+    if (savedTab && ['expert', 'topics', 'tasks', 'assistants', 'debug', 'skills'].includes(savedTab)) {
       activeTab.value = savedTab
     }
     // 恢复分屏模式

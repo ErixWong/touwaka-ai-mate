@@ -1,6 +1,9 @@
 import _sequelize from "sequelize";
 const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
+import _assistant from  "./assistant.js";
+import _assistant_message from  "./assistant_message.js";
+import _assistant_request from  "./assistant_request.js";
 import _department from  "./department.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
@@ -32,6 +35,9 @@ import _user from  "./user.js";
 
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
+  const assistant = _assistant.init(sequelize, DataTypes);
+  const assistant_message = _assistant_message.init(sequelize, DataTypes);
+  const assistant_request = _assistant_request.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
@@ -147,8 +153,25 @@ export default function initModels(sequelize) {
   user_role.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(user_role, { as: "user_roles", foreignKey: "user_id"});
 
+  // Assistant relationships
+  assistant_request.belongsTo(assistant, { as: "assistant", foreignKey: "assistant_type", targetKey: "assistant_type"});
+  assistant.hasMany(assistant_request, { as: "assistant_requests", foreignKey: "assistant_type"});
+  assistant_request.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
+  expert.hasMany(assistant_request, { as: "assistant_requests", foreignKey: "expert_id"});
+  assistant_request.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(assistant_request, { as: "assistant_requests", foreignKey: "user_id"});
+  assistant_request.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
+  topic.hasMany(assistant_request, { as: "assistant_requests", foreignKey: "topic_id"});
+
+  // AssistantMessage relationships
+  assistant_message.belongsTo(assistant_request, { as: "request", foreignKey: "request_id"});
+  assistant_request.hasMany(assistant_message, { as: "messages", foreignKey: "request_id"});
+
   return {
     ai_model,
+    assistant,
+    assistant_message,
+    assistant_request,
     department,
     expert_skill,
     expert,

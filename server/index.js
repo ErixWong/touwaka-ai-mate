@@ -41,6 +41,8 @@ import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
 import InternalController from './controllers/internal.controller.js';
+import AssistantController from './controllers/assistant.controller.js';
+import { getAssistantManager } from './services/assistant-manager.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -61,7 +63,7 @@ import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
 import packageRoutes from './routes/package.routes.js';
-
+import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 
 class ApiServer {
@@ -172,6 +174,7 @@ class ApiServer {
         expertConnections: null, // 稍后在 setupRoutes 中设置
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
+      assistant: new AssistantController(this.db),
     };
   }
 
@@ -311,6 +314,11 @@ class ApiServer {
     this.app.use(packageRouter.routes());
     this.app.use(packageRouter.allowedMethods());
 
+// Assistant 助理路由
+    const assistantRouter = assistantRoutes(this.controllers.assistant);
+    this.app.use(assistantRouter.routes());
+    this.app.use(assistantRouter.allowedMethods());
+
     // Internal 内部 API 路由（驻留进程调用）
     // 将 StreamController 的 SSE 连接池共享给 InternalController
     this.controllers.internal.setExpertConnections(this.controllers.stream.expertConnections);
@@ -390,6 +398,11 @@ class ApiServer {
       logger.info('Database connected');
 
       this.initializeControllers();
+
+      // Initialize Assistant Manager
+      const assistantManager = getAssistantManager(this.db);
+      await assistantManager.initialize();
+      logger.info('Assistant Manager initialized');
       this.setupMiddlewares();
       this.setupRoutes();
 

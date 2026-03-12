@@ -537,6 +537,7 @@ export default {
     expert: '专家',
     topics: '话题',
     tasks: '任务',
+    assistants: '助理',
     skills: '技能',
     debug: '调试',
     collapse: '收起面板',
@@ -927,5 +928,80 @@ export default {
     moreActions: '更多操作',
     export: '导出',
     settings: '设置',
+  },
+
+  // 助理系统
+  assistant: {
+    rosterTitle: '助理列表',
+    noAssistants: '暂无可用助理',
+    totalAssistants: '共 {count} 个助理',
+    activeAssistants: '{count} 个活跃',
+    active: '活跃',
+    inactive: '停用',
+    executionMode: '执行模式',
+    model: '模型',
+    estimatedTime: '预估时间',
+
+    // 状态
+    statusPending: '等待处理...',
+    statusRunning: '处理中...',
+    statusCompleted: '{time}秒完成',
+    statusFailed: '执行失败',
+    statusTimeout: '执行超时',
+    statusPendingText: '等待中',
+    statusRunningText: '执行中',
+    statusCompletedText: '已完成',
+    statusFailedText: '失败',
+    statusTimeoutText: '超时',
+
+    // 进度
+    estimatedWait: '预计等待: ~{time} 秒',
+    elapsedTime: '已运行: {elapsed} 秒 / 预计 {estimated} 秒',
+
+    // 结果
+    resultTitle: '执行结果',
+    noResult: '无结果',
+    viewDetail: '查看详情',
+    tokensInput: '输入 Tokens',
+    tokensOutput: '输出 Tokens',
+    latency: '耗时',
+    modelUsed: '模型',
+    warning: '警告',
+    warningTitle: '警告信息',
+
+    // 助理面板
+    availableAssistants: '可用助理',
+    currentRequests: '当前委托',
+    noRequests: '暂无委托记录',
+    requestDetail: '委托详情',
+
+    // 归档与删除
+    archive: '归档',
+    unarchive: '取消归档',
+    delete: '删除',
+    archived: '已归档',
+    showArchived: '显示归档',
+    hideArchived: '隐藏归档',
+    confirmDelete: '确定要删除此委托吗？此操作不可撤销。',
+
+    // 时间
+    justNow: '刚刚',
+    minutesAgo: '分钟前',
+    hoursAgo: '小时前',
+
+    // 消息类型
+    msgTask: '任务',
+    msgStatus: '状态',
+    msgToolCall: '工具调用',
+    msgToolResult: '工具结果',
+    msgFinal: '完成',
+    msgError: '错误',
+
+    // 错误提示
+    copyFailed: '复制失败',
+    loadFailed: '加载助理列表失败',
+    deleteFailed: '删除委托失败',
+    archiveFailed: '归档委托失败',
+    unarchiveFailed: '取消归档失败',
   },
 }

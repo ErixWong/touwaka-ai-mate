@@ -37,6 +37,7 @@
         @select="handleTopicSelect"
       />
       <TasksTab v-if="activeTab === 'tasks'" />
+      <AssistantTab v-if="activeTab === 'assistants'" />
       <SkillsTab v-if="activeTab === 'skills'" />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
@@ -51,6 +52,7 @@ import { useUserStore } from '@/stores/user'
 import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
 import TasksTab from './TasksTab.vue'
+import AssistantTab from './AssistantTab.vue'
 import SkillsTab from './SkillsTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
@@ -122,11 +124,12 @@ const visibleTabs = computed<Tab[]>(() => {
     })
   }
 
-  // 普通模式：显示 expert、topics、tasks Tab
+  // 普通模式：显示 expert、topics、tasks、assistants Tab
   const tabs: Tab[] = [
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
+    { id: 'assistants', label: t('panel.assistants') || '助理', icon: '🤖' },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]
 
