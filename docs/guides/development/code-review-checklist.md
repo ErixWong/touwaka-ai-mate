@@ -27,6 +27,34 @@ cd frontend && npm run build
 
 **⚠️ `npm run lint` 必须通过后才能提交 PR！**
 
+### ⚠️ ES 模块导入验证（重要）
+
+**ESLint 不检查模块导入/导出是否匹配！** 任何涉及 `import`/`export` 的修改都必须验证：
+
+```bash
+# 验证模块导入是否正确（替换为实际修改的文件）
+node -e "import('./server/services/system-setting.service.js').then(m => console.log('Exports:', Object.keys(m)))"
+node -e "import('./lib/skill-loader.js').then(() => console.log('OK')).catch(e => console.error(e.message))"
+```
+
+**常见错误**：
+```javascript
+// ❌ 错误 - 使用命名导入但模块只有默认导出
+import { SystemSettingService } from './service.js';
+// service.js 只有: export default class SystemSettingService {}
+
+// ✅ 正确 - 添加命名导出
+// service.js:
+export { SystemSettingService };  // 添加命名导出
+export default SystemSettingService;
+```
+
+**何时必须验证**：
+- 新增或修改 `export` 语句
+- 新增或修改 `import` 语句
+- 重构模块导出方式
+- **即使认为"不涉及启动流程变更"，只要改了 import/export 就必须验证！**
+
 ---
 
 ## 第二步：API 响应格式检查
