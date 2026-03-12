@@ -246,3 +246,48 @@ export const assistantApi = {
 3. 创建独立页面 - `/assistants` 路由
 
 **状态**: ⏳ 待定 - 需要确定集成位置
+
+---
+
+## 待解决问题：Expert 轮询等待结果
+
+### 问题描述
+
+Expert 在调用 `assistant_summon` 后，仍然轮询 `assistant_status` 等待结果，而不是立即回复用户并继续对话。
+
+**实际行为**:
+```
+Expert 调用 assistant_summon → 获得 request_id
+    ↓
+Expert 调用 assistant_status 查询状态
+    ↓
+Expert 继续调用 assistant_status ...
+    ↓
+（循环直到完成）
+```
+
+**期望行为**:
+```
+Expert 调用 assistant_summon → 获得 request_id
+    ↓
+Expert 立即回复用户："任务已提交，请稍后在助理面板查看结果"
+    ↓
+Expert 继续与用户对话
+```
+**效果**: ⏳ 待验证 - LLM 可能不严格遵循指令
+
+### 后续解决方案
+
+如果修改工具描述后 LLM 仍然轮询，可考虑以下方案：
+
+| 方案 | 描述 | 优点 | 缺点 |
+|------|------|------|------|
+| **A. 移除工具** | 完全移除 `assistant_status` 工具 | 强制阻止轮询 | 用户无法主动查询状态 |
+| **B. Prompt 增强** | 在 Expert 的 system prompt 中添加明确的行为指令 | 保持工具可用 | 需要修改所有 Expert 配置 |
+| **C. 返回提示** | 修改 `assistant_status` 返回值，让它提示"无需轮询" | 保持向后兼容 | LLM 可能忽略提示 |
+| **D. 延迟响应** | `assistant_summon` 直接阻塞等待结果返回 | 简化流程 | 失去异步优势 |
+
+**推荐方案**: 先尝试 **方案 C**，如果无效再考虑 **方案 A**
+
+**优先级**: 高
+**状态**: ⏳ 待验证/待实现

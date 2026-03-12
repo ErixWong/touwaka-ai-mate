@@ -141,6 +141,51 @@ export const useAssistantStore = defineStore('assistant', () => {
     activeRequestMessages.value = []
   }
 
+  // 归档委托
+  async function archiveRequest(requestId: string) {
+    try {
+      await assistantApi.archiveRequest(requestId)
+      // 从列表中移除或更新
+      const index = requests.value.findIndex(r => r.request_id === requestId)
+      if (index !== -1) {
+        requests.value[index] = { ...requests.value[index], is_archived: 1 }
+      }
+    } catch (e) {
+      console.error('Failed to archive request:', e)
+      throw e
+    }
+  }
+
+  // 取消归档
+  async function unarchiveRequest(requestId: string) {
+    try {
+      await assistantApi.unarchiveRequest(requestId)
+      const index = requests.value.findIndex(r => r.request_id === requestId)
+      if (index !== -1) {
+        requests.value[index] = { ...requests.value[index], is_archived: 0 }
+      }
+    } catch (e) {
+      console.error('Failed to unarchive request:', e)
+      throw e
+    }
+  }
+
+  // 删除委托
+  async function deleteRequest(requestId: string) {
+    try {
+      await assistantApi.deleteRequest(requestId)
+      // 从列表中移除
+      requests.value = requests.value.filter(r => r.request_id !== requestId)
+      // 如果是当前选中的，清除选中
+      if (activeRequest.value?.request_id === requestId) {
+        clearActiveRequest()
+      }
+    } catch (e) {
+      console.error('Failed to delete request:', e)
+      throw e
+    }
+  }
+
   return {
     // State
     assistants,
@@ -164,5 +209,8 @@ export const useAssistantStore = defineStore('assistant', () => {
     startPolling,
     stopPolling,
     clearActiveRequest,
+    archiveRequest,
+    unarchiveRequest,
+    deleteRequest,
   }
 })

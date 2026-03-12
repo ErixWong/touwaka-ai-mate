@@ -188,6 +188,83 @@ class AssistantController {
       ctx.app.emit('error', error, ctx);
     }
   }
+
+  /**
+   * 归档委托
+   * POST /api/assistants/requests/:request_id/archive
+   */
+  async archive(ctx) {
+    try {
+      const { request_id } = ctx.params;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const result = await this.assistantManager.archive(request_id);
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Archive request error:', error);
+      if (error.message.includes('not found')) {
+        ctx.error(error.message, 404);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
+
+  /**
+   * 取消归档委托
+   * POST /api/assistants/requests/:request_id/unarchive
+   */
+  async unarchive(ctx) {
+    try {
+      const { request_id } = ctx.params;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const result = await this.assistantManager.unarchive(request_id);
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Unarchive request error:', error);
+      if (error.message.includes('not found')) {
+        ctx.error(error.message, 404);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
+
+  /**
+   * 删除委托
+   * DELETE /api/assistants/requests/:request_id
+   */
+  async delete(ctx) {
+    try {
+      const { request_id } = ctx.params;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const result = await this.assistantManager.delete(request_id);
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Delete request error:', error);
+      if (error.message.includes('not found')) {
+        ctx.error(error.message, 404);
+      } else if (error.message.includes('Cannot delete')) {
+        ctx.error(error.message, 400);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
 }
 
 export default AssistantController;
