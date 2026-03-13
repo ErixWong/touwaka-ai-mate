@@ -747,7 +747,11 @@ const renderMarkdown = (content: string): string => {
     })
   } catch (error) {
     console.error('Markdown parsing error:', error)
-    return content.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
+    return content
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/\n/g, '<br>')
   }
 }
 
