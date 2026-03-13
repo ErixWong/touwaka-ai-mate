@@ -234,9 +234,8 @@ const handleSSEEvent = async (event: SSEEvent) => {
       if (serverLatestMessageId && serverLatestMessageId !== lastKnownMessageId.value) {
         // 获取本地最新消息 ID
         const localMessages = chatStore.sortedMessages
-        const localLatestId = localMessages.length > 0
-          ? localMessages[localMessages.length - 1].id
-          : null
+        const lastMessage = localMessages.length > 0 ? localMessages[localMessages.length - 1] : undefined
+        const localLatestId = lastMessage?.id ?? null
         
         // 如果服务端消息 ID 与本地最新消息 ID 不同，说明有新消息
         if (serverLatestMessageId !== localLatestId) {
