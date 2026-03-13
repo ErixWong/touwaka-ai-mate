@@ -92,6 +92,15 @@
 "C:\Program Files\GitHub CLI\gh.exe" issue create --title "标题" --body-file issue-body.md
 ```
 
+### ⚠️ 创建 PR 前检查
+
+**创建新 PR 前，必须先检查是否有未合并的 PR，并提醒用户是否需要先合并！**
+
+```powershell
+# 检查未合并的 PR
+"C:\Program Files\GitHub CLI\gh.exe" pr list --state open
+```
+
 ### Code Review 发现问题的处理
 
 1. **立即修复的问题** - 直接在当前分支修复，推送更新
