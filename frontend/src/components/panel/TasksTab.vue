@@ -287,8 +287,17 @@
           </div>
           <!-- 预览/编辑内容 -->
           <template v-else>
+            <!-- Markdown 预览 -->
+            <template v-if="previewType === 'markdown'">
+              <textarea
+                v-if="isEditing"
+                v-model="previewContent"
+                class="preview-editor markdown-editor"
+              ></textarea>
+              <div v-else class="preview-markdown" v-html="renderMarkdown(previewContent)"></div>
+            </template>
             <!-- 文本/代码编辑 -->
-            <template v-if="previewType === 'text' || previewType === 'code'">
+            <template v-else-if="previewType === 'text' || previewType === 'code'">
               <textarea
                 v-if="isEditing"
                 v-model="previewContent"
@@ -313,7 +322,7 @@
           </template>
         </div>
         <div class="dialog-footer">
-          <template v-if="previewType === 'text' || previewType === 'code'">
+          <template v-if="previewType === 'text' || previewType === 'code' || previewType === 'markdown'">
             <!-- 文本文件可编辑 -->
             <template v-if="canEditFile">
               <button v-if="!isEditing" class="btn-cancel" @click="startEdit">
@@ -367,6 +376,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { useTaskStore } from '@/stores/task'
 import Pagination from '@/components/Pagination.vue'
 import type { Task, TaskFile } from '@/types'
@@ -398,7 +409,7 @@ const taskForm = ref({
 // 文件预览相关
 const showPreview = ref(false)
 const previewFile = ref<TaskFile | null>(null)
-const previewType = ref<'text' | 'code' | 'image' | 'pdf' | 'unsupported'>('text')
+const previewType = ref<'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'unsupported'>('text')
 const previewContent = ref('')
 const previewOriginalContent = ref('')  // 保存原始内容，用于取消编辑
 const previewUrl = ref('')
@@ -616,13 +627,14 @@ const handleFileClick = async (file: TaskFile) => {
 }
 
 // 判断文件预览类型
-const getPreviewType = (filename: string): 'text' | 'code' | 'image' | 'pdf' | 'unsupported' => {
+const getPreviewType = (filename: string): 'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'unsupported' => {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
 
-  const textExts = ['txt', 'md', 'csv', 'log']
+  const textExts = ['txt', 'csv', 'log']
   const codeExts = ['js', 'ts', 'vue', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'html', 'json', 'xml', 'yaml', 'yml', 'sh', 'sql']
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg']
 
+  if (ext === 'md') return 'markdown'
   if (textExts.includes(ext)) return 'text'
   if (codeExts.includes(ext)) return 'code'
   if (imageExts.includes(ext)) return 'image'
@@ -644,7 +656,7 @@ const openPreview = async (file: TaskFile) => {
     const url = taskStore.getFilePreviewUrl(file.path)
     const token = localStorage.getItem('access_token')
 
-    if (previewType.value === 'text' || previewType.value === 'code') {
+    if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown') {
       // 获取文本内容
       const response = await fetch(url, {
         headers: {
@@ -702,8 +714,46 @@ const canEditFile = computed(() => {
   const path = previewFile.value.path
   // 只允许编辑 input 目录下的文件
   return (path.startsWith('input/') || path === previewFile.value.name || currentPath.value.startsWith('input')) &&
-         (previewType.value === 'text' || previewType.value === 'code')
+         (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown')
 })
+
+// 配置 marked 选项
+marked.setOptions({
+  breaks: true, // 支持 GitHub 风格的换行
+  gfm: true, // 启用 GitHub Flavored Markdown
+})
+
+// 渲染 Markdown 内容
+const renderMarkdown = (content: string): string => {
+  if (!content) return ''
+  try {
+    const rawHtml = marked.parse(content) as string
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li',
+        'blockquote', 'pre', 'code',
+        'a', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'hr', 'div', 'span'
+      ],
+      ALLOWED_ATTR: [
+        'href', 'src', 'alt', 'title', 'class',
+        'target', 'rel',
+        'width', 'height'
+      ],
+      ALLOW_DATA_ATTR: true,
+    })
+  } catch (error) {
+    console.error('Markdown parsing error:', error)
+    return content
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/\n/g, '<br>')
+  }
+}
 
 // 判断文件是否可删除（在 input 目录下）
 const canDeleteFile = (file: TaskFile) => {
@@ -1687,5 +1737,162 @@ onMounted(() => {
 .preview-unsupported p {
   margin: 0;
   color: var(--text-secondary, #666);
+}
+
+/* Markdown Preview Styles */
+.preview-markdown {
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary, #333);
+}
+
+.preview-markdown :deep(h1),
+.preview-markdown :deep(h2),
+.preview-markdown :deep(h3),
+.preview-markdown :deep(h4),
+.preview-markdown :deep(h5),
+.preview-markdown :deep(h6) {
+  margin: 16px 0 8px 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary, #333);
+}
+
+.preview-markdown :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-color, #e0e0e0); padding-bottom: 8px; }
+.preview-markdown :deep(h2) { font-size: 1.35em; border-bottom: 1px solid var(--border-color, #e0e0e0); padding-bottom: 6px; }
+.preview-markdown :deep(h3) { font-size: 1.2em; }
+.preview-markdown :deep(h4) { font-size: 1.1em; }
+.preview-markdown :deep(h5) { font-size: 1em; }
+.preview-markdown :deep(h6) { font-size: 0.95em; color: var(--text-secondary, #666); }
+
+.preview-markdown :deep(p) {
+  margin: 8px 0;
+}
+
+.preview-markdown :deep(p:first-child) {
+  margin-top: 0;
+}
+
+.preview-markdown :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.preview-markdown :deep(ul),
+.preview-markdown :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.preview-markdown :deep(li) {
+  margin: 4px 0;
+}
+
+.preview-markdown :deep(ul) {
+  list-style-type: disc;
+}
+
+.preview-markdown :deep(ol) {
+  list-style-type: decimal;
+}
+
+.preview-markdown :deep(blockquote) {
+  margin: 8px 0;
+  padding: 8px 16px;
+  border-left: 4px solid var(--primary-color, #2196f3);
+  background: var(--blockquote-bg, #f8f9fa);
+  color: var(--text-secondary, #666);
+  border-radius: 0 4px 4px 0;
+}
+
+.preview-markdown :deep(pre) {
+  background: var(--code-bg, #1e1e1e);
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.preview-markdown :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.preview-markdown :deep(code) {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.preview-markdown :deep(code:not(pre code)) {
+  background: var(--code-bg, #f0f0f0);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--code-color, #d63384);
+}
+
+.preview-markdown :deep(table) {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+.preview-markdown :deep(th),
+.preview-markdown :deep(td) {
+  border: 1px solid var(--border-color, #e0e0e0);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.preview-markdown :deep(th) {
+  background: var(--table-header-bg, #f5f5f5);
+  font-weight: 600;
+}
+
+.preview-markdown :deep(tr:nth-child(even)) {
+  background: var(--table-row-alt-bg, #fafafa);
+}
+
+.preview-markdown :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  margin: 16px 0;
+}
+
+.preview-markdown :deep(a) {
+  color: var(--primary-color, #2196f3);
+  text-decoration: none;
+}
+
+.preview-markdown :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.preview-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.preview-markdown :deep(del),
+.preview-markdown :deep(s) {
+  color: var(--text-secondary, #666);
+  text-decoration: line-through;
+}
+
+.preview-markdown :deep(strong) {
+  font-weight: 600;
+}
+
+.preview-markdown :deep(em) {
+  font-style: italic;
+}
+
+.markdown-editor {
+  min-height: 400px;
 }
 </style>

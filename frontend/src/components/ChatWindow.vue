@@ -139,6 +139,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import type { Message } from '@/types'
 
 export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status'> & {
@@ -230,7 +232,7 @@ const scrollToBottom = () => {
 
 // MutationObserver 用于检测消息 DOM 变化（处理异步内容加载）
 let mutationObserver: MutationObserver | null = null
-let isInitialLoad = ref(true) // 标记是否是初始加载
+const isInitialLoad = ref(true) // 标记是否是初始加载
 let scrollStabilizeTimer: ReturnType<typeof setTimeout> | null = null
 
 // 强制滚动到底部（禁用 smooth 动画）
@@ -261,7 +263,7 @@ const setupMutationObserver = () => {
     mutationObserver.disconnect()
   }
   
-  mutationObserver = new MutationObserver((mutations) => {
+  mutationObserver = new MutationObserver(() => {
     // 只在初始加载时自动滚动到底部
     if (isInitialLoad.value) {
       // 清除之前的定时器
@@ -416,7 +418,13 @@ const handleStop = () => {
   emit('stop')
 }
 
-// 格式化消息（支持简单的 markdown，带缓存）
+// 配置 marked 选项
+marked.setOptions({
+  breaks: true, // 支持 GitHub 风格的换行
+  gfm: true, // 启用 GitHub Flavored Markdown
+})
+
+// 格式化消息（支持完整的 markdown，带缓存）
 const formatMessage = (content: string) => {
   if (!content) return ''
   
@@ -426,35 +434,48 @@ const formatMessage = (content: string) => {
     return cached
   }
   
-  // 转义 HTML（注意顺序：先转义 &，再转义 < 和 >）
-  let formatted = content
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-  
-  // 代码块
-  formatted = formatted.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-  
-  // 行内代码
-  formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>')
-  
-  // 粗体
-  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  
-  // 斜体
-  formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>')
-  
-  // 换行
-  formatted = formatted.replace(/\n/g, '<br>')
-  
-  // 缓存结果（限制缓存大小）
-  if (formattedCache.size > 100) {
-    const firstKey = formattedCache.keys().next().value
-    if (firstKey) formattedCache.delete(firstKey)
+  try {
+    // 使用 marked 解析 Markdown
+    const rawHtml = marked.parse(content) as string
+    
+    // 使用 DOMPurify 进行 XSS 防护
+    // 允许安全的 HTML 标签和属性
+    const cleanHtml = DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li',
+        'blockquote', 'pre', 'code',
+        'a', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'hr', 'div', 'span'
+      ],
+      ALLOWED_ATTR: [
+        'href', 'src', 'alt', 'title', 'class',
+        'target', 'rel',
+        'width', 'height'
+      ],
+      // 允许 data: URI 用于图片（如 base64 图片）
+      ALLOW_DATA_ATTR: true,
+    })
+    
+    // 缓存结果（限制缓存大小）
+    if (formattedCache.size > 100) {
+      const firstKey = formattedCache.keys().next().value
+      if (firstKey) formattedCache.delete(firstKey)
+    }
+    formattedCache.set(content, cleanHtml)
+    
+    return cleanHtml
+  } catch (error) {
+    console.error('Markdown parsing error:', error)
+    // 解析失败时返回转义后的原文
+    return content
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/\n/g, '<br>')
   }
-  formattedCache.set(content, formatted)
-  
-  return formatted
 }
 
 // 格式化时间显示
@@ -665,16 +686,102 @@ defineExpose({
   color: var(--text-primary, #333);
 }
 
-.message-text :deep(pre) {
-  background: var(--code-bg, #f0f0f0);
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
+/* Markdown 标题样式 */
+.message-text :deep(h1),
+.message-text :deep(h2),
+.message-text :deep(h3),
+.message-text :deep(h4),
+.message-text :deep(h5),
+.message-text :deep(h6) {
+  margin: 16px 0 8px 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary, #333);
+}
+
+.message-text :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-color, #e0e0e0); padding-bottom: 8px; }
+.message-text :deep(h2) { font-size: 1.35em; border-bottom: 1px solid var(--border-color, #e0e0e0); padding-bottom: 6px; }
+.message-text :deep(h3) { font-size: 1.2em; }
+.message-text :deep(h4) { font-size: 1.1em; }
+.message-text :deep(h5) { font-size: 1em; }
+.message-text :deep(h6) { font-size: 0.95em; color: var(--text-secondary, #666); }
+
+/* Markdown 段落样式 */
+.message-text :deep(p) {
   margin: 8px 0;
 }
 
+.message-text :deep(p:first-child) {
+  margin-top: 0;
+}
+
+.message-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* Markdown 列表样式 */
+.message-text :deep(ul),
+.message-text :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.message-text :deep(li) {
+  margin: 4px 0;
+}
+
+.message-text :deep(ul) {
+  list-style-type: disc;
+}
+
+.message-text :deep(ol) {
+  list-style-type: decimal;
+}
+
+.message-text :deep(ul ul) {
+  list-style-type: circle;
+}
+
+.message-text :deep(ul ul ul) {
+  list-style-type: square;
+}
+
+/* Markdown 引用块样式 */
+.message-text :deep(blockquote) {
+  margin: 8px 0;
+  padding: 8px 16px;
+  border-left: 4px solid var(--primary-color, #2196f3);
+  background: var(--blockquote-bg, #f8f9fa);
+  color: var(--text-secondary, #666);
+  border-radius: 0 4px 4px 0;
+}
+
+.message-text :deep(blockquote p) {
+  margin: 4px 0;
+}
+
+/* Markdown 代码块样式 */
+.message-text :deep(pre) {
+  background: var(--code-bg, #1e1e1e);
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 8px 0;
+  position: relative;
+}
+
+.message-text :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.5;
+  display: block;
+}
+
+/* 行内代码样式 */
 .message-text :deep(code) {
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 13px;
 }
 
@@ -682,6 +789,74 @@ defineExpose({
   background: var(--code-bg, #f0f0f0);
   padding: 2px 6px;
   border-radius: 4px;
+  color: var(--code-color, #d63384);
+}
+
+/* Markdown 表格样式 */
+.message-text :deep(table) {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+.message-text :deep(th),
+.message-text :deep(td) {
+  border: 1px solid var(--border-color, #e0e0e0);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.message-text :deep(th) {
+  background: var(--table-header-bg, #f5f5f5);
+  font-weight: 600;
+}
+
+.message-text :deep(tr:nth-child(even)) {
+  background: var(--table-row-alt-bg, #fafafa);
+}
+
+/* Markdown 水平分割线样式 */
+.message-text :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  margin: 16px 0;
+}
+
+/* Markdown 链接样式 */
+.message-text :deep(a) {
+  color: var(--primary-color, #2196f3);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.message-text :deep(a:hover) {
+  border-bottom-color: var(--primary-color, #2196f3);
+}
+
+/* Markdown 图片样式 */
+.message-text :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+/* Markdown 删除线样式 */
+.message-text :deep(del),
+.message-text :deep(s) {
+  color: var(--text-secondary, #666);
+  text-decoration: line-through;
+}
+
+/* Markdown 强调和加粗样式 */
+.message-text :deep(strong) {
+  font-weight: 600;
+}
+
+.message-text :deep(em) {
+  font-style: italic;
 }
 
 .message-time {
