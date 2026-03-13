@@ -16,6 +16,13 @@
         </button>
         <button
           class="sub-tab-btn"
+          :class="{ active: activeSubTab === 'llm' }"
+          @click="activeSubTab = 'llm'"
+        >
+          🤖 {{ $t('settings.llmDefaults') }}
+        </button>
+        <button
+          class="sub-tab-btn"
           :class="{ active: activeSubTab === 'timeout' }"
           @click="activeSubTab = 'timeout'"
         >
@@ -30,12 +37,11 @@
         </button>
       </div>
 
-      <!-- 通用配置 -->
-      <div v-if="activeSubTab === 'general'" class="tab-content">
-        <!-- LLM 默认参数 -->
+      <!-- LLM 默认参数 -->
+      <div v-if="activeSubTab === 'llm'" class="tab-content">
         <div class="config-section">
           <div class="section-header">
-            <h3 class="section-title">📊 {{ $t('settings.llmDefaults') }}</h3>
+            <h3 class="section-title">🤖 {{ $t('settings.llmDefaults') }}</h3>
             <button class="btn-reset-section" @click="resetSection('llm')">
               {{ $t('common.reset') }}
             </button>
@@ -131,10 +137,26 @@
                 <span class="config-hint">0-2</span>
               </div>
             </div>
-
           </div>
         </div>
 
+        <!-- 底部操作按钮 -->
+        <div class="config-actions">
+          <button class="btn-reset-all" @click="resetAll">
+            {{ $t('settings.resetAll') }}
+          </button>
+          <button
+            class="btn-save"
+            @click="saveConfig"
+            :disabled="!hasChanges || saving"
+          >
+            {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 通用配置 -->
+      <div v-if="activeSubTab === 'general'" class="tab-content">
         <!-- 连接限制 -->
         <div class="config-section">
           <div class="section-header">
@@ -347,7 +369,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 
 // 子 Tab 状态
-const activeSubTab = ref<'general' | 'timeout' | 'packages'>('general')
+const activeSubTab = ref<'llm' | 'general' | 'timeout' | 'packages'>('general')
 
 // 表单数据
 const form = reactive({
