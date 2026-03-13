@@ -20,16 +20,16 @@
         <!-- Task 模式状态 -->
         <span
           class="task-mode-tag"
-          :class="{ 'in-task': taskStore.currentTask }"
+          :class="{ 'in-task': taskStore.currentTask, 'no-task': !taskStore.currentTask }"
           @click="taskStore.currentTask && handleExitTaskMode()"
-          :title="taskStore.currentTask ? '点击退出任务模式' : ''"
+          :title="taskStore.currentTask ? '点击退出任务模式' : '请在右侧面板选择目录以保存对话记录'"
         >
           <template v-if="taskStore.currentTask">
             📁 {{ taskStore.currentTask.title }}
             <span class="exit-icon">✕</span>
           </template>
           <template v-else>
-            💬 闲聊
+            ⚠️ 未选择目录
           </template>
         </span>
       </div>
@@ -833,6 +833,23 @@ onUnmounted(() => {
 
 .task-mode-tag.in-task:hover .exit-icon {
   opacity: 1;
+}
+
+/* 未选择目录的警告样式 */
+.task-mode-tag.no-task {
+  background: var(--warning-bg, #fff3e0);
+  color: var(--warning-color, #e65100);
+  border: 1px solid var(--warning-border, #ffb74d);
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 </style>
 
