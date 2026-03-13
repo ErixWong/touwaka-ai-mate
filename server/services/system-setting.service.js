@@ -154,12 +154,10 @@ class SystemSettingService {
    * @param {Array} settings - 需要创建的配置数组
    */
   async _createDefaultSettings(settings) {
-    const Utils = (await import('../../lib/utils.js')).default;
-    
     for (const setting of settings) {
       try {
+        // id 字段是自增整数，不需要手动指定
         await this.SystemSetting.create({
-          id: Utils.newID(20),
           ...setting,
           created_at: new Date(),
           updated_at: new Date(),
