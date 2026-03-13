@@ -470,7 +470,7 @@ watch(() => taskStore.isInTaskMode, async (isInMode) => {
     currentPath.value = ''
     await taskStore.loadTaskFiles()
   }
-})
+}, { immediate: true })
 
 // 监听过滤器变化，重置页码
 watch([searchQuery, statusFilter], () => {
