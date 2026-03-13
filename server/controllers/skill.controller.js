@@ -1363,10 +1363,29 @@ class SkillController {
       const skill_name = provided_name || skill_info.name || path.basename(full_path);
       const skill_desc = provided_desc || skill_info.description || '';
 
-      // 检查 index.js 是否存在
-      const index_js_path = path.join(full_path, 'index.js');
-      if (!fsOriginal.existsSync(index_js_path)) {
-        ctx.error(`index.js not found in ${source_path}`, 404);
+      // 检查技能目录中是否有可执行的入口文件
+      // 支持多种入口文件：index.js, index.py, 或通过 tools[].script_path 指定的文件
+      const hasIndexJs = fsOriginal.existsSync(path.join(full_path, 'index.js'));
+      const hasIndexPy = fsOriginal.existsSync(path.join(full_path, 'index.py'));
+      
+      // 检查提供的工具中是否有指定 script_path 的入口文件
+      let hasCustomEntry = false;
+      if (provided_tools && Array.isArray(provided_tools)) {
+        for (const tool of provided_tools) {
+          if (tool.script_path) {
+            const customEntryPath = path.join(full_path, tool.script_path);
+            if (fsOriginal.existsSync(customEntryPath)) {
+              hasCustomEntry = true;
+              logger.info(`[SkillController] Found custom entry file: ${tool.script_path}`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // 如果没有任何入口文件，报错
+      if (!hasIndexJs && !hasIndexPy && !hasCustomEntry) {
+        ctx.error(`No entry file found in ${source_path}. Expected: index.js, index.py, or custom script_path in tools`, 404);
         return;
       }
 
@@ -1406,23 +1425,31 @@ class SkillController {
       });
       
       if (!tools_to_register || (Array.isArray(tools_to_register) && tools_to_register.length === 0)) {
-        // 尝试加载 index.js 获取工具定义
-        logger.info('[SkillController] No tools provided, trying to load from index.js');
-        try {
-          // Windows 需要使用 file:// URL 格式
-          const { pathToFileURL } = await import('url');
-          const index_js_url = pathToFileURL(index_js_path).href + '?t=' + Date.now();
-          logger.info('[SkillController] Loading from:', index_js_url);
-          
-          const index_module = await import(index_js_url);
-          const skill_module = index_module.default || index_module;
+        // 尝试加载入口文件获取工具定义
+        // 优先使用 index.js，如果不存在则使用其他入口文件
+        const entryFile = hasIndexJs ? 'index.js' : (hasIndexPy ? 'index.py' : null);
+        
+        if (entryFile) {
+          logger.info(`[SkillController] No tools provided, trying to load from ${entryFile}`);
+          try {
+            // Windows 需要使用 file:// URL 格式
+            const { pathToFileURL } = await import('url');
+            const entry_path = path.join(full_path, entryFile);
+            const entry_url = pathToFileURL(entry_path).href + '?t=' + Date.now();
+            logger.info('[SkillController] Loading from:', entry_url);
+            
+            const index_module = await import(entry_url);
+            const skill_module = index_module.default || index_module;
 
-          if (skill_module.getTools && typeof skill_module.getTools === 'function') {
-            tools_to_register = skill_module.getTools();
-            logger.info('[SkillController] Loaded tools from index.js:', tools_to_register?.length);
+            if (skill_module.getTools && typeof skill_module.getTools === 'function') {
+              tools_to_register = skill_module.getTools();
+              logger.info(`[SkillController] Loaded tools from ${entryFile}:`, tools_to_register?.length);
+            }
+          } catch (err) {
+            logger.warn(`Could not parse tools from ${source_path}:`, err.message);
           }
-        } catch (err) {
-          logger.warn(`Could not parse tools from ${source_path}:`, err.message);
+        } else {
+          logger.info('[SkillController] No tools provided and no standard entry file found, using custom script_path');
         }
       }
 
