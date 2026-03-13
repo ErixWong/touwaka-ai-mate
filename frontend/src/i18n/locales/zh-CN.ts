@@ -26,6 +26,7 @@ export default {
     copied: '已复制到剪贴板',
     copyFailed: '复制失败',
     refresh: '刷新',
+    reset: '重置',
   },
 
   // 导航
@@ -214,6 +215,10 @@ export default {
     frequencyPenaltyHint: '降低重复词汇的出现频率，-2 到 2，默认 0',
     presencePenalty: '存在惩罚 (Presence Penalty)',
     presencePenaltyHint: '鼓励讨论新话题，-2 到 2，默认 0',
+    // 工具调用配置
+    toolCallConfig: '工具调用配置',
+    maxToolRoundsPlaceholder: '留空使用系统默认',
+    maxToolRoundsExpertHint: '限制 AI 在单次对话中调用工具的最大轮数，留空则使用系统默认设置',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',
@@ -448,6 +453,10 @@ export default {
     skillCallTimeoutHint: '单个技能调用的最大等待时间（秒）',
     remoteLlmTimeout: '远程 LLM 超时',
     remoteLlmTimeoutHint: '远程 LLM 服务调用的最大等待时间（秒）',
+    // 工具调用配置
+    toolConfig: '工具调用配置',
+    maxToolRounds: '最大工具调用轮数',
+    maxToolRoundsHint: 'LLM 单次请求中最多执行的工具调用轮数，防止无限循环（1-50，默认 20）',
     // 通用配置
     generalConfig: '通用配置',
     // 包白名单配置

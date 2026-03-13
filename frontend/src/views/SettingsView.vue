@@ -1059,6 +1059,21 @@
               <!-- 占位符，保持布局对称 -->
             </div>
           </div>
+          
+          <!-- 工具调用配置 -->
+          <div class="form-section-title">{{ $t('settings.toolCallConfig') }}</div>
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.maxToolRounds') }}</label>
+            <input
+              v-model.number="expertForm.max_tool_rounds"
+              type="number"
+              class="form-input"
+              min="1"
+              max="50"
+              :placeholder="$t('settings.maxToolRoundsPlaceholder')"
+            />
+            <p class="form-hint">{{ $t('settings.maxToolRoundsExpertHint') }}</p>
+          </div>
         </div>
         <div class="dialog-footer">
           <div class="footer-left">
@@ -1597,6 +1612,8 @@ const expertForm = reactive({
   top_p: 1.0,
   frequency_penalty: 0.0,
   presence_penalty: 0.0,
+  // 工具调用配置
+  max_tool_rounds: null as number | null,
   // 头像
   avatar_base64: '',
   avatar_large_base64: '',
@@ -2265,6 +2282,8 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = expert.top_p ?? 1.0
     expertForm.frequency_penalty = expert.frequency_penalty ?? 0.0
     expertForm.presence_penalty = expert.presence_penalty ?? 0.0
+    // 工具调用配置
+    expertForm.max_tool_rounds = expert.max_tool_rounds ?? null
     // 头像
     expertForm.avatar_base64 = expert.avatar_base64 || ''
     expertForm.avatar_large_base64 = expert.avatar_large_base64 || ''
@@ -2288,6 +2307,8 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = 1.0
     expertForm.frequency_penalty = 0.0
     expertForm.presence_penalty = 0.0
+    // 工具调用配置默认值
+    expertForm.max_tool_rounds = null
     // 头像
     expertForm.avatar_base64 = ''
     expertForm.avatar_large_base64 = ''

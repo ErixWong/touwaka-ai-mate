@@ -29,7 +29,12 @@ const DEFAULT_SETTINGS = {
     vm_execution: 30,       // VM 执行超时（秒）
     python_execution: 300,  // Python 执行超时（秒）
     skill_call: 60,         // 技能调用超时（秒）
+    skill_http: 180,        // 技能 HTTP 调用超时（秒）
+    resident_skill: 300,    // 驻留技能超时（秒）
     remote_llm: 120,        // 远程 LLM 调用超时（秒）
+  },
+  tool: {
+    max_rounds: 20,         // 最大工具调用轮数
   },
 };
 

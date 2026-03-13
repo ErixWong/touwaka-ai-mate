@@ -21,6 +21,7 @@ class StreamController {
     this.db = db;
     this.chatService = chatService;
     this.Topic = db.getModel('topic');
+    this.Message = db.getModel('message');
     this.systemSettingService = getSystemSettingService(db);
     // 存储活跃的 SSE 连接：Map<expertId, Set<{userId, res}>>
     this.expertConnections = new Map();
@@ -289,14 +290,38 @@ class StreamController {
     logger.info(`SSE connection established: user=${user_id}, expert=${expert_id}`);
 
     // 心跳保活 - 5秒间隔，用于快速检测连接状态
-    const heartbeat = setInterval(() => {
+    // 同时携带最新消息ID，前端可据此判断是否需要拉取新消息
+    const sendHeartbeat = async () => {
       if (ctx.res.writableEnded) {
         clearInterval(heartbeat);
         return;
       }
-      // 发送命名事件而非注释，前端可以监听
-      ctx.res.write('event: heartbeat\ndata: {}\n\n');
-    }, 5000);
+      
+      try {
+        // 查询当前专家与当前用户的最新一条消息ID
+        const latestMessage = await this.Message.findOne({
+          where: {
+            expert_id,
+            user_id,
+          },
+          order: [['created_at', 'DESC']],
+          attributes: ['id'],
+          raw: true,
+        });
+        
+        const heartbeatData = {
+          latest_message_id: latestMessage?.id || null,
+        };
+        
+        ctx.res.write(`event: heartbeat\ndata: ${JSON.stringify(heartbeatData)}\n\n`);
+      } catch (err) {
+        logger.error('Heartbeat error:', err);
+        // 即使查询失败也发送心跳，保持连接
+        ctx.res.write(`event: heartbeat\ndata: ${JSON.stringify({ latest_message_id: null })}\n\n`);
+      }
+    };
+    
+    const heartbeat = setInterval(sendHeartbeat, 5000);
 
     // 清理连接
     const cleanup = () => {
