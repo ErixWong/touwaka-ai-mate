@@ -219,10 +219,43 @@ const loadMoreMessages = async () => {
   await chatStore.loadMoreMessages()
 }
 
+// 记录上一次收到的最新消息 ID，用于避免重复拉取
+let lastKnownMessageId = ref<string | null>(null)
+
 // 处理 SSE 事件
-const handleSSEEvent = (event: SSEEvent) => {
-  // 心跳事件已在 useSSE 中处理
+const handleSSEEvent = async (event: SSEEvent) => {
+  // 处理心跳事件
   if (event.event === 'heartbeat') {
+    try {
+      const data = JSON.parse(event.data)
+      const serverLatestMessageId = data.latest_message_id
+      
+      // 如果服务端有消息 ID，且与本地已知的不同
+      if (serverLatestMessageId && serverLatestMessageId !== lastKnownMessageId.value) {
+        // 获取本地最新消息 ID
+        const localMessages = chatStore.sortedMessages
+        const lastMessage = localMessages.length > 0 ? localMessages[localMessages.length - 1] : undefined
+        const localLatestId = lastMessage?.id ?? null
+        
+        // 如果服务端消息 ID 与本地最新消息 ID 不同，说明有新消息
+        if (serverLatestMessageId !== localLatestId) {
+          console.log('检测到新消息，主动拉取:', {
+            serverLatest: serverLatestMessageId,
+            localLatest: localLatestId,
+          })
+          
+          // 刷新消息列表（只拉取第一页最新消息）
+          if (currentExpertId.value) {
+            await chatStore.loadMessagesByExpert(currentExpertId.value, 1)
+          }
+        }
+        
+        // 更新已知的消息 ID
+        lastKnownMessageId.value = serverLatestMessageId
+      }
+    } catch (e) {
+      console.error('Parse heartbeat error:', e)
+    }
     return
   }
 

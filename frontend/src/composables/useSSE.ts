@@ -191,6 +191,17 @@ export function useSSE() {
     // 处理心跳事件
     if (event.event === 'heartbeat') {
       updateSSEHeartbeat()
+      // 解析心跳数据，传递给用户回调（包含最新消息ID）
+      try {
+        const data = event.data ? JSON.parse(event.data) : {}
+        // 调用用户回调，让前端可以处理心跳中的消息ID
+        options.onEvent?.({
+          event: 'heartbeat',
+          data: JSON.stringify(data),
+        })
+      } catch {
+        // 解析失败则忽略
+      }
       return
     }
     
