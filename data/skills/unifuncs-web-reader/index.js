@@ -97,14 +97,25 @@ async function readWebPage(params) {
   const { url, timeout = DEFAULT_TIMEOUT } = params;
 
   // 从环境变量获取 API Key（由 skill-loader 从 skill_parameters 表注入）
-  const apiKey = process.env.UNIFUNCS_API_KEY;
+  // 系统会自动添加 SKILL_ 前缀，所以需要检查 SKILL_UNIFUNCS_API_KEY
+  // 同时保留对无前缀版本的支持，方便本地测试
+  const apiKey = process.env.SKILL_UNIFUNCS_API_KEY || process.env.UNIFUNCS_API_KEY;
+
+  // 🔍 调试日志：输出环境变量和参数信息
+  console.log('[unifuncs-web-reader] ========== DEBUG INFO ==========');
+  console.log('[unifuncs-web-reader] params:', JSON.stringify(params, null, 2));
+  console.log('[unifuncs-web-reader] SKILL_UNIFUNCS_API_KEY:', process.env.SKILL_UNIFUNCS_API_KEY ? `${process.env.SKILL_UNIFUNCS_API_KEY.substring(0, 8)}...` : '(not set)');
+  console.log('[unifuncs-web-reader] UNIFUNCS_API_KEY:', process.env.UNIFUNCS_API_KEY ? `${process.env.UNIFUNCS_API_KEY.substring(0, 8)}...` : '(not set)');
+  console.log('[unifuncs-web-reader] resolved apiKey:', apiKey ? `${apiKey.substring(0, 8)}...` : '(not set)');
+  console.log('[unifuncs-web-reader] ==============================');
 
   if (!url) {
     throw new Error('URL is required');
   }
 
   if (!apiKey) {
-    throw new Error('UNIFUNCS_API_KEY is not configured. Please add it to skill_parameters table.');
+    throw new Error('UNIFUNCS_API_KEY is not configured. Please add it to skill_parameters table. ' +
+      'Note: System will auto-add SKILL_ prefix, looking for SKILL_UNIFUNCS_API_KEY in env.');
   }
 
   try {
@@ -112,7 +123,18 @@ async function readWebPage(params) {
     const encodedUrl = encodeURIComponent(url);
     const urlPath = `${API_PATH}${encodedUrl}?apiKey=${apiKey}`;
 
+    // 🔍 调试日志：输出请求信息（隐藏完整 API Key）
+    console.log('[unifuncs-web-reader] Request URL:', `https://${API_BASE}${API_PATH}${encodedUrl}?apiKey=${apiKey.substring(0, 8)}...`);
+    console.log('[unifuncs-web-reader] Timeout:', timeout);
+
     const result = await makeRequest(urlPath, timeout);
+
+    // 🔍 调试日志：输出响应信息
+    console.log('[unifuncs-web-reader] Response status:', result.statusCode, result.statusMessage);
+    console.log('[unifuncs-web-reader] Response size:', result.size, 'bytes');
+    if (!result.success) {
+      console.log('[unifuncs-web-reader] Response body:', JSON.stringify(result.body).substring(0, 500));
+    }
 
     return {
       success: result.success,
@@ -124,6 +146,7 @@ async function readWebPage(params) {
       originalUrl: url,
     };
   } catch (error) {
+    console.log('[unifuncs-web-reader] Error:', error.message);
     return {
       success: false,
       error: error.message,
