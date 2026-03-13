@@ -37,6 +37,7 @@ import string_decoder from 'string_decoder';
 import querystring from 'querystring';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import mysql from 'mysql2/promise';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -129,6 +130,64 @@ function generateAdminToken() {
   const adminUserId = 'c464d6d1e06b5d5d05c4';  // admin 用户的真实 ID
   const adminRole = 'admin';
   return jwt.sign({ userId: adminUserId, role: adminRole }, JWT_SECRET, { expiresIn: '1h' });
+}
+
+/**
+ * 从数据库加载技能参数并注入环境变量
+ * 与 skill-loader.js 的 buildSkillEnvironment 保持一致：
+ * - 参数名会被转换为 SKILL_{PARAM_NAME} 格式的环境变量
+ * - 例如：UNIFUNCS_API_KEY -> SKILL_UNIFUNCS_API_KEY
+ * @param {string} skillName - 技能名称
+ */
+async function loadSkillParameters(skillName) {
+  const dbConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    database: process.env.DB_NAME || 'touwaka_mate',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+  };
+  
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    
+    // 查询技能参数 - 支持两种方式：
+    // 1. skill_id 为技能名称（如 'unifuncs-web-reader'）
+    // 2. skill_id 为技能 ID（如 'mmoasyw4iar2f9qi4z96'）
+    const [rows] = await connection.query(`
+      SELECT param_name, param_value 
+      FROM skill_parameters 
+      WHERE skill_id = ? OR skill_id IN (SELECT id FROM skills WHERE name = ?)
+    `, [skillName, skillName]);
+    
+    if (rows.length > 0) {
+      console.log(`📦 从数据库加载 ${rows.length} 个技能参数`);
+      for (const row of rows) {
+        // 替换环境变量引用
+        let value = row.param_value;
+        if (value && value.startsWith('${') && value.endsWith('}')) {
+          const envKey = value.slice(2, -1);
+          value = process.env[envKey] || '';
+        }
+        
+        // 与 skill-loader.js 保持一致：添加 SKILL_ 前缀
+        const envVarName = `SKILL_${row.param_name.toUpperCase()}`;
+        process.env[envVarName] = value;
+        
+        // 同时设置无前缀版本（方便本地测试和向后兼容）
+        process.env[row.param_name] = value;
+        
+        console.log(`   - ${envVarName}: ${value ? '✅' : '❌'}`);
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️  加载技能参数失败: ${error.message}`);
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
 }
 
 /**
@@ -246,6 +305,9 @@ async function main() {
       USER_ACCESS_TOKEN = generateAdminToken();
       console.log('   ✅ 已生成管理员令牌');
     }
+    
+    // 从数据库加载技能参数并注入环境变量
+    await loadSkillParameters(skillName);
     
     // 设置环境变量（技能模块会读取这些）
     process.env.API_BASE = API_BASE;
