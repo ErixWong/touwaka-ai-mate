@@ -132,6 +132,42 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   /**
+   * 通过任务 ID 加载并进入任务工作空间
+   * 用于从路由参数恢复任务状态
+   * @param taskId 任务 ID
+   * @returns Promise<boolean> 是否成功进入任务
+   */
+  const loadAndEnterTask = async (taskId: string): Promise<boolean> => {
+    if (!taskId) {
+      console.warn('loadAndEnterTask called with empty taskId')
+      return false
+    }
+
+    // 如果已经在该任务中，无需重复加载
+    if (currentTask.value?.id === taskId) {
+      return true
+    }
+
+    isLoading.value = true
+    error.value = null
+    try {
+      // 从 API 加载任务详情
+      const task = await taskApi.getTask(taskId)
+      if (task) {
+        enterTask(task)
+        return true
+      }
+      return false
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load task'
+      console.error('loadAndEnterTask error:', err)
+      return false
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 退出任务工作空间
    * 只清除本地状态，不调用 API
    */
@@ -276,6 +312,7 @@ export const useTaskStore = defineStore('task', () => {
     updateTask,
     deleteTask,
     enterTask,
+    loadAndEnterTask,
     exitTask,
     loadTaskFiles,
     uploadFile,

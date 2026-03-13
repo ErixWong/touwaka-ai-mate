@@ -604,6 +604,9 @@ const initChat = async (expertId: string) => {
   connectToExpert(expertId)
 }
 
+// 从路由获取 taskId
+const currentTaskId = computed(() => route.params.taskId as string | undefined)
+
 // 监听路由参数变化（expertId）
 watch(
   () => route.params.expertId as string,
@@ -621,6 +624,39 @@ watch(
       // 没有 expertId，清除聊天状态
       chatStore.clearChat()
       await disconnectSSE()
+    }
+  },
+  { immediate: true }
+)
+
+// 监听路由参数变化（taskId）- 用于从 URL 恢复任务状态
+watch(
+  currentTaskId,
+  async (taskId) => {
+    console.log('Route taskId changed:', taskId)
+    
+    // 必须等用户登录后再处理
+    if (!userStore.isLoggedIn) {
+      console.log('User not logged in, skip task handling')
+      return
+    }
+
+    if (taskId && taskStore.currentTask?.id !== taskId) {
+      // URL 中有 taskId，但当前任务不匹配，需要加载任务
+      console.log('Loading task from URL:', taskId)
+      const success = await taskStore.loadAndEnterTask(taskId)
+      if (!success) {
+        // 任务加载失败（可能不存在或无权限），清除 URL 中的 taskId
+        console.warn('Failed to load task, removing taskId from URL')
+        router.replace({
+          name: 'chat',
+          params: { expertId: currentExpertId.value }
+        })
+      }
+    } else if (!taskId && taskStore.currentTask) {
+      // URL 中没有 taskId，但当前有任务，退出任务模式
+      console.log('No taskId in URL, exiting task mode')
+      taskStore.exitTask()
     }
   },
   { immediate: true }
@@ -658,6 +694,13 @@ watch(
 // 退出任务模式
 const handleExitTaskMode = () => {
   taskStore.exitTask()
+  // 清除 URL 中的 taskId
+  if (route.params.taskId) {
+    router.replace({
+      name: 'chat',
+      params: { expertId: currentExpertId.value }
+    })
+  }
 }
 
 onMounted(async () => {
