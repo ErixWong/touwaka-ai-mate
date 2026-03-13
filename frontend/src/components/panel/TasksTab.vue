@@ -545,8 +545,14 @@ const handleSubmitTask = async () => {
         title: taskForm.value.title.trim(),
         description: taskForm.value.description.trim() || undefined
       })
-      // 自动进入新创建的任务（同步操作）
-      taskStore.enterTask(task)
+      // 自动进入新创建的任务，更新路由
+      const expertId = route.params.expertId
+      if (expertId) {
+        router.push({
+          name: 'chat-with-task',
+          params: { expertId, taskId: task.id }
+        })
+      }
     }
     closeTaskDialog()
   } catch (error) {
