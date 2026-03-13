@@ -72,19 +72,6 @@
             </div>
           </div>
 
-          <div class="custom-input">
-            <label class="custom-label">{{ $t('settings.customModules') }}:</label>
-            <input
-              type="text"
-              v-model="customNodeModule"
-              :placeholder="$t('settings.customModulePlaceholder')"
-              class="custom-input-field"
-              @keyup.enter="addCustomNodeModule"
-            />
-            <button class="btn-add" @click="addCustomNodeModule">
-              {{ $t('common.add') }}
-            </button>
-          </div>
         </div>
 
         <div class="selected-count">
@@ -141,19 +128,6 @@
             </div>
           </div>
 
-          <div class="custom-input">
-            <label class="custom-label">{{ $t('settings.customPackages') }}:</label>
-            <input
-              type="text"
-              v-model="customPythonPackage"
-              :placeholder="$t('settings.customPackagePlaceholder')"
-              class="custom-input-field"
-              @keyup.enter="addCustomPythonPackage"
-            />
-            <button class="btn-add" @click="addCustomPythonPackage">
-              {{ $t('common.add') }}
-            </button>
-          </div>
         </div>
 
         <div class="selected-count">
@@ -198,10 +172,6 @@ const form = reactive({
 // 搜索关键词
 const nodeSearch = ref('')
 const pythonSearch = ref('')
-
-// 自定义模块/包输入
-const customNodeModule = ref('')
-const customPythonPackage = ref('')
 
 const saving = ref(false)
 
@@ -297,24 +267,6 @@ const selectDefaultPython = () => {
 // 清空 Python 包
 const clearPython = () => {
   form.allowed_python_packages = []
-}
-
-// 添加自定义 Node.js 模块
-const addCustomNodeModule = () => {
-  const name = customNodeModule.value.trim()
-  if (name && !form.allowed_node_modules.includes(name)) {
-    form.allowed_node_modules.push(name)
-    customNodeModule.value = ''
-  }
-}
-
-// 添加自定义 Python 包
-const addCustomPythonPackage = () => {
-  const name = customPythonPackage.value.trim()
-  if (name && !form.allowed_python_packages.includes(name)) {
-    form.allowed_python_packages.push(name)
-    customPythonPackage.value = ''
-  }
 }
 
 // 保存配置
@@ -541,45 +493,6 @@ onMounted(async () => {
 .package-version.built-in {
   color: var(--success-color, #4caf50);
   font-weight: 500;
-}
-
-.custom-input {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.custom-label {
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  white-space: nowrap;
-}
-
-.custom-input-field {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.custom-input-field:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.btn-add {
-  padding: 8px 16px;
-  font-size: 13px;
-  border: 1px solid var(--primary-color, #2196f3);
-  border-radius: 6px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  cursor: pointer;
-}
-
-.btn-add:hover {
-  background: var(--primary-hover, #1976d2);
 }
 
 .selected-count {
