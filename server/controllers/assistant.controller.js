@@ -28,6 +28,140 @@ class AssistantController {
   }
 
   /**
+   * 创建助理
+   * POST /api/assistants
+   * 仅管理员可调用
+   */
+  async create(ctx) {
+    try {
+      const data = ctx.request.body;
+
+      // 检查权限
+      const session = ctx.state.session;
+      if (!session || !session.roles?.includes('admin')) {
+        ctx.error('无权限创建助理', 403);
+        return;
+      }
+
+      // 必填字段校验
+      if (!data.assistant_type) {
+        ctx.error('缺少 assistant_type 参数', 400);
+        return;
+      }
+      if (!data.name) {
+        ctx.error('缺少 name 参数', 400);
+        return;
+      }
+
+      const result = await this.assistantManager.createAssistant(data);
+      ctx.success(result, '创建成功');
+    } catch (error) {
+      logger.error('Create assistant error:', error);
+      if (error.message.includes('already exists')) {
+        ctx.error(error.message, 409);
+      } else if (error.message.includes('required')) {
+        ctx.error(error.message, 400);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
+
+  /**
+   * 获取单个助理详情
+   * GET /api/assistants/:type
+   */
+  async getDetail(ctx) {
+    try {
+      const { type } = ctx.params;
+
+      if (!type) {
+        ctx.error('缺少 type 参数', 400);
+        return;
+      }
+
+      const assistant = await this.assistantManager.getAssistantDetail(type);
+
+      if (!assistant) {
+        ctx.error(`助理不存在: ${type}`, 404);
+        return;
+      }
+
+      ctx.success(assistant);
+    } catch (error) {
+      logger.error('Get assistant detail error:', error);
+      ctx.app.emit('error', error, ctx);
+    }
+  }
+
+  /**
+   * 更新助理配置
+   * PUT /api/assistants/:type
+   * 仅管理员可调用
+   */
+  async update(ctx) {
+    try {
+      const { type } = ctx.params;
+      const updates = ctx.request.body;
+
+      if (!type) {
+        ctx.error('缺少 type 参数', 400);
+        return;
+      }
+
+      // 检查权限
+      const session = ctx.state.session;
+      if (!session || !session.roles?.includes('admin')) {
+        ctx.error('无权限修改助理配置', 403);
+        return;
+      }
+
+      const result = await this.assistantManager.updateAssistant(type, updates);
+      ctx.success(result, '更新成功');
+    } catch (error) {
+      logger.error('Update assistant error:', error);
+      if (error.message.includes('not found')) {
+        ctx.error(error.message, 404);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
+
+  /**
+   * 删除助理
+   * DELETE /api/assistants/:type
+   * 仅管理员可调用
+   */
+  async deleteAssistant(ctx) {
+    try {
+      const { type } = ctx.params;
+
+      if (!type) {
+        ctx.error('缺少 type 参数', 400);
+        return;
+      }
+
+      // 检查权限
+      const session = ctx.state.session;
+      if (!session || !session.roles?.includes('admin')) {
+        ctx.error('无权限删除助理', 403);
+        return;
+      }
+
+      const result = await this.assistantManager.deleteAssistant(type);
+      ctx.success(result, '删除成功');
+    } catch (error) {
+      logger.error('Delete assistant error:', error);
+      if (error.message.includes('not found')) {
+        ctx.error(error.message, 404);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
+
+  /**
    * 召唤助理
    * POST /api/assistants/call
    *

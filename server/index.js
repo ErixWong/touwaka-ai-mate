@@ -415,6 +415,11 @@ class ApiServer {
       const assistantManager = getAssistantManager(this.db);
       await assistantManager.initialize();
       logger.info('Assistant Manager initialized');
+
+      // 将 AssistantManager 注入到 ChatService
+      this.chatService.assistantManager = assistantManager;
+      logger.info('AssistantManager injected into ChatService');
+
       this.setupMiddlewares();
       this.setupRoutes();
 

@@ -1999,6 +1999,151 @@ class AssistantManager {
   }
 
   /**
+   * 获取单个助理详情
+   * @param {string} assistantType - 助理类型
+   * @returns {Promise<object|null>}
+   */
+  async getAssistantDetail(assistantType) {
+    const assistant = await this.Assistant.findOne({
+      where: { assistant_type: assistantType },
+      raw: true,
+    });
+
+    if (!assistant) {
+      return null;
+    }
+
+    // 将 BIT(1) 转换为布尔值
+    assistant.can_use_skills = !!assistant.can_use_skills;
+    assistant.is_active = !!assistant.is_active;
+
+    return assistant;
+  }
+
+  /**
+   * 更新助理配置
+   * @param {string} assistantType - 助理类型
+   * @param {object} updates - 更新内容
+   * @returns {Promise<object>}
+   */
+  async updateAssistant(assistantType, updates) {
+    const assistant = await this.Assistant.findOne({
+      where: { assistant_type: assistantType },
+    });
+
+    if (!assistant) {
+      throw new Error(`Assistant not found: ${assistantType}`);
+    }
+
+    // 允许更新的字段
+    const allowedFields = [
+      'name',
+      'icon',
+      'description',
+      'model_id',
+      'execution_mode',
+      'prompt_template',
+      'max_tokens',
+      'temperature',
+      'estimated_time',
+      'timeout',
+      'can_use_skills',
+      'is_active',
+    ];
+
+    const updateData = {};
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        updateData[field] = updates[field];
+      }
+    }
+
+    updateData.updated_at = new Date();
+
+    await this.Assistant.update(updateData, {
+      where: { assistant_type: assistantType },
+    });
+
+    // 刷新缓存
+    await this.refreshAssistantsCache();
+
+    // 返回更新后的数据
+    return this.getAssistantDetail(assistantType);
+  }
+
+  /**
+   * 创建新助理
+   * @param {object} data - 助理数据
+   * @returns {Promise<object>}
+   */
+  async createAssistant(data) {
+    // 必填字段检查
+    if (!data.assistant_type) {
+      throw new Error('assistant_type is required');
+    }
+    if (!data.name) {
+      throw new Error('name is required');
+    }
+
+    // 检查是否已存在
+    const existing = await this.Assistant.findOne({
+      where: { assistant_type: data.assistant_type },
+    });
+
+    if (existing) {
+      throw new Error(`Assistant already exists: ${data.assistant_type}`);
+    }
+
+    // 创建助理
+    const assistantData = {
+      assistant_type: data.assistant_type,
+      name: data.name,
+      icon: data.icon || '🤖',
+      description: data.description || '',
+      model_id: data.model_id || null,
+      prompt_template: data.prompt_template || null,
+      max_tokens: data.max_tokens || 4096,
+      temperature: data.temperature ?? 0.7,
+      estimated_time: data.estimated_time || 30,
+      timeout: data.timeout || 120,
+      execution_mode: data.execution_mode || 'llm',
+      can_use_skills: data.can_use_skills ?? false,
+      is_active: data.is_active ?? true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    await this.Assistant.create(assistantData);
+
+    // 刷新缓存
+    await this.refreshAssistantsCache();
+
+    // 返回创建的数据
+    return this.getAssistantDetail(data.assistant_type);
+  }
+
+  /**
+   * 删除助理
+   * @param {string} assistantType - 助理类型
+   */
+  async deleteAssistant(assistantType) {
+    const assistant = await this.Assistant.findOne({
+      where: { assistant_type: assistantType },
+    });
+
+    if (!assistant) {
+      throw new Error(`Assistant not found: ${assistantType}`);
+    }
+
+    await assistant.destroy();
+
+    // 刷新缓存
+    await this.refreshAssistantsCache();
+
+    return { success: true, assistant_type: assistantType };
+  }
+
+  /**
    * 执行工具调用
    * @param {string} toolName - 工具名称
    * @param {object} params - 参数
