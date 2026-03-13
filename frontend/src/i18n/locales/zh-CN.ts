@@ -27,6 +27,8 @@ export default {
     copyFailed: '复制失败',
     refresh: '刷新',
     reset: '重置',
+    none: '无',
+    seconds: '秒',
   },
 
   // 导航
@@ -181,6 +183,7 @@ export default {
     modelSettings: '模型设置',
     providerSettings: '提供商',
     expertSettings: '专家设置',
+    assistantSettings: '助理设置',
     about: '关于',
     // 专家管理
     expertManagement: '专家管理',
@@ -1048,5 +1051,27 @@ export default {
     deleteFailed: '删除委托失败',
     archiveFailed: '归档委托失败',
     unarchiveFailed: '取消归档失败',
+
+    // 助理设置
+    status: '状态',
+    enabled: '已启用',
+    disabled: '已禁用',
+    addAssistant: '添加助理',
+    editAssistant: '编辑助理',
+    basicInfo: '基本信息',
+    assistantType: '类型标识',
+    assistantTypePlaceholder: '只允许字母和下划线',
+    name: '名称',
+    nameRequired: '请输入名称',
+    description: '描述',
+    executionConfig: '执行配置',
+    maxTokens: '最大输出 Tokens',
+    temperature: '温度',
+    timeout: '超时时间',
+    promptTemplate: '提示词模板',
+    promptPlaceholder: '请输入系统提示词...',
+    advancedConfig: '高级配置',
+    canUseSkills: '允许使用技能',
+    enableAssistant: '启用此助理',
   },
 }

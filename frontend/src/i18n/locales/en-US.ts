@@ -25,6 +25,8 @@ export default {
     copied: 'Copied to clipboard',
     copyFailed: 'Copy failed',
     reset: 'Reset',
+    none: 'None',
+    seconds: 'seconds',
   },
 
   // Navigation
@@ -179,6 +181,7 @@ export default {
     modelSettings: 'Model Settings',
     providerSettings: 'Providers',
     expertSettings: 'Expert Settings',
+    assistantSettings: 'Assistant Settings',
     about: 'About',
     // Expert Management
     expertManagement: 'Expert Management',
@@ -1019,5 +1022,27 @@ export default {
     deleteFailed: 'Failed to delete request',
     archiveFailed: 'Failed to archive request',
     unarchiveFailed: 'Failed to unarchive request',
+
+    // Assistant Settings
+    status: 'Status',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    addAssistant: 'Add Assistant',
+    editAssistant: 'Edit Assistant',
+    basicInfo: 'Basic Info',
+    assistantType: 'Type Identifier',
+    assistantTypePlaceholder: 'Only letters and underscore allowed',
+    name: 'Name',
+    nameRequired: 'Name is required',
+    description: 'Description',
+    executionConfig: 'Execution Config',
+    maxTokens: 'Max Output Tokens',
+    temperature: 'Temperature',
+    timeout: 'Timeout',
+    promptTemplate: 'Prompt Template',
+    promptPlaceholder: 'Enter system prompt...',
+    advancedConfig: 'Advanced Config',
+    canUseSkills: 'Can Use Skills',
+    enableAssistant: 'Enable Assistant',
   },
 }

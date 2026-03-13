@@ -89,6 +89,12 @@ export default class assistant extends Model {
       defaultValue: true,
       comment: "是否启用"
     },
+    is_builtin: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: "是否为内置助理（不可删除）"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -125,6 +131,13 @@ export default class assistant extends Model {
         using: "BTREE",
         fields: [
           { name: "execution_mode" },
+        ]
+      },
+      {
+        name: "idx_assistant_builtin",
+        using: "BTREE",
+        fields: [
+          { name: "is_builtin" },
         ]
       },
     ]
