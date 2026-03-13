@@ -203,7 +203,7 @@
     </template>
 
     <!-- 创建/编辑任务对话框 -->
-    <div v-if="showTaskDialog" class="dialog-overlay" @click.self="closeTaskDialog">
+    <div v-if="showTaskDialog" class="dialog-overlay">
       <div class="dialog">
         <div class="dialog-header">
           <h3>{{ isEditMode ? ($t('tasks.editTitle') || '编辑任务') : ($t('tasks.createTitle') || '创建任务') }}</h3>
