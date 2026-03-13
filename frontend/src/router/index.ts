@@ -30,6 +30,11 @@ const router = createRouter({
           component: () => import('@/views/ChatView.vue'),
         },
         {
+          path: 'chat/:expertId/task/:taskId',
+          name: 'chat-with-task',
+          component: () => import('@/views/ChatView.vue'),
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/SettingsView.vue'),

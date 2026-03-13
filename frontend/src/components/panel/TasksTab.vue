@@ -375,6 +375,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -383,6 +384,8 @@ import Pagination from '@/components/Pagination.vue'
 import type { Task, TaskFile } from '@/types'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const taskStore = useTaskStore()
 
 const searchQuery = ref('')
@@ -475,12 +478,25 @@ watch([searchQuery, statusFilter], () => {
 })
 
 const handleSelectTask = (task: Task) => {
-  // 直接进入任务（同步操作，只更新本地状态）
-  taskStore.enterTask(task)
+  // 更新路由，让 ChatView 监听路由变化来加载任务
+  const expertId = route.params.expertId
+  if (expertId) {
+    router.push({
+      name: 'chat-with-task',
+      params: { expertId, taskId: task.id }
+    })
+  }
 }
 
 const handleExitTask = () => {
-  taskStore.exitTask()
+  // 清除路由中的 taskId
+  const expertId = route.params.expertId
+  if (expertId) {
+    router.push({
+      name: 'chat',
+      params: { expertId }
+    })
+  }
 }
 
 // 打开创建对话框
