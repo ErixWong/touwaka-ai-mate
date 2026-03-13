@@ -20,11 +20,11 @@
         <!-- Task 模式状态 -->
         <span
           class="task-mode-tag"
-          :class="{ 'in-task': taskStore.isInTaskMode }"
-          @click="taskStore.isInTaskMode && handleExitTaskMode()"
-          :title="taskStore.isInTaskMode ? '点击退出任务模式' : ''"
+          :class="{ 'in-task': taskStore.currentTask }"
+          @click="taskStore.currentTask && handleExitTaskMode()"
+          :title="taskStore.currentTask ? '点击退出任务模式' : ''"
         >
-          <template v-if="taskStore.isInTaskMode && taskStore.currentTask">
+          <template v-if="taskStore.currentTask">
             📁 {{ taskStore.currentTask.title }}
             <span class="exit-icon">✕</span>
           </template>
@@ -475,7 +475,7 @@ const handleSendMessage = async (content: string) => {
     }
     
     // 如果在任务模式下，添加 task_id 和 task_path
-    if (taskStore.isInTaskMode && taskStore.currentTask) {
+    if (taskStore.currentTask) {
       messageParams.task_id = taskStore.currentTask.id  // 使用数据库主键
       // 添加当前浏览路径
       if (taskStore.currentPath) {
