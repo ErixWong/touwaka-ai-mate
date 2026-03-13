@@ -1,713 +1,369 @@
-#!/usr/bin/env node
 /**
- * SSH Client - Client for the session manager
+ * SSH Client - Expert entry point
  *
- * Communicates with the background Session Manager.
- * Uses SQLite for persistent storage.
+ * This script is called by experts and forwards requests to the
+ * resident SSH session manager via internal API.
+ *
+ * Architecture:
+ * Expert -> ssh_client.js -> Internal API -> session_manager.js (resident)
  */
 
+const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
-const db = require('./db');
+const { URL } = require('url');
 
-// Data directory paths
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const COMMANDS_DIR = path.join(DATA_DIR, 'commands');
-const MANAGER_SCRIPT = path.join(__dirname, 'session_manager.js');
-
-/**
- * Output JSON
- */
-function output(result) {
-  console.log(JSON.stringify(result, null, 2));
-}
+// Configuration
+const CONFIG = {
+  internalApiBase: process.env.API_BASE || 'http://localhost:3000',
+  internalApiKey: process.env.INTERNAL_KEY || '',
+  defaultTimeout: 30000,
+};
 
 /**
- * Parse arguments
+ * HTTP request wrapper
  */
-function parseArgs(args) {
-  const result = {};
-  let i = 0;
-  
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith('--')) {
-      const key = arg.substring(2).replace(/-/g, '_');
-      const value = args[i + 1];
-      if (value && !value.startsWith('--')) {
-        result[key] = value;
-        i += 2;
-      } else {
-        result[key] = true;
-        i++;
-      }
-    } else {
-      i++;
-    }
-  }
-  
-  return result;
-}
+async function httpRequest(url, options, body) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const transport = parsedUrl.protocol === 'https:' ? https : http;
 
-/**
- * Send command to manager
- * Sets file permissions to 0600 for security
- */
-function sendCommand(cmd) {
-  const dir = path.dirname(COMMANDS_DIR);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(COMMANDS_DIR)) {
-    fs.mkdirSync(COMMANDS_DIR, { recursive: true });
-  }
-  
-  const cmdId = `${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const cmdFile = path.join(COMMANDS_DIR, `${cmdId}.json`);
-  
-  // Write with restrictive permissions (0600 = owner read/write only)
-  fs.writeFileSync(cmdFile, JSON.stringify(cmd), { mode: 0o600 });
-  
-  return cmdId;
-}
-
-/**
- * Start the manager
- */
-function startManager() {
-  const { spawn } = require('child_process');
-  
-  const pidFile = path.join(DATA_DIR, 'manager.pid');
-  if (fs.existsSync(pidFile)) {
-    const pid = parseInt(fs.readFileSync(pidFile, 'utf-8'));
-    try {
-      process.kill(pid, 0);
-      output({ success: true, message: 'Manager is already running', pid });
-      return;
-    } catch {
-      fs.unlinkSync(pidFile);
-    }
-  }
-  
-  const child = spawn('node', [MANAGER_SCRIPT, 'start'], {
-    detached: true,
-    stdio: 'ignore'
-  });
-  
-  child.unref();
-  
-  setTimeout(() => {
-    if (fs.existsSync(pidFile)) {
-      const pid = parseInt(fs.readFileSync(pidFile, 'utf-8'));
-      output({ success: true, message: 'Manager started', pid });
-    } else {
-      output({ success: false, error: 'Failed to start manager' });
-    }
-  }, 500);
-}
-
-/**
- * Stop the manager
- */
-function stopManager() {
-  sendCommand({ action: 'shutdown' });
-  setTimeout(() => output({ success: true, message: 'Manager stopped' }), 500);
-}
-
-/**
- * Validate host format
- */
-function validateHost(host) {
-  if (!host || typeof host !== 'string') {
-    return { valid: false, error: 'host is required' };
-  }
-  // Basic validation: hostname or IP
-  const hostnameRegex = /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/;
-  const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  
-  if (!hostnameRegex.test(host) && !ipRegex.test(host)) {
-    return { valid: false, error: 'Invalid host format' };
-  }
-  return { valid: true };
-}
-
-/**
- * Validate port number
- */
-function validatePort(port) {
-  if (port === undefined || port === null) return { valid: true };
-  const num = parseInt(port);
-  if (isNaN(num) || num < 1 || num > 65535) {
-    return { valid: false, error: 'Port must be between 1 and 65535' };
-  }
-  return { valid: true };
-}
-
-/**
- * Connect to a server
- */
-function connect(params) {
-  // Validate required parameters
-  if (!params.host) {
-    return output({ success: false, error: 'host is required' });
-  }
-  if (!params.username) {
-    return output({ success: false, error: 'username is required' });
-  }
-  
-  // Validate format
-  const hostValidation = validateHost(params.host);
-  if (!hostValidation.valid) {
-    return output({ success: false, error: hostValidation.error });
-  }
-  
-  const portValidation = validatePort(params.port);
-  if (!portValidation.valid) {
-    return output({ success: false, error: portValidation.error });
-  }
-  
-  const sessionId = params.session_id || db.generateId('sess');
-  
-  const config = {
-    host: params.host,
-    port: parseInt(params.port) || 22,
-    username: params.username,
-    password: params.password,
-    private_key: params.private_key,
-    passphrase: params.passphrase
-  };
-  
-  db.createSession(sessionId, config);
-  
-  sendCommand({
-    action: 'connect',
-    session_id: sessionId,
-    config
-  });
-  
-  output({
-    success: true,
-    session_id: sessionId,
-    message: `Connection request sent for ${config.host}`
-  });
-}
-
-/**
- * Execute a command
- */
-function exec(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  if (!params.command) return output({ success: false, error: 'command is required' });
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  const taskId = db.generateId('task');
-  db.createTask(taskId, sessionId, params.command);
-  
-  sendCommand({
-    action: 'exec',
-    session_id: sessionId,
-    task_id: taskId,
-    command: params.command
-  });
-  
-  output({ success: true, task_id: taskId, message: 'Command submitted' });
-}
-
-/**
- * Read password from file
- * Checks file permissions for security
- */
-function readPasswordFile(filePath) {
-  try {
-    const absolutePath = filePath.replace('~', require('os').homedir());
-    if (!fs.existsSync(absolutePath)) {
-      return null;
-    }
-    
-    // Check file permissions (warn if too open)
-    const stat = fs.statSync(absolutePath);
-    const mode = stat.mode & 0o777;
-    if (mode & 0o077) { // Others or group can read
-      console.error(`WARNING: Password file ${absolutePath} has overly permissive permissions (${mode.toString(8)})`);
-      console.error('Recommended: chmod 600', absolutePath);
-    }
-    
-    const content = fs.readFileSync(absolutePath, 'utf-8').trim();
-    return content || null;
-  } catch (err) {
-    return null;
-  }
-}
-
-/**
- * Prompt for password interactively (hidden input)
- * Uses try-finally to ensure terminal state is restored
- */
-async function promptPassword(promptText) {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    
-    let rawModeEnabled = false;
-    
-    const cleanup = () => {
-      if (rawModeEnabled) {
-        try {
-          process.stdin.setRawMode(false);
-        } catch (e) { /* ignore */ }
-      }
-      process.stdin.pause();
-      rl.close();
+    const reqOptions = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: options.method || 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      timeout: options.timeout || CONFIG.defaultTimeout,
     };
-    
-    try {
-      // Hide input
-      process.stdout.write(promptText);
-      process.stdin.setRawMode(true);
-      rawModeEnabled = true;
-      process.stdin.resume();
-      
-      let password = '';
-      
-      const onData = (char) => {
-        const c = char.toString('utf-8');
-        switch (c) {
-          case '\n':
-          case '\r':
-          case '\u0004': // Ctrl-D
-            cleanup();
-            process.stdout.write('\n');
-            resolve(password);
-            break;
-          case '\u0003': // Ctrl-C
-            cleanup();
-            process.stdout.write('\n');
-            process.exit(130); // 128 + SIGINT
-            break;
-          case '\u007F': // Backspace
-            if (password.length > 0) {
-              password = password.slice(0, -1);
-            }
-            break;
-          default:
-            password += c;
-            break;
+
+    const req = transport.request(reqOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(json);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${json.error?.message || JSON.stringify(json)}`));
+          }
+        } catch (err) {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+          }
         }
-      };
-      
-      process.stdin.on('data', onData);
-      
-    } catch (err) {
-      cleanup();
-      resolve('');
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    if (body) {
+      req.write(JSON.stringify(body));
     }
+    req.end();
   });
 }
 
 /**
- * Get password from various sources (priority: file > env > interactive)
+ * Invoke SSH resident tool via internal API
  */
-async function getPassword(params) {
-  // 1. From password file (highest priority for scripting)
-  if (params.password_file) {
-    const pw = readPasswordFile(params.password_file);
-    if (pw) return { password: pw, source: 'file' };
-    return { error: `Password file not found or empty: ${params.password_file}` };
+async function invokeSSHTOol(action, params, timeout) {
+  const url = `${CONFIG.internalApiBase}/internal/resident/invoke`;
+
+  const headers = {};
+  if (CONFIG.internalApiKey) {
+    headers['X-Internal-Key'] = CONFIG.internalApiKey;
   }
-  
-  // 2. From environment variable
-  if (process.env.SUDO_PASSWORD) {
-    return { password: process.env.SUDO_PASSWORD, source: 'env' };
-  }
-  
-  // 3. Interactive prompt (if tty)
-  if (process.stdin.isTTY) {
-    const password = await promptPassword('[sudo] Password: ');
-    if (!password) {
-      return { error: 'Password is required for sudo' };
+
+  const response = await httpRequest(url, {
+    method: 'POST',
+    headers,
+    timeout: timeout || CONFIG.defaultTimeout,
+  }, {
+    skill_id: 'ssh',
+    tool_name: 'ssh_manager',
+    params: {
+      action,
+      ...params
     }
-    return { password, source: 'interactive' };
+  });
+
+  // API returns: { code: 200, message: 'success', data: {...} }
+  if (response.code !== 200) {
+    throw new Error(response.message || 'Failed to invoke SSH tool');
   }
-  
-  // 4. No password available
-  return { error: 'Password required. Use one of: --password-file, SUDO_PASSWORD env, or interactive mode' };
+
+  return response.data;
+}
+
+// ==================== Actions ====================
+
+/**
+ * Connect to SSH server
+ */
+async function connect(params) {
+  const { host, username, port = 22, password, private_key, passphrase } = params;
+
+  if (!host || !username) {
+    return {
+      success: false,
+      error: 'host and username are required'
+    };
+  }
+
+  try {
+    const result = await invokeSSHTOol('connect', {
+      host,
+      username,
+      port,
+      password,
+      private_key,
+      passphrase
+    });
+
+    return {
+      success: true,
+      session_id: result.session_id,
+      message: `Connected to ${host}:${port}`
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
 }
 
 /**
- * Execute a sudo command with password
- *
- * Password sources (in order of priority):
- * 1. --password-file FILE   Read from file (most secure for scripting)
- * 2. SUDO_PASSWORD env      Environment variable
- * 3. Interactive prompt     Hidden input from terminal
- *
- * NOTE: --password CLI arg is DEPRECATED and ignored for security reasons
+ * Disconnect from SSH server
+ */
+async function disconnect(params) {
+  const { session_id } = params;
+
+  if (!session_id) {
+    return {
+      success: false,
+      error: 'session_id is required'
+    };
+  }
+
+  try {
+    await invokeSSHTOol('disconnect', { session_id });
+    return {
+      success: true,
+      message: 'Disconnected'
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Execute command (synchronous - waits for completion)
+ */
+async function exec(params) {
+  const { session_id, command, timeout } = params;
+
+  if (!session_id || !command) {
+    return {
+      success: false,
+      error: 'session_id and command are required'
+    };
+  }
+
+  try {
+    const result = await invokeSSHTOol('exec', {
+      session_id,
+      command
+    }, timeout || 60000);
+
+    return {
+      success: true,
+      task_id: result.task_id,
+      exit_code: result.exit_code,
+      stdout: result.stdout,
+      stderr: result.stderr
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Execute sudo command
  */
 async function sudo(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  if (!params.command) return output({ success: false, error: 'command is required' });
-  
-  // Warn if using deprecated --password parameter
-  if (params.password) {
-    console.error('WARNING: --password CLI argument is deprecated and ignored for security reasons.');
-    console.error('Use one of: --password-file, SUDO_PASSWORD env, or interactive mode.');
+  const { session_id, command, password, timeout } = params;
+
+  if (!session_id || !command || !password) {
+    return {
+      success: false,
+      error: 'session_id, command and password are required'
+    };
   }
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  // Get password from secure sources
-  const pwResult = await getPassword(params);
-  if (pwResult.error) {
-    return output({ success: false, error: pwResult.error });
+
+  try {
+    const result = await invokeSSHTOol('sudo', {
+      session_id,
+      command,
+      password
+    }, timeout || 120000);
+
+    return {
+      success: true,
+      task_id: result.task_id,
+      exit_code: result.exit_code,
+      stdout: result.stdout,
+      stderr: result.stderr
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
   }
-  
-  const taskId = db.generateId('task');
-  db.createTask(taskId, sessionId, `sudo ${params.command}`);
-  
-  sendCommand({
-    action: 'sudo',
-    session_id: sessionId,
-    task_id: taskId,
-    command: params.command,
-    password: pwResult.password
-  });
-  
-  output({ success: true, task_id: taskId, message: 'Sudo command submitted' });
 }
 
 /**
- * Read session messages
+ * Get output for a task
  */
-function read(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  const messages = db.queryMessages(sessionId, {
-    since: params.since,
-    until: params.until,
-    type: params.type,
-    taskId: params.task,
-    unreadOnly: params.unread_only,
-    limit: params.limit ? parseInt(params.limit) : undefined,
-    offset: params.offset ? parseInt(params.offset) : undefined,
-    reverse: params.reverse
-  });
-  
-  if (params.mark_read && messages.length > 0) {
-    db.markAsRead(sessionId, { messageIds: messages.map(m => m.id) });
+async function output(params) {
+  const { task_id } = params;
+
+  if (!task_id) {
+    return {
+      success: false,
+      error: 'task_id is required'
+    };
   }
-  
-  output({
-    success: true,
-    session_id: sessionId,
-    status: session.status,
-    unread_count: session.unread_count,
-    message_count: messages.length,
-    messages
-  });
+
+  try {
+    const result = await invokeSSHTOol('output', { task_id });
+    return {
+      success: true,
+      ...result
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
 }
 
 /**
  * Get command history
  */
-function history(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  const limit = params.limit ? parseInt(params.limit) : 50;
-  const commands = db.getCommandHistory(sessionId, limit);
-  
-  output({
-    success: true,
-    session_id: sessionId,
-    count: commands.length,
-    commands
-  });
-}
+async function history(params) {
+  const { session_id, limit } = params;
 
-/**
- * Search messages
- */
-function search(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  if (!params.query) return output({ success: false, error: 'query is required' });
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  const messages = db.searchMessages(sessionId, params.query, {
-    type: params.type,
-    limit: params.limit ? parseInt(params.limit) : 50
-  });
-  
-  output({
-    success: true,
-    session_id: sessionId,
-    query: params.query,
-    count: messages.length,
-    messages
-  });
-}
-
-/**
- * Get session statistics
- */
-function stats(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  const stats = db.getSessionStats(sessionId);
-  if (!stats) return output({ success: false, error: 'Session not found' });
-  
-  output({ success: true, stats });
-}
-
-/**
- * Mark messages as read
- */
-function markRead(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  let result;
-  if (params.all) {
-    result = db.markAsRead(sessionId, { all: true });
-  } else if (params.before) {
-    result = db.markAsRead(sessionId, { beforeTimestamp: params.before });
-  } else {
-    result = db.markAsRead(sessionId, { all: true });
+  if (!session_id) {
+    return {
+      success: false,
+      error: 'session_id is required'
+    };
   }
-  
-  output({
-    success: true,
-    session_id: sessionId,
-    marked_count: result.marked_count,
-    unread_count: result.unread_count
-  });
-}
 
-/**
- * Get task output (detailed)
- */
-function taskOutput(params) {
-  const taskId = params.task;
-  
-  if (!taskId) return output({ success: false, error: 'task is required' });
-  
-  const taskOutput = db.getTaskOutput(taskId);
-  if (!taskOutput) return output({ success: false, error: 'Task not found' });
-  
-  output({ success: true, ...taskOutput });
-}
-
-/**
- * Get task status (summary)
- */
-function taskStatus(params) {
-  const taskId = params.task;
-  
-  if (!taskId) return output({ success: false, error: 'task is required' });
-  
-  const task = db.getTask(taskId);
-  if (!task) return output({ success: false, error: 'Task not found' });
-  
-  output({ 
-    success: true,
-    task_id: task.id,
-    session_id: task.session_id,
-    command: task.command,
-    status: task.status,
-    exit_code: task.exit_code,
-    created_at: task.created_at,
-    has_output: task.output && task.output.length > 0,
-    has_error: task.stderr && task.stderr.length > 0
-  });
-}
-
-/**
- * List tasks
- */
-function listTasks(params) {
-  const tasks = db.listTasks(params.session);
-  output({ success: true, count: tasks.length, tasks });
-}
-
-/**
- * Reconnect to a disconnected session
- */
-function reconnect(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  const session = db.getSession(sessionId);
-  if (!session) return output({ success: false, error: 'Session not found' });
-  
-  if (session.status === 'connected') {
-    return output({ success: false, error: 'Session is already connected' });
-  }
-  
-  if (!session.config) {
-    return output({ success: false, error: 'Session config not found, cannot reconnect' });
-  }
-  
-  // Send connect command with existing config
-  sendCommand({
-    action: 'connect',
-    session_id: sessionId,
-    config: session.config
-  });
-  
-  db.updateSessionStatus(sessionId, 'connecting');
-  
-  output({
-    success: true,
-    session_id: sessionId,
-    message: `Reconnecting to ${session.host}`
-  });
-}
-
-/**
- * Disconnect from a server
- */
-function disconnect(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  sendCommand({ action: 'disconnect', session_id: sessionId });
-  db.updateSessionStatus(sessionId, 'disconnected');
-  
-  output({ success: true, message: `Disconnect request sent for ${sessionId}` });
-}
-
-/**
- * Delete a session
- */
-function deleteSession(params) {
-  const sessionId = params.session;
-  
-  if (!sessionId) return output({ success: false, error: 'session is required' });
-  
-  db.deleteSession(sessionId);
-  
-  output({ success: true, message: `Session ${sessionId} deleted` });
-}
-
-/**
- * List all sessions
- */
-function list() {
-  const sessions = db.listSessions();
-  output({ success: true, count: sessions.length, sessions });
-}
-
-/**
- * Show help
- */
-function help() {
-  console.log('SSH Client - Session-based SSH client (SQLite storage)');
-  console.log('');
-  console.log('Usage: node ssh_client.js <command> [options]');
-  console.log('');
-  console.log('Commands:');
-  console.log('  start-manager      Start the background session manager');
-  console.log('  stop-manager       Stop the background session manager');
-  console.log('  connect            Connect to a server');
-  console.log('  exec               Execute a command');
-  console.log('  sudo               Execute a sudo command with password');
-  console.log('  read               Read messages');
-  console.log('  history            Get command history (list with task_id)');
-  console.log('  output             Get task output (detailed)');
-  console.log('  search             Search messages');
-  console.log('  stats              Get session statistics');
-  console.log('  mark-read          Mark messages as read');
-  console.log('  task-status        Get task status (summary)');
-  console.log('  tasks              List tasks');
-  console.log('  reconnect          Reconnect a disconnected session');
-  console.log('  disconnect         Disconnect from server');
-  console.log('  delete             Delete a session');
-  console.log('  list               List all sessions');
-  console.log('');
-  console.log('Storage: ./data/ssh.db (SQLite)');
-  console.log('');
-  console.log('Sudo Password Options (secure):');
-  console.log('  --password-file FILE   Read password from file');
-  console.log('  SUDO_PASSWORD env      Set environment variable');
-  console.log('  (interactive)          Will prompt if no password provided');
-  console.log('');
-  console.log('Examples:');
-  console.log('  node ssh_client.js start-manager');
-  console.log('  node ssh_client.js connect --host 192.168.1.100 --username admin');
-  console.log('  node ssh_client.js exec --session sess_xxx --command "df -h"');
-  console.log('  node ssh_client.js sudo --session sess_xxx --command "apt update"');
-  console.log('  SUDO_PASSWORD="secret" node ssh_client.js sudo --session sess_xxx --command "apt update"');
-  console.log('  node ssh_client.js sudo --session sess_xxx --command "apt update" --password-file ~/.sudo_pw');
-  console.log('  node ssh_client.js history --session sess_xxx');
-  console.log('  node ssh_client.js output --task task_xxx');
-}
-
-/**
- * Main entry point
- */
-async function main() {
-  const args = process.argv.slice(2);
-  
-  if (args.length === 0) {
-    help();
-    return;
-  }
-  
-  const command = args[0];
-  const params = parseArgs(args.slice(1));
-  
-  switch (command) {
-    case 'start-manager': startManager(); break;
-    case 'stop-manager': stopManager(); break;
-    case 'connect': connect(params); break;
-    case 'exec': exec(params); break;
-    case 'sudo': await sudo(params); break;  // async
-    case 'read': read(params); break;
-    case 'history': history(params); break;
-    case 'output': taskOutput(params); break;
-    case 'search': search(params); break;
-    case 'stats': stats(params); break;
-    case 'mark-read': markRead(params); break;
-    case 'task-status': taskStatus(params); break;
-    case 'tasks': listTasks(params); break;
-    case 'reconnect': reconnect(params); break;
-    case 'disconnect': disconnect(params); break;
-    case 'delete': deleteSession(params); break;
-    case 'list': list(); break;
-    case 'help':
-    case '--help': help(); break;
-    default: output({ success: false, error: `Unknown command: ${command}` });
+  try {
+    const result = await invokeSSHTOol('history', {
+      session_id,
+      limit
+    });
+    return {
+      success: true,
+      ...result
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
   }
 }
 
-main().catch(err => output({ success: false, error: err.message }));
+/**
+ * Delete session
+ */
+async function deleteSession(params) {
+  const { session_id } = params;
+
+  if (!session_id) {
+    return {
+      success: false,
+      error: 'session_id is required'
+    };
+  }
+
+  try {
+    await invokeSSHTOol('delete', { session_id });
+    return {
+      success: true,
+      message: 'Session deleted'
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Skill entry point
+ * @param {string} toolName - Tool name (ssh_connect, ssh_exec, etc.)
+ * @param {Object} params - Tool parameters
+ * @param {Object} context - Execution context
+ */
+async function execute(toolName, params, context = {}) {
+  // Extract action from tool name (ssh_connect -> connect, etc.)
+  let action = toolName.replace(/^ssh_/, '').replace(/-/g, '_');
+
+  switch (action) {
+    case 'connect':
+      return connect(params);
+
+    case 'disconnect':
+      return disconnect(params);
+
+    case 'exec':
+      return exec(params);
+
+    case 'sudo':
+      return sudo(params);
+
+    case 'output':
+      return output(params);
+
+    case 'history':
+      return history(params);
+
+    case 'delete':
+      return deleteSession(params);
+
+    default:
+      console.error(`[ssh-client] Unknown action: ${action}`);
+      return {
+        success: false,
+        error: `Unknown tool: ${toolName}`
+      };
+  }
+}
+
+module.exports = { execute };
