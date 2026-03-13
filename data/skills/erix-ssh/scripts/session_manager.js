@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * Session Manager - Background process
+ * Session Manager - Resident Process
  *
- * Manages SSH sessions and executes commands.
- * Uses SQLite for persistent storage.
+ * SSH session management daemon that communicates via stdin/stdout.
+ * - stdin: receives JSON commands (JSON Lines format)
+ * - stdout: sends JSON responses
+ * - stderr: logs and debug output
+ *
+ * This process is automatically started by the main program and
+ * binds its stdio to an internal API endpoint.
  */
 
 const { Client } = require('ssh2');
@@ -12,77 +17,480 @@ const path = require('path');
 const os = require('os');
 const db = require('./db');
 
-// Data directory paths
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const PID_FILE = path.join(DATA_DIR, 'manager.pid');
-const COMMANDS_DIR = path.join(DATA_DIR, 'commands');
-
-// Active SSH connections
+// Active SSH connections (sessionId -> Client)
 const connections = new Map();
 
+// ============== Protocol Functions ==============
+
+let buffer = '';
+
 /**
- * Output JSON
+ * Send JSON response to stdout (for main program to consume)
  */
-function output(result) {
-  console.log(JSON.stringify(result, null, 2));
+function sendResponse(data) {
+  process.stdout.write(JSON.stringify(data) + '\n');
 }
 
 /**
- * Check if manager is running
+ * Log to stderr (does not interfere with stdout communication)
  */
-function isRunning() {
-  if (!fs.existsSync(PID_FILE)) {
-    return false;
+function log(message, ...args) {
+  process.stderr.write(`[ssh-manager] ${new Date().toISOString()} ${message}`);
+  if (args.length > 0) {
+    process.stderr.write(' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
   }
-  
-  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8'));
-  
+  process.stderr.write('\n');
+}
+
+/**
+ * Process a single JSON command line
+ */
+async function processCommandLine(line) {
+  let cmd;
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    fs.unlinkSync(PID_FILE);
-    return false;
+    cmd = JSON.parse(line);
+  } catch (err) {
+    sendResponse({
+      id: null,
+      error: `Invalid JSON: ${err.message}`,
+      success: false
+    });
+    return;
+  }
+
+  const { id, action, ...params } = cmd;
+
+  try {
+    const result = await processAction(action, params);
+    sendResponse({
+      id: id,
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    sendResponse({
+      id: id,
+      success: false,
+      error: err.message
+    });
   }
 }
 
 /**
- * Write PID file
+ * Process an action and return result
  */
-function writePid() {
-  const dir = path.dirname(PID_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+async function processAction(action, params) {
+  switch (action) {
+    case 'ping':
+      return { type: 'pong', timestamp: Date.now() };
+
+    case 'connect':
+      return await handleConnect(params);
+
+    case 'disconnect':
+      return await handleDisconnect(params);
+
+    case 'exec':
+      return await handleExec(params);
+
+    case 'sudo':
+      return await handleSudo(params);
+
+    case 'output':
+      return handleOutput(params);
+
+    case 'history':
+      return handleHistory(params);
+
+    case 'delete':
+      return handleDelete(params);
+
+    case 'exit':
+      // Graceful shutdown
+      await shutdown();
+      return { message: 'Shutting down' };
+
+    default:
+      throw new Error(`Unknown action: ${action}`);
   }
-  fs.writeFileSync(PID_FILE, process.pid.toString());
 }
+
+// ============== Action Handlers ==============
+
+/**
+ * Connect to SSH server
+ */
+async function handleConnect(params) {
+  const { host, username, port = 22, password, private_key, passphrase } = params;
+
+  if (!host || !username) {
+    throw new Error('host and username are required');
+  }
+
+  const sessionId = 'sess_' + require('crypto').randomBytes(32).toString('hex');
+
+  // Create session record
+  db.createSession(sessionId, {
+    host,
+    username,
+    port,
+    created_at: new Date().toISOString()
+  });
+
+  // Setup connection
+  await setupConnection(sessionId, {
+    host,
+    port,
+    username,
+    password,
+    private_key,
+    passphrase
+  });
+
+  return { session_id: sessionId };
+}
+
+/**
+ * Disconnect from SSH server
+ */
+async function handleDisconnect(params) {
+  const { session_id } = params;
+
+  if (!session_id) {
+    throw new Error('session_id is required');
+  }
+
+  const conn = connections.get(session_id);
+  if (conn) {
+    conn.end();
+    connections.delete(session_id);
+  }
+
+  db.updateSessionStatus(session_id, 'disconnected');
+  db.addMessage(session_id, {
+    type: 'system',
+    content: 'Disconnected by user'
+  });
+
+  return { message: 'Disconnected' };
+}
+
+/**
+ * Execute command on remote server (synchronous - waits for completion)
+ */
+async function handleExec(params) {
+  const { session_id, command, timeout = 60000 } = params;
+
+  if (!session_id || !command) {
+    throw new Error('session_id and command are required');
+  }
+
+  const conn = connections.get(session_id);
+  if (!conn) {
+    throw new Error('Session not connected');
+  }
+
+  const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Command timeout'));
+    }, timeout);
+
+    let stdout = '';
+    let stderr = '';
+
+    db.addMessage(session_id, {
+      type: 'command',
+      task_id: taskId,
+      content: command
+    });
+
+    conn.exec(command, (err, stream) => {
+      if (err) {
+        clearTimeout(timeoutId);
+        db.addMessage(session_id, {
+          type: 'error',
+          task_id: taskId,
+          content: err.message
+        });
+        reject(err);
+        return;
+      }
+
+      stream.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      stream.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      stream.on('close', (code, signal) => {
+        clearTimeout(timeoutId);
+
+        // Store messages
+        if (stdout) {
+          db.addMessage(session_id, {
+            type: 'output',
+            task_id: taskId,
+            content: stdout,
+            stream: 'stdout'
+          });
+        }
+        if (stderr) {
+          db.addMessage(session_id, {
+            type: 'output',
+            task_id: taskId,
+            content: stderr,
+            stream: 'stderr'
+          });
+        }
+        db.addMessage(session_id, {
+          type: 'complete',
+          task_id: taskId,
+          exit_code: code,
+          signal: signal
+        });
+
+        resolve({
+          task_id: taskId,
+          exit_code: code,
+          signal: signal,
+          stdout: stdout,
+          stderr: stderr
+        });
+      });
+    });
+  });
+}
+
+/**
+ * Execute sudo command with password
+ */
+async function handleSudo(params) {
+  const { session_id, command, password, timeout = 120000 } = params;
+
+  if (!session_id || !command || !password) {
+    throw new Error('session_id, command and password are required');
+  }
+
+  const conn = connections.get(session_id);
+  if (!conn) {
+    throw new Error('Session not connected');
+  }
+
+  const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  const sudoCommand = `sudo -S ${command}`;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Sudo command timeout'));
+    }, timeout);
+
+    let stdout = '';
+    let stderr = '';
+    let passwordSent = false;
+
+    db.addMessage(session_id, {
+      type: 'command',
+      task_id: taskId,
+      content: `sudo ${command}`
+    });
+
+    const ptyConfig = {
+      cols: 120,
+      rows: 24,
+      term: 'xterm-256color'
+    };
+
+    conn.exec(sudoCommand, { pty: ptyConfig }, (err, stream) => {
+      if (err) {
+        clearTimeout(timeoutId);
+        reject(err);
+        return;
+      }
+
+      stream.on('data', (data) => {
+        const chunk = data.toString();
+        stdout += chunk;
+
+        // Detect password prompt and send password
+        if (!passwordSent && (
+          /\[sudo\].*password/i.test(chunk) ||
+          /password\s*(for|:)/i.test(chunk) ||
+          /^Password:/im.test(chunk)
+        )) {
+          stream.write(password + '\n');
+          passwordSent = true;
+          log('Password prompt detected, sent password');
+        }
+      });
+
+      stream.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      stream.on('close', (code, signal) => {
+        clearTimeout(timeoutId);
+
+        // Sanitize output (mask password)
+        const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const sanitizedStdout = stdout.replace(new RegExp(escapeRegExp(password), 'g'), '********');
+        const sanitizedStderr = stderr.replace(new RegExp(escapeRegExp(password), 'g'), '********');
+
+        // Store messages
+        if (sanitizedStdout) {
+          db.addMessage(session_id, {
+            type: 'output',
+            task_id: taskId,
+            content: sanitizedStdout,
+            stream: 'stdout'
+          });
+        }
+        if (sanitizedStderr) {
+          db.addMessage(session_id, {
+            type: 'output',
+            task_id: taskId,
+            content: sanitizedStderr,
+            stream: 'stderr'
+          });
+        }
+
+        resolve({
+          task_id: taskId,
+          exit_code: code,
+          signal: signal,
+          stdout: sanitizedStdout,
+          stderr: sanitizedStderr
+        });
+      });
+    });
+  });
+}
+
+/**
+ * Get output for a specific task
+ */
+function handleOutput(params) {
+  const { task_id } = params;
+
+  if (!task_id) {
+    throw new Error('task_id is required');
+  }
+
+  // Find messages for this task
+  const messages = db.getMessagesByTask ? db.getMessagesByTask(task_id) : [];
+
+  // Also check tasks table if it exists
+  const task = db.getTask ? db.getTask(task_id) : null;
+
+  if (task) {
+    return {
+      task_id: task_id,
+      command: task.command,
+      status: task.status,
+      exit_code: task.exit_code,
+      stdout: task.output || '',
+      stderr: task.stderr || ''
+    };
+  }
+
+  // Build from messages
+  const outputMsg = messages.find(m => m.type === 'output' && m.stream === 'stdout');
+  const errorMsg = messages.filter(m => m.type === 'output' && m.stream === 'stderr');
+  const completeMsg = messages.find(m => m.type === 'complete');
+
+  return {
+    task_id: task_id,
+    status: completeMsg ? 'completed' : 'running',
+    exit_code: completeMsg?.exit_code,
+    stdout: outputMsg?.content || '',
+    stderr: errorMsg.map(m => m.content).join('')
+  };
+}
+
+/**
+ * Get command history for a session
+ */
+function handleHistory(params) {
+  const { session_id, limit = 20 } = params;
+
+  if (!session_id) {
+    throw new Error('session_id is required');
+  }
+
+  const messages = db.getMessages(session_id, { type: 'command', limit });
+
+  return {
+    commands: messages.map(msg => ({
+      id: msg.id,
+      task_id: msg.task_id,
+      command: msg.content,
+      timestamp: msg.timestamp,
+      type: msg.type
+    }))
+  };
+}
+
+/**
+ * Delete a session and its history
+ */
+function handleDelete(params) {
+  const { session_id } = params;
+
+  if (!session_id) {
+    throw new Error('session_id is required');
+  }
+
+  // Disconnect if connected
+  const conn = connections.get(session_id);
+  if (conn) {
+    conn.end();
+    connections.delete(session_id);
+  }
+
+  // Delete from database
+  db.deleteSession(session_id);
+
+  return { message: 'Session deleted' };
+}
+
+// ============== SSH Connection Management ==============
 
 /**
  * Setup SSH connection
  */
 async function setupConnection(sessionId, config) {
   const conn = new Client();
-  
+
   return new Promise((resolve, reject) => {
     conn.on('ready', () => {
       connections.set(sessionId, conn);
       db.updateSessionStatus(sessionId, 'connected');
+      db.updateSessionConfig(sessionId, {
+        host: config.host,
+        port: config.port,
+        username: config.username
+      });
       db.addMessage(sessionId, {
         type: 'system',
-        content: `Connected to ${config.host}:${config.port || 22}`
+        content: `Connected to ${config.host}:${config.port}`
       });
+      log(`Connected: ${sessionId} -> ${config.host}:${config.port}`);
       resolve(conn);
     });
-    
+
     conn.on('error', (err) => {
       db.updateSessionStatus(sessionId, 'error');
       db.addMessage(sessionId, {
         type: 'error',
         content: err.message
       });
+      log(`Connection error for ${sessionId}:`, err.message);
       reject(err);
     });
-    
+
     conn.on('close', () => {
       connections.delete(sessionId);
       db.updateSessionStatus(sessionId, 'disconnected');
@@ -90,9 +498,17 @@ async function setupConnection(sessionId, config) {
         type: 'system',
         content: 'Connection closed'
       });
+      log(`Connection closed: ${sessionId}`);
+
+      // Notify main program
+      sendResponse({
+        type: 'event',
+        event: 'disconnect',
+        session_id: sessionId
+      });
     });
-    
-    // Prepare connection config
+
+    // Build SSH config
     const sshConfig = {
       host: config.host,
       port: config.port || 22,
@@ -100,7 +516,7 @@ async function setupConnection(sessionId, config) {
       readyTimeout: 30000,
       keepaliveInterval: 10000
     };
-    
+
     if (config.password) {
       sshConfig.password = config.password;
     } else if (config.private_key) {
@@ -115,6 +531,7 @@ async function setupConnection(sessionId, config) {
         return;
       }
     } else {
+      // Try default key
       const defaultKey = path.join(os.homedir(), '.ssh', 'id_rsa');
       if (fs.existsSync(defaultKey)) {
         try {
@@ -125,402 +542,28 @@ async function setupConnection(sessionId, config) {
         }
       }
     }
-    
+
     conn.connect(sshConfig);
   });
 }
 
-/**
- * Execute command on session
- */
-async function executeCommand(sessionId, taskId, command, options = {}) {
-  const conn = connections.get(sessionId);
-  const task = db.getTask(taskId);
-  
-  if (!conn) {
-    task.status = 'error';
-    task.output = 'Not connected';
-    db.updateTask(task);
-    
-    db.addMessage(sessionId, {
-      type: 'error',
-      task_id: taskId,
-      content: 'Not connected'
-    });
-    return;
-  }
-  
-  task.status = 'running';
-  db.updateTask(task);
-  
-  db.addMessage(sessionId, {
-    type: 'command',
-    task_id: taskId,
-    content: command
-  });
-  
-  // Build exec options (PTY for sudo commands)
-  const execOptions = {};
-  if (options.pty || options.sudo) {
-    execOptions.pty = {
-      cols: 120,
-      rows: 24,
-      term: 'xterm-256color'
-    };
-  }
-  
-  conn.exec(command, execOptions, (err, stream) => {
-    if (err) {
-      task.status = 'error';
-      task.output = err.message;
-      db.updateTask(task);
-      
-      db.addMessage(sessionId, {
-        type: 'error',
-        task_id: taskId,
-        content: err.message
-      });
-      return;
-    }
-    
-    let stdout = '';
-    let stderr = '';
-    
-    stream.on('data', (data) => {
-      const chunk = data.toString();
-      stdout += chunk;
-      
-      // Update task with partial output
-      task.output = stdout;
-      db.updateTask(task);
-      
-      // Add output message
-      db.addMessage(sessionId, {
-        type: 'output',
-        task_id: taskId,
-        content: chunk,
-        stream: 'stdout'
-      });
-    });
-    
-    stream.stderr.on('data', (data) => {
-      const chunk = data.toString();
-      stderr += chunk;
-      task.stderr = stderr;
-      db.updateTask(task);
-      
-      db.addMessage(sessionId, {
-        type: 'output',
-        task_id: taskId,
-        content: chunk,
-        stream: 'stderr'
-      });
-    });
-    
-    stream.on('close', (code, signal) => {
-      task.status = 'completed';
-      task.output = stdout;
-      task.stderr = stderr;
-      task.exit_code = code;
-      task.completed_at = new Date().toISOString();
-      db.updateTask(task);
-      
-      db.addMessage(sessionId, {
-        type: 'complete',
-        task_id: taskId,
-        content: signal || undefined
-      });
-    });
-  });
-}
+// ============== Lifecycle ==============
 
 /**
- * Execute sudo command with password
- */
-async function executeSudoCommand(sessionId, taskId, command, password) {
-  const conn = connections.get(sessionId);
-  const task = db.getTask(taskId);
-  
-  if (!conn) {
-    task.status = 'error';
-    task.output = 'Not connected';
-    db.updateTask(task);
-    
-    db.addMessage(sessionId, {
-      type: 'error',
-      task_id: taskId,
-      content: 'Not connected'
-    });
-    return;
-  }
-  
-  task.status = 'running';
-  db.updateTask(task);
-  
-  db.addMessage(sessionId, {
-    type: 'command',
-    task_id: taskId,
-    content: `sudo ${command}`
-  });
-  
-  const ptyConfig = {
-    cols: 120,
-    rows: 24,
-    term: 'xterm-256color'
-  };
-  
-  const sudoCommand = `sudo -S ${command}`;
-  
-  conn.exec(sudoCommand, { pty: ptyConfig }, (err, stream) => {
-    if (err) {
-      task.status = 'error';
-      task.output = err.message;
-      db.updateTask(task);
-      
-      db.addMessage(sessionId, {
-        type: 'error',
-        task_id: taskId,
-        content: err.message
-      });
-      return;
-    }
-    
-    let stdout = '';
-    let stderr = '';
-    let passwordSent = false;
-    let passwordAttempts = 0;
-    const maxPasswordAttempts = 3;
-    
-    // Escape regex special characters for safe password matching
-    const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
-    // Sudo password prompt patterns
-    const passwordPromptPatterns = [
-      /\[sudo\].*password/i,
-      /password\s*(for|:)/i,
-      /^Password:/im
-    ];
-    
-    stream.on('data', (data) => {
-      const chunk = data.toString();
-      stdout += chunk;
-      
-      // Check for password prompt (fixed: && instead of ||)
-      if (!passwordSent && passwordAttempts < maxPasswordAttempts) {
-        const isPasswordPrompt = passwordPromptPatterns.some(pattern => pattern.test(chunk));
-        
-        if (isPasswordPrompt) {
-          stream.write(password + '\n');
-          passwordSent = true;
-          passwordAttempts++;
-          
-          // Add a message about password prompt detected
-          db.addMessage(sessionId, {
-            type: 'system',
-            task_id: taskId,
-            content: '[sudo] Password prompt detected, sending password...'
-          });
-          
-          // Clear password from the output to avoid logging it (fixed: escape special chars)
-          stdout = stdout.replace(new RegExp(`^${escapeRegExp(password)}$`, 'gm'), '********');
-        }
-      }
-      
-      // Update task with partial output
-      task.output = stdout;
-      db.updateTask(task);
-      
-      // Sanitize output before storing (mask password if present)
-      const sanitizedChunk = chunk.replace(new RegExp(escapeRegExp(password), 'g'), '********');
-      
-      // Add output message
-      db.addMessage(sessionId, {
-        type: 'output',
-        task_id: taskId,
-        content: sanitizedChunk,
-        stream: 'stdout'
-      });
-    });
-    
-    stream.stderr.on('data', (data) => {
-      const chunk = data.toString();
-      stderr += chunk;
-      task.stderr = stderr;
-      db.updateTask(task);
-      
-      db.addMessage(sessionId, {
-        type: 'output',
-        task_id: taskId,
-        content: chunk,
-        stream: 'stderr'
-      });
-    });
-    
-    stream.on('close', (code, signal) => {
-      task.status = 'completed';
-      task.output = stdout;
-      task.stderr = stderr;
-      task.exit_code = code;
-      task.completed_at = new Date().toISOString();
-      db.updateTask(task);
-      
-      db.addMessage(sessionId, {
-        type: 'complete',
-        task_id: taskId,
-        content: signal || undefined
-      });
-      
-      // Clear password from memory for security
-      password = null;
-    });
-  });
-}
-
-/**
- * Read file with retry (handles Windows fs.watch race condition)
- */
-function readFileWithRetry(filePath, maxRetries = 5, delay = 50) {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
-    
-    function tryRead() {
-      attempts++;
-      try {
-        if (!fs.existsSync(filePath)) {
-          if (attempts < maxRetries) {
-            setTimeout(tryRead, delay);
-            return;
-          }
-          reject(new Error(`ENOENT: no such file or directory, open '${filePath}'`));
-          return;
-        }
-        const content = fs.readFileSync(filePath, 'utf-8');
-        resolve(JSON.parse(content));
-      } catch (err) {
-        if (attempts < maxRetries && (err.code === 'ENOENT' || err.message.includes('ENOENT'))) {
-          setTimeout(tryRead, delay);
-        } else {
-          reject(err);
-        }
-      }
-    }
-    
-    tryRead();
-  });
-}
-
-/**
- * Watch for new commands
- */
-function watchCommands() {
-  const dir = path.dirname(COMMANDS_DIR);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(COMMANDS_DIR)) {
-    fs.mkdirSync(COMMANDS_DIR, { recursive: true });
-  }
-  
-  fs.watch(COMMANDS_DIR, (eventType, filename) => {
-    if (eventType === 'rename' && filename && filename.endsWith('.json') && !filename.endsWith('.error')) {
-      const filePath = path.join(COMMANDS_DIR, filename);
-      
-      setTimeout(async () => {
-        try {
-          const cmd = await readFileWithRetry(filePath);
-          await processCommand(cmd);
-          fs.unlinkSync(filePath);
-        } catch (err) {
-          console.error(`Failed to process command: ${err.message}`);
-          
-          // Try to report error back to caller
-          try {
-            const errorResponse = {
-              success: false,
-              error: err.message,
-              command_id: filename.replace('.json', '')
-            };
-            // Write error to a response file
-            const responseFile = path.join(COMMANDS_DIR, `${filename}.error`);
-            fs.writeFileSync(responseFile, JSON.stringify(errorResponse));
-          } catch (writeErr) {
-            console.error(`Failed to write error response: ${writeErr.message}`);
-          }
-          
-          // Clean up command file
-          try {
-            fs.unlinkSync(filePath);
-          } catch {}
-        }
-      }, 100);
-    }
-  });
-}
-
-/**
- * Process incoming command
- */
-async function processCommand(cmd) {
-  switch (cmd.action) {
-    case 'connect': {
-      try {
-        await setupConnection(cmd.session_id, cmd.config);
-      } catch (err) {
-        console.error(`Connect failed: ${err.message}`);
-      }
-      break;
-    }
-    
-    case 'exec': {
-      await executeCommand(cmd.session_id, cmd.task_id, cmd.command);
-      break;
-    }
-    
-    case 'sudo': {
-      await executeSudoCommand(cmd.session_id, cmd.task_id, cmd.command, cmd.password);
-      break;
-    }
-    
-    case 'disconnect': {
-      const conn = connections.get(cmd.session_id);
-      if (conn) {
-        conn.end();
-      }
-      break;
-    }
-    
-    case 'shutdown': {
-      for (const [sessionId, conn] of connections) {
-        try {
-          conn.end();
-        } catch (err) {}
-      }
-      
-      if (fs.existsSync(PID_FILE)) {
-        fs.unlinkSync(PID_FILE);
-      }
-      
-      db.close();
-      process.exit(0);
-    }
-  }
-}
-
-/**
- * Restore sessions on startup
+ * Restore sessions from database on startup
  */
 async function restoreSessions() {
   const sessions = db.listSessions();
-  
+
   for (const sessionInfo of sessions) {
     if (sessionInfo.status === 'connected') {
       const session = db.getSession(sessionInfo.id);
       if (session && session.config) {
         try {
-          console.log(`Restoring session ${sessionInfo.id}...`);
+          log(`Restoring session ${sessionInfo.id}...`);
           await setupConnection(sessionInfo.id, session.config);
         } catch (err) {
-          console.error(`Failed to restore session ${sessionInfo.id}: ${err.message}`);
+          log(`Failed to restore session ${sessionInfo.id}:`, err.message);
         }
       }
     }
@@ -528,82 +571,72 @@ async function restoreSessions() {
 }
 
 /**
- * Start the manager
+ * Graceful shutdown
  */
-async function start() {
-  if (isRunning()) {
-    output({ success: false, error: 'Manager is already running' });
-    return;
+async function shutdown() {
+  log('Shutting down...');
+
+  for (const [sessionId, conn] of connections) {
+    try {
+      conn.end();
+    } catch (err) {}
   }
-  
-  console.log('Starting Session Manager...');
-  
-  writePid();
-  
-  await restoreSessions();
-  
-  watchCommands();
-  
-  console.log(`Session Manager started (PID: ${process.pid})`);
-  console.log('Watching for commands...');
-  
-  process.stdin.resume();
+  connections.clear();
+
+  if (db.close) {
+    db.close();
+  }
+
+  process.exit(0);
 }
 
 /**
- * Get manager status
- */
-function status() {
-  output({
-    running: isRunning(),
-    pid: isRunning() ? parseInt(fs.readFileSync(PID_FILE, 'utf-8')) : null,
-    sessions: db.listSessions()
-  });
-}
-
-/**
- * Stop the manager
- */
-function stop() {
-  if (!isRunning()) {
-    output({ success: false, error: 'Manager is not running' });
-    return;
-  }
-  
-  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8'));
-  
-  try {
-    process.kill(pid, 'SIGTERM');
-    fs.unlinkSync(PID_FILE);
-    output({ success: true, message: 'Manager stopped' });
-  } catch (err) {
-    output({ success: false, error: err.message });
-  }
-}
-
-/**
- * Main entry point
+ * Main entry point - stdin event loop
  */
 async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0] || 'status';
-  
-  switch (command) {
-    case 'start':
-      await start();
-      break;
-    case 'status':
-      status();
-      break;
-    case 'stop':
-      stop();
-      break;
-    default:
-      console.log('Usage: node session_manager.js [start|status|stop]');
-  }
+  log('Starting SSH Session Manager...');
+
+  // Restore previous sessions
+  await restoreSessions();
+
+  // Setup stdin listener
+  process.stdin.setEncoding('utf8');
+
+  process.stdin.on('data', (chunk) => {
+    buffer += chunk.toString();
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.trim()) {
+        processCommandLine(line).catch(err => {
+          log('Error processing command:', err.message);
+        });
+      }
+    }
+  });
+
+  process.stdin.on('end', () => {
+    shutdown();
+  });
+
+  // Handle termination signals
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  // Notify main program that we're ready
+  sendResponse({
+    type: 'ready',
+    name: 'ssh-session-manager',
+    pid: process.pid,
+    timestamp: Date.now()
+  });
+
+  log('Ready, waiting for commands on stdin');
 }
 
+// Start
 main().catch(err => {
-  console.error(err.message);
+  process.stderr.write(`Fatal error: ${err.message}\n`);
   process.exit(1);
 });

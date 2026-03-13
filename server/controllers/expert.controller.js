@@ -44,6 +44,8 @@ class ExpertController {
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
           'frequency_penalty', 'presence_penalty',
+          // 工具调用配置
+          'max_tool_rounds',
           // 头像
           'avatar_base64', 'avatar_large_base64'
         ],
@@ -82,6 +84,8 @@ class ExpertController {
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
           'frequency_penalty', 'presence_penalty',
+          // 工具调用配置
+          'max_tool_rounds',
           // 头像
           'avatar_base64', 'avatar_large_base64'
         ],
@@ -195,6 +199,8 @@ class ExpertController {
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
+        // 工具调用配置
+        max_tool_rounds,
         // 头像
         avatar_base64, avatar_large_base64
       } = ctx.request.body;
@@ -228,6 +234,8 @@ class ExpertController {
       if (top_p !== undefined) updates.top_p = top_p;
       if (frequency_penalty !== undefined) updates.frequency_penalty = frequency_penalty;
       if (presence_penalty !== undefined) updates.presence_penalty = presence_penalty;
+      // 工具调用配置
+      if (max_tool_rounds !== undefined) updates.max_tool_rounds = max_tool_rounds;
       // 头像
       if (avatar_base64 !== undefined) updates.avatar_base64 = avatar_base64 || null;
       if (avatar_large_base64 !== undefined) updates.avatar_large_base64 = avatar_large_base64 || null;

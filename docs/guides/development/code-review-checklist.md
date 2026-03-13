@@ -1,6 +1,6 @@
 # 代码审计清单
 
-> **最后更新**: 2026-03-12
+> **最后更新**: 2026-03-13
 > **来源**: `docs/core/SOUL.md` 自我代码审计清单
 
 ---
@@ -97,6 +97,7 @@ ctx.success(buildPaginatedResponse(rows, count, pagination));
 | **资源泄漏** | 连接/文件/定时器是否正确释放？ |
 | **N+1 查询** | 循环中有数据库调用？改用批量查询 |
 | **路由顺序** | 动态路由 `/:id` 是否在静态路由之后？ |
+| **ID 类型匹配** | 自增 ID 字段是否误用手动指定（如 `Utils.newID()`）？检查 Model 定义中 `autoIncrement: true` 的字段 |
 
 ### 前端错误处理专项检查
 
@@ -147,6 +148,16 @@ grep -rn "// 错误已在" frontend/src/views/ frontend/src/components/
 ---
 
 ## 第四步：前后端契约检查
+
+### 新增字段完整性检查
+
+**新增数据库字段时，必须检查所有 CRUD 操作**：
+- [ ] `create` 方法是否处理新字段？
+- [ ] `update` 方法是否处理新字段？
+- [ ] `list`/`get` 方法的 `attributes` 是否包含新字段？
+- [ ] 前端 TypeScript 类型定义是否更新？
+
+### 分页响应格式
 
 **后端返回**：
 ```javascript

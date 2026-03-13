@@ -24,6 +24,7 @@ export default {
     copy: 'Copy',
     copied: 'Copied to clipboard',
     copyFailed: 'Copy failed',
+    reset: 'Reset',
   },
 
   // Navigation
@@ -212,6 +213,10 @@ export default {
     frequencyPenaltyHint: 'Reduces repetition of frequent words, -2 to 2, default 0',
     presencePenalty: 'Presence Penalty',
     presencePenaltyHint: 'Encourages discussing new topics, -2 to 2, default 0',
+    // Tool Call Configuration
+    toolCallConfig: 'Tool Call Configuration',
+    maxToolRoundsPlaceholder: 'Leave empty for system default',
+    maxToolRoundsExpertHint: 'Limit the maximum rounds of tool calls in a single conversation. Leave empty to use system default.',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
@@ -467,6 +472,10 @@ export default {
     skillCallTimeoutHint: 'Maximum wait time for a single skill call (seconds)',
     remoteLlmTimeout: 'Remote LLM Timeout',
     remoteLlmTimeoutHint: 'Maximum wait time for remote LLM service calls (seconds)',
+    // Tool Config
+    toolConfig: 'Tool Configuration',
+    maxToolRounds: 'Max Tool Call Rounds',
+    maxToolRoundsHint: 'Maximum tool call rounds per LLM request to prevent infinite loops (1-50, default 20)',
     // General Config
     generalConfig: 'General Config',
     // Package Whitelist
