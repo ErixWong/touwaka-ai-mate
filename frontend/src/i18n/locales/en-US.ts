@@ -213,6 +213,10 @@ export default {
     frequencyPenaltyHint: 'Reduces repetition of frequent words, -2 to 2, default 0',
     presencePenalty: 'Presence Penalty',
     presencePenaltyHint: 'Encourages discussing new topics, -2 to 2, default 0',
+    // Tool Call Configuration
+    toolCallConfig: 'Tool Call Configuration',
+    maxToolRoundsPlaceholder: 'Leave empty for system default',
+    maxToolRoundsExpertHint: 'Limit the maximum rounds of tool calls in a single conversation. Leave empty to use system default.',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',

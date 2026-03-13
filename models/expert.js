@@ -117,6 +117,11 @@ export default class expert extends Model {
       type: DataTypes.TEXT,
       allowNull: true,
       comment: "知识库配置（JSON格式）：{enabled, kb_id, top_k, threshold, max_tokens, style}"
+    },
+    max_tool_rounds: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "最大工具调用轮数（NULL表示使用系统默认，范围 1-50）"
     }
   }, {
     sequelize,

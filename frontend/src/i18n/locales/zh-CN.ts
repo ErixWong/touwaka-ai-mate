@@ -215,6 +215,10 @@ export default {
     frequencyPenaltyHint: '降低重复词汇的出现频率，-2 到 2，默认 0',
     presencePenalty: '存在惩罚 (Presence Penalty)',
     presencePenaltyHint: '鼓励讨论新话题，-2 到 2，默认 0',
+    // 工具调用配置
+    toolCallConfig: '工具调用配置',
+    maxToolRoundsPlaceholder: '留空使用系统默认',
+    maxToolRoundsExpertHint: '限制 AI 在单次对话中调用工具的最大轮数，留空则使用系统默认设置',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',

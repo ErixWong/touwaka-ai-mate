@@ -760,9 +760,21 @@ class AssistantManager {
     };
 
     try {
-      // 从系统设置获取最大工具调用轮数
+      // 获取最大工具调用轮数：优先使用专家配置，否则使用系统默认
       const systemSettingService = getSystemSettingService(this.db);
-      const maxToolRounds = await systemSettingService.getMaxToolRounds();
+      let maxToolRounds = await systemSettingService.getMaxToolRounds();
+      
+      // 如果有专家ID，尝试获取专家的 max_tool_rounds 配置
+      if (context.expertId) {
+        const expert = await this.db.getModel('expert').findByPk(context.expertId, {
+          attributes: ['max_tool_rounds'],
+          raw: true,
+        });
+        if (expert?.max_tool_rounds !== null && expert?.max_tool_rounds !== undefined) {
+          maxToolRounds = expert.max_tool_rounds;
+          logger.info(`[AssistantManager] 使用专家级别的 max_tool_rounds: ${maxToolRounds}`);
+        }
+      }
       
       // 调用 LLM（支持多轮工具调用）
       return await this.executeLLMWithTools(
