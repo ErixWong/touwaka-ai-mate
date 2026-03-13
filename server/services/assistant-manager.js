@@ -20,6 +20,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import logger from '../../lib/logger.js';
 import AssistantMessageService from './assistant-message-service.js';
+import { getSystemSettingService } from './system-setting.service.js';
 
 // 支持的图片格式
 const IMAGE_EXTENSIONS = {
@@ -759,6 +760,10 @@ class AssistantManager {
     };
 
     try {
+      // 从系统设置获取最大工具调用轮数
+      const systemSettingService = getSystemSettingService(this.db);
+      const maxToolRounds = await systemSettingService.getMaxToolRounds();
+      
       // 调用 LLM（支持多轮工具调用）
       return await this.executeLLMWithTools(
         modelConfig,
@@ -769,7 +774,7 @@ class AssistantManager {
           temperature: parseFloat(assistant.temperature) || 0.7,
           max_tokens: assistant.max_tokens || 4096,
           timeout: (assistant.timeout || 120) * 1000,
-          maxToolRounds: 5, // 最多 5 轮工具调用
+          maxToolRounds,
         }
       );
     } catch (llmError) {

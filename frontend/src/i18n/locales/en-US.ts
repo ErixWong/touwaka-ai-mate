@@ -24,6 +24,7 @@ export default {
     copy: 'Copy',
     copied: 'Copied to clipboard',
     copyFailed: 'Copy failed',
+    reset: 'Reset',
   },
 
   // Navigation
@@ -467,6 +468,10 @@ export default {
     skillCallTimeoutHint: 'Maximum wait time for a single skill call (seconds)',
     remoteLlmTimeout: 'Remote LLM Timeout',
     remoteLlmTimeoutHint: 'Maximum wait time for remote LLM service calls (seconds)',
+    // Tool Config
+    toolConfig: 'Tool Configuration',
+    maxToolRounds: 'Max Tool Call Rounds',
+    maxToolRoundsHint: 'Maximum tool call rounds per LLM request to prevent infinite loops (1-50, default 20)',
     // General Config
     generalConfig: 'General Config',
     // Package Whitelist

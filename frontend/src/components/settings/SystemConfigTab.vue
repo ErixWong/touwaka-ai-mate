@@ -199,6 +199,33 @@
           </div>
         </div>
 
+        <!-- 工具调用配置 -->
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">🔧 {{ $t('settings.toolConfig') }}</h3>
+            <button class="btn-reset-section" @click="resetSection('tool')">
+              {{ $t('common.reset') }}
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.maxToolRounds') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.tool.max_rounds"
+                  min="1"
+                  max="50"
+                  class="config-input"
+                />
+                <span class="config-hint">1-50</span>
+              </div>
+              <p class="config-description">{{ $t('settings.maxToolRoundsHint') }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- 底部操作按钮 -->
         <div class="config-actions">
           <button class="btn-reset-all" @click="resetAll">
@@ -347,6 +374,9 @@ const form = reactive({
     skill_call: 60,
     remote_llm: 120,
   },
+  tool: {
+    max_rounds: 20,
+  },
 })
 
 const saving = ref(false)
@@ -363,6 +393,7 @@ const syncFromStore = () => {
   Object.assign(form.connection, settings.connection)
   Object.assign(form.token, settings.token)
   Object.assign(form.timeout, settings.timeout)
+  Object.assign(form.tool, settings.tool || { max_rounds: 20 })
 }
 
 // 保存配置
@@ -374,6 +405,7 @@ const saveConfig = async () => {
       connection: { ...form.connection },
       token: { ...form.token },
       timeout: { ...form.timeout },
+      tool: { ...form.tool },
     })
     alert(t('settings.saveSuccess'))
   } catch (error) {
@@ -394,6 +426,8 @@ const resetSection = async (section: string) => {
     Object.assign(form.token, defaults.token)
   } else if (section === 'timeout') {
     Object.assign(form.timeout, defaults.timeout)
+  } else if (section === 'tool') {
+    Object.assign(form.tool, defaults.tool || { max_rounds: 20 })
   }
 }
 

@@ -29,6 +29,9 @@ export interface SystemSettings {
     skill_call: number        // 技能调用超时（秒）
     remote_llm: number        // 远程 LLM 调用超时（秒）
   }
+  tool: {
+    max_rounds: number        // 最大工具调用轮数
+  }
 }
 
 /**
@@ -65,6 +68,9 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       skill_call: 60,
       remote_llm: 120,
     },
+    tool: {
+      max_rounds: 20,
+    },
   }
 
   // Getters
@@ -72,6 +78,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const connectionSettings = computed(() => settings.value?.connection || defaultSettings.connection)
   const tokenSettings = computed(() => settings.value?.token || defaultSettings.token)
   const timeoutSettings = computed(() => settings.value?.timeout || defaultSettings.timeout)
+  const toolSettings = computed(() => settings.value?.tool || defaultSettings.tool)
 
   // Actions
   // 加载系统配置
@@ -151,6 +158,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     connectionSettings,
     tokenSettings,
     timeoutSettings,
+    toolSettings,
     // Actions
     loadSettings,
     updateSettings,

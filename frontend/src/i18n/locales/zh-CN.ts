@@ -26,6 +26,7 @@ export default {
     copied: '已复制到剪贴板',
     copyFailed: '复制失败',
     refresh: '刷新',
+    reset: '重置',
   },
 
   // 导航
@@ -448,6 +449,10 @@ export default {
     skillCallTimeoutHint: '单个技能调用的最大等待时间（秒）',
     remoteLlmTimeout: '远程 LLM 超时',
     remoteLlmTimeoutHint: '远程 LLM 服务调用的最大等待时间（秒）',
+    // 工具调用配置
+    toolConfig: '工具调用配置',
+    maxToolRounds: '最大工具调用轮数',
+    maxToolRoundsHint: 'LLM 单次请求中最多执行的工具调用轮数，防止无限循环（1-50，默认 20）',
     // 通用配置
     generalConfig: '通用配置',
     // 包白名单配置
