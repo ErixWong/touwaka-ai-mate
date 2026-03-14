@@ -75,10 +75,12 @@ CREATE TABLE IF NOT EXISTS assistant_requests (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   started_at DATETIME COMMENT '开始执行时间',
   completed_at DATETIME COMMENT '完成时间',
+  is_archived TINYINT(1) DEFAULT 0 COMMENT '是否已归档',
   INDEX idx_request_expert (expert_id),
   INDEX idx_request_user (user_id),
   INDEX idx_request_status (status),
-  INDEX idx_request_created (created_at)
+  INDEX idx_request_created (created_at),
+  INDEX idx_request_archived (is_archived)
 ) COMMENT='助理委托记录表';
 `;
 
