@@ -4,17 +4,28 @@ import { taskApi } from '@/api/services'
 import type { Task, CreateTaskRequest, TaskFile } from '@/types'
 
 /**
+ * 预览 Token 缓存接口
+ */
+interface PreviewTokenCache {
+  token: string
+  expiresAt: number  // 时间戳（毫秒）
+  taskId: string
+}
+
+/**
  * Task Store
  *
  * 任务工作空间状态管理
  * - 管理用户的任务列表
  * - 跟踪当前进入的任务工作空间
  * - 在发送消息时附加任务上下文（task_id, task_path）
+ * - 管理嵌入式文件预览的 Token
  *
  * 设计说明：
  * - 进入/退出任务只更新本地状态，不调用 API
  * - 任务上下文在 ChatView 发送消息时附加到消息参数中
  * - 支持多标签页/多窗口场景
+ * - 预览 Token 有效期 15 分钟，剩余 >1 分钟时复用
  */
 export const useTaskStore = defineStore('task', () => {
   // State
@@ -26,6 +37,9 @@ export const useTaskStore = defineStore('task', () => {
   const isLoadingFiles = ref(false)
   const currentFiles = ref<TaskFile[]>([])
   const error = ref<string | null>(null)
+
+  // 预览 Token 缓存（用于嵌入式文件预览）
+  const previewTokenCache = ref<PreviewTokenCache | null>(null)
 
   // Getters
   const activeTasks = computed(() =>
@@ -178,6 +192,7 @@ export const useTaskStore = defineStore('task', () => {
     isInTaskMode.value = false
     currentFiles.value = []
     currentBrowsePath.value = ''
+    previewTokenCache.value = null  // 清除预览 Token 缓存
   }
 
   /**
@@ -221,22 +236,20 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   /**
-   * 下载文件
+   * 下载文件（使用静态 URL）
    */
   const downloadFile = async (filePath: string) => {
     if (!currentTask.value) throw new Error('Not in task mode')
 
     try {
-      const response = await taskApi.downloadFile(currentTask.value.id, filePath)
-      // 创建下载链接
-      const url = window.URL.createObjectURL(response.data)
+      // 使用静态文件服务 URL（Token 在路径中）
+      const url = await getEmbedPreviewUrl(filePath)
       const link = document.createElement('a')
       link.href = url
       link.download = filePath.split('/').pop() || 'download'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to download file'
       throw err
@@ -244,11 +257,87 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   /**
-   * 获取文件预览 URL
+   * 获取预览 Token（用于嵌入式文件预览）
+   * - 复用有效 Token（剩余时间 > 1 分钟）
+   * - 自动获取新 Token（过期或无缓存时）
    */
-  const getFilePreviewUrl = (filePath: string) => {
-    if (!currentTask.value) return ''
-    return `/api/tasks/${currentTask.value.id}/files/download?path=${encodeURIComponent(filePath)}`
+  const getPreviewToken = async (): Promise<string> => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    const now = Date.now()
+    const ONE_MINUTE = 60 * 1000
+
+    // 检查缓存是否有效（同一任务 + 剩余时间 > 1 分钟）
+    if (
+      previewTokenCache.value &&
+      previewTokenCache.value.taskId === currentTask.value.id &&
+      previewTokenCache.value.expiresAt > now + ONE_MINUTE
+    ) {
+      return previewTokenCache.value.token
+    }
+
+    // 获取新 Token
+    try {
+      const response = await taskApi.getPreviewToken(currentTask.value.id)
+      const expiresAt = new Date(response.expires_at).getTime()
+
+      previewTokenCache.value = {
+        token: response.token,
+        expiresAt,
+        taskId: currentTask.value.id,
+      }
+
+      return response.token
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to get preview token'
+      throw err
+    }
+  }
+
+  /**
+   * 刷新预览 Token
+   * - 强制获取新 Token（不检查缓存）
+   */
+  const refreshPreviewToken = async (): Promise<string> => {
+    if (!currentTask.value) throw new Error('Not in task mode')
+
+    try {
+      const response = await taskApi.refreshPreviewToken(currentTask.value.id)
+      const expiresAt = new Date(response.expires_at).getTime()
+
+      previewTokenCache.value = {
+        token: response.token,
+        expiresAt,
+        taskId: currentTask.value.id,
+      }
+
+      return response.token
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to refresh preview token'
+      throw err
+    }
+  }
+
+  /**
+   * 获取嵌入式预览 URL（Token 在路径中）
+   * - 用于 iframe 嵌入式预览
+   * - HTML 相对路径资源自动继承 Token
+   *
+   * @param filePath 文件路径（相对于任务工作空间根目录）
+   * @returns 完整的预览 URL
+   */
+  const getEmbedPreviewUrl = async (filePath: string): Promise<string> => {
+    const token = await getPreviewToken()
+    // Token 在 URL 路径中，HTML 相对路径资源自动继承
+    return `/task-static/${token}/${filePath}`
+  }
+
+  /**
+   * 清除预览 Token 缓存
+   * - 切换任务时调用
+   */
+  const clearPreviewToken = () => {
+    previewTokenCache.value = null
   }
 
   /**
@@ -300,6 +389,7 @@ export const useTaskStore = defineStore('task', () => {
     isLoadingFiles,
     currentFiles,
     error,
+    previewTokenCache,
 
     // Getters
     activeTasks,
@@ -317,7 +407,10 @@ export const useTaskStore = defineStore('task', () => {
     loadTaskFiles,
     uploadFile,
     downloadFile,
-    getFilePreviewUrl,
+    getPreviewToken,
+    refreshPreviewToken,
+    getEmbedPreviewUrl,
+    clearPreviewToken,
     deleteFile,
     saveFileContent,
     clearError,

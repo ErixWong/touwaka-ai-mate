@@ -2,96 +2,224 @@
   <div class="tasks-tab">
     <!-- 任务模式：文件管理界面 -->
     <template v-if="taskStore.isInTaskMode && taskStore.currentTask">
-      <div class="workspace-header">
-        <div class="workspace-info">
-          <button class="btn-back" @click="handleExitTask" :title="$t('tasks.backToList')">
-            <span class="icon">←</span>
-          </button>
-          <div class="workspace-title">
-            <span class="task-icon">📁</span>
-            <span class="task-name">{{ taskStore.currentTask.title }}</span>
-          </div>
-        </div>
-        <div class="workspace-actions">
-          <button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
-            <span class="icon">↻</span>
-          </button>
-          <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
-            <span class="icon">📤</span>
-          </button>
-        </div>
-        <input
-          ref="fileInputRef"
-          type="file"
-          style="display: none"
-          @change="handleFileUpload"
-          :accept="allowedFileTypes"
-        />
-      </div>
-
-      <!-- 当前路径面包屑 -->
-      <div class="breadcrumb">
-        <span class="breadcrumb-item" @click="navigateTo()">
-          {{ $t('tasks.workspace') }}
-        </span>
-        <template v-if="currentPath">
-          <span v-for="(part, index) in currentPath.split('/')" :key="index">
-            <span class="separator">/</span>
-            <span class="breadcrumb-item" @click="navigateTo(currentPath.split('/').slice(0, index + 1).join('/'))">
-              {{ part }}
-            </span>
-          </span>
-        </template>
-      </div>
-
-      <!-- 文件列表 -->
-      <div class="file-list">
-        <div v-if="taskStore.isLoadingFiles" class="loading">
-          {{ $t('common.loading') }}
-        </div>
-
-        <div v-else-if="taskStore.currentFiles.length === 0" class="empty">
-          {{ $t('tasks.noFiles') }}
-        </div>
-
-        <template v-else>
-          <div
-            v-for="file in taskStore.currentFiles"
-            :key="file.path"
-            class="file-item"
-            @click="handleFileClick(file)"
-          >
-            <span class="file-icon">{{ file.type === 'directory' ? '📁' : getFileIcon(file.name) }}</span>
-            <div class="file-info">
-              <div class="file-name">{{ file.name }}</div>
-              <div class="file-meta">
-                <span v-if="file.type === 'file'" class="file-size">{{ formatSize(file.size || 0) }}</span>
-                <span class="file-date">{{ formatDate(file.modified_at || '') }}</span>
-              </div>
+      <!-- 嵌入式预览模式：替换整个文件管理界面 -->
+      <template v-if="showEmbedPreview">
+        <div class="embed-preview">
+          <!-- 预览头部 -->
+          <div class="embed-preview-header">
+            <button class="btn-back" @click="closeEmbedPreview" :title="$t('tasks.backToFiles') || '返回文件列表'">
+              <span class="icon">←</span>
+            </button>
+            <div class="preview-title-row">
+              <span class="preview-icon">{{ getFileIcon(previewFile?.name || '') }}</span>
+              <span class="preview-filename">{{ previewFile?.name }}</span>
             </div>
-            <!-- 文件操作菜单 -->
-            <div v-if="file.type === 'file'" class="file-menu" @click.stop>
-              <button class="btn-menu-trigger" @click="toggleFileMenu(file)" :title="$t('tasks.moreActions') || '更多操作'">
-                ⋯
-              </button>
-              <div v-if="activeMenuFile?.path === file.path" class="file-menu-dropdown">
-                <button class="menu-item" @click="handleDownload(file)">
-                  <span class="menu-icon">↓</span>
-                  <span>{{ $t('tasks.download') || '下载' }}</span>
-                </button>
+            <div class="preview-actions">
+              <!-- 自动刷新控制 -->
+              <template v-if="previewType === 'html' || previewType === 'pdf'">
                 <button
-                  v-if="canDeleteFile(file)"
-                  class="menu-item menu-item-danger"
-                  @click="confirmDeleteFile(file)"
+                  class="btn-action"
+                  :class="{ active: autoRefreshEnabled }"
+                  @click="toggleAutoRefresh"
+                  :title="autoRefreshEnabled ? $t('tasks.stopAutoRefresh') : $t('tasks.startAutoRefresh')"
                 >
-                  <span class="menu-icon">🗑</span>
-                  <span>{{ $t('tasks.delete') || '删除' }}</span>
+                  <span class="action-icon">↻</span>
+                  <span v-if="autoRefreshEnabled" class="action-label">{{ $t('tasks.refreshing') }}</span>
+                  <span v-else class="action-label">{{ $t('tasks.auto') }}</span>
                 </button>
-              </div>
+                <button class="btn-action" @click="refreshPreview" :disabled="previewLoading" :title="$t('tasks.refreshNow')">
+                  <span class="action-icon">⟳</span>
+                  <span class="action-label">{{ $t('tasks.refreshLabel') }}</span>
+                </button>
+              </template>
+              <button class="btn-action" @click="handleDownload(previewFile!)" :title="$t('tasks.downloadFile')">
+                <span class="action-icon">↓</span>
+                <span class="action-label">{{ $t('tasks.downloadLabel') }}</span>
+              </button>
             </div>
           </div>
-        </template>
-      </div>
+          
+          <!-- 预览内容区 -->
+          <div class="embed-preview-body">
+            <!-- 加载中 -->
+            <div v-if="previewLoading" class="preview-loading">
+              <span class="loading-spinner"></span>
+              <span>{{ $t('common.loading') || '加载中...' }}</span>
+            </div>
+            
+            <!-- 保存中 -->
+            <div v-else-if="previewSaving" class="preview-loading">
+              <span>{{ $t('common.saving') || '保存中...' }}</span>
+            </div>
+            
+            <!-- 预览内容 -->
+            <template v-else>
+              <!-- HTML 预览（iframe 嵌入） -->
+              <iframe
+                v-if="previewType === 'html'"
+                :key="previewKey"
+                :src="previewUrl"
+                class="embed-iframe"
+                sandbox="allow-scripts allow-same-origin"
+                referrerpolicy="no-referrer"
+              ></iframe>
+              
+              <!-- PDF 预览（iframe 嵌入） -->
+              <iframe
+                v-else-if="previewType === 'pdf'"
+                :key="previewKey"
+                :src="previewUrl"
+                class="embed-iframe"
+              ></iframe>
+              
+              <!-- Markdown 预览 -->
+              <template v-else-if="previewType === 'markdown'">
+                <textarea
+                  v-if="isEditing"
+                  v-model="previewContent"
+                  class="embed-editor markdown-editor"
+                ></textarea>
+                <div v-else class="embed-markdown" v-html="renderMarkdown(previewContent)"></div>
+              </template>
+              
+              <!-- 文本/代码预览 -->
+              <template v-else-if="previewType === 'text' || previewType === 'code'">
+                <textarea
+                  v-if="isEditing"
+                  v-model="previewContent"
+                  class="embed-editor"
+                  :class="{ 'code-editor': previewType === 'code' }"
+                ></textarea>
+                <pre v-else class="embed-code" :class="{ 'code-preview': previewType === 'code' }">{{ previewContent }}</pre>
+              </template>
+              
+              <!-- 图片预览 -->
+              <div v-else-if="previewType === 'image'" class="embed-image">
+                <img :src="previewUrl" :alt="previewFile?.name" />
+              </div>
+              
+              <!-- 不支持的类型 -->
+              <div v-else class="preview-unsupported">
+                <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
+                <button class="btn-confirm" @click="handleDownload(previewFile!)">
+                  {{ $t('tasks.download') || '下载文件' }}
+                </button>
+              </div>
+            </template>
+          </div>
+          
+          <!-- 预览底部：编辑操作 -->
+          <div v-if="canEditFile && !previewLoading && !previewSaving" class="embed-preview-footer">
+            <template v-if="previewType === 'text' || previewType === 'code' || previewType === 'markdown'">
+              <button v-if="!isEditing" class="btn-edit" @click="startEdit">
+                {{ $t('tasks.edit') || '编辑' }}
+              </button>
+              <template v-else>
+                <button class="btn-cancel-edit" @click="cancelEdit">
+                  {{ $t('common.cancel') || '取消' }}
+                </button>
+                <button class="btn-save" @click="saveEdit">
+                  {{ $t('common.save') || '保存' }}
+                </button>
+              </template>
+            </template>
+          </div>
+        </div>
+      </template>
+      
+      <!-- 正常模式：文件管理界面 -->
+      <template v-else>
+        <div class="workspace-header">
+          <div class="workspace-info">
+            <button class="btn-back" @click="handleExitTask" :title="$t('tasks.backToList')">
+              <span class="icon">←</span>
+            </button>
+            <div class="workspace-title">
+              <span class="task-icon">📁</span>
+              <span class="task-name">{{ taskStore.currentTask.title }}</span>
+            </div>
+          </div>
+          <div class="workspace-actions">
+            <button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
+              <span class="icon">↻</span>
+            </button>
+            <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
+              <span class="icon">📤</span>
+            </button>
+          </div>
+          <input
+            ref="fileInputRef"
+            type="file"
+            style="display: none"
+            @change="handleFileUpload"
+            :accept="allowedFileTypes"
+          />
+        </div>
+
+        <!-- 当前路径面包屑 -->
+        <div class="breadcrumb">
+          <span class="breadcrumb-item" @click="navigateTo()">
+            {{ $t('tasks.workspace') }}
+          </span>
+          <template v-if="currentPath">
+            <span v-for="(part, index) in currentPath.split('/')" :key="index">
+              <span class="separator">/</span>
+              <span class="breadcrumb-item" @click="navigateTo(currentPath.split('/').slice(0, index + 1).join('/'))">
+                {{ part }}
+              </span>
+            </span>
+          </template>
+        </div>
+
+        <!-- 文件列表 -->
+        <div class="file-list">
+          <div v-if="taskStore.isLoadingFiles" class="loading">
+            {{ $t('common.loading') }}
+          </div>
+
+          <div v-else-if="taskStore.currentFiles.length === 0" class="empty">
+            {{ $t('tasks.noFiles') }}
+          </div>
+
+          <template v-else>
+            <div
+              v-for="file in taskStore.currentFiles"
+              :key="file.path"
+              class="file-item"
+              @click="handleFileClick(file)"
+            >
+              <span class="file-icon">{{ file.type === 'directory' ? '📁' : getFileIcon(file.name) }}</span>
+              <div class="file-info">
+                <div class="file-name">{{ file.name }}</div>
+                <div class="file-meta">
+                  <span v-if="file.type === 'file'" class="file-size">{{ formatSize(file.size || 0) }}</span>
+                  <span class="file-date">{{ formatDate(file.modified_at || '') }}</span>
+                </div>
+              </div>
+              <!-- 文件操作菜单 -->
+              <div v-if="file.type === 'file'" class="file-menu" @click.stop>
+                <button class="btn-menu-trigger" @click="toggleFileMenu(file)" :title="$t('tasks.moreActions') || '更多操作'">
+                  ⋯
+                </button>
+                <div v-if="activeMenuFile?.path === file.path" class="file-menu-dropdown">
+                  <button class="menu-item" @click="handleDownload(file)">
+                    <span class="menu-icon">↓</span>
+                    <span>{{ $t('tasks.download') || '下载' }}</span>
+                  </button>
+                  <button
+                    v-if="canDeleteFile(file)"
+                    class="menu-item menu-item-danger"
+                    @click="confirmDeleteFile(file)"
+                  >
+                    <span class="menu-icon">🗑</span>
+                    <span>{{ $t('tasks.delete') || '删除' }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
     </template>
 
     <!-- 任务列表模式 -->
@@ -266,90 +394,6 @@
       </div>
     </div>
 
-    <!-- 文件预览对话框 -->
-    <div v-if="showPreview" class="dialog-overlay preview-overlay" @click.self="closePreview">
-      <div class="dialog preview-dialog">
-        <div class="dialog-header">
-          <h3>{{ previewFile?.name }}</h3>
-          <div class="header-actions">
-            <span v-if="isEditing" class="edit-indicator">{{ $t('tasks.editing') || '编辑中' }}</span>
-            <button class="btn-close" @click="closePreview">×</button>
-          </div>
-        </div>
-        <div class="dialog-body preview-body">
-          <!-- 加载中 -->
-          <div v-if="previewLoading" class="preview-loading">
-            {{ $t('common.loading') || '加载中...' }}
-          </div>
-          <!-- 保存中 -->
-          <div v-else-if="previewSaving" class="preview-loading">
-            {{ $t('common.saving') || '保存中...' }}
-          </div>
-          <!-- 预览/编辑内容 -->
-          <template v-else>
-            <!-- Markdown 预览 -->
-            <template v-if="previewType === 'markdown'">
-              <textarea
-                v-if="isEditing"
-                v-model="previewContent"
-                class="preview-editor markdown-editor"
-              ></textarea>
-              <div v-else class="preview-markdown" v-html="renderMarkdown(previewContent)"></div>
-            </template>
-            <!-- 文本/代码编辑 -->
-            <template v-else-if="previewType === 'text' || previewType === 'code'">
-              <textarea
-                v-if="isEditing"
-                v-model="previewContent"
-                class="preview-editor"
-                :class="{ 'code-editor': previewType === 'code' }"
-              ></textarea>
-              <pre v-else class="preview-code" :class="{ 'code-preview': previewType === 'code' }">{{ previewContent }}</pre>
-            </template>
-            <!-- 图片预览 -->
-            <div v-else-if="previewType === 'image'" class="preview-image">
-              <img :src="previewUrl" :alt="previewFile?.name" />
-            </div>
-            <!-- PDF 预览 -->
-            <iframe v-else-if="previewType === 'pdf'" :src="previewUrl" class="preview-pdf"></iframe>
-            <!-- 不支持的类型 -->
-            <div v-else class="preview-unsupported">
-              <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
-              <button class="btn-confirm" @click="handleDownload(previewFile!)">
-                {{ $t('tasks.download') || '下载文件' }}
-              </button>
-            </div>
-          </template>
-        </div>
-        <div class="dialog-footer">
-          <template v-if="previewType === 'text' || previewType === 'code' || previewType === 'markdown'">
-            <!-- 文本文件可编辑 -->
-            <template v-if="canEditFile">
-              <button v-if="!isEditing" class="btn-cancel" @click="startEdit">
-                {{ $t('tasks.edit') || '编辑' }}
-              </button>
-              <template v-else>
-                <button class="btn-cancel" @click="cancelEdit">
-                  {{ $t('common.cancel') || '取消' }}
-                </button>
-                <button class="btn-confirm" @click="saveEdit" :disabled="previewSaving">
-                  {{ $t('common.save') || '保存' }}
-                </button>
-              </template>
-            </template>
-            <button class="btn-confirm" @click="handleDownload(previewFile!)">
-              {{ $t('tasks.download') || '下载' }}
-            </button>
-          </template>
-          <template v-else>
-            <button class="btn-confirm" @click="handleDownload(previewFile!)">
-              {{ $t('tasks.download') || '下载文件' }}
-            </button>
-          </template>
-        </div>
-      </div>
-    </div>
-
     <!-- 删除文件确认对话框 -->
     <div v-if="showDeleteFileConfirm" class="dialog-overlay" @click.self="showDeleteFileConfirm = false">
       <div class="dialog dialog-small">
@@ -374,7 +418,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
@@ -410,15 +454,21 @@ const taskForm = ref({
 })
 
 // 文件预览相关
-const showPreview = ref(false)
+const showEmbedPreview = ref(false)  // 嵌入式预览模式
 const previewFile = ref<TaskFile | null>(null)
-const previewType = ref<'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'unsupported'>('text')
+const previewType = ref<'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'unsupported'>('text')
 const previewContent = ref('')
 const previewOriginalContent = ref('')  // 保存原始内容，用于取消编辑
 const previewUrl = ref('')
+const previewKey = ref(0)  // 用于强制刷新 iframe
 const previewLoading = ref(false)
 const previewSaving = ref(false)
 const isEditing = ref(false)
+
+// 自动刷新相关
+const autoRefreshEnabled = ref(false)
+const autoRefreshInterval = ref<number | null>(null)
+const AUTO_REFRESH_DELAY = 5000  // 5秒
 
 // 文件菜单相关
 const activeMenuFile = ref<TaskFile | null>(null)
@@ -557,6 +607,7 @@ const handleSubmitTask = async () => {
     closeTaskDialog()
   } catch (error) {
     console.error('Failed to save task:', error)
+    alert(t('tasks.saveTaskFailed') || '保存任务失败')
   } finally {
     isSubmitting.value = false
   }
@@ -568,6 +619,7 @@ const handleArchiveTask = async (task: Task) => {
     await taskStore.updateTask(task.id, { status: 'archived' })
   } catch (error) {
     console.error('Failed to archive task:', error)
+    alert(t('tasks.archiveTaskFailed') || '归档任务失败')
   }
 }
 
@@ -577,6 +629,7 @@ const handleRestoreTask = async (task: Task) => {
     await taskStore.updateTask(task.id, { status: 'active' })
   } catch (error) {
     console.error('Failed to restore task:', error)
+    alert(t('tasks.restoreTaskFailed') || '恢复任务失败')
   }
 }
 
@@ -596,6 +649,7 @@ const confirmDeleteTask = async () => {
     taskToDelete.value = null
   } catch (error) {
     console.error('Failed to delete task:', error)
+    alert(t('tasks.deleteTaskFailed') || '删除任务失败')
   }
 }
 
@@ -632,6 +686,7 @@ const handleFileUpload = async (event: Event) => {
     input.value = ''
   } catch (error) {
     console.error('Failed to upload file:', error)
+    alert(t('tasks.uploadFileFailed') || '上传文件失败')
   }
 }
 
@@ -649,14 +704,15 @@ const handleFileClick = async (file: TaskFile) => {
 }
 
 // 判断文件预览类型
-const getPreviewType = (filename: string): 'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'unsupported' => {
+const getPreviewType = (filename: string): 'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'unsupported' => {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
 
   const textExts = ['txt', 'csv', 'log']
-  const codeExts = ['js', 'ts', 'vue', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'html', 'json', 'xml', 'yaml', 'yml', 'sh', 'sql']
+  const codeExts = ['js', 'ts', 'vue', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'json', 'xml', 'yaml', 'yml', 'sh', 'sql']
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg']
 
   if (ext === 'md') return 'markdown'
+  if (ext === 'html' || ext === 'htm') return 'html'
   if (textExts.includes(ext)) return 'text'
   if (codeExts.includes(ext)) return 'code'
   if (imageExts.includes(ext)) return 'image'
@@ -665,38 +721,39 @@ const getPreviewType = (filename: string): 'text' | 'code' | 'markdown' | 'image
   return 'unsupported'
 }
 
-// 打开文件预览
+// 打开文件预览（嵌入式）
 const openPreview = async (file: TaskFile) => {
   previewFile.value = file
   previewType.value = getPreviewType(file.name)
   previewContent.value = ''
   previewUrl.value = ''
   previewLoading.value = true
-  showPreview.value = true
+  showEmbedPreview.value = true  // 使用嵌入式预览
 
   try {
-    const url = taskStore.getFilePreviewUrl(file.path)
-    const token = localStorage.getItem('access_token')
+    // 对于 HTML 和 PDF 文件，使用嵌入式预览（Token 在路径中）
+    if (previewType.value === 'html' || previewType.value === 'pdf') {
+      previewUrl.value = await taskStore.getEmbedPreviewUrl(file.path)
+      previewLoading.value = false
+      return
+    }
 
+    // 对于图片，也使用嵌入式预览 URL
+    if (previewType.value === 'image') {
+      previewUrl.value = await taskStore.getEmbedPreviewUrl(file.path)
+      previewLoading.value = false
+      return
+    }
+
+    // 文本/代码/Markdown 文件也使用静态文件服务
+    // Token 在 URL 中，可以直接 fetch
     if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown') {
-      // 获取文本内容
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!response.ok) throw new Error('Failed to load file')
+      const contentUrl = await taskStore.getEmbedPreviewUrl(file.path)
+      const response = await fetch(contentUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to load file: ${response.status}`)
+      }
       previewContent.value = await response.text()
-    } else if (previewType.value === 'image' || previewType.value === 'pdf') {
-      // 获取 blob 并创建对象 URL
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!response.ok) throw new Error('Failed to load file')
-      const blob = await response.blob()
-      previewUrl.value = URL.createObjectURL(blob)
     }
   } catch (error) {
     console.error('Failed to load preview:', error)
@@ -706,18 +763,75 @@ const openPreview = async (file: TaskFile) => {
   }
 }
 
-// 关闭预览
-const closePreview = () => {
-  // 释放 blob URL
-  if (previewUrl.value && previewUrl.value.startsWith('blob:')) {
-    URL.revokeObjectURL(previewUrl.value)
-  }
-  showPreview.value = false
+// 关闭嵌入式预览
+const closeEmbedPreview = () => {
+  // 停止自动刷新
+  stopAutoRefresh()
+
+  showEmbedPreview.value = false
   previewFile.value = null
   previewContent.value = ''
   previewOriginalContent.value = ''
   previewUrl.value = ''
+  previewKey.value = 0  // 重置 key
   isEditing.value = false
+  previewLoading.value = false
+  previewSaving.value = false
+}
+
+// 启动自动刷新
+const startAutoRefresh = () => {
+  if (autoRefreshInterval.value) return  // 已经在刷新中
+
+  autoRefreshEnabled.value = true
+  autoRefreshInterval.value = window.setInterval(async () => {
+    if (!previewFile.value) return
+
+    try {
+      // 刷新 Token 并重新加载
+      previewUrl.value = await taskStore.getEmbedPreviewUrl(previewFile.value.path)
+      // 增加 key 强制 iframe 重新加载
+      previewKey.value++
+    } catch (error) {
+      console.error('Auto refresh failed:', error)
+    }
+  }, AUTO_REFRESH_DELAY)
+}
+
+// 停止自动刷新
+const stopAutoRefresh = () => {
+  if (autoRefreshInterval.value) {
+    clearInterval(autoRefreshInterval.value)
+    autoRefreshInterval.value = null
+  }
+  autoRefreshEnabled.value = false
+}
+
+// 切换自动刷新
+const toggleAutoRefresh = () => {
+  if (autoRefreshEnabled.value) {
+    stopAutoRefresh()
+  } else {
+    startAutoRefresh()
+  }
+}
+
+// 手动刷新预览
+const refreshPreview = async () => {
+  if (!previewFile.value) return
+
+  previewLoading.value = true
+  try {
+    // 刷新 Token
+    await taskStore.refreshPreviewToken()
+    previewUrl.value = await taskStore.getEmbedPreviewUrl(previewFile.value.path)
+    // 增加 key 强制 iframe 重新加载
+    previewKey.value++
+  } catch (error) {
+    console.error('Refresh failed:', error)
+  } finally {
+    previewLoading.value = false
+  }
 }
 
 // 下载文件
@@ -727,6 +841,7 @@ const handleDownload = async (file: TaskFile) => {
     await taskStore.downloadFile(file.path)
   } catch (error) {
     console.error('Failed to download file:', error)
+    alert(t('tasks.downloadFileFailed') || '下载文件失败')
   }
 }
 
@@ -807,6 +922,7 @@ const saveEdit = async () => {
     previewOriginalContent.value = previewContent.value
   } catch (error) {
     console.error('Failed to save file:', error)
+    alert(t('tasks.saveFileFailed') || '保存文件失败')
   } finally {
     previewSaving.value = false
   }
@@ -838,6 +954,7 @@ const handleDeleteFile = async () => {
     fileToDelete.value = null
   } catch (error) {
     console.error('Failed to delete file:', error)
+    alert(t('tasks.deleteFileFailed') || '删除文件失败')
   }
 }
 
@@ -911,6 +1028,11 @@ const truncate = (text: string, maxLength: number) => {
 
 onMounted(() => {
   taskStore.loadTasks()
+})
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 
@@ -1747,6 +1869,86 @@ onMounted(() => {
   border-radius: 4px;
 }
 
+.preview-html {
+  width: 100%;
+  height: 60vh;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* Auto Refresh Controls */
+.auto-refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.btn-auto-refresh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-auto-refresh:hover {
+  background: var(--hover-bg, #e8e8e8);
+}
+
+.btn-auto-refresh.active {
+  background: rgba(33, 150, 243, 0.1);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-auto-refresh .refresh-icon {
+  font-size: 14px;
+  transition: transform 0.3s;
+}
+
+.btn-auto-refresh.active .refresh-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.btn-auto-refresh .refresh-label {
+  font-size: 12px;
+}
+
+.btn-manual-refresh {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-manual-refresh:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-manual-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .preview-unsupported {
   display: flex;
   flex-direction: column;
@@ -1916,5 +2118,348 @@ onMounted(() => {
 
 .markdown-editor {
   min-height: 400px;
+}
+
+/* ===== 嵌入式预览样式 ===== */
+.embed-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--sidebar-bg, #f5f5f5);
+}
+
+.embed-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--primary-bg, #e3f2fd);
+}
+
+.preview-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.preview-filename {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-action.active {
+  background: rgba(33, 150, 243, 0.1);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-action.active .action-icon {
+  animation: spin 1s linear infinite;
+}
+
+.action-icon {
+  font-size: 14px;
+}
+
+.action-label {
+  font-size: 11px;
+}
+
+.embed-preview-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.embed-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.embed-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 16px;
+  background: var(--code-bg, #f5f5f5);
+}
+
+.embed-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.embed-code {
+  margin: 0;
+  padding: 16px;
+  height: 100%;
+  background: var(--code-bg, #f5f5f5);
+  border-radius: 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.embed-code.code-preview {
+  white-space: pre;
+}
+
+.embed-editor {
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  background: var(--code-bg, #f5f5f5);
+  border: none;
+  border-radius: 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.embed-editor:focus {
+  outline: none;
+  background: var(--input-bg, #fff);
+}
+
+.embed-markdown {
+  padding: 16px;
+  height: 100%;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary, #333);
+  background: var(--dialog-bg, #fff);
+}
+
+/* 继承 Markdown 样式 */
+.embed-markdown :deep(h1),
+.embed-markdown :deep(h2),
+.embed-markdown :deep(h3),
+.embed-markdown :deep(h4),
+.embed-markdown :deep(h5),
+.embed-markdown :deep(h6) {
+  margin: 16px 0 8px 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary, #333);
+}
+
+.embed-markdown :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-color, #e0e0e0); padding-bottom: 8px; }
+.embed-markdown :deep(h2) { font-size: 1.35em; border-bottom: 1px solid var(--border-color, #e0e0e0); padding-bottom: 6px; }
+.embed-markdown :deep(h3) { font-size: 1.2em; }
+.embed-markdown :deep(h4) { font-size: 1.1em; }
+.embed-markdown :deep(h5) { font-size: 1em; }
+.embed-markdown :deep(h6) { font-size: 0.95em; color: var(--text-secondary, #666); }
+
+.embed-markdown :deep(p) { margin: 8px 0; }
+.embed-markdown :deep(p:first-child) { margin-top: 0; }
+.embed-markdown :deep(p:last-child) { margin-bottom: 0; }
+
+.embed-markdown :deep(ul),
+.embed-markdown :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.embed-markdown :deep(li) { margin: 4px 0; }
+.embed-markdown :deep(ul) { list-style-type: disc; }
+.embed-markdown :deep(ol) { list-style-type: decimal; }
+
+.embed-markdown :deep(blockquote) {
+  margin: 8px 0;
+  padding: 8px 16px;
+  border-left: 4px solid var(--primary-color, #2196f3);
+  background: var(--blockquote-bg, #f8f9fa);
+  color: var(--text-secondary, #666);
+  border-radius: 0 4px 4px 0;
+}
+
+.embed-markdown :deep(pre) {
+  background: var(--code-bg, #1e1e1e);
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.embed-markdown :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.embed-markdown :deep(code) {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.embed-markdown :deep(code:not(pre code)) {
+  background: var(--code-bg, #f0f0f0);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--code-color, #d63384);
+}
+
+.embed-markdown :deep(table) {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+.embed-markdown :deep(th),
+.embed-markdown :deep(td) {
+  border: 1px solid var(--border-color, #e0e0e0);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.embed-markdown :deep(th) {
+  background: var(--table-header-bg, #f5f5f5);
+  font-weight: 600;
+}
+
+.embed-markdown :deep(tr:nth-child(even)) {
+  background: var(--table-row-alt-bg, #fafafa);
+}
+
+.embed-markdown :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  margin: 16px 0;
+}
+
+.embed-markdown :deep(a) {
+  color: var(--primary-color, #2196f3);
+  text-decoration: none;
+}
+
+.embed-markdown :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.embed-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.embed-preview-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  background: var(--sidebar-bg, #f5f5f5);
+}
+
+.btn-edit,
+.btn-cancel-edit,
+.btn-save {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-edit {
+  background: transparent;
+  border: 1px solid var(--border-color, #ccc);
+  color: var(--text-secondary, #666);
+}
+
+.btn-edit:hover {
+  background: var(--hover-bg, #e8e8e8);
+}
+
+.btn-cancel-edit {
+  background: transparent;
+  border: 1px solid var(--border-color, #ccc);
+  color: var(--text-secondary, #666);
+}
+
+.btn-cancel-edit:hover {
+  background: var(--hover-bg, #e8e8e8);
+}
+
+.btn-save {
+  background: var(--primary-color, #2196f3);
+  border: none;
+  color: white;
+}
+
+.btn-save:hover {
+  background: var(--primary-hover, #1976d2);
+}
+
+/* 加载动画 */
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color, #e0e0e0);
+  border-top-color: var(--primary-color, #2196f3);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
 }
 </style>

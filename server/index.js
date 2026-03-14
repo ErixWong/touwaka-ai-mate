@@ -65,6 +65,8 @@ import systemSettingRoutes from './routes/system-setting.routes.js';
 import packageRoutes from './routes/package.routes.js';
 import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
+import taskStaticRoutes from './routes/task-static.routes.js';
+import TokenCleanupJob from './jobs/token-cleanup.js';
 
 class ApiServer {
   constructor() {
@@ -73,6 +75,7 @@ class ApiServer {
     this.chatService = null;
     this.scheduler = null;
     this.residentSkillManager = null;
+    this.tokenCleanupJob = null;
     this.controllers = {};
   }
 
@@ -152,6 +155,9 @@ class ApiServer {
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
     await this.residentSkillManager.initialize();
+
+    // 初始化 Token 清理任务（Issue #140）
+    this.tokenCleanupJob = new TokenCleanupJob(this.db);
   }
 
   /**
@@ -330,6 +336,12 @@ class ApiServer {
     this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
     logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke)');
 
+    // Task Static 静态文件服务路由（Issue #140）
+    const taskStaticRouter = taskStaticRoutes(this.db);
+    this.app.use(taskStaticRouter.routes());
+    this.app.use(taskStaticRouter.allowedMethods());
+    logger.info('Task static routes registered (GET /task-static/:token/*)');
+
     // 404 处理
     this.app.use(async (ctx) => {
       ctx.status = 404;
@@ -443,6 +455,11 @@ class ApiServer {
         if (this.scheduler) {
           this.scheduler.startAll();
         }
+
+        // 启动 Token 清理任务（Issue #140）
+        if (this.tokenCleanupJob) {
+          this.tokenCleanupJob.start();
+        }
       });
     } catch (error) {
       logger.error('Failed to start server:', error.message);
@@ -464,6 +481,9 @@ process.on('SIGINT', async () => {
   if (server.residentSkillManager) {
     await server.residentSkillManager.shutdown();
   }
+  if (server.tokenCleanupJob) {
+    server.tokenCleanupJob.stop();
+  }
   process.exit(0);
 });
 
@@ -474,6 +494,9 @@ process.on('SIGTERM', async () => {
   }
   if (server.residentSkillManager) {
     await server.residentSkillManager.shutdown();
+  }
+  if (server.tokenCleanupJob) {
+    server.tokenCleanupJob.stop();
   }
   process.exit(0);
 });

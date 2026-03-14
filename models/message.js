@@ -36,7 +36,7 @@ export default class message extends Model {
       }
     },
     role: {
-      type: DataTypes.ENUM('system','user','assistant'),
+      type: DataTypes.ENUM('system','user','assistant','tool'),
       allowNull: false
     },
     content: {

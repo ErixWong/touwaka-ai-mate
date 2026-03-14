@@ -27,6 +27,8 @@ import _skill_parameter from  "./skill_parameter.js";
 import _skill_tool from  "./skill_tool.js";
 import _skill from  "./skill.js";
 import _system_setting from  "./system_setting.js";
+import _task_token from  "./task_token.js";
+import _task_token_access_log from  "./task_token_access_log.js";
 import _task from  "./task.js";
 import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
@@ -61,6 +63,8 @@ export default function initModels(sequelize) {
   const skill_tool = _skill_tool.init(sequelize, DataTypes);
   const skill = _skill.init(sequelize, DataTypes);
   const system_setting = _system_setting.init(sequelize, DataTypes);
+  const task_token = _task_token.init(sequelize, DataTypes);
+  const task_token_access_log = _task_token_access_log.init(sequelize, DataTypes);
   const task = _task.init(sequelize, DataTypes);
   const topic = _topic.init(sequelize, DataTypes);
   const user_profile = _user_profile.init(sequelize, DataTypes);
@@ -81,6 +85,8 @@ export default function initModels(sequelize) {
   ai_model.hasMany(expert, { as: "experts", foreignKey: "expressive_model_id"});
   expert.belongsTo(ai_model, { as: "reflective_model", foreignKey: "reflective_model_id"});
   ai_model.hasMany(expert, { as: "reflective_model_experts", foreignKey: "reflective_model_id"});
+  knowledge_basis.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
+  ai_model.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "embedding_model_id"});
   position.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
   user.belongsTo(department, { as: "department", foreignKey: "department_id"});
@@ -139,6 +145,10 @@ export default function initModels(sequelize) {
   skill.hasMany(skill_parameter, { as: "skill_parameters", foreignKey: "skill_id"});
   skill_tool.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
   skill.hasMany(skill_tool, { as: "skill_tools", foreignKey: "skill_id"});
+  task_token_access_log.belongsTo(task_token, { as: "token", foreignKey: "token_id"});
+  task_token.hasMany(task_token_access_log, { as: "task_token_access_logs", foreignKey: "token_id"});
+  task_token.belongsTo(task, { as: "task", foreignKey: "task_id"});
+  task.hasMany(task_token, { as: "task_tokens", foreignKey: "task_id"});
   topic.belongsTo(task, { as: "task", foreignKey: "task_id"});
   task.hasMany(topic, { as: "topics", foreignKey: "task_id"});
   message.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
@@ -147,6 +157,8 @@ export default function initModels(sequelize) {
   user.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "owner_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(message, { as: "messages", foreignKey: "user_id"});
+  task_token.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(task_token, { as: "task_tokens", foreignKey: "user_id"});
   task.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
   user.hasMany(task, { as: "tasks", foreignKey: "created_by"});
   topic.belongsTo(user, { as: "user", foreignKey: "user_id"});
@@ -184,6 +196,8 @@ export default function initModels(sequelize) {
     skill_tool,
     skill,
     system_setting,
+    task_token,
+    task_token_access_log,
     task,
     topic,
     user_profile,
