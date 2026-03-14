@@ -289,12 +289,45 @@ router.post('/execute', async (ctx) => {
 3. **代码审查**：可选的代码静态分析
 4. **沙箱强化**：考虑使用 Docker 容器隔离（生产环境）
 
+## 使用方式
+
+### 1. 注册技能
+
+通过管理 API 注册技能：
+
+```bash
+curl -X POST http://localhost:3000/api/skills/register \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "data/skills/user-code-executor"
+  }'
+```
+
+### 2. 分配给专家
+
+```bash
+curl -X POST http://localhost:3000/api/skills/assign \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "skill_id": "user-code-executor",
+    "expert_id": "<expert-id>"
+  }'
+```
+
+### 3. 专家调用
+
+专家获得两个新工具：
+- `execute_javascript` - 执行 JS 代码
+- `execute_python` - 执行 Python 代码
+
 ## 后续工作
 
-1. [ ] 实现 `user-code-executor` 技能
-2. [ ] 添加 API 端点
+1. [x] 实现 `user-code-executor` 技能
+2. [ ] 添加 API 端点（可选，专家通过工具调用即可）
 3. [ ] 编写测试用例
-4. [ ] 更新文档
+4. [x] 更新文档
 5. [ ] 考虑 Docker 隔离方案（可选）
 
 ## 参考资料
