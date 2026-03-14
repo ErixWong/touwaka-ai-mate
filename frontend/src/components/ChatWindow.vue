@@ -175,8 +175,8 @@ import type { Message } from '@/types'
 
 export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status'> & {
   created_at?: string
+  tool_calls?: string | Record<string, unknown>  // 工具调用信息（直接字段，不在 metadata 中）
   metadata?: {
-    tool_calls?: string | Record<string, unknown>
     [key: string]: unknown
   }
 }
