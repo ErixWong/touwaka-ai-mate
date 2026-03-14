@@ -1393,6 +1393,9 @@ defineExpose({
   line-height: 1.5;
   overflow-x: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
 }
 
 .tool-result-content {
