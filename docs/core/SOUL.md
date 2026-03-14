@@ -39,6 +39,20 @@
 
 > **GitHub Issues 是任务管理的唯一真相源**
 
+### 完整工作流程
+
+```
+Issue（任务单） → 创建分支 → 开发 → PR → 合并 → 关闭 Issue
+    ↑________________________________________________↓
+```
+
+1. **创建 Issue**：描述需求/问题，添加 Labels 和 Milestone
+2. **创建分支**：`{type}/{issue编号}-{简短描述}`，如 `feature/120-db-migration`
+3. **开发**：编写代码，提交格式 `#{issue}: type 描述`
+4. **发起 PR**：描述中使用 `Closes #<issue-number>` 关联 Issue
+5. **合并**：Squash merge 到 `master`，删除分支
+6. **Issue 自动关闭**：PR 合并后自动关闭关联的 Issue
+
 ### 开工前必读
 
 1. `docs/core/SOUL.md` - 人设与工作规范
@@ -46,11 +60,11 @@
 3. `docs/guides/development/coding-standards.md` - 编码规范
 4. `docs/guides/development/code-review-checklist.md` - 代码审计清单
 
-### Issue 工作流
+### Issue 规范
 
-- Labels：`bug` | `enhancement` | `documentation`
-- Milestone 管理迭代周期
-- PR 描述使用 `Closes #<issue-number>` 自动关闭 Issue
+- **Labels**：`bug` | `enhancement` | `documentation`
+- **Milestone**：管理迭代周期
+- **PR 关联**：描述中使用 `Closes #<issue-number>` 自动关闭 Issue
 
 ---
 
