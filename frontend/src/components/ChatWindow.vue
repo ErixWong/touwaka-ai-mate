@@ -176,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -291,10 +291,19 @@ const checkIsAtBottom = () => {
   return scrollHeight - scrollTop - clientHeight < 100
 }
 
-// 滚动到底部
-const scrollToBottom = () => {
+// 滚动到底部（支持即时滚动，用于流式输出）
+const scrollToBottom = (instant = false) => {
   if (!messagesContainer.value) return
-  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  
+  if (instant) {
+    // 临时禁用 smooth 滚动，避免流式输出时的"追赶"效果
+    const original = messagesContainer.value.style.scrollBehavior
+    messagesContainer.value.style.scrollBehavior = 'auto'
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    messagesContainer.value.style.scrollBehavior = original
+  } else {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  }
 }
 
 // 滚动处理：检测是否滚动到顶部 + 更新用户位置状态
@@ -371,12 +380,13 @@ watch(
   { immediate: true }
 )
 
-// 监听最后一条消息的状态变化（流式更新）
+// 监听最后一条消息的内容变化（流式更新时保持滚动到底部）
 watch(
-  () => props.messages[props.messages.length - 1]?.status,
-  (status) => {
-    if (status === 'streaming' && isUserAtBottom.value) {
-      scrollToBottom()
+  () => props.messages[props.messages.length - 1]?.content,
+  () => {
+    // 流式输出时，如果用户在底部则即时滚动
+    if (isUserAtBottom.value) {
+      nextTick(() => scrollToBottom(true))
     }
   }
 )
@@ -511,14 +521,7 @@ const adjustTextareaHeight = () => {
 
 watch(inputText, adjustTextareaHeight)
 
-onMounted(() => {
-  // 初始滚动到底部
-  nextTick(() => {
-    if (messagesContainer.value && props.messages.length > 0) {
-      scrollToBottom()
-    }
-  })
-})
+// 注意：初始滚动由 watch 的 immediate: true 处理，无需在 onMounted 中重复
 
 onUnmounted(() => {
   // 清理格式化缓存
