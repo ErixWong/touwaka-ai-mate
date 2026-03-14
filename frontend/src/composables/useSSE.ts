@@ -328,8 +328,10 @@ export function useSSE() {
           // 解析完整的事件
           const events = parseSSEEvents(buffer)
           
-          // 处理事件
+          // 处理事件 - 使用 requestAnimationFrame 让出主线程，避免 UI 冻结
           for (const event of events) {
+            // 让出主线程，让 Vue 有机会更新 UI
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
             handleEvent(event, options)
           }
           
