@@ -325,16 +325,114 @@ async function deleteSession(params) {
   }
 }
 
+// ==================== SFTP Actions ====================
+
+/**
+ * List remote directory
+ */
+async function sftpList(params) {
+  const { session_id, path } = params;
+
+  if (!session_id || !path) {
+    return {
+      success: false,
+      error: 'session_id and path are required'
+    };
+  }
+
+  try {
+    const result = await invokeSSHTOol('sftp_list', {
+      session_id,
+      path
+    }, 30000);
+
+    return {
+      success: true,
+      ...result
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Download file from remote server
+ */
+async function sftpDownload(params) {
+  const { session_id, remote_path, local_path } = params;
+
+  if (!session_id || !remote_path || !local_path) {
+    return {
+      success: false,
+      error: 'session_id, remote_path and local_path are required'
+    };
+  }
+
+  try {
+    const result = await invokeSSHTOol('sftp_download', {
+      session_id,
+      remote_path,
+      local_path
+    }, 120000); // 2 minutes timeout for file transfers
+
+    return {
+      success: true,
+      ...result
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Upload file to remote server
+ */
+async function sftpUpload(params) {
+  const { session_id, local_path, remote_path } = params;
+
+  if (!session_id || !local_path || !remote_path) {
+    return {
+      success: false,
+      error: 'session_id, local_path and remote_path are required'
+    };
+  }
+
+  try {
+    const result = await invokeSSHTOol('sftp_upload', {
+      session_id,
+      local_path,
+      remote_path
+    }, 120000); // 2 minutes timeout for file transfers
+
+    return {
+      success: true,
+      ...result
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
 /**
  * Skill entry point
- * @param {string} toolName - Tool name (ssh_connect, ssh_exec, etc.)
+ * @param {string} toolName - Tool name (ssh_connect, ssh_exec, sftp_list, etc.)
  * @param {Object} params - Tool parameters
  * @param {Object} context - Execution context
  */
 async function execute(toolName, params, context = {}) {
-  // Extract action from tool name (ssh_connect -> connect, etc.)
+  // Extract action from tool name (ssh_connect -> connect, sftp_list -> sftp_list, etc.)
   let action = toolName.replace(/^ssh_/, '').replace(/-/g, '_');
 
+  // SSH actions
   switch (action) {
     case 'connect':
       return connect(params);
@@ -356,6 +454,16 @@ async function execute(toolName, params, context = {}) {
 
     case 'delete':
       return deleteSession(params);
+
+    // SFTP actions
+    case 'sftp_list':
+      return sftpList(params);
+
+    case 'sftp_download':
+      return sftpDownload(params);
+
+    case 'sftp_upload':
+      return sftpUpload(params);
 
     default:
       console.error(`[ssh-client] Unknown action: ${action}`);

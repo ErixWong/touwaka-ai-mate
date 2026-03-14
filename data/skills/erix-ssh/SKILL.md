@@ -1,14 +1,14 @@
 ---
 name: ssh
-description: SSH remote server management with synchronous command execution. Use when you need to connect to remote servers via SSH, execute commands, and get results. Features session-based Connection management, automatic reconnection, and message history stored in SQLite.
-argument-hint: "[connect|exec|sudo|output|history|disconnect] --session ID"
+description: SSH remote server management with synchronous command execution and SFTP file transfer. Use when you need to connect to remote servers via SSH, execute commands, and transfer files. Features session-based connection management, automatic reconnection, and message history stored in SQLite.
+argument-hint: "[connect|exec|sudo|sftp_list|sftp_download|sftp_upload|disconnect] --session ID"
 user-invocable: false
 allowed-tools: []
 ---
 
 # SSH Remote Server Management
 
-Session-based SSH client with synchronous execution and SQLite storage.
+Session-based SSH client with synchronous execution, SFTP file transfer, and SQLite storage.
 
 ## Design Architecture
 
@@ -33,7 +33,7 @@ session_manager.js:
 - Lost Session ID = Lost access (no session list feature for security)
 - Never expose full Session ID in public (show first 8 chars only for identification)
 
-## Tools
+## SSH Tools
 
 ### ssh_connect
 
@@ -189,6 +189,86 @@ Get command execution history for a session.
 
 ---
 
+## SFTP Tools
+
+### sftp_list
+
+List contents of a remote directory.
+
+**is_resident:** 0 (calls resident process)
+**script_path:** `scripts/ssh_client.js`
+
+**Parameters:**
+- `session_id` (required): Session ID
+- `path` (required): Remote directory path
+
+**Returns:**
+```json
+{
+  "success": true,
+  "path": "/home/user",
+  "entries": [
+    {
+      "filename": "example.txt",
+      "type": "file",
+      "size": 1234,
+      "mode": "0644",
+      "mtime": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### sftp_download
+
+Download a file from the remote server.
+
+**is_resident:** 0
+**script_path:** `scripts/ssh_client.js`
+
+**Parameters:**
+- `session_id` (required): Session ID
+- `remote_path` (required): Remote file path
+- `local_path` (required): Local file path to save
+
+**Returns:**
+```json
+{
+  "success": true,
+  "remote_path": "/remote/file.txt",
+  "local_path": "/local/file.txt",
+  "bytes_transferred": 12345
+}
+```
+
+---
+
+### sftp_upload
+
+Upload a file to the remote server.
+
+**is_resident:** 0
+**script_path:** `scripts/ssh_client.js`
+
+**Parameters:**
+- `session_id` (required): Session ID
+- `local_path` (required): Local file path
+- `remote_path` (required): Remote file path to save
+
+**Returns:**
+```json
+{
+  "success": true,
+  "local_path": "/local/file.txt",
+  "remote_path": "/remote/file.txt",
+  "bytes_transferred": 12345
+}
+```
+
+---
+
 ## Resident Process
 
 ### ssh_manager (internal)
@@ -262,4 +342,4 @@ Events (unsolicited notifications):
 - ssh2 package
 
 ---
-*Updated: 2026-03-13 - Refactored to resident process with stdin/stdout protocol*
+*Updated: 2026-03-14 - Added SFTP file transfer support*
