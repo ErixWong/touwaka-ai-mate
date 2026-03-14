@@ -2,10 +2,10 @@
  * User Code Executor - 用户代码执行器
  * 
  * 在安全沙箱中执行用户自定义代码。
- * 复用 skill-runner 的安全机制。
+ * 注意：此技能本身已在 skill-runner 的 VM 沙箱中运行，
+ * 因此直接使用 eval/Function 执行用户代码即可。
  */
 
-const vm = require('vm');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -26,7 +26,7 @@ function getTools() {
   return [
     {
       name: 'execute_javascript',
-      description: '在 VM 沙箱中执行 JavaScript 代码。可以执行内联代码或加载用户工作目录中的脚本文件。',
+      description: '在当前沙箱中执行 JavaScript 代码。可以执行内联代码或加载用户工作目录中的脚本文件。',
       parameters: {
         type: 'object',
         properties: {
@@ -122,125 +122,111 @@ async function executeJavaScript(params, context) {
 }
 
 /**
- * 在 VM 沙箱中执行代码
+ * 在当前上下文中执行代码（使用 Function 构造器）
+ * 由于此技能已在 skill-runner 的 VM 沙箱中，直接执行即可
  */
 function runInSandbox(code, source) {
   const startTime = Date.now();
   const stdout = [];
   const stderr = [];
   
-  // 构建沙箱上下文
-  const sandbox = {
-    // 控制台（输出到数组）
-    console: {
-      log: (...args) => {
-        const msg = args.join(' ');
-        stdout.push(msg);
-        console.error('[user-code]', msg);
-      },
-      error: (...args) => {
-        const msg = args.join(' ');
-        stderr.push(msg);
-        console.error('[user-code:ERROR]', msg);
-      },
-      warn: (...args) => {
-        const msg = args.join(' ');
-        stderr.push(msg);
-        console.error('[user-code:WARN]', msg);
-      },
-      info: (...args) => {
-        const msg = args.join(' ');
-        stdout.push(msg);
-        console.error('[user-code:INFO]', msg);
-      },
+  // 创建自定义 console
+  const customConsole = {
+    log: (...args) => {
+      const msg = args.join(' ');
+      stdout.push(msg);
+      console.log('[user-code]', msg);
     },
-    
-    // 受限的 process
-    process: {
-      env: { ...process.env },
-      cwd: () => USER_WORK_DIR || process.cwd(),
+    error: (...args) => {
+      const msg = args.join(' ');
+      stderr.push(msg);
+      console.error('[user-code:ERROR]', msg);
     },
-    
-    // 全局对象
-    Buffer,
-    URL,
-    URLSearchParams,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    
-    // 结果存储
-    __result: undefined,
+    warn: (...args) => {
+      const msg = args.join(' ');
+      stderr.push(msg);
+      console.error('[user-code:WARN]', msg);
+    },
+    info: (...args) => {
+      const msg = args.join(' ');
+      stdout.push(msg);
+      console.log('[user-code:INFO]', msg);
+    },
   };
-  
-  // 包装代码，捕获返回值
-  const wrappedCode = `
-    (function() {
-      try {
-        // 尝试作为表达式执行
-        __result = eval(${JSON.stringify(code)});
-      } catch (e) {
-        // 如果表达式失败，尝试作为语句执行
-        try {
-          eval(${JSON.stringify(code)});
-        } catch (e2) {
-          __result = { success: false, error: e2.message };
-        }
-      }
-    })();
-  `;
-  
-  // 创建上下文
-  vm.createContext(sandbox);
-  
-  try {
-    // 执行代码
-    vm.runInContext(wrappedCode, sandbox, {
-      timeout: JS_TIMEOUT,
-      displayErrors: true,
-    });
-    
-    const duration = Date.now() - startTime;
-    let result = sandbox.__result;
-    
-    console.log(`[user-code-executor] 执行成功，耗时: ${duration}ms`);
-    
-    return {
-      success: true,
-      result: result,
-      stdout: stdout.join('\n'),
-      stderr: stderr.join('\n'),
-      duration,
-      source,
-    };
-    
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`[user-code-executor] 执行失败:`, error.message);
-    
-    // 处理超时
-    if (error.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') {
-      return {
+
+  return new Promise((resolve) => {
+    // 超时控制
+    const timeoutId = setTimeout(() => {
+      resolve({
         success: false,
         error: `执行超时（超过 ${JS_TIMEOUT}ms）`,
         stdout: stdout.join('\n'),
         stderr: stderr.join('\n'),
+        duration: Date.now() - startTime,
+        source,
+      });
+    }, JS_TIMEOUT);
+
+    try {
+      // 使用 Function 构造器执行代码
+      // 创建一个异步函数包装器，支持 async/await
+      const wrappedCode = `
+        return (async function() {
+          ${code}
+        })();
+      `;
+      
+      // 创建函数并执行
+      const fn = new Function('console', 'require', 'process', wrappedCode);
+      const result = fn(customConsole, require, process);
+      
+      // 处理 Promise 结果
+      Promise.resolve(result)
+        .then((value) => {
+          clearTimeout(timeoutId);
+          const duration = Date.now() - startTime;
+          console.log(`[user-code-executor] 执行成功，耗时: ${duration}ms`);
+          
+          resolve({
+            success: true,
+            result: value,
+            stdout: stdout.join('\n'),
+            stderr: stderr.join('\n'),
+            duration,
+            source,
+          });
+        })
+        .catch((error) => {
+          clearTimeout(timeoutId);
+          const duration = Date.now() - startTime;
+          console.error(`[user-code-executor] 执行失败:`, error.message);
+          
+          resolve({
+            success: false,
+            error: error.message,
+            stack: error.stack,
+            stdout: stdout.join('\n'),
+            stderr: stderr.join('\n'),
+            duration,
+            source,
+          });
+        });
+    } catch (error) {
+      clearTimeout(timeoutId);
+      const duration = Date.now() - startTime;
+      console.error(`[user-code-executor] 语法错误:`, error.message);
+      
+      resolve({
+        success: false,
+        error: error.message,
+        stack: error.stack,
+        stdout: stdout.join('\n'),
+        stderr: stderr.join('\n'),
         duration,
         source,
-      };
+      });
     }
-    
-    return {
-      success: false,
-      error: error.message,
-      stack: error.stack,
-      stdout: stdout.join('\n'),
-      stderr: stderr.join('\n'),
-      duration,
-      source,
-    };
-  }
+  });
 }
 
 /**

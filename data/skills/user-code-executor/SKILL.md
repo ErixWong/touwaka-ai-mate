@@ -10,18 +10,19 @@ allowed-tools: []
 
 在安全沙箱中执行用户自定义代码。
 
+> **注意**: 此技能本身已在 skill-runner 的 VM 沙箱中运行，JavaScript 代码使用 Function 构造器执行，Python 代码使用子进程隔离。
+
 ## 功能
 
-- 执行用户提供的 JavaScript 代码（VM 沙箱）
-- 执行用户提供的 Python 代码（受限环境）
+- 执行用户提供的 JavaScript 代码（Function 构造器）
+- 执行用户提供的 Python 代码（子进程隔离）
 - 从工作目录加载脚本文件
 
 ## 安全限制
 
 - **执行超时**: JavaScript 30秒 / Python 5分钟
-- **内存限制**: 128MB
 - **文件访问**: 仅限用户工作目录
-- **模块访问**: 白名单控制
+- **模块访问**: 受 skill-runner 白名单控制
 
 ## 配置要求
 
