@@ -1,5 +1,3 @@
-import { ref, readonly } from 'vue'
-
 /**
  * 简单的事件总线，用于组件间通信
  */
