@@ -24,6 +24,7 @@
 | 前端组件 | PascalCase |
 | API 路由 | kebab-case |
 | Git 提交 | `#{issue}: type 描述` |
+| Issue 标题 | `type: 描述`（不带编号前缀）|
 
 ## 🏗 项目上下文
 
