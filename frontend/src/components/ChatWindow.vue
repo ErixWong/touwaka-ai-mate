@@ -380,19 +380,27 @@ watch(
   { immediate: true }
 )
 
+// 流式输出节流控制
+let streamingScrollRaf: number | null = null
+
 // 监听最后一条消息的内容变化（流式更新时保持滚动到底部）
 watch(
   () => props.messages[props.messages.length - 1]?.content,
   () => {
-    // 流式输出时，如果用户在底部则即时滚动
+    // 流式输出时，如果用户在底部则即时滚动（使用 RAF 节流）
     if (isUserAtBottom.value) {
-      nextTick(() => scrollToBottom(true))
+      if (streamingScrollRaf === null) {
+        streamingScrollRaf = requestAnimationFrame(() => {
+          streamingScrollRaf = null
+          scrollToBottom(true)
+        })
+      }
     }
   }
 )
 
 // 发送消息
-const handleSend = async () => {
+const handleSend = () => {
   const content = inputText.value.trim()
 
   if (!content || props.isLoading || props.disabled) return
@@ -526,6 +534,11 @@ watch(inputText, adjustTextareaHeight)
 onUnmounted(() => {
   // 清理格式化缓存
   formattedCache.clear()
+  // 清理流式滚动 RAF
+  if (streamingScrollRaf !== null) {
+    cancelAnimationFrame(streamingScrollRaf)
+    streamingScrollRaf = null
+  }
 })
 
 // ==================== Tool 消息处理方法 ====================
