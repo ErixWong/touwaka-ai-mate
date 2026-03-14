@@ -970,6 +970,52 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 任务预览 Token 表 (Issue #140) ====================
+  
+  // 39. task_token 表（包含外键约束）
+  {
+    name: 'task_token table',
+    check: async (conn) => await hasTable(conn, 'task_token'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS task_token (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          token VARCHAR(64) NOT NULL UNIQUE COMMENT 'Token字符串(随机生成，非JWT)',
+          task_id VARCHAR(32) NOT NULL COMMENT '关联的任务ID',
+          user_id VARCHAR(32) NOT NULL COMMENT '创建Token的用户ID',
+          expires_at DATETIME NOT NULL COMMENT '过期时间',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_token (token),
+          INDEX idx_task_user (task_id, user_id),
+          INDEX idx_expires_at (expires_at),
+          CONSTRAINT fk_task_token_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+          CONSTRAINT fk_task_token_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='任务预览Token表'
+      `);
+    }
+  },
+
+  // 40. task_token_access_log 表（包含外键约束）
+  {
+    name: 'task_token_access_log table',
+    check: async (conn) => await hasTable(conn, 'task_token_access_log'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS task_token_access_log (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          token_id INT NOT NULL COMMENT '关联的Token ID',
+          file_path VARCHAR(512) NOT NULL COMMENT '访问的文件路径',
+          ip_address VARCHAR(45) NOT NULL COMMENT '访问者IP地址',
+          user_agent VARCHAR(512) COMMENT '浏览器User-Agent',
+          accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_token_id (token_id),
+          INDEX idx_accessed_at (accessed_at),
+          CONSTRAINT fk_access_log_token FOREIGN KEY (token_id) REFERENCES task_token(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Token访问日志表'
+      `);
+    }
+  },
 ];
 
 /**

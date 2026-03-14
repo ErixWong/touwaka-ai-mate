@@ -28,7 +28,11 @@ export default class knowledge_basis extends Model {
     embedding_model_id: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      comment: "关联 ai_models 表"
+      comment: "关联 ai_models 表",
+      references: {
+        model: 'ai_models',
+        key: 'id'
+      }
     },
     embedding_dim: {
       type: DataTypes.INTEGER,
@@ -77,6 +81,13 @@ export default class knowledge_basis extends Model {
         using: "BTREE",
         fields: [
           { name: "is_public" },
+        ]
+      },
+      {
+        name: "fk_kb_embedding_model",
+        using: "BTREE",
+        fields: [
+          { name: "embedding_model_id" },
         ]
       },
     ]

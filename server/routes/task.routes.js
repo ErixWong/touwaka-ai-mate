@@ -10,6 +10,7 @@ import multer from '@koa/multer';
 import path from 'path';
 import { createReadStream } from 'fs';
 import fs from 'fs/promises';
+import crypto from 'crypto';
 
 // 工作空间根目录
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
@@ -263,6 +264,131 @@ export default (controller) => {
       ctx.success({ message: '文件保存成功' });
     } catch (error) {
       ctx.error('文件保存失败', 500);
+    }
+  });
+
+  // ==================== 预览 Token API (Issue #140) ====================
+
+  /**
+   * 获取预览 Token
+   * GET /api/tasks/:id/preview-token
+   * 
+   * 返回用于静态文件服务的 Token，有效期 15 分钟
+   * 如果已有有效 Token（剩余时间 > 1 分钟），则复用
+   */
+  router.get('/:id/preview-token', authenticate(), async (ctx) => {
+    try {
+      const { id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 1. 验证任务存在且属于当前用户
+      controller.ensureModel();
+      const task = await controller.Task.findOne({
+        where: { id },
+        raw: true,
+      });
+
+      if (!task) {
+        ctx.error('任务不存在', 404);
+        return;
+      }
+
+      if (task.created_by !== userId) {
+        ctx.error('无权限访问此任务', 403);
+        return;
+      }
+
+      // 2. 查找现有有效 Token（剩余时间 > 1 分钟）
+      const [existingTokens] = await controller.db.query(
+        `SELECT * FROM task_token 
+         WHERE task_id = ? AND user_id = ? AND expires_at > ?
+         ORDER BY expires_at DESC LIMIT 1`,
+        [id, userId, new Date(Date.now() + 60000)]
+      );
+
+      if (existingTokens && existingTokens.length > 0) {
+        const existingToken = existingTokens[0];
+        const expiresIn = Math.floor((new Date(existingToken.expires_at) - Date.now()) / 1000);
+        ctx.success({
+          previewToken: existingToken.token,
+          expiresIn,
+          expiresAt: existingToken.expires_at
+        });
+        return;
+      }
+
+      // 3. 生成随机 Token（32字节，hex编码 = 64字符）
+      const token = crypto.randomBytes(32).toString('hex');
+
+      // 4. 存入数据库（15分钟有效）
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      await controller.db.query(
+        `INSERT INTO task_token (token, task_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
+        [token, id, userId, expiresAt]
+      );
+
+      ctx.success({
+        previewToken: token,
+        expiresIn: 900,  // 秒
+        expiresAt: expiresAt.toISOString()
+      });
+    } catch (error) {
+      console.error('Failed to get preview token:', error);
+      ctx.error('获取预览 Token 失败', 500);
+    }
+  });
+
+  /**
+   * 刷新预览 Token
+   * POST /api/tasks/:id/preview-token/refresh
+   * 
+   * 作废旧 Token，生成新 Token
+   */
+  router.post('/:id/preview-token/refresh', authenticate(), async (ctx) => {
+    try {
+      const { id } = ctx.params;
+      const userId = ctx.state.session.id;
+      const { oldToken } = ctx.request.body;
+
+      if (!oldToken) {
+        ctx.error('旧 Token 不能为空', 400);
+        return;
+      }
+
+      // 1. 验证旧 Token
+      const [tokenRows] = await controller.db.query(
+        `SELECT * FROM task_token WHERE token = ? AND task_id = ? AND user_id = ?`,
+        [oldToken, id, userId]
+      );
+
+      if (!tokenRows || tokenRows.length === 0) {
+        ctx.error('Token 不存在', 404);
+        return;
+      }
+
+      // 2. 作废旧 Token
+      await controller.db.query(
+        `DELETE FROM task_token WHERE token = ?`,
+        [oldToken]
+      );
+
+      // 3. 生成新 Token
+      const newToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      
+      await controller.db.query(
+        `INSERT INTO task_token (token, task_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
+        [newToken, id, userId, expiresAt]
+      );
+
+      ctx.success({
+        previewToken: newToken,
+        expiresIn: 900,
+        expiresAt: expiresAt.toISOString()
+      });
+    } catch (error) {
+      console.error('Failed to refresh preview token:', error);
+      ctx.error('刷新预览 Token 失败', 500);
     }
   });
 
