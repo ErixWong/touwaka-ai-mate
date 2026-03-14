@@ -27,33 +27,63 @@
         class="message"
         :class="message.role"
       >
-        <div class="message-avatar">
-          <span v-if="message.role === 'user'">👤</span>
-          <div 
-            v-else
-            class="avatar-image"
-            :style="props.expertAvatar ? { backgroundImage: `url(${props.expertAvatar})` } : {}"
-          >
-            <span v-if="!props.expertAvatar">🤖</span>
+        <!-- tool 消息的特殊渲染 -->
+        <template v-if="message.role === 'tool'">
+          <div class="tool-message-card">
+            <div class="tool-header">
+              <span class="tool-icon">🔧</span>
+              <span class="tool-name">{{ getToolName(message) }}</span>
+              <span class="tool-status" :class="getToolStatus(message) ? 'success' : 'error'">
+                {{ getToolStatus(message) ? '✅' : '❌' }}
+              </span>
+              <span v-if="getToolDuration(message)" class="tool-duration">
+                {{ getToolDuration(message) }}ms
+              </span>
+            </div>
+            <div v-if="getToolArguments(message)" class="tool-arguments">
+              <details>
+                <summary>{{ $t('chat.toolArguments') || '参数' }}</summary>
+                <pre>{{ formatToolArguments(message) }}</pre>
+              </details>
+            </div>
+            <div v-if="message.content" class="tool-result">
+              <details>
+                <summary>{{ $t('chat.toolResult') || '结果' }}</summary>
+                <pre class="tool-result-content">{{ formatToolResult(message) }}</pre>
+              </details>
+            </div>
           </div>
-        </div>
-        <div class="message-content">
-          <div class="message-text" v-html="formatMessage(message.content)"></div>
-          <div v-if="message.status === 'streaming'" class="streaming-indicator">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
+        </template>
+        <!-- 普通 user/assistant 消息 -->
+        <template v-else>
+          <div class="message-avatar">
+            <span v-if="message.role === 'user'">👤</span>
+            <div
+              v-else
+              class="avatar-image"
+              :style="props.expertAvatar ? { backgroundImage: `url(${props.expertAvatar})` } : {}"
+            >
+              <span v-if="!props.expertAvatar">🤖</span>
+            </div>
           </div>
-          <div v-if="message.status === 'error'" class="error-text">
-            {{ $t('chat.sendError') }}
-            <button class="retry-btn" @click="$emit('retry', message)">
-              {{ $t('chat.retrySend') }}
-            </button>
+          <div class="message-content">
+            <div class="message-text" v-html="formatMessage(message.content)"></div>
+            <div v-if="message.status === 'streaming'" class="streaming-indicator">
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+            <div v-if="message.status === 'error'" class="error-text">
+              {{ $t('chat.sendError') }}
+              <button class="retry-btn" @click="$emit('retry', message)">
+                {{ $t('chat.retrySend') }}
+              </button>
+            </div>
+            <div v-if="message.created_at && message.status !== 'streaming'" class="message-time">
+              {{ formatTime(message.created_at) }}
+            </div>
           </div>
-          <div v-if="message.created_at && message.status !== 'streaming'" class="message-time">
-            {{ formatTime(message.created_at) }}
-          </div>
-        </div>
+        </template>
       </div>
       <div v-if="isLoading" class="message assistant">
         <div class="message-avatar">
@@ -145,6 +175,10 @@ import type { Message } from '@/types'
 
 export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status'> & {
   created_at?: string
+  metadata?: {
+    tool_calls?: string | Record<string, unknown>
+    [key: string]: unknown
+  }
 }
 
 const props = defineProps<{
@@ -542,6 +576,103 @@ onUnmounted(() => {
   // 清理格式化缓存
   formattedCache.clear()
 })
+
+// ==================== Tool 消息处理方法 ====================
+
+interface ToolCallData {
+  tool_call_id?: string
+  name?: string
+  tool_name?: string
+  content?: string
+  success?: boolean
+  duration?: number
+  timestamp?: string
+  arguments?: Record<string, unknown>
+  result?: unknown
+}
+
+/**
+ * 解析 tool 消息的 tool_calls 字段
+ */
+const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
+  if (!message.metadata?.tool_calls) return null
+  
+  try {
+    const toolCalls = typeof message.metadata.tool_calls === 'string'
+      ? JSON.parse(message.metadata.tool_calls)
+      : message.metadata.tool_calls
+    return toolCalls as ToolCallData
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 获取工具名称
+ */
+const getToolName = (message: ChatMessage): string => {
+  const toolData = parseToolCalls(message)
+  if (toolData?.name) return toolData.name
+  if (toolData?.tool_name) return toolData.tool_name
+  return 'unknown_tool'
+}
+
+/**
+ * 获取工具执行状态
+ */
+const getToolStatus = (message: ChatMessage): boolean => {
+  const toolData = parseToolCalls(message)
+  return toolData?.success ?? true
+}
+
+/**
+ * 获取工具执行耗时
+ */
+const getToolDuration = (message: ChatMessage): number | null => {
+  const toolData = parseToolCalls(message)
+  return toolData?.duration ?? null
+}
+
+/**
+ * 获取工具参数
+ */
+const getToolArguments = (message: ChatMessage): Record<string, unknown> | null => {
+  const toolData = parseToolCalls(message)
+  return toolData?.arguments ?? null
+}
+
+/**
+ * 格式化工具参数显示
+ */
+const formatToolArguments = (message: ChatMessage): string => {
+  const args = getToolArguments(message)
+  if (!args) return ''
+  try {
+    return JSON.stringify(args, null, 2)
+  } catch {
+    return String(args)
+  }
+}
+
+/**
+ * 格式化工具结果显示
+ */
+const formatToolResult = (message: ChatMessage): string => {
+  if (!message.content) return ''
+  
+  // 尝试解析 JSON 格式化显示
+  try {
+    const parsed = JSON.parse(message.content)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    // 非JSON，直接显示（截断过长的内容）
+    const maxLength = 500
+    if (message.content.length > maxLength) {
+      return message.content.substring(0, maxLength) + '\n...(已截断)'
+    }
+    return message.content
+  }
+}
 
 defineExpose({
   scrollToBottom
@@ -1167,5 +1298,104 @@ defineExpose({
   height: 20px;
   color: var(--text-secondary, #666);
   transition: color 0.2s;
+}
+
+/* ==================== Tool 消息样式 ==================== */
+.message.tool {
+  justify-content: center;
+}
+
+.tool-message-card {
+  background: var(--tool-card-bg, #f8f9fa);
+  border: 1px solid var(--tool-card-border, #e9ecef);
+  border-radius: 12px;
+  padding: 12px 16px;
+  max-width: 80%;
+  font-size: 13px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.tool-icon {
+  font-size: 16px;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  font-family: 'Consolas', 'Monaco', monospace;
+  flex: 1;
+}
+
+.tool-status {
+  font-size: 14px;
+}
+
+.tool-status.success {
+  color: var(--success-color, #4caf50);
+}
+
+.tool-status.error {
+  color: var(--error-color, #f44336);
+}
+
+.tool-duration {
+  font-size: 11px;
+  color: var(--text-hint, #999);
+  background: var(--chip-bg, #e0e0e0);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.tool-arguments,
+.tool-result {
+  margin-top: 8px;
+}
+
+.tool-arguments details,
+.tool-result details {
+  background: var(--code-bg, #1e1e1e);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tool-arguments summary,
+.tool-result summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--code-summary-color, #9cdcfe);
+  font-weight: 500;
+  font-size: 12px;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.tool-arguments summary:hover,
+.tool-result summary:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tool-arguments pre,
+.tool-result pre {
+  margin: 0;
+  padding: 12px;
+  color: #d4d4d4;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tool-result-content {
+  max-height: 300px;
+  overflow-y: auto;
 }
 </style>

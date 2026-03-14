@@ -70,6 +70,9 @@ export default {
     timeMinutesAgo: '{n}分钟前',
     timeYesterday: '昨天',
     timeDaysAgo: '{n}天前',
+    // Tool 消息
+    toolArguments: '参数',
+    toolResult: '结果',
     uploadImage: '上传图片',
     selectModel: '选择模型',
     // 任务模式

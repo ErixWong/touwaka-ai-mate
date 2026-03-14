@@ -42,10 +42,10 @@ export interface Topic {
 }
 
 // 消息角色
-export type MessageRole = 'user' | 'assistant' | 'system'
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
 // 消息状态
-export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'cancelled' | 'stopped' | 'stopped'
+export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'cancelled' | 'stopped' | 'timeout'
 
 // 消息类型
 // 核心设计：消息按 expert + user 组织，topic_id 只是对话历史的阶段性总结标记
@@ -65,6 +65,7 @@ export interface Message {
 
 // 消息元数据
 export interface MessageMetadata {
+  [key: string]: unknown  // 索引签名，支持动态属性
   tokens?: TokenUsage
   cost?: number
   latency?: number
@@ -72,6 +73,21 @@ export interface MessageMetadata {
   provider?: string
   error?: string
   cached?: boolean
+  tool_calls?: string | ToolCallData  // 工具调用信息（JSON 字符串或对象）
+}
+
+// 工具调用数据
+export interface ToolCallData {
+  [key: string]: unknown
+  tool_call_id?: string
+  name?: string
+  tool_name?: string
+  content?: string
+  success?: boolean
+  duration?: number
+  timestamp?: string
+  arguments?: Record<string, unknown>
+  result?: unknown
 }
 
 // Token 使用情况

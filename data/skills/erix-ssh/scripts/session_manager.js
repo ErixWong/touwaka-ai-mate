@@ -27,6 +27,41 @@ const __dirname = path.dirname(__filename);
 // Active SSH connections (sessionId -> Client)
 const connections = new Map();
 
+// SFTP connections cache (sessionId -> SFTP instance)
+const sftpConnections = new Map();
+
+// ============== SFTP Functions ==============
+
+/**
+ * Get or create SFTP connection for a session
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<SFTP>} SFTP instance
+ */
+async function getSftp(sessionId) {
+  // Check cache
+  if (sftpConnections.has(sessionId)) {
+    return sftpConnections.get(sessionId);
+  }
+  
+  // Get SSH connection
+  const conn = connections.get(sessionId);
+  if (!conn) {
+    throw new Error('Session not connected');
+  }
+  
+  // Create SFTP
+  return new Promise((resolve, reject) => {
+    conn.sftp((err, sftp) => {
+      if (err) reject(err);
+      else {
+        sftpConnections.set(sessionId, sftp);
+        log(`SFTP connection created for ${sessionId}`);
+        resolve(sftp);
+      }
+    });
+  });
+}
+
 // ============== Protocol Functions ==============
 
 let buffer = '';
@@ -135,7 +170,8 @@ async function processCommand(command, params, user) {
  */
 async function processActionWithUser(action, params, userId, isAdmin) {
   // Actions that require session ownership check
-  const sessionActions = ['disconnect', 'exec', 'sudo', 'output', 'history', 'delete'];
+  const sessionActions = ['disconnect', 'exec', 'sudo', 'output', 'history', 'delete',
+                          'sftp_list', 'sftp_download', 'sftp_upload'];
   
   if (sessionActions.includes(action) && params.session_id) {
     // Check session ownership (skip for admin)
@@ -170,6 +206,16 @@ async function processActionWithUser(action, params, userId, isAdmin) {
 
     case 'list_sessions':
       return handleListSessions(userId);
+
+    // SFTP actions
+    case 'sftp_list':
+      return await handleSftpList(params);
+
+    case 'sftp_download':
+      return await handleSftpDownload(params);
+
+    case 'sftp_upload':
+      return await handleSftpUpload(params);
 
     case 'exit':
       await shutdown();
@@ -255,6 +301,9 @@ async function handleDisconnect(params) {
     conn.end();
     connections.delete(session_id);
   }
+
+  // Clear SFTP connection cache
+  sftpConnections.delete(session_id);
 
   db.updateSessionStatus(session_id, 'disconnected');
   db.addMessage(session_id, {
@@ -540,10 +589,120 @@ function handleDelete(params) {
     connections.delete(session_id);
   }
 
+  // Clear SFTP connection cache
+  sftpConnections.delete(session_id);
+
   // Delete from database
   db.deleteSession(session_id);
 
   return { message: 'Session deleted' };
+}
+
+// ============== SFTP Action Handlers ==============
+
+/**
+ * List remote directory contents
+ */
+async function handleSftpList(params) {
+  const { session_id, path: remotePath } = params;
+
+  if (!session_id || !remotePath) {
+    throw new Error('session_id and path are required');
+  }
+
+  const sftp = await getSftp(session_id);
+
+  return new Promise((resolve, reject) => {
+    sftp.readdir(remotePath, (err, list) => {
+      if (err) {
+        reject(new Error(`SFTP list failed: ${err.message}`));
+        return;
+      }
+
+      const entries = list.map(entry => ({
+        filename: entry.filename,
+        type: entry.longname[0] === 'd' ? 'directory' : 
+              entry.longname[0] === 'l' ? 'symlink' : 'file',
+        size: entry.attrs.size,
+        mode: (entry.attrs.mode & 0o7777).toString(8).padStart(4, '0'),
+        mtime: new Date(entry.attrs.mtime * 1000).toISOString(),
+        longname: entry.longname
+      }));
+
+      resolve({
+        path: remotePath,
+        entries: entries
+      });
+    });
+  });
+}
+
+/**
+ * Download file from remote server
+ */
+async function handleSftpDownload(params) {
+  const { session_id, remote_path, local_path } = params;
+
+  if (!session_id || !remote_path || !local_path) {
+    throw new Error('session_id, remote_path and local_path are required');
+  }
+
+  const sftp = await getSftp(session_id);
+  const expandedLocalPath = local_path.replace('~', os.homedir());
+
+  return new Promise((resolve, reject) => {
+    sftp.fastGet(remote_path, expandedLocalPath, (err) => {
+      if (err) {
+        reject(new Error(`SFTP download failed: ${err.message}`));
+        return;
+      }
+
+      // Get file stats for response
+      const stats = fs.statSync(expandedLocalPath);
+
+      resolve({
+        remote_path: remote_path,
+        local_path: expandedLocalPath,
+        bytes_transferred: stats.size
+      });
+    });
+  });
+}
+
+/**
+ * Upload file to remote server
+ */
+async function handleSftpUpload(params) {
+  const { session_id, local_path, remote_path } = params;
+
+  if (!session_id || !local_path || !remote_path) {
+    throw new Error('session_id, local_path and remote_path are required');
+  }
+
+  const sftp = await getSftp(session_id);
+  const expandedLocalPath = local_path.replace('~', os.homedir());
+
+  // Check if local file exists
+  if (!fs.existsSync(expandedLocalPath)) {
+    throw new Error(`Local file not found: ${expandedLocalPath}`);
+  }
+
+  const stats = fs.statSync(expandedLocalPath);
+
+  return new Promise((resolve, reject) => {
+    sftp.fastPut(expandedLocalPath, remote_path, (err) => {
+      if (err) {
+        reject(new Error(`SFTP upload failed: ${err.message}`));
+        return;
+      }
+
+      resolve({
+        local_path: expandedLocalPath,
+        remote_path: remote_path,
+        bytes_transferred: stats.size
+      });
+    });
+  });
 }
 
 // ============== SSH Connection Management ==============
@@ -583,6 +742,7 @@ async function setupConnection(sessionId, config) {
 
     conn.on('close', () => {
       connections.delete(sessionId);
+      sftpConnections.delete(sessionId);  // Clear SFTP cache on connection close
       db.updateSessionStatus(sessionId, 'disconnected');
       db.addMessage(sessionId, {
         type: 'system',
@@ -672,6 +832,7 @@ async function shutdown() {
     } catch (err) {}
   }
   connections.clear();
+  sftpConnections.clear();
 
   if (db.close) {
     db.close();

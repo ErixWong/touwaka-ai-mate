@@ -65,7 +65,7 @@ function parseSSEChunk(chunk: string): { event: string; data: string }[] {
 export function fetchSSE(options: SSEOptions): SSEConnection {
   const { url, token, onMessage, onError, onOpen } = options
   
-  let controller = new AbortController()
+  const controller = new AbortController()
   let isActive = true
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
   
