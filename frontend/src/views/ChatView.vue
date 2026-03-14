@@ -1,46 +1,46 @@
 <template>
   <div class="chat-view">
-    <!-- 聊天头部 -->
-    <div class="chat-header">
-      <div class="expert-info">
-        <div
-          class="expert-avatar"
-          :style="currentExpert?.avatar_base64 ? { backgroundImage: `url(${currentExpert.avatar_base64})` } : {}"
-        >
-          <span v-if="!currentExpert?.avatar_base64">🤖</span>
-        </div>
-        <h2 class="expert-name">{{ currentExpert?.name || $t('chat.title') }}</h2>
-        <!-- skill-studio 显示模型选择器 -->
-        <ModelSelector
-          v-if="is_skill_studio"
-          v-model="selected_model_id"
-          class="model-selector"
-        />
-        <span v-else-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
-        <!-- Task 模式状态 -->
-        <span
-          class="task-mode-tag"
-          :class="{ 'in-task': taskStore.currentTask, 'no-task': !taskStore.currentTask }"
-          @click="taskStore.currentTask && handleExitTaskMode()"
-          :title="taskStore.currentTask ? '点击退出任务模式' : '请在右侧面板选择目录以保存对话记录'"
-        >
-          <template v-if="taskStore.currentTask">
-            📁 {{ taskStore.currentTask.title }}
-            <span class="exit-icon">✕</span>
-          </template>
-          <template v-else>
-            ⚠️ 未选择目录
-          </template>
-        </span>
-      </div>
-    </div>
-
     <!-- 聊天主体 + 右侧面板（可拖拽调整） -->
     <div class="chat-body-wrapper">
       <Splitpanes @resize="handlePanelResize">
         <!-- 聊天主体 -->
         <Pane :size="chatPaneSize" class="chat-pane">
           <div class="chat-body">
+            <!-- 专家信息面板（对话 box 顶部） -->
+            <div class="chat-info-panel" v-if="currentExpertId">
+              <div class="expert-info">
+                <div
+                  class="expert-avatar"
+                  :style="currentExpert?.avatar_base64 ? { backgroundImage: `url(${currentExpert.avatar_base64})` } : {}"
+                >
+                  <span v-if="!currentExpert?.avatar_base64">🤖</span>
+                </div>
+                <h2 class="expert-name">{{ currentExpert?.name || $t('chat.title') }}</h2>
+                <!-- skill-studio 显示模型选择器 -->
+                <ModelSelector
+                  v-if="is_skill_studio"
+                  v-model="selected_model_id"
+                  class="model-selector"
+                />
+                <span v-else-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
+                <!-- Task 模式状态 -->
+                <span
+                  class="task-mode-tag"
+                  :class="{ 'in-task': taskStore.currentTask, 'no-task': !taskStore.currentTask }"
+                  @click="taskStore.currentTask && handleExitTaskMode()"
+                  :title="taskStore.currentTask ? $t('chat.exitTaskMode') : $t('chat.selectDirectory')"
+                >
+                  <template v-if="taskStore.currentTask">
+                    📁 {{ taskStore.currentTask.title }}
+                    <span class="exit-icon">✕</span>
+                  </template>
+                  <template v-else>
+                    ⚠️ {{ $t('chat.noDirectory') }}
+                  </template>
+                </span>
+              </div>
+            </div>
+            
             <div class="chat-content" v-if="currentExpertId">
               <ChatWindow
                 ref="chatWindowRef"
@@ -51,7 +51,7 @@
                 :expert-avatar="currentExpert?.avatar_base64"
                 :expert-avatar-large="currentExpert?.avatar_large_base64"
                 :show-command-hints="is_skill_studio"
-                :custom-placeholder="is_skill_studio ? '输入 / 查看快捷指令，或描述你想做什么...' : undefined"
+                :custom-placeholder="is_skill_studio ? $t('chat.commandHint') : undefined"
                 @send="handleSendMessage"
                 @retry="handleRetry"
                 @load-more="loadMoreMessages"
@@ -462,7 +462,7 @@ const handleSendMessage = async (content: string) => {
       chatStore.addLocalMessage({
         expert_id,
         role: 'assistant',
-        content: '连接已断开，正在重连中，请稍后重试',
+        content: t('chat.connectionLost'),
         status: 'error',
       })
       return
@@ -724,10 +724,40 @@ onUnmounted(() => {
   background: var(--main-bg, #fff);
 }
 
-.chat-header {
+.chat-body-wrapper {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chat-pane {
+  height: 100%;
+}
+
+.panel-pane {
+  height: 100%;
+}
+
+.chat-body {
+  height: 100%;
+  overflow: hidden;
+  padding: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 专家信息面板样式 */
+.chat-info-panel {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
   background: var(--header-bg, #fff);
@@ -771,57 +801,6 @@ onUnmounted(() => {
 
 .model-selector {
   margin-left: 8px;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-toggle-panel {
-  padding: 6px 12px;
-  background: var(--secondary-bg, #f5f5f5);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-}
-
-.btn-toggle-panel:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.chat-body-wrapper {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-.chat-pane {
-  height: 100%;
-}
-
-.panel-pane {
-  height: 100%;
-}
-
-.chat-body {
-  height: 100%;
-  overflow: hidden;
-  padding: 16px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
 }
 
 .no-expert-selected {

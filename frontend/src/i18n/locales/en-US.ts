@@ -70,6 +70,12 @@ export default {
     timeDaysAgo: '{n} days ago',
     uploadImage: 'Upload image',
     selectModel: 'Select Model',
+    // Task mode
+    exitTaskMode: 'Click to exit task mode',
+    selectDirectory: 'Please select a directory in the right panel to save conversation history',
+    noDirectory: 'No directory selected',
+    commandHint: 'Type / for shortcuts, or describe what you want to do...',
+    connectionLost: 'Connection lost, reconnecting. Please try again later.',
   },
 
   // Debug panel

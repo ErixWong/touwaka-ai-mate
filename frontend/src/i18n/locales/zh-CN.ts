@@ -72,6 +72,12 @@ export default {
     timeDaysAgo: '{n}天前',
     uploadImage: '上传图片',
     selectModel: '选择模型',
+    // 任务模式
+    exitTaskMode: '点击退出任务模式',
+    selectDirectory: '请在右侧面板选择目录以保存对话记录',
+    noDirectory: '未选择目录',
+    commandHint: '输入 / 查看快捷指令，或描述你想做什么...',
+    connectionLost: '连接已断开，正在重连中，请稍后重试',
   },
 
   // 调试面板
