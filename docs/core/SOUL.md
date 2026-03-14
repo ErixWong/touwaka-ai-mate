@@ -121,10 +121,10 @@
 **任何数据库字段的增删改，必须获得 Eric 的明确同意！**
 
 变更流程：
-1. 创建迁移脚本（`scripts/migrate-xxx.js`，使用 `IF NOT EXISTS` 确保幂等性）
-2. 执行迁移：`node scripts/migrate-xxx.js`
-3. **重新生成模型：** `node scripts/generate-models.js`
-4. 验证生成的模型文件
+1. 创建迁移脚本（`scripts/migrate-xxx.js`）
+2. 执行迁移验证：`node scripts/migrate-xxx.js`
+3. 验证通过后，合并到 `scripts/upgrade-database.js`（幂等）
+4. **重新生成模型：** `node scripts/generate-models.js`
 
 ---
 
