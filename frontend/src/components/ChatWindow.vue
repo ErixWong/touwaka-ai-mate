@@ -29,8 +29,9 @@
       >
         <!-- tool 消息的特殊渲染 -->
         <template v-if="message.role === 'tool'">
-          <div class="tool-message-card">
-            <div class="tool-header">
+          <div class="tool-message-card" :class="{ expanded: isToolExpanded(message.id) }">
+            <!-- 收缩状态：一行显示 -->
+            <div class="tool-header" @click="toggleToolExpand(message.id)">
               <span class="tool-icon">🔧</span>
               <span class="tool-name">{{ getToolName(message) }}</span>
               <span class="tool-status" :class="getToolStatus(message) ? 'success' : 'error'">
@@ -39,18 +40,22 @@
               <span v-if="getToolDuration(message)" class="tool-duration">
                 {{ getToolDuration(message) }}ms
               </span>
+              <span class="tool-expand-btn" :class="{ expanded: isToolExpanded(message.id) }">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
             </div>
-            <div v-if="getToolArguments(message)" class="tool-arguments">
-              <details>
-                <summary>{{ $t('chat.toolArguments') || '参数' }}</summary>
-                <pre>{{ formatToolArguments(message) }}</pre>
-              </details>
-            </div>
-            <div v-if="message.content" class="tool-result">
-              <details>
-                <summary>{{ $t('chat.toolResult') || '结果' }}</summary>
-                <pre class="tool-result-content">{{ formatToolResult(message) }}</pre>
-              </details>
+            <!-- 展开状态：显示参数和结果 -->
+            <div v-if="isToolExpanded(message.id)" class="tool-details">
+              <div v-if="getToolArguments(message)" class="tool-section">
+                <div class="tool-section-title">{{ $t('chat.toolArguments') || '参数' }}</div>
+                <pre class="tool-section-content">{{ formatToolArguments(message) }}</pre>
+              </div>
+              <div v-if="message.content" class="tool-section">
+                <div class="tool-section-title">{{ $t('chat.toolResult') || '结果' }}</div>
+                <pre class="tool-section-content">{{ formatToolResult(message) }}</pre>
+              </div>
             </div>
           </div>
         </template>
@@ -206,6 +211,21 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const isComposing = ref(false) // 中文输入法组合状态
 const showScrollToBottom = ref(false) // 是否显示滚动到底部按钮
+const expandedTools = ref<Set<string>>(new Set()) // 展开的工具消息ID
+
+// 切换工具展开状态
+const toggleToolExpand = (messageId: string) => {
+  if (expandedTools.value.has(messageId)) {
+    expandedTools.value.delete(messageId)
+  } else {
+    expandedTools.value.add(messageId)
+  }
+}
+
+// 检查工具是否展开
+const isToolExpanded = (messageId: string): boolean => {
+  return expandedTools.value.has(messageId)
+}
 
 // 快捷指令列表
 const commands = [
@@ -1310,36 +1330,46 @@ defineExpose({
   background: var(--tool-card-bg, #f8f9fa);
   border: 1px solid var(--tool-card-border, #e9ecef);
   border-radius: 12px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   width: 50%;  /* 固定宽度为 chatbox 的一半 */
   max-width: 50%;
   min-width: 300px;  /* 最小宽度保证可读性 */
   font-size: 13px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.tool-message-card.expanded {
+  background: var(--tool-card-expanded-bg, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .tool-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  cursor: pointer;
+  user-select: none;
 }
 
 .tool-icon {
-  font-size: 16px;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .tool-name {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary, #333);
   font-family: 'Consolas', 'Monaco', monospace;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-status {
-  font-size: 14px;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .tool-status.success {
@@ -1351,57 +1381,82 @@ defineExpose({
 }
 
 .tool-duration {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-hint, #999);
-  background: var(--chip-bg, #e0e0e0);
+  background: var(--chip-bg, #e8e8e8);
   padding: 2px 6px;
   border-radius: 10px;
+  flex-shrink: 0;
 }
 
-.tool-arguments,
-.tool-result {
-  margin-top: 8px;
+.tool-expand-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #666);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
 }
 
-.tool-arguments details,
-.tool-result details {
+.tool-expand-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tool-expand-btn.expanded {
+  transform: rotate(180deg);
+}
+
+.tool-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color, #e8e8e8);
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-section {
+  margin-bottom: 10px;
+}
+
+.tool-section:last-child {
+  margin-bottom: 0;
+}
+
+.tool-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+
+.tool-section-content {
   background: var(--code-bg, #1e1e1e);
   border-radius: 8px;
-  overflow: hidden;
-}
-
-.tool-arguments summary,
-.tool-result summary {
-  padding: 8px 12px;
-  cursor: pointer;
-  color: var(--code-summary-color, #9cdcfe);
-  font-weight: 500;
-  font-size: 12px;
-  user-select: none;
-  transition: background 0.2s;
-}
-
-.tool-arguments summary:hover,
-.tool-result summary:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.tool-arguments pre,
-.tool-result pre {
-  margin: 0;
-  padding: 12px;
+  padding: 10px 12px;
   color: #d4d4d4;
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-all;
-}
-
-.tool-result-content {
-  max-height: 300px;
+  max-height: 200px;
   overflow-y: auto;
 }
 </style>
