@@ -524,6 +524,62 @@ ls data/skills/*/package.json
 
 ---
 
+## 第十步：数据库迁移检查
+
+### 迁移脚本规范
+
+**所有数据库迁移必须统一使用 `scripts/upgrade-database.js`，禁止创建独立的迁移脚本！**
+
+### 幂等性检查清单
+
+- [ ] 每个迁移项有 `check` 函数检查是否已应用
+- [ ] 使用 `safeExecute()` 捕获"已存在"类错误
+- [ ] 表创建使用 `CREATE TABLE IF NOT EXISTS`
+- [ ] 字段添加前检查 `hasColumn()`
+- [ ] 外键添加前检查 `hasForeignKey()`
+
+### 新增迁移项模板
+
+```javascript
+// 在 MIGRATIONS 数组末尾添加
+{
+  name: '表名.字段名 或 表名',
+  check: async (conn) => {
+    // 检查是否已存在（返回 true = 跳过迁移）
+    return await hasColumn(conn, 'table_name', 'column_name');
+    // 或检查表是否存在
+    return await hasTable(conn, 'table_name');
+  },
+  migrate: async (conn) => {
+    // 迁移逻辑
+    await conn.execute(`ALTER TABLE ...`);
+    // 使用 safeExecute 处理可能的重复错误
+    await safeExecute(conn, `CREATE INDEX ...`);
+  }
+},
+```
+
+### 外键约束检查
+
+- [ ] 新建表时检查是否需要外键约束
+- [ ] 外键命名规范：`fk_{表名}_{字段名}`（如 `fk_kb_owner`）
+- [ ] 外键删除行为：CASCADE / SET NULL / RESTRICT
+
+### 迁移后验证
+
+```bash
+# 执行迁移
+node scripts/upgrade-database.js
+
+# 重新生成模型
+node scripts/generate-models.js
+
+# 验证模型文件
+git diff server/models/
+```
+
+---
+
 ## 相关文档
 
 - [编码规范](./coding-standards.md)
