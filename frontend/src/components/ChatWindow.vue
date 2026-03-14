@@ -361,12 +361,14 @@ const isAtBottom = () => {
   return scrollHeight - scrollTop - clientHeight < 100
 }
 
-// 滚动处理：检测是否滚动到顶部 + 更新滚动到底部按钮状态
+// 滚动处理：检测是否滚动到顶部 + 更新滚动到底部按钮状态 + 跟踪用户滚动
 const handleScroll = () => {
   if (!messagesContainer.value) return
   
+  const atBottom = isAtBottom()
+  
   // 用户手动滚动时，取消初始加载状态
-  if (isInitialLoad.value && !isAtBottom()) {
+  if (isInitialLoad.value && !atBottom) {
     isInitialLoad.value = false
     if (scrollStabilizeTimer) {
       clearTimeout(scrollStabilizeTimer)
@@ -374,8 +376,12 @@ const handleScroll = () => {
     }
   }
   
+  // 跟踪用户是否主动滚动离开底部
+  // 如果用户滚动离开底部，标记为已离开；如果滚动回底部，重置状态
+  userScrolledAway.value = !atBottom
+  
   // 更新滚动到底部按钮状态
-  showScrollToBottom.value = !isAtBottom()
+  showScrollToBottom.value = !atBottom
   
   if (!props.hasMoreMessages || props.isLoadingMore) return
   
@@ -392,6 +398,7 @@ const handleScroll = () => {
 
 // 点击滚动到底部按钮
 const handleScrollToBottom = () => {
+  userScrolledAway.value = false // 重置用户滚动状态
   scrollToBottom()
   showScrollToBottom.value = false
 }
@@ -402,6 +409,9 @@ const handleLoadMore = () => {
   scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
   emit('loadMore')
 }
+
+// 记录用户是否主动滚动离开底部（用于判断是否应该自动滚动）
+const userScrolledAway = ref(false)
 
 // 监听消息数量变化（处理初始加载、新消息、加载更多）
 watch(
@@ -416,20 +426,28 @@ watch(
         const newScrollHeight = messagesContainer.value.scrollHeight
         messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
         isLoadingTriggered.value = false
+        // 加载更多后重置用户滚动状态
+        userScrolledAway.value = !isAtBottom()
         return
       }
       
-      // 情况2：初始加载或新消息 -> 设置 MutationObserver 来处理
+      // 情况2：初始加载或新消息
       if (newLength > (oldLength || 0)) {
         // 标记为初始加载状态，MutationObserver 会处理滚动
         if (oldLength === 0 || oldLength === undefined) {
           isInitialLoad.value = true
+          userScrolledAway.value = false // 初始加载时重置
           setupMutationObserver()
         } else {
-          // 非初始加载的新消息，直接滚动
-          scrollToBottom()
+          // 非初始加载的新消息：只有在用户没有主动滚动离开底部时才自动滚动
+          if (!userScrolledAway.value) {
+            scrollToBottom()
+          }
         }
-        showScrollToBottom.value = false
+        // 只有在底部时才隐藏滚动按钮
+        if (isAtBottom()) {
+          showScrollToBottom.value = false
+        }
       }
     })
   },
