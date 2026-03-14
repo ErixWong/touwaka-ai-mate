@@ -48,7 +48,7 @@
 
 ### Issue 工作流
 
-- Labels 标记类型：`feature` | `bug` | `refactor` | `docs`
+- Labels：`bug` | `enhancement` | `documentation`
 - Milestone 管理迭代周期
 - PR 描述使用 `Closes #<issue-number>` 自动关闭 Issue
 
