@@ -791,6 +791,8 @@ onUnmounted(() => {
 
 .panel-pane {
   height: 100%;
+  padding: 16px;
+  padding-left: 6px;
 }
 
 .chat-body {

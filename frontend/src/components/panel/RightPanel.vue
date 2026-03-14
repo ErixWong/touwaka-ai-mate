@@ -156,10 +156,13 @@ const emit = defineEmits<{
 <style scoped>
 .right-panel {
   height: 100%;
-  border-left: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
   background: var(--sidebar-bg, #fff);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .panel-header {
