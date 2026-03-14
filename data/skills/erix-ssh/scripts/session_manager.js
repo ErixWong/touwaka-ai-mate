@@ -9,13 +9,20 @@
  *
  * This process is automatically started by the main program and
  * binds its stdio to an internal API endpoint.
+ *
+ * 注意：此文件作为独立子进程运行，使用 ES Module 格式（继承项目 "type": "module"）
  */
 
-const { Client } = require('ssh2');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const db = require('./db');
+import { Client } from 'ssh2';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import * as db from './db.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Active SSH connections (sessionId -> Client)
 const connections = new Map();
@@ -44,6 +51,7 @@ function log(message, ...args) {
 
 /**
  * Process a single JSON command line
+ * Supports both old format (action-based) and new format (command-based)
  */
 async function processCommandLine(line) {
   let cmd;
@@ -51,13 +59,35 @@ async function processCommandLine(line) {
     cmd = JSON.parse(line);
   } catch (err) {
     sendResponse({
-      id: null,
+      task_id: null,
       error: `Invalid JSON: ${err.message}`,
       success: false
     });
     return;
   }
 
+  // New format: { command, task_id, params, user }
+  if (cmd.command) {
+    const { command, task_id, params, user } = cmd;
+    
+    try {
+      const result = await processCommand(command, params || {}, user || {});
+      sendResponse({
+        task_id: task_id,
+        result: result,
+        success: true
+      });
+    } catch (err) {
+      sendResponse({
+        task_id: task_id,
+        error: err.message,
+        success: false
+      });
+    }
+    return;
+  }
+
+  // Old format: { id, action, ...params } - for backward compatibility
   const { id, action, ...params } = cmd;
 
   try {
@@ -77,15 +107,48 @@ async function processCommandLine(line) {
 }
 
 /**
- * Process an action and return result
+ * Process a command (new format with user context)
+ * @param {string} command - Command name
+ * @param {object} params - Command parameters
+ * @param {object} user - User context { userId, accessToken, expertId, isAdmin }
  */
-async function processAction(action, params) {
-  switch (action) {
+async function processCommand(command, params, user) {
+  const userId = user.userId || null;
+  const isAdmin = user.isAdmin || false;
+  
+  switch (command) {
+    case 'invoke':
+      // Invoke is a wrapper for various actions
+      const action = params.action || params.command || 'connect';
+      return await processActionWithUser(action, params, userId, isAdmin);
+
     case 'ping':
       return { type: 'pong', timestamp: Date.now() };
 
+    default:
+      return await processActionWithUser(command, params, userId, isAdmin);
+  }
+}
+
+/**
+ * Process an action with user context for permission checking
+ */
+async function processActionWithUser(action, params, userId, isAdmin) {
+  // Actions that require session ownership check
+  const sessionActions = ['disconnect', 'exec', 'sudo', 'output', 'history', 'delete'];
+  
+  if (sessionActions.includes(action) && params.session_id) {
+    // Check session ownership (skip for admin)
+    if (!isAdmin && userId) {
+      if (!db.isSessionOwnedByUser(params.session_id, userId)) {
+        throw new Error('Session not found or access denied');
+      }
+    }
+  }
+
+  switch (action) {
     case 'connect':
-      return await handleConnect(params);
+      return await handleConnectWithUser(params, userId);
 
     case 'disconnect':
       return await handleDisconnect(params);
@@ -105,8 +168,10 @@ async function processAction(action, params) {
     case 'delete':
       return handleDelete(params);
 
+    case 'list_sessions':
+      return handleListSessions(userId);
+
     case 'exit':
-      // Graceful shutdown
       await shutdown();
       return { message: 'Shutting down' };
 
@@ -115,27 +180,36 @@ async function processAction(action, params) {
   }
 }
 
+/**
+ * Process an action and return result (legacy format)
+ */
+async function processAction(action, params) {
+  return processActionWithUser(action, params, null, false);
+}
+
 // ============== Action Handlers ==============
 
 /**
- * Connect to SSH server
+ * Connect to SSH server (with user isolation)
+ * @param {object} params - Connection parameters
+ * @param {string} userId - User ID for session isolation
  */
-async function handleConnect(params) {
+async function handleConnectWithUser(params, userId = null) {
   const { host, username, port = 22, password, private_key, passphrase } = params;
 
   if (!host || !username) {
     throw new Error('host and username are required');
   }
 
-  const sessionId = 'sess_' + require('crypto').randomBytes(32).toString('hex');
+  const sessionId = 'sess_' + crypto.randomBytes(32).toString('hex');
 
-  // Create session record
+  // Create session record with user_id
   db.createSession(sessionId, {
     host,
     username,
     port,
     created_at: new Date().toISOString()
-  });
+  }, userId);
 
   // Setup connection
   await setupConnection(sessionId, {
@@ -148,6 +222,22 @@ async function handleConnect(params) {
   });
 
   return { session_id: sessionId };
+}
+
+/**
+ * Connect to SSH server (legacy, without user isolation)
+ */
+async function handleConnect(params) {
+  return handleConnectWithUser(params, null);
+}
+
+/**
+ * List sessions for a user
+ * @param {string} userId - User ID (null for all sessions)
+ */
+function handleListSessions(userId = null) {
+  const sessions = db.listSessions(userId);
+  return { sessions };
 }
 
 /**
