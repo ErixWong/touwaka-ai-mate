@@ -185,7 +185,7 @@ function runInSandbox(code, source) {
         try {
           eval(${JSON.stringify(code)});
         } catch (e2) {
-          __result = { error: e2.message };
+          __result = { success: false, error: e2.message };
         }
       }
     })();
