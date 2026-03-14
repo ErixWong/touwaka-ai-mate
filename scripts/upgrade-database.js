@@ -860,6 +860,96 @@ const MIGRATIONS = [
       await safeExecute(conn, `ALTER TABLE roles DROP INDEX idx_name`);
     }
   },
+
+  // ==================== 数据库设计修复 ====================
+  
+  // 36. 修复 kb_article_tags 表主键结构
+  // 问题：有独立 id 主键，应该是复合主键 (article_id, tag_id)
+  // 原因：sequelize-auto 只能为复合主键的中间表生成 belongsToMany 关联
+  {
+    name: 'kb_article_tags composite primary key fix',
+    check: async (conn) => {
+      // 检查是否有 id 字段，如果有说明需要修复
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'kb_article_tags' AND COLUMN_NAME = 'id'
+      `, [DB_CONFIG.database]);
+      return rows.length === 0; // 没有 id 字段说明已修复
+    },
+    migrate: async (conn) => {
+      // 1. 备份数据到临时表
+      await conn.execute(`CREATE TABLE IF NOT EXISTS kb_article_tags_backup AS SELECT * FROM kb_article_tags`);
+      
+      // 2. 删除旧表
+      await conn.execute(`DROP TABLE IF EXISTS kb_article_tags`);
+      
+      // 3. 创建新表（复合主键，无 id 字段）
+      await conn.execute(`
+        CREATE TABLE kb_article_tags (
+          article_id VARCHAR(20) NOT NULL COMMENT '文章ID',
+          tag_id VARCHAR(20) NOT NULL COMMENT '标签ID',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (article_id, tag_id),
+          FOREIGN KEY (article_id) REFERENCES kb_articles(id) ON DELETE CASCADE,
+          FOREIGN KEY (tag_id) REFERENCES kb_tags(id) ON DELETE CASCADE,
+          INDEX idx_at_article (article_id),
+          INDEX idx_at_tag (tag_id)
+        ) COMMENT='文章-标签关联表'
+      `);
+      
+      // 4. 恢复数据
+      await conn.execute(`
+        INSERT IGNORE INTO kb_article_tags (article_id, tag_id, created_at)
+        SELECT article_id, tag_id, created_at FROM kb_article_tags_backup
+      `);
+      
+      // 5. 删除备份表
+      await conn.execute(`DROP TABLE IF EXISTS kb_article_tags_backup`);
+    }
+  },
+
+  // 37. 同样修复 expert_skills 表
+  {
+    name: 'expert_skills composite primary key fix',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'expert_skills' AND COLUMN_NAME = 'id'
+      `, [DB_CONFIG.database]);
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      // 备份数据
+      await conn.execute(`CREATE TABLE IF NOT EXISTS expert_skills_backup AS SELECT * FROM expert_skills`);
+      
+      // 删除旧表
+      await conn.execute(`DROP TABLE IF EXISTS expert_skills`);
+      
+      // 创建新表
+      await conn.execute(`
+        CREATE TABLE expert_skills (
+          expert_id VARCHAR(32) NOT NULL COMMENT '专家ID',
+          skill_id VARCHAR(32) NOT NULL COMMENT '技能ID',
+          is_enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+          config TEXT COMMENT '配置JSON',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (expert_id, skill_id),
+          FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
+          FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE,
+          INDEX idx_expert (expert_id),
+          INDEX idx_skill (skill_id)
+        ) COMMENT='专家技能关联表'
+      `);
+      
+      // 恢复数据
+      await conn.execute(`
+        INSERT IGNORE INTO expert_skills (expert_id, skill_id, is_enabled, config, created_at)
+        SELECT expert_id, skill_id, is_enabled, config, created_at FROM expert_skills_backup
+      `);
+      
+      await conn.execute(`DROP TABLE IF EXISTS expert_skills_backup`);
+    }
+  },
 ];
 
 /**

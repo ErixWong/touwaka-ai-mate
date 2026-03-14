@@ -85,9 +85,6 @@ auto.run()
     console.log(`\n📊 Tables (${tables.length}):`);
     tables.forEach(table => console.log(`   - ${table}`));
     
-    // 注入多对多关联到 init-models.js（基于外键自动检测）
-    injectManyToManyAssociations(outputDir, data);
-    
     console.log('\n⚠️  Note: Model associations are auto-generated from foreign keys.');
     console.log('   You may still need to adjust field types or add validation rules.');
   })
@@ -99,100 +96,4 @@ auto.run()
     process.exit(1);
   });
 
-/**
- * 注入多对多关联到 init-models.js
- * sequelize-auto 只会生成 belongsTo 和 hasMany，需要手动添加 belongsToMany
- * 
- * 自动检测逻辑：通过分析 data.foreignKeys 找到有两个外键的中间表
- */
-function injectManyToManyAssociations(outputDir, data) {
-  const initModelsPath = path.join(outputDir, 'init-models.js');
-  
-  if (!fs.existsSync(initModelsPath)) {
-    console.log('⚠️  init-models.js not found, skipping many-to-many injection');
-    return;
-  }
-  
-  let content = fs.readFileSync(initModelsPath, 'utf-8');
-  
-  // 检查是否已经注入过
-  if (content.includes('// ===== 多对多关联 (自动检测) =====')) {
-    console.log('✓ Many-to-many associations already injected');
-    return;
-  }
-  
-  // 从 data.foreignKeys 分析多对多关联
-  // foreignKeys 格式: { tableName: { columnName: { source_table, target_table, ... } } }
-  const foreignKeys = data.foreignKeys || {};
-  
-  // 找出所有中间表：包含恰好两个外键且指向不同表的表
-  const junctionTables = [];
-  
-  for (const [tableName, columns] of Object.entries(foreignKeys)) {
-    const fkColumns = Object.entries(columns);
-    
-    // 只处理恰好有两个外键的表
-    if (fkColumns.length === 2) {
-      const [col1, fk1] = fkColumns[0];
-      const [col2, fk2] = fkColumns[1];
-      
-      // 两个外键必须指向不同的表
-      const targetTable1 = fk1.target_table;
-      const targetTable2 = fk2.target_table;
-      
-      if (targetTable1 && targetTable2 && targetTable1 !== targetTable2) {
-        junctionTables.push({
-          through: tableName,
-          leftTable: targetTable1,
-          rightTable: targetTable2,
-          leftKey: col1,
-          rightKey: col2,
-        });
-      }
-    }
-  }
-  
-  if (junctionTables.length === 0) {
-    console.log('✓ No junction tables detected, skipping many-to-many injection');
-    return;
-  }
-  
-  console.log(`\n🔗 Detected ${junctionTables.length} junction table(s):`);
-  junctionTables.forEach(jt => {
-    console.log(`   - ${jt.through}: ${jt.leftTable} <-> ${jt.rightTable}`);
-  });
-  
-  // 生成关联代码
-  const associationLines = [];
-  
-  for (const jt of junctionTables) {
-    // 转换为模型名（snake_case -> camelCase）
-    const throughModel = jt.through;
-    const leftModel = jt.leftTable;
-    const rightModel = jt.rightTable;
-    
-    // 生成别名：去掉表名前缀和 _id 后缀
-    const leftAs = jt.leftTable.replace(/^.+?_/, '').replace(/s$/, ''); // e.g., kb_article -> article
-    const rightAs = jt.rightTable.replace(/^.+?_/, '').replace(/s$/, ''); // e.g., kb_tag -> tag
-    
-    associationLines.push(`  // ${leftModel} <-> ${rightModel} (through ${throughModel})`);
-    associationLines.push(`  ${leftModel}.belongsToMany(${rightModel}, { as: "${rightAs}s", through: ${throughModel}, foreignKey: "${jt.leftKey}", otherKey: "${jt.rightKey}" });`);
-    associationLines.push(`  ${rightModel}.belongsToMany(${leftModel}, { as: "${leftAs}s", through: ${throughModel}, foreignKey: "${jt.rightKey}", otherKey: "${jt.leftKey}" });`);
-  }
-  
-  // 在 return 语句之前插入
-  const returnMatch = content.match(/\n  return \{/);
-  if (returnMatch) {
-    const insertPos = returnMatch.index;
-    const beforeContent = content.substring(0, insertPos);
-    const afterContent = content.substring(insertPos);
-    
-    content = beforeContent + '\n  // ===== 多对多关联 (自动检测) =====\n' + associationLines.join('\n') + '\n' + afterContent;
-    
-    fs.writeFileSync(initModelsPath, content);
-    console.log('✓ Injected many-to-many associations into init-models.js');
-  } else {
-    console.log('⚠️  Could not find insertion point in init-models.js');
-  }
-}
 

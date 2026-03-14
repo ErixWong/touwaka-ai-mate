@@ -40,6 +40,12 @@ export default class role extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    level: {
+      type: DataTypes.ENUM('user','power_user','admin'),
+      allowNull: true,
+      defaultValue: "user",
+      comment: "角色权限等级，用于技能访问控制：user(基础)\/power_user(中等)\/admin(最高)"
     }
   }, {
     sequelize,
@@ -61,6 +67,13 @@ export default class role extends Model {
         using: "BTREE",
         fields: [
           { name: "mark" },
+        ]
+      },
+      {
+        name: "idx_level",
+        using: "BTREE",
+        fields: [
+          { name: "level" },
         ]
       },
     ]
