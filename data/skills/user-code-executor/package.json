@@ -1,0 +1,7 @@
+{
+  "name": "user-code-executor",
+  "version": "1.0.0",
+  "description": "在安全沙箱中执行用户自定义代码",
+  "main": "index.js",
+  "type": "module"
+}
