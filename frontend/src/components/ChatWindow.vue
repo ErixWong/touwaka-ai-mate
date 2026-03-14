@@ -1303,7 +1303,7 @@ defineExpose({
 
 /* ==================== Tool 消息样式 ==================== */
 .message.tool {
-  justify-content: center;
+  justify-content: flex-start;  /* 左对齐 */
 }
 
 .tool-message-card {
@@ -1311,7 +1311,9 @@ defineExpose({
   border: 1px solid var(--tool-card-border, #e9ecef);
   border-radius: 12px;
   padding: 12px 16px;
-  max-width: 80%;
+  width: 50%;  /* 固定宽度为 chatbox 的一半 */
+  max-width: 50%;
+  min-width: 300px;  /* 最小宽度保证可读性 */
   font-size: 13px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
