@@ -4,9 +4,13 @@
  * Provides persistent storage for sessions, tasks, and messages using SQLite.
  */
 
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Use project directory for data storage
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -33,6 +37,7 @@ db.exec(`
     username TEXT NOT NULL,
     status TEXT DEFAULT 'connecting',
     config TEXT,  -- JSON blob
+    user_id TEXT,  -- 用户ID，用于session隔离
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_read_at TEXT
@@ -73,6 +78,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
   CREATE INDEX IF NOT EXISTS idx_messages_read ON messages(read);
   CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `);
 
 /**
@@ -90,12 +96,15 @@ function generateId(prefix = 'sess') {
 
 /**
  * Create a new session
+ * @param {string} sessionId - Session ID
+ * @param {object} config - Session config (host, port, username, etc.)
+ * @param {string} userId - User ID for session isolation
  */
-function createSession(sessionId, config) {
+function createSession(sessionId, config, userId = null) {
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT INTO sessions (id, host, port, username, status, config, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO sessions (id, host, port, username, status, config, user_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   stmt.run(
@@ -105,6 +114,7 @@ function createSession(sessionId, config) {
     config.username,
     'connecting',
     JSON.stringify(config),
+    userId,
     now,
     now
   );
@@ -142,6 +152,18 @@ function updateSessionStatus(sessionId, status) {
 }
 
 /**
+ * Update session config
+ */
+function updateSessionConfig(sessionId, config) {
+  const now = new Date().toISOString();
+  const stmt = db.prepare(`
+    UPDATE sessions SET config = ?, updated_at = ? WHERE id = ?
+  `);
+  stmt.run(JSON.stringify(config), now, sessionId);
+  return getSession(sessionId);
+}
+
+/**
  * Update last read timestamp
  */
 function updateLastRead(sessionId) {
@@ -174,12 +196,38 @@ function getSessionSummary(sessionId) {
 }
 
 /**
- * List all sessions
+ * List all sessions (optionally filtered by user)
+ * @param {string} userId - Optional user ID to filter sessions
  */
-function listSessions() {
-  const stmt = db.prepare('SELECT id FROM sessions ORDER BY updated_at DESC');
-  const rows = stmt.all();
-  return rows.map(row => getSessionSummary(row.id)).filter(s => s !== null);
+function listSessions(userId = null) {
+  let stmt;
+  if (userId) {
+    stmt = db.prepare('SELECT id FROM sessions WHERE user_id = ? ORDER BY updated_at DESC');
+    const rows = stmt.all(userId);
+    return rows.map(row => getSessionSummary(row.id)).filter(s => s !== null);
+  } else {
+    stmt = db.prepare('SELECT id FROM sessions ORDER BY updated_at DESC');
+    const rows = stmt.all();
+    return rows.map(row => getSessionSummary(row.id)).filter(s => s !== null);
+  }
+}
+
+/**
+ * Check if session belongs to user
+ * @param {string} sessionId - Session ID
+ * @param {string} userId - User ID
+ * @returns {boolean} True if session belongs to user
+ */
+function isSessionOwnedByUser(sessionId, userId) {
+  const stmt = db.prepare('SELECT user_id FROM sessions WHERE id = ?');
+  const row = stmt.get(sessionId);
+  
+  if (!row) return false;
+  
+  // If session has no user_id, it's accessible by anyone (backward compatibility)
+  // If session has user_id, it must match
+  if (row.user_id === null) return true;
+  return row.user_id === userId;
 }
 
 /**
@@ -452,8 +500,21 @@ function getUnreadMessages(sessionId) {
 /**
  * Get messages by task
  */
-function getMessagesByTask(sessionId, taskId) {
-  return queryMessages(sessionId, { taskId });
+function getMessagesByTask(taskId) {
+  const stmt = db.prepare('SELECT * FROM messages WHERE task_id = ?');
+  const rows = stmt.all(taskId);
+  
+  return rows.map(row => ({
+    ...row,
+    read: row.read === 1
+  }));
+}
+
+/**
+ * Get messages for a session
+ */
+function getMessages(sessionId, options = {}) {
+  return queryMessages(sessionId, options);
 }
 
 /**
@@ -614,15 +675,17 @@ function close() {
   db.close();
 }
 
-module.exports = {
+export {
   // Session operations
   generateId,
   createSession,
   getSession,
   updateSessionStatus,
+  updateSessionConfig,
   getSessionSummary,
   listSessions,
   deleteSession,
+  isSessionOwnedByUser,
   
   // Task operations
   createTask,
@@ -640,6 +703,7 @@ module.exports = {
   queryMessages,
   getUnreadMessages,
   getMessagesByTask,
+  getMessages,
   markAsRead,
   getCommandHistory,
   searchMessages,
