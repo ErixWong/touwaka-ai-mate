@@ -71,6 +71,7 @@ export default {
     // Tool messages
     toolArguments: 'Arguments',
     toolResult: 'Result',
+    toolContext: 'Context',
     uploadImage: 'Upload image',
     selectModel: 'Select Model',
     // Task mode
