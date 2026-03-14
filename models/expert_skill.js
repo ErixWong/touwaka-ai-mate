@@ -4,14 +4,11 @@ const { Model, Sequelize } = _sequelize;
 export default class expert_skill extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
-    id: {
-      type: DataTypes.STRING(32),
-      allowNull: false,
-      primaryKey: true
-    },
     expert_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
+      primaryKey: true,
+      comment: "专家ID",
       references: {
         model: 'experts',
         key: 'id'
@@ -20,6 +17,8 @@ export default class expert_skill extends Model {
     skill_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
+      primaryKey: true,
+      comment: "技能ID",
       references: {
         model: 'skills',
         key: 'id'
@@ -28,11 +27,13 @@ export default class expert_skill extends Model {
     is_enabled: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: true
+      defaultValue: 1,
+      comment: "是否启用"
     },
     config: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "配置JSON"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -50,20 +51,19 @@ export default class expert_skill extends Model {
         unique: true,
         using: "BTREE",
         fields: [
-          { name: "id" },
-        ]
-      },
-      {
-        name: "uk_expert_skill",
-        unique: true,
-        using: "BTREE",
-        fields: [
           { name: "expert_id" },
           { name: "skill_id" },
         ]
       },
       {
-        name: "skill_id",
+        name: "idx_expert",
+        using: "BTREE",
+        fields: [
+          { name: "expert_id" },
+        ]
+      },
+      {
+        name: "idx_skill",
         using: "BTREE",
         fields: [
           { name: "skill_id" },

@@ -120,11 +120,31 @@
 
 **任何数据库字段的增删改，必须获得 Eric 的明确同意！**
 
-变更流程：
-1. 创建迁移脚本（`scripts/migrate-xxx.js`）
-2. 执行迁移验证：`node scripts/migrate-xxx.js`
-3. 验证通过后，合并到 `scripts/upgrade-database.js`（幂等）
-4. **重新生成模型：** `node scripts/generate-models.js`
+### 统一迁移脚本原则
+
+**所有数据库迁移统一使用 `scripts/upgrade-database.js`，不再创建独立的迁移脚本！**
+
+```bash
+# 执行数据库升级（幂等）
+node scripts/upgrade-database.js
+
+# 重新生成模型
+node scripts/generate-models.js
+```
+
+### 迁移脚本规范
+
+1. **幂等性**：每个迁移必须有 `check` 函数，检查是否已应用
+2. **安全执行**：使用 `safeExecute()` 捕获"已存在"类错误
+3. **外键约束**：新建表时必须创建完整的外键关联
+4. **一次性执行**：在 `MIGRATIONS` 数组末尾添加新迁移项
+
+### 变更流程
+
+1. 在 `scripts/upgrade-database.js` 的 `MIGRATIONS` 数组中添加新迁移项
+2. 执行迁移：`node scripts/upgrade-database.js`
+3. **重新生成模型：** `node scripts/generate-models.js`
+4. 验证生成的模型文件
 
 ---
 

@@ -19,7 +19,11 @@ export default class knowledge_basis extends Model {
     },
     owner_id: {
       type: DataTypes.STRING(32),
-      allowNull: false
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
     },
     embedding_model_id: {
       type: DataTypes.STRING(50),

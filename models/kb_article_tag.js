@@ -4,14 +4,10 @@ const { Model, Sequelize } = _sequelize;
 export default class kb_article_tag extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
-    id: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      primaryKey: true
-    },
     article_id: {
       type: DataTypes.STRING(20),
       allowNull: false,
+      primaryKey: true,
       comment: "文章ID",
       references: {
         model: 'kb_articles',
@@ -21,6 +17,7 @@ export default class kb_article_tag extends Model {
     tag_id: {
       type: DataTypes.STRING(20),
       allowNull: false,
+      primaryKey: true,
       comment: "标签ID",
       references: {
         model: 'kb_tags',
@@ -40,14 +37,6 @@ export default class kb_article_tag extends Model {
     indexes: [
       {
         name: "PRIMARY",
-        unique: true,
-        using: "BTREE",
-        fields: [
-          { name: "id" },
-        ]
-      },
-      {
-        name: "uk_article_tag",
         unique: true,
         using: "BTREE",
         fields: [
