@@ -5,7 +5,6 @@ import type {
   Message,
   AIModel,
   Expert,
-  ChatRequest,
   PaginationParams,
   PaginatedResponse,
   UserPreference,

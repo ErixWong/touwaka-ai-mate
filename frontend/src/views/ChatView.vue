@@ -137,6 +137,37 @@ const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 const isSending = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
 
+// 安全超时：防止 isSending 永久为 true（SSE 流异常终止时）
+let sendingTimeout: ReturnType<typeof setTimeout> | null = null
+const SENDING_TIMEOUT_MS = 5 * 60 * 1000  // 5 分钟超时（考虑到复杂工具调用可能耗时较长）
+
+// 清除发送超时
+const clearSendingTimeout = () => {
+  if (sendingTimeout) {
+    clearTimeout(sendingTimeout)
+    sendingTimeout = null
+  }
+}
+
+// 设置发送超时保护
+const setSendingTimeoutProtection = () => {
+  clearSendingTimeout()
+  sendingTimeout = setTimeout(() => {
+    if (isSending.value) {
+      console.warn('[ChatView] Sending timeout reached, resetting isSending to false')
+      isSending.value = false
+      if (currentAssistantMessage.value) {
+        chatStore.updateMessageContent(
+          currentAssistantMessage.value.id,
+          currentAssistantMessage.value.content || '',
+          'timeout'
+        )
+        currentAssistantMessage.value = null
+      }
+    }
+  }, SENDING_TIMEOUT_MS)
+}
+
 // 使用新的 SSE composable
 const {
   isConnected,
@@ -220,7 +251,7 @@ const loadMoreMessages = async () => {
 }
 
 // 记录上一次收到的最新消息 ID，用于避免重复拉取
-let lastKnownMessageId = ref<string | null>(null)
+const lastKnownMessageId = ref<string | null>(null)
 
 // 处理 SSE 事件
 const handleSSEEvent = async (event: SSEEvent) => {
@@ -346,6 +377,7 @@ const handleSSEEvent = async (event: SSEEvent) => {
         break
 
       case 'complete':
+        console.log('SSE complete event received:', data)
         if (currentAssistantMessage.value) {
           if (data.usage) {
             chatStore.updateMessageMetadata(currentAssistantMessage.value.id, {
@@ -387,10 +419,13 @@ const handleSSEEvent = async (event: SSEEvent) => {
           
           currentAssistantMessage.value = null
         }
+        console.log('[ChatView] Setting isSending to false on complete event')
+        clearSendingTimeout()
         isSending.value = false
         break
 
       case 'error':
+        console.log('SSE error event received:', data)
         if (currentAssistantMessage.value) {
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
@@ -399,6 +434,8 @@ const handleSSEEvent = async (event: SSEEvent) => {
           )
           currentAssistantMessage.value = null
         }
+        console.log('[ChatView] Setting isSending to false on error event')
+        clearSendingTimeout()
         isSending.value = false
         break
 
@@ -407,6 +444,13 @@ const handleSSEEvent = async (event: SSEEvent) => {
     }
   } catch (e) {
     console.error('Parse SSE event error:', e)
+    // 解析错误时也要重置 isSending，防止输入框永久禁用
+    if (event.event === 'complete' || event.event === 'error') {
+      console.log('[ChatView] Setting isSending to false after parse error')
+      clearSendingTimeout()
+      isSending.value = false
+      currentAssistantMessage.value = null
+    }
   }
 }
 
@@ -497,6 +541,7 @@ const handleSendMessage = async (content: string) => {
   })
 
   isSending.value = true
+  setSendingTimeoutProtection()  // 设置超时保护
 
   try {
     // 构建消息参数
@@ -537,6 +582,7 @@ const handleSendMessage = async (content: string) => {
       )
       currentAssistantMessage.value = null
     }
+    clearSendingTimeout()
     isSending.value = false
   }
 }
@@ -581,6 +627,7 @@ const handleStopGenerate = async () => {
     currentAssistantMessage.value = null
   }
 
+  clearSendingTimeout()
   isSending.value = false
 
   // 调用后端停止 API
@@ -717,6 +764,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // 清理超时定时器
+  clearSendingTimeout()
   // 清理 SSE 连接（useSSE 会自动处理）
   disconnectSSE()
 })

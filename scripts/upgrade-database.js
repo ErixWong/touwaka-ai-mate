@@ -950,6 +950,26 @@ const MIGRATIONS = [
       await conn.execute(`DROP TABLE IF EXISTS expert_skills_backup`);
     }
   },
+
+  // ==================== 消息表扩展 ====================
+  
+  // 38. messages.role 添加 'tool' 类型
+  {
+    name: 'messages.role add tool',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'messages' AND COLUMN_NAME = 'role'
+      `, [DB_CONFIG.database]);
+      return rows[0]?.COLUMN_TYPE?.includes('tool');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages 
+        MODIFY COLUMN role ENUM('system', 'user', 'assistant', 'tool') NOT NULL
+      `);
+    }
+  },
 ];
 
 /**
