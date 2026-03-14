@@ -1,10 +1,16 @@
 # 驻留式技能工具设计方案
 
-**Issue:** #80, #81
+**Issue:** #80, #81, #129
 
 ## 概述
 
-驻留式技能工具（Resident Skill Tool）是一种在系统启动时加载并持续运行的技能进程。它通过 stdio 与主进程通信，支持异步任务处理，适用于需要长时间运行的操作（如远程 LLM 调用）。
+驻留式技能工具（Resident Skill Tool）是一种在系统启动时加载并持续运行的技能进程。它通过 stdio 与主进程通信，支持异步任务处理，适用于需要长时间运行的操作（如远程 LLM 调用、SSH 会话管理等）。
+
+### 核心特性
+
+1. **全局单例模式**：每个驻留工具启动一个进程实例，所有用户共享
+2. **用户隔离机制**：通过 `user_id` 绑定 session，实现天然的权限隔离
+3. **直接调用支持**：通过 `resident://` 协议，ToolManager 可直接调用驻留进程，无需普通技能转发
 
 ## 核心设计
 
@@ -712,11 +718,78 @@ VALUES (
 | `data/skills/remote-llm/SKILL.md` | 技能文档 | ✅ |
 | `data/skills/remote-llm/package.json` | 技能配置 | ✅ |
 
+### Phase 5: 用户认证与隔离 ✅ 已完成 (Issue #129)
+
+1. **用户上下文注入** ✅
+   - `ResidentSkillManager.invoke()` 接收 `userContext` 参数
+   - stdin 命令携带 `user` 字段：`{ userId, accessToken, expertId, isAdmin }`
+
+2. **`resident://` 协议支持** ✅
+   - `ToolManager.executeResidentTool()` 识别 `resident://` 协议
+   - 直接调用驻留进程，无需普通技能转发
+
+3. **Session 用户隔离** ✅
+   - sessions 表添加 `user_id` 字段
+   - `isSessionOwnedByUser()` 权限检查
+   - 驻留进程内部验证 session 所有权
+
+4. **重复启动保护** ✅
+   - `initialize()` 检查进程是否已存在
+
+#### 用户认证数据流
+
+```
+[Expert 调用 skill]
+       ↓
+[ToolManager.executeTool()]
+       ↓ (识别 resident:// 协议)
+[executeResidentTool()] → 构建 userContext
+       ↓
+[ResidentSkillManager.invokeByName()]
+       ↓ (stdin 带用户信息)
+[驻留进程 session_manager.js]
+       ↓
+{ command: 'invoke', params, user: { userId, accessToken, expertId, isAdmin } }
+       ↓
+[processActionWithUser()] → 验证 session 所有权
+       ↓
+[Session 操作] (绑定 user_id)
+```
+
+#### `resident://` 协议使用方式
+
+在 `skill_tools` 表注册工具时，设置 `script_path = 'resident://tool_name'`：
+
+```sql
+-- 示例：注册 SSH 连接工具
+INSERT INTO skill_tools (skill_id, name, description, parameters, script_path, is_resident)
+VALUES (
+  'erix-ssh',
+  'ssh_connect',
+  '连接到 SSH 服务器',
+  '{"type":"object","properties":{"host":{"type":"string"},"username":{"type":"string"}}}',
+  'resident://ssh_connect',  -- 使用 resident:// 协议
+  0  -- is_resident = 0，暴露给 LLM
+);
+
+-- 驻留进程本身（不暴露给 LLM）
+INSERT INTO skill_tools (skill_id, name, description, script_path, is_resident)
+VALUES (
+  'erix-ssh',
+  'ssh_manager',
+  'SSH Session Manager 驻留进程',
+  'scripts/session_manager.js',
+  1  -- is_resident = 1，驻留进程本身
+);
+```
+
+ToolManager 会自动识别 `resident://` 前缀并直接调用 `ResidentSkillManager`，无需普通技能脚本转发。
+
 ## 待讨论
 
-1. **驻留进程崩溃恢复**：是否需要自动重启？ - 建议：Phase 5 实现
-2. **任务状态持久化**：是否需要在数据库记录任务状态？ - 建议：Phase 5 实现
-3. **并发限制**：每个驻留进程的最大并发任务数？ - 建议：Phase 5 实现
+1. **驻留进程崩溃恢复**：是否需要自动重启？ - 建议：Phase 6 实现
+2. **任务状态持久化**：是否需要在数据库记录任务状态？ - 建议：Phase 6 实现
+3. **并发限制**：每个驻留进程的最大并发任务数？ - 建议：Phase 6 实现
 
 ---
 
