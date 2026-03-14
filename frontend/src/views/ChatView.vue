@@ -759,9 +759,13 @@ onUnmounted(() => {
 /* 专家信息面板样式 */
 .chat-info-panel {
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
   background: var(--header-bg, #fff);
   flex-shrink: 0;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-bottom: none;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .expert-info {

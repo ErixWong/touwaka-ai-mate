@@ -555,7 +555,7 @@ defineExpose({
   height: 100%;
   background: var(--chat-bg, #fff);
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 12px;
+  border-radius: 0 0 12px 12px;
   overflow: hidden;
   position: relative;
 }
