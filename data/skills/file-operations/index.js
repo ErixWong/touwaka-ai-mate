@@ -17,11 +17,21 @@ const IS_ADMIN = process.env.IS_ADMIN === 'true';
 // 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 
+// 工作目录（用于任务执行，优先级最高）
+const WORKING_DIRECTORY = process.env.WORKING_DIRECTORY || '';
+const WORK_DIR_PATH = WORKING_DIRECTORY ? path.join(DATA_BASE_PATH, WORKING_DIRECTORY) : '';
+
 // 管理员可以访问项目根目录
 const PROJECT_ROOT = process.cwd();
-const ALLOWED_BASE_PATHS = IS_ADMIN
-  ? [PROJECT_ROOT, DATA_BASE_PATH]  // 管理员：项目根目录 + data 目录
-  : [DATA_BASE_PATH, path.join(DATA_BASE_PATH, 'skills')];  // 普通用户：仅 data 目录
+
+// 构建允许访问的路径列表
+const ALLOWED_BASE_PATHS = [DATA_BASE_PATH];  // 基础：data 目录
+if (WORK_DIR_PATH) {
+  ALLOWED_BASE_PATHS.unshift(WORK_DIR_PATH);  // 工作目录优先级最高
+}
+if (IS_ADMIN) {
+  ALLOWED_BASE_PATHS.push(PROJECT_ROOT);  // 管理员额外可访问项目根目录
+}
 
 // Maximum file size to read (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -48,7 +58,20 @@ function resolvePath(relativePath) {
     }
     return relativePath;
   }
-  
+
+  // 如果有工作目录，检查相对路径是否已经是完整的工作空间路径
+  // 例如: work/xxx/input 应该直接解析为 data/work/xxx/input
+  if (WORK_DIR_PATH) {
+    const workDirRelative = WORKING_DIRECTORY; // e.g., work/xxx
+    if (relativePath.startsWith(workDirRelative)) {
+      // 已经是完整路径，直接拼接到 DATA_BASE_PATH
+      const resolved = path.join(DATA_BASE_PATH, relativePath);
+      if (fs.existsSync(resolved) || isPathAllowed(path.dirname(resolved))) {
+        return resolved;
+      }
+    }
+  }
+
   // Try each allowed base path
   for (const basePath of ALLOWED_BASE_PATHS) {
     const resolved = path.join(basePath, relativePath);
@@ -56,7 +79,7 @@ function resolvePath(relativePath) {
       return resolved;
     }
   }
-  
+
   // Default to first base path
   return path.join(ALLOWED_BASE_PATHS[0], relativePath);
 }

@@ -42,6 +42,71 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
+  async function getAssistant(type: string) {
+    try {
+      isLoading.value = true
+      const data = await assistantApi.getAssistant(type)
+      return data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch assistant'
+      console.error('Failed to fetch assistant:', e)
+      return null
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function updateAssistant(type: string, updates: Partial<Assistant>) {
+    try {
+      isLoading.value = true
+      const data = await assistantApi.updateAssistant(type, updates)
+      // 更新本地列表中的助理
+      const index = assistants.value.findIndex(a => a.assistant_type === type)
+      if (index !== -1) {
+        assistants.value[index] = data
+      }
+      return data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update assistant'
+      console.error('Failed to update assistant:', e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function createAssistant(data: Partial<Assistant> & { assistant_type: string; name: string }) {
+    try {
+      isLoading.value = true
+      const newAssistant = await assistantApi.createAssistant(data)
+      // 添加到本地列表
+      assistants.value.push(newAssistant)
+      return newAssistant
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to create assistant'
+      console.error('Failed to create assistant:', e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function deleteAssistant(type: string) {
+    try {
+      isLoading.value = true
+      await assistantApi.deleteAssistant(type)
+      // 从本地列表中移除
+      assistants.value = assistants.value.filter(a => a.assistant_type !== type)
+      return { success: true, assistant_type: type }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to delete assistant'
+      console.error('Failed to delete assistant:', e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   async function fetchRequests(expertId?: string) {
     try {
       isLoading.value = true
@@ -204,6 +269,10 @@ export const useAssistantStore = defineStore('assistant', () => {
 
     // Actions
     fetchAssistants,
+    getAssistant,
+    createAssistant,
+    deleteAssistant,
+    updateAssistant,
     fetchRequests,
     fetchRequestDetail,
     fetchRequestMessages,

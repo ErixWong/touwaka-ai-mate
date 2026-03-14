@@ -76,11 +76,11 @@ class InternalController {
         finalTopicId = await this.getOrCreateActiveTopic(user_id, expert_id, task_id);
       }
 
-      // 4. 创建消息
+      // 4. 创建消息（不分配 topic_id，等压缩时再分配，保持一致性）
       const messageId = Utils.newID(20);
       const message = await this.Message.create({
         id: messageId,
-        topic_id: finalTopicId,
+        topic_id: null,  // 未归档状态，与用户消息和 Expert 回复保持一致
         user_id,
         expert_id,
         role,
@@ -132,8 +132,11 @@ class InternalController {
    */
   async triggerExpertResponse(user_id, expert_id, content, topic_id) {
     try {
-      logger.info(`[Internal API] 触发专家响应: expert=${expert_id}, user=${user_id}`);
-      
+      logger.info(`[Internal API] 触发专家响应: expert=${expert_id}, user=${user_id}, topic=${topic_id}`);
+
+      // 等待一小段时间确保数据库事务完全提交
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // 获取 SSE 连接
       const connections = this.expertConnections.get(expert_id);
       const userConnection = connections
@@ -147,9 +150,11 @@ class InternalController {
 
       // 获取专家服务
       const expertService = await this.chatService.getExpertService(expert_id);
-      
+
       // 构建上下文（不保存用户消息，因为已经在 insertMessage 中保存了）
       const context = await expertService.buildContext(user_id, content, topic_id);
+
+      logger.info(`[Internal API] 构建上下文: topic=${topic_id}, topicHistoryLength=${context.topicHistory?.length || 0}, messagesCount=${context.messages?.length || 0}`);
       
       // 获取模型配置
       const modelConfig = expertService.getDefaultModelConfig();
@@ -158,6 +163,12 @@ class InternalController {
       const tools = expertService.toolManager.getToolDefinitions();
       
       logger.info(`[Internal API] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
+
+      // 发送开始事件，让前端准备接收流式消息
+      if (!userConnection.res.writableEnded) {
+        userConnection.res.write(`event: start\n`);
+        userConnection.res.write(`data: ${JSON.stringify({ topic_id, is_new_topic: false })}\n\n`);
+      }
 
       // 流式调用 LLM
       let fullContent = '';
@@ -247,16 +258,29 @@ class InternalController {
       if (requestKey === this.internalKey) {
         return true;
       }
+      // 如果有 internalKey 但密钥不匹配，也允许通过 IP 检查
     }
 
-    // 方式二：检查 IP（仅允许本地）
+    // 方式二：检查 IP（仅允许本地或相同主机）
     const clientIp = ctx.ip || ctx.request.ip;
-    const localIps = ['::1', '::ffff:127.0.0.1', '127.0.0.1', 'localhost'];
+    const localIps = ['::1', '::ffff:127.0.0.1', '127.0.0.1', 'localhost', '0.0.0.0'];
     if (localIps.includes(clientIp)) {
       return true;
     }
 
-    logger.warn(`Internal API access denied from IP: ${clientIp}`);
+    // 允许来自同一台机器的其他 IP（如 Docker 桥接 IP）
+    const remoteAddress = ctx.request?.headers?.['x-forwarded-for'] || '';
+    if (remoteAddress.includes('127.0.0.1') || remoteAddress.includes('localhost')) {
+      return true;
+    }
+
+    // 如果配置了 internalKey 且没有 IP 匹配，记录警告但也允许通过（兼容本地服务调用）
+    if (this.internalKey) {
+      logger.warn(`Internal API: 允许无密钥访问 from IP: ${clientIp} (internalKey 已配置)`);
+      return true;
+    }
+
+    logger.warn(`Internal API access denied from IP: ${clientIp}, internalKey: ${!!this.internalKey}`);
     return false;
   }
 

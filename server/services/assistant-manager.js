@@ -22,6 +22,9 @@ import logger from '../../lib/logger.js';
 import AssistantMessageService from './assistant-message-service.js';
 import { getSystemSettingService } from './system-setting.service.js';
 
+// 内部 API 地址
+const INTERNAL_API_BASE = process.env.INTERNAL_API_BASE || 'http://localhost:3000';
+
 // 支持的图片格式
 const IMAGE_EXTENSIONS = {
   '.png': 'image/png',
@@ -32,6 +35,9 @@ const IMAGE_EXTENSIONS = {
 };
 
 class AssistantManager {
+  // 记录已发送的通知，避免重复
+  static notifiedRequests = new Set();
+
   /**
    * @param {Database} db - 数据库实例
    * @param {object} options - 配置选项
@@ -44,6 +50,9 @@ class AssistantManager {
     this.Assistant = db.getModel('assistant');
     this.AssistantRequest = db.getModel('assistant_request');
     this.AssistantMessage = db.getModel('assistant_message');
+    this.Topic = db.getModel('topic');
+    this.Task = db.getModel('task');
+    this.Message = db.getModel('message');
 
     // 消息服务
     this.messageService = new AssistantMessageService(db.models);
@@ -206,6 +215,37 @@ class AssistantManager {
     // 生成请求 ID
     const requestId = `req_${uuidv4().replace(/-/g, '').substring(0, 16)}`;
 
+    // 获取发起委托时的对话上下文
+    let summonContext = '';
+    if (context.topicId) {
+      try {
+        const recentMessages = await this.Message.findAll({
+          where: {
+            topic_id: context.topicId,
+          },
+          order: [['created_at', 'DESC']],
+          limit: 10,
+          raw: true,
+        });
+        // 反转顺序，按时间正序排列
+        const contextMessages = recentMessages.reverse();
+        const contextLines = [];
+        for (const msg of contextMessages) {
+          const roleLabel = msg.role === 'user' ? '用户' : '专家';
+          let content = msg.content || '';
+          if (content.length > 200) {
+            content = content.substring(0, 200) + '...';
+          }
+          if (content.length > 10) {
+            contextLines.push(`**${roleLabel}**: ${content}`);
+          }
+        }
+        summonContext = contextLines.join('\n\n');
+      } catch (e) {
+        logger.warn(`[AssistantManager] 获取委托上下文失败:`, e.message);
+      }
+    }
+
     // 构建完整的输入结构（存储到数据库）
     const fullInput = {
       task: context.task || `执行 ${assistantType} 任务`,
@@ -218,6 +258,7 @@ class AssistantManager {
         workdir: context.workdir,  // 工作目录
       },
       inherited_tools: context.inherited_tools,
+      summon_context: summonContext,  // 保存发起委托时的对话上下文
     };
 
     // 创建委托记录（数据库 + 内存）
@@ -258,10 +299,7 @@ class AssistantManager {
 
     return {
       request_id: requestId,
-      assistant_type: assistantType,
-      status: 'pending',
-      estimated_time: assistant.estimated_time || 30,
-      message: `助理已召唤，预计 ${assistant.estimated_time || 30} 秒完成`,
+      message: '任务已提交，助理执行完结果会返回，请勿轮询',
     };
   }
 
@@ -535,12 +573,25 @@ class AssistantManager {
 
       request.status = finalStatus;
       request.result = result;
+      request.error_message = result.error || null;
       request.completed_at = new Date();
+      request.notified = true; // 标记已通知
       this.requests.set(requestId, request);
 
       logger.info(
         `[AssistantManager] 请求完成: ${requestId}, 状态: ${finalStatus}, 耗时: ${latencyMs}ms`
       );
+
+      // 通过 Internal API 通知 Expert 会话（异步执行，不阻塞）
+      // 检查是否已经通知过，避免重复
+      if (!request._notified) {
+        request._notified = true;
+        this.notifyExpertResult(request).catch(err => {
+          logger.error(`[AssistantManager] 通知 Expert 结果失败: ${requestId}`, err.message);
+        });
+      } else {
+        logger.info(`[AssistantManager] 跳过通知：已通知过 ${requestId}`);
+      }
     } catch (error) {
       logger.error(`[AssistantManager] 执行请求失败: ${requestId}`, error.message);
 
@@ -555,9 +606,289 @@ class AssistantManager {
         },
         { where: { request_id: requestId } }
       );
+
+      // 从数据库获取请求信息，用于通知专家
+      const failedRequest = await this.AssistantRequest.findOne({
+        where: { request_id: requestId },
+        raw: true,
+      });
+
+      // 通知专家执行失败
+      if (failedRequest) {
+        this.notifyExpertResult({
+          ...failedRequest,
+          status: 'failed',
+          error_message: error.message,
+        }).catch(err => {
+          logger.error(`[AssistantManager] 通知 Expert 失败: ${requestId}`, err.message);
+        });
+      }
     } finally {
       this.runningCount--;
     }
+  }
+
+  /**
+   * 通过 Internal API 通知 Expert 会话结果
+   * @param {object} request - 请求对象（包含 user_id, expert_id, topic_id, result 等）
+   */
+  async notifyExpertResult(request) {
+    const { user_id, expert_id, topic_id, result, status, assistant_type, request_id } = request;
+
+    // 检查是否已经通知过
+    const notifyKey = `${request_id}_${status}`;
+    if (AssistantManager.notifiedRequests.has(notifyKey)) {
+      logger.info(`[AssistantManager] 跳过重复通知: ${notifyKey}`);
+      return;
+    }
+    AssistantManager.notifiedRequests.add(notifyKey);
+    // 5分钟后清理
+    setTimeout(() => AssistantManager.notifiedRequests.delete(notifyKey), 5 * 60 * 1000);
+
+    // 如果缺少必要信息，尝试补充
+    let finalUserId = user_id;
+    let finalExpertId = expert_id;
+    let finalTopicId = topic_id;
+
+    if ((!finalUserId || !finalExpertId) && finalTopicId) {
+      try {
+        const topic = await this.Topic.findByPk(finalTopicId, { raw: true });
+        if (topic) {
+          if (!finalUserId) {
+            finalUserId = topic.user_id;
+          }
+          if (!finalExpertId) {
+            finalExpertId = topic.expert_id;
+          }
+        }
+      } catch (e) {
+        logger.warn(`[AssistantManager] 从 Topic 获取用户信息失败:`, e.message);
+      }
+    }
+
+    // 如果仍然缺少必要信息，跳过通知
+    if (!finalUserId || !finalExpertId || !finalTopicId) {
+      logger.warn(`[AssistantManager] 跳过通知：request=${request_id}, 缺少必要信息:`, {
+        user_id: finalUserId || 'MISSING',
+        expert_id: finalExpertId || 'MISSING',
+        topic_id: finalTopicId || 'MISSING',
+      });
+      return;
+    }
+
+    logger.info(`[AssistantManager] 准备通知 Expert: request=${request_id}, expert_id=${finalExpertId}, topic_id=${finalTopicId}`);
+
+    // 检查话题状态
+    let isTopicActive = false;
+    try {
+      const topic = await this.Topic.findByPk(finalTopicId, { raw: true });
+      isTopicActive = topic?.status === 'active';
+      logger.info(`[AssistantManager] 话题状态: topic_id=${finalTopicId}, status=${topic?.status}, isActive=${isTopicActive}`);
+    } catch (e) {
+      logger.warn(`[AssistantManager] 获取话题状态失败:`, e.message);
+    }
+
+    // 获取工作目录和对话上下文
+    let workspacePath = '';
+    let userMessage = '';
+    let conversationContext = '';
+    let inputObj = null;
+
+    // 首先从 request.input 中获取用户任务描述和保存的上下文
+    try {
+      if (request.input) {
+        inputObj = typeof request.input === 'string' ? JSON.parse(request.input) : request.input;
+        if (inputObj.task) {
+          userMessage = inputObj.task;
+          if (userMessage.length > 300) {
+            userMessage = userMessage.substring(0, 300) + '...';
+          }
+        }
+        // 优先使用发起委托时保存的上下文（非空字符串）
+        if (inputObj.summon_context && inputObj.summon_context.trim()) {
+          conversationContext = inputObj.summon_context;
+        }
+      }
+    } catch (e) {
+      logger.warn(`[AssistantManager] 解析 input 失败:`, e.message);
+    }
+
+    // 如果没有保存的上下文，才从数据库获取
+    if (!conversationContext) {
+      try {
+        // 从 topic 获取信息（task_id 用于获取工作目录）
+        const topic = await this.Topic.findByPk(finalTopicId, { raw: true });
+
+        if (topic?.task_id) {
+          // 从 task 获取工作目录
+          const task = await this.Task.findByPk(topic.task_id, { raw: true });
+          if (task?.workspace_path) {
+            // 确保路径以 work/ 开头
+            workspacePath = task.workspace_path.startsWith('work/')
+              ? task.workspace_path
+              : `work/${task.workspace_path}`;
+          }
+        }
+
+        // 构建消息查询条件（复用外层 isTopicActive 变量）
+        let messageWhere = {};
+        if (isTopicActive) {
+          // 活跃话题：消息的 topic_id 为 NULL，通过 user_id + expert_id 查询
+          messageWhere = {
+            user_id: finalUserId,
+            expert_id: finalExpertId,
+          };
+        } else {
+          // 已归档话题：消息有 topic_id
+          messageWhere = {
+            topic_id: finalTopicId,
+          };
+        }
+
+        // 获取最近 N 条对话消息（用户 + 专家）
+        const recentMessages = await this.Message.findAll({
+          where: messageWhere,
+          order: [['created_at', 'DESC']],
+          limit: 10,
+          raw: true,
+        });
+
+        // 反转顺序，按时间正序排列
+        const contextMessages = recentMessages.reverse();
+
+        // 构建对话上下文
+        const contextLines = [];
+        for (const msg of contextMessages) {
+          const roleLabel = msg.role === 'user' ? '用户' : '专家';
+          let content = msg.content || '';
+          // 限制单条消息长度
+          if (content.length > 200) {
+            content = content.substring(0, 200) + '...';
+          }
+          // 过滤掉过于简短的消息（如只有工具调用）
+          if (content.length > 10) {
+            contextLines.push(`**${roleLabel}**: ${content}`);
+          }
+        }
+        conversationContext = contextLines.join('\n\n');
+
+        // 如果没有从 input 获取到用户消息，使用最近的用户消息
+        if (!userMessage && recentMessages.length > 0) {
+          // 找最后一条用户消息
+          for (const msg of recentMessages.reverse()) {
+            if (msg.role === 'user' && msg.content) {
+              userMessage = msg.content;
+              if (userMessage.length > 300) {
+                userMessage = userMessage.substring(0, 300) + '...';
+              }
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn(`[AssistantManager] 获取上下文失败:`, e.message);
+      }
+    }
+
+    // 构建结果消息内容
+    let content;
+
+    if (status === 'failed') {
+      const errorMsg = request.error_message || '未知错误';
+      content = `❌ 【${assistant_type} 助理任务执行失败】\n\n【对话上下文】\n${conversationContext || '（无）'}\n\n【用户原始请求】\n${userMessage || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【错误原因】\n${errorMsg}\n\n**请修改输入参数后重新委托此任务**`;
+    } else {
+      // 成功时，告诉 Expert 立即处理结果，不要等待用户指令
+      const resultObj = typeof result === 'string' ? JSON.parse(result) : result;
+      const rawResult = resultObj?.result || JSON.stringify(resultObj);
+
+      content = `【${assistant_type} 助理任务完成】\n\n【对话上下文】\n${conversationContext || '（无）'}\n\n【用户原始请求】\n${userMessage || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【助理返回结果】\n${rawResult}\n\n⚡【立即执行】拿到结果后，立即执行用户之前的指令，不要等待用户回复。`;
+    }
+    // 调用 Internal API 插入消息
+    // 在消息内容中明确告诉 Expert 立即处理结果
+    // 活跃话题使用 topic_id=NULL 以保持一致性
+    const payload = {
+      user_id: finalUserId,
+      expert_id: finalExpertId,
+      topic_id: isTopicActive ? null : finalTopicId,
+      content,
+      role: 'assistant',
+      trigger_expert: true,
+    };
+
+    logger.info(`[AssistantManager] 通知 Expert 结果: request=${request.request_id}, topic=${finalTopicId}`, {
+      user_id: finalUserId,
+      expert_id: finalExpertId,
+      topic_id: finalTopicId,
+      content_length: content.length,
+      inner_voice: !!payload.inner_voice,
+      trigger_expert: payload.trigger_expert,
+    });
+
+    try {
+      const result = await this.httpPost(`${INTERNAL_API_BASE}/internal/messages/insert`, payload);
+      // 响应结构：{ code, data: { message_id, topic_id, ... } }
+      const messageId = result.data?.message_id || result.message_id;
+      const topicId = result.data?.topic_id || result.topic_id;
+      logger.info(`[AssistantManager] 通知成功: message_id=${messageId}, topic_id=${topicId}`);
+    } catch (err) {
+      logger.error(`[AssistantManager] 通知失败: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
+   * HTTP POST 请求辅助方法
+   * @param {string} url - 请求 URL
+   * @param {object} data - 请求数据
+   */
+  async httpPost(url, data) {
+    logger.info(`[AssistantManager] httpPost 调用: ${url}`, { keys: Object.keys(data), internalKey: !!process.env.INTERNAL_API_KEY });
+
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const isHttps = urlObj.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      const postData = JSON.stringify(data);
+
+      const options = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || (isHttps ? 443 : 3000),
+        path: urlObj.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+          'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
+        },
+        timeout: 10000,
+      };
+
+      const req = client.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          logger.info(`[AssistantManager] httpPost 响应: ${res.statusCode}, body: ${body.substring(0, 200)}`);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(body));
+            } catch (e) {
+              reject(new Error(`JSON parse failed: ${body}`));
+            }
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${body}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        logger.error(`[AssistantManager] httpPost 请求失败:`, err.message);
+        reject(err);
+      });
+      req.on('timeout', () => reject(new Error('Request timeout')));
+      req.write(postData);
+      req.end();
+    });
   }
 
   /**
@@ -784,7 +1115,11 @@ class AssistantManager {
         toolExecutionContext,
         {
           temperature: parseFloat(assistant.temperature) || 0.7,
-          max_tokens: assistant.max_tokens || 4096,
+          // 优先使用助手的 max_tokens，但不能超过模型的 max_output_tokens
+          max_output_tokens: Math.min(
+            assistant.max_tokens || modelConfig.max_output_tokens || 32768,
+            modelConfig.max_output_tokens || 98304
+          ),
           timeout: (assistant.timeout || 120) * 1000,
           maxToolRounds,
         }
@@ -1020,14 +1355,36 @@ class AssistantManager {
    * @param {object} context
    */
   async executeHybridVision(assistant, input, context) {
-    logger.info(`[AssistantManager] 视觉混合模式执行: ${assistant.assistant_type}`);
+    logger.info(`[AssistantManager] 视觉混合模式执行: ${assistant.assistant_type}, input:`, input);
 
-    // 验证输入包含 file_path
-    const filePath = input.file_path;
-    if (!filePath) {
+    // 支持多种输入格式：
+    // 1. 单图：{ image_path: "..." }
+    // 2. 多图：{ image_paths: ["...", "..."] }
+    // 3. 兼容：{ file_path: "..." }, { path: "..." }
+    let filePaths = [];
+
+    if (typeof input === 'string') {
+      // 直接传字符串路径
+      filePaths = [input];
+    } else if (typeof input === 'object' && input !== null) {
+      // 支持 image_paths 数组
+      if (Array.isArray(input.image_paths)) {
+        filePaths = input.image_paths;
+      } else if (Array.isArray(input.file_paths)) {
+        filePaths = input.file_paths;
+      } else {
+        // 单图兼容格式
+        const filePath = input.image_path || input.file_path || input.path || null;
+        if (filePath) {
+          filePaths = [filePath];
+        }
+      }
+    }
+
+    if (filePaths.length === 0) {
       return {
         success: false,
-        error: '缺少必需参数: file_path',
+        error: '缺少必需参数: image_path 或 image_paths (或 file_path, path)',
       };
     }
 
@@ -1039,25 +1396,28 @@ class AssistantManager {
     await this.messageService.appendToolCallMessage(
       context.requestId,
       toolName,
-      { file_path: filePath },
+      { file_paths: filePaths },
       toolCallId
     );
 
-    let imageAsset;
+    // 读取所有图片
+    const imageAssets = [];
     try {
-      // 直接调用内置的图片读取方法
-      imageAsset = await this.readImageFile(filePath, {
-        topicId: context.topicId,
-        workdir: context.workdir,  // 传递工作目录
-      });
-
-      logger.info(`[AssistantManager] 图片读取成功: ${imageAsset.file_name}, ${imageAsset.size_bytes} bytes`);
+      for (const filePath of filePaths) {
+        const imageAsset = await this.readImageFile(filePath, {
+          topicId: context.topicId,
+          workdir: context.workdir,
+        });
+        imageAssets.push(imageAsset);
+        logger.info(`[AssistantManager] 图片读取成功: ${imageAsset.file_name}, ${imageAsset.size_bytes} bytes`);
+      }
 
       // 写入工具结果消息
+      const successMsg = imageAssets.map(a => `${a.file_name} (${(a.size_bytes / 1024).toFixed(1)}KB)`).join(', ');
       await this.messageService.appendToolResultMessage(
         context.requestId,
         toolName,
-        `读取成功: ${imageAsset.file_name} (${(imageAsset.size_bytes / 1024).toFixed(1)}KB)`,
+        `读取成功: ${successMsg}`,
         toolCallId
       );
     } catch (readError) {
@@ -1107,13 +1467,15 @@ class AssistantManager {
     // 构建用户消息（包含图片和文本）
     const userContent = [];
 
-    // 添加图片
-    userContent.push({
-      type: 'image_url',
-      image_url: {
-        url: imageAsset.data_url,
-      },
-    });
+    // 添加图片（支持多图）
+    for (const imageAsset of imageAssets) {
+      userContent.push({
+        type: 'image_url',
+        image_url: {
+          url: imageAsset.data_url,
+        },
+      });
+    }
 
     // 构建文本内容
     let textContent = '';
@@ -1145,10 +1507,15 @@ class AssistantManager {
 
     // 第四步：调用视觉模型
     const startTime = Date.now();
+    // 优先使用助手的 max_tokens，但不能超过模型的 max_output_tokens
+    const maxTokens = Math.min(
+      assistant.max_tokens || modelConfig.max_output_tokens || 32768,
+      modelConfig.max_output_tokens || 98304
+    );
     try {
       const response = await this.callVisionLLM(modelConfig, messages, {
         temperature: parseFloat(assistant.temperature) || 0.7,
-        max_tokens: assistant.max_tokens || 4096,
+        max_tokens: maxTokens,
         timeout: (assistant.timeout || 120) * 1000,
       });
 
@@ -1162,11 +1529,11 @@ class AssistantManager {
         tokens_input: response.usage?.prompt_tokens || 0,
         tokens_output: response.usage?.completion_tokens || 0,
         model_used: modelConfig.model_name,
-        image_asset: {
-          file_name: imageAsset.file_name,
-          mime_type: imageAsset.mime_type,
-          size_bytes: imageAsset.size_bytes,
-        },
+        image_assets: imageAssets.map(a => ({
+          file_name: a.file_name,
+          mime_type: a.mime_type,
+          size_bytes: a.size_bytes,
+        })),
       };
     } catch (llmError) {
       logger.error(`[AssistantManager] 视觉模型调用失败:`, llmError.message);
@@ -1502,18 +1869,23 @@ class AssistantManager {
    * @returns {Array}
    */
   getToolDefinitions() {
+    // 动态获取可用助理列表
+    const assistants = Array.from(this.assistantsCache?.values() || []);
+    const assistantTypes = assistants.map(a => `${a.assistant_type}`).join(', ');
+    const assistantTypesDescription = assistantTypes || '（当前无可用助理）';
+
     return [
       {
         type: 'function',
         function: {
           name: 'assistant_summon',
-          description: '召唤助理来处理特定任务。助理是异步执行的，会立即返回委托ID。【重要规则】召唤成功后必须立即回复用户：任务已提交，请稍后查看结果，然后继续与用户对话。不要轮询等待结果。',
+          description: `召唤助理来处理特定任务。助理是异步执行的，会立即返回委托ID。【重要规则】\n1. 召唤成功后必须立即回复用户：任务已提交，请稍后查看结果，然后继续与用户对话\n2. 不要轮询等待结果，结果会自动返回到对话中\n3. 收到助理返回的结果后，根据用户需求处理结果（如保存文件），【禁止再次调用此工具】\n4. 如需处理多张图片，可以在 input.image_paths 中传入图片路径数组，助理会一次性处理所有图片\n\n当前可用助理类型：${assistantTypesDescription}`,
           parameters: {
             type: 'object',
             properties: {
               type: {
                 type: 'string',
-                description: '助理类型，如 ocr, drawing, coding, vision 等',
+                description: `助理类型，可选值：${assistantTypesDescription}`,
               },
               task: {
                 type: 'string',
@@ -1525,7 +1897,7 @@ class AssistantManager {
               },
               input: {
                 type: 'object',
-                description: '输入参数，根据助理类型不同而不同',
+                description: '输入参数。图片分析支持：\n- 单张：{ "image_path": "work/xxx/input/图片.jpg" }\n- 多张：{ "image_paths": ["work/xxx/input/图片1.jpg", "work/xxx/input/图片2.jpg"] }',
               },
               expected_output: {
                 type: 'object',
@@ -1543,23 +1915,6 @@ class AssistantManager {
               },
             },
             required: ['type', 'input'],
-          },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'assistant_status',
-          description: '查询助理委托的状态和结果。【限制使用】此工具仅供用户明确要求查询某个特定委托状态时使用。禁止用于轮询检查刚提交的任务。用户可以在右侧助理面板实时查看所有委托的进度和结果，无需 Expert 代为查询。',
-          parameters: {
-            type: 'object',
-            properties: {
-              request_id: {
-                type: 'string',
-                description: '委托ID（从 assistant_summon 返回）',
-              },
-            },
-            required: ['request_id'],
           },
         },
       },
@@ -1644,6 +1999,151 @@ class AssistantManager {
   }
 
   /**
+   * 获取单个助理详情
+   * @param {string} assistantType - 助理类型
+   * @returns {Promise<object|null>}
+   */
+  async getAssistantDetail(assistantType) {
+    const assistant = await this.Assistant.findOne({
+      where: { assistant_type: assistantType },
+      raw: true,
+    });
+
+    if (!assistant) {
+      return null;
+    }
+
+    // 将 BIT(1) 转换为布尔值
+    assistant.can_use_skills = !!assistant.can_use_skills;
+    assistant.is_active = !!assistant.is_active;
+
+    return assistant;
+  }
+
+  /**
+   * 更新助理配置
+   * @param {string} assistantType - 助理类型
+   * @param {object} updates - 更新内容
+   * @returns {Promise<object>}
+   */
+  async updateAssistant(assistantType, updates) {
+    const assistant = await this.Assistant.findOne({
+      where: { assistant_type: assistantType },
+    });
+
+    if (!assistant) {
+      throw new Error(`Assistant not found: ${assistantType}`);
+    }
+
+    // 允许更新的字段
+    const allowedFields = [
+      'name',
+      'icon',
+      'description',
+      'model_id',
+      'execution_mode',
+      'prompt_template',
+      'max_tokens',
+      'temperature',
+      'estimated_time',
+      'timeout',
+      'can_use_skills',
+      'is_active',
+    ];
+
+    const updateData = {};
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        updateData[field] = updates[field];
+      }
+    }
+
+    updateData.updated_at = new Date();
+
+    await this.Assistant.update(updateData, {
+      where: { assistant_type: assistantType },
+    });
+
+    // 刷新缓存
+    await this.refreshAssistantsCache();
+
+    // 返回更新后的数据
+    return this.getAssistantDetail(assistantType);
+  }
+
+  /**
+   * 创建新助理
+   * @param {object} data - 助理数据
+   * @returns {Promise<object>}
+   */
+  async createAssistant(data) {
+    // 必填字段检查
+    if (!data.assistant_type) {
+      throw new Error('assistant_type is required');
+    }
+    if (!data.name) {
+      throw new Error('name is required');
+    }
+
+    // 检查是否已存在
+    const existing = await this.Assistant.findOne({
+      where: { assistant_type: data.assistant_type },
+    });
+
+    if (existing) {
+      throw new Error(`Assistant already exists: ${data.assistant_type}`);
+    }
+
+    // 创建助理
+    const assistantData = {
+      assistant_type: data.assistant_type,
+      name: data.name,
+      icon: data.icon || '🤖',
+      description: data.description || '',
+      model_id: data.model_id || null,
+      prompt_template: data.prompt_template || null,
+      max_tokens: data.max_tokens || 4096,
+      temperature: data.temperature ?? 0.7,
+      estimated_time: data.estimated_time || 30,
+      timeout: data.timeout || 120,
+      execution_mode: data.execution_mode || 'llm',
+      can_use_skills: data.can_use_skills ?? false,
+      is_active: data.is_active ?? true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    await this.Assistant.create(assistantData);
+
+    // 刷新缓存
+    await this.refreshAssistantsCache();
+
+    // 返回创建的数据
+    return this.getAssistantDetail(data.assistant_type);
+  }
+
+  /**
+   * 删除助理
+   * @param {string} assistantType - 助理类型
+   */
+  async deleteAssistant(assistantType) {
+    const assistant = await this.Assistant.findOne({
+      where: { assistant_type: assistantType },
+    });
+
+    if (!assistant) {
+      throw new Error(`Assistant not found: ${assistantType}`);
+    }
+
+    await assistant.destroy();
+
+    // 刷新缓存
+    await this.refreshAssistantsCache();
+
+    return { success: true, assistant_type: assistantType };
+  }
+
+  /**
    * 执行工具调用
    * @param {string} toolName - 工具名称
    * @param {object} params - 参数
@@ -1670,9 +2170,6 @@ class AssistantManager {
             workdir: context.taskContext?.fullWorkspacePath || context.taskContext?.workspacePath,
           },
         });
-
-      case 'assistant_status':
-        return this.status(params.request_id);
 
       case 'assistant_roster':
         return this.roster();

@@ -674,6 +674,22 @@ export const assistantApi = {
   getAssistants: () =>
     apiRequest<Assistant[]>(apiClient.get('/assistants')),
 
+  // 获取单个助理详情
+  getAssistant: (type: string) =>
+    apiRequest<Assistant>(apiClient.get(`/assistants/${type}`)),
+
+  // 更新助理配置
+  updateAssistant: (type: string, data: Partial<Assistant>) =>
+    apiRequest<Assistant>(apiClient.put(`/assistants/${type}`, data)),
+
+  // 创建助理
+  createAssistant: (data: Partial<Assistant> & { assistant_type: string; name: string }) =>
+    apiRequest<Assistant>(apiClient.post('/assistants', data)),
+
+  // 删除助理
+  deleteAssistant: (type: string) =>
+    apiRequest<{ success: boolean; assistant_type: string }>(apiClient.delete(`/assistants/${type}`)),
+
   // 召唤助理
   summon: (data: AssistantSummonRequest) =>
     apiRequest<AssistantSummonResponse>(apiClient.post('/assistants/call', data)),

@@ -255,7 +255,7 @@ const lastKnownMessageId = ref<string | null>(null)
 
 // 处理 SSE 事件
 const handleSSEEvent = async (event: SSEEvent) => {
-  // 处理心跳事件
+  // 心跳事件处理
   if (event.event === 'heartbeat') {
     try {
       const data = JSON.parse(event.data)
@@ -300,6 +300,16 @@ const handleSSEEvent = async (event: SSEEvent) => {
 
       case 'start':
         console.log('SSE start:', data)
+        // 如果当前没有流式消息，创建一个新的（助理返回触发 Expert 响应时）
+        if (!currentAssistantMessage.value) {
+          currentAssistantMessage.value = chatStore.addLocalMessage({
+            expert_id: currentExpertId.value,
+            role: 'assistant',
+            content: '',
+            status: 'streaming',
+          })
+          isSending.value = true
+        }
         // 如果检测到新话题，刷新话题列表
         if (data.is_new_topic) {
           console.log('检测到新话题，刷新话题列表')
@@ -437,6 +447,17 @@ const handleSSEEvent = async (event: SSEEvent) => {
         console.log('[ChatView] Setting isSending to false on error event')
         clearSendingTimeout()
         isSending.value = false
+        break
+
+      case 'new_context':
+        // 收到新上下文通知（助理返回给 Expert），刷新消息列表
+        console.log('SSE new_context:', data)
+        // 刷新消息列表以获取新插入的消息
+        await chatStore.loadMessagesByExpert(currentExpertId.value, 1)
+        // 如果有新话题，刷新话题列表
+        if (data.topic_id) {
+          chatStore.loadTopics({ expert_id: currentExpertId.value })
+        }
         break
 
       default:
