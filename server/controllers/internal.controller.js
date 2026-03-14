@@ -164,6 +164,12 @@ class InternalController {
       
       logger.info(`[Internal API] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
 
+      // 发送开始事件，让前端准备接收流式消息
+      if (!userConnection.res.writableEnded) {
+        userConnection.res.write(`event: start\n`);
+        userConnection.res.write(`data: ${JSON.stringify({ topic_id, is_new_topic: false })}\n\n`);
+      }
+
       // 流式调用 LLM
       let fullContent = '';
       const startTime = Date.now();
