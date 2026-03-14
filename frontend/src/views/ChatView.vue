@@ -251,7 +251,7 @@ const loadMoreMessages = async () => {
 }
 
 // 记录上一次收到的最新消息 ID，用于避免重复拉取
-let lastKnownMessageId = ref<string | null>(null)
+const lastKnownMessageId = ref<string | null>(null)
 
 // 处理 SSE 事件
 const handleSSEEvent = async (event: SSEEvent) => {
