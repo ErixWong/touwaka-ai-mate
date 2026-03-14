@@ -142,6 +142,10 @@ class StreamController {
           } else if (delta.type === 'tool_call') {
             res.write(`event: tool_call\n`);
             res.write(`data: ${JSON.stringify(delta)}\n\n`);
+          } else if (delta.type === 'tool_result') {
+            // 单个工具执行完成，实时推送结果
+            res.write(`event: tool_result\n`);
+            res.write(`data: ${JSON.stringify({ result: delta.result })}\n\n`);
           } else if (delta.type === 'topic_updated') {
             // 上下文压缩创建了新 Topic，通知前端刷新
             res.write(`event: topic_updated\n`);
