@@ -17,15 +17,13 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 // 要统计的目录（相对于项目根目录）
+// 注意：只统计项目核心代码，不统计测试/调试工具
 const INCLUDE_DIRS = [
   'lib',
   'server',
   'models',
   'scripts',
   'config',
-  'tests',
-  'data/skills',
-  'tools',
   'frontend/src'
 ];
 

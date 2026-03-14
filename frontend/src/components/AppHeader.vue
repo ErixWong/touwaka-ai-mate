@@ -30,6 +30,14 @@
     </nav>
 
     <div class="header-right">
+      <!-- 语言切换 -->
+      <div class="lang-selector">
+        <select v-model="currentLocale" @change="handleLocaleChange" class="lang-select">
+          <option value="zh-CN">中文</option>
+          <option value="en-US">English</option>
+        </select>
+      </div>
+      
       <div class="user-menu" ref="menuRef">
         <button class="btn-user" @click="showUserMenu = !showUserMenu">
           <span class="user-avatar">{{ userInitial }}</span>
@@ -60,13 +68,29 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useI18n } from 'vue-i18n'
+import type { Locale } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const { locale } = useI18n()
 
 const showUserMenu = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
+
+// 当前语言
+const currentLocale = computed({
+  get: () => locale.value as Locale,
+  set: (value: Locale) => {
+    locale.value = value
+  }
+})
+
+// 处理语言切换
+const handleLocaleChange = async () => {
+  await userStore.changeLanguage(currentLocale.value)
+}
 
 const userInitial = computed(() => {
   return userStore.user?.nickname?.charAt(0).toUpperCase() || 'U'
@@ -179,6 +203,33 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* 语言选择器 */
+.lang-selector {
+  display: flex;
+  align-items: center;
+}
+
+.lang-select {
+  padding: 6px 12px;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lang-select:hover {
+  border-color: var(--primary-color, #2196f3);
+}
+
+.lang-select:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
 }
 
 .user-menu {
