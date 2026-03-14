@@ -322,21 +322,27 @@ const handleSSEEvent = async (event: SSEEvent) => {
         }
         break
 
-      case 'tool_results':
-        console.log('Tool results:', data)
-        // 在当前消息中显示工具执行结果摘要
-        if (currentAssistantMessage.value && data.results) {
-          const resultSummary = data.results.map((r: any) => {
-            const name = r.toolName || 'unknown'
-            const success = r.success ? '✅' : '❌'
-            return `${success} ${name}`
-          }).join('\n')
+      case 'tool_result':
+        // 单个工具执行完成，实时显示结果
+        console.log('Tool result:', data)
+        if (currentAssistantMessage.value && data.result) {
+          const r = data.result
+          const name = r.toolName || 'unknown'
+          const success = r.success ? '✅' : '❌'
+          const duration = r.duration ? ` (${r.duration}ms)` : ''
+          const resultText = `${success} ${name}${duration}\n`
           
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
-            currentAssistantMessage.value.content + `\n${resultSummary}\n\n---\n`
+            currentAssistantMessage.value.content + `\n${resultText}`
           )
         }
+        break
+
+      case 'tool_results':
+        // 所有工具执行完成（批量结果，保留向后兼容）
+        console.log('Tool results:', data)
+        // 不再重复显示，因为 tool_result 已经实时显示了
         break
 
       case 'complete':
@@ -756,14 +762,15 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-/* 专家信息面板样式 */
+/* 专家信息面板样式 - 上圆角+下直角，与 chatbox 融为一体 */
 .chat-info-panel {
   padding: 12px 16px;
-  background: var(--header-bg, #fff);
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
   flex-shrink: 0;
   border-radius: 12px 12px 0 0;
   border: 1px solid var(--border-color, #e0e0e0);
   border-bottom: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .expert-info {
