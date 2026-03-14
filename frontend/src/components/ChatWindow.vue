@@ -46,8 +46,12 @@
                 </svg>
               </span>
             </div>
-            <!-- 展开状态：显示参数和结果 -->
+            <!-- 展开状态：显示上下文、参数和结果 -->
             <div v-if="isToolExpanded(message.id)" class="tool-details">
+              <div v-if="getToolContext(message)" class="tool-section context-section">
+                <div class="tool-section-title">{{ $t('chat.toolContext') || '上下文' }}</div>
+                <div class="tool-context-text">{{ getToolContext(message) }}</div>
+              </div>
               <div v-if="getToolArguments(message)" class="tool-section">
                 <div class="tool-section-title">{{ $t('chat.toolArguments') || '参数' }}</div>
                 <pre class="tool-section-content">{{ formatToolArguments(message) }}</pre>
@@ -609,6 +613,7 @@ interface ToolCallData {
   timestamp?: string
   arguments?: Record<string, unknown>
   result?: unknown
+  context?: string  // 工具调用前的状态文本上下文
 }
 
 /**
@@ -660,6 +665,14 @@ const getToolDuration = (message: ChatMessage): number | null => {
 const getToolArguments = (message: ChatMessage): Record<string, unknown> | null => {
   const toolData = parseToolCalls(message)
   return toolData?.arguments ?? null
+}
+
+/**
+ * 获取工具上下文（工具调用前的状态文本）
+ */
+const getToolContext = (message: ChatMessage): string | null => {
+  const toolData = parseToolCalls(message)
+  return toolData?.context ?? null
 }
 
 /**
@@ -1443,6 +1456,25 @@ defineExpose({
   letter-spacing: 0.5px;
   margin-bottom: 6px;
   padding: 0 4px;
+}
+
+/* Tool context 样式 */
+.tool-section.context-section {
+  margin-bottom: 12px;
+}
+
+.tool-context-text {
+  background: var(--tool-context-bg, #f0f7ff);
+  border-left: 3px solid var(--primary-color, #2196f3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--text-primary, #333);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
 .tool-section-content {
