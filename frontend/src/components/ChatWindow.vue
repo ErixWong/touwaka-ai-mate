@@ -176,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -271,112 +271,52 @@ const applyCommand = (cmd: typeof commands[0]) => {
   inputRef.value?.focus()
 }
 
-// 记录滚动位置，用于加载更多后恢复
+// ==================== 简化的滚动控制逻辑 ====================
+// 核心原则：只有一个状态变量控制是否应该自动滚动
+
+// 用户是否在底部（用于判断是否应该自动滚动到新消息）
+const isUserAtBottom = ref(true)
+
+// 加载更多相关状态
 const scrollHeightBeforeLoad = ref(0)
 const isLoadingTriggered = ref(false)
-
-// 节流滚动控制 - 使用 requestAnimationFrame 避免频繁滚动
-let scrollRafId: number | null = null
-const scrollToBottom = () => {
-  if (scrollRafId !== null) return // 已有待处理的滚动请求
-  
-  scrollRafId = requestAnimationFrame(() => {
-    scrollRafId = null
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-}
-
-// MutationObserver 用于检测消息 DOM 变化（处理异步内容加载）
-let mutationObserver: MutationObserver | null = null
-const isInitialLoad = ref(true) // 标记是否是初始加载
-let scrollStabilizeTimer: ReturnType<typeof setTimeout> | null = null
-
-// 强制滚动到底部（禁用 smooth 动画）
-const forceScrollToBottom = () => {
-  if (!messagesContainer.value) return
-  
-  // 临时禁用 smooth 滚动
-  const originalBehavior = messagesContainer.value.style.scrollBehavior
-  messagesContainer.value.style.scrollBehavior = 'auto'
-  
-  // 立即滚动
-  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-  
-  // 恢复 smooth 滚动
-  requestAnimationFrame(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.style.scrollBehavior = originalBehavior
-    }
-  })
-}
-
-// 设置 MutationObserver 来处理异步内容渲染后的滚动
-const setupMutationObserver = () => {
-  if (!messagesContainer.value) return
-  
-  // 清理旧的 observer
-  if (mutationObserver) {
-    mutationObserver.disconnect()
-  }
-  
-  mutationObserver = new MutationObserver(() => {
-    // 只在初始加载时自动滚动到底部
-    if (isInitialLoad.value) {
-      // 清除之前的定时器
-      if (scrollStabilizeTimer) {
-        clearTimeout(scrollStabilizeTimer)
-      }
-      
-      // 延迟滚动，等待所有 DOM 更新完成
-      scrollStabilizeTimer = setTimeout(() => {
-        if (messagesContainer.value && isInitialLoad.value) {
-          forceScrollToBottom()
-        }
-      }, 100)
-      
-      // 经过一段时间后（内容基本稳定），结束初始加载状态
-      setTimeout(() => {
-        isInitialLoad.value = false
-      }, 1500)
-    }
-  })
-  
-  // 监听子元素变化
-  mutationObserver.observe(messagesContainer.value, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  })
-}
 
 // 格式化缓存 - 避免重复格式化相同内容
 const formattedCache = new Map<string, string>()
 
 // 检测是否在底部（距离底部 100px 以内视为在底部）
-const isAtBottom = () => {
+const checkIsAtBottom = () => {
   if (!messagesContainer.value) return true
   const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
   return scrollHeight - scrollTop - clientHeight < 100
 }
 
-// 滚动处理：检测是否滚动到顶部 + 更新滚动到底部按钮状态
+// 滚动到底部（支持即时滚动，用于流式输出）
+const scrollToBottom = (instant = false) => {
+  if (!messagesContainer.value) return
+  
+  if (instant) {
+    // 临时禁用 smooth 滚动，避免流式输出时的"追赶"效果
+    const original = messagesContainer.value.style.scrollBehavior
+    messagesContainer.value.style.scrollBehavior = 'auto'
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    messagesContainer.value.style.scrollBehavior = original
+  } else {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  }
+}
+
+// 滚动处理：检测是否滚动到顶部 + 更新用户位置状态
 const handleScroll = () => {
   if (!messagesContainer.value) return
   
-  // 用户手动滚动时，取消初始加载状态
-  if (isInitialLoad.value && !isAtBottom()) {
-    isInitialLoad.value = false
-    if (scrollStabilizeTimer) {
-      clearTimeout(scrollStabilizeTimer)
-      scrollStabilizeTimer = null
-    }
-  }
+  // 更新用户是否在底部的状态
+  isUserAtBottom.value = checkIsAtBottom()
   
   // 更新滚动到底部按钮状态
-  showScrollToBottom.value = !isAtBottom()
+  showScrollToBottom.value = !isUserAtBottom.value
   
+  // 检测是否需要加载更多
   if (!props.hasMoreMessages || props.isLoadingMore) return
   
   const { scrollTop } = messagesContainer.value
@@ -384,7 +324,6 @@ const handleScroll = () => {
   // 距离顶部 100px 以内时自动触发加载
   if (scrollTop < 100 && !isLoadingTriggered.value) {
     isLoadingTriggered.value = true
-    // 记录当前滚动高度，用于加载后恢复位置
     scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
     emit('loadMore')
   }
@@ -392,6 +331,7 @@ const handleScroll = () => {
 
 // 点击滚动到底部按钮
 const handleScrollToBottom = () => {
+  isUserAtBottom.value = true
   scrollToBottom()
   showScrollToBottom.value = false
 }
@@ -400,54 +340,67 @@ const handleScrollToBottom = () => {
 const handleLoadMore = () => {
   if (!messagesContainer.value) return
   scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
+  isLoadingTriggered.value = true
   emit('loadMore')
 }
 
-// 监听消息数量变化（处理初始加载、新消息、加载更多）
+// 监听消息数量变化
 watch(
   () => props.messages.length,
   (newLength, oldLength) => {
     nextTick(() => {
       if (!messagesContainer.value || newLength === 0) return
       
-      // 情况1：加载更多（消息数量增加且之前正在加载）
-      if (props.isLoadingMore === false && isLoadingTriggered.value && newLength > (oldLength || 0)) {
-        // 恢复滚动位置（保持在原来的消息位置）
+      // 情况1：加载更多完成
+      if (isLoadingTriggered.value && props.isLoadingMore === false && newLength > (oldLength || 0)) {
+        // 恢复滚动位置
         const newScrollHeight = messagesContainer.value.scrollHeight
         messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
         isLoadingTriggered.value = false
+        isUserAtBottom.value = checkIsAtBottom()
         return
       }
       
-      // 情况2：初始加载或新消息 -> 设置 MutationObserver 来处理
+      // 情况2：新消息到达
       if (newLength > (oldLength || 0)) {
-        // 标记为初始加载状态，MutationObserver 会处理滚动
+        // 初始加载：强制滚动到底部
         if (oldLength === 0 || oldLength === undefined) {
-          isInitialLoad.value = true
-          setupMutationObserver()
-        } else {
-          // 非初始加载的新消息，直接滚动
           scrollToBottom()
+          isUserAtBottom.value = true
+        } else {
+          // 非初始加载：只有用户在底部时才滚动
+          if (isUserAtBottom.value) {
+            scrollToBottom()
+          }
         }
-        showScrollToBottom.value = false
+        showScrollToBottom.value = !checkIsAtBottom()
       }
     })
   },
-  { immediate: true } // 立即执行以处理初始加载
+  { immediate: true }
 )
 
-// 监听最后一条消息的状态变化（用于流式更新时的滚动）
+// 流式输出节流控制
+let streamingScrollRaf: number | null = null
+
+// 监听最后一条消息的内容变化（流式更新时保持滚动到底部）
 watch(
-  () => props.messages[props.messages.length - 1]?.status,
-  (status) => {
-    if (status === 'streaming') {
-      scrollToBottom()
+  () => props.messages[props.messages.length - 1]?.content,
+  () => {
+    // 流式输出时，如果用户在底部则即时滚动（使用 RAF 节流）
+    if (isUserAtBottom.value) {
+      if (streamingScrollRaf === null) {
+        streamingScrollRaf = requestAnimationFrame(() => {
+          streamingScrollRaf = null
+          scrollToBottom(true)
+        })
+      }
     }
   }
 )
 
 // 发送消息
-const handleSend = async () => {
+const handleSend = () => {
   const content = inputText.value.trim()
 
   if (!content || props.isLoading || props.disabled) return
@@ -576,29 +529,16 @@ const adjustTextareaHeight = () => {
 
 watch(inputText, adjustTextareaHeight)
 
-onMounted(() => {
-  // 设置 MutationObserver 来处理初始加载后的滚动
-  setupMutationObserver()
-})
+// 注意：初始滚动由 watch 的 immediate: true 处理，无需在 onMounted 中重复
 
 onUnmounted(() => {
-  // 清理待处理的 RAF
-  if (scrollRafId !== null) {
-    cancelAnimationFrame(scrollRafId)
-    scrollRafId = null
-  }
-  // 清理 MutationObserver
-  if (mutationObserver) {
-    mutationObserver.disconnect()
-    mutationObserver = null
-  }
-  // 清理定时器
-  if (scrollStabilizeTimer) {
-    clearTimeout(scrollStabilizeTimer)
-    scrollStabilizeTimer = null
-  }
   // 清理格式化缓存
   formattedCache.clear()
+  // 清理流式滚动 RAF
+  if (streamingScrollRaf !== null) {
+    cancelAnimationFrame(streamingScrollRaf)
+    streamingScrollRaf = null
+  }
 })
 
 // ==================== Tool 消息处理方法 ====================
