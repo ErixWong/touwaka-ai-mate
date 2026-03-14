@@ -593,14 +593,15 @@ interface ToolCallData {
 
 /**
  * 解析 tool 消息的 tool_calls 字段
+ * 注意：tool_calls 是消息的直接字段，不在 metadata 中
  */
 const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
-  if (!message.metadata?.tool_calls) return null
+  if (!message.tool_calls) return null
   
   try {
-    const toolCalls = typeof message.metadata.tool_calls === 'string'
-      ? JSON.parse(message.metadata.tool_calls)
-      : message.metadata.tool_calls
+    const toolCalls = typeof message.tool_calls === 'string'
+      ? JSON.parse(message.tool_calls)
+      : message.tool_calls
     return toolCalls as ToolCallData
   } catch {
     return null
