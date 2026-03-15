@@ -27,26 +27,33 @@
         class="message"
         :class="message.role"
       >
-        <!-- tool 消息的特殊渲染 -->
+        <!-- tool 消息的特殊渲染 - 简洁内敛风格 -->
         <template v-if="message.role === 'tool'">
           <div class="tool-message-card" :class="{ expanded: isToolExpanded(message.id) }">
-            <!-- 收缩状态：一行显示 -->
+            <!-- 工具消息头部 - 与普通消息一致的风格 -->
             <div class="tool-header" @click="toggleToolExpand(message.id)">
-              <span class="tool-icon">🔧</span>
-              <span class="tool-name">{{ getToolName(message) }}</span>
-              <span class="tool-status" :class="getToolStatus(message) ? 'success' : 'error'">
-                {{ getToolStatus(message) ? '✅' : '❌' }}
-              </span>
-              <span v-if="getToolDuration(message)" class="tool-duration">
-                {{ getToolDuration(message) }}ms
-              </span>
-              <span class="tool-expand-btn" :class="{ expanded: isToolExpanded(message.id) }">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
+              <div class="tool-header-main">
+                <span class="tool-icon">🔧</span>
+                <span class="tool-name">{{ getToolName(message) }}</span>
+                <span class="tool-meta">
+                  <span class="tool-time">{{ formatToolTime(message) }}</span>
+                  <span v-if="getToolDuration(message)" class="tool-duration">{{ getToolDuration(message) }}ms</span>
+                </span>
+                <span class="tool-status" :class="getToolStatus(message) ? 'success' : 'error'">
+                  {{ getToolStatus(message) ? '✓' : '✗' }}
+                </span>
+                <span class="tool-expand-btn" :class="{ expanded: isToolExpanded(message.id) }">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+              </div>
+              <!-- 上下文预览 - 简洁单行 -->
+              <div v-if="getToolContext(message)" class="tool-context-line">
+                {{ truncateContext(getToolContext(message) as string, 80) }}
+              </div>
             </div>
-            <!-- 展开状态：显示上下文、参数和结果 -->
+            <!-- 展开状态：显示参数和结果 -->
             <div v-if="isToolExpanded(message.id)" class="tool-details">
               <div v-if="getToolContext(message)" class="tool-section context-section">
                 <div class="tool-section-title">{{ $t('chat.toolContext') || '上下文' }}</div>
@@ -613,6 +620,43 @@ const getToolArguments = (message: ChatMessage): Record<string, unknown> | null 
 const getToolContext = (message: ChatMessage): string | null => {
   const toolData = parseToolCalls(message)
   return toolData?.context ?? null
+}
+
+/**
+ * 获取工具时间戳
+ */
+const getToolTimestamp = (message: ChatMessage): string | null => {
+  const toolData = parseToolCalls(message)
+  return toolData?.timestamp ?? null
+}
+
+/**
+ * 格式化工具时间显示（完整时间 HH:mm:ss）
+ */
+const formatToolTime = (message: ChatMessage): string => {
+  const timestamp = getToolTimestamp(message)
+  if (!timestamp) {
+    // 如果没有 timestamp，使用 message.created_at
+    if (message.created_at) {
+      const date = new Date(message.created_at)
+      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }
+    return '--:--:--'
+  }
+  
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/**
+ * 截断上下文预览
+ * @param text 上下文文本
+ * @param maxLength 最大长度（默认60字符）
+ */
+const truncateContext = (text: string, maxLength: number = 60): string => {
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '...'
 }
 
 /**
@@ -1274,39 +1318,39 @@ defineExpose({
   transition: color 0.2s;
 }
 
-/* ==================== Tool 消息样式 ==================== */
+/* ==================== Tool 消息样式 - 简洁内敛风格 ==================== */
 .message.tool {
-  justify-content: flex-start;  /* 左对齐 */
+  justify-content: flex-start;
 }
 
 .tool-message-card {
-  background: var(--tool-card-bg, #f8f9fa);
-  border: 1px solid var(--tool-card-border, #e9ecef);
-  border-radius: 12px;
-  padding: 10px 14px;
-  width: 50%;  /* 固定宽度为 chatbox 的一半 */
-  max-width: 50%;
-  min-width: 300px;  /* 最小宽度保证可读性 */
-  font-size: 13px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
+  background: var(--message-bg, #f5f5f5);
+  border-radius: 16px;
+  padding: 12px 16px;
+  max-width: 70%;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary, #333);
+  word-break: break-word;
 }
 
 .tool-message-card.expanded {
-  background: var(--tool-card-expanded-bg, #fff);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--message-bg, #f5f5f5);
 }
 
 .tool-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   cursor: pointer;
   user-select: none;
 }
 
+.tool-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tool-icon {
-  font-size: 14px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -1320,9 +1364,27 @@ defineExpose({
   white-space: nowrap;
 }
 
-.tool-status {
-  font-size: 12px;
+.tool-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.tool-time {
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.tool-duration {
+  color: var(--text-hint, #999);
+}
+
+.tool-status {
+  font-size: 14px;
+  flex-shrink: 0;
+  font-weight: 500;
 }
 
 .tool-status.success {
@@ -1331,15 +1393,6 @@ defineExpose({
 
 .tool-status.error {
   color: var(--error-color, #f44336);
-}
-
-.tool-duration {
-  font-size: 10px;
-  color: var(--text-hint, #999);
-  background: var(--chip-bg, #e8e8e8);
-  padding: 2px 6px;
-  border-radius: 10px;
-  flex-shrink: 0;
 }
 
 .tool-expand-btn {
@@ -1362,10 +1415,22 @@ defineExpose({
   transform: rotate(180deg);
 }
 
+/* 上下文预览 - 简洁单行，与普通消息风格一致 */
+.tool-context-line {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tool-details {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-color, #e8e8e8);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
   animation: slideDown 0.2s ease;
 }
 
@@ -1381,7 +1446,7 @@ defineExpose({
 }
 
 .tool-section {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .tool-section:last-child {
@@ -1389,13 +1454,10 @@ defineExpose({
 }
 
 .tool-section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary, #666);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  padding: 0 4px;
+  margin-bottom: 8px;
 }
 
 /* Tool context 样式 */
@@ -1404,12 +1466,11 @@ defineExpose({
 }
 
 .tool-context-text {
-  background: var(--tool-context-bg, #f0f7ff);
-  border-left: 3px solid var(--primary-color, #2196f3);
-  border-radius: 4px;
-  padding: 8px 12px;
+  background: var(--code-bg, #f0f0f0);
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--text-primary, #333);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;

@@ -72,6 +72,7 @@ export default {
     toolArguments: 'Arguments',
     toolResult: 'Result',
     toolContext: 'Context',
+    toolTime: 'Time',
     uploadImage: 'Upload image',
     selectModel: 'Select Model',
     // Task mode

@@ -74,6 +74,7 @@ export default {
     toolArguments: '参数',
     toolResult: '结果',
     toolContext: '上下文',
+    toolTime: '时间',
     uploadImage: '上传图片',
     selectModel: '选择模型',
     // 任务模式
