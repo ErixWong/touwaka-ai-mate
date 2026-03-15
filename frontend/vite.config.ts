@@ -23,6 +23,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // 任务静态文件服务代理
+      '/task-static': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       // SSE 流式接口需要单独配置，禁用缓冲
       '/api/chat/stream': {
         target: 'http://localhost:3000',

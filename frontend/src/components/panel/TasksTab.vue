@@ -48,6 +48,23 @@
                 <span class="action-icon">↓</span>
                 <span class="action-label">{{ $t('tasks.downloadLabel') }}</span>
               </button>
+              <!-- 编辑/保存按钮（仅限可编辑文件） -->
+              <template v-if="canEditFile && !previewLoading && !previewSaving">
+                <button v-if="!isEditing" class="btn-action btn-edit-primary" @click="startEdit" :title="$t('tasks.edit') || '编辑'">
+                  <span class="action-icon">✏️</span>
+                  <span class="action-label">{{ $t('tasks.edit') || '编辑' }}</span>
+                </button>
+                <template v-else>
+                  <button class="btn-action" @click="cancelEdit" :title="$t('common.cancel') || '取消'">
+                    <span class="action-icon">✖️</span>
+                    <span class="action-label">{{ $t('common.cancel') || '取消' }}</span>
+                  </button>
+                  <button class="btn-action btn-save-primary" @click="saveEdit" :title="$t('common.save') || '保存'">
+                    <span class="action-icon">💾</span>
+                    <span class="action-label">{{ $t('common.save') || '保存' }}</span>
+                  </button>
+                </template>
+              </template>
             </div>
           </div>
           
@@ -146,22 +163,6 @@
             </template>
           </div>
           
-          <!-- 预览底部：编辑操作 -->
-          <div v-if="canEditFile && !previewLoading && !previewSaving" class="embed-preview-footer">
-            <template v-if="previewType === 'text' || previewType === 'code' || previewType === 'markdown' || (previewType === 'html' && showHtmlSource)">
-              <button v-if="!isEditing" class="btn-edit" @click="startEdit">
-                {{ $t('tasks.edit') || '编辑' }}
-              </button>
-              <template v-else>
-                <button class="btn-cancel-edit" @click="cancelEdit">
-                  {{ $t('common.cancel') || '取消' }}
-                </button>
-                <button class="btn-save" @click="saveEdit">
-                  {{ $t('common.save') || '保存' }}
-                </button>
-              </template>
-            </template>
-          </div>
         </div>
       </template>
       
@@ -2296,6 +2297,30 @@ onUnmounted(() => {
 
 .btn-action.active .action-icon {
   animation: spin 1s linear infinite;
+}
+
+/* 编辑按钮高亮样式 */
+.btn-action.btn-edit-primary {
+  background: rgba(33, 150, 243, 0.1);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-action.btn-edit-primary:hover:not(:disabled) {
+  background: var(--primary-color, #2196f3);
+  color: white;
+}
+
+/* 保存按钮高亮样式 */
+.btn-action.btn-save-primary {
+  background: rgba(76, 175, 80, 0.1);
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
+.btn-action.btn-save-primary:hover:not(:disabled) {
+  background: #4caf50;
+  color: white;
 }
 
 .action-icon {

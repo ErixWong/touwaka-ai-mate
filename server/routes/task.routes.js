@@ -299,7 +299,7 @@ export default (controller) => {
       }
 
       // 2. 查找现有有效 Token（剩余时间 > 1 分钟）
-      const [existingTokens] = await controller.db.query(
+      const existingTokens = await controller.db.query(
         `SELECT * FROM task_token 
          WHERE task_id = ? AND user_id = ? AND expires_at > ?
          ORDER BY expires_at DESC LIMIT 1`,
@@ -308,11 +308,9 @@ export default (controller) => {
 
       if (existingTokens && existingTokens.length > 0) {
         const existingToken = existingTokens[0];
-        const expiresIn = Math.floor((new Date(existingToken.expires_at) - Date.now()) / 1000);
         ctx.success({
-          previewToken: existingToken.token,
-          expiresIn,
-          expiresAt: existingToken.expires_at
+          token: existingToken.token,
+          expires_at: existingToken.expires_at
         });
         return;
       }
@@ -322,15 +320,14 @@ export default (controller) => {
 
       // 4. 存入数据库（15分钟有效）
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-      await controller.db.query(
+      await controller.db.insert(
         `INSERT INTO task_token (token, task_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
         [token, id, userId, expiresAt]
       );
 
       ctx.success({
-        previewToken: token,
-        expiresIn: 900,  // 秒
-        expiresAt: expiresAt.toISOString()
+        token: token,
+        expires_at: expiresAt.toISOString()
       });
     } catch (error) {
       console.error('Failed to get preview token:', error);
@@ -356,7 +353,7 @@ export default (controller) => {
       }
 
       // 1. 验证旧 Token
-      const [tokenRows] = await controller.db.query(
+      const tokenRows = await controller.db.query(
         `SELECT * FROM task_token WHERE token = ? AND task_id = ? AND user_id = ?`,
         [oldToken, id, userId]
       );
@@ -367,7 +364,7 @@ export default (controller) => {
       }
 
       // 2. 作废旧 Token
-      await controller.db.query(
+      await controller.db.execute(
         `DELETE FROM task_token WHERE token = ?`,
         [oldToken]
       );
@@ -376,15 +373,14 @@ export default (controller) => {
       const newToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       
-      await controller.db.query(
+      await controller.db.insert(
         `INSERT INTO task_token (token, task_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
         [newToken, id, userId, expiresAt]
       );
 
       ctx.success({
-        previewToken: newToken,
-        expiresIn: 900,
-        expiresAt: expiresAt.toISOString()
+        token: newToken,
+        expires_at: expiresAt.toISOString()
       });
     } catch (error) {
       console.error('Failed to refresh preview token:', error);

@@ -340,7 +340,7 @@ class ApiServer {
     const taskStaticRouter = taskStaticRoutes(this.db);
     this.app.use(taskStaticRouter.routes());
     this.app.use(taskStaticRouter.allowedMethods());
-    logger.info('Task static routes registered (GET /task-static/:token/*)');
+    logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
 
     // 404 处理
     this.app.use(async (ctx) => {

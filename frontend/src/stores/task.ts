@@ -328,8 +328,9 @@ export const useTaskStore = defineStore('task', () => {
    */
   const getEmbedPreviewUrl = async (filePath: string): Promise<string> => {
     const token = await getPreviewToken()
-    // Token 在 URL 路径中，HTML 相对路径资源自动继承
-    return `/task-static/${token}/${filePath}`
+    // URL 格式: /task-static/t/:token/p/*filePath
+    // 使用 /t/:token/p/ 分隔符结构，避免路由冲突
+    return `/task-static/t/${token}/p/${filePath}`
   }
 
   /**
