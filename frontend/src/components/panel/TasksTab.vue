@@ -15,6 +15,18 @@
               <span class="preview-filename">{{ previewFile?.name }}</span>
             </div>
             <div class="preview-actions">
+              <!-- HTML 源码/预览切换 -->
+              <template v-if="previewType === 'html'">
+                <button
+                  class="btn-action"
+                  :class="{ active: showHtmlSource }"
+                  @click="toggleHtmlSourceMode"
+                  :title="showHtmlSource ? $t('tasks.showPreview') : $t('tasks.showSource')"
+                >
+                  <span class="action-icon">{{ showHtmlSource ? '👁️' : '📝' }}</span>
+                  <span class="action-label">{{ showHtmlSource ? ($t('tasks.preview') || '预览') : ($t('tasks.source') || '源码') }}</span>
+                </button>
+              </template>
               <!-- 自动刷新控制 -->
               <template v-if="previewType === 'html' || previewType === 'pdf'">
                 <button
@@ -36,6 +48,23 @@
                 <span class="action-icon">↓</span>
                 <span class="action-label">{{ $t('tasks.downloadLabel') }}</span>
               </button>
+              <!-- 编辑/保存按钮（仅限可编辑文件） -->
+              <template v-if="canEditFile && !previewLoading && !previewSaving">
+                <button v-if="!isEditing" class="btn-action btn-edit-primary" @click="startEdit" :title="$t('tasks.edit') || '编辑'">
+                  <span class="action-icon">✏️</span>
+                  <span class="action-label">{{ $t('tasks.edit') || '编辑' }}</span>
+                </button>
+                <template v-else>
+                  <button class="btn-action" @click="cancelEdit" :title="$t('common.cancel') || '取消'">
+                    <span class="action-icon">✖️</span>
+                    <span class="action-label">{{ $t('common.cancel') || '取消' }}</span>
+                  </button>
+                  <button class="btn-action btn-save-primary" @click="saveEdit" :title="$t('common.save') || '保存'">
+                    <span class="action-icon">💾</span>
+                    <span class="action-label">{{ $t('common.save') || '保存' }}</span>
+                  </button>
+                </template>
+              </template>
             </div>
           </div>
           
@@ -54,15 +83,34 @@
             
             <!-- 预览内容 -->
             <template v-else>
-              <!-- HTML 预览（iframe 嵌入） -->
-              <iframe
-                v-if="previewType === 'html'"
-                :key="previewKey"
-                :src="previewUrl"
-                class="embed-iframe"
-                sandbox="allow-scripts allow-same-origin"
-                referrerpolicy="no-referrer"
-              ></iframe>
+              <!-- HTML 预览（iframe 嵌入或源码查看） -->
+              <template v-if="previewType === 'html'">
+                <!-- 源码模式 -->
+                <template v-if="showHtmlSource">
+                  <textarea
+                    v-if="isEditing"
+                    v-model="previewContent"
+                    class="embed-editor code-editor"
+                  ></textarea>
+                  <CodePreview
+                    v-else
+                    :code="previewContent"
+                    language="html"
+                    :show-line-numbers="true"
+                    :show-copy-button="true"
+                    theme="auto"
+                  />
+                </template>
+                <!-- 预览模式 -->
+                <iframe
+                  v-else
+                  :key="previewKey"
+                  :src="previewUrl"
+                  class="embed-iframe"
+                  sandbox="allow-scripts allow-same-origin"
+                  referrerpolicy="no-referrer"
+                ></iframe>
+              </template>
               
               <!-- PDF 预览（iframe 嵌入） -->
               <iframe
@@ -90,7 +138,14 @@
                   class="embed-editor"
                   :class="{ 'code-editor': previewType === 'code' }"
                 ></textarea>
-                <pre v-else class="embed-code" :class="{ 'code-preview': previewType === 'code' }">{{ previewContent }}</pre>
+                <CodePreview
+                  v-else
+                  :code="previewContent"
+                  :language="previewFileLanguage"
+                  :show-line-numbers="true"
+                  :show-copy-button="true"
+                  theme="auto"
+                />
               </template>
               
               <!-- 图片预览 -->
@@ -108,22 +163,6 @@
             </template>
           </div>
           
-          <!-- 预览底部：编辑操作 -->
-          <div v-if="canEditFile && !previewLoading && !previewSaving" class="embed-preview-footer">
-            <template v-if="previewType === 'text' || previewType === 'code' || previewType === 'markdown'">
-              <button v-if="!isEditing" class="btn-edit" @click="startEdit">
-                {{ $t('tasks.edit') || '编辑' }}
-              </button>
-              <template v-else>
-                <button class="btn-cancel-edit" @click="cancelEdit">
-                  {{ $t('common.cancel') || '取消' }}
-                </button>
-                <button class="btn-save" @click="saveEdit">
-                  {{ $t('common.save') || '保存' }}
-                </button>
-              </template>
-            </template>
-          </div>
         </div>
       </template>
       
@@ -425,6 +464,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useTaskStore } from '@/stores/task'
 import Pagination from '@/components/Pagination.vue'
+import CodePreview from '@/components/CodePreview.vue'
 import type { Task, TaskFile } from '@/types'
 
 const { t } = useI18n()
@@ -469,6 +509,9 @@ const isEditing = ref(false)
 const autoRefreshEnabled = ref(false)
 const autoRefreshInterval = ref<number | null>(null)
 const AUTO_REFRESH_DELAY = 5000  // 5秒
+
+// HTML 源码查看模式
+const showHtmlSource = ref(false)
 
 // 文件菜单相关
 const activeMenuFile = ref<TaskFile | null>(null)
@@ -729,10 +772,25 @@ const openPreview = async (file: TaskFile) => {
   previewUrl.value = ''
   previewLoading.value = true
   showEmbedPreview.value = true  // 使用嵌入式预览
+  showHtmlSource.value = false   // 重置 HTML 源码模式
 
   try {
-    // 对于 HTML 和 PDF 文件，使用嵌入式预览（Token 在路径中）
-    if (previewType.value === 'html' || previewType.value === 'pdf') {
+    // 对于 HTML 文件，同时获取预览 URL 和源码内容
+    if (previewType.value === 'html') {
+      const url = await taskStore.getEmbedPreviewUrl(file.path)
+      previewUrl.value = url
+      // 同时加载源码内容，用于切换到源码模式
+      const response = await fetch(url)
+      if (response.ok) {
+        previewContent.value = await response.text()
+        previewOriginalContent.value = previewContent.value
+      }
+      previewLoading.value = false
+      return
+    }
+
+    // 对于 PDF 文件，使用嵌入式预览（Token 在路径中）
+    if (previewType.value === 'pdf') {
       previewUrl.value = await taskStore.getEmbedPreviewUrl(file.path)
       previewLoading.value = false
       return
@@ -763,6 +821,28 @@ const openPreview = async (file: TaskFile) => {
   }
 }
 
+// 切换 HTML 源码/预览模式
+const toggleHtmlSourceMode = async () => {
+  showHtmlSource.value = !showHtmlSource.value
+
+  // 切换到源码模式时，如果还没有加载源码，则加载
+  if (showHtmlSource.value && !previewContent.value && previewFile.value) {
+    previewLoading.value = true
+    try {
+      const contentUrl = await taskStore.getEmbedPreviewUrl(previewFile.value.path)
+      const response = await fetch(contentUrl)
+      if (response.ok) {
+        previewContent.value = await response.text()
+        previewOriginalContent.value = previewContent.value
+      }
+    } catch (error) {
+      console.error('Failed to load HTML source:', error)
+    } finally {
+      previewLoading.value = false
+    }
+  }
+}
+
 // 关闭嵌入式预览
 const closeEmbedPreview = () => {
   // 停止自动刷新
@@ -777,6 +857,7 @@ const closeEmbedPreview = () => {
   isEditing.value = false
   previewLoading.value = false
   previewSaving.value = false
+  showHtmlSource.value = false  // 重置 HTML 源码模式
 }
 
 // 启动自动刷新
@@ -845,13 +926,31 @@ const handleDownload = async (file: TaskFile) => {
   }
 }
 
-// 判断文件是否可编辑（在 input 目录下的文本文件）
+// 获取预览文件的语言类型（用于代码高亮）
+const previewFileLanguage = computed(() => {
+  if (!previewFile.value) return 'plaintext'
+  const filename = previewFile.value.name
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  return ext
+})
+
+// 判断文件是否可编辑（在 input 目录下的文本文件，或 HTML 源码模式）
 const canEditFile = computed(() => {
   if (!previewFile.value) return false
   const path = previewFile.value.path
-  // 只允许编辑 input 目录下的文件
-  return (path.startsWith('input/') || path === previewFile.value.name || currentPath.value.startsWith('input')) &&
-         (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown')
+  const isInInputDir = path.startsWith('input/') || path === previewFile.value.name || currentPath.value.startsWith('input')
+
+  // 文本、代码、Markdown 文件在 input 目录下可编辑
+  if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown') {
+    return isInInputDir
+  }
+
+  // HTML 文件在源码模式下，如果在 input 目录下也可编辑
+  if (previewType.value === 'html' && showHtmlSource.value) {
+    return isInInputDir
+  }
+
+  return false
 })
 
 // 配置 marked 选项
@@ -2198,6 +2297,30 @@ onUnmounted(() => {
 
 .btn-action.active .action-icon {
   animation: spin 1s linear infinite;
+}
+
+/* 编辑按钮高亮样式 */
+.btn-action.btn-edit-primary {
+  background: rgba(33, 150, 243, 0.1);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-action.btn-edit-primary:hover:not(:disabled) {
+  background: var(--primary-color, #2196f3);
+  color: white;
+}
+
+/* 保存按钮高亮样式 */
+.btn-action.btn-save-primary {
+  background: rgba(76, 175, 80, 0.1);
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
+.btn-action.btn-save-primary:hover:not(:disabled) {
+  background: #4caf50;
+  color: white;
 }
 
 .action-icon {
