@@ -50,7 +50,8 @@
               </div>
               <!-- 上下文预览 - 专家说的话，正常颜色，不截断 -->
               <div v-if="getToolContext(message)" class="tool-context-line">
-                {{ getToolContext(message) }}
+                <span class="tool-context-icon">💭</span>
+                <span class="tool-context-text">{{ getToolContext(message) }}</span>
               </div>
             </div>
             <!-- 展开状态：显示参数和结果 -->
@@ -1423,8 +1424,21 @@ defineExpose({
   font-size: 14px;
   color: var(--text-primary, #333);
   line-height: 1.6;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.tool-context-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  margin-top: 1px;
+}
+
+.tool-context-text {
   white-space: pre-wrap;
   word-wrap: break-word;
+  flex: 1;
 }
 
 .tool-details {
