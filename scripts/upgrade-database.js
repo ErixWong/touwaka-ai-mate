@@ -1016,6 +1016,22 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 上下文组织策略 (Issue #154) ====================
+  
+  // 41. experts.context_strategy 字段
+  {
+    name: 'experts.context_strategy column',
+    check: async (conn) => await hasColumn(conn, 'experts', 'context_strategy'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE experts
+        ADD COLUMN context_strategy ENUM('full', 'simple') DEFAULT 'full'
+        COMMENT '上下文组织策略：full=完整上下文，simple=简单上下文（近期10条消息+5个Topic）'
+        AFTER context_threshold
+      `);
+    }
+  },
 ];
 
 /**
