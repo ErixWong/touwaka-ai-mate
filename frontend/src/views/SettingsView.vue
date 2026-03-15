@@ -976,6 +976,14 @@
           <!-- 上下文压缩配置 -->
           <div class="form-section-title">{{ $t('settings.contextCompression') }}</div>
           <div class="form-item">
+            <label class="form-label">{{ $t('settings.contextStrategy') }}</label>
+            <select v-model="expertForm.context_strategy" class="form-input">
+              <option value="full">{{ $t('settings.contextStrategyFull') }}</option>
+              <option value="simple">{{ $t('settings.contextStrategySimple') }}</option>
+            </select>
+            <p class="form-hint">{{ $t('settings.contextStrategyHint') }}</p>
+          </div>
+          <div class="form-item">
             <label class="form-label">{{ $t('settings.contextThreshold') }}</label>
             <input
               v-model.number="expertForm.context_threshold"
@@ -1605,6 +1613,7 @@ const expertForm = reactive({
   reflective_model_id: '',
   prompt_template: '',
   // 上下文压缩配置
+  context_strategy: 'full' as 'full' | 'simple',
   context_threshold: 0.70,
   // LLM 参数配置
   temperature: 0.70,
@@ -2275,6 +2284,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = expert.expressive_model_id || ''
     expertForm.reflective_model_id = expert.reflective_model_id || ''
     expertForm.prompt_template = expert.prompt_template || ''
+    expertForm.context_strategy = (expert as any).context_strategy ?? 'full'
     expertForm.context_threshold = expert.context_threshold ?? 0.70
     // LLM 参数
     expertForm.temperature = expert.temperature ?? 0.70
@@ -2300,6 +2310,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = ''
     expertForm.reflective_model_id = ''
     expertForm.prompt_template = ''
+    expertForm.context_strategy = 'full'
     expertForm.context_threshold = 0.70
     // LLM 参数默认值
     expertForm.temperature = 0.70

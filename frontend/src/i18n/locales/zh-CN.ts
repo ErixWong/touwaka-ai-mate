@@ -214,6 +214,10 @@ export default {
     contextCompression: '上下文压缩',
     contextThreshold: '压缩阈值',
     contextThresholdHint: 'Token 占用超过此比例时触发压缩（0.3-0.95，默认 0.70）',
+    contextStrategy: '上下文策略',
+    contextStrategyFull: '完整上下文',
+    contextStrategySimple: '简单上下文',
+    contextStrategyHint: '选择上下文组织策略。完整上下文包含所有未归档消息和10个Topic；简单上下文仅包含近期10条消息和5个Topic。',
     // LLM 参数配置
     llmParams: 'LLM 参数',
     temperature: '表达温度 (Temperature)',

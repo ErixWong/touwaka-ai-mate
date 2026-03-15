@@ -212,6 +212,10 @@ export default {
     contextCompression: 'Context Compression',
     contextThreshold: 'Compression Threshold',
     contextThresholdHint: 'Trigger compression when token usage exceeds this ratio (0.3-0.95, default 0.70)',
+    contextStrategy: 'Context Strategy',
+    contextStrategyFull: 'Full Context',
+    contextStrategySimple: 'Simple Context',
+    contextStrategyHint: 'Select context organization strategy. Full context includes all unarchived messages and 10 topics; Simple context includes recent 10 messages and 5 topics.',
     // LLM Parameters
     llmParams: 'LLM Parameters',
     temperature: 'Temperature',
