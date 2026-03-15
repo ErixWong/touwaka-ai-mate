@@ -27,31 +27,35 @@
         class="message"
         :class="message.role"
       >
-        <!-- tool 消息的特殊渲染 -->
+        <!-- tool 消息的特殊渲染 - 简洁内敛风格 -->
         <template v-if="message.role === 'tool'">
           <div class="tool-message-card" :class="{ expanded: isToolExpanded(message.id) }">
-            <!-- 收缩状态：一行显示 -->
+            <!-- 工具消息头部 - 与普通消息一致的风格 -->
             <div class="tool-header" @click="toggleToolExpand(message.id)">
-              <span class="tool-icon">🔧</span>
-              <span class="tool-name">{{ getToolName(message) }}</span>
-              <span class="tool-status" :class="getToolStatus(message) ? 'success' : 'error'">
-                {{ getToolStatus(message) ? '✅' : '❌' }}
-              </span>
-              <span v-if="getToolDuration(message)" class="tool-duration">
-                {{ getToolDuration(message) }}ms
-              </span>
-              <span class="tool-expand-btn" :class="{ expanded: isToolExpanded(message.id) }">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-            </div>
-            <!-- 展开状态：显示上下文、参数和结果 -->
-            <div v-if="isToolExpanded(message.id)" class="tool-details">
-              <div v-if="getToolContext(message)" class="tool-section context-section">
-                <div class="tool-section-title">{{ $t('chat.toolContext') || '上下文' }}</div>
-                <div class="tool-context-text">{{ getToolContext(message) }}</div>
+              <div class="tool-header-main">
+                <span class="tool-icon">🔧</span>
+                <span class="tool-name">{{ getToolName(message) }}</span>
+                <span class="tool-meta">
+                  <span class="tool-time">{{ formatToolTime(message) }}</span>
+                  <span v-if="getToolDuration(message)" class="tool-duration">{{ getToolDuration(message) }}ms</span>
+                </span>
+                <span class="tool-status" :class="getToolStatus(message) ? 'success' : 'error'">
+                  {{ getToolStatus(message) ? '✓' : '✗' }}
+                </span>
+                <span class="tool-expand-btn" :class="{ expanded: isToolExpanded(message.id) }">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
               </div>
+              <!-- 上下文预览 - 专家说的话，正常颜色，不截断 -->
+              <div v-if="getToolContext(message)" class="tool-context-line">
+                <span class="tool-context-icon">💭</span>
+                <span class="tool-context-text">{{ getToolContext(message) }}</span>
+              </div>
+            </div>
+            <!-- 展开状态：显示参数和结果 -->
+            <div v-if="isToolExpanded(message.id)" class="tool-details">
               <div v-if="getToolArguments(message)" class="tool-section">
                 <div class="tool-section-title">{{ $t('chat.toolArguments') || '参数' }}</div>
                 <pre class="tool-section-content">{{ formatToolArguments(message) }}</pre>
@@ -76,7 +80,7 @@
             </div>
           </div>
           <div class="message-content">
-            <div class="message-text" v-html="formatMessage(message.content)"></div>
+            <div class="message-text" v-html="formatMessage(filterAssistantContent(message))"></div>
             <div v-if="message.status === 'streaming'" class="streaming-indicator">
               <span class="dot"></span>
               <span class="dot"></span>
@@ -616,36 +620,143 @@ const getToolContext = (message: ChatMessage): string | null => {
 }
 
 /**
- * 格式化工具参数显示
+ * 获取工具时间戳
+ */
+const getToolTimestamp = (message: ChatMessage): string | null => {
+  const toolData = parseToolCalls(message)
+  return toolData?.timestamp ?? null
+}
+
+/**
+ * 格式化工具时间显示（完整时间 HH:mm:ss）
+ */
+const formatToolTime = (message: ChatMessage): string => {
+  const timestamp = getToolTimestamp(message)
+  if (!timestamp) {
+    // 如果没有 timestamp，使用 message.created_at
+    if (message.created_at) {
+      const date = new Date(message.created_at)
+      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }
+    return '--:--:--'
+  }
+  
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/**
+ * 截断上下文预览
+ * @param text 上下文文本
+ * @param maxLength 最大长度（默认60字符）
+ */
+const truncateContext = (text: string, maxLength: number = 60): string => {
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '...'
+}
+
+/**
+ * 过滤 assistant 消息内容，移除之前 tool call 的 context
+ * 在工具调用结束后，专家回复中可能包含之前几步的 context，需要过滤掉
+ */
+const filterAssistantContent = (message: ChatMessage): string => {
+  if (!message.content) return ''
+  if (message.role !== 'assistant') return message.content
+
+  // 获取当前消息之前的所有 tool 消息的 context
+  const currentIndex = props.messages.findIndex(m => m.id === message.id)
+  if (currentIndex === -1) return message.content
+
+  // 收集当前消息之前所有 tool 消息的 context
+  const toolContexts: string[] = []
+  for (let i = 0; i < currentIndex; i++) {
+    const msg = props.messages[i]
+    if (msg && msg.role === 'tool') {
+      const context = getToolContext(msg)
+      if (context && context.trim()) {
+        toolContexts.push(context.trim())
+      }
+    }
+  }
+
+  // 如果没有 tool context，直接返回原内容
+  if (toolContexts.length === 0) return message.content
+
+  // 过滤掉 message.content 中包含的 tool context
+  let filteredContent = message.content
+  for (const context of toolContexts) {
+    // 使用正则表达式移除 context，支持多种格式
+    // 1. 直接匹配 context 文本
+    if (filteredContent.includes(context)) {
+      filteredContent = filteredContent.replace(context, '')
+    }
+    // 2. 处理可能带有引号或 markdown 格式的 context
+    const escapedContext = context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const patterns = [
+      new RegExp(`>\\s*${escapedContext}`, 'g'), // 引用格式
+      new RegExp(`"${escapedContext}"`, 'g'), // 引号格式
+      new RegExp(`'${escapedContext}'`, 'g'), // 单引号格式
+    ]
+    for (const pattern of patterns) {
+      filteredContent = filteredContent.replace(pattern, '')
+    }
+  }
+
+  // 清理多余的空行
+  filteredContent = filteredContent.replace(/\n{3,}/g, '\n\n').trim()
+
+  return filteredContent || message.content // 如果过滤后为空，返回原内容
+}
+
+/**
+ * 格式化工具参数显示（带行号）
  */
 const formatToolArguments = (message: ChatMessage): string => {
   const args = getToolArguments(message)
   if (!args) return ''
   try {
-    return JSON.stringify(args, null, 2)
+    const jsonStr = JSON.stringify(args, null, 2)
+    return addLineNumbers(jsonStr)
   } catch {
-    return String(args)
+    return addLineNumbers(String(args))
   }
 }
 
 /**
- * 格式化工具结果显示
+ * 格式化工具结果显示（带行号）
  */
 const formatToolResult = (message: ChatMessage): string => {
   if (!message.content) return ''
-  
+
   // 尝试解析 JSON 格式化显示
   try {
     const parsed = JSON.parse(message.content)
-    return JSON.stringify(parsed, null, 2)
+    const jsonStr = JSON.stringify(parsed, null, 2)
+    return addLineNumbers(jsonStr)
   } catch {
     // 非JSON，直接显示（截断过长的内容）
-    const maxLength = 500
+    const maxLength = 5000
     if (message.content.length > maxLength) {
-      return message.content.substring(0, maxLength) + '\n...(已截断)'
+      return addLineNumbers(message.content.substring(0, maxLength) + '\n...(已截断)')
     }
-    return message.content
+    return addLineNumbers(message.content)
   }
+}
+
+/**
+ * 为代码添加行号
+ */
+const addLineNumbers = (code: string): string => {
+  if (!code) return ''
+  const lines = code.split('\n')
+  const lineNumberWidth = String(lines.length).length
+  return lines
+    .map((line, index) => {
+      const lineNum = String(index + 1).padStart(lineNumberWidth, ' ')
+      return `${lineNum} | ${line}`
+    })
+    .join('\n')
 }
 
 defineExpose({
@@ -1274,39 +1385,39 @@ defineExpose({
   transition: color 0.2s;
 }
 
-/* ==================== Tool 消息样式 ==================== */
+/* ==================== Tool 消息样式 - 简洁内敛风格 ==================== */
 .message.tool {
-  justify-content: flex-start;  /* 左对齐 */
+  justify-content: flex-start;
 }
 
 .tool-message-card {
-  background: var(--tool-card-bg, #f8f9fa);
-  border: 1px solid var(--tool-card-border, #e9ecef);
-  border-radius: 12px;
-  padding: 10px 14px;
-  width: 50%;  /* 固定宽度为 chatbox 的一半 */
-  max-width: 50%;
-  min-width: 300px;  /* 最小宽度保证可读性 */
-  font-size: 13px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
+  background: var(--message-bg, #f5f5f5);
+  border-radius: 16px;
+  padding: 12px 16px;
+  max-width: 70%;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary, #333);
+  word-break: break-word;
 }
 
 .tool-message-card.expanded {
-  background: var(--tool-card-expanded-bg, #fff);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--message-bg, #f5f5f5);
 }
 
 .tool-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   cursor: pointer;
   user-select: none;
 }
 
+.tool-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tool-icon {
-  font-size: 14px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -1320,9 +1431,27 @@ defineExpose({
   white-space: nowrap;
 }
 
-.tool-status {
-  font-size: 12px;
+.tool-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.tool-time {
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.tool-duration {
+  color: var(--text-hint, #999);
+}
+
+.tool-status {
+  font-size: 14px;
+  flex-shrink: 0;
+  font-weight: 500;
 }
 
 .tool-status.success {
@@ -1331,15 +1460,6 @@ defineExpose({
 
 .tool-status.error {
   color: var(--error-color, #f44336);
-}
-
-.tool-duration {
-  font-size: 10px;
-  color: var(--text-hint, #999);
-  background: var(--chip-bg, #e8e8e8);
-  padding: 2px 6px;
-  border-radius: 10px;
-  flex-shrink: 0;
 }
 
 .tool-expand-btn {
@@ -1362,10 +1482,35 @@ defineExpose({
   transform: rotate(180deg);
 }
 
+/* 上下文预览 - 专家说的话，正常颜色，不截断 */
+.tool-context-line {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  font-size: 14px;
+  color: var(--text-primary, #333);
+  line-height: 1.6;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.tool-context-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  margin-top: 1px;
+}
+
+.tool-context-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  flex: 1;
+}
+
 .tool-details {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-color, #e8e8e8);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
   animation: slideDown 0.2s ease;
 }
 
@@ -1381,7 +1526,7 @@ defineExpose({
 }
 
 .tool-section {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .tool-section:last-child {
@@ -1389,13 +1534,10 @@ defineExpose({
 }
 
 .tool-section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary, #666);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  padding: 0 4px;
+  margin-bottom: 8px;
 }
 
 /* Tool context 样式 */
@@ -1404,12 +1546,11 @@ defineExpose({
 }
 
 .tool-context-text {
-  background: var(--tool-context-bg, #f0f7ff);
-  border-left: 3px solid var(--primary-color, #2196f3);
-  border-radius: 4px;
-  padding: 8px 12px;
+  background: var(--code-bg, #f0f0f0);
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--text-primary, #333);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -1425,10 +1566,21 @@ defineExpose({
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  white-space: pre;
+  word-wrap: normal;
   word-break: break-all;
   max-height: 200px;
   overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 行号样式 */
+.tool-section-content .line-number {
+  color: #6e7681;
+  user-select: none;
+  text-align: right;
+  padding-right: 12px;
+  margin-right: 8px;
+  border-right: 1px solid #3e3e3e;
 }
 </style>
