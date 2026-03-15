@@ -710,36 +710,53 @@ const filterAssistantContent = (message: ChatMessage): string => {
 }
 
 /**
- * 格式化工具参数显示
+ * 格式化工具参数显示（带行号）
  */
 const formatToolArguments = (message: ChatMessage): string => {
   const args = getToolArguments(message)
   if (!args) return ''
   try {
-    return JSON.stringify(args, null, 2)
+    const jsonStr = JSON.stringify(args, null, 2)
+    return addLineNumbers(jsonStr)
   } catch {
-    return String(args)
+    return addLineNumbers(String(args))
   }
 }
 
 /**
- * 格式化工具结果显示
+ * 格式化工具结果显示（带行号）
  */
 const formatToolResult = (message: ChatMessage): string => {
   if (!message.content) return ''
-  
+
   // 尝试解析 JSON 格式化显示
   try {
     const parsed = JSON.parse(message.content)
-    return JSON.stringify(parsed, null, 2)
+    const jsonStr = JSON.stringify(parsed, null, 2)
+    return addLineNumbers(jsonStr)
   } catch {
     // 非JSON，直接显示（截断过长的内容）
-    const maxLength = 500
+    const maxLength = 5000
     if (message.content.length > maxLength) {
-      return message.content.substring(0, maxLength) + '\n...(已截断)'
+      return addLineNumbers(message.content.substring(0, maxLength) + '\n...(已截断)')
     }
-    return message.content
+    return addLineNumbers(message.content)
   }
+}
+
+/**
+ * 为代码添加行号
+ */
+const addLineNumbers = (code: string): string => {
+  if (!code) return ''
+  const lines = code.split('\n')
+  const lineNumberWidth = String(lines.length).length
+  return lines
+    .map((line, index) => {
+      const lineNum = String(index + 1).padStart(lineNumberWidth, ' ')
+      return `${lineNum} | ${line}`
+    })
+    .join('\n')
 }
 
 defineExpose({
@@ -1549,10 +1566,21 @@ defineExpose({
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  white-space: pre;
+  word-wrap: normal;
   word-break: break-all;
   max-height: 200px;
   overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 行号样式 */
+.tool-section-content .line-number {
+  color: #6e7681;
+  user-select: none;
+  text-align: right;
+  padding-right: 12px;
+  margin-right: 8px;
+  border-right: 1px solid #3e3e3e;
 }
 </style>
