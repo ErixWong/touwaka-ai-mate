@@ -84,7 +84,7 @@
             </div>
           </div>
           <div class="message-content">
-            <div class="message-text" v-html="formatMessage(message.content)"></div>
+            <div class="message-text" v-html="formatMessage(filterAssistantContent(message))"></div>
             <div v-if="message.status === 'streaming'" class="streaming-indicator">
               <span class="dot"></span>
               <span class="dot"></span>
@@ -658,6 +658,59 @@ const truncateContext = (text: string, maxLength: number = 60): string => {
   if (!text) return ''
   if (text.length <= maxLength) return text
   return text.substring(0, maxLength) + '...'
+}
+
+/**
+ * 过滤 assistant 消息内容，移除之前 tool call 的 context
+ * 在工具调用结束后，专家回复中可能包含之前几步的 context，需要过滤掉
+ */
+const filterAssistantContent = (message: ChatMessage): string => {
+  if (!message.content) return ''
+  if (message.role !== 'assistant') return message.content
+
+  // 获取当前消息之前的所有 tool 消息的 context
+  const currentIndex = props.messages.findIndex(m => m.id === message.id)
+  if (currentIndex === -1) return message.content
+
+  // 收集当前消息之前所有 tool 消息的 context
+  const toolContexts: string[] = []
+  for (let i = 0; i < currentIndex; i++) {
+    const msg = props.messages[i]
+    if (msg && msg.role === 'tool') {
+      const context = getToolContext(msg)
+      if (context && context.trim()) {
+        toolContexts.push(context.trim())
+      }
+    }
+  }
+
+  // 如果没有 tool context，直接返回原内容
+  if (toolContexts.length === 0) return message.content
+
+  // 过滤掉 message.content 中包含的 tool context
+  let filteredContent = message.content
+  for (const context of toolContexts) {
+    // 使用正则表达式移除 context，支持多种格式
+    // 1. 直接匹配 context 文本
+    if (filteredContent.includes(context)) {
+      filteredContent = filteredContent.replace(context, '')
+    }
+    // 2. 处理可能带有引号或 markdown 格式的 context
+    const escapedContext = context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const patterns = [
+      new RegExp(`>\\s*${escapedContext}`, 'g'), // 引用格式
+      new RegExp(`"${escapedContext}"`, 'g'), // 引号格式
+      new RegExp(`'${escapedContext}'`, 'g'), // 单引号格式
+    ]
+    for (const pattern of patterns) {
+      filteredContent = filteredContent.replace(pattern, '')
+    }
+  }
+
+  // 清理多余的空行
+  filteredContent = filteredContent.replace(/\n{3,}/g, '\n\n').trim()
+
+  return filteredContent || message.content // 如果过滤后为空，返回原内容
 }
 
 /**
