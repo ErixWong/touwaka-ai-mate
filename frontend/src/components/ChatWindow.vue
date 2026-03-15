@@ -48,9 +48,9 @@
                   </svg>
                 </span>
               </div>
-              <!-- 上下文预览 - 简洁单行 -->
+              <!-- 上下文预览 - 专家说的话，正常颜色，不截断 -->
               <div v-if="getToolContext(message)" class="tool-context-line">
-                {{ truncateContext(getToolContext(message) as string, 80) }}
+                {{ getToolContext(message) }}
               </div>
             </div>
             <!-- 展开状态：显示参数和结果 -->
@@ -1415,16 +1415,16 @@ defineExpose({
   transform: rotate(180deg);
 }
 
-/* 上下文预览 - 简洁单行，与普通消息风格一致 */
+/* 上下文预览 - 专家说的话，正常颜色，不截断 */
 .tool-context-line {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border-color, #e0e0e0);
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text-primary, #333);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .tool-details {
