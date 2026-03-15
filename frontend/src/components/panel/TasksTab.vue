@@ -23,7 +23,7 @@
                   @click="toggleHtmlSourceMode"
                   :title="showHtmlSource ? $t('tasks.showPreview') : $t('tasks.showSource')"
                 >
-                  <span class="action-icon">{{ showHtmlSource ? '👁️' : '<>' }}</span>
+                  <span class="action-icon">{{ showHtmlSource ? '👁️' : '📝' }}</span>
                   <span class="action-label">{{ showHtmlSource ? ($t('tasks.preview') || '预览') : ($t('tasks.source') || '源码') }}</span>
                 </button>
               </template>
