@@ -56,10 +56,6 @@
             </div>
             <!-- 展开状态：显示参数和结果 -->
             <div v-if="isToolExpanded(message.id)" class="tool-details">
-              <div v-if="getToolContext(message)" class="tool-section context-section">
-                <div class="tool-section-title">{{ $t('chat.toolContext') || '上下文' }}</div>
-                <div class="tool-context-text">{{ getToolContext(message) }}</div>
-              </div>
               <div v-if="getToolArguments(message)" class="tool-section">
                 <div class="tool-section-title">{{ $t('chat.toolArguments') || '参数' }}</div>
                 <pre class="tool-section-content">{{ formatToolArguments(message) }}</pre>
