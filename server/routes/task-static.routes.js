@@ -2,7 +2,7 @@
  * Task Static Routes - 任务静态文件服务路由
  * 
  * 通过 Token 认证提供静态文件访问，支持 HTML 相对路径资源
- * URL 格式: /task-static/:token/文件路径
+ * URL 格式: /task-static/t/:token/p/*filePath
  * 
  * Issue #140: 将文件预览窗口嵌入任务面板
  */
@@ -53,16 +53,19 @@ export default (db) => {
 
   /**
    * 静态文件服务
-   * 匹配: /task-static/:token/任意路径
+   * 匹配: /task-static/t/:token/p/*filePath
    * 
-   * Token 在 URL 路径中，HTML 相对路径资源自动继承 Token
-   * 例如：
-   *   /task-static/abc123/input/index.html
-   *   /task-static/abc123/input/assets/001.jpg  ← 相对路径自动继承 token
+   * 路由设计说明：
+   * - 使用 /t/:token/p/ 分隔符结构，避免路由冲突
+   * - Token 在 URL 路径中，HTML 相对路径资源自动继承 Token
+   * - 例如：
+   *   /task-static/t/abc123/p/input/index.html
+   *   /task-static/t/abc123/p/input/assets/001.jpg  ← 相对路径自动继承 token
+   * 
+   * Note: path-to-regexp v8+ 使用 *filePath 语法匹配任意路径（wildcard）
    */
-  router.get('/:token/(.*)', async (ctx) => {
-    const { token } = ctx.params;
-    const filePath = ctx.params[1] || '';  // 文件相对路径（第二个捕获组）
+  router.get('/t/:token/p/*filePath', async (ctx) => {
+    const { token, filePath } = ctx.params;
     const ipAddress = ctx.ip;
     const userAgent = ctx.get('User-Agent') || '';
 
@@ -75,7 +78,7 @@ export default (db) => {
 
     try {
       // 2. 查询数据库验证 token
-      const [tokenRows] = await db.query(
+      const tokenRows = await db.query(
         `SELECT tt.*, t.workspace_path 
          FROM task_token tt
          JOIN tasks t ON tt.task_id = t.id
@@ -134,7 +137,7 @@ export default (db) => {
       }
 
       // 8. 记录访问日志（异步，不阻塞响应）
-      db.query(
+      db.insert(
         `INSERT INTO task_token_access_log (token_id, file_path, ip_address, user_agent)
          VALUES (?, ?, ?, ?)`,
         [tokenRecord.id, filePath, ipAddress, userAgent.substring(0, 512)]

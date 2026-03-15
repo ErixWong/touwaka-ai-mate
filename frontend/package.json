@@ -16,6 +16,7 @@
   "dependencies": {
     "@aivue/chatbot": "^2.5.5",
     "@types/dompurify": "^3.0.5",
+    "@wdns/vue-code-block": "^2.3.5",
     "axios": "^1.13.5",
     "dompurify": "^3.3.2",
     "marked": "^17.0.4",

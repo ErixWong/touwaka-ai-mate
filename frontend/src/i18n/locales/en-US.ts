@@ -74,6 +74,7 @@ export default {
     toolArguments: 'Arguments',
     toolResult: 'Result',
     toolContext: 'Context',
+    toolTime: 'Time',
     uploadImage: 'Upload image',
     selectModel: 'Select Model',
     // Task mode
@@ -761,6 +762,9 @@ export default {
     download: 'Download',
     downloadFile: 'Download file',
     preview: 'Preview',
+    source: 'Source',
+    showSource: 'View Source',
+    showPreview: 'View Preview',
     previewNotSupported: 'Preview not supported for this file type',
     refresh: 'Refresh',
     refreshNow: 'Refresh now',
