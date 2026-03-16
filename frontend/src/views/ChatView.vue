@@ -58,10 +58,10 @@
                 @stop="handleStopGenerate"
               />
               
-              <!-- SSE 连接状态指示器 -->
-              <div v-if="!isConnected" class="connection-status">
+              <!-- 连接状态指示器 -->
+              <div v-if="connectionState !== 'connected'" class="connection-status">
                 <span class="status-dot disconnected"></span>
-                <span v-if="isReconnecting">
+                <span v-if="connectionState === 'reconnecting'">
                   {{ $t('chat.reconnecting') || `连接断开，正在重连... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})` }}
                 </span>
                 <span v-else>
@@ -93,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Splitpanes, Pane } from 'splitpanes'
@@ -107,8 +107,7 @@ import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
 import { useTaskStore } from '@/stores/task'
 import { usePanelStore } from '@/stores/panel'
-import { useNetworkStatus } from '@/composables/useNetworkStatus'
-import { useSSE, type SSEEvent } from '@/composables/useSSE'
+import { useConnection, type SSEEvent } from '@/composables/useConnection'
 import { messageApi } from '@/api/services'
 import type { Message, Topic, Doc } from '@/types'
 
@@ -131,7 +130,17 @@ const expertStore = useExpertStore()
 const userStore = useUserStore()
 const taskStore = useTaskStore()
 const panelStore = usePanelStore()
-const { isBackendAvailable, waitForBackend } = useNetworkStatus()
+
+// 使用统一的连接管理 composable
+const {
+  connectionState,
+  backendAvailable,
+  reconnectAttempts,
+  connect,
+  disconnect,
+  checkConnection,
+  waitForBackend,
+} = useConnection()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 const isSending = ref(false)
@@ -167,15 +176,6 @@ const setSendingTimeoutProtection = () => {
     }
   }, SENDING_TIMEOUT_MS)
 }
-
-// 使用新的 SSE composable
-const {
-  isConnected,
-  isReconnecting,
-  reconnectAttempts,
-  connect: connectSSE,
-  disconnect: disconnectSSE,
-} = useSSE()
 
 // SSE 重连配置（用于显示）
 const MAX_RECONNECT_ATTEMPTS = 10
@@ -458,7 +458,7 @@ const handleSSEEvent = async (event: SSEEvent) => {
 const connectToExpert = async (expert_id: string) => {
   console.log('Connecting to SSE for expert:', expert_id)
   
-  await connectSSE(expert_id, {
+  await connect(expert_id, {
     timeout: 10000,
     maxReconnectAttempts: 10,
     reconnectInterval: 3000,
@@ -482,7 +482,7 @@ const handleSendMessage = async (content: string) => {
   }
 
   // 如果后端不可用，等待后端恢复
-  if (!isBackendAvailable.value) {
+  if (!backendAvailable.value) {
     console.log('Backend is not available, waiting for it to come back...')
     const restored = await waitForBackend(30000) // 最多等待 30 秒
     if (!restored) {
@@ -499,24 +499,10 @@ const handleSendMessage = async (content: string) => {
   }
 
   // 检查 SSE 连接状态
-  if (!isConnected.value) {
-    console.log('SSE not connected, waiting for reconnection...')
-    // 等待 SSE 重连（最多 5 秒）
-    const startTime = Date.now()
-    while (!isConnected.value && Date.now() - startTime < 5000) {
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    if (!isConnected.value) {
-      console.error('SSE connection not established after waiting')
-      chatStore.addLocalMessage({
-        expert_id,
-        role: 'assistant',
-        content: t('chat.connectionLost'),
-        status: 'error',
-      })
-      return
-    }
+  if (!checkConnection()) {
+    console.log('[ChatView] SSE connection stale, reconnecting...')
+    await disconnect()
+    connectToExpert(expert_id)
   }
 
   // skill-studio 使用用户选择的模型，其他专家使用绑定的模型
@@ -642,7 +628,7 @@ const handleStopGenerate = async () => {
 const initChat = async (expertId: string) => {
   console.log('initChat called for expert:', expertId)
   // 避免重复初始化同一个 expert（检查 SSE 是否已连接）
-  if (chatStore.currentExpertId === expertId && isConnected.value) {
+  if (chatStore.currentExpertId === expertId && connectionState.value === 'connected') {
     console.log('Already initialized for expert:', expertId)
     return
   }
@@ -676,7 +662,7 @@ watch(
     } else {
       // 没有 expertId，清除聊天状态
       chatStore.clearChat()
-      await disconnectSSE()
+      await disconnect()
     }
   },
   { immediate: true }
@@ -730,14 +716,13 @@ watch(
 
 // 监听后端可用性变化 - 当后端恢复时自动重连 SSE
 watch(
-  () => isBackendAvailable.value,
+  () => backendAvailable.value,
   async (isAvailable, wasAvailable) => {
     // 后端从不可用变为可用，且当前有 expertId
     if (isAvailable && !wasAvailable && currentExpertId.value) {
       console.log('Backend is back online, reconnecting SSE...')
       // 重置重连计数
       reconnectAttempts.value = 0
-      isReconnecting.value = false
       // 重新建立 SSE 连接
       connectToExpert(currentExpertId.value)
     }
@@ -761,13 +746,6 @@ onMounted(async () => {
   await modelStore.loadModels()
   // 加载专家列表
   await expertStore.loadExperts()
-})
-
-onUnmounted(() => {
-  // 清理超时定时器
-  clearSendingTimeout()
-  // 清理 SSE 连接（useSSE 会自动处理）
-  disconnectSSE()
 })
 </script>
 
