@@ -145,6 +145,8 @@ const {
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 const isSending = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
+// 流式内容累积器 - 避免依赖旧对象引用
+const streamingContent = ref('')
 
 // 安全超时：防止 isSending 永久为 true（SSE 流异常终止时）
 let sendingTimeout: ReturnType<typeof setTimeout> | null = null
@@ -168,7 +170,7 @@ const setSendingTimeoutProtection = () => {
       if (currentAssistantMessage.value) {
         chatStore.updateMessageContent(
           currentAssistantMessage.value.id,
-          currentAssistantMessage.value.content || '',
+          streamingContent.value || '',
           'timeout'
         )
         currentAssistantMessage.value = null
@@ -309,9 +311,11 @@ const handleSSEEvent = async (event: SSEEvent) => {
 
       case 'delta':
         if (currentAssistantMessage.value) {
+          // 使用累积器，不依赖旧对象引用
+          streamingContent.value += data.content
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
-            currentAssistantMessage.value.content + data.content
+            streamingContent.value
           )
         }
         break
@@ -346,9 +350,10 @@ const handleSSEEvent = async (event: SSEEvent) => {
             return `🔧 ${name}${params}`
           }).join('\n')
           
+          streamingContent.value += `\n\n${toolDetails}\n`
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
-            currentAssistantMessage.value.content + `\n\n${toolDetails}\n`
+            streamingContent.value
           )
         }
         break
@@ -363,9 +368,10 @@ const handleSSEEvent = async (event: SSEEvent) => {
           const duration = r.duration ? ` (${r.duration}ms)` : ''
           const resultText = `${success} ${name}${duration}\n`
           
+          streamingContent.value += `\n${resultText}`
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
-            currentAssistantMessage.value.content + `\n${resultText}`
+            streamingContent.value
           )
         }
         break
@@ -385,32 +391,33 @@ const handleSSEEvent = async (event: SSEEvent) => {
               model: data.model,
             })
           }
+          // 使用服务端返回的完整内容，或累积的内容
+          const finalContent = data.content || streamingContent.value
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
-            data.content || currentAssistantMessage.value.content,
+            finalContent,
             'completed'
           )
           
           // 检测技能相关操作，触发刷新事件
-          const content = data.content || currentAssistantMessage.value.content || ''
-          if (content.includes('Skill') && content.includes('successfully')) {
-            if (content.includes('registered') || content.includes('updated')) {
+          if (finalContent.includes('Skill') && finalContent.includes('successfully')) {
+            if (finalContent.includes('registered') || finalContent.includes('updated')) {
               import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
                 eventBus.emit(EVENTS.SKILL_REGISTERED)
               })
-            } else if (content.includes('assigned')) {
+            } else if (finalContent.includes('assigned')) {
               import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
                 eventBus.emit(EVENTS.SKILL_ASSIGNED)
               })
-            } else if (content.includes('unassigned')) {
+            } else if (finalContent.includes('unassigned')) {
               import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
                 eventBus.emit(EVENTS.SKILL_UNASSIGNED)
               })
-            } else if (content.includes('enabled') || content.includes('disabled')) {
+            } else if (finalContent.includes('enabled') || finalContent.includes('disabled')) {
               import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
                 eventBus.emit(EVENTS.SKILL_TOGGLED)
               })
-            } else if (content.includes('deleted')) {
+            } else if (finalContent.includes('deleted')) {
               import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
                 eventBus.emit(EVENTS.SKILL_DELETED)
               })
@@ -525,6 +532,7 @@ const handleSendMessage = async (content: string) => {
     content: '',
     status: 'streaming',
   })
+  streamingContent.value = ''  // 重置流式内容累积器
 
   isSending.value = true
   setSendingTimeoutProtection()  // 设置超时保护
@@ -607,7 +615,7 @@ const handleStopGenerate = async () => {
   if (currentAssistantMessage.value) {
     chatStore.updateMessageContent(
       currentAssistantMessage.value.id,
-      currentAssistantMessage.value.content || '',
+      streamingContent.value || '',
       'stopped'
     )
     currentAssistantMessage.value = null
@@ -626,7 +634,14 @@ const handleStopGenerate = async () => {
 
 // 初始化：加载 expert 的消息
 const initChat = async (expertId: string) => {
-  console.log('initChat called for expert:', expertId)
+  console.log('initChat called for expert:', expertId, 'isSending:', isSending.value)
+  
+  // 如果正在发送消息，跳过初始化，避免竞态条件
+  if (isSending.value) {
+    console.log('Skipping initChat - message sending in progress')
+    return
+  }
+  
   // 避免重复初始化同一个 expert（检查 SSE 是否已连接）
   if (chatStore.currentExpertId === expertId && connectionState.value === 'connected') {
     console.log('Already initialized for expert:', expertId)

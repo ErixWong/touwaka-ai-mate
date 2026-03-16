@@ -80,7 +80,11 @@
             </div>
           </div>
           <div class="message-content">
-            <div class="message-text" v-html="formatMessage(filterAssistantContent(message))"></div>
+            <div
+              class="message-text"
+              :class="{ 'streaming-text': message.status === 'streaming' }"
+              v-html="formatStreamingMessage(message)"
+            ></div>
             <div v-if="message.status === 'streaming'" class="streaming-indicator">
               <span class="dot"></span>
               <span class="dot"></span>
@@ -485,12 +489,37 @@ const formatMessage = (content: string) => {
   } catch (error) {
     console.error('Markdown parsing error:', error)
     // 解析失败时返回转义后的原文
-    return content
-      .replace(/&/g, '&')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/\n/g, '<br>')
+    return escapeHtml(content)
   }
+}
+
+/**
+ * 转义 HTML 特殊字符（用于纯文本渲染）
+ */
+const escapeHtml = (text: string): string => {
+  if (!text) return ''
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+}
+
+/**
+ * 格式化消息（流式输出优化）
+ * - 流式输出时：跳过 Markdown 解析，直接显示纯文本（性能优化）
+ * - 输出完成后：正常解析 Markdown
+ */
+const formatStreamingMessage = (message: ChatMessage): string => {
+  if (!message.content) return ''
+  
+  // 流式输出时跳过 Markdown 解析，避免频繁的 CPU 密集操作
+  if (message.status === 'streaming') {
+    return escapeHtml(message.content)
+  }
+  
+  // 非流式状态，正常解析 Markdown
+  return formatMessage(filterAssistantContent(message))
 }
 
 // 格式化时间显示
@@ -900,6 +929,12 @@ defineExpose({
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary, #333);
+}
+
+/* 流式输出时的纯文本样式 */
+.message-text.streaming-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 /* Markdown 标题样式 */
