@@ -160,7 +160,14 @@ class AssistantManager {
       description: a.description,
       model_id: a.model_id,
       prompt_template: a.prompt_template,
+      max_tokens: a.max_tokens,
+      temperature: a.temperature,
+      timeout: a.timeout,
       estimated_time: a.estimated_time,
+      tool_name: a.tool_name,
+      tool_description: a.tool_description,
+      tool_parameters: a.tool_parameters,
+      can_use_skills: a.can_use_skills,
       execution_mode: a.execution_mode,
       is_active: a.is_active,
     }));
@@ -1072,6 +1079,18 @@ class AssistantManager {
       };
     }
 
+    // 检查是否是图片类型的输入参数（用于多模态模型）
+    const imageInput = this.extractImageInput(input);
+    const isMultimodalModel = modelConfig.model_type === 'multimodal';
+
+    logger.info(`[AssistantManager] LLM模式检查: assistant=${assistant.assistant_type}, model_type=${modelConfig.model_type}, inputKeys=${Object.keys(input).join(',')}, hasImage=${imageInput.hasImage}, imagePaths=${JSON.stringify(imageInput.filePaths)}`);
+
+    // 如果是多模态模型且有图片输入，自动走视觉模式
+    if (isMultimodalModel && imageInput.hasImage) {
+      logger.info(`[AssistantManager] 检测到多模态模型 + 图片输入，自动调用视觉处理`);
+      return this.executeVisionWithInput(assistant, input, context, modelConfig, imageInput);
+    }
+
     // 获取继承的工具定义（如果有）
     let toolDefinitions = [];
     if (context.inheritedTools && context.inheritedTools.length > 0) {
@@ -1311,12 +1330,7 @@ class AssistantManager {
   async executeHybrid(assistant, input, context) {
     logger.info(`[AssistantManager] 混合模式执行: ${assistant.assistant_type}`, input);
 
-    // 特殊处理：doc_image_analyzer 需要先读取图片再调用视觉模型
-    if (assistant.assistant_type === 'doc_image_analyzer') {
-      return this.executeHybridVision(assistant, input, context);
-    }
-
-    // 第一步：LLM 推理
+    // 第一步：LLM 推理（executeLLM 内部会自动检测多模态模型+图片输入）
     const llmResult = await this.executeLLM(assistant, input, context);
 
     if (!llmResult.success) {
@@ -1730,6 +1744,157 @@ class AssistantManager {
   }
 
   /**
+   * 从输入参数中提取图片路径（通用方法）
+   * 支持的参数名：image_path, image_paths, file_path, path
+   * @param {object} input - 输入参数
+   * @returns {object} { hasImage: boolean, filePaths: string[] }
+   */
+  extractImageInput(input) {
+    if (!input || typeof input !== 'object') {
+      return { hasImage: false, filePaths: [] };
+    }
+
+    const filePaths = [];
+
+    // 图片路径：image_ 开头
+    if (Array.isArray(input.image_paths)) {
+      filePaths.push(...input.image_paths);
+    } else if (input.image_path) {
+      filePaths.push(input.image_path);
+    }
+
+    // 过滤掉空值
+    const validPaths = filePaths.filter(p => p && typeof p === 'string');
+
+    return {
+      hasImage: validPaths.length > 0,
+      filePaths: validPaths,
+    };
+  }
+
+  /**
+   * 使用输入参数中的图片执行视觉处理（通用方法）
+   * @param {object} assistant - 助理配置
+   * @param {object} input - 输入参数
+   * @param {object} context - 执行上下文
+   * @param {object} modelConfig - 模型配置
+   * @param {object} imageInput - 图片输入信息
+   * @returns {Promise<object>}
+   */
+  async executeVisionWithInput(assistant, input, context, modelConfig, imageInput) {
+    const { filePaths } = imageInput;
+    const imageContext = {
+      topicId: context.topicId,
+      expertId: context.expertId,
+    };
+
+    // 读取所有图片
+    const imageAssets = [];
+    for (const filePath of filePaths) {
+      try {
+        const imageAsset = await this.readImageFile(filePath, imageContext);
+        imageAssets.push(imageAsset);
+        logger.info(`[AssistantManager] 图片读取成功: ${imageAsset.file_name}, ${imageAsset.size_bytes} bytes`);
+      } catch (readError) {
+        logger.error(`[AssistantManager] 图片读取失败:`, readError.message);
+        return {
+          success: false,
+          error: `图片读取失败: ${readError.message}`,
+        };
+      }
+    }
+
+    // 构建多模态消息
+    const messages = [];
+
+    // 添加系统提示词
+    if (assistant.prompt_template) {
+      messages.push({
+        role: 'system',
+        content: assistant.prompt_template,
+      });
+    }
+
+    // 构建用户消息（包含图片和文本）
+    const userContent = [];
+
+    // 添加图片（支持多图）
+    for (const imageAsset of imageAssets) {
+      userContent.push({
+        type: 'image_url',
+        image_url: {
+          url: imageAsset.data_url,
+        },
+      });
+    }
+
+    // 构建文本内容
+    let textContent = '';
+    if (context.task) {
+      textContent += `**任务**: ${context.task}\n\n`;
+    }
+    if (context.background) {
+      textContent += `**背景**: ${context.background}\n\n`;
+    }
+    // 添加输入数据（排除图片路径）
+    const textInput = { ...input };
+    delete textInput.image_path;
+    delete textInput.image_paths;
+    delete textInput.file_path;
+    delete textInput.file_paths;
+    delete textInput.path;
+    if (Object.keys(textInput).length > 0) {
+      textContent += `**输入数据**:\n${JSON.stringify(textInput, null, 2)}`;
+    }
+    if (!textContent) {
+      textContent = '请分析这些图片的内容。';
+    }
+
+    userContent.push({
+      type: 'text',
+      text: textContent,
+    });
+
+    messages.push({
+      role: 'user',
+      content: userContent,
+    });
+
+    // 调用视觉模型
+    const startTime = Date.now();
+    const maxTokens = Math.min(
+      assistant.max_tokens || modelConfig.max_output_tokens || 32768,
+      modelConfig.max_output_tokens || 98304
+    );
+
+    try {
+      const response = await this.callVisionLLM(modelConfig, messages, {
+        temperature: parseFloat(assistant.temperature) || 0.7,
+        max_tokens: maxTokens,
+        timeout: (assistant.timeout || 120) * 1000,
+      });
+
+      const latencyMs = Date.now() - startTime;
+
+      // 返回结果
+      return {
+        success: true,
+        result: response.content,
+        tokens_input: response.usage?.prompt_tokens || 0,
+        tokens_output: response.usage?.completion_tokens || 0,
+        latency_ms: latencyMs,
+        model_used: modelConfig.model_name,
+      };
+    } catch (visionError) {
+      logger.error(`[AssistantManager] 视觉模型调用失败:`, visionError.message);
+      return {
+        success: false,
+        error: `视觉模型调用失败: ${visionError.message}`,
+      };
+    }
+  }
+
+  /**
    * 获取允许读取图片的白名单目录
    * @param {object} context - 上下文
    * @returns {string[]}
@@ -1945,7 +2110,7 @@ class AssistantManager {
               },
               input: {
                 type: 'object',
-                description: '输入参数。图片分析支持：\n- 单张：{ "image_path": "work/xxx/input/图片.jpg" }\n- 多张：{ "image_paths": ["work/xxx/input/图片1.jpg", "work/xxx/input/图片2.jpg"] }',
+                description: '输入参数。支持的参数：\n- 图片路径：image_path(单张) / image_paths(多张数组)\n- 其他自定义参数：根据具体助理需求传递\n示例：\n{ "image_path": "work/xxx/input/图片.jpg", "task": "分析图片" }\n{ "image_paths": ["img1.jpg", "img2.jpg"], "format": "markdown" }',
               },
               expected_output: {
                 type: 'object',
