@@ -19,6 +19,7 @@ import http from 'http';
 import fs from 'fs/promises';
 import path from 'path';
 import logger from '../../lib/logger.js';
+import Utils from '../../lib/utils.js';
 import AssistantMessageService from './assistant-message-service.js';
 import { getSystemSettingService } from './system-setting.service.js';
 
@@ -666,17 +667,51 @@ class AssistantManager {
       }
     }
 
-    // 如果仍然缺少必要信息，跳过通知
-    if (!finalUserId || !finalExpertId || !finalTopicId) {
-      logger.warn(`[AssistantManager] 跳过通知：request=${request_id}, 缺少必要信息:`, {
+    // P0-A 修复：如果 topic_id 为 null，根据 user_id + expert_id 查询活跃话题
+    if (!finalTopicId && finalUserId && finalExpertId) {
+      try {
+        const activeTopic = await this.Topic.findOne({
+          where: {
+            user_id: finalUserId,
+            expert_id: finalExpertId,
+            status: 'active',
+          },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        });
+        if (activeTopic) {
+          finalTopicId = activeTopic.id;
+          logger.info(`[AssistantManager] 找到活跃话题: topic_id=${finalTopicId}`);
+        } else {
+          // 没有活跃话题，创建一个新的
+          logger.info(`[AssistantManager] 没有活跃话题，为 Assistant 结果创建新话题`);
+          const newTopic = await this.Topic.create({
+            id: Utils.newID(20),
+            user_id: finalUserId,
+            expert_id: finalExpertId,
+            status: 'active',
+            title: `Assistant 结果 - ${assistant_type}`,
+          });
+          finalTopicId = newTopic.id;
+          logger.info(`[AssistantManager] 创建新话题: topic_id=${finalTopicId}`);
+        }
+      } catch (e) {
+        logger.warn(`[AssistantManager] 查询/创建话题失败:`, e.message);
+      }
+    }
+
+    // P0-A 修复：不再因 topic_id 为 null 而跳过通知
+    // 只有当 user_id 或 expert_id 缺失时才跳过（这是真正的必填信息）
+    if (!finalUserId || !finalExpertId) {
+      logger.error(`[AssistantManager] 跳过通知：request=${request_id}, 缺少必填信息:`, {
         user_id: finalUserId || 'MISSING',
         expert_id: finalExpertId || 'MISSING',
-        topic_id: finalTopicId || 'MISSING',
+        topic_id: finalTopicId || '(已处理)',
       });
       return;
     }
 
-    logger.info(`[AssistantManager] 准备通知 Expert: request=${request_id}, expert_id=${finalExpertId}, topic_id=${finalTopicId}`);
+    logger.info(`[AssistantManager] 准备通知 Expert: request=${request_id}, expert_id=${finalExpertId}, topic_id=${finalTopicId || '(新创建)'}`);
 
     // 检查话题状态
     let isTopicActive = false;
@@ -793,15 +828,28 @@ class AssistantManager {
     // 构建结果消息内容
     let content;
 
+    // P0-B 增强：构建执行摘要
+    const latencyMs = request.latency_ms || request.latencyMs || 0;
+    const executionSummary = status === 'failed'
+      ? `❌ 状态：执行失败\n⏱ 耗时：${latencyMs}ms`
+      : `✅ 状态：执行成功\n⏱ 耗时：${latencyMs}ms`;
+
     if (status === 'failed') {
       const errorMsg = request.error_message || '未知错误';
-      content = `❌ 【${assistant_type} 助理任务执行失败】\n\n【对话上下文】\n${conversationContext || '（无）'}\n\n【用户原始请求】\n${userMessage || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【错误原因】\n${errorMsg}\n\n**请修改输入参数后重新委托此任务**`;
+      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【❌ 错误原因】\n${errorMsg}\n\n---\n**请修改输入参数后重新委托此任务**\n\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
     } else {
       // 成功时，告诉 Expert 立即处理结果，不要等待用户指令
-      const resultObj = typeof result === 'string' ? JSON.parse(result) : result;
-      const rawResult = resultObj?.result || JSON.stringify(resultObj);
+      let resultObj;
+      let rawResult;
+      try {
+        resultObj = typeof result === 'string' ? JSON.parse(result) : result;
+        rawResult = resultObj?.result || JSON.stringify(resultObj);
+      } catch (parseErr) {
+        logger.warn(`[AssistantManager] 解析结果失败，使用原始值:`, parseErr.message);
+        rawResult = typeof result === 'string' ? result : JSON.stringify(result);
+      }
 
-      content = `【${assistant_type} 助理任务完成】\n\n【对话上下文】\n${conversationContext || '（无）'}\n\n【用户原始请求】\n${userMessage || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【助理返回结果】\n${rawResult}\n\n⚡【立即执行】拿到结果后，立即执行用户之前的指令，不要等待用户回复。`;
+      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n⚡【立即执行】拿到结果后，立即执行用户之前的指令，不要等待用户回复。\n\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
     }
     // 调用 Internal API 插入消息
     // 在消息内容中明确告诉 Expert 立即处理结果
