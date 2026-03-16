@@ -128,6 +128,11 @@ export function useConnection() {
 
   // ========== SSE 事件解析 ==========
   
+  /**
+   * 解析 SSE 事件
+   * 注意：只解析完整的事件（以 \n\n 结尾的事件）
+   * 不完整的事件会留在 buffer 中等待下一次处理
+   */
   function parseSSEEvents(text: string): SSEEvent[] {
     const events: SSEEvent[] = []
     const lines = text.split('\n')
@@ -135,6 +140,7 @@ export function useConnection() {
     
     for (const line of lines) {
       if (line === '') {
+        // 空行表示事件结束，只有完整的事件才 push
         if (currentEvent.event || currentEvent.data) {
           events.push({
             event: currentEvent.event || 'message',
@@ -165,13 +171,9 @@ export function useConnection() {
       }
     }
     
-    if (currentEvent.event || currentEvent.data) {
-      events.push({
-        event: currentEvent.event || 'message',
-        data: currentEvent.data || '',
-        id: currentEvent.id,
-      })
-    }
+    // ★ 关键修复：不要把不完整的事件 push 出去
+    // 不完整的事件（没有以 \n\n 结尾）会留在 buffer 中，等待下一次处理
+    // 这样避免了事件被重复处理的问题
     
     return events
   }
@@ -212,7 +214,7 @@ export function useConnection() {
   function startHealthCheck() {
     if (checkTimer) return
     
-    checkTimer = setInterval(() => {
+    checkTimer = setInterval(async () => {
       // SSE 连接活跃且心跳正常，跳过 HTTP 检查
       if (connectionState.value === 'connected' && !isHeartbeatTimeout()) {
         backendAvailable.value = true
@@ -222,16 +224,25 @@ export function useConnection() {
       // 心跳超时，触发重连
       if (connectionState.value === 'connected' && isHeartbeatTimeout()) {
         console.warn(`[Connection] Heartbeat timeout, reconnecting...`)
-        disconnect().then(() => {
-          if (currentExpertId) {
-            connect(currentExpertId, currentOptions)
-          }
-        })
+        // 保存参数，因为 disconnect() 会清除 currentExpertId
+        const savedExpertId = currentExpertId
+        const savedOptions = currentOptions
+        await disconnect()
+        if (savedExpertId) {
+          connect(savedExpertId, savedOptions)
+        }
         return
       }
       
       // SSE 未连接，检查后端健康
-      checkBackendHealth()
+      const isAvailable = await checkBackendHealth()
+      
+      // 关键修复：后端可用但 SSE 未连接（非重连中），主动重连
+      // 注意：只在 'disconnected' 状态触发，避免打断正在进行的连接/重连
+      if (isAvailable && connectionState.value === 'disconnected' && currentExpertId) {
+        console.log('[Connection] Backend available but SSE disconnected, reconnecting...')
+        connect(currentExpertId, currentOptions)
+      }
     }, CHECK_INTERVAL)
   }
 
@@ -274,6 +285,9 @@ export function useConnection() {
   // ========== SSE 事件处理 ==========
   
   function handleEvent(event: SSEEvent) {
+    // 调试日志：记录所有接收到的事件
+    console.log('[SSE] Received event:', event.event, event.data?.substring(0, 100))
+    
     // 处理心跳事件
     if (event.event === 'heartbeat') {
       updateHeartbeat()
@@ -297,11 +311,19 @@ export function useConnection() {
   // ========== 核心连接方法 ==========
   
   async function connect(expertId: string, options: ConnectionOptions = {}): Promise<boolean> {
-    currentExpertId = expertId
-    currentOptions = options
+    // 先保存参数，因为 disconnect() 会清除 currentExpertId
+    const targetExpertId = expertId
+    const targetOptions = options
     
-    // 清理旧连接
+    currentExpertId = targetExpertId
+    currentOptions = targetOptions
+    
+    // 清理旧连接（注意：disconnect() 会清除 currentExpertId，所以上面先保存）
     await disconnect()
+    
+    // 恢复参数
+    currentExpertId = targetExpertId
+    currentOptions = targetOptions
     
     // 确保 token 有效
     const token = await ensureValidToken()
@@ -369,6 +391,37 @@ export function useConnection() {
           
           if (done) {
             console.log('SSE stream ended')
+            // ★ 关键修复：流结束时，处理 buffer 中剩余的内容
+            // 最后一个 complete 事件可能没有以 \n\n 结尾，但仍然需要处理
+            if (buffer.trim()) {
+              console.log('[SSE] Processing remaining buffer on stream end:', buffer.substring(0, 100))
+              const remainingEvents = parseSSEEvents(buffer)
+              for (const event of remainingEvents) {
+                handleEvent(event)
+              }
+              // 如果 parseSSEEvents 没有解析出事件，但 buffer 中有内容
+              // 尝试手动解析（处理没有 \n\n 结尾的情况）
+              if (remainingEvents.length === 0 && buffer.includes('event:')) {
+                const lines = buffer.split('\n')
+                let currentEvent: Partial<SSEEvent> = {}
+                for (const line of lines) {
+                  const colonIndex = line.indexOf(':')
+                  if (colonIndex !== -1) {
+                    const field = line.slice(0, colonIndex).trim()
+                    const value = line.slice(colonIndex + 1).trim()
+                    if (field === 'event') currentEvent.event = value
+                    if (field === 'data') currentEvent.data = (currentEvent.data || '') + value
+                  }
+                }
+                if (currentEvent.event && currentEvent.data) {
+                  console.log('[SSE] Forcing remaining event processing:', currentEvent.event)
+                  handleEvent({
+                    event: currentEvent.event,
+                    data: currentEvent.data,
+                  })
+                }
+              }
+            }
             break
           }
           
