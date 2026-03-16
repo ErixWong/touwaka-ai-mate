@@ -65,6 +65,11 @@ class TopicController {
 
   /**
    * 获取话题列表（简单 GET 查询，保持向后兼容）
+   *
+   * 排序规则：
+   * 1. 进行中(active)的排上面，已归档(archived)的排下面
+   * 2. active 按 updated_at 降序（最新在前）
+   * 3. archived 按 updated_at 升序（先老后新）
    */
   async list(ctx) {
     try {
@@ -81,17 +86,39 @@ class TopicController {
 
       const offset = (parseInt(page) - 1) * parseInt(pageSize);
 
+      // 排序逻辑：
+      // 1. status 排序：active='a', archived='b'（active 在前）
+      // 2. active: updated_at DESC（最新在前）
+      // 3. archived: updated_at ASC（先老后新）
+      // 使用 CASE WHEN 实现条件排序
+      const order = [
+        // 使用 sequelize.literal 实现 CASE WHEN 排序
+        // active 排前面，archived 排后面
+        [this.db.sequelize.literal(`
+          CASE
+            WHEN status = 'active' THEN 0
+            ELSE 1
+          END
+        `), 'ASC'],
+        // 然后按 updated_at 排序
+        // 注意：这里使用字段排序，前端可以控制
+        ['updated_at', 'DESC'],
+      ];
+
       // 获取话题列表
       const { count, rows } = await this.Topic.findAndCountAll({
         where,
-        order: [['updated_at', 'DESC']],
+        order,
         limit: parseInt(pageSize),
         offset,
         raw: true,
       });
 
+      // 对结果进行二次排序，确保 archived 是按时间升序
+      const sortedRows = this.sortTopics(rows);
+
       ctx.success({
-        items: rows,
+        items: sortedRows,
         pagination: {
           page: parseInt(page),
           size: parseInt(pageSize),
@@ -103,6 +130,26 @@ class TopicController {
       logger.error('Get topics error:', error);
       ctx.error('获取话题失败', 500);
     }
+  }
+
+  /**
+   * 对话题列表进行排序
+   * 1. active 在前，archived 在后
+   * 2. active 按 updated_at 降序
+   * 3. archived 按 updated_at 升序
+   */
+  sortTopics(topics) {
+    const active = topics.filter(t => t.status === 'active');
+    const archived = topics.filter(t => t.status === 'archived');
+    const others = topics.filter(t => t.status !== 'active' && t.status !== 'archived');
+
+    // active 按 updated_at 降序（最新在前）
+    active.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+    
+    // archived 按 updated_at 升序（先老后新）
+    archived.sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
+
+    return [...active, ...archived, ...others];
   }
 
   /**
