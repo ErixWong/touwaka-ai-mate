@@ -702,6 +702,8 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-primary, #333);
   word-break: break-word;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
 .tool-name {

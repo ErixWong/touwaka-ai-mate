@@ -146,13 +146,26 @@
 
 ## 十一、审查中发现的问题
 
-### 已修复
+### 首次审查已修复
 
 | 问题 | 位置 | 修复方式 |
 |------|------|----------|
 | 硬编码中文 | 执行模式选项 | 改为 `$t()` 翻译键 |
 | 硬编码中文 | 提示文字 | 改为 `$t()` 翻译键 |
 | 硬编码中文 | 工具配置标题 | 改为 `$t()` 翻译键 |
+
+### 后续修复的问题
+
+| 问题 | 位置 | 修复方式 |
+|------|------|----------|
+| 数值字段默认值判断 | AssistantEditDialog.vue | 使用 `??` 替代 `\|\|` 避免 0 值被误判 |
+| temperature 为 NaN | AssistantEditDialog.vue | 添加 `!= null` 检查 |
+| roster() 缺少字段 | assistant-manager.js | 添加 max_tokens, temperature, timeout 等字段 |
+| updateAssistant() 缺少字段 | assistant-manager.js | 添加 tool_name, tool_description, tool_parameters |
+| 委托默认归档 | assistant-manager.js | 显式设置 `is_archived = 0` |
+| BIT 类型转换问题 | assistant-manager.js | 列表返回时确保 `is_archived` 是 0 或 1 |
+| role 改为 tool | assistant-manager.js | Assistant 返回改用 `role: 'tool'` 触发 Expert 继续执行 |
+| is_archived 字符串类型问题 | assistant-manager.js | 使用 `Number(r.is_archived) \|\| 0` 确保返回数字类型 |
 
 ---
 
@@ -177,6 +190,7 @@
 | `frontend/src/components/settings/AssistantEditDialog.vue` | 修改 |
 | `frontend/src/i18n/locales/zh-CN.ts` | 修改 |
 | `frontend/src/i18n/locales/en-US.ts` | 修改 |
+| `server/services/assistant-manager.js` | 修改 |
 | `docs/core/tasks/2026-03-16-assistant-tool-config/README.md` | 新增 |
 | `docs/core/tasks/2026-03-16-assistant-tool-config/CODE_REVIEW.md` | 新增 |
 
@@ -184,3 +198,4 @@
 
 *审查人: Claude Code*
 *审查时间: 2026-03-16*
+*最后更新: 2026-03-16*

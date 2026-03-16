@@ -279,6 +279,7 @@ class AssistantManager {
       topic_id: context.topicId || null,
       status: 'pending',
       input: JSON.stringify(fullInput),
+      is_archived: 0,  // 显式设置未归档
       created_at: new Date(),
     };
 
@@ -369,7 +370,7 @@ class AssistantManager {
       status: r.status,
       created_at: r.created_at,
       completed_at: r.completed_at,
-      is_archived: r.is_archived,
+      is_archived: Number(r.is_archived) || 0,  // 确保返回数字 0 或 1
     }));
   }
 
@@ -388,8 +389,9 @@ class AssistantManager {
       throw new Error(`Request not found: ${requestId}`);
     }
 
+    // 使用 Sequelize.literal 强制更新 BIT 类型字段
     await this.AssistantRequest.update(
-      { is_archived: 1 },
+      { is_archived: Sequelize.literal("b'1'") },
       { where: { request_id: requestId } }
     );
 
@@ -400,7 +402,7 @@ class AssistantManager {
 
     return {
       request_id: requestId,
-      is_archived: true,
+      is_archived: 1,
     };
   }
 
@@ -419,8 +421,9 @@ class AssistantManager {
       throw new Error(`Request not found: ${requestId}`);
     }
 
+    // 使用 Sequelize.literal 强制更新 BIT 类型字段
     await this.AssistantRequest.update(
-      { is_archived: 0 },
+      { is_archived: Sequelize.literal("b'0'") },
       { where: { request_id: requestId } }
     );
 
@@ -428,7 +431,7 @@ class AssistantManager {
 
     return {
       request_id: requestId,
-      is_archived: false,
+      is_archived: 0,
     };
   }
 
@@ -866,8 +869,11 @@ class AssistantManager {
       expert_id: finalExpertId,
       topic_id: isTopicActive ? null : finalTopicId,
       content,
-      role: 'assistant',
+      role: 'tool',
+      tool_name: assistant_type,
       trigger_expert: true,
+      // 传递用户的原始问题，用于触发 Expert 时正确构建上下文
+      original_message: userMessage || '',
     };
 
     logger.info(`[AssistantManager] 通知 Expert 结果: request=${request.request_id}, topic=${finalTopicId}`, {
