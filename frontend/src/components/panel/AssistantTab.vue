@@ -1,5 +1,10 @@
 <template>
   <div class="assistant-tab">
+    <!-- 右上角刷新按钮 -->
+    <button class="refresh-btn-fixed" @click="loadData" :title="$t('common.refresh') || '刷新'">
+      🔄
+    </button>
+
     <!-- 加载状态 -->
     <div v-if="assistantStore.isLoading && assistantStore.assistants.length === 0" class="loading-state">
       <span class="loading-spinner"></span>
@@ -362,6 +367,7 @@ onUnmounted(() => {
 
 <style scoped>
 .assistant-tab {
+  position: relative;
   height: 100%;
   overflow-y: auto;
   padding: 12px;
@@ -573,6 +579,24 @@ onUnmounted(() => {
   background: var(--primary-color, #2196f3);
   color: white;
   border-color: var(--primary-color, #2196f3);
+}
+
+.refresh-btn-fixed {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 8px;
+  font-size: 16px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+  z-index: 10;
+}
+
+.refresh-btn-fixed:hover {
+  opacity: 1;
 }
 
 .request-card.archived {
