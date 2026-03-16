@@ -29,13 +29,7 @@ export const useChatStore = defineStore('chat', () => {
 
   // Getters
   const sortedMessages = computed(() => {
-    // 先去重（按 ID），再排序
-    const uniqueMap = new Map<string, Message>()
-    for (const msg of messages.value) {
-      // 如果已存在相同 ID 的消息，保留最新的（后面的覆盖前面的）
-      uniqueMap.set(msg.id, msg)
-    }
-    return [...uniqueMap.values()].sort((a, b) =>
+    return [...messages.value].sort((a, b) =>
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
   })
@@ -45,9 +39,17 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 加载指定 expert 与当前用户的对话历史
    * 这是主要的加载方法，替代原来的 loadMessages(topic_id)
+   *
+   * 重要：如果当前有流式消息正在输出，不会清空消息列表，避免竞态条件
    */
   const loadMessagesByExpert = async (expert_id: string, page: number = 1, pageSize: number = 30) => {
   if (page === 1) {
+    // 检查是否有正在流式输出的消息，避免竞态条件
+    const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
+    if (hasStreamingMessage) {
+      return
+    }
+    
     isLoading.value = true
     messages.value = []
     currentExpertId.value = expert_id
@@ -165,15 +167,21 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 更新消息内容（用于 SSE）
+   * 使用 splice 替换整个数组元素，确保 Vue 响应式系统能正确检测变化
    */
   const updateMessageContent = (messageId: string, content: string, status?: MessageStatus) => {
-    const message = messages.value.find(m => m.id === messageId)
-    if (message) {
-      message.content = content
-      if (status) {
-        message.status = status
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      const message = messages.value[index]
+      if (message) {
+        const newMessage: Message = {
+          ...message,
+          content: content,
+          status: status || message.status,
+          updated_at: new Date().toISOString()
+        }
+        messages.value.splice(index, 1, newMessage)
       }
-      message.updated_at = new Date().toISOString()
     }
   }
 
