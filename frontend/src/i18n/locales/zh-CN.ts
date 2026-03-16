@@ -1073,5 +1073,20 @@ export default {
     advancedConfig: '高级配置',
     canUseSkills: '允许使用技能',
     enableAssistant: '启用此助理',
+    // 工具配置
+    toolConfig: '工具配置',
+    toolName: '工具名称',
+    toolNameRequired: 'direct 模式必须选择要执行的工具',
+    selectTool: '请选择工具',
+    toolDescription: '工具描述',
+    toolDescriptionPlaceholder: '描述这个工具的用途',
+    toolParameters: '工具参数',
+    toolParametersPlaceholder: 'JSON Schema 格式的参数定义，如 {"type": "object", "properties": {...}}',
+    // 执行模式选项
+    executionModeDirect: '直接执行指定工具',
+    executionModeLlm: 'LLM 推理选择工具',
+    executionModeHybrid: '混合模式',
+    directModeHint: '需要选择要执行的工具',
+    toolConfigDirect: '工具配置',
   },
 }

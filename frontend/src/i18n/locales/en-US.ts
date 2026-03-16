@@ -1044,5 +1044,20 @@ export default {
     advancedConfig: 'Advanced Config',
     canUseSkills: 'Can Use Skills',
     enableAssistant: 'Enable Assistant',
+    // Tool config
+    toolConfig: 'Tool Config',
+    toolName: 'Tool Name',
+    toolNameRequired: 'Direct mode must select a tool to execute',
+    selectTool: 'Select a tool',
+    toolDescription: 'Tool Description',
+    toolDescriptionPlaceholder: 'Describe the purpose of this tool',
+    toolParameters: 'Tool Parameters',
+    toolParametersPlaceholder: 'JSON Schema format, e.g. {"type": "object", "properties": {...}}',
+    // Execution mode options
+    executionModeDirect: 'Execute specified tool directly',
+    executionModeLlm: 'LLM decides which tool to use',
+    executionModeHybrid: 'Mixed mode',
+    directModeHint: 'Requires selecting a tool to execute',
+    toolConfigDirect: 'Tool Config',
   },
 }

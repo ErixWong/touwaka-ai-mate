@@ -41,10 +41,11 @@
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.executionMode') }}</label>
               <select v-model="form.execution_mode" class="form-select">
-                <option value="direct">direct</option>
-                <option value="llm">llm</option>
-                <option value="hybrid">hybrid</option>
+                <option value="direct">{{ $t('assistant.executionModeDirect') }}</option>
+                <option value="llm">{{ $t('assistant.executionModeLlm') }}</option>
+                <option value="hybrid">{{ $t('assistant.executionModeHybrid') }}</option>
               </select>
+              <span v-if="isDirectMode" class="form-hint">{{ $t('assistant.directModeHint') }}</span>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.model') }}</label>
@@ -76,6 +77,40 @@
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.timeout') }} ({{ $t('common.seconds') }})</label>
               <input v-model.number="form.timeout" type="number" class="form-input" min="1" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 工具配置（direct 模式专用） -->
+        <div v-if="isDirectMode" class="form-section tool-config-section">
+          <h4 class="section-title">{{ $t('assistant.toolConfigDirect') }}</h4>
+          <div class="form-grid">
+            <div class="form-item full-width">
+              <label class="form-label">{{ $t('assistant.toolName') }}</label>
+              <select v-model="form.tool_name" class="form-select">
+                <option value="">{{ $t('common.none') }} - {{ $t('assistant.selectTool') }}</option>
+                <option v-for="skill in skillStore.skills" :key="skill.id" :value="skill.id">
+                  {{ skill.name }} ({{ skill.id }})
+                </option>
+              </select>
+            </div>
+            <div class="form-item full-width">
+              <label class="form-label">{{ $t('assistant.toolDescription') }}</label>
+              <input
+                v-model="form.tool_description"
+                type="text"
+                class="form-input"
+                :placeholder="$t('assistant.toolDescriptionPlaceholder')"
+              />
+            </div>
+            <div class="form-item full-width">
+              <label class="form-label">{{ $t('assistant.toolParameters') }} (JSON Schema)</label>
+              <textarea
+                v-model="form.tool_parameters"
+                class="form-textarea"
+                rows="4"
+                :placeholder="$t('assistant.toolParametersPlaceholder')"
+              ></textarea>
             </div>
           </div>
         </div>
@@ -118,9 +153,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Assistant, AIModel } from '@/types'
+import { useSkillStore } from '@/stores/skill'
 
 const props = defineProps<{
   assistant: Assistant | null
@@ -135,8 +171,12 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const skillStore = useSkillStore()
 
 const saving = ref(false)
+
+// 判断是否为 direct 模式
+const isDirectMode = computed(() => form.execution_mode === 'direct')
 
 const form = reactive({
   assistant_type: '',
@@ -150,6 +190,10 @@ const form = reactive({
   prompt_template: '',
   can_use_skills: false,
   is_active: true,
+  // 工具配置（direct 模式用）
+  tool_name: '',
+  tool_description: '',
+  tool_parameters: '',
 })
 
 // 监听 assistant 变化，初始化表单
@@ -168,10 +212,19 @@ watch(
       form.prompt_template = newAssistant.prompt_template || ''
       form.can_use_skills = newAssistant.can_use_skills ?? false
       form.is_active = newAssistant.is_active ?? true
+      // 工具配置
+      form.tool_name = newAssistant.tool_name || ''
+      form.tool_description = newAssistant.tool_description || ''
+      form.tool_parameters = newAssistant.tool_parameters || ''
     }
   },
   { immediate: true }
 )
+
+// 加载技能列表
+if (skillStore.skills.length === 0) {
+  skillStore.loadSkills()
+}
 
 // 限制 assistant_type 只允许字母和下划线
 function handleAssistantTypeKeydown(e: KeyboardEvent) {
@@ -196,35 +249,38 @@ async function handleSubmit() {
     return
   }
 
+  // direct 模式必须选择工具
+  if (form.execution_mode === 'direct' && !form.tool_name) {
+    alert(t('assistant.toolNameRequired'))
+    return
+  }
+
   saving.value = true
   try {
+    const baseData = {
+      name: form.name,
+      description: form.description,
+      execution_mode: form.execution_mode,
+      model_id: form.model_id || undefined,
+      max_tokens: form.max_tokens,
+      temperature: form.temperature,
+      timeout: form.timeout,
+      prompt_template: form.prompt_template,
+      can_use_skills: form.can_use_skills,
+      is_active: form.is_active,
+      // 工具配置
+      tool_name: form.tool_name || undefined,
+      tool_description: form.tool_description || undefined,
+      tool_parameters: form.tool_parameters || undefined,
+    }
+
     if (props.isCreate) {
       emit('create', {
         assistant_type: form.assistant_type,
-        name: form.name,
-        description: form.description,
-        execution_mode: form.execution_mode,
-        model_id: form.model_id || undefined,
-        max_tokens: form.max_tokens,
-        temperature: form.temperature,
-        timeout: form.timeout,
-        prompt_template: form.prompt_template,
-        can_use_skills: form.can_use_skills,
-        is_active: form.is_active,
+        ...baseData,
       })
     } else {
-      emit('save', {
-        name: form.name,
-        description: form.description,
-        execution_mode: form.execution_mode,
-        model_id: form.model_id || undefined,
-        max_tokens: form.max_tokens,
-        temperature: form.temperature,
-        timeout: form.timeout,
-        prompt_template: form.prompt_template,
-        can_use_skills: form.can_use_skills,
-        is_active: form.is_active,
-      })
+      emit('save', baseData)
     }
   } finally {
     saving.value = false
@@ -366,6 +422,19 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin-top: 4px;
+}
+
+.tool-config-section {
+  background: var(--secondary-bg, #f8f9fa);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
 }
 
 .checkbox-label {
