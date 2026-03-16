@@ -58,6 +58,7 @@ export interface Message {
   content: string
   status: MessageStatus
   metadata?: MessageMetadata
+  tool_name?: string     // 工具名称（role=tool 时使用）
   parent_id?: string
   created_at: string
   updated_at: string
@@ -1081,7 +1082,7 @@ export interface UpdateUserOrganizationRequest {
 /**
  * 助理执行模式
  */
-export type AssistantExecutionMode = 'direct' | 'llm' | 'hybrid'
+export type AssistantExecutionMode = 'direct' | 'llm'
 
 /**
  * 助理委托状态

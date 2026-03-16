@@ -801,18 +801,20 @@ class AssistantManager {
         // 反转顺序，按时间正序排列
         const contextMessages = recentMessages.reverse();
 
-        // 构建对话上下文
+        // 构建对话上下文 - 只显示用户的原始消息
         const contextLines = [];
         for (const msg of contextMessages) {
-          const roleLabel = msg.role === 'user' ? '用户' : '专家';
+          // 只显示用户的消息，过滤掉专家和工具消息
+          if (msg.role !== 'user') continue;
+
           let content = msg.content || '';
           // 限制单条消息长度
           if (content.length > 200) {
             content = content.substring(0, 200) + '...';
           }
-          // 过滤掉过于简短的消息（如只有工具调用）
-          if (content.length > 10) {
-            contextLines.push(`**${roleLabel}**: ${content}`);
+          // 过滤掉过于简短的消息
+          if (content.length > 5) {
+            contextLines.push(`**用户**: ${content}`);
           }
         }
         conversationContext = contextLines.join('\n\n');
@@ -859,7 +861,7 @@ class AssistantManager {
         rawResult = typeof result === 'string' ? result : JSON.stringify(result);
       }
 
-      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n⚡【立即执行】拿到结果后，立即执行用户之前的指令，不要等待用户回复。\n\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
+      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
     }
     // 调用 Internal API 插入消息
     // 在消息内容中明确告诉 Expert 立即处理结果
@@ -983,8 +985,6 @@ class AssistantManager {
         return this.executeDirect(assistant, actualInput, enhancedContext);
       case 'llm':
         return this.executeLLM(assistant, actualInput, enhancedContext);
-      case 'hybrid':
-        return this.executeHybrid(assistant, actualInput, enhancedContext);
       default:
         throw new Error(`Unknown execution mode: ${execution_mode}`);
     }

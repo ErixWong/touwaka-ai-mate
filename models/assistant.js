@@ -78,7 +78,7 @@ export default class assistant extends Model {
       comment: "是否允许助理调用技能"
     },
     execution_mode: {
-      type: DataTypes.ENUM('direct','llm','hybrid'),
+      type: DataTypes.ENUM('direct','llm'),
       allowNull: true,
       defaultValue: "llm",
       comment: "执行模式"

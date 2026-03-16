@@ -43,11 +43,10 @@
               <select v-model="form.execution_mode" class="form-select">
                 <option value="direct">{{ $t('assistant.executionModeDirect') }}</option>
                 <option value="llm">{{ $t('assistant.executionModeLlm') }}</option>
-                <option value="hybrid">{{ $t('assistant.executionModeHybrid') }}</option>
               </select>
               <span v-if="isDirectMode" class="form-hint">{{ $t('assistant.directModeHint') }}</span>
             </div>
-            <div class="form-item">
+            <div v-if="!isDirectMode" class="form-item">
               <label class="form-label">{{ $t('assistant.model') }}</label>
               <select v-model="form.model_id" class="form-select">
                 <option value="">{{ $t('common.none') }}</option>
@@ -182,7 +181,7 @@ const form = reactive({
   assistant_type: '',
   name: '',
   description: '',
-  execution_mode: 'llm' as 'direct' | 'llm' | 'hybrid',
+  execution_mode: 'llm' as 'direct' | 'llm',
   model_id: '',
   max_tokens: 4096,
   temperature: 0.7,
