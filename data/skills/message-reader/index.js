@@ -47,25 +47,30 @@ async function get_message_content(params, context) {
   }
 
   try {
-    // 通过 tool_call_id 查询消息
-    // tool_call_id 存储在 tool_calls 字段中（JSON 格式）
+    // tool_call_id 现在是消息主键 ID，直接用 ID 查询
     const messages = await db.query(`
       SELECT id, role, content, tool_calls, created_at
       FROM messages
-      WHERE role = 'tool' 
-        AND JSON_EXTRACT(tool_calls, '$.tool_call_id') = ?
-      ORDER BY created_at DESC
+      WHERE id = ?
       LIMIT 1
     `, [tool_call_id]);
 
     if (!messages || messages.length === 0) {
       return {
         success: false,
-        error: `未找到 tool_call_id="${tool_call_id}" 的消息`,
+        error: `未找到 id="${tool_call_id}" 的消息`,
       };
     }
 
     const message = messages[0];
+
+    // 验证消息角色
+    if (message.role !== 'tool') {
+      return {
+        success: false,
+        error: `消息 id="${tool_call_id}" 不是工具消息 (role=${message.role})`,
+      };
+    }
 
     logger.info(`[message-reader] 检索到消息: id=${message.id}, content_length=${message.content?.length || 0}`);
 
