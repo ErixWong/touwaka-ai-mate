@@ -178,10 +178,6 @@ export function useConnection() {
 
   // ========== 心跳检测 ==========
   
-  function startHeartbeatCheck() {
-    lastHeartbeatTime = Date.now()
-  }
-
   function updateHeartbeat() {
     lastHeartbeatTime = Date.now()
     backendAvailable.value = true // 收到心跳说明后端可用
@@ -192,7 +188,7 @@ export function useConnection() {
     return Date.now() - lastHeartbeatTime > HEARTBEAT_TIMEOUT
   }
 
-  // ========== 健康检查 ==========
+  // ========== 统一检测定时器 ==========
   
   async function checkBackendHealth(): Promise<boolean> {
     // SSE 连接活跃时跳过 HTTP 检查
@@ -217,11 +213,24 @@ export function useConnection() {
     if (checkTimer) return
     
     checkTimer = setInterval(() => {
-      // SSE 连接活跃且心跳正常，跳过检查
+      // SSE 连接活跃且心跳正常，跳过 HTTP 检查
       if (connectionState.value === 'connected' && !isHeartbeatTimeout()) {
         backendAvailable.value = true
         return
       }
+      
+      // 心跳超时，触发重连
+      if (connectionState.value === 'connected' && isHeartbeatTimeout()) {
+        console.warn(`[Connection] Heartbeat timeout, reconnecting...`)
+        disconnect().then(() => {
+          if (currentExpertId) {
+            connect(currentExpertId, currentOptions)
+          }
+        })
+        return
+      }
+      
+      // SSE 未连接，检查后端健康
       checkBackendHealth()
     }, CHECK_INTERVAL)
   }
@@ -346,7 +355,7 @@ export function useConnection() {
       // 连接成功
       connectionState.value = 'connected'
       reconnectAttempts.value = 0
-      startHeartbeatCheck()
+      lastHeartbeatTime = Date.now() // 初始化心跳时间
       options.onConnectionChange?.(true)
       
       // 读取流
@@ -435,6 +444,7 @@ export function useConnection() {
     
     currentExpertId = null
     reconnectAttempts.value = 0
+    lastHeartbeatTime = 0
   }
 
   /**
