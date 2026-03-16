@@ -1,5 +1,9 @@
-import { ref, onUnmounted } from 'vue'
-import { updateSSEHeartbeat, registerSSEConnection, unregisterSSEConnection } from './useNetworkStatus'
+import { ref, onMounted, onUnmounted } from 'vue'
+
+/**
+ * 连接状态枚举
+ */
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
 /**
  * SSE 事件类型
@@ -11,9 +15,9 @@ export interface SSEEvent {
 }
 
 /**
- * SSE 连接选项
+ * 连接选项
  */
-export interface SSEOptions {
+export interface ConnectionOptions {
   /** 连接超时时间（毫秒） */
   timeout?: number
   /** 最大重连次数 */
@@ -29,52 +33,55 @@ export interface SSEOptions {
 }
 
 /**
- * SSE 连接 Composable
+ * 统一连接管理 Composable
  * 
- * 使用 fetch + ReadableStream 替代 EventSource，支持：
- * - Authorization header 传递 token
- * - 自动重连
- * - 心跳检测
- * - 事件解析
+ * 整合 SSE 连接、心跳检测、后端健康检查，避免状态碎片化。
+ * 
+ * 设计原则：
+ * - 单一状态源：connectionState 统一表示连接状态
+ * - 单一心跳追踪：lastHeartbeatTime
+ * - 单一检测定时器：checkTimer
  */
-export function useSSE() {
-  const isConnected = ref(false)
-  const isReconnecting = ref(false)
+export function useConnection() {
+  // ========== 核心状态 ==========
+  const connectionState = ref<ConnectionState>('disconnected')
+  const backendAvailable = ref(true)
+  const isOnline = ref(navigator.onLine)
   const reconnectAttempts = ref(0)
-  
+
+  // ========== 内部变量 ==========
   let abortController: AbortController | null = null
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let checkTimer: ReturnType<typeof setInterval> | null = null
   let currentExpertId: string | null = null
-  let currentOptions: SSEOptions = {}
+  let currentOptions: ConnectionOptions = {}
+  let lastHeartbeatTime: number = 0
 
+  // ========== 常量 ==========
   const DEFAULT_TIMEOUT = 10000
   const DEFAULT_MAX_RECONNECT = 10
   const DEFAULT_RECONNECT_INTERVAL = 3000
+  const HEARTBEAT_TIMEOUT = 15000 // 心跳超时（3 个心跳周期）
+  const CHECK_INTERVAL = 5000 // 健康检查间隔
 
-  /**
-   * 获取有效的 access token
-   */
+  // ========== Token 管理 ==========
+  
   function getAccessToken(): string | null {
     return localStorage.getItem('access_token')
   }
 
-  /**
-   * 检查 token 是否即将过期（5分钟内）
-   */
   function isTokenExpiringSoon(): boolean {
     const token = getAccessToken()
     if (!token) return true
     
     try {
-      // JWT token 格式: header.payload.signature
       const payload = token.split('.')[1]
       if (!payload) return true
       
       const decoded = JSON.parse(atob(payload))
       if (!decoded.exp) return false
       
-      // exp 是秒级时间戳
       const expiresAt = decoded.exp * 1000
       const now = Date.now()
       const fiveMinutes = 5 * 60 * 1000
@@ -85,9 +92,6 @@ export function useSSE() {
     }
   }
 
-  /**
-   * 刷新 token
-   */
   async function refreshToken(): Promise<boolean> {
     const refreshToken = localStorage.getItem('refresh_token')
     if (!refreshToken) return false
@@ -115,33 +119,22 @@ export function useSSE() {
     }
   }
 
-  /**
-   * 确保 token 有效
-   */
   async function ensureValidToken(): Promise<string | null> {
-    // 如果 token 即将过期，尝试刷新
     if (isTokenExpiringSoon()) {
-      const refreshed = await refreshToken()
-      if (!refreshed) {
-        console.warn('Token refresh failed')
-      }
+      await refreshToken()
     }
-    
     return getAccessToken()
   }
 
-  /**
-   * 解析 SSE 事件
-   */
+  // ========== SSE 事件解析 ==========
+  
   function parseSSEEvents(text: string): SSEEvent[] {
     const events: SSEEvent[] = []
     const lines = text.split('\n')
-    
     let currentEvent: Partial<SSEEvent> = {}
     
     for (const line of lines) {
       if (line === '') {
-        // 空行表示事件结束
         if (currentEvent.event || currentEvent.data) {
           events.push({
             event: currentEvent.event || 'message',
@@ -172,7 +165,6 @@ export function useSSE() {
       }
     }
     
-    // 处理最后一个事件（如果没有以空行结尾）
     if (currentEvent.event || currentEvent.data) {
       events.push({
         event: currentEvent.event || 'message',
@@ -184,18 +176,111 @@ export function useSSE() {
     return events
   }
 
-  /**
-   * 处理 SSE 事件
-   */
-  function handleEvent(event: SSEEvent, options: SSEOptions) {
+  // ========== 心跳检测 ==========
+  
+  function updateHeartbeat() {
+    lastHeartbeatTime = Date.now()
+    backendAvailable.value = true // 收到心跳说明后端可用
+  }
+
+  function isHeartbeatTimeout(): boolean {
+    if (!lastHeartbeatTime) return true
+    return Date.now() - lastHeartbeatTime > HEARTBEAT_TIMEOUT
+  }
+
+  // ========== 统一检测定时器 ==========
+  
+  async function checkBackendHealth(): Promise<boolean> {
+    // SSE 连接活跃时跳过 HTTP 检查
+    if (connectionState.value === 'connected' && !isHeartbeatTimeout()) {
+      return true
+    }
+
+    try {
+      const response = await fetch('/api/health', {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      })
+      backendAvailable.value = response.ok
+      return response.ok
+    } catch {
+      backendAvailable.value = false
+      return false
+    }
+  }
+
+  function startHealthCheck() {
+    if (checkTimer) return
+    
+    checkTimer = setInterval(() => {
+      // SSE 连接活跃且心跳正常，跳过 HTTP 检查
+      if (connectionState.value === 'connected' && !isHeartbeatTimeout()) {
+        backendAvailable.value = true
+        return
+      }
+      
+      // 心跳超时，触发重连
+      if (connectionState.value === 'connected' && isHeartbeatTimeout()) {
+        console.warn(`[Connection] Heartbeat timeout, reconnecting...`)
+        disconnect().then(() => {
+          if (currentExpertId) {
+            connect(currentExpertId, currentOptions)
+          }
+        })
+        return
+      }
+      
+      // SSE 未连接，检查后端健康
+      checkBackendHealth()
+    }, CHECK_INTERVAL)
+  }
+
+  function stopHealthCheck() {
+    if (checkTimer) {
+      clearInterval(checkTimer)
+      checkTimer = null
+    }
+  }
+
+  // ========== 重连逻辑 ==========
+  
+  function clearReconnectTimer() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
+
+  async function reconnect() {
+    if (!currentExpertId) return
+    
+    const maxAttempts = currentOptions.maxReconnectAttempts || DEFAULT_MAX_RECONNECT
+    
+    if (reconnectAttempts.value >= maxAttempts) {
+      console.error('Max reconnect attempts reached')
+      connectionState.value = 'disconnected'
+      currentOptions.onError?.(new Error('Max reconnect attempts reached'))
+      return
+    }
+    
+    reconnectAttempts.value++
+    connectionState.value = 'reconnecting'
+    
+    console.log(`Reconnecting... (${reconnectAttempts.value}/${maxAttempts})`)
+    
+    await connect(currentExpertId, currentOptions)
+  }
+
+  // ========== SSE 事件处理 ==========
+  
+  function handleEvent(event: SSEEvent) {
     // 处理心跳事件
     if (event.event === 'heartbeat') {
-      updateSSEHeartbeat()
-      // 解析心跳数据，传递给用户回调（包含最新消息ID）
+      updateHeartbeat()
+      // 解析心跳数据，传递给用户回调
       try {
         const data = event.data ? JSON.parse(event.data) : {}
-        // 调用用户回调，让前端可以处理心跳中的消息ID
-        options.onEvent?.({
+        currentOptions.onEvent?.({
           event: 'heartbeat',
           data: JSON.stringify(data),
         })
@@ -206,47 +291,12 @@ export function useSSE() {
     }
     
     // 调用用户回调
-    options.onEvent?.(event)
+    currentOptions.onEvent?.(event)
   }
 
-  /**
-   * 清理重连定时器
-   */
-  function clearReconnectTimer() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-  }
-
-  /**
-   * 尝试重连
-   */
-  async function reconnect() {
-    if (!currentExpertId) return
-    
-    const maxAttempts = currentOptions.maxReconnectAttempts || DEFAULT_MAX_RECONNECT
-    
-    if (reconnectAttempts.value >= maxAttempts) {
-      console.error('Max reconnect attempts reached')
-      isReconnecting.value = false
-      currentOptions.onError?.(new Error('Max reconnect attempts reached'))
-      return
-    }
-    
-    reconnectAttempts.value++
-    isReconnecting.value = true
-    
-    console.log(`Reconnecting... (${reconnectAttempts.value}/${maxAttempts})`)
-    
-    await connect(currentExpertId, currentOptions)
-  }
-
-  /**
-   * 连接 SSE
-   */
-  async function connect(expertId: string, options: SSEOptions = {}): Promise<boolean> {
-    // 保存当前连接参数
+  // ========== 核心连接方法 ==========
+  
+  async function connect(expertId: string, options: ConnectionOptions = {}): Promise<boolean> {
     currentExpertId = expertId
     currentOptions = options
     
@@ -260,16 +310,15 @@ export function useSSE() {
       return false
     }
     
+    connectionState.value = 'connecting'
     const timeout = options.timeout || DEFAULT_TIMEOUT
     
     try {
-      // 创建 AbortController 用于超时和取消
       abortController = new AbortController()
       const timeoutId = setTimeout(() => {
         abortController?.abort()
       }, timeout)
       
-      // 发起请求
       const response = await fetch(`/api/chat/stream?expert_id=${expertId}`, {
         method: 'GET',
         headers: {
@@ -286,7 +335,6 @@ export function useSSE() {
         const error = new Error(`SSE connection failed: ${response.status}`)
         options.onError?.(error)
         
-        // 401 表示 token 无效，尝试刷新后重连
         if (response.status === 401) {
           const refreshed = await refreshToken()
           if (refreshed) {
@@ -294,19 +342,20 @@ export function useSSE() {
           }
         }
         
+        connectionState.value = 'disconnected'
         return false
       }
       
       if (!response.body) {
         options.onError?.(new Error('Response body is null'))
+        connectionState.value = 'disconnected'
         return false
       }
       
       // 连接成功
-      isConnected.value = true
-      isReconnecting.value = false
+      connectionState.value = 'connected'
       reconnectAttempts.value = 0
-      registerSSEConnection()
+      lastHeartbeatTime = Date.now() // 初始化心跳时间
       options.onConnectionChange?.(true)
       
       // 读取流
@@ -324,28 +373,20 @@ export function useSSE() {
           }
           
           buffer += decoder.decode(value, { stream: true })
-          
-          // 解析完整的事件
           const events = parseSSEEvents(buffer)
           
-          // 处理事件 - 使用 requestAnimationFrame 让出主线程，避免 UI 冻结
           for (const event of events) {
-            // 让出主线程，让 Vue 有机会更新 UI
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-            handleEvent(event, options)
+            handleEvent(event)
           }
           
-          // 清空已处理的 buffer（保留不完整的部分）
-          // 注意：这里假设事件以双换行符分隔
           const lastDoubleNewline = buffer.lastIndexOf('\n\n')
           if (lastDoubleNewline !== -1) {
             buffer = buffer.slice(lastDoubleNewline + 2)
           }
         }
       } finally {
-        // 连接断开
-        isConnected.value = false
-        unregisterSSEConnection()
+        connectionState.value = 'disconnected'
         options.onConnectionChange?.(false)
       }
       
@@ -360,7 +401,6 @@ export function useSSE() {
       return true
       
     } catch (error) {
-      // 用户主动取消不重连
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('SSE connection aborted')
         return false
@@ -369,7 +409,6 @@ export function useSSE() {
       console.error('SSE connection error:', error)
       options.onError?.(error as Error)
       
-      // 连接失败，尝试重连
       if (currentExpertId === expertId) {
         clearReconnectTimer()
         reconnectTimer = setTimeout(() => {
@@ -381,9 +420,6 @@ export function useSSE() {
     }
   }
 
-  /**
-   * 断开 SSE 连接
-   */
   async function disconnect() {
     clearReconnectTimer()
     
@@ -401,29 +437,85 @@ export function useSSE() {
       abortController = null
     }
     
-    if (isConnected.value) {
-      isConnected.value = false
-      unregisterSSEConnection()
+    if (connectionState.value !== 'disconnected') {
+      connectionState.value = 'disconnected'
       currentOptions.onConnectionChange?.(false)
     }
     
     currentExpertId = null
     reconnectAttempts.value = 0
-    isReconnecting.value = false
+    lastHeartbeatTime = 0
   }
 
-  // 组件卸载时清理
+  /**
+   * 检查连接是否可用
+   * 如果心跳超时，返回 false
+   */
+  function checkConnection(): boolean {
+    if (connectionState.value !== 'connected') {
+      return false
+    }
+    return !isHeartbeatTimeout()
+  }
+
+  /**
+   * 等待后端恢复
+   */
+  async function waitForBackend(timeout: number = 60000): Promise<boolean> {
+    const startTime = Date.now()
+    
+    while (Date.now() - startTime < timeout) {
+      const isAvailable = await checkBackendHealth()
+      if (isAvailable) return true
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+    
+    return false
+  }
+
+  // ========== 浏览器在线状态监听 ==========
+  
+  const handleOnline = () => {
+    isOnline.value = true
+    checkBackendHealth()
+  }
+
+  const handleOffline = () => {
+    isOnline.value = false
+    backendAvailable.value = false
+  }
+
+  // ========== 生命周期 ==========
+  
+  onMounted(() => {
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    startHealthCheck()
+  })
+
   onUnmounted(() => {
+    window.removeEventListener('online', handleOnline)
+    window.removeEventListener('offline', handleOffline)
+    stopHealthCheck()
     disconnect()
   })
 
+  // ========== 导出 ==========
+  
   return {
-    isConnected,
-    isReconnecting,
+    // 状态
+    connectionState,
+    backendAvailable,
+    isOnline,
     reconnectAttempts,
+    
+    // 方法
     connect,
     disconnect,
+    checkConnection,
+    checkBackendHealth,
+    waitForBackend,
   }
 }
 
-export default useSSE
+export default useConnection
