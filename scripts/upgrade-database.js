@@ -1007,18 +1007,6 @@ const MIGRATIONS = [
     }
   },
 
-  // 39. messages.tool_name 字段（用于存储工具/助理名称）
-  {
-    name: 'messages.tool_name column',
-    check: async (conn) => await hasColumn(conn, 'messages', 'tool_name'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        ALTER TABLE messages
-        ADD COLUMN tool_name VARCHAR(64) NULL COMMENT '工具/助理名称' AFTER tool_calls
-      `);
-    }
-  },
-
   // ==================== 任务预览 Token 表 (Issue #140) ====================
 
   // 40. task_token 表（不包含外键约束，避免建表失败）

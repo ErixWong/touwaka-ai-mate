@@ -871,8 +871,7 @@ class AssistantManager {
       expert_id: finalExpertId,
       topic_id: isTopicActive ? null : finalTopicId,
       content,
-      role: 'tool',
-      tool_name: assistant_type,
+      // 助理场景：触发 Expert 并构造用户消息（不保存到数据库）
       trigger_expert: true,
       // 传递用户的原始问题，用于触发 Expert 时正确构建上下文
       original_message: userMessage || '',
