@@ -206,9 +206,9 @@ watch(
       form.description = newAssistant.description || ''
       form.execution_mode = newAssistant.execution_mode || 'llm'
       form.model_id = newAssistant.model_id || ''
-      form.max_tokens = newAssistant.max_tokens || 4096
-      form.temperature = Number(newAssistant.temperature) || 0.7
-      form.timeout = newAssistant.timeout || 120
+      form.max_tokens = newAssistant.max_tokens ?? 4096
+      form.temperature = Number(newAssistant.temperature) ?? 0.7
+      form.timeout = newAssistant.timeout ?? 120
       form.prompt_template = newAssistant.prompt_template || ''
       form.can_use_skills = newAssistant.can_use_skills ?? false
       form.is_active = newAssistant.is_active ?? true
