@@ -189,6 +189,7 @@ import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { Message } from '@/types'
+import { renderMermaidInHtml } from '@/utils/mermaid'
 
 export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status'> & {
   created_at?: string
@@ -291,6 +292,31 @@ const isLoadingTriggered = ref(false)
 
 // 格式化缓存 - 避免重复格式化相同内容
 const formattedCache = new Map<string, string>()
+
+// Mermaid 渲染缓存 - 存储每条消息的渲染结果（响应式）
+const mermaidRenderedHtml = ref<Map<string, string>>(new Map())
+
+// Mermaid 缓存最大限制
+const MERMAID_CACHE_MAX_SIZE = 50
+
+// 正在渲染 Mermaid 的消息 ID 集合
+const renderingMermaid = ref<Set<string>>(new Set())
+
+// 缓存大小限制
+const MAX_CACHE_SIZE = 100
+
+/**
+ * 清理 Mermaid 缓存（LRU 策略）
+ */
+const cleanupMermaidCache = () => {
+  if (mermaidRenderedHtml.value.size > MAX_CACHE_SIZE) {
+    const keysToDelete = Array.from(mermaidRenderedHtml.value.keys()).slice(0, mermaidRenderedHtml.value.size - MAX_CACHE_SIZE)
+    for (const key of keysToDelete) {
+      mermaidRenderedHtml.value.delete(key)
+    }
+    mermaidRenderedHtml.value = new Map(mermaidRenderedHtml.value)
+  }
+}
 
 // 检测是否在底部（距离底部 100px 以内视为在底部）
 const checkIsAtBottom = () => {
@@ -443,6 +469,11 @@ marked.setOptions({
   gfm: true, // 启用 GitHub Flavored Markdown
 })
 
+// 检测内容是否包含 Mermaid 代码块
+const containsMermaid = (content: string): boolean => {
+  return /```mermaid\s*[\s\S]*?```/i.test(content)
+}
+
 // 格式化消息（支持完整的 markdown，带缓存）
 const formatMessage = (content: string) => {
   if (!content) return ''
@@ -458,7 +489,7 @@ const formatMessage = (content: string) => {
     const rawHtml = marked.parse(content) as string
     
     // 使用 DOMPurify 进行 XSS 防护
-    // 允许安全的 HTML 标签和属性
+    // 允许安全的 HTML 标签和属性（包括 mermaid 相关）
     const cleanHtml = DOMPurify.sanitize(rawHtml, {
       ALLOWED_TAGS: [
         'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
@@ -467,12 +498,20 @@ const formatMessage = (content: string) => {
         'blockquote', 'pre', 'code',
         'a', 'img',
         'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span'
+        'hr', 'div', 'span',
+        'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan', 'foreignObject' // Mermaid SVG 标签
       ],
       ALLOWED_ATTR: [
         'href', 'src', 'alt', 'title', 'class',
         'target', 'rel',
-        'width', 'height'
+        'width', 'height',
+        // SVG 属性
+        'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+        'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+        'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
+        'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
+        'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
+        'markerWidth', 'markerHeight', 'orient', 'overflow', 'style', 'data-*'
       ],
       // 允许 data: URI 用于图片（如 base64 图片）
       ALLOW_DATA_ATTR: true,
@@ -506,9 +545,42 @@ const escapeHtml = (text: string): string => {
 }
 
 /**
+ * 异步渲染消息中的 Mermaid 图表
+ * @param message 消息对象
+ * @param html 已格式化的 HTML
+ */
+const renderMermaidAsync = async (message: ChatMessage, html: string) => {
+  const messageId = message.id
+  
+  // 标记正在渲染
+  renderingMermaid.value.add(messageId)
+  
+  try {
+    // 渲染 Mermaid 图表
+    const renderedHtml = await renderMermaidInHtml(html)
+    
+    // 限制缓存大小
+    limitMermaidCache()
+    
+    // 更新渲染结果
+    mermaidRenderedHtml.value.set(messageId, renderedHtml)
+    // 触发响应式更新
+    mermaidRenderedHtml.value = new Map(mermaidRenderedHtml.value)
+  } catch (error) {
+    console.error('Mermaid rendering error:', error)
+    // 渲染失败时使用原始 HTML
+    mermaidRenderedHtml.value.set(messageId, html)
+    mermaidRenderedHtml.value = new Map(mermaidRenderedHtml.value)
+  } finally {
+    // 移除渲染中标记
+    renderingMermaid.value.delete(messageId)
+  }
+}
+
+/**
  * 格式化消息（流式输出优化）
  * - 流式输出时：跳过 Markdown 解析，直接显示纯文本（性能优化）
- * - 输出完成后：正常解析 Markdown
+ * - 输出完成后：正常解析 Markdown，并异步渲染 Mermaid 图表
  */
 const formatStreamingMessage = (message: ChatMessage): string => {
   if (!message.content) return ''
@@ -518,8 +590,32 @@ const formatStreamingMessage = (message: ChatMessage): string => {
     return escapeHtml(message.content)
   }
   
-  // 非流式状态，正常解析 Markdown
-  return formatMessage(filterAssistantContent(message))
+  const filteredContent = filterAssistantContent(message)
+  
+  // 检查是否有缓存的 Mermaid 渲染结果
+  const cachedRendered = mermaidRenderedHtml.value.get(message.id)
+  if (cachedRendered) {
+    return cachedRendered
+  }
+  
+  // 正常解析 Markdown
+  const html = formatMessage(filteredContent)
+  
+  // 检测是否包含 Mermaid 代码块
+  if (containsMermaid(filteredContent)) {
+    // 如果正在渲染，返回原始 HTML
+    if (renderingMermaid.value.has(message.id)) {
+      return html
+    }
+    
+    // 异步渲染 Mermaid（不阻塞当前渲染）
+    renderMermaidAsync(message, html)
+    
+    // 先返回原始 HTML，渲染完成后会自动更新
+    return html
+  }
+  
+  return html
 }
 
 // 格式化时间显示
@@ -564,9 +660,23 @@ watch(inputText, adjustTextareaHeight)
 
 // 注意：初始滚动由 watch 的 immediate: true 处理，无需在 onMounted 中重复
 
+/**
+ * 限制 Mermaid 缓存大小
+ */
+const limitMermaidCache = () => {
+  if (mermaidRenderedHtml.value.size > MERMAID_CACHE_MAX_SIZE) {
+    const keysToDelete = mermaidRenderedHtml.value.size - MERMAID_CACHE_MAX_SIZE
+    const keys = Array.from(mermaidRenderedHtml.value.keys()).slice(0, keysToDelete)
+    keys.forEach(key => mermaidRenderedHtml.value.delete(key))
+  }
+}
+
 onUnmounted(() => {
   // 清理格式化缓存
   formattedCache.clear()
+  // 清理 Mermaid 渲染缓存
+  mermaidRenderedHtml.value.clear()
+  renderingMermaid.value.clear()
   // 清理流式滚动 RAF
   if (streamingScrollRaf !== null) {
     cancelAnimationFrame(streamingScrollRaf)
@@ -1617,5 +1727,134 @@ defineExpose({
   padding-right: 12px;
   margin-right: 8px;
   border-right: 1px solid #3e3e3e;
+}
+
+/* ==================== Mermaid 图表样式 ==================== */
+.message-text :deep(.mermaid-container) {
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--mermaid-bg, #f8f9fa);
+  border-radius: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border-color, #e0e0e0);
+}
+
+.message-text :deep(.mermaid-container svg) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Mermaid 加载状态 */
+.message-text :deep(.mermaid-loading) {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary, #666);
+  font-style: italic;
+  background: var(--mermaid-bg, #f8f9fa);
+  border-radius: 8px;
+}
+
+/* Mermaid 错误状态 */
+.message-text :deep(.mermaid-error) {
+  padding: 12px 16px;
+  background: var(--error-bg, #fff5f5);
+  border: 1px solid var(--error-border, #ffcdd2);
+  border-radius: 8px;
+  color: var(--error-color, #c62828);
+}
+
+.message-text :deep(.mermaid-error-icon) {
+  margin-right: 8px;
+}
+
+.message-text :deep(.mermaid-error-text) {
+  font-weight: 500;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.message-text :deep(.mermaid-error-code) {
+  margin: 8px 0 0 0;
+  padding: 8px 12px;
+  background: var(--code-bg, #1e1e1e);
+  color: #d4d4d4;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Mermaid 流程图样式优化 */
+.message-text :deep(.mermaid-container .flowchart-link) {
+  stroke: var(--mermaid-line-color, #666);
+  stroke-width: 1.5px;
+}
+
+.message-text :deep(.mermaid-container .flowchart-node rect) {
+  fill: var(--mermaid-node-bg, #fff);
+  stroke: var(--mermaid-node-border, #2196f3);
+  stroke-width: 1.5px;
+}
+
+.message-text :deep(.mermaid-container .flowchart-node text) {
+  fill: var(--text-primary, #333);
+  font-size: 14px;
+}
+
+/* Mermaid 时序图样式优化 */
+.message-text :deep(.mermaid-container .actor) {
+  stroke: var(--mermaid-actor-border, #2196f3);
+  fill: var(--mermaid-actor-bg, #e3f2fd);
+}
+
+.message-text :deep(.mermaid-container .sequenceNumber) {
+  fill: var(--mermaid-sequence-number, #fff);
+}
+
+.message-text :deep(.mermaid-container #arrowhead) {
+  fill: var(--mermaid-arrow-color, #666);
+}
+
+/* Mermaid 类图样式优化 */
+.message-text :deep(.mermaid-container .classBox) {
+  stroke: var(--mermaid-class-border, #4caf50);
+  fill: var(--mermaid-class-bg, #e8f5e9);
+}
+
+/* Mermaid 状态图样式优化 */
+.message-text :deep(.mermaid-container .statediagram-state) {
+  stroke: var(--mermaid-state-border, #ff9800);
+  fill: var(--mermaid-state-bg, #fff3e0);
+}
+
+/* Mermaid 甘特图样式优化 */
+.message-text :deep(.mermaid-container .section) {
+  stroke: none;
+  opacity: 0.2;
+}
+
+.message-text :deep(.mermaid-container .grid .tick) {
+  stroke: var(--border-color, #e0e0e0);
+  opacity: 0.3;
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .message-text :deep(.mermaid-container) {
+    background: var(--mermaid-bg-dark, #1e1e1e);
+    border-color: var(--border-color-dark, #333);
+  }
+  
+  .message-text :deep(.mermaid-container .flowchart-node rect) {
+    fill: var(--mermaid-node-bg-dark, #2d2d2d);
+    stroke: var(--mermaid-node-border-dark, #42a5f5);
+  }
+  
+  .message-text :deep(.mermaid-container .flowchart-node text) {
+    fill: var(--text-primary-dark, #e0e0e0);
+  }
 }
 </style>
