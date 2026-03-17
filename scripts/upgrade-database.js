@@ -1032,6 +1032,50 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 思考内容字段 (Issue #181) ====================
+  
+  // 42. messages.reasoning_content 字段（用于存储模型的思考过程）
+  {
+    name: 'messages.reasoning_content column',
+    check: async (conn) => await hasColumn(conn, 'messages', 'reasoning_content'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN reasoning_content LONGTEXT NULL
+        COMMENT '思考过程内容（DeepSeek reasoning_content 输出）'
+        AFTER content
+      `);
+    }
+  },
+
+  // 43. ai_models.supports_reasoning 字段（模型是否支持思考模式）
+  {
+    name: 'ai_models.supports_reasoning column',
+    check: async (conn) => await hasColumn(conn, 'ai_models', 'supports_reasoning'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ai_models
+        ADD COLUMN supports_reasoning BOOLEAN DEFAULT FALSE
+        COMMENT '是否支持思考/推理模式（DeepSeek、OpenAI o1/o3、Qwen 等）'
+        AFTER embedding_dim
+      `);
+    }
+  },
+
+  // 44. ai_models.thinking_format 字段（思考模式格式类型）
+  {
+    name: 'ai_models.thinking_format column',
+    check: async (conn) => await hasColumn(conn, 'ai_models', 'thinking_format'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ai_models
+        ADD COLUMN thinking_format ENUM('openai', 'deepseek', 'qwen', 'none') DEFAULT 'none'
+        COMMENT '思考模式格式：openai(reasoning effort)、deepseek(thinking type)、qwen(enable_thinking)、none(不支持)'
+        AFTER supports_reasoning
+      `);
+    }
+  },
 ];
 
 /**

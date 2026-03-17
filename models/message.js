@@ -43,6 +43,11 @@ export default class message extends Model {
       type: DataTypes.TEXT,
       allowNull: false
     },
+    reasoning_content: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "思考过程内容（DeepSeek reasoning_content 输出）"
+    },
     content_type: {
       type: DataTypes.BLOB,
       allowNull: true,
