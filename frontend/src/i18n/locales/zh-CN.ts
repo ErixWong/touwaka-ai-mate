@@ -70,6 +70,8 @@ export default {
     timeMinutesAgo: '{n}分钟前',
     timeYesterday: '昨天',
     timeDaysAgo: '{n}天前',
+    // 思考过程
+    thinkingProcess: '思考过程',
     // Tool 消息
     toolArguments: '参数',
     toolResult: '结果',

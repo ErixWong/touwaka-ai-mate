@@ -56,6 +56,7 @@ export interface Message {
   topic_id?: string      // 可选，阶段总结标记
   role: MessageRole
   content: string
+  reasoning_content?: string  // 思考过程内容（DeepSeek R1、GLM-Z1、Qwen3 等支持）
   status: MessageStatus
   metadata?: MessageMetadata
   parent_id?: string

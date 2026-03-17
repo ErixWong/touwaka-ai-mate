@@ -68,6 +68,8 @@ export default {
     timeMinutesAgo: '{n} min ago',
     timeYesterday: 'Yesterday',
     timeDaysAgo: '{n} days ago',
+    // Thinking process
+    thinkingProcess: 'Thinking Process',
     // Tool messages
     toolArguments: 'Arguments',
     toolResult: 'Result',

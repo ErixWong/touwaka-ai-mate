@@ -50,7 +50,7 @@ class MessageController {
           user_id: userId,
         },
         attributes: [
-          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content',
+          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
           'prompt_tokens', 'completion_tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
