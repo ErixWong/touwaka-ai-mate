@@ -1032,6 +1032,22 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 思考内容字段 (Issue #181) ====================
+  
+  // 42. messages.reasoning_content 字段（用于存储模型的思考过程）
+  {
+    name: 'messages.reasoning_content column',
+    check: async (conn) => await hasColumn(conn, 'messages', 'reasoning_content'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN reasoning_content LONGTEXT NULL
+        COMMENT '思考过程内容（DeepSeek reasoning_content 输出）'
+        AFTER content
+      `);
+    }
+  },
 ];
 
 /**
