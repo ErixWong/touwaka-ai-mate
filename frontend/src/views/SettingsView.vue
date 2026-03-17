@@ -732,6 +732,27 @@
               :placeholder="$t('settings.descriptionPlaceholder')"
             ></textarea>
           </div>
+          <!-- 思考模式配置（仅文本/多模态模型） -->
+          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-section-title">
+            {{ $t('settings.thinkingConfig') }}
+          </div>
+          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-item checkbox">
+            <label class="form-label">
+              <input v-model="modelForm.supports_reasoning" type="checkbox" />
+              {{ $t('settings.supportsReasoning') }}
+            </label>
+            <p class="form-hint">{{ $t('settings.supportsReasoningHint') }}</p>
+          </div>
+          <div v-if="(modelForm.model_type === 'text' || modelForm.model_type === 'multimodal') && modelForm.supports_reasoning" class="form-item">
+            <label class="form-label">{{ $t('settings.thinkingFormat') }}</label>
+            <select v-model="modelForm.thinking_format" class="form-input">
+              <option value="none">{{ $t('settings.thinkingFormatNone') }}</option>
+              <option value="openai">{{ $t('settings.thinkingFormatOpenai') }}</option>
+              <option value="deepseek">{{ $t('settings.thinkingFormatDeepseek') }}</option>
+              <option value="qwen">{{ $t('settings.thinkingFormatQwen') }}</option>
+            </select>
+            <p class="form-hint">{{ $t('settings.thinkingFormatHint') }}</p>
+          </div>
           <div class="form-item checkbox">
             <label class="form-label">
               <input v-model="modelForm.is_active" type="checkbox" />
@@ -1588,6 +1609,8 @@ const modelForm = reactive<ModelFormData>({
   cost_per_1k_output: undefined,
   description: '',
   is_active: true,
+  supports_reasoning: false,
+  thinking_format: 'none',
 })
 
 const isModelFormValid = computed(() => {
@@ -2207,6 +2230,8 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.cost_per_1k_input = model.cost_per_1k_input
     modelForm.cost_per_1k_output = model.cost_per_1k_output
     modelForm.description = model.description || ''
+    modelForm.supports_reasoning = model.supports_reasoning ?? false
+    modelForm.thinking_format = model.thinking_format ?? 'none'
     modelForm.is_active = model.is_active
   } else {
     editingModel.value = null
@@ -2221,6 +2246,8 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.cost_per_1k_input = undefined
     modelForm.cost_per_1k_output = undefined
     modelForm.description = ''
+    modelForm.supports_reasoning = false
+    modelForm.thinking_format = 'none'
     modelForm.is_active = true
   }
   showModelDialog.value = true

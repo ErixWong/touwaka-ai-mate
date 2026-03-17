@@ -97,6 +97,9 @@ export interface TokenUsage {
   total_tokens: number
 }
 
+// 思考模式格式类型
+export type ThinkingFormat = 'openai' | 'deepseek' | 'qwen' | 'none'
+
 // AI 模型 (匹配后端 ai_models 表)
 export interface AIModel {
   id: string
@@ -109,6 +112,8 @@ export interface AIModel {
   max_tokens: number           // 模型最大上下文窗口大小
   max_output_tokens?: number   // 每次请求最多生成的 token 数
   embedding_dim?: number
+  supports_reasoning?: boolean       // 是否支持思考/推理模式
+  thinking_format?: ThinkingFormat   // 思考标签识别模式
   cost_per_1k_input: number
   cost_per_1k_output: number
   is_active: boolean
@@ -126,6 +131,8 @@ export interface ModelFormData {
   max_tokens?: number            // 模型最大上下文窗口大小
   max_output_tokens?: number     // 每次请求最多生成的 token 数
   embedding_dim?: number
+  supports_reasoning?: boolean       // 是否支持思考/推理模式
+  thinking_format?: ThinkingFormat   // 思考标签识别模式
   cost_per_1k_input?: number
   cost_per_1k_output?: number
   description?: string
