@@ -234,6 +234,10 @@ export default {
     toolCallConfig: '工具调用配置',
     maxToolRoundsPlaceholder: '留空使用系统默认',
     maxToolRoundsExpertHint: '限制 AI 在单次对话中调用工具的最大轮数，留空则使用系统默认设置',
+    // 专家对话框 Tab 标签
+    expertTabBasic: '基本信息',
+    expertTabPersonality: '人设配置',
+    expertTabModel: '模型配置',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',

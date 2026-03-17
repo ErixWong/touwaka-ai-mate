@@ -232,6 +232,10 @@ export default {
     toolCallConfig: 'Tool Call Configuration',
     maxToolRoundsPlaceholder: 'Leave empty for system default',
     maxToolRoundsExpertHint: 'Limit the maximum rounds of tool calls in a single conversation. Leave empty to use system default.',
+    // Expert Dialog Tab Labels
+    expertTabBasic: 'Basic Info',
+    expertTabPersonality: 'Personality',
+    expertTabModel: 'Model Config',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
