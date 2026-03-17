@@ -31,7 +31,7 @@ export default class task extends Model {
       comment: "工作目录路径（相对路径）"
     },
     status: {
-      type: DataTypes.ENUM('active','archived','deleted'),
+      type: DataTypes.ENUM('active','autonomous','archived','deleted'),
       allowNull: true,
       defaultValue: "active"
     },

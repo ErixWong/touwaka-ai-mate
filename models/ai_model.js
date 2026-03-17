@@ -48,6 +48,18 @@ export default class ai_model extends Model {
       allowNull: true,
       comment: "向量化模型的嵌入维度（仅 embedding 类型模型使用）"
     },
+    supports_reasoning: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: 0,
+      comment: "是否支持思考\/推理模式（DeepSeek、OpenAI o1\/o3、Qwen 等）"
+    },
+    thinking_format: {
+      type: DataTypes.ENUM('openai','deepseek','qwen','none'),
+      allowNull: true,
+      defaultValue: "none",
+      comment: "思考模式格式：openai(reasoning effort)、deepseek(thinking type)、qwen(enable_thinking)、none(不支持)"
+    },
     cost_per_1k_input: {
       type: DataTypes.DECIMAL(10,6),
       allowNull: true,
