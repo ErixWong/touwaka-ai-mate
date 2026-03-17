@@ -26,6 +26,7 @@ class ModelController {
       const models = await this.AiModel.findAll({
         attributes: [
           'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'max_output_tokens', 'embedding_dim',
+          'supports_reasoning', 'thinking_format',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active'
         ],
         include: [{
@@ -74,6 +75,7 @@ class ModelController {
         where: { id },
         attributes: [
           'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'max_output_tokens',
+          'supports_reasoning', 'thinking_format',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active',
           'created_at', 'updated_at'
         ],
@@ -142,6 +144,8 @@ class ModelController {
         max_tokens: body.max_tokens || 65536,
         max_output_tokens: body.max_output_tokens || 32768,
         embedding_dim: body.embedding_dim || null,
+        supports_reasoning: body.supports_reasoning || false,
+        thinking_format: body.thinking_format || 'none',
         cost_per_1k_input: body.cost_per_1k_input || 0,
         cost_per_1k_output: body.cost_per_1k_output || 0,
         description: body.description || null,
@@ -154,6 +158,7 @@ class ModelController {
         where: { id },
         attributes: [
           'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'max_output_tokens', 'embedding_dim',
+          'supports_reasoning', 'thinking_format',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active'
         ],
         include: [{
@@ -223,6 +228,8 @@ class ModelController {
       if (body.max_tokens !== undefined) updates.max_tokens = body.max_tokens;
       if (body.max_output_tokens !== undefined) updates.max_output_tokens = body.max_output_tokens;
       if (body.embedding_dim !== undefined) updates.embedding_dim = body.embedding_dim || null;
+      if (body.supports_reasoning !== undefined) updates.supports_reasoning = body.supports_reasoning;
+      if (body.thinking_format !== undefined) updates.thinking_format = body.thinking_format;
       if (body.cost_per_1k_input !== undefined) updates.cost_per_1k_input = body.cost_per_1k_input;
       if (body.cost_per_1k_output !== undefined) updates.cost_per_1k_output = body.cost_per_1k_output;
       if (body.description !== undefined) updates.description = body.description;
@@ -240,6 +247,7 @@ class ModelController {
         where: { id },
         attributes: [
           'id', 'name', 'model_name', 'provider_id', 'model_type', 'max_tokens', 'max_output_tokens', 'embedding_dim',
+          'supports_reasoning', 'thinking_format',
           'cost_per_1k_input', 'cost_per_1k_output', 'description', 'is_active'
         ],
         include: [{
