@@ -403,7 +403,7 @@ export function useConnection() {
               // 尝试手动解析（处理没有 \n\n 结尾的情况）
               if (remainingEvents.length === 0 && buffer.includes('event:')) {
                 const lines = buffer.split('\n')
-                let currentEvent: Partial<SSEEvent> = {}
+                const currentEvent: Partial<SSEEvent> = {}
                 for (const line of lines) {
                   const colonIndex = line.indexOf(':')
                   if (colonIndex !== -1) {

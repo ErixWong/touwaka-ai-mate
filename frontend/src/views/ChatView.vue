@@ -147,6 +147,8 @@ const isSending = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
 // 流式内容累积器 - 避免依赖旧对象引用
 const streamingContent = ref('')
+// 流式思考内容累积器 - 用于 reasoning_delta 事件
+const streamingReasoningContent = ref('')
 
 // 安全超时：防止 isSending 永久为 true（SSE 流异常终止时）
 let sendingTimeout: ReturnType<typeof setTimeout> | null = null
@@ -320,6 +322,17 @@ const handleSSEEvent = async (event: SSEEvent) => {
         }
         break
 
+      case 'reasoning_delta':
+        // 处理思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
+        if (currentAssistantMessage.value) {
+          streamingReasoningContent.value += data.content
+          chatStore.updateMessageReasoningContent(
+            currentAssistantMessage.value.id,
+            streamingReasoningContent.value
+          )
+        }
+        break
+
       case 'tool_call':
         console.log('Tool call:', data)
         // 在当前消息中显示工具调用信息（包含参数）
@@ -398,6 +411,14 @@ const handleSSEEvent = async (event: SSEEvent) => {
             finalContent,
             'completed'
           )
+          
+          // 保存思考内容（如果有）
+          if (data.reasoning_content || streamingReasoningContent.value) {
+            chatStore.updateMessageReasoningContent(
+              currentAssistantMessage.value.id,
+              data.reasoning_content || streamingReasoningContent.value
+            )
+          }
           
           // 检测技能相关操作，触发刷新事件
           if (finalContent.includes('Skill') && finalContent.includes('successfully')) {
@@ -533,6 +554,7 @@ const handleSendMessage = async (content: string) => {
     status: 'streaming',
   })
   streamingContent.value = ''  // 重置流式内容累积器
+  streamingReasoningContent.value = ''  // 重置思考内容累积器
 
   isSending.value = true
   setSendingTimeoutProtection()  // 设置超时保护

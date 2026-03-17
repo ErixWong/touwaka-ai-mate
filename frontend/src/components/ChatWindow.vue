@@ -80,6 +80,26 @@
             </div>
           </div>
           <div class="message-content">
+            <!-- 思考内容区域（仅 assistant 消息且存在 reasoning_content 时显示） -->
+            <div 
+              v-if="message.role === 'assistant' && message.reasoning_content" 
+              class="reasoning-section"
+              :class="{ expanded: isReasoningExpanded(message.id) }"
+            >
+              <div class="reasoning-header" @click="toggleReasoningExpand(message.id)">
+                <span class="reasoning-icon">💭</span>
+                <span class="reasoning-title">{{ $t('chat.thinkingProcess') || '思考过程' }}</span>
+                <span class="reasoning-expand-btn" :class="{ expanded: isReasoningExpanded(message.id) }">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+              </div>
+              <div v-if="isReasoningExpanded(message.id)" class="reasoning-content">
+                <pre class="reasoning-text">{{ message.reasoning_content }}</pre>
+              </div>
+            </div>
+            <!-- 消息正文 -->
             <div
               class="message-text"
               :class="{ 'streaming-text': message.status === 'streaming' }"
@@ -191,7 +211,7 @@ import DOMPurify from 'dompurify'
 import type { Message } from '@/types'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
-export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status'> & {
+export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status' | 'reasoning_content'> & {
   created_at?: string
   tool_calls?: string | Record<string, unknown>  // 工具调用信息（直接字段，不在 metadata 中）
   metadata?: {
@@ -225,6 +245,7 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const isComposing = ref(false) // 中文输入法组合状态
 const showScrollToBottom = ref(false) // 是否显示滚动到底部按钮
 const expandedTools = ref<Set<string>>(new Set()) // 展开的工具消息ID
+const expandedReasoning = ref<Set<string>>(new Set()) // 展开的思考内容消息ID
 
 // 切换工具展开状态
 const toggleToolExpand = (messageId: string) => {
@@ -238,6 +259,20 @@ const toggleToolExpand = (messageId: string) => {
 // 检查工具是否展开
 const isToolExpanded = (messageId: string): boolean => {
   return expandedTools.value.has(messageId)
+}
+
+// 切换思考内容展开状态
+const toggleReasoningExpand = (messageId: string) => {
+  if (expandedReasoning.value.has(messageId)) {
+    expandedReasoning.value.delete(messageId)
+  } else {
+    expandedReasoning.value.add(messageId)
+  }
+}
+
+// 检查思考内容是否展开
+const isReasoningExpanded = (messageId: string): boolean => {
+  return expandedReasoning.value.has(messageId)
 }
 
 // 快捷指令列表
@@ -1261,6 +1296,82 @@ defineExpose({
 .thinking-indicator {
   color: var(--text-secondary, #666);
   font-style: italic;
+}
+
+/* ==================== 思考内容样式 ==================== */
+.reasoning-section {
+  margin-bottom: 12px;
+  background: var(--reasoning-bg, #f8f9fa);
+  border-radius: 12px;
+  border: 1px solid var(--reasoning-border, #e0e0e0);
+  overflow: hidden;
+}
+
+.reasoning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.reasoning-header:hover {
+  background: var(--reasoning-header-hover, #f0f0f0);
+}
+
+.reasoning-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.reasoning-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  flex: 1;
+}
+
+.reasoning-expand-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #666);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.reasoning-expand-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.reasoning-expand-btn.expanded {
+  transform: rotate(180deg);
+}
+
+.reasoning-content {
+  padding: 0 14px 12px 14px;
+  animation: slideDown 0.2s ease;
+}
+
+.reasoning-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--code-bg, #fff);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--text-primary, #333);
+  font-family: inherit;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #e8e8e8);
 }
 
 .error-text {
