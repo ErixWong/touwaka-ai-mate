@@ -1181,6 +1181,50 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 解决方案模块 (Issue #212) ====================
+
+  // 49. solutions 表
+  {
+    name: 'solutions table',
+    check: async (conn) => await hasTable(conn, 'solutions'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS solutions (
+          id VARCHAR(32) PRIMARY KEY,
+          name VARCHAR(200) NOT NULL COMMENT '解决方案名称',
+          slug VARCHAR(100) UNIQUE COMMENT 'URL友好标识',
+          description TEXT COMMENT '简要描述（适用场景）',
+          guide LONGTEXT COMMENT '执行指南（Markdown）',
+          tags JSON COMMENT '标签数组',
+          is_active BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_slug (slug),
+          INDEX idx_active (is_active)
+        ) COMMENT='解决方案表'
+      `);
+    }
+  },
+
+  // 50. tasks.solution_id 字段（关联解决方案）
+  {
+    name: 'tasks.solution_id column',
+    check: async (conn) => await hasColumn(conn, 'tasks', 'solution_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE tasks
+        ADD COLUMN solution_id VARCHAR(32) NULL
+        COMMENT '关联的解决方案ID'
+        AFTER last_executed_at
+      `);
+      await safeExecute(conn, `ALTER TABLE tasks ADD INDEX idx_solution (solution_id)`);
+      await safeExecute(conn, `
+        ALTER TABLE tasks ADD CONSTRAINT fk_task_solution
+        FOREIGN KEY (solution_id) REFERENCES solutions(id) ON DELETE SET NULL
+      `);
+    }
+  },
 ];
 
 /**

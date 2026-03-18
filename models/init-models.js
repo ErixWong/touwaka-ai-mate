@@ -26,6 +26,7 @@ import _role from  "./role.js";
 import _skill_parameter from  "./skill_parameter.js";
 import _skill_tool from  "./skill_tool.js";
 import _skill from  "./skill.js";
+import _solution from  "./solution.js";
 import _system_setting from  "./system_setting.js";
 import _task_token from  "./task_token.js";
 import _task_token_access_log from  "./task_token_access_log.js";
@@ -62,6 +63,7 @@ export default function initModels(sequelize) {
   const skill_parameter = _skill_parameter.init(sequelize, DataTypes);
   const skill_tool = _skill_tool.init(sequelize, DataTypes);
   const skill = _skill.init(sequelize, DataTypes);
+  const solution = _solution.init(sequelize, DataTypes);
   const system_setting = _system_setting.init(sequelize, DataTypes);
   const task_token = _task_token.init(sequelize, DataTypes);
   const task_token_access_log = _task_token_access_log.init(sequelize, DataTypes);
@@ -145,6 +147,8 @@ export default function initModels(sequelize) {
   skill.hasMany(skill_parameter, { as: "skill_parameters", foreignKey: "skill_id"});
   skill_tool.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
   skill.hasMany(skill_tool, { as: "skill_tools", foreignKey: "skill_id"});
+  task.belongsTo(solution, { as: "solution", foreignKey: "solution_id"});
+  solution.hasMany(task, { as: "tasks", foreignKey: "solution_id"});
   task_token_access_log.belongsTo(task_token, { as: "token", foreignKey: "token_id"});
   task_token.hasMany(task_token_access_log, { as: "task_token_access_logs", foreignKey: "token_id"});
   task_token.belongsTo(task, { as: "task", foreignKey: "task_id"});
@@ -195,6 +199,7 @@ export default function initModels(sequelize) {
     skill_parameter,
     skill_tool,
     skill,
+    solution,
     system_setting,
     task_token,
     task_token_access_log,
