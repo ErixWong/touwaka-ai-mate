@@ -15,6 +15,9 @@ export default (controller) => {
   // 按 expert + user 获取消息列表（主要入口，需要认证）
   router.get('/expert/:expertId', authenticate(), controller.listByExpert.bind(controller));
 
+  // 获取指定消息及其之前的 N 条消息（需要认证）- 用于 SSE 完成后获取真实消息
+  router.get('/expert/:expertId/with-before/:messageId', authenticate(), controller.listWithBefore.bind(controller));
+
   // 获取消息列表（旧 API，按 topic，保留兼容）
   router.get('/', optionalAuth(), controller.list.bind(controller));
 
