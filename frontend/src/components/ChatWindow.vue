@@ -80,6 +80,74 @@
             </div>
           </div>
           <div class="message-content">
+            <!-- 工具调用卡片（仅 assistant 消息且存在 tool_calls 时显示，用于历史数据兼容） -->
+            <div
+              v-if="message.role === 'assistant' && message.tool_calls"
+              class="tool-calls-section"
+            >
+              <div
+                v-for="(toolCall, index) in parseToolCallsToArray(message)"
+                :key="`${message.id}-tool-${index}`"
+                class="tool-message-card embedded"
+                :class="{ expanded: isToolExpanded(`${message.id}-tool-${index}`) }"
+              >
+                <!-- 工具消息头部 -->
+                <div class="tool-header" @click="toggleToolExpand(`${message.id}-tool-${index}`)">
+                  <div class="tool-header-main">
+                    <span class="tool-icon">🔧</span>
+                    <span class="tool-name">{{ toolCall.name || toolCall.tool_name || 'unknown_tool' }}</span>
+                    <span class="tool-meta">
+                      <span class="tool-time">{{ formatToolCallTime(toolCall) }}</span>
+                      <span v-if="toolCall.duration" class="tool-duration">{{ toolCall.duration }}ms</span>
+                    </span>
+                    <span class="tool-status" :class="toolCall.success !== false ? 'success' : 'error'">
+                      {{ toolCall.success !== false ? '✓' : '✗' }}
+                    </span>
+                    <span class="tool-expand-btn" :class="{ expanded: isToolExpanded(`${message.id}-tool-${index}`) }">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </span>
+                  </div>
+                  <!-- 上下文预览 -->
+                  <div v-if="toolCall.context" class="tool-context-line">
+                    <span class="tool-context-icon">💭</span>
+                    <span class="tool-context-text">{{ toolCall.context }}</span>
+                  </div>
+                </div>
+                <!-- 展开状态：显示参数和结果 -->
+                <div v-if="isToolExpanded(`${message.id}-tool-${index}`)" class="tool-details">
+                  <div v-if="toolCall.arguments" class="tool-section">
+                    <div class="tool-section-title">{{ $t('chat.toolArguments') || '参数' }}</div>
+                    <pre class="tool-section-content">{{ formatToolCallArguments(toolCall) }}</pre>
+                  </div>
+                  <div v-if="toolCall.result" class="tool-section">
+                    <div class="tool-section-title">{{ $t('chat.toolResult') || '结果' }}</div>
+                    <pre class="tool-section-content">{{ formatToolCallResult(toolCall) }}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- 思考内容区域（仅 assistant 消息且存在 reasoning_content 时显示） -->
+            <div
+              v-if="message.role === 'assistant' && message.reasoning_content"
+              class="reasoning-section"
+              :class="{ expanded: isReasoningExpanded(message.id) }"
+            >
+              <div class="reasoning-header" @click="toggleReasoningExpand(message.id)">
+                <span class="reasoning-icon">💭</span>
+                <span class="reasoning-title">{{ $t('chat.thinkingProcess') || '思考过程' }}</span>
+                <span class="reasoning-expand-btn" :class="{ expanded: isReasoningExpanded(message.id) }">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+              </div>
+              <div v-if="isReasoningExpanded(message.id)" class="reasoning-content">
+                <pre class="reasoning-text">{{ message.reasoning_content }}</pre>
+              </div>
+            </div>
+            <!-- 消息正文 -->
             <div
               class="message-text"
               :class="{ 'streaming-text': message.status === 'streaming' }"
@@ -191,9 +259,8 @@ import DOMPurify from 'dompurify'
 import type { Message } from '@/types'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
-export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status'> & {
+export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status' | 'reasoning_content' | 'tool_calls'> & {
   created_at?: string
-  tool_calls?: string | Record<string, unknown>  // 工具调用信息（直接字段，不在 metadata 中）
   metadata?: {
     [key: string]: unknown
   }
@@ -225,6 +292,7 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const isComposing = ref(false) // 中文输入法组合状态
 const showScrollToBottom = ref(false) // 是否显示滚动到底部按钮
 const expandedTools = ref<Set<string>>(new Set()) // 展开的工具消息ID
+const expandedReasoning = ref<Set<string>>(new Set()) // 展开的思考内容消息ID
 
 // 切换工具展开状态
 const toggleToolExpand = (messageId: string) => {
@@ -238,6 +306,20 @@ const toggleToolExpand = (messageId: string) => {
 // 检查工具是否展开
 const isToolExpanded = (messageId: string): boolean => {
   return expandedTools.value.has(messageId)
+}
+
+// 切换思考内容展开状态
+const toggleReasoningExpand = (messageId: string) => {
+  if (expandedReasoning.value.has(messageId)) {
+    expandedReasoning.value.delete(messageId)
+  } else {
+    expandedReasoning.value.add(messageId)
+  }
+}
+
+// 检查思考内容是否展开
+const isReasoningExpanded = (messageId: string): boolean => {
+  return expandedReasoning.value.has(messageId)
 }
 
 // 快捷指令列表
@@ -301,22 +383,6 @@ const MERMAID_CACHE_MAX_SIZE = 50
 
 // 正在渲染 Mermaid 的消息 ID 集合
 const renderingMermaid = ref<Set<string>>(new Set())
-
-// 缓存大小限制
-const MAX_CACHE_SIZE = 100
-
-/**
- * 清理 Mermaid 缓存（LRU 策略）
- */
-const cleanupMermaidCache = () => {
-  if (mermaidRenderedHtml.value.size > MAX_CACHE_SIZE) {
-    const keysToDelete = Array.from(mermaidRenderedHtml.value.keys()).slice(0, mermaidRenderedHtml.value.size - MAX_CACHE_SIZE)
-    for (const key of keysToDelete) {
-      mermaidRenderedHtml.value.delete(key)
-    }
-    mermaidRenderedHtml.value = new Map(mermaidRenderedHtml.value)
-  }
-}
 
 // 检测是否在底部（距离底部 100px 以内视为在底部）
 const checkIsAtBottom = () => {
@@ -710,9 +776,83 @@ const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
     const toolCalls = typeof message.tool_calls === 'string'
       ? JSON.parse(message.tool_calls)
       : message.tool_calls
+    
     return toolCalls as ToolCallData
-  } catch {
+  } catch (e) {
+    console.error('[ChatWindow] parseToolCalls error:', e, 'tool_calls:', message.tool_calls)
     return null
+  }
+}
+
+/**
+ * 解析 tool_calls 字段为数组（支持单个对象或数组）
+ */
+const parseToolCallsToArray = (message: ChatMessage): ToolCallData[] => {
+  if (!message.tool_calls) return []
+  
+  try {
+    const toolCalls = typeof message.tool_calls === 'string'
+      ? JSON.parse(message.tool_calls)
+      : message.tool_calls
+    
+    // 如果是数组，直接返回
+    if (Array.isArray(toolCalls)) {
+      return toolCalls as ToolCallData[]
+    }
+    // 如果是单个对象，包装成数组
+    return [toolCalls as ToolCallData]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 格式化工具调用时间（用于嵌入式的工具卡片）
+ */
+const formatToolCallTime = (toolCall: ToolCallData): string => {
+  if (!toolCall.timestamp) {
+    return '--:--:--'
+  }
+  const date = new Date(toolCall.timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/**
+ * 格式化工具调用参数（用于嵌入式的工具卡片）
+ */
+const formatToolCallArguments = (toolCall: ToolCallData): string => {
+  if (!toolCall.arguments) return ''
+  try {
+    const jsonStr = JSON.stringify(toolCall.arguments, null, 2)
+    return addLineNumbers(jsonStr)
+  } catch {
+    return addLineNumbers(String(toolCall.arguments))
+  }
+}
+
+/**
+ * 格式化工具调用结果（用于嵌入式的工具卡片）
+ */
+const formatToolCallResult = (toolCall: ToolCallData): string => {
+  if (!toolCall.result) return ''
+  
+  // 尝试解析 JSON 格式化显示
+  try {
+    const parsed = typeof toolCall.result === 'string'
+      ? JSON.parse(toolCall.result)
+      : toolCall.result
+    const jsonStr = JSON.stringify(parsed, null, 2)
+    return addLineNumbers(jsonStr)
+  } catch {
+    // 非JSON，直接显示（截断过长的内容）
+    const resultStr = typeof toolCall.result === 'string'
+      ? toolCall.result
+      : JSON.stringify(toolCall.result)
+    const maxLength = 5000
+    if (resultStr.length > maxLength) {
+      return addLineNumbers(resultStr.substring(0, maxLength) + '\n...(已截断)')
+    }
+    return addLineNumbers(resultStr)
   }
 }
 
@@ -782,17 +922,6 @@ const formatToolTime = (message: ChatMessage): string => {
   
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-/**
- * 截断上下文预览
- * @param text 上下文文本
- * @param maxLength 最大长度（默认60字符）
- */
-const truncateContext = (text: string, maxLength: number = 60): string => {
-  if (!text) return ''
-  if (text.length <= maxLength) return text
-  return text.substring(0, maxLength) + '...'
 }
 
 /**
@@ -1263,6 +1392,82 @@ defineExpose({
   font-style: italic;
 }
 
+/* ==================== 思考内容样式 ==================== */
+.reasoning-section {
+  margin-bottom: 12px;
+  background: var(--reasoning-bg, #f8f9fa);
+  border-radius: 12px;
+  border: 1px solid var(--reasoning-border, #e0e0e0);
+  overflow: hidden;
+}
+
+.reasoning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.reasoning-header:hover {
+  background: var(--reasoning-header-hover, #f0f0f0);
+}
+
+.reasoning-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.reasoning-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  flex: 1;
+}
+
+.reasoning-expand-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #666);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.reasoning-expand-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.reasoning-expand-btn.expanded {
+  transform: rotate(180deg);
+}
+
+.reasoning-content {
+  padding: 0 14px 12px 14px;
+  animation: slideDown 0.2s ease;
+}
+
+.reasoning-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--code-bg, #fff);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--text-primary, #333);
+  font-family: inherit;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #e8e8e8);
+}
+
 .error-text {
   color: var(--error-color, #c62828);
   font-size: 12px;
@@ -1727,6 +1932,57 @@ defineExpose({
   padding-right: 12px;
   margin-right: 8px;
   border-right: 1px solid #3e3e3e;
+}
+
+/* ==================== 嵌入式工具调用卡片样式 ==================== */
+.tool-calls-section {
+  margin-bottom: 12px;
+}
+
+.tool-message-card.embedded {
+  background: var(--tool-card-bg, #f8f9fa);
+  border: 1px solid var(--tool-card-border, #e0e0e0);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  max-width: 100%;
+}
+
+.tool-message-card.embedded:last-child {
+  margin-bottom: 0;
+}
+
+.tool-message-card.embedded .tool-header-main {
+  flex-wrap: wrap;
+}
+
+.tool-message-card.embedded .tool-name {
+  font-size: 13px;
+}
+
+.tool-message-card.embedded .tool-expand-btn {
+  width: 18px;
+  height: 18px;
+}
+
+.tool-message-card.embedded .tool-expand-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tool-message-card.embedded .tool-context-line {
+  font-size: 13px;
+}
+
+.tool-message-card.embedded .tool-details {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.tool-message-card.embedded .tool-section-content {
+  font-size: 11px;
+  padding: 8px 10px;
+  max-height: 150px;
 }
 
 /* ==================== Mermaid 图表样式 ==================== */

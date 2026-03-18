@@ -54,6 +54,7 @@ class ModelController {
           provider_name: providerName,
           provider_id: providerId,
           is_active: !!rest.is_active,
+          supports_reasoning: !!rest.supports_reasoning,
         };
       });
 
@@ -97,6 +98,7 @@ class ModelController {
         ...model,
         provider_name: model.provider?.name,
         is_active: !!model.is_active,
+        supports_reasoning: !!model.supports_reasoning,
       });
     } catch (error) {
       logger.error('Get model error:', error);
@@ -175,6 +177,7 @@ class ModelController {
         ...newModel,
         provider_name: newModel.provider?.name,
         is_active: !!newModel.is_active,
+        supports_reasoning: !!newModel.supports_reasoning,
       }, '模型创建成功', 201);
     } catch (error) {
       logger.error('Create model error:', error);
@@ -264,6 +267,7 @@ class ModelController {
         ...updatedModel,
         provider_name: updatedModel.provider?.name,
         is_active: !!updatedModel.is_active,
+        supports_reasoning: !!updatedModel.supports_reasoning,
       }, '模型更新成功');
     } catch (error) {
       logger.error('Update model error:', error);

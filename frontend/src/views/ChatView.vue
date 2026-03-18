@@ -46,12 +46,13 @@
                 ref="chatWindowRef"
                 :messages="chatStore.sortedMessages"
                 :is-loading="isSending"
+                :disabled="isAutonomousMode"
                 :has-more-messages="chatStore.hasMoreMessages"
                 :is-loading-more="chatStore.isLoadingMore"
                 :expert-avatar="currentExpert?.avatar_base64"
                 :expert-avatar-large="currentExpert?.avatar_large_base64"
                 :show-command-hints="is_skill_studio"
-                :custom-placeholder="is_skill_studio ? $t('chat.commandHint') : undefined"
+                :custom-placeholder="autonomousPlaceholder"
                 @send="handleSendMessage"
                 @retry="handleRetry"
                 @load-more="loadMoreMessages"
@@ -145,8 +146,12 @@ const {
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 const isSending = ref(false)
 const currentAssistantMessage = ref<Message | null>(null)
+// 当前用户消息（用于 SSE 完成后获取新消息）
+const currentUserMessageId = ref<string | null>(null)
 // 流式内容累积器 - 避免依赖旧对象引用
 const streamingContent = ref('')
+// 流式思考内容累积器 - 用于 reasoning_delta 事件
+const streamingReasoningContent = ref('')
 
 // 安全超时：防止 isSending 永久为 true（SSE 流异常终止时）
 let sendingTimeout: ReturnType<typeof setTimeout> | null = null
@@ -218,6 +223,19 @@ const currentModel = computed(() => {
   return undefined
 })
 
+// 自主运行模式 - 当任务状态为 autonomous 时禁用用户输入
+const isAutonomousMode = computed(() => {
+  return taskStore.currentTask?.status === 'autonomous'
+})
+
+// 自主运行模式下的提示文字
+const autonomousPlaceholder = computed(() => {
+  if (isAutonomousMode.value) {
+    return t('chat.autonomousModeHint') || 'AI 正在自主执行任务，输入已禁用...'
+  }
+  return is_skill_studio.value ? t('chat.commandHint') : undefined
+})
+
 // 面板比例相关 - 使用 panelStore 的分屏模式
 const chatPaneSize = computed(() => {
   return 100 - panelStore.panelSize
@@ -255,6 +273,175 @@ const loadMoreMessages = async () => {
 // 记录上一次收到的最新消息 ID，用于避免重复拉取
 const lastKnownMessageId = ref<string | null>(null)
 
+// ==================== SSE Complete 事件处理 ====================
+
+interface CompleteEventData {
+  message_id?: string
+  content?: string
+  reasoning_content?: string
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+  model?: string
+}
+
+/**
+ * 使用服务端返回的内容更新临时消息（fallback 方案）
+ */
+const updateTempMessageWithServerData = (data: CompleteEventData) => {
+  if (!currentAssistantMessage.value) return
+  
+  const finalContent = data.content || streamingContent.value
+  chatStore.updateMessageContent(currentAssistantMessage.value.id, finalContent, 'completed')
+  
+  if (data.reasoning_content || streamingReasoningContent.value) {
+    chatStore.updateMessageReasoningContent(
+      currentAssistantMessage.value.id,
+      data.reasoning_content || streamingReasoningContent.value
+    )
+  }
+  
+  if (data.usage && data.usage.prompt_tokens !== undefined && data.usage.completion_tokens !== undefined && data.usage.total_tokens !== undefined) {
+    chatStore.updateMessageMetadata(currentAssistantMessage.value.id, {
+      tokens: {
+        prompt_tokens: data.usage.prompt_tokens,
+        completion_tokens: data.usage.completion_tokens,
+        total_tokens: data.usage.total_tokens,
+      },
+      model: data.model,
+    })
+  }
+}
+
+/**
+ * 从数据库获取消息并替换临时消息
+ */
+const replaceTempMessagesWithDb = async (messageId: string): Promise<boolean> => {
+  if (!currentExpertId.value || !currentAssistantMessage.value) return false
+  
+  try {
+    const messagesFromDb = await messageApi.getMessagesWithBefore(
+      currentExpertId.value,
+      messageId,
+      { limit: 10 }
+    )
+    
+    if (!messagesFromDb || messagesFromDb.length === 0) return false
+    
+    const assistantMsgIndex = messagesFromDb.findIndex(m => m.id === messageId)
+    if (assistantMsgIndex === -1) return false
+    
+    const newMessages = messagesFromDb.slice(0, assistantMsgIndex + 1)
+    
+    // 移除临时消息
+    const tempUserId = currentUserMessageId.value
+    const tempAssistantId = currentAssistantMessage.value.id
+    const tempUserIndex = tempUserId ? chatStore.messages.findIndex(m => m.id === tempUserId) : -1
+    const tempAssistantIndex = tempAssistantId ? chatStore.messages.findIndex(m => m.id === tempAssistantId) : -1
+    
+    if (tempUserIndex !== -1 && tempAssistantIndex !== -1) {
+      // 移除临时消息
+      const idsToRemove = [tempAssistantId, tempUserId].filter(Boolean)
+      for (const id of idsToRemove) {
+        chatStore.removeMessage(id!)
+      }
+      
+      // 添加数据库消息
+      for (const msg of newMessages) {
+        const dbMessage: Message = {
+          id: msg.id,
+          expert_id: msg.expert_id,
+          user_id: msg.user_id,
+          topic_id: msg.topic_id,
+          role: msg.role,
+          content: msg.content,
+          reasoning_content: msg.reasoning_content,
+          tool_calls: msg.tool_calls,
+          status: 'completed',
+          metadata: msg.metadata,
+          created_at: msg.created_at,
+          updated_at: msg.updated_at || msg.created_at,
+        }
+        chatStore.messages.push(dbMessage)
+      }
+      
+      console.log('[ChatView] Replaced temp messages with DB messages:', newMessages.length)
+      return true
+    } else {
+      // 找不到临时消息，直接添加数据库消息
+      console.log('[ChatView] Temp messages not found, adding DB messages directly')
+      for (const msg of newMessages) {
+        chatStore.addLocalMessage({ ...msg, status: 'completed' })
+      }
+      return true
+    }
+  } catch (error) {
+    console.error('[ChatView] Failed to fetch messages from DB:', error)
+    return false
+  }
+}
+
+/**
+ * 检测技能相关操作，触发刷新事件
+ */
+const detectAndEmitSkillEvents = (content: string) => {
+  if (!content.includes('Skill') || !content.includes('successfully')) return
+  
+  import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
+    if (content.includes('registered') || content.includes('updated')) {
+      eventBus.emit(EVENTS.SKILL_REGISTERED)
+    } else if (content.includes('assigned')) {
+      eventBus.emit(EVENTS.SKILL_ASSIGNED)
+    } else if (content.includes('unassigned')) {
+      eventBus.emit(EVENTS.SKILL_UNASSIGNED)
+    } else if (content.includes('enabled') || content.includes('disabled')) {
+      eventBus.emit(EVENTS.SKILL_TOGGLED)
+    } else if (content.includes('deleted')) {
+      eventBus.emit(EVENTS.SKILL_DELETED)
+    }
+  })
+}
+
+/**
+ * 处理 SSE complete 事件
+ */
+const handleCompleteEvent = async (data: CompleteEventData) => {
+  if (!currentAssistantMessage.value) {
+    console.log('[ChatView] Setting isSending to false on complete event (no current message)')
+    clearSendingTimeout()
+    isSending.value = false
+    return
+  }
+  
+  // 更新已知的消息 ID，避免心跳检测误判导致刷新
+  if (data.message_id) {
+    lastKnownMessageId.value = data.message_id
+  }
+  
+  // 尝试从数据库获取消息
+  if (data.message_id && currentExpertId.value) {
+    const success = await replaceTempMessagesWithDb(data.message_id)
+    if (!success) {
+      // 数据库获取失败，使用服务端返回的内容
+      console.log('[ChatView] Failed to get DB messages, using server data')
+      updateTempMessageWithServerData(data)
+    }
+  } else {
+    // 没有 message_id，使用服务端返回的内容
+    updateTempMessageWithServerData(data)
+  }
+  
+  // 清除用户消息 ID
+  currentUserMessageId.value = null
+  
+  // 检测技能相关操作
+  const finalContent = data.content || streamingContent.value
+  detectAndEmitSkillEvents(finalContent)
+  
+  currentAssistantMessage.value = null
+  console.log('[ChatView] Setting isSending to false on complete event')
+  clearSendingTimeout()
+  isSending.value = false
+}
+
 // 处理 SSE 事件
 const handleSSEEvent = async (event: SSEEvent) => {
   // 处理心跳事件
@@ -262,6 +449,17 @@ const handleSSEEvent = async (event: SSEEvent) => {
     try {
       const data = JSON.parse(event.data)
       const serverLatestMessageId = data.latest_message_id
+      
+      // 如果正在发送消息，跳过心跳检测触发的刷新
+      // 原因：SSE 过程中后端会保存 tool 消息，心跳检测会发现这些消息并触发刷新
+      // 但我们希望在 SSE 完成后统一从数据库获取消息，避免重复刷新
+      if (isSending.value) {
+        // 只更新 lastKnownMessageId，不触发刷新
+        if (serverLatestMessageId) {
+          lastKnownMessageId.value = serverLatestMessageId
+        }
+        return
+      }
       
       // 如果服务端有消息 ID，且与本地已知的不同
       if (serverLatestMessageId && serverLatestMessageId !== lastKnownMessageId.value) {
@@ -320,37 +518,28 @@ const handleSSEEvent = async (event: SSEEvent) => {
         }
         break
 
+      case 'reasoning_delta':
+        // 处理思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
+        if (currentAssistantMessage.value) {
+          streamingReasoningContent.value += data.content
+          chatStore.updateMessageReasoningContent(
+            currentAssistantMessage.value.id,
+            streamingReasoningContent.value
+          )
+        }
+        break
+
       case 'tool_call':
+        // 工具调用开始 - 只显示简单的进度提示
+        // 详细的工具调用信息会在 SSE 完成后从数据库获取（role: 'tool' 消息）
         console.log('Tool call:', data)
-        // 在当前消息中显示工具调用信息（包含参数）
         if (currentAssistantMessage.value && data.toolCalls) {
-          const toolDetails = data.toolCalls.map((tc: any) => {
-            const name = tc.displayName || tc.function?.name || tc.name || 'unknown'
-            // 尝试解析参数
-            let params = ''
-            if (tc.function?.arguments) {
-              try {
-                const args = typeof tc.function.arguments === 'string'
-                  ? JSON.parse(tc.function.arguments)
-                  : tc.function.arguments
-                // 显示关键参数（截断过长的值）
-                const keys = Object.keys(args).slice(0, 3)
-                if (keys.length > 0) {
-                  const summary = keys.map(k => {
-                    const val = String(args[k])
-                    const truncated = val.length > 30 ? val.substring(0, 30) + '...' : val
-                    return `${k}=${truncated}`
-                  }).join(', ')
-                  params = ` (${summary})`
-                }
-              } catch {
-                // 解析失败则忽略参数
-              }
-            }
-            return `🔧 ${name}${params}`
-          }).join('\n')
+          const toolNames = data.toolCalls.map((tc: { displayName?: string; function?: { name?: string }; name?: string }) => {
+            return tc.displayName || tc.function?.name || tc.name || 'unknown'
+          }).join(', ')
           
-          streamingContent.value += `\n\n${toolDetails}\n`
+          // 只显示简单的进度提示，不显示详细参数
+          streamingContent.value += `\n\n🔧 正在调用工具: ${toolNames}...\n`
           chatStore.updateMessageContent(
             currentAssistantMessage.value.id,
             streamingContent.value
@@ -359,76 +548,19 @@ const handleSSEEvent = async (event: SSEEvent) => {
         break
 
       case 'tool_result':
-        // 单个工具执行完成，实时显示结果
+        // 单个工具执行完成 - 只显示简单的状态提示
         console.log('Tool result:', data)
-        if (currentAssistantMessage.value && data.result) {
-          const r = data.result
-          const name = r.toolName || 'unknown'
-          const success = r.success ? '✅' : '❌'
-          const duration = r.duration ? ` (${r.duration}ms)` : ''
-          const resultText = `${success} ${name}${duration}\n`
-          
-          streamingContent.value += `\n${resultText}`
-          chatStore.updateMessageContent(
-            currentAssistantMessage.value.id,
-            streamingContent.value
-          )
-        }
+        // 不再显示详细结果，等 SSE 完成后从数据库获取
         break
 
       case 'tool_results':
-        // 所有工具执行完成（批量结果，保留向后兼容）
+        // 所有工具执行完成（批量结果）
         console.log('Tool results:', data)
-        // 不再重复显示，因为 tool_result 已经实时显示了
+        // 不再显示详细结果，等 SSE 完成后从数据库获取
         break
 
       case 'complete':
-        console.log('SSE complete event received:', data)
-        if (currentAssistantMessage.value) {
-          if (data.usage) {
-            chatStore.updateMessageMetadata(currentAssistantMessage.value.id, {
-              tokens: data.usage,
-              model: data.model,
-            })
-          }
-          // 使用服务端返回的完整内容，或累积的内容
-          const finalContent = data.content || streamingContent.value
-          chatStore.updateMessageContent(
-            currentAssistantMessage.value.id,
-            finalContent,
-            'completed'
-          )
-          
-          // 检测技能相关操作，触发刷新事件
-          if (finalContent.includes('Skill') && finalContent.includes('successfully')) {
-            if (finalContent.includes('registered') || finalContent.includes('updated')) {
-              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-                eventBus.emit(EVENTS.SKILL_REGISTERED)
-              })
-            } else if (finalContent.includes('assigned')) {
-              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-                eventBus.emit(EVENTS.SKILL_ASSIGNED)
-              })
-            } else if (finalContent.includes('unassigned')) {
-              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-                eventBus.emit(EVENTS.SKILL_UNASSIGNED)
-              })
-            } else if (finalContent.includes('enabled') || finalContent.includes('disabled')) {
-              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-                eventBus.emit(EVENTS.SKILL_TOGGLED)
-              })
-            } else if (finalContent.includes('deleted')) {
-              import('@/utils/eventBus').then(({ eventBus, EVENTS }) => {
-                eventBus.emit(EVENTS.SKILL_DELETED)
-              })
-            }
-          }
-          
-          currentAssistantMessage.value = null
-        }
-        console.log('[ChatView] Setting isSending to false on complete event')
-        clearSendingTimeout()
-        isSending.value = false
+        await handleCompleteEvent(data)
         break
 
       case 'error':
@@ -524,6 +656,8 @@ const handleSendMessage = async (content: string) => {
     content,
     status: 'completed',
   })
+  // 保存用户消息 ID，用于 SSE 完成后获取新消息
+  currentUserMessageId.value = userMessage.id
 
   // 添加助手消息占位（流式）
   currentAssistantMessage.value = chatStore.addLocalMessage({
@@ -533,6 +667,7 @@ const handleSendMessage = async (content: string) => {
     status: 'streaming',
   })
   streamingContent.value = ''  // 重置流式内容累积器
+  streamingReasoningContent.value = ''  // 重置思考内容累积器
 
   isSending.value = true
   setSendingTimeoutProtection()  // 设置超时保护

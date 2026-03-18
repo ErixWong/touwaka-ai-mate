@@ -56,6 +56,8 @@ export interface Message {
   topic_id?: string      // 可选，阶段总结标记
   role: MessageRole
   content: string
+  reasoning_content?: string  // 思考过程内容（DeepSeek R1、GLM-Z1、Qwen3 等支持）
+  tool_calls?: string | ToolCallData[]  // 工具调用信息（直接字段，JSON 字符串或对象数组）
   status: MessageStatus
   metadata?: MessageMetadata
   parent_id?: string
@@ -269,13 +271,80 @@ export interface ChatResponse {
 }
 
 // SSE 事件类型
-export type SSEEventType = 'message_start' | 'content_delta' | 'message_complete' | 'error'
+export type SSEEventType =
+  | 'connected'
+  | 'start'
+  | 'delta'
+  | 'reasoning_delta'
+  | 'tool_call'
+  | 'tool_result'
+  | 'tool_results'
+  | 'complete'
+  | 'error'
+  | 'heartbeat'
+
+// SSE 事件数据类型
+export interface SSEConnectedData {
+  expert_id: string
+  user_id: string
+  timestamp: string
+}
+
+export interface SSEStartData {
+  is_new_topic?: boolean
+  topic_id?: string
+}
+
+export interface SSEDeltaData {
+  content: string
+}
+
+export interface SSEReasoningDeltaData {
+  content: string
+}
+
+export interface SSEToolCallData {
+  toolCalls: Array<{
+    name?: string
+    displayName?: string
+    function?: { name?: string }
+    arguments?: Record<string, unknown>
+  }>
+}
+
+export interface SSEToolResultData {
+  tool_call_id: string
+  success: boolean
+  result?: unknown
+}
+
+export interface SSEToolResultsData {
+  results: SSEToolResultData[]
+}
+
+export interface SSECompleteData {
+  message_id?: string
+  content?: string
+  reasoning_content?: string
+  usage?: TokenUsage
+  model?: string
+}
+
+export interface SSEErrorData {
+  message: string
+  code?: string
+  details?: Record<string, unknown>
+}
+
+export interface SSEHeartbeatData {
+  latest_message_id?: string
+  timestamp: string
+}
 
 // SSE 事件
 export interface SSEEvent {
-  id: string
-  type: SSEEventType
-  data: unknown
+  event: SSEEventType
+  data: string
 }
 
 // ============================================
@@ -644,8 +713,12 @@ export interface ExpertSimple {
 
 /**
  * 任务状态
+ * - active: 正常活跃状态
+ * - autonomous: 自动运行模式（AI 自主执行，禁止用户输入）
+ * - archived: 已归档
+ * - deleted: 已删除
  */
-export type TaskStatus = 'active' | 'archived' | 'deleted'
+export type TaskStatus = 'active' | 'autonomous' | 'archived' | 'deleted'
 
 /**
  * 任务（匹配后端 tasks 表）
@@ -656,6 +729,9 @@ export interface Task {
   title: string
   description?: string | null
   workspace_path: string       // 工作空间目录路径
+  expert_id?: string | null    // 关联的专家ID（自主任务执行时使用）
+  topic_id?: string | null     // 关联的话题ID（自主任务执行时的对话）
+  last_executed_at?: string | null  // 最后执行时间（自主任务执行器更新）
   status: TaskStatus
   created_by: string           // 创建者用户ID
   created_at: string
