@@ -813,6 +813,18 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     noExpertForAutonomous: '请先选择一个专家再开启自动运行模式',
   },
 
+  // 解决方案
+  solutions: {
+    title: '解决方案',
+    searchPlaceholder: '搜索解决方案...',
+    empty: '暂无解决方案',
+    notFound: '解决方案不存在',
+    description: '描述',
+    guide: '执行指南',
+    createTask: '创建任务',
+    createTaskFailed: '创建任务失败',
+  },
+
   // 知识库
   knowledgeBase: {
     title: '知识库',

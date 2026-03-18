@@ -27,6 +27,11 @@ export default class provider extends Model {
       defaultValue: 60000,
       comment: "请求超时时间（毫秒）"
     },
+    user_agent: {
+      type: DataTypes.STRING(256),
+      allowNull: true,
+      comment: "HTTP 请求 User-Agent 头（NULL 则使用默认值）"
+    },
     is_active: {
       type: DataTypes.BOOLEAN,
       allowNull: true,

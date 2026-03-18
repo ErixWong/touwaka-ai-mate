@@ -819,6 +819,18 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     noExpertForAutonomous: 'Please select an expert before enabling autonomous mode',
   },
 
+  // Solutions
+  solutions: {
+    title: 'Solutions',
+    searchPlaceholder: 'Search solutions...',
+    empty: 'No solutions yet',
+    notFound: 'Solution not found',
+    description: 'Description',
+    guide: 'Guide',
+    createTask: 'Create Task',
+    createTaskFailed: 'Failed to create task',
+  },
+
   // Knowledge Base
   knowledgeBase: {
     title: 'Knowledge Base',
