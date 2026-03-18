@@ -132,12 +132,16 @@ class StreamController {
           
           if (delta.type === 'start') {
             res.write(`event: start\n`);
-            res.write(`data: ${JSON.stringify({ 
+            res.write(`data: ${JSON.stringify({
               topic_id: delta.topic_id,
-              is_new_topic: delta.is_new_topic || false 
+              is_new_topic: delta.is_new_topic || false
             })}\n\n`);
           } else if (delta.type === 'delta') {
             res.write(`event: delta\n`);
+            res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+          } else if (delta.type === 'reasoning_delta') {
+            // 思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
+            res.write(`event: reasoning_delta\n`);
             res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
           } else if (delta.type === 'tool_call') {
             res.write(`event: tool_call\n`);
@@ -158,7 +162,10 @@ class StreamController {
           
           res.write(`event: complete\n`);
           res.write(`data: ${JSON.stringify({
+            message_id: result.message_id,  // 传递真实消息 ID，避免心跳检测误判
             content: result.content,
+            reasoning_content: result.reasoning_content,  // 传递思考内容
+            // 注意：不再传递 tool_calls，工具调用信息已通过 tool_result 事件传递
             usage: result.usage,
             model: result.model,
           })}\n\n`);
