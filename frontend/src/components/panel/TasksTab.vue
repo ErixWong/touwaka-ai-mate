@@ -176,9 +176,24 @@
             <div class="workspace-title">
               <span class="task-icon">📁</span>
               <span class="task-name">{{ taskStore.currentTask.title }}</span>
+              <!-- 自动运行模式指示器 -->
+              <span v-if="isAutonomousMode" class="autonomous-badge" :title="$t('tasks.autonomousModeHint') || 'AI 正在自主执行任务'">
+                <span class="badge-icon">🤖</span>
+                <span class="badge-text">{{ $t('tasks.autonomous') || '自动运行' }}</span>
+              </span>
             </div>
           </div>
           <div class="workspace-actions">
+            <!-- 自动运行切换按钮 -->
+            <button
+              class="btn-autonomous"
+              :class="{ active: isAutonomousMode }"
+              @click="toggleAutonomousMode"
+              :title="isAutonomousMode ? ($t('tasks.disableAutonomous') || '关闭自动运行') : ($t('tasks.enableAutonomous') || '开启自动运行')"
+              :disabled="isTogglingAutonomous"
+            >
+              <span class="icon">{{ isAutonomousMode ? '🤖' : '⚙️' }}</span>
+            </button>
             <button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
               <span class="icon">↻</span>
             </button>
@@ -465,7 +480,7 @@ import DOMPurify from 'dompurify'
 import { useTaskStore } from '@/stores/task'
 import Pagination from '@/components/Pagination.vue'
 import CodePreview from '@/components/CodePreview.vue'
-import type { Task, TaskFile } from '@/types'
+import type { Task, TaskFile, TaskStatus } from '@/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -517,6 +532,44 @@ const showHtmlSource = ref(false)
 const activeMenuFile = ref<TaskFile | null>(null)
 const showDeleteFileConfirm = ref(false)
 const fileToDelete = ref<TaskFile | null>(null)
+
+// 自动运行模式相关
+const isTogglingAutonomous = ref(false)
+
+// 计算属性：是否为自动运行模式
+const isAutonomousMode = computed(() => {
+  return taskStore.currentTask?.status === 'autonomous'
+})
+
+// 切换自动运行模式
+const toggleAutonomousMode = async () => {
+  if (!taskStore.currentTask || isTogglingAutonomous.value) return
+
+  isTogglingAutonomous.value = true
+  try {
+    const newStatus: TaskStatus = isAutonomousMode.value ? 'active' : 'autonomous'
+    const updateData: { status: TaskStatus; expert_id?: string } = { status: newStatus }
+    
+    // 开启自主模式时，设置当前专家ID
+    if (newStatus === 'autonomous') {
+      const expertId = route.params.expertId as string
+      if (expertId) {
+        updateData.expert_id = expertId
+      } else {
+        // 没有专家ID，无法开启自主模式
+        alert(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
+        return
+      }
+    }
+    
+    await taskStore.updateTask(taskStore.currentTask.id, updateData)
+  } catch (error) {
+    console.error('Failed to toggle autonomous mode:', error)
+    alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
+  } finally {
+    isTogglingAutonomous.value = false
+  }
+}
 
 // 允许的文件类型
 const allowedFileTypes = '.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.json'
@@ -1255,6 +1308,79 @@ onUnmounted(() => {
 
 .btn-refresh:hover:not(:disabled) .icon {
   transform: rotate(180deg);
+}
+
+/* 自动运行按钮样式 */
+.btn-autonomous {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.btn-autonomous:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: #9c27b0;
+  color: #9c27b0;
+}
+
+.btn-autonomous:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-autonomous.active {
+  background: rgba(156, 39, 176, 0.15);
+  border-color: #9c27b0;
+  color: #9c27b0;
+}
+
+.btn-autonomous.active:hover:not(:disabled) {
+  background: rgba(156, 39, 176, 0.25);
+}
+
+.btn-autonomous .icon {
+  font-size: 16px;
+}
+
+/* 自动运行模式徽章样式 */
+.autonomous-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(156, 39, 176, 0.15);
+  border: 1px solid rgba(156, 39, 176, 0.3);
+  border-radius: 12px;
+  font-size: 11px;
+  color: #9c27b0;
+  white-space: nowrap;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.autonomous-badge .badge-icon {
+  font-size: 12px;
+}
+
+.autonomous-badge .badge-text {
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 /* Breadcrumb */

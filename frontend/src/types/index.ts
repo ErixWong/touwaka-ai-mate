@@ -706,8 +706,12 @@ export interface ExpertSimple {
 
 /**
  * 任务状态
+ * - active: 正常活跃状态
+ * - autonomous: 自动运行模式（AI 自主执行，禁止用户输入）
+ * - archived: 已归档
+ * - deleted: 已删除
  */
-export type TaskStatus = 'active' | 'archived' | 'deleted'
+export type TaskStatus = 'active' | 'autonomous' | 'archived' | 'deleted'
 
 /**
  * 任务（匹配后端 tasks 表）
@@ -718,6 +722,9 @@ export interface Task {
   title: string
   description?: string | null
   workspace_path: string       // 工作空间目录路径
+  expert_id?: string | null    // 关联的专家ID（自主任务执行时使用）
+  topic_id?: string | null     // 关联的话题ID（自主任务执行时的对话）
+  last_executed_at?: string | null  // 最后执行时间（自主任务执行器更新）
   status: TaskStatus
   created_by: string           // 创建者用户ID
   created_at: string

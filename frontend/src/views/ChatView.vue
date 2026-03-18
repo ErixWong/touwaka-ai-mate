@@ -46,12 +46,13 @@
                 ref="chatWindowRef"
                 :messages="chatStore.sortedMessages"
                 :is-loading="isSending"
+                :disabled="isAutonomousMode"
                 :has-more-messages="chatStore.hasMoreMessages"
                 :is-loading-more="chatStore.isLoadingMore"
                 :expert-avatar="currentExpert?.avatar_base64"
                 :expert-avatar-large="currentExpert?.avatar_large_base64"
                 :show-command-hints="is_skill_studio"
-                :custom-placeholder="is_skill_studio ? $t('chat.commandHint') : undefined"
+                :custom-placeholder="autonomousPlaceholder"
                 @send="handleSendMessage"
                 @retry="handleRetry"
                 @load-more="loadMoreMessages"
@@ -220,6 +221,19 @@ const currentModel = computed(() => {
     return modelStore.getModelById(expert.expressive_model_id)
   }
   return undefined
+})
+
+// 自主运行模式 - 当任务状态为 autonomous 时禁用用户输入
+const isAutonomousMode = computed(() => {
+  return taskStore.currentTask?.status === 'autonomous'
+})
+
+// 自主运行模式下的提示文字
+const autonomousPlaceholder = computed(() => {
+  if (isAutonomousMode.value) {
+    return t('chat.autonomousModeHint') || 'AI 正在自主执行任务，输入已禁用...'
+  }
+  return is_skill_studio.value ? t('chat.commandHint') : undefined
 })
 
 // 面板比例相关 - 使用 panelStore 的分屏模式

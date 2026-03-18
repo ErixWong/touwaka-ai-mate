@@ -83,6 +83,8 @@ export default {
     noDirectory: 'No directory selected',
     commandHint: 'Type / for shortcuts, or describe what you want to do...',
     connectionLost: 'Connection lost, reconnecting. Please try again later.',
+    // Autonomous mode
+    autonomousModeHint: 'AI is running autonomously, input is disabled...',
   },
 
   // Debug panel
@@ -788,7 +790,14 @@ export default {
     uploadFileFailed: 'Failed to upload file',
     downloadFileFailed: 'Failed to download file',
     saveFileFailed: 'Failed to save file',
-    deleteFileFailed: 'Failed to delete file'
+    deleteFileFailed: 'Failed to delete file',
+    // Autonomous mode
+    autonomous: 'Autonomous',
+    enableAutonomous: 'Enable autonomous mode',
+    disableAutonomous: 'Disable autonomous mode',
+    autonomousModeHint: 'AI is running autonomously',
+    toggleAutonomousFailed: 'Failed to toggle autonomous mode',
+    noExpertForAutonomous: 'Please select an expert before enabling autonomous mode',
   },
 
   // Knowledge Base
