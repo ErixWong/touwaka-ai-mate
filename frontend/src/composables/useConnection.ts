@@ -57,6 +57,7 @@ export function useConnection() {
   let currentExpertId: string | null = null
   let currentOptions: ConnectionOptions = {}
   let lastHeartbeatTime: number = 0
+  let isConnecting: boolean = false  // 连接锁，防止并发连接
 
   // ========== 常量 ==========
   const DEFAULT_TIMEOUT = 10000
@@ -221,8 +222,8 @@ export function useConnection() {
         return
       }
       
-      // 心跳超时，触发重连
-      if (connectionState.value === 'connected' && isHeartbeatTimeout()) {
+      // 心跳超时，触发重连（但不要打断正在进行的连接）
+      if (connectionState.value === 'connected' && isHeartbeatTimeout() && !isConnecting) {
         console.warn(`[Connection] Heartbeat timeout, reconnecting...`)
         // 保存参数，因为 disconnect() 会清除 currentExpertId
         const savedExpertId = currentExpertId
@@ -238,8 +239,8 @@ export function useConnection() {
       const isAvailable = await checkBackendHealth()
       
       // 关键修复：后端可用但 SSE 未连接（非重连中），主动重连
-      // 注意：只在 'disconnected' 状态触发，避免打断正在进行的连接/重连
-      if (isAvailable && connectionState.value === 'disconnected' && currentExpertId) {
+      // 注意：只在 'disconnected' 状态触发，且没有正在进行的连接
+      if (isAvailable && connectionState.value === 'disconnected' && currentExpertId && !isConnecting) {
         console.log('[Connection] Backend available but SSE disconnected, reconnecting...')
         connect(currentExpertId, currentOptions)
       }
@@ -311,31 +312,38 @@ export function useConnection() {
   // ========== 核心连接方法 ==========
   
   async function connect(expertId: string, options: ConnectionOptions = {}): Promise<boolean> {
-    // 先保存参数，因为 disconnect() 会清除 currentExpertId
-    const targetExpertId = expertId
-    const targetOptions = options
-    
-    currentExpertId = targetExpertId
-    currentOptions = targetOptions
-    
-    // 清理旧连接（注意：disconnect() 会清除 currentExpertId，所以上面先保存）
-    await disconnect()
-    
-    // 恢复参数
-    currentExpertId = targetExpertId
-    currentOptions = targetOptions
-    
-    // 确保 token 有效
-    const token = await ensureValidToken()
-    if (!token) {
-      options.onError?.(new Error('No valid token'))
+    // 连接锁：防止并发连接
+    if (isConnecting) {
+      console.log('[SSE] Connection already in progress, skipping...')
       return false
     }
-    
-    connectionState.value = 'connecting'
-    const timeout = options.timeout || DEFAULT_TIMEOUT
+    isConnecting = true
     
     try {
+      // 先保存参数，因为 disconnect() 会清除 currentExpertId
+      const targetExpertId = expertId
+      const targetOptions = options
+      
+      currentExpertId = targetExpertId
+      currentOptions = targetOptions
+      
+      // 清理旧连接（注意：disconnect() 会清除 currentExpertId，所以上面先保存）
+      await disconnect()
+      
+      // 恢复参数
+      currentExpertId = targetExpertId
+      currentOptions = targetOptions
+    
+      // 确保 token 有效
+      const token = await ensureValidToken()
+      if (!token) {
+        options.onError?.(new Error('No valid token'))
+        return false
+      }
+      
+      connectionState.value = 'connecting'
+      const timeout = options.timeout || DEFAULT_TIMEOUT
+      
       abortController = new AbortController()
       const timeoutId = setTimeout(() => {
         abortController?.abort()
@@ -360,6 +368,7 @@ export function useConnection() {
         if (response.status === 401) {
           const refreshed = await refreshToken()
           if (refreshed) {
+            isConnecting = false  // 释放锁后再递归
             return connect(expertId, options)
           }
         }
@@ -387,6 +396,12 @@ export function useConnection() {
       
       try {
         while (true) {
+          // 检查 reader 是否仍然有效（可能被 disconnect() 清除）
+          if (!reader) {
+            console.log('[SSE] Reader was cleared, stopping read loop')
+            break
+          }
+          
           const { done, value } = await reader.read()
           
           if (done) {
@@ -470,6 +485,8 @@ export function useConnection() {
       }
       
       return false
+    } finally {
+      isConnecting = false  // 释放连接锁
     }
   }
 
