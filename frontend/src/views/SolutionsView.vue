@@ -238,6 +238,7 @@ const loadSolutions = async () => {
     }
   } catch (error) {
     console.error('Failed to load solutions:', error)
+    alert(t('solutions.loadFailed', '加载解决方案失败'))
   } finally {
     isLoading.value = false
   }
@@ -282,6 +283,7 @@ const openEditDialog = async (solution: Solution) => {
     tagsInput.value = (fullSolution.tags || []).join(', ')
   } catch (error) {
     console.error('Failed to load solution:', error)
+    alert(t('solutions.loadDetailFailed', '加载解决方案详情失败'))
     formData.value = {
       name: solution.name,
       slug: solution.slug,

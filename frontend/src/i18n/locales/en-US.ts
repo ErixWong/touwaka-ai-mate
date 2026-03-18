@@ -846,6 +846,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     saveFailed: 'Failed to save',
     deleteConfirm: 'Are you sure you want to delete this solution?',
     deleteFailed: 'Failed to delete',
+    loadFailed: 'Failed to load solutions',
+    loadDetailFailed: 'Failed to load solution details',
   },
 
   // Knowledge Base

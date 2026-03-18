@@ -840,6 +840,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     saveFailed: '保存失败',
     deleteConfirm: '确定要删除这个解决方案吗？',
     deleteFailed: '删除失败',
+    loadFailed: '加载解决方案失败',
+    loadDetailFailed: '加载解决方案详情失败',
   },
 
   // 知识库

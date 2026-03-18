@@ -117,6 +117,7 @@ const loadSolution = async () => {
   } catch (error) {
     console.error('Failed to load solution:', error)
     solution.value = null
+    alert(t('solutions.loadFailed', '加载解决方案失败'))
   } finally {
     isLoading.value = false
   }

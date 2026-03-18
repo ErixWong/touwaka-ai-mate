@@ -85,8 +85,10 @@ class SolutionController {
         // 使用 JSON 函数查询标签（MariaDB 支持 JSON_CONTAINS）
         queryOptions.where[Op.and] = queryOptions.where[Op.and] || [];
         for (const tag of tags) {
+          // 转义标签值防止 SQL 注入
+          const escapedTag = String(tag).replace(/["'\\]/g, '\\$&');
           queryOptions.where[Op.and].push(
-            this.db.sequelize.literal(`JSON_CONTAINS(tags, '"${tag}"')`)
+            this.db.sequelize.literal(`JSON_CONTAINS(tags, '"${escapedTag}"')`)
           );
         }
       }
