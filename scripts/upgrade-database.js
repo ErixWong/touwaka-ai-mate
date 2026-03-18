@@ -583,13 +583,29 @@ const MIGRATIONS = [
           tool_description TEXT COMMENT '工具描述',
           tool_parameters JSON COMMENT 'JSON Schema 格式的参数定义',
           can_use_skills BIT(1) DEFAULT b'0' COMMENT '是否允许助理调用技能',
-          execution_mode ENUM('direct', 'llm', 'hybrid') DEFAULT 'llm' COMMENT '执行模式',
+          execution_mode ENUM('direct', 'llm') DEFAULT 'llm' COMMENT '执行模式',
           is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_assistant_active (is_active),
           INDEX idx_assistant_mode (execution_mode)
         ) COMMENT='助理配置表'
+      `);
+    }
+  },
+
+  // 23.1 assistants.is_builtin 字段
+  {
+    name: 'assistants.is_builtin',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'assistants' AND COLUMN_NAME = 'is_builtin'"
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE assistants ADD COLUMN is_builtin BIT(1) DEFAULT b'0' COMMENT '是否为内置助理（不可删除）' AFTER is_active
       `);
     }
   },
@@ -618,11 +634,28 @@ const MIGRATIONS = [
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           started_at DATETIME COMMENT '开始执行时间',
           completed_at DATETIME COMMENT '完成时间',
+          is_archived BIT(1) DEFAULT b'0' COMMENT '是否已归档',
           INDEX idx_request_expert (expert_id),
           INDEX idx_request_user (user_id),
           INDEX idx_request_status (status),
           INDEX idx_request_created (created_at)
         ) COMMENT='助理委托记录表'
+      `);
+    }
+  },
+
+  // 24.1 assistant_requests.is_archived 字段（兼容旧表）
+  {
+    name: 'assistant_requests.is_archived',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'assistant_requests' AND COLUMN_NAME = 'is_archived'"
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE assistant_requests ADD COLUMN is_archived BIT(1) DEFAULT b'0' COMMENT '是否已归档' AFTER completed_at
       `);
     }
   },
@@ -825,17 +858,20 @@ const MIGRATIONS = [
     check: async (conn) => await hasColumn(conn, 'roles', 'level'),
     migrate: async (conn) => {
       await conn.execute(`
-        ALTER TABLE roles 
-        ADD COLUMN level ENUM('user', 'power_user', 'admin') 
-        DEFAULT 'user' 
+        ALTER TABLE roles
+        ADD COLUMN level ENUM('user', 'power_user', 'admin')
+        DEFAULT 'user'
         COMMENT '角色权限等级，用于技能访问控制：user(基础)/power_user(中等)/admin(最高)'
       `);
       await safeExecute(conn, `CREATE INDEX idx_level ON roles(level)`);
-      
-      // 更新现有角色的 level 值
-      await conn.execute(`UPDATE roles SET level = 'admin' WHERE mark = 'admin' OR name = 'admin'`);
-      await conn.execute(`UPDATE roles SET level = 'power_user' WHERE mark = 'creator' OR name = 'creator'`);
-      await conn.execute(`UPDATE roles SET level = 'user' WHERE mark = 'user' OR name = 'user'`);
+
+      // 检查 mark 字段是否存在，如果存在则更新 level 值
+      const hasMark = await hasColumn(conn, 'roles', 'mark');
+      if (hasMark) {
+        await conn.execute(`UPDATE roles SET level = 'admin' WHERE mark = 'admin' OR name = 'admin'`);
+        await conn.execute(`UPDATE roles SET level = 'power_user' WHERE mark = 'creator' OR name = 'creator'`);
+        await conn.execute(`UPDATE roles SET level = 'user' WHERE mark = 'user' OR name = 'user'`);
+      }
     }
   },
 
@@ -972,8 +1008,8 @@ const MIGRATIONS = [
   },
 
   // ==================== 任务预览 Token 表 (Issue #140) ====================
-  
-  // 39. task_token 表（包含外键约束）
+
+  // 40. task_token 表（不包含外键约束，避免建表失败）
   {
     name: 'task_token table',
     check: async (conn) => await hasTable(conn, 'task_token'),
@@ -988,15 +1024,13 @@ const MIGRATIONS = [
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_token (token),
           INDEX idx_task_user (task_id, user_id),
-          INDEX idx_expires_at (expires_at),
-          CONSTRAINT fk_task_token_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-          CONSTRAINT fk_task_token_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          INDEX idx_expires_at (expires_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='任务预览Token表'
       `);
     }
   },
 
-  // 40. task_token_access_log 表（包含外键约束）
+  // 40. task_token_access_log 表（不包含外键约束，避免建表失败）
   {
     name: 'task_token_access_log table',
     check: async (conn) => await hasTable(conn, 'task_token_access_log'),
@@ -1010,8 +1044,7 @@ const MIGRATIONS = [
           user_agent VARCHAR(512) COMMENT '浏览器User-Agent',
           accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_token_id (token_id),
-          INDEX idx_accessed_at (accessed_at),
-          CONSTRAINT fk_access_log_token FOREIGN KEY (token_id) REFERENCES task_token(id) ON DELETE CASCADE
+          INDEX idx_accessed_at (accessed_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Token访问日志表'
       `);
     }

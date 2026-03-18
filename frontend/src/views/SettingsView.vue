@@ -274,6 +274,11 @@
       </div>
     </div>
 
+    <!-- 助理设置 -->
+    <div v-if="activeTab === 'assistant'" class="settings-section assistant-section">
+      <AssistantSettingsTab />
+    </div>
+
     <!-- 系统配置（仅管理员） -->
     <div v-if="activeTab === 'system' && isAdmin" class="settings-section system-section">
       <SystemConfigTab />
@@ -1511,6 +1516,7 @@ import { expertApi, userApi, roleApi } from '@/api/services'
 import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest, Role, Permission, ExpertSimple, UpdateRoleRequest } from '@/types'
 import OrganizationTab from '@/components/settings/OrganizationTab.vue'
 import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
+import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1524,6 +1530,7 @@ const tabs = computed(() => [
   { key: 'profile', label: t('settings.profile') },
   { key: 'model', label: t('settings.modelAndProvider') },
   { key: 'expert', label: t('settings.expertSettings') },
+  { key: 'assistant', label: t('settings.assistantSettings') },
   { key: 'system', label: t('settings.systemConfig'), adminOnly: true },
   { key: 'user', label: t('settings.userManagement') },
   { key: 'role', label: t('settings.roleManagement') },

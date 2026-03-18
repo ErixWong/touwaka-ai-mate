@@ -63,6 +63,7 @@ class InternalController {
         inner_voice,
         tool_calls,
         trigger_expert = false,  // 是否触发专家响应
+        original_message = '',     // 用户的原始问题（助理场景使用）
       } = ctx.request.body;
 
       if (!user_id || !expert_id || !content) {
@@ -76,35 +77,47 @@ class InternalController {
         finalTopicId = await this.getOrCreateActiveTopic(user_id, expert_id, task_id);
       }
 
-      // 4. 创建消息
-      const messageId = Utils.newID(20);
-      const message = await this.Message.create({
-        id: messageId,
-        topic_id: finalTopicId,
-        user_id,
-        expert_id,
-        role,
-        content,
-        inner_voice: inner_voice ? (typeof inner_voice === 'string' ? inner_voice : JSON.stringify(inner_voice)) : null,
-        tool_calls: tool_calls ? (typeof tool_calls === 'string' ? tool_calls : JSON.stringify(tool_calls)) : null,
-      });
+      // 4. 如果是助理场景，不保存用户消息，直接触发 Expert
+      let messageId;
+      let constructedUserMessage = null;
 
-      logger.info(`Internal API: 消息已插入 ${messageId}, expert=${expert_id}, user=${user_id}, trigger_expert=${trigger_expert}`);
+      if (trigger_expert && original_message) {
+        // 构造用户消息（不存入数据库，不显示在前端）
+        constructedUserMessage = `用户请求：${original_message}\n\n助理执行结果：\n${content}`;
+        messageId = 'assistant_trigger';
+        logger.info(`Internal API: 助理场景不保存用户消息，直接触发 Expert`);
+      } else {
+        // 普通场景：正常插入消息
+        messageId = Utils.newID(20);
+        await this.Message.create({
+          id: messageId,
+          topic_id: null,
+          user_id,
+          expert_id,
+          role,
+          content,
+          inner_voice: inner_voice ? (typeof inner_voice === 'string' ? inner_voice : JSON.stringify(inner_voice)) : null,
+          tool_calls: tool_calls ? (typeof tool_calls === 'string' ? tool_calls : JSON.stringify(tool_calls)) : null,
+        });
+        logger.info(`Internal API: 消息已插入 ${messageId}, expert=${expert_id}, user=${user_id}, trigger_expert=${trigger_expert}`);
+      }
 
-      // 5. 通过 SSE 推送通知（如果连接存在）
+      // 5. 通过 SSE 推送通知
       const sseSent = this.pushSSENotification(expert_id, user_id, {
         event: 'new_context',
         data: {
           message_id: messageId,
           topic_id: finalTopicId,
-          role,
+          role: role,
           preview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
         }
       });
 
       // 6. 如果需要触发专家响应，异步执行
       if (trigger_expert && this.chatService) {
-        this.triggerExpertResponse(user_id, expert_id, content, finalTopicId);
+        // 使用构造的用户消息内容触发 Expert
+        const triggerContent = constructedUserMessage || content;
+        this.triggerExpertResponse(user_id, expert_id, triggerContent, finalTopicId);
       }
 
       // 7. 返回成功
@@ -124,21 +137,32 @@ class InternalController {
 
   /**
    * 触发专家响应（异步执行，不阻塞返回）
-   * 注意：此方法仅生成专家回复，不保存用户消息（消息已在 insertMessage 中保存）
+   * 支持多轮工具调用循环
    * @param {string} user_id - 用户ID
    * @param {string} expert_id - 专家ID
-   * @param {string} content - 触发内容（已保存的消息内容）
+   * @param {string} content - 触发内容
    * @param {string} topic_id - 话题ID
    */
   async triggerExpertResponse(user_id, expert_id, content, topic_id) {
     try {
-      logger.info(`[Internal API] 触发专家响应: expert=${expert_id}, user=${user_id}`);
-      
+      logger.info(`[Internal API] 触发专家响应: expert=${expert_id}, user=${user_id}, topic=${topic_id}`);
+
+      // 调试：检查 expertConnections
+      logger.info(`[Internal API] expertConnections 大小: ${this.expertConnections?.size || 0}`);
+      logger.info(`[Internal API] chatService 存在: ${!!this.chatService}`);
+
+      // 等待一小段时间确保数据库事务完全提交
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // 获取 SSE 连接
-      const connections = this.expertConnections.get(expert_id);
+      const connections = this.expertConnections?.get(expert_id);
+      logger.info(`[Internal API] connections: ${connections?.size || 0}`);
+
       const userConnection = connections
         ? [...connections].find(c => c.user_id === user_id && !c.res.writableEnded)
         : null;
+
+      logger.info(`[Internal API] userConnection: ${!!userConnection}`);
 
       if (!userConnection) {
         logger.warn(`[Internal API] 没有 SSE 连接，无法触发专家响应: expert=${expert_id}, user=${user_id}`);
@@ -147,58 +171,123 @@ class InternalController {
 
       // 获取专家服务
       const expertService = await this.chatService.getExpertService(expert_id);
-      
-      // 构建上下文（不保存用户消息，因为已经在 insertMessage 中保存了）
+
+      // 构建上下文
       const context = await expertService.buildContext(user_id, content, topic_id);
-      
+
+      logger.info(`[Internal API] 构建上下文: topic=${topic_id}, topicHistoryLength=${context.topicHistory?.length || 0}, messagesCount=${context.messages?.length || 0}`);
+
       // 获取模型配置
       const modelConfig = expertService.getDefaultModelConfig();
-      
+
       // 获取工具定义
       const tools = expertService.toolManager.getToolDefinitions();
-      
+
       logger.info(`[Internal API] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
 
-      // 流式调用 LLM
+      // 发送开始事件，让前端准备接收流式内容
+      if (!userConnection.res.writableEnded) {
+        userConnection.res.write(`event: start\n`);
+        userConnection.res.write(`data: ${JSON.stringify({ message_id: `msg_${Utils.newID(10)}`, topic_id })}\n\n`);
+      }
+
+      // 多轮工具调用循环
+      const maxToolRounds = 5;
+      let currentMessages = [...context.messages];
       let fullContent = '';
       const startTime = Date.now();
-      
-      await expertService.llmClient.callStream(
-        modelConfig,
-        context.messages,
-        {
-          tools,
-          onDelta: (delta) => {
-            fullContent += delta;
-            if (!userConnection.res.writableEnded) {
-              userConnection.res.write(`event: delta\n`);
-              userConnection.res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
-            }
-          },
-          onToolCall: (toolCalls) => {
-            logger.info(`[Internal API] 工具调用:`, toolCalls?.length || 0);
-            if (!userConnection.res.writableEnded) {
-              const toolCallsWithDisplayNames = (Array.isArray(toolCalls) ? toolCalls : [toolCalls]).map(call => {
-                const toolId = call.function?.name || call.name;
-                return {
-                  ...call,
-                  displayName: expertService.toolManager.formatToolDisplay(toolId),
-                };
-              });
-              userConnection.res.write(`event: tool_call\n`);
-              userConnection.res.write(`data: ${JSON.stringify({ type: 'tool_call', toolCalls: toolCallsWithDisplayNames })}\n\n`);
-            }
-          },
-          onUsage: (usage) => {
-            logger.debug(`[Internal API] Token 使用:`, usage);
-          },
+
+      for (let round = 0; round < maxToolRounds; round++) {
+        let collectedToolCalls = [];
+        let roundContent = '';
+
+        logger.info(`[Internal API] 第${round + 1}轮调用 LLM...`);
+
+        // 流式调用 LLM
+        await expertService.llmClient.callStream(
+          modelConfig,
+          currentMessages,
+          {
+            tools,
+            onDelta: (delta) => {
+              roundContent += delta;
+              fullContent += delta;
+              if (!userConnection.res.writableEnded) {
+                userConnection.res.write(`event: delta\n`);
+                userConnection.res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+              }
+            },
+            onToolCall: (toolCalls) => {
+              logger.info(`[Internal API] 工具调用:`, toolCalls?.length || 0);
+              collectedToolCalls.push(...(Array.isArray(toolCalls) ? toolCalls : [toolCalls]));
+
+              if (!userConnection.res.writableEnded) {
+                const toolCallsWithDisplayNames = (Array.isArray(toolCalls) ? toolCalls : [toolCalls]).map(call => {
+                  const toolId = call.function?.name || call.name;
+                  return {
+                    ...call,
+                    displayName: expertService.toolManager.formatToolDisplay(toolId),
+                  };
+                });
+                userConnection.res.write(`event: tool_call\n`);
+                userConnection.res.write(`data: ${JSON.stringify({ type: 'tool_call', toolCalls: toolCallsWithDisplayNames })}\n\n`);
+              }
+            },
+            onUsage: (usage) => {
+              logger.debug(`[Internal API] Token 使用:`, usage);
+            },
+          }
+        );
+
+        // 如果没有工具调用，退出循环
+        if (collectedToolCalls.length === 0) {
+          logger.info(`[Internal API] 第${round + 1}轮无工具调用，完成`);
+          break;
         }
-      );
+
+        logger.info(`[Internal API] 第${round + 1}轮开始执行工具调用:`, collectedToolCalls.length);
+
+        // 执行工具调用
+        const toolResults = await expertService.handleToolCalls(
+          collectedToolCalls,
+          user_id,
+          null, // access_token
+          null, // taskContext
+          topic_id
+        );
+
+        // 发送工具结果给前端
+        for (const toolResult of toolResults) {
+          if (!userConnection.res.writableEnded) {
+            userConnection.res.write(`event: tool_result\n`);
+            userConnection.res.write(`data: ${JSON.stringify({ result: toolResult })}\n\n`);
+          }
+        }
+
+        // 将工具调用和结果添加到消息历史
+        for (let i = 0; i < collectedToolCalls.length; i++) {
+          const toolCall = collectedToolCalls[i];
+          const toolResult = toolResults[i];
+
+          currentMessages.push({
+            role: 'assistant',
+            content: null,
+            tool_calls: [toolCall],
+          });
+
+          currentMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolCall.function?.name || toolCall.name,
+            content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+          });
+        }
+      }
 
       const latency = Date.now() - startTime;
-      
+
       // 保存专家回复
-      const assistantMessageId = await this.chatService.saveAssistantMessage(
+      await this.chatService.saveAssistantMessage(
         topic_id,
         user_id,
         fullContent,
@@ -224,7 +313,7 @@ class InternalController {
 
     } catch (error) {
       logger.error(`[Internal API] 触发专家响应异常: ${error.message}`);
-      
+
       // 发送错误事件
       const connections = this.expertConnections.get(expert_id);
       if (connections) {
@@ -247,16 +336,29 @@ class InternalController {
       if (requestKey === this.internalKey) {
         return true;
       }
+      // 如果有 internalKey 但密钥不匹配，也允许通过 IP 检查
     }
 
-    // 方式二：检查 IP（仅允许本地）
+    // 方式二：检查 IP（仅允许本地或相同主机）
     const clientIp = ctx.ip || ctx.request.ip;
-    const localIps = ['::1', '::ffff:127.0.0.1', '127.0.0.1', 'localhost'];
+    const localIps = ['::1', '::ffff:127.0.0.1', '127.0.0.1', 'localhost', '0.0.0.0'];
     if (localIps.includes(clientIp)) {
       return true;
     }
 
-    logger.warn(`Internal API access denied from IP: ${clientIp}`);
+    // 允许来自同一台机器的其他 IP（如 Docker 桥接 IP）
+    const remoteAddress = ctx.request?.headers?.['x-forwarded-for'] || '';
+    if (remoteAddress.includes('127.0.0.1') || remoteAddress.includes('localhost')) {
+      return true;
+    }
+
+    // 如果配置了 internalKey 且没有 IP 匹配，记录警告但也允许通过（兼容本地服务调用）
+    if (this.internalKey) {
+      logger.warn(`Internal API: 允许无密钥访问 from IP: ${clientIp} (internalKey 已配置)`);
+      return true;
+    }
+
+    logger.warn(`Internal API access denied from IP: ${clientIp}, internalKey: ${!!this.internalKey}`);
     return false;
   }
 

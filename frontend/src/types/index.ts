@@ -60,6 +60,7 @@ export interface Message {
   tool_calls?: string | ToolCallData[]  // 工具调用信息（直接字段，JSON 字符串或对象数组）
   status: MessageStatus
   metadata?: MessageMetadata
+  tool_name?: string     // 工具名称（role=tool 时使用）
   parent_id?: string
   created_at: string
   updated_at: string
@@ -1164,7 +1165,7 @@ export interface UpdateUserOrganizationRequest {
 /**
  * 助理执行模式
  */
-export type AssistantExecutionMode = 'direct' | 'llm' | 'hybrid'
+export type AssistantExecutionMode = 'direct' | 'llm'
 
 /**
  * 助理委托状态
@@ -1191,6 +1192,7 @@ export interface Assistant {
   can_use_skills: boolean
   execution_mode: AssistantExecutionMode
   is_active: boolean
+  is_builtin?: boolean
 }
 
 /**
