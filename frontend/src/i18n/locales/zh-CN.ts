@@ -325,7 +325,7 @@ export default {
     thinkingFormat: '思考标签识别模式',
     thinkingFormatNone: '自动检测',
     thinkingFormatOpenai: 'OpenAI 格式 (o1/o3)',
-    thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
+thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     thinkingFormatQwen: 'Qwen 格式 (QwQ)',
     thinkingFormatHint: '选择模型输出思考过程的标签格式，自动检测将根据模型名称判断',
     noModels: '暂无模型，点击上方按钮添加',

@@ -321,7 +321,7 @@ export default {
     thinkingFormat: 'Thinking Tag Format',
     thinkingFormatNone: 'Auto Detect',
     thinkingFormatOpenai: 'OpenAI Format (o1/o3)',
-    thinkingFormatDeepseek: 'DeepSeek/GLM Format',
+thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     thinkingFormatQwen: 'Qwen Format (QwQ)',
     thinkingFormatHint: 'Select the thinking tag format for the model. Auto detect will determine based on model name.',
     noModels: 'No models yet. Click the button above to add one.',
