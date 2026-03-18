@@ -78,7 +78,7 @@ export default class assistant extends Model {
       comment: "是否允许助理调用技能"
     },
     execution_mode: {
-      type: DataTypes.ENUM('direct','llm','hybrid'),
+      type: DataTypes.ENUM('direct','llm'),
       allowNull: true,
       defaultValue: "llm",
       comment: "执行模式"
@@ -88,6 +88,12 @@ export default class assistant extends Model {
       allowNull: true,
       defaultValue: true,
       comment: "是否启用"
+    },
+    is_builtin: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: "是否为内置助理（不可删除）"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -125,6 +131,13 @@ export default class assistant extends Model {
         using: "BTREE",
         fields: [
           { name: "execution_mode" },
+        ]
+      },
+      {
+        name: "idx_assistant_builtin",
+        using: "BTREE",
+        fields: [
+          { name: "is_builtin" },
         ]
       },
     ]

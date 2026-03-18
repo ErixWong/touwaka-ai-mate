@@ -296,11 +296,6 @@ onMounted(() => {
   color: #004085;
 }
 
-.mode-badge.hybrid {
-  background: #fff3cd;
-  color: #856404;
-}
-
 .assistant-status {
   flex-shrink: 0;
 }

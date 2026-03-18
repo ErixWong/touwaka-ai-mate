@@ -190,6 +190,9 @@ class ApiServer {
    * 初始化控制器
    */
   initializeControllers() {
+    // 先创建 StreamController，获取 SSE 连接池
+    const streamController = new StreamController(this.db, this.chatService);
+
     this.controllers = {
       auth: new AuthController(this.db),
       user: new UserController(this.db),
@@ -197,13 +200,13 @@ class ApiServer {
       message: new MessageController(this.db),
       expert: new ExpertController(this.db, this.chatService),
       model: new ModelController(this.db),
-      stream: new StreamController(this.db, this.chatService),
+      stream: streamController,
       skill: new SkillController(this.db),
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
       kb: new KbController(this.db),
       internal: new InternalController(this.db, {
-        expertConnections: null, // 稍后在 setupRoutes 中设置
+        expertConnections: streamController.expertConnections, // 传递 SSE 连接池
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
       assistant: new AssistantController(this.db),
@@ -438,9 +441,14 @@ class ApiServer {
       this.initializeControllers();
 
       // Initialize Assistant Manager
-      const assistantManager = getAssistantManager(this.db);
+      const assistantManager = getAssistantManager(this.db, { chatService: this.chatService });
       await assistantManager.initialize();
       logger.info('Assistant Manager initialized');
+
+      // 将 AssistantManager 注入到 ChatService
+      this.chatService.assistantManager = assistantManager;
+      logger.info('AssistantManager injected into ChatService');
+
       this.setupMiddlewares();
       this.setupRoutes();
 
