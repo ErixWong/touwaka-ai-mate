@@ -15,7 +15,7 @@
  */
 
 import Router from '@koa/router';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireAdmin } from '../middlewares/auth.js';
 
 export default (controller) => {
   const router = new Router({ prefix: '/api/solutions' });
