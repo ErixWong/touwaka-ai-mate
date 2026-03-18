@@ -813,6 +813,37 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     noExpertForAutonomous: '请先选择一个专家再开启自动运行模式',
   },
 
+  // 解决方案
+  solutions: {
+    title: '解决方案',
+    searchPlaceholder: '搜索解决方案...',
+    empty: '暂无解决方案',
+    notFound: '解决方案不存在',
+    description: '描述',
+    guide: '执行指南',
+    tags: '标签',
+    createTask: '创建任务',
+    createTaskFailed: '创建任务失败',
+    // 管理功能
+    create: '新建解决方案',
+    createFirst: '创建第一个解决方案',
+    editSolution: '编辑解决方案',
+    createSolution: '新建解决方案',
+    name: '名称',
+    namePlaceholder: '输入解决方案名称',
+    nameRequired: '名称不能为空',
+    slug: 'URL标识',
+    slugPlaceholder: '自动生成或自定义',
+    descriptionPlaceholder: '简要描述该解决方案',
+    tagsPlaceholder: '多个标签用逗号分隔',
+    guidePlaceholder: '使用 Markdown 格式编写执行指南...',
+    saveFailed: '保存失败',
+    deleteConfirm: '确定要删除这个解决方案吗？',
+    deleteFailed: '删除失败',
+    loadFailed: '加载解决方案失败',
+    loadDetailFailed: '加载解决方案详情失败',
+  },
+
   // 知识库
   knowledgeBase: {
     title: '知识库',

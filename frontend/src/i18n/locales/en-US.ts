@@ -819,6 +819,37 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     noExpertForAutonomous: 'Please select an expert before enabling autonomous mode',
   },
 
+  // Solutions
+  solutions: {
+    title: 'Solutions',
+    searchPlaceholder: 'Search solutions...',
+    empty: 'No solutions yet',
+    notFound: 'Solution not found',
+    description: 'Description',
+    guide: 'Guide',
+    tags: 'Tags',
+    createTask: 'Create Task',
+    createTaskFailed: 'Failed to create task',
+    // Management
+    create: 'New Solution',
+    createFirst: 'Create your first solution',
+    editSolution: 'Edit Solution',
+    createSolution: 'New Solution',
+    name: 'Name',
+    namePlaceholder: 'Enter solution name',
+    nameRequired: 'Name is required',
+    slug: 'URL Slug',
+    slugPlaceholder: 'Auto-generated or custom',
+    descriptionPlaceholder: 'Briefly describe this solution',
+    tagsPlaceholder: 'Multiple tags separated by commas',
+    guidePlaceholder: 'Write execution guide in Markdown...',
+    saveFailed: 'Failed to save',
+    deleteConfirm: 'Are you sure you want to delete this solution?',
+    deleteFailed: 'Failed to delete',
+    loadFailed: 'Failed to load solutions',
+    loadDetailFailed: 'Failed to load solution details',
+  },
+
   // Knowledge Base
   knowledgeBase: {
     title: 'Knowledge Base',
