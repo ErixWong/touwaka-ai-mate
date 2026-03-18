@@ -42,6 +42,7 @@ import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
+import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
 import { getAssistantManager } from './services/assistant-manager.js';
@@ -61,6 +62,7 @@ import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
 import kbRoutes from './routes/kb.routes.js';
+import solutionRoutes from './routes/solution.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
@@ -205,6 +207,7 @@ class ApiServer {
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
       kb: new KbController(this.db),
+      solution: new SolutionController(this.db),
       internal: new InternalController(this.db, {
         expertConnections: streamController.expertConnections, // 传递 SSE 连接池
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
@@ -328,6 +331,10 @@ class ApiServer {
     // KB 知识库路由
     this.app.use(kbRoutes(this.controllers.kb).routes());
     this.app.use(kbRoutes(this.controllers.kb).allowedMethods());
+
+    // Solution 解决方案路由
+    this.app.use(solutionRoutes(this.controllers.solution).routes());
+    this.app.use(solutionRoutes(this.controllers.solution).allowedMethods());
 
     // Department 路由
     const departmentRouter = departmentRoutes(this.db);

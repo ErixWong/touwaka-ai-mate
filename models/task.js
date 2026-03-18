@@ -33,25 +33,26 @@ export default class task extends Model {
     expert_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "关联的专家ID（自主任务执行时使用）",
-      references: {
-        model: 'experts',
-        key: 'id'
-      }
+      comment: "关联的专家ID（自主任务执行时使用）"
     },
     topic_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "关联的话题ID（自主任务执行时的对话）",
-      references: {
-        model: 'topics',
-        key: 'id'
-      }
+      comment: "关联的话题ID（自主任务执行时的对话）"
     },
     last_executed_at: {
       type: DataTypes.DATE,
       allowNull: true,
       comment: "最后执行时间（自主任务执行器更新）"
+    },
+    solution_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "关联的解决方案ID",
+      references: {
+        model: 'solutions',
+        key: 'id'
+      }
     },
     status: {
       type: DataTypes.ENUM('active','autonomous','archived','deleted'),
@@ -118,6 +119,27 @@ export default class task extends Model {
         using: "BTREE",
         fields: [
           { name: "status" },
+        ]
+      },
+      {
+        name: "idx_expert",
+        using: "BTREE",
+        fields: [
+          { name: "expert_id" },
+        ]
+      },
+      {
+        name: "idx_topic",
+        using: "BTREE",
+        fields: [
+          { name: "topic_id" },
+        ]
+      },
+      {
+        name: "idx_solution",
+        using: "BTREE",
+        fields: [
+          { name: "solution_id" },
         ]
       },
     ]

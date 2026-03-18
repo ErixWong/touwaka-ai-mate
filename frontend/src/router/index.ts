@@ -54,6 +54,16 @@ const router = createRouter({
           name: 'knowledge-detail',
           component: () => import('@/views/KnowledgeDetailView.vue'),
         },
+        {
+          path: 'solutions',
+          name: 'solutions',
+          component: () => import('@/views/SolutionsView.vue'),
+        },
+        {
+          path: 'solutions/:id',
+          name: 'solution-detail',
+          component: () => import('@/views/SolutionDetailView.vue'),
+        },
       ],
     },
     {
