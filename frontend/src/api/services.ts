@@ -136,6 +136,10 @@ export const messageApi = {
   // 停止生成
   stopGeneration: (expert_id: string) =>
     apiRequest<{ success: boolean }>(apiClient.post('/chat/stop', { expert_id })),
+
+  // 获取指定消息及其之前的 N 条消息（用于 SSE 完成后获取真实消息，包括 tool 消息）
+  getMessagesWithBefore: (expert_id: string, message_id: string, params?: { limit?: number }) =>
+    apiRequest<Message[]>(apiClient.get(`/messages/expert/${expert_id}/with-before/${message_id}`, { params })),
 }
 
 // 模型相关 API

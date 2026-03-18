@@ -85,6 +85,8 @@ export default {
     noDirectory: '未选择目录',
     commandHint: '输入 / 查看快捷指令，或描述你想做什么...',
     connectionLost: '连接已断开，正在重连中，请稍后重试',
+    // 自主运行模式
+    autonomousModeHint: 'AI 正在自主执行任务，输入已禁用...',
   },
 
   // 调试面板
@@ -782,7 +784,16 @@ export default {
     uploadFileFailed: '上传文件失败',
     downloadFileFailed: '下载文件失败',
     saveFileFailed: '保存文件失败',
-    deleteFileFailed: '删除文件失败'
+    deleteFileFailed: '删除文件失败',
+    // 自主运行模式
+    autonomous: '自动运行',
+    autoRun: '自运',
+    enableAutonomous: '开启自动运行',
+    disableAutonomous: '关闭自动运行',
+    autonomousModeHint: 'AI 正在自主执行任务',
+    autonomousConfirm: '开启自动运行后，AI 将自主执行任务，用户输入将被禁用。确定要开启吗？',
+    toggleAutonomousFailed: '切换自动运行模式失败',
+    noExpertForAutonomous: '请先选择一个专家再开启自动运行模式',
   },
 
   // 知识库
