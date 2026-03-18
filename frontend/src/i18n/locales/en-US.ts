@@ -70,6 +70,8 @@ export default {
     timeMinutesAgo: '{n} min ago',
     timeYesterday: 'Yesterday',
     timeDaysAgo: '{n} days ago',
+    // Thinking process
+    thinkingProcess: 'Thinking Process',
     // Tool messages
     toolArguments: 'Arguments',
     toolResult: 'Result',
@@ -83,6 +85,8 @@ export default {
     noDirectory: 'No directory selected',
     commandHint: 'Type / for shortcuts, or describe what you want to do...',
     connectionLost: 'Connection lost, reconnecting. Please try again later.',
+    // Autonomous mode
+    autonomousModeHint: 'AI is running autonomously, input is disabled...',
   },
 
   // Debug panel
@@ -235,6 +239,10 @@ export default {
     toolCallConfig: 'Tool Call Configuration',
     maxToolRoundsPlaceholder: 'Leave empty for system default',
     maxToolRoundsExpertHint: 'Limit the maximum rounds of tool calls in a single conversation. Leave empty to use system default.',
+    // Expert Dialog Tab Labels
+    expertTabBasic: 'Basic Info',
+    expertTabPersonality: 'Personality',
+    expertTabModel: 'Model Config',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
@@ -309,6 +317,16 @@ export default {
     costPlaceholder: 'e.g., 0.01',
     modelDescription: 'Model Description',
     descriptionPlaceholder: 'Enter model description (optional)',
+    // Thinking Mode Configuration
+    thinkingConfig: 'Thinking Mode Configuration',
+    supportsReasoning: 'Supports Reasoning',
+    supportsReasoningHint: 'Enable deep thinking for complex reasoning tasks',
+    thinkingFormat: 'Thinking Tag Format',
+    thinkingFormatNone: 'Auto Detect',
+    thinkingFormatOpenai: 'OpenAI Format (o1/o3)',
+thinkingFormatDeepseek: 'DeepSeek/GLM Format',
+    thinkingFormatQwen: 'Qwen Format (QwQ)',
+    thinkingFormatHint: 'Select the thinking tag format for the model. Auto detect will determine based on model name.',
     noModels: 'No models yet. Click the button above to add one.',
     deleteModelConfirm: 'Are you sure you want to delete model "{name}"? This action cannot be undone.',
     deleteModelFailed: 'Failed to delete model',
@@ -789,7 +807,16 @@ export default {
     uploadFileFailed: 'Failed to upload file',
     downloadFileFailed: 'Failed to download file',
     saveFileFailed: 'Failed to save file',
-    deleteFileFailed: 'Failed to delete file'
+    deleteFileFailed: 'Failed to delete file',
+    // Autonomous mode
+    autonomous: 'Autonomous',
+    autoRun: 'Auto',
+    enableAutonomous: 'Enable autonomous mode',
+    disableAutonomous: 'Disable autonomous mode',
+    autonomousModeHint: 'AI is running autonomously',
+    autonomousConfirm: 'After enabling autonomous mode, AI will execute tasks automatically and user input will be disabled. Are you sure?',
+    toggleAutonomousFailed: 'Failed to toggle autonomous mode',
+    noExpertForAutonomous: 'Please select an expert before enabling autonomous mode',
   },
 
   // Knowledge Base

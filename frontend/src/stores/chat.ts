@@ -196,6 +196,24 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
+   * 更新消息思考内容（用于 reasoning_delta SSE 事件）
+   */
+  const updateMessageReasoningContent = (messageId: string, reasoningContent: string) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      const message = messages.value[index]
+      if (message) {
+        const newMessage: Message = {
+          ...message,
+          reasoning_content: reasoningContent,
+          updated_at: new Date().toISOString()
+        }
+        messages.value.splice(index, 1, newMessage)
+      }
+    }
+  }
+
+  /**
    * 删除消息（用于重试）
    */
   const removeMessage = (messageId: string) => {
@@ -319,6 +337,7 @@ export const useChatStore = defineStore('chat', () => {
     addLocalMessage,
     updateMessageContent,
     updateMessageMetadata,
+    updateMessageReasoningContent,
     removeMessage,
     clearChat,
     clearError,

@@ -22,6 +22,7 @@ import ChatService from '../lib/chat-service.js';
 import BackgroundTaskScheduler from '../lib/background-scheduler.js';
 import { createEmbeddingTask } from '../lib/embedding-worker.js';
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
+import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import logger from '../lib/logger.js';
 
@@ -162,7 +163,20 @@ class ApiServer {
       }),
     });
 
-    logger.info('BackgroundTaskScheduler initialized with embedding-worker and topic-archiver tasks');
+    // 注册自主任务执行器
+    // 每30秒检查一次，如果上一轮还没处理完，本轮顺延（preventOverlap: true）
+    this.scheduler.register({
+      name: 'autonomous-task-executor',
+      interval: 30000, // 30秒
+      handler: createAutonomousTaskExecutor({
+        chatService: this.chatService,
+        batchSize: 5,            // 每批最多处理 5 个任务
+        minIntervalMinutes: 1,   // 同一任务最小执行间隔 1 分钟
+      }),
+      preventOverlap: true,  // 如果上一轮还没处理完，本轮顺延
+    });
+
+    logger.info('BackgroundTaskScheduler initialized with embedding-worker, topic-archiver, and autonomous-task-executor tasks');
 
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);

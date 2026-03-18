@@ -263,7 +263,7 @@ class TaskController {
     try {
       this.ensureModel();
       const { id } = ctx.params;
-      const { title, description, status } = ctx.request.body;
+      const { title, description, status, expert_id } = ctx.request.body;
       const userId = ctx.state.session.id;
 
       logger.info(`[TaskController] 更新任务: id=${id}, userId=${userId}`);
@@ -272,6 +272,7 @@ class TaskController {
       if (title !== undefined) updates.title = title;
       if (description !== undefined) updates.description = description;
       if (status !== undefined) updates.status = status;
+      if (expert_id !== undefined) updates.expert_id = expert_id;
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段');

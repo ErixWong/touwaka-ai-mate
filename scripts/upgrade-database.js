@@ -1065,6 +1065,122 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 思考内容字段 (Issue #181) ====================
+  
+  // 42. messages.reasoning_content 字段（用于存储模型的思考过程）
+  {
+    name: 'messages.reasoning_content column',
+    check: async (conn) => await hasColumn(conn, 'messages', 'reasoning_content'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN reasoning_content LONGTEXT NULL
+        COMMENT '思考过程内容（DeepSeek reasoning_content 输出）'
+        AFTER content
+      `);
+    }
+  },
+
+  // 43. ai_models.supports_reasoning 字段（模型是否支持思考模式）
+  {
+    name: 'ai_models.supports_reasoning column',
+    check: async (conn) => await hasColumn(conn, 'ai_models', 'supports_reasoning'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ai_models
+        ADD COLUMN supports_reasoning BOOLEAN DEFAULT FALSE
+        COMMENT '是否支持思考/推理模式（DeepSeek、OpenAI o1/o3、Qwen 等）'
+        AFTER embedding_dim
+      `);
+    }
+  },
+
+  // 44. ai_models.thinking_format 字段（思考模式格式类型）
+  {
+    name: 'ai_models.thinking_format column',
+    check: async (conn) => await hasColumn(conn, 'ai_models', 'thinking_format'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ai_models
+        ADD COLUMN thinking_format ENUM('openai', 'deepseek', 'qwen', 'none') DEFAULT 'none'
+        COMMENT '思考模式格式：openai(reasoning effort)、deepseek(thinking type)、qwen(enable_thinking)、none(不支持)'
+        AFTER supports_reasoning
+      `);
+    }
+  },
+
+  // ==================== 自主任务执行字段 ====================
+
+  // 45. tasks.status 添加 'autonomous' 状态
+  {
+    name: 'tasks.status add autonomous',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'status'
+      `, [DB_CONFIG.database]);
+      return rows[0]?.COLUMN_TYPE?.includes('autonomous');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE tasks
+        MODIFY COLUMN status ENUM('active', 'autonomous', 'archived', 'deleted') DEFAULT 'active'
+      `);
+    }
+  },
+
+  // 46. tasks.expert_id 字段（关联专家）
+  {
+    name: 'tasks.expert_id column',
+    check: async (conn) => await hasColumn(conn, 'tasks', 'expert_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE tasks
+        ADD COLUMN expert_id VARCHAR(32) NULL
+        COMMENT '关联的专家ID（自主任务执行时使用）'
+        AFTER workspace_path
+      `);
+      await safeExecute(conn, `ALTER TABLE tasks ADD INDEX idx_expert (expert_id)`);
+      await safeExecute(conn, `
+        ALTER TABLE tasks ADD CONSTRAINT fk_task_expert
+        FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE SET NULL
+      `);
+    }
+  },
+
+  // 47. tasks.topic_id 字段（关联话题）
+  {
+    name: 'tasks.topic_id column',
+    check: async (conn) => await hasColumn(conn, 'tasks', 'topic_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE tasks
+        ADD COLUMN topic_id VARCHAR(32) NULL
+        COMMENT '关联的话题ID（自主任务执行时的对话）'
+        AFTER expert_id
+      `);
+      await safeExecute(conn, `ALTER TABLE tasks ADD INDEX idx_topic (topic_id)`);
+      await safeExecute(conn, `
+        ALTER TABLE tasks ADD CONSTRAINT fk_task_topic
+        FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL
+      `);
+    }
+  },
+
+  // 48. tasks.last_executed_at 字段（最后执行时间）
+  {
+    name: 'tasks.last_executed_at column',
+    check: async (conn) => await hasColumn(conn, 'tasks', 'last_executed_at'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE tasks
+        ADD COLUMN last_executed_at DATETIME NULL
+        COMMENT '最后执行时间（自主任务执行器更新）'
+        AFTER topic_id
+      `);
+    }
+  },
 ];
 
 /**

@@ -72,6 +72,8 @@ export default {
     timeMinutesAgo: '{n}分钟前',
     timeYesterday: '昨天',
     timeDaysAgo: '{n}天前',
+    // 思考过程
+    thinkingProcess: '思考过程',
     // Tool 消息
     toolArguments: '参数',
     toolResult: '结果',
@@ -85,6 +87,8 @@ export default {
     noDirectory: '未选择目录',
     commandHint: '输入 / 查看快捷指令，或描述你想做什么...',
     connectionLost: '连接已断开，正在重连中，请稍后重试',
+    // 自主运行模式
+    autonomousModeHint: 'AI 正在自主执行任务，输入已禁用...',
   },
 
   // 调试面板
@@ -237,6 +241,10 @@ export default {
     toolCallConfig: '工具调用配置',
     maxToolRoundsPlaceholder: '留空使用系统默认',
     maxToolRoundsExpertHint: '限制 AI 在单次对话中调用工具的最大轮数，留空则使用系统默认设置',
+    // 专家对话框 Tab 标签
+    expertTabBasic: '基本信息',
+    expertTabPersonality: '人设配置',
+    expertTabModel: '模型配置',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',
@@ -313,6 +321,16 @@ export default {
     costPlaceholder: '例如：0.01',
     modelDescription: '模型描述',
     descriptionPlaceholder: '输入模型描述（可选）',
+    // 思考模式配置
+    thinkingConfig: '思考模式配置',
+    supportsReasoning: '支持推理',
+    supportsReasoningHint: '启用后模型可进行深度思考，适用于复杂推理任务',
+    thinkingFormat: '思考标签识别模式',
+    thinkingFormatNone: '自动检测',
+    thinkingFormatOpenai: 'OpenAI 格式 (o1/o3)',
+thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
+    thinkingFormatQwen: 'Qwen 格式 (QwQ)',
+    thinkingFormatHint: '选择模型输出思考过程的标签格式，自动检测将根据模型名称判断',
     noModels: '暂无模型，点击上方按钮添加',
     deleteModelConfirm: '确定要删除模型 "{name}" 吗？此操作不可恢复。',
     deleteModelFailed: '删除模型失败',
@@ -783,7 +801,16 @@ export default {
     uploadFileFailed: '上传文件失败',
     downloadFileFailed: '下载文件失败',
     saveFileFailed: '保存文件失败',
-    deleteFileFailed: '删除文件失败'
+    deleteFileFailed: '删除文件失败',
+    // 自主运行模式
+    autonomous: '自动运行',
+    autoRun: '自运',
+    enableAutonomous: '开启自动运行',
+    disableAutonomous: '关闭自动运行',
+    autonomousModeHint: 'AI 正在自主执行任务',
+    autonomousConfirm: '开启自动运行后，AI 将自主执行任务，用户输入将被禁用。确定要开启吗？',
+    toggleAutonomousFailed: '切换自动运行模式失败',
+    noExpertForAutonomous: '请先选择一个专家再开启自动运行模式',
   },
 
   // 知识库

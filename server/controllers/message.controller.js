@@ -12,6 +12,7 @@
  */
 
 import logger from '../../lib/logger.js';
+import { Op } from 'sequelize';
 
 class MessageController {
   constructor(db) {
@@ -50,7 +51,7 @@ class MessageController {
           user_id: userId,
         },
         attributes: [
-          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content',
+          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
           'prompt_tokens', 'completion_tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
@@ -228,6 +229,99 @@ class MessageController {
       });
     } catch (error) {
       logger.error('Get message error:', error);
+      ctx.error('获取消息失败', 500);
+    }
+  }
+
+  /**
+   * 获取指定消息及其之前的 N 条消息
+   * 用于 SSE 完成后获取真实消息（包括 tool 消息）
+   */
+  async listWithBefore(ctx) {
+    try {
+      const { expertId, messageId } = ctx.params;
+      const { limit = 10 } = ctx.query;
+      const userId = ctx.state.session.id;
+
+      logger.info('[listWithBefore] Params:', { expertId, messageId, limit, userId });
+
+      if (!expertId || !messageId) {
+        ctx.error('缺少 expertId 或 messageId 参数');
+        return;
+      }
+
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
+
+      // 先获取指定消息的 created_at 和其他字段（用于调试）
+      const targetMessage = await this.Message.findOne({
+        where: { id: messageId },
+        attributes: ['id', 'expert_id', 'user_id', 'created_at'],
+        raw: true,
+      });
+
+      logger.info('[listWithBefore] Target message:', targetMessage);
+      logger.info('[listWithBefore] Query params:', { expertId, userId });
+
+      if (!targetMessage) {
+        // 找不到参考消息，返回空数组
+        logger.warn('[listWithBefore] Target message not found:', messageId);
+        ctx.success([]);
+        return;
+      }
+
+      // 获取该消息及其之前的消息（按时间倒序获取，然后反转为正序）
+      const messages = await this.Message.findAll({
+        where: {
+          expert_id: expertId,
+          user_id: userId,
+          created_at: { [Op.lte]: targetMessage.created_at },
+        },
+        attributes: [
+          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
+          'prompt_tokens', 'completion_tokens',
+          'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
+        ],
+        order: [['created_at', 'DESC']],
+        limit: parseInt(limit),
+        raw: true,
+      });
+
+      logger.info('[listWithBefore] Found messages:', messages.length);
+
+      // 安全解析 JSON
+      const safeParseJSON = (value) => {
+        if (!value) return null;
+        try {
+          const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+          return parsed;
+        } catch (e) {
+          logger.warn('JSON parse failed:', value);
+          return null;
+        }
+      };
+
+      // 反转为正序（最早的在前）
+      const sortedMessages = messages.reverse();
+
+      ctx.success(sortedMessages.map(m => ({
+        ...m,
+        inner_voice: safeParseJSON(m.inner_voice),
+        tool_calls: safeParseJSON(m.tool_calls),
+        error_info: safeParseJSON(m.error_info),
+        metadata: {
+          tokens: (m.prompt_tokens || m.completion_tokens) ? {
+            total_tokens: (m.prompt_tokens || 0) + (m.completion_tokens || 0),
+            prompt_tokens: m.prompt_tokens || 0,
+            completion_tokens: m.completion_tokens || 0,
+          } : null,
+          latency: m.latency_ms || null,
+        },
+      })));
+    } catch (error) {
+      console.error('Get messages with before error:', error.stack || error);
       ctx.error('获取消息失败', 500);
     }
   }
