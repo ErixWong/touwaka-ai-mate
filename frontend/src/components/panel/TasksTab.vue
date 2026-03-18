@@ -127,7 +127,7 @@
                   v-model="previewContent"
                   class="embed-editor markdown-editor"
                 ></textarea>
-                <div v-else class="embed-markdown" v-html="renderMarkdown(previewContent)"></div>
+                <div v-else class="embed-markdown" v-html="previewRenderedHtml"></div>
               </template>
               
               <!-- 文本/代码预览 -->
@@ -503,6 +503,7 @@ import { useTaskStore } from '@/stores/task'
 import Pagination from '@/components/Pagination.vue'
 import CodePreview from '@/components/CodePreview.vue'
 import type { Task, TaskFile, TaskStatus } from '@/types'
+import { renderMermaidInHtml } from '@/utils/mermaid'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -536,6 +537,7 @@ const previewFile = ref<TaskFile | null>(null)
 const previewType = ref<'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'unsupported'>('text')
 const previewContent = ref('')
 const previewOriginalContent = ref('')  // 保存原始内容，用于取消编辑
+const previewRenderedHtml = ref('')  // 渲染后的 HTML（包含 Mermaid 图表）
 const previewUrl = ref('')
 const previewKey = ref(0)  // 用于强制刷新 iframe
 const previewLoading = ref(false)
@@ -933,6 +935,11 @@ const openPreview = async (file: TaskFile) => {
         throw new Error(`Failed to load file: ${response.status}`)
       }
       previewContent.value = await response.text()
+      
+      // 对于 Markdown 文件，异步渲染 Mermaid 图表
+      if (previewType.value === 'markdown') {
+        await renderMarkdownWithMermaid(previewContent.value)
+      }
     }
   } catch (error) {
     console.error('Failed to load preview:', error)
@@ -973,6 +980,7 @@ const closeEmbedPreview = () => {
   previewFile.value = null
   previewContent.value = ''
   previewOriginalContent.value = ''
+  previewRenderedHtml.value = ''  // 清理渲染后的 HTML
   previewUrl.value = ''
   previewKey.value = 0  // 重置 key
   isEditing.value = false
@@ -1080,7 +1088,7 @@ marked.setOptions({
   gfm: true, // 启用 GitHub Flavored Markdown
 })
 
-// 渲染 Markdown 内容
+// 渲染 Markdown 内容（基础渲染，不含 Mermaid）
 const renderMarkdown = (content: string): string => {
   if (!content) return ''
   try {
@@ -1105,6 +1113,63 @@ const renderMarkdown = (content: string): string => {
   } catch (error) {
     console.error('Markdown parsing error:', error)
     return content
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/\n/g, '<br>')
+  }
+}
+
+// 检测内容是否包含 Mermaid 代码块
+const containsMermaid = (content: string): boolean => {
+  return /```mermaid\s*[\s\S]*?```/i.test(content)
+}
+
+// 渲染 Markdown 内容（含 Mermaid 图表异步渲染）
+const renderMarkdownWithMermaid = async (content: string): Promise<void> => {
+  if (!content) {
+    previewRenderedHtml.value = ''
+    return
+  }
+  
+  try {
+    // 先进行基础 Markdown 渲染
+    let rawHtml = marked.parse(content) as string
+    
+    // 使用 DOMPurify 进行 XSS 清理（允许更多标签用于 Mermaid）
+    let cleanHtml = DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li',
+        'blockquote', 'pre', 'code',
+        'a', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'hr', 'div', 'span',
+        'svg', 'path', 'g', 'rect', 'circle', 'text', 'tspan', 'polygon', 'line', 'polyline', 'ellipse', 'foreignObject', 'tbody'
+      ],
+      ALLOWED_ATTR: [
+        'href', 'src', 'alt', 'title', 'class',
+        'target', 'rel',
+        'width', 'height',
+        'd', 'transform', 'fill', 'stroke', 'stroke-width', 'viewBox',
+        'x', 'y', 'x1', 'y1', 'x2', 'y2',
+        'cx', 'cy', 'r', 'rx', 'ry',
+        'points', 'id', 'style', 'text-anchor', 'font-size', 'font-family', 'font-weight',
+        'xmlns', 'version'
+      ],
+      ALLOW_DATA_ATTR: true,
+    })
+    
+    // 如果包含 Mermaid 代码块，进行异步渲染
+    if (containsMermaid(content)) {
+      cleanHtml = await renderMermaidInHtml(cleanHtml)
+    }
+    
+    previewRenderedHtml.value = cleanHtml
+  } catch (error) {
+    console.error('Markdown rendering error:', error)
+    previewRenderedHtml.value = content
       .replace(/&/g, '&')
       .replace(/</g, '<')
       .replace(/>/g, '>')
@@ -2826,5 +2891,29 @@ onUnmounted(() => {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-right: 8px;
+}
+
+/* Mermaid 图表样式 */
+.embed-markdown :deep(.mermaid-container) {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--code-bg, #f8f9fa);
+  border-radius: 8px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.embed-markdown :deep(.mermaid-container svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+.embed-markdown :deep(.mermaid-error) {
+  color: #f44336;
+  font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: 4px;
+  margin: 8px 0;
 }
 </style>
