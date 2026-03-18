@@ -86,32 +86,60 @@ class StreamController {
   }
 
   /**
-   * 异步处理消息并通过 SSE 推送响应
+   * 获取该用户在该 Expert 下的所有活跃连接
+   * @param {string} expert_id - 专家ID
+   * @param {string} user_id - 用户ID
+   * @returns {Array<{user_id: string, res: ServerResponse}>} 活跃连接数组
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path, access_token }) {
-    // 获取该 Expert 的所有活跃连接
+  _getUserConnections(expert_id, user_id) {
     const connections = this.expertConnections.get(expert_id);
-    
     if (!connections || connections.size === 0) {
-      logger.warn(`No active SSE connections for expert: ${expert_id}`);
-      return;
+      return [];
     }
 
-    // 找到该用户的连接
-    let userConnection = null;
+    // 找到该用户的所有活跃连接（支持多标签页）
+    const userConnections = [];
     for (const conn of connections) {
-      if (conn.user_id === user_id) {
-        userConnection = conn;
-        break;
+      if (conn.user_id === user_id && !conn.res.writableEnded) {
+        userConnections.push(conn);
       }
     }
+    return userConnections;
+  }
 
-    if (!userConnection || userConnection.res.writableEnded) {
-      logger.warn(`No active SSE connection for user: ${user_id}`);
+  /**
+   * 向该用户的所有连接广播 SSE 事件
+   * @param {Array} connections - 连接数组
+   * @param {string} event - 事件名称
+   * @param {object} data - 事件数据
+   */
+  _broadcastToConnections(connections, event, data) {
+    const eventData = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const conn of connections) {
+      if (!conn.res.writableEnded) {
+        try {
+          conn.res.write(eventData);
+        } catch (err) {
+          logger.warn(`Failed to write to connection: ${err.message}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * 异步处理消息并通过 SSE 推送响应
+   * 支持多标签页：向该用户的所有连接广播消息
+   */
+  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path, access_token }) {
+    // 获取该用户在该 Expert 下的所有活跃连接
+    const userConnections = this._getUserConnections(expert_id, user_id);
+
+    if (userConnections.length === 0) {
+      logger.warn(`No active SSE connections for user: ${user_id}, expert: ${expert_id}`);
       return;
     }
 
-    const res = userConnection.res;
+    logger.info(`Broadcasting to ${userConnections.length} connection(s) for user: ${user_id}`);
 
     try {
       // 使用 ChatService 处理流式对话
@@ -126,65 +154,60 @@ class StreamController {
           task_path,  // 传递当前浏览路径
           access_token,  // 传递用户 Token，用于 skill 调用后台 API
         },
-        // onDelta - 流式数据回调
+        // onDelta - 流式数据回调（广播到所有连接）
         (delta) => {
-          if (res.writableEnded) return;
-          
           if (delta.type === 'start') {
-            res.write(`event: start\n`);
-            res.write(`data: ${JSON.stringify({
+            this._broadcastToConnections(userConnections, 'start', {
               topic_id: delta.topic_id,
               is_new_topic: delta.is_new_topic || false
-            })}\n\n`);
+            });
           } else if (delta.type === 'delta') {
-            res.write(`event: delta\n`);
-            res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+            this._broadcastToConnections(userConnections, 'delta', {
+              content: delta.content
+            });
           } else if (delta.type === 'reasoning_delta') {
             // 思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
-            res.write(`event: reasoning_delta\n`);
-            res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+            this._broadcastToConnections(userConnections, 'reasoning_delta', {
+              content: delta.content
+            });
           } else if (delta.type === 'tool_call') {
-            res.write(`event: tool_call\n`);
-            res.write(`data: ${JSON.stringify(delta)}\n\n`);
+            this._broadcastToConnections(userConnections, 'tool_call', delta);
           } else if (delta.type === 'tool_result') {
             // 单个工具执行完成，实时推送结果
-            res.write(`event: tool_result\n`);
-            res.write(`data: ${JSON.stringify({ result: delta.result })}\n\n`);
+            this._broadcastToConnections(userConnections, 'tool_result', {
+              result: delta.result
+            });
           } else if (delta.type === 'topic_updated') {
             // 上下文压缩创建了新 Topic，通知前端刷新
-            res.write(`event: topic_updated\n`);
-            res.write(`data: ${JSON.stringify({ topicsCreated: delta.topicsCreated })}\n\n`);
+            this._broadcastToConnections(userConnections, 'topic_updated', {
+              topicsCreated: delta.topicsCreated
+            });
           }
         },
-        // onComplete - 完成回调
+        // onComplete - 完成回调（广播到所有连接）
         (result) => {
-          if (res.writableEnded) return;
-          
-          res.write(`event: complete\n`);
-          res.write(`data: ${JSON.stringify({
+          this._broadcastToConnections(userConnections, 'complete', {
             message_id: result.message_id,  // 传递真实消息 ID，避免心跳检测误判
             content: result.content,
             reasoning_content: result.reasoning_content,  // 传递思考内容
             // 注意：不再传递 tool_calls，工具调用信息已通过 tool_result 事件传递
             usage: result.usage,
             model: result.model,
-          })}\n\n`);
+          });
         },
-        // onError - 错误回调
+        // onError - 错误回调（广播到所有连接）
         (error) => {
           logger.error('Stream chat error:', error);
-          if (!res.writableEnded) {
-            res.write(`event: error\n`);
-            res.write(`data: ${JSON.stringify({ message: error.message || '流式处理失败' })}\n\n`);
-          }
+          this._broadcastToConnections(userConnections, 'error', {
+            message: error.message || '流式处理失败'
+          });
         }
       );
     } catch (error) {
       logger.error('Process message error:', error);
-      if (!res.writableEnded) {
-        res.write(`event: error\n`);
-        res.write(`data: ${JSON.stringify({ message: error.message || '处理失败' })}\n\n`);
-      }
+      this._broadcastToConnections(userConnections, 'error', {
+        message: error.message || '处理失败'
+      });
     }
   }
 

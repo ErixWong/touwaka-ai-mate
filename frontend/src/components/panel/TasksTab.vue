@@ -320,6 +320,7 @@
             class="task-item"
             :class="{
               'task-active': task.status === 'active',
+              'task-autonomous': task.status === 'autonomous',
               'task-archived': task.status === 'archived',
               'selected': task.id === taskStore.currentTask?.id
             }"
@@ -329,6 +330,7 @@
               <div class="task-status-indicator" :class="task.status"></div>
               <div class="task-title-row">
                 <span class="task-title">{{ task.title }}</span>
+                <span v-if="task.status === 'autonomous'" class="autonomous-indicator" :title="$t('tasks.autonomousModeHint') || 'AI 正在自主执行任务'">🤖</span>
                 <span class="task-id">{{ task.task_id }}</span>
               </div>
             </div>
@@ -338,8 +340,28 @@
             <div class="task-footer">
               <span class="task-date">{{ formatDate(task.updated_at) }}</span>
               <div class="task-actions" @click.stop>
+                <!-- 自动运行切换按钮（仅 active 或 autonomous 状态显示） -->
+                <template v-if="task.status === 'active' || task.status === 'autonomous'">
+                  <button
+                    class="btn-task"
+                    :class="{ 'btn-autonomous-active': task.status === 'autonomous' }"
+                    @click="handleToggleAutonomousFromList(task, $event)"
+                    :title="task.status === 'autonomous' ? ($t('tasks.disableAutonomous') || '关闭自动运行') : ($t('tasks.enableAutonomous') || '开启自动运行')"
+                  >
+                    <span class="btn-icon">{{ task.status === 'autonomous' ? '🤖' : '⚙️' }}</span>
+                    <span class="btn-label">{{ task.status === 'autonomous' ? ($t('tasks.autonomous') || '自动') : ($t('tasks.autoRun') || '自运') }}</span>
+                  </button>
+                </template>
                 <button
                   v-if="task.status === 'active'"
+                  class="btn-task btn-archive"
+                  @click="handleArchiveTask(task)"
+                >
+                  <span class="btn-icon">📦</span>
+                  <span class="btn-label">{{ $t('tasks.archive') || '归档' }}</span>
+                </button>
+                <button
+                  v-else-if="task.status === 'autonomous'"
                   class="btn-task btn-archive"
                   @click="handleArchiveTask(task)"
                 >
@@ -568,6 +590,52 @@ const toggleAutonomousMode = async () => {
     alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
   } finally {
     isTogglingAutonomous.value = false
+  }
+}
+
+// 从任务列表切换自动运行模式
+const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
+  event.stopPropagation()  // 阻止事件冒泡，避免触发任务选择
+  
+  if (isTogglingAutonomous.value) return
+  
+  const newStatus: TaskStatus = task.status === 'autonomous' ? 'active' : 'autonomous'
+  
+  // 开启自主模式需要专家ID
+  if (newStatus === 'autonomous') {
+    const expertId = route.params.expertId as string
+    if (!expertId) {
+      alert(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
+      return
+    }
+    
+    // 确认对话框
+    const confirmed = confirm(t('tasks.autonomousConfirm') || '开启自动运行后，AI 将自主执行任务，用户输入将被禁用。确定要开启吗？')
+    if (!confirmed) return
+    
+    isTogglingAutonomous.value = true
+    try {
+      await taskStore.updateTask(task.id, { 
+        status: newStatus, 
+        expert_id: expertId 
+      })
+    } catch (error) {
+      console.error('Failed to enable autonomous mode:', error)
+      alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
+    } finally {
+      isTogglingAutonomous.value = false
+    }
+  } else {
+    // 关闭自主模式
+    isTogglingAutonomous.value = true
+    try {
+      await taskStore.updateTask(task.id, { status: newStatus })
+    } catch (error) {
+      console.error('Failed to disable autonomous mode:', error)
+      alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
+    } finally {
+      isTogglingAutonomous.value = false
+    }
   }
 }
 
@@ -1578,6 +1646,16 @@ onUnmounted(() => {
   background: rgba(76, 175, 80, 0.08);
 }
 
+/* 自动运行状态样式 */
+.task-item.task-autonomous {
+  border-left-color: #9c27b0;
+  background: rgba(156, 39, 176, 0.05);
+}
+
+.task-item.task-autonomous:hover {
+  background: rgba(156, 39, 176, 0.1);
+}
+
 .task-item.task-archived {
   border-left-color: #9e9e9e;
   opacity: 0.7;
@@ -1606,8 +1684,24 @@ onUnmounted(() => {
   background: #4caf50;
 }
 
+.task-status-indicator.autonomous {
+  background: #9c27b0;
+  animation: pulse-indicator 1.5s ease-in-out infinite;
+}
+
 .task-status-indicator.archived {
   background: #9e9e9e;
+}
+
+@keyframes pulse-indicator {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
 }
 
 .task-title-row {
@@ -1723,6 +1817,28 @@ onUnmounted(() => {
 
 .btn-delete:hover .btn-label {
   color: #f44336;
+}
+
+/* 自动运行按钮在任务卡片上的样式 */
+.btn-task.btn-autonomous-active {
+  background: rgba(156, 39, 176, 0.15);
+  border-color: #9c27b0;
+}
+
+.btn-task.btn-autonomous-active .btn-icon,
+.btn-task.btn-autonomous-active .btn-label {
+  color: #9c27b0;
+}
+
+.btn-task.btn-autonomous-active:hover {
+  background: rgba(156, 39, 176, 0.25);
+}
+
+/* 自动运行指示器图标 */
+.autonomous-indicator {
+  font-size: 12px;
+  margin-left: 4px;
+  animation: pulse-indicator 1.5s ease-in-out infinite;
 }
 
 /* Dialog Styles */

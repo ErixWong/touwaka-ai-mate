@@ -793,9 +793,11 @@ export default {
     deleteFileFailed: 'Failed to delete file',
     // Autonomous mode
     autonomous: 'Autonomous',
+    autoRun: 'Auto',
     enableAutonomous: 'Enable autonomous mode',
     disableAutonomous: 'Disable autonomous mode',
     autonomousModeHint: 'AI is running autonomously',
+    autonomousConfirm: 'After enabling autonomous mode, AI will execute tasks automatically and user input will be disabled. Are you sure?',
     toggleAutonomousFailed: 'Failed to toggle autonomous mode',
     noExpertForAutonomous: 'Please select an expert before enabling autonomous mode',
   },

@@ -787,9 +787,11 @@ export default {
     deleteFileFailed: '删除文件失败',
     // 自主运行模式
     autonomous: '自动运行',
+    autoRun: '自运',
     enableAutonomous: '开启自动运行',
     disableAutonomous: '关闭自动运行',
     autonomousModeHint: 'AI 正在自主执行任务',
+    autonomousConfirm: '开启自动运行后，AI 将自主执行任务，用户输入将被禁用。确定要开启吗？',
     toggleAutonomousFailed: '切换自动运行模式失败',
     noExpertForAutonomous: '请先选择一个专家再开启自动运行模式',
   },
