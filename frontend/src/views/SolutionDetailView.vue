@@ -68,7 +68,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import axios from 'axios'
+import apiClient from '@/api/client'
 
 interface Solution {
   id: number
@@ -112,8 +112,8 @@ const loadSolution = async () => {
 
   isLoading.value = true
   try {
-    const response = await axios.get(`/api/solutions/${id}`)
-    solution.value = response.data
+    const response = await apiClient.get(`/solutions/${id}`)
+    solution.value = response.data.data
   } catch (error) {
     console.error('Failed to load solution:', error)
     solution.value = null
@@ -140,12 +140,12 @@ const createTaskFromSolution = async () => {
 
   isCreatingTask.value = true
   try {
-    const response = await axios.post(`/api/solutions/${solution.value.id}/tasks`, {
+    const response = await apiClient.post(`/solutions/${solution.value.id}/tasks`, {
       title: `任务: ${solution.value.name}`,
     })
     
     // Navigate to the created task
-    const taskId = response.data.id
+    const taskId = response.data.data?.task?.id
     if (taskId) {
       router.push({ name: 'task-detail', params: { id: taskId } })
     } else {

@@ -85,7 +85,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import axios from 'axios'
+import apiClient from '@/api/client'
 
 interface Solution {
   id: number
@@ -132,12 +132,12 @@ const loadSolutions = async () => {
       params.search = searchQuery.value.trim()
     }
 
-    const response = await axios.get('/api/solutions', { params })
+    const response = await apiClient.get('/solutions', { params })
     
-    if (response.data) {
-      solutions.value = response.data.items || []
-      totalCount.value = response.data.total || 0
-      totalPages.value = response.data.pages || 1
+    if (response.data?.data) {
+      solutions.value = response.data.data.items || []
+      totalCount.value = response.data.data.total || 0
+      totalPages.value = response.data.data.pages || 1
     }
   } catch (error) {
     console.error('Failed to load solutions:', error)
