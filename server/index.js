@@ -6,6 +6,7 @@
 import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
+import serve from 'koa-static';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -377,6 +378,36 @@ class ApiServer {
     this.app.use(taskStaticRouter.routes());
     this.app.use(taskStaticRouter.allowedMethods());
     logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
+
+    // 前端静态文件服务（生产环境）
+    // 检查前端构建目录是否存在
+    const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
+    if (fs.existsSync(frontendDistPath)) {
+      // 托管静态资源文件 (JS, CSS, 图片等)
+      this.app.use(serve(frontendDistPath, {
+        maxage: 31536000000, // 1年缓存
+        gzip: true,
+      }));
+
+      // SPA fallback: 所有非 API 请求返回 index.html
+      // 这样前端路由 (如 /chat, /settings) 可以正常工作
+      this.app.use(async (ctx, next) => {
+        // 只处理非 API 请求
+        if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static')) {
+          const indexPath = path.join(frontendDistPath, 'index.html');
+          if (fs.existsSync(indexPath)) {
+            ctx.type = 'html';
+            ctx.body = fs.createReadStream(indexPath);
+            return;
+          }
+        }
+        await next();
+      });
+
+      logger.info(`Frontend static files served from ${frontendDistPath}`);
+    } else {
+      logger.warn(`Frontend dist not found at ${frontendDistPath}, skipping static file serving`);
+    }
 
     // 404 处理
     this.app.use(async (ctx) => {
