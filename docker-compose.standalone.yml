@@ -72,7 +72,7 @@ services:
             echo 'Installing frontend dependencies...'
             npm install
           fi
-          ./node_modules/.bin/vite build
+          node node_modules/vite/bin/vite.js build
         fi
 
         cd /app
