@@ -172,6 +172,7 @@ export default {
   settings: {
     title: '设置',
     profile: '个人资料',
+    invitation: '邀请管理',
     profileBasic: '基本信息',
     nickname: '昵称',
     language: '语言设置',

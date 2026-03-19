@@ -170,6 +170,7 @@ export default {
   settings: {
     title: 'Settings',
     profile: 'Profile',
+    invitation: 'Invitation',
     profileBasic: 'Basic Info',
     nickname: 'Nickname',
     language: 'Language',
