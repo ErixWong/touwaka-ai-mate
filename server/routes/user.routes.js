@@ -41,6 +41,9 @@ export default (controller) => {
   // 更新当前用户偏好设置（需要认证）- 必须在 /:id 路由之前
   router.put('/me/preferences', authenticate(), controller.updateMyPreferences.bind(controller));
 
+  // 修改当前用户密码（需要认证）- 必须在 /:id 路由之前
+  router.put('/me/password', authenticate(), controller.changePassword.bind(controller));
+
   // ========== 用户 CRUD 路由 ==========
   
   // 获取用户信息（需要认证）

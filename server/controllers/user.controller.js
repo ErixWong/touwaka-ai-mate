@@ -586,6 +586,62 @@ class UserController {
   }
 
   /**
+   * 用户修改自己的密码
+   * 需要验证旧密码
+   */
+  async changePassword(ctx) {
+    try {
+      const { old_password, new_password } = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 验证必填字段
+      if (!old_password || !new_password) {
+        ctx.error('旧密码和新密码为必填项');
+        return;
+      }
+
+      // 验证新密码长度
+      if (new_password.length < 6) {
+        ctx.error('新密码长度至少为 6 位');
+        return;
+      }
+
+      // 获取用户信息
+      const user = await this.User.findOne({
+        where: { id: userId },
+        attributes: ['id', 'password_hash'],
+        raw: true,
+      });
+
+      if (!user) {
+        ctx.error('用户不存在', 404);
+        return;
+      }
+
+      // 验证旧密码
+      const validPassword = await bcrypt.compare(old_password, user.password_hash);
+      if (!validPassword) {
+        ctx.error('旧密码错误', 401);
+        return;
+      }
+
+      // 哈希新密码
+      const passwordHash = await bcrypt.hash(new_password, 10);
+
+      // 更新密码
+      await this.User.update(
+        { password_hash: passwordHash },
+        { where: { id: userId } }
+      );
+
+      ctx.success(null, '密码修改成功');
+    } catch (error) {
+      logger.error('Change password error:', error);
+      ctx.error('修改密码失败', 500);
+    }
+  }
+
+  /**
    * 获取用户组织信息
    */
   async getUserOrganization(ctx) {
