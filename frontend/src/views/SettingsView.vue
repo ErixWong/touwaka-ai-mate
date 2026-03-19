@@ -32,6 +32,43 @@
         </select>
       </div>
       <button class="btn-save" @click="saveProfile">{{ $t('settings.save') }}</button>
+
+      <!-- 修改密码区域 -->
+      <div class="form-section-title">{{ $t('settings.changePassword') }}</div>
+      <div class="setting-item">
+        <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
+        <input
+          v-model="passwordForm.old_password"
+          type="password"
+          class="setting-input"
+          :placeholder="$t('settings.oldPasswordPlaceholder')"
+        />
+      </div>
+      <div class="setting-item">
+        <label class="setting-label">{{ $t('settings.newPassword') }}</label>
+        <input
+          v-model="passwordForm.new_password"
+          type="password"
+          class="setting-input"
+          :placeholder="$t('settings.newPasswordPlaceholder')"
+        />
+      </div>
+      <div class="setting-item">
+        <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
+        <input
+          v-model="passwordForm.confirm_password"
+          type="password"
+          class="setting-input"
+          :placeholder="$t('settings.confirmPasswordPlaceholder')"
+        />
+      </div>
+      <button
+        class="btn-save"
+        :disabled="!isPasswordFormValid || passwordLoading"
+        @click="handleChangePassword"
+      >
+        {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
+      </button>
     </div>
 
     <!-- 模型和提供商管理（合并） -->
@@ -1553,6 +1590,23 @@ const profileForm = reactive({
   language: 'zh-CN',
 })
 
+// 修改密码表单
+const passwordForm = reactive({
+  old_password: '',
+  new_password: '',
+  confirm_password: '',
+})
+const passwordLoading = ref(false)
+
+// 密码表单验证
+const isPasswordFormValid = computed(() => {
+  return (
+    passwordForm.old_password.length >= 6 &&
+    passwordForm.new_password.length >= 6 &&
+    passwordForm.new_password === passwordForm.confirm_password
+  )
+})
+
 // 专家分页
 const expertPage = ref(1)
 const EXPERT_PAGE_SIZE = 10
@@ -2185,6 +2239,30 @@ const saveProfile = async () => {
     language: profileForm.language as 'zh-CN' | 'en-US',
   })
   locale.value = profileForm.language
+}
+
+// 修改密码
+const handleChangePassword = async () => {
+  if (!isPasswordFormValid.value) return
+
+  passwordLoading.value = true
+  try {
+    await userApi.changePassword({
+      old_password: passwordForm.old_password,
+      new_password: passwordForm.new_password,
+    })
+    // 清空表单
+    passwordForm.old_password = ''
+    passwordForm.new_password = ''
+    passwordForm.confirm_password = ''
+    alert(t('settings.changePasswordSuccess'))
+  } catch (err) {
+    console.error('修改密码失败:', err)
+    const errorMsg = err instanceof Error ? err.message : t('settings.changePasswordFailed')
+    alert(errorMsg)
+  } finally {
+    passwordLoading.value = false
+  }
 }
 
 // Provider 管理方法

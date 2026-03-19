@@ -214,6 +214,10 @@ export const userApi = {
   updatePreferences: (data: Partial<UserPreference>) =>
     apiRequest<UserPreference>(apiClient.put('/users/me/preferences', data)),
 
+  // 修改当前用户密码
+  changePassword: (data: { old_password: string; new_password: string }) =>
+    apiRequest<void>(apiClient.put('/users/me/password', data)),
+
   // ========== 用户管理 API（管理员专用） ==========
 
   // 获取用户列表
