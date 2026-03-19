@@ -1,0 +1,109 @@
+# ============================================
+# Touwaka Mate - Docker Compose Configuration
+# ============================================
+# Usage:
+#   Development: docker-compose up -d
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ============================================
+
+services:
+  # ==========================================
+  # Main Application Service
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: touwaka-mate
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_NAME=${DB_NAME:-touwaka_mate}
+      - DB_USER=${DB_USER:-touwaka}
+      - DB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
+      - DATA_BASE_PATH=/app/data
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - touwaka-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================
+  # MySQL Database Service
+  # ==========================================
+  db:
+    image: mysql:8.0
+    container_name: touwaka-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-root_secret_password}
+      - MYSQL_DATABASE=${DB_NAME:-touwaka_mate}
+      - MYSQL_USER=${DB_USER:-touwaka}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-touwaka_secret}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-database.js:/docker-entrypoint-initdb.d/init-db.js:ro
+    networks:
+      - touwaka-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root_secret_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+
+  # ==========================================
+  # (Optional) phpMyAdmin for database management
+  # ==========================================
+  # Uncomment to enable
+  # phpmyadmin:
+  #   image: phpmyadmin/phpmyadmin:latest
+  #   container_name: touwaka-pma
+  #   restart: unless-stopped
+  #   environment:
+  #     - PMA_HOST=db
+  #     - PMA_PORT=3306
+  #     - PMA_USER=root
+  #     - PMA_PASSWORD=${DB_ROOT_PASSWORD:-root_secret_password}
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - db
+  #   networks:
+  #     - touwaka-network
+
+# ==========================================
+# Networks Configuration
+# ==========================================
+networks:
+  touwaka-network:
+    driver: bridge
+
+# ==========================================
+# Volumes Configuration
+# ==========================================
+volumes:
+  mysql_data:
+    driver: local
+  app_data:
+    driver: local
