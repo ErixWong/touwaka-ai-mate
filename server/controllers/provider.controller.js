@@ -27,6 +27,7 @@ class ProviderController {
       api_key: provider.api_key ? '****' + provider.api_key.slice(-4) : '',
       is_active: !!provider.is_active,
       timeout: Math.floor((provider.timeout || 60000) / 1000), // 毫秒转秒
+      user_agent: provider.user_agent || null,
     };
   }
 
@@ -37,7 +38,7 @@ class ProviderController {
   async getAll(ctx) {
     try {
       const providers = await this.Provider.findAll({
-        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'is_active', 'created_at', 'updated_at'],
+        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'user_agent', 'is_active', 'created_at', 'updated_at'],
         order: [['created_at', 'DESC']],
         raw: true,
       });
@@ -62,7 +63,7 @@ class ProviderController {
 
       const provider = await this.Provider.findOne({
         where: { id },
-        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'is_active', 'created_at', 'updated_at'],
+        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'user_agent', 'is_active', 'created_at', 'updated_at'],
         raw: true,
       });
 
@@ -90,6 +91,7 @@ class ProviderController {
       const api_key = body.api_key;
       // 前端传入的是秒，需要转换为毫秒存储
       const timeout = (body.timeout ?? 30) * 1000;
+      const user_agent = body.user_agent || null;
       const is_active = body.is_active !== undefined ? body.is_active : true;
 
       // 参数验证
@@ -115,13 +117,14 @@ class ProviderController {
         base_url,
         api_key: api_key || null,
         timeout,
+        user_agent,
         is_active: is_active ? 1 : 0,
       });
 
       // 获取刚插入的记录
       const newProvider = await this.Provider.findOne({
         where: { id: newId },
-        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'is_active', 'created_at', 'updated_at'],
+        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'user_agent', 'is_active', 'created_at', 'updated_at'],
         raw: true,
       });
 
@@ -144,6 +147,7 @@ class ProviderController {
       const base_url = body.base_url;
       const api_key = body.api_key;
       const timeout = body.timeout;
+      const user_agent = body.user_agent;
       const is_active = body.is_active;
 
       // 检查 Provider 是否存在
@@ -177,6 +181,7 @@ class ProviderController {
       if (base_url !== undefined) updates.base_url = base_url;
       if (api_key !== undefined) updates.api_key = api_key || null;
       if (timeout !== undefined) updates.timeout = timeout * 1000; // 秒转毫秒
+      if (user_agent !== undefined) updates.user_agent = user_agent || null;
       if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
 
       if (Object.keys(updates).length === 0) {
@@ -188,7 +193,7 @@ class ProviderController {
 
       const updatedProvider = await this.Provider.findOne({
         where: { id },
-        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'is_active', 'created_at', 'updated_at'],
+        attributes: ['id', 'name', 'base_url', 'api_key', 'timeout', 'user_agent', 'is_active', 'created_at', 'updated_at'],
         raw: true,
       });
 

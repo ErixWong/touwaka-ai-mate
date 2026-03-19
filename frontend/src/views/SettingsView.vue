@@ -607,6 +607,16 @@
               max="300"
             />
           </div>
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.userAgent') }}</label>
+            <input
+              v-model="providerForm.user_agent"
+              type="text"
+              class="form-input"
+              :placeholder="$t('settings.userAgentPlaceholder')"
+            />
+            <p class="form-hint">{{ $t('settings.userAgentHint') }}</p>
+          </div>
           <div class="form-item checkbox">
             <label class="form-label">
               <input v-model="providerForm.is_active" type="checkbox" />
@@ -1615,6 +1625,7 @@ const providerForm = reactive<ProviderFormData>({
   base_url: '',
   api_key: '',
   timeout: 30,
+  user_agent: '',
   is_active: true,
 })
 
@@ -2184,6 +2195,7 @@ const openProviderDialog = (provider?: ModelProvider) => {
     providerForm.base_url = provider.base_url
     providerForm.api_key = '' // 编辑时不显示原有 API Key
     providerForm.timeout = provider.timeout
+    providerForm.user_agent = provider.user_agent || ''
     providerForm.is_active = provider.is_active
   } else {
     editingProvider.value = null
@@ -2191,6 +2203,7 @@ const openProviderDialog = (provider?: ModelProvider) => {
     providerForm.base_url = ''
     providerForm.api_key = ''
     providerForm.timeout = 30
+    providerForm.user_agent = ''
     providerForm.is_active = true
   }
   showProviderDialog.value = true
@@ -2209,6 +2222,7 @@ const saveProvider = async () => {
         name: providerForm.name,
         base_url: providerForm.base_url,
         timeout: providerForm.timeout,
+        user_agent: providerForm.user_agent || undefined,
         is_active: providerForm.is_active,
       }
       if (providerForm.api_key) {
