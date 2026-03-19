@@ -1,0 +1,26 @@
+# Office document processing
+python-docx
+python-pptx
+openpyxl
+xlrd
+
+# PDF processing
+PyPDF2
+pdfplumber
+
+# Data analysis
+pandas
+
+# Web scraping and parsing
+beautifulsoup4
+lxml
+
+# HTTP and utilities
+requests
+markdown
+
+# Image processing
+pillow
+
+# Markitdown for document text extraction
+markitdown[pptx,xlsx,docx]
