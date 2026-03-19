@@ -1265,7 +1265,7 @@ const MIGRATIONS = [
         CREATE TABLE IF NOT EXISTS invitations (
           id INT PRIMARY KEY AUTO_INCREMENT,
           code VARCHAR(32) NOT NULL UNIQUE COMMENT '邀请码',
-          creator_id VARCHAR(32) NOT NULL COMMENT '创建者用户ID',
+          creator_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '创建者用户ID',
           max_uses INT DEFAULT 5 COMMENT '最大使用次数',
           used_count INT DEFAULT 0 COMMENT '已使用次数',
           expires_at DATETIME DEFAULT NULL COMMENT '过期时间，NULL表示永不过期',
@@ -1276,7 +1276,7 @@ const MIGRATIONS = [
           INDEX idx_creator (creator_id),
           INDEX idx_status (status),
           FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请码表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='邀请码表'
       `);
     }
   },
@@ -1290,13 +1290,13 @@ const MIGRATIONS = [
         CREATE TABLE IF NOT EXISTS invitation_usages (
           id INT PRIMARY KEY AUTO_INCREMENT,
           invitation_id INT NOT NULL COMMENT '邀请ID',
-          user_id VARCHAR(32) NOT NULL COMMENT '注册用户ID',
+          user_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '注册用户ID',
           used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (invitation_id) REFERENCES invitations(id) ON DELETE CASCADE,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
           INDEX idx_invitation (invitation_id),
           INDEX idx_user (user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请使用记录表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='邀请使用记录表'
       `);
     }
   },

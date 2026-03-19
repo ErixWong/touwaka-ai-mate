@@ -7,6 +7,8 @@ import _assistant from  "./assistant.js";
 import _department from  "./department.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
+import _invitation_usage from  "./invitation_usage.js";
+import _invitation from  "./invitation.js";
 import _kb_article_tag from  "./kb_article_tag.js";
 import _kb_article from  "./kb_article.js";
 import _kb_paragraph from  "./kb_paragraph.js";
@@ -44,6 +46,8 @@ export default function initModels(sequelize) {
   const department = _department.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
+  const invitation_usage = _invitation_usage.init(sequelize, DataTypes);
+  const invitation = _invitation.init(sequelize, DataTypes);
   const kb_article_tag = _kb_article_tag.init(sequelize, DataTypes);
   const kb_article = _kb_article.init(sequelize, DataTypes);
   const kb_paragraph = _kb_paragraph.init(sequelize, DataTypes);
@@ -103,6 +107,8 @@ export default function initModels(sequelize) {
   expert.hasMany(topic, { as: "topics", foreignKey: "expert_id"});
   user_profile.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(user_profile, { as: "user_profiles", foreignKey: "expert_id"});
+  invitation_usage.belongsTo(invitation, { as: "invitation", foreignKey: "invitation_id"});
+  invitation.hasMany(invitation_usage, { as: "invitation_usages", foreignKey: "invitation_id"});
   kb_article_tag.belongsTo(kb_article, { as: "article", foreignKey: "article_id"});
   kb_article.hasMany(kb_article_tag, { as: "kb_article_tags", foreignKey: "article_id"});
   kb_section.belongsTo(kb_article, { as: "article", foreignKey: "article_id"});
@@ -157,6 +163,10 @@ export default function initModels(sequelize) {
   task.hasMany(topic, { as: "topics", foreignKey: "task_id"});
   message.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
   topic.hasMany(message, { as: "messages", foreignKey: "topic_id"});
+  invitation_usage.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(invitation_usage, { as: "invitation_usages", foreignKey: "user_id"});
+  invitation.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
+  user.hasMany(invitation, { as: "invitations", foreignKey: "creator_id"});
   knowledge_basis.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
   user.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "owner_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
@@ -180,6 +190,8 @@ export default function initModels(sequelize) {
     department,
     expert_skill,
     expert,
+    invitation_usage,
+    invitation,
     kb_article_tag,
     kb_article,
     kb_paragraph,

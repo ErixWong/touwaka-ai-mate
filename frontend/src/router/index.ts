@@ -70,11 +70,6 @@ const router = createRouter({
           name: 'solution-detail',
           component: () => import('@/views/SolutionDetailView.vue'),
         },
-        {
-          path: 'invitations',
-          name: 'invitations',
-          component: () => import('@/views/InvitationView.vue'),
-        },
       ],
     },
     {
