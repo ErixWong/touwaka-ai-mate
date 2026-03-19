@@ -1,6 +1,6 @@
 /**
  * Debug Controller - 调试信息控制器
- * 
+ *
  * 提供 LLM Payload 等调试信息的 API
  */
 
@@ -10,6 +10,14 @@ class DebugController {
   constructor(db, chatService) {
     this.db = db;
     this.chatService = chatService;
+    this.scheduler = null;
+  }
+
+  /**
+   * 设置调度器引用
+   */
+  setScheduler(scheduler) {
+    this.scheduler = scheduler;
   }
 
   /**
@@ -83,6 +91,63 @@ class DebugController {
    */
   setResidentSkillManager(manager) {
     global.residentSkillManager = manager;
+  }
+
+  /**
+   * 获取调度器状态
+   * GET /api/debug/scheduler-status
+   */
+  async getSchedulerStatus(ctx) {
+    try {
+      if (!this.scheduler) {
+        ctx.success({
+          initialized: false,
+          message: 'Scheduler 未初始化',
+          tasks: [],
+        });
+        return;
+      }
+
+      const tasks = this.scheduler.getAllStatus();
+      
+      ctx.success({
+        initialized: true,
+        task_count: tasks.length,
+        tasks,
+      });
+    } catch (error) {
+      logger.error('[DebugController] 获取调度器状态失败:', error);
+      ctx.error(error.message || '获取调度器状态失败');
+    }
+  }
+
+  /**
+   * 强制重置任务执行状态
+   * POST /api/debug/scheduler-reset/:name
+   */
+  async resetSchedulerTask(ctx) {
+    try {
+      const { name } = ctx.params;
+      
+      if (!this.scheduler) {
+        ctx.error('Scheduler 未初始化', 400);
+        return;
+      }
+
+      const success = this.scheduler.forceReset(name);
+      
+      if (success) {
+        ctx.success({
+          message: `任务 "${name}" 已重置`,
+          task: this.scheduler.getStatus(name),
+        });
+      } else {
+        ctx.error(`任务 "${name}" 不存在`, 404);
+      }
+    } catch (error) {
+      logger.error('[DebugController] 重置调度器任务失败:', error);
+      ctx.error(error.message || '重置调度器任务失败');
+    }
   }
 }
 
