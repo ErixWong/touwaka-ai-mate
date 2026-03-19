@@ -149,6 +149,7 @@ import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
 import { useProviderStore } from '@/stores/provider'
+import { useToastStore } from '@/stores/toast'
 import { messageApi, debugApi } from '@/api/services'
 
 const { t } = useI18n()
@@ -157,6 +158,7 @@ const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
 const providerStore = useProviderStore()
+const toast = useToastStore()
 
 const isAdmin = computed(() => userStore.isAdmin)
 const currentExpertId = computed(() => expertStore.currentExpert?.id)
@@ -236,9 +238,9 @@ const handleClearHistory = async () => {
     chatStore.topics = []
     // 清空 Payload
     llmPayload.value = null
-    alert(`对话历史和话题已清空\n删除消息: ${result.deleted_messages_count} 条\n删除话题: ${result.deleted_topics_count} 个`)
+    toast.success(`对话历史和话题已清空，删除消息: ${result.deleted_messages_count} 条，删除话题: ${result.deleted_topics_count} 个`)
   } catch (error) {
-    alert('清空对话历史失败: ' + (error instanceof Error ? error.message : '未知错误'))
+    toast.error('清空对话历史失败: ' + (error instanceof Error ? error.message : '未知错误'))
   } finally {
     isClearing.value = false
   }
@@ -299,10 +301,10 @@ const copyPayload = async () => {
   try {
     const payloadStr = JSON.stringify(llmPayload.value, null, 2)
     await navigator.clipboard.writeText(payloadStr)
-    alert(t('common.copied'))
+    toast.success(t('common.copied'))
   } catch (error) {
     console.error('复制失败:', error)
-    alert(t('common.copyFailed'))
+    toast.error(t('common.copyFailed'))
   }
 }
 </script>

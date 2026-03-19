@@ -190,8 +190,10 @@ import { useI18n } from 'vue-i18n'
 import { departmentApi, positionApi } from '@/api/services'
 import type { Department, Position, CreateDepartmentRequest, CreatePositionRequest } from '@/types'
 import DepartmentTreeNode from './DepartmentTreeNode.vue'
+import { useToastStore } from '@/stores/toast'
 
 const { t } = useI18n()
+const toast = useToastStore()
 
 // 状态
 const loading = ref(false)
@@ -303,7 +305,7 @@ const saveDepartment = async () => {
     closeDepartmentDialog()
   } catch (error) {
     console.error('Failed to save department:', error)
-    alert(t('common.saveFailed'))
+    toast.error(t('common.saveFailed'))
   }
 }
 
@@ -320,7 +322,7 @@ const deleteDepartment = async (dept: Department) => {
     await loadDepartmentTree()
   } catch (error: any) {
     console.error('Failed to delete department:', error)
-    alert(error.response?.data?.message || t('common.deleteFailed'))
+    toast.error(error.response?.data?.message || t('common.deleteFailed'))
   }
 }
 
@@ -365,7 +367,7 @@ const savePosition = async () => {
     closePositionDialog()
   } catch (error) {
     console.error('Failed to save position:', error)
-    alert(t('common.saveFailed'))
+    toast.error(t('common.saveFailed'))
   }
 }
 
@@ -378,7 +380,7 @@ const deletePosition = async (position: Position) => {
     await loadPositions(selectedDepartment.value!.id)
   } catch (error: any) {
     console.error('Failed to delete position:', error)
-    alert(error.response?.data?.message || t('common.deleteFailed'))
+    toast.error(error.response?.data?.message || t('common.deleteFailed'))
   }
 }
 

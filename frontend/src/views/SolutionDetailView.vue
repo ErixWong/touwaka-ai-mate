@@ -69,6 +69,7 @@ import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import apiClient from '@/api/client'
+import { useToastStore } from '@/stores/toast'
 
 interface Solution {
   id: number
@@ -85,6 +86,7 @@ interface Solution {
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
+const toast = useToastStore()
 
 // State
 const solution = ref<Solution | null>(null)
@@ -117,7 +119,7 @@ const loadSolution = async () => {
   } catch (error) {
     console.error('Failed to load solution:', error)
     solution.value = null
-    alert(t('solutions.loadFailed', '加载解决方案失败'))
+    toast.error(t('solutions.loadFailed', '加载解决方案失败'))
   } finally {
     isLoading.value = false
   }
@@ -155,7 +157,7 @@ const createTaskFromSolution = async () => {
     }
   } catch (error) {
     console.error('Failed to create task:', error)
-    alert(t('solutions.createTaskFailed', '创建任务失败'))
+    toast.error(t('solutions.createTaskFailed', '创建任务失败'))
   } finally {
     isCreatingTask.value = false
   }

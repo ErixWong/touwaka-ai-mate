@@ -175,12 +175,14 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAssistantStore } from '@/stores/assistant'
+import { useToastStore } from '@/stores/toast'
 import type { AssistantRequest, AssistantMessageType } from '@/types'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const route = useRoute()
 const assistantStore = useAssistantStore()
+const toast = useToastStore()
 
 // 当前专家ID
 const currentExpertId = computed(() => route.params.expertId as string)
@@ -315,7 +317,7 @@ async function handleDelete(request: AssistantRequest) {
     await assistantStore.deleteRequest(request.request_id)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.deleteFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -325,7 +327,7 @@ async function handleArchive(request: AssistantRequest) {
     await assistantStore.archiveRequest(request.request_id)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.archiveFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -335,7 +337,7 @@ async function handleUnarchive(request: AssistantRequest) {
     await assistantStore.unarchiveRequest(request.request_id)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.unarchiveFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 

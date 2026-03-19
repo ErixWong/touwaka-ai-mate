@@ -186,11 +186,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSkillStore } from '@/stores/skill'
+import { useToastStore } from '@/stores/toast'
 import type { Skill } from '@/types'
 import SkillParametersModal from '@/components/SkillParametersModal.vue'
 
 const { t } = useI18n()
 const skillStore = useSkillStore()
+const toast = useToastStore()
 
 const searchQuery = ref('')
 const filterStatus = ref('')
@@ -269,7 +271,7 @@ const toggleSkillActive = async (skill: Skill) => {
     await skillStore.toggleSkillActive(skill.id)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('skills.toggleFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 

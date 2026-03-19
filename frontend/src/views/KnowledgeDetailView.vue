@@ -374,6 +374,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
+import { useToastStore } from '@/stores/toast'
 import SectionTreeNode from '@/components/SectionTreeNode.vue'
 import type { KbArticle, KbSection, KbParagraph } from '@/types'
 import { marked } from 'marked'
@@ -383,6 +384,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const kbStore = useKnowledgeBaseStore()
+const toast = useToastStore()
 
 // State
 const isLoading = ref(true)
@@ -495,7 +497,7 @@ const handleRevectorize = async () => {
           setTimeout(pollProgress, 1000)
         } else if (progress.status === 'completed') {
           // 完成
-          alert(`重新向量化完成！\n总计: ${progress.total}\n成功: ${progress.success}\n失败: ${progress.failed}\n向量维度: ${progress.embedding_dim}`)
+          toast.success(`重新向量化完成！总计: ${progress.total}，成功: ${progress.success}，失败: ${progress.failed}，向量维度: ${progress.embedding_dim}`)
           // 刷新段落列表（如果有选中章节）
           if (selectedSection.value?.id) {
             await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id)
@@ -511,7 +513,7 @@ const handleRevectorize = async () => {
     // 开始轮询
     pollProgress()
   } catch (error: any) {
-    alert('重新向量化失败: ' + (error.message || '未知错误'))
+    toast.error('重新向量化失败: ' + (error.message || '未知错误'))
     isRevectorizing.value = false
     revectorizeJobId = ''
   }
@@ -743,9 +745,9 @@ const handleParagraphRevectorize = async (paragraph: KbParagraph) => {
     })
     // 刷新段落列表
     await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id)
-    alert('已触发段落重新向量化，请稍后刷新查看结果')
+    toast.info('已触发段落重新向量化，请稍后刷新查看结果')
   } catch (error: any) {
-    alert('重新向量化失败: ' + (error.message || '未知错误'))
+    toast.error('重新向量化失败: ' + (error.message || '未知错误'))
   }
 }
 

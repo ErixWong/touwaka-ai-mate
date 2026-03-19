@@ -1,5 +1,6 @@
 <template>
   <RouterView />
+  <Toast />
 </template>
 
 <script setup lang="ts">
@@ -7,6 +8,7 @@ import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
+import Toast from '@/components/common/Toast.vue'
 
 const userStore = useUserStore()
 const { locale } = useI18n()

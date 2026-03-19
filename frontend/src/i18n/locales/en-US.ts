@@ -1,4 +1,13 @@
 export default {
+  // Toast Messages
+  toast: {
+    success: 'Success',
+    error: 'Error',
+    warning: 'Warning',
+    info: 'Info',
+    close: 'Close',
+  },
+
   // Common
   common: {
     confirm: 'Confirm',

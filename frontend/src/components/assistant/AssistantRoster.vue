@@ -85,10 +85,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useToastStore } from '@/stores/toast'
 import type { Assistant } from '@/types'
 import { assistantApi } from '@/api/services'
 
 const { t } = useI18n()
+const toast = useToastStore()
 
 const assistants = ref<Assistant[]>([])
 const isLoading = ref(false)
@@ -122,7 +124,7 @@ async function loadAssistants() {
     assistants.value = await assistantApi.getAssistants()
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.loadFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   } finally {
     isLoading.value = false
   }

@@ -162,6 +162,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
+import { useToastStore } from '@/stores/toast'
 import apiClient from '@/api/client'
 
 interface Solution {
@@ -179,6 +180,7 @@ interface Solution {
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
+const toast = useToastStore()
 
 // Admin check
 const isAdmin = computed(() => userStore.isAdmin)
@@ -238,7 +240,7 @@ const loadSolutions = async () => {
     }
   } catch (error) {
     console.error('Failed to load solutions:', error)
-    alert(t('solutions.loadFailed', '加载解决方案失败'))
+    toast.error(t('solutions.loadFailed', '加载解决方案失败'))
   } finally {
     isLoading.value = false
   }
@@ -283,7 +285,7 @@ const openEditDialog = async (solution: Solution) => {
     tagsInput.value = (fullSolution.tags || []).join(', ')
   } catch (error) {
     console.error('Failed to load solution:', error)
-    alert(t('solutions.loadDetailFailed', '加载解决方案详情失败'))
+    toast.error(t('solutions.loadDetailFailed', '加载解决方案详情失败'))
     formData.value = {
       name: solution.name,
       slug: solution.slug,
@@ -305,7 +307,7 @@ const closeDialog = () => {
 
 const saveSolution = async () => {
   if (!formData.value.name.trim()) {
-    alert(t('solutions.nameRequired', '名称不能为空'))
+    toast.warning(t('solutions.nameRequired', '名称不能为空'))
     return
   }
 
@@ -335,7 +337,7 @@ const saveSolution = async () => {
     loadSolutions()
   } catch (error) {
     console.error('Failed to save solution:', error)
-    alert(t('solutions.saveFailed', '保存失败'))
+    toast.error(t('solutions.saveFailed', '保存失败'))
   } finally {
     isSaving.value = false
   }
@@ -354,7 +356,7 @@ const deleteSolution = async () => {
     loadSolutions()
   } catch (error) {
     console.error('Failed to delete solution:', error)
-    alert(t('solutions.deleteFailed', '删除失败'))
+    toast.error(t('solutions.deleteFailed', '删除失败'))
   }
 }
 
