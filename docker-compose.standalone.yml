@@ -1,5 +1,17 @@
 # Docker Compose for standalone deployment (without database)
 # Use this when you have your own MariaDB/MySQL server
+#
+# 1Panel 用户请注意：
+# .env 文件需要放在 docker-compose.yml 同目录，而不是挂载目录
+# 或者直接在 1Panel 界面的"环境变量"中配置以下变量：
+#   DB_HOST=your-db-host
+#   DB_PORT=3306
+#   DB_NAME=touwaka_mate
+#   DB_USER=touwaka
+#   DB_PASSWORD=your-password
+#   JWT_SECRET=your-jwt-secret
+#   JWT_REFRESH_SECRET=your-refresh-secret
+#   LOG_LEVEL=info
 
 services:
   app:
@@ -11,13 +23,13 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_HOST=${DB_HOST:-your-db-host}
+      - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT:-3306}
       - DB_NAME=${DB_NAME:-touwaka_mate}
       - DB_USER=${DB_USER:-touwaka}
-      - DB_PASSWORD=${DB_PASSWORD:-your-db-password}
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - DATA_BASE_PATH=/app/data
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
