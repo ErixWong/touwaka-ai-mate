@@ -6,6 +6,7 @@
 import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
+import koaStatic from 'koa-static';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -377,6 +378,25 @@ class ApiServer {
     this.app.use(taskStaticRouter.routes());
     this.app.use(taskStaticRouter.allowedMethods());
     logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
+
+    // 前端静态文件服务
+    const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
+    if (fs.existsSync(path.join(frontendDistPath, 'index.html'))) {
+      this.app.use(koaStatic(frontendDistPath));
+      
+      // SPA fallback - 所有非 API 路由返回 index.html
+      this.app.use(async (ctx, next) => {
+        if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static')) {
+          ctx.type = 'html';
+          ctx.body = fs.readFileSync(path.join(frontendDistPath, 'index.html'));
+        } else {
+          await next();
+        }
+      });
+      logger.info(`Frontend static files served from ${frontendDistPath}`);
+    } else {
+      logger.warn(`Frontend dist not found at ${frontendDistPath}, skipping static file serving`);
+    }
 
     // 404 处理
     this.app.use(async (ctx) => {

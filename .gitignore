@@ -6,3 +6,7 @@ logs/
 references/
 temp/
 docker-data/
+
+# 临时文件
+*.log
+server.log
