@@ -1,3 +1,18 @@
+# Docker Compose for standalone deployment (without database)
+# Use this when you have your own MariaDB/MySQL server
+#
+# 1Panel 用户请注意：
+# .env 文件需要放在 docker-compose.yml 同目录，而不是挂载目录
+# 或者直接在 1Panel 界面的"环境变量"中配置以下变量：
+#   DB_HOST=your-db-host
+#   DB_PORT=3306
+#   DB_NAME=touwaka_mate
+#   DB_USER=touwaka
+#   DB_PASSWORD=your-password
+#   JWT_SECRET=your-jwt-secret
+#   JWT_REFRESH_SECRET=your-refresh-secret
+#   LOG_LEVEL=info
+
 services:
   app:
     image: nikolaik/python-nodejs:python3.12-nodejs20-slim
@@ -8,13 +23,13 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_HOST=db
-      - DB_PORT=3306
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-3306}
       - DB_NAME=${DB_NAME:-touwaka_mate}
       - DB_USER=${DB_USER:-touwaka}
-      - DB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - DATA_BASE_PATH=/app/data
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
@@ -60,9 +75,6 @@ services:
         cd /app
         echo 'Starting application...'
         node server/index.js
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - touwaka-network
     healthcheck:
@@ -72,33 +84,11 @@ services:
       retries: 3
       start_period: 120s
 
-  db:
-    image: mariadb:latest
-    container_name: touwaka-mariadb
-    restart: unless-stopped
-    environment:
-      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-root_secret_password}
-      - MARIADB_DATABASE=${DB_NAME:-touwaka_mate}
-      - MARIADB_USER=${DB_USER:-touwaka}
-      - MARIADB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
-    volumes:
-      - mariadb_data:/var/lib/mysql
-    networks:
-      - touwaka-network
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
 networks:
   touwaka-network:
     driver: bridge
 
 volumes:
-  mariadb_data:
-    driver: local
   node_modules:
     driver: local
   frontend_node_modules:
