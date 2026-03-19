@@ -53,8 +53,8 @@ services:
         if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
           echo 'Building frontend...'
           cd /app/frontend
-          if [ ! -d node_modules ]; then npm ci; fi
-          npm run build
+          npm ci
+          npm run build-only
         fi
 
         cd /app
