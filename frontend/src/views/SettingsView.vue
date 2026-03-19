@@ -15,60 +15,82 @@
     </div>
 
     <!-- 个人资料 -->
-    <div v-if="activeTab === 'profile'" class="settings-section">
-      <div class="setting-item">
-        <label class="setting-label">{{ $t('settings.nickname') }}</label>
-        <input
-          v-model="profileForm.nickname"
-          type="text"
-          class="setting-input"
-        />
+    <div v-if="activeTab === 'profile'" class="settings-section profile-section">
+      <!-- 子 Tab 切换 -->
+      <div class="profile-sub-tabs">
+        <button
+          class="sub-tab-btn"
+          :class="{ active: profileSubTab === 'basic' }"
+          @click="profileSubTab = 'basic'"
+        >
+          {{ $t('settings.profileBasic') }}
+        </button>
+        <button
+          class="sub-tab-btn"
+          :class="{ active: profileSubTab === 'password' }"
+          @click="profileSubTab = 'password'"
+        >
+          {{ $t('settings.changePassword') }}
+        </button>
       </div>
-      <div class="setting-item">
-        <label class="setting-label">{{ $t('settings.language') }}</label>
-        <select v-model="profileForm.language" class="setting-select">
-          <option value="zh-CN">中文</option>
-          <option value="en-US">English</option>
-        </select>
-      </div>
-      <button class="btn-save" @click="saveProfile">{{ $t('settings.save') }}</button>
 
-      <!-- 修改密码区域 -->
-      <div class="form-section-title">{{ $t('settings.changePassword') }}</div>
-      <div class="setting-item">
-        <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
-        <input
-          v-model="passwordForm.old_password"
-          type="password"
-          class="setting-input"
-          :placeholder="$t('settings.oldPasswordPlaceholder')"
-        />
+      <!-- 基本信息 Tab -->
+      <div v-if="profileSubTab === 'basic'" class="profile-tab-content">
+        <div class="setting-item">
+          <label class="setting-label">{{ $t('settings.nickname') }}</label>
+          <input
+            v-model="profileForm.nickname"
+            type="text"
+            class="setting-input"
+          />
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">{{ $t('settings.language') }}</label>
+          <select v-model="profileForm.language" class="setting-select">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+          </select>
+        </div>
+        <button class="btn-save" @click="saveProfile">{{ $t('settings.save') }}</button>
       </div>
-      <div class="setting-item">
-        <label class="setting-label">{{ $t('settings.newPassword') }}</label>
-        <input
-          v-model="passwordForm.new_password"
-          type="password"
-          class="setting-input"
-          :placeholder="$t('settings.newPasswordPlaceholder')"
-        />
+
+      <!-- 修改密码 Tab -->
+      <div v-if="profileSubTab === 'password'" class="profile-tab-content">
+        <div class="setting-item">
+          <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
+          <input
+            v-model="passwordForm.old_password"
+            type="password"
+            class="setting-input"
+            :placeholder="$t('settings.oldPasswordPlaceholder')"
+          />
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">{{ $t('settings.newPassword') }}</label>
+          <input
+            v-model="passwordForm.new_password"
+            type="password"
+            class="setting-input"
+            :placeholder="$t('settings.newPasswordPlaceholder')"
+          />
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
+          <input
+            v-model="passwordForm.confirm_password"
+            type="password"
+            class="setting-input"
+            :placeholder="$t('settings.confirmPasswordPlaceholder')"
+          />
+        </div>
+        <button
+          class="btn-save"
+          :disabled="!isPasswordFormValid || passwordLoading"
+          @click="handleChangePassword"
+        >
+          {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
+        </button>
       </div>
-      <div class="setting-item">
-        <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
-        <input
-          v-model="passwordForm.confirm_password"
-          type="password"
-          class="setting-input"
-          :placeholder="$t('settings.confirmPasswordPlaceholder')"
-        />
-      </div>
-      <button
-        class="btn-save"
-        :disabled="!isPasswordFormValid || passwordLoading"
-        @click="handleChangePassword"
-      >
-        {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
-      </button>
     </div>
 
     <!-- 模型和提供商管理（合并） -->
@@ -1572,6 +1594,7 @@ const providerStore = useProviderStore()
 const expertStore = useExpertStore()
 
 const activeTab = ref('profile')
+const profileSubTab = ref<'basic' | 'password'>('basic')
 
 const allTabs = [
   { key: 'profile', label: t('settings.profile') },
@@ -4136,5 +4159,26 @@ onMounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* 个人资料子 Tab 样式 */
+.profile-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.profile-sub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--card-bg, #fff);
+}
+
+.profile-tab-content {
+  padding: 24px;
+}
+
+.profile-tab-content .btn-save {
+  margin-top: 8px;
 }
 </style>
