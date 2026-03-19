@@ -500,6 +500,7 @@ import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useTaskStore } from '@/stores/task'
+import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 import CodePreview from '@/components/CodePreview.vue'
 import type { Task, TaskFile, TaskStatus } from '@/types'
@@ -509,6 +510,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
+const toast = useToastStore()
 
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'active' | 'archived'>('all')
@@ -581,7 +583,7 @@ const toggleAutonomousMode = async () => {
         updateData.expert_id = expertId
       } else {
         // 没有专家ID，无法开启自主模式
-        alert(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
+        toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
         return
       }
     }
@@ -589,7 +591,7 @@ const toggleAutonomousMode = async () => {
     await taskStore.updateTask(taskStore.currentTask.id, updateData)
   } catch (error) {
     console.error('Failed to toggle autonomous mode:', error)
-    alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
+    toast.error(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
   } finally {
     isTogglingAutonomous.value = false
   }
@@ -607,7 +609,7 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
   if (newStatus === 'autonomous') {
     const expertId = route.params.expertId as string
     if (!expertId) {
-      alert(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
+      toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
       return
     }
     
@@ -617,13 +619,13 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
     
     isTogglingAutonomous.value = true
     try {
-      await taskStore.updateTask(task.id, { 
-        status: newStatus, 
-        expert_id: expertId 
+      await taskStore.updateTask(task.id, {
+        status: newStatus,
+        expert_id: expertId
       })
     } catch (error) {
       console.error('Failed to enable autonomous mode:', error)
-      alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
+      toast.error(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
     } finally {
       isTogglingAutonomous.value = false
     }
@@ -634,7 +636,7 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
       await taskStore.updateTask(task.id, { status: newStatus })
     } catch (error) {
       console.error('Failed to disable autonomous mode:', error)
-      alert(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
+      toast.error(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
     } finally {
       isTogglingAutonomous.value = false
     }
@@ -773,7 +775,7 @@ const handleSubmitTask = async () => {
     closeTaskDialog()
   } catch (error) {
     console.error('Failed to save task:', error)
-    alert(t('tasks.saveTaskFailed') || '保存任务失败')
+    toast.error(t('tasks.saveTaskFailed') || '保存任务失败')
   } finally {
     isSubmitting.value = false
   }
@@ -785,7 +787,7 @@ const handleArchiveTask = async (task: Task) => {
     await taskStore.updateTask(task.id, { status: 'archived' })
   } catch (error) {
     console.error('Failed to archive task:', error)
-    alert(t('tasks.archiveTaskFailed') || '归档任务失败')
+    toast.error(t('tasks.archiveTaskFailed') || '归档任务失败')
   }
 }
 
@@ -795,7 +797,7 @@ const handleRestoreTask = async (task: Task) => {
     await taskStore.updateTask(task.id, { status: 'active' })
   } catch (error) {
     console.error('Failed to restore task:', error)
-    alert(t('tasks.restoreTaskFailed') || '恢复任务失败')
+    toast.error(t('tasks.restoreTaskFailed') || '恢复任务失败')
   }
 }
 
@@ -815,7 +817,7 @@ const confirmDeleteTask = async () => {
     taskToDelete.value = null
   } catch (error) {
     console.error('Failed to delete task:', error)
-    alert(t('tasks.deleteTaskFailed') || '删除任务失败')
+    toast.error(t('tasks.deleteTaskFailed') || '删除任务失败')
   }
 }
 
@@ -852,7 +854,7 @@ const handleFileUpload = async (event: Event) => {
     input.value = ''
   } catch (error) {
     console.error('Failed to upload file:', error)
-    alert(t('tasks.uploadFileFailed') || '上传文件失败')
+    toast.error(t('tasks.uploadFileFailed') || '上传文件失败')
   }
 }
 
@@ -1051,7 +1053,7 @@ const handleDownload = async (file: TaskFile) => {
     await taskStore.downloadFile(file.path)
   } catch (error) {
     console.error('Failed to download file:', error)
-    alert(t('tasks.downloadFileFailed') || '下载文件失败')
+    toast.error(t('tasks.downloadFileFailed') || '下载文件失败')
   }
 }
 
@@ -1207,7 +1209,7 @@ const saveEdit = async () => {
     previewOriginalContent.value = previewContent.value
   } catch (error) {
     console.error('Failed to save file:', error)
-    alert(t('tasks.saveFileFailed') || '保存文件失败')
+    toast.error(t('tasks.saveFileFailed') || '保存文件失败')
   } finally {
     previewSaving.value = false
   }
@@ -1239,7 +1241,7 @@ const handleDeleteFile = async () => {
     fileToDelete.value = null
   } catch (error) {
     console.error('Failed to delete file:', error)
-    alert(t('tasks.deleteFileFailed') || '删除文件失败')
+    toast.error(t('tasks.deleteFileFailed') || '删除文件失败')
   }
 }
 

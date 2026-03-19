@@ -156,6 +156,7 @@ import { ref, reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Assistant, AIModel } from '@/types'
 import { useSkillStore } from '@/stores/skill'
+import { useToastStore } from '@/stores/toast'
 
 const props = defineProps<{
   assistant: Assistant | null
@@ -171,6 +172,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const skillStore = useSkillStore()
+const toast = useToastStore()
 
 const saving = ref(false)
 
@@ -240,17 +242,17 @@ function handleAssistantTypeKeydown(e: KeyboardEvent) {
 async function handleSubmit() {
   // 创建模式验证
   if (props.isCreate && !form.assistant_type) {
-    alert(t('assistant.assistantTypeRequired'))
+    toast.warning(t('assistant.assistantTypeRequired'))
     return
   }
   if (!form.name) {
-    alert(t('assistant.nameRequired'))
+    toast.warning(t('assistant.nameRequired'))
     return
   }
 
   // direct 模式必须选择工具
   if (form.execution_mode === 'direct' && !form.tool_name) {
-    alert(t('assistant.toolNameRequired'))
+    toast.warning(t('assistant.toolNameRequired'))
     return
   }
 

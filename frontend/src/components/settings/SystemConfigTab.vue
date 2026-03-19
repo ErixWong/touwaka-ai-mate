@@ -362,11 +362,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
+import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
 import PackageWhitelistTab from './PackageWhitelistTab.vue'
 
 const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
+const toast = useToastStore()
 
 // 子 Tab 状态
 const activeSubTab = ref<'llm' | 'general' | 'timeout' | 'packages'>('general')
@@ -429,9 +431,9 @@ const saveConfig = async () => {
       timeout: { ...form.timeout },
       tool: { ...form.tool },
     })
-    alert(t('settings.saveSuccess'))
+    toast.success(t('settings.saveSuccess'))
   } catch (error) {
-    alert(t('settings.saveFailed') + ': ' + error)
+    toast.error(t('settings.saveFailed') + ': ' + error)
   } finally {
     saving.value = false
   }

@@ -72,6 +72,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useToastStore } from '@/stores/toast'
 
 const props = withDefaults(
   defineProps<{
@@ -95,6 +96,7 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+const toast = useToastStore()
 const showWarning = ref(false)
 
 // 成功图标
@@ -131,7 +133,7 @@ async function handleCopy() {
     await navigator.clipboard.writeText(props.content)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.copyFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 </script>
