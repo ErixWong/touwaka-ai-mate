@@ -155,10 +155,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { usePackageWhitelistStore } from '@/stores/packageWhitelist'
+import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const store = usePackageWhitelistStore()
+const toast = useToastStore()
 
 // 当前激活的 tab
 const activeTab = ref<'nodejs' | 'python'>('nodejs')
@@ -278,12 +280,12 @@ const saveWhitelist = async () => {
       allowed_python_packages: [...form.allowed_python_packages],
     })
     if (success) {
-      alert(t('settings.saveSuccess'))
+      toast.success(t('settings.saveSuccess'))
     } else {
-      alert(t('settings.saveFailed'))
+      toast.error(t('settings.saveFailed'))
     }
   } catch (error) {
-    alert(t('settings.saveFailed') + ': ' + error)
+    toast.error(t('settings.saveFailed') + ': ' + error)
   } finally {
     saving.value = false
   }

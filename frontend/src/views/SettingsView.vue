@@ -1580,6 +1580,7 @@ import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
+import { useToastStore } from '@/stores/toast'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
 import { expertApi, userApi, roleApi } from '@/api/services'
 import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, ExpertSkill, ExpertSkillConfig, UserListItem, CreateUserRequest, UpdateUserRequest, Role, Permission, ExpertSimple, UpdateRoleRequest } from '@/types'
@@ -1592,6 +1593,7 @@ const userStore = useUserStore()
 const modelStore = useModelStore()
 const providerStore = useProviderStore()
 const expertStore = useExpertStore()
+const toast = useToastStore()
 
 const activeTab = ref('profile')
 const profileSubTab = ref<'basic' | 'password'>('basic')
@@ -1902,7 +1904,7 @@ const loadUsers = async () => {
     userTotalPages.value = response.pages
   } catch (err) {
     console.error('加载用户列表失败:', err)
-    alert(t('settings.loadUsersFailed'))
+    toast.error(t('settings.loadUsersFailed'))
   } finally {
     usersLoading.value = false
   }
@@ -2025,7 +2027,7 @@ const saveUser = async () => {
     loadUsers()
   } catch (err) {
     console.error('保存用户失败:', err)
-    alert(t('settings.saveUserFailed'))
+    toast.error(t('settings.saveUserFailed'))
   }
 }
 
@@ -2059,7 +2061,7 @@ const deleteUser = async () => {
     loadUsers()
   } catch (err) {
     console.error('删除用户失败:', err)
-    alert(t('settings.deleteUserFailed'))
+    toast.error(t('settings.deleteUserFailed'))
   }
 }
 
@@ -2070,10 +2072,10 @@ const handleResetPassword = async () => {
   try {
     await userApi.resetPassword(editingUser.value.id, { password: userForm.newPassword })
     userForm.newPassword = ''
-    alert(t('settings.resetPasswordSuccess'))
+    toast.success(t('settings.resetPasswordSuccess'))
   } catch (err) {
     console.error('重置密码失败:', err)
-    alert(t('settings.resetPasswordFailed'))
+    toast.error(t('settings.resetPasswordFailed'))
   }
 }
 
@@ -2090,7 +2092,7 @@ const handleUserAvatarUpload = async (event: Event) => {
     console.log(`用户头像压缩: ${Math.round(result.originalSize / 1024)}KB → ${Math.round(result.compressedSize / 1024)}KB`)
   } catch (err) {
     console.error('压缩用户头像失败:', err)
-    alert(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
+    toast.error(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
   }
   input.value = ''
 }
@@ -2122,7 +2124,7 @@ const loadRolesForManagement = async () => {
     rolesList.value = roles
   } catch (err) {
     console.error('加载角色列表失败:', err)
-    alert(t('settings.loadRolesFailed'))
+    toast.error(t('settings.loadRolesFailed'))
   } finally {
     rolesLoading.value = false
   }
@@ -2135,7 +2137,7 @@ const loadAllPermissions = async () => {
     allPermissions.value = permissions
   } catch (err) {
     console.error('加载权限列表失败:', err)
-    alert(t('settings.loadPermissionsFailed'))
+    toast.error(t('settings.loadPermissionsFailed'))
   }
 }
 
@@ -2146,7 +2148,7 @@ const loadAllExperts = async () => {
     allExperts.value = experts
   } catch (err) {
     console.error('加载专家列表失败:', err)
-    alert(t('settings.loadExpertsFailed'))
+    toast.error(t('settings.loadExpertsFailed'))
   }
 }
 
@@ -2229,7 +2231,7 @@ const saveRole = async () => {
     closeRoleDialog()
   } catch (err) {
     console.error('保存角色失败:', err)
-    alert(t('settings.saveRoleFailed'))
+    toast.error(t('settings.saveRoleFailed'))
   }
 }
 
@@ -2242,10 +2244,10 @@ const saveRolePermissions = async () => {
       permission_ids: rolePermissionIds.value,
     })
     rolePermissionsChanged.value = false
-    alert(t('settings.savePermissionsSuccess'))
+    toast.success(t('settings.savePermissionsSuccess'))
   } catch (err) {
     console.error('保存权限配置失败:', err)
-    alert(t('settings.savePermissionsFailed'))
+    toast.error(t('settings.savePermissionsFailed'))
   }
 }
 
@@ -2258,10 +2260,10 @@ const saveRoleExperts = async () => {
       expert_ids: roleExpertIds.value,
     })
     roleExpertsChanged.value = false
-    alert(t('settings.saveExpertsSuccess'))
+    toast.success(t('settings.saveExpertsSuccess'))
   } catch (err) {
     console.error('保存专家访问权限失败:', err)
-    alert(t('settings.saveExpertsFailed'))
+    toast.error(t('settings.saveExpertsFailed'))
   }
 }
 
@@ -2286,11 +2288,11 @@ const handleChangePassword = async () => {
     passwordForm.old_password = ''
     passwordForm.new_password = ''
     passwordForm.confirm_password = ''
-    alert(t('settings.changePasswordSuccess'))
+    toast.success(t('settings.changePasswordSuccess'))
   } catch (err) {
     console.error('修改密码失败:', err)
     const errorMsg = err instanceof Error ? err.message : t('settings.changePasswordFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   } finally {
     passwordLoading.value = false
   }
@@ -2347,7 +2349,7 @@ const saveProvider = async () => {
     closeProviderDialog()
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('settings.saveProviderFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -2376,7 +2378,7 @@ const deleteProvider = async () => {
   } catch (err) {
     // 显示错误信息给用户
     const errorMsg = err instanceof Error ? err.message : t('settings.deleteProviderFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -2432,7 +2434,7 @@ const saveModel = async () => {
     closeModelDialog()
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('settings.saveModelFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -2457,7 +2459,7 @@ const deleteModel = async () => {
   } catch (err) {
     // 显示错误信息给用户
     const errorMsg = err instanceof Error ? err.message : t('settings.deleteModelFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -2538,7 +2540,7 @@ const saveExpert = async () => {
     closeExpertDialog()
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('settings.saveExpertFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -2553,7 +2555,7 @@ const handleSmallAvatarUpload = async (event: Event) => {
     console.log(`小头像压缩: ${Math.round(result.originalSize / 1024)}KB → ${Math.round(result.compressedSize / 1024)}KB`)
   } catch (err) {
     console.error('压缩小头像失败:', err)
-    alert(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
+    toast.error(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
   }
   input.value = ''
 }
@@ -2569,7 +2571,7 @@ const handleLargeAvatarUpload = async (event: Event) => {
     console.log(`大头像压缩: ${Math.round(result.originalSize / 1024)}KB → ${Math.round(result.compressedSize / 1024)}KB`)
   } catch (err) {
     console.error('压缩大头像失败:', err)
-    alert(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
+    toast.error(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
   }
   input.value = ''
 }
@@ -2600,7 +2602,7 @@ const deleteExpert = async () => {
   } catch (err) {
     // 显示错误信息给用户
     const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
-    alert(errorMsg)
+    toast.error(errorMsg)
   }
 }
 
@@ -2628,7 +2630,7 @@ const loadExpertSkills = async (expertId: string) => {
     skillsList.value = response.skills || []
   } catch (err) {
     console.error('加载技能列表失败:', err)
-    alert(t('settings.loadSkillsFailed'))
+    toast.error(t('settings.loadSkillsFailed'))
   } finally {
     skillsLoading.value = false
   }
@@ -2652,7 +2654,7 @@ const saveSkills = async () => {
     closeSkillsDialog()
   } catch (err) {
     console.error('保存技能配置失败:', err)
-    alert(t('settings.saveSkillsFailed'))
+    toast.error(t('settings.saveSkillsFailed'))
   }
 }
 

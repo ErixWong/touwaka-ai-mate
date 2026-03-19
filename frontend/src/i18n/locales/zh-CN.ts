@@ -1,4 +1,13 @@
 export default {
+  // Toast 消息
+  toast: {
+    success: '成功',
+    error: '错误',
+    warning: '警告',
+    info: '提示',
+    close: '关闭',
+  },
+
   // 通用
   common: {
     confirm: '确认',
