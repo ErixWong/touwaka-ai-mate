@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs (will be built inside Docker)
+frontend/dist/
+
+# Development files
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+!README.md
+
+# Environment files (should be mounted or set via docker-compose)
+.env
+.env.*
+!.env.example
+
+# Docker files (avoid recursive builds)
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# Test and coverage
+coverage/
+.nyc_output/
+*.test.js
+*.spec.js
+
+# Logs
+*.log
+logs/
+server.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Config files that may contain secrets
+config/database.json

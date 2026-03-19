@@ -34,10 +34,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./:/app
-      - ./docker-data/node_modules:/app/node_modules
-      - ./docker-data/frontend_node_modules:/app/frontend/node_modules
-      - ./docker-data/frontend_dist:/app/frontend/dist
-      - ./docker-data/pip_cache:/root/.cache/pip
+      - node_modules:/app/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+      - pip_cache:/root/.cache/pip
     working_dir: /app
     command:
       - bash
@@ -69,12 +68,8 @@ services:
         if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
           echo 'Building frontend...'
           cd /app/frontend
-          if [ ! -f node_modules/vite/bin/vite.js ]; then
-            echo 'Installing frontend dependencies...'
-            rm -rf node_modules package-lock.json
-            npm install --include=dev
-          fi
-          node node_modules/vite/bin/vite.js build
+          npm ci
+          npx vite build
         fi
 
         cd /app
@@ -92,3 +87,11 @@ services:
 networks:
   touwaka-network:
     driver: bridge
+
+volumes:
+  node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local
+  pip_cache:
+    driver: local

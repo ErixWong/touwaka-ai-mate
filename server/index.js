@@ -6,7 +6,7 @@
 import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
-import koaStatic from 'koa-static';
+import serve from 'koa-static';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -167,14 +167,15 @@ class ApiServer {
     });
 
     // 注册自主任务执行器
-    // 每30秒检查一次，如果上一轮还没处理完，本轮顺延（preventOverlap: true）
+    // 每分钟检查一次，如果上一轮还没处理完，本轮顺延（preventOverlap: true）
     this.scheduler.register({
       name: 'autonomous-task-executor',
-      interval: 30000, // 30秒
+      interval: 60000, // 1分钟检查一次
       handler: createAutonomousTaskExecutor({
         chatService: this.chatService,
-        batchSize: 5,            // 每批最多处理 5 个任务
-        minIntervalMinutes: 1,   // 同一任务最小执行间隔 1 分钟
+        batchSize: 5,              // 每批最多处理 5 个任务
+        minIntervalMinutes: 15,    // 最后消息超过 15 分钟才 push
+        maxNoResponseCount: 2,     // 连续 2 次无响应则停止
       }),
       preventOverlap: true,  // 如果上一轮还没处理完，本轮顺延
     });
@@ -369,6 +370,8 @@ class ApiServer {
     this.controllers.internal.setResidentSkillManager(this.residentSkillManager);
     // 将 ResidentSkillManager 共享给 DebugController
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
+    // 将 Scheduler 共享给 DebugController
+    this.controllers.debug.setScheduler(this.scheduler);
     this.app.use(internalRoutes(this.controllers.internal).routes());
     this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
     logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke)');
@@ -379,20 +382,31 @@ class ApiServer {
     this.app.use(taskStaticRouter.allowedMethods());
     logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
 
-    // 前端静态文件服务
+    // 前端静态文件服务（生产环境）
+    // 检查前端构建目录是否存在
     const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
-    if (fs.existsSync(path.join(frontendDistPath, 'index.html'))) {
-      this.app.use(koaStatic(frontendDistPath));
-      
-      // SPA fallback - 所有非 API 路由返回 index.html
+    if (fs.existsSync(frontendDistPath)) {
+      // 托管静态资源文件 (JS, CSS, 图片等)
+      this.app.use(serve(frontendDistPath, {
+        maxage: 31536000000, // 1年缓存
+        gzip: true,
+      }));
+
+      // SPA fallback: 所有非 API 请求返回 index.html
+      // 这样前端路由 (如 /chat, /settings) 可以正常工作
       this.app.use(async (ctx, next) => {
+        // 只处理非 API 请求
         if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static')) {
-          ctx.type = 'html';
-          ctx.body = fs.readFileSync(path.join(frontendDistPath, 'index.html'));
-        } else {
-          await next();
+          const indexPath = path.join(frontendDistPath, 'index.html');
+          if (fs.existsSync(indexPath)) {
+            ctx.type = 'html';
+            ctx.body = fs.createReadStream(indexPath);
+            return;
+          }
         }
+        await next();
       });
+
       logger.info(`Frontend static files served from ${frontendDistPath}`);
     } else {
       logger.warn(`Frontend dist not found at ${frontendDistPath}, skipping static file serving`);

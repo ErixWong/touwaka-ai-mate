@@ -1,39 +1,8 @@
-# Docker Compose for full deployment with MariaDB
-# 
-# 1Panel 用户请注意：
-# .env 文件需要放在 docker-compose.yml 同目录，而不是挂载目录
-# 或者直接在 1Panel 界面的"环境变量"中配置以下变量：
-#   JWT_SECRET=your-jwt-secret
-#   JWT_REFRESH_SECRET=your-refresh-secret
-#   LOG_LEVEL=info
-
 services:
-  db:
-    image: mariadb:11.7
-    container_name: touwaka-mate-db
-    restart: unless-stopped
-    environment:
-      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootpassword}
-      - MYSQL_DATABASE=${DB_NAME:-touwaka_mate}
-      - MYSQL_USER=${DB_USER:-touwaka}
-      - MYSQL_PASSWORD=${DB_PASSWORD}
-    volumes:
-      - mariadb_data:/var/lib/mysql
-    networks:
-      - touwaka-network
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   app:
     image: nikolaik/python-nodejs:python3.12-nodejs20-slim
     container_name: touwaka-mate
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
       - "${PORT:-3000}:3000"
     environment:
@@ -43,17 +12,16 @@ services:
       - DB_PORT=3306
       - DB_NAME=${DB_NAME:-touwaka_mate}
       - DB_USER=${DB_USER:-touwaka}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - DB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
       - DATA_BASE_PATH=/app/data
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./:/app
-      - ./docker-data/node_modules:/app/node_modules
-      - ./docker-data/frontend_node_modules:/app/frontend/node_modules
-      - ./docker-data/frontend_dist:/app/frontend/dist
-      - ./docker-data/pip_cache:/root/.cache/pip
+      - node_modules:/app/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+      - pip_cache:/root/.cache/pip
     working_dir: /app
     command:
       - bash
@@ -85,17 +53,16 @@ services:
         if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
           echo 'Building frontend...'
           cd /app/frontend
-          if [ ! -f node_modules/vite/bin/vite.js ]; then
-            echo 'Installing frontend dependencies...'
-            rm -rf node_modules package-lock.json
-            npm install --include=dev
-          fi
-          node node_modules/vite/bin/vite.js build
+          npm ci
+          npx vite build
         fi
 
         cd /app
         echo 'Starting application...'
         node server/index.js
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - touwaka-network
     healthcheck:
@@ -105,10 +72,36 @@ services:
       retries: 3
       start_period: 120s
 
+  db:
+    image: mariadb:latest
+    container_name: touwaka-mariadb
+    restart: unless-stopped
+    environment:
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-root_secret_password}
+      - MARIADB_DATABASE=${DB_NAME:-touwaka_mate}
+      - MARIADB_USER=${DB_USER:-touwaka}
+      - MARIADB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - touwaka-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 networks:
   touwaka-network:
     driver: bridge
 
 volumes:
   mariadb_data:
+    driver: local
+  node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local
+  pip_cache:
     driver: local
