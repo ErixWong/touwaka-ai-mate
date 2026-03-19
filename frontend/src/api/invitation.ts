@@ -47,7 +47,7 @@ export interface RegistrationConfig {
  * 获取当前用户的邀请配额
  */
 export async function getInvitationQuota(): Promise<InvitationQuota> {
-  const response = await client.get('/api/invitations/quota');
+  const response = await client.get('/invitations/quota');
   return response.data.data;
 }
 
@@ -58,7 +58,7 @@ export async function createInvitation(options?: {
   max_uses?: number;
   expires_in_days?: number;
 }): Promise<Invitation> {
-  const response = await client.post('/api/invitations', options || {});
+  const response = await client.post('/invitations', options || {});
   return response.data.data;
 }
 
@@ -66,7 +66,7 @@ export async function createInvitation(options?: {
  * 获取当前用户的邀请码列表
  */
 export async function getInvitations(): Promise<{ items: Invitation[]; total: number }> {
-  const response = await client.get('/api/invitations');
+  const response = await client.get('/invitations');
   return response.data.data;
 }
 
@@ -74,7 +74,7 @@ export async function getInvitations(): Promise<{ items: Invitation[]; total: nu
  * 获取邀请码使用记录
  */
 export async function getInvitationUsage(invitationId: number): Promise<{ items: InvitationUsage[]; total: number }> {
-  const response = await client.get(`/api/invitations/${invitationId}/usage`);
+  const response = await client.get(`/invitations/${invitationId}/usage`);
   return response.data.data;
 }
 
@@ -82,14 +82,14 @@ export async function getInvitationUsage(invitationId: number): Promise<{ items:
  * 撤销邀请码
  */
 export async function revokeInvitation(invitationId: number): Promise<void> {
-  await client.delete(`/api/invitations/${invitationId}`);
+  await client.delete(`/invitations/${invitationId}`);
 }
 
 /**
  * 验证邀请码（公开接口）
  */
 export async function verifyInvitationCode(code: string): Promise<VerifyResult> {
-  const response = await client.get(`/api/invitations/${code}/verify`);
+  const response = await client.get(`/invitations/${code}/verify`);
   return response.data.data;
 }
 
@@ -97,7 +97,7 @@ export async function verifyInvitationCode(code: string): Promise<VerifyResult> 
  * 获取注册配置（公开接口）
  */
 export async function getRegistrationConfig(): Promise<RegistrationConfig> {
-  const response = await client.get('/api/auth/registration-config');
+  const response = await client.get('/auth/registration-config');
   return response.data.data;
 }
 
@@ -120,7 +120,7 @@ export async function register(data: {
   access_token: string;
   refresh_token: string;
 }> {
-  const response = await client.post('/api/auth/register', data);
+  const response = await client.post('/auth/register', data);
   return response.data.data;
 }
 
@@ -128,7 +128,7 @@ export async function register(data: {
  * 更新用户邀请配额（管理员）
  */
 export async function updateUserInvitationQuota(userId: string, quota: number): Promise<void> {
-  await client.put(`/api/users/${userId}/invitation-quota`, { invitation_quota: quota });
+  await client.put(`/users/${userId}/invitation-quota`, { invitation_quota: quota });
 }
 
 /**
@@ -143,7 +143,7 @@ export async function getUserInvitationStats(userId: string): Promise<{
   activeInvitations: number;
   totalInvitedUsers: number;
 }> {
-  const response = await client.get(`/api/users/${userId}/invitation-stats`);
+  const response = await client.get(`/users/${userId}/invitation-stats`);
   return response.data.data;
 }
 
