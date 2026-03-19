@@ -1,5 +1,6 @@
 # ============================================
 # Touwaka Mate - Multi-stage Docker Build
+# Supports both Node.js and Python runtimes
 # ============================================
 
 # Stage 1: Build frontend
@@ -19,16 +20,42 @@ COPY frontend/ ./
 # Build frontend
 RUN npm run build
 
-# Stage 2: Production image
+# Stage 2: Production image with Node.js and Python
 FROM node:20-alpine
 
-# Install required system dependencies
+# Install Python and required system dependencies
 RUN apk add --no-cache \
     python3 \
+    py3-pip \
+    python3-dev \
+    build-base \
+    libffi-dev \
+    openssl-dev \
     make \
     g++ \
     sqlite \
-    sqlite-dev
+    sqlite-dev \
+    git \
+    curl \
+    && ln -sf python3 /usr/bin/python \
+    && ln -sf pip3 /usr/bin/pip
+
+# Create virtual environment for Python packages (optional, for skill dependencies)
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install common Python packages that skills might need
+RUN pip install --no-cache-dir \
+    python-docx \
+    PyPDF2 \
+    pdfplumber \
+    openpyxl \
+    pandas \
+    beautifulsoup4 \
+    lxml \
+    requests \
+    markdown \
+    pillow
 
 WORKDIR /app
 
@@ -50,7 +77,15 @@ COPY data/ ./data/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Create data directory for persistence
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/work
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 3000
