@@ -205,6 +205,24 @@ export COMPOSE_FILE=docker-compose-local.yml
 docker-compose up -d  # 自动使用 docker-compose-local.yml
 ```
 
+### 独立部署（使用自己的数据库）
+
+如果你已有 MariaDB/MySQL 服务器，可以使用独立版配置：
+
+```bash
+# 1. 复制环境配置
+cp .env.example .env
+
+# 2. 编辑 .env 文件，配置你的数据库连接
+# 必须修改: DB_HOST, DB_USER, DB_PASSWORD, JWT_SECRET, JWT_REFRESH_SECRET
+
+# 3. 使用独立版配置启动
+docker-compose -f docker-compose.standalone.yml up -d
+
+# 4. 查看日志
+docker-compose -f docker-compose.standalone.yml logs -f app
+```
+
 ---
 
 ## 🏗️ 技术栈
@@ -378,6 +396,12 @@ touwaka-mate-v2/
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
+
+---
+
+## 💬 技术交流
+
+QQ群：768524453
 
 ---
 
