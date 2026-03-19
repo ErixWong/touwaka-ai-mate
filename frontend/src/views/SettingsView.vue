@@ -1573,17 +1573,25 @@ const expertStore = useExpertStore()
 
 const activeTab = ref('profile')
 
-const tabs = computed(() => [
+const allTabs = [
   { key: 'profile', label: t('settings.profile') },
-  { key: 'model', label: t('settings.modelAndProvider') },
-  { key: 'expert', label: t('settings.expertSettings') },
-  { key: 'assistant', label: t('settings.assistantSettings') },
+  { key: 'model', label: t('settings.modelAndProvider'), adminOnly: true },
+  { key: 'expert', label: t('settings.expertSettings'), adminOnly: true },
+  { key: 'assistant', label: t('settings.assistantSettings'), adminOnly: true },
   { key: 'system', label: t('settings.systemConfig'), adminOnly: true },
-  { key: 'user', label: t('settings.userManagement') },
-  { key: 'role', label: t('settings.roleManagement') },
-  { key: 'organization', label: t('settings.organizationManagement') },
+  { key: 'user', label: t('settings.userManagement'), adminOnly: true },
+  { key: 'role', label: t('settings.roleManagement'), adminOnly: true },
+  { key: 'organization', label: t('settings.organizationManagement'), adminOnly: true },
   { key: 'about', label: t('settings.about') },
-])
+]
+
+// 根据用户角色过滤 tabs
+const tabs = computed(() => {
+  if (isAdmin.value) {
+    return allTabs
+  }
+  return allTabs.filter(tab => !tab.adminOnly)
+})
 
 const profileForm = reactive({
   nickname: '',
