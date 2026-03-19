@@ -172,6 +172,7 @@ export default {
   settings: {
     title: '设置',
     profile: '个人资料',
+    profileBasic: '基本信息',
     nickname: '昵称',
     language: '语言设置',
     defaultModel: '默认模型',
@@ -386,6 +387,15 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     resetPasswordBtn: '重置',
     resetPasswordSuccess: '密码重置成功',
     resetPasswordFailed: '密码重置失败',
+    // 修改密码（用户自助）
+    changePassword: '修改密码',
+    oldPassword: '原密码',
+    oldPasswordPlaceholder: '请输入原密码',
+    confirmPassword: '确认密码',
+    confirmPasswordPlaceholder: '请再次输入新密码',
+    changePasswordBtn: '修改密码',
+    changePasswordSuccess: '密码修改成功',
+    changePasswordFailed: '密码修改失败',
     // 角色管理
     roleManagement: '角色管理',
     roleList: '角色列表',
