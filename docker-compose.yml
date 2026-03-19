@@ -84,8 +84,9 @@ services:
         if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
           echo 'Building frontend...'
           cd /app/frontend
-          if [ ! -d node_modules/vite ]; then
+          if [ ! -f node_modules/vite/bin/vite.js ]; then
             echo 'Installing frontend dependencies...'
+            rm -rf node_modules package-lock.json
             npm install
           fi
           node node_modules/vite/bin/vite.js build
