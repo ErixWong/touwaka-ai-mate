@@ -55,6 +55,10 @@
             <div class="dropdown-email">{{ userStore.user?.email }}</div>
           </div>
           <div class="dropdown-divider"></div>
+          <router-link to="/invitations" class="dropdown-item" @click="showUserMenu = false">
+            <span class="item-icon">🎫</span>
+            <span>{{ $t('invitation.title') }}</span>
+          </router-link>
           <router-link to="/settings" class="dropdown-item" @click="showUserMenu = false">
             <span class="item-icon">⚙️</span>
             <span>{{ $t('nav.settings') }}</span>
