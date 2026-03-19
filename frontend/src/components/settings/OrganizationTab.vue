@@ -75,6 +75,13 @@
                 {{ $t('settings.manager') }}
               </span>
             </div>
+            <div class="position-user">
+              <UserPicker
+                :model-value="getPositionUserId(position.id)"
+                :placeholder="$t('settings.selectUser')"
+                @change="(user) => handlePositionUserChange(position, user)"
+              />
+            </div>
             <div class="position-actions">
               <button class="btn-edit" @click="openPositionDialog(position)">
                 {{ $t('common.edit') }}
@@ -187,9 +194,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { departmentApi, positionApi } from '@/api/services'
-import type { Department, Position, CreateDepartmentRequest, CreatePositionRequest } from '@/types'
+import { departmentApi, positionApi, organizationApi } from '@/api/services'
+import type { Department, Position, CreateDepartmentRequest, CreatePositionRequest, UserListItem } from '@/types'
 import DepartmentTreeNode from './DepartmentTreeNode.vue'
+import UserPicker from '@/components/common/UserPicker.vue'
 import { useToastStore } from '@/stores/toast'
 
 const { t } = useI18n()
@@ -201,6 +209,7 @@ const positionLoading = ref(false)
 const departmentTree = ref<Department[]>([])
 const selectedDepartment = ref<Department | null>(null)
 const positions = ref<Position[]>([])
+const positionUserMap = ref<Map<string, string>>(new Map()) // 职位ID -> 用户ID映射
 
 // 部门对话框
 const showDepartmentDialog = ref(false)
@@ -259,6 +268,8 @@ const loadPositions = async (departmentId: string) => {
   try {
     const data = await positionApi.getDepartmentPositions(departmentId)
     positions.value = data
+    // 加载职位用户映射
+    await loadPositionUsers()
   } catch (error) {
     console.error('Failed to load positions:', error)
   } finally {
@@ -384,6 +395,58 @@ const deletePosition = async (position: Position) => {
   }
 }
 
+// 获取职位的用户ID
+const getPositionUserId = (positionId: string): string | null => {
+  return positionUserMap.value.get(positionId) || null
+}
+
+// 处理职位用户变更
+const handlePositionUserChange = async (position: Position, user: UserListItem | null) => {
+  try {
+    // 更新职位用户映射
+    if (user) {
+      positionUserMap.value.set(position.id, user.id)
+    } else {
+      positionUserMap.value.delete(position.id)
+    }
+    
+    // 调用后端 API 更新用户组织信息
+    // 注意：这里使用 organizationApi.updateUserOrganization
+    // 将用户分配到当前选中的部门和职位
+    if (user) {
+      await organizationApi.updateUserOrganization(user.id, {
+        department_id: selectedDepartment.value?.id || null,
+        position_id: position.id,
+      })
+    }
+    
+    toast.success(t('settings.assignSuccess'))
+  } catch (error: any) {
+    console.error('Failed to assign user to position:', error)
+    toast.error(error.response?.data?.message || t('common.saveFailed'))
+    // 恢复之前的状态
+    await loadPositionUsers()
+  }
+}
+
+// 加载职位用户映射
+const loadPositionUsers = async () => {
+  try {
+    // 获取每个职位的成员
+    for (const position of positions.value) {
+      const members = await positionApi.getPositionMembers(position.id)
+      if (members && members.length > 0) {
+        // 取第一个成员作为职位负责人（1:1关系）
+        positionUserMap.value.set(position.id, members[0]!.id)
+      } else {
+        positionUserMap.value.delete(position.id)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load position users:', error)
+  }
+}
+
 // 初始化
 onMounted(() => {
   loadDepartmentTree()
@@ -499,6 +562,11 @@ onMounted(() => {
 .badge.manager {
   background: var(--warning-color);
   color: white;
+}
+
+.position-user {
+  flex: 0 0 auto;
+  min-width: 140px;
 }
 
 .position-actions {
