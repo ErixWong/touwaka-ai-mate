@@ -12,8 +12,8 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Production image
-FROM nikolaik/python-nodejs:python3.11-nodejs20
+# Production image - use slim variant for smaller size
+FROM nikolaik/python-nodejs:python3.12-nodejs20-slim
 
 # Install system dependencies for Office/PDF processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -33,6 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev \
     # Image processing
     libvips-dev \
+    # Utility
+    wget \
     # Cleanup
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
