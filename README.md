@@ -305,7 +305,6 @@ touwaka-mate-v2/
 | [快速开始](docs/guides/development/quick-start.md) | 环境配置、启动命令 |
 | [数据库指南](docs/guides/database/README.md) | 表结构、迁移脚本 |
 | [技能开发标准](docs/guides/skill-md-standard.md) | SKILL.md 编写规范 |
-| [MCP Server 构建指南](docs/guides/mcp-server-build-guide.md) | MCP 服务器开发 |
 
 ---
 
