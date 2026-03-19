@@ -74,6 +74,17 @@ export default class user extends Model {
         key: 'id'
       }
     },
+    invitation_quota: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 1,
+      comment: "可生成的邀请码数量上限"
+    },
+    invited_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "邀请记录ID（关联 invitation_usage.id）"
+    },
     preferences: {
       type: DataTypes.TEXT,
       allowNull: true

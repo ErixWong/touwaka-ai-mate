@@ -698,6 +698,108 @@ class UserController {
       ctx.error('获取组织信息失败', 500);
     }
   }
+
+  /**
+   * 更新用户邀请配额
+   * 管理员专用
+   */
+  async updateInvitationQuota(ctx) {
+    try {
+      // 检查管理员权限
+      if (!ctx.state.session.isAdmin) {
+        ctx.error('无权限访问', 403);
+        return;
+      }
+
+      const { id } = ctx.params;
+      const { invitation_quota } = ctx.request.body;
+
+      // 验证配额值
+      if (typeof invitation_quota !== 'number' || invitation_quota < 0) {
+        ctx.error('邀请配额必须为非负整数', 400);
+        return;
+      }
+
+      // 检查用户是否存在
+      const user = await this.User.findOne({ where: { id }, raw: true });
+      if (!user) {
+        ctx.error('用户不存在', 404);
+        return;
+      }
+
+      // 更新邀请配额
+      await this.User.update(
+        { invitation_quota },
+        { where: { id } }
+      );
+
+      ctx.success({ invitation_quota }, '邀请配额更新成功');
+    } catch (error) {
+      logger.error('Update invitation quota error:', error);
+      ctx.error('更新邀请配额失败', 500);
+    }
+  }
+
+  /**
+   * 获取用户邀请统计信息
+   * 管理员专用
+   */
+  async getUserInvitationStats(ctx) {
+    try {
+      // 检查管理员权限
+      if (!ctx.state.session.isAdmin) {
+        ctx.error('无权限访问', 403);
+        return;
+      }
+
+      const { id } = ctx.params;
+
+      // 检查用户是否存在
+      const user = await this.User.findOne({
+        where: { id },
+        attributes: ['id', 'username', 'invitation_quota'],
+        raw: true,
+      });
+      if (!user) {
+        ctx.error('用户不存在', 404);
+        return;
+      }
+
+      // 获取邀请码统计
+      const Invitation = this.db.getModel('invitation');
+      const InvitationUsage = this.db.getModel('invitation_usage');
+
+      const totalInvitations = await Invitation.count({
+        where: { creator_id: id },
+      });
+
+      const activeInvitations = await Invitation.count({
+        where: { creator_id: id, status: 'active' },
+      });
+
+      const totalInvitedUsers = await InvitationUsage.count({
+        include: [{
+          model: Invitation,
+          as: 'invitation',
+          where: { creator_id: id },
+          attributes: [],
+        }],
+      });
+
+      ctx.success({
+        userId: user.id,
+        username: user.username,
+        invitationQuota: user.invitation_quota,
+        usedQuota: totalInvitations,
+        remainingQuota: Math.max(0, (user.invitation_quota || 0) - totalInvitations),
+        activeInvitations,
+        totalInvitedUsers,
+      });
+    } catch (error) {
+      logger.error('Get user invitation stats error:', error);
+      ctx.error('获取用户邀请统计失败', 500);
+    }
+  }
 }
 
 export default UserController;

@@ -1,161 +1,206 @@
-# Issue #222: feat: 用户邀请注册功能
+# Issue #222: 用户邀请注册系统
 
-**GitHub Issue**: https://github.com/ErixWong/touwaka-ai-mate/issues/222
+## 📋 任务概述
 
-## 概述
+实现用户邀请注册系统，允许用户通过邀请码注册账号。
 
-实现用户邀请注册功能，允许现有用户生成邀请链接，新用户通过邀请链接注册账户。同时提供管理员配置，控制是否允许自主注册。
+## ✅ 开发完成状态
 
-## 需求分析
+### 后端实现
+- [x] 数据库迁移 #51-55（invitation_quota, invited_by, invitations, invitation_usages, 系统配置）
+- [x] InvitationController - 邀请码 CRUD 操作
+- [x] AuthController.register() - 用户注册逻辑
+- [x] 路由配置（公开/需认证接口）
 
-### 核心需求
-1. **邀请码生成**：用户可以生成邀请链接/邀请码
-2. **邀请注册**：新用户通过邀请链接注册账户
-3. **注册控制**：管理员可配置是否允许自主注册（无邀请码）
-4. **邀请记录**：记录邀请关系（谁邀请了谁）
+### 前端实现
+- [x] API 服务层 (`frontend/src/api/invitation.ts`)
+- [x] 注册页面 (`frontend/src/views/RegisterView.vue`)
+- [x] 邀请管理 Tab (`frontend/src/components/settings/InvitationTab.vue`)
+- [x] i18n 国际化（zh-CN, en-US）
 
-### 业务规则
-- 默认关闭自主注册，必须通过邀请码注册
-- 管理员可以在系统设置中开启自主注册
-- 邀请码可以设置有效期和使用次数限制
-- 邀请码使用后记录邀请关系
+---
 
-## 技术方案
+## 🔍 代码审计报告
 
-### 1. 数据库设计
+**审计日期**: 2026-03-19  
+**审计人**: Maria  
+**审计结果**: ✅ 通过
 
-#### 新增 `invitation` 表
+### 1. 编译与自动化检查 ✅
 
-```sql
-CREATE TABLE invitation (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  code VARCHAR(32) NOT NULL UNIQUE COMMENT '邀请码',
-  creator_id VARCHAR(32) NOT NULL COMMENT '创建者用户ID',
-  max_uses INT DEFAULT NULL COMMENT '最大使用次数，NULL表示无限制',
-  used_count INT DEFAULT 0 COMMENT '已使用次数',
-  expires_at DATETIME DEFAULT NULL COMMENT '过期时间，NULL表示永不过期',
-  status ENUM('active', 'exhausted', 'expired') DEFAULT 'active',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_code (code),
-  INDEX idx_creator (creator_id),
-  INDEX idx_status (status)
-);
+| 检查项 | 结果 | 备注 |
+|--------|------|------|
+| `npm run lint` | ✅ PASSED | 无 ESLint 错误 |
+| `npm run build` (frontend) | ✅ PASSED | TypeScript 类型检查通过，Vite 构建成功 |
+
+### 2. API 响应格式检查 ✅
+
+所有后端接口均使用 `ctx.success()` 返回标准响应格式：
+
+**InvitationController** (`server/controllers/invitation.controller.js`):
+- `getQuota()` - `ctx.success({ quota, used, remaining })`
+- `create()` - `ctx.success({ id, code, maxUses, ... })`
+- `list()` - `ctx.success({ items, total })`
+- `getUsage()` - `ctx.success({ items, total })`
+- `revoke()` - `ctx.success(null, '邀请码已撤销')`
+- `verify()` - `ctx.success({ valid, message/code/remaining })`
+- `getRegistrationConfig()` - `ctx.success({ allowSelfRegistration })`
+
+**AuthController** (`server/controllers/auth.controller.js`):
+- `register()` - `ctx.success({ user, access_token, refresh_token }, '注册成功')`
+- `getRegistrationConfig()` - `ctx.success({ allowSelfRegistration })`
+
+### 3. 代码质量检查 ✅
+
+| 检查项 | 结果 | 说明 |
+|--------|------|------|
+| SQL 注入防护 | ✅ | 使用 Sequelize ORM 参数化查询 |
+| XSS 防护 | ✅ | Vue 3 自动转义输出 |
+| 输入验证 | ✅ | 邮箱格式、密码长度、用户名/邮箱唯一性检查 |
+| 错误处理 | ✅ | 所有方法有 try-catch，使用 logger 记录错误 |
+| 权限控制 | ✅ | 邀请码操作验证 creator_id 归属 |
+
+### 4. 前后端契约检查 ✅
+
+**API 路径匹配**:
+
+| 前端调用 | 后端路由 | 状态 |
+|----------|----------|------|
+| `GET /invitations/quota` | `GET /:quota` | ✅ |
+| `POST /invitations` | `POST /` | ✅ |
+| `GET /invitations` | `GET /` | ✅ |
+| `GET /invitations/:id/usage` | `GET /:id/usage` | ✅ |
+| `DELETE /invitations/:id` | `DELETE /:id` | ✅ |
+| `GET /invitations/:code/verify` | `GET /:code/verify` | ✅ |
+| `GET /auth/registration-config` | `GET /auth/registration-config` | ✅ |
+| `POST /auth/register` | `POST /auth/register` | ✅ |
+
+**TypeScript 接口**:
+- `InvitationQuota`, `Invitation`, `InvitationUsage`, `VerifyResult`, `RegistrationConfig` 等类型定义完整
+- 前端接口与后端返回数据结构一致
+
+### 5. 架构设计审计 ✅
+
+**分层架构**:
+```
+Routes (路由层)
+    ↓
+Controllers (控制器层)
+    ↓
+Services (服务层) - SystemSettingService
+    ↓
+Models (数据模型层) - Sequelize Models
 ```
 
-#### 新增 `invitation_usage` 表（记录邀请使用记录）
+**设计亮点**:
+- 依赖注入：Controller 通过构造函数接收 db 实例
+- 服务复用：SystemSettingService 单例模式
+- 关注点分离：邀请逻辑与认证逻辑分离
 
-```sql
-CREATE TABLE invitation_usage (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  invitation_id INT NOT NULL COMMENT '邀请ID',
-  user_id VARCHAR(32) NOT NULL COMMENT '注册用户ID',
-  used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (invitation_id) REFERENCES invitation(id),
-  FOREIGN KEY (user_id) REFERENCES user(id)
-);
-```
+### 6. 命名规范检查 ✅
 
-#### 修改 `user` 表
-
-```sql
-ALTER TABLE user ADD COLUMN invited_by INT DEFAULT NULL COMMENT '邀请记录ID';
-ALTER TABLE user ADD FOREIGN KEY (invited_by) REFERENCES invitation(id);
-```
-
-#### 系统配置新增
-
-在 `system_setting` 表中新增配置项：
-
-| setting_key | setting_value | value_type | description |
-|-------------|---------------|------------|-------------|
-| registration.allow_self_registration | false | boolean | 是否允许自主注册（无需邀请码） |
-| registration.invitation_expiry_days | 7 | number | 邀请码默认有效天数（0表示永久） |
-| registration.invitation_max_uses | 1 | number | 邀请码默认最大使用次数（0表示无限制） |
-
-### 2. API 设计
-
-#### 邀请相关 API
-
-| 方法 | 路径 | 描述 | 权限 |
+| 层级 | 规范 | 示例 | 状态 |
 |------|------|------|------|
-| POST | `/api/invitations` | 创建邀请码 | 登录用户 |
-| GET | `/api/invitations` | 获取我的邀请码列表 | 登录用户 |
-| GET | `/api/invitations/:code` | 验证邀请码（公开） | 无 |
-| GET | `/api/invitations/:id/usage` | 获取邀请使用记录 | 邀请创建者 |
+| 数据库字段 | snake_case | `invitation_quota`, `max_uses`, `creator_id` | ✅ |
+| 前端组件 | PascalCase | `InvitationTab.vue`, `RegisterView.vue` | ✅ |
+| API 路由 | kebab-case | `/invitations`, `/auth/register` | ✅ |
+| Git 提交 | `#{issue}: type 描述` | `#222: feat 添加邀请注册系统` | ✅ |
 
-#### 注册 API
+### 7. i18n 国际化检查 ✅
 
-| 方法 | 路径 | 描述 | 权限 |
-|------|------|------|------|
-| POST | `/api/auth/register` | 用户注册 | 公开 |
-| GET | `/api/auth/registration-config` | 获取注册配置 | 公开 |
-
-#### 注册请求体
-
-```json
-{
-  "username": "newuser",
-  "email": "user@example.com",
-  "password": "password123",
-  "invitation_code": "ABCD1234"  // 可选，取决于系统配置
-}
+**zh-CN.ts** (lines 1237-1242):
+```typescript
+status: {
+  active: '有效',
+  exhausted: '已用完',
+  expired: '已过期',
+  revoked: '已撤销',
+},
 ```
 
-### 3. 前端设计
+**en-US.ts** (lines 1206-1211):
+```typescript
+status: {
+  active: 'Active',
+  exhausted: 'Used Up',
+  expired: 'Expired',
+  revoked: 'Revoked',
+},
+```
 
-#### 新增页面
-- 邀请管理页面：`/settings/invitations`
-- 邀请注册页面：`/register?code=ABCD1234`
+所有 `invitation.*` 和 `register.*` 翻译键完整。
 
-#### 修改页面
-- 登录页面：添加"注册"链接（根据配置显示）
-- 系统设置页面：添加注册配置选项
+### 8. 前端 API 客户端检查 ✅
 
-### 4. 实现步骤
+**路径正确性**:
+- `client.ts` 配置 `baseURL: '/api'`
+- API 函数路径不含 `/api` 前缀 ✅
 
-#### Phase 1: 数据库迁移
-1. 在 `scripts/upgrade-database.js` 添加迁移脚本
-2. 创建 `invitation` 和 `invitation_usage` 表
-3. 修改 `user` 表添加 `invited_by` 字段
-4. 添加系统配置默认值
+**示例**:
+```typescript
+// 正确 ✅
+client.get('/invitations/quota')  // 实际请求 /api/invitations/quota
 
-#### Phase 2: 后端实现
-1. 创建 `Invitation` 模型
-2. 创建 `invitation.controller.js`
-3. 创建 `invitation.routes.js`
-4. 修改 `auth.controller.js` 添加注册功能
-5. 修改 `system-setting.service.js` 添加注册配置
+// 错误 ❌ (未发现)
+// client.get('/api/invitations/quota')
+```
 
-#### Phase 3: 前端实现
-1. 创建邀请管理组件
-2. 创建注册页面
-3. 修改登录页面
-4. 修改系统设置页面
+### 9. 数据库迁移检查 ✅
 
-### 5. 安全考虑
+**迁移 #51-55 特性**:
 
-1. **邀请码安全**：使用加密安全的随机字符串（16位以上）
-2. **注册限制**：防止批量注册攻击
-3. **密码强度**：强制密码复杂度要求
-4. **邮箱验证**：可选的邮箱验证流程
+| 特性 | 状态 | 说明 |
+|------|------|------|
+| 幂等性 | ✅ | 每个迁移有 `check` 函数检测是否已应用 |
+| 外键约束 | ✅ | `invitations.creator_id` → `users.id`, `invitation_usages` 双外键 |
+| 字符集 | ✅ | 使用 `utf8mb4_bin` 匹配 `users` 表 |
+| 索引 | ✅ | `idx_code`, `idx_creator`, `idx_status` 等 |
 
-## 验收标准
+**迁移脚本**:
+```javascript
+// #53: invitations 表
+CREATE TABLE invitations (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  code VARCHAR(32) NOT NULL UNIQUE,
+  creator_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  ...
+  FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+```
 
-- [ ] 用户可以生成邀请链接
-- [ ] 新用户可以通过邀请链接注册
-- [ ] 管理员可以配置是否允许自主注册
-- [ ] 邀请码有有效期和使用次数限制
-- [ ] 邀请关系被正确记录
-- [ ] 前端界面友好，操作流畅
+---
 
-## 相关文件
+## 📝 审计结论
 
-- `server/controllers/auth.controller.js` - 添加注册功能
-- `server/controllers/invitation.controller.js` - 新建
-- `server/routes/auth.routes.js` - 添加注册路由
-- `server/routes/invitation.routes.js` - 新建
-- `server/services/system-setting.service.js` - 添加注册配置
-- `scripts/upgrade-database.js` - 数据库迁移
-- `client/src/views/Register.vue` - 新建注册页面
-- `client/src/views/InvitationManage.vue` - 新建邀请管理页面
+**Issue #222 邀请注册系统代码审计通过** ✅
+
+- 代码质量良好，符合项目规范
+- 安全性措施到位（SQL注入防护、输入验证、权限控制）
+- 前后端契约一致
+- 国际化完整
+- 数据库迁移设计合理
+
+**建议**: 可以合并到主分支。
+
+---
+
+## 📌 相关文件
+
+### 后端
+- `server/controllers/invitation.controller.js`
+- `server/controllers/auth.controller.js`
+- `server/routes/invitation.routes.js`
+- `server/routes/auth.routes.js`
+- `server/services/system-setting.service.js`
+- `scripts/upgrade-database.js` (迁移 #51-55)
+
+### 前端
+- `frontend/src/api/invitation.ts`
+- `frontend/src/views/RegisterView.vue`
+- `frontend/src/components/settings/InvitationTab.vue`
+- `frontend/src/i18n/locales/zh-CN.ts`
+- `frontend/src/i18n/locales/en-US.ts`
+
+---
+
+✌Bazinga！

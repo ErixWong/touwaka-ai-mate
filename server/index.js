@@ -71,6 +71,7 @@ import packageRoutes from './routes/package.routes.js';
 import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 import taskStaticRoutes from './routes/task-static.routes.js';
+import { createInvitationRoutes } from './routes/invitation.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
 class ApiServer {
@@ -381,6 +382,12 @@ class ApiServer {
     this.app.use(taskStaticRouter.routes());
     this.app.use(taskStaticRouter.allowedMethods());
     logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
+
+    // Invitation 邀请码路由（Issue #222）
+    const invitationRouter = createInvitationRoutes(this.db);
+    this.app.use(invitationRouter.routes());
+    this.app.use(invitationRouter.allowedMethods());
+    logger.info('Invitation routes registered (GET/POST /api/invitations)');
 
     // 前端静态文件服务（生产环境）
     // 检查前端构建目录是否存在

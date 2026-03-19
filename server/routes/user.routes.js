@@ -28,6 +28,12 @@ export default (controller) => {
   // 更新用户组织信息（需要管理员权限）
   router.put('/:id/organization', authenticate(), controller.updateUserOrganization.bind(controller));
 
+  // 更新用户邀请配额（需要管理员权限）
+  router.put('/:id/invitation-quota', authenticate(), controller.updateInvitationQuota.bind(controller));
+
+  // 获取用户邀请统计（需要管理员权限）
+  router.get('/:id/invitation-stats', authenticate(), controller.getUserInvitationStats.bind(controller));
+
   // ========== 角色管理路由 ==========
   
   // 获取所有角色列表（需要管理员权限）
