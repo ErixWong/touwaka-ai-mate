@@ -69,7 +69,7 @@ services:
           echo 'Building frontend...'
           cd /app/frontend
           npm ci
-          npm run build-only
+          npx vite build
         fi
 
         cd /app
