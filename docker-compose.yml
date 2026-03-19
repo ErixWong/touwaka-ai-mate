@@ -10,8 +10,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_HOST=${DB_HOST:-db}
-      - DB_PORT=${DB_PORT:-3306}
+      - DB_HOST=db
+      - DB_PORT=3306
       - DB_NAME=${DB_NAME:-touwaka_mate}
       - DB_USER=${DB_USER:-touwaka}
       - DB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
@@ -21,6 +21,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - app_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - touwaka-network
     healthcheck:
@@ -30,10 +33,32 @@ services:
       retries: 3
       start_period: 10s
 
+  db:
+    image: mariadb:latest
+    container_name: touwaka-mariadb
+    restart: unless-stopped
+    environment:
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-root_secret_password}
+      - MARIADB_DATABASE=${DB_NAME:-touwaka_mate}
+      - MARIADB_USER=${DB_USER:-touwaka}
+      - MARIADB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - touwaka-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 networks:
   touwaka-network:
     driver: bridge
 
 volumes:
+  mariadb_data:
+    driver: local
   app_data:
     driver: local
