@@ -251,6 +251,7 @@ const loadDepartmentTree = async () => {
     departmentTree.value = data
   } catch (error) {
     console.error('Failed to load department tree:', error)
+    toast.error(t('error.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -272,6 +273,7 @@ const loadPositions = async (departmentId: string) => {
     await loadPositionUsers()
   } catch (error) {
     console.error('Failed to load positions:', error)
+    toast.error(t('error.loadFailed'))
   } finally {
     positionLoading.value = false
   }
@@ -444,6 +446,7 @@ const loadPositionUsers = async () => {
     }
   } catch (error) {
     console.error('Failed to load position users:', error)
+    toast.error(t('error.loadFailed'))
   }
 }
 

@@ -11,7 +11,7 @@
           {{ selectedUser.nickname || selectedUser.username }}
         </template>
         <template v-else>
-          {{ placeholder }}
+          {{ placeholder || $t('settings.selectUser') }}
         </template>
       </span>
       <span class="trigger-icon">▼</span>
@@ -76,6 +76,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { userApi } from '@/api/services'
+import { useToastStore } from '@/stores/toast'
 import type { UserListItem } from '@/types'
 
 interface Props {
@@ -86,7 +87,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: null,
-  placeholder: '选择人员',
+  placeholder: '',
   disabled: false,
 })
 
@@ -96,6 +97,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const toast = useToastStore()
 
 // 状态
 const pickerRef = ref<HTMLElement | null>(null)
@@ -130,6 +132,7 @@ const loadUsers = async () => {
     }
   } catch (error) {
     console.error('Failed to load users:', error)
+    toast.error(t('settings.loadUsersFailed'))
   } finally {
     loading.value = false
   }
