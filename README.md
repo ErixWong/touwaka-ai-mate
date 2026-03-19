@@ -135,20 +135,24 @@ npm run dev:frontend # 前端 :5173
 ### 快速启动
 
 ```bash
-# 1. 复制环境配置
+# 1. 克隆项目
+git clone https://github.com/ErixWong/touwaka-ai-mate.git
+cd touwaka-ai-mate
+
+# 2. 复制环境配置
 cp .env.example .env
 
-# 2. 编辑 .env 文件，设置必要的配置
+# 3. 编辑 .env 文件，设置必要的配置
 # 必须修改: JWT_SECRET, JWT_REFRESH_SECRET
 # 可选修改: DB_USER, DB_PASSWORD, DB_ROOT_PASSWORD
 
-# 3. 启动服务
+# 4. 启动服务
 docker-compose up -d
 
-# 4. 查看日志
+# 5. 查看日志
 docker-compose logs -f app
 
-# 5. 初始化核心技能 (首次部署)
+# 6. 初始化核心技能 (首次部署)
 docker-compose exec app node scripts/init-core-skills.js
 ```
 
@@ -160,10 +164,16 @@ docker-compose exec app node scripts/init-core-skills.js
 | `DB_NAME` | 数据库名 | `touwaka_mate` |
 | `DB_USER` | 数据库用户 | `touwaka` |
 | `DB_PASSWORD` | 数据库密码 | `touwaka_secret` |
-| `DB_ROOT_PASSWORD` | MySQL root 密码 | `root_secret_password` |
+| `DB_ROOT_PASSWORD` | MariaDB root 密码 | `root_secret_password` |
 | `JWT_SECRET` | JWT 密钥 (必须修改) | - |
 | `JWT_REFRESH_SECRET` | JWT 刷新密钥 (必须修改) | - |
 | `LOG_LEVEL` | 日志级别 | `info` |
+
+### 数据持久化
+
+以下目录会持久化到宿主机：
+- `./data/` - 应用数据（技能、知识库图片、工作文件）
+- MariaDB 数据使用 Docker named volume
 
 ### 常用命令
 
@@ -177,14 +187,18 @@ docker-compose down
 # 查看日志
 docker-compose logs -f app
 
-# 重新构建
-docker-compose build --no-cache
+# 重新构建 (代码更新后)
+docker-compose build --no-cache app
+docker-compose up -d
 
 # 进入容器
 docker-compose exec app sh
 
-# 备份数据
-docker-compose exec db mysqldump -u root -p touwaka_mate > backup.sql
+# 备份数据库
+docker-compose exec db mariadb-dump -u root -p touwaka_mate > backup.sql
+
+# 恢复数据库
+docker-compose exec -T db mariadb -u root -p touwaka_mate < backup.sql
 ```
 
 ---
