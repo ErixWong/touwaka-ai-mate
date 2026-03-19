@@ -36,6 +36,12 @@ const DEFAULT_SETTINGS = {
   tool: {
     max_rounds: { value: 20, type: 'number', description: '最大工具调用轮数' },
   },
+  registration: {
+    allow_self_registration: { value: false, type: 'boolean', description: '是否允许自主注册（无需邀请码）' },
+    default_invitation_quota: { value: 1, type: 'number', description: '用户默认可生成的邀请码数量' },
+    default_invitation_max_uses: { value: 5, type: 'number', description: '每个邀请码默认可邀请人数' },
+    invitation_expiry_days: { value: 0, type: 'number', description: '邀请码默认有效天数（0=永久）' },
+  },
 };
 
 // 配置值验证规则
@@ -55,6 +61,9 @@ const VALIDATION_RULES = {
   'timeout.resident_skill': { min: 30, max: 7200 },
   'timeout.remote_llm': { min: 30, max: 600 },
   'tool.max_rounds': { min: 1, max: 50 },
+  'registration.default_invitation_quota': { min: 0, max: 100 },
+  'registration.default_invitation_max_uses': { min: 1, max: 1000 },
+  'registration.invitation_expiry_days': { min: 0, max: 365 },
 };
 
 class SystemSettingService {
@@ -281,6 +290,20 @@ class SystemSettingService {
   async getMaxToolRounds() {
     const toolConfig = await this.getToolConfig();
     return toolConfig.max_rounds || DEFAULT_SETTINGS.tool.max_rounds.value;
+  }
+
+  /**
+   * 获取注册配置
+   * @returns {Promise<Object>} 注册配置对象
+   */
+  async getRegistrationConfig() {
+    const settings = await this.getAllSettings();
+    return settings.registration || {
+      allow_self_registration: false,
+      default_invitation_quota: 1,
+      default_invitation_max_uses: 5,
+      invitation_expiry_days: 0,
+    };
   }
 
   /**

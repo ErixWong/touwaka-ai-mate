@@ -12,6 +12,12 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/RegisterView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/',
       component: () => import('@/layouts/MainLayout.vue'),
       children: [
@@ -63,6 +69,11 @@ const router = createRouter({
           path: 'solutions/:id',
           name: 'solution-detail',
           component: () => import('@/views/SolutionDetailView.vue'),
+        },
+        {
+          path: 'invitations',
+          name: 'invitations',
+          component: () => import('@/views/InvitationView.vue'),
         },
       ],
     },

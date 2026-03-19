@@ -16,6 +16,13 @@
         </button>
         <button
           class="sub-tab-btn"
+          :class="{ active: activeSubTab === 'registration' }"
+          @click="activeSubTab = 'registration'"
+        >
+          🎫 {{ $t('settings.registrationConfig') }}
+        </button>
+        <button
+          class="sub-tab-btn"
           :class="{ active: activeSubTab === 'llm' }"
           @click="activeSubTab = 'llm'"
         >
@@ -136,6 +143,90 @@
                 />
                 <span class="config-hint">0-2</span>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作按钮 -->
+        <div class="config-actions">
+          <button class="btn-reset-all" @click="resetAll">
+            {{ $t('settings.resetAll') }}
+          </button>
+          <button
+            class="btn-save"
+            @click="saveConfig"
+            :disabled="!hasChanges || saving"
+          >
+            {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 注册配置 -->
+      <div v-if="activeSubTab === 'registration'" class="tab-content">
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">🎫 {{ $t('settings.registrationConfig') }}</h3>
+            <button class="btn-reset-section" @click="resetSection('registration')">
+              {{ $t('common.reset') }}
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-item full-width">
+              <label class="config-label checkbox-label">
+                <input
+                  type="checkbox"
+                  v-model="form.registration.allow_self_registration"
+                />
+                {{ $t('settings.allowSelfRegistration') }}
+              </label>
+              <p class="config-description">{{ $t('settings.allowSelfRegistrationHint') }}</p>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.defaultInvitationQuota') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.registration.default_invitation_quota"
+                  min="0"
+                  max="100"
+                  class="config-input"
+                />
+                <span class="config-hint">0-100</span>
+              </div>
+              <p class="config-description">{{ $t('settings.defaultInvitationQuotaHint') }}</p>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.defaultInvitationMaxUses') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.registration.default_invitation_max_uses"
+                  min="1"
+                  max="100"
+                  class="config-input"
+                />
+                <span class="config-hint">1-100</span>
+              </div>
+              <p class="config-description">{{ $t('settings.defaultInvitationMaxUsesHint') }}</p>
+            </div>
+
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.invitationExpiryDays') }}</label>
+              <div class="config-input-group">
+                <input
+                  type="number"
+                  v-model.number="form.registration.invitation_expiry_days"
+                  min="0"
+                  max="365"
+                  class="config-input"
+                />
+                <span class="config-hint">0-365</span>
+              </div>
+              <p class="config-description">{{ $t('settings.invitationExpiryDaysHint') }}</p>
             </div>
           </div>
         </div>
@@ -369,7 +460,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 
 // 子 Tab 状态
-const activeSubTab = ref<'llm' | 'general' | 'timeout' | 'packages'>('general')
+const activeSubTab = ref<'llm' | 'general' | 'timeout' | 'packages' | 'registration'>('general')
 
 // 表单数据
 const form = reactive({
@@ -399,6 +490,12 @@ const form = reactive({
   tool: {
     max_rounds: 20,
   },
+  registration: {
+    allow_self_registration: true,
+    default_invitation_quota: 10,
+    default_invitation_max_uses: 5,
+    invitation_expiry_days: 30,
+  },
 })
 
 const saving = ref(false)
@@ -416,6 +513,12 @@ const syncFromStore = () => {
   Object.assign(form.token, settings.token)
   Object.assign(form.timeout, settings.timeout)
   Object.assign(form.tool, settings.tool || { max_rounds: 20 })
+  Object.assign(form.registration, settings.registration || {
+    allow_self_registration: true,
+    default_invitation_quota: 10,
+    default_invitation_max_uses: 5,
+    invitation_expiry_days: 30,
+  })
 }
 
 // 保存配置
@@ -428,6 +531,7 @@ const saveConfig = async () => {
       token: { ...form.token },
       timeout: { ...form.timeout },
       tool: { ...form.tool },
+      registration: { ...form.registration },
     })
     alert(t('settings.saveSuccess'))
   } catch (error) {
@@ -450,6 +554,13 @@ const resetSection = async (section: string) => {
     Object.assign(form.timeout, defaults.timeout)
   } else if (section === 'tool') {
     Object.assign(form.tool, defaults.tool || { max_rounds: 20 })
+  } else if (section === 'registration') {
+    Object.assign(form.registration, defaults.registration || {
+      allow_self_registration: true,
+      default_invitation_quota: 10,
+      default_invitation_max_uses: 5,
+      invitation_expiry_days: 30,
+    })
   }
 }
 
@@ -577,10 +688,29 @@ onMounted(async () => {
   gap: 6px;
 }
 
+.config-item.full-width {
+  grid-column: 1 / -1;
+}
+
 .config-label {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary, #666);
+}
+
+.config-label.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.config-label.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
 }
 
 .config-input {
