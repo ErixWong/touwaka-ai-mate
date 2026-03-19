@@ -23,24 +23,37 @@ RUN npm run build
 # Stage 2: Production image with Node.js and Python
 FROM node:20-alpine
 
-# Install Python and required system dependencies
+# Install Python and all required system dependencies for native modules
+# - build-base, g++, make: for compiling native Node modules (better-sqlite3, tiktoken)
+# - vips-dev: for sharp image processing
+# - sqlite-dev: for better-sqlite3
+# - python3, py3-pip: for Python skills
+# - git, curl: utility tools
 RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    python3-dev \
+    # Build tools for native modules
     build-base \
-    libffi-dev \
-    openssl-dev \
-    make \
     g++ \
+    gcc \
+    make \
+    python3 \
+    # Sharp dependencies (image processing)
+    vips-dev \
+    # SQLite for better-sqlite3
     sqlite \
     sqlite-dev \
+    # Python runtime
+    py3-pip \
+    python3-dev \
+    libffi-dev \
+    openssl-dev \
+    # Utility tools
     git \
     curl \
+    wget \
     && ln -sf python3 /usr/bin/python \
     && ln -sf pip3 /usr/bin/pip
 
-# Create virtual environment for Python packages (optional, for skill dependencies)
+# Create virtual environment for Python packages (for skill dependencies)
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -63,6 +76,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install backend dependencies (production only)
+# This will compile native modules like better-sqlite3, sharp, tiktoken
 RUN npm ci --only=production
 
 # Copy backend source
@@ -76,7 +90,7 @@ COPY data/ ./data/
 # Copy built frontend from builder stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Create data directory for persistence
+# Create data and work directories for persistence
 RUN mkdir -p /app/data /app/work
 
 # Create non-root user for security
