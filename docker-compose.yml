@@ -1,15 +1,4 @@
-# ============================================
-# Touwaka Mate - Docker Compose Configuration
-# ============================================
-# Usage:
-#   Development: docker-compose up -d
-#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-# ============================================
-
 services:
-  # ==========================================
-  # Main Application Service
-  # ==========================================
   app:
     build:
       context: .
@@ -44,9 +33,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # ==========================================
-  # MySQL Database Service
-  # ==========================================
   db:
     image: mysql:8.0
     container_name: touwaka-mysql
@@ -58,7 +44,6 @@ services:
       - MYSQL_PASSWORD=${DB_PASSWORD:-touwaka_secret}
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./scripts/init-database.js:/docker-entrypoint-initdb.d/init-db.js:ro
     networks:
       - touwaka-network
     healthcheck:
@@ -72,36 +57,10 @@ services:
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
 
-  # ==========================================
-  # (Optional) phpMyAdmin for database management
-  # ==========================================
-  # Uncomment to enable
-  # phpmyadmin:
-  #   image: phpmyadmin/phpmyadmin:latest
-  #   container_name: touwaka-pma
-  #   restart: unless-stopped
-  #   environment:
-  #     - PMA_HOST=db
-  #     - PMA_PORT=3306
-  #     - PMA_USER=root
-  #     - PMA_PASSWORD=${DB_ROOT_PASSWORD:-root_secret_password}
-  #   ports:
-  #     - "8080:80"
-  #   depends_on:
-  #     - db
-  #   networks:
-  #     - touwaka-network
-
-# ==========================================
-# Networks Configuration
-# ==========================================
 networks:
   touwaka-network:
     driver: bridge
 
-# ==========================================
-# Volumes Configuration
-# ==========================================
 volumes:
   mysql_data:
     driver: local
