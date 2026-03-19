@@ -190,6 +190,21 @@ docker-compose exec db mariadb-dump -u root -p touwaka_mate > backup.sql
 docker-compose exec -T db mariadb -u root -p touwaka_mate < backup.sql
 ```
 
+### 使用自定义配置文件
+
+如果需要使用自定义的 docker-compose 配置文件（如 `docker-compose-local.yml`）：
+
+```bash
+# 使用 -f 参数指定配置文件
+docker-compose -f docker-compose-local.yml up -d
+docker-compose -f docker-compose-local.yml logs -f app
+docker-compose -f docker-compose-local.yml down
+
+# 或设置环境变量简化命令
+export COMPOSE_FILE=docker-compose-local.yml
+docker-compose up -d  # 自动使用 docker-compose-local.yml
+```
+
 ---
 
 ## 🏗️ 技术栈
