@@ -50,8 +50,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./:/app
-      - node_modules:/app/node_modules
-      - pip_cache:/root/.cache/pip
+      - ./docker-data/node_modules:/app/node_modules
+      - ./docker-data/frontend_node_modules:/app/frontend/node_modules
+      - ./docker-data/pip_cache:/root/.cache/pip
     working_dir: /app
     command:
       - bash
@@ -83,8 +84,10 @@ services:
         if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
           echo 'Building frontend...'
           cd /app/frontend
-          rm -rf node_modules
-          npm install
+          if [ ! -d node_modules/vite ]; then
+            echo 'Installing frontend dependencies...'
+            npm install
+          fi
           npm run build-only
         fi
 
@@ -106,8 +109,4 @@ networks:
 
 volumes:
   mariadb_data:
-    driver: local
-  node_modules:
-    driver: local
-  pip_cache:
     driver: local
