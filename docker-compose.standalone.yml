@@ -1,0 +1,82 @@
+# Docker Compose for standalone deployment (without database)
+# Use this when you have your own MariaDB/MySQL server
+
+services:
+  app:
+    image: nikolaik/python-nodejs:python3.12-nodejs20-slim
+    container_name: touwaka-mate
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=${DB_HOST:-your-db-host}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME:-touwaka_mate}
+      - DB_USER=${DB_USER:-touwaka}
+      - DB_PASSWORD=${DB_PASSWORD:-your-db-password}
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
+      - DATA_BASE_PATH=/app/data
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+      - pip_cache:/root/.cache/pip
+      - system_packages:/var/lib/apt/lists
+    working_dir: /app
+    command: >
+      bash -c "
+        if ! command -v libreoffice &> /dev/null; then
+          echo 'Installing system packages...'
+          apt-get update &&
+          apt-get install -y --no-install-recommends \
+            libreoffice-writer libreoffice-impress libreoffice-calc \
+            poppler-utils fonts-noto-cjk fonts-dejavu \
+            build-essential sqlite3 libsqlite3-dev libvips-dev wget &&
+          apt-get clean
+        fi &&
+        if [ ! -f /root/.cache/pip/.installed ]; then
+          echo 'Installing Python packages...'
+          pip install --no-cache-dir -r /app/requirements.txt &&
+          touch /root/.cache/pip/.installed
+        fi &&
+        if [ ! -d /app/node_modules ] || [ ! -f /app/node_modules/.package-lock.json ]; then
+          echo 'Installing Node.js dependencies...'
+          cd /app && npm ci --only=production &&
+          npm install -g pptxgenjs
+        fi &&
+        if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
+          echo 'Building frontend...'
+          cd /app/frontend &&
+          if [ ! -d node_modules ]; then npm ci; fi &&
+          npm run build
+        fi &&
+        cd /app &&
+        echo 'Starting application...' &&
+        node server/index.js
+      "
+    networks:
+      - touwaka-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+networks:
+  touwaka-network:
+    driver: bridge
+
+volumes:
+  node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local
+  pip_cache:
+    driver: local
+  system_packages:
+    driver: local
