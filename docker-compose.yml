@@ -88,7 +88,7 @@ services:
             echo 'Installing frontend dependencies...'
             npm install
           fi
-          npm run build-only
+          npx vite build
         fi
 
         cd /app
