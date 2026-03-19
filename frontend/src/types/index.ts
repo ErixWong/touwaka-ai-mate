@@ -149,6 +149,7 @@ export interface ModelProvider {
   base_url: string
   api_key: string  // 脱敏显示，如 ****sk-1234
   timeout: number
+  user_agent?: string  // 自定义 User-Agent
   is_active: boolean
   created_at: string
   updated_at: string
@@ -160,6 +161,7 @@ export interface ProviderFormData {
   base_url: string
   api_key: string
   timeout: number
+  user_agent?: string  // 自定义 User-Agent
   is_active: boolean
 }
 

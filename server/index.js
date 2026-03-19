@@ -167,14 +167,15 @@ class ApiServer {
     });
 
     // 注册自主任务执行器
-    // 每30秒检查一次，如果上一轮还没处理完，本轮顺延（preventOverlap: true）
+    // 每分钟检查一次，如果上一轮还没处理完，本轮顺延（preventOverlap: true）
     this.scheduler.register({
       name: 'autonomous-task-executor',
-      interval: 30000, // 30秒
+      interval: 60000, // 1分钟检查一次
       handler: createAutonomousTaskExecutor({
         chatService: this.chatService,
-        batchSize: 5,            // 每批最多处理 5 个任务
-        minIntervalMinutes: 1,   // 同一任务最小执行间隔 1 分钟
+        batchSize: 5,              // 每批最多处理 5 个任务
+        minIntervalMinutes: 15,    // 最后消息超过 15 分钟才 push
+        maxNoResponseCount: 2,     // 连续 2 次无响应则停止
       }),
       preventOverlap: true,  // 如果上一轮还没处理完，本轮顺延
     });
@@ -369,6 +370,8 @@ class ApiServer {
     this.controllers.internal.setResidentSkillManager(this.residentSkillManager);
     // 将 ResidentSkillManager 共享给 DebugController
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
+    // 将 Scheduler 共享给 DebugController
+    this.controllers.debug.setScheduler(this.scheduler);
     this.app.use(internalRoutes(this.controllers.internal).routes());
     this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
     logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke)');
