@@ -1225,6 +1225,106 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 邀请注册系统 (Issue #222) ====================
+
+  // 51. users.invitation_quota 字段
+  {
+    name: 'users.invitation_quota column',
+    check: async (conn) => await hasColumn(conn, 'users', 'invitation_quota'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE users
+        ADD COLUMN invitation_quota INT DEFAULT 1
+        COMMENT '可生成的邀请码数量上限'
+        AFTER position_id
+      `);
+    }
+  },
+
+  // 52. users.invited_by 字段
+  {
+    name: 'users.invited_by column',
+    check: async (conn) => await hasColumn(conn, 'users', 'invited_by'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE users
+        ADD COLUMN invited_by INT DEFAULT NULL
+        COMMENT '邀请记录ID（关联 invitation_usage.id）'
+        AFTER invitation_quota
+      `);
+    }
+  },
+
+  // 53. invitations 表
+  {
+    name: 'invitations table',
+    check: async (conn) => await hasTable(conn, 'invitations'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS invitations (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          code VARCHAR(32) NOT NULL UNIQUE COMMENT '邀请码',
+          creator_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '创建者用户ID',
+          max_uses INT DEFAULT 5 COMMENT '最大使用次数',
+          used_count INT DEFAULT 0 COMMENT '已使用次数',
+          expires_at DATETIME DEFAULT NULL COMMENT '过期时间，NULL表示永不过期',
+          status ENUM('active', 'exhausted', 'expired', 'revoked') DEFAULT 'active',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_code (code),
+          INDEX idx_creator (creator_id),
+          INDEX idx_status (status),
+          FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='邀请码表'
+      `);
+    }
+  },
+
+  // 54. invitation_usages 表
+  {
+    name: 'invitation_usages table',
+    check: async (conn) => await hasTable(conn, 'invitation_usages'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS invitation_usages (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          invitation_id INT NOT NULL COMMENT '邀请ID',
+          user_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '注册用户ID',
+          used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (invitation_id) REFERENCES invitations(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          INDEX idx_invitation (invitation_id),
+          INDEX idx_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='邀请使用记录表'
+      `);
+    }
+  },
+
+  // 55. 注册系统配置
+  {
+    name: 'registration system settings',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT setting_key FROM system_settings WHERE setting_key = 'registration.allow_self_registration'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const settings = [
+        { key: 'registration.allow_self_registration', value: 'false', type: 'boolean', desc: '是否允许自主注册（无需邀请码）' },
+        { key: 'registration.default_invitation_quota', value: '1', type: 'number', desc: '用户默认可生成的邀请码数量' },
+        { key: 'registration.default_invitation_max_uses', value: '5', type: 'number', desc: '每个邀请码默认可邀请人数' },
+        { key: 'registration.invitation_expiry_days', value: '0', type: 'number', desc: '邀请码默认有效天数（0=永久）' },
+      ];
+      for (const s of settings) {
+        await conn.execute(
+          `INSERT IGNORE INTO system_settings (setting_key, setting_value, value_type, description) VALUES (?, ?, ?, ?)`,
+          [s.key, s.value, s.type, s.desc]
+        );
+      }
+    }
+  },
 ];
 
 /**

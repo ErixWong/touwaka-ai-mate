@@ -11,6 +11,12 @@ export default (controller) => {
   // 登录
   router.post('/login', (ctx) => controller.login(ctx));
 
+  // 注册
+  router.post('/register', (ctx) => controller.register(ctx));
+
+  // 获取注册配置（公开接口）
+  router.get('/registration-config', (ctx) => controller.getRegistrationConfig(ctx));
+
   // 刷新 Token
   router.post('/refresh', (ctx) => controller.refresh(ctx));
 

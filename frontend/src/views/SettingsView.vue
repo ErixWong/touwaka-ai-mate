@@ -93,6 +93,11 @@
       </div>
     </div>
 
+    <!-- 邀请管理 -->
+    <div v-if="activeTab === 'invitation'" class="settings-section invitation-section">
+      <InvitationTab />
+    </div>
+
     <!-- 模型和提供商管理（合并） -->
     <div v-if="activeTab === 'model'" class="settings-section model-provider-section">
       <div class="split-panel">
@@ -1587,6 +1592,7 @@ import type { AIModel, ModelProvider, ProviderFormData, ModelFormData, Expert, E
 import OrganizationTab from '@/components/settings/OrganizationTab.vue'
 import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
+import InvitationTab from '@/components/settings/InvitationTab.vue'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1600,6 +1606,7 @@ const profileSubTab = ref<'basic' | 'password'>('basic')
 
 const allTabs = [
   { key: 'profile', label: t('settings.profile') },
+  { key: 'invitation', label: t('settings.invitation') },
   { key: 'model', label: t('settings.modelAndProvider'), adminOnly: true },
   { key: 'expert', label: t('settings.expertSettings'), adminOnly: true },
   { key: 'assistant', label: t('settings.assistantSettings'), adminOnly: true },

@@ -32,6 +32,12 @@ export interface SystemSettings {
   tool: {
     max_rounds: number        // 最大工具调用轮数
   }
+  registration: {
+    allow_self_registration: boolean    // 是否允许自主注册
+    default_invitation_quota: number    // 默认邀请配额
+    default_invitation_max_uses: number // 默认邀请码最大使用次数
+    invitation_expiry_days: number      // 邀请码有效期（天）
+  }
 }
 
 /**
@@ -71,6 +77,12 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     tool: {
       max_rounds: 20,
     },
+    registration: {
+      allow_self_registration: true,
+      default_invitation_quota: 10,
+      default_invitation_max_uses: 5,
+      invitation_expiry_days: 30,
+    },
   }
 
   // Getters
@@ -79,6 +91,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const tokenSettings = computed(() => settings.value?.token || defaultSettings.token)
   const timeoutSettings = computed(() => settings.value?.timeout || defaultSettings.timeout)
   const toolSettings = computed(() => settings.value?.tool || defaultSettings.tool)
+  const registrationSettings = computed(() => settings.value?.registration || defaultSettings.registration)
 
   // Actions
   // 加载系统配置
@@ -159,6 +172,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     tokenSettings,
     timeoutSettings,
     toolSettings,
+    registrationSettings,
     // Actions
     loadSettings,
     updateSettings,
