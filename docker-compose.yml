@@ -53,8 +53,8 @@ services:
         if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
           echo 'Building frontend...'
           cd /app/frontend
-          npm ci
-          npx vite build
+          npm ci --include=dev
+          NODE_OPTIONS="--max-old-space-size=900" npx vite build
         fi
 
         cd /app
