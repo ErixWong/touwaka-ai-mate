@@ -1633,6 +1633,9 @@ class AssistantManager {
     const isHttps = url.protocol === 'https:';
     const httpModule = isHttps ? https : http;
 
+    // 使用 provider 配置的 user_agent，如果未配置则使用默认值
+    const userAgent = model.user_agent || 'Version: 5.10.0 (c3d4709c)';
+    
     const requestOptions = {
       hostname: url.hostname,
       port: url.port || (isHttps ? 443 : 80),
@@ -1642,7 +1645,7 @@ class AssistantManager {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${model.api_key}`,
         'Content-Length': Buffer.byteLength(requestBody),
-        'User-Agent': 'Version: 5.10.0 (c3d4709c)',
+        'User-Agent': userAgent,
       },
       timeout: options.timeout || 120000,
     };
@@ -2010,6 +2013,9 @@ class AssistantManager {
     const isHttps = url.protocol === 'https:';
     const httpModule = isHttps ? https : http;
 
+    // 使用 provider 配置的 user_agent，如果未配置则使用默认值
+    const userAgent = model.user_agent || 'Version: 5.10.0 (c3d4709c)';
+    
     const requestOptions = {
       hostname: url.hostname,
       port: url.port || (isHttps ? 443 : 80),
@@ -2019,7 +2025,7 @@ class AssistantManager {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${model.api_key}`,
         'Content-Length': Buffer.byteLength(requestBody),
-        'User-Agent': 'Version: 5.10.0 (c3d4709c)',
+        'User-Agent': userAgent,
       },
       timeout: options.timeout || 120000,
     };
