@@ -26,6 +26,24 @@
 | Git 提交 | `#{issue}: type 描述` |
 | Issue 标题 | `type: 描述`（不带编号前缀）|
 
+### 公共组件
+
+> **位置**：`frontend/src/components/common/`
+
+| 组件 | 用途 | 示例 |
+|------|------|------|
+| `Toast.vue` | 消息提示（替代 alert）| `toast.success('操作成功')` |
+
+**使用方式**：
+```typescript
+import { useToastStore } from '@/stores/toast'
+const toast = useToastStore()
+toast.success('操作成功')
+toast.error('操作失败')
+toast.warning('警告信息')
+toast.info('提示信息')
+```
+
 ## 🏗 项目上下文
 
 **Touwaka Mate v2** - AI 专家副本系统
