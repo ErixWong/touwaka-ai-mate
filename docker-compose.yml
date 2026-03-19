@@ -20,7 +20,8 @@ services:
       - DATA_BASE_PATH=/app/data
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
-      - app_data:/app/data
+      - ./data/kb-images:/app/data/kb-images
+      - ./data/work:/app/data/work
     depends_on:
       db:
         condition: service_healthy
@@ -59,6 +60,4 @@ networks:
 
 volumes:
   mariadb_data:
-    driver: local
-  app_data:
     driver: local
