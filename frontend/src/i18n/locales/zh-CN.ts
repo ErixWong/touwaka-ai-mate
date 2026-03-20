@@ -703,7 +703,6 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     activate: '启用',
     deactivate: '禁用',
     toggleFailed: '切换技能状态失败',
-    reanalyze: '重新分析',
     noDescription: '暂无描述',
     // 来源类型
     fromUrl: '从 URL',

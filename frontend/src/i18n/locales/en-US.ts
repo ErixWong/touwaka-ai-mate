@@ -721,7 +721,6 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     activate: 'Activate',
     deactivate: 'Deactivate',
     toggleFailed: 'Failed to toggle skill status',
-    reanalyze: 'Reanalyze',
     noDescription: 'No description',
     // Source types
     fromUrl: 'From URL',
