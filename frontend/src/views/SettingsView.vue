@@ -1331,7 +1331,9 @@
                 class="form-input"
                 :placeholder="$t('settings.usernamePlaceholder')"
                 :disabled="!!editingUser"
+                @input="handleUsernameInput"
               />
+              <p v-if="!editingUser" class="form-hint">{{ $t('settings.usernameFormatHint') }}</p>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.email') }} *</label>
@@ -2102,6 +2104,27 @@ const handleUserAvatarUpload = async (event: Event) => {
     toast.error(err instanceof Error ? err.message : t('settings.imageProcessFailed'))
   }
   input.value = ''
+}
+
+// 处理用户名输入，过滤非法字符
+const handleUsernameInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  // 只保留字母、数字、下划线
+  let value = input.value.replace(/[^a-zA-Z0-9_]/g, '')
+  // 确保第一个字符是字母（如果不是，则删除第一个字符）
+  if (value.length > 0 && !/^[a-zA-Z]/.test(value[0])) {
+    value = value.substring(1)
+  }
+  // 限制最大长度为16
+  if (value.length > 16) {
+    value = value.substring(0, 16)
+  }
+  // 更新表单值
+  userForm.username = value
+  // 如果值被修改过，更新输入框显示
+  if (input.value !== value) {
+    input.value = value
+  }
 }
 
 // 监听用户分页变化
