@@ -115,10 +115,10 @@ class UserController {
         return;
       }
 
-      // 验证用户名格式：字母开头，仅允许字母、数字、下划线，6-32位
-      const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{5,31}$/;
+      // 验证用户名格式：字母开头，仅允许字母、数字、下划线，6-16位
+      const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/;
       if (!usernameRegex.test(username)) {
-        ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度6-32位', 400);
+        ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度6-16位', 400);
         return;
       }
 
@@ -265,9 +265,9 @@ class UserController {
 
       // 验证用户名格式（如果更新用户名）
       if (updates.username) {
-        const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{5,31}$/;
+        const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/;
         if (!usernameRegex.test(updates.username)) {
-          ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度6-32位', 400);
+          ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度6-16位', 400);
           return;
         }
       }
