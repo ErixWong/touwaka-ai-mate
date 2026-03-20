@@ -84,7 +84,7 @@ class TokenCleanupJob {
    */
   async cleanupExpiredTokens() {
     try {
-      const [result] = await this.db.query(
+      const result = await this.db.execute(
         `DELETE FROM task_token WHERE expires_at < NOW()`
       );
       return result.affectedRows || 0;
@@ -100,7 +100,7 @@ class TokenCleanupJob {
   async cleanupOldLogs() {
     try {
       const cutoffDate = new Date(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-      const [result] = await this.db.query(
+      const result = await this.db.execute(
         `DELETE FROM task_token_access_log WHERE accessed_at < ?`,
         [cutoffDate]
       );
