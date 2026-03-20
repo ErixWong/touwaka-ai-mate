@@ -3,16 +3,7 @@
  */
 
 import Router from '@koa/router';
-import multer from '@koa/multer';
 import { authenticate, requireAdmin } from '../middlewares/auth.js';
-
-// 配置 multer 用于文件上传
-const upload = multer({
-  dest: 'temp/uploads/',
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
-  },
-});
 
 /**
  * 创建路由实例
@@ -34,23 +25,11 @@ export default function createSkillRoutes(controller) {
 
   // ==================== 写入操作（需要管理员权限）====================
 
-  // POST /api/skills/from-url - 从 URL 安装
-  router.post('/from-url', authenticate(), requireAdmin(), controller.installFromUrl.bind(controller));
-
-  // POST /api/skills/from-zip - 从 ZIP 安装
-  router.post('/from-zip', authenticate(), requireAdmin(), upload.single('file'), controller.installFromZip.bind(controller));
-
-  // POST /api/skills/from-path - 从本地目录安装
-  router.post('/from-path', authenticate(), requireAdmin(), controller.installFromPath.bind(controller));
-
   // PUT /api/skills/:id - 更新技能
   router.put('/:id', authenticate(), requireAdmin(), controller.update.bind(controller));
 
   // DELETE /api/skills/:id - 删除技能
   router.delete('/:id', authenticate(), requireAdmin(), controller.delete.bind(controller));
-
-  // POST /api/skills/:id/reanalyze - 重新分析技能
-  router.post('/:id/reanalyze', authenticate(), requireAdmin(), controller.reanalyze.bind(controller));
 
   // POST /api/skills/:id/parameters - 保存技能参数（全量替换）
   router.post('/:id/parameters', authenticate(), requireAdmin(), controller.saveParameters.bind(controller));
