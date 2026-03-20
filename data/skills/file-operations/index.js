@@ -37,20 +37,40 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 /**
  * Check if path is within allowed directories
+ * 防护：路径遍历攻击和符号链接攻击
  */
 function isPathAllowed(targetPath) {
-  const resolved = path.resolve(targetPath);
+  // 使用 path.resolve 规范化路径（处理 .. 等）
+  let resolved = path.resolve(targetPath);
+  
+  // 使用 fs.realpathSync 解析符号链接（防止符号链接逃逸）
+  try {
+    if (fs.existsSync(resolved)) {
+      resolved = fs.realpathSync(resolved);
+    }
+  } catch (e) {
+    // 路径不存在时，继续使用 path.resolve 的结果
+  }
+  
   return ALLOWED_BASE_PATHS.some(basePath => {
-    const resolvedBase = path.resolve(basePath);
+    let resolvedBase = path.resolve(basePath);
+    try {
+      if (fs.existsSync(resolvedBase)) {
+        resolvedBase = fs.realpathSync(resolvedBase);
+      }
+    } catch (e) {
+      // 基础路径不存在时，继续使用 path.resolve 的结果
+    }
     return resolved.startsWith(resolvedBase);
   });
 }
 
 /**
  * Resolve path relative to allowed base directories
+ * 防护：确保所有返回的路径都在允许的目录内
  */
 function resolvePath(relativePath) {
-  // If absolute path, check if it's allowed
+  // 如果是绝对路径，检查是否被允许
   if (path.isAbsolute(relativePath)) {
     if (!isPathAllowed(relativePath)) {
       throw new Error(`Path not allowed: ${relativePath}`);
@@ -58,16 +78,24 @@ function resolvePath(relativePath) {
     return relativePath;
   }
   
-  // Try each allowed base path
+  // 尝试每个允许的基础路径
   for (const basePath of ALLOWED_BASE_PATHS) {
     const resolved = path.join(basePath, relativePath);
     if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
+      // 再次检查解析后的路径是否被允许（防止路径遍历）
+      if (!isPathAllowed(resolved)) {
+        throw new Error(`Path not allowed: ${resolved}`);
+      }
       return resolved;
     }
   }
   
-  // Default to first base path
-  return path.join(ALLOWED_BASE_PATHS[0], relativePath);
+  // 默认使用第一个基础路径，但必须检查权限
+  const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
+  if (!isPathAllowed(defaultPath)) {
+    throw new Error(`Path not allowed: ${defaultPath}`);
+  }
+  return defaultPath;
 }
 
 /**
