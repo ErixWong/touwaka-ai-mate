@@ -14,12 +14,18 @@ Auto-repair fixes:
 """
 
 import argparse
+import os
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
 
-from validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator
+# Add scripts directory to path for imports
+# Use SKILL_PATH environment variable (set by skill-runner.js) or __file__
+_skill_path = os.environ.get('SKILL_PATH', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _skill_path)
+
+from office.validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator
 
 
 def main():
@@ -105,6 +111,76 @@ def main():
         print("All validations PASSED!")
 
     sys.exit(0 if success else 1)
+
+
+def execute(tool_name, params, context=None):
+    """
+    Execute validate tool.
+    
+    Args:
+        tool_name: Name of the tool (e.g., 'validate', 'xlsx_validate')
+        params: Tool parameters including 'path', 'original', 'auto_repair', 'verbose'
+        context: Execution context (optional)
+    
+    Returns:
+        dict with 'success', 'message', 'repairs'
+    """
+    if tool_name in ('validate', 'xlsx_validate'):
+        path = params.get('path')
+        original = params.get('original')
+        auto_repair = params.get('auto_repair', False)
+        verbose = params.get('verbose', False)
+        author = params.get('author', 'Claude')
+        
+        if not path:
+            return {'success': False, 'error': 'path is required'}
+        
+        path_obj = Path(path)
+        if not path_obj.exists():
+            return {'success': False, 'error': f'Path {path} does not exist'}
+        
+        # Determine file extension
+        original_file = Path(original) if original else None
+        file_extension = (original_file or path_obj).suffix.lower()
+        
+        if file_extension not in [".docx", ".pptx", ".xlsx"]:
+            return {'success': False, 'error': 'Cannot determine file type. Use --original or provide a .docx/.pptx/.xlsx file.'}
+        
+        # Unpack if needed
+        if path_obj.is_file() and path_obj.suffix.lower() in [".docx", ".pptx", ".xlsx"]:
+            import tempfile
+            temp_dir = tempfile.mkdtemp()
+            with zipfile.ZipFile(path_obj, "r") as zf:
+                zf.extractall(temp_dir)
+            unpacked_dir = Path(temp_dir)
+        else:
+            if not path_obj.is_dir():
+                return {'success': False, 'error': f'{path} is not a directory or Office file'}
+            unpacked_dir = path_obj
+        
+        # Select validators
+        validators = []
+        if file_extension == ".docx":
+            validators = [DOCXSchemaValidator(unpacked_dir, original_file, verbose=verbose)]
+            if original_file:
+                validators.append(RedliningValidator(unpacked_dir, original_file, verbose=verbose, author=author))
+        elif file_extension == ".pptx":
+            validators = [PPTXSchemaValidator(unpacked_dir, original_file, verbose=verbose)]
+        
+        # Run repairs and validation
+        total_repairs = 0
+        if auto_repair:
+            total_repairs = sum(v.repair() for v in validators)
+        
+        success = all(v.validate() for v in validators)
+        
+        return {
+            'success': success,
+            'repairs': total_repairs,
+            'message': 'All validations PASSED!' if success else 'Validation failed'
+        }
+    
+    raise ValueError(f"Unknown tool: {tool_name}")
 
 
 if __name__ == "__main__":
