@@ -1,8 +1,18 @@
 <template>
   <div class="login-view">
     <div class="login-card">
-      <h1 class="login-title">{{ $t('app.title') }}</h1>
-      <p class="login-subtitle">{{ $t('login.subtitle') }}</p>
+      <div class="card-header">
+        <div class="header-content">
+          <h1 class="login-title">{{ $t('app.title') }}</h1>
+          <p class="login-subtitle">{{ $t('login.subtitle') }}</p>
+        </div>
+        <div class="lang-selector">
+          <select v-model="currentLocale" class="lang-select">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+          </select>
+        </div>
+      </div>
 
       <form class="login-form" @submit.prevent="handleLogin">
         <div class="form-group">
@@ -54,13 +64,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
+import { setLocale } from '@/i18n'
+import type { Locale } from '@/i18n'
 
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const userStore = useUserStore()
 
 const form = reactive({
@@ -70,6 +82,14 @@ const form = reactive({
 
 const loading = ref(false)
 const error = ref('')
+
+// 当前语言
+const currentLocale = computed({
+  get: () => locale.value as Locale,
+  set: (value: Locale) => {
+    setLocale(value)
+  }
+})
 
   const handleLogin = async () => {
     error.value = ''
@@ -110,6 +130,42 @@ const error = ref('')
   z-index: 1;
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.header-content {
+  flex: 1;
+}
+
+.lang-selector {
+  margin-left: 16px;
+}
+
+.lang-select {
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lang-select:hover {
+  border-color: #667eea;
+}
+
+.lang-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
 .login-title {
   font-size: 28px;
   font-weight: 700;
@@ -122,7 +178,7 @@ const error = ref('')
   font-size: 14px;
   text-align: center;
   color: #666;
-  margin: 0 0 32px 0;
+  margin: 0;
 }
 
 .login-form {

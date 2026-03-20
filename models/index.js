@@ -44,65 +44,9 @@ const sequelize = new Sequelize(
 // 初始化模型
 const models = initModels(sequelize);
 
-// ============ 覆盖关联别名 ============
-// init-models.js 生成的别名不够友好（如 'tag_id_kb_tags'）
-// 这里重新定义 belongsToMany 关联，使用更友好的别名
-
-// KbArticle <-> KbTag (通过 kb_article_tags)
-models.kb_article.belongsToMany(models.kb_tag, {
-  through: models.kb_article_tag,
-  foreignKey: 'article_id',
-  otherKey: 'tag_id',
-  as: 'tags',  // 友好别名
-});
-models.kb_tag.belongsToMany(models.kb_article, {
-  through: models.kb_article_tag,
-  foreignKey: 'tag_id',
-  otherKey: 'article_id',
-  as: 'articles',  // 友好别名
-});
-
-// Expert <-> Skill (通过 expert_skills)
-models.expert.belongsToMany(models.skill, {
-  through: models.expert_skill,
-  foreignKey: 'expert_id',
-  otherKey: 'skill_id',
-  as: 'skills',  // 友好别名
-});
-models.skill.belongsToMany(models.expert, {
-  through: models.expert_skill,
-  foreignKey: 'skill_id',
-  otherKey: 'expert_id',
-  as: 'experts',  // 友好别名
-});
-
-// User <-> Role (通过 user_roles)
-models.user.belongsToMany(models.role, {
-  through: models.user_role,
-  foreignKey: 'user_id',
-  otherKey: 'role_id',
-  as: 'roles',  // 友好别名
-});
-models.role.belongsToMany(models.user, {
-  through: models.user_role,
-  foreignKey: 'role_id',
-  otherKey: 'user_id',
-  as: 'users',  // 友好别名
-});
-
-// Role <-> Permission (通过 role_permissions)
-models.role.belongsToMany(models.permission, {
-  through: models.role_permission,
-  foreignKey: 'role_id',
-  otherKey: 'permission_id',
-  as: 'permissions',  // 友好别名
-});
-models.permission.belongsToMany(models.role, {
-  through: models.role_permission,
-  foreignKey: 'permission_id',
-  otherKey: 'role_id',
-  as: 'roles',  // 友好别名
-});
+// ============ 关联别名由 init-models.js 自动生成 ============
+// 所有 belongsToMany 关联的别名由 sequelize-auto 自动生成
+// 运行 `node scripts/generate-models.js` 会重新生成 init-models.js
 
 /**
  * 初始化数据库连接
