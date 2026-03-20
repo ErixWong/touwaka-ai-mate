@@ -19,7 +19,9 @@ import zipfile
 from pathlib import Path
 
 # Add scripts directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Use SKILL_PATH environment variable (set by skill-runner.js) or __file__
+_skill_path = os.environ.get('SKILL_PATH', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _skill_path)
 
 import defusedxml.minidom
 
