@@ -177,6 +177,35 @@ int close(int fd) {
 
 
 
+def execute(tool_name, params, context=None):
+    """
+    Execute soffice commands.
+    
+    Args:
+        tool_name: Name of the tool (e.g., 'soffice', 'run_soffice')
+        params: Tool parameters including 'args' for soffice arguments
+        context: Execution context (optional)
+    
+    Returns:
+        dict with 'success', 'returncode', 'stdout', 'stderr'
+    """
+    if tool_name in ('soffice', 'run_soffice', 'xlsx_soffice'):
+        args = params.get('args', [])
+        if isinstance(args, str):
+            import shlex
+            args = shlex.split(args)
+        
+        result = run_soffice(args, capture_output=True, text=True)
+        return {
+            'success': result.returncode == 0,
+            'returncode': result.returncode,
+            'stdout': result.stdout,
+            'stderr': result.stderr
+        }
+    
+    raise ValueError(f"Unknown tool: {tool_name}")
+
+
 if __name__ == "__main__":
     import sys
     result = run_soffice(sys.argv[1:])

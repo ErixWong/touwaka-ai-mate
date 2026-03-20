@@ -14,14 +14,20 @@ Examples:
 """
 
 import argparse
+import os
 import sys
 import zipfile
 from pathlib import Path
 
+# Add scripts directory to path for imports
+# Use SKILL_PATH environment variable (set by skill-runner.js) or __file__
+_skill_path = os.environ.get('SKILL_PATH', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _skill_path)
+
 import defusedxml.minidom
 
-from helpers.merge_runs import merge_runs as do_merge_runs
-from helpers.simplify_redlines import simplify_redlines as do_simplify_redlines
+from office.helpers.merge_runs import merge_runs as do_merge_runs
+from office.helpers.simplify_redlines import simplify_redlines as do_simplify_redlines
 
 SMART_QUOTE_REPLACEMENTS = {
     "\u201c": "&#x201C;",  
@@ -96,6 +102,39 @@ def _escape_smart_quotes(xml_file: Path) -> None:
         xml_file.write_text(content, encoding="utf-8")
     except Exception:
         pass
+
+
+def execute(tool_name, params, context=None):
+    """
+    Execute unpack tool.
+    
+    Args:
+        tool_name: Name of the tool (e.g., 'unpack', 'xlsx_unpack')
+        params: Tool parameters including 'input_file', 'output_directory', etc.
+        context: Execution context (optional)
+    
+    Returns:
+        dict with 'success', 'message'
+    """
+    if tool_name in ('unpack', 'xlsx_unpack'):
+        input_file = params.get('input_file') or params.get('path')
+        output_directory = params.get('output_directory') or params.get('output_dir')
+        merge_runs = params.get('merge_runs', True)
+        simplify_redlines = params.get('simplify_redlines', True)
+        
+        if not input_file or not output_directory:
+            return {
+                'success': False,
+                'error': 'input_file and output_directory are required'
+            }
+        
+        _, message = unpack(input_file, output_directory, merge_runs, simplify_redlines)
+        return {
+            'success': 'Error' not in message,
+            'message': message
+        }
+    
+    raise ValueError(f"Unknown tool: {tool_name}")
 
 
 if __name__ == "__main__":
