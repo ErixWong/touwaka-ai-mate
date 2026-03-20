@@ -87,6 +87,42 @@ class PackageController {
       ctx.app.emit('error', error, ctx);
     }
   }
+
+  /**
+   * 安装包
+   * POST /api/system/packages/install
+   */
+  async installPackage(ctx) {
+    if (!this._checkAdmin(ctx)) return;
+    
+    try {
+      const { type, name, version } = ctx.request.body;
+      
+      // 参数验证
+      if (!type || !name) {
+        ctx.error('Missing required parameters: type and name', 400);
+        return;
+      }
+      
+      if (!['nodejs', 'python'].includes(type)) {
+        ctx.error('Invalid package type. Must be "nodejs" or "python"', 400);
+        return;
+      }
+      
+      logger.info(`Admin ${ctx.state.session?.userId} installing ${type} package: ${name}${version ? '@' + version : ''}`);
+      
+      const result = await this.packageService.installPackage(type, name, version);
+      
+      if (result.success) {
+        ctx.success(result);
+      } else {
+        ctx.error(result.message, 400);
+      }
+    } catch (error) {
+      logger.error('Install package error:', error);
+      ctx.app.emit('error', error, ctx);
+    }
+  }
 }
 
 export default PackageController;

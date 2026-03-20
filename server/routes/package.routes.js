@@ -23,5 +23,8 @@ export default (db) => {
   // 重置白名单为默认值（需要管理员权限）
   router.post('/whitelist/reset', authenticate(), (ctx) => controller.resetWhitelist(ctx));
 
+  // 安装包（需要管理员权限）
+  router.post('/install', authenticate(), (ctx) => controller.installPackage(ctx));
+
   return router;
 };
