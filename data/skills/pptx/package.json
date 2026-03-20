@@ -1,0 +1,21 @@
+{
+  "name": "pptx-skill",
+  "version": "1.0.0",
+  "description": "PowerPoint processing skill for Touwaka Mate (Node.js version)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0",
+    "adm-zip": "^0.5.10",
+    "xml2js": "^0.6.2"
+  },
+  "keywords": [
+    "pptx",
+    "powerpoint",
+    "presentation",
+    "pptxgenjs"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "pdf-skill",
+  "version": "1.0.0",
+  "description": "PDF processing skill for Touwaka Mate (Node.js version)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1"
+  },
+  "keywords": [
+    "pdf",
+    "pdf-lib",
+    "pdf-parse"
+  ],
+  "license": "MIT"
+}
