@@ -112,7 +112,7 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
   }
 
   // 安装包
-  async function installPackage(type: 'nodejs' | 'python', name: string, version?: string) {
+  async function installPackage(type: 'nodejs' | 'python', name: string, version?: string): Promise<InstallResult> {
     isLoading.value = true
     error.value = null
     try {
@@ -125,7 +125,7 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
         // 安装成功后刷新包列表
         await loadPackages()
       }
-      return result
+      return result || { success: false, message: 'No response from server' }
     } catch (e: any) {
       error.value = e.message
       console.error('Failed to install package:', e)
