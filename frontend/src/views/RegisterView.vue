@@ -6,12 +6,7 @@
           <h1 class="register-title">{{ $t('app.title') }}</h1>
           <p class="register-subtitle">{{ $t('register.subtitle') }}</p>
         </div>
-        <div class="lang-selector">
-          <select v-model="currentLocale" class="lang-select">
-            <option value="zh-CN">中文</option>
-            <option value="en-US">English</option>
-          </select>
-        </div>
+        <LangSelector />
       </div>
 
       <form class="register-form" @submit.prevent="handleRegister">
@@ -112,16 +107,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
-import { setLocale, type Locale } from '@/i18n'
+import LangSelector from '@/components/common/LangSelector.vue'
 import { getRegistrationConfig, verifyInvitationCode, register, type VerifyResult } from '@/api/invitation'
 
 const router = useRouter()
 const route = useRoute()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const userStore = useUserStore()
 
 const form = reactive({
@@ -137,14 +132,6 @@ const error = ref('')
 const allowSelfRegistration = ref(false)
 const invitationValidation = ref<VerifyResult | null>(null)
 let validateTimeout: ReturnType<typeof setTimeout> | null = null
-
-// 当前语言
-const currentLocale = computed({
-  get: () => locale.value as Locale,
-  set: (value: Locale) => {
-    setLocale(value)
-  }
-})
 
 // 加载注册配置
 onMounted(async () => {
@@ -270,31 +257,6 @@ const handleRegister = async () => {
 
 .header-content {
   flex: 1;
-}
-
-.lang-selector {
-  margin-left: 16px;
-}
-
-.lang-select {
-  padding: 6px 12px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #555;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.lang-select:hover {
-  border-color: #667eea;
-}
-
-.lang-select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
 }
 
 .register-title {
