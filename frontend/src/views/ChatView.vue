@@ -344,23 +344,39 @@ const replaceTempMessagesWithDb = async (messageId: string): Promise<boolean> =>
         chatStore.removeMessage(id!)
       }
       
-      // 添加数据库消息
+      // 添加数据库消息（带去重检查）
       for (const msg of newMessages) {
-        const dbMessage: Message = {
-          id: msg.id,
-          expert_id: msg.expert_id,
-          user_id: msg.user_id,
-          topic_id: msg.topic_id,
-          role: msg.role,
-          content: msg.content,
-          reasoning_content: msg.reasoning_content,
-          tool_calls: msg.tool_calls,
-          status: 'completed',
-          metadata: msg.metadata,
-          created_at: msg.created_at,
-          updated_at: msg.updated_at || msg.created_at,
+        // 检查是否已存在相同 ID 的消息，避免重复
+        const existingIndex = chatStore.messages.findIndex(m => m.id === msg.id)
+        if (existingIndex !== -1) {
+          // 已存在，更新而不是添加
+          const existing = chatStore.messages[existingIndex]
+          if (existing) {
+            existing.content = msg.content
+            existing.reasoning_content = msg.reasoning_content
+            existing.tool_calls = msg.tool_calls
+            existing.status = 'completed'
+            existing.metadata = msg.metadata
+            existing.updated_at = msg.updated_at || msg.created_at
+          }
+        } else {
+          // 不存在，添加新消息
+          const dbMessage: Message = {
+            id: msg.id,
+            expert_id: msg.expert_id,
+            user_id: msg.user_id,
+            topic_id: msg.topic_id,
+            role: msg.role,
+            content: msg.content,
+            reasoning_content: msg.reasoning_content,
+            tool_calls: msg.tool_calls,
+            status: 'completed',
+            metadata: msg.metadata,
+            created_at: msg.created_at,
+            updated_at: msg.updated_at || msg.created_at,
+          }
+          chatStore.messages.push(dbMessage)
         }
-        chatStore.messages.push(dbMessage)
       }
       
       console.log('[ChatView] Replaced temp messages with DB messages:', newMessages.length)
