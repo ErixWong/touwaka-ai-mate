@@ -11,7 +11,8 @@
     "dev": "concurrently \"npm run api\" \"cd frontend && npm run dev\"",
     "dev:frontend": "cd frontend && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "node scripts/check-buildPaginatedResponse.js"
+    "lint": "node scripts/check-buildPaginatedResponse.js",
+    "postinstall": "node scripts/install-git-hooks.js"
   },
   "keywords": [
     "chat",
