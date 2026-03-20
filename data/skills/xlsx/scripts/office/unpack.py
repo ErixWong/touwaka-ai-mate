@@ -14,9 +14,13 @@ Examples:
 """
 
 import argparse
+import os
 import sys
 import zipfile
 from pathlib import Path
+
+# Add scripts directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import defusedxml.minidom
 

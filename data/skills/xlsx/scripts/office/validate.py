@@ -14,12 +14,16 @@ Auto-repair fixes:
 """
 
 import argparse
+import os
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
 
-from validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator
+# Add scripts directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from office.validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator
 
 
 def main():
