@@ -10,6 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Add scripts directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from office.soffice import get_soffice_env
 
 from openpyxl import load_workbook
@@ -178,6 +181,30 @@ def main():
 
     result = recalc(filename, timeout)
     print(json.dumps(result, indent=2))
+
+
+def execute(tool_name, params, context=None):
+    """
+    Execute recalc tool.
+    
+    Args:
+        tool_name: Name of the tool (e.g., 'recalc', 'xlsx_recalc')
+        params: Tool parameters including 'filename', 'timeout'
+        context: Execution context (optional)
+    
+    Returns:
+        dict with recalculation results
+    """
+    if tool_name in ('recalc', 'xlsx_recalc'):
+        filename = params.get('filename') or params.get('path')
+        timeout = params.get('timeout', 30)
+        
+        if not filename:
+            return {'error': 'filename is required'}
+        
+        return recalc(filename, timeout)
+    
+    raise ValueError(f"Unknown tool: {tool_name}")
 
 
 if __name__ == "__main__":
