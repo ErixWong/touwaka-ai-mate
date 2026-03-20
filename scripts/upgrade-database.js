@@ -842,17 +842,53 @@ const MIGRATIONS = [
     check: async (conn) => await hasColumn(conn, 'skill_tools', 'script_path'),
     migrate: async (conn) => {
       await conn.execute(`
-        ALTER TABLE skill_tools 
-        ADD COLUMN script_path VARCHAR(255) DEFAULT 'index.js' 
-        COMMENT '工具入口脚本路径（相对于技能目录）' 
+        ALTER TABLE skill_tools
+        ADD COLUMN script_path VARCHAR(255) DEFAULT 'index.js'
+        COMMENT '工具入口脚本路径（相对于技能目录）'
         AFTER parameters
+      `);
+    }
+  },
+
+  // 34. skill_parameters 表（技能参数配置）
+  {
+    name: 'skill_parameters table',
+    check: async (conn) => await hasTable(conn, 'skill_parameters'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS skill_parameters (
+          id VARCHAR(32) PRIMARY KEY,
+          skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+          param_name VARCHAR(64) NOT NULL COMMENT '参数名（如 api_key, base_url）',
+          param_value TEXT COMMENT '参数值',
+          is_secret BIT(1) DEFAULT b'0' COMMENT '是否敏感参数（前端显示/隐藏）',
+          description VARCHAR(500) COMMENT '参数描述',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_skill_param (skill_id, param_name),
+          INDEX idx_skill_id (skill_id),
+          FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        ) COMMENT='技能参数表'
+      `);
+    }
+  },
+
+  // 35. skill_parameters.description 字段（为旧表添加）
+  {
+    name: 'skill_parameters.description column',
+    check: async (conn) => await hasColumn(conn, 'skill_parameters', 'description'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skill_parameters
+        ADD COLUMN description VARCHAR(500) COMMENT '参数描述'
+        AFTER is_secret
       `);
     }
   },
 
   // ==================== 角色表扩展 ====================
   
-  // 34. roles.level 字段
+  // 36. roles.level 字段
   {
     name: 'roles.level column',
     check: async (conn) => await hasColumn(conn, 'roles', 'level'),
@@ -875,7 +911,7 @@ const MIGRATIONS = [
     }
   },
 
-  // 35. roles 表字段重命名 (name -> mark, label -> name)
+  // 37. roles 表字段重命名 (name -> mark, label -> name)
   {
     name: 'roles field rename',
     check: async (conn) => await hasColumn(conn, 'roles', 'mark'),
@@ -899,7 +935,7 @@ const MIGRATIONS = [
 
   // ==================== 数据库设计修复 ====================
   
-  // 36. 修复 kb_article_tags 表主键结构
+  // 38. 修复 kb_article_tags 表主键结构
   // 问题：有独立 id 主键，应该是复合主键 (article_id, tag_id)
   // 原因：sequelize-auto 只能为复合主键的中间表生成 belongsToMany 关联
   {
@@ -1323,6 +1359,94 @@ const MIGRATIONS = [
           [s.key, s.value, s.type, s.desc]
         );
       }
+    }
+  },
+
+  // ==================== 技能参数默认值 ====================
+
+  // 56. skill-manager 默认参数（空值）
+  {
+    name: 'skill-manager default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'skill-manager' AND param_name = 'db_host'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const params = [
+        { name: 'db_host', value: '', is_secret: false, desc: '数据库主机地址' },
+        { name: 'db_port', value: '', is_secret: false, desc: '数据库端口' },
+        { name: 'db_name', value: '', is_secret: false, desc: '数据库名称' },
+        { name: 'db_user', value: '', is_secret: false, desc: '数据库用户名' },
+        { name: 'db_password', value: '', is_secret: true, desc: '数据库密码' },
+      ];
+      for (const p of params) {
+        await conn.execute(
+          `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+           VALUES (CONCAT('sm_param_', ?), 'skill-manager', ?, ?, ?, ?)`,
+          [p.name, p.name, p.value, p.is_secret ? 1 : 0, p.desc]
+        );
+      }
+    }
+  },
+
+  // 57. searxng 默认参数（空值）
+  {
+    name: 'searxng default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'searxng' AND param_name = 'SEARXNG_URL'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+         VALUES ('searxng_param_url', 'searxng', 'SEARXNG_URL', '', 0, 'SearXNG 实例 URL')`
+      );
+    }
+  },
+
+  // 58. remote-llm 默认参数（空值）
+  {
+    name: 'remote-llm default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'remote-llm' AND param_name = 'model_id'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const params = [
+        { id: 'remote_llm_model_id', name: 'model_id', value: '', is_secret: true, desc: '目标模型 ID（ai_models 表）' },
+        { id: 'remote_llm_max_tokens', name: 'max_tokens', value: '', is_secret: false, desc: '最大输出 token 数' },
+        { id: 'remote_llm_prompt', name: 'prompt', value: '', is_secret: false, desc: '发送给 LLM 的提示' },
+      ];
+      for (const p of params) {
+        await conn.execute(
+          `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+           VALUES (?, 'remote-llm', ?, ?, ?, ?)`,
+          [p.id, p.name, p.value, p.is_secret ? 1 : 0, p.desc]
+        );
+      }
+    }
+  },
+
+  // 59. unifuncs-web-reader 默认参数（空值）
+  {
+    name: 'unifuncs-web-reader default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'mmoasyw4iar2f9qi4z96' AND param_name = 'UNIFUNCS_API_KEY'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+         VALUES ('unifuncs_param_api_key', 'mmoasyw4iar2f9qi4z96', 'UNIFUNCS_API_KEY', '', 1, 'Unifuncs API 密钥')`
+      );
     }
   },
 ];
