@@ -1340,7 +1340,6 @@
                 type="email"
                 class="form-input"
                 :placeholder="$t('settings.emailPlaceholder')"
-                :disabled="!!editingUser"
               />
             </div>
           </div>
@@ -1999,6 +1998,7 @@ const saveUser = async () => {
     if (editingUser.value) {
       // 更新用户
       const updateData: UpdateUserRequest = {
+        email: userForm.email,
         nickname: userForm.nickname,
         gender: userForm.gender as import('@/types').UserGender || undefined,
         birthday: userForm.birthday || undefined,
