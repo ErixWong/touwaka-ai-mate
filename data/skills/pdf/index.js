@@ -11,7 +11,6 @@
  * - 加密/解密 PDF
  * - 添加水印
  * - 表单操作（读取、填写）
- * - 提取图片
  * 
  * 依赖：
  * - pdf-lib: PDF 操作核心库
@@ -19,59 +18,108 @@
  */
 
 const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
-const fs = require('fs').promises;
-const fsSync = require('fs');
+const fs = require('fs');
 const path = require('path');
 
-// pdf-parse 是可选依赖，延迟加载
+// pdf-parse 延迟加载
 let pdfParse = null;
-async function getPdfParse() {
+function getPdfParse() {
   if (!pdfParse) {
     pdfParse = require('pdf-parse');
   }
   return pdfParse;
 }
 
+// 用户角色检查
+const IS_ADMIN = process.env.IS_ADMIN === 'true';
+
+// 允许的基础路径
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
+const USER_ID = process.env.USER_ID || 'default';
+const USER_WORK_DIR = process.env.WORKING_DIRECTORY
+  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
+  : path.join(DATA_BASE_PATH, 'work', USER_ID);
+
+const PROJECT_ROOT = process.cwd();
+const ALLOWED_BASE_PATHS = IS_ADMIN
+  ? [PROJECT_ROOT, DATA_BASE_PATH]
+  : [USER_WORK_DIR];
+
+/**
+ * 检查路径是否被允许
+ */
+function isPathAllowed(targetPath) {
+  let resolved = path.resolve(targetPath);
+  
+  try {
+    if (fs.existsSync(resolved)) {
+      resolved = fs.realpathSync(resolved);
+    }
+  } catch (e) {}
+  
+  return ALLOWED_BASE_PATHS.some(basePath => {
+    let resolvedBase = path.resolve(basePath);
+    try {
+      if (fs.existsSync(resolvedBase)) {
+        resolvedBase = fs.realpathSync(resolvedBase);
+      }
+    } catch (e) {}
+    return resolved.startsWith(resolvedBase);
+  });
+}
+
 /**
  * 解析路径（支持相对路径）
- * @param {string} inputPath - 输入路径
- * @returns {string} 绝对路径
  */
-function resolvePath(inputPath) {
-  if (!inputPath) return inputPath;
-  if (path.isAbsolute(inputPath)) return inputPath;
-  return path.resolve(process.cwd(), inputPath);
+function resolvePath(relativePath) {
+  if (path.isAbsolute(relativePath)) {
+    if (!isPathAllowed(relativePath)) {
+      throw new Error(`Path not allowed: ${relativePath}`);
+    }
+    return relativePath;
+  }
+  
+  for (const basePath of ALLOWED_BASE_PATHS) {
+    const resolved = path.join(basePath, relativePath);
+    if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
+      if (!isPathAllowed(resolved)) {
+        throw new Error(`Path not allowed: ${resolved}`);
+      }
+      return resolved;
+    }
+  }
+  
+  const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
+  if (!isPathAllowed(defaultPath)) {
+    throw new Error(`Path not allowed: ${defaultPath}`);
+  }
+  return defaultPath;
 }
 
 /**
  * 读取 PDF 文件
- * @param {string} filePath - PDF 文件路径
- * @returns {Promise<Buffer>} 文件内容
  */
 async function readPdfFile(filePath) {
   const resolvedPath = resolvePath(filePath);
-  return await fs.readFile(resolvedPath);
+  return fs.readFileSync(resolvedPath);
 }
 
 /**
  * 保存 PDF 文件
- * @param {string} filePath - 输出路径
- * @param {Uint8Array} pdfBytes - PDF 数据
  */
-async function savePdfFile(filePath, pdfBytes) {
+function savePdfFile(filePath, pdfBytes) {
   const resolvedPath = resolvePath(filePath);
   const dir = path.dirname(resolvedPath);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(resolvedPath, pdfBytes);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(resolvedPath, pdfBytes);
 }
 
 // ==================== 基础操作 ====================
 
 /**
  * 读取 PDF 元数据和基本信息
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @returns {Promise<Object>} PDF 信息
  */
 async function readPdf(params) {
   const { path: filePath } = params;
@@ -79,7 +127,6 @@ async function readPdf(params) {
   const pdfBytes = await readPdfFile(filePath);
   const pdfDoc = await PDFDocument.load(pdfBytes);
   
-  // 获取元数据
   const metadata = {
     title: pdfDoc.getTitle() || null,
     author: pdfDoc.getAuthor() || null,
@@ -91,11 +138,8 @@ async function readPdf(params) {
     keywords: pdfDoc.getKeywords() || null
   };
   
-  // 获取页面信息
   const pages = pdfDoc.getPages();
   const pageCount = pages.length;
-  
-  // 检查是否加密
   const isEncrypted = pdfDoc.isEncrypted;
   
   return {
@@ -113,16 +157,11 @@ async function readPdf(params) {
 
 /**
  * 提取文本内容
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {number} params.fromPage - 起始页（1-based）
- * @param {number} params.toPage - 结束页（inclusive）
- * @returns {Promise<Object>} 提取结果
  */
 async function extractText(params) {
   const { path: filePath, fromPage, toPage } = params;
   
-  const pdfParseLib = await getPdfParse();
+  const pdfParseLib = getPdfParse();
   const pdfBytes = await readPdfFile(filePath);
   
   const data = await pdfParseLib(pdfBytes);
@@ -130,16 +169,13 @@ async function extractText(params) {
   let text = data.text;
   const totalPages = data.numpages;
   
-  // 如果指定了页面范围，需要更精细的处理
   if (fromPage || toPage) {
     const start = (fromPage || 1) - 1;
     const end = toPage || totalPages;
     
-    // pdf-parse 不支持页面范围，需要用 pdf-lib 配合
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const pages = pdfDoc.getPages();
     
-    // 创建新文档，只包含指定页面
     const newDoc = await PDFDocument.create();
     const indices = [];
     for (let i = start; i < end && i < pages.length; i++) {
@@ -162,15 +198,9 @@ async function extractText(params) {
 }
 
 /**
- * 提取表格（简化版本，Node.js 无成熟方案）
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {number} params.page - 页码（1-based，可选）
- * @returns {Promise<Object>} 提取结果
+ * 提取表格（简化版本）
  */
 async function extractTables(params) {
-  // Node.js 没有成熟的 PDF 表格提取库
-  // 建议使用 VL 模型（如 GPT-4V）进行表格识别
   return {
     success: false,
     error: 'Table extraction is not fully supported in Node.js. Consider using VL models (GPT-4V, Claude Vision) for table recognition.',
@@ -182,10 +212,6 @@ async function extractTables(params) {
 
 /**
  * 合并多个 PDF
- * @param {Object} params - 参数
- * @param {string[]} params.paths - PDF 文件路径数组
- * @param {string} params.output - 输出文件路径
- * @returns {Promise<Object>} 合并结果
  */
 async function mergePdfs(params) {
   const { paths, output } = params;
@@ -204,7 +230,7 @@ async function mergePdfs(params) {
   }
   
   const mergedBytes = await mergedDoc.save();
-  await savePdfFile(output, mergedBytes);
+  savePdfFile(output, mergedBytes);
   
   return {
     success: true,
@@ -215,12 +241,6 @@ async function mergePdfs(params) {
 
 /**
  * 拆分 PDF
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.outputDir - 输出目录
- * @param {number} params.pagesPerFile - 每个文件的页数
- * @param {string} params.prefix - 文件名前缀
- * @returns {Promise<Object>} 拆分结果
  */
 async function splitPdf(params) {
   const { path: filePath, outputDir, pagesPerFile = 1, prefix = 'page' } = params;
@@ -230,7 +250,9 @@ async function splitPdf(params) {
   const totalPages = pdfDoc.getPageCount();
   
   const resolvedOutputDir = resolvePath(outputDir);
-  await fs.mkdir(resolvedOutputDir, { recursive: true });
+  if (!fs.existsSync(resolvedOutputDir)) {
+    fs.mkdirSync(resolvedOutputDir, { recursive: true });
+  }
   
   const outputFiles = [];
   
@@ -246,7 +268,7 @@ async function splitPdf(params) {
     
     const newBytes = await newDoc.save();
     const outputPath = path.join(resolvedOutputDir, `${prefix}_${i + 1}-${endPage}.pdf`);
-    await fs.writeFile(outputPath, newBytes);
+    fs.writeFileSync(outputPath, newBytes);
     outputFiles.push(outputPath);
   }
   
@@ -261,12 +283,6 @@ async function splitPdf(params) {
 
 /**
  * 旋转页面
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.output - 输出文件路径
- * @param {number[]} params.pages - 页码数组（1-based，空则全部）
- * @param {number} params.degrees - 旋转角度（90, 180, 270）
- * @returns {Promise<Object>} 旋转结果
  */
 async function rotatePages(params) {
   const { path: filePath, output, pages = [], degrees = 90 } = params;
@@ -275,8 +291,8 @@ async function rotatePages(params) {
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const allPages = pdfDoc.getPages();
   
-  const pagesToRotate = pages.length > 0 
-    ? pages.map(p => p - 1)  // 转换为 0-based
+  const pagesToRotate = pages.length > 0
+    ? pages.map(p => p - 1)
     : allPages.map((_, i) => i);
   
   for (const pageIndex of pagesToRotate) {
@@ -288,7 +304,7 @@ async function rotatePages(params) {
   }
   
   const newBytes = await pdfDoc.save();
-  await savePdfFile(output, newBytes);
+  savePdfFile(output, newBytes);
   
   return {
     success: true,
@@ -302,51 +318,36 @@ async function rotatePages(params) {
 
 /**
  * 创建新 PDF
- * @param {Object} params - 参数
- * @param {string} params.output - 输出文件路径
- * @param {string} params.title - PDF 标题
- * @param {string[]} params.content - 内容数组（每项一页）
- * @param {string} params.pageSize - 页面大小（'a4' 或 'letter'）
- * @returns {Promise<Object>} 创建结果
  */
 async function createPdf(params) {
   const { output, title, content = [], pageSize = 'a4' } = params;
   
   const pdfDoc = await PDFDocument.create();
   
-  // 设置元数据
   if (title) {
     pdfDoc.setTitle(title);
   }
   
-  // 页面尺寸
   const sizes = {
     a4: [595.28, 841.89],
     letter: [612, 792]
   };
   const [width, height] = sizes[pageSize] || sizes.a4;
   
-  // 嵌入字体
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   
-  // 添加内容
   for (const pageContent of content) {
     const page = pdfDoc.addPage([width, height]);
-    
-    // 设置边距
     const margin = 50;
     const maxWidth = width - margin * 2;
-    
-    // 绘制文本
     const fontSize = 12;
     const lineHeight = fontSize * 1.5;
     
-    // 简单的文本换行
     const lines = wrapText(pageContent, maxWidth, font, fontSize);
     
     let y = height - margin;
     for (const line of lines) {
-      if (y < margin) break;  // 超出页面底部
+      if (y < margin) break;
       page.drawText(line, {
         x: margin,
         y,
@@ -359,7 +360,7 @@ async function createPdf(params) {
   }
   
   const pdfBytes = await pdfDoc.save();
-  await savePdfFile(output, pdfBytes);
+  savePdfFile(output, pdfBytes);
   
   return {
     success: true,
@@ -370,11 +371,6 @@ async function createPdf(params) {
 
 /**
  * 文本换行辅助函数
- * @param {string} text - 文本
- * @param {number} maxWidth - 最大宽度
- * @param {PDFFont} font - 字体
- * @param {number} fontSize - 字体大小
- * @returns {string[]} 换行后的文本行
  */
 function wrapText(text, maxWidth, font, fontSize) {
   const lines = [];
@@ -411,18 +407,8 @@ function wrapText(text, maxWidth, font, fontSize) {
 
 /**
  * 转换 PDF 为图片（需要外部工具）
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.outputDir - 输出目录
- * @param {number} params.dpi - 分辨率
- * @param {string} params.format - 图片格式
- * @param {number} params.fromPage - 起始页
- * @param {number} params.toPage - 结束页
- * @returns {Promise<Object>} 转换结果
  */
 async function convertToImages(params) {
-  // Node.js 纯 JavaScript 无法直接将 PDF 转换为图片
-  // 需要使用外部工具（如 poppler-utils 的 pdftoppm）或 canvas 库
   return {
     success: false,
     error: 'PDF to image conversion requires external tools.',
@@ -435,29 +421,19 @@ async function convertToImages(params) {
 }
 
 /**
- * PDF 转 Markdown（简化版本）
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.output - 输出文件路径
- * @param {number} params.fromPage - 起始页
- * @param {number} params.toPage - 结束页
- * @returns {Promise<Object>} 转换结果
+ * PDF 转 Markdown
  */
 async function pdfToMarkdown(params) {
   const { path: filePath, output, fromPage, toPage } = params;
   
-  // 提取文本
   const textResult = await extractText({ path: filePath, fromPage, toPage });
   
-  // 简单的 Markdown 转换
   let markdown = textResult.text;
   
-  // 尝试识别标题（大写字母开头的短行）
   const lines = markdown.split('\n');
   const processedLines = lines.map(line => {
     const trimmed = line.trim();
     if (trimmed.length > 0 && trimmed.length < 50) {
-      // 可能是标题
       if (/^[A-Z\u4e00-\u9fa5]/.test(trimmed)) {
         return `## ${trimmed}`;
       }
@@ -467,33 +443,19 @@ async function pdfToMarkdown(params) {
   
   markdown = processedLines.join('\n');
   
-  // 保存到文件
   if (output) {
     const resolvedPath = resolvePath(output);
-    await fs.writeFile(resolvedPath, markdown, 'utf-8');
-    return {
-      success: true,
-      path: resolvedPath,
-      markdown
-    };
+    fs.writeFileSync(resolvedPath, markdown, 'utf-8');
+    return { success: true, path: resolvedPath, markdown };
   }
   
-  return {
-    success: true,
-    markdown
-  };
+  return { success: true, markdown };
 }
 
 // ==================== 安全操作 ====================
 
 /**
  * 加密 PDF
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.output - 输出文件路径
- * @param {string} params.userPassword - 用户密码
- * @param {string} params.ownerPassword - 所有者密码
- * @returns {Promise<Object>} 加密结果
  */
 async function encryptPdf(params) {
   const { path: filePath, output, userPassword, ownerPassword } = params;
@@ -505,7 +467,6 @@ async function encryptPdf(params) {
   const pdfBytes = await readPdfFile(filePath);
   const pdfDoc = await PDFDocument.load(pdfBytes);
   
-  // 加密文档
   pdfDoc.encrypt({
     userPassword,
     ownerPassword: ownerPassword || userPassword,
@@ -521,7 +482,7 @@ async function encryptPdf(params) {
   });
   
   const encryptedBytes = await pdfDoc.save();
-  await savePdfFile(output, encryptedBytes);
+  savePdfFile(output, encryptedBytes);
   
   return {
     success: true,
@@ -532,23 +493,15 @@ async function encryptPdf(params) {
 
 /**
  * 解密 PDF
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.output - 输出文件路径
- * @param {string} params.password - 密码
- * @returns {Promise<Object>} 解密结果
  */
 async function decryptPdf(params) {
   const { path: filePath, output, password } = params;
   
   const pdfBytes = await readPdfFile(filePath);
-  const pdfDoc = await PDFDocument.load(pdfBytes, {
-    password
-  });
+  const pdfDoc = await PDFDocument.load(pdfBytes, { password });
   
-  // 保存解密后的文档
   const decryptedBytes = await pdfDoc.save();
-  await savePdfFile(output, decryptedBytes);
+  savePdfFile(output, decryptedBytes);
   
   return {
     success: true,
@@ -559,12 +512,6 @@ async function decryptPdf(params) {
 
 /**
  * 添加水印
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.output - 输出文件路径
- * @param {string} params.watermark - 水印文本或 PDF 路径
- * @param {boolean} params.isText - 是否为文本水印
- * @returns {Promise<Object>} 添加结果
  */
 async function addWatermark(params) {
   const { path: filePath, output, watermark, isText = true } = params;
@@ -574,13 +521,11 @@ async function addWatermark(params) {
   const pages = pdfDoc.getPages();
   
   if (isText) {
-    // 文本水印
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     
     for (const page of pages) {
       const { width, height } = page.getSize();
       
-      // 绘制对角线水印
       page.drawText(watermark, {
         x: width / 4,
         y: height / 2,
@@ -592,26 +537,18 @@ async function addWatermark(params) {
       });
     }
   } else {
-    // PDF 水印
     const watermarkBytes = await readPdfFile(watermark);
     const watermarkDoc = await PDFDocument.load(watermarkBytes);
     const [watermarkPage] = await pdfDoc.copyPages(watermarkDoc, [0]);
     
     for (const page of pages) {
-      // 将水印页面作为背景合并
-      // 注意：pdf-lib 不直接支持页面合并，需要手动绘制
       const { width, height } = page.getSize();
-      page.drawPage(watermarkPage, {
-        x: 0,
-        y: 0,
-        width,
-        height
-      });
+      page.drawPage(watermarkPage, { x: 0, y: 0, width, height });
     }
   }
   
   const newBytes = await pdfDoc.save();
-  await savePdfFile(output, newBytes);
+  savePdfFile(output, newBytes);
   
   return {
     success: true,
@@ -624,9 +561,6 @@ async function addWatermark(params) {
 
 /**
  * 检查可填写字段
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @returns {Promise<Object>} 检查结果
  */
 async function checkFillableFields(params) {
   const { path: filePath } = params;
@@ -650,10 +584,6 @@ async function checkFillableFields(params) {
 
 /**
  * 提取表单字段信息
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.output - 输出 JSON 文件路径
- * @returns {Promise<Object>} 提取结果
  */
 async function extractFormFieldInfo(params) {
   const { path: filePath, output } = params;
@@ -670,7 +600,6 @@ async function extractFormFieldInfo(params) {
       type: field.constructor.name
     };
     
-    // 获取当前值
     try {
       if (field.getText) {
         info.value = field.getText();
@@ -694,7 +623,7 @@ async function extractFormFieldInfo(params) {
   
   if (output) {
     const resolvedPath = resolvePath(output);
-    await fs.writeFile(resolvedPath, JSON.stringify(result, null, 2), 'utf-8');
+    fs.writeFileSync(resolvedPath, JSON.stringify(result, null, 2), 'utf-8');
     result.path = resolvedPath;
   }
   
@@ -703,11 +632,6 @@ async function extractFormFieldInfo(params) {
 
 /**
  * 填写表单字段
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {Object} params.fieldValues - 字段值对象
- * @param {string} params.output - 输出文件路径
- * @returns {Promise<Object>} 填写结果
  */
 async function fillFillableFields(params) {
   const { path: filePath, fieldValues, output } = params;
@@ -739,11 +663,8 @@ async function fillFillableFields(params) {
     }
   }
   
-  // 如果需要，可以扁平化表单
-  // form.flatten();
-  
   const newBytes = await pdfDoc.save();
-  await savePdfFile(output, newBytes);
+  savePdfFile(output, newBytes);
   
   return {
     success: true,
@@ -755,14 +676,8 @@ async function fillFillableFields(params) {
 
 /**
  * 提取图片
- * @param {Object} params - 参数
- * @param {string} params.path - PDF 文件路径
- * @param {string} params.outputDir - 输出目录
- * @returns {Promise<Object>} 提取结果
  */
 async function extractImages(params) {
-  // pdf-lib 不直接支持图片提取
-  // 需要解析 PDF 内部结构或使用其他工具
   return {
     success: false,
     error: 'Image extraction is not directly supported by pdf-lib.',
@@ -777,13 +692,15 @@ async function extractImages(params) {
 // ==================== 技能入口 ====================
 
 /**
- * 技能入口函数
- * @param {string} action - 操作类型
- * @param {Object} params - 参数
- * @returns {Promise<Object>} 执行结果
+ * Skill execute function - called by skill-runner
+ * 
+ * @param {string} toolName - Name of the tool to execute
+ * @param {object} params - Tool parameters
+ * @param {object} context - Execution context
+ * @returns {Promise<object>} Execution result
  */
-module.exports = async function pdfSkill(action, params = {}) {
-  switch (action) {
+async function execute(toolName, params, context = {}) {
+  switch (toolName) {
     // 基础操作
     case 'read_pdf':
     case 'read':
@@ -847,25 +764,8 @@ module.exports = async function pdfSkill(action, params = {}) {
       return await extractImages(params);
       
     default:
-      throw new Error(`Unknown action: ${action}. Supported actions: read_pdf, extract_text, extract_tables, merge_pdfs, split_pdf, rotate_pages, create_pdf, convert_to_images, pdf_to_markdown, encrypt_pdf, decrypt_pdf, add_watermark, check_fillable_fields, extract_form_field_info, fill_fillable_fields, extract_images`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: read_pdf, extract_text, extract_tables, merge_pdfs, split_pdf, rotate_pages, create_pdf, convert_to_images, pdf_to_markdown, encrypt_pdf, decrypt_pdf, add_watermark, check_fillable_fields, extract_form_field_info, fill_fillable_fields, extract_images`);
   }
-};
+}
 
-// 导出所有函数
-module.exports.readPdf = readPdf;
-module.exports.extractText = extractText;
-module.exports.extractTables = extractTables;
-module.exports.mergePdfs = mergePdfs;
-module.exports.splitPdf = splitPdf;
-module.exports.rotatePages = rotatePages;
-module.exports.createPdf = createPdf;
-module.exports.convertToImages = convertToImages;
-module.exports.pdfToMarkdown = pdfToMarkdown;
-module.exports.encryptPdf = encryptPdf;
-module.exports.decryptPdf = decryptPdf;
-module.exports.addWatermark = addWatermark;
-module.exports.checkFillableFields = checkFillableFields;
-module.exports.extractFormFieldInfo = extractFormFieldInfo;
-module.exports.fillFillableFields = fillFillableFields;
-module.exports.extractImages = extractImages;
-module.exports.resolvePath = resolvePath;
+module.exports = { execute };

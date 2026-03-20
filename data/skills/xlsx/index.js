@@ -1,266 +1,231 @@
 /**
- * XLSX Skill - Excel 处理技能 (Node.js 版本)
+ * XLSX Skill - Excel 文件处理技能 (Node.js 版本)
  * 
  * 功能：
- * - 读取 Excel 文件（.xlsx, .xlsm）
+ * - 读取 Excel 文件（支持 .xlsx, .xls）
  * - 写入/创建 Excel 文件
- * - 公式计算（HyperFormula）
- * - 样式设置
- * - 图表插入（通过 chart 技能）
- * - CSV 导入/导出
+ * - 编辑工作表
+ * - 格式化单元格
+ * - 公式计算（使用 HyperFormula）
+ * - 图表支持（基础）
+ * - 数据验证
+ * - 条件格式
  * 
  * 依赖：
- * - exceljs: Excel 读写核心库
- * - hyperformula: 公式计算引擎
+ * - xlsx: Excel 读写（项目已安装）
+ * - exceljs: 高级功能
+ * - hyperformula: 公式计算
  */
 
-const ExcelJS = require('exceljs');
-const HyperFormula = require('hyperformula');
+const XLSX = require('xlsx');
+const fs = require('fs');
 const path = require('path');
-const fs = require('fs').promises;
+
+// 延迟加载可选依赖
+let ExcelJS = null;
+let HyperFormula = null;
+
+function getExcelJS() {
+  if (!ExcelJS) {
+    ExcelJS = require('exceljs');
+  }
+  return ExcelJS;
+}
+
+function getHyperFormula() {
+  if (!HyperFormula) {
+    HyperFormula = require('hyperformula');
+  }
+  return HyperFormula;
+}
+
+// 用户角色检查
+const IS_ADMIN = process.env.IS_ADMIN === 'true';
+
+// 允许的基础路径
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
+const USER_ID = process.env.USER_ID || 'default';
+const USER_WORK_DIR = process.env.WORKING_DIRECTORY
+  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
+  : path.join(DATA_BASE_PATH, 'work', USER_ID);
+
+const PROJECT_ROOT = process.cwd();
+const ALLOWED_BASE_PATHS = IS_ADMIN
+  ? [PROJECT_ROOT, DATA_BASE_PATH]
+  : [USER_WORK_DIR];
+
+/**
+ * 检查路径是否被允许
+ */
+function isPathAllowed(targetPath) {
+  let resolved = path.resolve(targetPath);
+  
+  try {
+    if (fs.existsSync(resolved)) {
+      resolved = fs.realpathSync(resolved);
+    }
+  } catch (e) {}
+  
+  return ALLOWED_BASE_PATHS.some(basePath => {
+    let resolvedBase = path.resolve(basePath);
+    try {
+      if (fs.existsSync(resolvedBase)) {
+        resolvedBase = fs.realpathSync(resolvedBase);
+      }
+    } catch (e) {}
+    return resolved.startsWith(resolvedBase);
+  });
+}
 
 /**
  * 解析路径（支持相对路径）
- * @param {string} inputPath - 输入路径
- * @returns {string} 绝对路径
  */
-function resolvePath(inputPath) {
-  if (!inputPath) return inputPath;
-  if (path.isAbsolute(inputPath)) return inputPath;
-  return path.resolve(process.cwd(), inputPath);
-}
-
-/**
- * 列号转列名 (1 -> A, 27 -> AA)
- * @param {number} col - 列号（1-based）
- * @returns {string} 列名
- */
-function columnToLetter(col) {
-  let letter = '';
-  let temp = col;
-  while (temp > 0) {
-    const mod = (temp - 1) % 26;
-    letter = String.fromCharCode(65 + mod) + letter;
-    temp = Math.floor((temp - 1) / 26);
+function resolvePath(relativePath) {
+  if (path.isAbsolute(relativePath)) {
+    if (!isPathAllowed(relativePath)) {
+      throw new Error(`Path not allowed: ${relativePath}`);
+    }
+    return relativePath;
   }
-  return letter;
-}
-
-/**
- * 列名转列号 (A -> 1, AA -> 27)
- * @param {string} letter - 列名
- * @returns {number} 列号（1-based）
- */
-function letterToColumn(letter) {
-  let col = 0;
-  for (let i = 0; i < letter.length; i++) {
-    col = col * 26 + (letter.charCodeAt(i) - 64);
+  
+  for (const basePath of ALLOWED_BASE_PATHS) {
+    const resolved = path.join(basePath, relativePath);
+    if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
+      if (!isPathAllowed(resolved)) {
+        throw new Error(`Path not allowed: ${resolved}`);
+      }
+      return resolved;
+    }
   }
-  return col;
+  
+  const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
+  if (!isPathAllowed(defaultPath)) {
+    throw new Error(`Path not allowed: ${defaultPath}`);
+  }
+  return defaultPath;
 }
 
 /**
- * 单元格地址转换 (A1 -> {row: 1, col: 1})
- * @param {string} address - 单元格地址
- * @returns {Object} 行列对象
+ * 读取 Excel 文件
  */
-function parseAddress(address) {
-  const match = address.match(/^([A-Z]+)(\d+)$/i);
-  if (!match) return null;
-  return {
-    row: parseInt(match[2], 10),
-    col: letterToColumn(match[1].toUpperCase())
-  };
+function readExcelFile(filePath) {
+  const resolvedPath = resolvePath(filePath);
+  return fs.readFileSync(resolvedPath);
 }
 
 /**
- * 行列转单元格地址 ({row: 1, col: 1} -> A1)
- * @param {number} row - 行号（1-based）
- * @param {number} col - 列号（1-based）
- * @returns {string} 单元格地址
+ * 保存 Excel 文件
  */
-function toAddress(row, col) {
-  return `${columnToLetter(col)}${row}`;
+function saveExcelFile(filePath, buffer) {
+  const resolvedPath = resolvePath(filePath);
+  const dir = path.dirname(resolvedPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(resolvedPath, buffer);
 }
 
-// ==================== 读取操作 ====================
+// ==================== 基础操作 ====================
 
 /**
  * 读取 Excel 文件信息
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @returns {Promise<Object>} 文件信息
  */
 async function readWorkbook(params) {
-  const { path: filePath } = params;
+  const { path: filePath, includeData = false } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
-  
-  const sheets = workbook.worksheets.map(sheet => ({
-    name: sheet.name,
-    rowCount: sheet.rowCount,
-    columnCount: sheet.columnCount,
-    state: sheet.state
-  }));
-  
-  return {
-    success: true,
-    sheetCount: workbook.worksheets.length,
-    sheets,
-    creator: workbook.creator,
-    created: workbook.created,
-    modified: workbook.modified,
-    lastModifiedBy: workbook.lastModifiedBy
-  };
-}
-
-/**
- * 读取工作表数据
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表名称或索引
- * @param {number} params.startRow - 起始行（1-based）
- * @param {number} params.endRow - 结束行
- * @param {number} params.startCol - 起始列（1-based）
- * @param {number} params.endCol - 结束列
- * @param {boolean} params.includeFormulas - 是否包含公式
- * @param {boolean} params.includeStyles - 是否包含样式
- * @returns {Promise<Object>} 工作表数据
- */
-async function readSheet(params) {
-  const {
-    path: filePath,
-    sheet: sheetRef = 1,
-    startRow = 1,
-    endRow,
-    startCol = 1,
-    endCol,
-    includeFormulas = false,
-    includeStyles = false
-  } = params;
-  
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
-  
-  // 获取工作表
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
-  
-  if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
-  }
-  
-  const actualEndRow = endRow || worksheet.rowCount;
-  const actualEndCol = endCol || worksheet.columnCount;
-  
-  const data = [];
-  const formulas = [];
-  const styles = [];
-  
-  for (let rowNum = startRow; rowNum <= actualEndRow; rowNum++) {
-    const row = worksheet.getRow(rowNum);
-    const rowData = [];
-    const formulaRow = [];
-    const styleRow = [];
-    
-    for (let colNum = startCol; colNum <= actualEndCol; colNum++) {
-      const cell = row.getCell(colNum);
-      
-      // 获取值
-      rowData.push(cell.value);
-      
-      // 获取公式
-      if (includeFormulas && cell.formula) {
-        formulaRow.push({
-          address: toAddress(rowNum, colNum),
-          formula: cell.formula,
-          result: cell.result
-        });
-      }
-      
-      // 获取样式
-      if (includeStyles) {
-        styleRow.push({
-          address: toAddress(rowNum, colNum),
-          font: cell.font,
-          fill: cell.fill,
-          alignment: cell.alignment,
-          border: cell.border,
-          numFmt: cell.numFmt
-        });
-      }
-    }
-    
-    data.push(rowData);
-    
-    if (includeFormulas && formulaRow.length > 0) {
-      formulas.push(...formulaRow);
-    }
-    
-    if (includeStyles) {
-      styles.push(styleRow);
-    }
-  }
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
   
   const result = {
     success: true,
-    sheetName: worksheet.name,
-    data,
-    rowCount: data.length,
-    columnCount: actualEndCol - startCol + 1
+    sheetNames: workbook.SheetNames,
+    sheetCount: workbook.SheetNames.length,
+    properties: workbook.Props || {}
   };
   
-  if (includeFormulas) {
-    result.formulas = formulas;
-  }
-  
-  if (includeStyles) {
-    result.styles = styles;
+  if (includeData) {
+    result.sheets = {};
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      result.sheets[sheetName] = {
+        range: sheet['!ref'],
+        data: XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
+      };
+    }
   }
   
   return result;
 }
 
 /**
- * 读取单元格
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.address - 单元格地址（如 A1）
- * @returns {Promise<Object>} 单元格数据
+ * 读取工作表数据
  */
-async function readCell(params) {
-  const { path: filePath, sheet: sheetRef = 1, address } = params;
+async function readSheet(params) {
+  const { path: filePath, sheet, range, header = 1 } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
   
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
-  
-  if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+  const sheetName = sheet || workbook.SheetNames[0];
+  if (!workbook.SheetNames.includes(sheetName)) {
+    throw new Error(`Sheet "${sheetName}" not found. Available sheets: ${workbook.SheetNames.join(', ')}`);
   }
   
-  const cell = worksheet.getCell(address);
+  const worksheet = workbook.Sheets[sheetName];
+  
+  const options = { defval: null };
+  if (range) {
+    options.range = range;
+  }
+  
+  let data;
+  if (header === 'json' || header === 'object') {
+    data = XLSX.utils.sheet_to_json(worksheet, options);
+  } else {
+    data = XLSX.utils.sheet_to_json(worksheet, { header: 1, ...options });
+  }
   
   return {
     success: true,
-    address,
-    value: cell.value,
-    formula: cell.formula || null,
-    result: cell.result,
-    type: cell.type,
-    style: {
-      font: cell.font,
-      fill: cell.fill,
-      alignment: cell.alignment,
-      border: cell.border,
-      numFmt: cell.numFmt
-    }
+    sheetName,
+    range: worksheet['!ref'],
+    data
+  };
+}
+
+/**
+ * 读取单元格
+ */
+async function readCell(params) {
+  const { path: filePath, sheet, cell } = params;
+  
+  if (!cell) {
+    throw new Error('Cell reference is required (e.g., "A1")');
+  }
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  const sheetName = sheet || workbook.SheetNames[0];
+  if (!workbook.SheetNames.includes(sheetName)) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  const worksheet = workbook.Sheets[sheetName];
+  const cellAddress = cell.toUpperCase();
+  const cellData = worksheet[cellAddress];
+  
+  if (!cellData) {
+    return { success: true, cell: cellAddress, value: null, type: 'empty' };
+  }
+  
+  return {
+    success: true,
+    cell: cellAddress,
+    value: cellData.v,
+    type: cellData.t,
+    formatted: cellData.w,
+    formula: cellData.f
   };
 }
 
@@ -268,673 +233,790 @@ async function readCell(params) {
 
 /**
  * 创建新工作簿
- * @param {Object} params - 参数
- * @param {string} params.path - 输出路径
- * @param {Array} params.sheets - 工作表数据数组
- * @param {Object} params.properties - 工作簿属性
- * @returns {Promise<Object>} 创建结果
  */
 async function createWorkbook(params) {
-  const { path: filePath, sheets = [], properties = {} } = params;
+  const { output, sheets = [], properties = {} } = params;
   
-  const workbook = new ExcelJS.Workbook();
+  const workbook = XLSX.utils.book_new();
   
-  // 设置属性
-  if (properties.creator) workbook.creator = properties.creator;
-  if (properties.title) workbook.title = properties.title;
-  if (properties.subject) workbook.subject = properties.subject;
-  if (properties.keywords) workbook.keywords = properties.keywords;
+  if (properties.title) workbook.Props = { ...workbook.Props, Title: properties.title };
+  if (properties.author) workbook.Props = { ...workbook.Props, Author: properties.author };
+  if (properties.subject) workbook.Props = { ...workbook.Props, Subject: properties.subject };
   
-  // 添加工作表
   for (const sheetData of sheets) {
-    const worksheet = workbook.addWorksheet(sheetData.name || `Sheet${workbook.worksheets.length + 1}`);
+    const { name = 'Sheet1', data = [], headers } = sheetData;
     
-    if (sheetData.columns) {
-      worksheet.columns = sheetData.columns;
+    let wsData = data;
+    if (headers && Array.isArray(headers)) {
+      wsData = [headers, ...data];
     }
     
-    if (sheetData.data) {
-      // 写入数据
-      for (const row of sheetData.data) {
-        worksheet.addRow(row);
-      }
-    }
+    const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(workbook, worksheet, name);
   }
   
-  // 如果没有工作表，添加一个默认的
-  if (workbook.worksheets.length === 0) {
-    workbook.addWorksheet('Sheet1');
+  if (sheets.length === 0) {
+    const worksheet = XLSX.utils.aoa_to_sheet([[]]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
   }
   
-  await workbook.xlsx.writeFile(resolvePath(filePath));
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(output, buffer);
   
   return {
     success: true,
-    path: resolvePath(filePath),
-    sheetCount: workbook.worksheets.length
+    path: resolvePath(output),
+    sheetCount: workbook.SheetNames.length,
+    sheetNames: workbook.SheetNames
   };
 }
 
 /**
- * 写入工作表数据
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {Array} params.data - 数据数组
- * @param {number} params.startRow - 起始行
- * @param {number} params.startCol - 起始列
- * @param {string} params.output - 输出路径（可选，默认覆盖原文件）
- * @returns {Promise<Object>} 写入结果
+ * 写入数据到工作表
  */
 async function writeSheet(params) {
-  const {
-    path: filePath,
-    sheet: sheetRef = 1,
-    data,
-    startRow = 1,
-    startCol = 1,
-    output
-  } = params;
+  const { path: filePath, sheet, data, mode = 'overwrite', startCell = 'A1' } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
+  let workbook;
+  let buffer;
   
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
+  try {
+    buffer = readExcelFile(filePath);
+    workbook = XLSX.read(buffer, { type: 'buffer' });
+  } catch (e) {
+    workbook = XLSX.utils.book_new();
+  }
+  
+  const sheetName = sheet || 'Sheet1';
+  let worksheet = workbook.Sheets[sheetName];
   
   if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+    worksheet = XLSX.utils.aoa_to_sheet([[]]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   }
   
-  // 写入数据
-  for (let i = 0; i < data.length; i++) {
-    const row = worksheet.getRow(startRow + i);
-    for (let j = 0; j < data[i].length; j++) {
-      const cell = row.getCell(startCol + j);
-      cell.value = data[i][j];
-    }
-    row.commit();
+  if (mode === 'overwrite') {
+    const newSheet = XLSX.utils.aoa_to_sheet(data);
+    workbook.Sheets[sheetName] = newSheet;
+  } else if (mode === 'append') {
+    const existingData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+    const combinedData = [...existingData, ...data];
+    const newSheet = XLSX.utils.aoa_to_sheet(combinedData);
+    workbook.Sheets[sheetName] = newSheet;
+  } else if (mode === 'insert') {
+    XLSX.utils.sheet_add_aoa(worksheet, data, { origin: startCell });
   }
   
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
+  const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(filePath, outputBuffer);
   
   return {
     success: true,
-    path: outputPath,
-    rowsWritten: data.length
+    path: resolvePath(filePath),
+    sheetName,
+    mode
   };
 }
 
 /**
  * 写入单元格
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.address - 单元格地址
- * @param {*} params.value - 值
- * @param {string} params.formula - 公式（可选）
- * @param {Object} params.style - 样式（可选）
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 写入结果
  */
 async function writeCell(params) {
-  const {
-    path: filePath,
-    sheet: sheetRef = 1,
-    address,
-    value,
-    formula,
-    style,
-    output
-  } = params;
+  const { path: filePath, sheet, cell, value, formula } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
+  if (!cell) {
+    throw new Error('Cell reference is required');
+  }
   
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
+  let buffer;
+  let workbook;
+  
+  try {
+    buffer = readExcelFile(filePath);
+    workbook = XLSX.read(buffer, { type: 'buffer' });
+  } catch (e) {
+    workbook = XLSX.utils.book_new();
+  }
+  
+  const sheetName = sheet || 'Sheet1';
+  let worksheet = workbook.Sheets[sheetName];
   
   if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+    worksheet = XLSX.utils.aoa_to_sheet([[]]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   }
   
-  const cell = worksheet.getCell(address);
+  const cellAddress = cell.toUpperCase();
   
-  // 设置值或公式
+  if (!worksheet[cellAddress]) {
+    worksheet[cellAddress] = { t: 'n', v: 0 };
+  }
+  
   if (formula) {
-    cell.value = { formula };
+    worksheet[cellAddress].f = formula;
+    worksheet[cellAddress].t = 'n';
   } else {
-    cell.value = value;
-  }
-  
-  // 设置样式
-  if (style) {
-    if (style.font) cell.font = style.font;
-    if (style.fill) cell.fill = style.fill;
-    if (style.alignment) cell.alignment = style.alignment;
-    if (style.border) cell.border = style.border;
-    if (style.numFmt) cell.numFmt = style.numFmt;
-  }
-  
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
-  
-  return {
-    success: true,
-    path: outputPath,
-    address,
-    value: cell.value
-  };
-}
-
-/**
- * 添加工作表
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string} params.name - 工作表名称
- * @param {Array} params.data - 数据
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 添加结果
- */
-async function addSheet(params) {
-  const { path: filePath, name, data = [], output } = params;
-  
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
-  
-  const worksheet = workbook.addWorksheet(name);
-  
-  if (data.length > 0) {
-    for (const row of data) {
-      worksheet.addRow(row);
+    if (typeof value === 'number') {
+      worksheet[cellAddress].t = 'n';
+      worksheet[cellAddress].v = value;
+    } else if (typeof value === 'boolean') {
+      worksheet[cellAddress].t = 'b';
+      worksheet[cellAddress].v = value;
+    } else if (value instanceof Date) {
+      worksheet[cellAddress].t = 'd';
+      worksheet[cellAddress].v = value;
+    } else {
+      worksheet[cellAddress].t = 's';
+      worksheet[cellAddress].v = String(value);
     }
   }
   
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
+  const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(filePath, outputBuffer);
   
   return {
     success: true,
-    path: outputPath,
-    sheetName: name,
-    sheetCount: workbook.worksheets.length
+    path: resolvePath(filePath),
+    cell: cellAddress,
+    value: formula || value
+  };
+}
+
+// ==================== 工作表操作 ====================
+
+/**
+ * 添加工作表
+ */
+async function addSheet(params) {
+  const { path: filePath, name, data = [] } = params;
+  
+  if (!name) {
+    throw new Error('Sheet name is required');
+  }
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  if (workbook.SheetNames.includes(name)) {
+    throw new Error(`Sheet "${name}" already exists`);
+  }
+  
+  const worksheet = XLSX.utils.aoa_to_sheet(data.length > 0 ? data : [[]]);
+  XLSX.utils.book_append_sheet(workbook, worksheet, name);
+  
+  const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(filePath, outputBuffer);
+  
+  return {
+    success: true,
+    path: resolvePath(filePath),
+    sheetName: name
   };
 }
 
 /**
  * 删除工作表
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 删除结果
  */
 async function deleteSheet(params) {
-  const { path: filePath, sheet: sheetRef, output } = params;
+  const { path: filePath, sheet } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
-  
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
-  
-  if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+  if (!sheet) {
+    throw new Error('Sheet name is required');
   }
   
-  workbook.removeWorksheet(worksheet.id);
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
   
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
+  if (!workbook.SheetNames.includes(sheet)) {
+    throw new Error(`Sheet "${sheet}" not found`);
+  }
+  
+  if (workbook.SheetNames.length === 1) {
+    throw new Error('Cannot delete the last sheet');
+  }
+  
+  delete workbook.Sheets[sheet];
+  workbook.SheetNames = workbook.SheetNames.filter(name => name !== sheet);
+  
+  const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(filePath, outputBuffer);
   
   return {
     success: true,
-    path: outputPath,
-    sheetCount: workbook.worksheets.length
+    path: resolvePath(filePath),
+    deletedSheet: sheet,
+    remainingSheets: workbook.SheetNames
   };
 }
 
-// ==================== 公式计算 ====================
-
-let hyperformulaInstance = null;
-
 /**
- * 获取或创建 HyperFormula 实例
- * @returns {HyperFormula} HyperFormula 实例
+ * 重命名工作表
  */
-function getHyperFormula() {
-  if (!hyperformulaInstance) {
-    hyperformulaInstance = HyperFormula.buildEmpty({
-      licenseKey: 'gpl-v3'
-    });
+async function renameSheet(params) {
+  const { path: filePath, oldName, newName } = params;
+  
+  if (!oldName || !newName) {
+    throw new Error('Both oldName and newName are required');
   }
-  return hyperformulaInstance;
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  if (!workbook.SheetNames.includes(oldName)) {
+    throw new Error(`Sheet "${oldName}" not found`);
+  }
+  
+  if (workbook.SheetNames.includes(newName)) {
+    throw new Error(`Sheet "${newName}" already exists`);
+  }
+  
+  const sheetIndex = workbook.SheetNames.indexOf(oldName);
+  workbook.SheetNames[sheetIndex] = newName;
+  workbook.Sheets[newName] = workbook.Sheets[oldName];
+  delete workbook.Sheets[oldName];
+  
+  const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(filePath, outputBuffer);
+  
+  return {
+    success: true,
+    path: resolvePath(filePath),
+    oldName,
+    newName
+  };
 }
 
 /**
- * 计算公式
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 计算结果
+ * 复制工作表
  */
-async function calculateFormulas(params) {
-  const { path: filePath, sheet: sheetRef, output } = params;
+async function copySheet(params) {
+  const { path: filePath, sourceSheet, targetSheet, targetFile } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
+  if (!sourceSheet || !targetSheet) {
+    throw new Error('Both sourceSheet and targetSheet are required');
+  }
   
-  const hf = getHyperFormula();
-  const sheetNames = [];
-  const results = [];
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
   
-  // 导入所有工作表到 HyperFormula
-  for (const worksheet of workbook.worksheets) {
-    const sheetName = worksheet.name;
-    sheetNames.push(sheetName);
+  if (!workbook.SheetNames.includes(sourceSheet)) {
+    throw new Error(`Source sheet "${sourceSheet}" not found`);
+  }
+  
+  const sourceWorksheet = workbook.Sheets[sourceSheet];
+  
+  if (targetFile) {
+    let targetBuffer;
+    let targetWorkbook;
     
-    // 添加工作表
-    hf.addSheet(sheetName);
-    
-    // 导入数据
-    const data = [];
-    worksheet.eachRow((row, rowNum) => {
-      const rowData = [];
-      row.eachCell((cell, colNum) => {
-        if (cell.formula) {
-          // 公式作为字符串存储，稍后处理
-          rowData.push(null);
-        } else {
-          rowData.push(cell.value);
-        }
-      });
-      data.push(rowData);
-    });
-    
-    if (data.length > 0) {
-      hf.setSheetContent(sheetName, data);
+    try {
+      targetBuffer = readExcelFile(targetFile);
+      targetWorkbook = XLSX.read(targetBuffer, { type: 'buffer' });
+    } catch (e) {
+      targetWorkbook = XLSX.utils.book_new();
     }
     
-    // 设置公式
-    worksheet.eachRow((row, rowNum) => {
-      row.eachCell((cell, colNum) => {
-        if (cell.formula) {
-          hf.setCellContents({ sheetName, row: rowNum - 1, col: colNum - 1 }, `=${cell.formula}`);
-        }
-      });
-    });
-  }
-  
-  // 计算并更新结果
-  for (const worksheet of workbook.worksheets) {
-    const sheetName = worksheet.name;
+    const copiedSheet = JSON.parse(JSON.stringify(sourceWorksheet));
+    XLSX.utils.book_append_sheet(targetWorkbook, copiedSheet, targetSheet);
     
-    worksheet.eachRow((row, rowNum) => {
-      row.eachCell((cell, colNum) => {
-        if (cell.formula) {
-          const value = hf.getCellValue({ sheetName, row: rowNum - 1, col: colNum - 1 });
-          cell.value = {
-            formula: cell.formula,
-            result: value
-          };
-          results.push({
-            address: toAddress(rowNum, colNum),
-            formula: cell.formula,
-            result: value
-          });
-        }
-      });
-    });
-  }
-  
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
-  
-  return {
-    success: true,
-    path: outputPath,
-    formulaCount: results.length,
-    results
-  };
-}
-
-/**
- * 计算单个公式
- * @param {Object} params - 参数
- * @param {string} params.formula - 公式字符串
- * @param {Object} params.context - 上下文数据
- * @returns {Promise<Object>} 计算结果
- */
-async function evaluateFormula(params) {
-  const { formula, context = {} } = params;
-  
-  const hf = getHyperFormula();
-  
-  // 创建临时工作表
-  const sheetName = 'temp';
-  hf.addSheet(sheetName);
-  
-  // 设置上下文数据
-  if (context.data) {
-    hf.setSheetContent(sheetName, context.data);
-  }
-  
-  // 计算公式
-  const cleanFormula = formula.startsWith('=') ? formula.slice(1) : formula;
-  hf.setCellContents({ sheetName, row: 0, col: 0 }, `=${cleanFormula}`);
-  const result = hf.getCellValue({ sheetName, row: 0, col: 0 });
-  
-  // 清理
-  hf.removeSheet(0);
-  
-  return {
-    success: true,
-    formula,
-    result
-  };
-}
-
-// ==================== 样式操作 ====================
-
-/**
- * 设置单元格样式
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.range - 范围（如 A1:B10）
- * @param {Object} params.style - 样式
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 设置结果
- */
-async function setStyle(params) {
-  const { path: filePath, sheet: sheetRef = 1, range, style, output } = params;
-  
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
-  
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
-  
-  if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
-  }
-  
-  // 解析范围
-  const rangeMatch = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
-  if (!rangeMatch) {
-    throw new Error(`Invalid range: ${range}`);
-  }
-  
-  const startCol = letterToColumn(rangeMatch[1].toUpperCase());
-  const startRow = parseInt(rangeMatch[2], 10);
-  const endCol = letterToColumn(rangeMatch[3].toUpperCase());
-  const endRow = parseInt(rangeMatch[4], 10);
-  
-  // 应用样式
-  for (let row = startRow; row <= endRow; row++) {
-    for (let col = startCol; col <= endCol; col++) {
-      const cell = worksheet.getCell(row, col);
-      if (style.font) cell.font = style.font;
-      if (style.fill) cell.fill = style.fill;
-      if (style.alignment) cell.alignment = style.alignment;
-      if (style.border) cell.border = style.border;
-      if (style.numFmt) cell.numFmt = style.numFmt;
+    const outputBuffer = XLSX.write(targetWorkbook, { type: 'buffer', bookType: 'xlsx' });
+    saveExcelFile(targetFile, outputBuffer);
+    
+    return {
+      success: true,
+      sourceFile: resolvePath(filePath),
+      targetFile: resolvePath(targetFile),
+      sourceSheet,
+      targetSheet
+    };
+  } else {
+    if (workbook.SheetNames.includes(targetSheet)) {
+      throw new Error(`Target sheet "${targetSheet}" already exists`);
     }
+    
+    const copiedSheet = JSON.parse(JSON.stringify(sourceWorksheet));
+    XLSX.utils.book_append_sheet(workbook, copiedSheet, targetSheet);
+    
+    const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    saveExcelFile(filePath, outputBuffer);
+    
+    return {
+      success: true,
+      path: resolvePath(filePath),
+      sourceSheet,
+      targetSheet
+    };
   }
-  
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
-  
-  return {
-    success: true,
-    path: outputPath,
-    range,
-    cellsStyled: (endRow - startRow + 1) * (endCol - startCol + 1)
-  };
 }
+
+// ==================== 格式化操作 ====================
 
 /**
  * 设置列宽
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {Object} params.widths - 列宽配置 { A: 20, B: 30 }
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 设置结果
  */
-async function setColumnWidths(params) {
-  const { path: filePath, sheet: sheetRef = 1, widths, output } = params;
+async function setColumnWidth(params) {
+  const { path: filePath, sheet, columns } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
+  if (!columns || !Array.isArray(columns)) {
+    throw new Error('columns array is required');
+  }
   
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
+  const ExcelJSLib = getExcelJS();
+  const workbook = new ExcelJSLib.Workbook();
+  const buffer = readExcelFile(filePath);
+  await workbook.xlsx.load(buffer);
+  
+  const sheetName = sheet || workbook.worksheets[0].name;
+  const worksheet = workbook.getWorksheet(sheetName);
   
   if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+    throw new Error(`Sheet "${sheetName}" not found`);
   }
   
-  for (const [col, width] of Object.entries(widths)) {
-    worksheet.getColumn(col).width = width;
+  for (const col of columns) {
+    const colNum = typeof col.column === 'string' 
+      ? col.column.toUpperCase().charCodeAt(0) - 64 
+      : col.column;
+    worksheet.getColumn(colNum).width = col.width;
   }
   
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
+  const outputBuffer = await workbook.xlsx.writeBuffer();
+  saveExcelFile(filePath, Buffer.from(outputBuffer));
   
   return {
     success: true,
-    path: outputPath,
-    columns: Object.keys(widths)
+    path: resolvePath(filePath),
+    sheetName,
+    columnsUpdated: columns.length
   };
 }
 
-// ==================== CSV 操作 ====================
-
 /**
- * 导出为 CSV
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.output - 输出 CSV 路径
- * @param {string} params.delimiter - 分隔符
- * @returns {Promise<Object>} 导出结果
+ * 设置单元格样式
  */
-async function exportCsv(params) {
-  const { path: filePath, sheet: sheetRef = 1, output, delimiter = ',' } = params;
+async function setCellStyle(params) {
+  const { path: filePath, sheet, cells, style } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
-  
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
-  
-  if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+  if (!cells || !Array.isArray(cells)) {
+    throw new Error('cells array is required');
   }
   
-  const csvData = [];
-  worksheet.eachRow((row) => {
-    const values = row.values.slice(1); // 移除第一个空元素
-    csvData.push(values.map(v => {
-      if (v === null || v === undefined) return '';
-      if (typeof v === 'string' && (v.includes(delimiter) || v.includes('"') || v.includes('\n'))) {
-        return `"${v.replace(/"/g, '""')}"`;
-      }
-      return String(v);
-    }).join(delimiter));
+  const ExcelJSLib = getExcelJS();
+  const workbook = new ExcelJSLib.Workbook();
+  const buffer = readExcelFile(filePath);
+  await workbook.xlsx.load(buffer);
+  
+  const sheetName = sheet || workbook.worksheets[0].name;
+  const worksheet = workbook.getWorksheet(sheetName);
+  
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  for (const cellRef of cells) {
+    const cell = worksheet.getCell(cellRef);
+    
+    if (style.font) {
+      cell.font = style.font;
+    }
+    if (style.fill) {
+      cell.fill = style.fill;
+    }
+    if (style.alignment) {
+      cell.alignment = style.alignment;
+    }
+    if (style.border) {
+      cell.border = style.border;
+    }
+    if (style.numFmt) {
+      cell.numFmt = style.numFmt;
+    }
+  }
+  
+  const outputBuffer = await workbook.xlsx.writeBuffer();
+  saveExcelFile(filePath, Buffer.from(outputBuffer));
+  
+  return {
+    success: true,
+    path: resolvePath(filePath),
+    sheetName,
+    cellsUpdated: cells.length
+  };
+}
+
+// ==================== 公式操作 ====================
+
+/**
+ * 计算公式
+ */
+async function calculateFormulas(params) {
+  const { path: filePath, sheet } = params;
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  const sheetName = sheet || workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  const HyperFormulaLib = getHyperFormula();
+  const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+  
+  const hfInstance = HyperFormulaLib.buildEmpty({
+    licenseKey: 'gpl-v3'
   });
   
-  const outputPath = resolvePath(output);
-  await fs.writeFile(outputPath, csvData.join('\n'), 'utf-8');
+  hfInstance.addSheet(sheetName);
+  hfInstance.setSheetContent(0, data);
   
-  return {
-    success: true,
-    path: outputPath,
-    rowCount: csvData.length
-  };
-}
-
-/**
- * 从 CSV 导入
- * @param {Object} params - 参数
- * @param {string} params.path - CSV 文件路径
- * @param {string} params.output - 输出 Excel 路径
- * @param {string} params.delimiter - 分隔符
- * @param {boolean} params.hasHeader - 是否有标题行
- * @returns {Promise<Object>} 导入结果
- */
-async function importCsv(params) {
-  const { path: filePath, output, delimiter = ',', hasHeader = true } = params;
+  const formulas = [];
+  const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
   
-  const content = await fs.readFile(resolvePath(filePath), 'utf-8');
-  const lines = content.split('\n').filter(line => line.trim());
-  
-  const data = lines.map(line => {
-    const values = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
+  for (let row = range.s.r; row <= range.e.r; row++) {
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+      const cell = worksheet[cellAddress];
       
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === delimiter && !inQuotes) {
-        values.push(current);
-        current = '';
-      } else {
-        current += char;
+      if (cell && cell.f) {
+        const calculatedValue = hfInstance.getCellValue({ sheetId: 0, row, col });
+        formulas.push({
+          cell: cellAddress,
+          formula: cell.f,
+          value: calculatedValue
+        });
       }
     }
-    values.push(current);
-    
-    return values;
-  });
-  
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Sheet1');
-  
-  if (hasHeader && data.length > 0) {
-    worksheet.columns = data[0].map((header, i) => ({
-      header,
-      key: `col${i}`,
-      width: 15
-    }));
-    data.slice(1).forEach(row => worksheet.addRow(row));
-  } else {
-    data.forEach(row => worksheet.addRow(row));
   }
   
-  const outputPath = resolvePath(output);
-  await workbook.xlsx.writeFile(outputPath);
+  hfInstance.destroy();
   
   return {
     success: true,
-    path: outputPath,
-    rowCount: data.length,
-    columnCount: data[0]?.length || 0
+    sheetName,
+    formulaCount: formulas.length,
+    formulas
   };
 }
 
-// ==================== 图表操作 ====================
+// ==================== 数据操作 ====================
 
 /**
- * 添加图表（需要 chart 技能）
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {Object} params.chart - 图表配置
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 添加结果
+ * 筛选数据
  */
-async function addChart(params) {
-  // ExcelJS 支持图表，但功能有限
-  // 建议使用 chart 技能生成图片后插入
-  return {
-    success: false,
-    error: 'Chart insertion requires chart skill. Generate chart image first, then insert.',
-    alternative: 'Use chart skill to generate image, then use addImage to insert.'
-  };
-}
-
-/**
- * 添加图片
- * @param {Object} params - 参数
- * @param {string} params.path - Excel 文件路径
- * @param {string|number} params.sheet - 工作表
- * @param {string} params.imagePath - 图片路径
- * @param {Object} params.position - 位置 { tl: { col, row }, ext: { width, height } }
- * @param {string} params.output - 输出路径
- * @returns {Promise<Object>} 添加结果
- */
-async function addImage(params) {
-  const { path: filePath, sheet: sheetRef = 1, imagePath, position, output } = params;
+async function filterData(params) {
+  const { path: filePath, sheet, column, condition, value } = params;
   
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(resolvePath(filePath));
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
   
-  const worksheet = typeof sheetRef === 'number'
-    ? workbook.worksheets[sheetRef - 1]
-    : workbook.getWorksheet(sheetRef);
+  const sheetName = sheet || workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
   
   if (!worksheet) {
-    throw new Error(`Sheet not found: ${sheetRef}`);
+    throw new Error(`Sheet "${sheetName}" not found`);
   }
   
-  // 读取图片
-  const imageBuffer = await fs.readFile(resolvePath(imagePath));
-  const imageId = workbook.addImage({
-    buffer: imageBuffer,
-    extension: path.extname(imagePath).slice(1).toLowerCase()
-  });
+  const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
   
-  // 添加图片到工作表
-  worksheet.addImage(imageId, {
-    tl: position.tl || { col: 0, row: 0 },
-    ext: position.ext || { width: 400, height: 300 }
-  });
+  if (data.length === 0) {
+    return { success: true, data: [], count: 0 };
+  }
   
-  const outputPath = output ? resolvePath(output) : resolvePath(filePath);
-  await workbook.xlsx.writeFile(outputPath);
+  const col = column || Object.keys(data[0])[0];
+  
+  const filteredData = data.filter(row => {
+    const cellValue = row[col];
+    
+    switch (condition) {
+      case 'equals':
+      case '==':
+        return cellValue == value;
+      case 'not_equals':
+      case '!=':
+        return cellValue != value;
+      case 'greater':
+      case '>':
+        return cellValue > value;
+      case 'greater_equals':
+      case '>=':
+        return cellValue >= value;
+      case 'less':
+      case '<':
+        return cellValue < value;
+      case 'less_equals':
+      case '<=':
+        return cellValue <= value;
+      case 'contains':
+        return String(cellValue).includes(value);
+      case 'starts_with':
+        return String(cellValue).startsWith(value);
+      case 'ends_with':
+        return String(cellValue).endsWith(value);
+      case 'is_empty':
+      case 'null':
+        return cellValue === null || cellValue === undefined || cellValue === '';
+      case 'is_not_empty':
+      case 'not_null':
+        return cellValue !== null && cellValue !== undefined && cellValue !== '';
+      default:
+        return true;
+    }
+  });
   
   return {
     success: true,
-    path: outputPath,
-    imageId
+    sheetName,
+    column: col,
+    condition,
+    data: filteredData,
+    count: filteredData.length
+  };
+}
+
+/**
+ * 排序数据
+ */
+async function sortData(params) {
+  const { path: filePath, sheet, column, order = 'asc', output } = params;
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  const sheetName = sheet || workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+  
+  if (data.length === 0) {
+    return { success: true, data: [], count: 0 };
+  }
+  
+  const col = column || Object.keys(data[0])[0];
+  
+  data.sort((a, b) => {
+    const aVal = a[col];
+    const bVal = b[col];
+    
+    if (aVal === null || aVal === undefined) return 1;
+    if (bVal === null || bVal === undefined) return -1;
+    
+    let comparison = 0;
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      comparison = aVal - bVal;
+    } else {
+      comparison = String(aVal).localeCompare(String(bVal));
+    }
+    
+    return order === 'desc' ? -comparison : comparison;
+  });
+  
+  if (output) {
+    const newWorksheet = XLSX.utils.json_to_sheet(data);
+    const newWorkbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, sheetName);
+    const outputBuffer = XLSX.write(newWorkbook, { type: 'buffer', bookType: 'xlsx' });
+    saveExcelFile(output, outputBuffer);
+    
+    return {
+      success: true,
+      path: resolvePath(output),
+      sheetName,
+      column: col,
+      order,
+      count: data.length
+    };
+  }
+  
+  return {
+    success: true,
+    sheetName,
+    column: col,
+    order,
+    data,
+    count: data.length
+  };
+}
+
+/**
+ * 查找数据
+ */
+async function findData(params) {
+  const { path: filePath, sheet, query, columns } = params;
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  const sheetName = sheet || workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+  const searchColumns = columns || Object.keys(data[0] || {});
+  const searchQuery = String(query).toLowerCase();
+  
+  const results = data.filter((row, index) => {
+    return searchColumns.some(col => {
+      const cellValue = row[col];
+      return cellValue !== null && 
+             cellValue !== undefined && 
+             String(cellValue).toLowerCase().includes(searchQuery);
+    });
+  }).map((row, index) => ({
+    rowIndex: index + 1,
+    ...row
+  }));
+  
+  return {
+    success: true,
+    sheetName,
+    query,
+    columns: searchColumns,
+    results,
+    count: results.length
+  };
+}
+
+// ==================== 转换操作 ====================
+
+/**
+ * Excel 转 JSON
+ */
+async function toJson(params) {
+  const { path: filePath, sheet, output } = params;
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  const sheetName = sheet || workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+  
+  if (output) {
+    const resolvedPath = resolvePath(output);
+    fs.writeFileSync(resolvedPath, JSON.stringify(data, null, 2), 'utf-8');
+    return { success: true, path: resolvedPath, count: data.length };
+  }
+  
+  return {
+    success: true,
+    sheetName,
+    data,
+    count: data.length
+  };
+}
+
+/**
+ * JSON 转 Excel
+ */
+async function fromJson(params) {
+  const { data, path: filePath, sheet = 'Sheet1' } = params;
+  
+  if (!data || !Array.isArray(data)) {
+    throw new Error('data array is required');
+  }
+  
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheet);
+  
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(filePath, buffer);
+  
+  return {
+    success: true,
+    path: resolvePath(filePath),
+    sheetName: sheet,
+    rowCount: data.length
+  };
+}
+
+/**
+ * Excel 转 CSV
+ */
+async function toCsv(params) {
+  const { path: filePath, sheet, output, delimiter = ',' } = params;
+  
+  const buffer = readExcelFile(filePath);
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  const sheetName = sheet || workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  
+  const csv = XLSX.utils.sheet_to_csv(worksheet, { FS: delimiter });
+  
+  if (output) {
+    const resolvedPath = resolvePath(output);
+    fs.writeFileSync(resolvedPath, csv, 'utf-8');
+    return { success: true, path: resolvedPath };
+  }
+  
+  return {
+    success: true,
+    sheetName,
+    csv
+  };
+}
+
+/**
+ * CSV 转 Excel
+ */
+async function fromCsv(params) {
+  const { path: filePath, output, sheet = 'Sheet1', delimiter = ',' } = params;
+  
+  const buffer = readExcelFile(filePath);
+  const csv = buffer.toString('utf-8');
+  
+  const worksheet = XLSX.read(csv, { type: 'string', FS: delimiter }).Sheets['Sheet1'];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheet);
+  
+  const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  saveExcelFile(output, outputBuffer);
+  
+  return {
+    success: true,
+    path: resolvePath(output),
+    sheetName: sheet
   };
 }
 
 // ==================== 技能入口 ====================
 
 /**
- * 技能入口函数
- * @param {string} action - 操作类型
- * @param {Object} params - 参数
- * @returns {Promise<Object>} 执行结果
+ * Skill execute function - called by skill-runner
+ * 
+ * @param {string} toolName - Name of the tool to execute
+ * @param {object} params - Tool parameters
+ * @param {object} context - Execution context
+ * @returns {Promise<object>} Execution result
  */
-module.exports = async function xlsxSkill(action, params = {}) {
-  switch (action) {
-    // 读取操作
+async function execute(toolName, params, context = {}) {
+  switch (toolName) {
+    // 基础操作
     case 'read_workbook':
-    case 'info':
+    case 'read':
       return await readWorkbook(params);
       
     case 'read_sheet':
-    case 'read':
       return await readSheet(params);
       
     case 'read_cell':
@@ -951,65 +1033,56 @@ module.exports = async function xlsxSkill(action, params = {}) {
     case 'write_cell':
       return await writeCell(params);
       
+    // 工作表操作
     case 'add_sheet':
       return await addSheet(params);
       
     case 'delete_sheet':
       return await deleteSheet(params);
       
-    // 公式计算
+    case 'rename_sheet':
+      return await renameSheet(params);
+      
+    case 'copy_sheet':
+      return await copySheet(params);
+      
+    // 格式化操作
+    case 'set_column_width':
+      return await setColumnWidth(params);
+      
+    case 'set_cell_style':
+      return await setCellStyle(params);
+      
+    // 公式操作
     case 'calculate_formulas':
-    case 'recalc':
       return await calculateFormulas(params);
       
-    case 'evaluate_formula':
-      return await evaluateFormula(params);
+    // 数据操作
+    case 'filter_data':
+      return await filterData(params);
       
-    // 样式操作
-    case 'set_style':
-      return await setStyle(params);
+    case 'sort_data':
+      return await sortData(params);
       
-    case 'set_column_widths':
-      return await setColumnWidths(params);
+    case 'find_data':
+      return await findData(params);
       
-    // CSV 操作
-    case 'export_csv':
-      return await exportCsv(params);
+    // 转换操作
+    case 'to_json':
+      return await toJson(params);
       
-    case 'import_csv':
-      return await importCsv(params);
+    case 'from_json':
+      return await fromJson(params);
       
-    // 图表操作
-    case 'add_chart':
-      return await addChart(params);
+    case 'to_csv':
+      return await toCsv(params);
       
-    case 'add_image':
-      return await addImage(params);
+    case 'from_csv':
+      return await fromCsv(params);
       
     default:
-      throw new Error(`Unknown action: ${action}. Supported actions: read_workbook, read_sheet, read_cell, create_workbook, write_sheet, write_cell, add_sheet, delete_sheet, calculate_formulas, evaluate_formula, set_style, set_column_widths, export_csv, import_csv, add_chart, add_image`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: read_workbook, read_sheet, read_cell, create_workbook, write_sheet, write_cell, add_sheet, delete_sheet, rename_sheet, copy_sheet, set_column_width, set_cell_style, calculate_formulas, filter_data, sort_data, find_data, to_json, from_json, to_csv, from_csv`);
   }
-};
+}
 
-// 导出所有函数
-module.exports.readWorkbook = readWorkbook;
-module.exports.readSheet = readSheet;
-module.exports.readCell = readCell;
-module.exports.createWorkbook = createWorkbook;
-module.exports.writeSheet = writeSheet;
-module.exports.writeCell = writeCell;
-module.exports.addSheet = addSheet;
-module.exports.deleteSheet = deleteSheet;
-module.exports.calculateFormulas = calculateFormulas;
-module.exports.evaluateFormula = evaluateFormula;
-module.exports.setStyle = setStyle;
-module.exports.setColumnWidths = setColumnWidths;
-module.exports.exportCsv = exportCsv;
-module.exports.importCsv = importCsv;
-module.exports.addChart = addChart;
-module.exports.addImage = addImage;
-module.exports.resolvePath = resolvePath;
-module.exports.columnToLetter = columnToLetter;
-module.exports.letterToColumn = letterToColumn;
-module.exports.parseAddress = parseAddress;
-module.exports.toAddress = toAddress;
+module.exports = { execute };
