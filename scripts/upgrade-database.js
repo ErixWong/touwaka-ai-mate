@@ -690,7 +690,7 @@ const MIGRATIONS = [
           KEY idx_request_id (request_id),
           KEY idx_request_seq (request_id, sequence_no),
           KEY idx_tool_call_id (tool_call_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='助理内部消息表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='助理内部消息表'
       `);
     }
   },
@@ -1061,7 +1061,7 @@ const MIGRATIONS = [
           INDEX idx_token (token),
           INDEX idx_task_user (task_id, user_id),
           INDEX idx_expires_at (expires_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='任务预览Token表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务预览Token表'
       `);
     }
   },
@@ -1081,7 +1081,7 @@ const MIGRATIONS = [
           accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_token_id (token_id),
           INDEX idx_accessed_at (accessed_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Token访问日志表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Token访问日志表'
       `);
     }
   },
@@ -1301,7 +1301,7 @@ const MIGRATIONS = [
         CREATE TABLE IF NOT EXISTS invitations (
           id INT PRIMARY KEY AUTO_INCREMENT,
           code VARCHAR(32) NOT NULL UNIQUE COMMENT '邀请码',
-          creator_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '创建者用户ID',
+          creator_id VARCHAR(32) NOT NULL COMMENT '创建者用户ID',
           max_uses INT DEFAULT 5 COMMENT '最大使用次数',
           used_count INT DEFAULT 0 COMMENT '已使用次数',
           expires_at DATETIME DEFAULT NULL COMMENT '过期时间，NULL表示永不过期',
@@ -1312,7 +1312,7 @@ const MIGRATIONS = [
           INDEX idx_creator (creator_id),
           INDEX idx_status (status),
           FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='邀请码表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请码表'
       `);
     }
   },
@@ -1326,13 +1326,13 @@ const MIGRATIONS = [
         CREATE TABLE IF NOT EXISTS invitation_usages (
           id INT PRIMARY KEY AUTO_INCREMENT,
           invitation_id INT NOT NULL COMMENT '邀请ID',
-          user_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '注册用户ID',
+          user_id VARCHAR(32) NOT NULL COMMENT '注册用户ID',
           used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (invitation_id) REFERENCES invitations(id) ON DELETE CASCADE,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
           INDEX idx_invitation (invitation_id),
           INDEX idx_user (user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='邀请使用记录表'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请使用记录表'
       `);
     }
   },
