@@ -17,11 +17,20 @@ const IS_ADMIN = process.env.IS_ADMIN === 'true';
 // 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 
+// 技能目录（普通用户禁止访问）
+const SKILLS_DIR = path.join(DATA_BASE_PATH, 'skills');
+
+// 用户工作目录
+const USER_ID = process.env.USER_ID || 'default';
+const USER_WORK_DIR = process.env.WORKING_DIRECTORY
+  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
+  : path.join(DATA_BASE_PATH, 'work', USER_ID);
+
 // 管理员可以访问项目根目录
 const PROJECT_ROOT = process.cwd();
 const ALLOWED_BASE_PATHS = IS_ADMIN
   ? [PROJECT_ROOT, DATA_BASE_PATH]  // 管理员：项目根目录 + data 目录
-  : [DATA_BASE_PATH, path.join(DATA_BASE_PATH, 'skills')];  // 普通用户：仅 data 目录
+  : [USER_WORK_DIR];  // 普通用户：仅用户工作目录
 
 // Maximum file size to read (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
