@@ -69,7 +69,6 @@
                   <div class="user-info">
                     <span class="user-name">{{ user.nickname || user.username }}</span>
                     <span v-if="user.nickname" class="user-username">@{{ user.username }}</span>
-                    <span v-if="user.department_name" class="user-department">{{ user.department_name }}</span>
                   </div>
                   <span v-if="user.id === modelValue" class="check-icon">✓</span>
                 </div>
@@ -452,13 +451,6 @@ onUnmounted(() => {
   display: block;
   font-size: 12px;
   color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.user-department {
-  display: block;
-  font-size: 11px;
-  color: var(--text-tertiary, #999);
   margin-top: 2px;
 }
 
