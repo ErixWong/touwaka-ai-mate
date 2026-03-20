@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# 禁止直接提交到 master 分支
+current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)
+
+if [ "$current_branch" = "master" ] || [ "$current_branch" = "main" ]; then
+    echo ""
+    echo "=========================================="
+    echo "❌ 错误：禁止直接提交到 $current_branch 分支！"
+    echo "=========================================="
+    echo ""
+    echo "请按照以下流程操作："
+    echo "1. 创建分支：git checkout -b feature/xxx"
+    echo "2. 实施代码审计：参考 docs/guides/development/code-review-checklist.md"
+    echo "3. 提交代码：git commit -m '...'"
+    echo "4. 推送分支：git push origin feature/xxx"
+    echo "5. 发起 PR 合并到 master"
+    echo ""
+    echo "如果确实需要直接提交到 $current_branch，请使用："
+    echo "  git commit --no-verify -m '...'"
+    echo ""
+    exit 1
+fi
+
+# ============================================
+# 代码审计提醒
+# ============================================
+echo ""
+echo "=========================================="
+echo "📋 代码审计提醒"
+echo "=========================================="
+echo ""
+echo "请参考 docs/guides/development/code-review-checklist.md 实施代码审计"
+echo ""
+echo "=========================================="
+echo ""
