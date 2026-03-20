@@ -34,6 +34,11 @@ export default class skill_parameter extends Model {
       defaultValue: 0,
       comment: "是否敏感参数（前端显示\/隐藏）"
     },
+    description: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: "参数描述"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,

@@ -13,7 +13,6 @@ export default class task_token extends Model {
     token: {
       type: DataTypes.STRING(64),
       allowNull: false,
-      comment: "Token字符串(随机生成，非JWT)",
       unique: "token"
     },
     task_id: {
