@@ -2701,9 +2701,11 @@ onMounted(() => {
   providerStore.loadProviders()
   // 加载所有专家列表（包括非活跃的）
   expertStore.loadExperts({})
-  // 加载权限列表和专家列表（用于角色管理）
-  loadAllPermissions()
-  loadAllExperts()
+  // 加载权限列表和专家列表（用于角色管理）- 仅管理员需要
+  if (isAdmin.value) {
+    loadAllPermissions()
+    loadAllExperts()
+  }
 })
 </script>
 
