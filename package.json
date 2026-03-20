@@ -41,10 +41,12 @@
     "koa-static": "^5.0.0",
     "multer": "^2.0.2",
     "mysql2": "^3.11.3",
+    "numpy": "^0.0.1",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",
     "ssh2": "^1.17.0",
-    "tiktoken": "^1.0.22"
+    "tiktoken": "^1.0.22",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

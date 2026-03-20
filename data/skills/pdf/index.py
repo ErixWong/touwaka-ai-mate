@@ -274,7 +274,13 @@ def create_pdf(params):
     """Create a new PDF with text content"""
     from reportlab.lib.pagesizes import letter, A4
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    
+    # 使用公共字体模块（添加 data 目录到路径）
+    data_dir = str(SKILL_DIR.parent.parent)
+    if data_dir not in sys.path:
+        sys.path.insert(0, data_dir)
+    from fonts import register_chinese_font
     
     output_path = params['output']
     title = params.get('title', '')
@@ -289,20 +295,34 @@ def create_pdf(params):
         title=title
     )
     
+    # Register Chinese font using shared module
+    font_name = 'ChineseFont'
+    font_registered = register_chinese_font(font_name)
+    
     styles = getSampleStyleSheet()
+    
+    if font_registered:
+        chinese_style = ParagraphStyle(
+            'ChineseNormal',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=10,
+            leading=14,
+        )
+    else:
+        chinese_style = styles['Normal']
+    
     story = []
     
     for i, page_content in enumerate(content):
         if i > 0:
             story.append(PageBreak())
         
-        # Split content into paragraphs
         paragraphs = page_content.split('\n\n')
         for para in paragraphs:
             if para.strip():
-                # Convert newlines to <br/> for proper rendering
                 formatted = para.strip().replace('\n', '<br/>')
-                story.append(Paragraph(formatted, styles['Normal']))
+                story.append(Paragraph(formatted, chinese_style))
                 story.append(Spacer(1, 12))
     
     doc.build(story)
