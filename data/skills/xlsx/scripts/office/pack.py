@@ -157,3 +157,36 @@ if __name__ == "__main__":
 
     if "Error" in message:
         sys.exit(1)
+
+
+def execute(tool_name, params, context=None):
+    """
+    Execute pack tool.
+    
+    Args:
+        tool_name: Name of the tool (e.g., 'pack', 'xlsx_pack')
+        params: Tool parameters including 'input_directory', 'output_file', etc.
+        context: Execution context (optional)
+    
+    Returns:
+        dict with 'success', 'message'
+    """
+    if tool_name in ('pack', 'xlsx_pack'):
+        input_directory = params.get('input_directory') or params.get('input_dir')
+        output_file = params.get('output_file') or params.get('output')
+        original_file = params.get('original_file') or params.get('original')
+        validate = params.get('validate', True)
+        
+        if not input_directory or not output_file:
+            return {
+                'success': False,
+                'error': 'input_directory and output_file are required'
+            }
+        
+        _, message = pack(input_directory, output_file, original_file, validate)
+        return {
+            'success': 'Error' not in message,
+            'message': message
+        }
+    
+    raise ValueError(f"Unknown tool: {tool_name}")
