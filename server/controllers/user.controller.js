@@ -115,6 +115,20 @@ class UserController {
         return;
       }
 
+      // 验证用户名格式：字母开头，仅允许字母、数字、下划线，3-32位
+      const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{2,31}$/;
+      if (!usernameRegex.test(username)) {
+        ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度3-32位', 400);
+        return;
+      }
+
+      // 验证邮箱格式
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        ctx.error('邮箱格式不正确', 400);
+        return;
+      }
+
       // 检查用户名是否已存在
       const existingUsername = await this.User.findOne({
         where: { username },
@@ -247,6 +261,24 @@ class UserController {
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段');
         return;
+      }
+
+      // 验证用户名格式（如果更新用户名）
+      if (updates.username) {
+        const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{2,31}$/;
+        if (!usernameRegex.test(updates.username)) {
+          ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度3-32位', 400);
+          return;
+        }
+      }
+
+      // 验证邮箱格式（如果更新邮箱）
+      if (updates.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(updates.email)) {
+          ctx.error('邮箱格式不正确', 400);
+          return;
+        }
       }
 
       // 检查用户名和邮箱唯一性
