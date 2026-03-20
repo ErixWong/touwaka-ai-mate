@@ -37,7 +37,7 @@
             class="form-input"
             :placeholder="$t('register.usernamePlaceholder')"
             required
-            pattern="[a-zA-Z][a-zA-Z0-9_]{2,31}"
+            pattern="[a-zA-Z][a-zA-Z0-9_]{5,31}"
             :title="$t('register.usernameFormatHint')"
           />
           <p class="field-hint">{{ $t('register.usernameFormatHint') }}</p>
