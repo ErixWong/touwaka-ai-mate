@@ -37,7 +37,10 @@
             class="form-input"
             :placeholder="$t('register.usernamePlaceholder')"
             required
+            pattern="[a-zA-Z][a-zA-Z0-9_]{2,31}"
+            :title="$t('register.usernameFormatHint')"
           />
+          <p class="field-hint">{{ $t('register.usernameFormatHint') }}</p>
         </div>
 
         <!-- 邮箱 -->
@@ -314,6 +317,12 @@ const handleRegister = async () => {
 .field-success {
   font-size: 12px;
   color: #2e7d32;
+  margin-top: 4px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: #888;
   margin-top: 4px;
 }
 
