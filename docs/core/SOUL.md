@@ -33,8 +33,9 @@
 | 组件 | 用途 | 示例 |
 |------|------|------|
 | `Toast.vue` | 消息提示（替代 alert）| `toast.success('操作成功')` |
+| `UserPicker.vue` | 用户选择器（Modal 弹窗形式）| `<UserPicker v-model="userId" @change="handleChange" />` |
 
-**使用方式**：
+**Toast 使用方式**：
 ```typescript
 import { useToastStore } from '@/stores/toast'
 const toast = useToastStore()
@@ -42,6 +43,29 @@ toast.success('操作成功')
 toast.error('操作失败')
 toast.warning('警告信息')
 toast.info('提示信息')
+```
+
+**UserPicker 使用方式**：
+```vue
+<template>
+  <UserPicker
+    v-model="selectedUserId"
+    :placeholder="'选择用户'"
+    :disabled="false"
+    @change="handleUserChange"
+  />
+</template>
+
+<script setup lang="ts">
+import UserPicker from '@/components/common/UserPicker.vue'
+import type { UserListItem } from '@/types'
+
+const selectedUserId = ref<string | null>(null)
+
+const handleUserChange = (user: UserListItem | null) => {
+  console.log('Selected user:', user)
+}
+</script>
 ```
 
 ## 🏗 项目上下文
