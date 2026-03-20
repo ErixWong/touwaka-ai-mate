@@ -1361,6 +1361,94 @@ const MIGRATIONS = [
       }
     }
   },
+
+  // ==================== 技能参数默认值 ====================
+
+  // 56. skill-manager 默认参数（空值）
+  {
+    name: 'skill-manager default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'skill-manager' AND param_name = 'db_host'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const params = [
+        { name: 'db_host', value: '', is_secret: false, desc: '数据库主机地址' },
+        { name: 'db_port', value: '', is_secret: false, desc: '数据库端口' },
+        { name: 'db_name', value: '', is_secret: false, desc: '数据库名称' },
+        { name: 'db_user', value: '', is_secret: false, desc: '数据库用户名' },
+        { name: 'db_password', value: '', is_secret: true, desc: '数据库密码' },
+      ];
+      for (const p of params) {
+        await conn.execute(
+          `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+           VALUES (CONCAT('sm_param_', ?), 'skill-manager', ?, ?, ?, ?)`,
+          [p.name, p.name, p.value, p.is_secret ? 1 : 0, p.desc]
+        );
+      }
+    }
+  },
+
+  // 57. searxng 默认参数（空值）
+  {
+    name: 'searxng default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'searxng' AND param_name = 'SEARXNG_URL'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+         VALUES ('searxng_param_url', 'searxng', 'SEARXNG_URL', '', 0, 'SearXNG 实例 URL')`
+      );
+    }
+  },
+
+  // 58. remote-llm 默认参数（空值）
+  {
+    name: 'remote-llm default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'remote-llm' AND param_name = 'model_id'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const params = [
+        { id: 'remote_llm_model_id', name: 'model_id', value: '', is_secret: true, desc: '目标模型 ID（ai_models 表）' },
+        { id: 'remote_llm_max_tokens', name: 'max_tokens', value: '', is_secret: false, desc: '最大输出 token 数' },
+        { id: 'remote_llm_prompt', name: 'prompt', value: '', is_secret: false, desc: '发送给 LLM 的提示' },
+      ];
+      for (const p of params) {
+        await conn.execute(
+          `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+           VALUES (?, 'remote-llm', ?, ?, ?, ?)`,
+          [p.id, p.name, p.value, p.is_secret ? 1 : 0, p.desc]
+        );
+      }
+    }
+  },
+
+  // 59. unifuncs-web-reader 默认参数（空值）
+  {
+    name: 'unifuncs-web-reader default parameters',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM skill_parameters WHERE skill_id = 'mmoasyw4iar2f9qi4z96' AND param_name = 'UNIFUNCS_API_KEY'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `INSERT IGNORE INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
+         VALUES ('unifuncs_param_api_key', 'mmoasyw4iar2f9qi4z96', 'UNIFUNCS_API_KEY', '', 1, 'Unifuncs API 密钥')`
+      );
+    }
+  },
 ];
 
 /**
