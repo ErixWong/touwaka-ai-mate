@@ -36,6 +36,12 @@ const DEFAULT_SETTINGS = {
   tool: {
     max_rounds: 20,         // 最大工具调用轮数
   },
+  registration: {
+    allow_self_registration: true,    // 是否允许自主注册
+    default_invitation_quota: 10,     // 默认邀请配额
+    default_invitation_max_uses: 5,   // 默认邀请码最大使用次数
+    invitation_expiry_days: 30,       // 邀请码有效期（天）
+  },
 };
 
 class SystemSettingController {
