@@ -310,7 +310,7 @@ class KbController {
       // 如果有 tag_ids 参数，添加 where 条件过滤
       const include = [{
         model: this.KbTag,
-        as: 'tags',
+        as: 'tag_id_kb_tags',
         through: { attributes: [] },
       }];
 
@@ -348,7 +348,7 @@ class KbController {
         where: { id, kb_id },
         include: [{
           model: this.KbTag,
-          as: 'tags',
+          as: 'tag_id_kb_tags',
           through: { attributes: [] },
         }],
       });
@@ -400,7 +400,7 @@ class KbController {
       ctx.success(await this.KbArticle.findByPk(id, {
         include: [{
           model: this.KbTag,
-          as: 'tags',
+          as: 'tag_id_kb_tags',
           through: { attributes: [] },
         }],
       }));
@@ -443,7 +443,7 @@ class KbController {
       ctx.success(await this.KbArticle.findByPk(id, {
         include: [{
           model: this.KbTag,
-          as: 'tags',
+          as: 'tag_id_kb_tags',
           through: { attributes: [] },
         }],
       }));
@@ -468,7 +468,7 @@ class KbController {
       }
 
       // 获取文章关联的标签ID（用于后续递减计数）
-      const tags = await article.getTags();
+      const tags = await article.getTag_id_kb_tags();
       const tagIds = tags.map(tag => tag.id);
 
       // 1. 先删除文章（级联删除 sections, paragraphs, article_tags）
