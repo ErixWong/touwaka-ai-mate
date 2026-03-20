@@ -230,6 +230,33 @@ allowed-tools: []
   },
 ];
 
+// 核心技能的参数定义（参数值留空，由用户配置）
+const SKILL_PARAMETERS = {
+  'remote-llm': [
+    { param_name: 'model_id', param_value: '', is_secret: false, description: '目标模型 ID（ai_models 表）' },
+    { param_name: 'prompt', param_value: '', is_secret: false, description: '默认 prompt' },
+    { param_name: 'system_prompt', param_value: '', is_secret: false, description: '系统提示（可选）' },
+    { param_name: 'max_tokens', param_value: '', is_secret: false, description: '最大输出 token' },
+    { param_name: 'temperature', param_value: '', is_secret: false, description: '温度参数' },
+  ],
+  'searxng': [
+    { param_name: 'searxng_url', param_value: '', is_secret: false, description: 'SearXNG 实例 URL' },
+  ],
+  'wikijs': [
+    { param_name: 'wikijs_url', param_value: '', is_secret: false, description: 'Wiki.js 实例 URL' },
+    { param_name: 'wikijs_token', param_value: '', is_secret: true, description: 'Wiki.js API Token' },
+  ],
+  'kb-search': [
+    { param_name: 'api_base', param_value: '', is_secret: false, description: 'API 基础地址' },
+  ],
+  'kb-editor': [
+    { param_name: 'api_base', param_value: '', is_secret: false, description: 'API 基础地址' },
+  ],
+  'erix-ssh': [
+    // SSH 技能使用本地 SQLite 数据库，无需配置参数
+  ],
+};
+
 /**
  * 同步技能到数据库
  */
@@ -246,6 +273,15 @@ async function syncSkills(dryRun = false) {
         console.log(`  name: ${skill.name}`);
         console.log(`  description: ${skill.description.substring(0, 60)}...`);
         console.log(`  tools: ${skill.tools.map(t => t.name).join(', ')}`);
+        console.log('');
+      }
+      console.log('📦 将要同步的技能参数:\n');
+      for (const [skillId, params] of Object.entries(SKILL_PARAMETERS)) {
+        if (!params || params.length === 0) continue;
+        console.log(`[${skillId}]`);
+        for (const param of params) {
+          console.log(`  - ${param.param_name}${param.is_secret ? ' (secret)' : ''}: ${param.description}`);
+        }
         console.log('');
       }
       console.log('✅ Dry run 完成');
@@ -319,11 +355,46 @@ async function syncSkills(dryRun = false) {
       console.log(`    └─ ${skill.tools.length} 个工具已注册`);
     }
 
+    // 同步技能参数
+    console.log('\n📦 同步技能参数...\n');
+    let paramsCount = 0;
+
+    for (const [skillId, params] of Object.entries(SKILL_PARAMETERS)) {
+      if (!params || params.length === 0) continue;
+
+      // 检查技能是否存在
+      const [skillExists] = await connection.execute(
+        'SELECT id FROM skills WHERE id = ?',
+        [skillId]
+      );
+
+      if (skillExists.length === 0) {
+        console.log(`  ⚠ 跳过参数同步: 技能 ${skillId} 不存在`);
+        continue;
+      }
+
+      // 删除该技能的旧参数
+      await connection.execute('DELETE FROM skill_parameters WHERE skill_id = ?', [skillId]);
+
+      // 插入参数定义
+      for (const param of params) {
+        await connection.execute(
+          `INSERT INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [Utils.newID(20), skillId, param.param_name, param.param_value, param.is_secret ? 1 : 0, param.description || null]
+        );
+        paramsCount++;
+      }
+
+      console.log(`  ✓ ${skillId}: ${params.length} 个参数`);
+    }
+
     console.log('\n✅ 同步完成!');
     console.log(`\n统计:`);
     console.log(`  - 插入: ${insertedCount} 个技能`);
     console.log(`  - 更新: ${updatedCount} 个技能`);
     console.log(`  - 工具: ${toolsCount} 个`);
+    console.log(`  - 参数: ${paramsCount} 个`);
 
   } catch (error) {
     console.error('\n❌ 同步失败:', error.message);

@@ -842,17 +842,53 @@ const MIGRATIONS = [
     check: async (conn) => await hasColumn(conn, 'skill_tools', 'script_path'),
     migrate: async (conn) => {
       await conn.execute(`
-        ALTER TABLE skill_tools 
-        ADD COLUMN script_path VARCHAR(255) DEFAULT 'index.js' 
-        COMMENT '工具入口脚本路径（相对于技能目录）' 
+        ALTER TABLE skill_tools
+        ADD COLUMN script_path VARCHAR(255) DEFAULT 'index.js'
+        COMMENT '工具入口脚本路径（相对于技能目录）'
         AFTER parameters
+      `);
+    }
+  },
+
+  // 34. skill_parameters 表（技能参数配置）
+  {
+    name: 'skill_parameters table',
+    check: async (conn) => await hasTable(conn, 'skill_parameters'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS skill_parameters (
+          id VARCHAR(32) PRIMARY KEY,
+          skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+          param_name VARCHAR(64) NOT NULL COMMENT '参数名（如 api_key, base_url）',
+          param_value TEXT COMMENT '参数值',
+          is_secret BIT(1) DEFAULT b'0' COMMENT '是否敏感参数（前端显示/隐藏）',
+          description VARCHAR(500) COMMENT '参数描述',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_skill_param (skill_id, param_name),
+          INDEX idx_skill_id (skill_id),
+          FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        ) COMMENT='技能参数表'
+      `);
+    }
+  },
+
+  // 35. skill_parameters.description 字段（为旧表添加）
+  {
+    name: 'skill_parameters.description column',
+    check: async (conn) => await hasColumn(conn, 'skill_parameters', 'description'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skill_parameters
+        ADD COLUMN description VARCHAR(500) COMMENT '参数描述'
+        AFTER is_secret
       `);
     }
   },
 
   // ==================== 角色表扩展 ====================
   
-  // 34. roles.level 字段
+  // 36. roles.level 字段
   {
     name: 'roles.level column',
     check: async (conn) => await hasColumn(conn, 'roles', 'level'),
@@ -875,7 +911,7 @@ const MIGRATIONS = [
     }
   },
 
-  // 35. roles 表字段重命名 (name -> mark, label -> name)
+  // 37. roles 表字段重命名 (name -> mark, label -> name)
   {
     name: 'roles field rename',
     check: async (conn) => await hasColumn(conn, 'roles', 'mark'),
@@ -899,7 +935,7 @@ const MIGRATIONS = [
 
   // ==================== 数据库设计修复 ====================
   
-  // 36. 修复 kb_article_tags 表主键结构
+  // 38. 修复 kb_article_tags 表主键结构
   // 问题：有独立 id 主键，应该是复合主键 (article_id, tag_id)
   // 原因：sequelize-auto 只能为复合主键的中间表生成 belongsToMany 关联
   {

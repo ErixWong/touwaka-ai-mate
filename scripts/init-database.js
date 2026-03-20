@@ -130,6 +130,21 @@ const TABLES = [
     INDEX idx_skill_id (skill_id)
   )`,
 
+  // 4.2 Skill_Parameters 表（技能参数配置）
+  `CREATE TABLE IF NOT EXISTS skill_parameters (
+    id VARCHAR(32) PRIMARY KEY,
+    skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+    param_name VARCHAR(64) NOT NULL COMMENT '参数名（如 api_key, base_url）',
+    param_value TEXT COMMENT '参数值',
+    is_secret BIT(1) DEFAULT b'0' COMMENT '是否敏感参数（前端显示/隐藏）',
+    description VARCHAR(500) COMMENT '参数描述',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_skill_param (skill_id, param_name),
+    INDEX idx_skill_id (skill_id),
+    FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+  ) COMMENT='技能参数表'`,
+
   // 5. Expert_Skills 表
   `CREATE TABLE IF NOT EXISTS expert_skills (
     id VARCHAR(32) PRIMARY KEY,
@@ -431,26 +446,6 @@ async function getInitialData() {
       { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理员' },
       { id: Utils.newID(20), username: 'test', email: 'test@example.com', password_hash: defaultPassword, nickname: '测试用户' },
     ],
-    skills: [
-      {
-        id: Utils.newID(20),
-        name: '搜索',
-        description: '搜索互联网获取信息',
-        version: '1.0.0',
-        author: 'System',
-        source_type: 'local',
-        skill_md: '# Search Skill\n\n## 描述\n搜索互联网获取信息...',
-      },
-      {
-        id: Utils.newID(20),
-        name: '天气',
-        description: '查询天气信息',
-        version: '1.0.0',
-        author: 'System',
-        source_type: 'local',
-        skill_md: '# Weather Skill\n\n## 描述\n查询指定城市的天气信息...',
-      },
-    ],
     // 内置高级技能（从 skills 目录加载）
     builtInSkills: [
       {
@@ -632,7 +627,7 @@ async function initDatabase() {
     const dropTables = [
       'knowledge_relations', 'knowledge_points', 'knowledges', 'knowledge_bases',
       'messages', 'topics', 'tasks', 'user_profiles', 'user_roles', 'role_permissions', 'role_experts',
-      'permissions', 'roles', 'users', 'expert_skills', 'skill_tools', 'skills', 'experts',
+      'permissions', 'roles', 'users', 'expert_skills', 'skill_parameters', 'skill_tools', 'skills', 'experts',
       'ai_models', 'providers'
     ];
     for (const table of dropTables) {
@@ -680,16 +675,6 @@ async function initDatabase() {
       );
     }
     console.log(`  - ${data.users.length} users (default password: password123)`);
-
-    // 插入 skills
-    for (const s of data.skills) {
-      await connection.execute(
-        `INSERT INTO skills (id, name, description, version, author, source_type, skill_md) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name=VALUES(name)`,
-        [s.id, s.name, s.description, s.version, s.author, s.source_type, s.skill_md]
-      );
-    }
-    console.log(`  - ${data.skills.length} skills`);
 
     // 插入内置高级技能
     for (const s of data.builtInSkills) {
