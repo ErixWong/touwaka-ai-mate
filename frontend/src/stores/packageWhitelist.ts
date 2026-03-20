@@ -22,6 +22,12 @@ interface WhitelistConfig {
   allowed_python_packages: string[]
 }
 
+export interface InstallResult {
+  success: boolean
+  message: string
+  package?: PackageInfo
+}
+
 export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
   // 状态
   const packages = ref<PackageList>({ node: [], python: [] })
@@ -105,6 +111,30 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
     }
   }
 
+  // 安装包
+  async function installPackage(type: 'nodejs' | 'python', name: string, version?: string): Promise<InstallResult> {
+    isLoading.value = true
+    error.value = null
+    try {
+      const result = await apiRequest<InstallResult>(apiClient.post('/system/packages/install', {
+        type,
+        name,
+        version: version || undefined,
+      }))
+      if (result?.success) {
+        // 安装成功后刷新包列表
+        await loadPackages()
+      }
+      return result || { success: false, message: 'No response from server' }
+    } catch (e: any) {
+      error.value = e.message
+      console.error('Failed to install package:', e)
+      return { success: false, message: e.message }
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     // 状态
     packages,
@@ -121,5 +151,6 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
     loadWhitelist,
     updateWhitelist,
     resetWhitelist,
+    installPackage,
   }
 })

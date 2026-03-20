@@ -198,6 +198,183 @@ class PackageService {
     this.cache = null;
     this.cacheTime = null;
   }
+
+  /**
+   * 验证包名格式（防止命令注入）
+   * @param {string} name - 包名
+   * @returns {boolean} 是否合法
+   */
+  validatePackageName(name) {
+    // 允许：字母、数字、连字符、下划线、点、@符号（用于 scope）
+    // 格式：@scope/package-name 或 package-name
+    const pattern = /^(@[a-zA-Z0-9_-]+\/)?[a-zA-Z0-9_.-]+$/;
+    return pattern.test(name);
+  }
+
+  /**
+   * 验证版本号格式
+   * @param {string} version - 版本号
+   * @returns {boolean} 是否合法
+   */
+  validateVersion(version) {
+    if (!version) return true; // 可选字段
+    // 允许：semver 格式（1.2.3, ^1.2.3, ~1.2.3, 1.2.x, *, latest 等）
+    const pattern = /^[\^~]?\d+\.\d+\.\d+(-[\w.]+)?$|^[\^~]?\d+\.\d+\.x$|^[\^~]?\d+\.x$|^\*$|^latest$/;
+    return pattern.test(version);
+  }
+
+  /**
+   * 安装 Node.js 包
+   * @param {string} name - 包名
+   * @param {string} version - 版本号（可选）
+   * @returns {Promise<{success: boolean, message: string, package?: object}>}
+   */
+  async installNodePackage(name, version = null) {
+    if (!this.validatePackageName(name)) {
+      return {
+        success: false,
+        message: `Invalid package name: ${name}`,
+      };
+    }
+
+    if (version && !this.validateVersion(version)) {
+      return {
+        success: false,
+        message: `Invalid version format: ${version}`,
+      };
+    }
+
+    try {
+      const packageSpec = version ? `${name}@${version}` : name;
+      logger.info(`Installing Node.js package: ${packageSpec}`);
+
+      const { stdout, stderr } = await execAsync(`npm install ${packageSpec}`, {
+        cwd: process.cwd(),
+        maxBuffer: 1024 * 1024 * 5, // 5MB buffer
+        timeout: 5 * 60 * 1000, // 5 分钟超时
+      });
+
+      // 检查安装结果
+      if (stderr && !stderr.includes('npm WARN')) {
+        logger.warn(`npm install stderr: ${stderr}`);
+      }
+
+      // 获取安装后的版本
+      const installedPackages = await this.getNodePackages();
+      const installed = installedPackages.find(pkg => pkg.name === name);
+
+      if (installed) {
+        logger.info(`Successfully installed Node.js package: ${name}@${installed.version}`);
+        return {
+          success: true,
+          message: 'Package installed successfully',
+          package: {
+            name: installed.name,
+            version: installed.version,
+          },
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Package installation completed but package not found in list',
+        };
+      }
+    } catch (error) {
+      logger.error(`Failed to install Node.js package ${name}:`, error);
+      return {
+        success: false,
+        message: `Installation failed: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * 安装 Python 包
+   * @param {string} name - 包名
+   * @param {string} version - 版本号（可选）
+   * @returns {Promise<{success: boolean, message: string, package?: object}>}
+   */
+  async installPythonPackage(name, version = null) {
+    if (!this.validatePackageName(name)) {
+      return {
+        success: false,
+        message: `Invalid package name: ${name}`,
+      };
+    }
+
+    if (version && !this.validateVersion(version)) {
+      return {
+        success: false,
+        message: `Invalid version format: ${version}`,
+      };
+    }
+
+    try {
+      const pythonCmd = process.env.PYTHON_PATH || 'python3';
+      const packageSpec = version ? `${name}==${version}` : name;
+      logger.info(`Installing Python package: ${packageSpec}`);
+
+      const { stdout, stderr } = await execAsync(`"${pythonCmd}" -m pip install ${packageSpec}`, {
+        maxBuffer: 1024 * 1024 * 5, // 5MB buffer
+        timeout: 5 * 60 * 1000, // 5 分钟超时
+      });
+
+      // pip 通常在 stderr 输出信息
+      if (stderr && !stderr.includes('Successfully installed')) {
+        logger.warn(`pip install stderr: ${stderr}`);
+      }
+
+      // 获取安装后的版本
+      const installedPackages = await this.getPythonPackages();
+      // pip list 返回的包名可能有不同的大小写，需要忽略大小写匹配
+      const installed = installedPackages.find(pkg => 
+        pkg.name.toLowerCase() === name.toLowerCase()
+      );
+
+      if (installed) {
+        logger.info(`Successfully installed Python package: ${installed.name}@${installed.version}`);
+        return {
+          success: true,
+          message: 'Package installed successfully',
+          package: {
+            name: installed.name,
+            version: installed.version,
+          },
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Package installation completed but package not found in list',
+        };
+      }
+    } catch (error) {
+      logger.error(`Failed to install Python package ${name}:`, error);
+      return {
+        success: false,
+        message: `Installation failed: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * 安装包（统一入口）
+   * @param {string} type - 包类型 ('nodejs' | 'python')
+   * @param {string} name - 包名
+   * @param {string} version - 版本号（可选）
+   * @returns {Promise<{success: boolean, message: string, package?: object}>}
+   */
+  async installPackage(type, name, version = null) {
+    if (type === 'nodejs') {
+      return await this.installNodePackage(name, version);
+    } else if (type === 'python') {
+      return await this.installPythonPackage(name, version);
+    } else {
+      return {
+        success: false,
+        message: `Unsupported package type: ${type}`,
+      };
+    }
+  }
 }
 
 // 单例实例

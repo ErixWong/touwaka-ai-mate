@@ -77,6 +77,35 @@
         <div class="selected-count">
           {{ $t('settings.selectedCount') }}: {{ form.allowed_node_modules.length }}
         </div>
+
+        <!-- 安装 Node.js 包 -->
+        <div class="install-section">
+          <h4 class="install-title">{{ $t('settings.installPackage') }}</h4>
+          <div class="install-form">
+            <input
+              type="text"
+              v-model="nodeInstallName"
+              :placeholder="$t('settings.installPackagePlaceholder')"
+              class="install-input"
+              :disabled="nodeInstalling"
+            />
+            <input
+              type="text"
+              v-model="nodeInstallVersion"
+              :placeholder="$t('settings.installVersionPlaceholder')"
+              class="install-version-input"
+              :disabled="nodeInstalling"
+            />
+            <button
+              class="btn-install"
+              @click="installNodePackage"
+              :disabled="!nodeInstallName.trim() || nodeInstalling"
+            >
+              {{ nodeInstalling ? $t('settings.installing') : $t('settings.installPackage') }}
+            </button>
+          </div>
+          <p class="install-hint">{{ $t('settings.installPackageHint') }}</p>
+        </div>
       </div>
 
       <!-- Python 包白名单 -->
@@ -133,6 +162,35 @@
         <div class="selected-count">
           {{ $t('settings.selectedCount') }}: {{ form.allowed_python_packages.length }}
         </div>
+
+        <!-- 安装 Python 包 -->
+        <div class="install-section">
+          <h4 class="install-title">{{ $t('settings.installPackage') }}</h4>
+          <div class="install-form">
+            <input
+              type="text"
+              v-model="pythonInstallName"
+              :placeholder="$t('settings.installPackagePlaceholder')"
+              class="install-input"
+              :disabled="pythonInstalling"
+            />
+            <input
+              type="text"
+              v-model="pythonInstallVersion"
+              :placeholder="$t('settings.installVersionPlaceholder')"
+              class="install-version-input"
+              :disabled="pythonInstalling"
+            />
+            <button
+              class="btn-install"
+              @click="installPythonPackage"
+              :disabled="!pythonInstallName.trim() || pythonInstalling"
+            >
+              {{ pythonInstalling ? $t('settings.installing') : $t('settings.installPackage') }}
+            </button>
+          </div>
+          <p class="install-hint">{{ $t('settings.installPackageHint') }}</p>
+        </div>
       </div>
 
       <!-- 底部操作按钮 -->
@@ -176,6 +234,15 @@ const nodeSearch = ref('')
 const pythonSearch = ref('')
 
 const saving = ref(false)
+
+// 安装包相关状态
+const nodeInstallName = ref('')
+const nodeInstallVersion = ref('')
+const nodeInstalling = ref(false)
+
+const pythonInstallName = ref('')
+const pythonInstallVersion = ref('')
+const pythonInstalling = ref(false)
 
 // 过滤后的 Node.js 包列表（合并内置模块和已安装包）
 const filteredNodePackages = computed(() => {
@@ -298,6 +365,56 @@ const resetWhitelist = async () => {
     if (success) {
       syncFromStore()
     }
+  }
+}
+
+// 安装 Node.js 包
+const installNodePackage = async () => {
+  const name = nodeInstallName.value.trim()
+  if (!name) return
+
+  nodeInstalling.value = true
+  try {
+    const result = await store.installPackage('nodejs', name, nodeInstallVersion.value.trim() || undefined)
+    if (result?.success) {
+      toast.success(t('settings.installSuccess', { 
+        name: result.package?.name || name, 
+        version: result.package?.version || 'latest' 
+      }))
+      nodeInstallName.value = ''
+      nodeInstallVersion.value = ''
+    } else {
+      toast.error(t('settings.installFailed', { error: result?.message || 'Unknown error' }))
+    }
+  } catch (error: any) {
+    toast.error(t('settings.installFailed', { error: error.message || 'Unknown error' }))
+  } finally {
+    nodeInstalling.value = false
+  }
+}
+
+// 安装 Python 包
+const installPythonPackage = async () => {
+  const name = pythonInstallName.value.trim()
+  if (!name) return
+
+  pythonInstalling.value = true
+  try {
+    const result = await store.installPackage('python', name, pythonInstallVersion.value.trim() || undefined)
+    if (result?.success) {
+      toast.success(t('settings.installSuccess', { 
+        name: result.package?.name || name, 
+        version: result.package?.version || 'latest' 
+      }))
+      pythonInstallName.value = ''
+      pythonInstallVersion.value = ''
+    } else {
+      toast.error(t('settings.installFailed', { error: result?.message || 'Unknown error' }))
+    }
+  } catch (error: any) {
+    toast.error(t('settings.installFailed', { error: error.message || 'Unknown error' }))
+  } finally {
+    pythonInstalling.value = false
   }
 }
 
@@ -544,5 +661,90 @@ onMounted(async () => {
 .btn-save:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 安装包区域 */
+.install-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light, #eee);
+}
+
+.install-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.install-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.install-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--input-bg, #fff);
+}
+
+.install-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.install-input:disabled {
+  background: var(--bg-secondary, #f5f5f5);
+  cursor: not-allowed;
+}
+
+.install-version-input {
+  width: 120px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--input-bg, #fff);
+}
+
+.install-version-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.install-version-input:disabled {
+  background: var(--bg-secondary, #f5f5f5);
+  cursor: not-allowed;
+}
+
+.btn-install {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background: var(--success-color, #4caf50);
+  color: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-install:hover:not(:disabled) {
+  background: var(--success-hover, #43a047);
+}
+
+.btn-install:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.install-hint {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
 }
 </style>
