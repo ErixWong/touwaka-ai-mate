@@ -3,19 +3,14 @@
  * 
  * 字段名规则：全栈统一使用数据库字段名（snake_case），不做任何转换
  * 
- * 使用 Sequelize ORM 进行数据库操�?
+ * 使用 Sequelize ORM 进行数据库操作
  */
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { parseSkillMd, validateSkillPath } from '../../lib/skill-parser.js';
-import fs from 'fs/promises';
 import fsOriginal from 'fs';
 import path from 'path';
-import https from 'https';
-import http from 'http';
-import AdmZip from 'adm-zip';
-import SkillAnalyzer from '../../lib/skill-analyzer.js';
 
 class SkillController {
   constructor(db) {
@@ -23,11 +18,10 @@ class SkillController {
     this.Skill = db.getModel('skill');
     this.SkillTool = db.getModel('skill_tool');
     this.SkillParameter = db.getModel('skill_parameter');
-    this.skillAnalyzer = new SkillAnalyzer();
   }
 
   /**
-   * 获取技能列�?
+   * 获取技能列表
    */
   async list(ctx) {
     try {
@@ -97,7 +91,7 @@ class SkillController {
       ctx.success({ skills: formattedSkills });
     } catch (error) {
       logger.error('Get skills error:', error.message, error.stack);
-      ctx.error('获取技能列表失�? ' + error.message, 500);
+      ctx.error('获取技能列表失败: ' + error.message, 500);
     }
   }
 
@@ -188,638 +182,14 @@ class SkillController {
   }
 
   /**
-   * �?URL 安装技�?
-   * 支持�?
-   * - GitHub 仓库 URL（https://github.com/user/repo�?
-   * - GitHub 目录 URL（https://github.com/user/repo/tree/main/path/to/skill�?
-   * - GitHub ZIP 下载（https://github.com/user/repo/archive/refs/heads/main.zip�?
-   * - GitHub Release 附件
-   * - 直接�?ZIP 文件 URL
-   */
-  async installFromUrl(ctx) {
-    let transaction = null;
-    let tempDir = null;
-    
-    try {
-      const { url } = ctx.request.body;
-
-      if (!url) {
-        ctx.error('URL 不能为空', 400);
-        return;
-      }
-
-      // 验证 URL 格式
-      let parsedUrl;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        ctx.error('URL 格式无效', 400);
-        return;
-      }
-
-      // 只允�?http/https 协议
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        ctx.error('只支�?HTTP/HTTPS 协议', 400);
-        return;
-      }
-
-      logger.info(`[SkillController] 开始从 URL 下载技�? ${url}`);
-
-      // 创建临时目录
-      tempDir = path.join(process.cwd(), 'temp', `skill_url_${Date.now()}`);
-      logger.info(`[SkillController] 创建临时目录: ${tempDir}`);
-      await fs.mkdir(tempDir, { recursive: true });
-
-      // 解析 URL 并获取下载链�?
-      const downloadInfo = this.parseGitHubUrl(url);
-      let zipPath;
-      let skillSubDir = null;
-
-      if (downloadInfo) {
-        // GitHub URL
-        logger.info(`[SkillController] 检测到 GitHub URL，下载仓�? ${downloadInfo.downloadUrl}`);
-        if (downloadInfo.subDir) {
-          logger.info(`[SkillController] 技能子目录: ${downloadInfo.subDir}`);
-          skillSubDir = downloadInfo.subDir;
-        }
-        zipPath = path.join(tempDir, 'github.zip');
-        logger.info(`[SkillController] 开始下载文件到: ${zipPath}`);
-        await this.downloadFile(downloadInfo.downloadUrl, zipPath);
-        logger.info(`[SkillController] 文件下载完成`);
-      } else {
-        // 直接 ZIP URL
-        zipPath = path.join(tempDir, 'downloaded.zip');
-        logger.info(`[SkillController] 开始下载ZIP: ${zipPath}`);
-        await this.downloadFile(url, zipPath);
-        logger.info(`[SkillController] 文件下载完成`);
-      }
-
-      // 检查文件大小（限制 50MB�?
-      const stats = await fs.stat(zipPath);
-      if (stats.size > 50 * 1024 * 1024) {
-        throw new Error('文件大小超过限制50MB');
-      }
-
-      logger.info(`[SkillController] 文件大小: ${stats.size} bytes`);
-
-      // 解压 ZIP
-      logger.info(`[SkillController] 开始解压缩ZIP 文件...`);
-      const zip = new AdmZip(zipPath);
-      zip.extractAllTo(tempDir, true);
-      logger.info(`[SkillController] ZIP 解压完成`);
-
-      // 列出解压后的文件结构
-      await this.logDirectoryStructure(tempDir, '');
-
-      // 查找 SKILL.md
-      let skillMdPath;
-      if (skillSubDir) {
-        // 如果指定了子目录，先尝试在该目录中查�?
-        logger.info(`[SkillController] 查找子目录： ${skillSubDir}`);
-        const subDirPath = await this.findSubDir(tempDir, skillSubDir);
-        if (subDirPath) {
-          logger.info(`[SkillController] 找到子目录： ${subDirPath}`);
-          skillMdPath = await this.findSkillMd(subDirPath);
-        } else {
-          logger.warn(`[SkillController] 未找到子目录: ${skillSubDir}`);
-        }
-      }
-      
-      // 如果没找到，在整个解压目录中查找
-      if (!skillMdPath) {
-        logger.info(`[SkillController] 在整个解压目录中查找 SKILL.md...`);
-        skillMdPath = await this.findSkillMd(tempDir);
-      }
-      
-      if (!skillMdPath) {
-        throw new Error('ZIP 文件中未找到 SKILL.md');
-      }
-
-      logger.info(`[SkillController] 找到 SKILL.md: ${skillMdPath}`);
-      const tempSkillDir = path.dirname(skillMdPath);
-      const skillMd = await fs.readFile(skillMdPath, 'utf-8');
-
-      // 使用 AI 分析技�?
-      logger.info(`[SkillController] 开始分析技�?..`);
-      const skillData = await this.analyzeSkill(tempSkillDir, skillMd);
-      logger.info(`[SkillController] 技能分析完�? ${skillData.name}`);
-
-      // 生成 ID（如�?SKILL.md 中没有指定）
-      const id = skillData.id || Utils.newID(20);
-
-      // 创建永久存储目录（使用 DATA_BASE_PATH 环境变量）
-      const dataBasePath = process.env.DATA_BASE_PATH
-        ? (path.isAbsolute(process.env.DATA_BASE_PATH) 
-            ? process.env.DATA_BASE_PATH 
-            : path.join(process.cwd(), process.env.DATA_BASE_PATH))
-        : path.join(process.cwd(), 'data');
-      const permanentDir = path.join(dataBasePath, 'skills', 'installed', id);
-      
-      // 复制技能文件到永久目录
-      await fs.mkdir(permanentDir, { recursive: true });
-      await this.copyDirectory(tempSkillDir, permanentDir);
-
-      // 开始事�?
-      transaction = await this.db.sequelize.transaction();
-
-      // 检查是否已存在
-      const existing = await this.Skill.findOne({ where: { id }, transaction });
-      if (existing) {
-        // 更新现有技�?
-        await this.Skill.update({
-          name: skillData.name,
-          description: skillData.description,
-          version: skillData.version,
-          author: skillData.author,
-          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-          skill_md: skillMd,
-          source_type: 'url',
-          source_path: permanentDir,
-          source_url: url,
-          security_score: skillData.security_score || 100,
-          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-          updated_at: new Date(),
-        }, { where: { id }, transaction });
-
-        // 删除旧工�?
-        await this.SkillTool.destroy({ where: { skill_id: id }, transaction });
-      } else {
-        // 创建新技�?
-        await this.Skill.create({
-          id,
-          name: skillData.name,
-          description: skillData.description,
-          version: skillData.version,
-          author: skillData.author,
-          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-          skill_md: skillMd,
-          source_type: 'url',
-          source_path: permanentDir,
-          source_url: url,
-          security_score: skillData.security_score || 100,
-          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-          is_active: true,
-        }, { transaction });
-      }
-
-      // 创建工具清单
-      if (skillData.tools && skillData.tools.length > 0) {
-        for (const tool of skillData.tools) {
-          await this.SkillTool.create({
-            id: Utils.newID(32),
-            skill_id: id,
-            name: tool.name,
-            description: tool.description,
-            type: tool.type || 'http',
-            parameters: tool.parameters,
-            endpoint: tool.endpoint,
-            method: tool.method,
-          }, { transaction });
-        }
-      }
-
-      // 提交事务
-      await transaction.commit();
-      transaction = null;
-
-      // 获取完整技能信�?
-      const skill = await this.Skill.findOne({ where: { id } });
-      const tools = await this.SkillTool.findAll({ where: { skill_id: id } });
-
-      logger.info(`[SkillController] 技能安装成功 ${id} - ${skillData.name}`);
-
-      ctx.success({
-        skill: {
-          ...skill.get({ plain: true }),
-          tools: tools.map(t => t.get({ plain: true })),
-        }
-      }, '技能安装成功');
-    } catch (error) {
-      // 回滚事务
-      if (transaction) {
-        await transaction.rollback().catch(() => {});
-      }
-      logger.error('[SkillController] Install skill from URL error:', error.message, error.stack);
-      ctx.error('URL 安装失败: ' + error.message, 500);
-    } finally {
-      // 清理临时目录
-      if (tempDir) {
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      }
-    }
-  }
-
-  /**
-   * 解析 GitHub URL
-   * @param {string} url - GitHub URL
-   * @returns {Object|null} { downloadUrl, subDir } �?null（非 GitHub URL�?
-   */
-  parseGitHubUrl(url) {
-    try {
-      const parsedUrl = new URL(url);
-      
-      // 只处�?GitHub URL
-      if (!['github.com', 'www.github.com'].includes(parsedUrl.hostname)) {
-        return null;
-      }
-
-      const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
-      
-      // 至少需�?user/repo
-      if (pathParts.length < 2) {
-        return null;
-      }
-
-      const owner = pathParts[0];
-      const repo = pathParts[1];
-      let branch = 'main';
-      let subDir = null;
-
-      // 解析不同类型�?GitHub URL
-      if (pathParts.length >= 4 && pathParts[2] === 'tree') {
-        // https://github.com/user/repo/tree/branch/path/to/skill
-        branch = pathParts[3];
-        if (pathParts.length > 4) {
-          subDir = pathParts.slice(4).join('/');
-        }
-      } else if (pathParts.length >= 4 && pathParts[2] === 'blob') {
-        // https://github.com/user/repo/blob/branch/path/to/file
-        // 转换�?tree 并取目录
-        branch = pathParts[3];
-        if (pathParts.length > 5) {
-          subDir = pathParts.slice(4, -1).join('/');
-        }
-      }
-
-      // 构建 ZIP 下载 URL
-      const downloadUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
-
-      return { downloadUrl, subDir };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * 在解压目录中查找子目�?
-   * GitHub ZIP 解压后通常会有一个根目录�?repo-branch/
-   * @param {string} extractDir - 解压目录
-   * @param {string} subDirPath - 子目录路径（�?skills/pptx�?
-   * @returns {Promise<string|null>} 找到的目录路�?
-   */
-  async findSubDir(extractDir, subDirPath) {
-    const subDirParts = subDirPath.split('/');
-    
-    // 首先尝试直接路径
-    const directPath = path.join(extractDir, subDirPath);
-    try {
-      const stat = await fs.stat(directPath);
-      if (stat.isDirectory()) {
-        return directPath;
-      }
-    } catch {
-      // 直接路径不存�?
-    }
-
-    // 获取解压目录下的所有子目录（通常�?repo-branch/ 格式�?
-    const entries = await fs.readdir(extractDir, { withFileTypes: true });
-    const subDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
-
-    // 在每个一级子目录中查�?
-    for (const dir of subDirs) {
-      const candidatePath = path.join(extractDir, dir, subDirPath);
-      try {
-        const stat = await fs.stat(candidatePath);
-        if (stat.isDirectory()) {
-          return candidatePath;
-        }
-      } catch {
-        // 不存在，继续查找
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * 下载文件
-   * @param {string} url - 文件 URL
-   * @param {string} destPath - 目标路径
-   */
-  async downloadFile(url, destPath) {
-    return new Promise((resolve, reject) => {
-      const parsedUrl = new URL(url);
-      const isHttps = parsedUrl.protocol === 'https:';
-      const httpModule = isHttps ? https : http;
-
-      const request = httpModule.get(url, {
-        headers: {
-          'User-Agent': 'TouwakaMate/2.0',
-          'Accept': '*/*',
-        },
-        timeout: 60000, // 60 秒超�?
-      }, (response) => {
-        // 处理重定�?
-        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303 || response.statusCode === 307 || response.statusCode === 308) {
-          const redirectUrl = response.headers.location;
-          if (redirectUrl) {
-            logger.info(`[SkillController] 重定向到: ${redirectUrl}`);
-            this.downloadFile(redirectUrl, destPath).then(resolve).catch(reject);
-            return;
-          }
-        }
-
-        if (response.statusCode !== 200) {
-          reject(new Error(`下载失败: HTTP ${response.statusCode}`));
-          return;
-        }
-
-        const writeStream = fsOriginal.createWriteStream(destPath);
-        response.pipe(writeStream);
-
-        writeStream.on('finish', () => {
-          writeStream.close();
-          resolve();
-        });
-
-        writeStream.on('error', (err) => {
-          fs.unlink(destPath).catch(() => {});
-          reject(err);
-        });
-      });
-
-      request.on('error', (err) => {
-        reject(new Error(`下载失败: ${err.message}`));
-      });
-
-      request.on('timeout', () => {
-        request.destroy();
-        reject(new Error('下载超时'));
-      });
-    });
-  }
-
-  /**
-   * �?ZIP 文件安装技�?
-   */
-  async installFromZip(ctx) {
-    let transaction = null;
-    try {
-      const file = ctx.request.files?.file;
-      
-      if (!file) {
-        ctx.error('请上�?ZIP 文件', 400);
-        return;
-      }
-
-      // 创建临时目录
-      const tempDir = path.join(process.cwd(), 'temp', `skill_${Date.now()}`);
-      await fs.mkdir(tempDir, { recursive: true });
-
-      try {
-        // 解压 ZIP
-        const zip = new AdmZip(file.filepath || file.path);
-        zip.extractAllTo(tempDir, true);
-
-        // 查找 SKILL.md
-        const skillMdPath = await this.findSkillMd(tempDir);
-        if (!skillMdPath) {
-          throw new Error('ZIP 文件中未找到 SKILL.md');
-        }
-
-        const tempSkillDir = path.dirname(skillMdPath);
-        const skillMd = await fs.readFile(skillMdPath, 'utf-8');
-
-        // 使用 AI 分析技�?
-        const skillData = await this.analyzeSkill(tempSkillDir, skillMd);
-
-        // 生成 ID（如�?SKILL.md 中没有指定）
-        const id = skillData.id || Utils.newID(20);
-
-        // 创建永久存储目录（使用 DATA_BASE_PATH 环境变量）
-        const dataBasePath = process.env.DATA_BASE_PATH
-          ? (path.isAbsolute(process.env.DATA_BASE_PATH) 
-              ? process.env.DATA_BASE_PATH 
-              : path.join(process.cwd(), process.env.DATA_BASE_PATH))
-          : path.join(process.cwd(), 'data');
-        const permanentDir = path.join(dataBasePath, 'skills', 'installed', id);
-        
-        // 复制技能文件到永久目录
-        await fs.mkdir(permanentDir, { recursive: true });
-        await this.copyDirectory(tempSkillDir, permanentDir);
-
-        // 开始事�?
-        transaction = await this.db.sequelize.transaction();
-
-        // 检查是否已存在
-        const existing = await this.Skill.findOne({ where: { id }, transaction });
-        if (existing) {
-          // 更新现有技�?
-          await this.Skill.update({
-            name: skillData.name,
-            description: skillData.description,
-            version: skillData.version,
-            author: skillData.author,
-            tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-            skill_md: skillMd,
-            source_type: 'zip',
-            source_path: permanentDir,
-            security_score: skillData.security_score || 100,
-            security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-            updated_at: new Date(),
-          }, { where: { id }, transaction });
-
-          // 删除旧工�?
-          await this.SkillTool.destroy({ where: { skill_id: id }, transaction });
-        } else {
-          // 创建新技�?
-          await this.Skill.create({
-            id,
-            name: skillData.name,
-            description: skillData.description,
-            version: skillData.version,
-            author: skillData.author,
-            tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-            skill_md: skillMd,
-            source_type: 'zip',
-            source_path: permanentDir,
-            security_score: skillData.security_score || 100,
-            security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-            is_active: true,
-          }, { transaction });
-        }
-
-        // 创建工具清单
-        if (skillData.tools && skillData.tools.length > 0) {
-          for (const tool of skillData.tools) {
-            await this.SkillTool.create({
-              id: Utils.newID(32),
-              skill_id: id,
-              name: tool.name,
-              description: tool.description,
-              type: tool.type || 'http',
-              parameters: tool.parameters,
-              endpoint: tool.endpoint,
-              method: tool.method,
-            }, { transaction });
-          }
-        }
-
-        // 提交事务
-        await transaction.commit();
-        transaction = null;
-
-        // 获取完整技能信�?
-        const skill = await this.Skill.findOne({ where: { id } });
-        const tools = await this.SkillTool.findAll({ where: { skill_id: id } });
-
-        ctx.success({
-          skill: {
-            ...skill.get({ plain: true }),
-            tools: tools.map(t => t.get({ plain: true })),
-          }
-        }, '技能安装成功');
-      } finally {
-        // 清理临时目录
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      }
-    } catch (error) {
-      // 回滚事务
-      if (transaction) {
-        await transaction.rollback().catch(() => {});
-      }
-      logger.error('Install skill from ZIP error:', error);
-      ctx.error('ZIP 安装失败: ' + error.message, 500);
-    }
-  }
-
-  /**
-   * 从本地目录安装技�?
-   */
-  async installFromPath(ctx) {
-    let transaction = null;
-    try {
-      const { path: skillPath } = ctx.request.body;
-
-      if (!skillPath) {
-        ctx.error('路径不能为空', 400);
-        return;
-      }
-
-      // 检查路径是否存�?
-      try {
-        await fs.access(skillPath);
-      } catch {
-        ctx.error('指定的路径不存在', 400);
-        return;
-      }
-
-      // 查找 SKILL.md
-      const skillMdPath = await this.findSkillMd(skillPath);
-      if (!skillMdPath) {
-        ctx.error('目录中未找到 SKILL.md 文件', 400);
-        return;
-      }
-
-      const skillMd = await fs.readFile(skillMdPath, 'utf-8');
-
-      // 使用 AI 分析技�?
-      const skillDir = path.dirname(skillMdPath);
-      const skillData = await this.analyzeSkill(skillDir, skillMd);
-
-      // 生成 ID（如�?SKILL.md 中没有指定）
-      const id = skillData.id || Utils.newID(20);
-
-      // 开始事�?
-      transaction = await this.db.sequelize.transaction();
-
-      // 检查是否已存在
-      const existing = await this.Skill.findOne({ where: { id }, transaction });
-      if (existing) {
-        // 更新现有技�?
-        await this.Skill.update({
-          name: skillData.name,
-          description: skillData.description,
-          version: skillData.version,
-          author: skillData.author,
-          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-          skill_md: skillMd,
-          source_type: 'local',
-          source_path: skillPath,
-          security_score: skillData.security_score || 100,
-          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-          updated_at: new Date(),
-        }, { where: { id }, transaction });
-
-        // 删除旧工�?
-        await this.SkillTool.destroy({ where: { skill_id: id }, transaction });
-      } else {
-        // 创建新技�?
-        await this.Skill.create({
-          id,
-          name: skillData.name,
-          description: skillData.description,
-          version: skillData.version,
-          author: skillData.author,
-          tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-          skill_md: skillMd,
-          source_type: 'local',
-          source_path: skillPath,
-          security_score: skillData.security_score || 100,
-          security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-          is_active: true,
-        }, { transaction });
-      }
-
-      // 创建工具清单
-      if (skillData.tools && skillData.tools.length > 0) {
-        for (const tool of skillData.tools) {
-          await this.SkillTool.create({
-            id: Utils.newID(32),
-            skill_id: id,
-            name: tool.name,
-            description: tool.description,
-            type: tool.type || 'http',
-            parameters: tool.parameters,
-            endpoint: tool.endpoint,
-            method: tool.method,
-          }, { transaction });
-        }
-      }
-
-      // 提交事务
-      await transaction.commit();
-      transaction = null;
-
-      // 获取完整技能信�?
-      const skill = await this.Skill.findOne({ where: { id } });
-      const tools = await this.SkillTool.findAll({ where: { skill_id: id } });
-
-      ctx.success({
-        skill: {
-          ...skill.get({ plain: true }),
-          tools: tools.map(t => t.get({ plain: true })),
-        }
-      }, '技能安装成功');
-    } catch (error) {
-      // 回滚事务
-      if (transaction) {
-        await transaction.rollback().catch(() => {});
-      }
-      logger.error('Install skill from path error:', error);
-      ctx.error('从本地目录安装失�? ' + error.message, 500);
-    }
-  }
-
-  /**
-   * 更新技�?
+   * 更新技能
    */
   async update(ctx) {
     try {
       const { id } = ctx.params;
       const { name, description, is_active } = ctx.request.body;
 
-      // 检查技能是否存�?
+      // 检查技能是否存在
       const existing = await this.Skill.findOne({ where: { id } });
       if (!existing) {
         ctx.error('技能不存在', 404);
@@ -841,7 +211,7 @@ class SkillController {
       ctx.success({ id }, '技能更新成功');
     } catch (error) {
       logger.error('Update skill error:', error);
-      ctx.error('更新技能失败 ' + error.message, 500);
+      ctx.error('更新技能失败: ' + error.message, 500);
     }
   }
 
@@ -852,20 +222,20 @@ class SkillController {
     try {
       const { id } = ctx.params;
 
-      // 检查技能是否存�?
+      // 检查技能是否存在
       const existing = await this.Skill.findOne({ where: { id } });
       if (!existing) {
         ctx.error('技能不存在', 404);
         return;
       }
 
-      // 删除关联的工�?
+      // 删除关联的工具
       await this.SkillTool.destroy({ where: { skill_id: id } });
       
-      // 删除关联的参�?
+      // 删除关联的参数
       await this.SkillParameter.destroy({ where: { skill_id: id } });
       
-      // 删除技�?
+      // 删除技能
       await this.Skill.destroy({ where: { id } });
 
       ctx.success({ id }, '技能删除成功');
@@ -876,328 +246,14 @@ class SkillController {
   }
 
   /**
-   * 重新分析技�?
-   */
-  async reanalyze(ctx) {
-    try {
-      const { id } = ctx.params;
-
-      // 检查技能是否存�?
-      const skill = await this.Skill.findOne({ where: { id } });
-      if (!skill) {
-        ctx.error('技能不存在', 404);
-        return;
-      }
-
-      if (!skill.skill_md) {
-        ctx.error('技能没�?SKILL.md 内容', 400);
-        return;
-      }
-
-      // 使用 AI 重新分析技�?
-      const skillDir = skill.source_path || path.dirname(skill.skill_md);
-      const skillData = await this.analyzeSkill(skillDir, skill.skill_md);
-
-      // 更新技�?
-      await this.Skill.update({
-        name: skillData.name,
-        description: skillData.description,
-        version: skillData.version,
-        author: skillData.author,
-        tags: skillData.tags ? JSON.stringify(skillData.tags) : null,
-        security_score: skillData.security_score || 100,
-        security_warnings: skillData.security_warnings ? JSON.stringify(skillData.security_warnings) : null,
-        updated_at: new Date(),
-      }, { where: { id } });
-
-      // 删除旧工�?
-      await this.SkillTool.destroy({ where: { skill_id: id } });
-
-      // 创建新工具清�?
-      if (skillData.tools && skillData.tools.length > 0) {
-        for (const tool of skillData.tools) {
-          await this.SkillTool.create({
-            id: Utils.newID(32),
-            skill_id: id,
-            name: tool.name,
-            description: tool.description,
-            type: tool.type || 'http',
-            parameters: tool.parameters,
-            endpoint: tool.endpoint,
-            method: tool.method,
-          });
-        }
-      }
-
-      // 获取更新后的技�?
-      const updatedSkill = await this.Skill.findOne({ where: { id } });
-      const tools = await this.SkillTool.findAll({ where: { skill_id: id } });
-
-      ctx.success({
-        skill: {
-          ...updatedSkill.get({ plain: true }),
-          tools: tools.map(t => t.get({ plain: true })),
-        }
-      }, '技能重新分析成功');
-    } catch (error) {
-      logger.error('Reanalyze skill error:', error);
-      ctx.error('重新分析技能失败 ' + error.message, 500);
-    }
-  }
-
-  /**
-   * 记录目录结构（用于调试）
-   */
-  async logDirectoryStructure(dir, indent = '') {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const entry of entries.slice(0, 20)) { // 限制显示�?0�?
-        logger.info(`[SkillController] ${indent}${entry.isDirectory() ? '📁' : '📄'} ${entry.name}`);
-        if (entry.isDirectory() && indent.length < 4) { // 只递归2�?
-          await this.logDirectoryStructure(path.join(dir, entry.name), indent + '  ');
-        }
-      }
-      if (entries.length > 20) {
-        logger.info(`[SkillController] ${indent}... 还有 ${entries.length - 20} 个文�?目录`);
-      }
-    } catch (error) {
-      logger.warn(`[SkillController] 无法读取目录 ${dir}: ${error.message}`);
-    }
-  }
-
-  /**
-   * 查找 SKILL.md 文件
-   */
-  async findSkillMd(dir) {
-    logger.info(`[SkillController] findSkillMd: 搜索目录 ${dir}`);
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    
-    // 先检查当前目�?
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.toLowerCase() === 'skill.md') {
-        const foundPath = path.join(dir, entry.name);
-        logger.info(`[SkillController] findSkillMd: 在当前目录找�?${foundPath}`);
-        return foundPath;
-      }
-    }
-
-    // 递归检查子目录（只检查一级）
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const subDir = path.join(dir, entry.name);
-        try {
-          const subEntries = await fs.readdir(subDir, { withFileTypes: true });
-          for (const subEntry of subEntries) {
-            if (subEntry.isFile() && subEntry.name.toLowerCase() === 'skill.md') {
-              const foundPath = path.join(subDir, subEntry.name);
-              logger.info(`[SkillController] findSkillMd: 在子目录 ${entry.name} 找到 ${foundPath}`);
-              return foundPath;
-            }
-          }
-        } catch (err) {
-          logger.warn(`[SkillController] findSkillMd: 无法读取子目�?${subDir}: ${err.message}`);
-        }
-      }
-    }
-
-    logger.warn(`[SkillController] findSkillMd: �?${dir} 及其子目录中未找�?SKILL.md`);
-    return null;
-  }
-
-  /**
-   * 分析技能（使用 AI 或基础解析�?
-   * @param {string} skillDir - 技能目�?
-   * @param {string} skillMd - SKILL.md 内容
-   * @param {Object} options - 选项
-   * @param {boolean} options.useAI - 是否使用 AI 分析
-   * @returns {Promise<Object>} 分析结果
-   */
-  async analyzeSkill(skillDir, skillMd, options = {}) {
-    const { useAI = true } = options;
-
-    // 读取可选文�?
-    let indexJs = null;
-    let packageJson = null;
-
-    try {
-      indexJs = await fs.readFile(path.join(skillDir, 'index.js'), 'utf-8');
-    } catch {
-      // index.js 不存�?
-    }
-
-    try {
-      packageJson = await fs.readFile(path.join(skillDir, 'package.json'), 'utf-8');
-    } catch {
-      // package.json 不存�?
-    }
-
-    // 如果启用 AI 且已配置，使�?AI 分析
-    if (useAI && this.skillAnalyzer.isConfigured()) {
-      logger.info('[SkillController] 使用 AI 分析技�?..');
-      try {
-        const result = await this.skillAnalyzer.analyzeSkill({
-          skillMd,
-          indexJs,
-          packageJson,
-        });
-        
-        // 如果�?index.js，进行额外的安全检�?
-        if (indexJs) {
-          const securityCheck = this.skillAnalyzer.performSecurityCheck(indexJs);
-          result.security_score = Math.min(result.security_score || 100, securityCheck.score);
-          result.security_warnings = [...(result.security_warnings || []), ...securityCheck.warnings];
-        }
-        
-        return result;
-      } catch (error) {
-        logger.warn('[SkillController] AI 分析失败，降级到基础解析:', error.message);
-      }
-    }
-
-    // 降级到基础解析
-    logger.info('[SkillController] 使用基础解析技�?..');
-    const result = this.skillAnalyzer.basicAnalysis({ skillMd });
-    
-    // 如果�?index.js，进行安全检�?
-    if (indexJs) {
-      const securityCheck = this.skillAnalyzer.performSecurityCheck(indexJs);
-      result.security_score = securityCheck.score;
-      result.security_warnings = securityCheck.warnings;
-    }
-    
-    return result;
-  }
-
-  /**
-   * 递归复制目录
-   */
-  async copyDirectory(src, dest) {
-    await fs.mkdir(dest, { recursive: true });
-    const entries = await fs.readdir(src, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
-      
-      if (entry.isDirectory()) {
-        await this.copyDirectory(srcPath, destPath);
-      } else {
-        await fs.copyFile(srcPath, destPath);
-      }
-    }
-  }
-
-  /**
-   * 简单解�?SKILL.md
-   * TODO: 使用 AI 进行更智能的解析
-   */
-  parseSkillMd(content) {
-    const lines = content.split('\n');
-    const skill = {
-      name: '',
-      description: '',
-      version: '',
-      author: '',
-      tags: [],
-      tools: [],
-    };
-
-    let currentSection = '';
-    let inToolSection = false;
-    let currentTool = null;
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-
-      // 解析标题
-      if (trimmed.startsWith('# ')) {
-        skill.name = trimmed.substring(2).trim();
-        continue;
-      }
-
-      // 解析字段
-      if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-        const field = trimmed.slice(2, -2).toLowerCase();
-        currentSection = field;
-        continue;
-      }
-
-      // 解析描述
-      if (currentSection === 'description' && trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('**')) {
-        skill.description += (skill.description ? ' ' : '') + trimmed;
-      }
-
-      // 解析版本
-      if (trimmed.toLowerCase().startsWith('version:') || trimmed.toLowerCase().startsWith('版本:')) {
-        skill.version = trimmed.split(':')[1]?.trim() || '';
-      }
-
-      // 解析作�?
-      if (trimmed.toLowerCase().startsWith('author:') || trimmed.toLowerCase().startsWith('作�?')) {
-        skill.author = trimmed.split(':')[1]?.trim() || '';
-      }
-
-      // 解析标签
-      if (trimmed.toLowerCase().startsWith('tags:') || trimmed.toLowerCase().startsWith('标签:')) {
-        const tagsStr = trimmed.split(':')[1]?.trim() || '';
-        skill.tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
-      }
-
-      // 解析工具部分
-      if (trimmed.toLowerCase().includes('## tools') || trimmed.toLowerCase().includes('## 工具')) {
-        inToolSection = true;
-        continue;
-      }
-
-      if (inToolSection) {
-        // 新的工具
-        if (trimmed.startsWith('### ') || trimmed.startsWith('## ')) {
-          if (currentTool) {
-            skill.tools.push(currentTool);
-          }
-          currentTool = {
-            name: trimmed.replace(/^#+\s*/, ''),
-            description: '',
-            type: 'http',
-            parameters: '',
-          };
-          continue;
-        }
-
-        // 工具属�?
-        if (currentTool) {
-          if (trimmed.toLowerCase().startsWith('type:')) {
-            currentTool.type = trimmed.split(':')[1]?.trim() || 'http';
-          } else if (trimmed.toLowerCase().startsWith('parameters:') || trimmed.toLowerCase().startsWith('参数:')) {
-            currentTool.parameters = trimmed.split(':').slice(1).join(':').trim();
-          } else if (trimmed.toLowerCase().startsWith('endpoint:')) {
-            currentTool.endpoint = trimmed.split(':').slice(1).join(':').trim();
-          } else if (trimmed.toLowerCase().startsWith('method:')) {
-            currentTool.method = trimmed.split(':')[1]?.trim() || 'GET';
-          } else if (trimmed && !trimmed.startsWith('#')) {
-            currentTool.description += (currentTool.description ? ' ' : '') + trimmed;
-          }
-        }
-      }
-    }
-
-    // 添加最后一个工�?
-    if (currentTool) {
-      skill.tools.push(currentTool);
-    }
-
-    return skill;
-  }
-
-  /**
-   * 获取技能参�?
+   * 获取技能参数
    * GET /api/skills/:id/parameters
    */
   async getParameters(ctx) {
     try {
       const { id } = ctx.params;
 
-      // 检查技能是否存�?
+      // 检查技能是否存在
       const skill = await this.Skill.findOne({ where: { id } });
       if (!skill) {
         ctx.error('技能不存在', 404);
@@ -1223,12 +279,12 @@ class SkillController {
       });
     } catch (error) {
       logger.error('Get skill parameters error:', error);
-      ctx.error('获取技能参数失�? ' + error.message, 500);
+      ctx.error('获取技能参数失败: ' + error.message, 500);
     }
   }
 
   /**
-   * 保存技能参数（全量替换�?
+   * 保存技能参数（全量替换）
    * POST /api/skills/:id/parameters
    */
   async saveParameters(ctx) {
@@ -1242,7 +298,7 @@ class SkillController {
         return;
       }
 
-      // 检查技能是否存�?
+      // 检查技能是否存在
       const skill = await this.Skill.findOne({ where: { id } });
       if (!skill) {
         ctx.error('技能不存在', 404);
@@ -1258,7 +314,7 @@ class SkillController {
         }
       }
 
-      // 验证参数名唯一�?
+      // 验证参数名唯一性
       const names = parameters.map(p => p.param_name);
       const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
       if (duplicates.length > 0) {
@@ -1266,16 +322,16 @@ class SkillController {
         return;
       }
 
-      // 开始事�?
+      // 开始事务
       transaction = await this.db.sequelize.transaction();
 
-      // 删除旧参�?
+      // 删除旧参数
       await this.SkillParameter.destroy({
         where: { skill_id: id },
         transaction,
       });
 
-      // 创建新参�?
+      // 创建新参数
       const createdParameters = [];
       for (const param of parameters) {
         if (!param.param_name || param.param_name.trim() === '') {
@@ -1312,7 +368,7 @@ class SkillController {
         await transaction.rollback().catch(() => {});
       }
       logger.error('Save skill parameters error:', error);
-      ctx.error('保存技能参数失�? ' + error.message, 500);
+      ctx.error('保存技能参数失败: ' + error.message, 500);
     }
   }
 

@@ -50,56 +50,6 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  const installFromUrl = async (url: string) => {
-    isLoading.value = true
-    error.value = null
-    try {
-      const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-url', { url }))
-      upsertSkill(response.skill)
-      return response.skill
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to install skill from URL'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const installFromZip = async (file: File) => {
-    isLoading.value = true
-    error.value = null
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-zip', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      }))
-      upsertSkill(response.skill)
-      return response.skill
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to install skill from ZIP'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const installFromPath = async (path: string) => {
-    isLoading.value = true
-    error.value = null
-    try {
-      const response = await apiRequest<{ skill: Skill }>(apiClient.post('/skills/from-path', { path }))
-      upsertSkill(response.skill)
-      return response.skill
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to install skill from path'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
   const updateSkill = async (skillId: string, data: Partial<SkillFormData>) => {
     isLoading.value = true
     error.value = null
@@ -126,24 +76,6 @@ export const useSkillStore = defineStore('skill', () => {
       skills.value = skills.value.filter(s => s.id !== skillId)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to delete skill'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const reanalyzeSkill = async (skillId: string) => {
-    isLoading.value = true
-    error.value = null
-    try {
-      const response = await apiRequest<{ skill: Skill }>(apiClient.post(`/skills/${skillId}/reanalyze`))
-      const index = skills.value.findIndex(s => s.id === skillId)
-      if (index !== -1) {
-        skills.value[index] = response.skill
-      }
-      return response.skill
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to reanalyze skill'
       throw err
     } finally {
       isLoading.value = false
@@ -177,12 +109,8 @@ export const useSkillStore = defineStore('skill', () => {
     currentSkill,
     loadSkills,
     loadSkill,
-    installFromUrl,
-    installFromZip,
-    installFromPath,
     updateSkill,
     deleteSkill,
-    reanalyzeSkill,
     toggleSkillActive,
     getSkillsByTag,
     searchSkills
