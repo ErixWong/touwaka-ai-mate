@@ -98,6 +98,7 @@ ctx.success(buildPaginatedResponse(rows, count, pagination));
 | **N+1 查询** | 循环中有数据库调用？改用批量查询 |
 | **路由顺序** | 动态路由 `/:id` 是否在静态路由之后？ |
 | **ID 类型匹配** | 自增 ID 字段是否误用手动指定（如 `Utils.newID()`）？检查 Model 定义中 `autoIncrement: true` 的字段 |
+| **数据库方法选择** | SELECT 用 `db.query()`，INSERT 用 `db.insert()`，UPDATE/DELETE 用 `db.execute()` |
 
 ### 前端错误处理专项检查
 
