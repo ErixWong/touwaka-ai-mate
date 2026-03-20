@@ -7,15 +7,18 @@
       @click="openModal"
       :disabled="disabled"
     >
-      <span class="trigger-text">
-        <template v-if="selectedUser">
-          {{ selectedUser.nickname || selectedUser.username }}
-        </template>
-        <template v-else>
-          {{ placeholder || $t('settings.selectUser') }}
-        </template>
-      </span>
-      <span class="trigger-icon">▼</span>
+      <template v-if="selectedUser">
+        <span class="trigger-avatar">
+          <img v-if="selectedUser.avatar" :src="selectedUser.avatar" :alt="selectedUser.nickname || selectedUser.username" />
+          <span v-else class="avatar-text">
+            {{ (selectedUser.nickname || selectedUser.username || '?').charAt(0).toUpperCase() }}
+          </span>
+        </span>
+        <span class="trigger-text">{{ selectedUser.nickname || selectedUser.username }}</span>
+      </template>
+      <template v-else>
+        <span class="trigger-text">{{ placeholder || $t('settings.selectUser') }}</span>
+      </template>
     </button>
 
     <!-- Modal 弹窗 -->
@@ -230,18 +233,18 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  min-width: 120px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  min-width: 80px;
+  background: var(--primary-color);
+  border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-primary);
+  color: white;
   transition: all 0.2s;
 }
 
 .picker-trigger:hover:not(.disabled) {
-  border-color: var(--primary-color);
+  background: var(--primary-color-dark);
 }
 
 .picker-trigger.disabled {
@@ -249,22 +252,34 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.picker-trigger.has-value .trigger-text {
-  color: var(--text-primary);
+.trigger-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.trigger-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
 }
 
 .trigger-text {
-  flex: 1;
-  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-secondary);
-}
-
-.trigger-icon {
-  font-size: 10px;
-  color: var(--text-secondary);
 }
 
 /* Modal 样式 */
