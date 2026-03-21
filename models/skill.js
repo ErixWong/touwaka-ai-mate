@@ -83,12 +83,14 @@ export default class skill extends Model {
     disable_model_invocation: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0
+      defaultValue: false,
+      comment: "禁用模型调用"
     },
     user_invocable: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 1
+      defaultValue: true,
+      comment: "用户可调用"
     },
     allowed_tools: {
       type: DataTypes.TEXT,

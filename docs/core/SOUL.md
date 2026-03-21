@@ -177,6 +177,21 @@ Issue（任务单） → 创建分支 → 开发 → PR → 合并 → 关闭 Is
 
 **任何数据库字段的增删改，必须获得 Eric 的明确同意！**
 
+### 字段类型规范
+
+| 类型 | 使用场景 | 示例 |
+|------|----------|------|
+| `BIT(1)` | 布尔字段 | `is_active`, `is_enabled`, `is_public` |
+| `INT` | 整数 | `count`, `position`, `token_count` |
+| `VARCHAR(n)` | 短文本 | `name`, `title`, `code` |
+| `TEXT` | 长文本 | `description`, `content` |
+| `LONGTEXT` | 超长文本 | `prompt_template`, `result` |
+| `ENUM(...)` | 枚举值 | `status`, `role`, `type` |
+| `JSON` | JSON 数据 | `metadata`, `tags` |
+| `VECTOR(n)` | 向量数据 | `embedding` |
+
+> **⚠️ 禁止使用 `TINYINT` 类型！** 布尔字段统一使用 `BIT(1)`，整数使用 `INT`。
+
 ### 统一迁移脚本原则
 
 **所有数据库迁移统一使用 `scripts/upgrade-database.js`，不再创建独立的迁移脚本！**
