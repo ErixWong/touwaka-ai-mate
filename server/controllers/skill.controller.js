@@ -463,7 +463,7 @@ class SkillController {
         author: skill_info.author || '',
         tags: skill_info.tags ? JSON.stringify(skill_info.tags) : '[]',
         source_type: 'local',
-        source_path: full_path,
+        source_path: path.relative(PROJECT_ROOT, full_path),  // 存储相对路径，如 data/skills/file-operations
         skill_md,
         is_active: true,
       });
