@@ -123,8 +123,35 @@ Create a directory.
 
 ## Security
 
-All file operations are restricted to the `data` directory by default.
-Use absolute paths carefully.
+### Path Restrictions
+
+| User Type | Relative Path | Absolute Path |
+|-----------|---------------|---------------|
+| Normal User | ✅ Allowed (relative to working directory) | ❌ Denied |
+| Admin | ✅ Allowed (relative to working directory) | ✅ Allowed (within permitted directories) |
+
+### Allowed Directories
+
+| User Type | Allowed Directories |
+|-----------|---------------------|
+| Normal User | Current working directory only (task or temp) |
+| Admin | Current working directory + `data/skills` directory |
+
+### Examples
+
+```javascript
+// Normal user - relative path (allowed)
+list_files({ path: "." })  // Lists current working directory
+
+// Normal user - absolute path (denied)
+list_files({ path: "d:/projects/.../data/skills" })  // Error!
+
+// Admin - relative path (allowed)
+list_files({ path: "." })  // Lists current working directory
+
+// Admin - absolute path to skills (allowed)
+list_files({ path: "d:/projects/.../data/skills/file-operations" })  // OK!
+```
 
 ## Examples
 
