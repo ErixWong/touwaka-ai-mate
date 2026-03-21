@@ -318,6 +318,24 @@ export const skill_api = {
       apiClient.get(`/skills/${skill_id}`)
     ),
 
+  // 更新技能
+  update_skill: (skill_id: string, data: { name?: string; description?: string; is_active?: boolean }) =>
+    apiRequest<{ id: string }>(
+      apiClient.put(`/skills/${skill_id}`, data)
+    ),
+
+  // 获取技能参数
+  get_skill_parameters: (skill_id: string) =>
+    apiRequest<{ parameters: Array<{ id: string; skill_id: string; param_name: string; param_value: string; is_secret: boolean }> }>(
+      apiClient.get(`/skills/${skill_id}/parameters`)
+    ),
+
+  // 保存技能参数（全量替换）
+  save_skill_parameters: (skill_id: string, data: { parameters: Array<{ param_name: string; param_value: string; is_secret?: boolean }> }) =>
+    apiRequest<{ parameters: Array<{ id: string; param_name: string; param_value: string; is_secret: boolean }> }>(
+      apiClient.post(`/skills/${skill_id}/parameters`, data)
+    ),
+
   // 注册技能（从本地路径）
   register_skill: (data: { source_path: string; name?: string }) =>
     apiRequest<{ success: boolean; skill_id: string; name: string; action: string; message: string }>(
