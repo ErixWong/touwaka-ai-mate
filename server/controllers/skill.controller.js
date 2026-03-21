@@ -831,20 +831,32 @@ class SkillController {
   /**
    * 获取技能目录文件列表
    * GET /api/skills/:id/files
+   *
+   * :id 可以是 skill_id 或者目录名（如 "file-operations"）
    */
   async listFiles(ctx) {
     try {
       const { id } = ctx.params;
       const { subdir } = ctx.query;
 
-      // 获取技能
-      const skill = await this.Skill.findOne({ where: { id }, raw: true });
+      // 尝试通过 ID 或名称查找技能
+      let skill = await this.Skill.findOne({ where: { id }, raw: true });
+      
+      // 如果没找到，尝试按名称查找
       if (!skill) {
-        ctx.error('技能不存在', 404);
-        return;
+        skill = await this.Skill.findOne({ where: { name: id }, raw: true });
       }
 
-      const skillPath = skill.source_path;
+      let skillPath;
+      if (skill) {
+        // 已注册技能，使用 source_path
+        skillPath = skill.source_path;
+      } else {
+        // 未注册目录，直接使用 data/skills/:name
+        const PROJECT_ROOT = process.cwd();
+        skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
+      }
+
       if (!skillPath || !fsOriginal.existsSync(skillPath)) {
         ctx.error('技能目录不存在', 404);
         return;
@@ -896,6 +908,8 @@ class SkillController {
   /**
    * 获取文件内容
    * GET /api/skills/:id/files/content
+   *
+   * :id 可以是 skill_id 或者目录名（如 "file-operations"）
    */
   async getFileContent(ctx) {
     try {
@@ -907,15 +921,25 @@ class SkillController {
         return;
       }
 
-      // 获取技能
-      const skill = await this.Skill.findOne({ where: { id }, raw: true });
+      // 尝试通过 ID 或名称查找技能
+      let skill = await this.Skill.findOne({ where: { id }, raw: true });
+
+      // 如果没找到，尝试按名称查找
       if (!skill) {
-        ctx.error('技能不存在', 404);
-        return;
+        skill = await this.Skill.findOne({ where: { name: id }, raw: true });
       }
 
-      const skillPath = skill.source_path;
-      if (!skillPath) {
+      let skillPath;
+      if (skill) {
+        // 已注册技能，使用 source_path
+        skillPath = skill.source_path;
+      } else {
+        // 未注册目录，直接使用 data/skills/:name
+        const PROJECT_ROOT = process.cwd();
+        skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
+      }
+
+      if (!skillPath || !fsOriginal.existsSync(skillPath)) {
         ctx.error('技能目录不存在', 404);
         return;
       }
@@ -923,7 +947,7 @@ class SkillController {
       // 安全检查：防止路径遍历攻击
       const normalizedPath = path.normalize(filePath).replace(/^(\.\.(\/|\\|$))+/, '');
       const fullPath = path.join(skillPath, normalizedPath);
-      
+
       // 确保文件路径仍在技能目录内
       if (!fullPath.startsWith(skillPath)) {
         ctx.error('非法路径', 403);
@@ -948,7 +972,7 @@ class SkillController {
       }
 
       const content = fsOriginal.readFileSync(fullPath, 'utf-8');
-      
+
       ctx.success({
         content,
         path: filePath,

@@ -579,16 +579,12 @@ const selectDirectory = (dir: { name: string; path: string; skill_id?: string; d
 
 // 进入目录浏览
 const enterDirectory = async (dir: { name: string; path: string; skill_id?: string }) => {
-  if (!dir.skill_id) {
-    toast.warning(t('skillsDirectory.skillNotRegistered') || '该技能未注册，无法浏览文件')
-    return
-  }
-  
+  // 使用目录名作为标识（后端支持通过目录名直接浏览）
   skillDirectoryStore.enterBrowseMode({
     name: dir.name,
     path: dir.path,
-    is_registered: true,
-    skill_id: dir.skill_id
+    is_registered: !!dir.skill_id,
+    skill_id: dir.skill_id || dir.name  // 如果没有 skill_id，使用目录名
   })
   
   await skillDirectoryStore.loadSkillFiles()

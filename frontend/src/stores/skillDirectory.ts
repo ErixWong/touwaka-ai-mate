@@ -211,16 +211,20 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
 
   /**
    * 加载技能目录文件列表
+   * 支持已注册技能（使用 skill_id）和未注册目录（使用目录名）
    */
   const loadSkillFiles = async (subdir?: string) => {
-    if (!browsingSkill.value?.skill_id) {
+    if (!browsingSkill.value) {
       console.warn('No skill selected for browsing')
       return
     }
 
+    // 使用 skill_id 或目录名作为标识
+    const identifier = browsingSkill.value.skill_id || browsingSkill.value.name
+
     isLoadingFiles.value = true
     try {
-      const response = await skill_api.get_skill_files(browsingSkill.value.skill_id, subdir)
+      const response = await skill_api.get_skill_files(identifier, subdir)
       currentFiles.value = response.files || []
       browsingPath.value = subdir || ''
     } catch (err) {
@@ -253,13 +257,17 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
 
   /**
    * 获取文件内容
+   * 支持已注册技能（使用 skill_id）和未注册目录（使用目录名）
    */
   const getFileContent = async (filePath: string) => {
-    if (!browsingSkill.value?.skill_id) {
+    if (!browsingSkill.value) {
       throw new Error('No skill selected for browsing')
     }
 
-    const response = await skill_api.get_skill_file_content(browsingSkill.value.skill_id, filePath)
+    // 使用 skill_id 或目录名作为标识
+    const identifier = browsingSkill.value.skill_id || browsingSkill.value.name
+
+    const response = await skill_api.get_skill_file_content(identifier, filePath)
     return response
   }
 
