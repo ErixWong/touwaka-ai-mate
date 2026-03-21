@@ -1610,8 +1610,10 @@ const save_skill = async () => {
 }
 
 .preview-dialog {
-  max-width: 800px;
+  width: 95%;
+  max-width: 1200px;
   max-height: 90vh;
+  height: 85vh;
   display: flex;
   flex-direction: column;
 }
@@ -1635,8 +1637,8 @@ const save_skill = async () => {
 .preview-body {
   flex: 1;
   overflow: auto;
-  min-height: 300px;
-  max-height: 60vh;
+  min-height: 400px;
+  max-height: 75vh;
 }
 
 .preview-loading {
