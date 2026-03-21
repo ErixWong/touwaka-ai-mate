@@ -38,7 +38,7 @@
       />
       <TasksTab v-if="activeTab === 'tasks'" />
       <AssistantTab v-if="activeTab === 'assistants'" />
-      <SkillsTab v-if="activeTab === 'skills'" />
+      <SkillsDirectoryTab v-if="activeTab === 'skills'" />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
   </div>
@@ -52,7 +52,7 @@ import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
 import TasksTab from './TasksTab.vue'
 import AssistantTab from './AssistantTab.vue'
-import SkillsTab from './SkillsTab.vue'
+import SkillsDirectoryTab from './SkillsDirectoryTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
 import { useI18n } from 'vue-i18n'
@@ -101,7 +101,7 @@ const visibleTabs = computed<Tab[]>(() => {
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
     { id: 'assistants', label: t('panel.assistants') || '助理', icon: '🤖' },
-    { id: 'skills', label: t('panel.skills') || '技能', icon: '🛠️', skillManagerOnly: true },
+    { id: 'skills', label: t('panel.skillsDirectory') || '技能目录', icon: '🛠️', skillManagerOnly: true },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]
 
