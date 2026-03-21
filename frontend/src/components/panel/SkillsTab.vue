@@ -325,14 +325,25 @@
           <div class="modal-body">
             <!-- 基本信息 Tab -->
             <div v-show="editor_tab === 'basic'" class="editor-section">
+              <!-- ID（只读） -->
+              <div class="form-group">
+                <label>{{ $t('skills.id') || 'ID' }}</label>
+                <input :value="editing_skill?.id" type="text" class="form-input readonly" readonly />
+              </div>
+              
+              <!-- 名称 -->
               <div class="form-group">
                 <label>{{ $t('skills.name') || '名称' }}</label>
                 <input v-model="skill_form.name" type="text" class="form-input" />
               </div>
+              
+              <!-- 描述 -->
               <div class="form-group">
                 <label>{{ $t('skills.description') || '描述' }}</label>
-                <textarea v-model="skill_form.description" class="form-textarea" rows="5"></textarea>
+                <textarea v-model="skill_form.description" class="form-textarea" rows="3"></textarea>
               </div>
+              
+              <!-- 版本 & 作者 -->
               <div class="form-row">
                 <div class="form-group">
                   <label>{{ $t('skills.version') || '版本' }}</label>
@@ -343,11 +354,84 @@
                   <input v-model="skill_form.author" type="text" class="form-input" />
                 </div>
               </div>
+              
+              <!-- 来源信息 -->
+              <div class="form-row">
+                <div class="form-group">
+                  <label>{{ $t('skills.sourceType') || '来源类型' }}</label>
+                  <input :value="editing_skill?.source_type" type="text" class="form-input readonly" readonly />
+                </div>
+                <div class="form-group">
+                  <label>{{ $t('skills.sourcePath') || '来源路径' }}</label>
+                  <input v-model="skill_form.source_path" type="text" class="form-input" />
+                </div>
+              </div>
+              
+              <!-- 来源 URL（如果有） -->
+              <div class="form-group" v-if="editing_skill?.source_url">
+                <label>{{ $t('skills.sourceUrl') || '来源 URL' }}</label>
+                <input :value="editing_skill?.source_url" type="text" class="form-input readonly" readonly />
+              </div>
+              
+              <!-- 标签 -->
+              <div class="form-group">
+                <label>{{ $t('skills.tags') || '标签' }}</label>
+                <div class="tags-input-container">
+                  <div class="tags-list">
+                    <span v-for="(tag, index) in skill_form.tags" :key="index" class="tag-item">
+                      {{ tag }}
+                      <button class="tag-remove" @click="removeTag(index)">×</button>
+                    </span>
+                  </div>
+                  <input
+                    v-model="newTagInput"
+                    type="text"
+                    class="form-input tag-input"
+                    :placeholder="$t('skills.addTagPlaceholder') || '输入标签后按 Enter'"
+                    @keyup.enter="addTag"
+                  />
+                </div>
+              </div>
+              
+              <!-- 安全信息 -->
+              <div class="form-row" v-if="editing_skill?.security_score !== undefined">
+                <div class="form-group">
+                  <label>{{ $t('skills.securityScore') || '安全评分' }}</label>
+                  <div class="security-score-display">
+                    <span class="score-value" :class="getSecurityScoreClass(editing_skill?.security_score)">
+                      {{ editing_skill?.security_score ?? '-' }}
+                    </span>
+                    <span class="score-max">/ 100</span>
+                  </div>
+                </div>
+                <div class="form-group" v-if="editing_skill?.security_warnings?.length">
+                  <label>{{ $t('skills.securityWarnings') || '安全警告' }}</label>
+                  <div class="security-warnings">
+                    <span v-for="(warning, index) in editing_skill?.security_warnings" :key="index" class="warning-item">
+                      ⚠️ {{ warning }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 启用状态 -->
               <div class="form-group">
                 <label class="checkbox-label">
                   <input type="checkbox" v-model="skill_form.is_active" />
                   {{ $t('skills.enabled') || '启用' }}
                 </label>
+              </div>
+              
+              <!-- 时间信息（只读） -->
+              <div class="form-row">
+                <div class="form-group">
+                  <label>{{ $t('skills.createdAt') || '创建时间' }}</label>
+                  <input :value="formatDateTime(editing_skill?.created_at)" type="text" class="form-input readonly" readonly />
+                </div>
+                <div class="form-group">
+                  <label>{{ $t('skills.updatedAt') || '更新时间' }}</label>
+                  <input :value="formatDateTime(editing_skill?.updated_at)" type="text" class="form-input readonly" readonly />
+                </div>
               </div>
             </div>
             
@@ -480,10 +564,15 @@ const skill_form = reactive({
   description: '',
   version: '',
   author: '',
+  source_path: '',
   is_active: true,
+  tags: [] as string[],
   tools: [] as SkillTool[],
   parameters: [] as EditableParameter[]
 })
+
+// 新标签输入
+const newTagInput = ref('')
 
 // 创建目录对话框
 const showCreateDirectoryDialog = ref(false)
@@ -821,7 +910,9 @@ const open_skill_editor = async (skill: Skill) => {
     skill_form.description = res.skill.description || ''
     skill_form.version = res.skill.version || ''
     skill_form.author = res.skill.author || ''
+    skill_form.source_path = res.skill.source_path || ''
     skill_form.is_active = res.skill.is_active
+    skill_form.tags = res.skill.tags || []
     skill_form.tools = res.skill.tools || []
     
     // 获取参数
@@ -867,6 +958,34 @@ const remove_parameter = (index: number) => {
   skill_form.parameters.splice(index, 1)
 }
 
+// 添加标签
+const addTag = () => {
+  const tag = newTagInput.value.trim()
+  if (tag && !skill_form.tags.includes(tag)) {
+    skill_form.tags.push(tag)
+  }
+  newTagInput.value = ''
+}
+
+// 移除标签
+const removeTag = (index: number) => {
+  skill_form.tags.splice(index, 1)
+}
+
+// 安全评分样式类
+const getSecurityScoreClass = (score?: number): string => {
+  if (score === undefined) return ''
+  if (score >= 80) return 'high'
+  if (score >= 60) return 'medium'
+  return 'low'
+}
+
+// 格式化日期时间
+const formatDateTime = (dateStr?: string): string => {
+  if (!dateStr) return '-'
+  return new Date(dateStr).toLocaleString()
+}
+
 // 保存技能
 const save_skill = async () => {
   if (!editing_skill.value) return
@@ -877,6 +996,10 @@ const save_skill = async () => {
     await skill_api.update_skill(editing_skill.value.id, {
       name: skill_form.name,
       description: skill_form.description,
+      source_path: skill_form.source_path,
+      version: skill_form.version,
+      author: skill_form.author,
+      tags: skill_form.tags,
       is_active: skill_form.is_active
     })
     
@@ -2169,5 +2292,104 @@ const save_skill = async () => {
 .btn-save:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 只读输入框 */
+.form-input.readonly {
+  background: var(--bg-secondary, #f5f5f5);
+  color: var(--text-secondary, #666);
+  cursor: not-allowed;
+}
+
+/* 标签输入容器 */
+.tags-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--primary-light, #e3f2fd);
+  color: var(--primary-color, #2196f3);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--primary-color, #2196f3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.tag-remove:hover {
+  color: var(--danger-color, #dc3545);
+}
+
+.tag-input {
+  margin-top: 4px;
+}
+
+/* 安全评分显示 */
+.security-score-display {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.score-value {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.score-value.high {
+  color: var(--success-color, #4caf50);
+}
+
+.score-value.medium {
+  color: var(--warning-color, #ff9800);
+}
+
+.score-value.low {
+  color: var(--danger-color, #dc3545);
+}
+
+.score-max {
+  font-size: 14px;
+  color: var(--text-tertiary, #999);
+}
+
+/* 安全警告列表 */
+.security-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warning-item {
+  display: block;
+  font-size: 12px;
+  color: var(--warning-color, #ff9800);
+  padding: 4px 8px;
+  background: var(--warning-light, #fff8e1);
+  border-radius: 4px;
 }
 </style>

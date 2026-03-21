@@ -787,10 +787,17 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     invalidSourceType: '无效的来源类型',
     // 详情对话框
     basicInfo: '基本信息',
+    id: 'ID',
     sourceType: '来源类型',
+    sourcePath: '来源路径',
+    tags: '标签',
+    addTagPlaceholder: '输入标签后按 Enter',
     securityInfo: '安全信息',
+    securityWarnings: '安全警告',
     warnings: '警告',
     toolsList: '工具清单',
+    createdAt: '创建时间',
+    updatedAt: '更新时间',
     // 删除确认
     deleteConfirm: '确定要删除技能 "{name}" 吗？此操作不可恢复。',
     // 参数管理
