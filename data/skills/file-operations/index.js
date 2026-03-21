@@ -26,10 +26,11 @@ const USER_WORK_DIR = process.env.WORKING_DIRECTORY
   ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
   : path.join(DATA_BASE_PATH, 'work', USER_ID);
 
-// 管理员可以访问项目根目录
-const PROJECT_ROOT = process.cwd();
+// 权限控制：
+// - 普通用户：仅当前工作目录
+// - 管理员：当前工作目录 + skills 目录
 const ALLOWED_BASE_PATHS = IS_ADMIN
-  ? [PROJECT_ROOT, DATA_BASE_PATH]  // 管理员：项目根目录 + data 目录
+  ? [USER_WORK_DIR, SKILLS_DIR]  // 管理员：工作目录 + skills 目录
   : [USER_WORK_DIR];  // 普通用户：仅用户工作目录
 
 // Maximum file size to read (50MB)
@@ -68,17 +69,26 @@ function isPathAllowed(targetPath) {
 /**
  * Resolve path relative to allowed base directories
  * 防护：确保所有返回的路径都在允许的目录内
+ *
+ * 权限规则：
+ * - 普通用户：只能使用相对路径（相对于工作目录）
+ * - 管理员：可以使用绝对路径和相对路径
  */
 function resolvePath(relativePath) {
-  // 如果是绝对路径，检查是否被允许
+  // 如果是绝对路径
   if (path.isAbsolute(relativePath)) {
+    // 只有管理员可以使用绝对路径
+    if (!IS_ADMIN) {
+      throw new Error(`Absolute path not allowed for non-admin users: ${relativePath}`);
+    }
+    // 检查绝对路径是否在允许范围内
     if (!isPathAllowed(relativePath)) {
       throw new Error(`Path not allowed: ${relativePath}`);
     }
     return relativePath;
   }
   
-  // 尝试每个允许的基础路径
+  // 相对路径：尝试每个允许的基础路径
   for (const basePath of ALLOWED_BASE_PATHS) {
     const resolved = path.join(basePath, relativePath);
     if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
