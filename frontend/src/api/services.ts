@@ -329,7 +329,16 @@ export const skill_api = {
     ),
 
   // 更新技能
-  update_skill: (skill_id: string, data: { name?: string; description?: string; is_active?: boolean }) =>
+  update_skill: (skill_id: string, data: {
+    name?: string;
+    description?: string;
+    is_active?: boolean;
+    source_path?: string;
+    source_url?: string;
+    author?: string;
+    version?: string;
+    tags?: string[];
+  }) =>
     apiRequest<{ id: string }>(
       apiClient.put(`/skills/${skill_id}`, data)
     ),
