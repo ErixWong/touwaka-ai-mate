@@ -152,12 +152,12 @@
               {{ $t('skills.toolsList') || '工具列表' }}
               <span v-if="skill_form.tools?.length" class="tab-badge">{{ skill_form.tools.length }}</span>
             </button>
-            <button 
-              class="modal-tab-btn" 
+            <button
+              class="modal-tab-btn"
               :class="{ active: editor_tab === 'params' }"
               @click="editor_tab = 'params'"
             >
-              {{ $t('skills.parameters') || '参数配置' }}
+              {{ $t('skills.parametersTitle') || '参数配置' }}
               <span v-if="skill_form.parameters?.length" class="tab-badge">{{ skill_form.parameters.length }}</span>
             </button>
           </div>
@@ -171,7 +171,7 @@
               </div>
               <div class="form-group">
                 <label>{{ $t('skills.description') || '描述' }}</label>
-                <textarea v-model="skill_form.description" class="form-textarea" rows="3"></textarea>
+                <textarea v-model="skill_form.description" class="form-textarea" rows="5"></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
