@@ -53,7 +53,7 @@
 
       <!-- 右侧：技能信息面板 -->
       <div class="skill-info-panel">
-        <template v-if="selectedSkillDetail">
+        <template v-if="skillDirectoryStore.selectedSkill">
           <div class="panel-title">{{ $t('skills.info') || '技能信息' }}</div>
           
           <div class="info-content">
@@ -61,31 +61,48 @@
             <div class="info-section">
               <div class="info-row">
                 <span class="info-label">{{ $t('skills.name') || '名称' }}:</span>
-                <span class="info-value">{{ selectedSkillDetail.name }}</span>
+                <span class="info-value">{{ skillDirectoryStore.selectedSkill.name }}</span>
               </div>
               
-              <div v-if="selectedSkillDetail.description" class="info-row">
+              <div class="info-row">
+                <span class="info-label">{{ $t('skillsDirectory.path') || '路径' }}:</span>
+                <span class="info-value">{{ skillDirectoryStore.selectedSkill.path }}</span>
+              </div>
+
+              <div v-if="selectedSkillDetail?.description" class="info-row">
                 <span class="info-label">{{ $t('skills.description') || '描述' }}:</span>
                 <span class="info-value description">{{ selectedSkillDetail.description }}</span>
               </div>
 
-              <div v-if="selectedSkillDetail.version" class="info-row">
+              <div v-if="selectedSkillDetail?.version" class="info-row">
                 <span class="info-label">{{ $t('skills.version') || '版本' }}:</span>
                 <span class="info-value">{{ selectedSkillDetail.version }}</span>
               </div>
 
-              <div v-if="selectedSkillDetail.author" class="info-row">
+              <div v-if="selectedSkillDetail?.author" class="info-row">
                 <span class="info-label">{{ $t('skills.author') || '作者' }}:</span>
                 <span class="info-value">{{ selectedSkillDetail.author }}</span>
+              </div>
+
+              <div class="info-row">
+                <span class="info-label">{{ $t('skillsDirectory.status') || '状态' }}:</span>
+                <span class="info-value">
+                  <span v-if="skillDirectoryStore.selectedSkill.is_registered" class="registered-badge">
+                    {{ $t('skills.registered') || '已注册' }}
+                  </span>
+                  <span v-else class="not-registered-badge">
+                    {{ $t('skillsDirectory.notRegistered') || '未注册' }}
+                  </span>
+                </span>
               </div>
             </div>
 
             <!-- 工具列表 -->
-            <div v-if="selectedSkillDetail.tools?.length" class="info-section">
+            <div v-if="skillDirectoryStore.selectedSkill.tools?.length" class="info-section">
               <div class="section-title">{{ $t('skills.toolsList') || '工具列表' }}</div>
               <div class="tools-list">
                 <div
-                  v-for="tool in selectedSkillDetail.tools"
+                  v-for="tool in skillDirectoryStore.selectedSkill.tools"
                   :key="tool.id"
                   class="tool-item"
                 >
@@ -99,7 +116,7 @@
             </div>
 
             <!-- 分配的专家 -->
-            <div v-if="selectedSkillDetail.assigned_experts?.length" class="info-section">
+            <div v-if="selectedSkillDetail?.assigned_experts?.length" class="info-section">
               <div class="section-title">{{ $t('skills.assignedExperts') || '已分配专家' }}</div>
               <div class="experts-list">
                 <div
@@ -188,12 +205,8 @@ const handleSelectSkill = async (skill: SkillDirectoryItem) => {
       isLoadingDetail.value = false
     }
   } else {
-    // 未注册的技能，显示基本信息
-    selectedSkillDetail.value = {
-      ...skill,
-      tools: skill.tools || [],
-      is_active: false
-    } as SkillDetail
+    // 未注册的技能，显示基本信息（使用 null，让 UI 显示基本信息）
+    selectedSkillDetail.value = null
   }
 
   // 更新 URL query 参数
