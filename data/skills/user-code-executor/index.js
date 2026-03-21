@@ -5,6 +5,11 @@
  * 注意：此技能本身已在 skill-runner 的 VM 沙箱中运行，
  * 因此直接使用 Function 构造器执行用户代码即可。
  * 
+ * 安全规则：
+ * - 所有用户（包括管理员）只能访问当前工作目录
+ * - 不允许使用绝对路径
+ * - 不允许路径遍历（..）
+ * 
  * Python 代码执行请使用 .py 技能文件，由 skill-runner 原生支持。
  */
 
@@ -14,10 +19,13 @@ const path = require('path');
 // 默认超时配置
 const JS_TIMEOUT = parseInt(process.env.VM_TIMEOUT || '30000', 10);
 
-// 用户工作目录
-const USER_WORK_DIR = process.env.WORKING_DIRECTORY 
-  ? path.join(process.env.DATA_BASE_PATH || process.cwd(), process.env.WORKING_DIRECTORY)
-  : null;
+// 数据基础路径
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH || process.cwd();
+
+// 用户工作目录（所有用户都只能访问这个目录）
+const USER_WORK_DIR = process.env.WORKING_DIRECTORY
+  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
+  : path.join(DATA_BASE_PATH, 'work', process.env.USER_ID || 'default');
 
 /**
  * 获取工具定义
@@ -67,26 +75,31 @@ async function executeJavaScript(params, context) {
   let source = 'inline';
   
   if (script_path) {
-    // 从文件加载代码
-    if (!USER_WORK_DIR) {
-      throw new Error('用户工作目录未设置，无法加载脚本文件');
-    }
+    // 从文件加载代码 - 严格的路径安全检查
     
-    // 安全检查：防止路径遍历
+    // 1. 规范化路径
     const normalizedPath = path.normalize(script_path);
-    if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
-      throw new Error(`非法脚本路径: ${script_path}`);
+    
+    // 2. 禁止绝对路径
+    if (path.isAbsolute(normalizedPath)) {
+      throw new Error(`Absolute path not allowed: ${script_path}`);
     }
     
-    const fullPath = path.join(USER_WORK_DIR, normalizedPath);
+    // 3. 禁止路径遍历
+    if (normalizedPath.startsWith('..') || normalizedPath.includes('..' + path.sep)) {
+      throw new Error(`Path traversal not allowed: ${script_path}`);
+    }
     
-    // 检查路径是否在工作目录内
-    if (!fullPath.startsWith(USER_WORK_DIR)) {
-      throw new Error(`脚本路径必须在用户工作目录内`);
+    // 4. 构建完整路径
+    const fullPath = path.resolve(USER_WORK_DIR, normalizedPath);
+    
+    // 5. 最终检查：确保路径在工作目录内
+    if (!fullPath.startsWith(path.resolve(USER_WORK_DIR))) {
+      throw new Error(`Script path must be within user working directory: ${script_path}`);
     }
     
     if (!fs.existsSync(fullPath)) {
-      throw new Error(`脚本文件不存在: ${script_path}`);
+      throw new Error(`Script file not found: ${script_path}`);
     }
     
     code = fs.readFileSync(fullPath, 'utf-8');
@@ -94,10 +107,10 @@ async function executeJavaScript(params, context) {
   }
   
   if (!code) {
-    throw new Error('请提供 code 或 script_path 参数');
+    throw new Error('Please provide code or script_path parameter');
   }
   
-  console.log(`[user-code-executor] 执行 JavaScript，来源: ${source}`);
+  console.log(`[user-code-executor] Executing JavaScript, source: ${source}`);
   
   return runInSandbox(code, source);
 }
@@ -105,6 +118,10 @@ async function executeJavaScript(params, context) {
 /**
  * 在当前上下文中执行代码（使用 Function 构造器）
  * 由于此技能已在 skill-runner 的 VM 沙箱中，直接执行即可
+ * 
+ * 安全说明：
+ * - 不传递 require 函数（防止加载任意模块）
+ * - 不传递 process 对象（防止访问环境变量和进程信息）
  */
 function runInSandbox(code, source) {
   const startTime = Date.now();
@@ -140,7 +157,7 @@ function runInSandbox(code, source) {
     const timeoutId = setTimeout(() => {
       resolve({
         success: false,
-        error: `执行超时（超过 ${JS_TIMEOUT}ms）`,
+        error: `Execution timeout (exceeded ${JS_TIMEOUT}ms)`,
         stdout: stdout.join('\n'),
         stderr: stderr.join('\n'),
         duration: Date.now() - startTime,
@@ -158,15 +175,16 @@ function runInSandbox(code, source) {
       `;
       
       // 创建函数并执行
-      const fn = new Function('console', 'require', 'process', wrappedCode);
-      const result = fn(customConsole, require, process);
+      // 注意：不传递 require 和 process，防止用户代码访问系统资源
+      const fn = new Function('console', wrappedCode);
+      const result = fn(customConsole);
       
       // 处理 Promise 结果
       Promise.resolve(result)
         .then((value) => {
           clearTimeout(timeoutId);
           const duration = Date.now() - startTime;
-          console.log(`[user-code-executor] 执行成功，耗时: ${duration}ms`);
+          console.log(`[user-code-executor] Execution succeeded, duration: ${duration}ms`);
           
           resolve({
             success: true,
@@ -180,7 +198,7 @@ function runInSandbox(code, source) {
         .catch((error) => {
           clearTimeout(timeoutId);
           const duration = Date.now() - startTime;
-          console.error(`[user-code-executor] 执行失败:`, error.message);
+          console.error(`[user-code-executor] Execution failed:`, error.message);
           
           resolve({
             success: false,
@@ -195,7 +213,7 @@ function runInSandbox(code, source) {
     } catch (error) {
       clearTimeout(timeoutId);
       const duration = Date.now() - startTime;
-      console.error(`[user-code-executor] 语法错误:`, error.message);
+      console.error(`[user-code-executor] Syntax error:`, error.message);
       
       resolve({
         success: false,
