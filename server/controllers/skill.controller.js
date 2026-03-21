@@ -857,56 +857,22 @@ class SkillController {
 
       const PROJECT_ROOT = process.cwd();
       let skillPath;
-      let usedFallback = false;
       
       if (skill) {
         // 已注册技能，使用 source_path
         let sourcePath = skill.source_path;
         
-        // 检查 source_path 是否有效
-        if (sourcePath) {
-          // 处理 source_path 可能缺少 data/ 前缀的情况
-          if (!sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-            sourcePath = path.join('data', sourcePath);
-          }
-          skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
+        // 处理 source_path 可能缺少 data/ 前缀的情况
+        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          sourcePath = path.join('data', sourcePath);
         }
-        
-        // 如果 source_path 无效或目录不存在，尝试多种 fallback 策略
-        if (!skillPath || !fsOriginal.existsSync(skillPath)) {
-          logger.warn('[listFiles] source_path invalid or directory not found, trying fallbacks:', {
-            sourcePath: skill.source_path,
-            skillName: skill.name,
-            skillId: skill.id
-          });
-          
-          // Fallback 1: 从 source_path 中提取目录名
-          if (skill.source_path) {
-            const dirName = path.basename(skill.source_path);
-            const fallbackPath1 = path.join(PROJECT_ROOT, 'data', 'skills', dirName);
-            if (fsOriginal.existsSync(fallbackPath1)) {
-              skillPath = fallbackPath1;
-              usedFallback = true;
-              logger.info('[listFiles] Using fallback path from source_path basename:', { fallbackPath: fallbackPath1 });
-            }
-          }
-          
-          // Fallback 2: 使用技能名称作为目录名
-          if (!skillPath && skill.name) {
-            const fallbackPath2 = path.join(PROJECT_ROOT, 'data', 'skills', skill.name);
-            if (fsOriginal.existsSync(fallbackPath2)) {
-              skillPath = fallbackPath2;
-              usedFallback = true;
-              logger.info('[listFiles] Using fallback path from skill name:', { fallbackPath: fallbackPath2 });
-            }
-          }
-        }
+        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
       } else {
         // 未注册目录，直接使用 data/skills/:name
         skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
       }
 
-      logger.info('[listFiles] Computed skillPath:', { skillPath, exists: skillPath ? fsOriginal.existsSync(skillPath) : false, usedFallback });
+      logger.info('[listFiles] Computed skillPath:', { skillPath, exists: skillPath ? fsOriginal.existsSync(skillPath) : false });
 
       if (!skillPath || !fsOriginal.existsSync(skillPath)) {
         ctx.error('技能目录不存在', 404);
@@ -987,42 +953,11 @@ class SkillController {
         // 已注册技能，使用 source_path
         let sourcePath = skill.source_path;
         
-        // 检查 source_path 是否有效
-        if (sourcePath) {
-          // 处理 source_path 可能缺少 data/ 前缀的情况
-          if (!sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-            sourcePath = path.join('data', sourcePath);
-          }
-          skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
+        // 处理 source_path 可能缺少 data/ 前缀的情况
+        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          sourcePath = path.join('data', sourcePath);
         }
-        
-        // 如果 source_path 无效或目录不存在，尝试多种 fallback 策略
-        if (!skillPath || !fsOriginal.existsSync(skillPath)) {
-          logger.warn('[getFileContent] source_path invalid or directory not found, trying fallbacks:', {
-            sourcePath: skill.source_path,
-            skillName: skill.name,
-            skillId: skill.id
-          });
-          
-          // Fallback 1: 从 source_path 中提取目录名
-          if (skill.source_path) {
-            const dirName = path.basename(skill.source_path);
-            const fallbackPath1 = path.join(PROJECT_ROOT, 'data', 'skills', dirName);
-            if (fsOriginal.existsSync(fallbackPath1)) {
-              skillPath = fallbackPath1;
-              logger.info('[getFileContent] Using fallback path from source_path basename:', { fallbackPath: fallbackPath1 });
-            }
-          }
-          
-          // Fallback 2: 使用技能名称作为目录名
-          if (!skillPath && skill.name) {
-            const fallbackPath2 = path.join(PROJECT_ROOT, 'data', 'skills', skill.name);
-            if (fsOriginal.existsSync(fallbackPath2)) {
-              skillPath = fallbackPath2;
-              logger.info('[getFileContent] Using fallback path from skill name:', { fallbackPath: fallbackPath2 });
-            }
-          }
-        }
+        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
       } else {
         // 未注册目录，直接使用 data/skills/:name
         skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
