@@ -221,17 +221,22 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { skill_api } from '@/api/services'
 import { useSkillDirectoryStore } from '@/stores/skillDirectory'
+import { useTaskStore } from '@/stores/task'
 import { useToastStore } from '@/stores/toast'
 import CodePreview from '@/components/CodePreview.vue'
 import type { Skill } from '@/types'
 
+const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 const skillDirectoryStore = useSkillDirectoryStore()
+const taskStore = useTaskStore()
 const toast = useToastStore()
 
 // 技能列表（用于判断注册状态）
@@ -310,6 +315,12 @@ const selectDirectory = (dir: { name: string; path: string; skill_id?: string; d
 const enterDirectory = async (dir: { name: string; path: string; skill_id?: string }) => {
   const registrationStatus = getDirectoryRegistrationStatus(dir.name)
   
+  // 进入技能目录浏览时，退出任务模式（互斥）
+  if (taskStore.currentTask) {
+    taskStore.exitTask()
+    console.log('[SkillsDirectoryTab] 已退出任务模式，进入技能目录浏览')
+  }
+  
   skillDirectoryStore.enterBrowseMode({
     name: dir.name,
     path: dir.path,
@@ -317,12 +328,30 @@ const enterDirectory = async (dir: { name: string; path: string; skill_id?: stri
     skill_id: registrationStatus.skill_id || dir.name
   })
   
+  // 更新 URL，添加 skillName 参数
+  const expertId = route.params.expertId
+  if (expertId) {
+    router.replace({
+      name: 'chat-with-skill',
+      params: { expertId, skillName: dir.name }
+    })
+  }
+  
   await skillDirectoryStore.loadSkillFiles()
 }
 
 // 退出浏览模式
 const exitBrowseMode = () => {
   skillDirectoryStore.exitBrowseMode()
+  
+  // 清除 URL 中的 skillName 参数
+  const expertId = route.params.expertId
+  if (expertId) {
+    router.replace({
+      name: 'chat',
+      params: { expertId }
+    })
+  }
 }
 
 // 刷新文件列表

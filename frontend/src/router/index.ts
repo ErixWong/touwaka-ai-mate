@@ -41,6 +41,11 @@ const router = createRouter({
           component: () => import('@/views/ChatView.vue'),
         },
         {
+          path: 'chat/:expertId/skill/:skillName',
+          name: 'chat-with-skill',
+          component: () => import('@/views/ChatView.vue'),
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/SettingsView.vue'),
