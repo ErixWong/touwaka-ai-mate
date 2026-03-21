@@ -38,6 +38,9 @@ const sequelize = new Sequelize(
       updatedAt: 'updated_at',
       freezeTableName: true,
     },
+    dialectOptions: {
+      decimalNumbers: true,
+    },
   }
 );
 

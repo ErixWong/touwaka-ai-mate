@@ -187,7 +187,14 @@ class SkillController {
   async update(ctx) {
     try {
       const { id } = ctx.params;
-      const { name, description, is_active } = ctx.request.body;
+      const { name, description, is_active, source_path, source_url, author, version, tags } = ctx.request.body;
+
+      logger.info('[SkillController] update() called:', {
+        id,
+        is_active,
+        is_active_type: typeof is_active,
+        body: ctx.request.body
+      });
 
       // 检查技能是否存在
       const existing = await this.Skill.findOne({ where: { id } });
@@ -199,14 +206,26 @@ class SkillController {
       const updates = {};
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
-      if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
+      if (is_active !== undefined) updates.is_active = is_active ? true : false;
+      if (source_path !== undefined) updates.source_path = source_path;
+      if (source_url !== undefined) updates.source_url = source_url;
+      if (author !== undefined) updates.author = author;
+      if (version !== undefined) updates.version = version;
+      if (tags !== undefined) updates.tags = Array.isArray(tags) ? JSON.stringify(tags) : tags;
+
+      logger.info('[SkillController] updates to apply:', updates);
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);
         return;
       }
 
-      await this.Skill.update(updates, { where: { id } });
+      const updateResult = await this.Skill.update(updates, { where: { id } });
+      logger.info('[SkillController] update result:', updateResult);
+
+      // 验证更新是否成功
+      const afterUpdate = await this.Skill.findOne({ where: { id }, raw: true });
+      logger.info('[SkillController] after update, is_active in DB:', afterUpdate?.is_active);
 
       ctx.success({ id }, '技能更新成功');
     } catch (error) {
@@ -463,7 +482,7 @@ class SkillController {
         author: skill_info.author || '',
         tags: skill_info.tags ? JSON.stringify(skill_info.tags) : '[]',
         source_type: 'local',
-        source_path: full_path,
+        source_path: path.relative(PROJECT_ROOT, full_path),  // 存储相对路径，如 data/skills/file-operations
         skill_md,
         is_active: true,
       });
@@ -695,6 +714,105 @@ class SkillController {
   }
 
   /**
+   * 更新工具信息
+   * PUT /api/skills/:id/tools/:tool_id
+   */
+  async updateTool(ctx) {
+    try {
+      const { id, tool_id } = ctx.params;
+      const { name, description, script_path, parameters, is_resident } = ctx.request.body;
+
+      // 检查工具是否存在
+      const tool = await this.SkillTool.findOne({
+        where: { id: tool_id, skill_id: id },
+      });
+
+      if (!tool) {
+        ctx.error('工具不存在', 404);
+        return;
+      }
+
+      const updates = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (script_path !== undefined) updates.script_path = script_path;
+      if (parameters !== undefined) updates.parameters = typeof parameters === 'string' ? parameters : JSON.stringify(parameters);
+      if (is_resident !== undefined) updates.is_resident = is_resident ? 1 : 0;
+
+      if (Object.keys(updates).length === 0) {
+        ctx.error('没有要更新的字段', 400);
+        return;
+      }
+
+      await this.SkillTool.update(updates, { where: { id: tool_id } });
+
+      ctx.success({ id: tool_id }, '工具更新成功');
+    } catch (error) {
+      logger.error('Update tool error:', error);
+      ctx.error('更新工具失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 批量更新技能工具
+   * PUT /api/skills/:id/tools
+   */
+  async updateTools(ctx) {
+    let transaction = null;
+    try {
+      const { id } = ctx.params;
+      const { tools } = ctx.request.body;
+
+      if (!Array.isArray(tools)) {
+        ctx.error('工具格式错误，需要数组', 400);
+        return;
+      }
+
+      // 检查技能是否存在
+      const skill = await this.Skill.findOne({ where: { id } });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      // 开始事务
+      transaction = await this.db.sequelize.transaction();
+
+      // 逐个更新工具
+      for (const tool of tools) {
+        if (!tool.id) continue;
+
+        const updates = {};
+        if (tool.name !== undefined) updates.name = tool.name;
+        if (tool.description !== undefined) updates.description = tool.description;
+        if (tool.script_path !== undefined) updates.script_path = tool.script_path;
+        if (tool.parameters !== undefined) updates.parameters = typeof tool.parameters === 'string' ? tool.parameters : JSON.stringify(tool.parameters);
+        if (tool.is_resident !== undefined) updates.is_resident = tool.is_resident ? 1 : 0;
+
+        if (Object.keys(updates).length > 0) {
+          await this.SkillTool.update(updates, {
+            where: { id: tool.id, skill_id: id },
+            transaction,
+          });
+        }
+      }
+
+      // 提交事务
+      await transaction.commit();
+      transaction = null;
+
+      ctx.success({ updated: tools.length }, '工具更新成功');
+    } catch (error) {
+      // 回滚事务
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
+      logger.error('Update tools error:', error);
+      ctx.error('更新工具失败: ' + error.message, 500);
+    }
+  }
+
+  /**
    * 启用/禁用技能
    * PATCH /api/skills/:id/toggle
    */
@@ -724,6 +842,305 @@ class SkillController {
     } catch (error) {
       logger.error('Toggle skill error:', error);
       ctx.error('切换技能状态失败: ' + error.message, 500);
+    }
+  }
+
+  // ==================== 技能目录文件管理 API ====================
+
+  /**
+   * 获取技能目录文件列表
+   * GET /api/skills/:id/files
+   *
+   * :id 可以是 skill_id 或者目录名（如 "file-operations"）
+   */
+  async listFiles(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { subdir } = ctx.query;
+
+      logger.info('[listFiles] Request params:', { id, subdir });
+
+      // 尝试通过 ID 或名称查找技能
+      let skill = await this.Skill.findOne({ where: { id }, raw: true });
+      
+      // 如果没找到，尝试按名称查找
+      if (!skill) {
+        skill = await this.Skill.findOne({ where: { name: id }, raw: true });
+      }
+
+      logger.info('[listFiles] Skill lookup result:', {
+        found: !!skill,
+        skillId: skill?.id,
+        sourcePath: skill?.source_path
+      });
+
+      const PROJECT_ROOT = process.cwd();
+      let skillPath;
+      
+      if (skill) {
+        // 已注册技能，使用 source_path
+        let sourcePath = skill.source_path;
+        
+        // 处理 source_path 可能缺少 data/ 前缀的情况
+        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          sourcePath = path.join('data', sourcePath);
+        }
+        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
+      } else {
+        // 未注册目录，直接使用 data/skills/:name
+        skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
+      }
+
+      logger.info('[listFiles] Computed skillPath:', { skillPath, exists: skillPath ? fsOriginal.existsSync(skillPath) : false });
+
+      if (!skillPath || !fsOriginal.existsSync(skillPath)) {
+        ctx.error('技能目录不存在', 404);
+        return;
+      }
+
+      // 构建目标目录路径
+      let targetPath = skillPath;
+      if (subdir) {
+        // 安全检查：防止路径遍历攻击
+        const normalizedSubdir = path.normalize(subdir).replace(/^(\.\.(\/|\\|$))+/, '');
+        targetPath = path.join(skillPath, normalizedSubdir);
+        
+        // 确保目标路径仍在技能目录内
+        if (!targetPath.startsWith(skillPath)) {
+          ctx.error('非法路径', 403);
+          return;
+        }
+      }
+
+      // 读取目录内容
+      const items = fsOriginal.readdirSync(targetPath, { withFileTypes: true });
+      const files = items.map(item => {
+        const itemPath = path.join(targetPath, item.name);
+        const stats = fsOriginal.statSync(itemPath);
+        
+        return {
+          name: item.name,
+          type: item.isDirectory() ? 'directory' : 'file',
+          path: subdir ? `${subdir}/${item.name}` : item.name,
+          size: item.isFile() ? stats.size : 0,
+          modified_at: stats.mtime.toISOString(),
+        };
+      });
+
+      // 排序：目录在前，然后按名称排序
+      files.sort((a, b) => {
+        if (a.type === 'directory' && b.type !== 'directory') return -1;
+        if (a.type !== 'directory' && b.type === 'directory') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      ctx.success({ files });
+    } catch (error) {
+      logger.error('List skill files error:', error);
+      ctx.error('获取文件列表失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 获取文件内容
+   * GET /api/skills/:id/files/content
+   *
+   * :id 可以是 skill_id 或者目录名（如 "file-operations"）
+   */
+  async getFileContent(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { path: filePath } = ctx.query;
+
+      if (!filePath) {
+        ctx.error('文件路径不能为空', 400);
+        return;
+      }
+
+      // 尝试通过 ID 或名称查找技能
+      let skill = await this.Skill.findOne({ where: { id }, raw: true });
+
+      // 如果没找到，尝试按名称查找
+      if (!skill) {
+        skill = await this.Skill.findOne({ where: { name: id }, raw: true });
+      }
+
+      const PROJECT_ROOT = process.cwd();
+      let skillPath;
+      
+      if (skill) {
+        // 已注册技能，使用 source_path
+        let sourcePath = skill.source_path;
+        
+        // 处理 source_path 可能缺少 data/ 前缀的情况
+        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          sourcePath = path.join('data', sourcePath);
+        }
+        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
+      } else {
+        // 未注册目录，直接使用 data/skills/:name
+        skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
+      }
+
+      if (!skillPath || !fsOriginal.existsSync(skillPath)) {
+        ctx.error('技能目录不存在', 404);
+        return;
+      }
+
+      // 安全检查：防止路径遍历攻击
+      const normalizedPath = path.normalize(filePath).replace(/^(\.\.(\/|\\|$))+/, '');
+      const fullPath = path.join(skillPath, normalizedPath);
+
+      // 确保文件路径仍在技能目录内
+      if (!fullPath.startsWith(skillPath)) {
+        ctx.error('非法路径', 403);
+        return;
+      }
+
+      if (!fsOriginal.existsSync(fullPath)) {
+        ctx.error('文件不存在', 404);
+        return;
+      }
+
+      const stats = fsOriginal.statSync(fullPath);
+      if (stats.isDirectory()) {
+        ctx.error('不能读取目录内容', 400);
+        return;
+      }
+
+      // 检查文件大小（限制 1MB）
+      if (stats.size > 1024 * 1024) {
+        ctx.error('文件过大，请下载查看', 400);
+        return;
+      }
+
+      const content = fsOriginal.readFileSync(fullPath, 'utf-8');
+
+      ctx.success({
+        content,
+        path: filePath,
+        size: stats.size,
+        modified_at: stats.mtime.toISOString(),
+      });
+    } catch (error) {
+      logger.error('Get file content error:', error);
+      ctx.error('获取文件内容失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 列出所有技能目录（纯文件系统操作）
+   * GET /api/skills/directories
+   *
+   * 注意：注册状态由前端通过 skills 列表判断，后端只返回目录基本信息
+   */
+  async listDirectories(ctx) {
+    try {
+      const PROJECT_ROOT = process.cwd();
+      const skillsDir = path.join(PROJECT_ROOT, 'data', 'skills');
+
+      // 确保 data/skills 目录存在
+      if (!fsOriginal.existsSync(skillsDir)) {
+        fsOriginal.mkdirSync(skillsDir, { recursive: true });
+      }
+
+      // 读取目录内容
+      const items = fsOriginal.readdirSync(skillsDir, { withFileTypes: true });
+      const directories = [];
+
+      // 遍历目录
+      for (const item of items) {
+        if (!item.isDirectory()) continue;
+
+        const dirName = item.name;
+        const dirPath = path.join(skillsDir, dirName);
+        const relativePath = `data/skills/${dirName}`;
+
+        // 尝试读取 SKILL.md 获取描述
+        let description = '';
+        const skillMdPath = path.join(dirPath, 'SKILL.md');
+        if (fsOriginal.existsSync(skillMdPath)) {
+          try {
+            const skillMd = fsOriginal.readFileSync(skillMdPath, 'utf-8');
+            const skillInfo = parseSkillMd(skillMd);
+            description = skillInfo.description || '';
+          } catch (e) {
+            logger.warn(`Failed to parse SKILL.md for ${dirName}:`, e.message);
+          }
+        }
+
+        directories.push({
+          name: dirName,
+          path: relativePath,
+          description,
+        });
+      }
+
+      // 按名称排序
+      directories.sort((a, b) => a.name.localeCompare(b.name));
+
+      ctx.success({ directories });
+    } catch (error) {
+      logger.error('List skill directories error:', error);
+      ctx.error('获取技能目录列表失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 创建新技能目录
+   * POST /api/skills/directories
+   */
+  async createDirectory(ctx) {
+    try {
+      const { name, description } = ctx.request.body;
+
+      if (!name) {
+        ctx.error('目录名称不能为空', 400);
+        return;
+      }
+
+      // 验证目录名格式（只允许字母、数字、下划线、连字符）
+      const namePattern = /^[a-zA-Z0-9_-]+$/;
+      if (!namePattern.test(name)) {
+        ctx.error('目录名称只能包含字母、数字、下划线和连字符', 400);
+        return;
+      }
+
+      const PROJECT_ROOT = process.cwd();
+      const skillsDir = path.join(PROJECT_ROOT, 'data', 'skills');
+      const newDirPath = path.join(skillsDir, name);
+
+      // 检查目录是否已存在
+      if (fsOriginal.existsSync(newDirPath)) {
+        ctx.error('目录已存在', 400);
+        return;
+      }
+
+      // 创建目录结构
+      fsOriginal.mkdirSync(newDirPath, { recursive: true });
+
+      // 创建默认的 SKILL.md 文件
+      const skillMdContent = `# ${name}
+
+${description || '新技能描述'}
+
+## 版本
+1.0.0
+
+## 工具列表
+<!-- 在此定义工具 -->
+`;
+
+      fsOriginal.writeFileSync(path.join(newDirPath, 'SKILL.md'), skillMdContent, 'utf-8');
+
+      ctx.success({
+        name,
+        path: `data/skills/${name}`,
+        message: '技能目录创建成功',
+      });
+    } catch (error) {
+      logger.error('Create skill directory error:', error);
+      ctx.error('创建技能目录失败: ' + error.message, 500);
     }
   }
 }

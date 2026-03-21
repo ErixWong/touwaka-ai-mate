@@ -190,7 +190,8 @@ const handleUsernameInput = (event: Event) => {
   // 只保留字母、数字、下划线
   let value = input.value.replace(/[^a-zA-Z0-9_]/g, '')
   // 确保第一个字符是字母（如果不是，则删除第一个字符）
-  if (value.length > 0 && !/^[a-zA-Z]/.test(value[0])) {
+  const firstChar = value[0]
+  if (firstChar && !/^[a-zA-Z]$/.test(firstChar)) {
     value = value.substring(1)
   }
   // 限制最大长度为16

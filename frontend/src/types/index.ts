@@ -431,18 +431,18 @@ export type SkillSourceType = 'url' | 'zip' | 'local'
 export type SkillToolType = 'http' | 'script' | 'builtin'
 
 /**
- * 技能工具（AI 解析生成）
+ * 技能工具（匹配数据库 skill_tools 表）
  */
 export interface SkillTool {
-  id: number
+  id: string
   skill_id: string
   name: string
   description?: string
-  type: SkillToolType
-  usage?: string
-  command?: string
-  endpoint?: string
-  method?: string
+  parameters?: string           // JSON 字符串，工具参数定义
+  script_path?: string          // 工具入口脚本路径（相对于技能目录）
+  is_resident?: boolean         // 是否驻留进程
+  created_at?: string
+  updated_at?: string
 }
 
 /**
@@ -532,6 +532,19 @@ export interface ExpertSkillConfig {
   skill_id: string
   is_enabled: boolean
   config?: string
+}
+
+/**
+ * 技能参数（匹配数据库 skill_parameters 表）
+ */
+export interface SkillParameter {
+  id: string
+  skill_id: string
+  param_name: string
+  param_value: string
+  is_secret: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 /**

@@ -42,7 +42,7 @@ export default class knowledge_basis extends Model {
     is_public: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "预留，暂不使用"
     },
     created_at: {

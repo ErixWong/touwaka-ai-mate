@@ -121,7 +121,7 @@ export const messageApi = {
     expert_id: string;
     model_id?: string;
     task_id?: string;
-    task_path?: string;  // 当前浏览的目录路径
+    working_path?: string;  // 当前工作目录路径（任务模式下的浏览路径或技能目录路径）
   }) =>
     apiRequest<{ message: string; topic_id: string }>(apiClient.post('/chat', data)),
 
@@ -308,14 +308,51 @@ export const debugApi = {
 export const skill_api = {
   // 列出所有已注册的技能
   list_all_skills: (params?: { include_inactive?: boolean }) =>
-    apiRequest<{ success: boolean; total: number; skills: Skill[] }>(
+    apiRequest<{ skills: Skill[] }>(
       apiClient.get('/skills', { params })
+    ),
+
+  // 列出所有技能目录（纯文件系统操作）
+  list_skill_directories: () =>
+    apiRequest<{ directories: Array<{
+      name: string;
+      path: string;
+      description: string;
+    }> }>(
+      apiClient.get('/skills/directories')
     ),
 
   // 获取技能详情
   get_skill_detail: (skill_id: string) =>
-    apiRequest<{ success: boolean; skill: SkillDetail }>(
+    apiRequest<{ skill: SkillDetail }>(
       apiClient.get(`/skills/${skill_id}`)
+    ),
+
+  // 更新技能
+  update_skill: (skill_id: string, data: {
+    name?: string;
+    description?: string;
+    is_active?: boolean;
+    source_path?: string;
+    source_url?: string;
+    author?: string;
+    version?: string;
+    tags?: string[];
+  }) =>
+    apiRequest<{ id: string }>(
+      apiClient.put(`/skills/${skill_id}`, data)
+    ),
+
+  // 获取技能参数
+  get_skill_parameters: (skill_id: string) =>
+    apiRequest<{ parameters: Array<{ id: string; skill_id: string; param_name: string; param_value: string; is_secret: boolean }> }>(
+      apiClient.get(`/skills/${skill_id}/parameters`)
+    ),
+
+  // 保存技能参数（全量替换）
+  save_skill_parameters: (skill_id: string, data: { parameters: Array<{ param_name: string; param_value: string; is_secret?: boolean }> }) =>
+    apiRequest<{ parameters: Array<{ id: string; param_name: string; param_value: string; is_secret: boolean }> }>(
+      apiClient.post(`/skills/${skill_id}/parameters`, data)
     ),
 
   // 注册技能（从本地路径）
@@ -346,6 +383,55 @@ export const skill_api = {
   delete_skill: (skill_id: string) =>
     apiRequest<{ success: boolean; message: string }>(
       apiClient.delete(`/skills/${skill_id}`)
+    ),
+
+  // 批量更新技能工具
+  update_skill_tools: (skill_id: string, tools: Array<{
+    id: string;
+    name?: string;
+    description?: string;
+    script_path?: string;
+    parameters?: string;
+    is_resident?: boolean;
+  }>) =>
+    apiRequest<{ updated: number }>(
+      apiClient.put(`/skills/${skill_id}/tools`, { tools })
+    ),
+
+  // 更新单个工具
+  update_skill_tool: (skill_id: string, tool_id: string, data: {
+    name?: string;
+    description?: string;
+    script_path?: string;
+    parameters?: string;
+    is_resident?: boolean;
+  }) =>
+    apiRequest<{ id: string }>(
+      apiClient.put(`/skills/${skill_id}/tools/${tool_id}`, data)
+    ),
+
+  // 获取技能目录文件列表
+  get_skill_files: (skill_id: string, subdir?: string) =>
+    apiRequest<{ files: Array<{
+      name: string;
+      type: 'directory' | 'file';
+      path: string;
+      size: number;
+      modified_at: string;
+    }> }>(
+      apiClient.get(`/skills/${skill_id}/files`, { params: { subdir } })
+    ),
+
+  // 获取技能文件内容
+  get_skill_file_content: (skill_id: string, filePath: string) =>
+    apiRequest<{ content: string; path: string; size: number; modified_at: string }>(
+      apiClient.get(`/skills/${skill_id}/files/content`, { params: { path: filePath } })
+    ),
+
+  // 创建新技能目录
+  create_skill_directory: (data: { name: string; description?: string }) =>
+    apiRequest<{ name: string; path: string; message: string }>(
+      apiClient.post('/skills/directories', data)
     ),
 }
 

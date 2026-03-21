@@ -23,17 +23,27 @@
                   class="model-selector"
                 />
                 <span v-else-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
-                <!-- Task 模式状态 -->
+                <!-- 工作空间模式状态 -->
                 <span
-                  class="task-mode-tag"
-                  :class="{ 'in-task': taskStore.currentTask, 'no-task': !taskStore.currentTask }"
-                  @click="taskStore.currentTask && handleExitTaskMode()"
-                  :title="taskStore.currentTask ? $t('chat.exitTaskMode') : $t('chat.selectDirectory')"
+                  class="workspace-mode-tag"
+                  :class="{
+                    'in-task': workspaceMode === 'task',
+                    'in-skill': workspaceMode === 'skill',
+                    'no-workspace': workspaceMode === 'none'
+                  }"
+                  :title="workspaceMode === 'task' ? $t('chat.exitTaskMode') : workspaceMode === 'skill' ? $t('chat.exitSkillMode') : $t('chat.selectDirectory')"
                 >
-                  <template v-if="taskStore.currentTask">
-                    📁 {{ taskStore.currentTask.title }}
-                    <span class="exit-icon">✕</span>
+                  <!-- 任务模式 -->
+                  <template v-if="workspaceMode === 'task'">
+                    📁 {{ taskStore.currentTask?.title }}
                   </template>
+                  
+                  <!-- 技能模式 -->
+                  <template v-else-if="workspaceMode === 'skill'">
+                    🛠️ {{ currentSkillDisplayName }}
+                  </template>
+                  
+                  <!-- 无工作空间 -->
                   <template v-else>
                     ⚠️ {{ $t('chat.noDirectory') }}
                   </template>
@@ -107,6 +117,7 @@ import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
 import { useUserStore } from '@/stores/user'
 import { useTaskStore } from '@/stores/task'
+import { useSkillDirectoryStore } from '@/stores/skillDirectory'
 import { usePanelStore } from '@/stores/panel'
 import { useConnection, type SSEEvent } from '@/composables/useConnection'
 import { messageApi } from '@/api/services'
@@ -130,6 +141,7 @@ const modelStore = useModelStore()
 const expertStore = useExpertStore()
 const userStore = useUserStore()
 const taskStore = useTaskStore()
+const skillDirectoryStore = useSkillDirectoryStore()
 const panelStore = usePanelStore()
 
 // 使用统一的连接管理 composable
@@ -234,6 +246,32 @@ const autonomousPlaceholder = computed(() => {
     return t('chat.autonomousModeHint') || 'AI 正在自主执行任务，输入已禁用...'
   }
   return is_skill_studio.value ? t('chat.commandHint') : undefined
+})
+
+// 工作空间模式：task | skill | none
+type WorkspaceMode = 'task' | 'skill' | 'none'
+
+const workspaceMode = computed<WorkspaceMode>(() => {
+  // 任务优先：如果当前在任务模式
+  if (taskStore.currentTask) return 'task'
+  
+  // 技能模式：已设置当前工作技能 或 正在浏览技能目录
+  if (skillDirectoryStore.currentWorkingSkill || skillDirectoryStore.browsingSkill) return 'skill'
+  
+  return 'none'
+})
+
+// 当前技能显示名称（用于顶部标签）
+const currentSkillDisplayName = computed(() => {
+  // 优先使用工作技能
+  if (skillDirectoryStore.currentWorkingSkill) {
+    return skillDirectoryStore.currentWorkingSkill.name
+  }
+  // 其次使用正在浏览的技能
+  if (skillDirectoryStore.browsingSkill) {
+    return skillDirectoryStore.browsingSkill.name
+  }
+  return null
 })
 
 // 面板比例相关 - 使用 panelStore 的分屏模式
@@ -696,20 +734,31 @@ const handleSendMessage = async (content: string) => {
       expert_id: string;
       model_id?: string;
       task_id?: string;
-      task_path?: string;
+      working_path?: string;
     } = {
       content: userMessage.content,  // 使用 chatStore 中处理后的内容（可能包含多模态 JSON）
       expert_id,
       model_id,
     }
     
-    // 如果在任务模式下，添加 task_id 和 task_path
+    // 如果在任务模式下，添加 task_id 和 working_path
     if (taskStore.currentTask) {
       messageParams.task_id = taskStore.currentTask.id  // 使用数据库主键
       // 添加当前浏览路径
       if (taskStore.currentPath) {
-        messageParams.task_path = taskStore.currentPath
+        messageParams.working_path = taskStore.currentPath
       }
+    }
+    
+    // 如果在技能模式下，添加技能目录路径作为 working_path
+    if (skillDirectoryStore.currentWorkingSkill) {
+      // 技能目录路径（如 data/skills/file-operations）
+      // 后端工作目录是相对于 data/ 的，所以需要去掉 data/ 前缀
+      let skillPath = skillDirectoryStore.currentWorkingSkill.path
+      if (skillPath.startsWith('data/')) {
+        skillPath = skillPath.substring(5)  // 去掉 'data/' 前缀
+      }
+      messageParams.working_path = skillPath
     }
     
     // 使用 messageApi 发送消息（自动处理认证）
@@ -1060,8 +1109,8 @@ onMounted(async () => {
   background: #ff9800;
 }
 
-/* Task 模式标签（融合到头部） */
-.task-mode-tag {
+/* 工作空间模式标签（融合到头部） */
+.workspace-mode-tag {
   font-size: 12px;
   padding: 2px 8px;
   background: var(--secondary-bg, #f0f0f0);
@@ -1074,28 +1123,22 @@ onMounted(async () => {
   gap: 4px;
 }
 
-.task-mode-tag.in-task {
+/* 任务模式样式 */
+.workspace-mode-tag.in-task {
   background: var(--primary-color, #2196f3);
   color: white;
-  cursor: pointer;
+  cursor: default;
 }
 
-.task-mode-tag.in-task:hover {
-  background: var(--primary-hover, #1976d2);
-}
-
-.task-mode-tag .exit-icon {
-  font-size: 10px;
-  opacity: 0.7;
-  margin-left: 2px;
-}
-
-.task-mode-tag.in-task:hover .exit-icon {
-  opacity: 1;
+/* 技能模式样式 */
+.workspace-mode-tag.in-skill {
+  background: #9c27b0;  /* 紫色，区分于任务的蓝色 */
+  color: white;
+  cursor: default;
 }
 
 /* 未选择目录的警告样式 */
-.task-mode-tag.no-task {
+.workspace-mode-tag.no-workspace {
   background: var(--warning-bg, #fff3e0);
   color: var(--warning-color, #e65100);
   border: 1px solid var(--warning-border, #ffb74d);
