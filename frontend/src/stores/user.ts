@@ -26,6 +26,16 @@ export const useUserStore = defineStore('user', () => {
     return user.value.roles.includes('admin')
   })
 
+  const isCreator = computed(() => {
+    if (!user.value?.roles) return false
+    return user.value.roles.includes('creator')
+  })
+
+  // 是否可以管理技能（admin 或 creator）
+  const canManageSkills = computed(() => {
+    return isAdmin.value || isCreator.value
+  })
+
   const theme = computed(() => preferences.value?.theme || 'auto')
 
   const language = computed<Locale>({
@@ -206,6 +216,8 @@ export const useUserStore = defineStore('user', () => {
     // Getters
     isLoggedIn,
     isAdmin,
+    isCreator,
+    canManageSkills,
     theme,
     language,
 

@@ -39,15 +39,13 @@
       <TasksTab v-if="activeTab === 'tasks'" />
       <AssistantTab v-if="activeTab === 'assistants'" />
       <SkillsTab v-if="activeTab === 'skills'" />
-      <SkillsDirectoryTab v-if="activeTab === 'skills-directory'" />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, watch } from 'vue'
 import { usePanelStore, type TabId, type SplitMode } from '@/stores/panel'
 import { useUserStore } from '@/stores/user'
 import ExpertTab from './ExpertTab.vue'
@@ -55,13 +53,11 @@ import TopicsTab from './TopicsTab.vue'
 import TasksTab from './TasksTab.vue'
 import AssistantTab from './AssistantTab.vue'
 import SkillsTab from './SkillsTab.vue'
-import SkillsDirectoryTab from './SkillsDirectoryTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-const route = useRoute()
 const panelStore = usePanelStore()
 const userStore = useUserStore()
 
@@ -73,7 +69,6 @@ const splitModes = [
   { value: 'default' as SplitMode, label: '默认', title: '默认比例 (左侧 75% : 右侧 25%)' },
   { value: '5:5' as SplitMode, label: '1:1', title: '1:1 分屏 (左右各 50%)' },
   { value: '3:2' as SplitMode, label: '3:2', title: '3:2 分屏 (左侧 60% : 右侧 40%)' },
-  { value: '3:1' as SplitMode, label: '3:1', title: '3:1 分屏 (左侧 75% : 右侧 25%)' },
 ]
 
 // 设置分屏模式
@@ -87,63 +82,41 @@ const onSplitChange = (event: Event) => {
   setSplitMode(target.value as SplitMode)
 }
 
-// 判断是否是 skill-studio 专家模式
-const is_skill_studio = computed(() => {
-  return route.params.expertId === 'skill-studio'
-})
-
-// 根据当前专家自动切换默认 Tab
-onMounted(() => {
-  if (is_skill_studio.value && activeTab.value !== 'skills') {
-    panelStore.setActiveTab('skills')
-  }
-})
-
-watch(() => userStore.isAdmin, (isAdmin) => {
-  if (!isAdmin && activeTab.value === 'debug') {
-    panelStore.setActiveTab(is_skill_studio.value ? 'skills' : 'topics')
-  }
-}, { immediate: true })
-
 interface Tab {
   id: TabId
   label: string
   icon: string
   adminOnly?: boolean
-  skillStudioOnly?: boolean
+  skillManagerOnly?: boolean  // admin 或 creator 才能看到
 }
 
+// Tab 显示逻辑：
+// - expert、topics、tasks、assistants：所有人都有
+// - skills：只有 admin/creator 才能看到
+// - debug：只有 admin 才能看到
 const visibleTabs = computed<Tab[]>(() => {
-  // skill-studio 模式：显示 expert、skills、skills-directory Tab
-  if (is_skill_studio.value) {
-    const tabs: Tab[] = [
-      { id: 'expert', label: t('panel.expert'), icon: '👤' },
-      { id: 'skills', label: t('panel.skills') || '技能', icon: '🛠️' },
-      { id: 'skills-directory', label: t('panel.skillsDirectory') || '技能目录', icon: '📁' },
-      { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
-    ]
-    return tabs.filter(tab => {
-      if (tab.adminOnly && !userStore.isAdmin) return false
-      return true
-    })
-  }
-
-  // 普通模式：显示 expert、topics、tasks、assistants Tab
-  // 管理员额外显示 skills-directory Tab
   const tabs: Tab[] = [
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
     { id: 'assistants', label: t('panel.assistants') || '助理', icon: '🤖' },
-    { id: 'skills-directory', label: t('panel.skillsDirectory') || '技能目录', icon: '📁', adminOnly: true },
+    { id: 'skills', label: t('panel.skills') || '技能', icon: '🛠️', skillManagerOnly: true },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]
 
   return tabs.filter(tab => {
     if (tab.adminOnly && !userStore.isAdmin) return false
+    if (tab.skillManagerOnly && !userStore.canManageSkills) return false
     return true
   })
 })
+
+// 监听用户权限变化，自动切换 Tab
+watch(() => userStore.isAdmin, (isAdmin) => {
+  if (!isAdmin && activeTab.value === 'debug') {
+    panelStore.setActiveTab('topics')
+  }
+}, { immediate: true })
 
 const setActiveTab = (tabId: TabId) => {
   panelStore.setActiveTab(tabId)
