@@ -151,11 +151,11 @@
               <div v-for="tool in selectedSkill.tools" :key="tool.id" class="tool-item">
                 <div class="tool-header">
                   <span class="tool-name">{{ tool.name }}</span>
-                  <span class="tool-type">{{ tool.type }}</span>
+                  <span v-if="tool.is_resident" class="tool-type resident">{{ $t('skills.isResident') || '驻留' }}</span>
                 </div>
                 <p class="tool-description">{{ tool.description || '-' }}</p>
-                <p v-if="tool.usage" class="tool-usage">
-                  <code>{{ tool.usage }}</code>
+                <p v-if="tool.script_path" class="tool-usage">
+                  <code>{{ tool.script_path }}</code>
                 </p>
               </div>
             </div>

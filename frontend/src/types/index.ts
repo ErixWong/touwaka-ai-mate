@@ -535,6 +535,19 @@ export interface ExpertSkillConfig {
 }
 
 /**
+ * 技能参数（匹配数据库 skill_parameters 表）
+ */
+export interface SkillParameter {
+  id: string
+  skill_id: string
+  param_name: string
+  param_value: string
+  is_secret: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+/**
  * 安装技能的请求数据
  */
 export interface InstallSkillFromUrlRequest {
