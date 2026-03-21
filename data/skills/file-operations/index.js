@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // 用户角色检查（管理员有特殊权限）
 const IS_ADMIN = process.env.IS_ADMIN === 'true';
@@ -601,16 +602,47 @@ async function fsAction(params) {
 }
 
 /**
+ * Calculate file hash using specified algorithm
+ * 计算文件的 hash 值
+ *
+ * @param {string} filePath - File path
+ * @param {string} algorithm - Hash algorithm: "md5", "sha256", "sha1"
+ * @returns {Promise<object>} Hash result
+ */
+function calculateFileHash(filePath, algorithm) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash(algorithm);
+    const stream = fs.createReadStream(filePath);
+    
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+    });
+    
+    stream.on('end', () => {
+      resolve({
+        algorithm: algorithm,
+        hash: hash.digest('hex'),
+      });
+    });
+    
+    stream.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+/**
  * Get file/directory information (metadata)
  * 获取文件或目录的详细信息，便于 LLM 决策
  *
  * @param {object} params - Parameters
  * @param {string} params.path - File or directory path
  * @param {boolean} params.include_content_preview - Include content preview for text files (default: false)
+ * @param {string|boolean} params.hash - Calculate file hash: false (default), "md5", "sha256", "sha1"
  * @returns {Promise<object>} File information
  */
 async function getFileInfo(params) {
-  const { path: targetPath, include_content_preview = false } = params;
+  const { path: targetPath, include_content_preview = false, hash = false } = params;
   const resolvedPath = resolvePath(targetPath);
   
   // 基础信息：是否存在
@@ -712,6 +744,22 @@ async function getFileInfo(params) {
     // 大文件警告
     if (stats.size > MAX_FILE_SIZE) {
       result.warning = `File is larger than ${formatBytes(MAX_FILE_SIZE)}, may not be readable`;
+    }
+    
+    // Hash 计算（仅文件且请求时）
+    if (hash && typeof hash === 'string') {
+      const validAlgorithms = ['md5', 'sha256', 'sha1'];
+      const algorithm = hash.toLowerCase();
+      
+      if (!validAlgorithms.includes(algorithm)) {
+        result.hashError = `Invalid hash algorithm: ${hash}. Valid options: ${validAlgorithms.join(', ')}`;
+      } else {
+        try {
+          result.hash = await calculateFileHash(resolvedPath, algorithm);
+        } catch (e) {
+          result.hashError = e.message;
+        }
+      }
     }
   }
   

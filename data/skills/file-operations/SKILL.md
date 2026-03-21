@@ -25,6 +25,7 @@ Get detailed metadata about a file or directory. **Recommended to call before ot
 **Parameters:**
 - `path` (string, required): File or directory path
 - `include_content_preview` (boolean, optional): Include content preview for text files (default: false)
+- `hash` (string, optional): Calculate file hash - `"md5"`, `"sha256"`, or `"sha1"` (default: false, no hash)
 
 **Returns:**
 - `exists` (boolean): Whether the path exists
@@ -36,6 +37,7 @@ Get detailed metadata about a file or directory. **Recommended to call before ot
 - `pathInfo` (object): Path components (fullPath, directory, baseName, extension, fileNameWithoutExt)
 - `mimeType` (string, files only): Inferred MIME type
 - `isTextFile` (boolean, files only): Whether the file is likely text
+- `hash` (object, files only, if requested): `{ algorithm: "md5", hash: "abc123..." }`
 - `directoryInfo` (object, directories only): Item counts and listing preview
 - `contentPreview` (object, files only): First 10 lines preview (if requested)
 - `warning` (string, optional): Large file warning
@@ -45,6 +47,18 @@ Get detailed metadata about a file or directory. **Recommended to call before ot
 - Determine file type (text vs binary)
 - Get file size to decide how to read it
 - Preview content structure
+- Verify file integrity with hash
+
+**Hash Examples:**
+```javascript
+// Get MD5 hash of a file
+{ "tool": "fs_info", "params": { "path": "data/file.txt", "hash": "md5" } }
+
+// Get SHA256 hash for integrity verification
+{ "tool": "fs_info", "params": { "path": "data/backup.zip", "hash": "sha256" } }
+```
+
+**Note:** Hash calculation is opt-in because it can be slow for large files. Only request hash when needed.
 
 ### Reading Files
 
