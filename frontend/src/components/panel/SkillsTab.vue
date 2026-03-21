@@ -146,12 +146,12 @@
         </div>
         
         <div v-else class="directory-tree">
-          <div 
-            v-for="dir in skillDirectoryStore.skillDirectories" 
+          <div
+            v-for="dir in skillDirectoryStore.skillDirectories"
             :key="dir.name"
             class="directory-item"
             :class="{ selected: skillDirectoryStore.selectedSkill?.name === dir.name }"
-            @click="selectDirectory(dir)"
+            @click="selectDirectory({ name: dir.name, path: dir.path, skill_id: dir.skill_id })"
           >
             <span class="dir-icon">📁</span>
             <span class="dir-name">{{ dir.name }}</span>
@@ -281,8 +281,14 @@ const loadDirectories = async () => {
 }
 
 // 选择目录
-const selectDirectory = async (dir: { name: string; path: string }) => {
-  await skillDirectoryStore.loadSkillDetail(dir.name)
+const selectDirectory = async (dir: { name: string; path: string; skill_id?: string }) => {
+  // 设置选中的技能目录
+  skillDirectoryStore.selectSkill({
+    name: dir.name,
+    path: dir.path,
+    is_registered: true,
+    skill_id: dir.skill_id
+  })
 }
 
 // 设为工作目录
@@ -294,10 +300,7 @@ const handleSetWorkingDirectory = () => {
   
   const selected = skillDirectoryStore.selectedSkill
   if (selected) {
-    skillDirectoryStore.enterSkillMode({
-      name: selected.name,
-      path: selected.path
-    })
+    skillDirectoryStore.enterSkillMode(selected)
     toast.success(`已将 ${selected.name} 设为工作目录`)
   }
 }
@@ -783,4 +786,3 @@ const handleSetWorkingDirectory = () => {
   margin: 8px 0 0 0;
 }
 </style>
-</template>
