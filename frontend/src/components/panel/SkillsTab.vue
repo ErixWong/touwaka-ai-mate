@@ -165,7 +165,7 @@
             <p v-if="skillDirectoryStore.selectedSkill.description" class="section-desc">
               {{ skillDirectoryStore.selectedSkill.description }}
             </p>
-            <p v-else class="section-desc empty">暂无描述</p>
+            <p v-else class="section-desc empty">{{ $t('skillsDirectory.noDescription') || '暂无描述' }}</p>
           </div>
           
           <div class="detail-actions">
@@ -189,6 +189,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { skill_api } from '@/api/services'
 import { eventBus, EVENTS } from '@/utils/eventBus'
 import { useSkillDirectoryStore } from '@/stores/skillDirectory'
@@ -196,6 +197,7 @@ import { useTaskStore } from '@/stores/task'
 import { useToastStore } from '@/stores/toast'
 import type { Skill, SkillDetail } from '@/types'
 
+const { t } = useI18n()
 const skillDirectoryStore = useSkillDirectoryStore()
 const taskStore = useTaskStore()
 const toast = useToastStore()
@@ -294,14 +296,14 @@ const selectDirectory = async (dir: { name: string; path: string; skill_id?: str
 // 设为工作目录
 const handleSetWorkingDirectory = () => {
   if (taskStore.currentTask) {
-    toast.warning('请先退出当前任务')
+    toast.warning(t('skillsDirectory.exitTaskFirst'))
     return
   }
   
   const selected = skillDirectoryStore.selectedSkill
   if (selected) {
     skillDirectoryStore.enterSkillMode(selected)
-    toast.success(`已将 ${selected.name} 设为工作目录`)
+    toast.success(t('skillsDirectory.workingDirectorySet', { name: selected.name }))
   }
 }
 </script>
