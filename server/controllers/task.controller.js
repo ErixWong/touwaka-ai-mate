@@ -446,6 +446,16 @@ class TaskController {
       }
 
       const workspacePath = path.join(WORKSPACE_ROOT, task.workspace_path);
+      
+      // 检查工作空间是否存在，不存在则自动创建
+      try {
+        await fs.access(workspacePath);
+      } catch {
+        // 工作空间不存在，重新创建
+        logger.info(`[listFiles] 工作空间不存在，重新创建: ${workspacePath}`);
+        await this.createWorkspaceDirectories(task.created_by, task.task_id);
+      }
+      
       const targetPath = path.join(workspacePath, subdir);
 
       // 安全检查：确保目标路径在工作空间内
