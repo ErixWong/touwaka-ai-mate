@@ -62,6 +62,9 @@ function isPathAllowed(targetPath) {
     // 路径不存在时，继续使用 path.resolve 的结果
   }
   
+  // Windows 路径不区分大小写，统一转换为小写进行比较
+  const resolvedLower = resolved.toLowerCase();
+  
   // 调试输出
   console.error(`[file-operations] isPathAllowed: checking "${resolved}"`);
   
@@ -75,10 +78,13 @@ function isPathAllowed(targetPath) {
       // 基础路径不存在时，继续使用 path.resolve 的结果
     }
     
+    // Windows 路径不区分大小写，统一转换为小写进行比较
+    const resolvedBaseLower = resolvedBase.toLowerCase();
+    
     // 正确的路径边界检查：
     // 1. 路径必须以 basePath + path.sep 开头（子目录/文件）
     // 2. 或者路径完全等于 basePath（目录本身）
-    const isAllowed = resolved.startsWith(resolvedBase + path.sep) || resolved === resolvedBase;
+    const isAllowed = resolvedLower.startsWith(resolvedBaseLower + path.sep) || resolvedLower === resolvedBaseLower;
     console.error(`[file-operations]   vs "${resolvedBase}": ${isAllowed}`);
     return isAllowed;
   });
