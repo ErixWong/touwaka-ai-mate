@@ -135,10 +135,36 @@
             <button class="close-btn" @click="close_editor">×</button>
           </div>
           
+          <!-- 弹窗内部 TabPage -->
+          <div class="modal-tabs">
+            <button 
+              class="modal-tab-btn" 
+              :class="{ active: editor_tab === 'basic' }"
+              @click="editor_tab = 'basic'"
+            >
+              {{ $t('skills.basicInfo') || '基本信息' }}
+            </button>
+            <button 
+              class="modal-tab-btn" 
+              :class="{ active: editor_tab === 'tools' }"
+              @click="editor_tab = 'tools'"
+            >
+              {{ $t('skills.toolsList') || '工具列表' }}
+              <span v-if="skill_form.tools?.length" class="tab-badge">{{ skill_form.tools.length }}</span>
+            </button>
+            <button 
+              class="modal-tab-btn" 
+              :class="{ active: editor_tab === 'params' }"
+              @click="editor_tab = 'params'"
+            >
+              {{ $t('skills.parameters') || '参数配置' }}
+              <span v-if="skill_form.parameters?.length" class="tab-badge">{{ skill_form.parameters.length }}</span>
+            </button>
+          </div>
+          
           <div class="modal-body">
-            <!-- 技能基本信息 -->
-            <div class="editor-section">
-              <h4 class="section-title">{{ $t('skills.basicInfo') || '基本信息' }}</h4>
+            <!-- 基本信息 Tab -->
+            <div v-show="editor_tab === 'basic'" class="editor-section">
               <div class="form-group">
                 <label>{{ $t('skills.name') || '名称' }}</label>
                 <input v-model="skill_form.name" type="text" class="form-input" />
@@ -158,20 +184,19 @@
                 </div>
               </div>
               <div class="form-group">
-                <label>
+                <label class="checkbox-label">
                   <input type="checkbox" v-model="skill_form.is_active" />
                   {{ $t('skills.enabled') || '启用' }}
                 </label>
               </div>
             </div>
             
-            <!-- 工具列表 -->
-            <div class="editor-section" v-if="skill_form.tools?.length">
-              <h4 class="section-title">{{ $t('skills.toolsList') || '工具列表' }} ({{ skill_form.tools.length }})</h4>
-              <div class="tools-list">
+            <!-- 工具列表 Tab -->
+            <div v-show="editor_tab === 'tools'" class="editor-section">
+              <div v-if="skill_form.tools?.length" class="tools-list">
                 <div v-for="tool in skill_form.tools" :key="tool.id" class="tool-item">
                   <div class="tool-header">
-                    <span class="tool-name">{{ tool.name }}</span>
+                    <span class="tool-name">🔧 {{ tool.name }}</span>
                   </div>
                   <div class="form-group">
                     <label>{{ $t('skills.description') || '描述' }}</label>
@@ -179,12 +204,16 @@
                   </div>
                 </div>
               </div>
+              <div v-else class="empty-state">
+                <span class="empty-icon">🔧</span>
+                <p>{{ $t('skills.noTools') || '暂无工具' }}</p>
+              </div>
             </div>
             
-            <!-- 参数列表 -->
-            <div class="editor-section">
+            <!-- 参数配置 Tab -->
+            <div v-show="editor_tab === 'params'" class="editor-section">
               <div class="section-header">
-                <h4 class="section-title">{{ $t('skills.parameters') || '参数配置' }}</h4>
+                <span></span>
                 <button class="add-btn" @click="add_parameter">+ {{ $t('skills.addParameter') || '添加参数' }}</button>
               </div>
               <div v-if="skill_form.parameters?.length" class="parameters-list">
@@ -200,8 +229,10 @@
                   </div>
                 </div>
               </div>
-              <div v-else class="empty-params">
-                {{ $t('skills.noParameters') || '暂无参数配置' }}
+              <div v-else class="empty-state">
+                <span class="empty-icon">⚙️</span>
+                <p>{{ $t('skills.noParameters') || '暂无参数配置' }}</p>
+                <button class="add-btn-large" @click="add_parameter">+ {{ $t('skills.addParameter') || '添加参数' }}</button>
               </div>
             </div>
           </div>
@@ -252,6 +283,7 @@ const loading = ref(false)
 const show_editor = ref(false)
 const editing_skill = ref<SkillDetail | null>(null)
 const saving = ref(false)
+const editor_tab = ref<'basic' | 'tools' | 'params'>('basic')
 
 // 表单数据
 const skill_form = reactive({
@@ -374,6 +406,7 @@ const open_skill_editor = async (skill: Skill) => {
 const close_editor = () => {
   show_editor.value = false
   editing_skill.value = null
+  editor_tab.value = 'basic'  // 重置为基本信息 Tab
 }
 
 // 添加参数
@@ -779,6 +812,59 @@ const save_skill = async () => {
   color: var(--text-primary, #333);
 }
 
+/* 弹窗内部 TabPage */
+.modal-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+  padding: 0 20px;
+  background: var(--bg-secondary, #f9f9f9);
+}
+
+.modal-tab-btn {
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-tab-btn:hover {
+  color: var(--text-primary, #333);
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.modal-tab-btn.active {
+  color: var(--primary-color, #2196f3);
+  border-bottom-color: var(--primary-color, #2196f3);
+  font-weight: 500;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--bg-tertiary, #e0e0e0);
+  color: var(--text-secondary, #666);
+  border-radius: 9px;
+}
+
+.modal-tab-btn.active .tab-badge {
+  background: var(--primary-light, #e3f2fd);
+  color: var(--primary-color, #2196f3);
+}
+
 .close-btn {
   width: 32px;
   height: 32px;
@@ -832,6 +918,35 @@ const save_skill = async () => {
 
 .add-btn:hover {
   background: var(--primary-dark, #1976d2);
+}
+
+.add-btn-large {
+  margin-top: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  background: var(--primary-color, #2196f3);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-btn-large:hover {
+  background: var(--primary-dark, #1976d2);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .form-group {
