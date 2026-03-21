@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { skill_api } from '@/api/services'
-import type { Skill, SkillDetail, SkillTool } from '@/types'
+import type { SkillDetail, SkillTool } from '@/types'
 
 /**
  * 技能目录项（用于目录树展示）
@@ -81,23 +81,22 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
 
   /**
    * 加载技能目录列表
-   * 从已注册的技能列表中构建目录项
+   * 从 data/skills/ 目录获取所有技能目录（包括未注册的）
    */
   const loadSkillDirectories = async () => {
     isLoading.value = true
     error.value = null
     try {
-      const response = await skill_api.list_all_skills({ include_inactive: true })
-      const skills = response.skills || []
+      const response = await skill_api.list_skill_directories()
+      const directories = response.directories || []
 
       // 构建技能目录项
-      skillDirectories.value = skills.map((skill: Skill) => ({
-        name: skill.name,
-        path: skill.source_path || `data/skills/${skill.name}`,
-        description: skill.description,
-        tools: skill.tools,
-        is_registered: true,
-        skill_id: skill.id
+      skillDirectories.value = directories.map((dir) => ({
+        name: dir.name,
+        path: dir.path,
+        description: dir.description || '',
+        is_registered: dir.is_registered,
+        skill_id: dir.skill_id || undefined
       }))
 
       return skillDirectories.value

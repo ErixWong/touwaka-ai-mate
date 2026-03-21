@@ -56,6 +56,10 @@ export default function createSkillRoutes(controller) {
 
   // ==================== 技能目录文件管理 API（需要管理员权限）====================
 
+  // GET /api/skills/directories - 列出所有技能目录（包括未注册的）
+  // 注意：这个路由必须在 /:id 路由之前定义
+  router.get('/directories', authenticate(), requireAdmin(), controller.listDirectories.bind(controller));
+
   // GET /api/skills/:id/files - 获取技能目录文件列表
   router.get('/:id/files', authenticate(), requireAdmin(), controller.listFiles.bind(controller));
 

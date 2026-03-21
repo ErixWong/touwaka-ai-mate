@@ -962,6 +962,82 @@ class SkillController {
   }
 
   /**
+   * 列出所有技能目录（包括未注册的）
+   * GET /api/skills/directories
+   */
+  async listDirectories(ctx) {
+    try {
+      const PROJECT_ROOT = process.cwd();
+      const skillsDir = path.join(PROJECT_ROOT, 'data', 'skills');
+
+      // 确保 data/skills 目录存在
+      if (!fsOriginal.existsSync(skillsDir)) {
+        fsOriginal.mkdirSync(skillsDir, { recursive: true });
+      }
+
+      // 读取目录内容
+      const items = fsOriginal.readdirSync(skillsDir, { withFileTypes: true });
+      const directories = [];
+
+      // 获取所有已注册的技能
+      const registeredSkills = await this.Skill.findAll({
+        attributes: ['id', 'name', 'source_path', 'description'],
+        raw: true,
+      });
+
+      // 创建名称到技能的映射
+      const skillMap = {};
+      registeredSkills.forEach(skill => {
+        skillMap[skill.name] = skill;
+        if (skill.source_path) {
+          skillMap[skill.source_path] = skill;
+        }
+      });
+
+      // 遍历目录
+      for (const item of items) {
+        if (!item.isDirectory()) continue;
+
+        const dirName = item.name;
+        const dirPath = path.join(skillsDir, dirName);
+        const relativePath = `data/skills/${dirName}`;
+
+        // 检查是否已注册
+        const registeredSkill = skillMap[dirName] || skillMap[dirPath] || skillMap[relativePath];
+
+        // 尝试读取 SKILL.md 获取描述
+        let description = '';
+        const skillMdPath = path.join(dirPath, 'SKILL.md');
+        if (fsOriginal.existsSync(skillMdPath)) {
+          try {
+            const skillMd = fsOriginal.readFileSync(skillMdPath, 'utf-8');
+            const skillInfo = parseSkillMd(skillMd);
+            description = skillInfo.description || '';
+          } catch (e) {
+            logger.warn(`Failed to parse SKILL.md for ${dirName}:`, e.message);
+          }
+        }
+
+        directories.push({
+          name: dirName,
+          path: relativePath,
+          description: registeredSkill?.description || description || '',
+          is_registered: !!registeredSkill,
+          skill_id: registeredSkill?.id || null,
+        });
+      }
+
+      // 按名称排序
+      directories.sort((a, b) => a.name.localeCompare(b.name));
+
+      ctx.success({ directories });
+    } catch (error) {
+      logger.error('List skill directories error:', error);
+      ctx.error('获取技能目录列表失败: ' + error.message, 500);
+    }
+  }
+
+  /**
    * 创建新技能目录
    * POST /api/skills/directories
    */

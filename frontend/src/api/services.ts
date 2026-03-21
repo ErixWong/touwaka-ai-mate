@@ -312,6 +312,18 @@ export const skill_api = {
       apiClient.get('/skills', { params })
     ),
 
+  // 列出所有技能目录（包括未注册的）
+  list_skill_directories: () =>
+    apiRequest<{ directories: Array<{
+      name: string;
+      path: string;
+      description: string;
+      is_registered: boolean;
+      skill_id: string | null;
+    }> }>(
+      apiClient.get('/skills/directories')
+    ),
+
   // 获取技能详情
   get_skill_detail: (skill_id: string) =>
     apiRequest<{ skill: SkillDetail }>(
