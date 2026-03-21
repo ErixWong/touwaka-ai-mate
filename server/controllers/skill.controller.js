@@ -839,6 +839,8 @@ class SkillController {
       const { id } = ctx.params;
       const { subdir } = ctx.query;
 
+      logger.info('[listFiles] Request params:', { id, subdir });
+
       // 尝试通过 ID 或名称查找技能
       let skill = await this.Skill.findOne({ where: { id }, raw: true });
       
@@ -847,15 +849,29 @@ class SkillController {
         skill = await this.Skill.findOne({ where: { name: id }, raw: true });
       }
 
+      logger.info('[listFiles] Skill lookup result:', {
+        found: !!skill,
+        skillId: skill?.id,
+        sourcePath: skill?.source_path
+      });
+
+      const PROJECT_ROOT = process.cwd();
       let skillPath;
       if (skill) {
         // 已注册技能，使用 source_path
-        skillPath = skill.source_path;
+        // 处理 source_path 可能缺少 data/ 前缀的情况
+        let sourcePath = skill.source_path;
+        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          // 如果 source_path 不是绝对路径且不以 data/ 开头，添加 data/ 前缀
+          sourcePath = path.join('data', sourcePath);
+        }
+        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
       } else {
         // 未注册目录，直接使用 data/skills/:name
-        const PROJECT_ROOT = process.cwd();
         skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
       }
+
+      logger.info('[listFiles] Computed skillPath:', { skillPath, exists: fsOriginal.existsSync(skillPath) });
 
       if (!skillPath || !fsOriginal.existsSync(skillPath)) {
         ctx.error('技能目录不存在', 404);
@@ -929,13 +945,19 @@ class SkillController {
         skill = await this.Skill.findOne({ where: { name: id }, raw: true });
       }
 
+      const PROJECT_ROOT = process.cwd();
       let skillPath;
       if (skill) {
         // 已注册技能，使用 source_path
-        skillPath = skill.source_path;
+        // 处理 source_path 可能缺少 data/ 前缀的情况
+        let sourcePath = skill.source_path;
+        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          // 如果 source_path 不是绝对路径且不以 data/ 开头，添加 data/ 前缀
+          sourcePath = path.join('data', sourcePath);
+        }
+        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
       } else {
         // 未注册目录，直接使用 data/skills/:name
-        const PROJECT_ROOT = process.cwd();
         skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
       }
 
@@ -988,6 +1010,8 @@ class SkillController {
   /**
    * 列出所有技能目录（纯文件系统操作）
    * GET /api/skills/directories
+   *
+   * 注意：注册状态由前端通过 skills 列表判断，后端只返回目录基本信息
    */
   async listDirectories(ctx) {
     try {

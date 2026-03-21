@@ -40,7 +40,7 @@
                   
                   <!-- 技能模式 -->
                   <template v-else-if="workspaceMode === 'skill'">
-                    🛠️ {{ skillDirectoryStore.currentWorkingSkill?.name }}
+                    🛠️ {{ currentSkillDisplayName }}
                   </template>
                   
                   <!-- 无工作空间 -->
@@ -255,10 +255,23 @@ const workspaceMode = computed<WorkspaceMode>(() => {
   // 任务优先：如果当前在任务模式
   if (taskStore.currentTask) return 'task'
   
-  // 技能模式：已设置当前工作技能
-  if (skillDirectoryStore.currentWorkingSkill) return 'skill'
+  // 技能模式：已设置当前工作技能 或 正在浏览技能目录
+  if (skillDirectoryStore.currentWorkingSkill || skillDirectoryStore.browsingSkill) return 'skill'
   
   return 'none'
+})
+
+// 当前技能显示名称（用于顶部标签）
+const currentSkillDisplayName = computed(() => {
+  // 优先使用工作技能
+  if (skillDirectoryStore.currentWorkingSkill) {
+    return skillDirectoryStore.currentWorkingSkill.name
+  }
+  // 其次使用正在浏览的技能
+  if (skillDirectoryStore.browsingSkill) {
+    return skillDirectoryStore.browsingSkill.name
+  }
+  return null
 })
 
 // 面板比例相关 - 使用 panelStore 的分屏模式

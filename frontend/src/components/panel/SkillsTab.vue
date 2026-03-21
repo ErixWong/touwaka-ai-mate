@@ -182,16 +182,19 @@
           </div>
         </div>
         
-        <!-- 选中目录的详情 -->
-        <div v-if="skillDirectoryStore.selectedSkill" class="directory-detail">
-          <div class="detail-section">
-            <h4 class="section-title">{{ skillDirectoryStore.selectedSkill.name }}</h4>
-            <p v-if="skillDirectoryStore.selectedSkill.description" class="section-desc">
-              {{ skillDirectoryStore.selectedSkill.description }}
-            </p>
-            <p v-else class="section-desc empty">{{ $t('skillsDirectory.noDescription') || '暂无描述' }}</p>
+        <!-- 底部注册信息 Banner -->
+        <div v-if="skillDirectoryStore.selectedSkill" class="registration-banner">
+          <div class="banner-content">
+            <span class="banner-label">{{ skillDirectoryStore.selectedSkill.name }}</span>
+            <span
+              class="banner-status"
+              :class="skillDirectoryStore.selectedSkill.is_registered ? 'registered' : 'unregistered'"
+            >
+              {{ skillDirectoryStore.selectedSkill.is_registered ? ($t('skills.registered') || '已注册') : ($t('skills.unregistered') || '未注册') }}
+            </span>
           </div>
         </div>
+        
       </template>
     </div>
     
@@ -546,25 +549,50 @@ const loadDirectories = async () => {
   await skillDirectoryStore.loadSkillDirectories()
 }
 
+// 根据 source_path 判断目录是否已注册
+const getDirectoryRegistrationStatus = (dirName: string): { is_registered: boolean; skill_id?: string } => {
+  // 在 skills 列表中查找 source_path 匹配的技能
+  const skill = skills.value.find(s => {
+    if (!s.source_path) return false
+    // source_path 可能是完整路径如 "data/skills/file-operations" 或 "file-operations"
+    const sourcePath = s.source_path
+    // 匹配：路径以目录名结尾，或者路径就是目录名
+    return sourcePath === dirName ||
+           sourcePath.endsWith(`/${dirName}`) ||
+           sourcePath.endsWith(`\\${dirName}`)
+  })
+  
+  return {
+    is_registered: !!skill,
+    skill_id: skill?.id
+  }
+}
+
 // 选择目录
-const selectDirectory = (dir: { name: string; path: string; skill_id?: string; description?: string }) => {
+const selectDirectory = (dir: { name: string; path: string; skill_id?: string; description?: string; is_registered?: boolean }) => {
+  // 使用前端 skills 列表判断注册状态
+  const registrationStatus = getDirectoryRegistrationStatus(dir.name)
+  
   skillDirectoryStore.selectSkill({
     name: dir.name,
     path: dir.path,
     description: dir.description,
-    is_registered: true,
-    skill_id: dir.skill_id
+    is_registered: registrationStatus.is_registered,
+    skill_id: registrationStatus.skill_id
   })
 }
 
 // 进入目录浏览
 const enterDirectory = async (dir: { name: string; path: string; skill_id?: string }) => {
+  // 使用前端 skills 列表判断注册状态
+  const registrationStatus = getDirectoryRegistrationStatus(dir.name)
+  
   // 使用目录名作为标识（后端支持通过目录名直接浏览）
   skillDirectoryStore.enterBrowseMode({
     name: dir.name,
     path: dir.path,
-    is_registered: !!dir.skill_id,
-    skill_id: dir.skill_id || dir.name  // 如果没有 skill_id，使用目录名
+    is_registered: registrationStatus.is_registered,
+    skill_id: registrationStatus.skill_id || dir.name  // 如果没有 skill_id，使用目录名
   })
   
   await skillDirectoryStore.loadSkillFiles()
@@ -1154,7 +1182,6 @@ const save_skill = async () => {
 }
 
 .dir-name {
-  display: block;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary, #333);
@@ -1168,6 +1195,42 @@ const save_skill = async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 底部注册信息 Banner */
+.registration-banner {
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  padding: 12px 16px;
+  background: var(--bg-secondary, #f9f9f9);
+  flex-shrink: 0;
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.banner-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+
+.banner-status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.banner-status.registered {
+  background: var(--success-light, #e8f5e9);
+  color: var(--success-color, #4caf50);
+}
+
+.banner-status.unregistered {
+  background: var(--bg-tertiary, #f0f0f0);
+  color: var(--text-secondary, #999);
 }
 
 .enter-btn {
