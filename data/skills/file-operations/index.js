@@ -259,56 +259,50 @@ async function listFiles(params) {
 }
 
 /**
- * Search text in a single file
- */
-async function searchInFile(params) {
-  const { path: filePath, pattern, ignore_case = true } = params;
-  const resolvedPath = resolvePath(filePath);
-  
-  if (!fs.existsSync(resolvedPath)) {
-    throw new Error(`File not found: ${resolvedPath}`);
-  }
-  
-  const stats = fs.statSync(resolvedPath);
-  if (stats.size > MAX_FILE_SIZE) {
-    throw new Error(`File too large: ${stats.size} bytes`);
-  }
-  
-  const content = fs.readFileSync(resolvedPath, 'utf-8');
-  const lines = content.split('\n');
-  const matches = [];
-  
-  const regex = new RegExp(pattern, ignore_case ? 'gi' : 'g');
-  
-  lines.forEach((line, index) => {
-    const lineMatches = [...line.matchAll(new RegExp(pattern, ignore_case ? 'gi' : 'g'))];
-    if (lineMatches.length > 0) {
-      matches.push({
-        line: index + 1,
-        content: line,
-        matches: lineMatches.map(m => m[0]),
-      });
-    }
-  });
-  
-  return {
-    path: resolvedPath,
-    pattern: pattern,
-    ignoreCase: ignore_case,
-    matchCount: matches.length,
-    matches: matches,
-  };
-}
-
-/**
- * Search text across multiple files (grep)
+ * Search text across files (grep)
+ * 支持单文件和多文件搜索，支持正则和简单字符串匹配
+ *
+ * @param {object} params - Parameters
+ * @param {string} params.pattern - Search pattern
+ * @param {string} params.path - File or directory path (default: current)
+ * @param {string} params.file_pattern - File pattern filter (default: "*")
+ * @param {boolean} params.use_regex - Use regex mode (default: false, use literal string match)
+ * @param {boolean} params.ignore_case - Case insensitive search (default: true)
+ * @returns {Promise<object>} Search results
  */
 async function grep(params) {
-  const { pattern, path: dirPath = '.', file_pattern = '*' } = params;
+  const {
+    pattern,
+    path: dirPath = '.',
+    file_pattern = '*',
+    use_regex = false,
+    ignore_case = true
+  } = params;
   const resolvedPath = resolvePath(dirPath);
   
   const results = [];
-  const regex = new RegExp(pattern, 'gi');
+  
+  // 创建匹配函数
+  let matchFunction;
+  if (use_regex) {
+    // 正则模式
+    const regex = new RegExp(pattern, ignore_case ? 'gi' : 'g');
+    matchFunction = (line) => {
+      const matches = [...line.matchAll(new RegExp(pattern, ignore_case ? 'gi' : 'g'))];
+      return matches.length > 0 ? matches.map(m => m[0]) : null;
+    };
+  } else {
+    // 简单字符串匹配模式（默认）
+    const searchStr = ignore_case ? pattern.toLowerCase() : pattern;
+    matchFunction = (line) => {
+      const lineToCheck = ignore_case ? line.toLowerCase() : line;
+      if (lineToCheck.includes(searchStr)) {
+        return [pattern]; // 返回匹配的模式
+      }
+      return null;
+    };
+  }
+  
   const fileRegex = new RegExp('^' + file_pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
   
   function searchFile(filePath) {
@@ -320,14 +314,15 @@ async function grep(params) {
       const lines = content.split('\n');
       
       lines.forEach((line, index) => {
-        if (regex.test(line)) {
+        const matches = matchFunction(line);
+        if (matches) {
           results.push({
             file: filePath,
             line: index + 1,
             content: line.trim().substring(0, 200),
+            matches: matches,
           });
         }
-        regex.lastIndex = 0; // Reset regex
       });
     } catch (e) {
       // Skip files that can't be read
@@ -357,6 +352,8 @@ async function grep(params) {
   return {
     path: resolvedPath,
     pattern: pattern,
+    useRegex: use_regex,
+    ignoreCase: ignore_case,
     filePattern: file_pattern,
     matchCount: results.length,
     matches: results.slice(0, 100), // Limit results
@@ -430,10 +427,19 @@ function escapeRegex(string) {
 }
 
 /**
- * Insert content at a specific line
+ * Edit lines in a file - unified function for insert and delete operations
+ * 统一的行编辑工具，支持插入和删除操作
+ *
+ * @param {object} params - Parameters
+ * @param {string} params.path - File path
+ * @param {string} params.operation - Operation: "insert" (default) or "delete"
+ * @param {number} params.line - Line number (1-based)
+ * @param {number} params.end_line - End line number for delete (optional, defaults to line)
+ * @param {string} params.content - Content to insert (required for insert operation)
+ * @returns {Promise<object>} Operation result
  */
-async function insertAtLine(params) {
-  const { path: filePath, line, content } = params;
+async function editLines(params) {
+  const { path: filePath, operation = 'insert', line, end_line, content } = params;
   const resolvedPath = resolvePath(filePath);
   
   if (!fs.existsSync(resolvedPath)) {
@@ -443,133 +449,389 @@ async function insertAtLine(params) {
   const fileContent = fs.readFileSync(resolvedPath, 'utf-8');
   const lines = fileContent.split('\n');
   
-  const insertIndex = Math.max(0, Math.min(line - 1, lines.length));
-  lines.splice(insertIndex, 0, content);
+  // 验证行号
+  const startLineIndex = Math.max(0, Math.min(line - 1, lines.length));
+  const endLineIndex = end_line !== undefined
+    ? Math.max(0, Math.min(end_line - 1, lines.length - 1))
+    : startLineIndex;
   
-  fs.writeFileSync(resolvedPath, lines.join('\n'), 'utf-8');
+  // 确保起始行不大于结束行
+  const actualStart = Math.min(startLineIndex, endLineIndex);
+  const actualEnd = Math.max(startLineIndex, endLineIndex);
   
-  return {
+  let result = {
     success: true,
     path: resolvedPath,
-    insertedAtLine: insertIndex + 1,
-  };
-}
-
-/**
- * Delete specific lines from a file
- */
-async function deleteLines(params) {
-  const { path: filePath, from, to } = params;
-  const resolvedPath = resolvePath(filePath);
-  
-  if (!fs.existsSync(resolvedPath)) {
-    throw new Error(`File not found: ${resolvedPath}`);
-  }
-  
-  const content = fs.readFileSync(resolvedPath, 'utf-8');
-  const lines = content.split('\n');
-  
-  const startLine = Math.max(0, from - 1);
-  const endLine = to !== undefined ? Math.min(lines.length, to) : startLine + 1;
-  
-  const deletedCount = endLine - startLine;
-  lines.splice(startLine, deletedCount);
-  
-  fs.writeFileSync(resolvedPath, lines.join('\n'), 'utf-8');
-  
-  return {
-    success: true,
-    path: resolvedPath,
-    deletedLines: deletedCount,
-  };
-}
-
-/**
- * Transfer a file - unified function for copy and move operations
- * 
- * @param {object} params - Parameters
- * @param {string} params.source - Source file path
- * @param {string} params.destination - Destination file path
- * @param {string} params.operation - Operation: "copy" (default) or "move"
- */
-async function transferFile(params) {
-  const { source, destination, operation = 'copy' } = params;
-  const resolvedSource = resolvePath(source);
-  const resolvedDest = resolvePath(destination);
-  
-  if (!fs.existsSync(resolvedSource)) {
-    throw new Error(`Source not found: ${resolvedSource}`);
-  }
-  
-  // Ensure destination directory exists
-  const dir = path.dirname(resolvedDest);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  
-  if (operation === 'move') {
-    fs.renameSync(resolvedSource, resolvedDest);
-  } else {
-    fs.copyFileSync(resolvedSource, resolvedDest);
-  }
-  
-  return {
-    success: true,
     operation: operation,
-    source: resolvedSource,
-    destination: resolvedDest,
   };
+  
+  switch (operation) {
+    case 'insert':
+      // 在指定行之前插入内容
+      if (content === undefined) {
+        throw new Error('Content is required for insert operation');
+      }
+      lines.splice(actualStart, 0, content);
+      result.insertedAtLine = actualStart + 1;
+      result.totalLines = lines.length;
+      break;
+      
+    case 'delete':
+      // 删除指定行范围
+      const deleteCount = actualEnd - actualStart + 1;
+      const deletedLines = lines.splice(actualStart, deleteCount);
+      result.deletedLines = deleteCount;
+      result.deletedContent = deletedLines.join('\n');
+      result.totalLines = lines.length;
+      break;
+      
+    default:
+      throw new Error(`Unknown operation: ${operation}. Use "insert" or "delete". For content replacement, use replace_in_file tool.`);
+  }
+  
+  fs.writeFileSync(resolvedPath, lines.join('\n'), 'utf-8');
+  
+  return result;
 }
 
 /**
- * Delete a file or directory
+ * FS action - unified file system operations
+ * 统一的文件系统操作工具，支持复制、移动、删除和创建目录
+ *
+ * @param {object} params - Parameters
+ * @param {string} params.operation - Operation: "copy" (default), "move", "delete", or "create_dir"
+ * @param {string} params.source - Source path (for copy/move)
+ * @param {string} params.destination - Destination path (for copy/move)
+ * @param {string} params.path - Path to delete or directory to create (for delete/create_dir)
+ * @returns {Promise<object>} Operation result
  */
-async function deleteFile(params) {
-  const { path: filePath } = params;
-  const resolvedPath = resolvePath(filePath);
+async function fsAction(params) {
+  const { operation = 'copy', source, destination, path: targetPath } = params;
   
-  if (!fs.existsSync(resolvedPath)) {
-    throw new Error(`Path not found: ${resolvedPath}`);
+  switch (operation) {
+    case 'copy':
+    case 'move': {
+      if (!source || !destination) {
+        throw new Error(`Source and destination are required for ${operation} operation`);
+      }
+      const resolvedSource = resolvePath(source);
+      const resolvedDest = resolvePath(destination);
+      
+      if (!fs.existsSync(resolvedSource)) {
+        throw new Error(`Source not found: ${resolvedSource}`);
+      }
+      
+      // Ensure destination directory exists
+      const dir = path.dirname(resolvedDest);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      if (operation === 'move') {
+        fs.renameSync(resolvedSource, resolvedDest);
+      } else {
+        fs.copyFileSync(resolvedSource, resolvedDest);
+      }
+      
+      return {
+        success: true,
+        operation: operation,
+        source: resolvedSource,
+        destination: resolvedDest,
+      };
+    }
+    
+    case 'delete': {
+      const deletePath = targetPath || source;
+      if (!deletePath) {
+        throw new Error('Path is required for delete operation');
+      }
+      const resolvedPath = resolvePath(deletePath);
+      
+      if (!fs.existsSync(resolvedPath)) {
+        throw new Error(`Path not found: ${resolvedPath}`);
+      }
+      
+      const stats = fs.statSync(resolvedPath);
+      
+      if (stats.isDirectory()) {
+        fs.rmSync(resolvedPath, { recursive: true });
+      } else {
+        fs.unlinkSync(resolvedPath);
+      }
+      
+      return {
+        success: true,
+        operation: 'delete',
+        path: resolvedPath,
+        type: stats.isDirectory() ? 'directory' : 'file',
+      };
+    }
+    
+    case 'create_dir': {
+      const dirPath = targetPath || source;
+      if (!dirPath) {
+        throw new Error('Path is required for create_dir operation');
+      }
+      const resolvedPath = resolvePath(dirPath);
+      
+      if (fs.existsSync(resolvedPath)) {
+        return {
+          success: true,
+          operation: 'create_dir',
+          path: resolvedPath,
+          created: false,
+          message: 'Directory already exists',
+        };
+      }
+      
+      fs.mkdirSync(resolvedPath, { recursive: true });
+      
+      return {
+        success: true,
+        operation: 'create_dir',
+        path: resolvedPath,
+        created: true,
+      };
+    }
+    
+    default:
+      throw new Error(`Unknown operation: ${operation}. Use "copy", "move", "delete", or "create_dir".`);
   }
-  
-  const stats = fs.statSync(resolvedPath);
-  
-  if (stats.isDirectory()) {
-    fs.rmSync(resolvedPath, { recursive: true });
-  } else {
-    fs.unlinkSync(resolvedPath);
-  }
-  
-  return {
-    success: true,
-    path: resolvedPath,
-    type: stats.isDirectory() ? 'directory' : 'file',
-  };
 }
 
 /**
- * Create a directory
+ * Get file/directory information (metadata)
+ * 获取文件或目录的详细信息，便于 LLM 决策
+ *
+ * @param {object} params - Parameters
+ * @param {string} params.path - File or directory path
+ * @param {boolean} params.include_content_preview - Include content preview for text files (default: false)
+ * @returns {Promise<object>} File information
  */
-async function createDir(params) {
-  const { path: dirPath } = params;
-  const resolvedPath = resolvePath(dirPath);
+async function getFileInfo(params) {
+  const { path: targetPath, include_content_preview = false } = params;
+  const resolvedPath = resolvePath(targetPath);
   
-  if (fs.existsSync(resolvedPath)) {
+  // 基础信息：是否存在
+  const exists = fs.existsSync(resolvedPath);
+  
+  if (!exists) {
     return {
-      success: true,
+      exists: false,
       path: resolvedPath,
-      created: false,
-      message: 'Directory already exists',
+      message: 'File or directory does not exist',
     };
   }
   
-  fs.mkdirSync(resolvedPath, { recursive: true });
+  // 获取文件统计信息
+  const stats = fs.statSync(resolvedPath);
+  const isDirectory = stats.isDirectory();
+  const isFile = stats.isFile();
   
-  return {
-    success: true,
-    path: resolvedPath,
-    created: true,
+  // 解析路径组件
+  const pathInfo = {
+    fullPath: resolvedPath,
+    directory: path.dirname(resolvedPath),
+    baseName: path.basename(resolvedPath),
+    extension: '',
+    fileNameWithoutExt: '',
   };
+  
+  if (isFile) {
+    const ext = path.extname(resolvedPath);
+    pathInfo.extension = ext ? ext.slice(1).toLowerCase() : ''; // 去掉点号，小写
+    pathInfo.fileNameWithoutExt = path.basename(resolvedPath, ext);
+  }
+  
+  // 基础结果
+  const result = {
+    exists: true,
+    path: resolvedPath,
+    type: isDirectory ? 'directory' : (isFile ? 'file' : 'unknown'),
+    size: stats.size,
+    sizeHuman: formatBytes(stats.size),
+    created: stats.birthtime,
+    modified: stats.mtime,
+    accessed: stats.atime,
+    isReadOnly: !(stats.mode & 0o200), // 检查写权限
+    pathInfo: pathInfo,
+  };
+  
+  // 目录特有信息
+  if (isDirectory) {
+    try {
+      const entries = fs.readdirSync(resolvedPath, { withFileTypes: true });
+      const fileCount = entries.filter(e => e.isFile()).length;
+      const dirCount = entries.filter(e => e.isDirectory()).length;
+      
+      result.directoryInfo = {
+        totalItems: entries.length,
+        fileCount: fileCount,
+        directoryCount: dirCount,
+        items: entries.slice(0, 20).map(e => ({
+          name: e.name,
+          type: e.isDirectory() ? 'directory' : 'file',
+        })),
+        truncated: entries.length > 20,
+      };
+    } catch (e) {
+      result.directoryInfo = {
+        error: e.message,
+      };
+    }
+  }
+  
+  // 文件特有信息
+  if (isFile) {
+    // MIME 类型推断
+    result.mimeType = getMimeType(pathInfo.extension);
+    
+    // 文本文件检测
+    const isText = isTextFile(pathInfo.extension, stats.size);
+    result.isTextFile = isText;
+    
+    // 内容预览（仅文本文件且请求时）
+    if (include_content_preview && isText && stats.size <= 10000) {
+      try {
+        const content = fs.readFileSync(resolvedPath, 'utf-8');
+        const lines = content.split('\n');
+        result.contentPreview = {
+          totalLines: lines.length,
+          totalChars: content.length,
+          firstLines: lines.slice(0, 10),
+          truncated: lines.length > 10,
+        };
+      } catch (e) {
+        result.contentPreview = {
+          error: e.message,
+        };
+      }
+    }
+    
+    // 大文件警告
+    if (stats.size > MAX_FILE_SIZE) {
+      result.warning = `File is larger than ${formatBytes(MAX_FILE_SIZE)}, may not be readable`;
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Format bytes to human readable string
+ */
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/**
+ * Get MIME type from file extension
+ */
+function getMimeType(ext) {
+  const mimeTypes = {
+    // 文本
+    'txt': 'text/plain',
+    'md': 'text/markdown',
+    'json': 'application/json',
+    'xml': 'application/xml',
+    'html': 'text/html',
+    'css': 'text/css',
+    'csv': 'text/csv',
+    // 代码
+    'js': 'application/javascript',
+    'ts': 'application/typescript',
+    'py': 'text/x-python',
+    'java': 'text/x-java-source',
+    'c': 'text/x-c',
+    'cpp': 'text/x-c++src',
+    'h': 'text/x-c',
+    'hpp': 'text/x-c++hdr',
+    'cs': 'text/x-csharp',
+    'go': 'text/x-go',
+    'rs': 'text/x-rust',
+    'rb': 'text/x-ruby',
+    'php': 'text/x-php',
+    'sh': 'text/x-sh',
+    'bat': 'text/x-bat',
+    'ps1': 'text/x-powershell',
+    // 配置
+    'yaml': 'application/x-yaml',
+    'yml': 'application/x-yaml',
+    'toml': 'application/x-toml',
+    'ini': 'text/x-ini',
+    'env': 'text/x-env',
+    // 文档
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    // 图片
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+    'webp': 'image/webp',
+    'ico': 'image/x-icon',
+    'bmp': 'image/bmp',
+    // 音视频
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'avi': 'video/x-msvideo',
+    // 压缩
+    'zip': 'application/zip',
+    'tar': 'application/x-tar',
+    'gz': 'application/gzip',
+    'rar': 'application/x-rar-compressed',
+    '7z': 'application/x-7z-compressed',
+    // 数据
+    'sql': 'application/x-sql',
+    'db': 'application/x-sqlite3',
+    'sqlite': 'application/x-sqlite3',
+  };
+  
+  return mimeTypes[ext] || 'application/octet-stream';
+}
+
+/**
+ * Check if file is likely a text file
+ */
+function isTextFile(ext, size) {
+  // 已知文本文件扩展名
+  const textExtensions = [
+    'txt', 'md', 'json', 'xml', 'html', 'htm', 'css', 'csv',
+    'js', 'ts', 'jsx', 'tsx', 'vue', 'svelte',
+    'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'rb', 'php',
+    'sh', 'bash', 'zsh', 'bat', 'cmd', 'ps1', 'psm1',
+    'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'gitignore',
+    'sql', 'prisma', 'graphql', 'gql',
+    'log', 'lock', 'sum', 'mod',
+    'markdown', 'rst', 'adoc', 'tex',
+    'svg', 'mmd', 'mermaid',
+    'dockerfile', 'makefile', 'rakefile', 'gemfile',
+    'license', 'readme', 'changelog', 'authors', 'contributors',
+  ];
+  
+  if (textExtensions.includes(ext)) {
+    return true;
+  }
+  
+  // 无扩展名的小文件可能是文本
+  if (!ext && size < 10000) {
+    return true;
+  }
+  
+  return false;
 }
 
 /**
@@ -583,48 +845,28 @@ async function createDir(params) {
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
     case 'read_file':
-    case 'readFile':
       return await readFile(params);
       
     case 'list_files':
-    case 'listFiles':
       return await listFiles(params);
       
-    case 'search_in_file':
-    case 'searchInFile':
-      return await searchInFile(params);
-      
-    case 'grep':
+    case 'fs_grep':
       return await grep(params);
       
     case 'write_file':
-    case 'writeFile':
       return await writeFileUnified(params);
       
     case 'replace_in_file':
-    case 'replaceInFile':
       return await replaceInFile(params);
       
-    case 'insert_at_line':
-    case 'insertAtLine':
-      return await insertAtLine(params);
+    case 'edit_lines':
+      return await editLines(params);
       
-    case 'delete_lines':
-    case 'deleteLines':
-      return await deleteLines(params);
+    case 'fs_action':
+      return await fsAction(params);
       
-    case 'transfer':
-    case 'transfer_file':
-    case 'transferFile':
-      return await transferFile(params);
-      
-    case 'delete_file':
-    case 'deleteFile':
-      return await deleteFile(params);
-      
-    case 'create_dir':
-    case 'createDir':
-      return await createDir(params);
+    case 'fs_info':
+      return await getFileInfo(params);
       
     default:
       throw new Error(`Unknown tool: ${toolName}`);
