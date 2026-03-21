@@ -27,7 +27,7 @@ export default class expert_skill extends Model {
     is_enabled: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 1,
+      defaultValue: true,
       comment: "是否启用"
     },
     config: {

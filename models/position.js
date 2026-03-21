@@ -26,7 +26,7 @@ export default class position extends Model {
     is_manager: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "是否为负责人职位"
     },
     sort_order: {

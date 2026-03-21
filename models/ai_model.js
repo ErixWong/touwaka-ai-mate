@@ -51,7 +51,7 @@ export default class ai_model extends Model {
     supports_reasoning: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "是否支持思考\/推理模式（DeepSeek、OpenAI o1\/o3、Qwen 等）"
     },
     thinking_format: {

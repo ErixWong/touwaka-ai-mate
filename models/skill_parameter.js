@@ -31,7 +31,7 @@ export default class skill_parameter extends Model {
     is_secret: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "是否敏感参数（前端显示\/隐藏）"
     },
     description: {

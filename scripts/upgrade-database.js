@@ -1449,6 +1449,152 @@ const MIGRATIONS = [
       );
     }
   },
+
+  // ==================== 统一 tinyint 字段为 bit 类型 (Issue #285) ====================
+
+  // 60. ai_models.supports_reasoning: tinyint(1) -> bit(1)
+  {
+    name: 'ai_models.supports_reasoning tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'ai_models', 'supports_reasoning');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ai_models 
+        MODIFY COLUMN supports_reasoning BIT(1) DEFAULT b'0'
+        COMMENT '是否支持思考/推理模式（DeepSeek、OpenAI o1/o3、Qwen 等）'
+      `);
+    }
+  },
+
+  // 61. expert_skills.is_enabled: tinyint(1) -> bit(1)
+  {
+    name: 'expert_skills.is_enabled tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'expert_skills', 'is_enabled');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE expert_skills 
+        MODIFY COLUMN is_enabled BIT(1) DEFAULT b'1'
+        COMMENT '是否启用'
+      `);
+    }
+  },
+
+  // 62. kb_paragraphs.is_knowledge_point: tinyint(1) -> bit(1)
+  {
+    name: 'kb_paragraphs.is_knowledge_point tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'kb_paragraphs', 'is_knowledge_point');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE kb_paragraphs 
+        MODIFY COLUMN is_knowledge_point BIT(1) DEFAULT b'0'
+        COMMENT '是否是知识点'
+      `);
+    }
+  },
+
+  // 63. knowledge_bases.is_public: tinyint(1) -> bit(1)
+  {
+    name: 'knowledge_bases.is_public tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'knowledge_bases', 'is_public');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE knowledge_bases 
+        MODIFY COLUMN is_public BIT(1) DEFAULT b'0'
+        COMMENT '预留，暂不使用'
+      `);
+    }
+  },
+
+  // 64. positions.is_manager: tinyint(1) -> bit(1)
+  {
+    name: 'positions.is_manager tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'positions', 'is_manager');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE positions 
+        MODIFY COLUMN is_manager BIT(1) DEFAULT b'0'
+        COMMENT '是否为负责人职位'
+      `);
+    }
+  },
+
+  // 65. skills.disable_model_invocation: tinyint(1) -> bit(1)
+  {
+    name: 'skills.disable_model_invocation tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'skills', 'disable_model_invocation');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skills 
+        MODIFY COLUMN disable_model_invocation BIT(1) DEFAULT b'0'
+        COMMENT '禁用模型调用'
+      `);
+    }
+  },
+
+  // 66. skills.user_invocable: tinyint(1) -> bit(1)
+  {
+    name: 'skills.user_invocable tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'skills', 'user_invocable');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skills 
+        MODIFY COLUMN user_invocable BIT(1) DEFAULT b'1'
+        COMMENT '用户可调用'
+      `);
+    }
+  },
+
+  // 67. skill_parameters.is_secret: tinyint(1) -> bit(1)
+  {
+    name: 'skill_parameters.is_secret tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'skill_parameters', 'is_secret');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skill_parameters 
+        MODIFY COLUMN is_secret BIT(1) DEFAULT b'0'
+        COMMENT '是否敏感参数（前端显示/隐藏）'
+      `);
+    }
+  },
+
+  // 68. solutions.is_active: tinyint(1) -> bit(1)
+  {
+    name: 'solutions.is_active tinyint to bit',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'solutions', 'is_active');
+      return columnType === 'bit(1)';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE solutions 
+        MODIFY COLUMN is_active BIT(1) DEFAULT b'1'
+        COMMENT '是否启用'
+      `);
+    }
+  },
 ];
 
 /**

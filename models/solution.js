@@ -38,7 +38,7 @@ export default class solution extends Model {
     is_active: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 1,
+      defaultValue: true,
       comment: "是否启用"
     },
     created_at: {

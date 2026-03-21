@@ -36,7 +36,7 @@ export default class kb_paragraph extends Model {
     is_knowledge_point: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "是否是知识点"
     },
     embedding: {
