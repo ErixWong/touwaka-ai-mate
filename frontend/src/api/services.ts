@@ -390,6 +390,30 @@ export const skill_api = {
     apiRequest<{ id: string }>(
       apiClient.put(`/skills/${skill_id}/tools/${tool_id}`, data)
     ),
+
+  // 获取技能目录文件列表
+  get_skill_files: (skill_id: string, subdir?: string) =>
+    apiRequest<{ files: Array<{
+      name: string;
+      type: 'directory' | 'file';
+      path: string;
+      size: number;
+      modified_at: string;
+    }> }>(
+      apiClient.get(`/skills/${skill_id}/files`, { params: { subdir } })
+    ),
+
+  // 获取技能文件内容
+  get_skill_file_content: (skill_id: string, filePath: string) =>
+    apiRequest<{ content: string; path: string; size: number; modified_at: string }>(
+      apiClient.get(`/skills/${skill_id}/files/content`, { params: { path: filePath } })
+    ),
+
+  // 创建新技能目录
+  create_skill_directory: (data: { name: string; description?: string }) =>
+    apiRequest<{ name: string; path: string; message: string }>(
+      apiClient.post('/skills/directories', data)
+    ),
 }
 
 // 角色管理相关 API（管理员专用）

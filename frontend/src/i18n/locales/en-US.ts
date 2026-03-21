@@ -687,6 +687,18 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     inTaskMode: 'Please exit current task first',
     exitTaskFirst: 'Please exit current task first',
     workingDirectorySet: '{name} has been set as working directory',
+    // Create directory
+    createDirectory: 'Create Skill Directory',
+    directoryName: 'Directory Name',
+    directoryNamePlaceholder: 'Enter directory name (letters, numbers, underscores, hyphens only)',
+    descriptionPlaceholder: 'Enter description (optional)',
+    invalidDirectoryName: 'Directory name can only contain letters, numbers, underscores, and hyphens',
+    directoryCreated: 'Directory created successfully',
+    createDirectoryFailed: 'Failed to create directory',
+    // File browsing
+    browseFiles: 'Browse Files',
+    skillNotRegistered: 'This skill is not registered, cannot browse files',
+    loadFileFailed: 'Failed to load file',
   },
 
   // Expert Info Tab

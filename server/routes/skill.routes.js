@@ -54,5 +54,16 @@ export default function createSkillRoutes(controller) {
   // PATCH /api/skills/:id/toggle - 启用/禁用技能
   router.patch('/:id/toggle', authenticate(), requireAdmin(), controller.toggle.bind(controller));
 
+  // ==================== 技能目录文件管理 API（需要管理员权限）====================
+
+  // GET /api/skills/:id/files - 获取技能目录文件列表
+  router.get('/:id/files', authenticate(), requireAdmin(), controller.listFiles.bind(controller));
+
+  // GET /api/skills/:id/files/content - 获取文件内容
+  router.get('/:id/files/content', authenticate(), requireAdmin(), controller.getFileContent.bind(controller));
+
+  // POST /api/skills/directories - 创建新技能目录
+  router.post('/directories', authenticate(), requireAdmin(), controller.createDirectory.bind(controller));
+
   return router;
 }

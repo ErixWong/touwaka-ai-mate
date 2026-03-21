@@ -825,6 +825,199 @@ class SkillController {
       ctx.error('切换技能状态失败: ' + error.message, 500);
     }
   }
+
+  // ==================== 技能目录文件管理 API ====================
+
+  /**
+   * 获取技能目录文件列表
+   * GET /api/skills/:id/files
+   */
+  async listFiles(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { subdir } = ctx.query;
+
+      // 获取技能
+      const skill = await this.Skill.findOne({ where: { id }, raw: true });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      const skillPath = skill.source_path;
+      if (!skillPath || !fsOriginal.existsSync(skillPath)) {
+        ctx.error('技能目录不存在', 404);
+        return;
+      }
+
+      // 构建目标目录路径
+      let targetPath = skillPath;
+      if (subdir) {
+        // 安全检查：防止路径遍历攻击
+        const normalizedSubdir = path.normalize(subdir).replace(/^(\.\.(\/|\\|$))+/, '');
+        targetPath = path.join(skillPath, normalizedSubdir);
+        
+        // 确保目标路径仍在技能目录内
+        if (!targetPath.startsWith(skillPath)) {
+          ctx.error('非法路径', 403);
+          return;
+        }
+      }
+
+      // 读取目录内容
+      const items = fsOriginal.readdirSync(targetPath, { withFileTypes: true });
+      const files = items.map(item => {
+        const itemPath = path.join(targetPath, item.name);
+        const stats = fsOriginal.statSync(itemPath);
+        
+        return {
+          name: item.name,
+          type: item.isDirectory() ? 'directory' : 'file',
+          path: subdir ? `${subdir}/${item.name}` : item.name,
+          size: item.isFile() ? stats.size : 0,
+          modified_at: stats.mtime.toISOString(),
+        };
+      });
+
+      // 排序：目录在前，然后按名称排序
+      files.sort((a, b) => {
+        if (a.type === 'directory' && b.type !== 'directory') return -1;
+        if (a.type !== 'directory' && b.type === 'directory') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      ctx.success({ files });
+    } catch (error) {
+      logger.error('List skill files error:', error);
+      ctx.error('获取文件列表失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 获取文件内容
+   * GET /api/skills/:id/files/content
+   */
+  async getFileContent(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { path: filePath } = ctx.query;
+
+      if (!filePath) {
+        ctx.error('文件路径不能为空', 400);
+        return;
+      }
+
+      // 获取技能
+      const skill = await this.Skill.findOne({ where: { id }, raw: true });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      const skillPath = skill.source_path;
+      if (!skillPath) {
+        ctx.error('技能目录不存在', 404);
+        return;
+      }
+
+      // 安全检查：防止路径遍历攻击
+      const normalizedPath = path.normalize(filePath).replace(/^(\.\.(\/|\\|$))+/, '');
+      const fullPath = path.join(skillPath, normalizedPath);
+      
+      // 确保文件路径仍在技能目录内
+      if (!fullPath.startsWith(skillPath)) {
+        ctx.error('非法路径', 403);
+        return;
+      }
+
+      if (!fsOriginal.existsSync(fullPath)) {
+        ctx.error('文件不存在', 404);
+        return;
+      }
+
+      const stats = fsOriginal.statSync(fullPath);
+      if (stats.isDirectory()) {
+        ctx.error('不能读取目录内容', 400);
+        return;
+      }
+
+      // 检查文件大小（限制 1MB）
+      if (stats.size > 1024 * 1024) {
+        ctx.error('文件过大，请下载查看', 400);
+        return;
+      }
+
+      const content = fsOriginal.readFileSync(fullPath, 'utf-8');
+      
+      ctx.success({
+        content,
+        path: filePath,
+        size: stats.size,
+        modified_at: stats.mtime.toISOString(),
+      });
+    } catch (error) {
+      logger.error('Get file content error:', error);
+      ctx.error('获取文件内容失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 创建新技能目录
+   * POST /api/skills/directories
+   */
+  async createDirectory(ctx) {
+    try {
+      const { name, description } = ctx.request.body;
+
+      if (!name) {
+        ctx.error('目录名称不能为空', 400);
+        return;
+      }
+
+      // 验证目录名格式（只允许字母、数字、下划线、连字符）
+      const namePattern = /^[a-zA-Z0-9_-]+$/;
+      if (!namePattern.test(name)) {
+        ctx.error('目录名称只能包含字母、数字、下划线和连字符', 400);
+        return;
+      }
+
+      const PROJECT_ROOT = process.cwd();
+      const skillsDir = path.join(PROJECT_ROOT, 'data', 'skills');
+      const newDirPath = path.join(skillsDir, name);
+
+      // 检查目录是否已存在
+      if (fsOriginal.existsSync(newDirPath)) {
+        ctx.error('目录已存在', 400);
+        return;
+      }
+
+      // 创建目录结构
+      fsOriginal.mkdirSync(newDirPath, { recursive: true });
+
+      // 创建默认的 SKILL.md 文件
+      const skillMdContent = `# ${name}
+
+${description || '新技能描述'}
+
+## 版本
+1.0.0
+
+## 工具列表
+<!-- 在此定义工具 -->
+`;
+
+      fsOriginal.writeFileSync(path.join(newDirPath, 'SKILL.md'), skillMdContent, 'utf-8');
+
+      ctx.success({
+        name,
+        path: `data/skills/${name}`,
+        message: '技能目录创建成功',
+      });
+    } catch (error) {
+      logger.error('Create skill directory error:', error);
+      ctx.error('创建技能目录失败: ' + error.message, 500);
+    }
+  }
 }
 
 export default SkillController;

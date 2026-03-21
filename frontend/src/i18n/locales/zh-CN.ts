@@ -669,6 +669,18 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     inTaskMode: '请先退出当前任务',
     exitTaskFirst: '请先退出当前任务',
     workingDirectorySet: '已将 {name} 设为工作目录',
+    // 创建目录
+    createDirectory: '新建技能目录',
+    directoryName: '目录名称',
+    directoryNamePlaceholder: '输入目录名称（仅限英文、数字、下划线、连字符）',
+    descriptionPlaceholder: '输入描述（可选）',
+    invalidDirectoryName: '目录名称只能包含英文、数字、下划线和连字符',
+    directoryCreated: '目录创建成功',
+    createDirectoryFailed: '创建目录失败',
+    // 文件浏览
+    browseFiles: '浏览文件',
+    skillNotRegistered: '该技能未注册，无法浏览文件',
+    loadFileFailed: '加载文件失败',
   },
 
   // 专家信息 Tab

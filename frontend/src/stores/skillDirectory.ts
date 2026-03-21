@@ -25,6 +25,17 @@ export interface WorkingSkill {
 }
 
 /**
+ * 技能文件项
+ */
+export interface SkillFileItem {
+  name: string
+  type: 'directory' | 'file'
+  path: string
+  size: number
+  modified_at: string
+}
+
+/**
  * SkillDirectory Store
  *
  * 技能目录状态管理
@@ -47,6 +58,12 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
+  // 文件浏览状态
+  const browsingSkill = ref<SkillDirectoryItem | null>(null)  // 当前正在浏览的技能
+  const currentFiles = ref<SkillFileItem[]>([])               // 当前目录的文件列表
+  const browsingPath = ref<string>('')                         // 当前浏览的子路径
+  const isLoadingFiles = ref(false)
+
   // Getters
   const isInSkillMode = computed(() => currentWorkingSkill.value !== null)
 
@@ -57,6 +74,8 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
   const currentSkillPath = computed(() =>
     currentWorkingSkill.value?.path || null
   )
+
+  const isBrowsing = computed(() => browsingSkill.value !== null)
 
   // Actions
 
@@ -171,6 +190,90 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
     error.value = null
   }
 
+  // ==================== 文件浏览相关 ====================
+
+  /**
+   * 进入技能目录浏览模式
+   */
+  const enterBrowseMode = (skill: SkillDirectoryItem) => {
+    browsingSkill.value = skill
+    browsingPath.value = ''
+    currentFiles.value = []
+  }
+
+  /**
+   * 退出技能目录浏览模式
+   */
+  const exitBrowseMode = () => {
+    browsingSkill.value = null
+    browsingPath.value = ''
+    currentFiles.value = []
+  }
+
+  /**
+   * 加载技能目录文件列表
+   */
+  const loadSkillFiles = async (subdir?: string) => {
+    if (!browsingSkill.value?.skill_id) {
+      console.warn('No skill selected for browsing')
+      return
+    }
+
+    isLoadingFiles.value = true
+    try {
+      const response = await skill_api.get_skill_files(browsingSkill.value.skill_id, subdir)
+      currentFiles.value = response.files || []
+      browsingPath.value = subdir || ''
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load skill files'
+      console.error('Failed to load skill files:', err)
+    } finally {
+      isLoadingFiles.value = false
+    }
+  }
+
+  /**
+   * 导航到子目录
+   */
+  const navigateToSubdir = async (subdir: string) => {
+    const newPath = browsingPath.value ? `${browsingPath.value}/${subdir}` : subdir
+    await loadSkillFiles(newPath)
+  }
+
+  /**
+   * 导航到上级目录
+   */
+  const navigateUp = async () => {
+    if (!browsingPath.value) return
+    
+    const parts = browsingPath.value.split('/')
+    parts.pop()
+    const newPath = parts.join('/')
+    await loadSkillFiles(newPath || undefined)
+  }
+
+  /**
+   * 获取文件内容
+   */
+  const getFileContent = async (filePath: string) => {
+    if (!browsingSkill.value?.skill_id) {
+      throw new Error('No skill selected for browsing')
+    }
+
+    const response = await skill_api.get_skill_file_content(browsingSkill.value.skill_id, filePath)
+    return response
+  }
+
+  /**
+   * 创建新技能目录
+   */
+  const createSkillDirectory = async (name: string, description?: string) => {
+    const response = await skill_api.create_skill_directory({ name, description })
+    // 刷新目录列表
+    await loadSkillDirectories()
+    return response
+  }
+
   return {
     // State
     skillDirectories,
@@ -180,10 +283,17 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
     isLoading,
     error,
 
+    // 文件浏览状态
+    browsingSkill,
+    currentFiles,
+    browsingPath,
+    isLoadingFiles,
+
     // Getters
     isInSkillMode,
     currentSkillName,
     currentSkillPath,
+    isBrowsing,
 
     // Actions
     loadSkillDirectories,
@@ -195,5 +305,14 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
     setBrowsePath,
     clearError,
     reset,
+
+    // 文件浏览 Actions
+    enterBrowseMode,
+    exitBrowseMode,
+    loadSkillFiles,
+    navigateToSubdir,
+    navigateUp,
+    getFileContent,
+    createSkillDirectory,
   }
 })
