@@ -282,6 +282,31 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
     return response
   }
 
+  /**
+   * 根据技能名称加载并进入技能浏览模式
+   * 用于从 URL 恢复技能状态
+   */
+  const loadAndEnterSkillByName = async (skillName: string): Promise<boolean> => {
+    // 确保已加载技能目录列表
+    if (skillDirectories.value.length === 0) {
+      await loadSkillDirectories()
+    }
+
+    // 查找匹配的技能目录
+    const skill = skillDirectories.value.find(s => s.name === skillName)
+    if (!skill) {
+      console.warn(`Skill not found: ${skillName}`)
+      return false
+    }
+
+    // 进入浏览模式
+    enterBrowseMode(skill)
+    await loadSkillFiles()
+    
+    console.log(`[SkillDirectory] Entered skill mode from URL: ${skillName}`)
+    return true
+  }
+
   return {
     // State
     skillDirectories,
@@ -322,5 +347,6 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
     navigateUp,
     getFileContent,
     createSkillDirectory,
+    loadAndEnterSkillByName,
   }
 })

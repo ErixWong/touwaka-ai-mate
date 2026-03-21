@@ -35,17 +35,20 @@
                 >
                   <!-- 任务模式 -->
                   <template v-if="workspaceMode === 'task'">
-                    📁 {{ taskStore.currentTask?.title }}
+                    <span class="mode-icon task-icon"></span>
+                    <span class="mode-label">{{ taskStore.currentTask?.title }}</span>
                   </template>
                   
                   <!-- 技能模式 -->
                   <template v-else-if="workspaceMode === 'skill'">
-                    🛠️ {{ currentSkillDisplayName }}
+                    <span class="mode-icon skill-icon"></span>
+                    <span class="mode-label">{{ currentSkillDisplayName }}</span>
                   </template>
                   
                   <!-- 无工作空间 -->
                   <template v-else>
-                    ⚠️ {{ $t('chat.noDirectory') }}
+                    <span class="mode-icon warning-icon"></span>
+                    <span class="mode-label">{{ $t('chat.noDirectory') }}</span>
                   </template>
                 </span>
               </div>
@@ -741,24 +744,26 @@ const handleSendMessage = async (content: string) => {
       model_id,
     }
     
-    // 如果在任务模式下，添加 task_id 和 working_path
+    // 任务模式：只传 task_id，不传 working_path
+    // 后端会根据 task_id 自动确定任务工作目录
     if (taskStore.currentTask) {
       messageParams.task_id = taskStore.currentTask.id  // 使用数据库主键
-      // 添加当前浏览路径
-      if (taskStore.currentPath) {
-        messageParams.working_path = taskStore.currentPath
-      }
+      // 不再传递 working_path，后端根据 task_id 自动处理
     }
     
-    // 如果在技能模式下，添加技能目录路径作为 working_path
-    if (skillDirectoryStore.currentWorkingSkill) {
+    // 技能模式：传技能目录路径作为 working_path
+    // 注意：技能模式与任务模式互斥，如果已在任务模式则不会进入此分支
+    // 优先使用 currentWorkingSkill，其次使用 browsingSkill
+    const activeSkill = skillDirectoryStore.currentWorkingSkill || skillDirectoryStore.browsingSkill
+    if (!taskStore.currentTask && activeSkill) {
       // 技能目录路径（如 data/skills/file-operations）
       // 后端工作目录是相对于 data/ 的，所以需要去掉 data/ 前缀
-      let skillPath = skillDirectoryStore.currentWorkingSkill.path
+      let skillPath = activeSkill.path
       if (skillPath.startsWith('data/')) {
         skillPath = skillPath.substring(5)  // 去掉 'data/' 前缀
       }
       messageParams.working_path = skillPath
+      console.log('[ChatView] Skill mode - working_path:', skillPath, 'from activeSkill:', activeSkill.name)
     }
     
     // 使用 messageApi 发送消息（自动处理认证）
@@ -858,8 +863,9 @@ const initChat = async (expertId: string) => {
   connectToExpert(expertId)
 }
 
-// 从路由获取 taskId
+// 从路由获取 taskId 和 skillName
 const currentTaskId = computed(() => route.params.taskId as string | undefined)
+const currentSkillName = computed(() => route.params.skillName as string | undefined)
 
 // 监听路由参数变化（expertId）
 watch(
@@ -911,6 +917,45 @@ watch(
       // URL 中没有 taskId，但当前有任务，退出任务模式
       console.log('No taskId in URL, exiting task mode')
       taskStore.exitTask()
+    }
+  },
+  { immediate: true }
+)
+
+// 监听路由参数变化（skillName）- 用于从 URL 恢复技能状态
+watch(
+  currentSkillName,
+  async (skillName) => {
+    console.log('Route skillName changed:', skillName)
+    
+    // 必须等用户登录后再处理
+    if (!userStore.isLoggedIn) {
+      console.log('User not logged in, skip skill handling')
+      return
+    }
+
+    // 如果有任务模式，技能模式应该被忽略（任务优先）
+    if (taskStore.currentTask) {
+      console.log('Task mode active, ignoring skill route')
+      return
+    }
+
+    if (skillName && skillDirectoryStore.browsingSkill?.name !== skillName) {
+      // URL 中有 skillName，但当前技能不匹配，需要加载技能
+      console.log('Loading skill from URL:', skillName)
+      const success = await skillDirectoryStore.loadAndEnterSkillByName(skillName)
+      if (!success) {
+        // 技能加载失败（可能不存在），清除 URL 中的 skillName
+        console.warn('Failed to load skill, removing skillName from URL')
+        router.replace({
+          name: 'chat',
+          params: { expertId: currentExpertId.value }
+        })
+      }
+    } else if (!skillName && skillDirectoryStore.browsingSkill) {
+      // URL 中没有 skillName，但当前有技能浏览，退出技能模式
+      console.log('No skillName in URL, exiting skill browse mode')
+      skillDirectoryStore.exitBrowseMode()
     }
   },
   { immediate: true }
@@ -1112,45 +1157,117 @@ onMounted(async () => {
 /* 工作空间模式标签（融合到头部） */
 .workspace-mode-tag {
   font-size: 12px;
-  padding: 2px 8px;
+  padding: 4px 10px;
   background: var(--secondary-bg, #f0f0f0);
-  color: var(--text-hint, #999);
-  border-radius: 10px;
+  color: var(--text-secondary, #666);
+  border-radius: 16px;
   margin-left: 8px;
-  transition: all 0.2s;
+  transition: all 0.25s ease;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* 模式图标基础样式 */
+.workspace-mode-tag .mode-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* 任务图标 - 文件夹样式 */
+.workspace-mode-tag .mode-icon.task-icon {
+  background: linear-gradient(135deg, #ffd54f 0%, #ffb300 100%);
+  box-shadow: 0 1px 2px rgba(255, 179, 0, 0.3);
+}
+
+.workspace-mode-tag .mode-icon.task-icon::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 1px;
+}
+
+/* 技能图标 - 工具样式 */
+.workspace-mode-tag .mode-icon.skill-icon {
+  background: linear-gradient(135deg, #ce93d8 0%, #9c27b0 100%);
+  box-shadow: 0 1px 2px rgba(156, 39, 176, 0.3);
+}
+
+.workspace-mode-tag .mode-icon.skill-icon::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 2px;
+}
+
+/* 警告图标 */
+.workspace-mode-tag .mode-icon.warning-icon {
+  background: linear-gradient(135deg, #ffcc80 0%, #ff9800 100%);
+  box-shadow: 0 1px 2px rgba(255, 152, 0, 0.3);
+}
+
+.workspace-mode-tag .mode-icon.warning-icon::before {
+  content: '!';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+}
+
+/* 模式标签文字 */
+.workspace-mode-tag .mode-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 任务模式样式 */
 .workspace-mode-tag.in-task {
-  background: var(--primary-color, #2196f3);
-  color: white;
-  cursor: default;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  color: #1565c0;
+  border: 1px solid rgba(33, 150, 243, 0.2);
 }
 
 /* 技能模式样式 */
 .workspace-mode-tag.in-skill {
-  background: #9c27b0;  /* 紫色，区分于任务的蓝色 */
-  color: white;
-  cursor: default;
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  color: #7b1fa2;
+  border: 1px solid rgba(156, 39, 176, 0.2);
 }
 
 /* 未选择目录的警告样式 */
 .workspace-mode-tag.no-workspace {
-  background: var(--warning-bg, #fff3e0);
-  color: var(--warning-color, #e65100);
-  border: 1px solid var(--warning-border, #ffb74d);
+  background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+  color: #e65100;
+  border: 1px solid rgba(255, 152, 0, 0.3);
   animation: pulse-warning 2s ease-in-out infinite;
 }
 
 @keyframes pulse-warning {
   0%, 100% {
-    opacity: 1;
+    box-shadow: 0 1px 3px rgba(255, 152, 0, 0.1);
   }
   50% {
-    opacity: 0.7;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.25);
   }
 }
 </style>
