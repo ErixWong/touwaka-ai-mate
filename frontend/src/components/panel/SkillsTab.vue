@@ -252,9 +252,7 @@ const load_skills = async () => {
   loading.value = true
   try {
     const res = await skill_api.list_all_skills({ include_inactive: true })
-    if (res.success) {
-      skills.value = res.skills || []
-    }
+    skills.value = res.skills || []
   } catch (err) {
     console.error('Failed to load skills:', err)
   } finally {
@@ -267,9 +265,7 @@ const select_skill = async (skill: Skill | SkillDetail) => {
   loading.value = true
   try {
     const res = await skill_api.get_skill_detail(skill.id)
-    if (res.success) {
-      selected_skill.value = res.skill
-    }
+    selected_skill.value = res.skill
   } catch (err) {
     console.error('Failed to get skill detail:', err)
   } finally {

@@ -308,13 +308,13 @@ export const debugApi = {
 export const skill_api = {
   // 列出所有已注册的技能
   list_all_skills: (params?: { include_inactive?: boolean }) =>
-    apiRequest<{ success: boolean; total: number; skills: Skill[] }>(
+    apiRequest<{ skills: Skill[] }>(
       apiClient.get('/skills', { params })
     ),
 
   // 获取技能详情
   get_skill_detail: (skill_id: string) =>
-    apiRequest<{ success: boolean; skill: SkillDetail }>(
+    apiRequest<{ skill: SkillDetail }>(
       apiClient.get(`/skills/${skill_id}`)
     ),
 
