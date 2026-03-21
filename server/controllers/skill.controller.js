@@ -189,6 +189,13 @@ class SkillController {
       const { id } = ctx.params;
       const { name, description, is_active, source_path, source_url, author, version, tags } = ctx.request.body;
 
+      logger.info('[SkillController] update() called:', {
+        id,
+        is_active,
+        is_active_type: typeof is_active,
+        body: ctx.request.body
+      });
+
       // 检查技能是否存在
       const existing = await this.Skill.findOne({ where: { id } });
       if (!existing) {
@@ -199,19 +206,26 @@ class SkillController {
       const updates = {};
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
-      if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
+      if (is_active !== undefined) updates.is_active = is_active ? true : false;
       if (source_path !== undefined) updates.source_path = source_path;
       if (source_url !== undefined) updates.source_url = source_url;
       if (author !== undefined) updates.author = author;
       if (version !== undefined) updates.version = version;
       if (tags !== undefined) updates.tags = Array.isArray(tags) ? JSON.stringify(tags) : tags;
 
+      logger.info('[SkillController] updates to apply:', updates);
+
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);
         return;
       }
 
-      await this.Skill.update(updates, { where: { id } });
+      const updateResult = await this.Skill.update(updates, { where: { id } });
+      logger.info('[SkillController] update result:', updateResult);
+
+      // 验证更新是否成功
+      const afterUpdate = await this.Skill.findOne({ where: { id }, raw: true });
+      logger.info('[SkillController] after update, is_active in DB:', afterUpdate?.is_active);
 
       ctx.success({ id }, '技能更新成功');
     } catch (error) {
