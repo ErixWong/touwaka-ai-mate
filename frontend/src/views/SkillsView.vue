@@ -628,8 +628,8 @@ const saveSkill = async () => {
   
   savingSkill.value = true
   try {
-    // 更新技能基本信息
-    await skill_api.update_skill(editingSkill.value.id, {
+    // 构建更新数据
+    const updateData = {
       name: skillForm.name,
       description: skillForm.description,
       source_path: skillForm.source_path,
@@ -637,7 +637,10 @@ const saveSkill = async () => {
       author: skillForm.author,
       tags: skillForm.tags,
       is_active: skillForm.is_active
-    })
+    }
+    
+    // 更新技能基本信息
+    await skill_api.update_skill(editingSkill.value.id, updateData)
     
     // 保存工具信息
     if (skillForm.tools.length > 0) {
@@ -664,7 +667,8 @@ const saveSkill = async () => {
     
     toast.success(t('skills.saveSuccess') || '保存成功')
     closeSkillEditor()
-    skillStore.loadSkills()
+    // 等待列表刷新完成
+    await skillStore.loadSkills()
   } catch (err) {
     console.error('Failed to save skill:', err)
     toast.error(t('skills.saveFailed') || '保存失败')
