@@ -695,6 +695,109 @@ class SkillController {
   }
 
   /**
+   * 更新工具信息
+   * PUT /api/skills/:id/tools/:tool_id
+   */
+  async updateTool(ctx) {
+    try {
+      const { id, tool_id } = ctx.params;
+      const { name, description, usage, endpoint, method, command, parameters } = ctx.request.body;
+
+      // 检查工具是否存在
+      const tool = await this.SkillTool.findOne({
+        where: { id: tool_id, skill_id: id },
+      });
+
+      if (!tool) {
+        ctx.error('工具不存在', 404);
+        return;
+      }
+
+      const updates = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (usage !== undefined) updates.usage = usage;
+      if (endpoint !== undefined) updates.endpoint = endpoint;
+      if (method !== undefined) updates.method = method;
+      if (command !== undefined) updates.command = command;
+      if (parameters !== undefined) updates.parameters = typeof parameters === 'string' ? parameters : JSON.stringify(parameters);
+
+      if (Object.keys(updates).length === 0) {
+        ctx.error('没有要更新的字段', 400);
+        return;
+      }
+
+      await this.SkillTool.update(updates, { where: { id: tool_id } });
+
+      ctx.success({ id: tool_id }, '工具更新成功');
+    } catch (error) {
+      logger.error('Update tool error:', error);
+      ctx.error('更新工具失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 批量更新技能工具
+   * PUT /api/skills/:id/tools
+   */
+  async updateTools(ctx) {
+    let transaction = null;
+    try {
+      const { id } = ctx.params;
+      const { tools } = ctx.request.body;
+
+      if (!Array.isArray(tools)) {
+        ctx.error('工具格式错误，需要数组', 400);
+        return;
+      }
+
+      // 检查技能是否存在
+      const skill = await this.Skill.findOne({ where: { id } });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      // 开始事务
+      transaction = await this.db.sequelize.transaction();
+
+      // 逐个更新工具
+      for (const tool of tools) {
+        if (!tool.id) continue;
+
+        const updates = {};
+        if (tool.name !== undefined) updates.name = tool.name;
+        if (tool.description !== undefined) updates.description = tool.description;
+        if (tool.usage !== undefined) updates.usage = tool.usage;
+        if (tool.endpoint !== undefined) updates.endpoint = tool.endpoint;
+        if (tool.method !== undefined) updates.method = tool.method;
+        if (tool.command !== undefined) updates.command = tool.command;
+        if (tool.parameters !== undefined) updates.parameters = typeof tool.parameters === 'string' ? tool.parameters : JSON.stringify(tool.parameters);
+
+        if (Object.keys(updates).length > 0) {
+          await this.SkillTool.update(updates, {
+            where: { id: tool.id, skill_id: id },
+            transaction,
+          });
+        }
+      }
+
+      // 提交事务
+      await transaction.commit();
+      transaction = null;
+
+      ctx.success({ updated: tools.length }, '工具更新成功');
+    } catch (error) {
+      // 回滚事务
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
+      logger.error('Update tools error:', error);
+      ctx.error('更新工具失败: ' + error.message, 500);
+    }
+  }
+
+  /**
    * 启用/禁用技能
    * PATCH /api/skills/:id/toggle
    */

@@ -34,6 +34,12 @@ export default function createSkillRoutes(controller) {
   // POST /api/skills/:id/parameters - 保存技能参数（全量替换）
   router.post('/:id/parameters', authenticate(), requireAdmin(), controller.saveParameters.bind(controller));
 
+  // PUT /api/skills/:id/tools - 批量更新技能工具
+  router.put('/:id/tools', authenticate(), requireAdmin(), controller.updateTools.bind(controller));
+
+  // PUT /api/skills/:id/tools/:tool_id - 更新单个工具
+  router.put('/:id/tools/:tool_id', authenticate(), requireAdmin(), controller.updateTool.bind(controller));
+
   // ==================== Skills Studio API（需要管理员权限）====================
 
   // POST /api/skills/register - 注册技能（从本地路径）

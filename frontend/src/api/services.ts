@@ -365,6 +365,35 @@ export const skill_api = {
     apiRequest<{ success: boolean; message: string }>(
       apiClient.delete(`/skills/${skill_id}`)
     ),
+
+  // 批量更新技能工具
+  update_skill_tools: (skill_id: string, tools: Array<{
+    id: string;
+    name?: string;
+    description?: string;
+    usage?: string;
+    endpoint?: string;
+    method?: string;
+    command?: string;
+    parameters?: Record<string, unknown>;
+  }>) =>
+    apiRequest<{ updated: number }>(
+      apiClient.put(`/skills/${skill_id}/tools`, { tools })
+    ),
+
+  // 更新单个工具
+  update_skill_tool: (skill_id: string, tool_id: string, data: {
+    name?: string;
+    description?: string;
+    usage?: string;
+    endpoint?: string;
+    method?: string;
+    command?: string;
+    parameters?: Record<string, unknown>;
+  }) =>
+    apiRequest<{ id: string }>(
+      apiClient.put(`/skills/${skill_id}/tools/${tool_id}`, data)
+    ),
 }
 
 // 角色管理相关 API（管理员专用）

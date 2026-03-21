@@ -128,7 +128,7 @@
     
     <!-- 技能编辑弹窗 -->
     <Teleport to="body">
-      <div v-if="show_editor" class="skill-editor-overlay" @click.self="close_editor">
+      <div v-if="show_editor" class="skill-editor-overlay">
         <div class="skill-editor-modal">
           <div class="modal-header">
             <h3>{{ editing_skill?.name || $t('skills.editSkill') || '编辑技能' }}</h3>
@@ -196,7 +196,7 @@
               <div v-if="skill_form.tools?.length" class="tools-list">
                 <div v-for="tool in skill_form.tools" :key="tool.id" class="tool-item">
                   <div class="tool-header">
-                    <span class="tool-name">🔧 {{ tool.name }}</span>
+                    <input v-model="tool.name" type="text" class="tool-name-input" :placeholder="$t('skills.name') || '名称'" />
                     <span class="tool-type-badge" :class="tool.type">{{ tool.type }}</span>
                   </div>
                   
@@ -208,28 +208,34 @@
                     </div>
                     
                     <!-- 用法说明 -->
-                    <div v-if="tool.usage" class="field-row">
+                    <div class="field-row">
                       <span class="field-label">{{ $t('skills.usage') || '用法' }}</span>
-                      <pre class="field-code">{{ tool.usage }}</pre>
+                      <textarea v-model="tool.usage" class="field-textarea" rows="3" :placeholder="$t('skills.usage') || '用法说明'"></textarea>
                     </div>
                     
                     <!-- HTTP 类型字段 -->
                     <template v-if="tool.type === 'http'">
-                      <div v-if="tool.endpoint" class="field-row">
+                      <div class="field-row">
                         <span class="field-label">{{ $t('skills.endpoint') || '端点' }}</span>
-                        <code class="field-code-inline">{{ tool.endpoint }}</code>
+                        <input v-model="tool.endpoint" type="text" class="field-input" :placeholder="$t('skills.endpoint') || '端点'" />
                       </div>
-                      <div v-if="tool.method" class="field-row">
+                      <div class="field-row">
                         <span class="field-label">{{ $t('skills.method') || '方法' }}</span>
-                        <span class="method-badge" :class="tool.method?.toLowerCase()">{{ tool.method }}</span>
+                        <select v-model="tool.method" class="field-select">
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                          <option value="DELETE">DELETE</option>
+                          <option value="PATCH">PATCH</option>
+                        </select>
                       </div>
                     </template>
                     
                     <!-- Script 类型字段 -->
                     <template v-if="tool.type === 'script'">
-                      <div v-if="tool.command" class="field-row">
+                      <div class="field-row">
                         <span class="field-label">{{ $t('skills.command') || '命令' }}</span>
-                        <code class="field-code-inline">{{ tool.command }}</code>
+                        <input v-model="tool.command" type="text" class="field-input" :placeholder="$t('skills.command') || '命令'" />
                       </div>
                     </template>
                   </div>
@@ -466,6 +472,19 @@ const save_skill = async () => {
       description: skill_form.description,
       is_active: skill_form.is_active
     })
+    
+    // 保存工具信息
+    if (skill_form.tools.length > 0) {
+      await skill_api.update_skill_tools(editing_skill.value.id, skill_form.tools.map(t => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        usage: t.usage,
+        endpoint: t.endpoint,
+        method: t.method,
+        command: t.command
+      })))
+    }
     
     // 保存参数
     if (skill_form.parameters.length > 0) {
@@ -1060,6 +1079,22 @@ const save_skill = async () => {
   color: var(--text-primary, #333);
 }
 
+.tool-name-input {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary, #333);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: var(--bg-primary, #fff);
+  flex: 1;
+}
+
+.tool-name-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
 .tool-type-badge {
   padding: 2px 8px;
   border-radius: 4px;
@@ -1113,6 +1148,39 @@ const save_skill = async () => {
 }
 
 .field-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.field-textarea {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.field-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.field-select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+}
+
+.field-select:focus {
   outline: none;
   border-color: var(--primary-color, #2196f3);
 }
