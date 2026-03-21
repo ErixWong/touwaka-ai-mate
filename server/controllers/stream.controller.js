@@ -72,6 +72,7 @@ class StreamController {
         task_path,  // 传递当前浏览路径
         access_token: ctx.state.session.accessToken,  // 传递用户 Token
         is_admin: ctx.state.session.isAdmin,  // 传递管理员标识
+        roles: ctx.state.session.roles || [],  // 传递用户角色列表
       });
 
       // 立即返回成功，消息将通过 SSE 推送
@@ -131,7 +132,7 @@ class StreamController {
    * 异步处理消息并通过 SSE 推送响应
    * 支持多标签页：向该用户的所有连接广播消息
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path, access_token, is_admin }) {
+  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path, access_token, is_admin, roles }) {
     // 获取该用户在该 Expert 下的所有活跃连接
     const userConnections = this._getUserConnections(expert_id, user_id);
 
@@ -155,6 +156,7 @@ class StreamController {
           task_path,  // 传递当前浏览路径
           access_token,  // 传递用户 Token，用于 skill 调用后台 API
           is_admin,  // 传递管理员标识
+          roles,  // 传递用户角色列表
         },
         // onDelta - 流式数据回调（广播到所有连接）
         (delta) => {
