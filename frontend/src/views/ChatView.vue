@@ -16,13 +16,7 @@
                   <span v-if="!currentExpert?.avatar_base64">🤖</span>
                 </div>
                 <h2 class="expert-name">{{ currentExpert?.name || $t('chat.title') }}</h2>
-                <!-- skill-studio 显示模型选择器 -->
-                <ModelSelector
-                  v-if="is_skill_studio"
-                  v-model="selected_model_id"
-                  class="model-selector"
-                />
-                <span v-else-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
+                <span v-if="currentModel" class="model-badge">{{ currentModel.name }}</span>
                 <!-- 工作空间模式状态 -->
                 <span
                   class="workspace-mode-tag"
@@ -64,7 +58,6 @@
                 :is-loading-more="chatStore.isLoadingMore"
                 :expert-avatar="currentExpert?.avatar_base64"
                 :expert-avatar-large="currentExpert?.avatar_large_base64"
-                :show-command-hints="is_skill_studio"
                 :custom-placeholder="autonomousPlaceholder"
                 @send="handleSendMessage"
                 @retry="handleRetry"
@@ -114,7 +107,6 @@ import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import ChatWindow, { type ChatMessage } from '@/components/ChatWindow.vue'
 import RightPanel from '@/components/panel/RightPanel.vue'
-import ModelSelector from '@/components/ModelSelector.vue'
 import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
 import { useExpertStore } from '@/stores/expert'
@@ -203,25 +195,7 @@ const setSendingTimeoutProtection = () => {
 const MAX_RECONNECT_ATTEMPTS = 10
 
 // 从路由参数获取 expertId
-// skill-studio 作为一个普通专家，通过 /chat/skill-studio 访问
 const currentExpertId = computed(() => route.params.expertId as string)
-
-// 判断是否是 skill-studio 模式
-const is_skill_studio = computed(() => currentExpertId.value === 'skill-studio')
-
-// skill-studio 模式下选择的模型
-const selected_model_id = ref<string>('')
-
-// 初始化模型选择
-watch(() => modelStore.models, (models) => {
-  if (is_skill_studio.value && models.length > 0 && !selected_model_id.value) {
-    // 默认选择第一个可用模型
-    const active_model = models.find(m => m.is_active)
-    if (active_model) {
-      selected_model_id.value = active_model.id
-    }
-  }
-}, { immediate: true })
 
 // 当前专家
 const currentExpert = computed(() => {
@@ -248,7 +222,7 @@ const autonomousPlaceholder = computed(() => {
   if (isAutonomousMode.value) {
     return t('chat.autonomousModeHint') || 'AI 正在自主执行任务，输入已禁用...'
   }
-  return is_skill_studio.value ? t('chat.commandHint') : undefined
+  return undefined
 })
 
 // 工作空间模式：task | skill | none
@@ -701,10 +675,8 @@ const handleSendMessage = async (content: string) => {
     connectToExpert(expert_id)
   }
 
-  // skill-studio 使用用户选择的模型，其他专家使用绑定的模型
-  const model_id = is_skill_studio.value
-    ? selected_model_id.value
-    : (currentModel.value?.id || currentExpert.value?.expressive_model_id)
+  // 使用专家绑定的模型
+  const model_id = currentModel.value?.id || currentExpert.value?.expressive_model_id
 
   // 添加用户消息到本地
   const userMessage = chatStore.addLocalMessage({
@@ -1095,10 +1067,6 @@ onMounted(async () => {
   background: var(--badge-bg, #e3f2fd);
   color: var(--primary-color, #2196f3);
   border-radius: 12px;
-}
-
-.model-selector {
-  margin-left: 8px;
 }
 
 .no-expert-selected {
