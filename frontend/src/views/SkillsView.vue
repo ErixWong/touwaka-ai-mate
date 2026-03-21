@@ -91,17 +91,11 @@
           >
             {{ $t('skills.editSkill') || '编辑' }}
           </button>
-          <button 
-            class="btn-action secondary" 
+          <button
+            class="btn-action secondary"
             @click="openParamsDialog(skill)"
           >
             {{ $t('skills.manageParams') }}
-          </button>
-          <button 
-            class="btn-action secondary" 
-            @click="toggleSkillActive(skill)"
-          >
-            {{ skill.is_active ? $t('skills.deactivate') : $t('skills.activate') }}
           </button>
         </div>
       </div>
@@ -529,16 +523,6 @@ const viewSkillDetail = async (skill: Skill) => {
 const closeDetailDialog = () => {
   showDetailDialog.value = false
   selectedSkill.value = null
-}
-
-// 切换激活状态
-const toggleSkillActive = async (skill: Skill) => {
-  try {
-    await skillStore.toggleSkillActive(skill.id)
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : t('skills.toggleFailed')
-    toast.error(errorMsg)
-  }
 }
 
 // 参数管理
