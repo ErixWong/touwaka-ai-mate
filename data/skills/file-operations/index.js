@@ -62,7 +62,10 @@ function isPathAllowed(targetPath) {
     // 路径不存在时，继续使用 path.resolve 的结果
   }
   
-  return ALLOWED_BASE_PATHS.some(basePath => {
+  // 调试输出
+  console.error(`[file-operations] isPathAllowed: checking "${resolved}"`);
+  
+  const result = ALLOWED_BASE_PATHS.some(basePath => {
     let resolvedBase = path.resolve(basePath);
     try {
       if (fs.existsSync(resolvedBase)) {
@@ -71,8 +74,17 @@ function isPathAllowed(targetPath) {
     } catch (e) {
       // 基础路径不存在时，继续使用 path.resolve 的结果
     }
-    return resolved.startsWith(resolvedBase);
+    
+    // 正确的路径边界检查：
+    // 1. 路径必须以 basePath + path.sep 开头（子目录/文件）
+    // 2. 或者路径完全等于 basePath（目录本身）
+    const isAllowed = resolved.startsWith(resolvedBase + path.sep) || resolved === resolvedBase;
+    console.error(`[file-operations]   vs "${resolvedBase}": ${isAllowed}`);
+    return isAllowed;
   });
+  
+  console.error(`[file-operations] isPathAllowed result: ${result}`);
+  return result;
 }
 
 /**
