@@ -191,26 +191,6 @@
             </p>
             <p v-else class="section-desc empty">{{ $t('skillsDirectory.noDescription') || '暂无描述' }}</p>
           </div>
-          
-          <div class="detail-actions">
-            <button 
-              class="action-btn secondary"
-              @click="enterDirectory(skillDirectoryStore.selectedSkill)"
-            >
-              {{ $t('skillsDirectory.browseFiles') || '浏览文件' }}
-            </button>
-            <button 
-              class="action-btn primary"
-              :disabled="!!taskStore.currentTask"
-              @click="handleSetWorkingDirectory"
-            >
-              {{ $t('skillsDirectory.setWorkingDirectory') || '设为工作目录' }}
-            </button>
-          </div>
-          
-          <p v-if="taskStore.currentTask" class="hint-text">
-            {{ $t('skillsDirectory.exitTaskFirst') || '请先退出当前任务' }}
-          </p>
         </div>
       </template>
     </div>
