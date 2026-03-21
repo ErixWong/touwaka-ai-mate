@@ -815,6 +815,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     loadFailed: '加载失败',
     saveSuccess: '保存成功',
     saveFailed: '保存失败',
+    usage: '用法',
+    endpoint: '端点',
+    method: '方法',
+    command: '命令',
   },
   // 快捷指令
   commands: {

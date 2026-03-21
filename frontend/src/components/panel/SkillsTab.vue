@@ -192,15 +192,46 @@
             </div>
             
             <!-- 工具列表 Tab -->
-            <div v-show="editor_tab === 'tools'" class="editor-section">
+            <div v-show="editor_tab === 'tools'" class="editor-section tools-section">
               <div v-if="skill_form.tools?.length" class="tools-list">
                 <div v-for="tool in skill_form.tools" :key="tool.id" class="tool-item">
                   <div class="tool-header">
                     <span class="tool-name">🔧 {{ tool.name }}</span>
+                    <span class="tool-type-badge" :class="tool.type">{{ tool.type }}</span>
                   </div>
-                  <div class="form-group">
-                    <label>{{ $t('skills.description') || '描述' }}</label>
-                    <input v-model="tool.description" type="text" class="form-input" />
+                  
+                  <div class="tool-fields">
+                    <!-- 描述 -->
+                    <div class="field-row">
+                      <span class="field-label">{{ $t('skills.description') || '描述' }}</span>
+                      <input v-model="tool.description" type="text" class="field-input" :placeholder="$t('skills.description') || '描述'" />
+                    </div>
+                    
+                    <!-- 用法说明 -->
+                    <div v-if="tool.usage" class="field-row">
+                      <span class="field-label">{{ $t('skills.usage') || '用法' }}</span>
+                      <pre class="field-code">{{ tool.usage }}</pre>
+                    </div>
+                    
+                    <!-- HTTP 类型字段 -->
+                    <template v-if="tool.type === 'http'">
+                      <div v-if="tool.endpoint" class="field-row">
+                        <span class="field-label">{{ $t('skills.endpoint') || '端点' }}</span>
+                        <code class="field-code-inline">{{ tool.endpoint }}</code>
+                      </div>
+                      <div v-if="tool.method" class="field-row">
+                        <span class="field-label">{{ $t('skills.method') || '方法' }}</span>
+                        <span class="method-badge" :class="tool.method?.toLowerCase()">{{ tool.method }}</span>
+                      </div>
+                    </template>
+                    
+                    <!-- Script 类型字段 -->
+                    <template v-if="tool.type === 'script'">
+                      <div v-if="tool.command" class="field-row">
+                        <span class="field-label">{{ $t('skills.command') || '命令' }}</span>
+                        <code class="field-code-inline">{{ tool.command }}</code>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -997,26 +1028,150 @@ const save_skill = async () => {
 }
 
 /* 工具列表 */
+.tools-section {
+  padding: 0;
+}
+
 .tools-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .tool-item {
-  padding: 12px;
+  padding: 16px;
   background: var(--bg-secondary, #f9f9f9);
-  border-radius: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
 }
 
 .tool-header {
-  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border-color, #e0e0e0);
 }
 
 .tool-name {
-  font-weight: 500;
-  font-size: 13px;
+  font-weight: 600;
+  font-size: 14px;
   color: var(--text-primary, #333);
+}
+
+.tool-type-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.tool-type-badge.http {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.tool-type-badge.script {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.tool-type-badge.builtin {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.tool-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.field-label {
+  min-width: 60px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  padding-top: 6px;
+}
+
+.field-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.field-code {
+  flex: 1;
+  margin: 0;
+  padding: 8px 12px;
+  background: #263238;
+  color: #aed581;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.field-code-inline {
+  flex: 1;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  color: #d32f2f;
+}
+
+.method-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.method-badge.get {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.method-badge.post {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.method-badge.put {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.method-badge.delete {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.method-badge.patch {
+  background: #f3e5f5;
+  color: #7b1fa2;
 }
 
 /* 参数列表 */
