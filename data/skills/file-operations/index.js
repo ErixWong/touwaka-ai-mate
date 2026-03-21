@@ -33,6 +33,15 @@ const ALLOWED_BASE_PATHS = IS_ADMIN
   ? [USER_WORK_DIR, SKILLS_DIR]  // 管理员：工作目录 + skills 目录
   : [USER_WORK_DIR];  // 普通用户：仅用户工作目录
 
+// 调试输出
+console.error('[file-operations] 环境变量诊断:');
+console.error(`  IS_ADMIN: ${IS_ADMIN}`);
+console.error(`  DATA_BASE_PATH: ${DATA_BASE_PATH}`);
+console.error(`  SKILLS_DIR: ${SKILLS_DIR}`);
+console.error(`  USER_WORK_DIR: ${USER_WORK_DIR}`);
+console.error(`  WORKING_DIRECTORY: ${process.env.WORKING_DIRECTORY || '(未设置)'}`);
+console.error(`  ALLOWED_BASE_PATHS: ${JSON.stringify(ALLOWED_BASE_PATHS)}`);
+
 // Maximum file size to read (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
