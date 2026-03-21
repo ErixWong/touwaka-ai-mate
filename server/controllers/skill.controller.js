@@ -362,7 +362,7 @@ class SkillController {
           skill_id: id,
           param_name: param.param_name.trim(),
           param_value: param.param_value || '',
-          is_secret: param.is_secret ? 1 : 0,
+          is_secret: param.is_secret ? true : false,
         }, { transaction });
 
         createdParameters.push(newParam.get({ plain: true }));
@@ -737,7 +737,7 @@ class SkillController {
       if (description !== undefined) updates.description = description;
       if (script_path !== undefined) updates.script_path = script_path;
       if (parameters !== undefined) updates.parameters = typeof parameters === 'string' ? parameters : JSON.stringify(parameters);
-      if (is_resident !== undefined) updates.is_resident = is_resident ? 1 : 0;
+      if (is_resident !== undefined) updates.is_resident = is_resident ? true : false;
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);
@@ -787,7 +787,7 @@ class SkillController {
         if (tool.description !== undefined) updates.description = tool.description;
         if (tool.script_path !== undefined) updates.script_path = tool.script_path;
         if (tool.parameters !== undefined) updates.parameters = typeof tool.parameters === 'string' ? tool.parameters : JSON.stringify(tool.parameters);
-        if (tool.is_resident !== undefined) updates.is_resident = tool.is_resident ? 1 : 0;
+        if (tool.is_resident !== undefined) updates.is_resident = tool.is_resident ? true : false;
 
         if (Object.keys(updates).length > 0) {
           await this.SkillTool.update(updates, {
@@ -832,7 +832,7 @@ class SkillController {
       }
 
       await this.Skill.update(
-        { is_active: is_active ? 1 : 0 },
+        { is_active: is_active ? true : false },
         { where: { id } }
       );
 

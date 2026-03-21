@@ -118,7 +118,7 @@ class ProviderController {
         api_key: api_key || null,
         timeout,
         user_agent,
-        is_active: is_active ? 1 : 0,
+        is_active: is_active ? true : false,
       });
 
       // 获取刚插入的记录
@@ -182,7 +182,7 @@ class ProviderController {
       if (api_key !== undefined) updates.api_key = api_key || null;
       if (timeout !== undefined) updates.timeout = timeout * 1000; // 秒转毫秒
       if (user_agent !== undefined) updates.user_agent = user_agent || null;
-      if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
+      if (is_active !== undefined) updates.is_active = is_active ? true : false;
 
       if (Object.keys(updates).length === 0) {
         ctx.throw(400, '没有要更新的字段');

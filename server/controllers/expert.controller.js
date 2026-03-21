@@ -148,7 +148,7 @@ class ExpertController {
         expressive_model_id: expressive_model_id || null,
         reflective_model_id: reflective_model_id || null,
         prompt_template: prompt_template || null,
-        is_active: is_active ? 1 : 0,
+        is_active: is_active ? true : false,
         // 上下文压缩配置（使用系统默认值）
         context_threshold: context_threshold ?? llmDefaults.context_threshold,
         // LLM 参数配置（使用系统默认值）
@@ -225,7 +225,7 @@ class ExpertController {
       if (expressive_model_id !== undefined) updates.expressive_model_id = expressive_model_id || null;
       if (reflective_model_id !== undefined) updates.reflective_model_id = reflective_model_id || null;
       if (prompt_template !== undefined) updates.prompt_template = prompt_template;
-      if (is_active !== undefined) updates.is_active = is_active ? 1 : 0;
+      if (is_active !== undefined) updates.is_active = is_active ? true : false;
       // 上下文压缩配置
       if (context_threshold !== undefined) updates.context_threshold = context_threshold;
       // LLM 参数配置

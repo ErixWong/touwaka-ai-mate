@@ -33,7 +33,7 @@ class StreamController {
    */
   async sendMessage(ctx) {
     try {
-      const { content, expert_id, model_id, task_id, task_path } = ctx.request.body;
+      const { content, expert_id, model_id, task_id, working_path } = ctx.request.body;
 
       if (!content) {
         ctx.error('缺少必要参数：content');
@@ -69,7 +69,7 @@ class StreamController {
         content,
         model_id,
         task_id,
-        task_path,  // 传递当前浏览路径
+        working_path,  // 传递当前工作目录路径
         session: ctx.state.session,  // 直接传递 session 对象
       });
 
@@ -130,7 +130,7 @@ class StreamController {
    * 异步处理消息并通过 SSE 推送响应
    * 支持多标签页：向该用户的所有连接广播消息
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, task_path, session }) {
+  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, working_path, session }) {
     // 获取该用户在该 Expert 下的所有活跃连接
     const userConnections = this._getUserConnections(expert_id, user_id);
 
@@ -151,7 +151,7 @@ class StreamController {
           content,
           model_id,
           task_id,
-          task_path,  // 传递当前浏览路径
+          working_path,  // 传递当前工作目录路径
           session,  // 直接传递 session 对象，chatService 只透传
         },
         // onDelta - 流式数据回调（广播到所有连接）
