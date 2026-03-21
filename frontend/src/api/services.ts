@@ -121,7 +121,7 @@ export const messageApi = {
     expert_id: string;
     model_id?: string;
     task_id?: string;
-    task_path?: string;  // 当前浏览的目录路径
+    working_path?: string;  // 当前工作目录路径（任务模式下的浏览路径或技能目录路径）
   }) =>
     apiRequest<{ message: string; topic_id: string }>(apiClient.post('/chat', data)),
 

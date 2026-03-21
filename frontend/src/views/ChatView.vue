@@ -734,20 +734,31 @@ const handleSendMessage = async (content: string) => {
       expert_id: string;
       model_id?: string;
       task_id?: string;
-      task_path?: string;
+      working_path?: string;
     } = {
       content: userMessage.content,  // 使用 chatStore 中处理后的内容（可能包含多模态 JSON）
       expert_id,
       model_id,
     }
     
-    // 如果在任务模式下，添加 task_id 和 task_path
+    // 如果在任务模式下，添加 task_id 和 working_path
     if (taskStore.currentTask) {
       messageParams.task_id = taskStore.currentTask.id  // 使用数据库主键
       // 添加当前浏览路径
       if (taskStore.currentPath) {
-        messageParams.task_path = taskStore.currentPath
+        messageParams.working_path = taskStore.currentPath
       }
+    }
+    
+    // 如果在技能模式下，添加技能目录路径作为 working_path
+    if (skillDirectoryStore.currentWorkingSkill) {
+      // 技能目录路径（如 data/skills/file-operations）
+      // 后端工作目录是相对于 data/ 的，所以需要去掉 data/ 前缀
+      let skillPath = skillDirectoryStore.currentWorkingSkill.path
+      if (skillPath.startsWith('data/')) {
+        skillPath = skillPath.substring(5)  // 去掉 'data/' 前缀
+      }
+      messageParams.working_path = skillPath
     }
     
     // 使用 messageApi 发送消息（自动处理认证）
