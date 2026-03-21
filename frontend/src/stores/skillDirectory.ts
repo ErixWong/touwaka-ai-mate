@@ -81,7 +81,7 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
 
   /**
    * 加载技能目录列表
-   * 从 data/skills/ 目录获取所有技能目录（包括未注册的）
+   * 从 data/skills/ 目录获取所有技能目录（纯文件系统操作）
    */
   const loadSkillDirectories = async () => {
     isLoading.value = true
@@ -95,8 +95,8 @@ export const useSkillDirectoryStore = defineStore('skillDirectory', () => {
         name: dir.name,
         path: dir.path,
         description: dir.description || '',
-        is_registered: dir.is_registered,
-        skill_id: dir.skill_id || undefined
+        is_registered: false,  // 文件系统不判断注册状态
+        skill_id: undefined
       }))
 
       return skillDirectories.value

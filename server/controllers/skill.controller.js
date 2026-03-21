@@ -962,7 +962,7 @@ class SkillController {
   }
 
   /**
-   * 列出所有技能目录（包括未注册的）
+   * 列出所有技能目录（纯文件系统操作）
    * GET /api/skills/directories
    */
   async listDirectories(ctx) {
@@ -979,21 +979,6 @@ class SkillController {
       const items = fsOriginal.readdirSync(skillsDir, { withFileTypes: true });
       const directories = [];
 
-      // 获取所有已注册的技能
-      const registeredSkills = await this.Skill.findAll({
-        attributes: ['id', 'name', 'source_path', 'description'],
-        raw: true,
-      });
-
-      // 创建名称到技能的映射
-      const skillMap = {};
-      registeredSkills.forEach(skill => {
-        skillMap[skill.name] = skill;
-        if (skill.source_path) {
-          skillMap[skill.source_path] = skill;
-        }
-      });
-
       // 遍历目录
       for (const item of items) {
         if (!item.isDirectory()) continue;
@@ -1001,9 +986,6 @@ class SkillController {
         const dirName = item.name;
         const dirPath = path.join(skillsDir, dirName);
         const relativePath = `data/skills/${dirName}`;
-
-        // 检查是否已注册
-        const registeredSkill = skillMap[dirName] || skillMap[dirPath] || skillMap[relativePath];
 
         // 尝试读取 SKILL.md 获取描述
         let description = '';
@@ -1021,9 +1003,7 @@ class SkillController {
         directories.push({
           name: dirName,
           path: relativePath,
-          description: registeredSkill?.description || description || '',
-          is_registered: !!registeredSkill,
-          skill_id: registeredSkill?.id || null,
+          description,
         });
       }
 
