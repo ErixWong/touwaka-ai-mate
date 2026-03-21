@@ -197,7 +197,7 @@
                 <div v-for="tool in skill_form.tools" :key="tool.id" class="tool-item">
                   <div class="tool-header">
                     <input v-model="tool.name" type="text" class="tool-name-input" :placeholder="$t('skills.name') || '名称'" />
-                    <span class="tool-type-badge" :class="tool.type">{{ tool.type }}</span>
+                    <span v-if="tool.is_resident" class="resident-badge">驻留</span>
                   </div>
                   
                   <div class="tool-fields">
@@ -207,37 +207,26 @@
                       <input v-model="tool.description" type="text" class="field-input" :placeholder="$t('skills.description') || '描述'" />
                     </div>
                     
-                    <!-- 用法说明 -->
+                    <!-- 脚本路径 -->
                     <div class="field-row">
-                      <span class="field-label">{{ $t('skills.usage') || '用法' }}</span>
-                      <textarea v-model="tool.usage" class="field-textarea" rows="3" :placeholder="$t('skills.usage') || '用法说明'"></textarea>
+                      <span class="field-label">{{ $t('skills.scriptPath') || '脚本路径' }}</span>
+                      <input v-model="tool.script_path" type="text" class="field-input" :placeholder="$t('skills.scriptPath') || '脚本路径'" />
                     </div>
                     
-                    <!-- HTTP 类型字段 -->
-                    <template v-if="tool.type === 'http'">
-                      <div class="field-row">
-                        <span class="field-label">{{ $t('skills.endpoint') || '端点' }}</span>
-                        <input v-model="tool.endpoint" type="text" class="field-input" :placeholder="$t('skills.endpoint') || '端点'" />
-                      </div>
-                      <div class="field-row">
-                        <span class="field-label">{{ $t('skills.method') || '方法' }}</span>
-                        <select v-model="tool.method" class="field-select">
-                          <option value="GET">GET</option>
-                          <option value="POST">POST</option>
-                          <option value="PUT">PUT</option>
-                          <option value="DELETE">DELETE</option>
-                          <option value="PATCH">PATCH</option>
-                        </select>
-                      </div>
-                    </template>
+                    <!-- 参数定义 -->
+                    <div class="field-row">
+                      <span class="field-label">{{ $t('skills.parameters') || '参数' }}</span>
+                      <textarea v-model="tool.parameters" class="field-textarea" rows="5" :placeholder="$t('skills.parametersPlaceholder') || 'JSON 格式的参数定义'"></textarea>
+                    </div>
                     
-                    <!-- Script 类型字段 -->
-                    <template v-if="tool.type === 'script'">
-                      <div class="field-row">
-                        <span class="field-label">{{ $t('skills.command') || '命令' }}</span>
-                        <input v-model="tool.command" type="text" class="field-input" :placeholder="$t('skills.command') || '命令'" />
-                      </div>
-                    </template>
+                    <!-- 驻留进程 -->
+                    <div class="field-row">
+                      <span class="field-label">{{ $t('skills.isResident') || '驻留进程' }}</span>
+                      <label class="checkbox-inline">
+                        <input type="checkbox" v-model="tool.is_resident" />
+                        {{ $t('skills.isResidentHint') || '持续运行，stdio 通信' }}
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -479,10 +468,9 @@ const save_skill = async () => {
         id: t.id,
         name: t.name,
         description: t.description,
-        usage: t.usage,
-        endpoint: t.endpoint,
-        method: t.method,
-        command: t.command
+        script_path: t.script_path,
+        parameters: t.parameters,
+        is_resident: t.is_resident
       })))
     }
     

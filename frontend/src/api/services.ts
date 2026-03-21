@@ -371,11 +371,9 @@ export const skill_api = {
     id: string;
     name?: string;
     description?: string;
-    usage?: string;
-    endpoint?: string;
-    method?: string;
-    command?: string;
-    parameters?: Record<string, unknown>;
+    script_path?: string;
+    parameters?: string;
+    is_resident?: boolean;
   }>) =>
     apiRequest<{ updated: number }>(
       apiClient.put(`/skills/${skill_id}/tools`, { tools })
@@ -385,11 +383,9 @@ export const skill_api = {
   update_skill_tool: (skill_id: string, tool_id: string, data: {
     name?: string;
     description?: string;
-    usage?: string;
-    endpoint?: string;
-    method?: string;
-    command?: string;
-    parameters?: Record<string, unknown>;
+    script_path?: string;
+    parameters?: string;
+    is_resident?: boolean;
   }) =>
     apiRequest<{ id: string }>(
       apiClient.put(`/skills/${skill_id}/tools/${tool_id}`, data)

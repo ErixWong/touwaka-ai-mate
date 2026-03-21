@@ -701,7 +701,7 @@ class SkillController {
   async updateTool(ctx) {
     try {
       const { id, tool_id } = ctx.params;
-      const { name, description, usage, endpoint, method, command, parameters } = ctx.request.body;
+      const { name, description, script_path, parameters, is_resident } = ctx.request.body;
 
       // 检查工具是否存在
       const tool = await this.SkillTool.findOne({
@@ -716,11 +716,9 @@ class SkillController {
       const updates = {};
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
-      if (usage !== undefined) updates.usage = usage;
-      if (endpoint !== undefined) updates.endpoint = endpoint;
-      if (method !== undefined) updates.method = method;
-      if (command !== undefined) updates.command = command;
+      if (script_path !== undefined) updates.script_path = script_path;
       if (parameters !== undefined) updates.parameters = typeof parameters === 'string' ? parameters : JSON.stringify(parameters);
+      if (is_resident !== undefined) updates.is_resident = is_resident ? 1 : 0;
 
       if (Object.keys(updates).length === 0) {
         ctx.error('没有要更新的字段', 400);
@@ -768,11 +766,9 @@ class SkillController {
         const updates = {};
         if (tool.name !== undefined) updates.name = tool.name;
         if (tool.description !== undefined) updates.description = tool.description;
-        if (tool.usage !== undefined) updates.usage = tool.usage;
-        if (tool.endpoint !== undefined) updates.endpoint = tool.endpoint;
-        if (tool.method !== undefined) updates.method = tool.method;
-        if (tool.command !== undefined) updates.command = tool.command;
+        if (tool.script_path !== undefined) updates.script_path = tool.script_path;
         if (tool.parameters !== undefined) updates.parameters = typeof tool.parameters === 'string' ? tool.parameters : JSON.stringify(tool.parameters);
+        if (tool.is_resident !== undefined) updates.is_resident = tool.is_resident ? 1 : 0;
 
         if (Object.keys(updates).length > 0) {
           await this.SkillTool.update(updates, {
