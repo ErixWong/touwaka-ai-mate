@@ -129,11 +129,13 @@ const visibleTabs = computed<Tab[]>(() => {
   }
 
   // 普通模式：显示 expert、topics、tasks、assistants Tab
+  // 管理员额外显示 skills-directory Tab
   const tabs: Tab[] = [
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
     { id: 'assistants', label: t('panel.assistants') || '助理', icon: '🤖' },
+    { id: 'skills-directory', label: t('panel.skillsDirectory') || '技能目录', icon: '📁', adminOnly: true },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]
 
