@@ -24,9 +24,6 @@ export default function createSkillRoutes(controller) {
   // GET /api/skills/:id - 获取技能详情
   router.get('/:id', authenticate(), controller.get.bind(controller));
 
-  // GET /api/skills/:id/parameters - 获取技能参数
-  router.get('/:id/parameters', authenticate(), controller.getParameters.bind(controller));
-
   // ==================== 写入操作（需要管理员权限）====================
 
   // PUT /api/skills/:id - 更新技能
@@ -34,6 +31,9 @@ export default function createSkillRoutes(controller) {
 
   // DELETE /api/skills/:id - 删除技能
   router.delete('/:id', authenticate(), requireAdmin(), controller.delete.bind(controller));
+
+  // GET /api/skills/:id/parameters - 获取技能参数
+  router.get('/:id/parameters', authenticate(), requireAdmin(), controller.getParameters.bind(controller));
 
   // POST /api/skills/:id/parameters - 保存技能参数（全量替换）
   router.post('/:id/parameters', authenticate(), requireAdmin(), controller.saveParameters.bind(controller));

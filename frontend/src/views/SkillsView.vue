@@ -86,12 +86,14 @@
             {{ $t('skills.viewDetail') }}
           </button>
           <button 
+            v-if="userStore.isAdmin"
             class="btn-action secondary" 
             @click="openSkillEditor(skill)"
           >
             {{ $t('skills.editSkill') || '编辑' }}
           </button>
           <button
+            v-if="userStore.isAdmin"
             class="btn-action secondary"
             @click="openParamsDialog(skill)"
           >
@@ -418,6 +420,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSkillStore } from '@/stores/skill'
 import { useToastStore } from '@/stores/toast'
+import { useUserStore } from '@/stores/user'
 import { skill_api } from '@/api/services'
 import type { Skill, SkillDetail, SkillTool, SkillParameter } from '@/types'
 import SkillParametersModal from '@/components/SkillParametersModal.vue'
@@ -433,6 +436,7 @@ interface EditableParameter {
 const { t } = useI18n()
 const skillStore = useSkillStore()
 const toast = useToastStore()
+const userStore = useUserStore()
 
 const searchQuery = ref('')
 const filterStatus = ref('')
