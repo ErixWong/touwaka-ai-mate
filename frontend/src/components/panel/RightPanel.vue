@@ -69,6 +69,7 @@ const splitModes = [
   { value: 'default' as SplitMode, label: '默认', title: '默认比例 (左侧 75% : 右侧 25%)' },
   { value: '5:5' as SplitMode, label: '1:1', title: '1:1 分屏 (左右各 50%)' },
   { value: '3:2' as SplitMode, label: '3:2', title: '3:2 分屏 (左侧 60% : 右侧 40%)' },
+  { value: '2:3' as SplitMode, label: '2:3', title: '2:3 分屏 (左侧 40% : 右侧 60%)' },
 ]
 
 // 设置分屏模式
