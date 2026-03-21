@@ -17,6 +17,10 @@ export default function createSkillRoutes(controller) {
   // GET /api/skills - 获取技能列表
   router.get('/', authenticate(), controller.list.bind(controller));
 
+  // GET /api/skills/directories - 列出所有技能目录（纯文件系统操作）
+  // 注意：必须在 /:id 路由之前定义，否则会被 /:id 捕获
+  router.get('/directories', authenticate(), requireAdmin(), controller.listDirectories.bind(controller));
+
   // GET /api/skills/:id - 获取技能详情
   router.get('/:id', authenticate(), controller.get.bind(controller));
 
@@ -55,10 +59,6 @@ export default function createSkillRoutes(controller) {
   router.patch('/:id/toggle', authenticate(), requireAdmin(), controller.toggle.bind(controller));
 
   // ==================== 技能目录文件管理 API（需要管理员权限）====================
-
-  // GET /api/skills/directories - 列出所有技能目录（包括未注册的）
-  // 注意：这个路由必须在 /:id 路由之前定义
-  router.get('/directories', authenticate(), requireAdmin(), controller.listDirectories.bind(controller));
 
   // GET /api/skills/:id/files - 获取技能目录文件列表
   router.get('/:id/files', authenticate(), requireAdmin(), controller.listFiles.bind(controller));
