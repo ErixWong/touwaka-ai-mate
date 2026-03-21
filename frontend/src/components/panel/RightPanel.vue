@@ -39,6 +39,7 @@
       <TasksTab v-if="activeTab === 'tasks'" />
       <AssistantTab v-if="activeTab === 'assistants'" />
       <SkillsTab v-if="activeTab === 'skills'" />
+      <SkillsDirectoryTab v-if="activeTab === 'skills-directory'" />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
   </div>
@@ -54,6 +55,7 @@ import TopicsTab from './TopicsTab.vue'
 import TasksTab from './TasksTab.vue'
 import AssistantTab from './AssistantTab.vue'
 import SkillsTab from './SkillsTab.vue'
+import SkillsDirectoryTab from './SkillsDirectoryTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
 import { useI18n } from 'vue-i18n'
@@ -71,6 +73,7 @@ const splitModes = [
   { value: 'default' as SplitMode, label: '默认', title: '默认比例 (左侧 75% : 右侧 25%)' },
   { value: '5:5' as SplitMode, label: '1:1', title: '1:1 分屏 (左右各 50%)' },
   { value: '3:2' as SplitMode, label: '3:2', title: '3:2 分屏 (左侧 60% : 右侧 40%)' },
+  { value: '3:1' as SplitMode, label: '3:1', title: '3:1 分屏 (左侧 75% : 右侧 25%)' },
 ]
 
 // 设置分屏模式
@@ -111,11 +114,12 @@ interface Tab {
 }
 
 const visibleTabs = computed<Tab[]>(() => {
-  // skill-studio 模式：显示 expert 和 skills Tab
+  // skill-studio 模式：显示 expert、skills、skills-directory Tab
   if (is_skill_studio.value) {
     const tabs: Tab[] = [
       { id: 'expert', label: t('panel.expert'), icon: '👤' },
       { id: 'skills', label: t('panel.skills') || '技能', icon: '🛠️' },
+      { id: 'skills-directory', label: t('panel.skillsDirectory') || '技能目录', icon: '📁' },
       { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
     ]
     return tabs.filter(tab => {
