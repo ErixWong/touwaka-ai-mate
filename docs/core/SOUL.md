@@ -102,6 +102,7 @@ Issue（任务单） → 创建分支 → 开发 → PR → 合并 → 关闭 Is
 2. GitHub Issues - 当前任务状态
 3. `docs/guides/development/coding-standards.md` - 编码规范
 4. `docs/guides/development/code-review-checklist.md` - 代码审计清单
+5. `docs/guides/development/skill-development-guide.md` - 技能开发指南
 
 ### Issue 规范
 
