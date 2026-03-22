@@ -5,6 +5,28 @@ description: "Excel 文件处理。用于读取、写入、编辑 .xlsx/.xls/.cs
 
 # XLSX - Excel 文件处理
 
+## 路径参数说明
+
+> **重要**：所有工具的 `path` 参数遵循以下规则：
+
+| 参数类型 | 说明 |
+|----------|------|
+| **相对路径** | 相对于工作目录，工具自动拼接基础路径。示例：`input/file.xlsx` |
+| **绝对路径** | 仅管理员可用，需在允许的路径范围内 |
+
+**基础路径规则**：
+- 管理员：项目根目录 或 `data/` 目录
+- 普通用户：`data/work/{user_id}/` 目录
+
+**示例**：
+```javascript
+// 相对路径（推荐）
+excel_read({ path: 'input/data.xlsx', scope: 'workbook' })
+
+// 绝对路径（仅管理员）
+excel_read({ path: '/absolute/path/to/data.xlsx', scope: 'workbook' })
+```
+
 ## 工具
 
 | 工具 | 说明 | 关键参数 |
