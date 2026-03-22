@@ -623,10 +623,12 @@ async function excelFormat(params) {
       throw new Error('columns array is required');
     }
     
-    for (const col of columns) {
+    for (let i = 0; i < columns.length; i++) {
+      const col = columns[i];
+      
       // 验证 width 参数
       if (typeof col.width !== 'number' || col.width < 0) {
-        throw new Error(`Invalid width value: ${col.width}. Must be a non-negative number.`);
+        throw new Error(`Invalid width value at index ${i}: ${col.width}. Must be a non-negative number.`);
       }
       
       let colNum;
@@ -636,16 +638,19 @@ async function excelFormat(params) {
         const colStr = col.column.toUpperCase();
         // 验证列名只包含字母
         if (!/^[A-Z]+$/.test(colStr)) {
-          throw new Error(`Invalid column name: ${col.column}. Must be letters only (A-Z).`);
+          throw new Error(`Invalid column name at index ${i}: ${col.column}. Must be letters only (A-Z).`);
         }
         colNum = 0;
-        for (let i = 0; i < colStr.length; i++) {
-          colNum = colNum * 26 + (colStr.charCodeAt(i) - 64);
+        for (let j = 0; j < colStr.length; j++) {
+          colNum = colNum * 26 + (colStr.charCodeAt(j) - 64);
         }
       } else if (typeof col.column === 'number') {
         colNum = col.column;
+      } else if (col.column === undefined || col.column === null) {
+        // 如果没有指定 column，使用索引 + 1
+        colNum = i + 1;
       } else {
-        throw new Error(`Invalid column type: ${typeof col.column}. Must be string or number.`);
+        throw new Error(`Invalid column type at index ${i}: ${typeof col.column}. Must be string, number, or omitted (auto-increment from 1).`);
       }
       worksheet.getColumn(colNum).width = col.width;
     }
@@ -925,7 +930,18 @@ async function excelConvert(params) {
     }
     
     const sheetName = sheet || 'Sheet1';
-    const worksheet = XLSX.utils.json_to_sheet(data);
+    let worksheet;
+    
+    // 检测数据类型：如果是二维数组（数组中的元素也是数组），使用 aoa_to_sheet
+    // 如果是对象数组，使用 json_to_sheet
+    if (data.length > 0 && Array.isArray(data[0])) {
+      // 二维数组模式：直接使用 aoa_to_sheet
+      worksheet = XLSX.utils.aoa_to_sheet(data);
+    } else {
+      // 对象数组模式：使用 json_to_sheet
+      worksheet = XLSX.utils.json_to_sheet(data);
+    }
+    
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
     

@@ -336,6 +336,10 @@ async function main() {
     process.env.USER_ACCESS_TOKEN = USER_ACCESS_TOKEN;
     process.env.NODE_ENV = process.env.NODE_ENV || 'development';
     
+    // 设置管理员权限（用于测试文件操作技能）
+    process.env.IS_ADMIN = 'true';
+    process.env.DATA_BASE_PATH = path.join(process.cwd(), 'data');
+    
     // 加载技能代码
     const code = loadSkillCode(skillName);
     console.log(`   代码长度: ${code.length} 字符`);
