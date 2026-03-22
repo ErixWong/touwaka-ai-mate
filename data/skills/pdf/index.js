@@ -32,6 +32,7 @@ function getPdfParse() {
 
 // 用户角色检查
 const IS_ADMIN = process.env.IS_ADMIN === 'true';
+const IS_SKILL_CREATOR = process.env.IS_SKILL_CREATOR === 'true';
 
 // 允许的基础路径
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
@@ -40,10 +41,21 @@ const USER_WORK_DIR = process.env.WORKING_DIRECTORY
   ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
   : path.join(DATA_BASE_PATH, 'work', USER_ID);
 
-const PROJECT_ROOT = process.cwd();
-const ALLOWED_BASE_PATHS = IS_ADMIN
-  ? [PROJECT_ROOT, DATA_BASE_PATH]
-  : [USER_WORK_DIR];
+// 根据用户角色设置允许的路径
+let ALLOWED_BASE_PATHS;
+if (IS_ADMIN) {
+  // 管理员：可以访问整个 data/ 目录
+  ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
+} else if (IS_SKILL_CREATOR) {
+  // 技能创建者：可以访问 skills/ 和自己的工作目录
+  ALLOWED_BASE_PATHS = [
+    path.join(DATA_BASE_PATH, 'skills'),
+    path.join(DATA_BASE_PATH, 'work', USER_ID)
+  ];
+} else {
+  // 普通用户：只能访问自己的工作目录
+  ALLOWED_BASE_PATHS = [USER_WORK_DIR];
+}
 
 /**
  * 检查路径是否被允许
