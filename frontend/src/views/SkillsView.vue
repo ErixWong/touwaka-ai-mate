@@ -404,10 +404,15 @@
           </div>
           
           <div class="modal-footer">
-            <button class="btn-cancel" @click="closeSkillEditor">{{ $t('common.cancel') || '取消' }}</button>
-            <button class="btn-save" @click="saveSkill" :disabled="savingSkill">
-              {{ savingSkill ? ($t('common.saving') || '保存中...') : ($t('common.save') || '保存') }}
+            <button class="btn-delete" @click="deleteSkill" :disabled="deletingSkill">
+              {{ deletingSkill ? ($t('common.deleting') || '删除中...') : ($t('common.delete') || '删除') }}
             </button>
+            <div class="footer-right">
+              <button class="btn-cancel" @click="closeSkillEditor">{{ $t('common.cancel') || '取消' }}</button>
+              <button class="btn-save" @click="saveSkill" :disabled="savingSkill">
+                {{ savingSkill ? ($t('common.saving') || '保存中...') : ($t('common.save') || '保存') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -451,6 +456,7 @@ const paramsSkill = ref<Skill | null>(null)
 const showSkillEditor = ref(false)
 const editingSkill = ref<SkillDetail | null>(null)
 const savingSkill = ref(false)
+const deletingSkill = ref(false)
 const editorTab = ref<'basic' | 'tools' | 'params'>('basic')
 const newTagInput = ref('')
 
@@ -678,6 +684,29 @@ const saveSkill = async () => {
     toast.error(t('skills.saveFailed') || '保存失败')
   } finally {
     savingSkill.value = false
+  }
+}
+
+// 删除技能
+const deleteSkill = async () => {
+  if (!editingSkill.value) return
+  
+  // 确认删除
+  const confirmed = confirm(t('skills.deleteConfirm') || `确定要删除技能 "${editingSkill.value.name}" 吗？此操作不可撤销。`)
+  if (!confirmed) return
+  
+  deletingSkill.value = true
+  try {
+    await skill_api.delete_skill(editingSkill.value.id)
+    toast.success(t('skills.deleteSuccess') || '删除成功')
+    closeSkillEditor()
+    // 刷新列表
+    await skillStore.loadSkills()
+  } catch (err) {
+    console.error('Failed to delete skill:', err)
+    toast.error(t('skills.deleteFailed') || '删除失败')
+  } finally {
+    deletingSkill.value = false
   }
 }
 
@@ -1602,11 +1631,37 @@ onMounted(() => {
 /* 弹窗底部 */
 .modal-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid var(--border-color, #e0e0e0);
   flex-shrink: 0;
+}
+
+.footer-right {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-delete {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--danger-color, #dc3545);
+  border: none;
+  color: white;
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-save {
