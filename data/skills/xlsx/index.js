@@ -143,7 +143,8 @@ async function excelRead(params) {
   const { path: filePath, scope = 'workbook', sheet, cell, includeData, range, header } = params;
   
   const buffer = readExcelFile(filePath);
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  // 使用 cellStyles: true 以便正确读取公式
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellStyles: true });
   
   // 读取工作簿信息
   if (scope === 'workbook') {
@@ -1001,7 +1002,8 @@ async function excelCalc(params) {
   const { path: filePath, sheet } = params;
   
   const buffer = readExcelFile(filePath);
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  // 必须使用 cellStyles: true 才能正确读取公式
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellStyles: true });
   
   const sheetName = sheet || workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
@@ -1013,36 +1015,34 @@ async function excelCalc(params) {
   const HyperFormulaLib = getHyperFormula();
   const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
   
-  // 使用 buildFromSheets 而不是 buildEmpty + addSheet + setSheetContent
-  // 这样可以正确初始化 HyperFormula 实例
+  // 确保数据是二维数组且不为空
+  const safeData = data && data.length > 0 ? data : [['']];
+  
+  // 使用 buildFromSheets 创建 HyperFormula 实例
   let hfInstance;
   try {
     hfInstance = HyperFormulaLib.buildFromSheets({
-      [sheetName]: data
+      [sheetName]: safeData
     }, {
       licenseKey: 'gpl-v3'
     });
   } catch (hfError) {
     // 如果 buildFromSheets 失败，尝试使用 buildEmpty 方式
-    console.error('HyperFormula buildFromSheets failed:', hfError.message);
-    
-    // 确保数据是二维数组且不为空
-    const safeData = data && data.length > 0 ? data : [['']];
-    
     hfInstance = HyperFormulaLib.buildEmpty({
       licenseKey: 'gpl-v3'
     });
-    
     const addedSheetId = hfInstance.addSheet(sheetName);
     hfInstance.setSheetContent(addedSheetId, safeData);
   }
   
+  // 获取 sheetId
+  const sheetId = hfInstance.getSheetId(sheetName);
+  
+  // 收集公式信息并设置到 HyperFormula
   const formulas = [];
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
   
-  // 正确获取 sheetId
-  const sheetId = hfInstance.getSheetId(sheetName);
-  
+  // 首先收集所有公式并设置到 HyperFormula
   for (let row = range.s.r; row <= range.e.r; row++) {
     for (let col = range.s.c; col <= range.e.c; col++) {
       const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
@@ -1050,14 +1050,48 @@ async function excelCalc(params) {
       
       if (cell && cell.f) {
         try {
-          const calculatedValue = hfInstance.getCellValue({ sheetId, row, col });
+          // 将公式设置到 HyperFormula
+          // HyperFormula SimpleCellAddress 格式: { sheet: number, col: number, row: number }
+          hfInstance.setCellContents(
+            { sheet: sheetId, col: col, row: row },
+            cell.f.startsWith('=') ? cell.f : '=' + cell.f
+          );
+        } catch (setContentError) {
+          // 公式设置失败，记录但继续
+          formulas.push({
+            cell: cellAddress,
+            formula: cell.f,
+            value: null,
+            error: `Failed to set formula: ${setContentError.message}`
+          });
+        }
+      }
+    }
+  }
+  
+  // 然后获取计算结果
+  for (let row = range.s.r; row <= range.e.r; row++) {
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+      const cell = worksheet[cellAddress];
+      
+      if (cell && cell.f) {
+        // 检查是否已经记录过错误
+        const existingError = formulas.find(f => f.cell === cellAddress && f.error);
+        if (existingError) continue;
+        
+        try {
+          const calculatedValue = hfInstance.getCellValue({
+            sheet: sheetId,
+            col: col,
+            row: row
+          });
           formulas.push({
             cell: cellAddress,
             formula: cell.f,
             value: calculatedValue
           });
         } catch (cellError) {
-          // 单元格计算失败时记录错误但不中断
           formulas.push({
             cell: cellAddress,
             formula: cell.f,
