@@ -40,6 +40,11 @@ import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import { fileURLToPath } from 'url';
 
+// 动态导入 npm 模块用于技能测试
+import xlsx from 'xlsx';
+import exceljs from 'exceljs';
+import hyperformula from 'hyperformula';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -104,10 +109,23 @@ function parseArgs(args) {
         const key = arg.substring(2, eqIndex);
         let value = arg.substring(eqIndex + 1);
         
-        if (value === 'true') value = true;
+        // 尝试解析 JSON（数组和对象）
+        if ((value.startsWith('[') && value.endsWith(']')) ||
+            (value.startsWith('{') && value.endsWith('}'))) {
+          try {
+            value = JSON.parse(value);
+          } catch (e) {
+            // JSON 解析失败，保持字符串
+          }
+        }
+        // 布尔值
+        else if (value === 'true') value = true;
         else if (value === 'false') value = false;
+        // null
         else if (value === 'null') value = null;
+        // 数字
         else if (!isNaN(Number(value)) && value !== '') value = Number(value);
+        // 引号包裹的字符串
         else if ((value.startsWith('"') && value.endsWith('"')) ||
                  (value.startsWith("'") && value.endsWith("'"))) {
           value = value.slice(1, -1);
@@ -236,6 +254,10 @@ function executeSkill(code, skillId) {
         'buffer': buffer,
         'events': events,
         'string_decoder': string_decoder,
+        // npm 模块（用于测试 xlsx 技能）
+        'xlsx': xlsx,
+        'exceljs': exceljs,
+        'hyperformula': hyperformula,
       };
       
       if (moduleMap[moduleName]) {
