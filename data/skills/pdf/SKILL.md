@@ -1,546 +1,250 @@
 ---
 name: pdf
-description: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and converting PDFs to images for VL model recognition. If the user mentions a .pdf file or asks to produce one, use this skill.
+description: "PDF 文件处理。用于读取、提取文本/表格、合并、拆分、旋转、水印、加密/解密、表单填写、图片提取、转换为图片。当用户提到 .pdf 文件或需要操作 PDF 时触发。"
 license: Proprietary. LICENSE.txt has complete terms
 argument-hint: "[operation] [path]"
 user-invocable: true
-tools:
-  - read_pdf
-  - extract_text
-  - extract_tables
-  - merge_pdfs
-  - split_pdf
-  - rotate_pages
-  - create_pdf
-  - convert_to_images
-  - pdf_to_markdown
-  - encrypt_pdf
-  - decrypt_pdf
-  - add_watermark
-  - check_fillable_fields
-  - extract_form_field_info
-  - fill_fillable_fields
-  - extract_form_structure
-  - fill_pdf_form_with_annotations
-  - check_bounding_boxes
-  - extract_images
 ---
 
-# PDF Processing Guide
+# PDF - PDF 文件处理
 
-## Overview
+## 工具
 
-This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `read_pdf` | 读取 PDF 元数据 | `path` |
+| `extract_text` | 提取文本 | `path`, `from_page`, `to_page` |
+| `extract_tables` | 提取表格 | `path`, `page` |
+| `merge_pdfs` | 合并 PDF | `paths[]`, `output` |
+| `split_pdf` | 拆分 PDF | `path`, `output_dir`, `pages_per_file` |
+| `rotate_pages` | 旋转页面 | `path`, `output`, `pages[]`, `degrees` |
+| `create_pdf` | 创建 PDF | `output`, `content[]` |
+| `convert_to_images` | 转为图片 | `path`, `output_dir`, `dpi`, `format` |
+| `pdf_to_markdown` | 转为 Markdown | `path`, `output` |
+| `encrypt_pdf` | 加密 PDF | `path`, `output`, `user_password` |
+| `decrypt_pdf` | 解密 PDF | `path`, `output`, `password` |
+| `add_watermark` | 添加水印 | `path`, `output`, `watermark` |
+| `check_fillable_fields` | 检查可填写字段 | `path` |
+| `extract_form_field_info` | 提取表单字段信息 | `path`, `output` |
+| `fill_fillable_fields` | 填写表单字段 | `path`, `field_values`, `output` |
+| `extract_form_structure` | 提取表单结构 | `path`, `output` |
+| `fill_pdf_form_with_annotations` | 用注释填写表单 | `path`, `fields_json`, `output` |
+| `check_bounding_boxes` | 验证边界框 | `fields_json` |
+| `extract_images` | 提取图片 | `path`, `output_dir` |
 
-## Tools
+## 基本操作
 
-### Basic Operations
+### read_pdf
 
-#### read_pdf
+读取 PDF 元数据和基本信息。
 
-Read PDF metadata and basic information.
+**参数：**
+- `path` (string, required): PDF 文件路径
 
-**Parameters:**
-- `path` (string, required): PDF file path
+**返回：** 页数、元数据（标题、作者、主题、创建者）、加密状态
 
-**Returns:** Page count, metadata (title, author, subject, creator), encryption status
+### extract_text
 
-#### extract_text
+从 PDF 页面提取文本内容。
 
-Extract text content from PDF pages.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `from_page` (number, optional): 起始页（从1开始，默认: 1）
+- `to_page` (number, optional): 结束页（包含）
+- `preserve_layout` (boolean, optional): 保留布局（默认: false）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `from_page` (number, optional): Start page (1-based, default: 1)
-- `to_page` (number, optional): End page (inclusive)
-- `preserve_layout` (boolean, optional): Preserve layout (default: false)
+### extract_tables
 
-#### extract_tables
+使用 pdfplumber 从 PDF 提取表格。
 
-Extract tables from PDF using pdfplumber.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `page` (number, optional): 指定页码（从1开始，不指定则提取所有）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `page` (number, optional): Specific page number (1-based, extracts all if not specified)
+## 编辑操作
 
-### Editing Operations
+### merge_pdfs
 
-#### merge_pdfs
+合并多个 PDF 文件。
 
-Merge multiple PDF files into one.
+**参数：**
+- `paths` (string[], required): PDF 文件路径数组（至少2个）
+- `output` (string, required): 输出文件路径
 
-**Parameters:**
-- `paths` (string[], required): Array of PDF file paths (at least 2)
-- `output` (string, required): Output file path
+### split_pdf
 
-#### split_pdf
+将 PDF 拆分为多个文件。
 
-Split PDF into multiple files.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output_dir` (string, required): 输出目录
+- `pages_per_file` (number, optional): 每个文件的页数（默认: 1）
+- `prefix` (string, optional): 输出文件名前缀（默认: "page"）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output_dir` (string, required): Output directory
-- `pages_per_file` (number, optional): Pages per output file (default: 1)
-- `prefix` (string, optional): Output filename prefix (default: "page")
+### rotate_pages
 
-#### rotate_pages
+旋转 PDF 页面。
 
-Rotate pages in PDF.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, required): 输出文件路径
+- `pages` (number[], optional): 要旋转的页码（从1开始，为空则旋转所有）
+- `degrees` (number, optional): 旋转角度 - 90, 180, 270（默认: 90）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, required): Output file path
-- `pages` (number[], optional): Page numbers to rotate (1-based, all if empty)
-- `degrees` (number, optional): Rotation degrees - 90, 180, 270 (default: 90)
+## 创建和转换
 
-### Creation and Conversion
+### create_pdf
 
-#### create_pdf
+创建新的 PDF 文件。
 
-Create a new PDF with text content.
+**参数：**
+- `output` (string, required): 输出文件路径
+- `title` (string, optional): PDF 标题
+- `content` (string[], required): 文本内容数组（每项为一页）
+- `page_size` (string, optional): 页面大小 - "letter" 或 "a4"（默认: "a4"）
 
-**Parameters:**
-- `output` (string, required): Output file path
-- `title` (string, optional): PDF title
-- `content` (string[], required): Array of text content (each item is a page)
-- `page_size` (string, optional): Page size - "letter" or "a4" (default: "a4")
+### convert_to_images
 
-#### convert_to_images
+将 PDF 页面转换为图片。
 
-Convert PDF pages to images.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output_dir` (string, required): 输出目录
+- `dpi` (number, optional): 分辨率 DPI（默认: 150）
+- `format` (string, optional): 图片格式 - "png" 或 "jpeg"（默认: "png"）
+- `from_page` (number, optional): 起始页（从1开始）
+- `to_page` (number, optional): 结束页（包含）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output_dir` (string, required): Output directory
-- `dpi` (number, optional): Resolution DPI (default: 150)
-- `format` (string, optional): Image format - "png" or "jpeg" (default: "png")
-- `from_page` (number, optional): Start page (1-based)
-- `to_page` (number, optional): End page (inclusive)
+### pdf_to_markdown
 
-#### pdf_to_markdown
+将 PDF 转换为 Markdown 格式。
 
-Convert PDF to Markdown format.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, optional): 输出 markdown 文件路径
+- `from_page` (number, optional): 起始页（从1开始）
+- `to_page` (number, optional): 结束页（包含）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, optional): Output markdown file path
-- `from_page` (number, optional): Start page (1-based)
-- `to_page` (number, optional): End page (inclusive)
+## 安全操作
 
-### Security Operations
+### encrypt_pdf
 
-#### encrypt_pdf
+使用密码保护加密 PDF。
 
-Encrypt PDF with password protection.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, required): 输出文件路径
+- `user_password` (string, required): 打开 PDF 的密码
+- `owner_password` (string, optional): 编辑密码（默认使用 user_password）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, required): Output file path
-- `user_password` (string, required): Password to open the PDF
-- `owner_password` (string, optional): Password for editing (defaults to user_password)
+### decrypt_pdf
 
-#### decrypt_pdf
+移除 PDF 密码保护。
 
-Remove password protection from PDF.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, required): 输出文件路径
+- `password` (string, required): 当前密码
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, required): Output file path
-- `password` (string, required): Current password
+### add_watermark
 
-#### add_watermark
+为 PDF 页面添加水印。
 
-Add watermark to PDF pages.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, required): 输出文件路径
+- `watermark` (string, required): 水印文本或水印 PDF 路径
+- `is_text` (boolean, optional): true 为文本水印，false 为 PDF 路径（默认: true）
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, required): Output file path
-- `watermark` (string, required): Watermark text or watermark PDF path
-- `is_text` (boolean, optional): True if watermark is text, false if PDF path (default: true)
+## 表单操作
 
-### Form Operations
+### check_fillable_fields
 
-#### check_fillable_fields
+检查 PDF 是否有可填写的表单字段。
 
-Check if PDF has fillable form fields.
+**参数：**
+- `path` (string, required): PDF 文件路径
 
-**Parameters:**
-- `path` (string, required): PDF file path
+### extract_form_field_info
 
-#### extract_form_field_info
+提取可填写表单字段的信息。
 
-Extract information about fillable form fields.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, required): 输出 JSON 文件路径
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, required): Output JSON file path
+### fill_fillable_fields
 
-#### fill_fillable_fields
+填写 PDF 中的可填写表单字段。
 
-Fill fillable form fields in a PDF.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `field_values` (string, required): 包含字段值的 JSON 文件
+- `output` (string, required): 输出 PDF 文件路径
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `field_values` (string, required): JSON file with field values
-- `output` (string, required): Output PDF file path
+### extract_form_structure
 
-#### extract_form_structure
+为不可填写的表单提取表单结构。
 
-Extract form structure for non-fillable forms.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output` (string, required): 输出 JSON 文件路径
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output` (string, required): Output JSON file path
+### fill_pdf_form_with_annotations
 
-#### fill_pdf_form_with_annotations
+使用文本注释填写不可填写的 PDF 表单。
 
-Fill non-fillable PDF forms with text annotations.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `fields_json` (string, required): 字段 JSON 文件路径
+- `output` (string, required): 输出 PDF 文件路径
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `fields_json` (string, required): Fields JSON file path
-- `output` (string, required): Output PDF file path
+### check_bounding_boxes
 
-#### check_bounding_boxes
+验证表单字段的边界框。
 
-Validate bounding boxes for form fields.
+**参数：**
+- `fields_json` (string, required): 字段 JSON 文件路径
 
-**Parameters:**
-- `fields_json` (string, required): Fields JSON file path
+## 其他操作
 
-### Other Operations
+### extract_images
 
-#### extract_images
+从 PDF 中提取嵌入的图片。
 
-Extract embedded images from PDF.
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `output_dir` (string, required): 输出目录
 
-**Parameters:**
-- `path` (string, required): PDF file path
-- `output_dir` (string, required): Output directory
+## 常见任务
 
-## Quick Start
+### 扫描版 PDF 处理
 
-```python
-from pypdf import PdfReader, PdfWriter
+对于扫描版 PDF 或基于图片的 PDF，文本提取可能失败。使用 `convert_to_images` 转换为图片，然后发送给 VL（视觉语言）模型进行文字识别。
 
-# Read a PDF
-reader = PdfReader("document.pdf")
-print(f"Pages: {len(reader.pages)}")
+**工作流程：**
+1. 使用 `convert_to_images` 将 PDF 页面转换为 PNG/JPEG 图片
+2. 将生成的图片发送给 VL 模型（如 GPT-4V、Claude Vision、Qwen-VL）
+3. VL 模型将识别并提取图片中的文字
 
-# Extract text
-text = ""
-for page in reader.pages:
-    text += page.extract_text()
+**示例：**
+```javascript
+convert_to_images({ path: "scanned.pdf", output_dir: "./images", dpi: 200 })
 ```
 
-## Python Libraries
-
-### pypdf - Basic Operations
-
-#### Merge PDFs
-
-```python
-from pypdf import PdfWriter, PdfReader
-
-writer = PdfWriter()
-for pdf_file in ["doc1.pdf", "doc2.pdf", "doc3.pdf"]:
-    reader = PdfReader(pdf_file)
-    for page in reader.pages:
-        writer.add_page(page)
-
-with open("merged.pdf", "wb") as output:
-    writer.write(output)
-```
-
-#### Split PDF
-
-```python
-reader = PdfReader("input.pdf")
-for i, page in enumerate(reader.pages):
-    writer = PdfWriter()
-    writer.add_page(page)
-    with open(f"page_{i+1}.pdf", "wb") as output:
-        writer.write(output)
-```
-
-#### Extract Metadata
-
-```python
-reader = PdfReader("document.pdf")
-meta = reader.metadata
-print(f"Title: {meta.title}")
-print(f"Author: {meta.author}")
-print(f"Subject: {meta.subject}")
-print(f"Creator: {meta.creator}")
-```
-
-#### Rotate Pages
-
-```python
-reader = PdfReader("input.pdf")
-writer = PdfWriter()
-
-page = reader.pages[0]
-page.rotate(90)  # Rotate 90 degrees clockwise
-writer.add_page(page)
-
-with open("rotated.pdf", "wb") as output:
-    writer.write(output)
-```
-
-### pdfplumber - Text and Table Extraction
-
-#### Extract Text with Layout
-
-```python
-import pdfplumber
-
-with pdfplumber.open("document.pdf") as pdf:
-    for page in pdf.pages:
-        text = page.extract_text()
-        print(text)
-```
-
-#### Extract Tables
-
-```python
-with pdfplumber.open("document.pdf") as pdf:
-    for i, page in enumerate(pdf.pages):
-        tables = page.extract_tables()
-        for j, table in enumerate(tables):
-            print(f"Table {j+1} on page {i+1}:")
-            for row in table:
-                print(row)
-```
-
-#### Advanced Table Extraction
-
-```python
-import pandas as pd
-
-with pdfplumber.open("document.pdf") as pdf:
-    all_tables = []
-    for page in pdf.pages:
-        tables = page.extract_tables()
-        for table in tables:
-            if table:  # Check if table is not empty
-                df = pd.DataFrame(table[1:], columns=table[0])
-                all_tables.append(df)
-
-# Combine all tables
-if all_tables:
-    combined_df = pd.concat(all_tables, ignore_index=True)
-    combined_df.to_excel("extracted_tables.xlsx", index=False)
-```
-
-### reportlab - Create PDFs
-
-#### Basic PDF Creation
-
-```python
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-
-c = canvas.Canvas("hello.pdf", pagesize=letter)
-width, height = letter
-
-# Add text
-c.drawString(100, height - 100, "Hello World!")
-c.drawString(100, height - 120, "This is a PDF created with reportlab")
-
-# Add a line
-c.line(100, height - 140, 400, height - 140)
-
-# Save
-c.save()
-```
-
-#### Create PDF with Multiple Pages
-
-```python
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet
-
-doc = SimpleDocTemplate("report.pdf", pagesize=letter)
-styles = getSampleStyleSheet()
-story = []
-
-# Add content
-title = Paragraph("Report Title", styles['Title'])
-story.append(title)
-story.append(Spacer(1, 12))
-
-body = Paragraph("This is the body of the report. " * 20, styles['Normal'])
-story.append(body)
-story.append(PageBreak())
-
-# Page 2
-story.append(Paragraph("Page 2", styles['Heading1']))
-story.append(Paragraph("Content for page 2", styles['Normal']))
-
-# Build PDF
-doc.build(story)
-```
-
-#### Subscripts and Superscripts
-
-**IMPORTANT**: Never use Unicode subscript/superscript characters (₀₁₂₃₄₅₆₇₈₉, ⁰¹²³⁴⁵⁶⁷⁸⁹) in ReportLab PDFs. The built-in fonts do not include these glyphs, causing them to render as solid black boxes.
-
-Instead, use ReportLab's XML markup tags in Paragraph objects:
-
-```python
-from reportlab.platypus import Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
-
-styles = getSampleStyleSheet()
-
-# Subscripts: use <sub> tag
-chemical = Paragraph("H<sub>2</sub>O", styles['Normal'])
-
-# Superscripts: use <super> tag
-squared = Paragraph("x<super>2</super> + y<super>2</super>", styles['Normal'])
-```
-
-For canvas-drawn text (not Paragraph objects), manually adjust font the size and position rather than using Unicode subscripts/superscripts.
-
-## Command-Line Tools
-
-### pdftotext (poppler-utils)
-
-```bash
-# Extract text
-pdftotext input.pdf output.txt
-
-# Extract text preserving layout
-pdftotext -layout input.pdf output.txt
-
-# Extract specific pages
-pdftotext -f 1 -l 5 input.pdf output.txt  # Pages 1-5
-```
-
-### qpdf
-
-```bash
-# Merge PDFs
-qpdf --empty --pages file1.pdf file2.pdf -- merged.pdf
-
-# Split pages
-qpdf input.pdf --pages . 1-5 -- pages1-5.pdf
-qpdf input.pdf --pages . 6-10 -- pages6-10.pdf
-
-# Rotate pages
-qpdf input.pdf output.pdf --rotate=+90:1  # Rotate page 1 by 90 degrees
-
-# Remove password
-qpdf --password=mypassword --decrypt encrypted.pdf decrypted.pdf
-```
-
-### pdftk (if available)
-
-```bash
-# Merge
-pdftk file1.pdf file2.pdf cat output merged.pdf
-
-# Split
-pdftk input.pdf burst
-
-# Rotate
-pdftk input.pdf rotate 1east output rotated.pdf
-```
-
-## Common Tasks
-
-### Convert Scanned PDFs to Images for VL Model Recognition
-
-For scanned PDFs or image-based PDFs where text extraction fails, use `convert_to_images` tool to convert PDF pages to images, then send images to VL (Vision-Language) model for text recognition.
-
-**Workflow:**
-1. Use `convert_to_images` tool to convert PDF pages to PNG/JPEG images
-2. Send the generated images to VL model (e.g., GPT-4V, Claude Vision, Qwen-VL)
-3. VL model will recognize and extract text from the images
-
-**Example:**
-```
-# Step 1: Convert PDF to images
-Tool: convert_to_images
-Params: { "path": "scanned.pdf", "output_dir": "./images", "dpi": 200 }
-
-# Step 2: Send images to VL model for recognition
-# The images are now ready for VL model processing
-```
-
-**Benefits of using VL model over traditional OCR:**
-- Better handling of complex layouts
-- Multi-language support without additional language packs
-- Understanding of tables, forms, and structured content
-- No need to install Tesseract or language packs
-
-### Add Watermark
-
-```python
-from pypdf import PdfReader, PdfWriter
-
-# Create watermark (or load existing)
-watermark = PdfReader("watermark.pdf").pages[0]
-
-# Apply to all pages
-reader = PdfReader("document.pdf")
-writer = PdfWriter()
-
-for page in reader.pages:
-    page.merge_page(watermark)
-    writer.add_page(page)
-
-with open("watermarked.pdf", "wb") as output:
-    writer.write(output)
-```
-
-### Extract Images
-
-```bash
-# Using pdfimages (poppler-utils)
-pdfimages -j input.pdf output_prefix
-
-# This extracts all images as output_prefix-000.jpg, output_prefix-001.jpg, etc.
-```
-
-### Password Protection
-
-```python
-from pypdf import PdfReader, PdfWriter
-
-reader = PdfReader("input.pdf")
-writer = PdfWriter()
-
-for page in reader.pages:
-    writer.add_page(page)
-
-# Add password
-writer.encrypt("userpassword", "ownerpassword")
-
-with open("encrypted.pdf", "wb") as output:
-    writer.write(output)
-```
-
-## Quick Reference
-
-| Task               | Best Tool                       | Command/Code                 |
-| ------------------ | ------------------------------- | ---------------------------- |
-| Merge PDFs         | pypdf                           | `writer.add_page(page)`    |
-| Split PDFs         | pypdf                           | One page per file            |
-| Extract text       | pdfplumber                      | `page.extract_text()`      |
-| Extract tables     | pdfplumber                      | `page.extract_tables()`    |
-| Create PDFs        | reportlab                       | Canvas or Platypus           |
-| Command line merge | qpdf                            | `qpdf --empty --pages ...` |
-| Scanned PDFs       | convert_to_images + VL model    | Convert to image first       |
-| Fill PDF forms     | pdf-lib or pypdf (see FORMS.md) | See FORMS.md                 |
-
-## Next Steps
-
-- For advanced pypdfium2 usage, see REFERENCE.md
-- For JavaScript libraries (pdf-lib), see REFERENCE.md
-- If you need to fill out a PDF form, follow the instructions in FORMS.md
-- For troubleshooting guides, see REFERENCE.md
-
----
+## 快速参考
+
+| 任务 | 最佳工具 | 说明 |
+|------|----------|------|
+| 合并 PDF | `merge_pdfs` | 多个 PDF 合并为一个 |
+| 拆分 PDF | `split_pdf` | 按页拆分 |
+| 提取文本 | `extract_text` | 获取文本内容 |
+| 提取表格 | `extract_tables` | 获取表格数据 |
+| 创建 PDF | `create_pdf` | 从文本创建 |
+| 扫描版 PDF | `convert_to_images` + VL 模型 | 先转图片再识别 |
+| 填写表单 | `fill_fillable_fields` | 见 FORMS.md |
+
+## 更多资源
+
+- **表单填写**: 详见 [`FORMS.md`](./forms.md)
+- **高级用法**: 详见 [`REFERENCE.md`](./reference.md)

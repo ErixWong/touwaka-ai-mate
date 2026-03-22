@@ -1,136 +1,63 @@
-# Prompt Editor
+---
+name: prompt-editor
+description: "提示词编辑技能。用于读取、备份、修改、恢复系统提示词。当需要修改专家的系统提示词时触发。"
+argument-hint: "[read|backup|update|restore|list_backups] --prompt_path=xxx"
+user-invocable: false
+allowed-tools: []
+---
 
-## 概述
+# Prompt Editor - 提示词编辑技能
 
-Alice 的自我编辑技能。用于读取、备份、修改系统提示词。
+用于读取、备份、修改、恢复系统提示词的技能。
 
-## 功能
+## 工具
 
-- **read_prompt**: 读取系统提示词文件
-- **backup_prompt**: 创建备份（带时间戳）
-- **update_prompt**: 更新提示词内容
-- **restore_prompt**: 从备份恢复
-- **list_backups**: 列出所有备份
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `read_prompt` | 读取提示词 | `prompt_path` |
+| `backup_prompt` | 创建备份 | `prompt_path` |
+| `update_prompt` | 更新提示词 | `prompt_path`, `content` |
+| `restore_prompt` | 恢复备份 | `backup_path`, `prompt_path` |
+| `list_backups` | 列出备份 | `backup_dir` |
 
-## 工具定义
-
-### read_prompt
+## read_prompt
 
 读取系统提示词文件内容。
 
-```json
-{
-  "name": "read_prompt",
-  "description": "读取系统提示词文件",
-  "script_path": "scripts/read_prompt.py",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "prompt_path": {
-        "type": "string",
-        "description": "提示词文件路径"
-      }
-    },
-    "required": ["prompt_path"]
-  }
-}
-```
+**参数：**
+- `prompt_path` (string, required): 提示词文件路径
 
-### backup_prompt
+## backup_prompt
 
-创建提示词备份。
+创建提示词备份（带时间戳）。
 
-```json
-{
-  "name": "backup_prompt",
-  "description": "创建提示词备份（带时间戳）",
-  "script_path": "scripts/backup_prompt.py",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "prompt_path": {
-        "type": "string",
-        "description": "提示词文件路径"
-      }
-    },
-    "required": ["prompt_path"]
-  }
-}
-```
+**参数：**
+- `prompt_path` (string, required): 提示词文件路径
 
-### update_prompt
+## update_prompt
 
 更新提示词内容。
 
-```json
-{
-  "name": "update_prompt",
-  "description": "更新提示词内容",
-  "script_path": "scripts/update_prompt.py",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "prompt_path": {
-        "type": "string",
-        "description": "提示词文件路径"
-      },
-      "content": {
-        "type": "string",
-        "description": "新的提示词内容"
-      }
-    },
-    "required": ["prompt_path", "content"]
-  }
-}
-```
+**参数：**
+- `prompt_path` (string, required): 提示词文件路径
+- `content` (string, required): 新的提示词内容
 
-### restore_prompt
+**说明：** 执行前自动创建备份
+
+## restore_prompt
 
 从备份恢复提示词。
 
-```json
-{
-  "name": "restore_prompt",
-  "description": "从备份恢复提示词",
-  "script_path": "scripts/restore_prompt.py",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "backup_path": {
-        "type": "string",
-        "description": "备份文件路径"
-      },
-      "prompt_path": {
-        "type": "string",
-        "description": "目标提示词文件路径"
-      }
-    },
-    "required": ["backup_path", "prompt_path"]
-  }
-}
-```
+**参数：**
+- `backup_path` (string, required): 备份文件路径
+- `prompt_path` (string, required): 目标提示词文件路径
 
-### list_backups
+## list_backups
 
 列出所有备份文件。
 
-```json
-{
-  "name": "list_backups",
-  "description": "列出所有提示词备份",
-  "script_path": "scripts/list_backups.py",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "backup_dir": {
-        "type": "string",
-        "description": "备份目录路径"
-      }
-    },
-    "required": ["backup_dir"]
-  }
-}
-```
+**参数：**
+- `backup_dir` (string, required): 备份目录路径
 
 ## 安全机制
 
@@ -155,4 +82,3 @@ Alice 的自我编辑技能。用于读取、备份、修改系统提示词。
 
 5. 恢复备份
    restore_prompt(backup_path="config/backups/prompt-2026-03-09.md", prompt_path="config/system-prompt.md")
-```

@@ -97,25 +97,6 @@ docx_image({ path: 'document.docx', action: 'extract', outputDir: './images' })
 docx_image({ path: 'document.docx', action: 'insert', imagePath: 'chart.png', width: 500, height: 300 })
 ```
 
-## 兼容旧工具名
-
-| 旧名称 | 新名称 |
-|--------|--------|
-| `read_document`, `read` | `docx_read(scope: 'info')` |
-| `extract_text` | `docx_read(scope: 'text')` |
-| `extract_paragraphs` | `docx_read(scope: 'paragraphs')` |
-| `extract_tables` | `docx_read(scope: 'tables')` |
-| `extract_comments` | `docx_read(scope: 'comments')` |
-| `create_document`, `create` | `docx_write(source: 'data')` |
-| `from_markdown` | `docx_write(source: 'markdown')` |
-| `add_paragraph` | `docx_edit(action: 'add_paragraph')` |
-| `replace_text` | `docx_edit(action: 'replace_text')` |
-| `add_table` | `docx_edit(action: 'add_table')` |
-| `to_markdown` | `docx_convert(format: 'markdown')` |
-| `to_html` | `docx_convert(format: 'html')` |
-| `extract_images` | `docx_image(action: 'extract')` |
-| `insert_image` | `docx_image(action: 'insert')` |
-
 ## 注意事项
 
 - **编辑限制**: 编辑操作会丢失原有格式和样式

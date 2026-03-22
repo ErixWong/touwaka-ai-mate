@@ -1,345 +1,169 @@
 ---
 name: ssh
-description: SSH remote server management with synchronous command execution and SFTP file transfer. Use when you need to connect to remote servers via SSH, execute commands, and transfer files. Features session-based connection management, automatic reconnection, and message history stored in SQLite.
+description: "SSH 远程服务器管理。用于连接远程服务器、执行命令、SFTP 文件传输。支持会话管理、自动重连、历史记录存储。当用户需要 SSH 连接、远程执行命令、传输文件时触发。"
 argument-hint: "[connect|exec|sudo|sftp_list|sftp_download|sftp_upload|disconnect] --session ID"
 user-invocable: false
 allowed-tools: []
 ---
 
-# SSH Remote Server Management
+# SSH - 远程服务器管理
 
-Session-based SSH client with synchronous execution, SFTP file transfer, and SQLite storage.
+基于会话的 SSH 客户端，支持同步命令执行和 SFTP 文件传输。
 
-## Design Architecture
+## 工具
 
-```
-[Main Program] --stdin--> [session_manager.js (Resident)]
-              <--stdout--+
-              <--events--+
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `ssh_connect` | 连接服务器 | `host`, `username`, `password`/`private_key` |
+| `ssh_disconnect` | 断开连接 | `session_id` |
+| `ssh_exec` | 执行命令 | `session_id`, `command` |
+| `ssh_sudo` | sudo 执行 | `session_id`, `command`, `password` |
+| `ssh_output` | 获取任务输出 | `task_id` |
+| `ssh_history` | 获取历史记录 | `session_id` |
+| `sftp_list` | 列出远程目录 | `session_id`, `path` |
+| `sftp_download` | 下载文件 | `session_id`, `remote_path`, `local_path` |
+| `sftp_upload` | 上传文件 | `session_id`, `local_path`, `remote_path` |
 
-session_manager.js:
-- is_resident: 1 (auto-started by main program)
-- stdin: receives JSON commands
-- stdout: sends JSON responses
-- stderr: logs (does not interfere with communication)
-```
-
-## Security Note
-
-**Session ID is a capability token - treat it like a password!**
-
-- Knowing the Session ID = Full control over that connection
-- LLM must save Session ID in conversation context
-- Lost Session ID = Lost access (no session list feature for security)
-- Never expose full Session ID in public (show first 8 chars only for identification)
-
-## SSH Tools
+## SSH 工具
 
 ### ssh_connect
 
-Connect to a remote SSH server and return a Session ID.
+连接到远程 SSH 服务器，返回 Session ID。
 
-**is_resident:** 0 (calls resident process)
-**script_path:** `scripts/ssh_client.js`
+**参数：**
+- `host` (string, required): 主机地址（IP 或主机名）
+- `username` (string, required): SSH 用户名
+- `port` (number, optional): SSH 端口，默认 22
+- `password` (string, optional): 密码认证
+- `private_key` (string, optional): 私钥文件路径（支持 `~` 展开）
+- `passphrase` (string, optional): 加密私钥的密码
 
-**Parameters:**
-- `host` (required): Host address (IP or hostname)
-- `username` (required): SSH username
-- `port` (optional): SSH port, default 22
-- `password` (optional): Password for authentication
-- `private_key` (optional): Path to private key file (supports `~` expansion)
-- `passphrase` (optional): Passphrase for encrypted private key
-
-**Returns:**
+**返回：**
 ```json
-{
-  "success": true,
-  "session_id": "sess_abc123..."
-}
+{ "success": true, "session_id": "sess_abc123..." }
 ```
-
----
 
 ### ssh_disconnect
 
-Disconnect from an SSH server.
+断开 SSH 连接。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
-
-**Parameters:**
-- `session_id` (required): Session ID to disconnect
-
-**Returns:**
-```json
-{
-  "success": true,
-  "message": "Disconnected"
-}
-```
-
----
+**参数：**
+- `session_id` (string, required): 会话 ID
 
 ### ssh_exec
 
-Execute a command on the remote server. Blocks until command completes.
+在远程服务器上执行命令（同步阻塞）。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
+**参数：**
+- `session_id` (string, required): 会话 ID
+- `command` (string, required): 要执行的命令
+- `timeout` (number, optional): 超时时间（毫秒），默认 60000
 
-**Parameters:**
-- `session_id` (required): Session ID
-- `command` (required): Command to execute
-- `timeout` (optional): Timeout in milliseconds, default 60000
-
-**Returns:**
+**返回：**
 ```json
 {
   "success": true,
   "task_id": "task_xxx",
   "exit_code": 0,
-  "stdout": "command output...",
+  "stdout": "命令输出...",
   "stderr": ""
 }
 ```
-
-**Note:** This is a synchronous call - the tool will not return until the command completes or times out.
-
----
 
 ### ssh_sudo
 
-Execute a command with sudo privileges.
+使用 sudo 权限执行命令。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
+**参数：**
+- `session_id` (string, required): 会话 ID
+- `command` (string, required): 要执行的命令（不含 sudo 前缀）
+- `password` (string, required): sudo 密码
+- `timeout` (number, optional): 超时时间（毫秒），默认 120000
 
-**Parameters:**
-- `session_id` (required): Session ID
-- `command` (required): Command to execute (without `sudo` prefix)
-- `password` (required): Sudo password
-- `timeout` (optional): Timeout in milliseconds, default 120000
-
-**Returns:**
-```json
-{
-  "success": true,
-  "task_id": "task_xxx",
-  "exit_code": 0,
-  "stdout": "output (password masked)...",
-  "stderr": ""
-}
-```
-
-**Security Features:**
-- Password is masked in output (replaced with `********`)
-- Supports automatic password prompt detection
-
----
+**安全特性：**
+- 密码在输出中被掩码（替换为 `********`）
+- 支持自动密码提示检测
 
 ### ssh_output
 
-Get output for a previously executed task (useful if you have task_id from history).
+获取已执行任务的输出（用于历史任务）。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
-
-**Parameters:**
-- `task_id` (required): Task ID to retrieve output for
-
-**Returns:**
-```json
-{
-  "success": true,
-  "task_id": "task_xxx",
-  "status": "completed",
-  "exit_code": 0,
-  "stdout": "...",
-  "stderr": ""
-}
-```
-
----
+**参数：**
+- `task_id` (string, required): 任务 ID
 
 ### ssh_history
 
-Get command execution history for a session.
+获取会话的命令执行历史。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
+**参数：**
+- `session_id` (string, required): 会话 ID
+- `limit` (number, optional): 最大记录数，默认 20
 
-**Parameters:**
-- `session_id` (required): Session ID
-- `limit` (optional): Max number of records, default 20
-
-**Returns:**
-```json
-{
-  "success": true,
-  "commands": [
-    {
-      "id": "msg_xxx",
-      "task_id": "task_001",
-      "command": "ls -la",
-      "timestamp": "2024-01-15T10:30:00Z"
-    }
-  ]
-}
-```
-
----
-
-## SFTP Tools
+## SFTP 工具
 
 ### sftp_list
 
-List contents of a remote directory.
+列出远程目录内容。
 
-**is_resident:** 0 (calls resident process)
-**script_path:** `scripts/ssh_client.js`
+**参数：**
+- `session_id` (string, required): 会话 ID
+- `path` (string, required): 远程目录路径
 
-**Parameters:**
-- `session_id` (required): Session ID
-- `path` (required): Remote directory path
-
-**Returns:**
+**返回：**
 ```json
 {
   "success": true,
   "path": "/home/user",
   "entries": [
-    {
-      "filename": "example.txt",
-      "type": "file",
-      "size": 1234,
-      "mode": "0644",
-      "mtime": "2024-01-01T00:00:00Z"
-    }
+    { "filename": "example.txt", "type": "file", "size": 1234, "mode": "0644" }
   ]
 }
 ```
 
----
-
 ### sftp_download
 
-Download a file from the remote server.
+从远程服务器下载文件。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
-
-**Parameters:**
-- `session_id` (required): Session ID
-- `remote_path` (required): Remote file path
-- `local_path` (required): Local file path to save
-
-**Returns:**
-```json
-{
-  "success": true,
-  "remote_path": "/remote/file.txt",
-  "local_path": "/local/file.txt",
-  "bytes_transferred": 12345
-}
-```
-
----
+**参数：**
+- `session_id` (string, required): 会话 ID
+- `remote_path` (string, required): 远程文件路径
+- `local_path` (string, required): 本地保存路径
 
 ### sftp_upload
 
-Upload a file to the remote server.
+上传文件到远程服务器。
 
-**is_resident:** 0
-**script_path:** `scripts/ssh_client.js`
+**参数：**
+- `session_id` (string, required): 会话 ID
+- `local_path` (string, required): 本地文件路径
+- `remote_path` (string, required): 远程保存路径
 
-**Parameters:**
-- `session_id` (required): Session ID
-- `local_path` (required): Local file path
-- `remote_path` (required): Remote file path to save
-
-**Returns:**
-```json
-{
-  "success": true,
-  "local_path": "/local/file.txt",
-  "remote_path": "/remote/file.txt",
-  "bytes_transferred": 12345
-}
-```
-
----
-
-## Resident Process
-
-### ssh_manager (internal)
-
-The resident process that manages SSH connections. **Do not call directly.**
-
-**is_resident:** 1
-**script_path:** `scripts/session_manager.js`
-
-This process is automatically started by the main program. It:
-- Listens on stdin for JSON commands
-- Responds on stdout with JSON results
-- Logs to stderr
-- Manages persistent SSH connections
-- Sends `{ "type": "ready" }` when started
-
----
-
-## Typical Workflow
+## 典型工作流程
 
 ```
-1. ssh_connect → Save the returned session_id
-2. ssh_exec → Execute commands, get output directly (synchronous)
-3. ssh_exec → Execute more commands...
-4. ssh_sudo → Execute commands requiring elevated privileges
-5. ssh_disconnect → Close the connection
+1. ssh_connect → 保存返回的 session_id
+2. ssh_exec → 执行命令，直接获取输出（同步）
+3. ssh_sudo → 执行需要提权的命令
+4. sftp_list/sftp_download/sftp_upload → 文件传输
+5. ssh_disconnect → 关闭连接
 ```
 
-## Protocol (for Resident Communication)
+## 安全说明
 
-Commands sent to the resident process on stdin:
+**Session ID 是能力令牌，请像密码一样对待！**
 
-```json
-{
-  "id": "req_123",
-  "action": "connect",
-  "host": "server.example.com",
-  "username": "admin"
-}
-```
+- 知道 Session ID = 拥有该连接的完全控制权
+- LLM 必须在对话上下文中保存 Session ID
+- 丢失 Session ID = 丢失访问权限（出于安全考虑无会话列表功能）
+- 不要在公开场合暴露完整 Session ID（仅显示前 8 个字符用于识别）
 
-Responses sent on stdout:
+## 存储
 
-```json
-{
-  "id": "req_123",
-  "success": true,
-  "session_id": "sess_..."
-}
-```
+- SQLite 数据库：`./data/ssh.db`
+- 包含会话、消息和任务历史
 
-Events (unsolicited notifications):
-
-```json
-{
-  "type": "event",
-  "event": "disconnect",
-  "session_id": "sess_..."
-}
-```
-
-## Storage
-
-- SQLite database: `./data/ssh.db`
-- Contains sessions, messages, and task history
-
-## Requirements
+## 依赖
 
 - Node.js 18+
-- Run `npm install` in skill directory before first use
-- ssh2 package
-
----
-*Updated: 2026-03-14 - Added SFTP file transfer support*
+- 首次使用前在技能目录运行 `npm install`
+- ssh2 包
