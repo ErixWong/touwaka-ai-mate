@@ -32,10 +32,10 @@ function getExcelJS() {
 
 function getHyperFormula() {
   if (!HyperFormula) {
+    const hfModule = require('hyperformula');
     // HyperFormula 导出格式: { HyperFormula: class, ... }
     // 需要访问 .HyperFormula 属性获取实际的类
-    const hfModule = require('hyperformula');
-    HyperFormula = hfModule.HyperFormula || hfModule;
+    HyperFormula = hfModule.HyperFormula || hfModule.default || hfModule;
   }
   return HyperFormula;
 }
@@ -1028,98 +1028,79 @@ async function excelCalc(params) {
     throw new Error(`Sheet "${sheetName}" not found`);
   }
   
-  const HyperFormulaLib = getHyperFormula();
-  const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
-  
-  // 确保数据是二维数组且不为空
-  const safeData = data && data.length > 0 ? data : [['']];
-  
-  // 使用 buildFromSheets 创建 HyperFormula 实例
-  let hfInstance;
-  try {
-    hfInstance = HyperFormulaLib.buildFromSheets({
-      [sheetName]: safeData
-    }, {
-      licenseKey: 'gpl-v3'
-    });
-  } catch (hfError) {
-    // 如果 buildFromSheets 失败，尝试使用 buildEmpty 方式
-    hfInstance = HyperFormulaLib.buildEmpty({
-      licenseKey: 'gpl-v3'
-    });
-    const addedSheetId = hfInstance.addSheet(sheetName);
-    hfInstance.setSheetContent(addedSheetId, safeData);
-  }
-  
-  // 获取 sheetId
-  const sheetId = hfInstance.getSheetId(sheetName);
-  
-  // 收集公式信息并设置到 HyperFormula
+  // 收集公式信息
   const formulas = [];
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
   
-  // 首先收集所有公式并设置到 HyperFormula
+  // 先收集所有公式单元格
   for (let row = range.s.r; row <= range.e.r; row++) {
     for (let col = range.s.c; col <= range.e.c; col++) {
       const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
       const cell = worksheet[cellAddress];
       
       if (cell && cell.f) {
-        try {
-          // 将公式设置到 HyperFormula
-          // HyperFormula SimpleCellAddress 格式: { sheet: number, col: number, row: number }
-          hfInstance.setCellContents(
-            { sheet: sheetId, col: col, row: row },
-            cell.f.startsWith('=') ? cell.f : '=' + cell.f
-          );
-        } catch (setContentError) {
-          // 公式设置失败，记录但继续
-          formulas.push({
-            cell: cellAddress,
-            formula: cell.f,
-            value: null,
-            error: `Failed to set formula: ${setContentError.message}`
-          });
-        }
+        formulas.push({
+          cell: cellAddress,
+          row,
+          col,
+          formula: cell.f
+        });
       }
     }
   }
   
-  // 然后获取计算结果
-  for (let row = range.s.r; row <= range.e.r; row++) {
-    for (let col = range.s.c; col <= range.e.c; col++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-      const cell = worksheet[cellAddress];
-      
-      if (cell && cell.f) {
-        // 检查是否已经记录过错误
-        const existingError = formulas.find(f => f.cell === cellAddress && f.error);
-        if (existingError) continue;
-        
-        try {
-          const calculatedValue = hfInstance.getCellValue({
-            sheet: sheetId,
-            col: col,
-            row: row
-          });
-          formulas.push({
-            cell: cellAddress,
-            formula: cell.f,
-            value: calculatedValue
-          });
-        } catch (cellError) {
-          formulas.push({
-            cell: cellAddress,
-            formula: cell.f,
-            value: null,
-            error: cellError.message
-          });
-        }
+  // 如果有公式，使用 HyperFormula 计算
+  if (formulas.length > 0) {
+    const HyperFormulaLib = getHyperFormula();
+    
+    // 准备数据 - 先获取所有值
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+    
+    // 关键：将公式字符串放入数据中，HyperFormula 需要公式字符串来计算
+    for (const formulaInfo of formulas) {
+      const { row, col, formula } = formulaInfo;
+      // 确保数据数组有足够的行
+      while (data.length <= row) {
+        data.push([]);
       }
+      // 确保行数组有足够的列
+      while (data[row].length <= col) {
+        data[row].push(null);
+      }
+      // 将公式字符串（带 = 前缀）放入对应单元格
+      // HyperFormula 需要以 = 开头的公式字符串
+      data[row][col] = formula.startsWith('=') ? formula : '=' + formula;
     }
+    
+    // 使用 buildFromSheets 创建实例
+    const hfInstance = HyperFormulaLib.buildFromSheets({
+      [sheetName]: data
+    }, {
+      licenseKey: 'gpl-v3'
+    });
+    
+    // 获取计算结果
+    const sheetId = hfInstance.getSheetId(sheetName);
+    for (const formulaInfo of formulas) {
+      try {
+        // HyperFormula 使用 { sheet, col, row } 格式的 SimpleCellAddress
+        const calculatedValue = hfInstance.getCellValue({
+          sheet: sheetId,
+          col: formulaInfo.col,
+          row: formulaInfo.row
+        });
+        formulaInfo.value = calculatedValue;
+      } catch (e) {
+        formulaInfo.value = null;
+        formulaInfo.error = e.message;
+      }
+      // 删除临时的 row 和 col 属性
+      delete formulaInfo.row;
+      delete formulaInfo.col;
+    }
+    
+    hfInstance.destroy();
   }
-  
-  hfInstance.destroy();
   
   return {
     success: true,
