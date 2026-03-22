@@ -377,6 +377,51 @@ async function excelWrite(params) {
     if (formula) {
       worksheet[cellAddress].f = formula;
       worksheet[cellAddress].t = 'n';
+      
+      // 使用 HyperFormula 计算公式结果并写入值
+      // 这样 Excel 打开时就能直接显示结果，不需要双击激活
+      try {
+        const HyperFormulaLib = getHyperFormula();
+        const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+        
+        // 解析单元格地址
+        const cellRef = XLSX.utils.decode_cell(cellAddress);
+        
+        // 确保数据数组有足够的行和列
+        while (data.length <= cellRef.r) {
+          data.push([]);
+        }
+        while (data[cellRef.r].length <= cellRef.c) {
+          data[cellRef.r].push(null);
+        }
+        
+        // 放入公式字符串
+        data[cellRef.r][cellRef.c] = formula.startsWith('=') ? formula : '=' + formula;
+        
+        // 创建 HyperFormula 实例并计算
+        const hfInstance = HyperFormulaLib.buildFromSheets({
+          [sheetName]: data
+        }, {
+          licenseKey: 'gpl-v3'
+        });
+        
+        // 获取计算结果
+        const sheetId = hfInstance.getSheetId(sheetName);
+        const calculatedValue = hfInstance.getCellValue({
+          sheet: sheetId,
+          col: cellRef.c,
+          row: cellRef.r
+        });
+        
+        // 写入计算结果作为值
+        worksheet[cellAddress].v = calculatedValue;
+        
+        hfInstance.destroy();
+      } catch (calcError) {
+        // 计算失败时，值保持为 0，但公式仍然写入
+        // Excel 打开时会重新计算
+        console.warn(`Formula calculation failed for ${cellAddress}: ${calcError.message}`);
+      }
     } else {
       if (typeof value === 'number') {
         worksheet[cellAddress].t = 'n';
