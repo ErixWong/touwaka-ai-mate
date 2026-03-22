@@ -11,8 +11,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// 用户角色检查（管理员有特殊权限）
+// 用户角色检查
 const IS_ADMIN = process.env.IS_ADMIN === 'true';
+const IS_SKILL_CREATOR = process.env.IS_SKILL_CREATOR === 'true';
 
 // Allowed base directories (from environment or default)
 // 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
@@ -28,15 +29,25 @@ const USER_WORK_DIR = process.env.WORKING_DIRECTORY
   : path.join(DATA_BASE_PATH, 'work', USER_ID);
 
 // 权限控制：
-// - 普通用户：仅当前工作目录
-// - 管理员：当前工作目录 + skills 目录
-const ALLOWED_BASE_PATHS = IS_ADMIN
-  ? [USER_WORK_DIR, SKILLS_DIR]  // 管理员：工作目录 + skills 目录
-  : [USER_WORK_DIR];  // 普通用户：仅用户工作目录
+// - 管理员：整个 data/ 目录
+// - 技能创建者（creator）：skills/ 目录 + 自己的工作目录
+// - 普通用户：仅自己的工作目录
+let ALLOWED_BASE_PATHS;
+if (IS_ADMIN) {
+  // 管理员：可以访问整个 data/ 目录
+  ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
+} else if (IS_SKILL_CREATOR) {
+  // 技能创建者：可以访问 skills/ 和自己的工作目录
+  ALLOWED_BASE_PATHS = [SKILLS_DIR, USER_WORK_DIR];
+} else {
+  // 普通用户：只能访问自己的工作目录
+  ALLOWED_BASE_PATHS = [USER_WORK_DIR];
+}
 
 // 调试输出
 console.error('[file-operations] 环境变量诊断:');
 console.error(`  IS_ADMIN: ${IS_ADMIN}`);
+console.error(`  IS_SKILL_CREATOR: ${IS_SKILL_CREATOR}`);
 console.error(`  DATA_BASE_PATH: ${DATA_BASE_PATH}`);
 console.error(`  SKILLS_DIR: ${SKILLS_DIR}`);
 console.error(`  USER_WORK_DIR: ${USER_WORK_DIR}`);
