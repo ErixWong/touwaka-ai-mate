@@ -1042,7 +1042,6 @@ async function excelConvert(params) {
           
           // 设置公式（去掉 = 前缀，xlsx 库存储公式时不带 =）
           cell.f = fc.formula.substring(1);
-          cell.t = 'n'; // 公式结果通常是数字
           
           // 获取计算结果
           try {
@@ -1051,12 +1050,35 @@ async function excelConvert(params) {
               col: fc.col,
               row: fc.row
             });
-            cell.v = calculatedValue;
+            
+            // 根据计算结果类型设置单元格类型和值
+            if (typeof calculatedValue === 'number') {
+              cell.t = 'n';
+              cell.v = calculatedValue;
+            } else if (typeof calculatedValue === 'string') {
+              cell.t = 'str';
+              cell.v = calculatedValue;
+            } else if (typeof calculatedValue === 'boolean') {
+              cell.t = 'b';
+              cell.v = calculatedValue;
+            } else if (calculatedValue === null || calculatedValue === undefined) {
+              // 计算结果为空时，设置为数字类型，值为 0
+              cell.t = 'n';
+              cell.v = 0;
+            } else {
+              // 其他类型，尝试转为数字
+              cell.t = 'n';
+              cell.v = Number(calculatedValue) || 0;
+            }
           } catch (e) {
-            // 计算失败时，保持原值但记录错误
+            // 计算失败时，设置为数字类型，值为 0
             console.warn(`Formula calculation failed for ${fc.cellAddress}: ${e.message}`);
-            cell.v = null;
+            cell.t = 'n';
+            cell.v = 0;
           }
+          
+          // 删除可能存在的无效属性
+          delete cell.w; // 删除格式化文本属性，避免样式冲突
         }
         
         hfInstance.destroy();
@@ -1068,7 +1090,8 @@ async function excelConvert(params) {
           const cell = worksheet[fc.cellAddress];
           cell.f = fc.formula.substring(1);
           cell.t = 'n';
-          cell.v = null;
+          cell.v = 0; // 使用 0 而非 null，避免 XML 问题
+          delete cell.w; // 删除格式化文本属性
         }
       }
     }
