@@ -166,6 +166,7 @@ class SkillController {
           tools: tools.map(t => ({
             ...t,
             type: t.type || 'http',
+            is_resident: !!t.is_resident,
           })),
           assigned_experts: assigned_experts.map(e => ({
             id: e['expert.id'] || e.expert_id,
