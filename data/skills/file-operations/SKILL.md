@@ -1,7 +1,7 @@
 ---
 name: file-operations
-description: File system operations including read, write, search, and manage files. Use when you need to work with files in the data directory.
-argument-hint: "[operation] [path]"
+description: "文件系统操作。用于读取、写入、搜索、管理文件。当需要在数据目录中操作文件时触发。"
+argument-hint: "[read|write|grep|info|action] [path]"
 user-invocable: true
 allowed-tools:
   - Bash(cat *)
@@ -10,288 +10,150 @@ allowed-tools:
   - Bash(find *)
 ---
 
-# File Operations
+# File Operations - 文件系统操作
 
-Complete file system operations for reading, writing, searching, and managing files.
+完整的文件系统操作，用于读取、写入、搜索和管理文件。
 
-## Tools
+## 工具
 
-### File System Information
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `fs_info` | 获取文件/目录信息 | `path`, `include_content_preview`, `hash` |
+| `read_file` | 读取文件 | `path`, `mode`, `from`, `lines` |
+| `list_files` | 列出目录内容 | `path`, `recursive` |
+| `fs_grep` | 搜索文本 | `pattern`, `path`, `use_regex` |
+| `write_file` | 写入文件 | `path`, `content`, `mode` |
+| `replace_in_file` | 替换文本 | `path`, `old`, `new` |
+| `edit_lines` | 编辑行 | `path`, `operation`, `line`, `content` |
+| `fs_action` | 文件操作 | `operation`, `source`, `destination`, `path` |
 
-#### fs_info
+## 文件信息
 
-Get detailed metadata about a file or directory. **Recommended to call before other operations** to understand what you're working with.
+### fs_info
 
-**Parameters:**
-- `path` (string, required): File or directory path
-- `include_content_preview` (boolean, optional): Include content preview for text files (default: false)
-- `hash` (string, optional): Calculate file hash - `"md5"`, `"sha256"`, or `"sha1"` (default: false, no hash)
+获取文件或目录的详细元数据。**建议在其他操作前先调用**。
 
-**Returns:**
-- `exists` (boolean): Whether the path exists
-- `type` (string): "file", "directory", or "unknown"
-- `size` (number): Size in bytes
-- `sizeHuman` (string): Human-readable size (e.g., "1.5 MB")
-- `created`, `modified`, `accessed` (Date): Timestamps
-- `isReadOnly` (boolean): Write permission check
-- `pathInfo` (object): Path components (fullPath, directory, baseName, extension, fileNameWithoutExt)
-- `mimeType` (string, files only): Inferred MIME type
-- `isTextFile` (boolean, files only): Whether the file is likely text
-- `hash` (object, files only, if requested): `{ algorithm: "md5", hash: "abc123..." }`
-- `directoryInfo` (object, directories only): Item counts and listing preview
-- `contentPreview` (object, files only): First 10 lines preview (if requested)
-- `warning` (string, optional): Large file warning
+**参数：**
+- `path` (string, required): 文件或目录路径
+- `include_content_preview` (boolean, optional): 包含内容预览（默认: false）
+- `hash` (string, optional): 计算文件哈希 - `"md5"`, `"sha256"`, `"sha1"`
 
-**Use Cases:**
-- Check if a file exists before reading
-- Determine file type (text vs binary)
-- Get file size to decide how to read it
-- Preview content structure
-- Verify file integrity with hash
+**返回：**
+- `exists`, `type`, `size`, `sizeHuman`
+- `created`, `modified`, `accessed`
+- `isReadOnly`, `pathInfo`, `mimeType`, `isTextFile`
+- `directoryInfo` (目录), `contentPreview` (文件)
 
-**Hash Examples:**
-```javascript
-// Get MD5 hash of a file
-{ "tool": "fs_info", "params": { "path": "data/file.txt", "hash": "md5" } }
+## 读取文件
 
-// Get SHA256 hash for integrity verification
-{ "tool": "fs_info", "params": { "path": "data/backup.zip", "hash": "sha256" } }
-```
+### read_file
 
-**Note:** Hash calculation is opt-in because it can be slow for large files. Only request hash when needed.
+读取文件内容。
 
-### Reading Files
+**参数：**
+- `path` (string, required): 文件路径
+- `mode` (string, optional): 读取模式 - `"lines"` (默认) 或 `"bytes"`
+- `from` (number, optional): 起始行（lines 模式，默认: 1）
+- `lines` (number, optional): 行数（lines 模式，默认: 100）
+- `offset` (number, optional): 起始字节（bytes 模式，默认: 0）
+- `bytes` (number, optional): 字节数（bytes 模式，默认: 50000）
 
-#### read_file
+### list_files
 
-Read file content with mode parameter.
+列出目录内容。
 
-**Parameters:**
-- `path` (string, required): File path
-- `mode` (string, optional): Read mode - `"lines"` (default) or `"bytes"`
-- `from` (number, optional): Start line for lines mode (default: 1)
-- `lines` (number, optional): Number of lines for lines mode (default: 100)
-- `offset` (number, optional): Start byte for bytes mode (default: 0)
-- `bytes` (number, optional): Bytes to read for bytes mode (default: 50000)
+**参数：**
+- `path` (string, required): 目录路径
+- `recursive` (boolean, optional): 递归列出（默认: false）
 
-#### list_files
+## 搜索
 
-List directory contents.
+### fs_grep
 
-**Parameters:**
-- `path` (string, required): Directory path
-- `recursive` (boolean, optional): List recursively (default: false)
+跨文件搜索文本。
 
-### Searching
+**参数：**
+- `pattern` (string, required): 搜索模式
+- `path` (string, optional): 文件或目录路径（默认: 当前）
+- `file_pattern` (string, optional): 文件模式过滤（默认: "*"）
+- `use_regex` (boolean, optional): 使用正则模式（默认: false）
+- `ignore_case` (boolean, optional): 忽略大小写（默认: true）
 
-#### fs_grep
+**搜索模式：**
+| 模式 | 说明 | 示例 |
+|------|------|------|
+| 字面量（默认） | 简单字符串匹配 | `pattern: "TODO"` |
+| 正则 | 完整正则支持 | `pattern: "TODO\\d+"` |
 
-Search text across files. Supports both single file and multi-file search.
+## 写入文件
 
-**Parameters:**
-- `pattern` (string, required): Search pattern
-- `path` (string, optional): File or directory path (default: current)
-- `file_pattern` (string, optional): File pattern filter (default: "*")
-- `use_regex` (boolean, optional): Use regex mode (default: `false`, use literal string match)
-- `ignore_case` (boolean, optional): Case insensitive search (default: `true`)
+### write_file
 
-**Search Modes:**
-| Mode | Description | Example |
-|------|-------------|---------|
-| Literal (default) | Simple string match, no special characters | `pattern: "TODO"` matches "TODO" exactly |
-| Regex | Full regex support, set `use_regex: true` | `pattern: "TODO\\d+"` matches "TODO1", "TODO123" |
+写入内容到文件。
 
-**Note:** For single file search, pass the file path directly to `path` parameter.
+**参数：**
+- `path` (string, required): 文件路径
+- `content` (string, required): 写入内容
+- `mode` (string, optional): 写入模式 - `"write"` (默认) 或 `"append"`
 
-**Examples:**
-```javascript
-// Simple string search (default, recommended for LLM)
-{ "tool": "fs_grep", "params": { "pattern": "function", "path": "src/" } }
+### replace_in_file
 
-// Regex search
-{ "tool": "fs_grep", "params": { "pattern": "function\\s+\\w+", "path": "src/", "use_regex": true } }
+替换文件中的文本。
 
-// Case sensitive search
-{ "tool": "fs_grep", "params": { "pattern": "TODO", "path": "src/", "ignore_case": false } }
-```
+**参数：**
+- `path` (string, required): 文件路径
+- `old` (string, required): 要替换的文本
+- `new` (string, required): 替换后的文本
 
-### Writing Files
+### edit_lines
 
-#### write_file
+编辑文件行。
 
-Write content to a file with optional append mode.
+**参数：**
+- `path` (string, required): 文件路径
+- `operation` (string, optional): 操作类型 - `"insert"` (默认) 或 `"delete"`
+- `line` (number, required): 行号（从1开始）
+- `end_line` (number, optional): 结束行（delete 操作）
+- `content` (string, required for insert): 插入内容
 
-**Parameters:**
-- `path` (string, required): File path
-- `content` (string, required): Content to write
-- `mode` (string, optional): Write mode - `"write"` (default, overwrite) or `"append"`
+## 文件操作
 
-#### replace_in_file
+### fs_action
 
-Replace text in a file.
+统一的文件系统操作。
 
-**Parameters:**
-- `path` (string, required): File path
-- `old` (string, required): Text to replace
-- `new` (string, required): Replacement text
+**参数：**
+- `operation` (string, optional): 操作类型 - `"copy"` (默认), `"move"`, `"delete"`, `"create_dir"`
+- `source` (string, required for copy/move): 源路径
+- `destination` (string, required for copy/move): 目标路径
+- `path` (string, required for delete/create_dir): 路径
 
-#### edit_lines
+| 操作 | 说明 | 必需参数 |
+|------|------|----------|
+| `copy` | 复制文件 | `source`, `destination` |
+| `move` | 移动文件 | `source`, `destination` |
+| `delete` | 删除文件或目录 | `path` |
+| `create_dir` | 创建目录 | `path` |
 
-Edit lines in a file with insert or delete operations.
+## 安全说明
 
-**Parameters:**
-- `path` (string, required): File path
-- `operation` (string, optional): Operation type - `"insert"` (default) or `"delete"`
-- `line` (number, required): Line number (1-based)
-- `end_line` (number, optional): End line number for delete operation (defaults to `line`)
-- `content` (string, required for insert): Content to insert
+### 路径限制
 
-**Operations:**
-| Operation | Description | Required Params |
-|-----------|-------------|-----------------|
-| `insert` | Insert content before the specified line | `path`, `line`, `content` |
-| `delete` | Delete lines from `line` to `end_line` | `path`, `line`, `end_line` (optional) |
+| 用户类型 | 相对路径 | 绝对路径 |
+|----------|----------|----------|
+| 普通用户 | ✅ 允许 | ❌ 拒绝 |
+| 管理员 | ✅ 允许 | ✅ 允许（限许可目录） |
 
-**Examples:**
-```javascript
-// Insert a line at line 5
-{ "tool": "edit_lines", "params": { "path": "file.txt", "line": 5, "content": "new line" } }
+### 允许目录
 
-// Delete line 10
-{ "tool": "edit_lines", "params": { "path": "file.txt", "operation": "delete", "line": 10 } }
+| 用户类型 | 允许目录 |
+|----------|----------|
+| 普通用户 | 当前工作目录 |
+| 管理员 | 当前工作目录 + `data/skills` |
 
-// Delete lines 10-15
-{ "tool": "edit_lines", "params": { "path": "file.txt", "operation": "delete", "line": 10, "end_line": 15 } }
-```
+## 最佳实践
 
-**Tip:** For content replacement (e.g., "replace 'foo' with 'bar'"), use `replace_in_file` tool instead.
-
-### File System Operations
-
-#### fs_action
-
-Unified file system operations: copy, move, delete, and create directory.
-
-**Parameters:**
-- `operation` (string, optional): Operation type - `"copy"` (default), `"move"`, `"delete"`, or `"create_dir"`
-- `source` (string, required for copy/move): Source path
-- `destination` (string, required for copy/move): Destination path
-- `path` (string, required for delete/create_dir): Path to delete or directory to create
-
-**Operations:**
-| Operation | Description | Required Params |
-|-----------|-------------|-----------------|
-| `copy` | Copy file to destination | `source`, `destination` |
-| `move` | Move file to destination | `source`, `destination` |
-| `delete` | Delete file or directory (recursive) | `path` |
-| `create_dir` | Create directory (recursive) | `path` |
-
-**Examples:**
-```javascript
-// Copy a file
-{ "tool": "fs_action", "params": { "source": "file.txt", "destination": "backup.txt" } }
-
-// Move a file
-{ "tool": "fs_action", "params": { "operation": "move", "source": "old.txt", "destination": "new.txt" } }
-
-// Delete a file or directory
-{ "tool": "fs_action", "params": { "operation": "delete", "path": "unwanted.txt" } }
-
-// Create a directory
-{ "tool": "fs_action", "params": { "operation": "create_dir", "path": "new_folder" } }
-```
-
-## Security
-
-### Path Restrictions
-
-| User Type | Relative Path | Absolute Path |
-|-----------|---------------|---------------|
-| Normal User | ✅ Allowed (relative to working directory) | ❌ Denied |
-| Admin | ✅ Allowed (relative to working directory) | ✅ Allowed (within permitted directories) |
-
-### Allowed Directories
-
-| User Type | Allowed Directories |
-|-----------|---------------------|
-| Normal User | Current working directory only (task or temp) |
-| Admin | Current working directory + `data/skills` directory |
-
-### Examples
-
-```javascript
-// Normal user - relative path (allowed)
-list_files({ path: "." })  // Lists current working directory
-
-// Normal user - absolute path (denied)
-list_files({ path: "d:/projects/.../data/skills" })  // Error!
-
-// Admin - relative path (allowed)
-list_files({ path: "." })  // Lists current working directory
-
-// Admin - absolute path to skills (allowed)
-list_files({ path: "d:/projects/.../data/skills/file-operations" })  // OK!
-```
-
-## Examples
-
-```javascript
-// Get file/directory information (recommended first step)
-{ "tool": "fs_info", "params": { "path": "data/example.txt" } }
-
-// Get file info with content preview
-{ "tool": "fs_info", "params": { "path": "data/example.txt", "include_content_preview": true } }
-
-// Check if a directory exists and see its contents
-{ "tool": "fs_info", "params": { "path": "data/src" } }
-
-// Read a file (lines mode)
-{ "tool": "read_file", "params": { "path": "data/example.txt" } }
-
-// Read file in bytes mode
-{ "tool": "read_file", "params": { "path": "data/binary.bin", "mode": "bytes", "bytes": 1000 } }
-
-// Search in files
-{ "tool": "fs_grep", "params": { "pattern": "TODO", "path": "data/src" } }
-
-// Write a file
-{ "tool": "write_file", "params": { "path": "data/output.txt", "content": "Hello!" } }
-
-// Append to a file
-{ "tool": "write_file", "params": { "path": "data/log.txt", "content": "New entry\n", "mode": "append" } }
-
-// Copy a file
-{ "tool": "fs_action", "params": { "source": "data/file.txt", "destination": "data/backup.txt" } }
-
-// Move a file
-{ "tool": "fs_action", "params": { "operation": "move", "source": "data/old.txt", "destination": "data/new.txt" } }
-
-// Delete a file or directory
-{ "tool": "fs_action", "params": { "operation": "delete", "path": "data/unwanted.txt" } }
-
-// Create a directory
-{ "tool": "fs_action", "params": { "operation": "create_dir", "path": "data/new_folder" } }
-```
-
-## Best Practices for LLM
-
-1. **Always call `fs_info` first** when working with an unknown path:
-   - Check if the file exists
-   - Determine if it's a file or directory
-   - See the file size before reading
-   - Check if it's a text file
-
-2. **Use `include_content_preview`** to quickly understand file structure without reading the entire file
-
-3. **Handle large files carefully**:
-   - Check `size` or `sizeHuman` before reading
-   - Use `from` and `lines` parameters to read in chunks
-   - Watch for `warning` field in `fs_info` response
-
-4. **Example workflow**:
-   ```
-   1. fs_info(path) → Check existence, type, size
-   2. If text file and small: read_file(path)
-   3. If text file and large: read_file(path, from=1, lines=100)
-   4. If directory: list_files(path) for detailed listing
-   ```
+1. **先调用 `fs_info`** 检查文件是否存在、类型、大小
+2. **使用 `include_content_preview`** 快速了解文件结构
+3. **处理大文件时** 检查 `size`，使用 `from`/`lines` 分块读取
+4. **内容替换** 使用 `replace_in_file`，行操作使用 `edit_lines`

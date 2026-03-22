@@ -94,25 +94,6 @@ pptx_export({ path: 'presentation.pptx', action: 'thumbnail', output: 'thumb.png
 pptx_export({ action: 'merge', paths: ['part1.pptx', 'part2.pptx'], output: 'merged.pptx' })
 ```
 
-## 兼容旧工具名
-
-| 旧名称 | 新名称 |
-|--------|--------|
-| `read_presentation`, `read` | `pptx_read(scope: 'info')` |
-| `extract_text` | `pptx_read(scope: 'text')` |
-| `extract_structure` | `pptx_read(scope: 'structure')` |
-| `create_presentation`, `create` | `pptx_write(source: 'data')` |
-| `from_markdown` | `pptx_write(source: 'markdown')` |
-| `add_slide` | `pptx_slide(action: 'add')` |
-| `delete_slide` | `pptx_slide(action: 'delete')` |
-| `update_slide` | `pptx_slide(action: 'update')` |
-| `extract_images` | `pptx_image(action: 'extract')` |
-| `add_image` | `pptx_image(action: 'add')` |
-| `add_table` | `pptx_table()` |
-| `export_to_images` | `pptx_export(action: 'images')` |
-| `generate_thumbnail` | `pptx_export(action: 'thumbnail')` |
-| `merge_presentations`, `merge` | `pptx_export(action: 'merge')` |
-
 ## 注意事项
 
 - **幻灯片编号**: 从 1 开始
