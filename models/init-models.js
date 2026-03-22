@@ -36,6 +36,7 @@ import _task from  "./task.js";
 import _topic from  "./topic.js";
 import _user_profile from  "./user_profile.js";
 import _user_role from  "./user_role.js";
+import _user_skill_parameter from  "./user_skill_parameter.js";
 import _user from  "./user.js";
 
 export default function initModels(sequelize) {
@@ -75,6 +76,7 @@ export default function initModels(sequelize) {
   const topic = _topic.init(sequelize, DataTypes);
   const user_profile = _user_profile.init(sequelize, DataTypes);
   const user_role = _user_role.init(sequelize, DataTypes);
+  const user_skill_parameter = _user_skill_parameter.init(sequelize, DataTypes);
   const user = _user.init(sequelize, DataTypes);
 
   expert.belongsToMany(role, { as: 'role_id_roles', through: role_expert, foreignKey: "expert_id", otherKey: "role_id" });
@@ -219,6 +221,7 @@ export default function initModels(sequelize) {
     topic,
     user_profile,
     user_role,
+    user_skill_parameter,
     user,
   };
 }

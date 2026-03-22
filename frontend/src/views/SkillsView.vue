@@ -99,6 +99,12 @@
           >
             {{ $t('skills.manageParams') }}
           </button>
+          <button
+            class="btn-action secondary"
+            @click="openMyParamsDialog(skill)"
+          >
+            {{ $t('skills.myParameters.title') || '我的参数' }}
+          </button>
         </div>
       </div>
     </div>
@@ -180,6 +186,14 @@
       :skill="paramsSkill"
       @close="closeParamsDialog"
       @saved="closeParamsDialog"
+    />
+    
+    <!-- 用户参数对话框 -->
+    <MySkillParametersModal
+      :visible="showMyParamsDialog"
+      :skill="myParamsSkill"
+      @close="closeMyParamsDialog"
+      @saved="closeMyParamsDialog"
     />
     
     <!-- 技能编辑弹窗 -->
@@ -429,6 +443,7 @@ import { useUserStore } from '@/stores/user'
 import { skill_api } from '@/api/services'
 import type { Skill, SkillDetail, SkillTool, SkillParameter } from '@/types'
 import SkillParametersModal from '@/components/SkillParametersModal.vue'
+import MySkillParametersModal from '@/components/MySkillParametersModal.vue'
 
 // 扩展 SkillParameter 类型以支持前端编辑
 interface EditableParameter {
@@ -449,8 +464,10 @@ const filterStatus = ref('')
 // 对话框状态
 const showDetailDialog = ref(false)
 const showParamsDialog = ref(false)
+const showMyParamsDialog = ref(false)
 const selectedSkill = ref<Skill | null>(null)
 const paramsSkill = ref<Skill | null>(null)
+const myParamsSkill = ref<Skill | null>(null)
 
 // 技能编辑器状态
 const showSkillEditor = ref(false)
@@ -544,6 +561,17 @@ const openParamsDialog = (skill: Skill) => {
 const closeParamsDialog = () => {
   showParamsDialog.value = false
   paramsSkill.value = null
+}
+
+// 用户参数管理
+const openMyParamsDialog = (skill: Skill) => {
+  myParamsSkill.value = skill
+  showMyParamsDialog.value = true
+}
+
+const closeMyParamsDialog = () => {
+  showMyParamsDialog.value = false
+  myParamsSkill.value = null
 }
 
 // 技能编辑器
