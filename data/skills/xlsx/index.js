@@ -976,15 +976,101 @@ async function excelConvert(params) {
     
     const sheetName = sheet || 'Sheet1';
     let worksheet;
+    let isAoA = false;
     
     // 检测数据类型：如果是二维数组（数组中的元素也是数组），使用 aoa_to_sheet
     // 如果是对象数组，使用 json_to_sheet
     if (data.length > 0 && Array.isArray(data[0])) {
       // 二维数组模式：直接使用 aoa_to_sheet
       worksheet = XLSX.utils.aoa_to_sheet(data);
+      isAoA = true;
     } else {
       // 对象数组模式：使用 json_to_sheet
       worksheet = XLSX.utils.json_to_sheet(data);
+    }
+    
+    // 检测并处理公式字符串（以 = 开头的值）
+    // 需要将这些值从普通字符串转换为公式对象
+    const formulaCells = [];
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    
+    for (let row = range.s.r; row <= range.e.r; row++) {
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+        const cell = worksheet[cellAddress];
+        
+        if (cell && typeof cell.v === 'string' && cell.v.startsWith('=')) {
+          // 这是一个公式字符串，需要转换为公式对象
+          const formulaStr = cell.v;
+          formulaCells.push({ cellAddress, row, col, formula: formulaStr });
+        }
+      }
+    }
+    
+    // 如果有公式需要处理，使用 HyperFormula 计算并设置
+    if (formulaCells.length > 0) {
+      // 准备数据用于 HyperFormula 计算
+      const hfData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+      
+      // 将公式字符串放入数据中供 HyperFormula 计算
+      for (const fc of formulaCells) {
+        // 确保数据数组有足够的行和列
+        while (hfData.length <= fc.row) {
+          hfData.push([]);
+        }
+        while (hfData[fc.row].length <= fc.col) {
+          hfData[fc.row].push(null);
+        }
+        // HyperFormula 需要带 = 前缀的公式字符串
+        hfData[fc.row][fc.col] = fc.formula;
+      }
+      
+      // 使用 HyperFormula 计算公式结果
+      try {
+        const HyperFormulaLib = getHyperFormula();
+        const hfInstance = HyperFormulaLib.buildFromSheets({
+          [sheetName]: hfData
+        }, {
+          licenseKey: 'gpl-v3'
+        });
+        
+        const sheetId = hfInstance.getSheetId(sheetName);
+        
+        // 更新单元格：设置公式和计算结果
+        for (const fc of formulaCells) {
+          const cell = worksheet[fc.cellAddress];
+          
+          // 设置公式（去掉 = 前缀，xlsx 库存储公式时不带 =）
+          cell.f = fc.formula.substring(1);
+          cell.t = 'n'; // 公式结果通常是数字
+          
+          // 获取计算结果
+          try {
+            const calculatedValue = hfInstance.getCellValue({
+              sheet: sheetId,
+              col: fc.col,
+              row: fc.row
+            });
+            cell.v = calculatedValue;
+          } catch (e) {
+            // 计算失败时，保持原值但记录错误
+            console.warn(`Formula calculation failed for ${fc.cellAddress}: ${e.message}`);
+            cell.v = null;
+          }
+        }
+        
+        hfInstance.destroy();
+      } catch (hfError) {
+        // HyperFormula 初始化失败，仍然保留公式但无法计算
+        console.warn(`HyperFormula initialization failed: ${hfError.message}`);
+        // 至少设置公式属性，Excel 打开时会重新计算
+        for (const fc of formulaCells) {
+          const cell = worksheet[fc.cellAddress];
+          cell.f = fc.formula.substring(1);
+          cell.t = 'n';
+          cell.v = null;
+        }
+      }
     }
     
     const workbook = XLSX.utils.book_new();
@@ -997,7 +1083,8 @@ async function excelConvert(params) {
       success: true,
       path: resolvePath(filePath),
       sheetName,
-      rowCount: data.length
+      rowCount: data.length,
+      formulaCount: formulaCells.length
     };
   }
   
