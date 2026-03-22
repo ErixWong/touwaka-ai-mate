@@ -32,7 +32,10 @@ function getExcelJS() {
 
 function getHyperFormula() {
   if (!HyperFormula) {
-    HyperFormula = require('hyperformula');
+    // HyperFormula 导出格式: { HyperFormula: class, ... }
+    // 需要访问 .HyperFormula 属性获取实际的类
+    const hfModule = require('hyperformula');
+    HyperFormula = hfModule.HyperFormula || hfModule;
   }
   return HyperFormula;
 }
