@@ -620,9 +620,18 @@ async function excelFormat(params) {
     }
     
     for (const col of columns) {
-      const colNum = typeof col.column === 'string' 
-        ? col.column.toUpperCase().charCodeAt(0) - 64 
-        : col.column;
+      let colNum;
+      if (typeof col.column === 'string') {
+        // 支持多字母列名（如 A, B, AA, AB 等）
+        // A=1, B=2, ..., Z=26, AA=27, AB=28...
+        const colStr = col.column.toUpperCase();
+        colNum = 0;
+        for (let i = 0; i < colStr.length; i++) {
+          colNum = colNum * 26 + (colStr.charCodeAt(i) - 64);
+        }
+      } else {
+        colNum = col.column;
+      }
       worksheet.getColumn(colNum).width = col.width;
     }
     
@@ -990,15 +999,35 @@ async function excelCalc(params) {
   const HyperFormulaLib = getHyperFormula();
   const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
   
-  const hfInstance = HyperFormulaLib.buildEmpty({
-    licenseKey: 'gpl-v3'
-  });
-  
-  hfInstance.addSheet(sheetName);
-  hfInstance.setSheetContent(0, data);
+  // 使用 buildFromSheets 而不是 buildEmpty + addSheet + setSheetContent
+  // 这样可以正确初始化 HyperFormula 实例
+  let hfInstance;
+  try {
+    hfInstance = HyperFormulaLib.buildFromSheets({
+      [sheetName]: data
+    }, {
+      licenseKey: 'gpl-v3'
+    });
+  } catch (hfError) {
+    // 如果 buildFromSheets 失败，尝试使用 buildEmpty 方式
+    console.error('HyperFormula buildFromSheets failed:', hfError.message);
+    
+    // 确保数据是二维数组且不为空
+    const safeData = data && data.length > 0 ? data : [['']];
+    
+    hfInstance = HyperFormulaLib.buildEmpty({
+      licenseKey: 'gpl-v3'
+    });
+    
+    const addedSheetId = hfInstance.addSheet(sheetName);
+    hfInstance.setSheetContent(addedSheetId, safeData);
+  }
   
   const formulas = [];
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+  
+  // 正确获取 sheetId
+  const sheetId = hfInstance.getSheetId(sheetName);
   
   for (let row = range.s.r; row <= range.e.r; row++) {
     for (let col = range.s.c; col <= range.e.c; col++) {
@@ -1006,12 +1035,22 @@ async function excelCalc(params) {
       const cell = worksheet[cellAddress];
       
       if (cell && cell.f) {
-        const calculatedValue = hfInstance.getCellValue({ sheetId: 0, row, col });
-        formulas.push({
-          cell: cellAddress,
-          formula: cell.f,
-          value: calculatedValue
-        });
+        try {
+          const calculatedValue = hfInstance.getCellValue({ sheetId, row, col });
+          formulas.push({
+            cell: cellAddress,
+            formula: cell.f,
+            value: calculatedValue
+          });
+        } catch (cellError) {
+          // 单元格计算失败时记录错误但不中断
+          formulas.push({
+            cell: cellAddress,
+            formula: cell.f,
+            value: null,
+            error: cellError.message
+          });
+        }
       }
     }
   }
