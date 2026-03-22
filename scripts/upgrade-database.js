@@ -1595,6 +1595,71 @@ const MIGRATIONS = [
       `);
     }
   },
+
+  // ==================== 用户级技能参数系统 (Issue #272) ====================
+
+  // 69. skill_parameters.allow_user_override 字段
+  {
+    name: 'skill_parameters.allow_user_override column',
+    check: async (conn) => await hasColumn(conn, 'skill_parameters', 'allow_user_override'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skill_parameters
+        ADD COLUMN allow_user_override BIT(1) DEFAULT b'1'
+        COMMENT '是否允许用户覆盖'
+        AFTER is_secret
+      `);
+    }
+  },
+
+  // 70. user_skill_parameters 表（先创建表，后添加外键）
+  {
+    name: 'user_skill_parameters table',
+    check: async (conn) => await hasTable(conn, 'user_skill_parameters'),
+    migrate: async (conn) => {
+      // 先创建表（不带外键）
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS user_skill_parameters (
+          id VARCHAR(32) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+          skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+          param_name VARCHAR(100) NOT NULL COMMENT '参数名',
+          param_value TEXT COMMENT '参数值',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_user_skill_param (user_id, skill_id, param_name),
+          INDEX idx_user_id (user_id),
+          INDEX idx_skill_id (skill_id)
+        ) COMMENT='用户技能参数表（只存储用户覆盖的参数）'
+      `);
+    }
+  },
+
+  // 70.1 user_skill_parameters 外键 user_id -> users
+  {
+    name: 'user_skill_parameters.fk_user_id',
+    check: async (conn) => await hasForeignKey(conn, 'user_skill_parameters', 'fk_usp_user'),
+    migrate: async (conn) => {
+      await safeExecute(conn, `
+        ALTER TABLE user_skill_parameters
+        ADD CONSTRAINT fk_usp_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      `);
+    }
+  },
+
+  // 70.2 user_skill_parameters 外键 skill_id -> skills
+  {
+    name: 'user_skill_parameters.fk_skill_id',
+    check: async (conn) => await hasForeignKey(conn, 'user_skill_parameters', 'fk_usp_skill'),
+    migrate: async (conn) => {
+      await safeExecute(conn, `
+        ALTER TABLE user_skill_parameters
+        ADD CONSTRAINT fk_usp_skill
+        FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+      `);
+    }
+  },
 ];
 
 /**
