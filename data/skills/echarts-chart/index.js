@@ -477,6 +477,17 @@ function getSupportedTypes() {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
+    // 新工具名
+    case 'echarts_generate':
+      return await generate(params);
+      
+    case 'echarts_raw':
+      return await generateRaw(params);
+      
+    case 'echarts_types':
+      return { success: true, types: getSupportedTypes() };
+    
+    // 旧工具名（兼容）
     case 'generate':
     case 'generate_chart':
       return await generate(params);
@@ -490,7 +501,7 @@ async function execute(toolName, params, context = {}) {
       return { success: true, types: getSupportedTypes() };
       
     default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: generate, generateRaw, types`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: echarts_generate, echarts_raw, echarts_types`);
   }
 }
 
