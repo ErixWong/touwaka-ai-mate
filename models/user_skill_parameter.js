@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class skill_parameter extends Model {
+export default class user_skill_parameter extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
@@ -9,41 +9,25 @@ export default class skill_parameter extends Model {
       allowNull: false,
       primaryKey: true
     },
-    skill_id: {
+    user_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "技能ID",
-      references: {
-        model: 'skills',
-        key: 'id'
-      }
+      comment: "用户ID"
     },
-    param_name: {
+    skill_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
-      comment: "参数名（如 api_key, base_url）"
+      comment: "技能ID"
+    },
+    param_name: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      comment: "参数名"
     },
     param_value: {
       type: DataTypes.TEXT,
       allowNull: true,
       comment: "参数值"
-    },
-    is_secret: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: false,
-      comment: "是否敏感参数（前端显示\/隐藏）"
-    },
-    allow_user_override: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true,
-      comment: "是否允许用户覆盖"
-    },
-    description: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-      comment: "参数描述"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -57,7 +41,7 @@ export default class skill_parameter extends Model {
     }
   }, {
     sequelize,
-    tableName: 'skill_parameters',
+    tableName: 'user_skill_parameters',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -70,12 +54,27 @@ export default class skill_parameter extends Model {
         ]
       },
       {
-        name: "uk_skill_param",
+        name: "uk_user_skill_param",
         unique: true,
         using: "BTREE",
         fields: [
+          { name: "user_id" },
           { name: "skill_id" },
           { name: "param_name" },
+        ]
+      },
+      {
+        name: "idx_user_id",
+        using: "BTREE",
+        fields: [
+          { name: "user_id" },
+        ]
+      },
+      {
+        name: "idx_skill_id",
+        using: "BTREE",
+        fields: [
+          { name: "skill_id" },
         ]
       },
     ]

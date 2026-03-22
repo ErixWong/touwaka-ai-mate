@@ -24,6 +24,14 @@ export default function createSkillRoutes(controller) {
   // GET /api/skills/:id - 获取技能详情
   router.get('/:id', authenticate(), controller.get.bind(controller));
 
+  // ==================== 用户技能参数（需要认证）====================
+
+  // GET /api/skills/:id/my-parameters - 获取用户的技能参数
+  router.get('/:id/my-parameters', authenticate(), controller.getMyParameters.bind(controller));
+
+  // POST /api/skills/:id/my-parameters - 保存用户的技能参数
+  router.post('/:id/my-parameters', authenticate(), controller.saveMyParameters.bind(controller));
+
   // ==================== 写入操作（需要管理员权限）====================
 
   // PUT /api/skills/:id - 更新技能

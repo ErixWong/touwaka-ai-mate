@@ -18,6 +18,7 @@ class SkillController {
     this.Skill = db.getModel('skill');
     this.SkillTool = db.getModel('skill_tool');
     this.SkillParameter = db.getModel('skill_parameter');
+    this.UserSkillParameter = db.getModel('user_skill_parameter');
   }
 
   /**
@@ -1142,6 +1143,184 @@ ${description || '新技能描述'}
     } catch (error) {
       logger.error('Create skill directory error:', error);
       ctx.error('创建技能目录失败: ' + error.message, 500);
+    }
+  }
+
+  // ==================== 用户技能参数 API ====================
+
+  /**
+   * 获取用户的技能参数
+   * GET /api/skills/:id/my-parameters
+   * 
+   * 返回：合并后的参数列表（全局参数 + 用户覆盖值）
+   * - 对于 allow_user_override=true 的参数，用户可以设置自己的值
+   * - 对于 allow_user_override=false 的参数，用户只能查看全局值
+   */
+  async getMyParameters(ctx) {
+    try {
+      const { id } = ctx.params;
+      const userId = ctx.state.user.id;
+
+      // 检查技能是否存在
+      const skill = await this.Skill.findOne({ where: { id } });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      // 获取全局参数
+      const globalParams = await this.SkillParameter.findAll({
+        where: { skill_id: id },
+        order: [['created_at', 'ASC']],
+        raw: true,
+      });
+
+      // 获取用户参数
+      const userParams = await this.UserSkillParameter.findAll({
+        where: { user_id: userId, skill_id: id },
+        raw: true,
+      });
+
+      // 构建用户参数映射
+      const userParamMap = {};
+      userParams.forEach(p => {
+        userParamMap[p.param_name] = p;
+      });
+
+      // 合并参数：返回全局参数定义 + 用户覆盖值
+      const mergedParams = globalParams.map(gp => {
+        const up = userParamMap[gp.param_name];
+        const allowOverride = !!gp.allow_user_override;
+        
+        return {
+          id: gp.id,
+          param_name: gp.param_name,
+          // 如果允许用户覆盖且有用户值，使用用户值；否则使用全局值
+          param_value: (allowOverride && up) ? up.param_value : gp.param_value,
+          global_value: gp.param_value, // 始终返回全局值供参考
+          user_value: up?.param_value || null, // 用户覆盖值
+          is_secret: !!gp.is_secret,
+          allow_user_override: allowOverride,
+          description: gp.description || '',
+          has_user_override: !!(up && up.param_value !== null && up.param_value !== undefined),
+        };
+      });
+
+      ctx.success({
+        parameters: mergedParams,
+        skill_id: id,
+        user_id: userId,
+      });
+    } catch (error) {
+      logger.error('Get my parameters error:', error);
+      ctx.error('获取用户参数失败: ' + error.message, 500);
+    }
+  }
+
+  /**
+   * 保存用户的技能参数
+   * POST /api/skills/:id/my-parameters
+   * 
+   * 只保存用户覆盖的参数值，不修改全局参数
+   * 安全检查：
+   * 1. 只能覆盖 allow_user_override=true 的参数
+   * 2. 不能覆盖 is_secret=true 且 allow_user_override=false 的参数
+   */
+  async saveMyParameters(ctx) {
+    let transaction = null;
+    try {
+      const { id } = ctx.params;
+      const { parameters } = ctx.request.body;
+      const userId = ctx.state.user.id;
+
+      if (!Array.isArray(parameters)) {
+        ctx.error('参数格式错误，需要数组', 400);
+        return;
+      }
+
+      // 检查技能是否存在
+      const skill = await this.Skill.findOne({ where: { id } });
+      if (!skill) {
+        ctx.error('技能不存在', 404);
+        return;
+      }
+
+      // 获取全局参数定义
+      const globalParams = await this.SkillParameter.findAll({
+        where: { skill_id: id },
+        raw: true,
+      });
+
+      // 构建全局参数映射
+      const globalParamMap = {};
+      globalParams.forEach(gp => {
+        globalParamMap[gp.param_name] = gp;
+      });
+
+      // 验证：检查是否有不允许覆盖的参数
+      for (const param of parameters) {
+        const gp = globalParamMap[param.param_name];
+        if (!gp) {
+          ctx.error(`参数 ${param.param_name} 不存在`, 400);
+          return;
+        }
+        if (!gp.allow_user_override) {
+          ctx.error(`参数 ${param.param_name} 不允许用户覆盖`, 403);
+          return;
+        }
+      }
+
+      // 开始事务
+      transaction = await this.db.sequelize.transaction();
+
+      // 删除用户的旧参数
+      await this.UserSkillParameter.destroy({
+        where: { user_id: userId, skill_id: id },
+        transaction,
+      });
+
+      // 创建新的用户参数
+      const createdParams = [];
+      for (const param of parameters) {
+        if (!param.param_name || param.param_name.trim() === '') {
+          continue;
+        }
+
+        // 只保存与全局值不同的参数（优化存储）
+        const gp = globalParamMap[param.param_name];
+        if (param.param_value === gp.param_value) {
+          continue; // 值相同，不需要存储
+        }
+
+        const newParam = await this.UserSkillParameter.create({
+          id: Utils.newID(32),
+          user_id: userId,
+          skill_id: id,
+          param_name: param.param_name.trim(),
+          param_value: param.param_value || '',
+        }, { transaction });
+
+        createdParams.push(newParam.get({ plain: true }));
+      }
+
+      // 提交事务
+      await transaction.commit();
+      transaction = null;
+
+      ctx.success({
+        parameters: createdParams.map(p => ({
+          id: p.id,
+          param_name: p.param_name,
+          param_value: p.param_value,
+        })),
+        message: '用户参数保存成功',
+      }, '用户参数保存成功');
+    } catch (error) {
+      if (transaction) {
+        await transaction.rollback().catch(() => {});
+      }
+      logger.error('Save my parameters error:', error);
+      ctx.error('保存用户参数失败: ' + error.message, 500);
     }
   }
 }
