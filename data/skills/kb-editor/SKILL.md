@@ -1,8 +1,14 @@
+---
+name: kb-editor
+description: "知识库编辑技能。用于创建和管理知识库、文章、节、段落、标签。当知识专家需要整理知识、导入文档、构建知识结构时触发。"
+argument-hint: "[create_kb|create_article|create_section|create_paragraph] --kb_id=xxx"
+user-invocable: false
+allowed-tools: []
+---
+
 # KB Editor - 知识库编辑技能
 
 知识库管理技能，用于创建和管理知识库、文章、节、段落、标签。
-
-**目标用户**：知识专家（专门负责整理知识的 AI 专家）
 
 ## 知识库结构
 
@@ -16,409 +22,130 @@ knowledge_bases (知识库)
         └── kb_paragraphs (段，可标记为知识点)
 ```
 
-## 功能
+## 工具
 
-- 知识库 CRUD（创建/读取/更新/删除）
-- 文章 CRUD（支持标签关联）
-- 节 CRUD（无限层级树状结构）
-- 段落 CRUD（可标记为知识点）
-- 标签 CRUD
-- 获取可用的嵌入模型列表
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `list_my_kbs` | 列出我的知识库 | `page`, `pageSize` |
+| `list_embedding_models` | 获取嵌入模型列表 | - |
+| `get_kb` | 获取知识库详情 | `id` |
+| `create_kb` | 创建知识库 | `name`, `description`, `embedding_model_id` |
+| `update_kb` | 更新知识库 | `id`, `name`, `description` |
+| `delete_kb` | 删除知识库 | `id` |
+| `list_articles` | 列出文章 | `kb_id`, `page`, `status`, `search` |
+| `get_article` | 获取文章详情 | `kb_id`, `id` |
+| `get_article_tree` | 获取文章完整结构 | `kb_id`, `article_id` |
+| `create_article` | 创建文章 | `kb_id`, `title`, `tags[]` |
+| `update_article` | 更新文章 | `kb_id`, `id`, `title`, `tags[]` |
+| `delete_article` | 删除文章 | `kb_id`, `id` |
+| `list_sections` | 列出节 | `kb_id`, `article_id` |
+| `create_section` | 创建节 | `kb_id`, `article_id`, `parent_id`, `title` |
+| `update_section` | 更新节 | `kb_id`, `id`, `title` |
+| `move_section` | 移动节 | `kb_id`, `id`, `direction` |
+| `delete_section` | 删除节 | `kb_id`, `id` |
+| `list_paragraphs` | 列出段落 | `kb_id`, `section_id` |
+| `create_paragraph` | 创建段落 | `kb_id`, `section_id`, `content`, `is_knowledge_point` |
+| `update_paragraph` | 更新段落 | `kb_id`, `id`, `content` |
+| `move_paragraph` | 移动段落 | `kb_id`, `id`, `direction` |
+| `delete_paragraph` | 删除段落 | `kb_id`, `id` |
+| `list_tags` | 列出标签 | `kb_id` |
+| `create_tag` | 创建标签 | `kb_id`, `name` |
+| `update_tag` | 更新标签 | `kb_id`, `id`, `name` |
+| `delete_tag` | 删除标签 | `kb_id`, `id` |
 
-## 权限
+## 知识库操作
 
-只能操作 `owner_id === userId` 的知识库（由 API 层验证）
-
----
-
-## 工具清单
-
-### 知识库操作
-
-#### list_my_kbs
+### list_my_kbs
 
 列出当前用户拥有的知识库。
 
-**参数**：
+**参数：**
 - `page` (integer, optional): 页码，默认 1
 - `pageSize` (integer, optional): 每页数量，默认 20
 
-#### list_embedding_models
-
-获取可用的嵌入模型列表，用于创建知识库时选择。
-
-**参数**：无
-
-#### get_kb
-
-获取知识库详情。
-
-**参数**：
-- `id` (string, required): 知识库 ID
-
-#### create_kb
+### create_kb
 
 创建知识库。
 
-**参数**：
+**参数：**
 - `name` (string, required): 知识库名称
 - `description` (string, optional): 知识库描述
 - `embedding_model_id` (string, optional): 嵌入模型 ID，默认 bge-m3
 - `embedding_dim` (integer, optional): 向量维度，默认 1024
 
-#### update_kb
+## 文章操作
 
-更新知识库。
-
-**参数**：
-- `id` (string, required): 知识库 ID
-- `name` (string, optional): 新名称
-- `description` (string, optional): 新描述
-- `embedding_model_id` (string, optional): 新嵌入模型 ID
-- `embedding_dim` (integer, optional): 新向量维度
-
-#### delete_kb
-
-删除知识库。
-
-**参数**：
-- `id` (string, required): 知识库 ID
-
----
-
-### 文章操作
-
-#### list_articles
-
-获取知识库下的文章列表。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `page` (integer, optional): 页码，默认 1
-- `pageSize` (integer, optional): 每页数量，默认 20
-- `status` (string, optional): 状态过滤（pending/processing/ready/error）
-- `search` (string, optional): 搜索关键词
-
-#### get_article
-
-获取文章详情。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 文章 ID
-
-#### get_article_tree
-
-获取文章的完整树状结构（包含所有节和段落）。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `article_id` (string, required): 文章 ID
-
-**返回示例**：
-```json
-{
-  "article": { "id": "art_001", "title": "Python 入门教程" },
-  "tree": [
-    {
-      "id": "sec_001",
-      "title": "第一章 Python简介",
-      "level": 1,
-      "children": [
-        {
-          "id": "sec_002",
-          "title": "1.1 什么是Python",
-          "level": 2,
-          "children": [],
-          "paragraphs": [
-            { "id": "para_001", "content": "...", "is_knowledge_point": true }
-          ]
-        }
-      ],
-      "paragraphs": []
-    }
-  ]
-}
-```
-
-#### create_article
+### create_article
 
 创建文章。
 
-**参数**：
+**参数：**
 - `kb_id` (string, required): 知识库 ID
 - `title` (string, required): 文章标题
 - `summary` (string, optional): 文章摘要
-- `source_type` (string, optional): 来源类型（manual/upload/url）
-- `source_url` (string, optional): 来源 URL
-- `file_path` (string, optional): 本地文件路径
-- `status` (string, optional): 状态（pending/processing/ready/error）
 - `tags` (string[], optional): 标签名数组，如 `['Python', '编程']`
 
-#### update_article
+### get_article_tree
 
-更新文章。
+获取文章的完整树状结构（包含所有节和段落）。
 
-**参数**：
+**参数：**
 - `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 文章 ID
-- `title` (string, optional): 新标题
-- `summary` (string, optional): 新摘要
-- `source_type` (string, optional): 来源类型
-- `source_url` (string, optional): 来源 URL
-- `file_path` (string, optional): 本地文件路径
-- `status` (string, optional): 状态
-- `tags` (string[], optional): 标签名数组
+- `article_id` (string, required): 文章 ID
 
-#### delete_article
+## 节操作
 
-删除文章（级联删除所有节和段落）。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 文章 ID
-
----
-
-### 节操作
-
-#### list_sections
-
-查询节列表。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `article_id` (string, optional): 文章 ID 过滤
-- `page` (integer, optional): 页码，默认 1
-- `pageSize` (integer, optional): 每页数量，默认 100
-
-#### create_section
+### create_section
 
 创建节。
 
-**参数**：
+**参数：**
 - `kb_id` (string, required): 知识库 ID
 - `article_id` (string, required): 所属文章 ID
 - `parent_id` (string, optional): 父节 ID（用于创建子节）
 - `title` (string, required): 节标题
 
-**说明**：
-- 如果不传 `parent_id`，创建的是顶级节（章）
-- 如果传 `parent_id`，创建的是子节
+**说明：**
+- 不传 `parent_id` 创建顶级节（章）
+- 传 `parent_id` 创建子节
 - 系统自动计算 `level` 和 `position`
 - 最大层级深度为 10 层
 
-#### update_section
+## 段落操作
 
-更新节。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 节 ID
-- `title` (string, optional): 新标题
-
-#### move_section
-
-移动节（与相邻节交换位置）。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 节 ID
-- `direction` (string, required): 移动方向，"up" 或 "down"
-
-#### delete_section
-
-删除节（级联删除所有子节和段落）。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 节 ID
-
----
-
-### 段落操作
-
-#### list_paragraphs
-
-查询段落列表。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `section_id` (string, optional): 节 ID 过滤
-- `is_knowledge_point` (boolean, optional): 是否知识点过滤
-- `page` (integer, optional): 页码，默认 1
-- `pageSize` (integer, optional): 每页数量，默认 100
-
-#### create_paragraph
+### create_paragraph
 
 创建段落。
 
-**参数**：
+**参数：**
 - `kb_id` (string, required): 知识库 ID
 - `section_id` (string, required): 所属节 ID
 - `title` (string, optional): 段落标题
 - `content` (string, required): 段落内容
-- `context` (string, optional): 知识点上下文。当 `is_knowledge_point` 为 `true` 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索
+- `context` (string, optional): 知识点上下文（用于语义检索）
 - `is_knowledge_point` (boolean, optional): 是否为知识点，默认 false
-- `token_count` (integer, optional): Token 数量，默认 0
 
-⚠️ **核心原则：严格保留原文**：
+⚠️ **核心原则：严格保留原文**
 - `content` 必须是**原文完整复制**，禁止提炼、总结、改写或省略
 - 即使原文很长，也要完整录入，不能截断
 - 如果原文有多个段落，每个段落应单独创建一条记录
-- **完整性优先**：宁可多录入也不要遗漏任何内容
 
-**重要：知识点段落**：
+**知识点段落：**
 - 设置 `is_knowledge_point: true` 的段落会被向量化，可用于语义搜索
 - 普通段落不会被向量化，只作为上下文展示
 
-**Context 字段说明**：
-- **用途**：用于语义检索时提供上下文信息，帮助技能更准确地定位知识点
-- **生成原则**：用一两句话总结该知识点和知识点所处的文章（中文）
-- **示例**：如果知识点是"Python 是一种解释型语言"，Context 可以是"Python 编程语言简介 - 介绍 Python 的基本特性和应用场景"
-
-#### update_paragraph
-
-更新段落。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 段落 ID
-- `title` (string, optional): 新标题
-- `content` (string, optional): 新内容（原文，不要提炼或总结）
-- `context` (string, optional): 知识点上下文。当 `is_knowledge_point` 为 `true` 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索
-- `is_knowledge_point` (boolean, optional): 是否为知识点
-- `token_count` (integer, optional): Token 数量
-
-#### move_paragraph
-
-移动段落（与相邻段交换位置）。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 段落 ID
-- `direction` (string, required): 移动方向，"up" 或 "down"
-
-#### delete_paragraph
-
-删除段落。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 段落 ID
-
----
-
-### 标签操作
-
-#### list_tags
-
-获取标签列表。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `page` (integer, optional): 页码，默认 1
-- `pageSize` (integer, optional): 每页数量，默认 100
-
-#### create_tag
-
-创建标签。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `name` (string, required): 标签名称
-- `description` (string, optional): 标签描述
-
-#### update_tag
-
-更新标签。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 标签 ID
-- `name` (string, optional): 新名称
-- `description` (string, optional): 新描述
-
-#### delete_tag
-
-删除标签。
-
-**参数**：
-- `kb_id` (string, required): 知识库 ID
-- `id` (string, required): 标签 ID
-
----
+**Context 字段说明：**
+- 用途：用于语义检索时提供上下文信息
+- 生成原则：用一两句话总结该知识点和知识点所处的文章（中文）
+- 示例：如果知识点是"Python 是一种解释型语言"，Context 可以是"Python 编程语言简介 - 介绍 Python 的基本特性和应用场景"
 
 ## 环境变量
-
-以下环境变量由 skill-loader 自动注入：
 
 | 变量名 | 说明 | 必需 |
 |--------|------|------|
 | `USER_ACCESS_TOKEN` | 用户的 JWT access token | ✅ |
 | `API_BASE` | API 基础地址 | ✅ |
 | `USER_ID` | 用户 ID（调试用） | 可选 |
-
----
-
-## 使用示例
-
-### 创建知识库和文章
-
-```javascript
-// 1. 创建知识库
-create_kb(name="产品文档", description="产品相关文档和知识")
-
-// 2. 创建文章
-create_article(kb_id="kb123", title="功能介绍", tags=["产品", "功能"])
-
-// 3. 创建文章（带标签）
-create_article(kb_id="kb123", title="API 文档", tags=["API", "开发"])
-```
-
-### 创建文章内容结构
-
-```javascript
-// 1. 创建顶级节（章）
-create_section(kb_id="kb123", article_id="art456", title="第一章 快速开始")
-
-// 2. 创建子节
-create_section(kb_id="kb123", article_id="art456", parent_id="sec001", title="1.1 安装")
-
-// 3. 创建段落
-create_paragraph(
-  kb_id="kb123",
-  section_id="sec002",
-  content="安装非常简单，只需要运行 npm install 命令即可完成...",
-  is_knowledge_point=true
-)
-
-// 4. 创建普通段落（不会向量化）
-create_paragraph(
-  kb_id="kb123",
-  section_id="sec002",
-  content="这是补充说明文字，不需要被检索..."
-)
-```
-
-### 获取文章完整结构
-
-```javascript
-// 获取文章树（包含所有节和段落）
-get_article_tree(kb_id="kb123", article_id="art456")
-```
-
-### 标签管理
-
-```javascript
-// 创建标签
-create_tag(kb_id="kb123", name="重要", description="重要内容")
-
-// 给文章设置标签（在创建或更新文章时）
-create_article(kb_id="kb123", title="新文章", tags=["重要", "产品"])
-```
-
----
 
 ## 典型工作流程
 
@@ -435,12 +162,6 @@ create_article(kb_id="kb123", title="新文章", tags=["重要", "产品"])
 2. `move_section` / `move_paragraph` - 调整顺序
 3. `update_section` / `update_paragraph` - 修改内容
 
----
+## 权限说明
 
-## 技术说明
-
-- 通过 API 调用执行操作，使用用户 Token 认证
-- 所有权限验证由 API 层完成
-- 节支持无限层级（最大 10 层）
-- 只有标记为知识点的段落会被向量化
-- 标签与文章是多对多关系
+只能操作 `owner_id === userId` 的知识库（由 API 层验证）。

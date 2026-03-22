@@ -1,321 +1,131 @@
 ---
 name: wikijs
-description: Interact with Wiki.js instances via GraphQL API and REST upload endpoint. Supports page CRUD operations (list, get, create, update, delete), directory browsing, asset management (upload with proper multipart format, list, delete folders), and search. Use when working with Wiki.js wikis for documentation management, content migration, automated wiki operations, or file uploads. Requires WIKIJS_URL and WIKIJS_TOKEN environment variables.
+description: "Wiki.js 交互技能。通过 GraphQL API 和 REST 上传端点操作 Wiki.js，支持页面 CRUD、目录浏览、资源管理、搜索。当需要管理 Wiki.js 文档、内容迁移、自动化操作时触发。"
+argument-hint: "[listPages|getPage|createPage|updatePage|deletePage|uploadFile] --path=xxx"
+user-invocable: false
+allowed-tools: []
 ---
 
-# Wiki.js
+# Wiki.js - Wiki 交互技能
 
-Interact with Wiki.js instances programmatically via GraphQL API and REST upload endpoint.
+通过 GraphQL API 和 REST 上传端点操作 Wiki.js 实例。
 
-## Quick Start
+## 工具
 
-Required environment variables:
-- `WIKIJS_URL` - Wiki.js instance URL (e.g., `https://wiki.example.com`)
-- `WIKIJS_TOKEN` - API token from Admin > API Access
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `listPages` | 列出所有页面 | `orderBy` |
+| `getPageByPath` | 按路径获取页面 | `path`, `locale` |
+| `getPageById` | 按 ID 获取页面 | `id` |
+| `createPage` | 创建页面 | `path`, `title`, `content` |
+| `updatePage` | 更新页面 | `id`, `content`, `title` |
+| `deletePage` | 删除页面 | `id` |
+| `getPageTree` | 获取页面树 | `mode`, `locale` |
+| `searchPages` | 搜索页面 | `query`, `locale` |
+| `uploadFile` | 上传文件 | `filePath`, `filename`, `folderId` |
+| `listAssetFolders` | 列出资源文件夹 | `parentId` |
+| `createAssetFolder` | 创建资源文件夹 | `name`, `slug`, `parentId` |
+| `listAssets` | 列出资源 | `folderId`, `kind` |
+| `deleteAsset` | 删除资源 | `id` |
 
-Basic usage:
-```javascript
-const WikiJSClient = require('./scripts/wikijs_client');
+## 页面操作
 
-const client = new WikiJSClient();
-const pages = await client.listPages();
+### listPages
+
+列出所有页面。
+
+**参数：**
+- `orderBy` (string, optional): 排序方式，默认 'TITLE'
+
+### getPageByPath
+
+按路径获取页面。
+
+**参数：**
+- `path` (string, required): 页面路径
+- `locale` (string, required): 语言代码，如 'en'
+
+### createPage
+
+创建页面。
+
+**参数：**
+- `path` (string, required): 页面路径
+- `title` (string, required): 页面标题
+- `content` (string, required): 页面内容（Markdown）
+- `locale` (string, optional): 语言代码，默认 'en'
+- `description` (string, optional): 页面描述
+- `tags` (string[], optional): 标签数组
+- `isPublished` (boolean, optional): 是否发布，默认 true
+
+### updatePage
+
+更新页面。
+
+**参数：**
+- `id` (number, required): 页面 ID
+- `content` (string, optional): 新内容
+- `title` (string, optional): 新标题
+
+### deletePage
+
+删除页面。
+
+**参数：**
+- `id` (number, required): 页面 ID
+
+## 文件上传
+
+### uploadFile
+
+上传文件到 Wiki.js。
+
+**参数：**
+- `filePath` (string, required): 本地文件路径
+- `filename` (string, required): 文件名
+- `folderId` (number, required): 目标文件夹 ID
+
+**返回：**
+```json
+{ "succeeded": true, "message": "ok" }
 ```
 
-## Core Operations
+**上传格式说明：**
+Wiki.js 文件上传需要**两个字段都命名为 `mediaUpload`**：
+1. 第一个字段：文件夹元数据 JSON `{"folderId": 1}`
+2. 第二个字段：实际文件内容
 
-### Pages
+## 资源管理
 
-**List all pages:**
-```javascript
-const pages = await client.listPages({ orderBy: 'TITLE' });
-```
+### listAssetFolders
 
-**Get page by path:**
-```javascript
-const page = await client.getPageByPath('folder/page-name', 'en');
-```
+列出资源文件夹。
 
-**Get page by ID:**
-```javascript
-const page = await client.getPageById(123);
-```
+**参数：**
+- `parentId` (number, required): 父文件夹 ID（根目录为 0）
 
-**Create page:**
-```javascript
-await client.createPage({
-    path: 'docs/new-page',
-    title: 'New Page',
-    content: '# Hello World',
-    locale: 'en',
-    description: 'Page description',
-    tags: ['tag1', 'tag2'],
-    isPublished: true
-});
-```
+### listAssets
 
-**Update page:**
-```javascript
-await client.updatePage(123, {
-    content: '# Updated content',
-    title: 'New Title'
-});
-```
+列出资源。
 
-**Delete page:**
-```javascript
-await client.deletePage(123);
-```
+**参数：**
+- `folderId` (number, required): 文件夹 ID
+- `kind` (string, optional): 资源类型 - 'ALL', 'IMAGE', 'BINARY', 'PDF', 'CODE', 'MARKUP', 'VIDEO', 'AUDIO'
 
-### Directory Tree
+## 配置要求
 
-**Get page tree:**
-```javascript
-const tree = await client.getPageTree('FOLDERS', 'en');
-```
+需要以下环境变量：
+- `WIKIJS_URL` - Wiki.js 实例 URL（如 `https://wiki.example.com`）
+- `WIKIJS_TOKEN` - API Token（从 Admin > API Access 获取）
 
-Modes: `ALL`, `FOLDERS`, `PAGES`
+## 常见上传错误
 
-### Search
+| 错误 | 原因 | 解决方案 |
+|------|------|----------|
+| "Missing upload folder metadata" | 缺少 JSON 元数据字段 | 添加 `mediaUpload={"folderId":1}` |
+| "Missing upload payload" | 缺少文件字段 | 添加文件字段 `mediaUpload` |
+| "You are not authorized" | 无 `write:assets` 权限 | 检查 API Token 权限 |
 
-**Search pages:**
-```javascript
-const results = await client.searchPages('keyword', 'en');
-```
+## 相关技能
 
-## File Upload (IMPORTANT)
-
-Wiki.js file upload uses a **special multipart format** requiring **TWO fields named `mediaUpload`**:
-
-### Upload Format
-
-```
-Field 1 (text):  mediaUpload = {"folderId": 1}    ← Folder metadata (JSON)
-Field 2 (file):  mediaUpload = <binary data>      ← Actual file content
-```
-
-Both fields MUST have the same name `mediaUpload`.
-
-### Upload Methods
-
-**Method 1: Using the client (Recommended)**
-```javascript
-// Upload from file path
-const result = await client.uploadFile(
-    '/path/to/image.png',
-    'image.png',
-    1  // folderId
-);
-
-// Upload from Buffer
-const fs = require('fs');
-const fileBuffer = fs.readFileSync('image.png');
-const result = await client.uploadFile(fileBuffer, 'image.png', 1);
-
-// Check result
-if (result.succeeded) {
-    console.log('Upload successful!');
-}
-```
-
-**Method 2: Manual multipart construction**
-```javascript
-const https = require('https');
-const fs = require('fs');
-
-const boundary = '----WikiJSUploadBoundary';
-const folderId = 1;
-const filename = 'image.png';
-const fileData = fs.readFileSync(filename);
-
-// Build body with TWO mediaUpload fields
-let body = Buffer.alloc(0);
-
-// Field 1: mediaUpload (folder metadata as JSON text)
-body = Buffer.concat([
-    body,
-    Buffer.from(`--${boundary}\r\n`),
-    Buffer.from('Content-Disposition: form-data; name="mediaUpload"\r\n\r\n'),
-    Buffer.from(`{"folderId":${folderId}}\r\n`)
-]);
-
-// Field 2: mediaUpload (the actual file)
-body = Buffer.concat([
-    body,
-    Buffer.from(`--${boundary}\r\n`),
-    Buffer.from(`Content-Disposition: form-data; name="mediaUpload"; filename="${filename}"\r\n`),
-    Buffer.from('Content-Type: image/png\r\n\r\n'),
-    fileData,
-    Buffer.from('\r\n')
-]);
-
-// End boundary
-body = Buffer.concat([
-    body,
-    Buffer.from(`--${boundary}--\r\n`)
-]);
-
-// Send request
-const options = {
-    hostname: 'wiki.example.com',
-    port: 443,
-    path: '/u',
-    method: 'POST',
-    headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'Content-Length': body.length
-    }
-};
-
-const req = https.request(options, (res) => {
-    let data = '';
-    res.on('data', (chunk) => { data += chunk; });
-    res.on('end', () => {
-        if (data === 'ok') {
-            console.log('Upload successful!');
-        }
-    });
-});
-
-req.write(body);
-req.end();
-```
-
-### Common Upload Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| "Missing upload folder metadata" | Missing JSON metadata field | Add text field `mediaUpload={"folderId":1}` |
-| "Missing upload payload" | Missing file field | Add file field named `mediaUpload` |
-| "You are not authorized" | No `write:assets` permission | Check API token scopes in Admin > API Access |
-| 403 Forbidden | Permission denied | Ensure token has `write:assets` or `manage:system` scope |
-
-## Asset Management
-
-### Folders
-
-**List asset folders:**
-```javascript
-const folders = await client.listAssetFolders(0);
-```
-
-**Create asset folder:**
-```javascript
-await client.createAssetFolder('Images', 'images', 0);
-```
-
-### Assets
-
-**List assets in folder:**
-```javascript
-const assets = await client.listAssets(1, 'IMAGE');
-```
-
-Kinds: `ALL`, `IMAGE`, `BINARY`, `PDF`, `CODE`, `MARKUP`, `VIDEO`, `AUDIO`
-
-**Delete asset:**
-```javascript
-await client.deleteAsset(456);
-```
-
-**Get asset URL:**
-```javascript
-const url = client.getAssetUrl('ppt-images', 'slide_01.png');
-// Returns: https://wiki.example.com/ppt-images/slide_01.png
-```
-
-## Working with Content
-
-### Markdown with Asset References
-
-After uploading images, reference them in pages:
-```javascript
-// Upload images first
-const fs = require('fs');
-const path = require('path');
-
-const imageDir = 'tmp/ppt_extracted/slides_png_hd2';
-const files = fs.readdirSync(imageDir).filter(f => f.endsWith('.png'));
-
-for (const file of files) {
-    await client.uploadFile(path.join(imageDir, file), file, 1);
-}
-
-// Create page with references
-const content = `# Presentation
-
-## Slide 1
-![Slide 1](/ppt-images/slide_01.png)
-
-## Slide 2
-![Slide 2](/ppt-images/slide_02.png)
-`;
-
-await client.createPage({
-    path: 'docs/presentation',
-    title: 'My Presentation',
-    content: content
-});
-```
-
-### Embedded Images (Base64 Alternative)
-
-For self-contained pages without external assets:
-```javascript
-const fs = require('fs');
-
-const imageBuffer = fs.readFileSync('image.png');
-const b64 = imageBuffer.toString('base64');
-const dataUri = `data:image/png;base64,${b64}`;
-
-const content = `![Image](${dataUri})`;
-```
-
-## Scripts
-
-### `wikijs_client.js`
-Main client class with all API methods including proper file upload handling.
-
-## Related Skills
-
-### PPT to Wiki.js Bridge
-
-For converting PowerPoint presentations to Wiki.js pages, use the **ppt-to-wiki** skill:
-
-```bash
-node skills/ppt-to-wiki/scripts/ppt_to_wiki.js \
-    --content tmp/ppt_extracted/content.md \
-    --images tmp/ppt_extracted/slides_png_hd2 \
-    --output-path "ppt/presentation-name" \
-    --title "Presentation Title" \
-    --upload-to-folder 1
-```
-
-See `skills/ppt-to-wiki/SKILL.md` for details.
-
-## Error Handling
-
-All methods return an object with `responseResult`:
-```javascript
-const result = await client.createPage({...});
-if (result.data?.pages?.create?.responseResult?.succeeded) {
-    const pageId = result.data.pages.create.page.id;
-} else {
-    const error = result.data?.pages?.create?.responseResult?.message;
-}
-```
-
-Or using async/await with try/catch:
-```javascript
-try {
-    const pages = await client.listPages();
-} catch (err) {
-    console.error('Error:', err.message);
-}
-```
-
-## References
-
-- **API Documentation**: See [references/api_docs.md](references/api_docs.md) for complete GraphQL schema reference
-- **Common Patterns**: See [references/patterns.md](references/patterns.md) for usage examples
-- **Upload Deep Dive**: See [references/upload_guide.md](references/upload_guide.md) for detailed upload documentation
+PPT 转 Wiki.js：使用 **ppt-to-wiki** 技能将 PowerPoint 转换为 Wiki.js 页面。

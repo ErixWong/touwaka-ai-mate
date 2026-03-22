@@ -111,31 +111,6 @@ excel_calc({ path: 'data.xlsx', sheet: 'Sheet1' })
 // 返回: { formulas: [{ cell: 'C1', formula: 'SUM(A1:B1)', value: 15 }] }
 ```
 
-## 兼容旧工具名
-
-| 旧名称 | 新名称 |
-|--------|--------|
-| `read_workbook`, `read` | `excel_read(scope: 'workbook')` |
-| `read_sheet` | `excel_read(scope: 'sheet')` |
-| `read_cell` | `excel_read(scope: 'cell')` |
-| `create_workbook`, `create` | `excel_write(scope: 'workbook')` |
-| `write_sheet` | `excel_write(scope: 'sheet')` |
-| `write_cell` | `excel_write(scope: 'cell')` |
-| `add_sheet` | `excel_sheet(action: 'add')` |
-| `delete_sheet` | `excel_sheet(action: 'delete')` |
-| `rename_sheet` | `excel_sheet(action: 'rename')` |
-| `copy_sheet` | `excel_sheet(action: 'copy')` |
-| `set_column_width` | `excel_format(type: 'column')` |
-| `set_cell_style` | `excel_format(type: 'cell')` |
-| `filter_data` | `excel_query(action: 'filter')` |
-| `sort_data` | `excel_query(action: 'sort')` |
-| `find_data` | `excel_query(action: 'find')` |
-| `to_json` | `excel_convert(format: 'json', direction: 'to')` |
-| `from_json` | `excel_convert(format: 'json', direction: 'from')` |
-| `to_csv` | `excel_convert(format: 'csv', direction: 'to')` |
-| `from_csv` | `excel_convert(format: 'csv', direction: 'from')` |
-| `calculate_formulas` | `excel_calc()` |
-
 ## 输出规范
 
 - **字体**: 使用专业字体（Arial, Times New Roman）

@@ -65,11 +65,3 @@ echarts_raw({
 | `graph` | 关系图 |
 | `boxplot` | 箱线图 |
 | `candlestick` | K线图 |
-
-## 兼容旧工具名
-
-| 旧名称 | 新名称 |
-|--------|--------|
-| `generate`, `generate_chart` | `echarts_generate` |
-| `generateRaw`, `generate_raw` | `echarts_raw` |
-| `types`, `get_types` | `echarts_types` |

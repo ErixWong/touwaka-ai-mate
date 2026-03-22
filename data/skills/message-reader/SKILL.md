@@ -1,14 +1,22 @@
-# Message Reader Skill
+---
+name: message-reader
+description: "消息内容检索技能。用于上下文优化中的按需获取，当工具消息被摘要后，AI 可通过此技能获取完整消息内容。"
+argument-hint: "get_message_content --tool_call_id=xxx"
+user-invocable: false
+allowed-tools: []
+---
+
+# Message Reader - 消息内容检索技能
 
 提供消息内容检索能力，用于上下文优化中的按需获取。
 
-## 功能说明
+## 工具
 
-当工具消息被摘要后，AI 可以通过此技能获取完整消息内容。
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `get_message_content` | 获取完整消息内容 | `tool_call_id` |
 
-## 工具列表
-
-### get_message_content
+## get_message_content
 
 获取指定工具消息的完整内容。
 
