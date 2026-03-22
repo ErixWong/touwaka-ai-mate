@@ -620,17 +620,28 @@ async function excelFormat(params) {
     }
     
     for (const col of columns) {
+      // 验证 width 参数
+      if (typeof col.width !== 'number' || col.width < 0) {
+        throw new Error(`Invalid width value: ${col.width}. Must be a non-negative number.`);
+      }
+      
       let colNum;
       if (typeof col.column === 'string') {
         // 支持多字母列名（如 A, B, AA, AB 等）
         // A=1, B=2, ..., Z=26, AA=27, AB=28...
         const colStr = col.column.toUpperCase();
+        // 验证列名只包含字母
+        if (!/^[A-Z]+$/.test(colStr)) {
+          throw new Error(`Invalid column name: ${col.column}. Must be letters only (A-Z).`);
+        }
         colNum = 0;
         for (let i = 0; i < colStr.length; i++) {
           colNum = colNum * 26 + (colStr.charCodeAt(i) - 64);
         }
-      } else {
+      } else if (typeof col.column === 'number') {
         colNum = col.column;
+      } else {
+        throw new Error(`Invalid column type: ${typeof col.column}. Must be string or number.`);
       }
       worksheet.getColumn(colNum).width = col.width;
     }
