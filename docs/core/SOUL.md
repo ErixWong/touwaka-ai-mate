@@ -133,7 +133,9 @@ Issue（任务单） → 创建分支 → 开发 → PR → 合并 → 关闭 Is
 
 ### 提交规范
 
-格式：`#{issue}: type 描述`（直接关联 Issue）
+**Git Commit 格式**：`#{issue}: type 描述`（直接关联 Issue）
+
+**PR Title 格式**：`type: 描述`（不带 Issue 编号前缀，在 body 中用 `Closes #xxx` 关联）
 
 类型：`feat` | `fix` | `refactor` | `docs` | `test` | `chore`
 
