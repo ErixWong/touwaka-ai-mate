@@ -714,6 +714,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     compressing: '压缩中...',
     refreshSuccess: '话题列表已刷新',
     compressSuccess: '上下文压缩完成',
+    loadFailed: '加载话题失败',
     compressFailed: '压缩失败',
     status: {
       active: '进行中',
