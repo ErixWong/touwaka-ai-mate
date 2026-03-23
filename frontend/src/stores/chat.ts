@@ -244,6 +244,14 @@ export const useChatStore = defineStore('chat', () => {
   // ==================== Topics 相关 ====================
 
   /**
+   * Topics 分页状态
+   */
+  const topicsTotal = ref(0)
+  const topicsPage = ref(1)
+  const topicsPages = ref(1)
+  const topicsPageSize = ref(10)
+
+  /**
    * 加载话题列表（按当前 expert 过滤）
    */
   const loadTopics = async (params?: { page?: number; size?: number; search?: string; status?: string; expert_id?: string }) => {
@@ -252,8 +260,15 @@ export const useChatStore = defineStore('chat', () => {
     try {
       // 如果没有传入 expert_id，使用当前的 expertId
       const filterExpertId = params?.expert_id || currentExpertId.value || undefined
-      const response = await topicApi.getTopics({ ...params, expert_id: filterExpertId })
+      const page = params?.page || 1
+      const size = params?.size || topicsPageSize.value
+      const response = await topicApi.getTopics({ ...params, page, pageSize: size, expert_id: filterExpertId })
       topics.value = response.items || []
+      // 更新分页状态 - 兼容两种响应格式
+      const pagination = response.pagination || { total: response.total, page: response.page, pages: response.pages, size: response.limit }
+      topicsTotal.value = pagination.total || 0
+      topicsPage.value = pagination.page || 1
+      topicsPages.value = pagination.pages || 1
       return response
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load topics'
@@ -325,6 +340,11 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreMessages,
     hasMoreTopics,
     error,
+    // Topics 分页状态
+    topicsTotal,
+    topicsPage,
+    topicsPages,
+    topicsPageSize,
 
     // Getters
     sortedMessages,

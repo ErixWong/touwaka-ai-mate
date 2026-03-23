@@ -88,6 +88,15 @@
           </span>
         </div>
       </div>
+      
+      <!-- 分页 -->
+      <Pagination
+        v-if="chatStore.topicsPages > 1"
+        :currentPage="chatStore.topicsPage"
+        :totalPages="chatStore.topicsPages"
+        :total="chatStore.topicsTotal"
+        @change="handlePageChange"
+      />
     </div>
   </div>
 </template>
@@ -96,11 +105,14 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { useToastStore } from '@/stores/toast'
 import { topicApi } from '@/api/services'
 import type { Topic } from '@/types'
+import Pagination from '@/components/Pagination.vue'
 
 const { t } = useI18n()
 const chatStore = useChatStore()
+const toast = useToastStore()
 
 const searchQuery = ref('')
 const expandedTopics = ref<Set<string>>(new Set())
@@ -123,17 +135,18 @@ const filteredTopics = computed(() => {
 })
 
 // 加载 Topics（按当前 expert 过滤）
-const loadTopics = async () => {
+const loadTopics = async (page: number = 1) => {
   try {
-    await chatStore.loadTopics()
-  } catch (error) {
-    console.error('Failed to load topics:', error)
+    await chatStore.loadTopics({ page })
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('topics.loadFailed')
+    toast.error(errorMsg)
   }
 }
 
 // 刷新话题列表（仅刷新，不压缩）
 const handleRefresh = async () => {
-  await loadTopics()
+  await loadTopics(1)
 }
 
 // 压缩上下文（将未归档消息总结成 Topic）
@@ -143,10 +156,11 @@ const handleCompress = async () => {
     // 调用压缩 API
     const result = await topicApi.compress()
     console.log('Compress result:', result)
-    // 压缩后刷新列表
-    await loadTopics()
-  } catch (error) {
-    console.error('Failed to compress topics:', error)
+    // 压缩后刷新列表（回到第一页）
+    await loadTopics(1)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('topics.compressFailed')
+    toast.error(errorMsg)
   } finally {
     isCompressing.value = false
   }
