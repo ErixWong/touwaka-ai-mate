@@ -2,8 +2,7 @@
 # Use this when you have your own MariaDB/MySQL server
 #
 # 1Panel 用户请注意：
-# .env 文件需要放在 docker-compose.yml 同目录，而不是挂载目录
-# 或者直接在 1Panel 界面的"环境变量"中配置以下变量：
+# 直接在 1Panel 界面的"环境变量"中配置以下变量：
 #   DB_HOST=your-db-host
 #   DB_PORT=3306
 #   DB_NAME=touwaka_mate
@@ -19,17 +18,17 @@ services:
     container_name: touwaka-mate
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=${DB_HOST:?DB_HOST is required}
       - DB_PORT=${DB_PORT:-3306}
       - DB_NAME=${DB_NAME:-touwaka_mate}
       - DB_USER=${DB_USER:-touwaka}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       - DATA_BASE_PATH=/app/data
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
