@@ -1,17 +1,16 @@
 /**
  * Role Controller - 角色管理控制器
+ * 使用 ctx.db.getModel() 获取模型，避免独立的数据库连接
  */
 
-import { models } from '../../models/index.js';
 import Utils from '../../lib/utils.js';
-
-const { role, permission, role_permission, role_expert, expert } = models;
 
 /**
  * 获取角色列表
  */
 async function list(ctx) {
   try {
+    const role = ctx.db.getModel('role');
     const roles = await role.findAll({
       order: [['created_at', 'ASC']],
     });
@@ -30,6 +29,7 @@ async function get(ctx) {
   const { id } = ctx.params;
 
   try {
+    const role = ctx.db.getModel('role');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
@@ -52,6 +52,7 @@ async function update(ctx) {
   const { name, description } = ctx.request.body;  // name 是显示名称，mark 不可修改
 
   try {
+    const role = ctx.db.getModel('role');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
@@ -79,6 +80,7 @@ async function getPermissions(ctx) {
   const { id } = ctx.params;
 
   try {
+    const role = ctx.db.getModel('role');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
@@ -111,6 +113,8 @@ async function updatePermissions(ctx) {
   }
 
   try {
+    const role = ctx.db.getModel('role');
+    const permission = ctx.db.getModel('permission');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
@@ -150,6 +154,8 @@ async function getExperts(ctx) {
   const { id } = ctx.params;
 
   try {
+    const role = ctx.db.getModel('role');
+    const expert = ctx.db.getModel('expert');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
@@ -196,6 +202,8 @@ async function updateExperts(ctx) {
   }
 
   try {
+    const role = ctx.db.getModel('role');
+    const expert = ctx.db.getModel('expert');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
@@ -233,6 +241,7 @@ async function updateExperts(ctx) {
  */
 async function listAllPermissions(ctx) {
   try {
+    const permission = ctx.db.getModel('permission');
     const permissions = await permission.findAll({
       attributes: ['id', 'code', 'name', 'type', 'parent_id', 'route_path', 'sort_order'],
       order: [['sort_order', 'ASC'], ['created_at', 'ASC']],
@@ -250,6 +259,7 @@ async function listAllPermissions(ctx) {
  */
 async function listAllExperts(ctx) {
   try {
+    const expert = ctx.db.getModel('expert');
     const experts = await expert.findAll({
       attributes: ['id', 'name', 'introduction'],
       where: { is_active: true },

@@ -13,7 +13,22 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-dotenv.config();
+// 加载 .env 文件（如果存在）
+// 优先级：环境变量 > .env 文件
+const envPath = path.join(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+}
+
+// 调试：打印数据库配置来源
+console.log('=== Database Configuration Debug ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DB_HOST:', process.env.DB_HOST || '(not set)');
+console.log('DB_PORT:', process.env.DB_PORT || '(not set)');
+console.log('DB_NAME:', process.env.DB_NAME || '(not set)');
+console.log('DB_USER:', process.env.DB_USER || '(not set)');
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '******' : '(not set)');
+console.log('===================================');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -433,49 +448,30 @@ class ApiServer {
 
   /**
    * 读取数据库配置
-   * 从 config/database.json 读取配置模板，然后解析环境变量占位符
-   * 配置文件使用环境变量占位符（如 ${DB_HOST}），实际值从环境变量读取
+   * 直接从环境变量读取配置
+   * 优先级：环境变量 > .env 文件
+   * 所有必填字段缺失时直接抛出错误
    */
   loadDatabaseConfig() {
-    const configPath = path.join(__dirname, '..', 'config', 'database.json');
-
-    if (!fs.existsSync(configPath)) {
+    // 验证必填字段
+    const required = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+    const missing = required.filter(key => !process.env[key]);
+    
+    if (missing.length > 0) {
       throw new Error(
-        `数据库配置文件不存在: ${configPath}\n` +
-        `请创建该文件并配置数据库连接信息（使用环境变量占位符，如 \${DB_HOST}）`
+        `数据库配置缺失: ${missing.join(', ')}\n` +
+        `请设置环境变量或在 .env 文件中配置`
       );
     }
 
-    const content = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(content);
-
-    // 解析环境变量占位符，实际值从环境变量读取
-    return this.resolveEnvVars(config);
-  }
-
-  /**
-   * 解析环境变量占位符
-   */
-  resolveEnvVars(obj) {
-    if (typeof obj === 'string') {
-      return obj.replace(/\$\{(\w+)\}/g, (match, varName) => {
-        return process.env[varName] || match;
-      });
-    }
-
-    if (Array.isArray(obj)) {
-      return obj.map(item => this.resolveEnvVars(item));
-    }
-
-    if (typeof obj === 'object' && obj !== null) {
-      const result = {};
-      for (const [key, value] of Object.entries(obj)) {
-        result[key] = this.resolveEnvVars(value);
-      }
-      return result;
-    }
-
-    return obj;
+    return {
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT, 10) || 3306,
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      connectionLimit: 10,
+    };
   }
 
   /**
