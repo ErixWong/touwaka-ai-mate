@@ -15,7 +15,7 @@
 
 services:
   app:
-    image: nikolaik/python-nodejs:python3.12-nodejs20-slim
+    image: nikolaik/python-nodejs:python3.12-nodejs20-bullseye
     container_name: touwaka-mate
     restart: unless-stopped
     ports:
@@ -42,16 +42,6 @@ services:
       - bash
       - -c
       - |
-        if [ ! -f /root/.cache/.system-installed ]; then
-          echo 'Installing system packages...'
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            libvips-dev wget
-          apt-get clean
-          rm -rf /var/lib/apt/lists/*
-          touch /root/.cache/.system-installed
-        fi
-
         if [ ! -f /root/.cache/pip/.installed ]; then
           echo 'Installing Python packages...'
           pip install --no-cache-dir -r /app/requirements.txt
