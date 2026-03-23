@@ -102,12 +102,12 @@ class ApiServer {
   }
 
   /**
-   * 检查关键表是否存在
+   * 检查数据库中是否有任何表
    */
   async checkTablesExist() {
     try {
       const result = await this.db.query(
-        "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'experts'"
+        "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE()"
       );
       // Sequelize query 返回的是数组，直接取第一行
       const count = result[0]?.count || result?.count || 0;
