@@ -4,7 +4,7 @@
 
 **一个具备自我反思能力的 AI 专家副本系统**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
 [![Vue.js](https://img.shields.io/badge/Vue.js-3+-4FC08D.svg)](https://vuejs.org/)
 [![MariaDB](https://img.shields.io/badge/MariaDB-11.x-003545.svg)](https://mariadb.org/)
@@ -59,6 +59,20 @@
 - **话题自动识别**：LLM 批量识别对话话题边界
 - **渐进式压缩**：Topic 总结 + 未归档消息的分层上下文
 - **向量检索**：Topic 级语义索引，精准召回历史对话
+- **话题分页**：支持大量话题的分页浏览
+- **关键词搜索**：话题支持关键词搜索，快速定位历史对话
+
+### 💾 记忆系统
+- **用户档案**：专家级用户画像，记录用户背景、偏好、称呼
+- **信息提取**：从对话中自动提取用户信息（职业、所在地等）
+- **话题归档**：对话自动归档为话题，生成标题和摘要
+- **LRU 缓存**：消息内存缓存，加速历史加载
+- **Token 估算**：智能估算上下文大小，触发压缩阈值
+
+### ⚡ 内置工具增强
+- **recall 工具**：统一召回工具，整合话题搜索与消息读取
+- **工具调用优化**：Content 摘要 + Tool_calls 完整存储，节省上下文空间
+- **用户级参数**：技能参数支持用户级覆盖，个性化配置
 
 ---
 
@@ -288,14 +302,14 @@ touwaka-mate-v2/
 | `docx` | Word 文档处理 |
 | `pdf` | PDF 处理 |
 | `pptx` | PPT 处理 |
-| `xlsx` | Excel 处理 |
+| `xlsx` | Excel 处理（支持公式计算） |
 | `kb-editor` | 知识库编辑 |
 | `kb-search` | 知识库搜索 |
 | `wikijs` | Wiki.js 集成 |
 | `remote-llm` | 远程 LLM 调用 |
 | `user-code-executor` | 用户代码执行 |
 | `erix-ssh` | SSH 连接管理 |
-| `message-reader` | 消息读取 |
+| `recall` | 统一召回工具（话题搜索、消息读取） |
 
 ---
 
@@ -407,7 +421,7 @@ QQ群：768524453
 
 ## 📄 许可证
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
 
 ---
 
