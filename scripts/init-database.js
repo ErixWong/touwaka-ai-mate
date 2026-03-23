@@ -1,9 +1,16 @@
 /**
- * Database Initialization Script
+ * Database Initialization Script (Idempotent)
  * 使用 newID() 生成随机 ID 初始化数据库
  * 
- * 注意：此脚本用于全新数据库初始化
- * 增量迁移请使用 upgrade-database.js
+ * 特性：
+ * - 幂等性：可安全地在已有数据库上多次运行
+ * - 不会删除现有表或数据
+ * - 使用 CREATE TABLE IF NOT EXISTS 创建表
+ * - 使用 INSERT ... ON DUPLICATE KEY UPDATE 插入初始数据
+ * 
+ * 注意：
+ * - 此脚本用于全新数据库初始化
+ * - 增量迁移（添加字段/索引）请使用 upgrade-database.js
  */
 
 // 首先加载环境变量
@@ -22,7 +29,7 @@ const DB_CONFIG = {
   database: process.env.DB_NAME,
 };
 
-// 表结构定义
+// 表结构定义（按依赖顺序排列）
 const TABLES = [
   // ==================== 基础表 ====================
   
@@ -734,6 +741,55 @@ const TABLES = [
   ) COMMENT='用户技能参数表（只存储用户覆盖的参数）'`,
 ];
 
+// 循环外键约束定义（需要在所有表创建后添加）
+const CIRCULAR_FOREIGN_KEYS = [
+  {
+    table: 'tasks',
+    constraintName: 'fk_tasks_topic',
+    sql: `ALTER TABLE tasks ADD CONSTRAINT fk_tasks_topic FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL`
+  },
+  {
+    table: 'topics',
+    constraintName: 'fk_topics_task',
+    sql: `ALTER TABLE topics ADD CONSTRAINT fk_topics_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL`
+  }
+];
+
+// 安全执行 SQL（捕获"已存在"类错误）
+async function safeExecute(connection, sql, description = '') {
+  try {
+    await connection.execute(sql);
+    return { success: true };
+  } catch (err) {
+    // 忽略"已存在"类错误
+    if (err.code === 'ER_TABLE_EXISTS_ERROR' || 
+        err.code === 'ER_DUP_KEYNAME' || 
+        err.code === 'ER_MULTIPLE_PRI_KEY') {
+      console.log(`  ✓ ${description} (已存在，跳过)`);
+      return { success: true, skipped: true };
+    }
+    console.error(`  ✗ ${description} 失败:`, err.message);
+    return { success: false, error: err };
+  }
+}
+
+// 检查外键约束是否存在
+async function checkForeignKeyExists(connection, tableName, constraintName) {
+  try {
+    const [rows] = await connection.execute(`
+      SELECT CONSTRAINT_NAME 
+      FROM information_schema.TABLE_CONSTRAINTS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = ? 
+        AND CONSTRAINT_NAME = ?
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    `, [tableName, constraintName]);
+    return rows.length > 0;
+  } catch (err) {
+    return false;
+  }
+}
+
 // 初始数据
 async function getInitialData() {
   // 创建默认密码哈希
@@ -800,7 +856,7 @@ async function initDatabase() {
       password: DB_CONFIG.password,
     });
 
-    console.log('Creating database...');
+    console.log('Creating database if not exists...');
     await connection.execute(
       `CREATE DATABASE IF NOT EXISTS ${DB_CONFIG.database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     );
@@ -815,69 +871,47 @@ async function initDatabase() {
       database: DB_CONFIG.database,
     });
 
-    console.log('Dropping existing tables...');
-    // 禁用外键检查，以便删除有循环依赖的表
-    await connection.execute('SET FOREIGN_KEY_CHECKS = 0');
+    // 创建表（幂等：使用 CREATE TABLE IF NOT EXISTS）
+    console.log('Creating tables (idempotent)...');
+    let createdCount = 0;
+    let skippedCount = 0;
     
-    // 按依赖顺序删除表（先删除有外键的表）
-    const dropTables = [
-      // 新知识库表
-      'kb_article_tags', 'kb_tags', 'kb_paragraphs', 'kb_sections', 'kb_articles',
-      // 邀请系统
-      'invitation_usages', 'invitations',
-      // 任务 Token
-      'task_token_access_log', 'task_token',
-      // 解决方案
-      'solutions',
-      // 用户技能参数
-      'user_skill_parameters',
-      // 助理系统
-      'assistant_messages', 'assistant_requests', 'assistants',
-      // 组织架构
-      'positions', 'departments',
-      // 旧知识库表
-      'knowledge_relations', 'knowledge_points', 'knowledges', 'knowledge_bases',
-      // 核心业务表
-      'messages', 'topics', 'tasks', 'user_profiles', 'user_roles', 'role_permissions', 'role_experts',
-      'permissions', 'roles', 'users', 'expert_skills', 'skill_parameters', 'skill_tools', 'skills', 'experts',
-      'ai_models', 'providers',
-      // 系统设置
-      'system_settings'
-    ];
-    for (const table of dropTables) {
-      await connection.execute(`DROP TABLE IF EXISTS ${table}`);
-    }
-    
-    // 重新启用外键检查
-    await connection.execute('SET FOREIGN_KEY_CHECKS = 1');
-
-    console.log('Creating tables...');
     for (const sql of TABLES) {
-      await connection.execute(sql);
+      // 提取表名用于日志
+      const tableMatch = sql.match(/CREATE TABLE IF NOT EXISTS (\w+)/);
+      const tableName = tableMatch ? tableMatch[1] : 'unknown';
+      
+      const result = await safeExecute(connection, sql, `创建表 ${tableName}`);
+      if (result.success && !result.skipped) {
+        createdCount++;
+      } else if (result.skipped) {
+        skippedCount++;
+      } else {
+        throw new Error(`创建表 ${tableName} 失败: ${result.error.message}`);
+      }
     }
+    console.log(`  ✓ 表创建完成: ${createdCount} 个新建, ${skippedCount} 个已存在`);
 
-    // 添加循环外键约束（tasks.topic_id -> topics.id 和 topics.task_id -> tasks.id）
+    // 添加循环外键约束（幂等：检查是否已存在）
     console.log('Adding circular foreign key constraints...');
-    try {
-      await connection.execute(`
-        ALTER TABLE tasks 
-        ADD CONSTRAINT fk_tasks_topic 
-        FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL
-      `);
-      await connection.execute(`
-        ALTER TABLE topics 
-        ADD CONSTRAINT fk_topics_task 
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
-      `);
-      console.log('  - Circular foreign keys added (tasks.topic_id <-> topics.task_id)');
-    } catch (err) {
-      // 外键可能已存在，忽略错误
-      if (err.code !== 'ER_MULTIPLE_PRI_KEY' && err.code !== 'ER_DUP_KEYNAME') {
-        console.warn('  - Warning: Could not add circular foreign keys:', err.message);
+    for (const fk of CIRCULAR_FOREIGN_KEYS) {
+      const exists = await checkForeignKeyExists(connection, fk.table, fk.constraintName);
+      if (exists) {
+        console.log(`  ✓ 外键 ${fk.constraintName} 已存在，跳过`);
+        continue;
+      }
+      
+      try {
+        await connection.execute(fk.sql);
+        console.log(`  ✓ 外键 ${fk.constraintName} 添加成功`);
+      } catch (err) {
+        // 外键添加失败可能是由于数据不一致，记录警告但不中断
+        console.warn(`  ⚠ 外键 ${fk.constraintName} 添加失败: ${err.message}`);
       }
     }
 
-    console.log('Inserting initial data...');
+    // 插入初始数据（幂等：使用 ON DUPLICATE KEY UPDATE）
+    console.log('Inserting initial data (idempotent)...');
     const data = await getInitialData();
 
     // 插入 providers
@@ -903,12 +937,12 @@ async function initDatabase() {
     }
     console.log(`  - ${data.models.length} models`);
 
-    // 插入 users
+    // 插入 users（仅当用户名不存在时）
     for (const u of data.users) {
       await connection.execute(
         `INSERT INTO users (id, username, email, password_hash, nickname, status)
          VALUES (?, ?, ?, ?, ?, 'active')
-         ON DUPLICATE KEY UPDATE username=VALUES(username), email=VALUES(email), nickname=VALUES(nickname)`,
+         ON DUPLICATE KEY UPDATE nickname=VALUES(nickname)`,
         [u.id, u.username, u.email, u.password_hash, u.nickname]
       );
     }
@@ -921,7 +955,7 @@ async function initDatabase() {
     for (const r of data.roles) {
       await connection.execute(
         `INSERT INTO roles (id, mark, name, description, level, is_system) VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE mark=VALUES(mark), name=VALUES(name)`,
+         ON DUPLICATE KEY UPDATE name=VALUES(name)`,
         [r.id, r.mark, r.name, r.description, r.level, r.is_system]
       );
     }
