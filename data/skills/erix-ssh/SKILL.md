@@ -1,6 +1,6 @@
 ---
 name: ssh
-description: "SSH 远程服务器管理。用于连接远程服务器、执行命令、SFTP 文件传输。支持会话管理、自动重连、历史记录存储。当用户需要 SSH 连接、远程执行命令、传输文件时触发。"
+description: "SSH 远程服务器管理。用于连接远程服务器、执行命令、SFTP 文件传输。支持会话管理、自动重连、历史记录存储。当用户需要 SSH 连接、远程执行命令、传输文件时触发。使用 JSON 文件存储，无原生依赖。"
 argument-hint: "[connect|exec|sudo|sftp_list|sftp_download|sftp_upload|disconnect] --session ID"
 user-invocable: false
 allowed-tools: []
@@ -8,7 +8,17 @@ allowed-tools: []
 
 # SSH - 远程服务器管理
 
-基于会话的 SSH 客户端，支持同步命令执行和 SFTP 文件传输。
+基于会话的 SSH 客户端，支持同步命令执行和 SFTP 文件传输。使用 JSON 文件存储，无需原生依赖。
+
+## ⚠️ 重要安全说明
+
+**Session ID 是访问凭证，必须妥善保存！**
+
+- Session ID 采用 **Capability-based Security** 机制：**知道 Session ID = 拥有该 Session 的完全控制权**
+- **LLM 必须将 Session ID 保存在本地**（如对话上下文、本地文件等）
+- **丢失 Session ID = 丢失访问权限**，必须重新发起连接
+- **不要泄露 Session ID**，任何获得它的人都可以控制你的远程服务器
+- **不提供 Session 列表功能**（防止枚举攻击），所以无法找回丢失的 Session ID
 
 ## 工具
 
@@ -42,6 +52,10 @@ allowed-tools: []
 ```json
 { "success": true, "session_id": "sess_abc123..." }
 ```
+
+**安全提示：**
+- 连接成功后立即保存 session_id
+- 不要在公开场合显示完整 session_id（可显示前8位用于识别）
 
 ### ssh_disconnect
 
@@ -148,22 +162,35 @@ allowed-tools: []
 5. ssh_disconnect → 关闭连接
 ```
 
-## 安全说明
+## LLM 职责清单
 
-**Session ID 是能力令牌，请像密码一样对待！**
+- [ ] **连接后立即保存 session_id** 到对话上下文或本地存储
+- [ ] **每次操作前确认 session_id 可用**
+- [ ] **如果 session_id 丢失**，告知用户需要重新连接
+- [ ] **不要在公开场合显示完整 session_id**（可显示前8位用于识别）
 
-- 知道 Session ID = 拥有该连接的完全控制权
-- LLM 必须在对话上下文中保存 Session ID
-- 丢失 Session ID = 丢失访问权限（出于安全考虑无会话列表功能）
-- 不要在公开场合暴露完整 Session ID（仅显示前 8 个字符用于识别）
+## 存储位置
 
-## 存储
+使用 JSON 文件存储，无原生依赖：
 
-- SQLite 数据库：`./data/ssh.db`
-- 包含会话、消息和任务历史
+- 会话索引: `./data/sessions.json`
+- 会话数据: `./data/sessions/sess_xxx.json`
+- 归档文件: `./data/sessions/sess_xxx.1.json`（自动归档，每文件最大 100KB）
+
+### 归档策略
+
+- 主文件自动循环：保留最近 50 条命令记录
+- 归档文件：追加所有消息，超过 100KB 时创建新文件
+- 支持跨归档文件搜索
 
 ## 依赖
 
 - Node.js 18+
 - 首次使用前在技能目录运行 `npm install`
-- ssh2 包
+- ssh2 包（纯 JavaScript，无原生依赖）
+
+---
+
+*最后更新: 2026-03-23 - 改用 JSON 文件存储，移除 SQLite 依赖*
+
+✌Bazinga！

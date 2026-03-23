@@ -11,6 +11,8 @@
  * binds its stdio to an internal API endpoint.
  *
  * 注意：此文件作为独立子进程运行，使用 ES Module 格式（继承项目 "type": "module"）
+ *
+ * 存储方式：JSON 文件存储（无原生依赖）
  */
 
 import { Client } from 'ssh2';
@@ -19,7 +21,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import * as db from './db.js';
+import * as db from './db-json.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -801,20 +803,43 @@ async function setupConnection(sessionId, config) {
 
 /**
  * Restore sessions from database on startup
+ * Note: Sessions that were connected with password cannot be restored
+ * because passwords are not saved to disk for security reasons.
+ * Only sessions using private key authentication can be restored.
  */
 async function restoreSessions() {
   const sessions = db.listSessions();
 
   for (const sessionInfo of sessions) {
     if (sessionInfo.status === 'connected') {
-      const session = db.getSession(sessionInfo.id);
-      if (session && session.config) {
-        try {
-          log(`Restoring session ${sessionInfo.id}...`);
-          await setupConnection(sessionInfo.id, session.config);
-        } catch (err) {
-          log(`Failed to restore session ${sessionInfo.id}:`, err.message);
+      // Get full session data including config
+      const data = db.loadSessionData ? db.loadSessionData(sessionInfo.id) : null;
+      if (data && data.session && data.session.config) {
+        const config = data.session.config;
+        
+        // Only restore if using private key (password is not saved)
+        if (config.private_key) {
+          try {
+            log(`Restoring session ${sessionInfo.id} (using private key)...`);
+            await setupConnection(sessionInfo.id, {
+              host: config.host,
+              port: config.port,
+              username: config.username,
+              private_key: config.private_key,
+              passphrase: config.passphrase === '***REDACTED***' ? null : config.passphrase
+            });
+          } catch (err) {
+            log(`Failed to restore session ${sessionInfo.id}:`, err.message);
+            db.updateSessionStatus(sessionInfo.id, 'disconnected');
+          }
+        } else {
+          // Password-based session cannot be restored
+          log(`Session ${sessionInfo.id} cannot be restored (password not saved)`);
+          db.updateSessionStatus(sessionInfo.id, 'disconnected');
         }
+      } else {
+        // No config available
+        db.updateSessionStatus(sessionInfo.id, 'disconnected');
       }
     }
   }

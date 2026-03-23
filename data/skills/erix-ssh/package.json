@@ -1,0 +1,25 @@
+{
+  "name": "skill_ssh",
+  "version": "0.3.0",
+  "description": "SSH Client for Claude - Remote server management via SSH with JSON storage (no native dependencies)",
+  "main": "scripts/session_manager.js",
+  "scripts": {
+    "start": "node scripts/session_manager.js"
+  },
+  "keywords": [
+    "ssh",
+    "claude",
+    "skill",
+    "remote",
+    "server",
+    "json"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ssh2": "^1.15.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
