@@ -46,7 +46,6 @@ services:
           echo 'Installing system packages...'
           apt-get update
           apt-get install -y --no-install-recommends \
-            fonts-noto-cjk fonts-dejavu \
             build-essential sqlite3 libsqlite3-dev libvips-dev wget
           apt-get clean
           rm -rf /var/lib/apt/lists/*
