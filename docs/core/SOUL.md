@@ -35,6 +35,8 @@
 | `Toast.vue` | 消息提示（替代 alert）| `toast.success('操作成功')` |
 | `UserPicker.vue` | 用户选择器（Modal 弹窗形式）| `<UserPicker v-model="userId" @change="handleChange" />` |
 
+> **注意**：`Pagination.vue` 组件位于 `frontend/src/components/`，非 `common/` 目录
+
 **Toast 使用方式**：
 ```typescript
 import { useToastStore } from '@/stores/toast'
@@ -64,6 +66,32 @@ const selectedUserId = ref<string | null>(null)
 
 const handleUserChange = (user: UserListItem | null) => {
   console.log('Selected user:', user)
+}
+</script>
+```
+
+**Pagination 使用方式**：
+```vue
+<template>
+  <Pagination
+    v-if="totalPages > 1"
+    :currentPage="currentPage"
+    :totalPages="totalPages"
+    :total="total"
+    @change="handlePageChange"
+  />
+</template>
+
+<script setup lang="ts">
+import Pagination from '@/components/Pagination.vue'
+
+const currentPage = ref(1)
+const totalPages = ref(10)
+const total = ref(100)
+
+const handlePageChange = (page: number) => {
+  currentPage.value = page
+  // 重新加载数据
 }
 </script>
 ```
