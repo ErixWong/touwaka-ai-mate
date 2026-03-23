@@ -1,11 +1,15 @@
   
-node_modules/  
+node_modules/
 data/work/
-logs/  
+logs/
 .env
 references/
 temp/
 docker-data/
+
+# IDE 和工具配置
+.vscode/
+.kilocode/
 
 # 临时文件
 *.log
