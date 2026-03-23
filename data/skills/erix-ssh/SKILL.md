@@ -159,11 +159,23 @@ allowed-tools: []
 
 ## 存储
 
-- SQLite 数据库：`./data/ssh.db`
-- 包含会话、消息和任务历史
+使用 JSON 文件存储，无需数据库依赖：
+
+```
+data/
+├── sessions.json           # 会话索引
+└── sessions/
+    ├── sess_xxx.json       # 主文件（最近 50 条命令）
+    ├── sess_xxx.1.json     # 归档文件 #1（~100KB）
+    └── sess_xxx.2.json     # 归档文件 #2
+```
+
+**安全特性：**
+- 密码不会保存到磁盘（仅私钥认证会话可恢复）
+- 归档文件自动管理，每个文件最大 100KB
+- 主文件自动循环，保留最近 50 条命令
 
 ## 依赖
 
 - Node.js 18+
-- 首次使用前在技能目录运行 `npm install`
-- ssh2 包
+- ssh2 包（项目已安装）

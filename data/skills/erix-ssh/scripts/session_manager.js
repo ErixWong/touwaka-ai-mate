@@ -19,7 +19,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import * as db from './db.js';
+import * as db from './db-json.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -801,17 +801,29 @@ async function setupConnection(sessionId, config) {
 
 /**
  * Restore sessions from database on startup
+ * Note: JSON storage does NOT save passwords to disk for security.
+ * Only sessions with private_key authentication can be restored.
  */
 async function restoreSessions() {
   const sessions = db.listSessions();
 
   for (const sessionInfo of sessions) {
     if (sessionInfo.status === 'connected') {
-      const session = db.getSession(sessionInfo.id);
-      if (session && session.config) {
+      // Load full session data including config from JSON file
+      const sessionData = db.loadSessionData(sessionInfo.id);
+      if (sessionData && sessionData.session && sessionData.session.config) {
+        const config = sessionData.session.config;
+        
+        // Check if session can be restored (requires private_key, password is not saved)
+        if (!config.private_key) {
+          log(`Session ${sessionInfo.id} cannot be restored (password-based auth, credentials not saved)`);
+          db.updateSessionStatus(sessionInfo.id, 'disconnected');
+          continue;
+        }
+        
         try {
           log(`Restoring session ${sessionInfo.id}...`);
-          await setupConnection(sessionInfo.id, session.config);
+          await setupConnection(sessionInfo.id, config);
         } catch (err) {
           log(`Failed to restore session ${sessionInfo.id}:`, err.message);
         }
