@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-03-20T09:09:45.004Z",
+  "exportedAt": "2026-03-23T07:48:06.989Z",
   "skills": [
     {
       "id": "compression",
@@ -20,33 +20,9 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "[zip|unzip] [path]",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": "[\"Bash(zip *)\",\"Bash(unzip *)\"]",
-      "is_active": true
-    },
-    {
-      "id": "file-operations",
-      "name": "File Operations",
-      "description": "File system operations including read, write, search, and manage files. Use when you need to work with files in the data directory.",
-      "version": "1.0.0",
-      "author": "System",
-      "tags": [
-        "file",
-        "system",
-        "built-in"
-      ],
-      "source_type": "local",
-      "source_path": "skills/file-operations",
-      "source_url": null,
-      "skill_md": "---\nname: file-operations\ndescription: File system operations including read, write, search, and manage files. Use when you need to work with files in the data directory.\nargument-hint: \"[operation] [path]\"\nuser-invocable: true\nallowed-tools:\n  - Bash(cat *)\n  - Bash(ls *)\n  - Bash(grep *)\n  - Bash(find *)\n---\n\n# File Operations\n\nComplete file system operations for reading, writing, searching, and managing files.",
-      "security_score": 100,
-      "security_warnings": null,
-      "license": null,
-      "argument_hint": "[operation] [path]",
-      "disable_model_invocation": false,
-      "user_invocable": true,
-      "allowed_tools": "[\"Bash(cat *)\",\"Bash(ls *)\",\"Bash(grep *)\",\"Bash(find *)\"]",
       "is_active": true
     },
     {
@@ -69,7 +45,7 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "[get|post] [url]",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": "[\"Bash(curl *)\"]",
       "is_active": true
@@ -82,14 +58,14 @@
       "author": "",
       "tags": [],
       "source_type": "local",
-      "source_path": "D:\\projects\\node\\touwaka-mate-v2\\data\\skills\\kb-editor",
+      "source_path": "skills\\kb-editor",
       "source_url": null,
       "skill_md": "# KB Editor - 知识库编辑技能\n\n知识库管理技能，用于创建和管理知识库、文章、节、段落、标签。\n\n**目标用户**：知识专家（专门负责整理知识的 AI 专家）\n\n## 知识库结构\n\n```\nknowledge_bases (知识库)\n├── kb_tags (标签)\n│   └── kb_article_tags (文章-标签关联)\n└── kb_articles (文章)\n    └── kb_sections (节，自指向无限层级)\n        ├── kb_sections (子节...)\n        └── kb_paragraphs (段，可标记为知识点)\n```\n\n## 功能\n\n- 知识库 CRUD（创建/读取/更新/删除）\n- 文章 CRUD（支持标签关联）\n- 节 CRUD（无限层级树状结构）\n- 段落 CRUD（可标记为知识点）\n- 标签 CRUD\n- 获取可用的嵌入模型列表\n\n## 权限\n\n只能操作 `owner_id === userId` 的知识库（由 API 层验证）\n\n---\n\n## 工具清单\n\n### 知识库操作\n\n#### list_my_kbs\n\n列出当前用户拥有的知识库。\n\n**参数**：\n- `page` (integer, optional): 页码，默认 1\n- `pageSize` (integer, optional): 每页数量，默认 20\n\n#### list_embedding_models\n\n获取可用的嵌入模型列表，用于创建知识库时选择。\n\n**参数**：无\n\n#### get_kb\n\n获取知识库详情。\n\n**参数**：\n- `id` (string, required): 知识库 ID\n\n#### create_kb\n\n创建知识库。\n\n**参数**：\n- `name` (string, required): 知识库名称\n- `description` (string, optional): 知识库描述\n- `embedding_model_id` (string, optional): 嵌入模型 ID，默认 bge-m3\n- `embedding_dim` (integer, optional): 向量维度，默认 1024\n\n#### update_kb\n\n更新知识库。\n\n**参数**：\n- `id` (string, required): 知识库 ID\n- `name` (string, optional): 新名称\n- `description` (string, optional): 新描述\n- `embedding_model_id` (string, optional): 新嵌入模型 ID\n- `embedding_dim` (integer, optional): 新向量维度\n\n#### delete_kb\n\n删除知识库。\n\n**参数**：\n- `id` (string, required): 知识库 ID\n\n---\n\n### 文章操作\n\n#### list_articles\n\n获取知识库下的文章列表。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `page` (integer, optional): 页码，默认 1\n- `pageSize` (integer, optional): 每页数量，默认 20\n- `status` (string, optional): 状态过滤（pending/processing/ready/error）\n- `search` (string, optional): 搜索关键词\n\n#### get_article\n\n获取文章详情。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 文章 ID\n\n#### get_article_tree\n\n获取文章的完整树状结构（包含所有节和段落）。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `article_id` (string, required): 文章 ID\n\n**返回示例**：\n```json\n{\n  \"article\": { \"id\": \"art_001\", \"title\": \"Python 入门教程\" },\n  \"tree\": [\n    {\n      \"id\": \"sec_001\",\n      \"title\": \"第一章 Python简介\",\n      \"level\": 1,\n      \"children\": [\n        {\n          \"id\": \"sec_002\",\n          \"title\": \"1.1 什么是Python\",\n          \"level\": 2,\n          \"children\": [],\n          \"paragraphs\": [\n            { \"id\": \"para_001\", \"content\": \"...\", \"is_knowledge_point\": true }\n          ]\n        }\n      ],\n      \"paragraphs\": []\n    }\n  ]\n}\n```\n\n#### create_article\n\n创建文章。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `title` (string, required): 文章标题\n- `summary` (string, optional): 文章摘要\n- `source_type` (string, optional): 来源类型（manual/upload/url）\n- `source_url` (string, optional): 来源 URL\n- `file_path` (string, optional): 本地文件路径\n- `status` (string, optional): 状态（pending/processing/ready/error）\n- `tags` (string[], optional): 标签名数组，如 `['Python', '编程']`\n\n#### update_article\n\n更新文章。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 文章 ID\n- `title` (string, optional): 新标题\n- `summary` (string, optional): 新摘要\n- `source_type` (string, optional): 来源类型\n- `source_url` (string, optional): 来源 URL\n- `file_path` (string, optional): 本地文件路径\n- `status` (string, optional): 状态\n- `tags` (string[], optional): 标签名数组\n\n#### delete_article\n\n删除文章（级联删除所有节和段落）。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 文章 ID\n\n---\n\n### 节操作\n\n#### list_sections\n\n查询节列表。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `article_id` (string, optional): 文章 ID 过滤\n- `page` (integer, optional): 页码，默认 1\n- `pageSize` (integer, optional): 每页数量，默认 100\n\n#### create_section\n\n创建节。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `article_id` (string, required): 所属文章 ID\n- `parent_id` (string, optional): 父节 ID（用于创建子节）\n- `title` (string, required): 节标题\n\n**说明**：\n- 如果不传 `parent_id`，创建的是顶级节（章）\n- 如果传 `parent_id`，创建的是子节\n- 系统自动计算 `level` 和 `position`\n- 最大层级深度为 10 层\n\n#### update_section\n\n更新节。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 节 ID\n- `title` (string, optional): 新标题\n\n#### move_section\n\n移动节（与相邻节交换位置）。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 节 ID\n- `direction` (string, required): 移动方向，\"up\" 或 \"down\"\n\n#### delete_section\n\n删除节（级联删除所有子节和段落）。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 节 ID\n\n---\n\n### 段落操作\n\n#### list_paragraphs\n\n查询段落列表。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `section_id` (string, optional): 节 ID 过滤\n- `is_knowledge_point` (boolean, optional): 是否知识点过滤\n- `page` (integer, optional): 页码，默认 1\n- `pageSize` (integer, optional): 每页数量，默认 100\n\n#### create_paragraph\n\n创建段落。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `section_id` (string, required): 所属节 ID\n- `title` (string, optional): 段落标题\n- `content` (string, required): 段落内容（完整的原文，不要提炼或总结）\n- `is_knowledge_point` (boolean, optional): 是否为知识点，默认 false\n- `token_count` (integer, optional): Token 数量，默认 0\n\n**重要：知识点段落**：\n- 设置 `is_knowledge_point: true` 的段落会被向量化，可用于语义搜索\n- 普通段落不会被向量化，只作为上下文展示\n\n#### update_paragraph\n\n更新段落。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 段落 ID\n- `title` (string, optional): 新标题\n- `content` (string, optional): 新内容\n- `is_knowledge_point` (boolean, optional): 是否为知识点\n- `token_count` (integer, optional): Token 数量\n\n#### move_paragraph\n\n移动段落（与相邻段交换位置）。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 段落 ID\n- `direction` (string, required): 移动方向，\"up\" 或 \"down\"\n\n#### delete_paragraph\n\n删除段落。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 段落 ID\n\n---\n\n### 标签操作\n\n#### list_tags\n\n获取标签列表。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `page` (integer, optional): 页码，默认 1\n- `pageSize` (integer, optional): 每页数量，默认 100\n\n#### create_tag\n\n创建标签。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `name` (string, required): 标签名称\n- `description` (string, optional): 标签描述\n\n#### update_tag\n\n更新标签。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 标签 ID\n- `name` (string, optional): 新名称\n- `description` (string, optional): 新描述\n\n#### delete_tag\n\n删除标签。\n\n**参数**：\n- `kb_id` (string, required): 知识库 ID\n- `id` (string, required): 标签 ID\n\n---\n\n## 环境变量\n\n以下环境变量由 skill-loader 自动注入：\n\n| 变量名 | 说明 | 必需 |\n|--------|------|------|\n| `USER_ACCESS_TOKEN` | 用户的 JWT access token | ✅ |\n| `API_BASE` | API 基础地址 | ✅ |\n| `USER_ID` | 用户 ID（调试用） | 可选 |\n\n---\n\n## 使用示例\n\n### 创建知识库和文章\n\n```javascript\n// 1. 创建知识库\ncreate_kb(name=\"产品文档\", description=\"产品相关文档和知识\")\n\n// 2. 创建文章\ncreate_article(kb_id=\"kb123\", title=\"功能介绍\", tags=[\"产品\", \"功能\"])\n\n// 3. 创建文章（带标签）\ncreate_article(kb_id=\"kb123\", title=\"API 文档\", tags=[\"API\", \"开发\"])\n```\n\n### 创建文章内容结构\n\n```javascript\n// 1. 创建顶级节（章）\ncreate_section(kb_id=\"kb123\", article_id=\"art456\", title=\"第一章 快速开始\")\n\n// 2. 创建子节\ncreate_section(kb_id=\"kb123\", article_id=\"art456\", parent_id=\"sec001\", title=\"1.1 安装\")\n\n// 3. 创建段落\ncreate_paragraph(\n  kb_id=\"kb123\",\n  section_id=\"sec002\",\n  content=\"安装非常简单，只需要运行 npm install 命令即可完成...\",\n  is_knowledge_point=true\n)\n\n// 4. 创建普通段落（不会向量化）\ncreate_paragraph(\n  kb_id=\"kb123\",\n  section_id=\"sec002\",\n  content=\"这是补充说明文字，不需要被检索...\"\n)\n```\n\n### 获取文章完整结构\n\n```javascript\n// 获取文章树（包含所有节和段落）\nget_article_tree(kb_id=\"kb123\", article_id=\"art456\")\n```\n\n### 标签管理\n\n```javascript\n// 创建标签\ncreate_tag(kb_id=\"kb123\", name=\"重要\", description=\"重要内容\")\n\n// 给文章设置标签（在创建或更新文章时）\ncreate_article(kb_id=\"kb123\", title=\"新文章\", tags=[\"重要\", \"产品\"])\n```\n\n---\n\n## 典型工作流程\n\n### 导入新文档\n\n1. `create_article` - 创建文章，设置标题和标签\n2. `create_section` - 根据文档结构创建节（章→节→小节）\n3. `create_paragraph` - 创建段落，标记知识点（`is_knowledge_point: true`）\n4. `get_article_tree` - 验证结构完整性\n\n### 调整内容结构\n\n1. `get_article_tree` - 查看当前结构\n2. `move_section` / `move_paragraph` - 调整顺序\n3. `update_section` / `update_paragraph` - 修改内容\n\n---\n\n## 技术说明\n\n- 通过 API 调用执行操作，使用用户 Token 认证\n- 所有权限验证由 API 层完成\n- 节支持无限层级（最大 10 层）\n- 只有标记为知识点的段落会被向量化\n- 标签与文章是多对多关系\n",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -109,7 +85,7 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -119,17 +95,17 @@
       "name": "Remote LLM",
       "description": "远程 LLM 调用技能 - 让专家可以调用其他 LLM 模型",
       "version": "2.0.0",
-      "author": null,
-      "tags": null,
+      "author": "",
+      "tags": [],
       "source_type": "local",
-      "source_path": "skills/remote-llm",
+      "source_path": "skills\\remote-llm",
       "source_url": null,
       "skill_md": null,
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -149,7 +125,27 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
+      "user_invocable": true,
+      "allowed_tools": null,
+      "is_active": true
+    },
+    {
+      "id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "file-operations",
+      "description": "File system operations including read, write, search, and manage files. Use when you need to work with files in the data directory.",
+      "version": "1.0.0",
+      "author": "",
+      "tags": [],
+      "source_type": "local",
+      "source_path": "skills\\file-operations",
+      "source_url": null,
+      "skill_md": "---\nname: file-operations\ndescription: File system operations including read, write, search, and manage files. Use when you need to work with files in the data directory.\nargument-hint: \"[operation] [path]\"\nuser-invocable: true\nallowed-tools:\n  - Bash(cat *)\n  - Bash(ls *)\n  - Bash(grep *)\n  - Bash(find *)\n---\n\n# File Operations\n\nComplete file system operations for reading, writing, searching, and managing files.\n\n## Tools\n\n### File System Information\n\n#### fs_info\n\nGet detailed metadata about a file or directory. **Recommended to call before other operations** to understand what you're working with.\n\n**Parameters:**\n- `path` (string, required): File or directory path\n- `include_content_preview` (boolean, optional): Include content preview for text files (default: false)\n\n**Returns:**\n- `exists` (boolean): Whether the path exists\n- `type` (string): \"file\", \"directory\", or \"unknown\"\n- `size` (number): Size in bytes\n- `sizeHuman` (string): Human-readable size (e.g., \"1.5 MB\")\n- `created`, `modified`, `accessed` (Date): Timestamps\n- `isReadOnly` (boolean): Write permission check\n- `pathInfo` (object): Path components (fullPath, directory, baseName, extension, fileNameWithoutExt)\n- `mimeType` (string, files only): Inferred MIME type\n- `isTextFile` (boolean, files only): Whether the file is likely text\n- `directoryInfo` (object, directories only): Item counts and listing preview\n- `contentPreview` (object, files only): First 10 lines preview (if requested)\n- `warning` (string, optional): Large file warning\n\n**Use Cases:**\n- Check if a file exists before reading\n- Determine file type (text vs binary)\n- Get file size to decide how to read it\n- Preview content structure\n\n### Reading Files\n\n#### read_file\n\nRead file content with mode parameter.\n\n**Parameters:**\n- `path` (string, required): File path\n- `mode` (string, optional): Read mode - `\"lines\"` (default) or `\"bytes\"`\n- `from` (number, optional): Start line for lines mode (default: 1)\n- `lines` (number, optional): Number of lines for lines mode (default: 100)\n- `offset` (number, optional): Start byte for bytes mode (default: 0)\n- `bytes` (number, optional): Bytes to read for bytes mode (default: 50000)\n\n#### list_files\n\nList directory contents.\n\n**Parameters:**\n- `path` (string, required): Directory path\n- `recursive` (boolean, optional): List recursively (default: false)\n\n### Searching\n\n#### fs_grep\n\nSearch text across files. Supports both single file and multi-file search.\n\n**Parameters:**\n- `pattern` (string, required): Search pattern\n- `path` (string, optional): File or directory path (default: current)\n- `file_pattern` (string, optional): File pattern filter (default: \"*\")\n- `use_regex` (boolean, optional): Use regex mode (default: `false`, use literal string match)\n- `ignore_case` (boolean, optional): Case insensitive search (default: `true`)\n\n**Search Modes:**\n| Mode | Description | Example |\n|------|-------------|---------|\n| Literal (default) | Simple string match, no special characters | `pattern: \"TODO\"` matches \"TODO\" exactly |\n| Regex | Full regex support, set `use_regex: true` | `pattern: \"TODO\\\\d+\"` matches \"TODO1\", \"TODO123\" |\n\n**Note:** For single file search, pass the file path directly to `path` parameter.\n\n**Examples:**\n```javascript\n// Simple string search (default, recommended for LLM)\n{ \"tool\": \"fs_grep\", \"params\": { \"pattern\": \"function\", \"path\": \"src/\" } }\n\n// Regex search\n{ \"tool\": \"fs_grep\", \"params\": { \"pattern\": \"function\\\\s+\\\\w+\", \"path\": \"src/\", \"use_regex\": true } }\n\n// Case sensitive search\n{ \"tool\": \"fs_grep\", \"params\": { \"pattern\": \"TODO\", \"path\": \"src/\", \"ignore_case\": false } }\n```\n\n### Writing Files\n\n#### write_file\n\nWrite content to a file with optional append mode.\n\n**Parameters:**\n- `path` (string, required): File path\n- `content` (string, required): Content to write\n- `mode` (string, optional): Write mode - `\"write\"` (default, overwrite) or `\"append\"`\n\n#### replace_in_file\n\nReplace text in a file.\n\n**Parameters:**\n- `path` (string, required): File path\n- `old` (string, required): Text to replace\n- `new` (string, required): Replacement text\n\n#### edit_lines\n\nEdit lines in a file with insert or delete operations.\n\n**Parameters:**\n- `path` (string, required): File path\n- `operation` (string, optional): Operation type - `\"insert\"` (default) or `\"delete\"`\n- `line` (number, required): Line number (1-based)\n- `end_line` (number, optional): End line number for delete operation (defaults to `line`)\n- `content` (string, required for insert): Content to insert\n\n**Operations:**\n| Operation | Description | Required Params |\n|-----------|-------------|-----------------|\n| `insert` | Insert content before the specified line | `path`, `line`, `content` |\n| `delete` | Delete lines from `line` to `end_line` | `path`, `line`, `end_line` (optional) |\n\n**Examples:**\n```javascript\n// Insert a line at line 5\n{ \"tool\": \"edit_lines\", \"params\": { \"path\": \"file.txt\", \"line\": 5, \"content\": \"new line\" } }\n\n// Delete line 10\n{ \"tool\": \"edit_lines\", \"params\": { \"path\": \"file.txt\", \"operation\": \"delete\", \"line\": 10 } }\n\n// Delete lines 10-15\n{ \"tool\": \"edit_lines\", \"params\": { \"path\": \"file.txt\", \"operation\": \"delete\", \"line\": 10, \"end_line\": 15 } }\n```\n\n**Tip:** For content replacement (e.g., \"replace 'foo' with 'bar'\"), use `replace_in_file` tool instead.\n\n### File System Operations\n\n#### fs_action\n\nUnified file system operations: copy, move, delete, and create directory.\n\n**Parameters:**\n- `operation` (string, optional): Operation type - `\"copy\"` (default), `\"move\"`, `\"delete\"`, or `\"create_dir\"`\n- `source` (string, required for copy/move): Source path\n- `destination` (string, required for copy/move): Destination path\n- `path` (string, required for delete/create_dir): Path to delete or directory to create\n\n**Operations:**\n| Operation | Description | Required Params |\n|-----------|-------------|-----------------|\n| `copy` | Copy file to destination | `source`, `destination` |\n| `move` | Move file to destination | `source`, `destination` |\n| `delete` | Delete file or directory (recursive) | `path` |\n| `create_dir` | Create directory (recursive) | `path` |\n\n**Examples:**\n```javascript\n// Copy a file\n{ \"tool\": \"fs_action\", \"params\": { \"source\": \"file.txt\", \"destination\": \"backup.txt\" } }\n\n// Move a file\n{ \"tool\": \"fs_action\", \"params\": { \"operation\": \"move\", \"source\": \"old.txt\", \"destination\": \"new.txt\" } }\n\n// Delete a file or directory\n{ \"tool\": \"fs_action\", \"params\": { \"operation\": \"delete\", \"path\": \"unwanted.txt\" } }\n\n// Create a directory\n{ \"tool\": \"fs_action\", \"params\": { \"operation\": \"create_dir\", \"path\": \"new_folder\" } }\n```\n\n## Security\n\n### Path Restrictions\n\n| User Type | Relative Path | Absolute Path |\n|-----------|---------------|---------------|\n| Normal User | ✅ Allowed (relative to working directory) | ❌ Denied |\n| Admin | ✅ Allowed (relative to working directory) | ✅ Allowed (within permitted directories) |\n\n### Allowed Directories\n\n| User Type | Allowed Directories |\n|-----------|---------------------|\n| Normal User | Current working directory only (task or temp) |\n| Admin | Current working directory + `data/skills` directory |\n\n### Examples\n\n```javascript\n// Normal user - relative path (allowed)\nlist_files({ path: \".\" })  // Lists current working directory\n\n// Normal user - absolute path (denied)\nlist_files({ path: \"d:/projects/.../data/skills\" })  // Error!\n\n// Admin - relative path (allowed)\nlist_files({ path: \".\" })  // Lists current working directory\n\n// Admin - absolute path to skills (allowed)\nlist_files({ path: \"d:/projects/.../data/skills/file-operations\" })  // OK!\n```\n\n## Examples\n\n```javascript\n// Get file/directory information (recommended first step)\n{ \"tool\": \"fs_info\", \"params\": { \"path\": \"data/example.txt\" } }\n\n// Get file info with content preview\n{ \"tool\": \"fs_info\", \"params\": { \"path\": \"data/example.txt\", \"include_content_preview\": true } }\n\n// Check if a directory exists and see its contents\n{ \"tool\": \"fs_info\", \"params\": { \"path\": \"data/src\" } }\n\n// Read a file (lines mode)\n{ \"tool\": \"read_file\", \"params\": { \"path\": \"data/example.txt\" } }\n\n// Read file in bytes mode\n{ \"tool\": \"read_file\", \"params\": { \"path\": \"data/binary.bin\", \"mode\": \"bytes\", \"bytes\": 1000 } }\n\n// Search in files\n{ \"tool\": \"fs_grep\", \"params\": { \"pattern\": \"TODO\", \"path\": \"data/src\" } }\n\n// Write a file\n{ \"tool\": \"write_file\", \"params\": { \"path\": \"data/output.txt\", \"content\": \"Hello!\" } }\n\n// Append to a file\n{ \"tool\": \"write_file\", \"params\": { \"path\": \"data/log.txt\", \"content\": \"New entry\\n\", \"mode\": \"append\" } }\n\n// Copy a file\n{ \"tool\": \"fs_action\", \"params\": { \"source\": \"data/file.txt\", \"destination\": \"data/backup.txt\" } }\n\n// Move a file\n{ \"tool\": \"fs_action\", \"params\": { \"operation\": \"move\", \"source\": \"data/old.txt\", \"destination\": \"data/new.txt\" } }\n\n// Delete a file or directory\n{ \"tool\": \"fs_action\", \"params\": { \"operation\": \"delete\", \"path\": \"data/unwanted.txt\" } }\n\n// Create a directory\n{ \"tool\": \"fs_action\", \"params\": { \"operation\": \"create_dir\", \"path\": \"data/new_folder\" } }\n```\n\n## Best Practices for LLM\n\n1. **Always call `fs_info` first** when working with an unknown path:\n   - Check if the file exists\n   - Determine if it's a file or directory\n   - See the file size before reading\n   - Check if it's a text file\n\n2. **Use `include_content_preview`** to quickly understand file structure without reading the entire file\n\n3. **Handle large files carefully**:\n   - Check `size` or `sizeHuman` before reading\n   - Use `from` and `lines` parameters to read in chunks\n   - Watch for `warning` field in `fs_info` response\n\n4. **Example workflow**:\n   ```\n   1. fs_info(path) → Check existence, type, size\n   2. If text file and small: read_file(path)\n   3. If text file and large: read_file(path, from=1, lines=100)\n   4. If directory: list_files(path) for detailed listing\n   ```\n",
+      "security_score": 100,
+      "security_warnings": null,
+      "license": null,
+      "argument_hint": "",
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -169,7 +165,7 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -182,14 +178,14 @@
       "author": "",
       "tags": [],
       "source_type": "local",
-      "source_path": "D:\\projects\\node\\touwaka-mate-v2-p1\\data\\skills\\message-reader",
+      "source_path": "skills\\message-reader",
       "source_url": null,
       "skill_md": "# Message Reader Skill\n\n提供消息内容检索能力，用于上下文优化中的按需获取。\n\n## 功能说明\n\n当工具消息被摘要后，AI 可以通过此技能获取完整消息内容。\n\n## 工具列表\n\n### get_message_content\n\n获取指定工具消息的完整内容。\n\n**参数：**\n\n| 参数 | 类型 | 必填 | 说明 |\n|------|------|------|------|\n| tool_call_id | string | 是 | 工具调用 ID，从上下文摘要中获取 |\n\n**返回值：**\n\n```json\n{\n  \"success\": true,\n  \"tool_call_id\": \"call_xxx\",\n  \"tool_name\": \"search\",\n  \"content\": \"完整的消息内容...\",\n  \"content_length\": 1234,\n  \"created_at\": \"2026-03-15T12:00:00.000Z\"\n}\n```\n\n## 使用场景\n\n在 Simple 上下文策略中，工具消息会被摘要为：\n\n```\nsearch → 1234 字符 | get_message_content(\"call_xxx\")\n```\n\nAI 看到此提示后，可以调用 `get_message_content` 工具获取完整结果。\n\n## 技术说明\n\n- 使用 `tool_call_id` 作为消息唯一标识\n- 查询 `messages` 表中 `role='tool'` 的消息\n- `tool_call_id` 存储在 `tool_calls` 字段的 JSON 中",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -209,7 +205,7 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -229,7 +225,7 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": "[]",
       "is_active": true
@@ -252,7 +248,7 @@
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -265,14 +261,14 @@
       "author": "",
       "tags": [],
       "source_type": "local",
-      "source_path": "D:\\projects\\node\\touwaka-mate-v2\\data\\skills\\erix-ssh",
+      "source_path": "skills\\erix-ssh",
       "source_url": null,
       "skill_md": "---\r\nname: ssh\r\ndescription: SSH remote server management toolkit with session support. Use when Claude needs to connect to remote servers via SSH, execute commands, manage files, or perform system administration tasks. Supports persistent sessions, async command execution, and message history with SQLite storage.\r\nargument-hint: \"[connect|exec|sudo|history|output|disconnect] --session ID\"\r\nuser-invocable: false\r\nallowed-tools: []\r\n---\r\n\r\n# SSH Remote Server Management\r\n\r\nSession-based SSH client with async execution and SQLite storage.\r\n\r\n## ⚠️ 重要安全说明\r\n\r\n**Session ID 是访问凭证，必须妥善保存！**\r\n\r\n- Session ID 采用 **Capability-based Security** 机制：**知道 Session ID = 拥有该 Session 的完全控制权**\r\n- **LLM 必须将 Session ID 保存在本地**（如对话上下文、本地文件等）\r\n- **丢失 Session ID = 丢失访问权限**，必须重新发起连接\r\n- **不要泄露 Session ID**，任何获得它的人都可以控制你的远程服务器\r\n- **不提供 Session 列表功能**（防止枚举攻击），所以无法找回丢失的 Session ID\r\n\r\n## 工具清单\r\n\r\n### start_manager\r\n\r\n启动后台 Session Manager 进程。必须在执行任何 SSH 操作前启动。\r\n\r\n**参数：**\r\n无\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"message\": \"Manager started\",\r\n  \"pid\": 12345\r\n}\r\n```\r\n\r\n---\r\n\r\n### stop_manager\r\n\r\n停止后台 Session Manager 进程。\r\n\r\n**参数：**\r\n无\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"message\": \"Manager stopped\"\r\n}\r\n```\r\n\r\n---\r\n\r\n### connect\r\n\r\n连接到远程服务器，返回 session_id。**必须保存返回的 session_id，这是访问该连接的唯一凭证。**\r\n\r\n**参数：**\r\n- `host`: 主机地址（必需）- IP 地址或主机名\r\n- `username`: 用户名（必需）\r\n- `port`: 端口号（可选，默认 22）\r\n- `password`: 密码（可选，交互式输入更安全）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"session_id\": \"sess_c7f8a9b2e4d6f1a3b5c7d9e8f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9\"\r\n}\r\n```\r\n\r\n**安全提示：**\r\n- 连接成功后立即保存 session_id\r\n- 不要在公开场合显示完整 session_id（可显示前8位用于识别）\r\n\r\n---\r\n\r\n### disconnect\r\n\r\n断开与远程服务器的连接。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"message\": \"Disconnected from session\"\r\n}\r\n```\r\n\r\n---\r\n\r\n### delete\r\n\r\n删除 Session 及其所有历史记录。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"message\": \"Session deleted\"\r\n}\r\n```\r\n\r\n---\r\n\r\n### exec\r\n\r\n在远程服务器上异步执行命令，返回 task_id。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n- `command`: 要执行的命令（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"task_id\": \"task_abc123\",\r\n  \"message\": \"Command submitted\"\r\n}\r\n```\r\n\r\n**注意：** 命令是异步执行的，需要使用 `history` 或 `output` 获取执行结果。\r\n\r\n---\r\n\r\n### sudo\r\n\r\n使用 sudo 权限执行命令。支持 PTY (伪终端) 自动处理密码提示。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n- `command`: 要执行的命令（必需）\r\n- `password_file`: 密码文件路径（可选，推荐）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**密码传递方式（按优先级）：**\r\n\r\n1. **密码文件** `--password-file FILE` - 最安全，适合脚本\r\n2. **环境变量** `SUDO_PASSWORD` - 适合 CI/CD 环境\r\n3. **交互式输入** - 终端中隐藏输入，适合手动使用\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"task_id\": \"task_xyz789\",\r\n  \"message\": \"Sudo command submitted\"\r\n}\r\n```\r\n\r\n**安全特性：**\r\n- 密码文件权限检查（过于开放会警告）\r\n- 命令文件权限 `0600`\r\n- 命令执行后清除内存中的密码\r\n- 输出消息中屏蔽密码显示\r\n- **不要使用 `--password` 命令行参数**（已废弃，会暴露密码）\r\n\r\n---\r\n\r\n### history\r\n\r\n获取命令历史记录列表，包含 task_id 和执行状态。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n- `limit`: 返回记录数量（可选，默认 20）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"commands\": [\r\n    {\r\n      \"id\": \"msg_xxx\",\r\n      \"task_id\": \"task_001\",\r\n      \"command\": \"df -h\",\r\n      \"timestamp\": \"2024-01-15T10:30:00Z\",\r\n      \"status\": \"completed\",\r\n      \"exit_code\": 0,\r\n      \"has_output\": true,\r\n      \"has_error\": false\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\n---\r\n\r\n### output\r\n\r\n获取特定任务的详细输出结果。\r\n\r\n**参数：**\r\n- `task`: Task ID（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"task_id\": \"task_001\",\r\n  \"command\": \"df -h\",\r\n  \"status\": \"completed\",\r\n  \"exit_code\": 0,\r\n  \"output\": \"Filesystem      Size  Used Avail Use% Mounted on\\n/dev/sda1       100G   50G   50G  50% /\",\r\n  \"stderr\": \"\"\r\n}\r\n```\r\n\r\n---\r\n\r\n### task_status\r\n\r\n获取任务执行状态摘要。\r\n\r\n**参数：**\r\n- `task`: Task ID（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"task_id\": \"task_001\",\r\n  \"status\": \"completed\",\r\n  \"exit_code\": 0\r\n}\r\n```\r\n\r\n---\r\n\r\n### tasks\r\n\r\n列出所有任务。\r\n\r\n**参数：**\r\n- `session`: Session ID（可选，不提供则列出所有）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"tasks\": [\r\n    {\r\n      \"id\": \"task_001\",\r\n      \"command\": \"ls -la\",\r\n      \"status\": \"completed\",\r\n      \"exit_code\": 0\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\n---\r\n\r\n### read\r\n\r\n读取消息记录，支持多种过滤条件。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n- `since`: 起始时间戳（可选）\r\n- `until`: 结束时间戳（可选）\r\n- `type`: 消息类型过滤（可选）- command, output, error, complete, system\r\n- `task`: 按 task_id 过滤（可选）\r\n- `unread_only`: 仅未读消息（可选）\r\n- `mark_read`: 标记为已读（可选）\r\n- `limit`: 返回数量限制（可选）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"messages\": [\r\n    {\r\n      \"id\": \"msg_xxx\",\r\n      \"type\": \"output\",\r\n      \"content\": \"Hello World\",\r\n      \"timestamp\": \"2024-01-15T10:30:00Z\",\r\n      \"read\": false\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\n---\r\n\r\n### search\r\n\r\n搜索消息内容。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n- `query`: 搜索关键词（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"results\": [\r\n    {\r\n      \"id\": \"msg_xxx\",\r\n      \"type\": \"output\",\r\n      \"content\": \"error: connection failed\",\r\n      \"timestamp\": \"2024-01-15T10:30:00Z\"\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\n---\r\n\r\n### stats\r\n\r\n获取 Session 统计信息。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"stats\": {\r\n    \"total_messages\": 100,\r\n    \"unread\": 5,\r\n    \"commands\": 10,\r\n    \"errors\": 2\r\n  }\r\n}\r\n```\r\n\r\n---\r\n\r\n### mark_read\r\n\r\n标记消息为已读。\r\n\r\n**参数：**\r\n- `session`: Session ID（必需）\r\n- `message`: 消息 ID（可选，不提供则标记所有）\r\n\r\n**script_path:** `scripts/ssh_client.js`\r\n\r\n**返回示例：**\r\n```json\r\n{\r\n  \"success\": true,\r\n  \"marked_count\": 5\r\n}\r\n```\r\n\r\n---\r\n\r\n## 典型工作流程\r\n\r\n```\r\n1. start_manager → 启动后台管理进程\r\n2. connect → 建立 SSH 连接，保存返回的 session_id\r\n3. exec/sudo → 执行命令，获取 task_id\r\n4. history → 查看命令执行状态\r\n5. output → 获取命令详细输出\r\n6. disconnect → 断开连接\r\n```\r\n\r\n## LLM 职责清单\r\n\r\n- [ ] **连接后立即保存 session_id** 到对话上下文或本地存储\r\n- [ ] **每次操作前确认 session_id 可用**\r\n- [ ] **如果 session_id 丢失**，告知用户需要重新连接\r\n- [ ] **不要在公开场合显示完整 session_id**（可显示前8位用于识别）\r\n\r\n## 存储位置\r\n\r\n- SQLite 数据库: `./data/ssh.db`\r\n- PID 文件: `./data/manager.pid`\r\n- 命令目录: `./data/commands/`\r\n\r\n## 系统要求\r\n\r\n- Node.js 18+\r\n- 首次使用前运行 `npm install`\r\n\r\n---\r\n\r\n*最后更新: 2026-03-12 - 按 skill-manager 标准格式重写*\r\n\r\n✌Bazinga！",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -285,14 +281,14 @@
       "author": "",
       "tags": [],
       "source_type": "local",
-      "source_path": "D:\\projects\\node\\touwaka-mate-v2\\data\\skills\\unifuncs-web-reader",
+      "source_path": "skills\\unifuncs-web-reader",
       "source_url": null,
       "skill_md": "---\nname: unifuncs-web-reader\ndescription: 网页内容提取服务，通过 Unifuncs API 获取网页正文内容。支持微信公众号、知乎、头条等主流平台。\nargument-hint: \"[url]\"\nuser-invocable: true\nallowed-tools: []\nenv-variables:\n  - name: UNIFUNCS_API_KEY\n    description: Unifuncs API 密钥\n    required: true\n---\n\n# Unifuncs Web Reader\n\n网页内容提取服务，通过 Unifuncs API 获取网页正文内容。\n\n## 功能特点\n\n- 支持微信公众号文章\n- 支持知乎专栏/问答\n- 支持今日头条\n- 支持其他主流网站\n- 自动提取正文内容\n- 返回结构化数据\n\n## 配置要求\n\n此技能需要以下环境变量（由系统从 `skill_parameters` 表自动注入）：\n\n| 变量名 | 说明 | 必需 |\n|--------|------|------|\n| `UNIFUNCS_API_KEY` | Unifuncs API 密钥 | ✅ |\n\n## 工具清单\n\n### read_web_page\n\n读取网页内容并提取正文。\n\n**参数：**\n- `url` (string, required): 要读取的网页 URL\n- `timeout` (number, optional): 超时时间（毫秒），默认 30000\n\n**调用方式：**\n```\nGET https://api.unifuncs.com/api/web-reader/{path}?apiKey=API_KEY\n```\n\n**注意：** path 需要进行 URL 编码\n\n**示例：**\n```javascript\n// 读取微信公众号文章\n{\n  \"url\": \"https://mp.weixin.qq.com/s/wmoNh44A4ofkawPNVx_g6A\"\n}\n\n// 实际请求 URL\n// https://api.unifuncs.com/api/web-reader/https%3A%2F%2Fmp.weixin.qq.com%2Fs%2FwmoNh44A4ofkawPNVx_g6A?apiKey=API_KEY\n```\n\n**返回示例：**\n```json\n{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"statusMessage\": \"OK\",\n  \"headers\": {\n    \"content-type\": \"text/markdown; charset=utf-8\",\n    \"x-unifuncs-status\": \"0\"\n  },\n  \"body\": \"Title: 文章标题\\n\\nURL Source: https://example.com\\n\\nMarkdown Content:\\n\\n正文内容...\",\n  \"size\": 12345,\n  \"originalUrl\": \"https://example.com\"\n}\n```\n\n**说明：** `body` 字段返回 Markdown 格式的文本内容，包含标题、来源 URL 和正文。\n\n## 错误处理\n\n| 状态码 | 说明 |\n|--------|------|\n| 200 | 成功 |\n| 400 | URL 格式错误 |\n| 401 | API Key 无效或缺失 |\n| 403 | 无权限访问 |\n| 404 | 网页不存在 |\n| 429 | 请求频率超限 |\n| 500 | 服务器错误 |\n\n## 安全说明\n\n- API Key 从环境变量获取，不在代码中硬编码\n- 使用 HTTPS 加密传输\n- 最大响应大小限制为 5MB\n- 默认超时 30 秒\n\n## 使用场景\n\n1. **内容分析**：提取网页正文用于 AI 分析\n2. **信息收集**：批量获取特定平台的内容\n3. **内容存档**：保存网页内容到本地\n\n## 注意事项\n\n- 请遵守目标网站的使用条款\n- 不要频繁请求同一网站\n- 部分网站可能有反爬机制",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -305,57 +301,34 @@
       "author": "",
       "tags": [],
       "source_type": "local",
-      "source_path": "D:\\projects\\node\\touwaka-mate-v2-p1\\data\\skills\\user-code-executor",
+      "source_path": "skills\\user-code-executor",
       "source_url": null,
       "skill_md": "---\nname: user-code-executor\ndescription: 在安全沙箱中执行用户自定义代码（JavaScript/Python），支持内联代码和脚本文件执行。\nargument-hint: \"[execute_javascript|execute_python] --code='...' or --script_path='...'\"\nuser-invocable: true\nallowed-tools: []\n---\n\n# User Code Executor\n\n在安全沙箱中执行用户自定义代码。\n\n## 功能\n\n- 执行用户提供的 JavaScript 代码（VM 沙箱）\n- 执行用户提供的 Python 代码（受限环境）\n- 从工作目录加载脚本文件\n\n## 安全限制\n\n- **执行超时**: JavaScript 30秒 / Python 5分钟\n- **内存限制**: 128MB\n- **文件访问**: 仅限用户工作目录\n- **模块访问**: 白名单控制\n\n## 配置要求\n\n| 变量名 | 说明 | 必需 |\n|--------|------|------|\n| `WORKING_DIRECTORY` | 用户工作目录（相对 DATA_BASE_PATH） | 可选 |\n| `DATA_BASE_PATH` | 数据基础路径 | ✅ |\n| `VM_TIMEOUT` | JS 执行超时（毫秒） | 可选 |\n| `PYTHON_TIMEOUT` | Python 执行超时（毫秒） | 可选 |\n\n## 工具清单\n\n### execute_javascript\n\n在 VM 沙箱中执行 JavaScript 代码。\n\n**描述**: 执行用户提供的 JavaScript 代码，支持内联代码或加载脚本文件。\n\n**参数:**\n- `code` (string, optional): 要执行的 JavaScript 代码（与 script_path 二选一）\n- `script_path` (string, optional): 脚本文件路径，相对于用户工作目录（与 code 二选一）\n\n**script_path**: `index.js`\n\n**返回示例:**\n```json\n{\n  \"success\": true,\n  \"result\": 2,\n  \"stdout\": \"\",\n  \"stderr\": \"\",\n  \"duration\": 1,\n  \"source\": \"inline\"\n}\n```\n\n### execute_python\n\n在受限环境中执行 Python 代码。\n\n**描述**: 执行用户提供的 Python 代码，支持内联代码或加载脚本文件。\n\n**参数:**\n- `code` (string, optional): 要执行的 Python 代码（与 script_path 二选一）\n- `script_path` (string, optional): 脚本文件路径，相对于用户工作目录（与 code 二选一）\n\n**script_path**: `index.js`\n\n**返回示例:**\n```json\n{\n  \"success\": true,\n  \"result\": null,\n  \"stdout\": \"Hello\",\n  \"stderr\": \"\",\n  \"duration\": 100,\n  \"source\": \"inline\"\n}\n```\n\n## 使用示例\n\n### 执行内联 JavaScript\n\n```\nexecute_javascript({\n  code: \"const x = 10; x * 2;\"\n})\n// 返回: { success: true, result: 20 }\n```\n\n### 执行脚本文件\n\n```\nexecute_javascript({\n  script_path: \"scripts/my-script.js\"\n})\n// 从用户工作目录加载 scripts/my-script.js 并执行\n```\n\n### 执行 Python 代码\n\n```\nexecute_python({\n  code: \"print('Hello from Python!')\"\n})\n// 返回: { success: true, stdout: \"Hello from Python!\" }\n```\n\n## 错误处理\n\n| 错误类型 | 说明 |\n|----------|------|\n| 超时错误 | 代码执行超过时间限制 |\n| 内存错误 | 内存使用超过限制 |\n| 权限错误 | 访问不允许的路径或模块 |\n| 语法错误 | 代码语法错误 |\n| 运行时错误 | 执行过程中的错误 |\n\n## 注意事项\n\n- 此技能需要 `vm` 和 `child_process` 模块支持\n- Python 执行需要系统安装 Python 3\n- 文件访问限制在用户工作目录内\n- 不允许相对路径导入（`./` 或 `../`）",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
-      "is_active": true
+      "is_active": false
     },
     {
-      "id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs",
-      "description": "Interact with Wiki.js instances via GraphQL API and REST upload endpoint. Supports page CRUD operations (list, get, create, update, delete), directory browsing, asset management (upload with proper multipart format, list, delete folders), and search. Use when working with Wiki.js wikis for documentation management, content migration, automated wiki operations, or file uploads. Requires WIKIJS_URL and WIKIJS_TOKEN environment variables.",
-      "version": "1.0.0",
-      "author": "",
-      "tags": [
-        "['tag1'",
-        "'tag2']"
-      ],
-      "source_type": "local",
-      "source_path": "skills\\wikijs",
-      "source_url": null,
-      "skill_md": "---\nname: wikijs\ndescription: Interact with Wiki.js instances via GraphQL API and REST upload endpoint. Supports page CRUD operations (list, get, create, update, delete), directory browsing, asset management (upload with proper multipart format, list, delete folders), and search. Use when working with Wiki.js wikis for documentation management, content migration, automated wiki operations, or file uploads. Requires WIKIJS_URL and WIKIJS_TOKEN environment variables.\n---\n\n# Wiki.js\n\nInteract with Wiki.js instances programmatically via GraphQL API and REST upload endpoint.\n\n## Quick Start\n\nRequired environment variables:\n- `WIKIJS_URL` - Wiki.js instance URL (e.g., `https://wiki.example.com`)\n- `WIKIJS_TOKEN` - API token from Admin > API Access\n\nBasic usage:\n```javascript\nconst WikiJSClient = require('./scripts/wikijs_client');\n\nconst client = new WikiJSClient();\nconst pages = await client.listPages();\n```\n\n## Core Operations\n\n### Pages\n\n**List all pages:**\n```javascript\nconst pages = await client.listPages({ orderBy: 'TITLE' });\n```\n\n**Get page by path:**\n```javascript\nconst page = await client.getPageByPath('folder/page-name', 'en');\n```\n\n**Get page by ID:**\n```javascript\nconst page = await client.getPageById(123);\n```\n\n**Create page:**\n```javascript\nawait client.createPage({\n    path: 'docs/new-page',\n    title: 'New Page',\n    content: '# Hello World',\n    locale: 'en',\n    description: 'Page description',\n    tags: ['tag1', 'tag2'],\n    isPublished: true\n});\n```\n\n**Update page:**\n```javascript\nawait client.updatePage(123, {\n    content: '# Updated content',\n    title: 'New Title'\n});\n```\n\n**Delete page:**\n```javascript\nawait client.deletePage(123);\n```\n\n### Directory Tree\n\n**Get page tree:**\n```javascript\nconst tree = await client.getPageTree('FOLDERS', 'en');\n```\n\nModes: `ALL`, `FOLDERS`, `PAGES`\n\n### Search\n\n**Search pages:**\n```javascript\nconst results = await client.searchPages('keyword', 'en');\n```\n\n## File Upload (IMPORTANT)\n\nWiki.js file upload uses a **special multipart format** requiring **TWO fields named `mediaUpload`**:\n\n### Upload Format\n\n```\nField 1 (text):  mediaUpload = {\"folderId\": 1}    ← Folder metadata (JSON)\nField 2 (file):  mediaUpload = <binary data>      ← Actual file content\n```\n\nBoth fields MUST have the same name `mediaUpload`.\n\n### Upload Methods\n\n**Method 1: Using the client (Recommended)**\n```javascript\n// Upload from file path\nconst result = await client.uploadFile(\n    '/path/to/image.png',\n    'image.png',\n    1  // folderId\n);\n\n// Upload from Buffer\nconst fs = require('fs');\nconst fileBuffer = fs.readFileSync('image.png');\nconst result = await client.uploadFile(fileBuffer, 'image.png', 1);\n\n// Check result\nif (result.succeeded) {\n    console.log('Upload successful!');\n}\n```\n\n**Method 2: Manual multipart construction**\n```javascript\nconst https = require('https');\nconst fs = require('fs');\n\nconst boundary = '----WikiJSUploadBoundary';\nconst folderId = 1;\nconst filename = 'image.png';\nconst fileData = fs.readFileSync(filename);\n\n// Build body with TWO mediaUpload fields\nlet body = Buffer.alloc(0);\n\n// Field 1: mediaUpload (folder metadata as JSON text)\nbody = Buffer.concat([\n    body,\n    Buffer.from(`--${boundary}\\r\\n`),\n    Buffer.from('Content-Disposition: form-data; name=\"mediaUpload\"\\r\\n\\r\\n'),\n    Buffer.from(`{\"folderId\":${folderId}}\\r\\n`)\n]);\n\n// Field 2: mediaUpload (the actual file)\nbody = Buffer.concat([\n    body,\n    Buffer.from(`--${boundary}\\r\\n`),\n    Buffer.from(`Content-Disposition: form-data; name=\"mediaUpload\"; filename=\"${filename}\"\\r\\n`),\n    Buffer.from('Content-Type: image/png\\r\\n\\r\\n'),\n    fileData,\n    Buffer.from('\\r\\n')\n]);\n\n// End boundary\nbody = Buffer.concat([\n    body,\n    Buffer.from(`--${boundary}--\\r\\n`)\n]);\n\n// Send request\nconst options = {\n    hostname: 'wiki.example.com',\n    port: 443,\n    path: '/u',\n    method: 'POST',\n    headers: {\n        'Authorization': `Bearer ${token}`,\n        'Content-Type': `multipart/form-data; boundary=${boundary}`,\n        'Content-Length': body.length\n    }\n};\n\nconst req = https.request(options, (res) => {\n    let data = '';\n    res.on('data', (chunk) => { data += chunk; });\n    res.on('end', () => {\n        if (data === 'ok') {\n            console.log('Upload successful!');\n        }\n    });\n});\n\nreq.write(body);\nreq.end();\n```\n\n### Common Upload Errors\n\n| Error | Cause | Solution |\n|-------|-------|----------|\n| \"Missing upload folder metadata\" | Missing JSON metadata field | Add text field `mediaUpload={\"folderId\":1}` |\n| \"Missing upload payload\" | Missing file field | Add file field named `mediaUpload` |\n| \"You are not authorized\" | No `write:assets` permission | Check API token scopes in Admin > API Access |\n| 403 Forbidden | Permission denied | Ensure token has `write:assets` or `manage:system` scope |\n\n## Asset Management\n\n### Folders\n\n**List asset folders:**\n```javascript\nconst folders = await client.listAssetFolders(0);\n```\n\n**Create asset folder:**\n```javascript\nawait client.createAssetFolder('Images', 'images', 0);\n```\n\n### Assets\n\n**List assets in folder:**\n```javascript\nconst assets = await client.listAssets(1, 'IMAGE');\n```\n\nKinds: `ALL`, `IMAGE`, `BINARY`, `PDF`, `CODE`, `MARKUP`, `VIDEO`, `AUDIO`\n\n**Delete asset:**\n```javascript\nawait client.deleteAsset(456);\n```\n\n**Get asset URL:**\n```javascript\nconst url = client.getAssetUrl('ppt-images', 'slide_01.png');\n// Returns: https://wiki.example.com/ppt-images/slide_01.png\n```\n\n## Working with Content\n\n### Markdown with Asset References\n\nAfter uploading images, reference them in pages:\n```javascript\n// Upload images first\nconst fs = require('fs');\nconst path = require('path');\n\nconst imageDir = 'tmp/ppt_extracted/slides_png_hd2';\nconst files = fs.readdirSync(imageDir).filter(f => f.endsWith('.png'));\n\nfor (const file of files) {\n    await client.uploadFile(path.join(imageDir, file), file, 1);\n}\n\n// Create page with references\nconst content = `# Presentation\n\n## Slide 1\n![Slide 1](/ppt-images/slide_01.png)\n\n## Slide 2\n![Slide 2](/ppt-images/slide_02.png)\n`;\n\nawait client.createPage({\n    path: 'docs/presentation',\n    title: 'My Presentation',\n    content: content\n});\n```\n\n### Embedded Images (Base64 Alternative)\n\nFor self-contained pages without external assets:\n```javascript\nconst fs = require('fs');\n\nconst imageBuffer = fs.readFileSync('image.png');\nconst b64 = imageBuffer.toString('base64');\nconst dataUri = `data:image/png;base64,${b64}`;\n\nconst content = `![Image](${dataUri})`;\n```\n\n## Scripts\n\n### `wikijs_client.js`\nMain client class with all API methods including proper file upload handling.\n\n## Related Skills\n\n### PPT to Wiki.js Bridge\n\nFor converting PowerPoint presentations to Wiki.js pages, use the **ppt-to-wiki** skill:\n\n```bash\nnode skills/ppt-to-wiki/scripts/ppt_to_wiki.js \\\n    --content tmp/ppt_extracted/content.md \\\n    --images tmp/ppt_extracted/slides_png_hd2 \\\n    --output-path \"ppt/presentation-name\" \\\n    --title \"Presentation Title\" \\\n    --upload-to-folder 1\n```\n\nSee `skills/ppt-to-wiki/SKILL.md` for details.\n\n## Error Handling\n\nAll methods return an object with `responseResult`:\n```javascript\nconst result = await client.createPage({...});\nif (result.data?.pages?.create?.responseResult?.succeeded) {\n    const pageId = result.data.pages.create.page.id;\n} else {\n    const error = result.data?.pages?.create?.responseResult?.message;\n}\n```\n\nOr using async/await with try/catch:\n```javascript\ntry {\n    const pages = await client.listPages();\n} catch (err) {\n    console.error('Error:', err.message);\n}\n```\n\n## References\n\n- **API Documentation**: See [references/api_docs.md](references/api_docs.md) for complete GraphQL schema reference\n- **Common Patterns**: See [references/patterns.md](references/patterns.md) for usage examples\n- **Upload Deep Dive**: See [references/upload_guide.md](references/upload_guide.md) for detailed upload documentation\n",
-      "security_score": 100,
-      "security_warnings": null,
-      "license": null,
-      "argument_hint": "",
-      "disable_model_invocation": false,
-      "user_invocable": true,
-      "allowed_tools": null,
-      "is_active": true
-    },
-    {
-      "id": "uFjXH0Nrpzqqm4K2hJE8",
+      "id": "mn1hcspll2vbjefyd9zo",
       "name": "xlsx",
-      "description": "Excel spreadsheet processing skill for creating, editing, and analyzing .xlsx, .xlsm, .csv files. Supports formula recalculation, data manipulation, charting, and format conversion.",
+      "description": "Excel 文件处理。用于读取、写入、编辑 .xlsx/.xls/.csv 文件，支持工作表管理、格式化、公式计算、数据查询和格式转换。",
       "version": "1.0.0",
       "author": "",
       "tags": [],
       "source_type": "local",
       "source_path": "skills\\xlsx",
       "source_url": null,
-      "skill_md": "---\r\nname: xlsx\r\ndescription: \"Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file (e.g., adding columns, computing formulas, formatting, charting, cleaning messy data); create a new spreadsheet from scratch or from other data sources; or convert between tabular file formats. Trigger especially when the user references a spreadsheet file by name or path — even casually (like \\\"the xlsx in my downloads\\\") — and wants something done to it or produced from it. Also trigger for cleaning or restructuring messy tabular data files (malformed rows, misplaced headers, junk data) into proper spreadsheets. The deliverable must be a spreadsheet file. Do NOT trigger when the primary deliverable is a Word document, HTML report, standalone Python script, database pipeline, or Google Sheets API integration, even if tabular data is involved.\"\r\nlicense: Proprietary. LICENSE.txt has complete terms\r\n---\r\n\r\n# Requirements for Outputs\r\n\r\n## All Excel files\r\n\r\n### Professional Font\r\n- Use a consistent, professional font (e.g., Arial, Times New Roman) for all deliverables unless otherwise instructed by the user\r\n\r\n### Zero Formula Errors\r\n- Every Excel model MUST be delivered with ZERO formula errors (#REF!, #DIV/0!, #VALUE!, #N/A, #NAME?)\r\n\r\n### Preserve Existing Templates (when updating templates)\r\n- Study and EXACTLY match existing format, style, and conventions when modifying files\r\n- Never impose standardized formatting on files with established patterns\r\n- Existing template conventions ALWAYS override these guidelines\r\n\r\n## Financial models\r\n\r\n### Color Coding Standards\r\nUnless otherwise stated by the user or existing template\r\n\r\n#### Industry-Standard Color Conventions\r\n- **Blue text (RGB: 0,0,255)**: Hardcoded inputs, and numbers users will change for scenarios\r\n- **Black text (RGB: 0,0,0)**: ALL formulas and calculations\r\n- **Green text (RGB: 0,128,0)**: Links pulling from other worksheets within same workbook\r\n- **Red text (RGB: 255,0,0)**: External links to other files\r\n- **Yellow background (RGB: 255,255,0)**: Key assumptions needing attention or cells that need to be updated\r\n\r\n### Number Formatting Standards\r\n\r\n#### Required Format Rules\r\n- **Years**: Format as text strings (e.g., \"2024\" not \"2,024\")\r\n- **Currency**: Use $#,##0 format; ALWAYS specify units in headers (\"Revenue ($mm)\")\r\n- **Zeros**: Use number formatting to make all zeros \"-\", including percentages (e.g., \"$#,##0;($#,##0);-\")\r\n- **Percentages**: Default to 0.0% format (one decimal)\r\n- **Multiples**: Format as 0.0x for valuation multiples (EV/EBITDA, P/E)\r\n- **Negative numbers**: Use parentheses (123) not minus -123\r\n\r\n### Formula Construction Rules\r\n\r\n#### Assumptions Placement\r\n- Place ALL assumptions (growth rates, margins, multiples, etc.) in separate assumption cells\r\n- Use cell references instead of hardcoded values in formulas\r\n- Example: Use =B5*(1+$B$6) instead of =B5*1.05\r\n\r\n#### Formula Error Prevention\r\n- Verify all cell references are correct\r\n- Check for off-by-one errors in ranges\r\n- Ensure consistent formulas across all projection periods\r\n- Test with edge cases (zero values, negative numbers)\r\n- Verify no unintended circular references\r\n\r\n#### Documentation Requirements for Hardcodes\r\n- Comment or in cells beside (if end of table). Format: \"Source: [System/Document], [Date], [Specific Reference], [URL if applicable]\"\r\n- Examples:\r\n  - \"Source: Company 10-K, FY2024, Page 45, Revenue Note, [SEC EDGAR URL]\"\r\n  - \"Source: Company 10-Q, Q2 2025, Exhibit 99.1, [SEC EDGAR URL]\"\r\n  - \"Source: Bloomberg Terminal, 8/15/2025, AAPL US Equity\"\r\n  - \"Source: FactSet, 8/20/2025, Consensus Estimates Screen\"\r\n\r\n# XLSX creation, editing, and analysis\r\n\r\n## Overview\r\n\r\nA user may ask you to create, edit, or analyze the contents of an .xlsx file. You have different tools and workflows available for different tasks.\r\n\r\n## Important Requirements\r\n\r\n**LibreOffice Required for Formula Recalculation**: You can assume LibreOffice is installed for recalculating formula values using the `scripts/recalc.py` script. The script automatically configures LibreOffice on first run, including in sandboxed environments where Unix sockets are restricted (handled by `scripts/office/soffice.py`)\r\n\r\n## Reading and analyzing data\r\n\r\n### Data analysis with pandas\r\nFor data analysis, visualization, and basic operations, use **pandas** which provides powerful data manipulation capabilities:\r\n\r\n```python\r\nimport pandas as pd\r\n\r\n# Read Excel\r\ndf = pd.read_excel('file.xlsx')  # Default: first sheet\r\nall_sheets = pd.read_excel('file.xlsx', sheet_name=None)  # All sheets as dict\r\n\r\n# Analyze\r\ndf.head()      # Preview data\r\ndf.info()      # Column info\r\ndf.describe()  # Statistics\r\n\r\n# Write Excel\r\ndf.to_excel('output.xlsx', index=False)\r\n```\r\n\r\n## Excel File Workflows\r\n\r\n## CRITICAL: Use Formulas, Not Hardcoded Values\r\n\r\n**Always use Excel formulas instead of calculating values in Python and hardcoding them.** This ensures the spreadsheet remains dynamic and updateable.\r\n\r\n### ❌ WRONG - Hardcoding Calculated Values\r\n```python\r\n# Bad: Calculating in Python and hardcoding result\r\ntotal = df['Sales'].sum()\r\nsheet['B10'] = total  # Hardcodes 5000\r\n\r\n# Bad: Computing growth rate in Python\r\ngrowth = (df.iloc[-1]['Revenue'] - df.iloc[0]['Revenue']) / df.iloc[0]['Revenue']\r\nsheet['C5'] = growth  # Hardcodes 0.15\r\n\r\n# Bad: Python calculation for average\r\navg = sum(values) / len(values)\r\nsheet['D20'] = avg  # Hardcodes 42.5\r\n```\r\n\r\n### ✅ CORRECT - Using Excel Formulas\r\n```python\r\n# Good: Let Excel calculate the sum\r\nsheet['B10'] = '=SUM(B2:B9)'\r\n\r\n# Good: Growth rate as Excel formula\r\nsheet['C5'] = '=(C4-C2)/C2'\r\n\r\n# Good: Average using Excel function\r\nsheet['D20'] = '=AVERAGE(D2:D19)'\r\n```\r\n\r\nThis applies to ALL calculations - totals, percentages, ratios, differences, etc. The spreadsheet should be able to recalculate when source data changes.\r\n\r\n## Common Workflow\r\n1. **Choose tool**: pandas for data, openpyxl for formulas/formatting\r\n2. **Create/Load**: Create new workbook or load existing file\r\n3. **Modify**: Add/edit data, formulas, and formatting\r\n4. **Save**: Write to file\r\n5. **Recalculate formulas (MANDATORY IF USING FORMULAS)**: Use the scripts/recalc.py script\r\n   ```bash\r\n   python scripts/recalc.py output.xlsx\r\n   ```\r\n6. **Verify and fix any errors**: \r\n   - The script returns JSON with error details\r\n   - If `status` is `errors_found`, check `error_summary` for specific error types and locations\r\n   - Fix the identified errors and recalculate again\r\n   - Common errors to fix:\r\n     - `#REF!`: Invalid cell references\r\n     - `#DIV/0!`: Division by zero\r\n     - `#VALUE!`: Wrong data type in formula\r\n     - `#NAME?`: Unrecognized formula name\r\n\r\n### Creating new Excel files\r\n\r\n```python\r\n# Using openpyxl for formulas and formatting\r\nfrom openpyxl import Workbook\r\nfrom openpyxl.styles import Font, PatternFill, Alignment\r\n\r\nwb = Workbook()\r\nsheet = wb.active\r\n\r\n# Add data\r\nsheet['A1'] = 'Hello'\r\nsheet['B1'] = 'World'\r\nsheet.append(['Row', 'of', 'data'])\r\n\r\n# Add formula\r\nsheet['B2'] = '=SUM(A1:A10)'\r\n\r\n# Formatting\r\nsheet['A1'].font = Font(bold=True, color='FF0000')\r\nsheet['A1'].fill = PatternFill('solid', start_color='FFFF00')\r\nsheet['A1'].alignment = Alignment(horizontal='center')\r\n\r\n# Column width\r\nsheet.column_dimensions['A'].width = 20\r\n\r\nwb.save('output.xlsx')\r\n```\r\n\r\n### Editing existing Excel files\r\n\r\n```python\r\n# Using openpyxl to preserve formulas and formatting\r\nfrom openpyxl import load_workbook\r\n\r\n# Load existing file\r\nwb = load_workbook('existing.xlsx')\r\nsheet = wb.active  # or wb['SheetName'] for specific sheet\r\n\r\n# Working with multiple sheets\r\nfor sheet_name in wb.sheetnames:\r\n    sheet = wb[sheet_name]\r\n    print(f\"Sheet: {sheet_name}\")\r\n\r\n# Modify cells\r\nsheet['A1'] = 'New Value'\r\nsheet.insert_rows(2)  # Insert row at position 2\r\nsheet.delete_cols(3)  # Delete column 3\r\n\r\n# Add new sheet\r\nnew_sheet = wb.create_sheet('NewSheet')\r\nnew_sheet['A1'] = 'Data'\r\n\r\nwb.save('modified.xlsx')\r\n```\r\n\r\n## Recalculating formulas\r\n\r\nExcel files created or modified by openpyxl contain formulas as strings but not calculated values. Use the provided `scripts/recalc.py` script to recalculate formulas:\r\n\r\n```bash\r\npython scripts/recalc.py <excel_file> [timeout_seconds]\r\n```\r\n\r\nExample:\r\n```bash\r\npython scripts/recalc.py output.xlsx 30\r\n```\r\n\r\nThe script:\r\n- Automatically sets up LibreOffice macro on first run\r\n- Recalculates all formulas in all sheets\r\n- Scans ALL cells for Excel errors (#REF!, #DIV/0!, etc.)\r\n- Returns JSON with detailed error locations and counts\r\n- Works on both Linux and macOS\r\n\r\n## Formula Verification Checklist\r\n\r\nQuick checks to ensure formulas work correctly:\r\n\r\n### Essential Verification\r\n- [ ] **Test 2-3 sample references**: Verify they pull correct values before building full model\r\n- [ ] **Column mapping**: Confirm Excel columns match (e.g., column 64 = BL, not BK)\r\n- [ ] **Row offset**: Remember Excel rows are 1-indexed (DataFrame row 5 = Excel row 6)\r\n\r\n### Common Pitfalls\r\n- [ ] **NaN handling**: Check for null values with `pd.notna()`\r\n- [ ] **Far-right columns**: FY data often in columns 50+ \r\n- [ ] **Multiple matches**: Search all occurrences, not just first\r\n- [ ] **Division by zero**: Check denominators before using `/` in formulas (#DIV/0!)\r\n- [ ] **Wrong references**: Verify all cell references point to intended cells (#REF!)\r\n- [ ] **Cross-sheet references**: Use correct format (Sheet1!A1) for linking sheets\r\n\r\n### Formula Testing Strategy\r\n- [ ] **Start small**: Test formulas on 2-3 cells before applying broadly\r\n- [ ] **Verify dependencies**: Check all cells referenced in formulas exist\r\n- [ ] **Test edge cases**: Include zero, negative, and very large values\r\n\r\n### Interpreting scripts/recalc.py Output\r\nThe script returns JSON with error details:\r\n```json\r\n{\r\n  \"status\": \"success\",           // or \"errors_found\"\r\n  \"total_errors\": 0,              // Total error count\r\n  \"total_formulas\": 42,           // Number of formulas in file\r\n  \"error_summary\": {              // Only present if errors found\r\n    \"#REF!\": {\r\n      \"count\": 2,\r\n      \"locations\": [\"Sheet1!B5\", \"Sheet1!C10\"]\r\n    }\r\n  }\r\n}\r\n```\r\n\r\n## Best Practices\r\n\r\n### Library Selection\r\n- **pandas**: Best for data analysis, bulk operations, and simple data export\r\n- **openpyxl**: Best for complex formatting, formulas, and Excel-specific features\r\n\r\n### Working with openpyxl\r\n- Cell indices are 1-based (row=1, column=1 refers to cell A1)\r\n- Use `data_only=True` to read calculated values: `load_workbook('file.xlsx', data_only=True)`\r\n- **Warning**: If opened with `data_only=True` and saved, formulas are replaced with values and permanently lost\r\n- For large files: Use `read_only=True` for reading or `write_only=True` for writing\r\n- Formulas are preserved but not evaluated - use scripts/recalc.py to update values\r\n\r\n### Working with pandas\r\n- Specify data types to avoid inference issues: `pd.read_excel('file.xlsx', dtype={'id': str})`\r\n- For large files, read specific columns: `pd.read_excel('file.xlsx', usecols=['A', 'C', 'E'])`\r\n- Handle dates properly: `pd.read_excel('file.xlsx', parse_dates=['date_column'])`\r\n\r\n## Code Style Guidelines\r\n**IMPORTANT**: When generating Python code for Excel operations:\r\n- Write minimal, concise Python code without unnecessary comments\r\n- Avoid verbose variable names and redundant operations\r\n- Avoid unnecessary print statements\r\n\r\n**For Excel files themselves**:\r\n- Add comments to cells with complex formulas or important assumptions\r\n- Document data sources for hardcoded values\r\n- Include notes for key calculations and model sections",
+      "skill_md": "---\nname: xlsx\ndescription: \"Excel 文件处理。用于读取、写入、编辑 .xlsx/.xls/.csv 文件，支持工作表管理、格式化、公式计算、数据查询和格式转换。当用户需要操作电子表格文件时触发。\"\n---\n\n# XLSX - Excel 文件处理\n\n## 工具\n\n| 工具 | 说明 | 关键参数 |\n|------|------|----------|\n| `excel_read` | 读取 Excel | `scope`: workbook/sheet/cell |\n| `excel_write` | 写入 Excel | `scope`: workbook/sheet/cell |\n| `excel_sheet` | 工作表管理 | `action`: add/delete/rename/copy |\n| `excel_format` | 格式化 | `type`: column/cell |\n| `excel_query` | 数据查询 | `action`: filter/sort/find |\n| `excel_convert` | 格式转换 | `format`: json/csv, `direction`: to/from |\n| `excel_calc` | 公式计算 | - |\n\n## excel_read\n\n```javascript\n// 读取工作簿\nexcel_read({ path: 'data.xlsx', scope: 'workbook' })\nexcel_read({ path: 'data.xlsx', scope: 'workbook', includeData: true })\n\n// 读取工作表\nexcel_read({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1' })\nexcel_read({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', header: 'json', range: 'A1:C10' })\n\n// 读取单元格\nexcel_read({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'A1' })\n```\n\n## excel_write\n\n```javascript\n// 创建工作簿\nexcel_write({\n  path: 'new.xlsx',\n  scope: 'workbook',\n  sheets: [{ name: 'Sheet1', data: [['A', 'B'], [1, 2]] }]\n})\n\n// 写入工作表\nexcel_write({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', data: [[...]], mode: 'overwrite' })\nexcel_write({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', data: [[...]], mode: 'append' })\n\n// 写入单元格\nexcel_write({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'A1', value: 'Hello' })\nexcel_write({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'C1', formula: '=SUM(A1:B1)' })\n```\n\n## excel_sheet\n\n```javascript\nexcel_sheet({ path: 'data.xlsx', action: 'add', name: 'NewSheet' })\nexcel_sheet({ path: 'data.xlsx', action: 'delete', sheet: 'Sheet2' })\nexcel_sheet({ path: 'data.xlsx', action: 'rename', sheet: 'Sheet1', newName: 'Summary' })\nexcel_sheet({ path: 'data.xlsx', action: 'copy', sourceSheet: 'Template', targetSheet: 'Copy1' })\n```\n\n## excel_format\n\n```javascript\n// 列宽\nexcel_format({\n  path: 'data.xlsx', type: 'column', sheet: 'Sheet1',\n  columns: [{ column: 'A', width: 20 }, { column: 'B', width: 15 }]\n})\n\n// 单元格样式\nexcel_format({\n  path: 'data.xlsx', type: 'cell', sheet: 'Sheet1',\n  cells: ['A1', 'B1'],\n  style: { font: { bold: true }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } }\n})\n```\n\n## excel_query\n\n```javascript\n// 筛选\nexcel_query({ path: 'data.xlsx', action: 'filter', column: 'status', condition: 'equals', value: 'active' })\n\n// 排序\nexcel_query({ path: 'data.xlsx', action: 'sort', column: 'amount', order: 'desc' })\n\n// 查找\nexcel_query({ path: 'data.xlsx', action: 'find', query: 'error' })\n```\n\n**筛选条件**: `equals`, `not_equals`, `greater`, `less`, `contains`, `starts_with`, `ends_with`, `is_empty`, `is_not_empty`\n\n## excel_convert\n\n```javascript\n// Excel ↔ JSON\nexcel_convert({ path: 'data.xlsx', format: 'json', direction: 'to' })\nexcel_convert({ path: 'output.xlsx', format: 'json', direction: 'from', data: [{ name: 'Alice' }] })\n\n// Excel ↔ CSV\nexcel_convert({ path: 'data.xlsx', format: 'csv', direction: 'to', output: 'data.csv' })\nexcel_convert({ path: 'data.csv', format: 'csv', direction: 'from', output: 'data.xlsx' })\n```\n\n## excel_calc\n\n```javascript\nexcel_calc({ path: 'data.xlsx', sheet: 'Sheet1' })\n// 返回: { formulas: [{ cell: 'C1', formula: 'SUM(A1:B1)', value: 15 }] }\n```\n\n## 兼容旧工具名\n\n| 旧名称 | 新名称 |\n|--------|--------|\n| `read_workbook`, `read` | `excel_read(scope: 'workbook')` |\n| `read_sheet` | `excel_read(scope: 'sheet')` |\n| `read_cell` | `excel_read(scope: 'cell')` |\n| `create_workbook`, `create` | `excel_write(scope: 'workbook')` |\n| `write_sheet` | `excel_write(scope: 'sheet')` |\n| `write_cell` | `excel_write(scope: 'cell')` |\n| `add_sheet` | `excel_sheet(action: 'add')` |\n| `delete_sheet` | `excel_sheet(action: 'delete')` |\n| `rename_sheet` | `excel_sheet(action: 'rename')` |\n| `copy_sheet` | `excel_sheet(action: 'copy')` |\n| `set_column_width` | `excel_format(type: 'column')` |\n| `set_cell_style` | `excel_format(type: 'cell')` |\n| `filter_data` | `excel_query(action: 'filter')` |\n| `sort_data` | `excel_query(action: 'sort')` |\n| `find_data` | `excel_query(action: 'find')` |\n| `to_json` | `excel_convert(format: 'json', direction: 'to')` |\n| `from_json` | `excel_convert(format: 'json', direction: 'from')` |\n| `to_csv` | `excel_convert(format: 'csv', direction: 'to')` |\n| `from_csv` | `excel_convert(format: 'csv', direction: 'from')` |\n| `calculate_formulas` | `excel_calc()` |\n\n## 输出规范\n\n- **字体**: 使用专业字体（Arial, Times New Roman）\n- **公式错误**: 必须确保零错误（#REF!, #DIV/0!, #VALUE!, #N/A, #NAME?）\n- **财务模型颜色**: 蓝色=输入，黑色=公式，绿色=跨表引用，红色=外部链接，黄色=关键假设\n- **数字格式**: 年份用文本，货币用 $#,##0，负数用括号",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
       "argument_hint": "",
-      "disable_model_invocation": false,
+      "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
@@ -740,326 +713,6 @@
         },
         "required": [
           "source"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4gihdhshka6taocz",
-      "skill_id": "file-operations",
-      "name": "create_dir",
-      "description": "Create a directory",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Directory path"
-          }
-        },
-        "required": [
-          "path"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4gib77b3tnxcgzja",
-      "skill_id": "file-operations",
-      "name": "delete_file",
-      "description": "Delete a file or directory",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Path to delete"
-          }
-        },
-        "required": [
-          "path"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4gi6cyzec7otjw73",
-      "skill_id": "file-operations",
-      "name": "delete_lines",
-      "description": "Delete specific lines from a file",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "File path"
-          },
-          "from": {
-            "type": "number",
-            "description": "Start line"
-          },
-          "to": {
-            "type": "number",
-            "description": "End line (default: from)"
-          }
-        },
-        "required": [
-          "path",
-          "from"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4ghnn639y7dht3ou",
-      "skill_id": "file-operations",
-      "name": "grep",
-      "description": "Search text across multiple files",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "pattern": {
-            "type": "string",
-            "description": "Search pattern"
-          },
-          "path": {
-            "type": "string",
-            "description": "Directory path (default: current)"
-          },
-          "file_pattern": {
-            "type": "string",
-            "description": "File pattern (default: \"*\")"
-          }
-        },
-        "required": [
-          "pattern"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4gi1b6fy38ec8t54",
-      "skill_id": "file-operations",
-      "name": "insert_at_line",
-      "description": "Insert content at a specific line",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "File path"
-          },
-          "line": {
-            "type": "number",
-            "description": "Line number"
-          },
-          "content": {
-            "type": "string",
-            "description": "Content to insert"
-          }
-        },
-        "required": [
-          "path",
-          "line",
-          "content"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4ghbcj0ghxdj000j",
-      "skill_id": "file-operations",
-      "name": "list_files",
-      "description": "List directory contents",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Directory path"
-          },
-          "recursive": {
-            "type": "boolean",
-            "description": "List recursively (default: false)"
-          }
-        },
-        "required": [
-          "path"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4ggp4xpu19x0c5bh",
-      "skill_id": "file-operations",
-      "name": "read_file",
-      "description": "Read file content with mode parameter (lines or bytes)",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "File path"
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "lines",
-              "bytes"
-            ],
-            "description": "Read mode: \"lines\" (default) or \"bytes\""
-          },
-          "from": {
-            "type": "number",
-            "description": "Start line for lines mode (default: 1)"
-          },
-          "lines": {
-            "type": "number",
-            "description": "Number of lines for lines mode (default: 100)"
-          },
-          "offset": {
-            "type": "number",
-            "description": "Start byte for bytes mode (default: 0)"
-          },
-          "bytes": {
-            "type": "number",
-            "description": "Bytes to read for bytes mode (default: 50000)"
-          }
-        },
-        "required": [
-          "path"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4ghvf2wgi7m0h44f",
-      "skill_id": "file-operations",
-      "name": "replace_in_file",
-      "description": "Replace text in a file",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "File path"
-          },
-          "old": {
-            "type": "string",
-            "description": "Text to replace"
-          },
-          "new": {
-            "type": "string",
-            "description": "Replacement text"
-          }
-        },
-        "required": [
-          "path",
-          "old",
-          "new"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4ghh1yqs5xmbvq7u",
-      "skill_id": "file-operations",
-      "name": "search_in_file",
-      "description": "Search text in a single file",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "File path"
-          },
-          "pattern": {
-            "type": "string",
-            "description": "Search pattern"
-          },
-          "ignore_case": {
-            "type": "boolean",
-            "description": "Case insensitive (default: true)"
-          }
-        },
-        "required": [
-          "path",
-          "pattern"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4gh5tlcl4dtd8ncu",
-      "skill_id": "file-operations",
-      "name": "transfer",
-      "description": "Copy or move a file",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "source": {
-            "type": "string",
-            "description": "Source path"
-          },
-          "destination": {
-            "type": "string",
-            "description": "Destination path"
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "copy",
-              "move"
-            ],
-            "description": "Operation: \"copy\" (default) or \"move\""
-          }
-        },
-        "required": [
-          "source",
-          "destination"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mm7k4ggzasxnj5nv9by3",
-      "skill_id": "file-operations",
-      "name": "write_file",
-      "description": "Write content to a file (supports append mode)",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "File path"
-          },
-          "content": {
-            "type": "string",
-            "description": "Content to write"
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "write",
-              "append"
-            ],
-            "description": "Write mode: \"write\" (default, overwrite) or \"append\""
-          }
-        },
-        "required": [
-          "path",
-          "content"
         ]
       },
       "script_path": "index.js",
@@ -2375,6 +2028,619 @@
       "is_resident": false
     },
     {
+      "id": "mn0hog43syzyxqwofcj7",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "edit_lines",
+      "description": "Edit lines in a file with insert or delete operations",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "insert",
+              "delete"
+            ],
+            "description": "Operation type: 'insert' (default) or 'delete'"
+          },
+          "line": {
+            "type": "number",
+            "description": "Line number (1-based)"
+          },
+          "end_line": {
+            "type": "number",
+            "description": "End line number for delete operation (defaults to line)"
+          },
+          "content": {
+            "type": "string",
+            "description": "Content to insert (required for insert operation)"
+          }
+        },
+        "required": [
+          "path",
+          "line"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog4dps2omtxq4bt0",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "fs_action",
+      "description": "Unified file system operations: copy, move, delete, and create directory",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "move",
+              "delete",
+              "create_dir"
+            ],
+            "description": "Operation type: 'copy' (default), 'move', 'delete', or 'create_dir'"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source path (required for copy/move)"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination path (required for copy/move)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to delete or directory to create (required for delete/create_dir)"
+          }
+        },
+        "required": []
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog38cdkxew4qbej8",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "fs_grep",
+      "description": "Search text across files. Supports both single file and multi-file search with optional regex mode.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Search pattern"
+          },
+          "path": {
+            "type": "string",
+            "description": "File or directory path (default: current)"
+          },
+          "file_pattern": {
+            "type": "string",
+            "description": "File pattern filter (default: '*')"
+          },
+          "use_regex": {
+            "type": "boolean",
+            "description": "Use regex mode (default: false, use literal string match)"
+          },
+          "ignore_case": {
+            "type": "boolean",
+            "description": "Case insensitive search (default: true)"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog27en36xv9j11vq",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "fs_info",
+      "description": "Get detailed metadata about a file or directory. Recommended to call before other operations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File or directory path"
+          },
+          "include_content_preview": {
+            "type": "boolean",
+            "description": "Include content preview for text files (default: false)"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog2wt3tpr38he9oo",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "list_files",
+      "description": "List directory contents",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "List recursively (default: false)"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog2l1t0fdnaa7jqh",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "read_file",
+      "description": "Read file content with mode parameter (lines or bytes)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "lines",
+              "bytes"
+            ],
+            "description": "Read mode: 'lines' (default) or 'bytes'"
+          },
+          "from": {
+            "type": "number",
+            "description": "Start line for lines mode (default: 1)"
+          },
+          "lines": {
+            "type": "number",
+            "description": "Number of lines for lines mode (default: 100)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Start byte for bytes mode (default: 0)"
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Bytes to read for bytes mode (default: 50000)"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog3tdti70159c9r2",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "replace_in_file",
+      "description": "Replace text in a file",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "old": {
+            "type": "string",
+            "description": "Text to replace"
+          },
+          "new": {
+            "type": "string",
+            "description": "Replacement text"
+          }
+        },
+        "required": [
+          "path",
+          "old",
+          "new"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn0hog3iv8h29ku9iwue",
+      "skill_id": "mn0hl4n1lhv4d4sfxqom",
+      "name": "write_file",
+      "description": "Write content to a file with optional append mode",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "content": {
+            "type": "string",
+            "description": "Content to write"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "write",
+              "append"
+            ],
+            "description": "Write mode: 'write' (default, overwrite) or 'append'"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcsuulgyhnk8gdsku",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_calc",
+      "description": "计算工作表中的公式",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "工作表名称"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcsu7wjgtoazevek4",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_convert",
+      "description": "格式转换：Excel 与 JSON/CSV 互转",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "csv"
+            ],
+            "description": "目标格式"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "to",
+              "from"
+            ],
+            "description": "转换方向"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件路径"
+          },
+          "data": {
+            "type": "array",
+            "description": "数据(from方向时)"
+          }
+        },
+        "required": [
+          "path",
+          "format",
+          "direction"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcst7hf5s3n3scqr5",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_format",
+      "description": "格式化设置：列宽、单元格样式",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "column",
+              "cell"
+            ],
+            "description": "格式化类型"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "工作表名称"
+          },
+          "columns": {
+            "type": "array",
+            "description": "列宽配置"
+          },
+          "cells": {
+            "type": "array",
+            "description": "单元格列表"
+          },
+          "style": {
+            "type": "object",
+            "description": "样式配置"
+          }
+        },
+        "required": [
+          "path",
+          "type"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcstsqon24g7g2vkq",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_query",
+      "description": "数据查询：筛选、排序、查找",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "filter",
+              "sort",
+              "find"
+            ],
+            "description": "查询类型"
+          },
+          "column": {
+            "type": "string",
+            "description": "列名"
+          },
+          "condition": {
+            "type": "string",
+            "description": "筛选条件"
+          },
+          "value": {
+            "type": "string",
+            "description": "筛选值"
+          },
+          "order": {
+            "type": "string",
+            "description": "排序方向 asc/desc"
+          },
+          "query": {
+            "type": "string",
+            "description": "查找内容"
+          }
+        },
+        "required": [
+          "path",
+          "action"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcsqw6cqbeo0ftzpx",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_read",
+      "description": "读取 Excel 文件，支持工作簿、工作表、单元格三种范围",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "workbook",
+              "sheet",
+              "cell"
+            ],
+            "description": "读取范围"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "工作表名称"
+          },
+          "cell": {
+            "type": "string",
+            "description": "单元格地址"
+          },
+          "includeData": {
+            "type": "boolean",
+            "description": "是否包含数据"
+          },
+          "range": {
+            "type": "string",
+            "description": "数据范围"
+          },
+          "header": {
+            "type": "string",
+            "description": "表头模式: 1(数组) 或 json(对象)"
+          }
+        },
+        "required": [
+          "path",
+          "scope"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcsstjs1uhtvj2awe",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_sheet",
+      "description": "工作表管理：添加、删除、重命名、复制",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "add",
+              "delete",
+              "rename",
+              "copy"
+            ],
+            "description": "操作类型"
+          },
+          "name": {
+            "type": "string",
+            "description": "工作表名称(add时)"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "工作表名称(delete/rename时)"
+          },
+          "newName": {
+            "type": "string",
+            "description": "新名称(rename时)"
+          },
+          "sourceSheet": {
+            "type": "string",
+            "description": "源工作表(copy时)"
+          },
+          "targetSheet": {
+            "type": "string",
+            "description": "目标工作表(copy时)"
+          },
+          "targetFile": {
+            "type": "string",
+            "description": "目标文件(copy时)"
+          },
+          "data": {
+            "type": "array",
+            "description": "初始数据(add时)"
+          }
+        },
+        "required": [
+          "path",
+          "action"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
+      "id": "mn1hcsrmotngz56sh491",
+      "skill_id": "mn1hcspll2vbjefyd9zo",
+      "name": "excel_write",
+      "description": "写入 Excel 文件，支持工作簿、工作表、单元格三种范围",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "workbook",
+              "sheet",
+              "cell"
+            ],
+            "description": "写入范围"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "工作表名称"
+          },
+          "cell": {
+            "type": "string",
+            "description": "单元格地址"
+          },
+          "value": {
+            "type": "string",
+            "description": "单元格值"
+          },
+          "formula": {
+            "type": "string",
+            "description": "公式"
+          },
+          "data": {
+            "type": "array",
+            "description": "数据"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "overwrite",
+              "append",
+              "insert"
+            ],
+            "description": "写入模式"
+          },
+          "startCell": {
+            "type": "string",
+            "description": "起始单元格"
+          },
+          "sheets": {
+            "type": "array",
+            "description": "工作表数据"
+          },
+          "properties": {
+            "type": "object",
+            "description": "工作簿属性"
+          }
+        },
+        "required": [
+          "path",
+          "scope"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": false
+    },
+    {
       "id": "uOYaikIKwvqxhXMRFWiT",
       "skill_id": "oCIZL5Zb0Se6r5eGeQbL",
       "name": "hn_ai",
@@ -2596,7 +2862,7 @@
         ]
       },
       "script_path": "index.js",
-      "is_resident": true
+      "is_resident": false
     },
     {
       "id": "mm77r8cxe0qmj4wop7ul",
@@ -3337,598 +3603,88 @@
       },
       "script_path": "index.py",
       "is_resident": false
-    },
-    {
-      "id": "IF1fzNfaX47HuOqk1q8r",
-      "skill_id": "uFjXH0Nrpzqqm4K2hJE8",
-      "name": "xlsx_pack",
-      "description": "Pack a directory into an Office file. Validates with auto-repair and condenses XML formatting.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "input_directory": {
-            "type": "string",
-            "description": "Input directory path"
-          },
-          "output_file": {
-            "type": "string",
-            "description": "Output Office file path"
-          },
-          "original_file": {
-            "type": "string",
-            "description": "Original file path for validation"
-          },
-          "validate": {
-            "type": "boolean",
-            "description": "Enable validation (default: true)"
-          }
-        }
-      },
-      "script_path": "scripts/office/pack.py",
-      "is_resident": false
-    },
-    {
-      "id": "ALxFdoHhySKhaJA6hEJf",
-      "skill_id": "uFjXH0Nrpzqqm4K2hJE8",
-      "name": "xlsx_recalc",
-      "description": "Recalculate all formulas in an Excel file using LibreOffice. Returns error details including #REF!, #DIV/0!, #VALUE!, #N/A, #NAME? errors.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "excel_file": {
-            "type": "string",
-            "description": "Excel file path"
-          },
-          "timeout_seconds": {
-            "type": "number",
-            "description": "Timeout in seconds (default: 30)"
-          }
-        }
-      },
-      "script_path": "scripts/recalc.py",
-      "is_resident": false
-    },
-    {
-      "id": "IWycTj3rB1hOilHO1opV",
-      "skill_id": "uFjXH0Nrpzqqm4K2hJE8",
-      "name": "xlsx_soffice",
-      "description": "Run LibreOffice (soffice) commands in environments where AF_UNIX sockets may be blocked. Provides environment configuration for sandboxed VMs.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "args": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "LibreOffice command arguments (e.g., ['--headless', '--convert-to', 'pdf'])"
-          }
-        }
-      },
-      "script_path": "scripts/office/soffice.py",
-      "is_resident": false
-    },
-    {
-      "id": "H5GXiav3rdVkoRv25ekD",
-      "skill_id": "uFjXH0Nrpzqqm4K2hJE8",
-      "name": "xlsx_unpack",
-      "description": "Unpack Office files (XLSX, DOCX, PPTX) for editing. Extracts ZIP archive, pretty-prints XML files.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "input_file": {
-            "type": "string",
-            "description": "Office file path"
-          },
-          "output_directory": {
-            "type": "string",
-            "description": "Output directory path"
-          },
-          "merge_runs": {
-            "type": "boolean",
-            "description": "Merge adjacent runs (default: true)"
-          },
-          "simplify_redlines": {
-            "type": "boolean",
-            "description": "Simplify adjacent revisions (default: true)"
-          }
-        }
-      },
-      "script_path": "scripts/office/unpack.py",
-      "is_resident": false
-    },
-    {
-      "id": "i8vDVr2p1E4Tfy9qYCfO",
-      "skill_id": "uFjXH0Nrpzqqm4K2hJE8",
-      "name": "xlsx_validate",
-      "description": "Validate Office document XML files against XSD schemas with optional auto-repair.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Path to unpacked directory or Office file"
-          },
-          "original": {
-            "type": "string",
-            "description": "Original file for comparison"
-          },
-          "auto_repair": {
-            "type": "boolean",
-            "description": "Auto-fix common issues"
-          },
-          "verbose": {
-            "type": "boolean",
-            "description": "Enable verbose output"
-          }
-        }
-      },
-      "script_path": "scripts/office/validate.py",
-      "is_resident": false
-    },
-    {
-      "id": "22ZmIuSoqGVS23o1bpiQ",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_create_asset_folder",
-      "description": "Create a new asset folder for organizing uploads (images, files, etc.).",
-      "parameters": {
-        "properties": {
-          "name": {
-            "description": "Folder display name",
-            "type": "string"
-          },
-          "parentFolderId": {
-            "default": 0,
-            "description": "Parent folder ID (0 for root)",
-            "type": "integer"
-          },
-          "slug": {
-            "description": "Folder slug for URL (e.g., 'images')",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "tpNdnCGa7q8KAAZ6WQ6D",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_create_page",
-      "description": "Create a new page in Wiki.js. Supports markdown content, tags, and publication settings.",
-      "parameters": {
-        "properties": {
-          "content": {
-            "description": "Page content (markdown format)",
-            "type": "string"
-          },
-          "description": {
-            "default": "",
-            "description": "Page description",
-            "type": "string"
-          },
-          "editor": {
-            "default": "markdown",
-            "description": "Editor type (default: 'markdown')",
-            "type": "string"
-          },
-          "isPrivate": {
-            "default": false,
-            "description": "Whether page is private",
-            "type": "boolean"
-          },
-          "isPublished": {
-            "default": true,
-            "description": "Whether page is published",
-            "type": "boolean"
-          },
-          "locale": {
-            "default": "en",
-            "description": "Locale code (e.g., 'en', 'zh')",
-            "type": "string"
-          },
-          "path": {
-            "description": "Page path (e.g., 'docs/my-page')",
-            "type": "string"
-          },
-          "tags": {
-            "default": [],
-            "description": "Array of tags",
-            "type": "array"
-          },
-          "title": {
-            "description": "Page title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "path",
-          "title",
-          "content"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "yCikXJ6MBV6xUvXeCCVD",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_delete_asset",
-      "description": "Delete an asset (uploaded file) by its ID.",
-      "parameters": {
-        "properties": {
-          "assetId": {
-            "description": "Asset ID (integer)",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "assetId"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "48XR0MU0jTZpzdcFmc2T",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_delete_page",
-      "description": "Delete a page by its ID. This action cannot be undone.",
-      "parameters": {
-        "properties": {
-          "pageId": {
-            "description": "Page ID (integer)",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pageId"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "8EAYt5C2rgAdmm859rZP",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_get_asset_url",
-      "description": "Get the full URL for an asset. Useful for referencing uploaded files in page content.",
-      "parameters": {
-        "properties": {
-          "filename": {
-            "description": "Asset filename",
-            "type": "string"
-          },
-          "folderPath": {
-            "default": "",
-            "description": "Folder path (e.g., 'ppt-images' or empty string for root)",
-            "type": "string"
-          }
-        },
-        "required": [
-          "filename"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "EKZatd07bBE7xmkf2bmf",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_get_page_by_id",
-      "description": "Get a single page by its ID. Returns full page details including content, tags, and metadata.",
-      "parameters": {
-        "properties": {
-          "pageId": {
-            "description": "Page ID (integer)",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "pageId"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "nDUNsmJ3rIzXqjizd8Sa",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_get_page_by_path",
-      "description": "Get a single page by its path and locale. Returns full page details including content, tags, and metadata.",
-      "parameters": {
-        "properties": {
-          "locale": {
-            "default": "en",
-            "description": "Locale code (e.g., 'en', 'zh')",
-            "type": "string"
-          },
-          "path": {
-            "description": "Page path (e.g., 'docs/my-page')",
-            "type": "string"
-          }
-        },
-        "required": [
-          "path"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "Zf92nxkRbCmL8TveDZB8",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_get_page_tree",
-      "description": "Get the page tree structure. Useful for browsing wiki hierarchy and folder structure.",
-      "parameters": {
-        "properties": {
-          "locale": {
-            "default": "en",
-            "description": "Locale code (e.g., 'en', 'zh')",
-            "type": "string"
-          },
-          "mode": {
-            "default": "FOLDERS",
-            "description": "Tree mode: 'ALL', 'FOLDERS', 'PAGES'",
-            "type": "string"
-          },
-          "parent": {
-            "default": null,
-            "description": "Parent folder path (null for root)",
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "OqOvQcP0GIRC9nDS79NC",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_list_asset_folders",
-      "description": "List all asset folders. Can specify parent folder ID to get subfolders.",
-      "parameters": {
-        "properties": {
-          "parentFolderId": {
-            "default": 0,
-            "description": "Parent folder ID (0 for root)",
-            "type": "integer"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "ETfJ4TYHoiZxxdXwIz6P",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_list_assets",
-      "description": "List assets in a specific folder. Filter by kind (IMAGE, BINARY, PDF, etc.).",
-      "parameters": {
-        "properties": {
-          "folderId": {
-            "description": "Folder ID to list assets from",
-            "type": "integer"
-          },
-          "kind": {
-            "default": "ALL",
-            "description": "Asset kind: 'ALL', 'IMAGE', 'BINARY', 'PDF', 'CODE', 'MARKUP', 'VIDEO', 'AUDIO'",
-            "type": "string"
-          }
-        },
-        "required": [
-          "folderId"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "AyGlvF6JPm0aj4oJ6Bdp",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_list_pages",
-      "description": "List all pages in Wiki.js. Returns array of pages with id, path, title, description, isPublished, updatedAt.",
-      "parameters": {
-        "properties": {
-          "locale": {
-            "default": "en",
-            "description": "Locale code (e.g., 'en', 'zh')",
-            "type": "string"
-          },
-          "orderDirection": {
-            "default": "ASC",
-            "description": "Order direction: 'ASC' or 'DESC'",
-            "type": "string"
-          },
-          "orderBy": {
-            "default": "TITLE",
-            "description": "Order field: 'ID', 'PATH', 'TITLE', 'CREATED_AT', 'UPDATED_AT'",
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "X6TTGuCDy8ILYpIBasHp",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_search_pages",
-      "description": "Search pages by keyword. Returns matching pages with their details.",
-      "parameters": {
-        "properties": {
-          "locale": {
-            "default": "en",
-            "description": "Locale code (e.g., 'en', 'zh')",
-            "type": "string"
-          },
-          "query": {
-            "description": "Search keyword or phrase",
-            "type": "string"
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "NqCzZignHXpp8OGcg0po",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_update_page",
-      "description": "Update an existing page. Only provide fields that need to be changed (e.g., content, title, tags, isPublished).",
-      "parameters": {
-        "properties": {
-          "pageId": {
-            "description": "Page ID (integer)",
-            "type": "integer"
-          },
-          "updates": {
-            "description": "Object with fields to update (content, title, description, tags, isPublished, etc.)",
-            "type": "object"
-          }
-        },
-        "required": [
-          "pageId",
-          "updates"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "q2v16kdeuE4R20h66uhZ",
-      "skill_id": "vO8Rrx7uQ9PRG5cXAUoV",
-      "name": "wikijs_upload_file",
-      "description": "Upload a file to Wiki.js. Supports file paths or Buffer. NOTE: Wiki.js requires special multipart format with TWO 'mediaUpload' fields - handled automatically.",
-      "parameters": {
-        "properties": {
-          "filename": {
-            "description": "Name for the uploaded file",
-            "type": "string"
-          },
-          "folderId": {
-            "default": 0,
-            "description": "Target folder ID (0 for root folder)",
-            "type": "integer"
-          },
-          "path": {
-            "description": "Local file path to upload",
-            "type": "string"
-          }
-        },
-        "required": [
-          "path",
-          "filename"
-        ],
-        "type": "object"
-      },
-      "script_path": "index.js",
-      "is_resident": false
     }
   ],
   "parameters": [
     {
-      "id": "mmofssw7u24v7a0pya3tlfykthx3wnz8",
+      "id": "mn0cn7jpkv3lvi5s8oytxb2n73z0v907",
       "skill_id": "mmoasyw4iar2f9qi4z96",
       "param_name": "UNIFUNCS_API_KEY",
-      "param_value": "",
+      "param_value": "sk-3NiBQQIuLjuybfEFA4Fi7JHsNmEktbFRAPOIMoYwN8OiQ08g",
       "is_secret": true,
-      "description": "Unifuncs API 密钥"
+      "description": null
     },
     {
-      "id": "mmlkpbikd97o4dld784ypfmwfhz1w23y",
+      "id": "mn0cngqm62uzwgvfxk3mj9flbb7q4cr6",
       "skill_id": "remote-llm",
       "param_name": "max_tokens",
-      "param_value": "",
-      "is_secret": false,
-      "description": "最大输出 token 数"
+      "param_value": "128000",
+      "is_secret": true,
+      "description": null
     },
     {
-      "id": "mmlkpbi7yddzzso8ebt1zdjrxv3bka64",
+      "id": "mn0cngqaag18pv8ndf3qxa7s34hsodpd",
       "skill_id": "remote-llm",
       "param_name": "model_id",
-      "param_value": "",
+      "param_value": "mmfxrlo40h7ybx33m8l5",
       "is_secret": true,
-      "description": "目标模型 ID（ai_models 表）"
+      "description": null
     },
     {
-      "id": "mmlkpbifj0z50at4k5nsm19ahwp9f7wd",
+      "id": "mn0cngqh13v5pnoh93p8ica76z1a06tw",
       "skill_id": "remote-llm",
       "param_name": "prompt",
-      "param_value": "",
-      "is_secret": false,
-      "description": "发送给 LLM 的提示"
+      "param_value": "请把图片中的文字转为文本给我。注意:json格式，多个字段，包括原文、图片描述等",
+      "is_secret": true,
+      "description": null
     },
     {
       "id": "mm7u76shpf2hd4bb91duicmtcirqqgle",
       "skill_id": "searxng",
       "param_name": "SEARXNG_URL",
-      "param_value": "",
-      "is_secret": false,
-      "description": "SearXNG 实例 URL"
+      "param_value": "https://dr.x.erix.vip/searxng",
+      "is_secret": true,
+      "description": null
     },
     {
       "id": "sm_param_db_host",
       "skill_id": "skill-manager",
       "param_name": "db_host",
-      "param_value": "",
-      "is_secret": false,
-      "description": "数据库主机地址"
+      "param_value": "${DB_HOST}",
+      "is_secret": true,
+      "description": null
     },
     {
       "id": "sm_param_db_name",
       "skill_id": "skill-manager",
       "param_name": "db_name",
-      "param_value": "",
-      "is_secret": false,
-      "description": "数据库名称"
+      "param_value": "${DB_NAME}",
+      "is_secret": true,
+      "description": null
     },
     {
       "id": "sm_param_db_password",
       "skill_id": "skill-manager",
       "param_name": "db_password",
-      "param_value": "",
+      "param_value": "${DB_PASSWORD}",
       "is_secret": true,
-      "description": "数据库密码"
+      "description": null
     },
     {
       "id": "sm_param_db_port",
       "skill_id": "skill-manager",
       "param_name": "db_port",
-      "param_value": "",
-      "is_secret": false,
-      "description": "数据库端口"
+      "param_value": "${DB_PORT}",
+      "is_secret": true,
+      "description": null
     },
     {
       "id": "sm_param_db_user",
       "skill_id": "skill-manager",
       "param_name": "db_user",
-      "param_value": "",
-      "is_secret": false,
-      "description": "数据库用户名"
+      "param_value": "${DB_USER}",
+      "is_secret": true,
+      "description": null
     }
   ]
 }
