@@ -217,7 +217,22 @@ const TABLES = [
     INDEX idx_last_active (last_active)
   )`,
 
-  // 8. Tasks 表（任务工作空间）
+  // 8. Solutions 表（解决方案，需在 tasks 之前创建）
+  `CREATE TABLE IF NOT EXISTS solutions (
+    id VARCHAR(32) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL COMMENT '解决方案名称',
+    slug VARCHAR(100) UNIQUE COMMENT 'URL友好标识',
+    description TEXT COMMENT '简要描述（适用场景）',
+    guide LONGTEXT COMMENT '执行指南（Markdown）',
+    tags LONGTEXT COMMENT '标签数组（JSON格式）',
+    is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_active (is_active)
+  ) COMMENT='解决方案表'`,
+
+  // 9. Tasks 表（任务工作空间，先创建不带循环外键的版本）
   `CREATE TABLE IF NOT EXISTS tasks (
     id VARCHAR(32) PRIMARY KEY,
     task_id VARCHAR(50) UNIQUE NOT NULL COMMENT '任务ID (12位随机字符)',
@@ -234,7 +249,6 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE SET NULL,
-    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL,
     FOREIGN KEY (solution_id) REFERENCES solutions(id) ON DELETE SET NULL,
     INDEX idx_task_id (task_id),
     INDEX idx_user (created_by),
@@ -244,7 +258,7 @@ const TABLES = [
     INDEX idx_solution (solution_id)
   ) COMMENT='任务工作空间表'`,
 
-  // 9. Topics 表
+  // 10. Topics 表（先创建不带循环外键的版本）
   `CREATE TABLE IF NOT EXISTS topics (
     id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
@@ -262,7 +276,6 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE SET NULL,
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
     INDEX idx_user_status (user_id, status),
     INDEX idx_expert (expert_id),
     INDEX idx_task (task_id),
@@ -644,23 +657,6 @@ const TABLES = [
     CONSTRAINT fk_position_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='职位表'`,
 
-  // ==================== 解决方案模块 ====================
-  
-  // 31. Solutions 表
-  `CREATE TABLE IF NOT EXISTS solutions (
-    id VARCHAR(32) PRIMARY KEY,
-    name VARCHAR(200) NOT NULL COMMENT '解决方案名称',
-    slug VARCHAR(100) UNIQUE COMMENT 'URL友好标识',
-    description TEXT COMMENT '简要描述（适用场景）',
-    guide LONGTEXT COMMENT '执行指南（Markdown）',
-    tags LONGTEXT COMMENT '标签数组（JSON格式）',
-    is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_slug (slug),
-    INDEX idx_active (is_active)
-  ) COMMENT='解决方案表'`,
-
   // ==================== 任务预览 Token 表 ====================
   
   // 32. Task_Token 表
@@ -820,6 +816,9 @@ async function initDatabase() {
     });
 
     console.log('Dropping existing tables...');
+    // 禁用外键检查，以便删除有循环依赖的表
+    await connection.execute('SET FOREIGN_KEY_CHECKS = 0');
+    
     // 按依赖顺序删除表（先删除有外键的表）
     const dropTables = [
       // 新知识库表
@@ -848,10 +847,34 @@ async function initDatabase() {
     for (const table of dropTables) {
       await connection.execute(`DROP TABLE IF EXISTS ${table}`);
     }
+    
+    // 重新启用外键检查
+    await connection.execute('SET FOREIGN_KEY_CHECKS = 1');
 
     console.log('Creating tables...');
     for (const sql of TABLES) {
       await connection.execute(sql);
+    }
+
+    // 添加循环外键约束（tasks.topic_id -> topics.id 和 topics.task_id -> tasks.id）
+    console.log('Adding circular foreign key constraints...');
+    try {
+      await connection.execute(`
+        ALTER TABLE tasks 
+        ADD CONSTRAINT fk_tasks_topic 
+        FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL
+      `);
+      await connection.execute(`
+        ALTER TABLE topics 
+        ADD CONSTRAINT fk_topics_task 
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+      `);
+      console.log('  - Circular foreign keys added (tasks.topic_id <-> topics.task_id)');
+    } catch (err) {
+      // 外键可能已存在，忽略错误
+      if (err.code !== 'ER_MULTIPLE_PRI_KEY' && err.code !== 'ER_DUP_KEYNAME') {
+        console.warn('  - Warning: Could not add circular foreign keys:', err.message);
+      }
     }
 
     console.log('Inserting initial data...');
