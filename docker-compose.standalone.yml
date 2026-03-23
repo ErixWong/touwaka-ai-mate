@@ -42,11 +42,10 @@ services:
       - bash
       - -c
       - |
-        if ! command -v libreoffice &> /dev/null; then
+        if ! command -v pdftotext &> /dev/null; then
           echo 'Installing system packages...'
           apt-get update
           apt-get install -y --no-install-recommends \
-            libreoffice-writer libreoffice-impress libreoffice-calc \
             poppler-utils fonts-noto-cjk fonts-dejavu \
             build-essential sqlite3 libsqlite3-dev libvips-dev wget
           apt-get clean
