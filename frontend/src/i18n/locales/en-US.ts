@@ -732,6 +732,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     compressing: 'Compressing...',
     refreshSuccess: 'Topics refreshed',
     compressSuccess: 'Context compressed successfully',
+    loadFailed: 'Failed to load topics',
     compressFailed: 'Compression failed',
     status: {
       active: 'Active',

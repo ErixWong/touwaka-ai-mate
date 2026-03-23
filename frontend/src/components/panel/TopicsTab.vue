@@ -105,12 +105,14 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { useToastStore } from '@/stores/toast'
 import { topicApi } from '@/api/services'
 import type { Topic } from '@/types'
 import Pagination from '@/components/Pagination.vue'
 
 const { t } = useI18n()
 const chatStore = useChatStore()
+const toast = useToastStore()
 
 const searchQuery = ref('')
 const expandedTopics = ref<Set<string>>(new Set())
@@ -136,8 +138,9 @@ const filteredTopics = computed(() => {
 const loadTopics = async (page: number = 1) => {
   try {
     await chatStore.loadTopics({ page })
-  } catch (error) {
-    console.error('Failed to load topics:', error)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('topics.loadFailed')
+    toast.error(errorMsg)
   }
 }
 
@@ -155,8 +158,9 @@ const handleCompress = async () => {
     console.log('Compress result:', result)
     // 压缩后刷新列表（回到第一页）
     await loadTopics(1)
-  } catch (error) {
-    console.error('Failed to compress topics:', error)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('topics.compressFailed')
+    toast.error(errorMsg)
   } finally {
     isCompressing.value = false
   }
