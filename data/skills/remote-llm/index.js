@@ -19,14 +19,16 @@ const { URL } = require('url');
 
 // 配置（超时从环境变量读取，由 skill-loader 通过数据库设置）
 const CONFIG = {
-  // 内部 API 配置
-  internalApiBase: process.env.INTERNAL_API_BASE || 'http://localhost:3000',
-  internalApiKey: process.env.INTERNAL_KEY || '',
+  // API 基础地址
+  apiBase: process.env.API_BASE || 'http://localhost:3000',
   
   // 超时配置（毫秒）- 支持环境变量覆盖
   // TIMEOUT_RESIDENT_SKILL 来自 system_settings.timeout.resident_skill（秒）-> 转换为毫秒
   defaultTimeout: parseInt(process.env.TIMEOUT_RESIDENT_SKILL || '300000', 10),
 };
+
+// 当前用户上下文（每次 invoke 时更新）
+let currentUser = null;
 
 // 任务队列
 const taskQueue = [];
@@ -109,15 +111,19 @@ async function httpRequest(url, options, body) {
 }
 
 /**
- * 通过内部 API 获取模型配置
+ * 通过 API 获取模型配置
+ * 使用用户的 accessToken 认证
  */
 async function getModelConfig(modelId) {
-  const url = `${CONFIG.internalApiBase}/internal/models/${modelId}`;
-  
-  const headers = {};
-  if (CONFIG.internalApiKey) {
-    headers['X-Internal-Key'] = CONFIG.internalApiKey;
+  if (!currentUser?.accessToken) {
+    throw new Error('用户未登录，无法获取模型配置');
   }
+  
+  const url = `${CONFIG.apiBase}/internal/models/${modelId}`;
+  
+  const headers = {
+    'Authorization': `Bearer ${currentUser.accessToken}`,
+  };
 
   const response = await httpRequest(url, {
     method: 'GET',
@@ -211,7 +217,8 @@ async function callRemoteLLM(modelConfig, params) {
 }
 
 /**
- * 通过内部 API 将结果推送给专家
+ * 通过 API 将结果推送给专家
+ * 使用用户的 accessToken 认证
  * @param {Object} params - 参数对象
  * @param {string} params.user_id - 用户ID
  * @param {string} params.expert_id - 专家ID
@@ -223,12 +230,15 @@ async function callRemoteLLM(modelConfig, params) {
 async function notifyExpert(params) {
   const { user_id, expert_id, content, task_id, trigger_expert = true, error } = params;
 
-  const url = `${CONFIG.internalApiBase}/internal/messages/insert`;
-  
-  const headers = {};
-  if (CONFIG.internalApiKey) {
-    headers['X-Internal-Key'] = CONFIG.internalApiKey;
+  if (!currentUser?.accessToken) {
+    throw new Error('用户未登录，无法推送消息');
   }
+
+  const url = `${CONFIG.apiBase}/internal/messages/insert`;
+  
+  const headers = {
+    'Authorization': `Bearer ${currentUser.accessToken}`,
+  };
 
   const body = {
     user_id,
@@ -321,8 +331,14 @@ async function processQueue() {
 
 /**
  * 处理任务调用
+ * @param {string} taskId - 任务ID
+ * @param {Object} params - 任务参数
+ * @param {Object} user - 用户上下文 { userId, accessToken, expertId, isAdmin }
  */
-async function handleInvoke(taskId, params) {
+async function handleInvoke(taskId, params, user) {
+  // 更新当前用户上下文
+  currentUser = user;
+  
   // 立即返回确认
   sendResponse({
     task_id: taskId,
@@ -349,7 +365,7 @@ async function handleInvoke(taskId, params) {
  */
 async function main() {
   log('Remote LLM Executor started (resident mode)');
-  log(`Internal API: ${CONFIG.internalApiBase}`);
+  log(`API Base: ${CONFIG.apiBase}`);
 
   // 使用 stdin 事件替代 readline（沙箱不允许 readline 模块）
   let buffer = '';
@@ -366,7 +382,7 @@ async function main() {
         
         switch (command.command) {
           case 'invoke':
-            handleInvoke(command.task_id, command.params);
+            handleInvoke(command.task_id, command.params, command.user);
             break;
             
           case 'exit':

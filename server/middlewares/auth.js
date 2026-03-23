@@ -27,28 +27,6 @@ const authenticate = () => {
       token = ctx.query.token;
     }
 
-    // 内部服务调用：支持 X-User-Id header（来自技能执行等内部调用）
-    const internalUserId = ctx.headers['x-user-id'];
-    const internalSecret = ctx.headers['x-internal-secret'];
-    const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || 'internal-api-secret';
-
-    if (!token && internalUserId && internalSecret === INTERNAL_SECRET) {
-      // 内部服务调用认证成功
-      // 支持数字和字符串（UUID）类型的 userId
-      const parsedUserId = parseInt(internalUserId, 10);
-      const userId = isNaN(parsedUserId) ? internalUserId : parsedUserId;
-      ctx.state.session = {
-        id: userId,
-        roles: ['user'],
-        isAdmin: false,
-        accessToken: null,
-      };
-      ctx.state.authType = 'internal';
-      console.log('[Auth] Internal auth:', { userId });
-      await next();
-      return;
-    }
-
     if (!token) {
       ctx.error('未提供访问令牌', 401);
       return;

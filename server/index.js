@@ -44,6 +44,7 @@ import logger from '../lib/logger.js';
 
 // 中间件
 import { responseMiddleware } from './middlewares/index.js';
+import * as authMiddleware from './middlewares/auth.js';
 
 // 控制器
 import AuthController from './controllers/auth.controller.js';
@@ -388,8 +389,8 @@ class ApiServer {
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
     // 将 Scheduler 共享给 DebugController
     this.controllers.debug.setScheduler(this.scheduler);
-    this.app.use(internalRoutes(this.controllers.internal).routes());
-    this.app.use(internalRoutes(this.controllers.internal).allowedMethods());
+    this.app.use(internalRoutes(this.controllers.internal, authMiddleware).routes());
+    this.app.use(internalRoutes(this.controllers.internal, authMiddleware).allowedMethods());
     logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke)');
 
     // Task Static 静态文件服务路由（Issue #140）

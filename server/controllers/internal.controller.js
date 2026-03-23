@@ -4,8 +4,8 @@
  * 用于驻留进程调用，插入消息并触发专家响应
  *
  * 认证方式：
- * - IP 白名单（仅允许本地调用）
- * - 或内部服务密钥（X-Internal-Key header）
+ * - 用户 JWT Token（通过 Authorization header）
+ * - 仅允许本地 IP 调用（作为安全后备）
  */
 
 import logger from '../../lib/logger.js';
@@ -26,7 +26,6 @@ class InternalController {
     this.Provider = db.getModel('provider');
     this.expertConnections = options.expertConnections || new Map();
     this.chatService = options.chatService || null;
-    this.internalKey = process.env.INTERNAL_API_KEY || null;
   }
 
   /**
@@ -328,38 +327,33 @@ class InternalController {
 
   /**
    * 验证内部调用权限
+   * 安全策略：
+   * 1. 必须有已认证的用户 session（通过 JWT Token）
+   * 2. 只允许本地 IP 访问（作为额外安全层）
    */
   validateInternalAccess(ctx) {
-    // 方式一：检查内部密钥
-    if (this.internalKey) {
-      const requestKey = ctx.get('X-Internal-Key');
-      if (requestKey === this.internalKey) {
-        return true;
-      }
-      // 如果有 internalKey 但密钥不匹配，也允许通过 IP 检查
+    // 1. 检查用户是否已认证（通过 JWT Token）
+    const session = ctx.state.session;
+    if (!session?.id) {
+      logger.warn(`Internal API access denied: no authenticated user`);
+      return false;
     }
 
-    // 方式二：检查 IP（仅允许本地或相同主机）
+    // 2. 检查 IP（只允许本地访问）
     const clientIp = ctx.ip || ctx.request.ip;
     const localIps = ['::1', '::ffff:127.0.0.1', '127.0.0.1', 'localhost', '0.0.0.0'];
-    if (localIps.includes(clientIp)) {
-      return true;
-    }
+    const isLocalIp = localIps.includes(clientIp);
 
-    // 允许来自同一台机器的其他 IP（如 Docker 桥接 IP）
+    // 检查 X-Forwarded-For（Docker 桥接等场景）
     const remoteAddress = ctx.request?.headers?.['x-forwarded-for'] || '';
-    if (remoteAddress.includes('127.0.0.1') || remoteAddress.includes('localhost')) {
-      return true;
+    const isForwardedLocal = remoteAddress.includes('127.0.0.1') || remoteAddress.includes('localhost');
+
+    if (!isLocalIp && !isForwardedLocal) {
+      logger.warn(`Internal API access denied from IP: ${clientIp} (localhost only)`);
+      return false;
     }
 
-    // 如果配置了 internalKey 且没有 IP 匹配，记录警告但也允许通过（兼容本地服务调用）
-    if (this.internalKey) {
-      logger.warn(`Internal API: 允许无密钥访问 from IP: ${clientIp} (internalKey 已配置)`);
-      return true;
-    }
-
-    logger.warn(`Internal API access denied from IP: ${clientIp}, internalKey: ${!!this.internalKey}`);
-    return false;
+    return true;
   }
 
   /**

@@ -16,6 +16,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { Sequelize } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
+import http from 'http';
+import https from 'https';
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import AssistantMessageService from './assistant-message-service.js';

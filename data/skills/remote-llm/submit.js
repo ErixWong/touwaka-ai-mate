@@ -24,8 +24,8 @@ const { URL } = require('url');
 
 // 配置
 const CONFIG = {
-  internalApiBase: process.env.API_BASE || 'http://localhost:3000',
-  internalApiKey: process.env.INTERNAL_KEY || '',
+  apiBase: process.env.API_BASE || 'http://localhost:3000',
+  userAccessToken: process.env.USER_ACCESS_TOKEN || '',
   defaultTimeout: 10000,
   dataBasePath: process.env.DATA_BASE_PATH || process.cwd(),
 };
@@ -110,14 +110,18 @@ async function resolveModelId(modelIdOrName) {
 
 /**
  * 通过内部 API 调用驻留进程
+ * 使用用户的 accessToken 认证
  */
 async function invokeResidentTool(params) {
-  const url = `${CONFIG.internalApiBase}/internal/resident/invoke`;
-  
-  const headers = {};
-  if (CONFIG.internalApiKey) {
-    headers['X-Internal-Key'] = CONFIG.internalApiKey;
+  if (!CONFIG.userAccessToken) {
+    throw new Error('用户未登录，无法调用驻留进程（缺少 USER_ACCESS_TOKEN）');
   }
+
+  const url = `${CONFIG.apiBase}/internal/resident/invoke`;
+  
+  const headers = {
+    'Authorization': `Bearer ${CONFIG.userAccessToken}`,
+  };
 
   const response = await httpRequest(url, {
     method: 'POST',

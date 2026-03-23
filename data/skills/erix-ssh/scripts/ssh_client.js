@@ -16,8 +16,8 @@ const { URL } = require('url');
 
 // Configuration
 const CONFIG = {
-  internalApiBase: process.env.API_BASE || 'http://localhost:3000',
-  internalApiKey: process.env.INTERNAL_KEY || '',
+  apiBase: process.env.API_BASE || 'http://localhost:3000',
+  userAccessToken: process.env.USER_ACCESS_TOKEN || '',
   defaultTimeout: 30000,
 };
 
@@ -77,14 +77,18 @@ async function httpRequest(url, options, body) {
 
 /**
  * Invoke SSH resident tool via internal API
+ * Uses user's access token for authentication
  */
 async function invokeSSHTOol(action, params, timeout) {
-  const url = `${CONFIG.internalApiBase}/internal/resident/invoke`;
-
-  const headers = {};
-  if (CONFIG.internalApiKey) {
-    headers['X-Internal-Key'] = CONFIG.internalApiKey;
+  if (!CONFIG.userAccessToken) {
+    throw new Error('用户未登录，无法调用 SSH 工具（缺少 USER_ACCESS_TOKEN）');
   }
+
+  const url = `${CONFIG.apiBase}/internal/resident/invoke`;
+
+  const headers = {
+    'Authorization': `Bearer ${CONFIG.userAccessToken}`,
+  };
 
   const response = await httpRequest(url, {
     method: 'POST',
