@@ -496,6 +496,10 @@ class ApiServer {
       this.setupMiddlewares();
       this.setupRoutes();
 
+      // 将 SSE 连接池共享给 AssistantManager（在 setupRoutes 之后，因为 StreamController 已创建）
+      assistantManager.setExpertConnections(this.controllers.stream.expertConnections);
+      logger.info('AssistantManager: expertConnections set');
+
       this.app.listen(port, () => {
         logger.info(`API Server (Koa) started on http://localhost:${port}`);
         logger.info('Available endpoints:');

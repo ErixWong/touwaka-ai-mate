@@ -14,17 +14,12 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { Sequelize } from 'sequelize';
-import https from 'https';
-import http from 'http';
 import fs from 'fs/promises';
 import path from 'path';
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import AssistantMessageService from './assistant-message-service.js';
 import { getSystemSettingService } from './system-setting.service.js';
-
-// 内部 API 地址
-const INTERNAL_API_BASE = process.env.INTERNAL_API_BASE || 'http://localhost:3000';
 
 // 支持的图片格式
 const IMAGE_EXTENSIONS = {
@@ -42,10 +37,16 @@ class AssistantManager {
   /**
    * @param {Database} db - 数据库实例
    * @param {object} options - 配置选项
+   * @param {ChatService} options.chatService - ChatService 实例
+   * @param {Map} options.expertConnections - SSE 连接池
    */
   constructor(db, options = {}) {
     this.db = db;
     this.options = options;
+
+    // 外部服务引用
+    this.chatService = options.chatService || null;
+    this.expertConnections = options.expertConnections || null;
 
     // 模型
     this.Assistant = db.getModel('assistant');
@@ -69,6 +70,14 @@ class AssistantManager {
     // 最大并发数
     this.maxConcurrent = options.maxConcurrent || 10;
     this.runningCount = 0;
+  }
+
+  /**
+   * 设置 SSE 连接池引用
+   * @param {Map} connections - SSE 连接池
+   */
+  setExpertConnections(connections) {
+    this.expertConnections = connections;
   }
 
   /**
@@ -863,35 +872,40 @@ class AssistantManager {
 
       content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
     }
-    // 调用 Internal API 插入消息
-    // 在消息内容中明确告诉 Expert 立即处理结果
-    // 活跃话题使用 topic_id=NULL 以保持一致性
-    const payload = {
-      user_id: finalUserId,
-      expert_id: finalExpertId,
-      topic_id: isTopicActive ? null : finalTopicId,
-      content,
-      // 助理场景：触发 Expert 并构造用户消息（不保存到数据库）
-      trigger_expert: true,
-      // 传递用户的原始问题，用于触发 Expert 时正确构建上下文
-      original_message: userMessage || '',
-    };
+    // 构造用户消息（不存入数据库，不显示在前端）
+    const constructedUserMessage = userMessage
+      ? `用户请求：${userMessage}\n\n助理执行结果：\n${content}`
+      : content;
 
-    logger.info(`[AssistantManager] 通知 Expert 结果: request=${request.request_id}, topic=${finalTopicId}`, {
+    logger.info(`[AssistantManager] 通知 Expert 结果: request=${request_id}, topic=${finalTopicId}`, {
       user_id: finalUserId,
       expert_id: finalExpertId,
       topic_id: finalTopicId,
       content_length: content.length,
-      inner_voice: !!payload.inner_voice,
-      trigger_expert: payload.trigger_expert,
     });
 
     try {
-      const result = await this.httpPost(`${INTERNAL_API_BASE}/internal/messages/insert`, payload);
-      // 响应结构：{ code, data: { message_id, topic_id, ... } }
-      const messageId = result.data?.message_id || result.message_id;
-      const topicId = result.data?.topic_id || result.topic_id;
-      logger.info(`[AssistantManager] 通知成功: message_id=${messageId}, topic_id=${topicId}`);
+      // 1. 通过 SSE 推送通知（如果有连接）
+      const sseSent = this.pushSSENotification(finalExpertId, finalUserId, {
+        event: 'new_context',
+        data: {
+          message_id: `assistant_${request_id}`,
+          topic_id: finalTopicId,
+          role: 'assistant',
+          preview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+        }
+      });
+
+      logger.info(`[AssistantManager] SSE 通知: ${sseSent ? '已发送' : '无连接'}`);
+
+      // 2. 触发专家响应（如果有 chatService 和 SSE 连接）
+      if (this.chatService) {
+        this.triggerExpertResponse(finalUserId, finalExpertId, constructedUserMessage, finalTopicId);
+      } else {
+        logger.warn(`[AssistantManager] 无 chatService，无法触发专家响应`);
+      }
+
+      logger.info(`[AssistantManager] 通知成功: request_id=${request_id}, topic_id=${finalTopicId}`);
     } catch (err) {
       logger.error(`[AssistantManager] 通知失败: ${err.message}`);
       throw err;
@@ -899,58 +913,224 @@ class AssistantManager {
   }
 
   /**
-   * HTTP POST 请求辅助方法
-   * @param {string} url - 请求 URL
-   * @param {object} data - 请求数据
+   * 通过 SSE 推送通知
+   * @param {string} expert_id - 专家ID
+   * @param {string} user_id - 用户ID
+   * @param {object} notification - 通知内容
+   * @returns {boolean} 是否成功推送
    */
-  async httpPost(url, data) {
-    logger.info(`[AssistantManager] httpPost 调用: ${url}`, { keys: Object.keys(data), internalKey: !!process.env.INTERNAL_API_KEY });
+  pushSSENotification(expert_id, user_id, notification) {
+    if (!this.expertConnections) {
+      logger.debug(`[AssistantManager] 无 SSE 连接池`);
+      return false;
+    }
 
-    return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-      const isHttps = urlObj.protocol === 'https:';
-      const client = isHttps ? https : http;
+    const connections = this.expertConnections.get(expert_id);
 
-      const postData = JSON.stringify(data);
+    if (!connections || connections.size === 0) {
+      logger.debug(`[AssistantManager] 无 SSE 连接: expert=${expert_id}`);
+      return false;
+    }
 
-      const options = {
-        hostname: urlObj.hostname,
-        port: urlObj.port || (isHttps ? 443 : 3000),
-        path: urlObj.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData),
-          'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
-        },
-        timeout: 10000,
-      };
+    // 找到该用户的连接
+    for (const conn of connections) {
+      if (conn.user_id === user_id && !conn.res.writableEnded) {
+        try {
+          conn.res.write(`event: ${notification.event}\n`);
+          conn.res.write(`data: ${JSON.stringify(notification.data)}\n\n`);
+          logger.info(`[AssistantManager] SSE 通知已发送: ${notification.event} to user=${user_id}`);
+          return true;
+        } catch (err) {
+          logger.error('[AssistantManager] SSE 发送失败:', err);
+        }
+      }
+    }
 
-      const req = client.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-          logger.info(`[AssistantManager] httpPost 响应: ${res.statusCode}, body: ${body.substring(0, 200)}`);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(JSON.parse(body));
-            } catch (e) {
-              reject(new Error(`JSON parse failed: ${body}`));
-            }
-          } else {
-            reject(new Error(`HTTP ${res.statusCode}: ${body}`));
+    return false;
+  }
+
+  /**
+   * 触发专家响应（异步执行，不阻塞返回）
+   * @param {string} user_id - 用户ID
+   * @param {string} expert_id - 专家ID
+   * @param {string} content - 触发内容
+   * @param {string} topic_id - 话题ID
+   */
+  async triggerExpertResponse(user_id, expert_id, content, topic_id) {
+    try {
+      logger.info(`[AssistantManager] 触发专家响应: expert=${expert_id}, user=${user_id}, topic=${topic_id}`);
+
+      // 等待一小段时间确保数据库事务完全提交
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 获取 SSE 连接
+      const connections = this.expertConnections?.get(expert_id);
+      const userConnection = connections
+        ? [...connections].find(c => c.user_id === user_id && !c.res.writableEnded)
+        : null;
+
+      if (!userConnection) {
+        logger.warn(`[AssistantManager] 没有 SSE 连接，无法触发专家响应: expert=${expert_id}, user=${user_id}`);
+        return;
+      }
+
+      // 获取专家服务
+      const expertService = await this.chatService.getExpertService(expert_id);
+
+      // 构建上下文
+      const context = await expertService.buildContext(user_id, content, topic_id);
+
+      logger.info(`[AssistantManager] 构建上下文: topic=${topic_id}, messagesCount=${context.messages?.length || 0}`);
+
+      // 获取模型配置
+      const modelConfig = expertService.getDefaultModelConfig();
+
+      // 获取工具定义
+      const tools = expertService.toolManager.getToolDefinitions();
+
+      logger.info(`[AssistantManager] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
+
+      // 发送开始事件
+      if (!userConnection.res.writableEnded) {
+        userConnection.res.write(`event: start\n`);
+        userConnection.res.write(`data: ${JSON.stringify({ message_id: `msg_${Utils.newID(10)}`, topic_id })}\n\n`);
+      }
+
+      // 多轮工具调用循环
+      const maxToolRounds = 5;
+      let currentMessages = [...context.messages];
+      let fullContent = '';
+      const startTime = Date.now();
+
+      for (let round = 0; round < maxToolRounds; round++) {
+        let collectedToolCalls = [];
+        let roundContent = '';
+
+        logger.info(`[AssistantManager] 第${round + 1}轮调用 LLM...`);
+
+        // 流式调用 LLM
+        await expertService.llmClient.callStream(
+          modelConfig,
+          currentMessages,
+          {
+            tools,
+            onDelta: (delta) => {
+              roundContent += delta;
+              fullContent += delta;
+              if (!userConnection.res.writableEnded) {
+                userConnection.res.write(`event: delta\n`);
+                userConnection.res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+              }
+            },
+            onToolCall: (toolCalls) => {
+              logger.info(`[AssistantManager] 工具调用:`, toolCalls?.length || 0);
+              collectedToolCalls.push(...(Array.isArray(toolCalls) ? toolCalls : [toolCalls]));
+
+              if (!userConnection.res.writableEnded) {
+                const toolCallsWithDisplayNames = (Array.isArray(toolCalls) ? toolCalls : [toolCalls]).map(call => {
+                  const toolId = call.function?.name || call.name;
+                  return {
+                    ...call,
+                    displayName: expertService.toolManager.formatToolDisplay(toolId),
+                  };
+                });
+                userConnection.res.write(`event: tool_call\n`);
+                userConnection.res.write(`data: ${JSON.stringify({ type: 'tool_call', toolCalls: toolCallsWithDisplayNames })}\n\n`);
+              }
+            },
+            onUsage: (usage) => {
+              logger.debug(`[AssistantManager] Token 使用:`, usage);
+            },
           }
-        });
-      });
+        );
 
-      req.on('error', (err) => {
-        logger.error(`[AssistantManager] httpPost 请求失败:`, err.message);
-        reject(err);
-      });
-      req.on('timeout', () => reject(new Error('Request timeout')));
-      req.write(postData);
-      req.end();
-    });
+        // 如果没有工具调用，退出循环
+        if (collectedToolCalls.length === 0) {
+          logger.info(`[AssistantManager] 第${round + 1}轮无工具调用，完成`);
+          break;
+        }
+
+        logger.info(`[AssistantManager] 第${round + 1}轮开始执行工具调用:`, collectedToolCalls.length);
+
+        // 执行工具调用
+        const toolResults = await expertService.handleToolCalls(
+          collectedToolCalls,
+          user_id,
+          null, // access_token
+          null, // taskContext
+          topic_id
+        );
+
+        // 发送工具结果给前端
+        for (const toolResult of toolResults) {
+          if (!userConnection.res.writableEnded) {
+            userConnection.res.write(`event: tool_result\n`);
+            userConnection.res.write(`data: ${JSON.stringify({ result: toolResult })}\n\n`);
+          }
+        }
+
+        // 将工具调用和结果添加到消息历史
+        for (let i = 0; i < collectedToolCalls.length; i++) {
+          const toolCall = collectedToolCalls[i];
+          const toolResult = toolResults[i];
+
+          currentMessages.push({
+            role: 'assistant',
+            content: null,
+            tool_calls: [toolCall],
+          });
+
+          currentMessages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolCall.function?.name || toolCall.name,
+            content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+          });
+        }
+      }
+
+      const latency = Date.now() - startTime;
+
+      // 保存专家回复
+      await this.chatService.saveAssistantMessage(
+        topic_id,
+        user_id,
+        fullContent,
+        {
+          latency_ms: latency,
+          model_name: modelConfig.model_name,
+          provider_name: modelConfig.provider_name,
+          expert_id,
+        }
+      );
+
+      // 发送完成事件
+      if (!userConnection.res.writableEnded) {
+        userConnection.res.write(`event: complete\n`);
+        userConnection.res.write(`data: ${JSON.stringify({
+          content: fullContent,
+          latency,
+          model: modelConfig.model_name,
+        })}\n\n`);
+      }
+
+      logger.info(`[AssistantManager] 专家响应完成: expert=${expert_id}, latency=${latency}ms`);
+
+    } catch (error) {
+      logger.error(`[AssistantManager] 触发专家响应异常: ${error.message}`);
+
+      // 发送错误事件
+      if (this.expertConnections) {
+        const connections = this.expertConnections.get(expert_id);
+        if (connections) {
+          const userConnection = [...connections].find(c => c.user_id === user_id && !c.res.writableEnded);
+          if (userConnection && !userConnection.res.writableEnded) {
+            userConnection.res.write(`event: error\n`);
+            userConnection.res.write(`data: ${JSON.stringify({ message: error.message })}\n\n`);
+          }
+        }
+      }
+    }
   }
 
   /**
