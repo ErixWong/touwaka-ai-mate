@@ -45,7 +45,7 @@ const TABLES = [
     is_active BIT(1) DEFAULT b'1',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 2. AI Models 表（用于前端模型管理）
   `CREATE TABLE IF NOT EXISTS ai_models (
@@ -69,7 +69,7 @@ const TABLES = [
     INDEX idx_provider (provider_id),
     INDEX idx_active (is_active),
     INDEX idx_model_type (model_type)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 3. Experts 表
   `CREATE TABLE IF NOT EXISTS experts (
@@ -101,7 +101,7 @@ const TABLES = [
     FOREIGN KEY (expressive_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
     FOREIGN KEY (reflective_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
     INDEX idx_active (is_active)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 4. Skills 表
   // 注：index_js 和 config 字段已移除
@@ -128,7 +128,7 @@ const TABLES = [
     is_active BIT(1) DEFAULT b'1',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 4.1 Skill_Tools 表（技能工具清单）
   // is_resident: 0=普通工具（执行后返回），1=驻留工具（持续运行，stdio通信）
@@ -144,7 +144,7 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY idx_skill_name (skill_id, name),
     INDEX idx_skill_id (skill_id)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 4.2 Skill_Parameters 表（技能参数配置）
   `CREATE TABLE IF NOT EXISTS skill_parameters (
@@ -160,7 +160,7 @@ const TABLES = [
     UNIQUE KEY uk_skill_param (skill_id, param_name),
     INDEX idx_skill_id (skill_id),
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
-  ) COMMENT='技能参数表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能参数表'`,
 
   // 5. Expert_Skills 表（复合主键，无独立 id）
   `CREATE TABLE IF NOT EXISTS expert_skills (
@@ -174,7 +174,7 @@ const TABLES = [
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE,
     INDEX idx_expert (expert_id),
     INDEX idx_skill (skill_id)
-  ) COMMENT='专家技能关联表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='专家技能关联表'`,
 
   // 6. Users 表（用户固有属性，全局一致）
   `CREATE TABLE IF NOT EXISTS users (
@@ -202,7 +202,7 @@ const TABLES = [
     INDEX idx_status (status),
     INDEX idx_department (department_id),
     INDEX idx_position (position_id)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 7. User_Profiles 表（用户画像：专家对用户的认知）
   `CREATE TABLE IF NOT EXISTS user_profiles (
@@ -222,7 +222,7 @@ const TABLES = [
     UNIQUE KEY uk_user_expert (user_id, expert_id),
     INDEX idx_expert (expert_id),
     INDEX idx_last_active (last_active)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 8. Solutions 表（解决方案，需在 tasks 之前创建）
   `CREATE TABLE IF NOT EXISTS solutions (
@@ -237,7 +237,7 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_slug (slug),
     INDEX idx_active (is_active)
-  ) COMMENT='解决方案表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='解决方案表'`,
 
   // 9. Tasks 表（任务工作空间，先创建不带循环外键的版本）
   `CREATE TABLE IF NOT EXISTS tasks (
@@ -263,7 +263,7 @@ const TABLES = [
     INDEX idx_expert (expert_id),
     INDEX idx_topic (topic_id),
     INDEX idx_solution (solution_id)
-  ) COMMENT='任务工作空间表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务工作空间表'`,
 
   // 10. Topics 表（先创建不带循环外键的版本）
   `CREATE TABLE IF NOT EXISTS topics (
@@ -287,7 +287,7 @@ const TABLES = [
     INDEX idx_expert (expert_id),
     INDEX idx_task (task_id),
     INDEX idx_updated (updated_at)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 10. Messages 表
   `CREATE TABLE IF NOT EXISTS messages (
@@ -318,7 +318,7 @@ const TABLES = [
     INDEX idx_expert (expert_id),
     INDEX idx_role (role),
     INDEX idx_created (created_at)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 11. Roles 表（RBAC权限系统）
   // 注：字段已重命名 name -> mark, label -> name
@@ -331,9 +331,8 @@ const TABLES = [
     is_system BIT(1) DEFAULT b'0' COMMENT '系统角色，不可删除',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE INDEX mark (mark),
     INDEX idx_level (level)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 12. Permissions 表（权限定义，含菜单路由配置）
   `CREATE TABLE IF NOT EXISTS permissions (
@@ -350,7 +349,7 @@ const TABLES = [
     FOREIGN KEY (parent_id) REFERENCES permissions(id) ON DELETE SET NULL,
     INDEX idx_code (code),
     INDEX idx_type (type)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 13. Role_Permissions 表（角色-权限关联）
   `CREATE TABLE IF NOT EXISTS role_permissions (
@@ -360,7 +359,7 @@ const TABLES = [
     PRIMARY KEY (role_id, permission_id),
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 14. User_Roles 表（用户-角色关联，支持多角色）
   `CREATE TABLE IF NOT EXISTS user_roles (
@@ -370,7 +369,7 @@ const TABLES = [
     PRIMARY KEY (user_id, role_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 15. Role_Experts 表（角色-专家访问权限）
   `CREATE TABLE IF NOT EXISTS role_experts (
@@ -380,9 +379,9 @@ const TABLES = [
     PRIMARY KEY (role_id, expert_id),
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
-  // ==================== 知识库表（旧版） ====================
+  // ==================== 知识库表 ====================
   
   // 16. Knowledge_Bases 表（知识库）
   `CREATE TABLE IF NOT EXISTS knowledge_bases (
@@ -399,65 +398,9 @@ const TABLES = [
     FOREIGN KEY (embedding_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
     INDEX idx_kb_owner (owner_id),
     INDEX idx_kb_public (is_public)
-  )`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
-  // 17. Knowledges 表（文章，树状结构）
-  `CREATE TABLE IF NOT EXISTS knowledges (
-    id VARCHAR(20) PRIMARY KEY,
-    kb_id VARCHAR(20) NOT NULL COMMENT '所属知识库',
-    parent_id VARCHAR(20) DEFAULT NULL COMMENT '父文章 ID（树状结构）',
-    title VARCHAR(500) NOT NULL COMMENT '文章标题',
-    summary TEXT COMMENT 'LLM 生成的摘要',
-    source_type ENUM('file', 'web', 'manual') DEFAULT 'manual' COMMENT '来源类型',
-    source_url VARCHAR(1000) COMMENT '来源 URL',
-    file_path VARCHAR(500) COMMENT '原始文件存储路径',
-    status ENUM('pending', 'processing', 'ready', 'failed') DEFAULT 'pending' COMMENT '处理状态',
-    position INT DEFAULT 0 COMMENT '同级排序',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_id) REFERENCES knowledges(id) ON DELETE CASCADE,
-    INDEX idx_knowledge_kb (kb_id),
-    INDEX idx_knowledge_parent (parent_id),
-    INDEX idx_knowledge_status (status)
-  )`,
-
-  // 18. Knowledge_Points 表（知识点）
-  `CREATE TABLE IF NOT EXISTS knowledge_points (
-    id VARCHAR(20) PRIMARY KEY,
-    knowledge_id VARCHAR(20) NOT NULL COMMENT '所属文章',
-    title VARCHAR(500) COMMENT '知识点标题',
-    content MEDIUMTEXT NOT NULL COMMENT 'Markdown 格式内容',
-    context TEXT COMMENT '上下文信息（用于向量化）',
-    embedding VECTOR(1024) COMMENT '向量（1024维）',
-    position INT DEFAULT 0 COMMENT '排序位置',
-    token_count INT DEFAULT 0 COMMENT 'Token 数量',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (knowledge_id) REFERENCES knowledges(id) ON DELETE CASCADE,
-    INDEX idx_kp_knowledge (knowledge_id)
-  )`,
-
-  // 19. Knowledge_Relations 表（知识点关联）
-  `CREATE TABLE IF NOT EXISTS knowledge_relations (
-    id VARCHAR(20) PRIMARY KEY,
-    source_id VARCHAR(20) NOT NULL COMMENT '源知识点',
-    target_id VARCHAR(20) NOT NULL COMMENT '目标知识点',
-    relation_type ENUM('depends_on', 'references', 'related_to', 'contradicts', 'extends', 'example_of') NOT NULL COMMENT '关系类型',
-    confidence DECIMAL(3,2) DEFAULT 1.00 COMMENT 'LLM 置信度 (0-1)',
-    created_by ENUM('llm', 'manual') DEFAULT 'llm' COMMENT '创建方式',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (source_id) REFERENCES knowledge_points(id) ON DELETE CASCADE,
-    FOREIGN KEY (target_id) REFERENCES knowledge_points(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_relation (source_id, target_id, relation_type),
-    INDEX idx_kr_source (source_id),
-    INDEX idx_kr_target (target_id),
-    INDEX idx_kr_type (relation_type)
-  )`,
-
-  // ==================== 知识库表（新版 KB Refactor） ====================
-  
-  // 20. KB_Articles 表
+  // 17. KB_Articles 表
   `CREATE TABLE IF NOT EXISTS kb_articles (
     id VARCHAR(20) PRIMARY KEY,
     kb_id VARCHAR(20) NOT NULL COMMENT '所属知识库',
@@ -472,7 +415,7 @@ const TABLES = [
     FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
     INDEX idx_article_kb (kb_id),
     INDEX idx_article_status (status)
-  ) COMMENT='文章表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文章表'`,
 
   // 21. KB_Sections 表
   `CREATE TABLE IF NOT EXISTS kb_sections (
@@ -490,7 +433,7 @@ const TABLES = [
     INDEX idx_section_parent (parent_id),
     INDEX idx_section_level (level),
     INDEX idx_section_position (position)
-  ) COMMENT='节表（无限层级）'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='节表（无限层级）'`,
 
   // 22. KB_Paragraphs 表
   `CREATE TABLE IF NOT EXISTS kb_paragraphs (
@@ -508,7 +451,7 @@ const TABLES = [
     INDEX idx_paragraph_section (section_id),
     INDEX idx_paragraph_kp (is_knowledge_point),
     INDEX idx_paragraph_position (position)
-  ) COMMENT='段表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='段表'`,
 
   // 23. KB_Tags 表
   `CREATE TABLE IF NOT EXISTS kb_tags (
@@ -521,7 +464,7 @@ const TABLES = [
     FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
     UNIQUE KEY uk_kb_tag (kb_id, name),
     INDEX idx_tag_kb (kb_id)
-  ) COMMENT='标签表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标签表'`,
 
   // 24. KB_Article_Tags 表（复合主键，无独立 id）
   `CREATE TABLE IF NOT EXISTS kb_article_tags (
@@ -533,7 +476,7 @@ const TABLES = [
     FOREIGN KEY (tag_id) REFERENCES kb_tags(id) ON DELETE CASCADE,
     INDEX idx_at_article (article_id),
     INDEX idx_at_tag (tag_id)
-  ) COMMENT='文章-标签关联表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文章-标签关联表'`,
 
   // ==================== 系统设置表 ====================
   
@@ -573,7 +516,7 @@ const TABLES = [
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_assistant_active (is_active),
     INDEX idx_assistant_mode (execution_mode)
-  ) COMMENT='助理配置表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='助理配置表'`,
 
   // 27. Assistant_Requests 表
   `CREATE TABLE IF NOT EXISTS assistant_requests (
@@ -599,7 +542,7 @@ const TABLES = [
     INDEX idx_request_user (user_id),
     INDEX idx_request_status (status),
     INDEX idx_request_created (created_at)
-  ) COMMENT='助理委托记录表'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='助理委托记录表'`,
 
   // 28. Assistant_Messages 表
   `CREATE TABLE IF NOT EXISTS assistant_messages (
@@ -738,7 +681,7 @@ const TABLES = [
     INDEX idx_skill_id (skill_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
-  ) COMMENT='用户技能参数表（只存储用户覆盖的参数）'`,
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户技能参数表（只存储用户覆盖的参数）'`,
 ];
 
 // 循环外键约束定义（需要在所有表创建后添加）
