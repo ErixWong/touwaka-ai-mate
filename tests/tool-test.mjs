@@ -1,32 +1,31 @@
 import Database from '../lib/db.js';
 import SkillLoader from '../lib/skill-loader.js';
 import ToolManager from '../lib/tool-manager.js';
-import fs from 'fs';
 import dotenv from 'dotenv';
 
 // 加载环境变量
 dotenv.config();
 
-// 替换配置文件中的环境变量占位符
-function resolveEnvVars(obj) {
-  const resolved = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
-      const envVar = value.slice(2, -1);
-      resolved[key] = process.env[envVar];
-    } else {
-      resolved[key] = value;
-    }
-  }
-  return resolved;
+// 验证必填环境变量
+const required = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+const missing = required.filter(key => !process.env[key]);
+if (missing.length > 0) {
+  console.error(`数据库配置缺失: ${missing.join(', ')}`);
+  console.error('请设置环境变量或在 .env 文件中配置');
+  process.exit(1);
 }
 
 async function test() {
   console.log('初始化数据库...');
   
-  // 读取数据库配置并替换环境变量
-  const dbConfigRaw = JSON.parse(fs.readFileSync('./config/database.json', 'utf-8'));
-  const dbConfig = resolveEnvVars(dbConfigRaw);
+  const dbConfig = {
+    host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT, 10) || 3306,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    connectionLimit: 10,
+  };
   console.log('数据库配置:', { host: dbConfig.host, database: dbConfig.database, user: dbConfig.user });
   
   const database = new Database(dbConfig);

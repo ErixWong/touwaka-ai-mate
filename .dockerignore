@@ -49,6 +49,3 @@ temp/
 docs/
 *.md
 !README.md
-
-# Config files that may contain secrets
-config/database.json
