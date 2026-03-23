@@ -431,8 +431,8 @@ async function getInitialData() {
 
   return {
     providers: [
-      { id: providerIds.openai, name: 'OpenAI', base_url: 'https://api.openai.com/v1', api_key: process.env.OPENAI_API_KEY || '' },
-      { id: providerIds.deepseek, name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', api_key: process.env.DEEPSEEK_API_KEY || '' },
+      { id: providerIds.openai, name: 'OpenAI', base_url: 'https://api.openai.com/v1', api_key: '' },
+      { id: providerIds.deepseek, name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', api_key: '' },
       { id: providerIds.ollama, name: 'Ollama Local', base_url: 'http://localhost:11434/v1', api_key: 'ollama' },
     ],
     models: [

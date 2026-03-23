@@ -1162,19 +1162,22 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
-      // 构建搜索条件
-      const articleFilter = article_id 
-        ? `AND s.article_id = '${article_id}'` 
+      // 构建搜索条件（使用参数化查询避免 SQL 注入）
+      const articleFilter = article_id
+        ? 'AND s.article_id = ?'
         : '';
+      const replacements = article_id
+        ? [kb_id, article_id, top_k]
+        : [kb_id, top_k];
 
       // 执行向量搜索（使用 MariaDB VECTOR 功能）
       const results = await this.db.sequelize.query(
-        `SELECT 
+        `SELECT
           p.id, p.title, p.content, p.is_knowledge_point, p.token_count,
           s.id as section_id, s.title as section_title, s.level as section_level,
           a.id as article_id, a.title as article_title,
           k.id as kb_id, k.name as kb_name,
-          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText('${JSON.stringify(queryEmbedding)}')) as distance
+          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText(?)) as distance
         FROM kb_paragraphs p
         JOIN kb_sections s ON p.section_id = s.id
         JOIN kb_articles a ON s.article_id = a.id
@@ -1185,7 +1188,7 @@ class KbController {
         ORDER BY distance ASC
         LIMIT ?`,
         {
-          replacements: [kb_id, top_k],
+          replacements: [JSON.stringify(queryEmbedding), ...replacements],
           type: this.db.sequelize.QueryTypes.SELECT,
         }
       );
@@ -1263,14 +1266,14 @@ class KbController {
 
       const kbIds = userKBs.map(kb => kb.id);
 
-      // 执行向量搜索
+      // 执行向量搜索（使用参数化查询）
       const results = await this.db.sequelize.query(
-        `SELECT 
+        `SELECT
           p.id, p.title, p.content, p.is_knowledge_point, p.token_count,
           s.id as section_id, s.title as section_title, s.level as section_level,
           a.id as article_id, a.title as article_title,
           k.id as kb_id, k.name as kb_name,
-          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText('${JSON.stringify(queryEmbedding)}')) as distance
+          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText(?)) as distance
         FROM kb_paragraphs p
         JOIN kb_sections s ON p.section_id = s.id
         JOIN kb_articles a ON s.article_id = a.id
@@ -1281,7 +1284,7 @@ class KbController {
         ORDER BY distance ASC
         LIMIT ?`,
         {
-          replacements: [kbIds, top_k],
+          replacements: [JSON.stringify(queryEmbedding), kbIds, top_k],
           type: this.db.sequelize.QueryTypes.SELECT,
         }
       );
@@ -1322,21 +1325,13 @@ class KbController {
   }
 
   /**
-   * 生成文本的嵌入向量
+   * 生成文本的嵌入向量（通过远程 API）
    * @param {string} text - 要生成嵌入的文本
    * @param {string} modelId - 嵌入模型 ID
    * @returns {Promise<number[]|null>} 嵌入向量
    */
   async _generateEmbedding(text, modelId) {
     try {
-      // 优先尝试本地模型
-      const { isLocalModelAvailable, generateEmbedding } = await import('../../lib/local-embedding.js');
-      
-      if (isLocalModelAvailable()) {
-        const embeddings = await generateEmbedding(text);
-        return embeddings?.[0] || null;
-      }
-
       // 获取 API 配置
       const AiModel = this.db.getModel('ai_model');
       const Provider = this.db.getModel('provider');
@@ -1353,7 +1348,7 @@ class KbController {
       });
 
       if (!model?.provider) {
-        logger.warn('[KB] No embedding API configured');
+        logger.warn('[KB] No embedding API configured for model:', modelId);
         return null;
       }
 
@@ -1551,14 +1546,14 @@ class KbController {
         failed: 0,
         current: 0,
         status: 'running',
-        embedding_dim: kb.embedding_dim || 384,
+        embedding_dim: kb.embedding_dim || 1536,
         started_at: new Date(),
       };
 
       KbController.revectorizeJobs.set(jobId, job);
 
       // 异步执行向量化
-      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || 384);
+      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || 1536);
 
       ctx.success({
         job_id: jobId,
@@ -1608,6 +1603,27 @@ class KbController {
   }
 
   /**
+   * 将向量数组转换为 MariaDB VECTOR 二进制格式
+   * @param {number[]} embedding 向量数组
+   * @returns {Buffer} MariaDB VECTOR 二进制格式
+   */
+  _toVectorBuffer(embedding) {
+    if (!Array.isArray(embedding)) return null;
+
+    // 验证数组元素都是数字
+    for (let i = 0; i < embedding.length; i++) {
+      if (typeof embedding[i] !== 'number' || !Number.isFinite(embedding[i])) {
+        logger.error(`[KB] Invalid embedding value at index ${i}: ${embedding[i]}`);
+        return null;
+      }
+    }
+
+    // 将浮点数数组转换为二进制 Buffer (Float32Array)
+    const floatArray = new Float32Array(embedding);
+    return Buffer.from(floatArray.buffer);
+  }
+
+  /**
    * 异步执行向量化任务
    * @private
    */
@@ -1623,13 +1639,35 @@ class KbController {
           // 生成嵌入向量
           const embedding = await this._generateEmbedding(paragraph.content, modelId);
 
-          if (embedding && embedding.length === embeddingDim) {
-            // 更新段落向量
-            await this.KbParagraph.update(
-              { embedding: JSON.stringify(embedding) },
-              { where: { id: paragraph.id } }
-            );
-            job.success++;
+          if (embedding) {
+            // 处理维度不匹配的情况
+            let finalEmbedding = embedding;
+            if (embedding.length !== embeddingDim) {
+              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: expected ${embeddingDim}, got ${embedding.length}`);
+              if (embedding.length > embeddingDim) {
+                finalEmbedding = embedding.slice(0, embeddingDim);
+              } else {
+                finalEmbedding = [...embedding, ...new Array(embeddingDim - embedding.length).fill(0)];
+              }
+            }
+
+            // 转换为二进制格式（与 embedding-worker.js 保持一致）
+            const vectorBuffer = this._toVectorBuffer(finalEmbedding);
+            if (!vectorBuffer) {
+              logger.error(`[KB] _runRevectorizeJob: failed to convert embedding for paragraph ${paragraph.id}`);
+              job.failed++;
+            } else {
+              // 使用原始 SQL 直接插入二进制数据
+              const hexString = vectorBuffer.toString('hex');
+              await this.db.sequelize.query(
+                `UPDATE kb_paragraphs SET embedding = X'${hexString}' WHERE id = ?`,
+                {
+                  replacements: [paragraph.id],
+                  type: this.db.sequelize.QueryTypes.UPDATE,
+                }
+              );
+              job.success++;
+            }
           } else {
             job.failed++;
           }

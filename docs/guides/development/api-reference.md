@@ -80,14 +80,6 @@ JWT_SECRET=your_jwt_secret
 JWT_REFRESH_SECRET=your_refresh_secret
 ```
 
-### LLM API（二选一）
-
-```bash
-OPENAI_API_KEY=sk-xxx
-# 或
-DEEPSEEK_API_KEY=sk-xxx
-```
-
 ### 其他
 
 ```bash
