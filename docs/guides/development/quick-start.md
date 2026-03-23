@@ -47,15 +47,12 @@ DB_PASSWORD=your_db_password
 JWT_SECRET=your_jwt_secret
 JWT_REFRESH_SECRET=your_refresh_secret
 
-# LLM API（至少配置一个）
-OPENAI_API_KEY=sk-xxx
-# 或
-DEEPSEEK_API_KEY=sk-xxx
-
 # 其他
 API_PORT=3000
 FRONTEND_URL=http://localhost:5173
 ```
+
+> **注意**：LLM Provider 的 API Key 应通过前端界面配置（设置 → 服务提供商），而非环境变量。
 
 ### 4. 初始化数据库
 
