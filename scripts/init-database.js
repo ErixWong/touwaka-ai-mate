@@ -1,6 +1,9 @@
 /**
  * Database Initialization Script
  * 使用 newID() 生成随机 ID 初始化数据库
+ * 
+ * 注意：此脚本用于全新数据库初始化
+ * 增量迁移请使用 upgrade-database.js
  */
 
 // 首先加载环境变量
@@ -21,6 +24,8 @@ const DB_CONFIG = {
 
 // 表结构定义
 const TABLES = [
+  // ==================== 基础表 ====================
+  
   // 1. Providers 表
   // timeout 字段单位为毫秒，默认 60 秒 = 60000 毫秒
   `CREATE TABLE IF NOT EXISTS providers (
@@ -42,6 +47,9 @@ const TABLES = [
     model_type ENUM('text', 'multimodal', 'embedding') DEFAULT 'text' COMMENT '模型类型: text=文本, multimodal=多模态, embedding=向量化',
     provider_id VARCHAR(32),
     max_tokens INT DEFAULT 4096,
+    embedding_dim INT NULL COMMENT '向量化模型的嵌入维度（仅 embedding 类型模型使用）',
+    supports_reasoning BIT(1) DEFAULT b'0' COMMENT '是否支持思考/推理模式（DeepSeek、OpenAI o1/o3、Qwen 等）',
+    thinking_format ENUM('openai', 'deepseek', 'qwen', 'none') DEFAULT 'none' COMMENT '思考模式格式',
     cost_per_1k_input DECIMAL(10, 6) DEFAULT 0,
     cost_per_1k_output DECIMAL(10, 6) DEFAULT 0,
     description TEXT,
@@ -70,13 +78,15 @@ const TABLES = [
     is_active BIT(1) DEFAULT b'1',
     avatar_base64 TEXT COMMENT '小头像Base64（日常使用）',
     avatar_large_base64 MEDIUMTEXT COMMENT '大头像Base64（对话框背景）',
-    context_threshold INT DEFAULT 4000 COMMENT '上下文压缩阈值',
     temperature DECIMAL(3,2) DEFAULT 0.7 COMMENT 'Expressive模型温度',
     reflective_temperature DECIMAL(3,2) DEFAULT 0.3 COMMENT 'Reflective模型温度',
     top_p DECIMAL(3,2) DEFAULT 1.0 COMMENT 'Top-p采样',
     frequency_penalty DECIMAL(3,2) DEFAULT 0.0 COMMENT '频率惩罚',
     presence_penalty DECIMAL(3,2) DEFAULT 0.0 COMMENT '存在惩罚',
     knowledge_config TEXT COMMENT '知识库配置（JSON格式）：{enabled, kb_id, top_k, threshold, max_tokens, style}',
+    max_tool_rounds INT DEFAULT NULL COMMENT '最大工具调用轮数（NULL表示使用系统默认，范围 1-50）',
+    context_threshold INT DEFAULT 4000 COMMENT '上下文压缩阈值',
+    context_strategy ENUM('full', 'simple') DEFAULT 'full' COMMENT '上下文组织策略',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (expressive_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
@@ -88,7 +98,6 @@ const TABLES = [
   // 注：index_js 和 config 字段已移除
   // - 代码通过 source_path 从文件系统加载
   // - 配置通过 skill_parameters 表管理
-  // 扩展字段：license, argument_hint, disable_model_invocation, user_invocable, allowed_tools
   `CREATE TABLE IF NOT EXISTS skills (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -96,7 +105,7 @@ const TABLES = [
     version VARCHAR(32),
     author VARCHAR(128),
     tags JSON,
-    source_type ENUM('url', 'zip', 'local') DEFAULT 'local',
+    source_type ENUM('database', 'filesystem', 'url', 'zip', 'local') DEFAULT 'filesystem',
     source_path VARCHAR(512),
     source_url VARCHAR(512),
     skill_md TEXT,
@@ -113,8 +122,6 @@ const TABLES = [
   )`,
 
   // 4.1 Skill_Tools 表（技能工具清单）
-  // 注：type, command, endpoint, method 字段已移除
-  // - 工具通过 script_path 指定的脚本执行
   // is_resident: 0=普通工具（执行后返回），1=驻留工具（持续运行，stdio通信）
   `CREATE TABLE IF NOT EXISTS skill_tools (
     id VARCHAR(32) PRIMARY KEY,
@@ -137,6 +144,7 @@ const TABLES = [
     param_name VARCHAR(64) NOT NULL COMMENT '参数名（如 api_key, base_url）',
     param_value TEXT COMMENT '参数值',
     is_secret BIT(1) DEFAULT b'0' COMMENT '是否敏感参数（前端显示/隐藏）',
+    allow_user_override BIT(1) DEFAULT b'1' COMMENT '是否允许用户覆盖',
     description VARCHAR(500) COMMENT '参数描述',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -145,18 +153,19 @@ const TABLES = [
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
   ) COMMENT='技能参数表'`,
 
-  // 5. Expert_Skills 表
+  // 5. Expert_Skills 表（复合主键，无独立 id）
   `CREATE TABLE IF NOT EXISTS expert_skills (
-    id VARCHAR(32) PRIMARY KEY,
-    expert_id VARCHAR(32) NOT NULL,
-    skill_id VARCHAR(32) NOT NULL,
-    is_enabled BIT(1) DEFAULT b'1',
-    config JSON,
+    expert_id VARCHAR(32) NOT NULL COMMENT '专家ID',
+    skill_id VARCHAR(32) NOT NULL COMMENT '技能ID',
+    is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+    config TEXT COMMENT '配置JSON',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (expert_id, skill_id),
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE,
-    UNIQUE KEY uk_expert_skill (expert_id, skill_id)
-  )`,
+    INDEX idx_expert (expert_id),
+    INDEX idx_skill (skill_id)
+  ) COMMENT='专家技能关联表'`,
 
   // 6. Users 表（用户固有属性，全局一致）
   `CREATE TABLE IF NOT EXISTS users (
@@ -171,13 +180,19 @@ const TABLES = [
     occupation VARCHAR(128) COMMENT '职业',
     location VARCHAR(128) COMMENT '所在地',
     status ENUM('active', 'inactive', 'banned') DEFAULT 'active',
+    department_id VARCHAR(20) NULL COMMENT '所属部门',
+    position_id VARCHAR(20) NULL COMMENT '职位ID',
+    invitation_quota INT DEFAULT 1 COMMENT '可生成的邀请码数量上限',
+    invited_by INT DEFAULT NULL COMMENT '邀请记录ID（关联 invitation_usage.id）',
     preferences JSON,
     last_login DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_username (username),
     INDEX idx_email (email),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_department (department_id),
+    INDEX idx_position (position_id)
   )`,
 
   // 7. User_Profiles 表（用户画像：专家对用户的认知）
@@ -207,17 +222,27 @@ const TABLES = [
     title VARCHAR(200) NOT NULL COMMENT '任务标题',
     description TEXT COMMENT '任务描述',
     workspace_path VARCHAR(500) NOT NULL COMMENT '工作目录路径（相对路径）',
-    status ENUM('active', 'archived', 'deleted') DEFAULT 'active',
+    expert_id VARCHAR(32) NULL COMMENT '关联的专家ID（自主任务执行时使用）',
+    topic_id VARCHAR(32) NULL COMMENT '关联的话题ID（自主任务执行时的对话）',
+    last_executed_at DATETIME NULL COMMENT '最后执行时间（自主任务执行器更新）',
+    solution_id VARCHAR(32) NULL COMMENT '关联的解决方案ID',
+    status ENUM('active', 'autonomous', 'archived', 'deleted') DEFAULT 'active',
     created_by VARCHAR(32) NOT NULL COMMENT '创建者 user_id',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE SET NULL,
+    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE SET NULL,
+    FOREIGN KEY (solution_id) REFERENCES solutions(id) ON DELETE SET NULL,
     INDEX idx_task_id (task_id),
     INDEX idx_user (created_by),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_expert (expert_id),
+    INDEX idx_topic (topic_id),
+    INDEX idx_solution (solution_id)
   ) COMMENT='任务工作空间表'`,
 
-  // 9. Topics 表（更新：添加 provider_name, model_name, status, keywords, task_id 等字段）
+  // 9. Topics 表
   `CREATE TABLE IF NOT EXISTS topics (
     id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL,
@@ -242,14 +267,15 @@ const TABLES = [
     INDEX idx_updated (updated_at)
   )`,
 
-  // 10. Messages 表（更新：添加 user_id, expert_id 字段）
+  // 10. Messages 表
   `CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(32) PRIMARY KEY,
     topic_id VARCHAR(32) DEFAULT NULL,
     user_id VARCHAR(32) NOT NULL COMMENT '消息所属用户ID，便于直接查询',
     expert_id VARCHAR(32) COMMENT '专家ID，便于直接查询',
-    role ENUM('system', 'user', 'assistant') NOT NULL,
+    role ENUM('system', 'user', 'assistant', 'tool') NOT NULL,
     content LONGTEXT NOT NULL COMMENT '消息内容，支持长文本',
+    reasoning_content LONGTEXT NULL COMMENT '思考过程内容（DeepSeek reasoning_content 输出）',
     content_type ENUM('text', 'image', 'file') DEFAULT 'text',
     prompt_tokens INT DEFAULT 0 COMMENT '输入 token 数量',
     completion_tokens INT DEFAULT 0 COMMENT '输出 token 数量',
@@ -273,15 +299,18 @@ const TABLES = [
   )`,
 
   // 11. Roles 表（RBAC权限系统）
+  // 注：字段已重命名 name -> mark, label -> name
   `CREATE TABLE IF NOT EXISTS roles (
     id VARCHAR(32) PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL COMMENT '角色标识：admin/creator/user',
-    label VARCHAR(100) NOT NULL COMMENT '角色显示名称',
+    mark VARCHAR(50) UNIQUE NOT NULL COMMENT '角色标识（不可编辑）：admin/creator/user',
+    name VARCHAR(100) NOT NULL COMMENT '角色显示名称',
     description TEXT COMMENT '角色描述',
+    level ENUM('user', 'power_user', 'admin') DEFAULT 'user' COMMENT '角色权限等级',
     is_system BIT(1) DEFAULT b'0' COMMENT '系统角色，不可删除',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_name (name)
+    UNIQUE INDEX mark (mark),
+    INDEX idx_level (level)
   )`,
 
   // 12. Permissions 表（权限定义，含菜单路由配置）
@@ -331,6 +360,8 @@ const TABLES = [
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE
   )`,
 
+  // ==================== 知识库表（旧版） ====================
+  
   // 16. Knowledge_Bases 表（知识库）
   `CREATE TABLE IF NOT EXISTS knowledge_bases (
     id VARCHAR(20) PRIMARY KEY,
@@ -342,6 +373,8 @@ const TABLES = [
     is_public BIT(1) DEFAULT b'0' COMMENT '预留，暂不使用',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (embedding_model_id) REFERENCES ai_models(id) ON DELETE SET NULL,
     INDEX idx_kb_owner (owner_id),
     INDEX idx_kb_public (is_public)
   )`,
@@ -399,6 +432,308 @@ const TABLES = [
     INDEX idx_kr_target (target_id),
     INDEX idx_kr_type (relation_type)
   )`,
+
+  // ==================== 知识库表（新版 KB Refactor） ====================
+  
+  // 20. KB_Articles 表
+  `CREATE TABLE IF NOT EXISTS kb_articles (
+    id VARCHAR(20) PRIMARY KEY,
+    kb_id VARCHAR(20) NOT NULL COMMENT '所属知识库',
+    title VARCHAR(500) NOT NULL COMMENT '文章标题',
+    summary TEXT COMMENT '文章摘要',
+    source_type ENUM('upload', 'url', 'manual') DEFAULT 'manual' COMMENT '来源类型',
+    source_url VARCHAR(1000) COMMENT '来源URL',
+    file_path VARCHAR(500) COMMENT '本地文件路径',
+    status ENUM('pending', 'processing', 'ready', 'error') DEFAULT 'pending' COMMENT '状态',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    INDEX idx_article_kb (kb_id),
+    INDEX idx_article_status (status)
+  ) COMMENT='文章表'`,
+
+  // 21. KB_Sections 表
+  `CREATE TABLE IF NOT EXISTS kb_sections (
+    id VARCHAR(20) PRIMARY KEY,
+    article_id VARCHAR(20) NOT NULL COMMENT '所属文章',
+    parent_id VARCHAR(20) DEFAULT NULL COMMENT '父节ID（自指向，形成无限层级）',
+    title VARCHAR(500) NOT NULL COMMENT '节标题',
+    level INT DEFAULT 1 COMMENT '层级深度（1=章, 2=节, 3=小节...）',
+    position INT DEFAULT 0 COMMENT '排序位置（同级内的顺序）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (article_id) REFERENCES kb_articles(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES kb_sections(id) ON DELETE CASCADE,
+    INDEX idx_section_article (article_id),
+    INDEX idx_section_parent (parent_id),
+    INDEX idx_section_level (level),
+    INDEX idx_section_position (position)
+  ) COMMENT='节表（无限层级）'`,
+
+  // 22. KB_Paragraphs 表
+  `CREATE TABLE IF NOT EXISTS kb_paragraphs (
+    id VARCHAR(20) PRIMARY KEY,
+    section_id VARCHAR(20) NOT NULL COMMENT '所属节',
+    title VARCHAR(500) COMMENT '段落标题（可选）',
+    content TEXT NOT NULL COMMENT '段落内容',
+    is_knowledge_point BIT(1) DEFAULT b'0' COMMENT '是否是知识点',
+    embedding VECTOR(384) COMMENT '向量（只有知识点才向量化）',
+    position INT DEFAULT 0 COMMENT '排序位置（同一节内的顺序）',
+    token_count INT DEFAULT 0 COMMENT 'Token 数量',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (section_id) REFERENCES kb_sections(id) ON DELETE CASCADE,
+    INDEX idx_paragraph_section (section_id),
+    INDEX idx_paragraph_kp (is_knowledge_point),
+    INDEX idx_paragraph_position (position)
+  ) COMMENT='段表'`,
+
+  // 23. KB_Tags 表
+  `CREATE TABLE IF NOT EXISTS kb_tags (
+    id VARCHAR(20) PRIMARY KEY,
+    kb_id VARCHAR(20) NOT NULL COMMENT '所属知识库',
+    name VARCHAR(100) NOT NULL COMMENT '标签名',
+    description VARCHAR(500) COMMENT '标签描述',
+    article_count INT DEFAULT 0 COMMENT '关联文章数（缓存）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_kb_tag (kb_id, name),
+    INDEX idx_tag_kb (kb_id)
+  ) COMMENT='标签表'`,
+
+  // 24. KB_Article_Tags 表（复合主键，无独立 id）
+  `CREATE TABLE IF NOT EXISTS kb_article_tags (
+    article_id VARCHAR(20) NOT NULL COMMENT '文章ID',
+    tag_id VARCHAR(20) NOT NULL COMMENT '标签ID',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (article_id, tag_id),
+    FOREIGN KEY (article_id) REFERENCES kb_articles(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES kb_tags(id) ON DELETE CASCADE,
+    INDEX idx_at_article (article_id),
+    INDEX idx_at_tag (tag_id)
+  ) COMMENT='文章-标签关联表'`,
+
+  // ==================== 系统设置表 ====================
+  
+  // 25. System_Settings 表
+  `CREATE TABLE IF NOT EXISTS system_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(100) UNIQUE NOT NULL,
+    setting_value TEXT NOT NULL,
+    value_type VARCHAR(20) DEFAULT 'string',
+    description VARCHAR(500),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  // ==================== 助理系统表 ====================
+  
+  // 26. Assistants 表
+  `CREATE TABLE IF NOT EXISTS assistants (
+    assistant_type VARCHAR(32) PRIMARY KEY,
+    name VARCHAR(128) NOT NULL COMMENT '显示名称',
+    icon VARCHAR(32) COMMENT '图标',
+    description TEXT COMMENT '能力描述',
+    model_id VARCHAR(32) COMMENT '关联 ai_models.id',
+    prompt_template TEXT COMMENT '系统提示词模板',
+    max_tokens INT DEFAULT 4096,
+    temperature DECIMAL(3,2) DEFAULT 0.7,
+    estimated_time INT DEFAULT 30 COMMENT '预估执行时间（秒）',
+    timeout INT DEFAULT 120 COMMENT '超时时间（秒）',
+    tool_name VARCHAR(64) COMMENT '工具名称，如 ocr_analyze',
+    tool_description TEXT COMMENT '工具描述',
+    tool_parameters JSON COMMENT 'JSON Schema 格式的参数定义',
+    can_use_skills BIT(1) DEFAULT b'0' COMMENT '是否允许助理调用技能',
+    execution_mode ENUM('direct', 'llm') DEFAULT 'llm' COMMENT '执行模式',
+    is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
+    is_builtin BIT(1) DEFAULT b'0' COMMENT '是否为内置助理（不可删除）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_assistant_active (is_active),
+    INDEX idx_assistant_mode (execution_mode)
+  ) COMMENT='助理配置表'`,
+
+  // 27. Assistant_Requests 表
+  `CREATE TABLE IF NOT EXISTS assistant_requests (
+    request_id VARCHAR(64) PRIMARY KEY,
+    assistant_type VARCHAR(32) NOT NULL,
+    expert_id VARCHAR(32) COMMENT '调用专家ID',
+    contact_id VARCHAR(64) COMMENT '联系人ID',
+    user_id VARCHAR(32) COMMENT '用户ID',
+    topic_id VARCHAR(32) COMMENT '话题ID',
+    status ENUM('pending', 'running', 'completed', 'failed', 'timeout', 'cancelled') DEFAULT 'pending',
+    input JSON NOT NULL COMMENT '输入参数',
+    result LONGTEXT COMMENT '执行结果',
+    error_message TEXT COMMENT '错误信息',
+    tokens_input INT DEFAULT 0 COMMENT '输入 Token 数',
+    tokens_output INT DEFAULT 0 COMMENT '输出 Token 数',
+    model_used VARCHAR(128) COMMENT '实际使用的模型',
+    latency_ms INT DEFAULT 0 COMMENT '执行耗时（毫秒）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME COMMENT '开始执行时间',
+    completed_at DATETIME COMMENT '完成时间',
+    is_archived BIT(1) DEFAULT b'0' COMMENT '是否已归档',
+    INDEX idx_request_expert (expert_id),
+    INDEX idx_request_user (user_id),
+    INDEX idx_request_status (status),
+    INDEX idx_request_created (created_at)
+  ) COMMENT='助理委托记录表'`,
+
+  // 28. Assistant_Messages 表
+  `CREATE TABLE IF NOT EXISTS assistant_messages (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    request_id VARCHAR(64) NOT NULL COMMENT '关联 assistant_requests.request_id',
+    parent_message_id VARCHAR(64) DEFAULT NULL COMMENT '父消息 ID，用于树状结构',
+    role ENUM('expert', 'assistant', 'tool', 'system') NOT NULL COMMENT '消息角色',
+    message_type ENUM(
+      'task', 'context', 'assistant_response', 'tool_call', 'tool_result',
+      'final', 'error', 'retry', 'status', 'note'
+    ) NOT NULL COMMENT '消息类型',
+    content LONGTEXT DEFAULT NULL COMMENT '文本内容',
+    content_preview VARCHAR(512) DEFAULT NULL COMMENT '摘要，用于列表展示',
+    tool_name VARCHAR(128) DEFAULT NULL COMMENT '工具名称',
+    tool_call_id VARCHAR(64) DEFAULT NULL COMMENT '工具调用链路 ID',
+    status ENUM('pending', 'running', 'completed', 'failed', 'skipped') DEFAULT NULL COMMENT '消息状态',
+    sequence_no INT NOT NULL COMMENT '同一 request 内顺序号',
+    metadata JSON DEFAULT NULL COMMENT '扩展字段',
+    tokens_input INT DEFAULT NULL COMMENT '本条消息相关输入 token',
+    tokens_output INT DEFAULT NULL COMMENT '本条消息相关输出 token',
+    latency_ms INT DEFAULT NULL COMMENT '本步骤耗时',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_request_id (request_id),
+    KEY idx_request_seq (request_id, sequence_no),
+    KEY idx_tool_call_id (tool_call_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='助理内部消息表'`,
+
+  // ==================== 组织架构表 ====================
+  
+  // 29. Departments 表
+  `CREATE TABLE IF NOT EXISTS departments (
+    id VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL COMMENT '部门名称',
+    parent_id VARCHAR(20) NULL COMMENT '父部门ID',
+    path VARCHAR(255) NULL COMMENT '层级路径，如 /1/2/3',
+    level INT DEFAULT 1 COMMENT '层级深度(1-4)',
+    sort_order INT DEFAULT 0 COMMENT '同级排序',
+    description TEXT NULL COMMENT '部门描述',
+    status ENUM('active', 'inactive') DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_parent (parent_id),
+    INDEX idx_path (path),
+    INDEX idx_status (status),
+    UNIQUE INDEX uk_path (path)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门表'`,
+
+  // 30. Positions 表
+  `CREATE TABLE IF NOT EXISTS positions (
+    id VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL COMMENT '职位名称',
+    department_id VARCHAR(20) NOT NULL COMMENT '所属部门',
+    is_manager BIT(1) DEFAULT b'0' COMMENT '是否为负责人职位',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    description TEXT NULL COMMENT '职位描述',
+    status ENUM('active', 'inactive') DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_department (department_id),
+    INDEX idx_status (status),
+    CONSTRAINT fk_position_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='职位表'`,
+
+  // ==================== 解决方案模块 ====================
+  
+  // 31. Solutions 表
+  `CREATE TABLE IF NOT EXISTS solutions (
+    id VARCHAR(32) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL COMMENT '解决方案名称',
+    slug VARCHAR(100) UNIQUE COMMENT 'URL友好标识',
+    description TEXT COMMENT '简要描述（适用场景）',
+    guide LONGTEXT COMMENT '执行指南（Markdown）',
+    tags JSON COMMENT '标签数组',
+    is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_active (is_active)
+  ) COMMENT='解决方案表'`,
+
+  // ==================== 任务预览 Token 表 ====================
+  
+  // 32. Task_Token 表
+  `CREATE TABLE IF NOT EXISTS task_token (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    token VARCHAR(64) NOT NULL UNIQUE COMMENT 'Token字符串(随机生成，非JWT)',
+    task_id VARCHAR(32) NOT NULL COMMENT '关联的任务ID',
+    user_id VARCHAR(32) NOT NULL COMMENT '创建Token的用户ID',
+    expires_at DATETIME NOT NULL COMMENT '过期时间',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_token (token),
+    INDEX idx_task_user (task_id, user_id),
+    INDEX idx_expires_at (expires_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务预览Token表'`,
+
+  // 33. Task_Token_Access_Log 表
+  `CREATE TABLE IF NOT EXISTS task_token_access_log (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    token_id INT NOT NULL COMMENT '关联的Token ID',
+    file_path VARCHAR(512) NOT NULL COMMENT '访问的文件路径',
+    ip_address VARCHAR(45) NOT NULL COMMENT '访问者IP地址',
+    user_agent VARCHAR(512) COMMENT '浏览器User-Agent',
+    accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_token_id (token_id),
+    INDEX idx_accessed_at (accessed_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Token访问日志表'`,
+
+  // ==================== 邀请注册系统 ====================
+  
+  // 34. Invitations 表
+  `CREATE TABLE IF NOT EXISTS invitations (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    code VARCHAR(32) NOT NULL UNIQUE COMMENT '邀请码',
+    creator_id VARCHAR(32) NOT NULL COMMENT '创建者用户ID',
+    max_uses INT DEFAULT 5 COMMENT '最大使用次数',
+    used_count INT DEFAULT 0 COMMENT '已使用次数',
+    expires_at DATETIME DEFAULT NULL COMMENT '过期时间，NULL表示永不过期',
+    status ENUM('active', 'exhausted', 'expired', 'revoked') DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_code (code),
+    INDEX idx_creator (creator_id),
+    INDEX idx_status (status),
+    FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请码表'`,
+
+  // 35. Invitation_Usages 表
+  `CREATE TABLE IF NOT EXISTS invitation_usages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    invitation_id INT NOT NULL COMMENT '邀请ID',
+    user_id VARCHAR(32) NOT NULL COMMENT '注册用户ID',
+    used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (invitation_id) REFERENCES invitations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_invitation (invitation_id),
+    INDEX idx_user (user_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请使用记录表'`,
+
+  // ==================== 用户技能参数表 ====================
+  
+  // 36. User_Skill_Parameters 表
+  `CREATE TABLE IF NOT EXISTS user_skill_parameters (
+    id VARCHAR(32) PRIMARY KEY,
+    user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+    skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+    param_name VARCHAR(100) NOT NULL COMMENT '参数名',
+    param_value TEXT COMMENT '参数值',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_skill_param (user_id, skill_id, param_name),
+    INDEX idx_user_id (user_id),
+    INDEX idx_skill_id (skill_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+  ) COMMENT='用户技能参数表（只存储用户覆盖的参数）'`,
 ];
 
 // 初始数据
@@ -446,11 +781,10 @@ async function getInitialData() {
       { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理员' },
       { id: Utils.newID(20), username: 'test', email: 'test@example.com', password_hash: defaultPassword, nickname: '测试用户' },
     ],
-// 技能数据已移除，使用 init-skills-from-json.js 从 JSON 导入
     roles: [
-      { id: roleIds.admin, name: 'admin', label: '平台管理员', description: '拥有所有权限', is_system: true },
-      { id: roleIds.creator, name: 'creator', label: '专家创作者', description: '可以创建和管理自己的专家', is_system: true },
-      { id: roleIds.user, name: 'user', label: '普通用户', description: '可以使用聊天功能', is_system: true },
+      { id: roleIds.admin, mark: 'admin', name: '平台管理员', description: '拥有所有权限', level: 'admin', is_system: true },
+      { id: roleIds.creator, mark: 'creator', name: '专家创作者', description: '可以创建和管理自己的专家', level: 'power_user', is_system: true },
+      { id: roleIds.user, mark: 'user', name: '普通用户', description: '可以使用聊天功能', level: 'user', is_system: true },
     ],
     roleIds: roleIds,
   };
@@ -486,10 +820,28 @@ async function initDatabase() {
     console.log('Dropping existing tables...');
     // 按依赖顺序删除表（先删除有外键的表）
     const dropTables = [
+      // 新知识库表
+      'kb_article_tags', 'kb_tags', 'kb_paragraphs', 'kb_sections', 'kb_articles',
+      // 邀请系统
+      'invitation_usages', 'invitations',
+      // 任务 Token
+      'task_token_access_log', 'task_token',
+      // 解决方案
+      'solutions',
+      // 用户技能参数
+      'user_skill_parameters',
+      // 助理系统
+      'assistant_messages', 'assistant_requests', 'assistants',
+      // 组织架构
+      'positions', 'departments',
+      // 旧知识库表
       'knowledge_relations', 'knowledge_points', 'knowledges', 'knowledge_bases',
+      // 核心业务表
       'messages', 'topics', 'tasks', 'user_profiles', 'user_roles', 'role_permissions', 'role_experts',
       'permissions', 'roles', 'users', 'expert_skills', 'skill_parameters', 'skill_tools', 'skills', 'experts',
-      'ai_models', 'providers'
+      'ai_models', 'providers',
+      // 系统设置
+      'system_settings'
     ];
     for (const table of dropTables) {
       await connection.execute(`DROP TABLE IF EXISTS ${table}`);
@@ -537,15 +889,15 @@ async function initDatabase() {
     }
     console.log(`  - ${data.users.length} users (default password: password123)`);
 
-// 技能数据通过 init-skills-from-json.js 导入
+    // 技能数据通过 init-skills-from-json.js 导入
     console.log('  - 技能数据请运行 init-skills-from-json.js 导入');
 
-    // 插入 roles
+    // 插入 roles（使用新字段名）
     for (const r of data.roles) {
       await connection.execute(
-        `INSERT INTO roles (id, name, label, description, is_system) VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name=VALUES(name), label=VALUES(label)`,
-        [r.id, r.name, r.label, r.description, r.is_system]
+        `INSERT INTO roles (id, mark, name, description, level, is_system) VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE mark=VALUES(mark), name=VALUES(name)`,
+        [r.id, r.mark, r.name, r.description, r.level, r.is_system]
       );
     }
     console.log('  - 3 roles (admin, creator, user)');
@@ -651,6 +1003,37 @@ async function initDatabase() {
       [adminUserId, roleIds.admin, testUserId, roleIds.user]
     );
     console.log('  - user_roles assigned');
+
+    // 插入系统默认配置
+    const defaultSettings = [
+      { key: 'llm.context_threshold', value: '0.70', type: 'number', desc: '上下文压缩阈值' },
+      { key: 'llm.temperature', value: '0.70', type: 'number', desc: '表达温度默认值' },
+      { key: 'llm.reflective_temperature', value: '0.30', type: 'number', desc: '反思温度默认值' },
+      { key: 'llm.top_p', value: '1.0', type: 'number', desc: 'Top-p 采样默认值' },
+      { key: 'llm.frequency_penalty', value: '0.0', type: 'number', desc: '频率惩罚默认值' },
+      { key: 'llm.presence_penalty', value: '0.0', type: 'number', desc: '存在惩罚默认值' },
+      { key: 'llm.max_tokens', value: '4096', type: 'number', desc: '最大 Token 默认值' },
+      { key: 'connection.max_per_user', value: '5', type: 'number', desc: '每用户最大 SSE 连接数' },
+      { key: 'connection.max_per_expert', value: '100', type: 'number', desc: '每 Expert 最大 SSE 连接数' },
+      { key: 'token.access_expiry', value: '15m', type: 'string', desc: 'Access Token 过期时间' },
+      { key: 'token.refresh_expiry', value: '7d', type: 'string', desc: 'Refresh Token 过期时间' },
+      { key: 'pagination.default_size', value: '20', type: 'number', desc: '默认分页大小' },
+      { key: 'pagination.max_size', value: '100', type: 'number', desc: '最大分页大小' },
+      { key: 'registration.allow_self_registration', value: 'false', type: 'boolean', desc: '是否允许自主注册（无需邀请码）' },
+      { key: 'registration.default_invitation_quota', value: '1', type: 'number', desc: '用户默认可生成的邀请码数量' },
+      { key: 'registration.default_invitation_max_uses', value: '5', type: 'number', desc: '每个邀请码默认可邀请人数' },
+      { key: 'registration.invitation_expiry_days', value: '0', type: 'number', desc: '邀请码默认有效天数（0=永久）' },
+    ];
+    
+    for (const setting of defaultSettings) {
+      await connection.execute(
+        `INSERT INTO system_settings (setting_key, setting_value, value_type, description)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)`,
+        [setting.key, setting.value, setting.type, setting.desc]
+      );
+    }
+    console.log('  - system_settings initialized');
 
     console.log('\n✅ Database initialization completed successfully!');
     console.log(`\nTest accounts:`);
