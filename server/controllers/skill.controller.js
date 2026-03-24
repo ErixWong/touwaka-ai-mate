@@ -850,6 +850,36 @@ class SkillController {
   // ==================== 技能目录文件管理 API ====================
 
   /**
+   * 规范化技能源路径
+   * 将数据库中的 source_path 转换为完整的文件系统路径
+   *
+   * @param {string} sourcePath - 数据库中的源路径
+   * @param {string} PROJECT_ROOT - 项目根目录
+   * @returns {{ path: string, error: string | null }} 完整的文件系统路径或错误信息
+   */
+  #normalizeSkillPath(sourcePath, PROJECT_ROOT) {
+    // 检查空字符串或无效路径
+    if (!sourcePath || sourcePath.trim() === '') {
+      return { path: '', error: '技能源路径为空，请重新注册技能' };
+    }
+    
+    // 统一路径分隔符为正斜杠，便于判断（兼容 Windows 和 Unix）
+    sourcePath = sourcePath.replace(/\\/g, '/');
+    
+    // 规范化 source_path：skills/xxx → data/skills/xxx
+    if (sourcePath.startsWith('skills/')) {
+      sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
+    } else if (!sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+      sourcePath = path.join('data/skills', sourcePath);
+    }
+    
+    return {
+      path: path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath),
+      error: null
+    };
+  }
+
+  /**
    * 获取技能目录文件列表
    * GET /api/skills/:id/files
    *
@@ -870,26 +900,17 @@ class SkillController {
         skill = await this.Skill.findOne({ where: { name: id }, raw: true });
       }
 
-      logger.info('[listFiles] Skill lookup result:', {
-        found: !!skill,
-        skillId: skill?.id,
-        sourcePath: skill?.source_path
-      });
-
       const PROJECT_ROOT = process.cwd();
       let skillPath;
       
-      if (skill) {
+      if (skill && skill.source_path) {
         // 已注册技能，使用 source_path
-        let sourcePath = skill.source_path;
-        
-        // 规范化 source_path：skills/xxx → data/skills/xxx
-        if (sourcePath && sourcePath.startsWith('skills/')) {
-          sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
-        } else if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-          sourcePath = path.join('data/skills', sourcePath);
+        const result = this.#normalizeSkillPath(skill.source_path, PROJECT_ROOT);
+        if (result.error) {
+          ctx.error(result.error, 400);
+          return;
         }
-        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
+        skillPath = result.path;
       } else {
         // 未注册目录，直接使用 data/skills/:name
         skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
@@ -972,17 +993,14 @@ class SkillController {
       const PROJECT_ROOT = process.cwd();
       let skillPath;
       
-      if (skill) {
+      if (skill && skill.source_path) {
         // 已注册技能，使用 source_path
-        let sourcePath = skill.source_path;
-        
-        // 规范化 source_path：skills/xxx → data/skills/xxx
-        if (sourcePath && sourcePath.startsWith('skills/')) {
-          sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
-        } else if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-          sourcePath = path.join('data/skills', sourcePath);
+        const result = this.#normalizeSkillPath(skill.source_path, PROJECT_ROOT);
+        if (result.error) {
+          ctx.error(result.error, 400);
+          return;
         }
-        skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
+        skillPath = result.path;
       } else {
         // 未注册目录，直接使用 data/skills/:name
         skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
