@@ -78,11 +78,11 @@ skill-manager_register_skill(
 ```
 
 **✅ source_path 自动规范化**：
-- 系统会自动处理路径格式，以下格式都会被规范化为 `skills/pdf`：
-  - `data/skills/pdf` → `skills/pdf`（移除 data/ 前缀）
-  - `pdf` → `skills/pdf`（添加 skills/ 前缀）
-  - `skills/pdf` → `skills/pdf`（保持不变）
-- 推荐使用 `skills/{目录名}` 格式以保持一致性
+- 系统会自动处理路径格式，以下格式都会被规范化为技能目录名：
+  - `data/skills/pdf` → `pdf`（移除 data/skills 前缀）
+  - `skills/pdf` → `pdf`（移除 skills 前缀）
+  - `pdf` → `pdf`（保持不变）
+- 推荐直接使用技能目录名（如 `pdf`）或 `skills/{目录名}` 格式
 
 ### 6. 验证注册结果
 

@@ -135,15 +135,19 @@ async function registerSkill(params) {
     throw new Error('tools 参数是必需的。请先读取 SKILL.md，理解工具定义后传入 tools 数组。');
   }
 
-  // 规范化 source_path：必须以 skills/ 开头，不能以 data/ 开头
-  // 移除 data/ 前缀（如果存在）
+  // 规范化 source_path：提取技能目录名
+  // 支持多种格式：skills/pdf, data/skills/pdf, pdf
+  // 最终只保留技能目录名（如 pdf）
+  
+  // 移除 data/ 前缀
   if (source_path.startsWith('data/')) {
-    source_path = source_path.substring(5); // 移除 'data/'
+    source_path = source_path.substring(5); // data/skills/pdf → skills/pdf
   }
-  // 确保以 skills/ 开头
-  if (!source_path.startsWith('skills/')) {
-    source_path = 'skills/' + source_path;
+  // 移除 skills/ 前缀，只保留技能目录名
+  if (source_path.startsWith('skills/')) {
+    source_path = source_path.substring(7); // skills/pdf → pdf
   }
+  // 此时 source_path 应该只是技能目录名（如 pdf）
 
   return await httpRequest('POST', '/api/skills/register', {
     source_path,
