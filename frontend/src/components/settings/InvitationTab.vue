@@ -87,6 +87,29 @@
       </div>
     </div>
 
+    <!-- 链接显示弹窗 -->
+    <div v-if="showLinkModal" class="modal-overlay" @click.self="closeLinkModal">
+      <div class="modal-content link-modal">
+        <div class="modal-header">
+          <h3>{{ $t('invitation.inviteLink') }}</h3>
+          <button class="btn-close" @click="closeLinkModal">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="link-hint">{{ $t('invitation.linkHint') }}</p>
+          <div class="link-display">
+            <input
+              ref="linkInputRef"
+              type="text"
+              :value="currentLink"
+              readonly
+              class="link-input"
+              @click="selectLink"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 使用记录弹窗 -->
     <div v-if="showUsageModal" class="modal-overlay" @click.self="closeUsageModal">
       <div class="modal-content">
@@ -123,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getInvitationQuota,
@@ -147,6 +170,11 @@ const showUsageModal = ref(false)
 const usageLoading = ref(false)
 const usageList = ref<InvitationUsage[]>([])
 const currentInvitation = ref<Invitation | null>(null)
+
+// 链接显示弹窗
+const showLinkModal = ref(false)
+const currentLink = ref('')
+const linkInputRef = ref<HTMLInputElement | null>(null)
 
 // 加载数据
 onMounted(async () => {
@@ -195,8 +223,29 @@ const copyInviteLink = async (code: string) => {
     await navigator.clipboard.writeText(link)
     alert(t('invitation.copySuccess'))
   } catch (err) {
-    alert(t('invitation.copyError'))
+    // 剪贴板被禁用时，显示链接弹窗让用户手动复制
+    currentLink.value = link
+    showLinkModal.value = true
+    nextTick(() => {
+      // 自动选中链接文本
+      if (linkInputRef.value) {
+        linkInputRef.value.select()
+      }
+    })
   }
+}
+
+// 选中链接文本
+const selectLink = () => {
+  if (linkInputRef.value) {
+    linkInputRef.value.select()
+  }
+}
+
+// 关闭链接弹窗
+const closeLinkModal = () => {
+  showLinkModal.value = false
+  currentLink.value = ''
 }
 
 // 撤销邀请码
@@ -502,5 +551,43 @@ const formatDate = (dateStr: string) => {
 .usage-time {
   font-size: 13px;
   color: #666;
+}
+
+/* Link Modal */
+.link-modal {
+  max-width: 550px;
+}
+
+.link-hint {
+  margin: 0 0 16px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.link-display {
+  display: flex;
+  gap: 8px;
+}
+
+.link-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 14px;
+  background: #f8f9fa;
+  color: #333;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.link-input:hover {
+  border-color: #667eea;
+}
+
+.link-input:focus {
+  outline: none;
+  border-color: #667eea;
 }
 </style>
