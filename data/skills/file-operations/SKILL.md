@@ -3,11 +3,6 @@ name: file-operations
 description: "文件系统操作。用于读取、写入、搜索、管理文件。当需要在数据目录中操作文件时触发。"
 argument-hint: "[read|write|grep|info|action] [path]"
 user-invocable: true
-allowed-tools:
-  - Bash(cat *)
-  - Bash(ls *)
-  - Bash(grep *)
-  - Bash(find *)
 ---
 
 # File Operations - 文件系统操作
@@ -164,22 +159,6 @@ result = read_file(path="tasks/screenshot.png", mode="data_url")
 | `move` | 移动文件 | `source`, `destination` |
 | `delete` | 删除文件或目录 | `path` |
 | `create_dir` | 创建目录 | `path` |
-
-## 安全说明
-
-### 路径限制
-
-| 用户类型 | 相对路径 | 绝对路径 |
-|----------|----------|----------|
-| 普通用户 | ✅ 允许 | ❌ 拒绝 |
-| 管理员 | ✅ 允许 | ✅ 允许（限许可目录） |
-
-### 允许目录
-
-| 用户类型 | 允许目录 |
-|----------|----------|
-| 普通用户 | 当前工作目录 |
-| 管理员 | 当前工作目录 + `data/skills` |
 
 ## 最佳实践
 
