@@ -1,4 +1,4 @@
-/**
+ /**
  * File Operations Skill - Node.js Implementation
  * 
  * File system operations including read, write, search, and manage files.
@@ -152,7 +152,7 @@ function resolvePath(relativePath) {
  * 
  * @param {object} params - Parameters
  * @param {string} params.path - File path
- * @param {string} params.mode - Read mode: "lines" (default) or "bytes"
+ * @param {string} params.mode - Read mode: "lines" (default), "bytes", or "data_url"
  * @param {number} params.from - Start line (for lines mode, 1-based)
  * @param {number} params.lines - Number of lines to read (for lines mode)
  * @param {number} params.offset - Byte offset (for bytes mode)
@@ -167,6 +167,42 @@ async function readFile(params) {
   }
   
   const stats = fs.statSync(resolvedPath);
+  
+  // Data URL mode - 读取文件为 base64 Data URL（用于多模态 LLM 调用）
+  if (mode === 'data_url') {
+    if (!stats.isFile()) {
+      throw new Error(`Not a file: ${resolvedPath}`);
+    }
+    
+    // 限制文件大小（10MB）
+    const MAX_DATA_URL_SIZE = 10 * 1024 * 1024;
+    if (stats.size > MAX_DATA_URL_SIZE) {
+      throw new Error(`File too large for Data URL: ${stats.size} bytes (max: ${MAX_DATA_URL_SIZE})`);
+    }
+    
+    // 读取文件为 base64
+    const buffer = fs.readFileSync(resolvedPath);
+    const base64 = buffer.toString('base64');
+    
+    // 获取 MIME 类型
+    const ext = path.extname(resolvedPath).slice(1).toLowerCase();
+    const mimeType = getMimeType(ext);
+    
+    // 返回 data URL
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    
+    return {
+      path: resolvedPath,
+      mode: 'data_url',
+      mimeType: mimeType,
+      dataUrl: dataUrl,
+      size: buffer.length,
+      sizeHuman: formatBytes(buffer.length),
+      // 使用提示
+      usageHint: `在回复中使用 Markdown 格式：![图片描述](data:${mimeType};base64,...)`,
+    };
+  }
+  
   if (stats.size > MAX_FILE_SIZE) {
     throw new Error(`File too large: ${stats.size} bytes (max: ${MAX_FILE_SIZE})`);
   }

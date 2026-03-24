@@ -48,15 +48,45 @@ allowed-tools:
 
 ### read_file
 
-读取文件内容。
+读取文件内容，支持多种模式。
 
 **参数：**
 - `path` (string, required): 文件路径
-- `mode` (string, optional): 读取模式 - `"lines"` (默认) 或 `"bytes"`
+- `mode` (string, optional): 读取模式 - `"lines"` (默认), `"bytes"`, 或 `"data_url"`
 - `from` (number, optional): 起始行（lines 模式，默认: 1）
 - `lines` (number, optional): 行数（lines 模式，默认: 100）
 - `offset` (number, optional): 起始字节（bytes 模式，默认: 0）
 - `bytes` (number, optional): 字节数（bytes 模式，默认: 50000）
+
+**读取模式：**
+| 模式 | 说明 | 用途 |
+|------|------|------|
+| `lines` | 按行读取（默认） | 读取文本文件 |
+| `bytes` | 按字节读取 | 读取二进制文件片段 |
+| `data_url` | 转换为 Data URL | **多模态 LLM 调用** |
+
+**data_url 模式（用于多模态）：**
+
+让专家能够"看到"图片文件内容。
+
+**使用方法：**
+1. 调用 `read_file(path="tasks/screenshot.png", mode="data_url")`
+2. 得到 `dataUrl: "data:image/png;base64,xxx"`
+3. 在回复中使用 Markdown 格式：`![图片描述](data:image/png;base64,xxx)`
+4. LLMClient 会自动识别并转换为多模态格式发送给模型
+
+**示例：**
+```
+# 读取图片为 Data URL
+result = read_file(path="tasks/screenshot.png", mode="data_url")
+
+# 在回复中引用
+![截图](data:image/png;base64,iVBORw0KGgo...)
+```
+
+**限制：**
+- 最大文件大小：10MB（data_url 模式）
+- 支持所有 MIME 类型（图片、PDF、音视频等）
 
 ### list_files
 
