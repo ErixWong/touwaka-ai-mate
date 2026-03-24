@@ -44,12 +44,47 @@
           :key="invitation.id"
           class="invitation-item"
         >
-          <div class="invitation-main">
-            <div class="invitation-code">
-              <span class="code-label">{{ invitation.code }}</span>
-              <span :class="['status-badge', invitation.status]">
-                {{ $t(`invitation.status.${invitation.status}`) }}
-              </span>
+          <div class="invitation-content">
+            <div class="invitation-header">
+              <div class="invitation-code">
+                <span class="code-label">{{ invitation.code }}</span>
+                <span :class="['status-badge', invitation.status]">
+                  {{ $t(`invitation.status.${invitation.status}`) }}
+                </span>
+              </div>
+              <div class="invitation-actions">
+                <button
+                  class="btn-action copy"
+                  :title="$t('invitation.copyLink')"
+                  @click="copyInviteLink(invitation.code)"
+                >
+                  📋
+                </button>
+                <button
+                  v-if="invitation.status === 'active'"
+                  class="btn-action revoke"
+                  :title="$t('invitation.revoke')"
+                  @click="handleRevoke(invitation)"
+                >
+                  ❌
+                </button>
+                <button
+                  class="btn-action view"
+                  :title="$t('invitation.viewUsage')"
+                  @click="showUsage(invitation)"
+                >
+                  👥
+                </button>
+              </div>
+            </div>
+            <div class="invitation-link">
+              <input
+                type="text"
+                :value="getInviteLink(invitation.code)"
+                readonly
+                class="link-input-inline"
+                @click="($event.target as HTMLInputElement).select()"
+              />
             </div>
             <div class="invitation-meta">
               <span>{{ $t('invitation.usedCount', { used: invitation.usedCount, max: invitation.maxUses }) }}</span>
@@ -58,30 +93,6 @@
               </span>
               <span v-else>{{ $t('invitation.neverExpires') }}</span>
             </div>
-          </div>
-          <div class="invitation-actions">
-            <button
-              class="btn-action copy"
-              :title="$t('invitation.copyLink')"
-              @click="copyInviteLink(invitation.code)"
-            >
-              📋
-            </button>
-            <button
-              v-if="invitation.status === 'active'"
-              class="btn-action revoke"
-              :title="$t('invitation.revoke')"
-              @click="handleRevoke(invitation)"
-            >
-              ❌
-            </button>
-            <button
-              class="btn-action view"
-              :title="$t('invitation.viewUsage')"
-              @click="showUsage(invitation)"
-            >
-              👥
-            </button>
           </div>
         </div>
       </div>
@@ -214,10 +225,15 @@ const handleCreateInvitation = async () => {
   }
 }
 
+// 获取邀请链接
+const getInviteLink = (code: string) => {
+  const baseUrl = window.location.origin
+  return `${baseUrl}/register?code=${code}`
+}
+
 // 复制邀请链接
 const copyInviteLink = async (code: string) => {
-  const baseUrl = window.location.origin
-  const link = `${baseUrl}/register?code=${code}`
+  const link = getInviteLink(code)
   
   try {
     await navigator.clipboard.writeText(link)
@@ -380,23 +396,27 @@ const formatDate = (dateStr: string) => {
 }
 
 .invitation-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 16px;
   background: #f8f9fa;
   border-radius: 8px;
 }
 
-.invitation-main {
-  flex: 1;
+.invitation-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.invitation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
 .invitation-code {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
 }
 
 .code-label {
@@ -431,6 +451,32 @@ const formatDate = (dateStr: string) => {
 .status-badge.revoked {
   background: #f5f5f5;
   color: #757575;
+}
+
+.invitation-link {
+  margin-bottom: 8px;
+}
+
+.link-input-inline {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 13px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.link-input-inline:hover {
+  border-color: #667eea;
+}
+
+.link-input-inline:focus {
+  outline: none;
+  border-color: #667eea;
 }
 
 .invitation-meta {
