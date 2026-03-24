@@ -1,38 +1,50 @@
 ---
 name: net-operations
-description: Network utilities including DNS lookup, ping, port check, and HTTP requests. Use when you need to diagnose network issues or make HTTP requests.
-argument-hint: "[dns|ping|port|request] [host]"
+description: Network utilities including DNS lookup, SSL analysis, connectivity testing, port scanning, and HTTP requests. Use when you need to diagnose network issues or make HTTP requests.
+argument-hint: "[check|connect|scan|request|headers] [host]"
 user-invocable: true
 ---
 
 # Network Operations
 
-Network utilities for DNS lookup, connectivity testing, port checking, and HTTP requests.
+Network utilities for DNS lookup, SSL analysis, connectivity testing, port scanning, and HTTP requests.
 
 ## Tools
 
-### net_dns
+### net_check
 
-DNS lookup - resolve hostname to IP addresses.
+Unified DNS and SSL check tool. Use `type` parameter to specify check type.
 
 **Parameters:**
-- `hostname` (string, required): Hostname to resolve
-- `record_type` (string, optional): DNS record type - `"A"` (default), `"AAAA"`, `"MX"`, `"TXT"`, `"CNAME"`, `"NS"`
+- `hostname` (string, required): Hostname to check
+- `type` (string, optional): Check type - `"dns"` (default) or `"ssl"`
 - `timeout` (number, optional): Timeout in ms (default: 5000)
+
+**DNS Check Parameters (type="dns"):**
+- `record_type` (string, optional): DNS record type - `"A"` (default), `"AAAA"`, `"MX"`, `"TXT"`, `"CNAME"`, `"NS"`
+
+**SSL Check Parameters (type="ssl"):**
+- `port` (number, optional): Port for SSL check (default: 443)
 
 **Examples:**
 ```javascript
-// Resolve A records (IPv4)
-{ "tool": "net_dns", "params": { "hostname": "example.com" } }
+// DNS lookup - A records (IPv4)
+{ "tool": "net_check", "params": { "hostname": "example.com" } }
 
-// Resolve MX records (mail servers)
-{ "tool": "net_dns", "params": { "hostname": "gmail.com", "record_type": "MX" } }
+// DNS lookup - MX records (mail servers)
+{ "tool": "net_check", "params": { "hostname": "gmail.com", "type": "dns", "record_type": "MX" } }
 
-// Resolve TXT records
-{ "tool": "net_dns", "params": { "hostname": "example.com", "record_type": "TXT" } }
+// DNS lookup - TXT records
+{ "tool": "net_check", "params": { "hostname": "example.com", "type": "dns", "record_type": "TXT" } }
+
+// SSL certificate analysis
+{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
+
+// SSL check on custom port
+{ "tool": "net_check", "params": { "hostname": "mail.example.com", "type": "ssl", "port": 993 } }
 ```
 
-**Response:**
+**DNS Response:**
 ```json
 {
   "success": true,
@@ -43,56 +55,47 @@ DNS lookup - resolve hostname to IP addresses.
 }
 ```
 
-### net_ping
+**SSL Response:**
+```json
+{
+  "success": true,
+  "hostname": "example.com",
+  "port": 443,
+  "ssl": {
+    "valid": true,
+    "subject": { "CN": "example.com" },
+    "issuer": { "CN": "Let's Encrypt" },
+    "validFrom": "Jan 1 00:00:00 2024 GMT",
+    "validTo": "Apr 1 00:00:00 2024 GMT",
+    "daysUntilExpiry": 30,
+    "isExpired": false,
+    "fingerprint": "..."
+  }
+}
+```
 
-Ping - test connectivity to a host.
+### net_connect
+
+TCP connectivity testing - test if a host and port is reachable.
 
 **Parameters:**
 - `host` (string, required): Hostname or IP address
-- `count` (number, optional): Number of pings (default: 3, max: 5)
+- `port` (number, optional): Port number (default: 80)
 - `timeout` (number, optional): Timeout in ms (default: 5000)
 
 **Examples:**
 ```javascript
-// Simple ping
-{ "tool": "net_ping", "params": { "host": "google.com" } }
+// Test web server connectivity
+{ "tool": "net_connect", "params": { "host": "example.com", "port": 80 } }
 
-// Multiple pings
-{ "tool": "net_ping", "params": { "host": "8.8.8.8", "count": 5 } }
-```
+// Test SSH port
+{ "tool": "net_connect", "params": { "host": "server.example.com", "port": 22 } }
 
-**Response:**
-```json
-{
-  "success": true,
-  "host": "google.com",
-  "count": 3,
-  "avgTime": 15,
-  "minTime": 10,
-  "maxTime": 20,
-  "packetLoss": 0
-}
-```
+// Test database port
+{ "tool": "net_connect", "params": { "host": "db.example.com", "port": 3306 } }
 
-### net_port
-
-Port check - test if a port is open.
-
-**Parameters:**
-- `host` (string, required): Hostname or IP address
-- `port` (number, required): Port number (1-65535)
-- `timeout` (number, optional): Timeout in ms (default: 3000)
-
-**Examples:**
-```javascript
-// Check if web server is running
-{ "tool": "net_port", "params": { "host": "example.com", "port": 80 } }
-
-// Check SSH port
-{ "tool": "net_port", "params": { "host": "server.example.com", "port": 22 } }
-
-// Check database port
-{ "tool": "net_port", "params": { "host": "db.example.com", "port": 3306 } }
+// Test HTTPS
+{ "tool": "net_connect", "params": { "host": "example.com", "port": 443 } }
 ```
 
 **Response:**
@@ -102,13 +105,63 @@ Port check - test if a port is open.
   "host": "example.com",
   "port": 80,
   "status": "open",
-  "message": "Port 80 is open on example.com"
+  "responseTime": 15,
+  "message": "Port 80 is open on example.com (15ms)"
 }
 ```
 
-### net_request
+### port_scan
 
-HTTP request - make HTTP/HTTPS requests.
+Scan multiple ports on a host.
+
+**Parameters:**
+- `host` (string, required): Hostname or IP address
+- `ports` (string|number|array, optional): Port configuration (default: "common")
+  - `"common"` - Common ports (21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443)
+  - `"web"` - Web ports (80, 443, 8080, 8443)
+  - `"mail"` - Mail ports (25, 110, 143, 465, 587, 993, 995)
+  - `"db"` - Database ports (1433, 1521, 3306, 5432, 6379, 27017)
+  - Single port number
+  - Array of port numbers
+- `timeout` (number, optional): Timeout per port in ms (default: 3000)
+
+**Examples:**
+```javascript
+// Scan common ports
+{ "tool": "port_scan", "params": { "host": "example.com" } }
+
+// Scan web ports
+{ "tool": "port_scan", "params": { "host": "example.com", "ports": "web" } }
+
+// Scan specific ports
+{ "tool": "port_scan", "params": { "host": "example.com", "ports": [80, 443, 8080] } }
+
+// Scan single port
+{ "tool": "port_scan", "params": { "host": "example.com", "ports": 22 } }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "host": "example.com",
+  "scan": {
+    "total": 20,
+    "open": [22, 80, 443],
+    "closed": [21, 23, 25, ...],
+    "filtered": [],
+    "results": [
+      { "port": 22, "status": "open" },
+      { "port": 80, "status": "open" },
+      ...
+    ]
+  }
+}
+```
+
+### http_request
+
+Make HTTP/HTTPS requests.
 
 **Parameters:**
 - `url` (string, required): Request URL
@@ -121,11 +174,11 @@ HTTP request - make HTTP/HTTPS requests.
 **Examples:**
 ```javascript
 // Simple GET request
-{ "tool": "net_request", "params": { "url": "https://api.example.com/data" } }
+{ "tool": "http_request", "params": { "url": "https://api.example.com/data" } }
 
 // POST with JSON body
 {
-  "tool": "net_request",
+  "tool": "http_request",
   "params": {
     "url": "https://api.example.com/create",
     "method": "POST",
@@ -135,7 +188,7 @@ HTTP request - make HTTP/HTTPS requests.
 
 // With custom headers
 {
-  "tool": "net_request",
+  "tool": "http_request",
   "params": {
     "url": "https://api.example.com/protected",
     "headers": { "Authorization": "Bearer token123" }
@@ -155,42 +208,90 @@ HTTP request - make HTTP/HTTPS requests.
 }
 ```
 
+### http_headers
+
+Fetch and analyze HTTP response headers for security and performance.
+
+**Parameters:**
+- `url` (string, required): URL to analyze
+- `timeout` (number, optional): Timeout in ms (default: 10000)
+
+**Examples:**
+```javascript
+// Analyze headers
+{ "tool": "http_headers", "params": { "url": "https://example.com" } }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "url": "https://example.com",
+  "statusCode": 200,
+  "headers": { ... },
+  "security": {
+    "hsts": true,
+    "noSniff": true,
+    "frameGuard": "DENY",
+    "csp": true
+  },
+  "performance": {
+    "cacheControl": "max-age=31536000",
+    "compression": "gzip"
+  },
+  "server": "nginx",
+  "recommendations": []
+}
+```
+
 ## Common Use Cases
 
 ### Diagnose Network Issues
 
 ```javascript
 // 1. Check DNS resolution
-{ "tool": "net_dns", "params": { "hostname": "example.com" } }
+{ "tool": "net_check", "params": { "hostname": "example.com" } }
 
 // 2. Test connectivity
-{ "tool": "net_ping", "params": { "host": "example.com" } }
+{ "tool": "net_connect", "params": { "host": "example.com", "port": 443 } }
 
-// 3. Check if port is open
-{ "tool": "net_port", "params": { "host": "example.com", "port": 443 } }
+// 3. Check SSL certificate
+{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
 
 // 4. Test HTTP endpoint
-{ "tool": "net_request", "params": { "url": "https://example.com" } }
+{ "tool": "http_request", "params": { "url": "https://example.com" } }
 ```
 
 ### Check Server Health
 
 ```javascript
-// Check web server
-{ "tool": "net_port", "params": { "host": "myserver.com", "port": 80 } }
-{ "tool": "net_port", "params": { "host": "myserver.com", "port": 443 } }
+// Check web server ports
+{ "tool": "port_scan", "params": { "host": "myserver.com", "ports": "web" } }
 
 // Check database server
-{ "tool": "net_port", "params": { "host": "db.myserver.com", "port": 3306 } }
+{ "tool": "net_connect", "params": { "host": "db.myserver.com", "port": 3306 } }
 
 // Check SSH access
-{ "tool": "net_port", "params": { "host": "myserver.com", "port": 22 } }
+{ "tool": "net_connect", "params": { "host": "myserver.com", "port": 22 } }
+```
+
+### Security Audit
+
+```javascript
+// Analyze HTTP headers
+{ "tool": "http_headers", "params": { "url": "https://example.com" } }
+
+// Check SSL certificate
+{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
+
+// Scan common ports
+{ "tool": "port_scan", "params": { "host": "example.com", "ports": "common" } }
 ```
 
 ## Security
 
 - Maximum HTTP response size is limited (1MB)
-- Ping count is limited to 5 to prevent abuse
+- Port scan is limited to 20 ports per request
 - All operations have configurable timeouts
 - HTTPS is recommended for sensitive requests
 
@@ -207,7 +308,8 @@ All tools return a consistent error format:
 
 ## Best Practices for LLM
 
-1. **Start with DNS** - If a host is unreachable, check DNS first
+1. **Start with DNS** - If a host is unreachable, check DNS first with `net_check`
 2. **Use appropriate timeouts** - Increase timeout for slow networks
-3. **Check common ports** - 80/443 for web, 22 for SSH, 3306 for MySQL
+3. **Check common ports** - Use `port_scan` with port groups for quick assessment
 4. **Handle errors gracefully** - Network operations can fail for many reasons
+5. **Use `net_check` for both DNS and SSL** - The unified tool is more efficient

@@ -62,26 +62,64 @@ user-invocable: true
 
 **data_url 模式（用于多模态）：**
 
-让专家能够"看到"图片文件内容。
+让多模态专家能够"看到"图片文件内容。
+
+> ⚠️ **重要**：此功能仅对多模态模型有效！如果专家使用的是纯文本模型，图片数据将被忽略。
+
+**何时使用：**
+- 用户要求"看图片"、"分析图片"、"识别图片内容"
+- 用户上传了图片文件并要求分析
+- 需要将图片内容发送给多模态 LLM 进行处理
 
 **使用方法：**
 1. 调用 `read_file(path="tasks/screenshot.png", mode="data_url")`
-2. 得到 `dataUrl: "data:image/png;base64,xxx"`
-3. 在回复中使用 Markdown 格式：`![图片描述](data:image/png;base64,xxx)`
-4. LLMClient 会自动识别并转换为多模态格式发送给模型
+2. 系统自动将图片 Data URL 转换为多模态格式发送给模型
+3. 多模态模型即可"看到"图片内容
 
-**示例：**
+**完整示例：**
 ```
-# 读取图片为 Data URL
-result = read_file(path="tasks/screenshot.png", mode="data_url")
+# 用户：请帮我分析这张截图
 
-# 在回复中引用
-![截图](data:image/png;base64,iVBORw0KGgo...)
+# 专家调用工具：
+read_file(path="tasks/screenshot.png", mode="data_url")
+
+# 工具返回：
+{
+  success: true,
+  data: {
+    dataUrl: "data:image/png;base64,iVBORw0KGgo...",
+    mimeType: "image/png"
+  }
+}
+
+# 系统自动处理：
+# ToolManager.formatToolResultsForLLM() 检测到 dataUrl
+# 自动添加 Markdown 图片语法到工具结果中
+# LLMClient.processMultimodalMessages() 转换为多模态格式
+# 多模态模型接收到图片并可以"看到"内容
+
+# 专家回复：
+根据截图内容，我可以看到这是一个...
 ```
+
+**工作原理（自动处理）：**
+1. `read_file(mode="data_url")` 返回 base64 编码的 Data URL
+2. `ToolManager.formatToolResultsForLLM()` 检测到工具结果中的 `dataUrl`
+3. 自动在工具结果中添加 Markdown 图片语法：`![工具读取的图片](data:image/png;base64,...)`
+4. `LLMClient.processMultimodalMessages()` 检测到 Markdown 图片语法
+5. 自动转换为 OpenAI 多模态格式：`{ type: "image_url", image_url: { url: "data:..." } }`
+6. 多模态模型接收并"看到"图片
+
+> ✅ **新特性**：系统现在会自动处理图片 Data URL，专家无需手动添加 Markdown 语法！
+
+**支持的文件类型：**
+- 图片：png, jpg, jpeg, gif, webp, svg, bmp, ico
+- 文档：pdf（部分多模态模型支持）
+- 音视频：mp3, wav, mp4, webm（部分模型支持）
 
 **限制：**
 - 最大文件大小：10MB（data_url 模式）
-- 支持所有 MIME 类型（图片、PDF、音视频等）
+- 仅多模态模型（model_type="multimodal"）能处理图片
 
 ### list_files
 

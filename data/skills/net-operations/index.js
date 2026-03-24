@@ -1,8 +1,15 @@
 /**
  * Network Operations Skill - Node.js Implementation
  * 
- * Network utilities including DNS lookup, ping, port check, and HTTP requests.
+ * Network utilities including DNS lookup, connectivity testing, port scanning, and HTTP requests.
  * All operations are designed to be LLM-friendly with clear error messages.
+ * 
+ * Tools:
+ * - net_check: DNS lookup and SSL certificate analysis
+ * - net_connect: TCP connectivity testing
+ * - port_scan: Port scanning
+ * - http_request: HTTP/HTTPS requests
+ * - http_headers: HTTP headers analysis
  * 
  * @module net-operations-skill
  */
@@ -11,27 +18,27 @@ const dns = require('dns');
 const net = require('net');
 const http = require('http');
 const https = require('https');
+const tls = require('tls');
 const { URL } = require('url');
-const { spawn } = require('child_process');
 
 // Default timeouts
 const DEFAULT_DNS_TIMEOUT = 5000;
-const DEFAULT_PING_TIMEOUT = 5000;
+const DEFAULT_CONNECT_TIMEOUT = 5000;
 const DEFAULT_PORT_TIMEOUT = 3000;
 const DEFAULT_HTTP_TIMEOUT = 10000;
 
 // Maximum response size (1MB)
 const MAX_RESPONSE_SIZE = 1024 * 1024;
 
+// Maximum redirects
+const MAX_REDIRECTS = 5;
+
+// Host format validation regex
+const HOST_REGEX = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+const IP_REGEX = /^(\d{1,3}\.){3}\d{1,3}$/;
+
 /**
  * DNS lookup - resolve hostname to IP addresses
- * DNS 查询 - 解析主机名为 IP 地址
- * 
- * @param {object} params - Parameters
- * @param {string} params.hostname - Hostname to resolve
- * @param {string} params.record_type - Record type: "A" (default), "AAAA", "MX", "TXT", "CNAME", "NS"
- * @param {number} params.timeout - Timeout in ms (default: 5000)
- * @returns {Promise<object>} DNS records
  */
 async function dnsLookup(params) {
   const { hostname, record_type = 'A', timeout = DEFAULT_DNS_TIMEOUT } = params;
@@ -117,130 +124,138 @@ async function dnsLookup(params) {
 }
 
 /**
- * Ping - test connectivity to a host
- * 连通性测试 - 测试到主机的连通性
- * 
- * @param {object} params - Parameters
- * @param {string} params.host - Hostname or IP address
- * @param {number} params.count - Number of pings (default: 3, max: 5)
- * @param {number} params.timeout - Timeout in ms (default: 5000)
- * @returns {Promise<object>} Ping results
+ * SSL certificate analysis
  */
-// Host format validation regex
-const HOST_REGEX = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-const IP_REGEX = /^(\d{1,3}\.){3}\d{1,3}$/;
-
-async function pingHost(params) {
-  const { host, count = 3, timeout = DEFAULT_PING_TIMEOUT } = params;
+async function analyzeSSL(params) {
+  const { hostname, port = 443, timeout = DEFAULT_CONNECT_TIMEOUT } = params;
   
-  if (!host) {
-    throw new Error('host is required');
+  if (!hostname) {
+    throw new Error('hostname is required');
   }
   
-  // Validate host format (domain or IP)
-  if (!HOST_REGEX.test(host) && !IP_REGEX.test(host)) {
-    throw new Error(`Invalid host format: ${host}`);
-  }
-  
-  const pingCount = Math.min(Math.max(1, count), 5); // Limit to 1-5 pings
-  
-  // Determine ping command based on platform
-  const isWindows = process.platform === 'win32';
-  const pingCmd = isWindows ? 'ping' : 'ping';
-  const pingArgs = isWindows 
-    ? ['-n', String(pingCount), '-w', String(timeout), host]
-    : ['-c', String(pingCount), '-W', String(Math.ceil(timeout / 1000)), host];
+  const portNum = parseInt(port);
   
   return new Promise((resolve) => {
-    let output = '';
-    let errorOutput = '';
+    const timer = setTimeout(() => {
+      resolve({
+        success: false,
+        hostname,
+        port: portNum,
+        error: `SSL connection timeout after ${timeout}ms`,
+      });
+    }, timeout);
     
-    const pingProcess = spawn(pingCmd, pingArgs, { timeout: timeout + 5000 });
-    
-    pingProcess.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-    
-    pingProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-    });
-    
-    pingProcess.on('close', (code) => {
-      const success = code === 0;
+    const socket = tls.connect(portNum, hostname, {
+      servername: hostname,
+      rejectUnauthorized: false, // Allow self-signed certs for analysis
+    }, () => {
+      clearTimeout(timer);
       
-      // Parse ping statistics
+      const cert = socket.getPeerCertificate();
+      
+      if (!cert || Object.keys(cert).length === 0) {
+        socket.destroy();
+        resolve({
+          success: false,
+          hostname,
+          port: portNum,
+          error: 'No SSL certificate found',
+        });
+        return;
+      }
+      
+      const now = new Date();
+      const validFrom = new Date(cert.valid_from);
+      const validTo = new Date(cert.valid_to);
+      const daysUntilExpiry = Math.floor((validTo - now) / (1000 * 60 * 60 * 24));
+      const isExpired = now > validTo;
+      const isNotYetValid = now < validFrom;
+      
       const result = {
-        success,
-        host,
-        count: pingCount,
-        rawOutput: output,
+        success: true,
+        hostname,
+        port: portNum,
+        ssl: {
+          valid: !isExpired && !isNotYetValid,
+          subject: cert.subject,
+          issuer: cert.issuer,
+          validFrom: cert.valid_from,
+          validTo: cert.valid_to,
+          daysUntilExpiry,
+          isExpired,
+          isNotYetValid,
+          fingerprint: cert.fingerprint,
+          serialNumber: cert.serialNumber,
+          version: cert.version,
+          bits: cert.bits,
+        },
       };
       
-      // Try to extract statistics from output
-      if (isWindows) {
-        // Windows ping output parsing
-        const avgMatch = output.match(/Average = (\d+)ms/);
-        const minMatch = output.match(/Minimum = (\d+)ms/);
-        const maxMatch = output.match(/Maximum = (\d+)ms/);
-        const lossMatch = output.match(/\((\d+)% loss\)/);
-        
-        if (avgMatch) result.avgTime = parseInt(avgMatch[1]);
-        if (minMatch) result.minTime = parseInt(minMatch[1]);
-        if (maxMatch) result.maxTime = parseInt(maxMatch[1]);
-        if (lossMatch) result.packetLoss = parseInt(lossMatch[1]);
-      } else {
-        // Unix ping output parsing
-        const statsMatch = output.match(/(\d+) packets transmitted, (\d+) (?:packets )?received/);
-        const rttMatch = output.match(/rtt min\/avg\/max\/mdev = ([\d.]+)\/([\d.]+)\/([\d.]+)/);
-        
-        if (statsMatch) {
-          const transmitted = parseInt(statsMatch[1]);
-          const received = parseInt(statsMatch[2]);
-          result.packetLoss = Math.round((1 - received / transmitted) * 100);
-        }
-        
-        if (rttMatch) {
-          result.minTime = parseFloat(rttMatch[1]);
-          result.avgTime = parseFloat(rttMatch[2]);
-          result.maxTime = parseFloat(rttMatch[3]);
-        }
+      // Add warnings
+      if (daysUntilExpiry < 30 && !isExpired) {
+        result.ssl.warning = `Certificate expires in ${daysUntilExpiry} days`;
+      }
+      if (isExpired) {
+        result.ssl.warning = 'Certificate has expired';
       }
       
-      if (!success) {
-        result.error = errorOutput || 'Ping failed';
-      }
-      
+      socket.destroy();
       resolve(result);
     });
     
-    pingProcess.on('error', (err) => {
+    socket.on('error', (err) => {
+      clearTimeout(timer);
       resolve({
         success: false,
-        host,
-        error: `Failed to execute ping: ${err.message}`,
+        hostname,
+        port: portNum,
+        error: err.message,
       });
     });
   });
 }
 
 /**
- * Port check - test if a port is open
- * 端口检测 - 测试端口是否开放
+ * net_check - Unified DNS and SSL check tool
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.hostname - Hostname to check
+ * @param {string} params.type - Check type: "dns" (default) or "ssl"
+ * @param {string} params.record_type - DNS record type (for type="dns"): "A", "AAAA", "MX", "TXT", "CNAME", "NS"
+ * @param {number} params.port - Port for SSL check (default: 443)
+ * @param {number} params.timeout - Timeout in ms
+ */
+async function netCheck(params) {
+  const { type = 'dns' } = params;
+  
+  switch (type.toLowerCase()) {
+    case 'dns':
+      return await dnsLookup(params);
+    case 'ssl':
+      return await analyzeSSL(params);
+    default:
+      throw new Error(`Invalid check type: ${type}. Valid types: dns, ssl`);
+  }
+}
+
+/**
+ * net_connect - TCP connectivity testing
  * 
  * @param {object} params - Parameters
  * @param {string} params.host - Hostname or IP address
- * @param {number} params.port - Port number
- * @param {number} params.timeout - Timeout in ms (default: 3000)
- * @returns {Promise<object>} Port check result
+ * @param {number} params.port - Port number (default: 80)
+ * @param {number} params.timeout - Timeout in ms (default: 5000)
  */
-async function checkPort(params) {
-  const { host, port, timeout = DEFAULT_PORT_TIMEOUT } = params;
+async function netConnect(params) {
+  const { host, port = 80, timeout = DEFAULT_CONNECT_TIMEOUT } = params;
   
   if (!host) {
     throw new Error('host is required');
   }
-  if (!port) {
-    throw new Error('port is required');
+  
+  // Validate host format
+  if (!HOST_REGEX.test(host) && !IP_REGEX.test(host)) {
+    throw new Error(`Invalid host format: ${host}`);
   }
   
   const portNum = parseInt(port);
@@ -249,7 +264,9 @@ async function checkPort(params) {
   }
   
   return new Promise((resolve) => {
+    const startTime = Date.now();
     const socket = new net.Socket();
+    
     const timer = setTimeout(() => {
       socket.destroy();
       resolve({
@@ -257,29 +274,34 @@ async function checkPort(params) {
         host,
         port: portNum,
         status: 'timeout',
+        responseTime: timeout,
         message: `Connection timed out after ${timeout}ms`,
       });
     }, timeout);
     
     socket.connect(portNum, host, () => {
       clearTimeout(timer);
+      const responseTime = Date.now() - startTime;
       socket.destroy();
       resolve({
         success: true,
         host,
         port: portNum,
         status: 'open',
-        message: `Port ${portNum} is open on ${host}`,
+        responseTime,
+        message: `Port ${portNum} is open on ${host} (${responseTime}ms)`,
       });
     });
     
     socket.on('error', (err) => {
       clearTimeout(timer);
+      const responseTime = Date.now() - startTime;
       resolve({
         success: false,
         host,
         port: portNum,
         status: 'closed',
+        responseTime,
         message: err.code === 'ECONNREFUSED' 
           ? `Port ${portNum} is closed on ${host}`
           : `Connection failed: ${err.message}`,
@@ -288,13 +310,110 @@ async function checkPort(params) {
   });
 }
 
-// Maximum redirects
-const MAX_REDIRECTS = 5;
+/**
+ * port_scan - Scan multiple ports on a host
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.host - Hostname or IP address
+ * @param {number|array} params.ports - Port number, array of ports, or common port group name
+ * @param {number} params.timeout - Timeout per port in ms (default: 3000)
+ */
+async function portScan(params) {
+  const { host, ports = 'common', timeout = DEFAULT_PORT_TIMEOUT } = params;
+  
+  if (!host) {
+    throw new Error('host is required');
+  }
+  
+  // Validate host format
+  if (!HOST_REGEX.test(host) && !IP_REGEX.test(host)) {
+    throw new Error(`Invalid host format: ${host}`);
+  }
+  
+  // Determine ports to scan
+  let portList = [];
+  
+  if (typeof ports === 'string') {
+    switch (ports.toLowerCase()) {
+      case 'common':
+        portList = [21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443];
+        break;
+      case 'web':
+        portList = [80, 443, 8080, 8443];
+        break;
+      case 'mail':
+        portList = [25, 110, 143, 465, 587, 993, 995];
+        break;
+      case 'db':
+        portList = [1433, 1521, 3306, 5432, 6379, 27017];
+        break;
+      default:
+        // Try to parse as single port
+        const p = parseInt(ports);
+        if (!isNaN(p)) {
+          portList = [p];
+        } else {
+          throw new Error(`Unknown port group: ${ports}. Valid groups: common, web, mail, db`);
+        }
+    }
+  } else if (typeof ports === 'number') {
+    portList = [ports];
+  } else if (Array.isArray(ports)) {
+    portList = ports.map(p => parseInt(p)).filter(p => !isNaN(p) && p > 0 && p <= 65535);
+  } else {
+    throw new Error('ports must be a number, array of numbers, or port group name');
+  }
+  
+  // Limit number of ports to scan
+  if (portList.length > 20) {
+    portList = portList.slice(0, 20);
+  }
+  
+  // Scan ports
+  const results = [];
+  for (const port of portList) {
+    const result = await new Promise((resolve) => {
+      const socket = new net.Socket();
+      const timer = setTimeout(() => {
+        socket.destroy();
+        resolve({ port, status: 'filtered' });
+      }, timeout);
+      
+      socket.connect(port, host, () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve({ port, status: 'open' });
+      });
+      
+      socket.on('error', () => {
+        clearTimeout(timer);
+        resolve({ port, status: 'closed' });
+      });
+    });
+    
+    results.push(result);
+  }
+  
+  const openPorts = results.filter(r => r.status === 'open').map(r => r.port);
+  const closedPorts = results.filter(r => r.status === 'closed').map(r => r.port);
+  const filteredPorts = results.filter(r => r.status === 'filtered').map(r => r.port);
+  
+  return {
+    success: true,
+    host,
+    scan: {
+      total: results.length,
+      open: openPorts,
+      closed: closedPorts,
+      filtered: filteredPorts,
+      results,
+    },
+  };
+}
 
 /**
  * HTTP request - make HTTP/HTTPS requests
- * HTTP 请求 - 发送 HTTP/HTTPS 请求
- *
+ * 
  * @param {object} params - Parameters
  * @param {string} params.url - Request URL
  * @param {string} params.method - HTTP method (default: "GET")
@@ -303,7 +422,6 @@ const MAX_REDIRECTS = 5;
  * @param {number} params.timeout - Timeout in ms (default: 10000)
  * @param {boolean} params.follow_redirects - Follow redirects (default: true)
  * @param {number} redirectCount - Internal: redirect counter
- * @returns {Promise<object>} Response
  */
 async function httpRequest(params, redirectCount = 0) {
   const {
@@ -437,6 +555,87 @@ async function httpRequest(params, redirectCount = 0) {
 }
 
 /**
+ * HTTP headers analysis - fetch and analyze HTTP response headers
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.url - URL to analyze
+ * @param {number} params.timeout - Timeout in ms (default: 10000)
+ */
+async function httpHeaders(params) {
+  const { url, timeout = DEFAULT_HTTP_TIMEOUT } = params;
+  
+  if (!url) {
+    throw new Error('url is required');
+  }
+  
+  // Use HEAD request for headers only
+  const result = await httpRequest({ url, method: 'HEAD', timeout, follow_redirects: false });
+  
+  if (!result.success) {
+    return result;
+  }
+  
+  // Analyze headers
+  const headers = result.headers;
+  const analysis = {
+    success: true,
+    url,
+    statusCode: result.statusCode,
+    headers,
+    security: {},
+    performance: {},
+    recommendations: [],
+  };
+  
+  // Security analysis
+  if (headers['strict-transport-security']) {
+    analysis.security.hsts = true;
+  } else {
+    analysis.security.hsts = false;
+    analysis.recommendations.push('Consider adding Strict-Transport-Security header');
+  }
+  
+  if (headers['x-content-type-options'] === 'nosniff') {
+    analysis.security.noSniff = true;
+  } else {
+    analysis.security.noSniff = false;
+    analysis.recommendations.push('Consider adding X-Content-Type-Options: nosniff header');
+  }
+  
+  if (headers['x-frame-options']) {
+    analysis.security.frameGuard = headers['x-frame-options'];
+  } else {
+    analysis.security.frameGuard = false;
+    analysis.recommendations.push('Consider adding X-Frame-Options header');
+  }
+  
+  if (headers['content-security-policy']) {
+    analysis.security.csp = true;
+  } else {
+    analysis.security.csp = false;
+    analysis.recommendations.push('Consider adding Content-Security-Policy header');
+  }
+  
+  // Performance analysis
+  if (headers['cache-control']) {
+    analysis.performance.cacheControl = headers['cache-control'];
+  }
+  
+  if (headers['content-encoding']) {
+    analysis.performance.compression = headers['content-encoding'];
+  } else {
+    analysis.recommendations.push('Consider enabling compression (gzip/br)');
+  }
+  
+  // Server info
+  if (headers['server']) {
+    analysis.server = headers['server'];
+  }
+  
+  return analysis;
+}
+
+/**
  * Skill execute function - called by skill-runner
  * 
  * @param {string} toolName - Name of the tool to execute
@@ -446,21 +645,20 @@ async function httpRequest(params, redirectCount = 0) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'net_dns':
-    case 'dns_lookup':
-      return await dnsLookup(params);
+    case 'net_check':
+      return await netCheck(params);
     
-    case 'net_ping':
-    case 'ping':
-      return await pingHost(params);
+    case 'net_connect':
+      return await netConnect(params);
     
-    case 'net_port':
-    case 'port_check':
-      return await checkPort(params);
+    case 'port_scan':
+      return await portScan(params);
     
-    case 'net_request':
     case 'http_request':
       return await httpRequest(params);
+    
+    case 'http_headers':
+      return await httpHeaders(params);
     
     default:
       throw new Error(`Unknown tool: ${toolName}`);

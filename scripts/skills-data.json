@@ -26,31 +26,6 @@
       "is_active": true
     },
     {
-      "id": "http-client",
-      "name": "HTTP Client",
-      "description": "HTTP client for making GET and POST requests. Use when you need to fetch web content or call APIs.",
-      "version": "1.0.0",
-      "author": "System",
-      "tags": [
-        "http",
-        "network",
-        "api",
-        "built-in"
-      ],
-      "source_type": "local",
-      "source_path": "skills/http-client",
-      "source_url": null,
-      "skill_md": "---\nname: http-client\ndescription: HTTP client for making GET and POST requests. Use when you need to fetch web content or call APIs.\nargument-hint: \"[get|post] [url]\"\nuser-invocable: true\nallowed-tools:\n  - Bash(curl *)\n---\n\n# HTTP Client\n\nMake HTTP requests to fetch web content or call APIs.",
-      "security_score": 100,
-      "security_warnings": null,
-      "license": null,
-      "argument_hint": "[get|post] [url]",
-      "disable_model_invocation": true,
-      "user_invocable": true,
-      "allowed_tools": "[\"Bash(curl *)\"]",
-      "is_active": true
-    },
-    {
       "id": "mmgf5ge7vfxvf07duv0k",
       "name": "KB Editor",
       "description": "知识库管理技能，用于创建和管理知识库、文章、节、段落、标签",

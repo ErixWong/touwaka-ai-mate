@@ -1934,17 +1934,20 @@ class AssistantManager {
   }
 
   /**
-   * 从输入参数中提取图片路径（通用方法）
-   * 支持的参数名：image_path, image_paths, file_path, path
+   * 从输入参数中提取图片路径或 base64 数据（通用方法）
+   * 支持的参数名：
+   * - 文件路径：image_path, image_paths, file_path, path
+   * - Base64 数据：image_data, image_data_urls（直接传入已转换的 base64）
    * @param {object} input - 输入参数
-   * @returns {object} { hasImage: boolean, filePaths: string[] }
+   * @returns {object} { hasImage: boolean, filePaths: string[], imageDataUrls: string[] }
    */
   extractImageInput(input) {
     if (!input || typeof input !== 'object') {
-      return { hasImage: false, filePaths: [] };
+      return { hasImage: false, filePaths: [], imageDataUrls: [] };
     }
 
     const filePaths = [];
+    const imageDataUrls = [];
 
     // 图片路径：image_ 开头
     if (Array.isArray(input.image_paths)) {
@@ -1953,37 +1956,70 @@ class AssistantManager {
       filePaths.push(input.image_path);
     }
 
+    // Base64 数据：支持直接传入已转换的 data URL
+    if (Array.isArray(input.image_data_urls)) {
+      imageDataUrls.push(...input.image_data_urls);
+    } else if (Array.isArray(input.image_data)) {
+      imageDataUrls.push(...input.image_data);
+    } else if (input.image_data_url) {
+      imageDataUrls.push(input.image_data_url);
+    } else if (input.image_data) {
+      // 支持单个 data URL 或 base64 字符串
+      const data = input.image_data;
+      if (typeof data === 'string') {
+        // 如果已经是 data URL 格式，直接使用
+        if (data.startsWith('data:image/')) {
+          imageDataUrls.push(data);
+        } else {
+          // 如果是纯 base64，添加前缀（假设为 PNG）
+          imageDataUrls.push(`data:image/png;base64,${data}`);
+        }
+      }
+    }
+
     // 过滤掉空值
     const validPaths = filePaths.filter(p => p && typeof p === 'string');
+    const validDataUrls = imageDataUrls.filter(d => d && typeof d === 'string' && d.startsWith('data:image/'));
 
     return {
-      hasImage: validPaths.length > 0,
+      hasImage: validPaths.length > 0 || validDataUrls.length > 0,
       filePaths: validPaths,
+      imageDataUrls: validDataUrls,
     };
   }
 
   /**
    * 使用输入参数中的图片执行视觉处理（通用方法）
+   * 支持两种图片输入方式：
+   * 1. 文件路径（filePaths）：从文件系统读取图片
+   * 2. Base64 数据（imageDataUrls）：直接使用已转换的 base64 数据
    * @param {object} assistant - 助理配置
    * @param {object} input - 输入参数
    * @param {object} context - 执行上下文
    * @param {object} modelConfig - 模型配置
-   * @param {object} imageInput - 图片输入信息
+   * @param {object} imageInput - 图片输入信息 { filePaths, imageDataUrls }
    * @returns {Promise<object>}
    */
   async executeVisionWithInput(assistant, input, context, modelConfig, imageInput) {
-    const { filePaths } = imageInput;
+    const { filePaths, imageDataUrls } = imageInput;
     const imageContext = {
       topicId: context.topicId,
       expertId: context.expertId,
     };
 
-    // 读取所有图片
-    const imageAssets = [];
+    // 收集所有图片的 data URL
+    const imageDataList = [];
+
+    // 1. 处理文件路径：读取图片文件
     for (const filePath of filePaths) {
       try {
         const imageAsset = await this.readImageFile(filePath, imageContext);
-        imageAssets.push(imageAsset);
+        imageDataList.push({
+          data_url: imageAsset.data_url,
+          file_name: imageAsset.file_name,
+          size_bytes: imageAsset.size_bytes,
+          source: 'file',
+        });
         logger.info(`[AssistantManager] 图片读取成功: ${imageAsset.file_name}, ${imageAsset.size_bytes} bytes`);
       } catch (readError) {
         logger.error(`[AssistantManager] 图片读取失败:`, readError.message);
@@ -1992,6 +2028,29 @@ class AssistantManager {
           error: `图片读取失败: ${readError.message}`,
         };
       }
+    }
+
+    // 2. 处理 Base64 数据：直接使用
+    for (let i = 0; i < imageDataUrls.length; i++) {
+      const dataUrl = imageDataUrls[i];
+      // 估算 base64 数据大小
+      const base64Data = dataUrl.split(',')[1] || '';
+      const sizeBytes = Math.ceil(base64Data.length * 0.75);
+      imageDataList.push({
+        data_url: dataUrl,
+        file_name: `image_${i + 1}.png`,
+        size_bytes: sizeBytes,
+        source: 'base64',
+      });
+      logger.info(`[AssistantManager] 使用 Base64 图片: image_${i + 1}, 约 ${(sizeBytes / 1024).toFixed(1)}KB`);
+    }
+
+    // 检查是否有图片
+    if (imageDataList.length === 0) {
+      return {
+        success: false,
+        error: '没有有效的图片输入',
+      };
     }
 
     // 构建多模态消息
@@ -2009,11 +2068,11 @@ class AssistantManager {
     const userContent = [];
 
     // 添加图片（支持多图）
-    for (const imageAsset of imageAssets) {
+    for (const imageData of imageDataList) {
       userContent.push({
         type: 'image_url',
         image_url: {
-          url: imageAsset.data_url,
+          url: imageData.data_url,
         },
       });
     }
@@ -2026,13 +2085,16 @@ class AssistantManager {
     if (context.background) {
       textContent += `**背景**: ${context.background}\n\n`;
     }
-    // 添加输入数据（排除图片路径）
+    // 添加输入数据（排除图片路径和 base64 数据）
     const textInput = { ...input };
     delete textInput.image_path;
     delete textInput.image_paths;
     delete textInput.file_path;
     delete textInput.file_paths;
     delete textInput.path;
+    delete textInput.image_data;
+    delete textInput.image_data_url;
+    delete textInput.image_data_urls;
     if (Object.keys(textInput).length > 0) {
       textContent += `**输入数据**:\n${JSON.stringify(textInput, null, 2)}`;
     }
@@ -2074,6 +2136,7 @@ class AssistantManager {
         tokens_output: response.usage?.completion_tokens || 0,
         latency_ms: latencyMs,
         model_used: modelConfig.model_name,
+        image_count: imageDataList.length,
       };
     } catch (visionError) {
       logger.error(`[AssistantManager] 视觉模型调用失败:`, visionError.message);
@@ -2303,7 +2366,7 @@ class AssistantManager {
               },
               input: {
                 type: 'object',
-                description: '输入参数。支持的参数：\n- 图片路径：image_path(单张) / image_paths(多张数组)\n- 其他自定义参数：根据具体助理需求传递\n示例：\n{ "image_path": "work/xxx/input/图片.jpg", "task": "分析图片" }\n{ "image_paths": ["img1.jpg", "img2.jpg"], "format": "markdown" }',
+                description: '输入参数。支持的参数：\n- 图片路径：image_path(单张) / image_paths(多张数组)\n- Base64 数据：image_data(单张) / image_data_urls(多张数组) - 直接传入已转换的 base64 数据\n- 其他自定义参数：根据具体助理需求传递\n示例：\n{ "image_path": "work/xxx/input/图片.jpg", "task": "分析图片" }\n{ "image_paths": ["img1.jpg", "img2.jpg"], "format": "markdown" }\n{ "image_data": "data:image/png;base64,iVBORw0KGgo...", "task": "分析这张图片" }',
               },
               expected_output: {
                 type: 'object',
