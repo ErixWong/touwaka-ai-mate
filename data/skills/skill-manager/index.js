@@ -126,13 +126,23 @@ async function listSkillDetails(params) {
  * 注册技能（从本地目录）
  */
 async function registerSkill(params) {
-  const { source_path, name, description, tools } = params;
+  let { source_path, name, description, tools } = params;
   
   if (!source_path) {
     throw new Error('source_path 不能为空');
   }
   if (!tools || !Array.isArray(tools) || tools.length === 0) {
     throw new Error('tools 参数是必需的。请先读取 SKILL.md，理解工具定义后传入 tools 数组。');
+  }
+
+  // 规范化 source_path：必须以 skills/ 开头，不能以 data/ 开头
+  // 移除 data/ 前缀（如果存在）
+  if (source_path.startsWith('data/')) {
+    source_path = source_path.substring(5); // 移除 'data/'
+  }
+  // 确保以 skills/ 开头
+  if (!source_path.startsWith('skills/')) {
+    source_path = 'skills/' + source_path;
   }
 
   return await httpRequest('POST', '/api/skills/register', {

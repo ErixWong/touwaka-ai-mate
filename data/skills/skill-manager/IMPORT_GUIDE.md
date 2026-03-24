@@ -63,7 +63,7 @@ data/skills/{skill_name}/
 
 ```
 skill-manager_register_skill(
-  source_path: "skills/pdf",   // 【重要】必须包含 skills/ 前缀
+  source_path: "skills/pdf",   // 推荐格式：skills/{目录名}
   name: "PDF",                 // 技能名称
   description: "PDF操作",      // 技能描述
   tools: [                     // 工具定义数组
@@ -77,7 +77,12 @@ skill-manager_register_skill(
 )
 ```
 
-**⚠️ source_path 格式**：必须是 `skills/{目录名}`，不能只是 `{目录名}`
+**✅ source_path 自动规范化**：
+- 系统会自动处理路径格式，以下格式都会被规范化为 `skills/pdf`：
+  - `data/skills/pdf` → `skills/pdf`（移除 data/ 前缀）
+  - `pdf` → `skills/pdf`（添加 skills/ 前缀）
+  - `skills/pdf` → `skills/pdf`（保持不变）
+- 推荐使用 `skills/{目录名}` 格式以保持一致性
 
 ### 6. 验证注册结果
 
