@@ -1,15 +1,14 @@
 /**
  * Network Operations Skill - Node.js Implementation
  * 
- * Network utilities including DNS lookup, connectivity testing, port scanning, and HTTP requests.
+ * Network utilities including DNS lookup, SSL analysis, HTTP headers analysis, connectivity testing, port scanning, and HTTP requests.
  * All operations are designed to be LLM-friendly with clear error messages.
  * 
  * Tools:
- * - net_check: DNS lookup and SSL certificate analysis
+ * - net_check: Unified check tool (DNS, SSL, HTTP headers)
  * - net_connect: TCP connectivity testing
  * - port_scan: Port scanning
  * - http_request: HTTP/HTTPS requests
- * - http_headers: HTTP headers analysis
  * 
  * @module net-operations-skill
  */
@@ -216,13 +215,108 @@ async function analyzeSSL(params) {
 }
 
 /**
- * net_check - Unified DNS and SSL check tool
+ * HTTP headers analysis - fetch and analyze HTTP response headers
+ */
+async function analyzeHTTP(params) {
+  const { url, timeout = DEFAULT_HTTP_TIMEOUT } = params;
+  
+  if (!url) {
+    throw new Error('url is required');
+  }
+  
+  // Parse URL to get hostname for the check
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (e) {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+  
+  // Use HEAD request for headers only
+  const result = await httpRequestInternal({ url, method: 'HEAD', timeout, follow_redirects: false });
+  
+  if (!result.success) {
+    return result;
+  }
+  
+  // Analyze headers
+  const headers = result.headers;
+  const analysis = {
+    success: true,
+    url,
+    hostname: parsedUrl.hostname,
+    statusCode: result.statusCode,
+    headers,
+    security: {},
+    performance: {},
+    recommendations: [],
+  };
+  
+  // Security analysis
+  if (headers['strict-transport-security']) {
+    analysis.security.hsts = true;
+  } else {
+    analysis.security.hsts = false;
+    analysis.recommendations.push('Consider adding Strict-Transport-Security header');
+  }
+  
+  if (headers['x-content-type-options'] === 'nosniff') {
+    analysis.security.noSniff = true;
+  } else {
+    analysis.security.noSniff = false;
+    analysis.recommendations.push('Consider adding X-Content-Type-Options: nosniff header');
+  }
+  
+  if (headers['x-frame-options']) {
+    analysis.security.frameGuard = headers['x-frame-options'];
+  } else {
+    analysis.security.frameGuard = false;
+    analysis.recommendations.push('Consider adding X-Frame-Options header');
+  }
+  
+  if (headers['content-security-policy']) {
+    analysis.security.csp = true;
+  } else {
+    analysis.security.csp = false;
+    analysis.recommendations.push('Consider adding Content-Security-Policy header');
+  }
+  
+  // Performance analysis
+  if (headers['cache-control']) {
+    analysis.performance.cacheControl = headers['cache-control'];
+  }
+  
+  if (headers['content-encoding']) {
+    analysis.performance.compression = headers['content-encoding'];
+  } else {
+    analysis.recommendations.push('Consider enabling compression (gzip/br)');
+  }
+  
+  // Server info
+  if (headers['server']) {
+    analysis.server = headers['server'];
+  }
+  
+  return analysis;
+}
+
+/**
+ * net_check - Unified check tool for DNS, SSL, and HTTP
  * 
  * @param {object} params - Parameters
+ * @param {string} params.type - Check type: "dns" (default), "ssl", or "http"
+ * 
+ * DNS check params:
  * @param {string} params.hostname - Hostname to check
- * @param {string} params.type - Check type: "dns" (default) or "ssl"
- * @param {string} params.record_type - DNS record type (for type="dns"): "A", "AAAA", "MX", "TXT", "CNAME", "NS"
+ * @param {string} params.record_type - DNS record type: "A", "AAAA", "MX", "TXT", "CNAME", "NS"
+ * 
+ * SSL check params:
+ * @param {string} params.hostname - Hostname to check
  * @param {number} params.port - Port for SSL check (default: 443)
+ * 
+ * HTTP check params:
+ * @param {string} params.url - URL to analyze
+ * 
  * @param {number} params.timeout - Timeout in ms
  */
 async function netCheck(params) {
@@ -233,8 +327,10 @@ async function netCheck(params) {
       return await dnsLookup(params);
     case 'ssl':
       return await analyzeSSL(params);
+    case 'http':
+      return await analyzeHTTP(params);
     default:
-      throw new Error(`Invalid check type: ${type}. Valid types: dns, ssl`);
+      throw new Error(`Invalid check type: ${type}. Valid types: dns, ssl, http`);
   }
 }
 
@@ -412,18 +508,9 @@ async function portScan(params) {
 }
 
 /**
- * HTTP request - make HTTP/HTTPS requests
- * 
- * @param {object} params - Parameters
- * @param {string} params.url - Request URL
- * @param {string} params.method - HTTP method (default: "GET")
- * @param {object} params.headers - Request headers
- * @param {string|object} params.body - Request body
- * @param {number} params.timeout - Timeout in ms (default: 10000)
- * @param {boolean} params.follow_redirects - Follow redirects (default: true)
- * @param {number} redirectCount - Internal: redirect counter
+ * HTTP request - make HTTP/HTTPS requests (internal function)
  */
-async function httpRequest(params, redirectCount = 0) {
+async function httpRequestInternal(params, redirectCount = 0) {
   const {
     url: requestUrl,
     method = 'GET',
@@ -484,7 +571,7 @@ async function httpRequest(params, redirectCount = 0) {
           return;
         }
         
-        httpRequest({ ...params, url: res.headers.location }, redirectCount + 1)
+        httpRequestInternal({ ...params, url: res.headers.location }, redirectCount + 1)
           .then(resolve)
           .catch(reject);
         return;
@@ -555,84 +642,18 @@ async function httpRequest(params, redirectCount = 0) {
 }
 
 /**
- * HTTP headers analysis - fetch and analyze HTTP response headers
+ * http_request - make HTTP/HTTPS requests (public API)
  * 
  * @param {object} params - Parameters
- * @param {string} params.url - URL to analyze
+ * @param {string} params.url - Request URL
+ * @param {string} params.method - HTTP method (default: "GET")
+ * @param {object} params.headers - Request headers
+ * @param {string|object} params.body - Request body
  * @param {number} params.timeout - Timeout in ms (default: 10000)
+ * @param {boolean} params.follow_redirects - Follow redirects (default: true)
  */
-async function httpHeaders(params) {
-  const { url, timeout = DEFAULT_HTTP_TIMEOUT } = params;
-  
-  if (!url) {
-    throw new Error('url is required');
-  }
-  
-  // Use HEAD request for headers only
-  const result = await httpRequest({ url, method: 'HEAD', timeout, follow_redirects: false });
-  
-  if (!result.success) {
-    return result;
-  }
-  
-  // Analyze headers
-  const headers = result.headers;
-  const analysis = {
-    success: true,
-    url,
-    statusCode: result.statusCode,
-    headers,
-    security: {},
-    performance: {},
-    recommendations: [],
-  };
-  
-  // Security analysis
-  if (headers['strict-transport-security']) {
-    analysis.security.hsts = true;
-  } else {
-    analysis.security.hsts = false;
-    analysis.recommendations.push('Consider adding Strict-Transport-Security header');
-  }
-  
-  if (headers['x-content-type-options'] === 'nosniff') {
-    analysis.security.noSniff = true;
-  } else {
-    analysis.security.noSniff = false;
-    analysis.recommendations.push('Consider adding X-Content-Type-Options: nosniff header');
-  }
-  
-  if (headers['x-frame-options']) {
-    analysis.security.frameGuard = headers['x-frame-options'];
-  } else {
-    analysis.security.frameGuard = false;
-    analysis.recommendations.push('Consider adding X-Frame-Options header');
-  }
-  
-  if (headers['content-security-policy']) {
-    analysis.security.csp = true;
-  } else {
-    analysis.security.csp = false;
-    analysis.recommendations.push('Consider adding Content-Security-Policy header');
-  }
-  
-  // Performance analysis
-  if (headers['cache-control']) {
-    analysis.performance.cacheControl = headers['cache-control'];
-  }
-  
-  if (headers['content-encoding']) {
-    analysis.performance.compression = headers['content-encoding'];
-  } else {
-    analysis.recommendations.push('Consider enabling compression (gzip/br)');
-  }
-  
-  // Server info
-  if (headers['server']) {
-    analysis.server = headers['server'];
-  }
-  
-  return analysis;
+async function httpRequest(params) {
+  return await httpRequestInternal(params);
 }
 
 /**
@@ -656,9 +677,6 @@ async function execute(toolName, params, context = {}) {
     
     case 'http_request':
       return await httpRequest(params);
-    
-    case 'http_headers':
-      return await httpHeaders(params);
     
     default:
       throw new Error(`Unknown tool: ${toolName}`);
