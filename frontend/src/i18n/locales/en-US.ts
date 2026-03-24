@@ -1350,6 +1350,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     // Code info
     code: 'Invitation Code',
     invitationLink: 'Invitation Link',
+    inviteLink: 'Invitation Link',
+    linkHint: 'Clipboard access is blocked by browser. Please select and copy the link below:',
     copyLink: 'Copy Link',
     copySuccess: 'Invitation link copied to clipboard',
     maxUses: 'Max Uses',

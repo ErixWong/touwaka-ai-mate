@@ -1343,6 +1343,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     // 邀请码信息
     code: '邀请码',
     invitationLink: '邀请链接',
+    inviteLink: '邀请链接',
+    linkHint: '浏览器禁用了剪贴板访问，请手动选择并复制以下链接：',
     copyLink: '复制链接',
     copySuccess: '邀请链接已复制到剪贴板',
     maxUses: '最大使用次数',
