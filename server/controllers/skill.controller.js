@@ -883,6 +883,11 @@ class SkillController {
         // 已注册技能，使用 source_path
         let sourcePath = skill.source_path;
         
+        // 跨平台兼容：统一使用正斜杠
+        if (sourcePath) {
+          sourcePath = sourcePath.replace(/\\/g, '/');
+        }
+        
         // 规范化 source_path：skills/xxx → data/skills/xxx
         if (sourcePath && sourcePath.startsWith('skills/')) {
           sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
@@ -975,6 +980,11 @@ class SkillController {
       if (skill) {
         // 已注册技能，使用 source_path
         let sourcePath = skill.source_path;
+        
+        // 跨平台兼容：统一使用正斜杠
+        if (sourcePath) {
+          sourcePath = sourcePath.replace(/\\/g, '/');
+        }
         
         // 规范化 source_path：skills/xxx → data/skills/xxx
         if (sourcePath && sourcePath.startsWith('skills/')) {
