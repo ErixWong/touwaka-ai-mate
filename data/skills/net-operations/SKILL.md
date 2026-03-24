@@ -1,30 +1,34 @@
 ---
 name: net-operations
-description: Network utilities including DNS lookup, SSL analysis, connectivity testing, port scanning, and HTTP requests. Use when you need to diagnose network issues or make HTTP requests.
-argument-hint: "[check|connect|scan|request|headers] [host]"
+description: Network utilities including DNS lookup, SSL analysis, HTTP headers analysis, connectivity testing, port scanning, and HTTP requests. Use when you need to diagnose network issues or make HTTP requests.
+argument-hint: "[check|connect|scan|request] [host]"
 user-invocable: true
 ---
 
 # Network Operations
 
-Network utilities for DNS lookup, SSL analysis, connectivity testing, port scanning, and HTTP requests.
+Network utilities for DNS lookup, SSL analysis, HTTP headers analysis, connectivity testing, port scanning, and HTTP requests.
 
 ## Tools
 
 ### net_check
 
-Unified DNS and SSL check tool. Use `type` parameter to specify check type.
+Unified check tool for DNS, SSL, and HTTP analysis. Use `type` parameter to specify check type.
 
 **Parameters:**
-- `hostname` (string, required): Hostname to check
-- `type` (string, optional): Check type - `"dns"` (default) or `"ssl"`
+- `type` (string, optional): Check type - `"dns"` (default), `"ssl"`, or `"http"`
 - `timeout` (number, optional): Timeout in ms (default: 5000)
 
-**DNS Check Parameters (type="dns"):**
+**DNS Check (type="dns"):**
+- `hostname` (string, required): Hostname to check
 - `record_type` (string, optional): DNS record type - `"A"` (default), `"AAAA"`, `"MX"`, `"TXT"`, `"CNAME"`, `"NS"`
 
-**SSL Check Parameters (type="ssl"):**
+**SSL Check (type="ssl"):**
+- `hostname` (string, required): Hostname to check
 - `port` (number, optional): Port for SSL check (default: 443)
+
+**HTTP Check (type="http"):**
+- `url` (string, required): URL to analyze
 
 **Examples:**
 ```javascript
@@ -34,14 +38,11 @@ Unified DNS and SSL check tool. Use `type` parameter to specify check type.
 // DNS lookup - MX records (mail servers)
 { "tool": "net_check", "params": { "hostname": "gmail.com", "type": "dns", "record_type": "MX" } }
 
-// DNS lookup - TXT records
-{ "tool": "net_check", "params": { "hostname": "example.com", "type": "dns", "record_type": "TXT" } }
-
 // SSL certificate analysis
 { "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
 
-// SSL check on custom port
-{ "tool": "net_check", "params": { "hostname": "mail.example.com", "type": "ssl", "port": 993 } }
+// HTTP headers analysis (security & performance)
+{ "tool": "net_check", "params": { "url": "https://example.com", "type": "http" } }
 ```
 
 **DNS Response:**
@@ -74,6 +75,27 @@ Unified DNS and SSL check tool. Use `type` parameter to specify check type.
 }
 ```
 
+**HTTP Response:**
+```json
+{
+  "success": true,
+  "url": "https://example.com",
+  "hostname": "example.com",
+  "statusCode": 200,
+  "security": {
+    "hsts": true,
+    "noSniff": true,
+    "frameGuard": "DENY",
+    "csp": true
+  },
+  "performance": {
+    "cacheControl": "max-age=31536000",
+    "compression": "gzip"
+  },
+  "recommendations": []
+}
+```
+
 ### net_connect
 
 TCP connectivity testing - test if a host and port is reachable.
@@ -93,9 +115,6 @@ TCP connectivity testing - test if a host and port is reachable.
 
 // Test database port
 { "tool": "net_connect", "params": { "host": "db.example.com", "port": 3306 } }
-
-// Test HTTPS
-{ "tool": "net_connect", "params": { "host": "example.com", "port": 443 } }
 ```
 
 **Response:**
@@ -135,9 +154,6 @@ Scan multiple ports on a host.
 
 // Scan specific ports
 { "tool": "port_scan", "params": { "host": "example.com", "ports": [80, 443, 8080] } }
-
-// Scan single port
-{ "tool": "port_scan", "params": { "host": "example.com", "ports": 22 } }
 ```
 
 **Response:**
@@ -208,42 +224,6 @@ Make HTTP/HTTPS requests.
 }
 ```
 
-### http_headers
-
-Fetch and analyze HTTP response headers for security and performance.
-
-**Parameters:**
-- `url` (string, required): URL to analyze
-- `timeout` (number, optional): Timeout in ms (default: 10000)
-
-**Examples:**
-```javascript
-// Analyze headers
-{ "tool": "http_headers", "params": { "url": "https://example.com" } }
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "url": "https://example.com",
-  "statusCode": 200,
-  "headers": { ... },
-  "security": {
-    "hsts": true,
-    "noSniff": true,
-    "frameGuard": "DENY",
-    "csp": true
-  },
-  "performance": {
-    "cacheControl": "max-age=31536000",
-    "compression": "gzip"
-  },
-  "server": "nginx",
-  "recommendations": []
-}
-```
-
 ## Common Use Cases
 
 ### Diagnose Network Issues
@@ -262,6 +242,19 @@ Fetch and analyze HTTP response headers for security and performance.
 { "tool": "http_request", "params": { "url": "https://example.com" } }
 ```
 
+### Security Audit
+
+```javascript
+// Check HTTP security headers
+{ "tool": "net_check", "params": { "url": "https://example.com", "type": "http" } }
+
+// Check SSL certificate
+{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
+
+// Scan common ports
+{ "tool": "port_scan", "params": { "host": "example.com" } }
+```
+
 ### Check Server Health
 
 ```javascript
@@ -273,19 +266,6 @@ Fetch and analyze HTTP response headers for security and performance.
 
 // Check SSH access
 { "tool": "net_connect", "params": { "host": "myserver.com", "port": 22 } }
-```
-
-### Security Audit
-
-```javascript
-// Analyze HTTP headers
-{ "tool": "http_headers", "params": { "url": "https://example.com" } }
-
-// Check SSL certificate
-{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
-
-// Scan common ports
-{ "tool": "port_scan", "params": { "host": "example.com", "ports": "common" } }
 ```
 
 ## Security
@@ -309,7 +289,7 @@ All tools return a consistent error format:
 ## Best Practices for LLM
 
 1. **Start with DNS** - If a host is unreachable, check DNS first with `net_check`
-2. **Use appropriate timeouts** - Increase timeout for slow networks
-3. **Check common ports** - Use `port_scan` with port groups for quick assessment
-4. **Handle errors gracefully** - Network operations can fail for many reasons
-5. **Use `net_check` for both DNS and SSL** - The unified tool is more efficient
+2. **Use `net_check` for all checks** - DNS, SSL, and HTTP analysis in one unified tool
+3. **Use appropriate timeouts** - Increase timeout for slow networks
+4. **Check common ports** - Use `port_scan` with port groups for quick assessment
+5. **Handle errors gracefully** - Network operations can fail for many reasons
