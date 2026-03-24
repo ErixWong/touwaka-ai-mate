@@ -484,7 +484,7 @@ class SkillController {
         author: skill_info.author || '',
         tags: skill_info.tags ? JSON.stringify(skill_info.tags) : '[]',
         source_type: 'local',
-        source_path: path.relative(PROJECT_ROOT, full_path),  // 存储相对路径，如 data/skills/file-operations
+        source_path: 'skills/' + path.basename(full_path),  // 存储规范化路径，如 skills/file-operations
         skill_md,
         is_active: true,
       });
@@ -883,9 +883,11 @@ class SkillController {
         // 已注册技能，使用 source_path
         let sourcePath = skill.source_path;
         
-        // 处理 source_path 可能缺少 data/ 前缀的情况
-        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-          sourcePath = path.join('data', sourcePath);
+        // 规范化 source_path：skills/xxx → data/skills/xxx
+        if (sourcePath && sourcePath.startsWith('skills/')) {
+          sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
+        } else if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          sourcePath = path.join('data/skills', sourcePath);
         }
         skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
       } else {
@@ -974,9 +976,11 @@ class SkillController {
         // 已注册技能，使用 source_path
         let sourcePath = skill.source_path;
         
-        // 处理 source_path 可能缺少 data/ 前缀的情况
-        if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-          sourcePath = path.join('data', sourcePath);
+        // 规范化 source_path：skills/xxx → data/skills/xxx
+        if (sourcePath && sourcePath.startsWith('skills/')) {
+          sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
+        } else if (sourcePath && !sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
+          sourcePath = path.join('data/skills', sourcePath);
         }
         skillPath = path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath);
       } else {
