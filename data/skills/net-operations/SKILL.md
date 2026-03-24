@@ -1,13 +1,13 @@
 ---
 name: net-operations
-description: Network utilities including DNS lookup, SSL analysis, HTTP headers analysis, connectivity testing, port scanning, and HTTP requests. Use when you need to diagnose network issues or make HTTP requests.
-argument-hint: "[check|connect|scan|request] [host]"
+description: Network utilities including DNS lookup, SSL analysis, HTTP headers analysis, port scanning, and HTTP requests. Use when you need to diagnose network issues or make HTTP requests.
+argument-hint: "[check|scan|request] [host]"
 user-invocable: true
 ---
 
 # Network Operations
 
-Network utilities for DNS lookup, SSL analysis, HTTP headers analysis, connectivity testing, port scanning, and HTTP requests.
+Network utilities for DNS lookup, SSL analysis, HTTP headers analysis, port scanning, and HTTP requests.
 
 ## Tools
 
@@ -96,28 +96,44 @@ Unified check tool for DNS, SSL, and HTTP analysis. Use `type` parameter to spec
 }
 ```
 
-### net_connect
+### port_scan
 
-TCP connectivity testing - test if a host and port is reachable.
+Scan port(s) on a host. Supports single port mode (detailed result) and multi-port mode (scan summary).
 
-**Parameters:**
+**Single Port Mode:**
 - `host` (string, required): Hostname or IP address
-- `port` (number, optional): Port number (default: 80)
+- `port` (number, required): Port number to check
 - `timeout` (number, optional): Timeout in ms (default: 5000)
+
+**Multi-Port Mode:**
+- `host` (string, required): Hostname or IP address
+- `ports` (string|number|array, optional): Port configuration (default: "common")
+  - `"common"` - Common ports (21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443)
+  - `"web"` - Web ports (80, 443, 8080, 8443)
+  - `"mail"` - Mail ports (25, 110, 143, 465, 587, 993, 995)
+  - `"db"` - Database ports (1433, 1521, 3306, 5432, 6379, 27017)
+  - Array of port numbers
+- `timeout` (number, optional): Timeout per port in ms (default: 3000)
 
 **Examples:**
 ```javascript
-// Test web server connectivity
-{ "tool": "net_connect", "params": { "host": "example.com", "port": 80 } }
+// Single port check (detailed result)
+{ "tool": "port_scan", "params": { "host": "example.com", "port": 80 } }
 
 // Test SSH port
-{ "tool": "net_connect", "params": { "host": "server.example.com", "port": 22 } }
+{ "tool": "port_scan", "params": { "host": "server.example.com", "port": 22 } }
 
-// Test database port
-{ "tool": "net_connect", "params": { "host": "db.example.com", "port": 3306 } }
+// Scan common ports
+{ "tool": "port_scan", "params": { "host": "example.com" } }
+
+// Scan web ports
+{ "tool": "port_scan", "params": { "host": "example.com", "ports": "web" } }
+
+// Scan specific ports
+{ "tool": "port_scan", "params": { "host": "example.com", "ports": [80, 443, 8080] } }
 ```
 
-**Response:**
+**Single Port Response:**
 ```json
 {
   "success": true,
@@ -129,34 +145,7 @@ TCP connectivity testing - test if a host and port is reachable.
 }
 ```
 
-### port_scan
-
-Scan multiple ports on a host.
-
-**Parameters:**
-- `host` (string, required): Hostname or IP address
-- `ports` (string|number|array, optional): Port configuration (default: "common")
-  - `"common"` - Common ports (21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443)
-  - `"web"` - Web ports (80, 443, 8080, 8443)
-  - `"mail"` - Mail ports (25, 110, 143, 465, 587, 993, 995)
-  - `"db"` - Database ports (1433, 1521, 3306, 5432, 6379, 27017)
-  - Single port number
-  - Array of port numbers
-- `timeout` (number, optional): Timeout per port in ms (default: 3000)
-
-**Examples:**
-```javascript
-// Scan common ports
-{ "tool": "port_scan", "params": { "host": "example.com" } }
-
-// Scan web ports
-{ "tool": "port_scan", "params": { "host": "example.com", "ports": "web" } }
-
-// Scan specific ports
-{ "tool": "port_scan", "params": { "host": "example.com", "ports": [80, 443, 8080] } }
-```
-
-**Response:**
+**Multi-Port Response:**
 ```json
 {
   "success": true,
@@ -233,7 +222,7 @@ Make HTTP/HTTPS requests.
 { "tool": "net_check", "params": { "hostname": "example.com" } }
 
 // 2. Test connectivity
-{ "tool": "net_connect", "params": { "host": "example.com", "port": 443 } }
+{ "tool": "port_scan", "params": { "host": "example.com", "port": 443 } }
 
 // 3. Check SSL certificate
 { "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
@@ -262,10 +251,10 @@ Make HTTP/HTTPS requests.
 { "tool": "port_scan", "params": { "host": "myserver.com", "ports": "web" } }
 
 // Check database server
-{ "tool": "net_connect", "params": { "host": "db.myserver.com", "port": 3306 } }
+{ "tool": "port_scan", "params": { "host": "db.myserver.com", "port": 3306 } }
 
 // Check SSH access
-{ "tool": "net_connect", "params": { "host": "myserver.com", "port": 22 } }
+{ "tool": "port_scan", "params": { "host": "myserver.com", "port": 22 } }
 ```
 
 ## Security
@@ -290,6 +279,6 @@ All tools return a consistent error format:
 
 1. **Start with DNS** - If a host is unreachable, check DNS first with `net_check`
 2. **Use `net_check` for all checks** - DNS, SSL, and HTTP analysis in one unified tool
-3. **Use appropriate timeouts** - Increase timeout for slow networks
-4. **Check common ports** - Use `port_scan` with port groups for quick assessment
+3. **Use `port_scan` for connectivity** - Single port for detailed result, multi-port for quick scan
+4. **Use appropriate timeouts** - Increase timeout for slow networks
 5. **Handle errors gracefully** - Network operations can fail for many reasons
