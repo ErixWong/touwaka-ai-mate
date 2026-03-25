@@ -143,6 +143,34 @@ const MIGRATIONS = [
       console.log('  ✓ Renamed assistant_requests.assistant_type -> assistant_id');
     }
   },
+
+  // ==================== 任务状态扩展 ====================
+  // 添加 autonomous_wait 和 autonomous_working 状态
+  // Issue #386: 自主任务状态优化
+  {
+    name: 'tasks.status add autonomous_wait and autonomous_working',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'tasks', 'status');
+      // 检查是否已包含 autonomous_wait
+      return columnType && columnType.includes('autonomous_wait');
+    },
+    migrate: async (conn) => {
+      // 修改 ENUM 类型，添加新状态值
+      // 保留原有的 autonomous 以兼容旧数据
+      await conn.execute(`
+        ALTER TABLE tasks
+        MODIFY COLUMN status ENUM(
+          'active',
+          'autonomous',
+          'autonomous_wait',
+          'autonomous_working',
+          'archived',
+          'deleted'
+        ) NOT NULL DEFAULT 'active' COMMENT '任务状态'
+      `);
+      console.log('  ✓ Added autonomous_wait and autonomous_working to tasks.status ENUM');
+    }
+  },
 ];
 
 /**

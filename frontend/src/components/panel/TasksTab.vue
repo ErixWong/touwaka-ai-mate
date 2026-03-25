@@ -320,17 +320,17 @@
             class="task-item"
             :class="{
               'task-active': task.status === 'active',
-              'task-autonomous': task.status === 'autonomous',
+              'task-autonomous': task.status === 'autonomous' || task.status === 'autonomous_wait' || task.status === 'autonomous_working',
               'task-archived': task.status === 'archived',
               'selected': task.id === taskStore.currentTask?.id
             }"
             @click="handleSelectTask(task)"
           >
             <div class="task-header">
-              <div class="task-status-indicator" :class="task.status"></div>
+              <div class="task-status-indicator" :class="getTaskStatusClass(task.status)"></div>
               <div class="task-title-row">
                 <span class="task-title">{{ task.title }}</span>
-                <span v-if="task.status === 'autonomous'" class="autonomous-indicator" :title="$t('tasks.autonomousModeHint') || 'AI 正在自主执行任务'">🤖</span>
+                <span v-if="isAutonomousStatus(task.status)" class="autonomous-indicator" :title="getAutonomousStatusHint(task.status)">🤖</span>
                 <span class="task-id">{{ task.task_id }}</span>
               </div>
             </div>
@@ -340,28 +340,20 @@
             <div class="task-footer">
               <span class="task-date">{{ formatDate(task.updated_at) }}</span>
               <div class="task-actions" @click.stop>
-                <!-- 自动运行切换按钮（仅 active 或 autonomous 状态显示） -->
-                <template v-if="task.status === 'active' || task.status === 'autonomous'">
+                <!-- 自动运行切换按钮（仅 active 或 autonomous 相关状态显示） -->
+                <template v-if="task.status === 'active' || isAutonomousStatus(task.status)">
                   <button
                     class="btn-task"
-                    :class="{ 'btn-autonomous-active': task.status === 'autonomous' }"
+                    :class="{ 'btn-autonomous-active': isAutonomousStatus(task.status) }"
                     @click="handleToggleAutonomousFromList(task, $event)"
-                    :title="task.status === 'autonomous' ? ($t('tasks.disableAutonomous') || '关闭自动运行') : ($t('tasks.enableAutonomous') || '开启自动运行')"
+                    :title="isAutonomousStatus(task.status) ? ($t('tasks.disableAutonomous') || '关闭自动运行') : ($t('tasks.enableAutonomous') || '开启自动运行')"
                   >
-                    <span class="btn-icon">{{ task.status === 'autonomous' ? '🤖' : '⚙️' }}</span>
-                    <span class="btn-label">{{ task.status === 'autonomous' ? ($t('tasks.autonomous') || '自动') : ($t('tasks.autoRun') || '自运') }}</span>
+                    <span class="btn-icon">{{ isAutonomousStatus(task.status) ? '🤖' : '⚙️' }}</span>
+                    <span class="btn-label">{{ isAutonomousStatus(task.status) ? ($t('tasks.autonomous') || '自动') : ($t('tasks.autoRun') || '自运') }}</span>
                   </button>
                 </template>
                 <button
-                  v-if="task.status === 'active'"
-                  class="btn-task btn-archive"
-                  @click="handleArchiveTask(task)"
-                >
-                  <span class="btn-icon">📦</span>
-                  <span class="btn-label">{{ $t('tasks.archive') || '归档' }}</span>
-                </button>
-                <button
-                  v-else-if="task.status === 'autonomous'"
+                  v-if="task.status === 'active' || isAutonomousStatus(task.status)"
                   class="btn-task btn-archive"
                   @click="handleArchiveTask(task)"
                 >
@@ -562,10 +554,37 @@ const fileToDelete = ref<TaskFile | null>(null)
 // 自动运行模式相关
 const isTogglingAutonomous = ref(false)
 
-// 计算属性：是否为自动运行模式
+// 计算属性：是否为自动运行模式（包括等待和执行中状态）
 const isAutonomousMode = computed(() => {
-  return taskStore.currentTask?.status === 'autonomous'
+  const status = taskStore.currentTask?.status
+  return status === 'autonomous' || status === 'autonomous_wait' || status === 'autonomous_working'
 })
+
+// 计算属性：是否正在执行中（用于 UI 指示器）
+const isAutonomousWorking = computed(() => {
+  return taskStore.currentTask?.status === 'autonomous_working'
+})
+
+// 辅助函数：判断是否为自动运行相关状态
+const isAutonomousStatus = (status: string): boolean => {
+  return status === 'autonomous' || status === 'autonomous_wait' || status === 'autonomous_working'
+}
+
+// 辅助函数：获取任务状态指示器的 CSS 类名
+const getTaskStatusClass = (status: string): string => {
+  if (status === 'autonomous' || status === 'autonomous_wait' || status === 'autonomous_working') {
+    return 'autonomous'
+  }
+  return status
+}
+
+// 辅助函数：获取自动运行状态的提示文本
+const getAutonomousStatusHint = (status: string): string => {
+  if (status === 'autonomous_working') {
+    return t('tasks.autonomousWorkingHint') || 'AI 正在执行任务...'
+  }
+  return t('tasks.autonomousModeHint') || 'AI 正在自主执行任务'
+}
 
 // 切换自动运行模式
 const toggleAutonomousMode = async () => {
