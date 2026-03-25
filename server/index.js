@@ -62,7 +62,7 @@ import KbController from './controllers/kb.controller.js';
 import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
-import { getAssistantManager } from './services/assistant-manager.js';
+import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';

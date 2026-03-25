@@ -5,7 +5,7 @@
  */
 
 import logger from '../../lib/logger.js';
-import { getAssistantManager } from '../services/assistant-manager.js';
+import { getAssistantManager } from '../services/assistant/index.js';
 
 class AssistantController {
   constructor(db) {
