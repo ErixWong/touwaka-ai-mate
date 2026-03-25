@@ -89,8 +89,7 @@ class AssistantManager {
    * 刷新助理配置缓存
    */
   async refreshAssistantsCache() {
-    const result = await refreshAssistantsCache(this.db);
-    this.assistantsCache = result.cache;
+    this.assistantsCache = await refreshAssistantsCache(this.db);
     this.cacheTime = Date.now();
     logger.info(`[AssistantManager] 缓存了 ${this.assistantsCache.size} 个助理配置`);
   }
