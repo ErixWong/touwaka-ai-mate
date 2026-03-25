@@ -825,4 +825,10 @@ export const assistantApi = {
     apiRequest<{ request_id: string; deleted: boolean }>(
       apiClient.delete(`/assistants/requests/${requestId}`)
     ),
+
+  // 重新执行委托
+  retryRequest: (requestId: string) =>
+    apiRequest<{ request_id: string; original_request_id: string; message: string }>(
+      apiClient.post(`/assistants/requests/${requestId}/retry`)
+    ),
 }

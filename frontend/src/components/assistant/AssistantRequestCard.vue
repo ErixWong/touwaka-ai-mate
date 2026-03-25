@@ -46,6 +46,9 @@
         <button class="view-detail-btn" @click="showDetail = true">
           {{ $t('assistant.viewDetail') }}
         </button>
+        <button class="retry-btn" @click="handleRetry">
+          {{ $t('common.retry') }}
+        </button>
       </div>
 
       <!-- failed 状态 -->

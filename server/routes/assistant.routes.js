@@ -33,20 +33,23 @@ export default function createAssistantRoutes(controller) {
   // DELETE /api/assistants/requests/:request_id - 删除委托
   router.delete('/requests/:request_id', authenticate(), controller.delete.bind(controller));
 
+  // POST /api/assistants/requests/:request_id/retry - 重新执行委托
+  router.post('/requests/:request_id/retry', authenticate(), controller.retry.bind(controller));
+
   // GET /api/assistants/requests/:request_id/messages - 查询委托消息列表
   router.get('/requests/:request_id/messages', authenticate(), controller.getMessages.bind(controller));
 
   // GET /api/assistants/requests/:request_id - 查询委托状态
   router.get('/requests/:request_id', authenticate(), controller.getRequest.bind(controller));
 
-  // GET /api/assistants/:type - 获取单个助理详情（动态路由放最后）
-  router.get('/:type', authenticate(), controller.getDetail.bind(controller));
+  // GET /api/assistants/:id - 获取单个助理详情（动态路由放最后）
+  router.get('/:id', authenticate(), controller.getDetail.bind(controller));
 
-  // PUT /api/assistants/:type - 更新助理配置（管理员）
-  router.put('/:type', authenticate(), controller.update.bind(controller));
+  // PUT /api/assistants/:id - 更新助理配置（管理员）
+  router.put('/:id', authenticate(), controller.update.bind(controller));
 
-  // DELETE /api/assistants/:type - 删除助理（管理员）
-  router.delete('/:type', authenticate(), controller.deleteAssistant.bind(controller));
+  // DELETE /api/assistants/:id - 删除助理（管理员）
+  router.delete('/:id', authenticate(), controller.deleteAssistant.bind(controller));
 
   return router;
 }
