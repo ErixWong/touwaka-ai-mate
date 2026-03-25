@@ -29,7 +29,8 @@ export default class user extends Model {
     },
     avatar: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "用户头像Base64（约5-15KB）"
     },
     gender: {
       type: DataTypes.STRING(16),
@@ -59,20 +60,12 @@ export default class user extends Model {
     department_id: {
       type: DataTypes.STRING(20),
       allowNull: true,
-      comment: "所属部门",
-      references: {
-        model: 'departments',
-        key: 'id'
-      }
+      comment: "所属部门"
     },
     position_id: {
       type: DataTypes.STRING(20),
       allowNull: true,
-      comment: "职位ID",
-      references: {
-        model: 'positions',
-        key: 'id'
-      }
+      comment: "职位ID"
     },
     invitation_quota: {
       type: DataTypes.INTEGER,
@@ -162,7 +155,7 @@ export default class user extends Model {
         ]
       },
       {
-        name: "fk_user_position",
+        name: "idx_position",
         using: "BTREE",
         fields: [
           { name: "position_id" },

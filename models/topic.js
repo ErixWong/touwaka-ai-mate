@@ -109,17 +109,17 @@ export default class topic extends Model {
         ]
       },
       {
-        name: "idx_updated",
-        using: "BTREE",
-        fields: [
-          { name: "updated_at" },
-        ]
-      },
-      {
         name: "idx_task",
         using: "BTREE",
         fields: [
           { name: "task_id" },
+        ]
+      },
+      {
+        name: "idx_updated",
+        using: "BTREE",
+        fields: [
+          { name: "updated_at" },
         ]
       },
     ]

@@ -136,12 +136,12 @@ const assistantIcon = computed(() => {
     translator: '🌐',
     default: '🤖',
   }
-  return icons[props.request.assistant_type] || icons.default
+  return icons[props.request.assistant_id] || icons.default
 })
 
 // 助理名称
 const assistantName = computed(() => {
-  return props.request.assistant_type.toUpperCase() + ' Assistant'
+  return props.request.assistant_id.toUpperCase() + ' Assistant'
 })
 
 // 预估时间（秒）

@@ -41,7 +41,8 @@ export default class message extends Model {
     },
     content: {
       type: DataTypes.TEXT,
-      allowNull: false
+      allowNull: false,
+      comment: "消息内容，支持长文本"
     },
     reasoning_content: {
       type: DataTypes.TEXT,
@@ -52,6 +53,18 @@ export default class message extends Model {
       type: DataTypes.BLOB,
       allowNull: true,
       defaultValue: "text"
+    },
+    prompt_tokens: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+      comment: "输入 token 数量"
+    },
+    completion_tokens: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+      comment: "输出 token 数量"
     },
     cost: {
       type: DataTypes.DECIMAL(10,6),
@@ -73,15 +86,18 @@ export default class message extends Model {
     },
     inner_voice: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "内心独白（JSON格式）"
     },
     tool_calls: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "工具调用（JSON格式）"
     },
     error_info: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "错误信息（JSON格式）"
     },
     is_deleted: {
       type: DataTypes.BOOLEAN,
@@ -92,16 +108,6 @@ export default class message extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
-    prompt_tokens: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0
-    },
-    completion_tokens: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0
     }
   }, {
     sequelize,

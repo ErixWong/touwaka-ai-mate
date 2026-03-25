@@ -25,6 +25,12 @@ export default class role extends Model {
       allowNull: true,
       comment: "角色描述"
     },
+    level: {
+      type: DataTypes.ENUM('user','power_user','admin'),
+      allowNull: true,
+      defaultValue: "user",
+      comment: "角色权限等级"
+    },
     is_system: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
@@ -40,12 +46,6 @@ export default class role extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
-    level: {
-      type: DataTypes.ENUM('user','power_user','admin'),
-      allowNull: true,
-      defaultValue: "user",
-      comment: "角色权限等级，用于技能访问控制：user(基础)\/power_user(中等)\/admin(最高)"
     }
   }, {
     sequelize,

@@ -122,49 +122,27 @@ async function safeExecute(connection, sql, errorMessages = ['Duplicate', 'alrea
  *    - migrate: 迁移函数，执行实际的数据库变更
  */
 const MIGRATIONS = [
-  // ==================== 迁移示例 ====================
-  // 
-  // 示例 1: 添加新字段
-  // {
-  //   name: 'table_name.column_name',
-  //   check: async (conn) => await hasColumn(conn, 'table_name', 'column_name'),
-  //   migrate: async (conn) => {
-  //     await conn.execute(`
-  //       ALTER TABLE table_name
-  //       ADD COLUMN column_name VARCHAR(128) COMMENT '字段描述'
-  //     `);
-  //   }
-  // },
-  //
-  // 示例 2: 创建新表
-  // {
-  //   name: 'new_table table',
-  //   check: async (conn) => await hasTable(conn, 'new_table'),
-  //   migrate: async (conn) => {
-  //     await conn.execute(`
-  //       CREATE TABLE IF NOT EXISTS new_table (
-  //         id VARCHAR(32) PRIMARY KEY,
-  //         name VARCHAR(128) NOT NULL,
-  //         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  //       ) COMMENT='新表'
-  //     `);
-  //   }
-  // },
-  //
-  // 示例 3: 修改字段类型
-  // {
-  //   name: 'table_name.column_name type change',
-  //   check: async (conn) => {
-  //     const columnType = await getColumnType(conn, 'table_name', 'column_name');
-  //     return columnType === 'varchar(256)';
-  //   },
-  //   migrate: async (conn) => {
-  //     await conn.execute(`
-  //       ALTER TABLE table_name
-  //       MODIFY COLUMN column_name VARCHAR(256) NOT NULL
-  //     `);
-  //   }
-  // },
+  // ==================== 助理表 ID 字段重命名 ====================
+  // 将 assistant_type 重命名为 id
+  {
+    name: 'assistants.id column rename from assistant_type',
+    check: async (conn) => await hasColumn(conn, 'assistants', 'id'),
+    migrate: async (conn) => {
+      // 1. 重命名主键字段
+      await conn.execute(`
+        ALTER TABLE assistants
+        CHANGE COLUMN assistant_type id VARCHAR(32) NOT NULL COMMENT '助理ID'
+      `);
+      // 2. 更新 assistant_requests 表的外键字段名
+      // 注意：外键约束名称可能需要先删除再重建
+      await conn.execute(`
+        ALTER TABLE assistant_requests
+        CHANGE COLUMN assistant_type assistant_id VARCHAR(32) NOT NULL COMMENT '助理ID'
+      `);
+      console.log('  ✓ Renamed assistants.assistant_type -> id');
+      console.log('  ✓ Renamed assistant_requests.assistant_type -> assistant_id');
+    }
+  },
 ];
 
 /**

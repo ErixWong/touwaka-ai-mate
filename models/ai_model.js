@@ -58,7 +58,7 @@ export default class ai_model extends Model {
       type: DataTypes.ENUM('openai','deepseek','qwen','none'),
       allowNull: true,
       defaultValue: "none",
-      comment: "思考模式格式：openai(reasoning effort)、deepseek(thinking type)、qwen(enable_thinking)、none(不支持)"
+      comment: "思考模式格式"
     },
     cost_per_1k_input: {
       type: DataTypes.DECIMAL(10,6),

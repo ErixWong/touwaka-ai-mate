@@ -769,20 +769,20 @@ export const assistantApi = {
     apiRequest<Assistant[]>(apiClient.get('/assistants')),
 
   // 获取单个助理详情
-  getAssistant: (type: string) =>
-    apiRequest<Assistant>(apiClient.get(`/assistants/${type}`)),
+  getAssistant: (id: string) =>
+    apiRequest<Assistant>(apiClient.get(`/assistants/${id}`)),
 
   // 更新助理配置
-  updateAssistant: (type: string, data: Partial<Assistant>) =>
-    apiRequest<Assistant>(apiClient.put(`/assistants/${type}`, data)),
+  updateAssistant: (id: string, data: Partial<Assistant>) =>
+    apiRequest<Assistant>(apiClient.put(`/assistants/${id}`, data)),
 
   // 创建助理
-  createAssistant: (data: Partial<Assistant> & { assistant_type: string; name: string }) =>
+  createAssistant: (data: Partial<Assistant> & { id: string; name: string }) =>
     apiRequest<Assistant>(apiClient.post('/assistants', data)),
 
   // 删除助理
-  deleteAssistant: (type: string) =>
-    apiRequest<{ success: boolean; assistant_type: string }>(apiClient.delete(`/assistants/${type}`)),
+  deleteAssistant: (id: string) =>
+    apiRequest<{ success: boolean; id: string }>(apiClient.delete(`/assistants/${id}`)),
 
   // 召唤助理
   summon: (data: AssistantSummonRequest) =>
@@ -797,7 +797,7 @@ export const assistantApi = {
     status?: string
     expert_id?: string
     user_id?: string
-    assistant_type?: string
+    assistant_id?: string
     limit?: number
   }) =>
     apiRequest<AssistantRequest[]>(apiClient.get('/assistants/requests', { params })),

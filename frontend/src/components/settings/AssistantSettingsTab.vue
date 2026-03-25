@@ -23,7 +23,7 @@
       <div class="assistant-list">
         <div
           v-for="assistant in assistantStore.assistants"
-          :key="assistant.assistant_type"
+          :key="assistant.id"
           class="assistant-item"
           :class="{ inactive: !assistant.is_active }"
         >
@@ -118,7 +118,7 @@ async function handleSave(data: Partial<Assistant>) {
   if (!editingAssistant.value) return
 
   try {
-    await assistantStore.updateAssistant(editingAssistant.value.assistant_type, data)
+    await assistantStore.updateAssistant(editingAssistant.value.id, data)
     closeEditDialog()
   } catch (error) {
     console.error('Failed to save assistant:', error)
@@ -126,7 +126,7 @@ async function handleSave(data: Partial<Assistant>) {
 }
 
 // 创建助理
-async function handleCreate(data: Partial<Assistant> & { assistant_type: string; name: string }) {
+async function handleCreate(data: Partial<Assistant> & { id: string; name: string }) {
   try {
     await assistantStore.createAssistant(data)
     closeEditDialog()
@@ -138,7 +138,7 @@ async function handleCreate(data: Partial<Assistant> & { assistant_type: string;
 // 确认删除助理
 function confirmDeleteAssistant(assistant: Assistant) {
   if (confirm(t('assistant.confirmDelete', { name: assistant.name }))) {
-    assistantStore.deleteAssistant(assistant.assistant_type)
+    assistantStore.deleteAssistant(assistant.id)
   }
 }
 

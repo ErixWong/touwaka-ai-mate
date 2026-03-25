@@ -9,9 +9,10 @@ export default class assistant_request extends Model {
       allowNull: false,
       primaryKey: true
     },
-    assistant_type: {
+    assistant_id: {
       type: DataTypes.STRING(32),
-      allowNull: false
+      allowNull: false,
+      comment: "助理ID"
     },
     expert_id: {
       type: DataTypes.STRING(32),
@@ -92,9 +93,9 @@ export default class assistant_request extends Model {
       comment: "完成时间"
     },
     is_archived: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BOOLEAN,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "是否已归档"
     }
   }, {

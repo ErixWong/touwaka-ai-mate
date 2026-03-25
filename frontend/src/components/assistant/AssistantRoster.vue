@@ -25,20 +25,20 @@
     <div v-else class="assistant-list">
       <div
         v-for="assistant in assistants"
-        :key="assistant.assistant_type"
+        :key="assistant.id"
         class="assistant-item"
         :class="{ inactive: !assistant.is_active }"
       >
         <!-- 图标 -->
         <div class="assistant-icon">
-          {{ getIcon(assistant.icon, assistant.assistant_type) }}
+          {{ getIcon(assistant.icon, assistant.id) }}
         </div>
 
         <!-- 信息 -->
         <div class="assistant-info">
           <div class="assistant-name">
             {{ assistant.name }}
-            <span class="assistant-type">({{ assistant.assistant_type }})</span>
+            <span class="assistant-type">({{ assistant.id }})</span>
           </div>
           <div v-if="assistant.description" class="assistant-description">
             {{ assistant.description }}

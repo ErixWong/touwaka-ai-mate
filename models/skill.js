@@ -18,34 +18,6 @@ export default class skill extends Model {
       type: DataTypes.TEXT,
       allowNull: true
     },
-    source_type: {
-      type: DataTypes.ENUM('database','filesystem','url','zip','local'),
-      allowNull: true,
-      defaultValue: "filesystem"
-    },
-    source_path: {
-      type: DataTypes.STRING(256),
-      allowNull: true
-    },
-    skill_md: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    is_active: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
     version: {
       type: DataTypes.STRING(32),
       allowNull: true
@@ -56,10 +28,24 @@ export default class skill extends Model {
     },
     tags: {
       type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "标签数组（JSON格式）"
+    },
+    source_type: {
+      type: DataTypes.ENUM('database','filesystem','url','zip','local'),
+      allowNull: true,
+      defaultValue: "filesystem"
+    },
+    source_path: {
+      type: DataTypes.STRING(256),
       allowNull: true
     },
     source_url: {
       type: DataTypes.STRING(512),
+      allowNull: true
+    },
+    skill_md: {
+      type: DataTypes.TEXT,
       allowNull: true
     },
     security_score: {
@@ -69,16 +55,19 @@ export default class skill extends Model {
     },
     security_warnings: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "安全警告（JSON格式）"
     },
     license: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "许可证信息"
     },
     argument_hint: {
       type: DataTypes.STRING(128),
       allowNull: true,
-      defaultValue: ""
+      defaultValue: "",
+      comment: "参数提示"
     },
     disable_model_invocation: {
       type: DataTypes.BOOLEAN,
@@ -94,7 +83,23 @@ export default class skill extends Model {
     },
     allowed_tools: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "允许的工具列表（JSON数组）"
+    },
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: true
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     }
   }, {
     sequelize,

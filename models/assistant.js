@@ -4,10 +4,11 @@ const { Model, Sequelize } = _sequelize;
 export default class assistant extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
-    assistant_type: {
+    id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      primaryKey: true
+      primaryKey: true,
+      comment: "助理ID"
     },
     name: {
       type: DataTypes.STRING(128),
@@ -116,7 +117,7 @@ export default class assistant extends Model {
         unique: true,
         using: "BTREE",
         fields: [
-          { name: "assistant_type" },
+          { name: "id" },
         ]
       },
       {

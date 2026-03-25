@@ -495,7 +495,7 @@ const TABLES = [
   
   // 26. Assistants 表
   `CREATE TABLE IF NOT EXISTS assistants (
-    assistant_type VARCHAR(32) PRIMARY KEY,
+    id VARCHAR(32) PRIMARY KEY COMMENT '助理ID（格式：asst_xxxxxxxx）',
     name VARCHAR(128) NOT NULL COMMENT '显示名称',
     icon VARCHAR(32) COMMENT '图标',
     description TEXT COMMENT '能力描述',
@@ -521,7 +521,7 @@ const TABLES = [
   // 27. Assistant_Requests 表
   `CREATE TABLE IF NOT EXISTS assistant_requests (
     request_id VARCHAR(64) PRIMARY KEY,
-    assistant_type VARCHAR(32) NOT NULL,
+    assistant_id VARCHAR(32) NOT NULL COMMENT '助理ID',
     expert_id VARCHAR(32) COMMENT '调用专家ID',
     contact_id VARCHAR(64) COMMENT '联系人ID',
     user_id VARCHAR(32) COMMENT '用户ID',

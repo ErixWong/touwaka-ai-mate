@@ -12,12 +12,20 @@ export default class user_skill_parameter extends Model {
     user_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "用户ID"
+      comment: "用户ID",
+      references: {
+        model: 'users',
+        key: 'id'
+      }
     },
     skill_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
-      comment: "技能ID"
+      comment: "技能ID",
+      references: {
+        model: 'skills',
+        key: 'id'
+      }
     },
     param_name: {
       type: DataTypes.STRING(100),

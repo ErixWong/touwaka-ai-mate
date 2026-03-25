@@ -27,19 +27,23 @@ export default class user_profile extends Model {
     },
     preferred_name: {
       type: DataTypes.STRING(128),
-      allowNull: true
+      allowNull: true,
+      comment: "用户希望被称呼的名字"
     },
     introduction: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "用户自我介绍"
     },
     background: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "背景画像（LLM总结生成）"
     },
     notes: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "专家对用户的笔记"
     },
     first_met: {
       type: DataTypes.DATE,

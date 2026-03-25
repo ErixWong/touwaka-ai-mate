@@ -20,6 +20,7 @@ export default class knowledge_basis extends Model {
     owner_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
+      comment: "创建者 user_id",
       references: {
         model: 'users',
         key: 'id'
@@ -70,6 +71,13 @@ export default class knowledge_basis extends Model {
         ]
       },
       {
+        name: "embedding_model_id",
+        using: "BTREE",
+        fields: [
+          { name: "embedding_model_id" },
+        ]
+      },
+      {
         name: "idx_kb_owner",
         using: "BTREE",
         fields: [
@@ -81,13 +89,6 @@ export default class knowledge_basis extends Model {
         using: "BTREE",
         fields: [
           { name: "is_public" },
-        ]
-      },
-      {
-        name: "fk_kb_embedding_model",
-        using: "BTREE",
-        fields: [
-          { name: "embedding_model_id" },
         ]
       },
     ]

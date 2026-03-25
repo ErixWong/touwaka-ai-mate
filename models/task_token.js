@@ -13,25 +13,18 @@ export default class task_token extends Model {
     token: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      comment: "Token字符串(随机生成，非JWT)",
       unique: "token"
     },
     task_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "关联的任务ID",
-      references: {
-        model: 'tasks',
-        key: 'id'
-      }
+      comment: "关联的任务ID"
     },
     user_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "创建Token的用户ID",
-      references: {
-        model: 'users',
-        key: 'id'
-      }
+      comment: "创建Token的用户ID"
     },
     expires_at: {
       type: DataTypes.DATE,
@@ -85,13 +78,6 @@ export default class task_token extends Model {
         using: "BTREE",
         fields: [
           { name: "expires_at" },
-        ]
-      },
-      {
-        name: "fk_task_token_user",
-        using: "BTREE",
-        fields: [
-          { name: "user_id" },
         ]
       },
     ]

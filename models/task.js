@@ -33,12 +33,20 @@ export default class task extends Model {
     expert_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "关联的专家ID（自主任务执行时使用）"
+      comment: "关联的专家ID（自主任务执行时使用）",
+      references: {
+        model: 'experts',
+        key: 'id'
+      }
     },
     topic_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "关联的话题ID（自主任务执行时的对话）"
+      comment: "关联的话题ID（自主任务执行时的对话）",
+      references: {
+        model: 'topics',
+        key: 'id'
+      }
     },
     last_executed_at: {
       type: DataTypes.DATE,

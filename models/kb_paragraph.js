@@ -28,11 +28,6 @@ export default class kb_paragraph extends Model {
       allowNull: false,
       comment: "段落内容"
     },
-    context: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "知识点上下文，用于语义检索。用一两句话总结该知识点及其所在文章（中文）"
-    },
     is_knowledge_point: {
       type: DataTypes.BOOLEAN,
       allowNull: true,
@@ -40,7 +35,7 @@ export default class kb_paragraph extends Model {
       comment: "是否是知识点"
     },
     embedding: {
-      type: "VECTOR(1024)",
+      type: "VECTOR(384)",
       allowNull: true,
       comment: "向量（只有知识点才向量化）"
     },

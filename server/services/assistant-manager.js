@@ -112,7 +112,7 @@ class AssistantManager {
       // 将 BIT(1) 转换为布尔值
       assistant.can_use_skills = !!assistant.can_use_skills;
       assistant.is_active = !!assistant.is_active;
-      this.assistantsCache.set(assistant.assistant_type, assistant);
+      this.assistantsCache.set(assistant.id, assistant);
     }
 
     this.cacheTime = Date.now();
@@ -141,13 +141,13 @@ class AssistantManager {
 
   /**
    * 获取助理配置
-   * @param {string} assistantType - 助理类型
+   * @param {string} assistantId - 助理ID
    * @returns {object|null}
    */
-  getAssistant(assistantType) {
+  getAssistant(assistantId) {
     // 直接从缓存获取，不触发异步刷新
     // 缓存刷新由 initialize() 和外部定时任务控制
-    return this.assistantsCache?.get(assistantType) || null;
+    return this.assistantsCache?.get(assistantId) || null;
   }
 
   /**
@@ -165,7 +165,7 @@ class AssistantManager {
     await this.refreshAssistantsCache();
 
     return Array.from(this.assistantsCache.values()).map(a => ({
-      assistant_type: a.assistant_type,
+      id: a.id,
       name: a.name,
       icon: a.icon,
       description: a.description,
@@ -188,7 +188,7 @@ class AssistantManager {
    * 召唤助理（异步委托）
    *
    * @param {object} summonRequest - 召唤请求对象
-   * @param {string} summonRequest.assistant_type - 助理类型（必填）
+   * @param {string} summonRequest.assistant_id - 助理ID（必填）
    * @param {string} summonRequest.task - 任务描述（必填）
    * @param {string} [summonRequest.background] - 任务背景（可选）
    * @param {object} summonRequest.input - 输入数据（必填）
@@ -200,17 +200,17 @@ class AssistantManager {
    * @returns {Promise<{request_id: string, status: string, estimated_time: number, message: string}>}
    */
   async summon(summonRequest) {
-    // 兼容旧版调用方式：summon(assistantType, input, context)
-    let assistantType, input, context;
+    // 兼容旧版调用方式：summon(assistantId, input, context)
+    let assistantId, input, context;
 
     if (typeof summonRequest === 'string') {
-      // 旧版调用：summon(assistantType, input, context)
-      assistantType = arguments[0];
+      // 旧版调用：summon(assistantId, input, context)
+      assistantId = arguments[0];
       input = arguments[1];
       context = arguments[2] || {};
     } else {
       // 新版调用：summon(requestObject)
-      assistantType = summonRequest.assistant_type;
+      assistantId = summonRequest.assistant_id;
       input = summonRequest.input;
       context = {
         expertId: summonRequest.workspace?.expert_id,
@@ -226,9 +226,9 @@ class AssistantManager {
     }
 
     // 获取助理配置
-    const assistant = this.getAssistant(assistantType);
+    const assistant = this.getAssistant(assistantId);
     if (!assistant) {
-      throw new Error(`Assistant not found: ${assistantType}`);
+      throw new Error(`Assistant not found: ${assistantId}`);
     }
 
     // 生成请求 ID
@@ -267,7 +267,7 @@ class AssistantManager {
 
     // 构建完整的输入结构（存储到数据库）
     const fullInput = {
-      task: context.task || `执行 ${assistantType} 任务`,
+      task: context.task || `执行 ${assistantId} 任务`,
       background: context.background,
       input: input,
       expected_output: context.expected_output,
@@ -283,7 +283,7 @@ class AssistantManager {
     // 创建委托记录（数据库 + 内存）
     const request = {
       request_id: requestId,
-      assistant_type: assistantType,
+      assistant_id: assistantId,
       expert_id: context.expertId || null,
       contact_id: context.contactId || null,
       user_id: context.userId || null,
@@ -299,7 +299,7 @@ class AssistantManager {
 
     // 写入任务消息
     await this.messageService.appendTaskMessage(requestId, {
-      task: context.task || `执行 ${assistantType} 任务`,
+      task: context.task || `执行 ${assistantId} 任务`,
       background: context.background,
       input: input,
       expectedOutput: context.expected_output,
@@ -340,7 +340,7 @@ class AssistantManager {
 
     return {
       request_id: request.request_id,
-      assistant_type: request.assistant_type,
+      assistant_id: request.assistant_id,
       status: request.status,
       input: JSON.parse(request.input || '{}'),
       result: request.result,
@@ -366,7 +366,7 @@ class AssistantManager {
     if (filters.expert_id) where.expert_id = filters.expert_id;
     if (filters.user_id) where.user_id = filters.user_id;
     if (filters.status) where.status = filters.status;
-    if (filters.assistant_type) where.assistant_type = filters.assistant_type;
+    if (filters.assistant_id) where.assistant_id = filters.assistant_id;
 
     const requests = await this.AssistantRequest.findAll({
       where,
@@ -377,7 +377,7 @@ class AssistantManager {
 
     return requests.map(r => ({
       request_id: r.request_id,
-      assistant_type: r.assistant_type,
+      assistant_id: r.assistant_id,
       status: r.status,
       created_at: r.created_at,
       completed_at: r.completed_at,
@@ -532,9 +532,9 @@ class AssistantManager {
       }
 
       // 获取助理配置
-      const assistant = this.getAssistant(request.assistant_type);
+      const assistant = this.getAssistant(request.assistant_id);
       if (!assistant) {
-        throw new Error(`Assistant not found: ${request.assistant_type}`);
+        throw new Error(`Assistant not found: ${request.assistant_id}`);
       }
 
       // 更新状态为 running
@@ -655,7 +655,7 @@ class AssistantManager {
    * @param {object} request - 请求对象（包含 user_id, expert_id, topic_id, result 等）
    */
   async notifyExpertResult(request) {
-    const { user_id, expert_id, topic_id, result, status, assistant_type, request_id } = request;
+    const { user_id, expert_id, topic_id, result, status, assistant_id, request_id } = request;
 
     // 检查是否已经通知过
     const notifyKey = `${request_id}_${status}`;
@@ -711,7 +711,7 @@ class AssistantManager {
             user_id: finalUserId,
             expert_id: finalExpertId,
             status: 'active',
-            title: `Assistant 结果 - ${assistant_type}`,
+            title: `Assistant 结果 - ${assistant_id}`,
           });
           finalTopicId = newTopic.id;
           logger.info(`[AssistantManager] 创建新话题: topic_id=${finalTopicId}`);
@@ -859,7 +859,7 @@ class AssistantManager {
 
     if (status === 'failed') {
       const errorMsg = request.error_message || '未知错误';
-      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【❌ 错误原因】\n${errorMsg}\n\n---\n**请修改输入参数后重新委托此任务**\n\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
+      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【❌ 错误原因】\n${errorMsg}\n\n---\n**请修改输入参数后重新委托此任务**\n\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_id: ${assistant_id}`;
     } else {
       // 成功时，告诉 Expert 立即处理结果，不要等待用户指令
       let resultObj;
@@ -872,12 +872,22 @@ class AssistantManager {
         rawResult = typeof result === 'string' ? result : JSON.stringify(result);
       }
 
-      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_type: ${assistant_type}`;
+      content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_id: ${assistant_id}`;
     }
     // 构造用户消息（不存入数据库，不显示在前端）
     const constructedUserMessage = userMessage
       ? `用户请求：${userMessage}\n\n助理执行结果：\n${content}`
       : content;
+
+    // 在 console 中显示助理返回结果
+    console.log('\n========================================');
+    console.log(`[助理返回结果] request_id: ${request_id}`);
+    console.log(`assistant_id: ${assistant_id}`);
+    console.log(`status: ${status}`);
+    console.log(`latency: ${latencyMs}ms`);
+    console.log('----------------------------------------');
+    console.log(content);
+    console.log('========================================\n');
 
     logger.info(`[AssistantManager] 通知 Expert 结果: request=${request_id}, topic=${finalTopicId}`, {
       user_id: finalUserId,
@@ -1178,7 +1188,7 @@ class AssistantManager {
    * @param {object} context
    */
   async executeDirect(assistant, input, context) {
-    logger.info(`[AssistantManager] 直接模式执行: ${assistant.assistant_type}`, input);
+    logger.info(`[AssistantManager] 直接模式执行: ${assistant.id}`, input);
 
     // 如果配置了 tool_name，尝试通过 ToolManager 执行
     if (assistant.tool_name) {
@@ -1248,7 +1258,7 @@ class AssistantManager {
    * @param {object} context
    */
   async executeLLM(assistant, input, context) {
-    logger.info(`[AssistantManager] LLM 模式执行: ${assistant.assistant_type}`, input);
+    logger.info(`[AssistantManager] LLM 模式执行: ${assistant.id}`, input);
 
     // 获取模型配置
     if (!assistant.model_id) {
@@ -1270,7 +1280,7 @@ class AssistantManager {
     const imageInput = this.extractImageInput(input);
     const isMultimodalModel = modelConfig.model_type === 'multimodal';
 
-    logger.info(`[AssistantManager] LLM模式检查: assistant=${assistant.assistant_type}, model_type=${modelConfig.model_type}, inputKeys=${Object.keys(input).join(',')}, hasImage=${imageInput.hasImage}, imagePaths=${JSON.stringify(imageInput.filePaths)}`);
+    logger.info(`[AssistantManager] LLM模式检查: assistant=${assistant.id}, model_type=${modelConfig.model_type}, inputKeys=${Object.keys(input).join(',')}, hasImage=${imageInput.hasImage}, imagePaths=${JSON.stringify(imageInput.filePaths)}`);
 
     // 如果是多模态模型且有图片输入，自动走视觉模式
     if (isMultimodalModel && imageInput.hasImage) {
@@ -1515,7 +1525,7 @@ class AssistantManager {
    * @param {object} context
    */
   async executeHybrid(assistant, input, context) {
-    logger.info(`[AssistantManager] 混合模式执行: ${assistant.assistant_type}`, input);
+    logger.info(`[AssistantManager] 混合模式执行: ${assistant.id}`, input);
 
     // 第一步：LLM 推理（executeLLM 内部会自动检测多模态模型+图片输入）
     const llmResult = await this.executeLLM(assistant, input, context);
@@ -1604,7 +1614,7 @@ class AssistantManager {
    * @param {object} context
    */
   async executeHybridVision(assistant, input, context) {
-    logger.info(`[AssistantManager] 视觉混合模式执行: ${assistant.assistant_type}, input:`, input);
+    logger.info(`[AssistantManager] 视觉混合模式执行: ${assistant.id}, input:`, input);
 
     // 支持多种输入格式：
     // 1. 单图：{ image_path: "..." }
@@ -2334,27 +2344,30 @@ class AssistantManager {
   }
 
   /**
-   * 生成工具定义（供 Expert 使用）
+   * 获取助理系统提供的工具定义（供 Expert 使用）
    * @returns {Array}
    */
-  getToolDefinitions() {
+  getAssistantTools() {
     // 动态获取可用助理列表
     const assistants = Array.from(this.assistantsCache?.values() || []);
-    const assistantTypes = assistants.map(a => `${a.assistant_type}`).join(', ');
-    const assistantTypesDescription = assistantTypes || '（当前无可用助理）';
+    
+    // 构建助理列表描述（用于工具描述）
+    const assistantListDesc = assistants.length > 0
+      ? assistants.map(a => `${a.id}（${a.name}）`).join('、')
+      : '（当前无可用助理）';
 
     return [
       {
         type: 'function',
         function: {
           name: 'assistant_summon',
-          description: `召唤助理来处理特定任务。助理是异步执行的，会立即返回委托ID。【重要规则】\n1. 召唤成功后必须立即回复用户：任务已提交，请稍后查看结果，然后继续与用户对话\n2. 不要轮询等待结果，结果会自动返回到对话中\n3. 收到助理返回的结果后，根据用户需求处理结果（如保存文件），【禁止再次调用此工具】\n4. 如需处理多张图片，可以在 input.image_paths 中传入图片路径数组，助理会一次性处理所有图片\n\n当前可用助理类型：${assistantTypesDescription}`,
+          description: `召唤助理来处理特定任务。助理是异步执行的，会立即返回委托ID。【重要规则】\n1. 召唤成功后必须立即回复用户：任务已提交，请稍后查看结果，然后继续与用户对话\n2. 不要轮询等待结果，结果会自动返回到对话中\n3. 收到助理返回的结果后，根据用户需求处理结果（如保存文件），【禁止再次调用此工具】\n4. 如需处理多张图片，可以在 input.image_paths 中传入图片路径数组，助理会一次性处理所有图片\n\n可用助理：${assistantListDesc}`,
           parameters: {
             type: 'object',
             properties: {
-              type: {
+              assistant_id: {
                 type: 'string',
-                description: `助理类型，可选值：${assistantTypesDescription}`,
+                description: `助理ID。可用助理：${assistantListDesc}`,
               },
               task: {
                 type: 'string',
@@ -2383,7 +2396,7 @@ class AssistantManager {
                 description: '要继承的工具ID列表，助理可以调用这些工具',
               },
             },
-            required: ['type', 'input'],
+            required: ['assistant_id', 'input'],
           },
         },
       },
@@ -2391,7 +2404,7 @@ class AssistantManager {
         type: 'function',
         function: {
           name: 'assistant_roster',
-          description: '列出所有可用的助理类型',
+          description: '列出所有可用的助理，返回助理ID、名称、图标和简介。在召唤助理前，可先调用此工具了解有哪些助理可用。',
           parameters: {
             type: 'object',
             properties: {},
@@ -2469,12 +2482,12 @@ class AssistantManager {
 
   /**
    * 获取单个助理详情
-   * @param {string} assistantType - 助理类型
+   * @param {string} assistantId - 助理ID
    * @returns {Promise<object|null>}
    */
-  async getAssistantDetail(assistantType) {
+  async getAssistantDetail(assistantId) {
     const assistant = await this.Assistant.findOne({
-      where: { assistant_type: assistantType },
+      where: { id: assistantId },
       raw: true,
     });
 
@@ -2491,17 +2504,17 @@ class AssistantManager {
 
   /**
    * 更新助理配置
-   * @param {string} assistantType - 助理类型
+   * @param {string} assistantId - 助理ID
    * @param {object} updates - 更新内容
    * @returns {Promise<object>}
    */
-  async updateAssistant(assistantType, updates) {
+  async updateAssistant(assistantId, updates) {
     const assistant = await this.Assistant.findOne({
-      where: { assistant_type: assistantType },
+      where: { id: assistantId },
     });
 
     if (!assistant) {
-      throw new Error(`Assistant not found: ${assistantType}`);
+      throw new Error(`Assistant not found: ${assistantId}`);
     }
 
     // 允许更新的字段
@@ -2533,14 +2546,14 @@ class AssistantManager {
     updateData.updated_at = new Date();
 
     await this.Assistant.update(updateData, {
-      where: { assistant_type: assistantType },
+      where: { id: assistantId },
     });
 
     // 刷新缓存
     await this.refreshAssistantsCache();
 
     // 返回更新后的数据
-    return this.getAssistantDetail(assistantType);
+    return this.getAssistantDetail(assistantId);
   }
 
   /**
@@ -2550,35 +2563,16 @@ class AssistantManager {
    */
   async createAssistant(data) {
     // 必填字段检查
-    if (!data.assistant_type) {
-      throw new Error('assistant_type is required');
-    }
     if (!data.name) {
       throw new Error('name is required');
     }
 
-    // 验证 assistant_type 格式
-    // 规则：只允许字母、数字、下划线，且不能以数字开头，最大长度32
-    const assistantType = data.assistant_type;
-    if (assistantType.length > 32) {
-      throw new Error('assistant_type must be at most 32 characters');
-    }
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(assistantType)) {
-      throw new Error('assistant_type must start with a letter or underscore, and contain only letters, numbers, and underscores');
-    }
-
-    // 检查是否已存在
-    const existing = await this.Assistant.findOne({
-      where: { assistant_type: data.assistant_type },
-    });
-
-    if (existing) {
-      throw new Error(`Assistant already exists: ${data.assistant_type}`);
-    }
+    // 自动生成 id（格式：asst_xxxxxxxx）
+    const assistantId = `asst_${Utils.newID(8)}`;
 
     // 创建助理
     const assistantData = {
-      assistant_type: data.assistant_type,
+      id: assistantId,
       name: data.name,
       icon: data.icon || '🤖',
       description: data.description || '',
@@ -2603,21 +2597,23 @@ class AssistantManager {
     // 刷新缓存
     await this.refreshAssistantsCache();
 
+    logger.info(`[AssistantManager] 创建助理成功: ${assistantId} (${data.name})`);
+
     // 返回创建的数据
-    return this.getAssistantDetail(data.assistant_type);
+    return this.getAssistantDetail(assistantId);
   }
 
   /**
    * 删除助理
-   * @param {string} assistantType - 助理类型
+   * @param {string} assistantId - 助理ID
    */
-  async deleteAssistant(assistantType) {
+  async deleteAssistant(assistantId) {
     const assistant = await this.Assistant.findOne({
-      where: { assistant_type: assistantType },
+      where: { id: assistantId },
     });
 
     if (!assistant) {
-      throw new Error(`Assistant not found: ${assistantType}`);
+      throw new Error(`Assistant not found: ${assistantId}`);
     }
 
     await assistant.destroy();
@@ -2625,7 +2621,7 @@ class AssistantManager {
     // 刷新缓存
     await this.refreshAssistantsCache();
 
-    return { success: true, assistant_type: assistantType };
+    return { success: true, id: assistantId };
   }
 
   /**
@@ -2638,9 +2634,9 @@ class AssistantManager {
   async executeTool(toolName, params, context = {}) {
     switch (toolName) {
       case 'assistant_summon':
-        // 支持新版和旧版参数
+        // 使用 assistant_id 参数召唤助理
         return this.summon({
-          assistant_type: params.type,
+          assistant_id: params.assistant_id,
           task: params.task,
           background: params.background,
           input: params.input,

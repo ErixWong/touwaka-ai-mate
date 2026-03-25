@@ -13,11 +13,7 @@ export default class task_token_access_log extends Model {
     token_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "关联的Token ID",
-      references: {
-        model: 'task_token',
-        key: 'id'
-      }
+      comment: "关联的Token ID"
     },
     file_path: {
       type: DataTypes.STRING(512),

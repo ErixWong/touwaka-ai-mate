@@ -15,9 +15,6 @@ import _kb_paragraph from  "./kb_paragraph.js";
 import _kb_section from  "./kb_section.js";
 import _kb_tag from  "./kb_tag.js";
 import _knowledge_basis from  "./knowledge_basis.js";
-import _knowledge_point from  "./knowledge_point.js";
-import _knowledge_relation from  "./knowledge_relation.js";
-import _knowledge from  "./knowledge.js";
 import _message from  "./message.js";
 import _permission from  "./permission.js";
 import _position from  "./position.js";
@@ -55,9 +52,6 @@ export default function initModels(sequelize) {
   const kb_section = _kb_section.init(sequelize, DataTypes);
   const kb_tag = _kb_tag.init(sequelize, DataTypes);
   const knowledge_basis = _knowledge_basis.init(sequelize, DataTypes);
-  const knowledge_point = _knowledge_point.init(sequelize, DataTypes);
-  const knowledge_relation = _knowledge_relation.init(sequelize, DataTypes);
-  const knowledge = _knowledge.init(sequelize, DataTypes);
   const message = _message.init(sequelize, DataTypes);
   const permission = _permission.init(sequelize, DataTypes);
   const position = _position.init(sequelize, DataTypes);
@@ -97,14 +91,14 @@ export default function initModels(sequelize) {
   ai_model.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "embedding_model_id"});
   position.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
-  user.belongsTo(department, { as: "department", foreignKey: "department_id"});
-  department.hasMany(user, { as: "users", foreignKey: "department_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(expert_skill, { as: "expert_skills", foreignKey: "expert_id"});
   message.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(message, { as: "messages", foreignKey: "expert_id"});
   role_expert.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(role_expert, { as: "role_experts", foreignKey: "expert_id"});
+  task.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
+  expert.hasMany(task, { as: "tasks", foreignKey: "expert_id"});
   topic.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(topic, { as: "topics", foreignKey: "expert_id"});
   user_profile.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -125,22 +119,10 @@ export default function initModels(sequelize) {
   knowledge_basis.hasMany(kb_article, { as: "kb_articles", foreignKey: "kb_id"});
   kb_tag.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});
   knowledge_basis.hasMany(kb_tag, { as: "kb_tags", foreignKey: "kb_id"});
-  knowledge.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});
-  knowledge_basis.hasMany(knowledge, { as: "knowledges", foreignKey: "kb_id"});
-  knowledge_relation.belongsTo(knowledge_point, { as: "source", foreignKey: "source_id"});
-  knowledge_point.hasMany(knowledge_relation, { as: "knowledge_relations", foreignKey: "source_id"});
-  knowledge_relation.belongsTo(knowledge_point, { as: "target", foreignKey: "target_id"});
-  knowledge_point.hasMany(knowledge_relation, { as: "target_knowledge_relations", foreignKey: "target_id"});
-  knowledge_point.belongsTo(knowledge, { as: "knowledge", foreignKey: "knowledge_id"});
-  knowledge.hasMany(knowledge_point, { as: "knowledge_points", foreignKey: "knowledge_id"});
-  knowledge.belongsTo(knowledge, { as: "parent", foreignKey: "parent_id"});
-  knowledge.hasMany(knowledge, { as: "knowledges", foreignKey: "parent_id"});
   permission.belongsTo(permission, { as: "parent", foreignKey: "parent_id"});
   permission.hasMany(permission, { as: "permissions", foreignKey: "parent_id"});
   role_permission.belongsTo(permission, { as: "permission", foreignKey: "permission_id"});
   permission.hasMany(role_permission, { as: "role_permissions", foreignKey: "permission_id"});
-  user.belongsTo(position, { as: "position", foreignKey: "position_id"});
-  position.hasMany(user, { as: "users", foreignKey: "position_id"});
   ai_model.belongsTo(provider, { as: "provider", foreignKey: "provider_id"});
   provider.hasMany(ai_model, { as: "ai_models", foreignKey: "provider_id"});
   role_expert.belongsTo(role, { as: "role", foreignKey: "role_id"});
@@ -153,18 +135,16 @@ export default function initModels(sequelize) {
   skill.hasMany(expert_skill, { as: "expert_skills", foreignKey: "skill_id"});
   skill_parameter.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
   skill.hasMany(skill_parameter, { as: "skill_parameters", foreignKey: "skill_id"});
-  skill_tool.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
-  skill.hasMany(skill_tool, { as: "skill_tools", foreignKey: "skill_id"});
+  user_skill_parameter.belongsTo(skill, { as: "skill", foreignKey: "skill_id"});
+  skill.hasMany(user_skill_parameter, { as: "user_skill_parameters", foreignKey: "skill_id"});
   task.belongsTo(solution, { as: "solution", foreignKey: "solution_id"});
   solution.hasMany(task, { as: "tasks", foreignKey: "solution_id"});
-  task_token_access_log.belongsTo(task_token, { as: "token", foreignKey: "token_id"});
-  task_token.hasMany(task_token_access_log, { as: "task_token_access_logs", foreignKey: "token_id"});
-  task_token.belongsTo(task, { as: "task", foreignKey: "task_id"});
-  task.hasMany(task_token, { as: "task_tokens", foreignKey: "task_id"});
-  topic.belongsTo(task, { as: "task", foreignKey: "task_id"});
-  task.hasMany(topic, { as: "topics", foreignKey: "task_id"});
+  topic.belongsTo(task, { as: "task_task", foreignKey: "task_id"});
+  task.hasMany(topic, { as: "task_topics", foreignKey: "task_id"});
   message.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
   topic.hasMany(message, { as: "messages", foreignKey: "topic_id"});
+  task.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
+  topic.hasMany(task, { as: "tasks", foreignKey: "topic_id"});
   invitation_usage.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(invitation_usage, { as: "invitation_usages", foreignKey: "user_id"});
   invitation.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
@@ -173,8 +153,6 @@ export default function initModels(sequelize) {
   user.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "owner_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(message, { as: "messages", foreignKey: "user_id"});
-  task_token.belongsTo(user, { as: "user", foreignKey: "user_id"});
-  user.hasMany(task_token, { as: "task_tokens", foreignKey: "user_id"});
   task.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
   user.hasMany(task, { as: "tasks", foreignKey: "created_by"});
   topic.belongsTo(user, { as: "user", foreignKey: "user_id"});
@@ -183,6 +161,8 @@ export default function initModels(sequelize) {
   user.hasMany(user_profile, { as: "user_profiles", foreignKey: "user_id"});
   user_role.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(user_role, { as: "user_roles", foreignKey: "user_id"});
+  user_skill_parameter.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(user_skill_parameter, { as: "user_skill_parameters", foreignKey: "user_id"});
 
   return {
     ai_model,
@@ -200,9 +180,6 @@ export default function initModels(sequelize) {
     kb_section,
     kb_tag,
     knowledge_basis,
-    knowledge_point,
-    knowledge_relation,
-    knowledge,
     message,
     permission,
     position,

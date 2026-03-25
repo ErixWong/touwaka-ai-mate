@@ -42,10 +42,10 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  async function getAssistant(type: string) {
+  async function getAssistant(id: string) {
     try {
       isLoading.value = true
-      const data = await assistantApi.getAssistant(type)
+      const data = await assistantApi.getAssistant(id)
       return data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch assistant'
@@ -56,12 +56,12 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  async function updateAssistant(type: string, updates: Partial<Assistant>) {
+  async function updateAssistant(id: string, updates: Partial<Assistant>) {
     try {
       isLoading.value = true
-      const data = await assistantApi.updateAssistant(type, updates)
+      const data = await assistantApi.updateAssistant(id, updates)
       // 更新本地列表中的助理
-      const index = assistants.value.findIndex(a => a.assistant_type === type)
+      const index = assistants.value.findIndex(a => a.id === id)
       if (index !== -1) {
         assistants.value[index] = data
       }
@@ -75,7 +75,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  async function createAssistant(data: Partial<Assistant> & { assistant_type: string; name: string }) {
+  async function createAssistant(data: Partial<Assistant> & { id: string; name: string }) {
     try {
       isLoading.value = true
       const newAssistant = await assistantApi.createAssistant(data)
@@ -91,13 +91,13 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  async function deleteAssistant(type: string) {
+  async function deleteAssistant(id: string) {
     try {
       isLoading.value = true
-      await assistantApi.deleteAssistant(type)
+      await assistantApi.deleteAssistant(id)
       // 从本地列表中移除
-      assistants.value = assistants.value.filter(a => a.assistant_type !== type)
-      return { success: true, assistant_type: type }
+      assistants.value = assistants.value.filter(a => a.id !== id)
+      return { success: true, id }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete assistant'
       console.error('Failed to delete assistant:', e)
@@ -147,7 +147,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
 
   async function summonAssistant(
-    assistantType: string,
+    assistantId: string,
     task: string,
     input: Record<string, unknown>,
     options?: {
@@ -159,7 +159,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     try {
       isLoading.value = true
       const response = await assistantApi.summon({
-        assistant_type: assistantType,
+        assistant_id: assistantId,
         task,
         input,
         ...options

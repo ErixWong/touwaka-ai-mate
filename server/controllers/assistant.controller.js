@@ -44,10 +44,7 @@ class AssistantController {
       }
 
       // 必填字段校验
-      if (!data.assistant_type) {
-        ctx.error('缺少 assistant_type 参数', 400);
-        return;
-      }
+      // assistant_type 由系统自动生成，无需前端传入
       if (!data.name) {
         ctx.error('缺少 name 参数', 400);
         return;
@@ -69,21 +66,21 @@ class AssistantController {
 
   /**
    * 获取单个助理详情
-   * GET /api/assistants/:type
+   * GET /api/assistants/:id
    */
   async getDetail(ctx) {
     try {
-      const { type } = ctx.params;
+      const { id } = ctx.params;
 
-      if (!type) {
-        ctx.error('缺少 type 参数', 400);
+      if (!id) {
+        ctx.error('缺少 id 参数', 400);
         return;
       }
 
-      const assistant = await this.assistantManager.getAssistantDetail(type);
+      const assistant = await this.assistantManager.getAssistantDetail(id);
 
       if (!assistant) {
-        ctx.error(`助理不存在: ${type}`, 404);
+        ctx.error(`助理不存在: ${id}`, 404);
         return;
       }
 
@@ -96,16 +93,16 @@ class AssistantController {
 
   /**
    * 更新助理配置
-   * PUT /api/assistants/:type
+   * PUT /api/assistants/:id
    * 仅管理员可调用
    */
   async update(ctx) {
     try {
-      const { type } = ctx.params;
+      const { id } = ctx.params;
       const updates = ctx.request.body;
 
-      if (!type) {
-        ctx.error('缺少 type 参数', 400);
+      if (!id) {
+        ctx.error('缺少 id 参数', 400);
         return;
       }
 
@@ -116,7 +113,7 @@ class AssistantController {
         return;
       }
 
-      const result = await this.assistantManager.updateAssistant(type, updates);
+      const result = await this.assistantManager.updateAssistant(id, updates);
       ctx.success(result, '更新成功');
     } catch (error) {
       logger.error('Update assistant error:', error);
@@ -130,15 +127,15 @@ class AssistantController {
 
   /**
    * 删除助理
-   * DELETE /api/assistants/:type
+   * DELETE /api/assistants/:id
    * 仅管理员可调用
    */
   async deleteAssistant(ctx) {
     try {
-      const { type } = ctx.params;
+      const { id } = ctx.params;
 
-      if (!type) {
-        ctx.error('缺少 type 参数', 400);
+      if (!id) {
+        ctx.error('缺少 id 参数', 400);
         return;
       }
 
@@ -149,7 +146,7 @@ class AssistantController {
         return;
       }
 
-      const result = await this.assistantManager.deleteAssistant(type);
+      const result = await this.assistantManager.deleteAssistant(id);
       ctx.success(result, '删除成功');
     } catch (error) {
       logger.error('Delete assistant error:', error);
@@ -167,7 +164,7 @@ class AssistantController {
    *
    * 新版请求结构 (推荐):
    * {
-   *   assistant_type: string,      // 必填
+   *   assistant_id: string,        // 必填
    *   task: string,                // 必填：任务描述
    *   background?: string,         // 可选：任务背景
    *   input: object,               // 必填：具体输入数据
@@ -178,7 +175,7 @@ class AssistantController {
    *
    * 旧版请求结构 (兼容):
    * {
-   *   assistant_type: string,
+   *   assistant_type: string,      // 已废弃，兼容旧版
    *   input: object
    * }
    */
@@ -186,9 +183,12 @@ class AssistantController {
     try {
       const body = ctx.request.body;
 
+      // 兼容旧版 assistant_type 参数
+      const assistantId = body.assistant_id || body.assistant_type;
+
       // 必填参数校验
-      if (!body.assistant_type) {
-        ctx.error('缺少 assistant_type 参数', 400);
+      if (!assistantId) {
+        ctx.error('缺少 assistant_id 参数', 400);
         return;
       }
 
@@ -199,7 +199,6 @@ class AssistantController {
 
       // 新版参数
       const {
-        assistant_type,
         task,
         background,
         input,
@@ -223,9 +222,9 @@ class AssistantController {
 
       // 构建完整的召唤请求
       const summonRequest = {
-        assistant_type,
+        assistant_id: assistantId,
         // 向后兼容：如果没有 task，生成默认描述
-        task: task || `执行 ${assistant_type} 任务`,
+        task: task || `执行 ${assistantId} 任务`,
         background,
         input,
         expected_output,
@@ -276,13 +275,13 @@ class AssistantController {
    */
   async listRequests(ctx) {
     try {
-      const { status, expert_id, user_id, assistant_type, limit } = ctx.query;
+      const { status, expert_id, user_id, assistant_id, limit } = ctx.query;
 
       const filters = {};
       if (status) filters.status = status;
       if (expert_id) filters.expert_id = expert_id;
       if (user_id) filters.user_id = user_id;
-      if (assistant_type) filters.assistant_type = assistant_type;
+      if (assistant_id) filters.assistant_id = assistant_id;
       if (limit) filters.limit = parseInt(limit, 10);
 
       const requests = await this.assistantManager.list(filters);

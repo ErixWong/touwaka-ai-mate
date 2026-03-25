@@ -78,6 +78,13 @@ export default class skill_parameter extends Model {
           { name: "param_name" },
         ]
       },
+      {
+        name: "idx_skill_id",
+        using: "BTREE",
+        fields: [
+          { name: "skill_id" },
+        ]
+      },
     ]
   });
   }

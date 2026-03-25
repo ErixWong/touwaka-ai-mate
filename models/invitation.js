@@ -13,6 +13,7 @@ export default class invitation extends Model {
     code: {
       type: DataTypes.STRING(32),
       allowNull: false,
+      comment: "邀请码",
       unique: "code"
     },
     creator_id: {

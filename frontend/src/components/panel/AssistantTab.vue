@@ -22,10 +22,10 @@
         <div class="assistants-list">
           <div
             v-for="assistant in assistantStore.activeAssistants"
-            :key="assistant.assistant_type"
+            :key="assistant.id"
             class="assistant-card"
           >
-            <div class="assistant-icon">{{ getAssistantIcon(assistant.assistant_type) }}</div>
+            <div class="assistant-icon">{{ getAssistantIcon(assistant.id) }}</div>
             <div class="assistant-info">
               <span class="assistant-name">{{ assistant.name }}</span>
               <span class="assistant-meta">
@@ -72,8 +72,8 @@
             @click="selectRequest(request)"
           >
             <div class="request-header">
-              <span class="request-icon">{{ getAssistantIcon(request.assistant_type) }}</span>
-              <span class="request-type">{{ request.assistant_type }}</span>
+              <span class="request-icon">{{ getAssistantIcon(request.assistant_id) }}</span>
+              <span class="request-type">{{ request.assistant_id }}</span>
               <span class="request-status" :class="request.status">
                 {{ getStatusText(request.status) }}
               </span>

@@ -1191,7 +1191,7 @@ export type AssistantRequestStatus = 'pending' | 'running' | 'completed' | 'fail
  * 助理配置（匹配后端 assistants 表）
  */
 export interface Assistant {
-  assistant_type: string
+  id: string
   name: string
   icon?: string
   description?: string
@@ -1215,7 +1215,7 @@ export interface Assistant {
  */
 export interface AssistantRequest {
   request_id: string
-  assistant_type: string
+  assistant_id: string
   expert_id?: string
   contact_id?: string
   user_id?: string
@@ -1238,8 +1238,8 @@ export interface AssistantRequest {
  * 召唤助理的请求
  */
 export interface AssistantSummonRequest {
-  /** 助理类型（必填） */
-  assistant_type: string
+  /** 助理ID（必填） */
+  assistant_id: string
   /** 任务描述（必填）：一句话说明要做什么 */
   task: string
   /** 任务背景（可选）：为什么需要这个任务 */
@@ -1267,7 +1267,7 @@ export interface AssistantSummonRequest {
  */
 export interface AssistantSummonResponse {
   request_id: string
-  assistant_type: string
+  assistant_id: string
   status: AssistantRequestStatus
   estimated_time: number
   message: string

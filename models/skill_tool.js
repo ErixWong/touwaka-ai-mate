@@ -11,11 +11,7 @@ export default class skill_tool extends Model {
     },
     skill_id: {
       type: DataTypes.STRING(32),
-      allowNull: false,
-      references: {
-        model: 'skills',
-        key: 'id'
-      }
+      allowNull: false
     },
     name: {
       type: DataTypes.STRING(64),
@@ -27,7 +23,8 @@ export default class skill_tool extends Model {
     },
     parameters: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "JSON Schema 格式的参数定义"
     },
     script_path: {
       type: DataTypes.STRING(255),
@@ -39,7 +36,7 @@ export default class skill_tool extends Model {
       type: DataTypes.BOOLEAN,
       allowNull: true,
       defaultValue: false,
-      comment: "是否驻留进程：0=普通工具（执行后返回），1=驻留工具（持续运行，stdio通信）"
+      comment: "是否驻留进程：0=普通工具，1=驻留工具"
     },
     created_at: {
       type: DataTypes.DATE,

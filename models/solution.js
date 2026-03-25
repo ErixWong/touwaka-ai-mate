@@ -33,7 +33,7 @@ export default class solution extends Model {
     tags: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "标签数组"
+      comment: "标签数组（JSON格式）"
     },
     is_active: {
       type: DataTypes.BOOLEAN,

@@ -72,16 +72,6 @@ export default class expert extends Model {
       allowNull: true,
       comment: "大头像Base64（对话框背景，约20-50KB）"
     },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
     context_threshold: {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
@@ -97,27 +87,32 @@ export default class expert extends Model {
     temperature: {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
-      defaultValue: 0.70
+      defaultValue: 0.70,
+      comment: "Expressive模型温度"
     },
     reflective_temperature: {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
-      defaultValue: 0.30
+      defaultValue: 0.30,
+      comment: "Reflective模型温度"
     },
     top_p: {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
-      defaultValue: 1.00
+      defaultValue: 1.00,
+      comment: "Top-p采样"
     },
     frequency_penalty: {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
-      defaultValue: 0.00
+      defaultValue: 0.00,
+      comment: "频率惩罚"
     },
     presence_penalty: {
       type: DataTypes.DECIMAL(3,2),
       allowNull: true,
-      defaultValue: 0.00
+      defaultValue: 0.00,
+      comment: "存在惩罚"
     },
     knowledge_config: {
       type: DataTypes.TEXT,
@@ -128,6 +123,16 @@ export default class expert extends Model {
       type: DataTypes.INTEGER,
       allowNull: true,
       comment: "最大工具调用轮数（NULL表示使用系统默认，范围 1-50）"
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     }
   }, {
     sequelize,
