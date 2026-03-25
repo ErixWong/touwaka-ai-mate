@@ -776,10 +776,16 @@ let instance = null;
 
 /**
  * 获取 AssistantManager 单例
+ * @param {Database} db - 数据库实例
+ * @param {object} options - 配置选项（后续调用可更新 chatService）
  */
 export function getAssistantManager(db, options = {}) {
   if (!instance && db) {
     instance = new AssistantManager(db, options);
+  } else if (instance && options.chatService && !instance.chatService) {
+    // 更新 chatService（如果之前未设置）
+    instance.chatService = options.chatService;
+    logger.info('[AssistantManager] chatService updated via getAssistantManager');
   }
   return instance;
 }

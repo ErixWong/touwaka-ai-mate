@@ -8,6 +8,7 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import logger from '../../../lib/logger.js';
 import { callLLMWithRetry } from '../../../lib/simple-llm-client.js';
@@ -305,18 +306,20 @@ export function getAllowedImagePaths(context) {
   const paths = [];
 
   // 数据目录（主要路径，优先级最高）
+  // DATA_BASE_PATH 可以是相对路径（./data）或绝对路径（/var/data）
   const dataPath = process.env.DATA_BASE_PATH || './data';
-  paths.push(path.resolve(dataPath));
+  const resolvedDataPath = path.resolve(dataPath);
+  paths.push(resolvedDataPath);
 
-  // work 目录（AI 工作空间）
-  paths.push(path.resolve(dataPath, 'work'));
+  // work 目录（AI 工作空间）- 始终在 data/work 下
+  paths.push(path.resolve(resolvedDataPath, 'work'));
 
-  // 工作区根目录
+  // 工作区根目录（如果配置了）
   if (process.env.WORKSPACE_ROOT) {
     paths.push(path.resolve(process.env.WORKSPACE_ROOT));
   }
 
-  // 上传目录
+  // 上传目录（如果配置了）
   if (process.env.UPLOAD_DIR) {
     paths.push(path.resolve(process.env.UPLOAD_DIR));
   }
@@ -325,18 +328,17 @@ export function getAllowedImagePaths(context) {
   paths.push(path.resolve('/tmp'));
 
   // 从 context 获取工作目录
+  // workdir 格式：work/userId/taskId（相对于 data 目录）
   if (context?.workdir) {
-    // workdir 可能是相对路径（work/...），需要加上 data 前缀
     const workdir = context.workdir;
-    if (workdir.startsWith('work/')) {
-      paths.push(path.resolve(dataPath, workdir));
-    } else {
-      paths.push(path.resolve(workdir));
-    }
+    // 统一处理：workdir 始终相对于 data 目录解析
+    // 无论是 work/xxx 还是其他格式，都解析到 data 下
+    paths.push(path.resolve(resolvedDataPath, workdir));
   }
 
+  // topicId 对应的工作目录
   if (context?.topicId) {
-    paths.push(path.resolve(dataPath, 'work', context.topicId));
+    paths.push(path.resolve(resolvedDataPath, 'work', context.topicId));
   }
 
   return paths;
@@ -349,43 +351,34 @@ export function getAllowedImagePaths(context) {
  * @returns {string} 解析后的绝对路径
  */
 export function validateImagePath(filePath, allowedPaths) {
-  const dataPath = process.env.DATA_BASE_PATH || './data';
-  const resolvedDataPath = path.resolve(dataPath);
-
   // 统一路径分隔符（处理 Windows 和 Unix 风格混用）
   const normalizedFilePath = filePath.replace(/\\/g, '/');
 
   logger.info(`[VisionProcessor] validateImagePath 输入: filePath=${filePath}`);
   logger.info(`[VisionProcessor] normalizedFilePath=${normalizedFilePath}`);
-  logger.info(`[VisionProcessor] resolvedDataPath=${resolvedDataPath}`);
 
-  // 尝试多种路径解析方式
+  // 尝试多种路径解析方式（按优先级排序）
   const candidatePaths = [];
 
-  // 1. 相对于 data 目录解析（优先级最高）
-  candidatePaths.push(path.resolve(dataPath, filePath));
-  candidatePaths.push(path.resolve(dataPath, normalizedFilePath));
-
-  // 2. 如果路径以 work/ 开头，明确解析到 data/work 下
-  if (normalizedFilePath.startsWith('work/')) {
-    const relativePath = normalizedFilePath.substring(5); // 去掉 'work/'
-    candidatePaths.push(path.resolve(resolvedDataPath, 'work', relativePath));
-  }
-
-  // 3. 特殊处理：如果路径包含 work/ 子路径，提取并解析到 data/work 下
-  const workIndex = normalizedFilePath.indexOf('work/');
-  if (workIndex !== -1) {
-    const relativeToWork = normalizedFilePath.substring(workIndex + 5); // 去掉 'work/'
-    candidatePaths.push(path.resolve(resolvedDataPath, 'work', relativeToWork));
-  }
-
-  // 4. 直接解析（保留原始分隔符）- 放在后面，优先级较低
+  // 1. 直接解析（最高优先级 - 可能已经是正确的绝对路径或相对于项目根目录）
   candidatePaths.push(path.resolve(filePath));
 
-  // 5. 尝试相对于每个白名单目录解析
-  for (const allowedPath of allowedPaths) {
-    candidatePaths.push(path.resolve(allowedPath, normalizedFilePath));
+  // 2. 相对于项目根目录解析（work/xxx -> 项目根/work/xxx）
+  if (normalizedFilePath.startsWith('work/')) {
+    candidatePaths.push(path.resolve(normalizedFilePath));
   }
+
+  // 3. 如果路径包含 work/ 子路径，尝试提取并解析
+  const workIndex = normalizedFilePath.indexOf('work/');
+  if (workIndex > 0) {
+    const relativeToWork = normalizedFilePath.substring(workIndex);
+    candidatePaths.push(path.resolve(relativeToWork));
+  }
+
+  // 4. 相对于 data 目录解析（兼容旧逻辑）
+  const dataPath = process.env.DATA_BASE_PATH || './data';
+  const resolvedDataPath = path.resolve(dataPath);
+  candidatePaths.push(path.resolve(resolvedDataPath, normalizedFilePath));
 
   // 去重
   const uniquePaths = [...new Set(candidatePaths)];
@@ -393,7 +386,6 @@ export function validateImagePath(filePath, allowedPaths) {
   // 调试日志
   logger.info(`[VisionProcessor] 验证图片路径: ${filePath}`);
   logger.info(`[VisionProcessor] 标准化路径: ${normalizedFilePath}`);
-  logger.info(`[VisionProcessor] data 目录: ${resolvedDataPath}`);
   logger.info(`[VisionProcessor] 候选路径 (${uniquePaths.length}个): ${uniquePaths.join(', ')}`);
   logger.info(`[VisionProcessor] 白名单目录 (${allowedPaths.length}个): ${allowedPaths.join(', ')}`);
 
@@ -410,10 +402,9 @@ export function validateImagePath(filePath, allowedPaths) {
     logger.info(`[VisionProcessor] 检查路径: ${resolved}, 是否在白名单: ${isAllowed}`);
 
     if (isAllowed) {
-      // 检查文件是否存在
+      // 检查文件是否存在（使用 ES Module 导入的 fsSync）
       try {
-        const fs = require('fs');
-        const exists = fs.existsSync(resolved);
+        const exists = fsSync.existsSync(resolved);
         logger.info(`[VisionProcessor] 文件存在: ${exists}`);
         if (exists) {
           logger.info(`[VisionProcessor] 找到有效图片路径: ${resolved}`);
