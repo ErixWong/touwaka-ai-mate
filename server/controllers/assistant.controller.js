@@ -59,7 +59,7 @@ class AssistantController {
       logger.error('Create assistant error:', error);
       if (error.message.includes('already exists')) {
         ctx.error(error.message, 409);
-      } else if (error.message.includes('required')) {
+      } else if (error.message.includes('required') || error.message.includes('must')) {
         ctx.error(error.message, 400);
       } else {
         ctx.app.emit('error', error, ctx);

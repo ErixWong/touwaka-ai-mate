@@ -2557,6 +2557,16 @@ class AssistantManager {
       throw new Error('name is required');
     }
 
+    // 验证 assistant_type 格式
+    // 规则：只允许字母、数字、下划线，且不能以数字开头，最大长度32
+    const assistantType = data.assistant_type;
+    if (assistantType.length > 32) {
+      throw new Error('assistant_type must be at most 32 characters');
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(assistantType)) {
+      throw new Error('assistant_type must start with a letter or underscore, and contain only letters, numbers, and underscores');
+    }
+
     // 检查是否已存在
     const existing = await this.Assistant.findOne({
       where: { assistant_type: data.assistant_type },

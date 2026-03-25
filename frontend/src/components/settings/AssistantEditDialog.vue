@@ -20,8 +20,11 @@
                 type="text"
                 class="form-input"
                 :placeholder="$t('assistant.assistantTypePlaceholder')"
-                @keydown="handleAssistantTypeKeydown"
+                maxlength="32"
+                @input="handleAssistantTypeInput"
+                @paste="handleAssistantTypePaste"
               />
+              <span class="form-hint">{{ $t('assistant.assistantTypeHint') }}</span>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.name') }}</label>
@@ -227,16 +230,44 @@ if (skillStore.skills.length === 0) {
   skillStore.loadSkills()
 }
 
-// 限制 assistant_type 只允许字母和下划线
-function handleAssistantTypeKeydown(e: KeyboardEvent) {
-  // 允许 Backspace, Delete, Tab, 左右箭头
-  if (['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-    return
+// 验证并过滤 assistant_type 输入
+// 规则：只允许字母、数字、下划线，且不能以数字开头，最大长度32
+function validateAndFilterAssistantType(value: string): string {
+  // 只保留字母、数字、下划线
+  let filtered = value.replace(/[^a-zA-Z0-9_]/g, '')
+  // 确保第一个字符不是数字
+  if (filtered.length > 0 && /^[0-9]/.test(filtered[0])) {
+    filtered = filtered.substring(1)
   }
-  // 只允许字母和下划线
-  if (!/^[a-zA-Z_]$/.test(e.key)) {
-    e.preventDefault()
+  // 限制最大长度为32
+  if (filtered.length > 32) {
+    filtered = filtered.substring(0, 32)
   }
+  return filtered
+}
+
+// 处理输入事件
+function handleAssistantTypeInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  const filtered = validateAndFilterAssistantType(input.value)
+  // 更新表单值
+  form.assistant_type = filtered
+  // 如果值被修改过，更新输入框显示
+  if (input.value !== filtered) {
+    input.value = filtered
+  }
+}
+
+// 处理粘贴事件
+function handleAssistantTypePaste(event: ClipboardEvent) {
+  event.preventDefault()
+  const pastedText = event.clipboardData?.getData('text') || ''
+  const filtered = validateAndFilterAssistantType(pastedText)
+  // 更新表单值
+  form.assistant_type = filtered
+  // 更新输入框显示
+  const input = event.target as HTMLInputElement
+  input.value = filtered
 }
 
 async function handleSubmit() {
