@@ -1,12 +1,13 @@
 /**
  * Network Operations Skill - Node.js Implementation
  * 
- * Network utilities including DNS lookup, SSL analysis, HTTP headers analysis, port scanning, and HTTP requests.
+ * Network utilities including DNS lookup, SSL analysis, HTTP headers analysis, connectivity testing, port scanning, and HTTP requests.
  * All operations are designed to be LLM-friendly with clear error messages.
  * 
  * Tools:
  * - net_check: Unified check tool (DNS, SSL, HTTP headers)
- * - port_scan: Port scanning (single or multiple ports)
+ * - net_connect: TCP connectivity testing
+ * - port_scan: Port scanning
  * - http_request: HTTP/HTTPS requests
  * 
  * @module net-operations-skill
@@ -334,20 +335,15 @@ async function netCheck(params) {
 }
 
 /**
- * port_scan - Scan port(s) on a host
+ * net_connect - TCP connectivity testing
  * 
- * Single port mode (returns detailed connection info):
+ * @param {object} params - Parameters
  * @param {string} params.host - Hostname or IP address
- * @param {number} params.port - Single port number
+ * @param {number} params.port - Port number (default: 80)
  * @param {number} params.timeout - Timeout in ms (default: 5000)
- * 
- * Multi-port mode:
- * @param {string} params.host - Hostname or IP address
- * @param {number|array|string} params.ports - Port array or group name: "common", "web", "mail", "db"
- * @param {number} params.timeout - Timeout per port in ms (default: 3000)
  */
-async function portScan(params) {
-  const { host, port, ports, timeout } = params;
+async function netConnect(params) {
+  const { host, port = 80, timeout = DEFAULT_CONNECT_TIMEOUT } = params;
   
   if (!host) {
     throw new Error('host is required');
@@ -358,81 +354,6 @@ async function portScan(params) {
     throw new Error(`Invalid host format: ${host}`);
   }
   
-  // Determine single port or multi-port mode
-  const singlePort = port !== undefined ? parseInt(port) : null;
-  
-  if (singlePort !== null && !isNaN(singlePort)) {
-    // Single port mode - return detailed result
-    return await scanSinglePort(host, singlePort, timeout || DEFAULT_CONNECT_TIMEOUT);
-  }
-  
-  // Multi-port mode
-  let portList = [];
-  const portsParam = ports || 'common';
-  
-  if (typeof portsParam === 'string') {
-    switch (portsParam.toLowerCase()) {
-      case 'common':
-        portList = [21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443];
-        break;
-      case 'web':
-        portList = [80, 443, 8080, 8443];
-        break;
-      case 'mail':
-        portList = [25, 110, 143, 465, 587, 993, 995];
-        break;
-      case 'db':
-        portList = [1433, 1521, 3306, 5432, 6379, 27017];
-        break;
-      default:
-        const p = parseInt(portsParam);
-        if (!isNaN(p)) {
-          portList = [p];
-        } else {
-          throw new Error(`Unknown port group: ${portsParam}. Valid groups: common, web, mail, db`);
-        }
-    }
-  } else if (typeof portsParam === 'number') {
-    portList = [portsParam];
-  } else if (Array.isArray(portsParam)) {
-    portList = portsParam.map(p => parseInt(p)).filter(p => !isNaN(p) && p > 0 && p <= 65535);
-  } else {
-    throw new Error('port or ports must be specified');
-  }
-  
-  // Limit number of ports to scan
-  if (portList.length > 20) {
-    portList = portList.slice(0, 20);
-  }
-  
-  // Scan ports
-  const results = [];
-  for (const p of portList) {
-    const result = await scanSinglePortFast(host, p, timeout || DEFAULT_PORT_TIMEOUT);
-    results.push(result);
-  }
-  
-  const openPorts = results.filter(r => r.status === 'open').map(r => r.port);
-  const closedPorts = results.filter(r => r.status === 'closed').map(r => r.port);
-  const filteredPorts = results.filter(r => r.status === 'filtered').map(r => r.port);
-  
-  return {
-    success: true,
-    host,
-    scan: {
-      total: results.length,
-      open: openPorts,
-      closed: closedPorts,
-      filtered: filteredPorts,
-      results,
-    },
-  };
-}
-
-/**
- * Scan a single port with detailed response (for single port mode)
- */
-async function scanSinglePort(host, port, timeout) {
   const portNum = parseInt(port);
   if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
     throw new Error('port must be a number between 1 and 65535');
@@ -486,27 +407,104 @@ async function scanSinglePort(host, port, timeout) {
 }
 
 /**
- * Scan a single port fast (for multi-port mode)
+ * port_scan - Scan multiple ports on a host
+ * 
+ * @param {object} params - Parameters
+ * @param {string} params.host - Hostname or IP address
+ * @param {number|array} params.ports - Port number, array of ports, or common port group name
+ * @param {number} params.timeout - Timeout per port in ms (default: 3000)
  */
-async function scanSinglePortFast(host, port, timeout) {
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    const timer = setTimeout(() => {
-      socket.destroy();
-      resolve({ port, status: 'filtered' });
-    }, timeout);
-    
-    socket.connect(port, host, () => {
-      clearTimeout(timer);
-      socket.destroy();
-      resolve({ port, status: 'open' });
+async function portScan(params) {
+  const { host, ports = 'common', timeout = DEFAULT_PORT_TIMEOUT } = params;
+  
+  if (!host) {
+    throw new Error('host is required');
+  }
+  
+  // Validate host format
+  if (!HOST_REGEX.test(host) && !IP_REGEX.test(host)) {
+    throw new Error(`Invalid host format: ${host}`);
+  }
+  
+  // Determine ports to scan
+  let portList = [];
+  
+  if (typeof ports === 'string') {
+    switch (ports.toLowerCase()) {
+      case 'common':
+        portList = [21, 22, 23, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443];
+        break;
+      case 'web':
+        portList = [80, 443, 8080, 8443];
+        break;
+      case 'mail':
+        portList = [25, 110, 143, 465, 587, 993, 995];
+        break;
+      case 'db':
+        portList = [1433, 1521, 3306, 5432, 6379, 27017];
+        break;
+      default:
+        // Try to parse as single port
+        const p = parseInt(ports);
+        if (!isNaN(p)) {
+          portList = [p];
+        } else {
+          throw new Error(`Unknown port group: ${ports}. Valid groups: common, web, mail, db`);
+        }
+    }
+  } else if (typeof ports === 'number') {
+    portList = [ports];
+  } else if (Array.isArray(ports)) {
+    portList = ports.map(p => parseInt(p)).filter(p => !isNaN(p) && p > 0 && p <= 65535);
+  } else {
+    throw new Error('ports must be a number, array of numbers, or port group name');
+  }
+  
+  // Limit number of ports to scan
+  if (portList.length > 20) {
+    portList = portList.slice(0, 20);
+  }
+  
+  // Scan ports
+  const results = [];
+  for (const port of portList) {
+    const result = await new Promise((resolve) => {
+      const socket = new net.Socket();
+      const timer = setTimeout(() => {
+        socket.destroy();
+        resolve({ port, status: 'filtered' });
+      }, timeout);
+      
+      socket.connect(port, host, () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve({ port, status: 'open' });
+      });
+      
+      socket.on('error', () => {
+        clearTimeout(timer);
+        resolve({ port, status: 'closed' });
+      });
     });
     
-    socket.on('error', () => {
-      clearTimeout(timer);
-      resolve({ port, status: 'closed' });
-    });
-  });
+    results.push(result);
+  }
+  
+  const openPorts = results.filter(r => r.status === 'open').map(r => r.port);
+  const closedPorts = results.filter(r => r.status === 'closed').map(r => r.port);
+  const filteredPorts = results.filter(r => r.status === 'filtered').map(r => r.port);
+  
+  return {
+    success: true,
+    host,
+    scan: {
+      total: results.length,
+      open: openPorts,
+      closed: closedPorts,
+      filtered: filteredPorts,
+      results,
+    },
+  };
 }
 
 /**
@@ -672,8 +670,7 @@ async function execute(toolName, params, context = {}) {
       return await netCheck(params);
     
     case 'net_connect':
-      // Backward compatibility: redirect to port_scan single port mode
-      return await portScan({ host: params.host, port: params.port, timeout: params.timeout });
+      return await netConnect(params);
     
     case 'port_scan':
       return await portScan(params);
