@@ -256,7 +256,7 @@ export async function readImageFile(filePath, context = {}) {
     stats = await fs.stat(resolvedPath);
   } catch (err) {
     if (err.code === 'ENOENT') {
-      throw new Error(`文件不存在: ${filePath}`);
+      throw new Error(`文件不存在: ${resolvedPath} (原始路径: ${filePath})`);
     }
     throw new Error(`无法访问文件: ${err.message}`);
   }
@@ -339,29 +339,68 @@ export function getAllowedImagePaths(context) {
 export function validateImagePath(filePath, allowedPaths) {
   const dataPath = process.env.DATA_BASE_PATH || './data';
 
+  // 统一路径分隔符（处理 Windows 和 Unix 风格混用）
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+
   // 尝试多种路径解析方式
   const candidatePaths = [
-    path.resolve(filePath),                           // 直接解析
+    path.resolve(filePath),                           // 直接解析（保留原始分隔符）
     path.resolve(dataPath, filePath),                 // 相对于 data 目录
+    path.resolve(dataPath, normalizedFilePath),       // 相对于 data 目录（标准化路径）
   ];
 
-  // 如果路径以 work/ 开头，额外尝试
-  if (filePath.startsWith('work/')) {
-    candidatePaths.push(path.resolve(dataPath, filePath));
+  // 如果路径以 work/ 或 work\ 开头，确保解析到 data/work 下
+  if (normalizedFilePath.startsWith('work/')) {
+    // 将 work/... 解析为 data/work/...
+    candidatePaths.push(path.resolve(dataPath, normalizedFilePath));
   }
 
-  // 找到第一个存在的路径
-  for (const resolved of candidatePaths) {
+  // 去重
+  const uniquePaths = [...new Set(candidatePaths)];
+
+  // 调试日志
+  logger.info(`[VisionProcessor] 验证图片路径: ${filePath}`);
+  logger.info(`[VisionProcessor] 标准化路径: ${normalizedFilePath}`);
+  logger.info(`[VisionProcessor] 候选路径: ${uniquePaths.join(', ')}`);
+  logger.info(`[VisionProcessor] 白名单目录: ${allowedPaths.join(', ')}`);
+
+  // 找到第一个在白名单内且存在的路径
+  for (const resolved of uniquePaths) {
+    const isAllowed = allowedPaths.some(allowedPath =>
+      resolved.startsWith(allowedPath + path.sep) || resolved === allowedPath
+    );
+
+    logger.info(`[VisionProcessor] 检查路径: ${resolved}, 是否在白名单: ${isAllowed}`);
+
+    if (isAllowed) {
+      // 检查文件是否存在
+      try {
+        const fs = require('fs');
+        const exists = fs.existsSync(resolved);
+        logger.info(`[VisionProcessor] 文件存在: ${exists}`);
+        if (exists) {
+          return resolved;
+        }
+      } catch (e) {
+        logger.warn(`[VisionProcessor] 检查文件存在失败: ${e.message}`);
+      }
+    }
+  }
+
+  // 如果都不存在，返回第一个在白名单内的路径（让后续代码处理文件不存在错误）
+  for (const resolved of uniquePaths) {
     const isAllowed = allowedPaths.some(allowedPath =>
       resolved.startsWith(allowedPath + path.sep) || resolved === allowedPath
     );
 
     if (isAllowed) {
+      logger.warn(`[VisionProcessor] 文件不存在，返回白名单路径: ${resolved}`);
       return resolved;
     }
   }
 
   // 如果都不在白名单内，抛出错误
+  logger.error(`[VisionProcessor] 路径不在白名单内: ${filePath}`);
   throw new Error(`路径不在允许的目录范围内: ${filePath}`);
 }
 

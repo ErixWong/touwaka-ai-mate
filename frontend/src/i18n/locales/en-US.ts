@@ -1238,6 +1238,11 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     hideArchived: 'Hide Archived',
     confirmDelete: 'Are you sure you want to delete this request? This action cannot be undone.',
 
+    // Retry
+    retry: 'Retry',
+    retrySuccess: 'Request re-executed',
+    retryFailed: 'Failed to retry',
+
     // Time
     justNow: 'Just now',
     minutesAgo: 'minutes ago',

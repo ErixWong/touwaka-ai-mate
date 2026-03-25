@@ -90,6 +90,14 @@
             <!-- 操作按钮 -->
             <div class="request-actions" @click.stop>
               <button
+                v-if="canRetry(request)"
+                class="action-btn retry"
+                @click="handleRetry(request)"
+                :title="$t('assistant.retry') || '重试'"
+              >
+                🔄
+              </button>
+              <button
                 v-if="canDelete(request)"
                 class="action-btn delete"
                 @click="handleDelete(request)"
@@ -308,6 +316,11 @@ function canArchive(request: AssistantRequest): boolean {
   return ['completed', 'failed', 'timeout', 'cancelled'].includes(request.status)
 }
 
+// 判断是否可以重试
+function canRetry(request: AssistantRequest): boolean {
+  return ['completed', 'failed', 'timeout'].includes(request.status)
+}
+
 // 处理删除
 async function handleDelete(request: AssistantRequest) {
   if (!confirm(t('assistant.confirmDelete') || '确定要删除此委托吗？')) {
@@ -337,6 +350,21 @@ async function handleUnarchive(request: AssistantRequest) {
     await assistantStore.unarchiveRequest(request.request_id)
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.unarchiveFailed')
+    toast.error(errorMsg)
+  }
+}
+
+// 处理重试
+async function handleRetry(request: AssistantRequest) {
+  try {
+    const result = await assistantStore.retryRequest(request.request_id)
+    toast.success(t('assistant.retrySuccess') || '已重新执行委托')
+    // 选中新创建的委托
+    if (result && result.request_id) {
+      selectedRequestId.value = result.request_id
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.retryFailed')
     toast.error(errorMsg)
   }
 }
@@ -631,6 +659,10 @@ onUnmounted(() => {
 
 .action-btn.delete:hover {
   background: var(--error-bg, #ffebee);
+}
+
+.action-btn.retry:hover {
+  background: var(--primary-light, #e3f2fd);
 }
 
 .action-btn.archive:hover {

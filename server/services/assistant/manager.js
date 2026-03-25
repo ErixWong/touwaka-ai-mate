@@ -464,6 +464,71 @@ class AssistantManager {
   }
 
   /**
+   * 重新执行请求
+   * @param {string} requestId - 原请求ID
+   * @returns {Promise<object>} 新请求信息
+   */
+  async retry(requestId) {
+    // 获取原请求
+    const originalRequest = await this.AssistantRequest.findOne({
+      where: { request_id: requestId },
+      raw: true,
+    });
+
+    if (!originalRequest) {
+      throw new Error(`Request not found: ${requestId}`);
+    }
+
+    // 解析原始输入
+    const originalInput = JSON.parse(originalRequest.input || '{}');
+
+    // 生成新的请求 ID
+    const newRequestId = `req_${uuidv4().replace(/-/g, '').substring(0, 16)}`;
+
+    // 创建新请求
+    const newRequest = {
+      request_id: newRequestId,
+      assistant_id: originalRequest.assistant_id,
+      expert_id: originalRequest.expert_id,
+      contact_id: originalRequest.contact_id,
+      user_id: originalRequest.user_id,
+      topic_id: originalRequest.topic_id,
+      status: 'pending',
+      input: JSON.stringify(originalInput),
+      is_archived: 0,
+      created_at: new Date(),
+    };
+
+    // 保存到数据库
+    await this.AssistantRequest.create(newRequest);
+
+    // 写入任务消息
+    await this.messageService.appendTaskMessage(newRequestId, {
+      task: originalInput.task || `执行 ${originalRequest.assistant_id} 任务`,
+      background: originalInput.background,
+      input: originalInput.input,
+      expectedOutput: originalInput.expected_output,
+      workspace: originalInput.workspace,
+    });
+
+    // 添加到内存队列
+    this.requests.set(newRequestId, { ...newRequest, input: originalInput });
+
+    // 启动异步执行
+    this.executeRequest(newRequestId).catch(err => {
+      logger.error(`[AssistantManager] 重试执行失败: ${newRequestId}`, err.message);
+    });
+
+    logger.info(`[AssistantManager] 重新执行请求: ${requestId} -> ${newRequestId}`);
+
+    return {
+      request_id: newRequestId,
+      original_request_id: requestId,
+      message: '任务已重新提交',
+    };
+  }
+
+  /**
    * 获取请求的消息列表
    */
   async getMessages(requestId, debugMode = false) {

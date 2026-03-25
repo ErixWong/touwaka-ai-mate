@@ -253,6 +253,23 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
+  // 重试委托
+  async function retryRequest(requestId: string) {
+    try {
+      isLoading.value = true
+      const response = await assistantApi.retryRequest(requestId)
+      // 刷新委托列表
+      await fetchRequests()
+      return response
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to retry request'
+      console.error('Failed to retry request:', e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     // State
     assistants,
@@ -283,5 +300,6 @@ export const useAssistantStore = defineStore('assistant', () => {
     archiveRequest,
     unarchiveRequest,
     deleteRequest,
+    retryRequest,
   }
 })

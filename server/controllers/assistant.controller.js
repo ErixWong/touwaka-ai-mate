@@ -398,6 +398,31 @@ class AssistantController {
       }
     }
   }
+
+  /**
+   * 重新执行委托
+   * POST /api/assistants/requests/:request_id/retry
+   */
+  async retry(ctx) {
+    try {
+      const { request_id } = ctx.params;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const result = await this.assistantManager.retry(request_id);
+      ctx.success(result, '任务已重新提交');
+    } catch (error) {
+      logger.error('Retry request error:', error);
+      if (error.message.includes('not found')) {
+        ctx.error(error.message, 404);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
 }
 
 export default AssistantController;

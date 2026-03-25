@@ -1231,6 +1231,11 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     hideArchived: '隐藏归档',
     confirmDelete: '确定要删除此委托吗？此操作不可撤销。',
 
+    // 重试
+    retry: '重试',
+    retrySuccess: '已重新执行委托',
+    retryFailed: '重试失败',
+
     // 时间
     justNow: '刚刚',
     minutesAgo: '分钟前',
