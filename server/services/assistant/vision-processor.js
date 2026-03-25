@@ -90,12 +90,19 @@ export async function executeVisionWithInput(assistant, input, context, modelCon
     workdir: context.workdir,
   };
 
+  // 调试日志：输出传入的图片路径和上下文
+  logger.info(`[VisionProcessor] executeVisionWithInput 被调用`);
+  logger.info(`[VisionProcessor] filePaths: ${JSON.stringify(filePaths)}`);
+  logger.info(`[VisionProcessor] imageContext: ${JSON.stringify(imageContext)}`);
+  logger.info(`[VisionProcessor] context.workdir: ${context.workdir}`);
+
   // 收集所有图片的 data URL
   const imageDataList = [];
 
   // 1. 处理文件路径：读取图片文件
   for (const filePath of filePaths) {
     try {
+      logger.info(`[VisionProcessor] 准备读取图片文件: ${filePath}`);
       const imageAsset = await readImageFile(filePath, imageContext);
       imageDataList.push({
         data_url: imageAsset.data_url,
@@ -238,11 +245,16 @@ export async function executeVisionWithInput(assistant, input, context, modelCon
  * @returns {Promise<object>} image_asset 对象
  */
 export async function readImageFile(filePath, context = {}) {
+  logger.info(`[VisionProcessor] readImageFile 被调用，filePath: ${filePath}`);
+  logger.info(`[VisionProcessor] readImageFile context: ${JSON.stringify(context)}`);
+
   // 获取白名单目录
   const allowedPaths = getAllowedImagePaths(context);
+  logger.info(`[VisionProcessor] getAllowedImagePaths 返回的白名单目录: ${JSON.stringify(allowedPaths)}`);
 
   // 验证路径
   const resolvedPath = validateImagePath(filePath, allowedPaths);
+  logger.info(`[VisionProcessor] validateImagePath 返回的解析路径: ${resolvedPath}`);
 
   // 检查文件扩展名
   const ext = path.extname(resolvedPath).toLowerCase();
@@ -338,21 +350,41 @@ export function getAllowedImagePaths(context) {
  */
 export function validateImagePath(filePath, allowedPaths) {
   const dataPath = process.env.DATA_BASE_PATH || './data';
+  const resolvedDataPath = path.resolve(dataPath);
 
   // 统一路径分隔符（处理 Windows 和 Unix 风格混用）
   const normalizedFilePath = filePath.replace(/\\/g, '/');
 
-  // 尝试多种路径解析方式
-  const candidatePaths = [
-    path.resolve(filePath),                           // 直接解析（保留原始分隔符）
-    path.resolve(dataPath, filePath),                 // 相对于 data 目录
-    path.resolve(dataPath, normalizedFilePath),       // 相对于 data 目录（标准化路径）
-  ];
+  logger.info(`[VisionProcessor] validateImagePath 输入: filePath=${filePath}`);
+  logger.info(`[VisionProcessor] normalizedFilePath=${normalizedFilePath}`);
+  logger.info(`[VisionProcessor] resolvedDataPath=${resolvedDataPath}`);
 
-  // 如果路径以 work/ 或 work\ 开头，确保解析到 data/work 下
+  // 尝试多种路径解析方式
+  const candidatePaths = [];
+
+  // 1. 相对于 data 目录解析（优先级最高）
+  candidatePaths.push(path.resolve(dataPath, filePath));
+  candidatePaths.push(path.resolve(dataPath, normalizedFilePath));
+
+  // 2. 如果路径以 work/ 开头，明确解析到 data/work 下
   if (normalizedFilePath.startsWith('work/')) {
-    // 将 work/... 解析为 data/work/...
-    candidatePaths.push(path.resolve(dataPath, normalizedFilePath));
+    const relativePath = normalizedFilePath.substring(5); // 去掉 'work/'
+    candidatePaths.push(path.resolve(resolvedDataPath, 'work', relativePath));
+  }
+
+  // 3. 特殊处理：如果路径包含 work/ 子路径，提取并解析到 data/work 下
+  const workIndex = normalizedFilePath.indexOf('work/');
+  if (workIndex !== -1) {
+    const relativeToWork = normalizedFilePath.substring(workIndex + 5); // 去掉 'work/'
+    candidatePaths.push(path.resolve(resolvedDataPath, 'work', relativeToWork));
+  }
+
+  // 4. 直接解析（保留原始分隔符）- 放在后面，优先级较低
+  candidatePaths.push(path.resolve(filePath));
+
+  // 5. 尝试相对于每个白名单目录解析
+  for (const allowedPath of allowedPaths) {
+    candidatePaths.push(path.resolve(allowedPath, normalizedFilePath));
   }
 
   // 去重
@@ -361,14 +393,19 @@ export function validateImagePath(filePath, allowedPaths) {
   // 调试日志
   logger.info(`[VisionProcessor] 验证图片路径: ${filePath}`);
   logger.info(`[VisionProcessor] 标准化路径: ${normalizedFilePath}`);
-  logger.info(`[VisionProcessor] 候选路径: ${uniquePaths.join(', ')}`);
-  logger.info(`[VisionProcessor] 白名单目录: ${allowedPaths.join(', ')}`);
+  logger.info(`[VisionProcessor] data 目录: ${resolvedDataPath}`);
+  logger.info(`[VisionProcessor] 候选路径 (${uniquePaths.length}个): ${uniquePaths.join(', ')}`);
+  logger.info(`[VisionProcessor] 白名单目录 (${allowedPaths.length}个): ${allowedPaths.join(', ')}`);
 
   // 找到第一个在白名单内且存在的路径
   for (const resolved of uniquePaths) {
-    const isAllowed = allowedPaths.some(allowedPath =>
-      resolved.startsWith(allowedPath + path.sep) || resolved === allowedPath
-    );
+    // 检查是否在白名单内（兼容 Windows 和 Unix 路径）
+    const normalizedResolved = resolved.replace(/\\/g, '/');
+    const isAllowed = allowedPaths.some(allowedPath => {
+      const normalizedAllowed = allowedPath.replace(/\\/g, '/');
+      return normalizedResolved.startsWith(normalizedAllowed + '/') ||
+             normalizedResolved === normalizedAllowed;
+    });
 
     logger.info(`[VisionProcessor] 检查路径: ${resolved}, 是否在白名单: ${isAllowed}`);
 
@@ -379,6 +416,7 @@ export function validateImagePath(filePath, allowedPaths) {
         const exists = fs.existsSync(resolved);
         logger.info(`[VisionProcessor] 文件存在: ${exists}`);
         if (exists) {
+          logger.info(`[VisionProcessor] 找到有效图片路径: ${resolved}`);
           return resolved;
         }
       } catch (e) {
@@ -389,9 +427,12 @@ export function validateImagePath(filePath, allowedPaths) {
 
   // 如果都不存在，返回第一个在白名单内的路径（让后续代码处理文件不存在错误）
   for (const resolved of uniquePaths) {
-    const isAllowed = allowedPaths.some(allowedPath =>
-      resolved.startsWith(allowedPath + path.sep) || resolved === allowedPath
-    );
+    const normalizedResolved = resolved.replace(/\\/g, '/');
+    const isAllowed = allowedPaths.some(allowedPath => {
+      const normalizedAllowed = allowedPath.replace(/\\/g, '/');
+      return normalizedResolved.startsWith(normalizedAllowed + '/') ||
+             normalizedResolved === normalizedAllowed;
+    });
 
     if (isAllowed) {
       logger.warn(`[VisionProcessor] 文件不存在，返回白名单路径: ${resolved}`);
