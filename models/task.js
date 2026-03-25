@@ -63,9 +63,10 @@ export default class task extends Model {
       }
     },
     status: {
-      type: DataTypes.ENUM('active','autonomous','archived','deleted'),
-      allowNull: true,
-      defaultValue: "active"
+      type: DataTypes.ENUM('active','autonomous','autonomous_wait','autonomous_working','archived','deleted'),
+      allowNull: false,
+      defaultValue: "active",
+      comment: "任务状态"
     },
     created_by: {
       type: DataTypes.STRING(32),
