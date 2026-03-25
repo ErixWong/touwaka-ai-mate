@@ -167,8 +167,8 @@
               </div>
               <!-- 统计信息 -->
               <div v-if="message.tokens_input || message.latency_ms" class="message-stats">
-                <span v-if="message.tokens_input">输入: {{ message.tokens_input }}</span>
-                <span v-if="message.tokens_output">输出: {{ message.tokens_output }}</span>
+                <span v-if="message.tokens_input">{{ $t('assistant.tokensInput') }}: {{ message.tokens_input }}</span>
+                <span v-if="message.tokens_output">{{ $t('assistant.tokensOutput') }}: {{ message.tokens_output }}</span>
                 <span v-if="message.latency_ms">{{ (message.latency_ms / 1000).toFixed(2) }}s</span>
               </div>
             </div>
@@ -308,6 +308,8 @@ function closeDetail() {
 
 // 判断是否可以删除
 function canDelete(request: AssistantRequest): boolean {
+  // 已归档的委托不允许删除
+  if (request.is_archived) return false
   return ['completed', 'failed', 'timeout', 'cancelled'].includes(request.status)
 }
 
@@ -318,7 +320,10 @@ function canArchive(request: AssistantRequest): boolean {
 
 // 判断是否可以重试
 function canRetry(request: AssistantRequest): boolean {
-  return ['completed', 'failed', 'timeout'].includes(request.status)
+  // 已归档的委托不允许重试
+  if (request.is_archived) return false
+  // 只允许失败的执行重试
+  return ['failed', 'timeout'].includes(request.status)
 }
 
 // 处理删除
@@ -338,6 +343,8 @@ async function handleDelete(request: AssistantRequest) {
 async function handleArchive(request: AssistantRequest) {
   try {
     await assistantStore.archiveRequest(request.request_id)
+    // 归档成功后关闭委托详情
+    closeDetail()
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : t('assistant.archiveFailed')
     toast.error(errorMsg)
