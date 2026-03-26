@@ -595,16 +595,20 @@ const toggleAutonomousMode = async () => {
     const newStatus: TaskStatus = isAutonomousMode.value ? 'active' : 'autonomous_wait'
     const updateData: { status: TaskStatus; expert_id?: string } = { status: newStatus }
     
-    // 开启自主模式时，设置当前专家ID
+    // 开启自主模式时，检查专家ID
     if (newStatus === 'autonomous_wait') {
-      const expertId = route.params.expertId as string
-      if (expertId) {
-        updateData.expert_id = expertId
-      } else {
-        // 没有专家ID，无法开启自主模式
-        toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
-        return
+      // 优先使用任务已有的专家ID，避免覆盖
+      if (!taskStore.currentTask.expert_id) {
+        const expertId = route.params.expertId as string
+        if (expertId) {
+          updateData.expert_id = expertId
+        } else {
+          // 没有专家ID，无法开启自主模式
+          toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
+          return
+        }
       }
+      // 如果任务已有 expert_id，不覆盖
     }
     
     await taskStore.updateTask(taskStore.currentTask.id, updateData)
@@ -626,10 +630,19 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
   
   // 开启自主模式需要专家ID
   if (newStatus === 'autonomous_wait') {
-    const expertId = route.params.expertId as string
-    if (!expertId) {
-      toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
-      return
+    // 优先使用任务已有的专家ID，避免覆盖
+    let expertIdToUse: string | undefined
+    if (task.expert_id) {
+      // 任务已有专家ID，保持不变
+      expertIdToUse = undefined  // 不在 updateData 中设置 expert_id
+    } else {
+      // 任务没有专家ID，尝试从路由获取
+      const expertId = route.params.expertId as string
+      if (!expertId) {
+        toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
+        return
+      }
+      expertIdToUse = expertId
     }
     
     // 确认对话框
@@ -638,10 +651,11 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
     
     isTogglingAutonomous.value = true
     try {
-      await taskStore.updateTask(task.id, {
-        status: newStatus,
-        expert_id: expertId
-      })
+      const updateData: { status: TaskStatus; expert_id?: string } = { status: newStatus }
+      if (expertIdToUse) {
+        updateData.expert_id = expertIdToUse
+      }
+      await taskStore.updateTask(task.id, updateData)
     } catch (error) {
       console.error('Failed to enable autonomous mode:', error)
       toast.error(t('tasks.toggleAutonomousFailed') || '切换自动运行模式失败')
