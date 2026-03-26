@@ -46,7 +46,7 @@
     "mysql2": "^3.11.3",
     "numpy": "^0.0.1",
     "pdf-lib": "^1.17.1",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^2.4.5",
     "pptxgenjs": "^3.12.0",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",
