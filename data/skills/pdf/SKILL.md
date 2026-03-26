@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: "PDF 文件处理。用于读取、提取文本/表格、合并、拆分、旋转、水印、加密/解密、表单填写、图片提取、转换为图片。当用户提到 .pdf 文件或需要操作 PDF 时触发。"
+description: "PDF 文件处理。用于读取、提取文本/表格/图片、合并、拆分、旋转、水印、加密/解密、表单填写、页面渲染。当用户提到 .pdf 文件或需要操作 PDF 时触发。"
 license: Proprietary. LICENSE.txt has complete terms
 argument-hint: "[operation] [path]"
 user-invocable: true
@@ -8,18 +8,21 @@ user-invocable: true
 
 # PDF - PDF 文件处理
 
+> **依赖**：pdf-lib (PDF 操作) + pdf-parse v2.4+ (文本/表格/图片提取、页面渲染)
+
 ## 工具
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `read_pdf` | 读取 PDF 元数据 | `path` |
-| `extract_text` | 提取文本 | `path`, `from_page`, `to_page` |
-| `extract_tables` | 提取表格 | `path`, `page` |
+| `read_pdf` | 读取 PDF 元数据 | `path`, `parse_page_info` |
+| `extract_text` | 提取文本 | `path`, `from_page`, `to_page`, `suppress_warnings` |
+| `extract_tables` | 提取表格 | `path`, `from_page`, `to_page` |
+| `extract_images` | 提取图片 | `path`, `from_page`, `to_page`, `image_threshold` |
+| `convert_to_images` | 渲染页面为图片 | `path`, `output_dir`, `scale`, `from_page`, `to_page` |
 | `merge_pdfs` | 合并 PDF | `paths[]`, `output` |
 | `split_pdf` | 拆分 PDF | `path`, `output_dir`, `pages_per_file` |
 | `rotate_pages` | 旋转页面 | `path`, `output`, `pages[]`, `degrees` |
 | `create_pdf` | 创建 PDF | `output`, `content[]` |
-| `convert_to_images` | 转为图片 | `path`, `output_dir`, `dpi`, `format` |
 | `pdf_to_markdown` | 转为 Markdown | `path`, `output` |
 | `encrypt_pdf` | 加密 PDF | `path`, `output`, `user_password` |
 | `decrypt_pdf` | 解密 PDF | `path`, `output`, `password` |
@@ -27,10 +30,6 @@ user-invocable: true
 | `check_fillable_fields` | 检查可填写字段 | `path` |
 | `extract_form_field_info` | 提取表单字段信息 | `path`, `output` |
 | `fill_fillable_fields` | 填写表单字段 | `path`, `field_values`, `output` |
-| `extract_form_structure` | 提取表单结构 | `path`, `output` |
-| `fill_pdf_form_with_annotations` | 用注释填写表单 | `path`, `fields_json`, `output` |
-| `check_bounding_boxes` | 验证边界框 | `fields_json` |
-| `extract_images` | 提取图片 | `path`, `output_dir` |
 
 ## 基本操作
 
@@ -40,8 +39,10 @@ user-invocable: true
 
 **参数：**
 - `path` (string, required): PDF 文件路径
+- `parse_page_info` (boolean, optional): 解析每页详细信息（默认: false）
+- `suppress_warnings` (boolean, optional): 抑制警告输出（默认: true）
 
-**返回：** 页数、元数据（标题、作者、主题、创建者）、加密状态
+**返回：** 页数、元数据（标题、作者、主题、创建者）、加密状态、每页尺寸
 
 ### extract_text
 
@@ -51,15 +52,28 @@ user-invocable: true
 - `path` (string, required): PDF 文件路径
 - `from_page` (number, optional): 起始页（从1开始，默认: 1）
 - `to_page` (number, optional): 结束页（包含）
-- `preserve_layout` (boolean, optional): 保留布局（默认: false）
+- `suppress_warnings` (boolean, optional): 抑制警告输出（默认: true）
 
 ### extract_tables
 
-使用 pdfplumber 从 PDF 提取表格。
+从 PDF 提取表格数据（使用 pdf-parse v2 的 getTable 方法）。
 
 **参数：**
 - `path` (string, required): PDF 文件路径
-- `page` (number, optional): 指定页码（从1开始，不指定则提取所有）
+- `from_page` (number, optional): 起始页（从1开始）
+- `to_page` (number, optional): 结束页（包含）
+- `suppress_warnings` (boolean, optional): 抑制警告输出（默认: true）
+
+### extract_images
+
+从 PDF 中提取嵌入的图片（使用 pdf-parse v2 的 getImage 方法）。
+
+**参数：**
+- `path` (string, required): PDF 文件路径
+- `from_page` (number, optional): 起始页（从1开始）
+- `to_page` (number, optional): 结束页（包含）
+- `image_threshold` (number, optional): 图片最小尺寸阈值，像素（默认: 80）
+- `suppress_warnings` (boolean, optional): 抑制警告输出（默认: true）
 
 ## 编辑操作
 
@@ -109,11 +123,13 @@ user-invocable: true
 
 **参数：**
 - `path` (string, required): PDF 文件路径
-- `output_dir` (string, required): 输出目录
-- `dpi` (number, optional): 分辨率 DPI（默认: 150）
-- `format` (string, optional): 图片格式 - "png" 或 "jpeg"（默认: "png"）
+- `output_dir` (string, optional): 输出目录（不指定则只返回 dataUrl）
+- `scale` (number, optional): 缩放比例（默认: 1.5，相当于 150 DPI）
+- `desired_width` (number, optional): 期望宽度（像素），设置后将忽略 scale
+- `prefix` (string, optional): 输出文件名前缀（默认: "page"）
 - `from_page` (number, optional): 起始页（从1开始）
 - `to_page` (number, optional): 结束页（包含）
+- `suppress_warnings` (boolean, optional): 抑制警告输出（默认: true）
 
 ### pdf_to_markdown
 
@@ -171,7 +187,7 @@ user-invocable: true
 
 **参数：**
 - `path` (string, required): PDF 文件路径
-- `output` (string, required): 输出 JSON 文件路径
+- `output` (string, optional): 输出 JSON 文件路径（不指定则只返回结果）
 
 ### fill_fillable_fields
 
@@ -179,42 +195,8 @@ user-invocable: true
 
 **参数：**
 - `path` (string, required): PDF 文件路径
-- `field_values` (string, required): 包含字段值的 JSON 文件
+- `field_values` (object, required): 字段名和值的键值对
 - `output` (string, required): 输出 PDF 文件路径
-
-### extract_form_structure
-
-为不可填写的表单提取表单结构。
-
-**参数：**
-- `path` (string, required): PDF 文件路径
-- `output` (string, required): 输出 JSON 文件路径
-
-### fill_pdf_form_with_annotations
-
-使用文本注释填写不可填写的 PDF 表单。
-
-**参数：**
-- `path` (string, required): PDF 文件路径
-- `fields_json` (string, required): 字段 JSON 文件路径
-- `output` (string, required): 输出 PDF 文件路径
-
-### check_bounding_boxes
-
-验证表单字段的边界框。
-
-**参数：**
-- `fields_json` (string, required): 字段 JSON 文件路径
-
-## 其他操作
-
-### extract_images
-
-从 PDF 中提取嵌入的图片。
-
-**参数：**
-- `path` (string, required): PDF 文件路径
-- `output_dir` (string, required): 输出目录
 
 ## 常见任务
 
@@ -223,13 +205,13 @@ user-invocable: true
 对于扫描版 PDF 或基于图片的 PDF，文本提取可能失败。使用 `convert_to_images` 转换为图片，然后发送给 VL（视觉语言）模型进行文字识别。
 
 **工作流程：**
-1. 使用 `convert_to_images` 将 PDF 页面转换为 PNG/JPEG 图片
+1. 使用 `convert_to_images` 将 PDF 页面转换为 PNG 图片
 2. 将生成的图片发送给 VL 模型（如 GPT-4V、Claude Vision、Qwen-VL）
 3. VL 模型将识别并提取图片中的文字
 
 **示例：**
 ```javascript
-convert_to_images({ path: "scanned.pdf", output_dir: "./images", dpi: 200 })
+convert_to_images({ path: "scanned.pdf", output_dir: "./images", scale: 1.5 })
 ```
 
 ## 快速参考
@@ -240,11 +222,12 @@ convert_to_images({ path: "scanned.pdf", output_dir: "./images", dpi: 200 })
 | 拆分 PDF | `split_pdf` | 按页拆分 |
 | 提取文本 | `extract_text` | 获取文本内容 |
 | 提取表格 | `extract_tables` | 获取表格数据 |
+| 提取图片 | `extract_images` | 获取嵌入图片 |
+| 渲染页面 | `convert_to_images` | 页面转 PNG |
 | 创建 PDF | `create_pdf` | 从文本创建 |
 | 扫描版 PDF | `convert_to_images` + VL 模型 | 先转图片再识别 |
-| 填写表单 | `fill_fillable_fields` | 见 FORMS.md |
+| 填写表单 | `fill_fillable_fields` | 填写表单字段 |
 
-## 更多资源
+## 更新日志
 
-- **表单填写**: 详见 [`FORMS.md`](./forms.md)
-- **高级用法**: 详见 [`REFERENCE.md`](./reference.md)
+- **2026-03-26**: 升级 pdf-parse 到 v2.4.5，新增表格提取、图片提取、页面渲染功能

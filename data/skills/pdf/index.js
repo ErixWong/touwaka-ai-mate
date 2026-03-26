@@ -4,6 +4,9 @@
  * 功能：
  * - 读取 PDF 元数据和基本信息
  * - 提取文本内容
+ * - 提取图片
+ * - 提取表格
+ * - 渲染页面为图片
  * - 合并多个 PDF
  * - 拆分 PDF
  * - 旋转页面
@@ -14,20 +17,24 @@
  * 
  * 依赖：
  * - pdf-lib: PDF 操作核心库
- * - pdf-parse: 文本提取
+ * - pdf-parse v2.4+: 文本提取、图片提取、表格提取、页面渲染
  */
 
 const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
 
-// pdf-parse 延迟加载
-let pdfParse = null;
+// pdf-parse v2 延迟加载
+let PDFParse = null;
+let VerbosityLevel = null;
+
 function getPdfParse() {
-  if (!pdfParse) {
-    pdfParse = require('pdf-parse');
+  if (!PDFParse) {
+    const pdfParseModule = require('pdf-parse');
+    PDFParse = pdfParseModule.PDFParse;
+    VerbosityLevel = pdfParseModule.VerbosityLevel;
   }
-  return pdfParse;
+  return { PDFParse, VerbosityLevel };
 }
 
 // 用户角色检查
@@ -132,14 +139,16 @@ function savePdfFile(filePath, pdfBytes) {
 
 /**
  * 读取 PDF 元数据和基本信息
+ * 使用 pdf-parse v2 的 getInfo() 方法获取更丰富的信息
  */
 async function readPdf(params) {
-  const { path: filePath } = params;
+  const { path: filePath, parsePageInfo = false, suppressWarnings = true } = params;
   
   const pdfBytes = await readPdfFile(filePath);
   const pdfDoc = await PDFDocument.load(pdfBytes);
   
-  const metadata = {
+  // 使用 pdf-lib 获取基础信息
+  const basicMetadata = {
     title: pdfDoc.getTitle() || null,
     author: pdfDoc.getAuthor() || null,
     subject: pdfDoc.getSubject() || null,
@@ -154,10 +163,42 @@ async function readPdf(params) {
   const pageCount = pages.length;
   const isEncrypted = pdfDoc.isEncrypted;
   
+  // 使用 pdf-parse v2 获取更丰富的信息
+  let extendedInfo = null;
+  let parser;
+  
+  try {
+    const { PDFParse, VerbosityLevel } = getPdfParse();
+    const loadParams = {
+      data: pdfBytes,
+      verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
+    };
+    
+    parser = new PDFParse(loadParams);
+    const infoResult = await parser.getInfo({ parsePageInfo });
+    
+    extendedInfo = {
+      total: infoResult.total,
+      infoData: infoResult.infoData,
+      dates: infoResult.getDateNode ? infoResult.getDateNode() : null,
+      pages: parsePageInfo ? infoResult.pages : undefined
+    };
+  } catch (e) {
+    // 如果 pdf-parse 失败，仍然返回基础信息
+    console.error('pdf-parse getInfo failed:', e.message);
+  } finally {
+    // 确保释放内存
+    if (parser) {
+      await parser.destroy();
+    }
+  }
+  
   return {
     success: true,
     pageCount,
-    metadata,
+    metadata: extendedInfo?.infoData || basicMetadata,
+    basicMetadata,
+    extendedInfo,
     isEncrypted,
     pages: pages.map((page, index) => ({
       number: index + 1,
@@ -169,55 +210,111 @@ async function readPdf(params) {
 
 /**
  * 提取文本内容
+ * 使用 pdf-parse v2 API，支持 verbosity 参数抑制警告输出
  */
 async function extractText(params) {
-  const { path: filePath, fromPage, toPage } = params;
+  const { path: filePath, fromPage, toPage, suppressWarnings = true } = params;
   
-  const pdfParseLib = getPdfParse();
+  const { PDFParse, VerbosityLevel } = getPdfParse();
   const pdfBytes = await readPdfFile(filePath);
   
-  const data = await pdfParseLib(pdfBytes);
-  
-  let text = data.text;
-  const totalPages = data.numpages;
-  
-  if (fromPage || toPage) {
-    const start = (fromPage || 1) - 1;
-    const end = toPage || totalPages;
-    
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const pages = pdfDoc.getPages();
-    
-    const newDoc = await PDFDocument.create();
-    const indices = [];
-    for (let i = start; i < end && i < pages.length; i++) {
-      indices.push(i);
-    }
-    const copiedPages = await newDoc.copyPages(pdfDoc, indices);
-    copiedPages.forEach(page => newDoc.addPage(page));
-    
-    const newBytes = await newDoc.save();
-    const newData = await pdfParseLib(newBytes);
-    text = newData.text;
-  }
-  
-  return {
-    success: true,
-    text,
-    pageCount: data.numpages,
-    info: data.info
+  // 创建解析器实例，设置 verbosity 抑制警告
+  const loadParams = {
+    data: pdfBytes,
+    // 设置 verbosity 为 ERRORS 只显示错误，抑制 WARNING 输出
+    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
   };
+  
+  const parser = new PDFParse(loadParams);
+  
+  try {
+    // 处理分页提取
+    if (fromPage || toPage) {
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const totalPages = pdfDoc.getPageCount();
+      const start = (fromPage || 1);
+      const end = toPage || totalPages;
+      
+      // 构建 partial 数组（页码从 1 开始）
+      const partial = [];
+      for (let i = start; i <= end && i <= totalPages; i++) {
+        partial.push(i);
+      }
+      
+      const result = await parser.getText({ partial });
+      return {
+        success: true,
+        text: result.text,
+        pageCount: totalPages,
+        extractedPages: partial,
+        info: result.info
+      };
+    }
+    
+    // 提取全部文本
+    const result = await parser.getText();
+    
+    return {
+      success: true,
+      text: result.text,
+      pageCount: result.total || result.numpages,
+      info: result.info
+    };
+  } finally {
+    // 始终释放内存
+    await parser.destroy();
+  }
 }
 
 /**
- * 提取表格（简化版本）
+ * 提取表格
+ * 使用 pdf-parse v2 的 getTable() 方法
  */
 async function extractTables(params) {
-  return {
-    success: false,
-    error: 'Table extraction is not fully supported in Node.js. Consider using VL models (GPT-4V, Claude Vision) for table recognition.',
-    alternative: 'Use convert_to_images to convert PDF to images, then send to VL model for table extraction.'
+  const { path: filePath, fromPage, toPage, suppressWarnings = true } = params;
+  
+  const { PDFParse, VerbosityLevel } = getPdfParse();
+  const pdfBytes = await readPdfFile(filePath);
+  
+  const loadParams = {
+    data: pdfBytes,
+    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
   };
+  
+  const parser = new PDFParse(loadParams);
+  
+  try {
+    // 构建分页参数
+    const parseParams = {};
+    if (fromPage || toPage) {
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const totalPages = pdfDoc.getPageCount();
+      const start = fromPage || 1;
+      const end = toPage || totalPages;
+      
+      const partial = [];
+      for (let i = start; i <= end && i <= totalPages; i++) {
+        partial.push(i);
+      }
+      parseParams.partial = partial;
+    }
+    
+    const result = await parser.getTable(parseParams);
+    
+    // 格式化表格数据
+    const tables = result.pages.map((page, pageIndex) => ({
+      pageNumber: pageIndex + 1,
+      tables: page.tables || []
+    }));
+    
+    return {
+      success: true,
+      tables,
+      totalTables: tables.reduce((sum, p) => sum + p.tables.length, 0)
+    };
+  } finally {
+    await parser.destroy();
+  }
 }
 
 // ==================== 编辑操作 ====================
@@ -418,18 +515,85 @@ function wrapText(text, maxWidth, font, fontSize) {
 }
 
 /**
- * 转换 PDF 为图片（需要外部工具）
+ * 转换 PDF 为图片
+ * 使用 pdf-parse v2 的 getScreenshot() 方法
  */
 async function convertToImages(params) {
-  return {
-    success: false,
-    error: 'PDF to image conversion requires external tools.',
-    alternatives: [
-      'Use poppler-utils: pdftoppm -png input.pdf output',
-      'Use pdf2pic (requires GraphicsMagick or ImageMagick)',
-      'Use canvas + pdf.js for rendering'
-    ]
+  const { 
+    path: filePath, 
+    outputDir, 
+    fromPage, 
+    toPage, 
+    scale = 1.5, 
+    desiredWidth,
+    prefix = 'page',
+    suppressWarnings = true 
+  } = params;
+  
+  const { PDFParse, VerbosityLevel } = getPdfParse();
+  const pdfBytes = await readPdfFile(filePath);
+  
+  const loadParams = {
+    data: pdfBytes,
+    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
   };
+  
+  const parser = new PDFParse(loadParams);
+  
+  try {
+    // 构建分页参数
+    const parseParams = { scale };
+    if (desiredWidth) {
+      parseParams.desiredWidth = desiredWidth;
+    }
+    
+    if (fromPage || toPage) {
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const totalPages = pdfDoc.getPageCount();
+      const start = fromPage || 1;
+      const end = toPage || totalPages;
+      
+      const partial = [];
+      for (let i = start; i <= end && i <= totalPages; i++) {
+        partial.push(i);
+      }
+      parseParams.partial = partial;
+    }
+    
+    const result = await parser.getScreenshot(parseParams);
+    
+    // 保存图片
+    const resolvedOutputDir = outputDir ? resolvePath(outputDir) : null;
+    const savedFiles = [];
+    
+    if (resolvedOutputDir) {
+      if (!fs.existsSync(resolvedOutputDir)) {
+        fs.mkdirSync(resolvedOutputDir, { recursive: true });
+      }
+      
+      for (let i = 0; i < result.pages.length; i++) {
+        const page = result.pages[i];
+        const outputPath = path.join(resolvedOutputDir, `${prefix}_${i + 1}.png`);
+        fs.writeFileSync(outputPath, page.data);
+        savedFiles.push(outputPath);
+      }
+    }
+    
+    return {
+      success: true,
+      pages: result.pages.map((page, index) => ({
+        pageNumber: index + 1,
+        width: page.width,
+        height: page.height,
+        dataUrl: page.dataUrl,
+        savedPath: savedFiles[index] || null
+      })),
+      savedFiles: savedFiles.length > 0 ? savedFiles : undefined,
+      outputDir: resolvedOutputDir
+    };
+  } finally {
+    await parser.destroy();
+  }
 }
 
 /**
@@ -688,17 +852,60 @@ async function fillFillableFields(params) {
 
 /**
  * 提取图片
+ * 使用 pdf-parse v2 的 getImage() 方法
  */
 async function extractImages(params) {
-  return {
-    success: false,
-    error: 'Image extraction is not directly supported by pdf-lib.',
-    alternatives: [
-      'Use pdfimages from poppler-utils: pdfimages -j input.pdf output',
-      'Use pdf.js for image extraction',
-      'Use Python pypdf or pdfplumber for image extraction'
-    ]
+  const { path: filePath, fromPage, toPage, imageThreshold = 80, suppressWarnings = true } = params;
+  
+  const { PDFParse, VerbosityLevel } = getPdfParse();
+  const pdfBytes = await readPdfFile(filePath);
+  
+  const loadParams = {
+    data: pdfBytes,
+    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
   };
+  
+  const parser = new PDFParse(loadParams);
+  
+  try {
+    // 构建分页参数
+    const parseParams = { imageThreshold };
+    if (fromPage || toPage) {
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const totalPages = pdfDoc.getPageCount();
+      const start = fromPage || 1;
+      const end = toPage || totalPages;
+      
+      const partial = [];
+      for (let i = start; i <= end && i <= totalPages; i++) {
+        partial.push(i);
+      }
+      parseParams.partial = partial;
+    }
+    
+    const result = await parser.getImage(parseParams);
+    
+    // 格式化图片数据
+    const images = result.pages.map((page, pageIndex) => ({
+      pageNumber: pageIndex + 1,
+      images: (page.images || []).map((img, imgIndex) => ({
+        index: imgIndex + 1,
+        width: img.width,
+        height: img.height,
+        // 图片数据为 Buffer
+        data: img.data,
+        dataUrl: img.dataUrl
+      }))
+    }));
+    
+    return {
+      success: true,
+      images,
+      totalImages: images.reduce((sum, p) => sum + p.images.length, 0)
+    };
+  } finally {
+    await parser.destroy();
+  }
 }
 
 // ==================== 技能入口 ====================
