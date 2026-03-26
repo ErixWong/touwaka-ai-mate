@@ -730,13 +730,12 @@ export interface ExpertSimple {
 /**
  * 任务状态
  * - active: 正常活跃状态
- * - autonomous: 自动运行模式（旧状态，兼容）
  * - autonomous_wait: 自动运行等待中（LLM 处理完毕，等待新消息）
  * - autonomous_working: 自动运行执行中（LLM 正在处理）
  * - archived: 已归档
  * - deleted: 已删除
  */
-export type TaskStatus = 'active' | 'autonomous' | 'autonomous_wait' | 'autonomous_working' | 'archived' | 'deleted'
+export type TaskStatus = 'active' | 'autonomous_wait' | 'autonomous_working' | 'archived' | 'deleted'
 
 /**
  * 任务（匹配后端 tasks 表）

@@ -212,9 +212,10 @@ const currentModel = computed(() => {
   return undefined
 })
 
-// 自主运行模式 - 当任务状态为 autonomous 时禁用用户输入
+// 自主运行模式 - 当任务状态为 autonomous_wait 或 autonomous_working 时禁用用户输入
 const isAutonomousMode = computed(() => {
-  return taskStore.currentTask?.status === 'autonomous'
+  const status = taskStore.currentTask?.status
+  return status === 'autonomous_wait' || status === 'autonomous_working'
 })
 
 // 自主运行模式下的提示文字
