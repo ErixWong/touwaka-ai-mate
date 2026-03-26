@@ -269,26 +269,6 @@
       "is_active": true
     },
     {
-      "id": "mmqkeetrn4dlgj77htvo",
-      "name": "user-code-executor",
-      "description": "在安全沙箱中执行用户自定义代码（JavaScript/Python）",
-      "version": "1.0.0",
-      "author": "",
-      "tags": [],
-      "source_type": "local",
-      "source_path": "skills\\user-code-executor",
-      "source_url": null,
-      "skill_md": "---\nname: user-code-executor\ndescription: 在安全沙箱中执行用户自定义代码（JavaScript/Python），支持内联代码和脚本文件执行。\nargument-hint: \"[execute_javascript|execute_python] --code='...' or --script_path='...'\"\nuser-invocable: true\nallowed-tools: []\n---\n\n# User Code Executor\n\n在安全沙箱中执行用户自定义代码。\n\n## 功能\n\n- 执行用户提供的 JavaScript 代码（VM 沙箱）\n- 执行用户提供的 Python 代码（受限环境）\n- 从工作目录加载脚本文件\n\n## 安全限制\n\n- **执行超时**: JavaScript 30秒 / Python 5分钟\n- **内存限制**: 128MB\n- **文件访问**: 仅限用户工作目录\n- **模块访问**: 白名单控制\n\n## 配置要求\n\n| 变量名 | 说明 | 必需 |\n|--------|------|------|\n| `WORKING_DIRECTORY` | 用户工作目录（相对 DATA_BASE_PATH） | 可选 |\n| `DATA_BASE_PATH` | 数据基础路径 | ✅ |\n| `VM_TIMEOUT` | JS 执行超时（毫秒） | 可选 |\n| `PYTHON_TIMEOUT` | Python 执行超时（毫秒） | 可选 |\n\n## 工具清单\n\n### execute_javascript\n\n在 VM 沙箱中执行 JavaScript 代码。\n\n**描述**: 执行用户提供的 JavaScript 代码，支持内联代码或加载脚本文件。\n\n**参数:**\n- `code` (string, optional): 要执行的 JavaScript 代码（与 script_path 二选一）\n- `script_path` (string, optional): 脚本文件路径，相对于用户工作目录（与 code 二选一）\n\n**script_path**: `index.js`\n\n**返回示例:**\n```json\n{\n  \"success\": true,\n  \"result\": 2,\n  \"stdout\": \"\",\n  \"stderr\": \"\",\n  \"duration\": 1,\n  \"source\": \"inline\"\n}\n```\n\n### execute_python\n\n在受限环境中执行 Python 代码。\n\n**描述**: 执行用户提供的 Python 代码，支持内联代码或加载脚本文件。\n\n**参数:**\n- `code` (string, optional): 要执行的 Python 代码（与 script_path 二选一）\n- `script_path` (string, optional): 脚本文件路径，相对于用户工作目录（与 code 二选一）\n\n**script_path**: `index.js`\n\n**返回示例:**\n```json\n{\n  \"success\": true,\n  \"result\": null,\n  \"stdout\": \"Hello\",\n  \"stderr\": \"\",\n  \"duration\": 100,\n  \"source\": \"inline\"\n}\n```\n\n## 使用示例\n\n### 执行内联 JavaScript\n\n```\nexecute_javascript({\n  code: \"const x = 10; x * 2;\"\n})\n// 返回: { success: true, result: 20 }\n```\n\n### 执行脚本文件\n\n```\nexecute_javascript({\n  script_path: \"scripts/my-script.js\"\n})\n// 从用户工作目录加载 scripts/my-script.js 并执行\n```\n\n### 执行 Python 代码\n\n```\nexecute_python({\n  code: \"print('Hello from Python!')\"\n})\n// 返回: { success: true, stdout: \"Hello from Python!\" }\n```\n\n## 错误处理\n\n| 错误类型 | 说明 |\n|----------|------|\n| 超时错误 | 代码执行超过时间限制 |\n| 内存错误 | 内存使用超过限制 |\n| 权限错误 | 访问不允许的路径或模块 |\n| 语法错误 | 代码语法错误 |\n| 运行时错误 | 执行过程中的错误 |\n\n## 注意事项\n\n- 此技能需要 `vm` 和 `child_process` 模块支持\n- Python 执行需要系统安装 Python 3\n- 文件访问限制在用户工作目录内\n- 不允许相对路径导入（`./` 或 `../`）",
-      "security_score": 100,
-      "security_warnings": null,
-      "license": null,
-      "argument_hint": "",
-      "disable_model_invocation": true,
-      "user_invocable": true,
-      "allowed_tools": null,
-      "is_active": false
-    },
-    {
       "id": "mn1hcspll2vbjefyd9zo",
       "name": "xlsx",
       "description": "Excel 文件处理。用于读取、写入、编辑 .xlsx/.xls/.csv 文件，支持工作表管理、格式化、公式计算、数据查询和格式转换。",
@@ -1938,48 +1918,6 @@
         "required": []
       },
       "script_path": "scripts/ssh_client.js",
-      "is_resident": false
-    },
-    {
-      "id": "mmqkeev8x0y345qvyfdc",
-      "skill_id": "mmqkeetrn4dlgj77htvo",
-      "name": "execute_javascript",
-      "description": "在 VM 沙箱中执行 JavaScript 代码。可以执行内联代码或加载用户工作目录中的脚本文件。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": "要执行的 JavaScript 代码（与 script_path 二选一）"
-          },
-          "script_path": {
-            "type": "string",
-            "description": "脚本文件路径，相对于用户工作目录（与 code 二选一）"
-          }
-        }
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
-      "id": "mmqkeew4m4vvsljv8os2",
-      "skill_id": "mmqkeetrn4dlgj77htvo",
-      "name": "execute_python",
-      "description": "在受限环境中执行 Python 代码。可以执行内联代码或加载用户工作目录中的脚本文件。",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": "要执行的 Python 代码（与 script_path 二选一）"
-          },
-          "script_path": {
-            "type": "string",
-            "description": "脚本文件路径，相对于用户工作目录（与 code 二选一）"
-          }
-        }
-      },
-      "script_path": "index.js",
       "is_resident": false
     },
     {
