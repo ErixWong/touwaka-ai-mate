@@ -777,7 +777,7 @@ export const assistantApi = {
     apiRequest<Assistant>(apiClient.put(`/assistants/${id}`, data)),
 
   // 创建助理
-  createAssistant: (data: Partial<Assistant> & { id: string; name: string }) =>
+  createAssistant: (data: Partial<Assistant> & { name: string }) =>
     apiRequest<Assistant>(apiClient.post('/assistants', data)),
 
   // 删除助理
