@@ -49,7 +49,7 @@
 
     <!-- 警告弹窗 -->
     <Teleport to="body">
-      <div v-if="showWarning" class="warning-modal-overlay" @click.self="showWarning = false">
+      <div v-if="showWarning" class="warning-modal-overlay">
         <div class="warning-modal">
           <div class="warning-header">
             <span class="warning-icon">⚠️</span>

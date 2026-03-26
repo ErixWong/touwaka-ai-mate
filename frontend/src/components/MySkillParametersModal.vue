@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self="close">
+  <div v-if="visible" class="dialog-overlay">
     <div class="dialog">
       <h3 class="dialog-title">
         {{ $t('skills.myParameters.title') }}: {{ skill?.name }}

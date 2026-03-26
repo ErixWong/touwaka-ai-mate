@@ -99,7 +99,7 @@
     </div>
 
     <!-- 链接显示弹窗 -->
-    <div v-if="showLinkModal" class="modal-overlay" @click.self="closeLinkModal">
+    <div v-if="showLinkModal" class="modal-overlay">
       <div class="modal-content link-modal">
         <div class="modal-header">
           <h3>{{ $t('invitation.inviteLink') }}</h3>
@@ -122,7 +122,7 @@
     </div>
 
     <!-- 使用记录弹窗 -->
-    <div v-if="showUsageModal" class="modal-overlay" @click.self="closeUsageModal">
+    <div v-if="showUsageModal" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
           <h3>{{ $t('invitation.usageTitle') }}</h3>
