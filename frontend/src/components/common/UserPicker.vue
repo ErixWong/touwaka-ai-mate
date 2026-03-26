@@ -23,7 +23,7 @@
 
     <!-- Modal 弹窗 -->
     <Teleport to="body">
-      <div v-if="showModal" class="user-picker-overlay" @click.self="closeModal">
+      <div v-if="showModal" class="user-picker-overlay">
         <div class="user-picker-modal">
           <div class="modal-header">
             <h3>{{ $t('settings.selectUser') }}</h3>
@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { userApi } from '@/api/services'
 import { useToastStore } from '@/stores/toast'
@@ -195,13 +195,6 @@ const clearSelection = () => {
   closeModal()
 }
 
-// ESC 键关闭
-const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && showModal.value) {
-    closeModal()
-  }
-}
-
 // 监听 modelValue 变化
 watch(() => props.modelValue, (newVal) => {
   if (newVal && users.value.length > 0) {
@@ -211,12 +204,7 @@ watch(() => props.modelValue, (newVal) => {
   }
 })
 
-onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
-})
-
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
   // 确保恢复滚动
   document.body.style.overflow = ''
 })

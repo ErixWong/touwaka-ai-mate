@@ -75,7 +75,7 @@
 
     <!-- 结果详情弹窗 -->
     <Teleport to="body">
-      <div v-if="showDetail" class="detail-modal-overlay" @click.self="showDetail = false">
+      <div v-if="showDetail" class="detail-modal-overlay">
         <div class="detail-modal">
           <div class="modal-header">
             <h3>{{ assistantName }} - {{ $t('assistant.resultTitle') }}</h3>
