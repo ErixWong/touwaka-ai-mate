@@ -557,7 +557,7 @@ const isTogglingAutonomous = ref(false)
 // 计算属性：是否为自动运行模式（包括等待和执行中状态）
 const isAutonomousMode = computed(() => {
   const status = taskStore.currentTask?.status
-  return status === 'autonomous' || status === 'autonomous_wait' || status === 'autonomous_working'
+  return status === 'autonomous_wait' || status === 'autonomous_working'
 })
 
 // 计算属性：是否正在执行中（用于 UI 指示器）
@@ -567,12 +567,12 @@ const isAutonomousWorking = computed(() => {
 
 // 辅助函数：判断是否为自动运行相关状态
 const isAutonomousStatus = (status: string): boolean => {
-  return status === 'autonomous' || status === 'autonomous_wait' || status === 'autonomous_working'
+  return status === 'autonomous_wait' || status === 'autonomous_working'
 }
 
 // 辅助函数：获取任务状态指示器的 CSS 类名
 const getTaskStatusClass = (status: string): string => {
-  if (status === 'autonomous' || status === 'autonomous_wait' || status === 'autonomous_working') {
+  if (status === 'autonomous_wait' || status === 'autonomous_working') {
     return 'autonomous'
   }
   return status

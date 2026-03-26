@@ -171,6 +171,37 @@ const MIGRATIONS = [
       console.log('  ✓ Added autonomous_wait and autonomous_working to tasks.status ENUM');
     }
   },
+
+  // ==================== 移除废弃的 autonomous 状态 ====================
+  // Issue #405: 清理已废弃的 autonomous 状态
+  {
+    name: 'tasks.status remove deprecated autonomous',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'tasks', 'status');
+      // 检查是否已移除 autonomous（只包含 autonomous_wait）
+      return columnType && columnType.includes('autonomous_wait') && !columnType.includes("'autonomous'");
+    },
+    migrate: async (conn) => {
+      // 1. 将现有的 autonomous 状态数据迁移为 autonomous_wait
+      await conn.execute(`
+        UPDATE tasks SET status = 'autonomous_wait' WHERE status = 'autonomous'
+      `);
+      console.log('  ✓ Migrated autonomous -> autonomous_wait');
+
+      // 2. 修改 ENUM 类型，移除 autonomous
+      await conn.execute(`
+        ALTER TABLE tasks
+        MODIFY COLUMN status ENUM(
+          'active',
+          'autonomous_wait',
+          'autonomous_working',
+          'archived',
+          'deleted'
+        ) NOT NULL DEFAULT 'active' COMMENT '任务状态'
+      `);
+      console.log('  ✓ Removed deprecated autonomous from tasks.status ENUM');
+    }
+  },
 ];
 
 /**
