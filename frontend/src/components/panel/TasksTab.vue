@@ -592,11 +592,11 @@ const toggleAutonomousMode = async () => {
 
   isTogglingAutonomous.value = true
   try {
-    const newStatus: TaskStatus = isAutonomousMode.value ? 'active' : 'autonomous'
+    const newStatus: TaskStatus = isAutonomousMode.value ? 'active' : 'autonomous_wait'
     const updateData: { status: TaskStatus; expert_id?: string } = { status: newStatus }
     
     // 开启自主模式时，设置当前专家ID
-    if (newStatus === 'autonomous') {
+    if (newStatus === 'autonomous_wait') {
       const expertId = route.params.expertId as string
       if (expertId) {
         updateData.expert_id = expertId
@@ -622,10 +622,10 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
   
   if (isTogglingAutonomous.value) return
   
-  const newStatus: TaskStatus = task.status === 'autonomous' ? 'active' : 'autonomous'
+  const newStatus: TaskStatus = isAutonomousStatus(task.status) ? 'active' : 'autonomous_wait'
   
   // 开启自主模式需要专家ID
-  if (newStatus === 'autonomous') {
+  if (newStatus === 'autonomous_wait') {
     const expertId = route.params.expertId as string
     if (!expertId) {
       toast.warning(t('tasks.noExpertForAutonomous') || '请先选择一个专家再开启自动运行模式')
