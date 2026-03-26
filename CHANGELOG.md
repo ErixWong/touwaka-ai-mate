@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-26
+
+### Fixed
+- 修复用户代码执行器 `Illegal return statement` 错误 (#415)
+- 修复 PDF 技能代码审计问题 (#411)
+- 修复开启自动运行模式时覆盖已有 `expert_id` 的问题 (#409)
+- 修复自动执行按钮设置正确的 `autonomous_wait` 状态 (#403)
+- 修复任务状态被错误地从 `active` 改为 `autonomous_wait` (#401)
+- 修复专家上下文拼接程序历史消息顺序混乱问题 (#398)
+- 修复 `updateTaskLastExecutedByTopic` 方法缺失导致的运行时错误 (#392)
+- 修复 `createAssistant` 类型定义，id 由后端生成无需前端传入 (#389)
+
+### Added
+- 自主任务完成判断与错误状态处理 (#414)
+- 将所有 Modal 改为 static 模式防止误关闭 (#395)
+- 为 `file-operations` 技能添加文件操作引导提示 (#388)
+
+### Changed
+- 移除已废弃的 `autonomous` 状态 (#405, #406)
+- 移除 `skills-data.json` 中的 `user-code-executor` 技能定义 (#396)
+
+### Chore
+- 清理根目录下的临时文件 (#390)
+- 添加缺失的 `install-git-hooks.js` 脚本
+
 ## [0.2.0] - 2026-03-26
 
 ### Added
