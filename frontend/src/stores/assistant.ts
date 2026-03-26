@@ -75,7 +75,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  async function createAssistant(data: Partial<Assistant> & { id: string; name: string }) {
+  async function createAssistant(data: Partial<Assistant> & { name: string }) {
     try {
       isLoading.value = true
       const newAssistant = await assistantApi.createAssistant(data)

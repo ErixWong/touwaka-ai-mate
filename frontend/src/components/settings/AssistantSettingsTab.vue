@@ -126,7 +126,7 @@ async function handleSave(data: Partial<Assistant>) {
 }
 
 // 创建助理
-async function handleCreate(data: Partial<Assistant> & { id: string; name: string }) {
+async function handleCreate(data: Partial<Assistant> & { name: string }) {
   try {
     await assistantStore.createAssistant(data)
     closeEditDialog()
