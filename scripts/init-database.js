@@ -250,7 +250,7 @@ const TABLES = [
     topic_id VARCHAR(32) NULL COMMENT '关联的话题ID（自主任务执行时的对话）',
     last_executed_at DATETIME NULL COMMENT '最后执行时间（自主任务执行器更新）',
     solution_id VARCHAR(32) NULL COMMENT '关联的解决方案ID',
-    status ENUM('active', 'autonomous', 'archived', 'deleted') DEFAULT 'active',
+    status ENUM('active', 'autonomous_wait', 'autonomous_working', 'archived', 'deleted') DEFAULT 'active',
     created_by VARCHAR(32) NOT NULL COMMENT '创建者 user_id',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
