@@ -202,6 +202,32 @@ const MIGRATIONS = [
       console.log('  ✓ Removed deprecated autonomous from tasks.status ENUM');
     }
   },
+
+  // ==================== 添加 error 状态 ====================
+  // Issue #410: 自主任务错误处理增强
+  // 当 LLM 连续无响应或 PM 判断失败时，将任务标记为 error 状态
+  {
+    name: 'tasks.status add error state',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'tasks', 'status');
+      // 检查是否已包含 error
+      return columnType && columnType.includes('error');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE tasks
+        MODIFY COLUMN status ENUM(
+          'active',
+          'autonomous_wait',
+          'autonomous_working',
+          'error',
+          'archived',
+          'deleted'
+        ) NOT NULL DEFAULT 'active' COMMENT '任务状态'
+      `);
+      console.log('  ✓ Added error to tasks.status ENUM');
+    }
+  },
 ];
 
 /**
