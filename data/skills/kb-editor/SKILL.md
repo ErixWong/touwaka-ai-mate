@@ -1,7 +1,7 @@
 ---
 name: kb-editor
 description: "知识库编辑技能。用于创建和管理知识库、文章、节、段落、标签。当知识专家需要整理知识、导入文档、构建知识结构时触发。"
-argument-hint: "[create_kb|create_article|create_section|create_paragraph] --kb_id=xxx"
+argument-hint: "[kb|article|section|paragraph|tag] --action=xxx"
 user-invocable: false
 allowed-tools: []
 ---
@@ -22,110 +22,151 @@ knowledge_bases (知识库)
         └── kb_paragraphs (段，可标记为知识点)
 ```
 
-## 工具
+## 工具（5个）
 
-| 工具 | 说明 | 关键参数 |
-|------|------|----------|
-| `list_my_kbs` | 列出我的知识库 | `page`, `pageSize` |
-| `list_embedding_models` | 获取嵌入模型列表 | - |
-| `get_kb` | 获取知识库详情 | `id` |
-| `create_kb` | 创建知识库 | `name`, `description`, `embedding_model_id` |
-| `update_kb` | 更新知识库 | `id`, `name`, `description` |
-| `delete_kb` | 删除知识库 | `id` |
-| `list_articles` | 列出文章 | `kb_id`, `page`, `status`, `search` |
-| `get_article` | 获取文章详情 | `kb_id`, `id` |
-| `get_article_tree` | 获取文章完整结构 | `kb_id`, `article_id` |
-| `create_article` | 创建文章 | `kb_id`, `title`, `tags[]` |
-| `update_article` | 更新文章 | `kb_id`, `id`, `title`, `tags[]` |
-| `delete_article` | 删除文章 | `kb_id`, `id` |
-| `list_sections` | 列出节 | `kb_id`, `article_id` |
-| `create_section` | 创建节 | `kb_id`, `article_id`, `parent_id`, `title` |
-| `update_section` | 更新节 | `kb_id`, `id`, `title` |
-| `move_section` | 移动节 | `kb_id`, `id`, `direction` |
-| `delete_section` | 删除节 | `kb_id`, `id` |
-| `list_paragraphs` | 列出段落 | `kb_id`, `section_id` |
-| `create_paragraph` | 创建段落 | `kb_id`, `section_id`, `content`, `is_knowledge_point` |
-| `update_paragraph` | 更新段落 | `kb_id`, `id`, `content` |
-| `move_paragraph` | 移动段落 | `kb_id`, `id`, `direction` |
-| `delete_paragraph` | 删除段落 | `kb_id`, `id` |
-| `list_tags` | 列出标签 | `kb_id` |
-| `create_tag` | 创建标签 | `kb_id`, `name` |
-| `update_tag` | 更新标签 | `kb_id`, `id`, `name` |
-| `delete_tag` | 删除标签 | `kb_id`, `id` |
+> **重构说明**：原 25 个工具已合并为 5 个，使用 `action` 参数区分具体操作。旧工具名仍可使用（向后兼容）。
 
-## 知识库操作
+| 工具 | 操作（action） | 说明 |
+|------|----------------|------|
+| `kb` | list, list_models, get, create, update, delete | 知识库操作 |
+| `article` | list, get, get_tree, create, update, delete | 文章操作 |
+| `section` | list, create, update, move, delete | 节操作（支持无限层级） |
+| `paragraph` | list, create, update, move, delete | 段落操作 |
+| `tag` | list, create, update, delete | 标签操作 |
 
-### list_my_kbs
+## kb - 知识库操作
 
-列出当前用户拥有的知识库。
+### 参数
 
-**参数：**
-- `page` (integer, optional): 页码，默认 1
-- `pageSize` (integer, optional): 每页数量，默认 20
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `action` | string | ✅ | 操作类型：list, list_models, get, create, update, delete |
+| `id` | string | get/update/delete | 知识库 ID |
+| `name` | string | create | 知识库名称 |
+| `description` | string | - | 知识库描述 |
+| `embedding_model_id` | string | - | 嵌入模型 ID，默认 bge-m3 |
+| `embedding_dim` | integer | - | 向量维度，默认 1024 |
+| `page` | integer | - | 页码，默认 1 |
+| `pageSize` | integer | - | 每页数量，默认 20 |
 
-### create_kb
+### 示例
 
-创建知识库。
+```javascript
+// 列出知识库
+{ action: 'list', page: 1, pageSize: 20 }
 
-**参数：**
-- `name` (string, required): 知识库名称
-- `description` (string, optional): 知识库描述
-- `embedding_model_id` (string, optional): 嵌入模型 ID，默认 bge-m3
-- `embedding_dim` (integer, optional): 向量维度，默认 1024
+// 获取嵌入模型列表
+{ action: 'list_models' }
 
-## 文章操作
+// 创建知识库
+{ action: 'create', name: '我的知识库', description: '技术文档' }
 
-### create_article
+// 更新知识库
+{ action: 'update', id: 'kb_001', name: '新名称' }
 
-创建文章。
+// 删除知识库
+{ action: 'delete', id: 'kb_001' }
+```
 
-**参数：**
-- `kb_id` (string, required): 知识库 ID
-- `title` (string, required): 文章标题
-- `summary` (string, optional): 文章摘要
-- `tags` (string[], optional): 标签名数组，如 `['Python', '编程']`
+## article - 文章操作
 
-### get_article_tree
+### 参数
 
-获取文章的完整树状结构（包含所有节和段落）。
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `action` | string | ✅ | 操作类型：list, get, get_tree, create, update, delete |
+| `kb_id` | string | ✅ | 知识库 ID |
+| `id` | string | get/update/delete | 文章 ID |
+| `article_id` | string | get_tree | 文章 ID |
+| `title` | string | create | 文章标题 |
+| `summary` | string | - | 文章摘要 |
+| `tags` | string[] | - | 标签名数组，如 `['Python', '编程']` |
+| `status` | string | - | 状态过滤（pending/processing/ready/error） |
+| `search` | string | - | 搜索关键词 |
 
-**参数：**
-- `kb_id` (string, required): 知识库 ID
-- `article_id` (string, required): 文章 ID
+### 示例
 
-## 节操作
+```javascript
+// 列出文章
+{ action: 'list', kb_id: 'kb_001', page: 1, pageSize: 20 }
 
-### create_section
+// 获取文章详情
+{ action: 'get', kb_id: 'kb_001', id: 'art_001' }
 
-创建节。
+// 获取文章完整结构（包含节和段落）
+{ action: 'get_tree', kb_id: 'kb_001', article_id: 'art_001' }
 
-**参数：**
-- `kb_id` (string, required): 知识库 ID
-- `article_id` (string, required): 所属文章 ID
-- `parent_id` (string, optional): 父节 ID（用于创建子节）
-- `title` (string, required): 节标题
+// 创建文章
+{ action: 'create', kb_id: 'kb_001', title: 'Python 入门', tags: ['Python', '编程'] }
 
-**说明：**
+// 更新文章
+{ action: 'update', kb_id: 'kb_001', id: 'art_001', title: '新标题' }
+
+// 删除文章
+{ action: 'delete', kb_id: 'kb_001', id: 'art_001' }
+```
+
+## section - 节操作
+
+### 参数
+
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `action` | string | ✅ | 操作类型：list, create, update, move, delete |
+| `kb_id` | string | ✅ | 知识库 ID |
+| `id` | string | update/move/delete | 节 ID |
+| `article_id` | string | create | 所属文章 ID |
+| `parent_id` | string | - | 父节 ID（用于创建子节） |
+| `title` | string | create | 节标题 |
+| `direction` | string | move | 移动方向：up 或 down |
+
+### 说明
+
 - 不传 `parent_id` 创建顶级节（章）
 - 传 `parent_id` 创建子节
 - 系统自动计算 `level` 和 `position`
 - 最大层级深度为 10 层
 
-## 段落操作
+### 示例
 
-### create_paragraph
+```javascript
+// 列出节
+{ action: 'list', kb_id: 'kb_001', article_id: 'art_001' }
 
-创建段落。
+// 创建顶级节
+{ action: 'create', kb_id: 'kb_001', article_id: 'art_001', title: '第一章' }
 
-**参数：**
-- `kb_id` (string, required): 知识库 ID
-- `section_id` (string, required): 所属节 ID
-- `title` (string, optional): 段落标题
-- `content` (string, required): 段落内容
-- `context` (string, optional): 知识点上下文（用于语义检索）
-- `is_knowledge_point` (boolean, optional): 是否为知识点，默认 false
+// 创建子节
+{ action: 'create', kb_id: 'kb_001', article_id: 'art_001', parent_id: 'sec_001', title: '1.1 小节' }
+
+// 更新节标题
+{ action: 'update', kb_id: 'kb_001', id: 'sec_001', title: '新标题' }
+
+// 移动节（与相邻节交换位置）
+{ action: 'move', kb_id: 'kb_001', id: 'sec_001', direction: 'up' }
+
+// 删除节（级联删除所有子节和段落）
+{ action: 'delete', kb_id: 'kb_001', id: 'sec_001' }
+```
+
+## paragraph - 段落操作
+
+### 参数
+
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `action` | string | ✅ | 操作类型：list, create, update, move, delete |
+| `kb_id` | string | ✅ | 知识库 ID |
+| `id` | string | update/move/delete | 段落 ID |
+| `section_id` | string | create | 所属节 ID |
+| `title` | string | - | 段落标题 |
+| `content` | string | create | 段落内容 |
+| `context` | string | - | 知识点上下文（用于语义检索） |
+| `is_knowledge_point` | boolean | - | 是否为知识点，默认 false |
+| `direction` | string | move | 移动方向：up 或 down |
 
 ⚠️ **核心原则：严格保留原文**
+
 - `content` 必须是**原文完整复制**，禁止提炼、总结、改写或省略
 - 即使原文很长，也要完整录入，不能截断
 - 如果原文有多个段落，每个段落应单独创建一条记录
@@ -139,6 +180,63 @@ knowledge_bases (知识库)
 - 生成原则：用一两句话总结该知识点和知识点所处的文章（中文）
 - 示例：如果知识点是"Python 是一种解释型语言"，Context 可以是"Python 编程语言简介 - 介绍 Python 的基本特性和应用场景"
 
+### 示例
+
+```javascript
+// 列出段落
+{ action: 'list', kb_id: 'kb_001', section_id: 'sec_001' }
+
+// 创建普通段落
+{ action: 'create', kb_id: 'kb_001', section_id: 'sec_001', content: '原文内容...' }
+
+// 创建知识点段落
+{
+  action: 'create',
+  kb_id: 'kb_001',
+  section_id: 'sec_001',
+  content: 'Python 是一种解释型语言...',
+  context: 'Python 编程语言简介 - 介绍 Python 的基本特性',
+  is_knowledge_point: true
+}
+
+// 更新段落
+{ action: 'update', kb_id: 'kb_001', id: 'para_001', content: '新内容...' }
+
+// 移动段落
+{ action: 'move', kb_id: 'kb_001', id: 'para_001', direction: 'up' }
+
+// 删除段落
+{ action: 'delete', kb_id: 'kb_001', id: 'para_001' }
+```
+
+## tag - 标签操作
+
+### 参数
+
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `action` | string | ✅ | 操作类型：list, create, update, delete |
+| `kb_id` | string | ✅ | 知识库 ID |
+| `id` | string | update/delete | 标签 ID |
+| `name` | string | create | 标签名称 |
+| `description` | string | - | 标签描述 |
+
+### 示例
+
+```javascript
+// 列出标签
+{ action: 'list', kb_id: 'kb_001' }
+
+// 创建标签
+{ action: 'create', kb_id: 'kb_001', name: 'Python' }
+
+// 更新标签
+{ action: 'update', kb_id: 'kb_001', id: 'tag_001', name: '新名称' }
+
+// 删除标签
+{ action: 'delete', kb_id: 'kb_001', id: 'tag_001' }
+```
+
 ## 环境变量
 
 | 变量名 | 说明 | 必需 |
@@ -151,16 +249,50 @@ knowledge_bases (知识库)
 
 ### 导入新文档
 
-1. `create_article` - 创建文章，设置标题和标签
-2. `create_section` - 根据文档结构创建节（章→节→小节）
-3. `create_paragraph` - 创建段落，标记知识点（`is_knowledge_point: true`）
-4. `get_article_tree` - 验证结构完整性
+1. `kb` action=list - 查看知识库列表
+2. `article` action=create - 创建文章，设置标题和标签
+3. `section` action=create - 根据文档结构创建节（章→节→小节）
+4. `paragraph` action=create - 创建段落，标记知识点（`is_knowledge_point: true`）
+5. `article` action=get_tree - 验证结构完整性
 
 ### 调整内容结构
 
-1. `get_article_tree` - 查看当前结构
-2. `move_section` / `move_paragraph` - 调整顺序
-3. `update_section` / `update_paragraph` - 修改内容
+1. `article` action=get_tree - 查看当前结构
+2. `section` action=move / `paragraph` action=move - 调整顺序
+3. `section` action=update / `paragraph` action=update - 修改内容
+
+## 向后兼容
+
+旧工具名仍可使用，内部自动映射到新工具：
+
+| 旧工具名 | 新工具 + action |
+|----------|-----------------|
+| list_my_kbs | kb + list |
+| list_embedding_models | kb + list_models |
+| get_kb | kb + get |
+| create_kb | kb + create |
+| update_kb | kb + update |
+| delete_kb | kb + delete |
+| list_articles | article + list |
+| get_article | article + get |
+| get_article_tree | article + get_tree |
+| create_article | article + create |
+| update_article | article + update |
+| delete_article | article + delete |
+| list_sections | section + list |
+| create_section | section + create |
+| update_section | section + update |
+| move_section | section + move |
+| delete_section | section + delete |
+| list_paragraphs | paragraph + list |
+| create_paragraph | paragraph + create |
+| update_paragraph | paragraph + update |
+| move_paragraph | paragraph + move |
+| delete_paragraph | paragraph + delete |
+| list_tags | tag + list |
+| create_tag | tag + create |
+| update_tag | tag + update |
+| delete_tag | tag + delete |
 
 ## 权限说明
 
