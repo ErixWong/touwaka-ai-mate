@@ -354,50 +354,13 @@ async function handleTag(params) {
   }
 }
 
-// ==================== 向后兼容：旧工具名映射 ====================
-
-/**
- * 旧工具名到新工具的映射表
- */
-const LEGACY_TOOL_MAP = {
-  // 知识库
-  'list_my_kbs': { tool: 'kb', action: 'list' },
-  'list_embedding_models': { tool: 'kb', action: 'list_models' },
-  'get_kb': { tool: 'kb', action: 'get' },
-  'create_kb': { tool: 'kb', action: 'create' },
-  'update_kb': { tool: 'kb', action: 'update' },
-  'delete_kb': { tool: 'kb', action: 'delete' },
-  // 文章
-  'list_articles': { tool: 'article', action: 'list' },
-  'get_article': { tool: 'article', action: 'get' },
-  'get_article_tree': { tool: 'article', action: 'get_tree' },
-  'create_article': { tool: 'article', action: 'create' },
-  'update_article': { tool: 'article', action: 'update' },
-  'delete_article': { tool: 'article', action: 'delete' },
-  // 节
-  'list_sections': { tool: 'section', action: 'list' },
-  'create_section': { tool: 'section', action: 'create' },
-  'update_section': { tool: 'section', action: 'update' },
-  'move_section': { tool: 'section', action: 'move' },
-  'delete_section': { tool: 'section', action: 'delete' },
-  // 段落
-  'list_paragraphs': { tool: 'paragraph', action: 'list' },
-  'create_paragraph': { tool: 'paragraph', action: 'create' },
-  'update_paragraph': { tool: 'paragraph', action: 'update' },
-  'move_paragraph': { tool: 'paragraph', action: 'move' },
-  'delete_paragraph': { tool: 'paragraph', action: 'delete' },
-  // 标签
-  'list_tags': { tool: 'tag', action: 'list' },
-  'create_tag': { tool: 'tag', action: 'create' },
-  'update_tag': { tool: 'tag', action: 'update' },
-  'delete_tag': { tool: 'tag', action: 'delete' },
-};
+// ==================== 执行入口 ====================
 
 /**
  * Skill execute function - 被 skill-runner 调用
  *
- * @param {string} toolName - 工具名称（新工具名或旧工具名）
- * @param {object} params - 工具参数
+ * @param {string} toolName - 工具名称（kb/article/section/paragraph/tag）
+ * @param {object} params - 工具参数（必须包含 action 字段）
  * @param {object} context - 执行上下文（由 skill-loader 注入环境变量，context 可为空）
  * @returns {Promise<object>} 执行结果
  */
@@ -416,26 +379,20 @@ async function execute(toolName, params, context = {}) {
     'tag': handleTag,
   };
 
-  // 检查是否为旧工具名
-  let actualTool = toolName;
-  let actualParams = params;
-
-  if (LEGACY_TOOL_MAP[toolName]) {
-    const mapping = LEGACY_TOOL_MAP[toolName];
-    actualTool = mapping.tool;
-    actualParams = { ...params, action: mapping.action };
-  }
-
   // 获取处理器
-  const handler = handlers[actualTool];
+  const handler = handlers[toolName];
   if (!handler) {
     const availableTools = Object.keys(handlers).join(', ');
-    const legacyTools = Object.keys(LEGACY_TOOL_MAP).join(', ');
-    throw new Error(`未知工具: ${toolName}. 可用工具: ${availableTools}（或旧工具名: ${legacyTools}）`);
+    throw new Error(`未知工具: ${toolName}. 可用工具: ${availableTools}`);
+  }
+
+  // 验证 action 参数
+  if (!params.action) {
+    throw new Error('缺少 action 参数。请指定操作类型。');
   }
 
   // 执行操作
-  const result = await handler(actualParams);
+  const result = await handler(params);
 
   return {
     success: true,

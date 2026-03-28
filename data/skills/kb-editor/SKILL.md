@@ -24,8 +24,6 @@ knowledge_bases (知识库)
 
 ## 工具（5个）
 
-> **重构说明**：原 25 个工具已合并为 5 个，使用 `action` 参数区分具体操作。旧工具名仍可使用（向后兼容）。
-
 | 工具 | 操作（action） | 说明 |
 |------|----------------|------|
 | `kb` | list, list_models, get, create, update, delete | 知识库操作 |
@@ -260,39 +258,6 @@ knowledge_bases (知识库)
 1. `article` action=get_tree - 查看当前结构
 2. `section` action=move / `paragraph` action=move - 调整顺序
 3. `section` action=update / `paragraph` action=update - 修改内容
-
-## 向后兼容
-
-旧工具名仍可使用，内部自动映射到新工具：
-
-| 旧工具名 | 新工具 + action |
-|----------|-----------------|
-| list_my_kbs | kb + list |
-| list_embedding_models | kb + list_models |
-| get_kb | kb + get |
-| create_kb | kb + create |
-| update_kb | kb + update |
-| delete_kb | kb + delete |
-| list_articles | article + list |
-| get_article | article + get |
-| get_article_tree | article + get_tree |
-| create_article | article + create |
-| update_article | article + update |
-| delete_article | article + delete |
-| list_sections | section + list |
-| create_section | section + create |
-| update_section | section + update |
-| move_section | section + move |
-| delete_section | section + delete |
-| list_paragraphs | paragraph + list |
-| create_paragraph | paragraph + create |
-| update_paragraph | paragraph + update |
-| move_paragraph | paragraph + move |
-| delete_paragraph | paragraph + delete |
-| list_tags | tag + list |
-| create_tag | tag + create |
-| update_tag | tag + update |
-| delete_tag | tag + delete |
 
 ## 权限说明
 
