@@ -49,6 +49,8 @@ import mammoth from 'mammoth';
 import AdmZip from 'adm-zip';
 import xml2js from 'xml2js';
 import pptxgenjs from 'pptxgenjs';
+import * as echarts from 'echarts';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -270,6 +272,9 @@ function executeSkill(code, skillId) {
         'xml2js': xml2js,
         // npm 模块（用于测试 pptx 技能）
         'pptxgenjs': pptxgenjs,
+        // npm 模块（用于测试 echarts 技能）
+        'echarts': echarts,
+        'sharp': sharp,
       };
       
       if (moduleMap[moduleName]) {
