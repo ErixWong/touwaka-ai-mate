@@ -33,6 +33,9 @@ export default (controller) => {
   // 删除知识库
   router.delete('/:kb_id', authenticate(), controller.deleteKnowledgeBase.bind(controller));
 
+  // 转移知识库 owner（仅 admin）
+  router.post('/:kb_id/transfer-owner', authenticate(), controller.transferOwner.bind(controller));
+
   // ==================== 文章路由 ====================
 
   // 复杂查询文章列表
