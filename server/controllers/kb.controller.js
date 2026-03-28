@@ -393,6 +393,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
 
       // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
       const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
@@ -454,6 +461,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
 
       const article = await this.KbArticle.findOne({
         where: { id, kb_id },
@@ -484,6 +498,13 @@ class KbController {
       this.ensureModels();
       const { kb_id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       // 验证知识库存在
       const kb = await this.KnowledgeBase.findByPk(kb_id);
@@ -531,6 +552,13 @@ class KbController {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const article = await this.KbArticle.findOne({ where: { id, kb_id } });
       if (!article) {
@@ -572,6 +600,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const article = await this.KbArticle.findOne({ where: { id, kb_id } });
       if (!article) {
@@ -612,7 +647,14 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
       const queryRequest = ctx.request.body || {};
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
 
       // 先获取 kb_id 下的所有文章 ID
       const articles = await this.KbArticle.findAll({
@@ -655,6 +697,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, article_id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
 
       // 验证文章存在
       const article = await this.KbArticle.findOne({ where: { id: article_id, kb_id } });
@@ -709,6 +758,13 @@ class KbController {
       this.ensureModels();
       const { kb_id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       // 验证文章存在且属于该知识库
       const article = await this.KbArticle.findOne({
@@ -769,6 +825,13 @@ class KbController {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const section = await this.KbSection.findByPk(id, {
         include: [{ model: this.KbArticle, as: 'article' }],
@@ -797,6 +860,13 @@ class KbController {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
       const { direction } = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       if (!['up', 'down'].includes(direction)) {
         ctx.throw(400, 'Invalid direction, must be "up" or "down"');
@@ -850,6 +920,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const section = await this.KbSection.findByPk(id, {
         include: [{ model: this.KbArticle, as: 'article' }],
@@ -883,7 +960,14 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
       const queryRequest = ctx.request.body || {};
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         filterFields: PARAGRAPH_FILTER_FIELDS,
@@ -938,6 +1022,13 @@ class KbController {
       this.ensureModels();
       const { kb_id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       // 验证节存在且属于该知识库
       const section = await this.KbSection.findByPk(data.section_id, {
@@ -981,6 +1072,13 @@ class KbController {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const paragraph = await this.KbParagraph.findByPk(id, {
         include: [{
@@ -1019,6 +1117,13 @@ class KbController {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
       const { direction } = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       if (!['up', 'down'].includes(direction)) {
         ctx.throw(400, 'Invalid direction, must be "up" or "down"');
@@ -1076,6 +1181,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const paragraph = await this.KbParagraph.findByPk(id, {
         include: [{
@@ -1113,7 +1225,14 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
       
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
+
       // 支持 GET (ctx.query) 和 POST (ctx.request.body) 两种方式
       const queryParams = ctx.method === 'GET' ? ctx.query : ctx.request.body;
       const queryRequest = queryParams || {};
@@ -1147,6 +1266,13 @@ class KbController {
       this.ensureModels();
       const { kb_id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       // 验证知识库存在
       const kb = await this.KnowledgeBase.findByPk(kb_id);
@@ -1188,6 +1314,13 @@ class KbController {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const tag = await this.KbTag.findOne({ where: { id, kb_id } });
       if (!tag) {
@@ -1224,6 +1357,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       const tag = await this.KbTag.findOne({ where: { id, kb_id } });
       if (!tag) {
@@ -1256,9 +1396,16 @@ class KbController {
       this.ensureModels();
       const { kb_id } = ctx.params;
       const { query, top_k = 5, threshold = 0.1, article_id } = ctx.request.body;
+      const userId = ctx.state.session.id;
 
       if (!query || !query.trim()) {
         ctx.throw(400, 'Search query is required');
+      }
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
       }
 
       // 验证知识库存在
@@ -1622,6 +1769,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
 
       // 验证知识库存在
       const kb = await this.KnowledgeBase.findByPk(kb_id);
@@ -1689,6 +1843,13 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id, jobId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
 
       const job = KbController.revectorizeJobs.get(jobId);
       if (!job) {
