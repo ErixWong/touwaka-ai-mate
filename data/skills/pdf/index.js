@@ -1,19 +1,9 @@
 /**
- * PDF Skill - PDF 处理技能 (Node.js 版本)
+ * PDF Skill - PDF 处理技能 (精简版)
  * 
- * 功能：
- * - 读取 PDF 元数据和基本信息
- * - 提取文本内容
- * - 提取图片
- * - 提取表格
- * - 渲染页面为图片
- * - 合并多个 PDF
- * - 拆分 PDF
- * - 旋转页面
- * - 创建新 PDF
- * - 加密/解密 PDF
- * - 添加水印
- * - 表单操作（读取、填写）
+ * 工具设计：
+ * - read: PDF 读取工具（通过 operation 参数区分具体操作）
+ * - write: PDF 写入工具（通过 operation 参数区分具体操作）
  * 
  * 依赖：
  * - pdf-lib: PDF 操作核心库
@@ -135,13 +125,48 @@ function savePdfFile(filePath, pdfBytes) {
   fs.writeFileSync(resolvedPath, pdfBytes);
 }
 
-// ==================== 基础操作 ====================
+/**
+ * 文本换行辅助函数
+ */
+function wrapText(text, maxWidth, font, fontSize) {
+  const lines = [];
+  const paragraphs = text.split('\n');
+  
+  for (const paragraph of paragraphs) {
+    if (paragraph.trim() === '') {
+      lines.push('');
+      continue;
+    }
+    
+    let currentLine = '';
+    const words = paragraph.split(' ');
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const width = font.widthOfTextAtSize(testLine, fontSize);
+      
+      if (width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+  }
+  
+  return lines;
+}
+
+// ==================== 读操作实现 ====================
 
 /**
- * 读取 PDF 元数据和基本信息
- * 使用 pdf-parse v2 的 getInfo() 方法获取更丰富的信息
+ * 读取 PDF 元数据
  */
-async function readPdf(params) {
+async function readMetadata(params) {
   const { path: filePath, parsePageInfo = false, suppressWarnings = true } = params;
   
   const pdfBytes = await readPdfFile(filePath);
@@ -184,10 +209,8 @@ async function readPdf(params) {
       pages: parsePageInfo ? infoResult.pages : undefined
     };
   } catch (e) {
-    // 如果 pdf-parse 失败，仍然返回基础信息
     console.error('pdf-parse getInfo failed:', e.message);
   } finally {
-    // 确保释放内存
     if (parser) {
       await parser.destroy();
     }
@@ -210,32 +233,27 @@ async function readPdf(params) {
 
 /**
  * 提取文本内容
- * 使用 pdf-parse v2 API，支持 verbosity 参数抑制警告输出
  */
-async function extractText(params) {
+async function readText(params) {
   const { path: filePath, fromPage, toPage, suppressWarnings = true } = params;
   
   const { PDFParse, VerbosityLevel } = getPdfParse();
   const pdfBytes = await readPdfFile(filePath);
   
-  // 创建解析器实例，设置 verbosity 抑制警告
   const loadParams = {
     data: pdfBytes,
-    // 设置 verbosity 为 ERRORS 只显示错误，抑制 WARNING 输出
     verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
   };
   
   const parser = new PDFParse(loadParams);
   
   try {
-    // 处理分页提取
     if (fromPage || toPage) {
       const pdfDoc = await PDFDocument.load(pdfBytes);
       const totalPages = pdfDoc.getPageCount();
       const start = (fromPage || 1);
       const end = toPage || totalPages;
       
-      // 构建 partial 数组（页码从 1 开始）
       const partial = [];
       for (let i = start; i <= end && i <= totalPages; i++) {
         partial.push(i);
@@ -251,7 +269,6 @@ async function extractText(params) {
       };
     }
     
-    // 提取全部文本
     const result = await parser.getText();
     
     return {
@@ -261,16 +278,14 @@ async function extractText(params) {
       info: result.info
     };
   } finally {
-    // 始终释放内存
     await parser.destroy();
   }
 }
 
 /**
  * 提取表格
- * 使用 pdf-parse v2 的 getTable() 方法
  */
-async function extractTables(params) {
+async function readTables(params) {
   const { path: filePath, fromPage, toPage, suppressWarnings = true } = params;
   
   const { PDFParse, VerbosityLevel } = getPdfParse();
@@ -284,7 +299,6 @@ async function extractTables(params) {
   const parser = new PDFParse(loadParams);
   
   try {
-    // 构建分页参数
     const parseParams = {};
     if (fromPage || toPage) {
       const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -301,7 +315,6 @@ async function extractTables(params) {
     
     const result = await parser.getTable(parseParams);
     
-    // 格式化表格数据
     const tables = result.pages.map((page, pageIndex) => ({
       pageNumber: pageIndex + 1,
       tables: page.tables || []
@@ -317,118 +330,248 @@ async function extractTables(params) {
   }
 }
 
-// ==================== 编辑操作 ====================
-
 /**
- * 合并多个 PDF
+ * 提取图片
  */
-async function mergePdfs(params) {
-  const { paths, output } = params;
+async function readImages(params) {
+  const { path: filePath, fromPage, toPage, imageThreshold = 80, suppressWarnings = true } = params;
   
-  if (!paths || paths.length < 2) {
-    throw new Error('At least 2 PDF files are required for merging');
-  }
-  
-  const mergedDoc = await PDFDocument.create();
-  
-  for (const filePath of paths) {
-    const pdfBytes = await readPdfFile(filePath);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const pages = await mergedDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-    pages.forEach(page => mergedDoc.addPage(page));
-  }
-  
-  const mergedBytes = await mergedDoc.save();
-  savePdfFile(output, mergedBytes);
-  
-  return {
-    success: true,
-    path: resolvePath(output),
-    pageCount: mergedDoc.getPageCount()
-  };
-}
-
-/**
- * 拆分 PDF
- */
-async function splitPdf(params) {
-  const { path: filePath, outputDir, pagesPerFile = 1, prefix = 'page' } = params;
-  
+  const { PDFParse, VerbosityLevel } = getPdfParse();
   const pdfBytes = await readPdfFile(filePath);
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const totalPages = pdfDoc.getPageCount();
   
-  const resolvedOutputDir = resolvePath(outputDir);
-  if (!fs.existsSync(resolvedOutputDir)) {
-    fs.mkdirSync(resolvedOutputDir, { recursive: true });
-  }
+  const loadParams = {
+    data: pdfBytes,
+    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
+  };
   
-  const outputFiles = [];
+  const parser = new PDFParse(loadParams);
   
-  for (let i = 0; i < totalPages; i += pagesPerFile) {
-    const newDoc = await PDFDocument.create();
-    const endPage = Math.min(i + pagesPerFile, totalPages);
-    const indices = [];
-    for (let j = i; j < endPage; j++) {
-      indices.push(j);
+  try {
+    const parseParams = { imageThreshold };
+    if (fromPage || toPage) {
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const totalPages = pdfDoc.getPageCount();
+      const start = fromPage || 1;
+      const end = toPage || totalPages;
+      
+      const partial = [];
+      for (let i = start; i <= end && i <= totalPages; i++) {
+        partial.push(i);
+      }
+      parseParams.partial = partial;
     }
-    const pages = await newDoc.copyPages(pdfDoc, indices);
-    pages.forEach(page => newDoc.addPage(page));
     
-    const newBytes = await newDoc.save();
-    const outputPath = path.join(resolvedOutputDir, `${prefix}_${i + 1}-${endPage}.pdf`);
-    fs.writeFileSync(outputPath, newBytes);
-    outputFiles.push(outputPath);
+    const result = await parser.getImage(parseParams);
+    
+    const images = result.pages.map((page, pageIndex) => ({
+      pageNumber: pageIndex + 1,
+      images: (page.images || []).map((img, imgIndex) => ({
+        index: imgIndex + 1,
+        width: img.width,
+        height: img.height,
+        data: img.data,
+        dataUrl: img.dataUrl
+      }))
+    }));
+    
+    return {
+      success: true,
+      images,
+      totalImages: images.reduce((sum, p) => sum + p.images.length, 0)
+    };
+  } finally {
+    await parser.destroy();
   }
-  
-  return {
-    success: true,
-    outputDir: resolvedOutputDir,
-    files: outputFiles,
-    totalPages,
-    filesCreated: outputFiles.length
-  };
 }
 
 /**
- * 旋转页面
+ * 渲染页面为图片
  */
-async function rotatePages(params) {
-  const { path: filePath, output, pages = [], degrees = 90 } = params;
+async function readRender(params) {
+  const { 
+    path: filePath, 
+    outputDir, 
+    fromPage, 
+    toPage, 
+    scale = 1.5, 
+    desiredWidth,
+    prefix = 'page',
+    suppressWarnings = true 
+  } = params;
+  
+  const { PDFParse, VerbosityLevel } = getPdfParse();
+  const pdfBytes = await readPdfFile(filePath);
+  
+  const loadParams = {
+    data: pdfBytes,
+    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
+  };
+  
+  const parser = new PDFParse(loadParams);
+  
+  try {
+    const parseParams = { scale };
+    if (desiredWidth) {
+      parseParams.desiredWidth = desiredWidth;
+    }
+    
+    if (fromPage || toPage) {
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const totalPages = pdfDoc.getPageCount();
+      const start = fromPage || 1;
+      const end = toPage || totalPages;
+      
+      const partial = [];
+      for (let i = start; i <= end && i <= totalPages; i++) {
+        partial.push(i);
+      }
+      parseParams.partial = partial;
+    }
+    
+    const result = await parser.getScreenshot(parseParams);
+    
+    const resolvedOutputDir = outputDir ? resolvePath(outputDir) : null;
+    const savedFiles = [];
+    
+    if (resolvedOutputDir) {
+      if (!fs.existsSync(resolvedOutputDir)) {
+        fs.mkdirSync(resolvedOutputDir, { recursive: true });
+      }
+      
+      for (let i = 0; i < result.pages.length; i++) {
+        const page = result.pages[i];
+        const outputPath = path.join(resolvedOutputDir, `${prefix}_${i + 1}.png`);
+        fs.writeFileSync(outputPath, page.data);
+        savedFiles.push(outputPath);
+      }
+    }
+    
+    return {
+      success: true,
+      pages: result.pages.map((page, index) => ({
+        pageNumber: index + 1,
+        width: page.width,
+        height: page.height,
+        dataUrl: page.dataUrl,
+        savedPath: savedFiles[index] || null
+      })),
+      savedFiles: savedFiles.length > 0 ? savedFiles : undefined,
+      outputDir: resolvedOutputDir
+    };
+  } finally {
+    await parser.destroy();
+  }
+}
+
+/**
+ * 转换为 Markdown
+ */
+async function readMarkdown(params) {
+  const { path: filePath, output, fromPage, toPage } = params;
+  
+  const textResult = await readText({ path: filePath, fromPage, toPage });
+  
+  let markdown = textResult.text;
+  
+  const lines = markdown.split('\n');
+  const processedLines = lines.map(line => {
+    const trimmed = line.trim();
+    if (trimmed.length > 0 && trimmed.length < 50) {
+      if (/^[A-Z\u4e00-\u9fa5]/.test(trimmed)) {
+        return `## ${trimmed}`;
+      }
+    }
+    return line;
+  });
+  
+  markdown = processedLines.join('\n');
+  
+  if (output) {
+    const resolvedPath = resolvePath(output);
+    fs.writeFileSync(resolvedPath, markdown, 'utf-8');
+    return { success: true, path: resolvedPath, markdown };
+  }
+  
+  return { success: true, markdown };
+}
+
+/**
+ * 检查表单字段
+ */
+async function readFields(params) {
+  const { path: filePath } = params;
   
   const pdfBytes = await readPdfFile(filePath);
   const pdfDoc = await PDFDocument.load(pdfBytes);
-  const allPages = pdfDoc.getPages();
+  const form = pdfDoc.getForm();
   
-  const pagesToRotate = pages.length > 0
-    ? pages.map(p => p - 1)
-    : allPages.map((_, i) => i);
-  
-  for (const pageIndex of pagesToRotate) {
-    if (pageIndex >= 0 && pageIndex < allPages.length) {
-      const page = allPages[pageIndex];
-      const currentRotation = page.getRotation().angle;
-      page.setRotation(degrees(currentRotation + degrees));
-    }
-  }
-  
-  const newBytes = await pdfDoc.save();
-  savePdfFile(output, newBytes);
+  const fields = form.getFields();
   
   return {
     success: true,
-    path: resolvePath(output),
-    rotatedPages: pagesToRotate.map(p => p + 1),
-    degrees
+    hasFillableFields: fields.length > 0,
+    fieldCount: fields.length,
+    fields: fields.map(field => ({
+      name: field.getName(),
+      type: field.constructor.name
+    }))
   };
 }
 
-// ==================== 创建和转换 ====================
+/**
+ * 获取表单字段信息
+ */
+async function readFieldInfo(params) {
+  const { path: filePath, output } = params;
+  
+  const pdfBytes = await readPdfFile(filePath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const form = pdfDoc.getForm();
+  
+  const fields = form.getFields();
+  
+  const fieldInfo = fields.map(field => {
+    const info = {
+      name: field.getName(),
+      type: field.constructor.name
+    };
+    
+    try {
+      if (field.getText) {
+        info.value = field.getText();
+      } else if (field.isChecked) {
+        info.value = field.isChecked();
+      } else if (field.getSelected) {
+        info.value = field.getSelected();
+      }
+    } catch (e) {
+      info.value = null;
+    }
+    
+    return info;
+  });
+  
+  const result = {
+    success: true,
+    fieldCount: fields.length,
+    fields: fieldInfo
+  };
+  
+  if (output) {
+    const resolvedPath = resolvePath(output);
+    fs.writeFileSync(resolvedPath, JSON.stringify(result, null, 2), 'utf-8');
+    result.path = resolvedPath;
+  }
+  
+  return result;
+}
+
+// ==================== 写操作实现 ====================
 
 /**
- * 创建新 PDF
+ * 创建 PDF
  */
-async function createPdf(params) {
+async function writeCreate(params) {
   const { output, title, content = [], pageSize = 'a4' } = params;
   
   const pdfDoc = await PDFDocument.create();
@@ -479,161 +622,113 @@ async function createPdf(params) {
 }
 
 /**
- * 文本换行辅助函数
+ * 合并 PDF
  */
-function wrapText(text, maxWidth, font, fontSize) {
-  const lines = [];
-  const paragraphs = text.split('\n');
+async function writeMerge(params) {
+  const { paths, output } = params;
   
-  for (const paragraph of paragraphs) {
-    if (paragraph.trim() === '') {
-      lines.push('');
-      continue;
-    }
-    
-    let currentLine = '';
-    const words = paragraph.split(' ');
-    
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const width = font.widthOfTextAtSize(testLine, fontSize);
-      
-      if (width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    
-    if (currentLine) {
-      lines.push(currentLine);
-    }
+  if (!paths || paths.length < 2) {
+    throw new Error('At least 2 PDF files are required for merging');
   }
   
-  return lines;
-}
-
-/**
- * 转换 PDF 为图片
- * 使用 pdf-parse v2 的 getScreenshot() 方法
- */
-async function convertToImages(params) {
-  const { 
-    path: filePath, 
-    outputDir, 
-    fromPage, 
-    toPage, 
-    scale = 1.5, 
-    desiredWidth,
-    prefix = 'page',
-    suppressWarnings = true 
-  } = params;
+  const mergedDoc = await PDFDocument.create();
   
-  const { PDFParse, VerbosityLevel } = getPdfParse();
-  const pdfBytes = await readPdfFile(filePath);
+  for (const filePath of paths) {
+    const pdfBytes = await readPdfFile(filePath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = await mergedDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+    pages.forEach(page => mergedDoc.addPage(page));
+  }
   
-  const loadParams = {
-    data: pdfBytes,
-    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
+  const mergedBytes = await mergedDoc.save();
+  savePdfFile(output, mergedBytes);
+  
+  return {
+    success: true,
+    path: resolvePath(output),
+    pageCount: mergedDoc.getPageCount()
   };
-  
-  const parser = new PDFParse(loadParams);
-  
-  try {
-    // 构建分页参数
-    const parseParams = { scale };
-    if (desiredWidth) {
-      parseParams.desiredWidth = desiredWidth;
-    }
-    
-    if (fromPage || toPage) {
-      const pdfDoc = await PDFDocument.load(pdfBytes);
-      const totalPages = pdfDoc.getPageCount();
-      const start = fromPage || 1;
-      const end = toPage || totalPages;
-      
-      const partial = [];
-      for (let i = start; i <= end && i <= totalPages; i++) {
-        partial.push(i);
-      }
-      parseParams.partial = partial;
-    }
-    
-    const result = await parser.getScreenshot(parseParams);
-    
-    // 保存图片
-    const resolvedOutputDir = outputDir ? resolvePath(outputDir) : null;
-    const savedFiles = [];
-    
-    if (resolvedOutputDir) {
-      if (!fs.existsSync(resolvedOutputDir)) {
-        fs.mkdirSync(resolvedOutputDir, { recursive: true });
-      }
-      
-      for (let i = 0; i < result.pages.length; i++) {
-        const page = result.pages[i];
-        const outputPath = path.join(resolvedOutputDir, `${prefix}_${i + 1}.png`);
-        fs.writeFileSync(outputPath, page.data);
-        savedFiles.push(outputPath);
-      }
-    }
-    
-    return {
-      success: true,
-      pages: result.pages.map((page, index) => ({
-        pageNumber: index + 1,
-        width: page.width,
-        height: page.height,
-        dataUrl: page.dataUrl,
-        savedPath: savedFiles[index] || null
-      })),
-      savedFiles: savedFiles.length > 0 ? savedFiles : undefined,
-      outputDir: resolvedOutputDir
-    };
-  } finally {
-    await parser.destroy();
-  }
 }
 
 /**
- * PDF 转 Markdown
+ * 拆分 PDF
  */
-async function pdfToMarkdown(params) {
-  const { path: filePath, output, fromPage, toPage } = params;
+async function writeSplit(params) {
+  const { path: filePath, outputDir, pagesPerFile = 1, prefix = 'page' } = params;
   
-  const textResult = await extractText({ path: filePath, fromPage, toPage });
+  const pdfBytes = await readPdfFile(filePath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const totalPages = pdfDoc.getPageCount();
   
-  let markdown = textResult.text;
-  
-  const lines = markdown.split('\n');
-  const processedLines = lines.map(line => {
-    const trimmed = line.trim();
-    if (trimmed.length > 0 && trimmed.length < 50) {
-      if (/^[A-Z\u4e00-\u9fa5]/.test(trimmed)) {
-        return `## ${trimmed}`;
-      }
-    }
-    return line;
-  });
-  
-  markdown = processedLines.join('\n');
-  
-  if (output) {
-    const resolvedPath = resolvePath(output);
-    fs.writeFileSync(resolvedPath, markdown, 'utf-8');
-    return { success: true, path: resolvedPath, markdown };
+  const resolvedOutputDir = resolvePath(outputDir);
+  if (!fs.existsSync(resolvedOutputDir)) {
+    fs.mkdirSync(resolvedOutputDir, { recursive: true });
   }
   
-  return { success: true, markdown };
+  const outputFiles = [];
+  
+  for (let i = 0; i < totalPages; i += pagesPerFile) {
+    const newDoc = await PDFDocument.create();
+    const endPage = Math.min(i + pagesPerFile, totalPages);
+    const indices = [];
+    for (let j = i; j < endPage; j++) {
+      indices.push(j);
+    }
+    const pages = await newDoc.copyPages(pdfDoc, indices);
+    pages.forEach(page => newDoc.addPage(page));
+    
+    const newBytes = await newDoc.save();
+    const outputPath = path.join(resolvedOutputDir, `${prefix}_${i + 1}-${endPage}.pdf`);
+    fs.writeFileSync(outputPath, newBytes);
+    outputFiles.push(outputPath);
+  }
+  
+  return {
+    success: true,
+    outputDir: resolvedOutputDir,
+    files: outputFiles,
+    totalPages,
+    filesCreated: outputFiles.length
+  };
 }
 
-// ==================== 安全操作 ====================
+/**
+ * 旋转页面
+ */
+async function writeRotate(params) {
+  const { path: filePath, output, pages = [], degrees = 90 } = params;
+  
+  const pdfBytes = await readPdfFile(filePath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const allPages = pdfDoc.getPages();
+  
+  const pagesToRotate = pages.length > 0
+    ? pages.map(p => p - 1)
+    : allPages.map((_, i) => i);
+  
+  for (const pageIndex of pagesToRotate) {
+    if (pageIndex >= 0 && pageIndex < allPages.length) {
+      const page = allPages[pageIndex];
+      const currentRotation = page.getRotation().angle;
+      page.setRotation(degrees(currentRotation + degrees));
+    }
+  }
+  
+  const newBytes = await pdfDoc.save();
+  savePdfFile(output, newBytes);
+  
+  return {
+    success: true,
+    path: resolvePath(output),
+    rotatedPages: pagesToRotate.map(p => p + 1),
+    degrees
+  };
+}
 
 /**
  * 加密 PDF
  */
-async function encryptPdf(params) {
+async function writeEncrypt(params) {
   const { path: filePath, output, userPassword, ownerPassword } = params;
   
   if (!userPassword) {
@@ -670,7 +765,7 @@ async function encryptPdf(params) {
 /**
  * 解密 PDF
  */
-async function decryptPdf(params) {
+async function writeDecrypt(params) {
   const { path: filePath, output, password } = params;
   
   const pdfBytes = await readPdfFile(filePath);
@@ -689,7 +784,7 @@ async function decryptPdf(params) {
 /**
  * 添加水印
  */
-async function addWatermark(params) {
+async function writeWatermark(params) {
   const { path: filePath, output, watermark, isText = true } = params;
   
   const pdfBytes = await readPdfFile(filePath);
@@ -733,83 +828,10 @@ async function addWatermark(params) {
   };
 }
 
-// ==================== 表单操作 ====================
-
-/**
- * 检查可填写字段
- */
-async function checkFillableFields(params) {
-  const { path: filePath } = params;
-  
-  const pdfBytes = await readPdfFile(filePath);
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const form = pdfDoc.getForm();
-  
-  const fields = form.getFields();
-  
-  return {
-    success: true,
-    hasFillableFields: fields.length > 0,
-    fieldCount: fields.length,
-    fields: fields.map(field => ({
-      name: field.getName(),
-      type: field.constructor.name
-    }))
-  };
-}
-
-/**
- * 提取表单字段信息
- */
-async function extractFormFieldInfo(params) {
-  const { path: filePath, output } = params;
-  
-  const pdfBytes = await readPdfFile(filePath);
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const form = pdfDoc.getForm();
-  
-  const fields = form.getFields();
-  
-  const fieldInfo = fields.map(field => {
-    const info = {
-      name: field.getName(),
-      type: field.constructor.name
-    };
-    
-    try {
-      if (field.getText) {
-        info.value = field.getText();
-      } else if (field.isChecked) {
-        info.value = field.isChecked();
-      } else if (field.getSelected) {
-        info.value = field.getSelected();
-      }
-    } catch (e) {
-      info.value = null;
-    }
-    
-    return info;
-  });
-  
-  const result = {
-    success: true,
-    fieldCount: fields.length,
-    fields: fieldInfo
-  };
-  
-  if (output) {
-    const resolvedPath = resolvePath(output);
-    fs.writeFileSync(resolvedPath, JSON.stringify(result, null, 2), 'utf-8');
-    result.path = resolvedPath;
-  }
-  
-  return result;
-}
-
 /**
  * 填写表单字段
  */
-async function fillFillableFields(params) {
+async function writeFill(params) {
   const { path: filePath, fieldValues, output } = params;
   
   const pdfBytes = await readPdfFile(filePath);
@@ -850,140 +872,108 @@ async function fillFillableFields(params) {
   };
 }
 
+// ==================== 技能入口 ====================
+
 /**
- * 提取图片
- * 使用 pdf-parse v2 的 getImage() 方法
+ * read 工具 - PDF 读取操作
+ * 
+ * 通过 operation 参数区分具体操作：
+ * - metadata: 读取元数据
+ * - text: 提取文本
+ * - tables: 提取表格
+ * - images: 提取图片
+ * - render: 渲染页面为图片
+ * - markdown: 转 Markdown
+ * - fields: 检查表单字段
+ * - field_info: 获取字段信息
  */
-async function extractImages(params) {
-  const { path: filePath, fromPage, toPage, imageThreshold = 80, suppressWarnings = true } = params;
+async function read(params) {
+  const { operation } = params;
   
-  const { PDFParse, VerbosityLevel } = getPdfParse();
-  const pdfBytes = await readPdfFile(filePath);
+  if (!operation) {
+    throw new Error('operation is required. Supported: metadata, text, tables, images, render, markdown, fields, field_info');
+  }
   
-  const loadParams = {
-    data: pdfBytes,
-    verbosity: suppressWarnings ? VerbosityLevel.ERRORS : VerbosityLevel.WARNINGS
-  };
-  
-  const parser = new PDFParse(loadParams);
-  
-  try {
-    // 构建分页参数
-    const parseParams = { imageThreshold };
-    if (fromPage || toPage) {
-      const pdfDoc = await PDFDocument.load(pdfBytes);
-      const totalPages = pdfDoc.getPageCount();
-      const start = fromPage || 1;
-      const end = toPage || totalPages;
-      
-      const partial = [];
-      for (let i = start; i <= end && i <= totalPages; i++) {
-        partial.push(i);
-      }
-      parseParams.partial = partial;
-    }
-    
-    const result = await parser.getImage(parseParams);
-    
-    // 格式化图片数据
-    const images = result.pages.map((page, pageIndex) => ({
-      pageNumber: pageIndex + 1,
-      images: (page.images || []).map((img, imgIndex) => ({
-        index: imgIndex + 1,
-        width: img.width,
-        height: img.height,
-        // 图片数据为 Buffer
-        data: img.data,
-        dataUrl: img.dataUrl
-      }))
-    }));
-    
-    return {
-      success: true,
-      images,
-      totalImages: images.reduce((sum, p) => sum + p.images.length, 0)
-    };
-  } finally {
-    await parser.destroy();
+  switch (operation) {
+    case 'metadata':
+      return await readMetadata(params);
+    case 'text':
+      return await readText(params);
+    case 'tables':
+      return await readTables(params);
+    case 'images':
+      return await readImages(params);
+    case 'render':
+      return await readRender(params);
+    case 'markdown':
+      return await readMarkdown(params);
+    case 'fields':
+      return await readFields(params);
+    case 'field_info':
+      return await readFieldInfo(params);
+    default:
+      throw new Error(`Unknown operation: ${operation}. Supported: metadata, text, tables, images, render, markdown, fields, field_info`);
   }
 }
 
-// ==================== 技能入口 ====================
+/**
+ * write 工具 - PDF 写入操作
+ * 
+ * 通过 operation 参数区分具体操作：
+ * - create: 创建 PDF
+ * - merge: 合并 PDF
+ * - split: 拆分 PDF
+ * - rotate: 旋转页面
+ * - encrypt: 加密 PDF
+ * - decrypt: 解密 PDF
+ * - watermark: 添加水印
+ * - fill: 填写表单
+ */
+async function write(params) {
+  const { operation } = params;
+  
+  if (!operation) {
+    throw new Error('operation is required. Supported: create, merge, split, rotate, encrypt, decrypt, watermark, fill');
+  }
+  
+  switch (operation) {
+    case 'create':
+      return await writeCreate(params);
+    case 'merge':
+      return await writeMerge(params);
+    case 'split':
+      return await writeSplit(params);
+    case 'rotate':
+      return await writeRotate(params);
+    case 'encrypt':
+      return await writeEncrypt(params);
+    case 'decrypt':
+      return await writeDecrypt(params);
+    case 'watermark':
+      return await writeWatermark(params);
+    case 'fill':
+      return await writeFill(params);
+    default:
+      throw new Error(`Unknown operation: ${operation}. Supported: create, merge, split, rotate, encrypt, decrypt, watermark, fill`);
+  }
+}
 
 /**
  * Skill execute function - called by skill-runner
  * 
- * @param {string} toolName - Name of the tool to execute
+ * @param {string} toolName - Name of the tool to execute (read or write)
  * @param {object} params - Tool parameters
  * @param {object} context - Execution context
  * @returns {Promise<object>} Execution result
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    // 基础操作
-    case 'read_pdf':
     case 'read':
-      return await readPdf(params);
-      
-    case 'extract_text':
-      return await extractText(params);
-      
-    case 'extract_tables':
-      return await extractTables(params);
-      
-    // 编辑操作
-    case 'merge_pdfs':
-    case 'merge':
-      return await mergePdfs(params);
-      
-    case 'split_pdf':
-    case 'split':
-      return await splitPdf(params);
-      
-    case 'rotate_pages':
-    case 'rotate':
-      return await rotatePages(params);
-      
-    // 创建和转换
-    case 'create_pdf':
-    case 'create':
-      return await createPdf(params);
-      
-    case 'convert_to_images':
-      return await convertToImages(params);
-      
-    case 'pdf_to_markdown':
-      return await pdfToMarkdown(params);
-      
-    // 安全操作
-    case 'encrypt_pdf':
-    case 'encrypt':
-      return await encryptPdf(params);
-      
-    case 'decrypt_pdf':
-    case 'decrypt':
-      return await decryptPdf(params);
-      
-    case 'add_watermark':
-    case 'watermark':
-      return await addWatermark(params);
-      
-    // 表单操作
-    case 'check_fillable_fields':
-      return await checkFillableFields(params);
-      
-    case 'extract_form_field_info':
-      return await extractFormFieldInfo(params);
-      
-    case 'fill_fillable_fields':
-      return await fillFillableFields(params);
-      
-    // 其他操作
-    case 'extract_images':
-      return await extractImages(params);
-      
+      return await read(params);
+    case 'write':
+      return await write(params);
     default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: read_pdf, extract_text, extract_tables, merge_pdfs, split_pdf, rotate_pages, create_pdf, convert_to_images, pdf_to_markdown, encrypt_pdf, decrypt_pdf, add_watermark, check_fillable_fields, extract_form_field_info, fill_fillable_fields, extract_images`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: read, write`);
   }
 }
 
