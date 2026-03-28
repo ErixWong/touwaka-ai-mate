@@ -107,9 +107,11 @@ const TABLES = [
   // 注：index_js 和 config 字段已移除
   // - 代码通过 source_path 从文件系统加载
   // - 配置通过 skill_parameters 表管理
+  // Issue #417: 添加 mark 字段作为技能的语义标识
   `CREATE TABLE IF NOT EXISTS skills (
     id VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL UNIQUE,
+    mark VARCHAR(50) UNIQUE COMMENT '技能标识（不可编辑，唯一），用于生成 tool_name',
     description TEXT,
     version VARCHAR(32),
     author VARCHAR(128),

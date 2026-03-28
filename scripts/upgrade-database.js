@@ -228,6 +228,67 @@ const MIGRATIONS = [
       console.log('  ✓ Added error to tasks.status ENUM');
     }
   },
+
+  // ==================== skills 表添加 mark 字段 ====================
+  // Issue #417: 技能工具名称统一方案
+  // mark 字段作为技能的语义标识，用于生成稳定的 tool_name
+  {
+    name: 'skills.mark column add',
+    check: async (conn) => await hasColumn(conn, 'skills', 'mark'),
+    migrate: async (conn) => {
+      // 1. 添加 mark 字段（允许 NULL，后续填充数据后改为 NOT NULL）
+      await conn.execute(`
+        ALTER TABLE skills
+        ADD COLUMN mark VARCHAR(50) NULL COMMENT '技能标识（不可编辑，唯一），用于生成 tool_name'
+      `);
+      console.log('  ✓ Added mark column to skills table');
+
+      // 2. 添加唯一索引
+      await conn.execute(`
+        ALTER TABLE skills
+        ADD UNIQUE INDEX idx_mark (mark)
+      `);
+      console.log('  ✓ Added unique index on skills.mark');
+
+      // 3. 为现有技能生成 mark 值
+      // 规则：基于 name 字段 slugify，或使用已有的语义化 id
+      const [skills] = await conn.execute('SELECT id, name FROM skills WHERE mark IS NULL');
+      
+      for (const skill of skills) {
+        // 如果 id 已经是语义化的（不含大写字母和数字），直接使用 id 作为 mark
+        const isSemanticId = /^[a-z-]+$/.test(skill.id);
+        let mark;
+        
+        if (isSemanticId) {
+          mark = skill.id;  // 如 'compression', 'searxng', 'skill-manager'
+        } else {
+          // 基于 name 生成 mark（slugify）
+          mark = skill.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')  // 非字母数字替换为连字符
+            .replace(/^-|-$/g, '');       // 去掉首尾连字符
+          
+          // 确保唯一性（如果已存在，添加后缀）
+          const [existing] = await conn.execute(
+            'SELECT id FROM skills WHERE mark = ? AND id != ?',
+            [mark, skill.id]
+          );
+          if (existing.length > 0) {
+            // 使用 id 的后 4 位作为后缀
+            mark = `${mark}-${skill.id.slice(-4)}`;
+          }
+        }
+        
+        await conn.execute(
+          'UPDATE skills SET mark = ? WHERE id = ?',
+          [mark, skill.id]
+        );
+        console.log(`  ✓ Set mark for ${skill.name}: ${mark}`);
+      }
+      
+      console.log(`  ✓ Generated mark values for ${skills.length} skills`);
+    }
+  },
 ];
 
 /**
