@@ -451,6 +451,7 @@ export interface SkillTool {
 export interface Skill {
   id: string
   name: string
+  mark?: string              // 技能标识（唯一，不可编辑），用于生成 tool_name
   description?: string
   version?: string
   author?: string

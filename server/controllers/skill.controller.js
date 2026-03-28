@@ -36,7 +36,7 @@ class SkillController {
       const skills = await this.Skill.findAll({
         where,
         attributes: [
-          'id', 'name', 'description', 'version', 'author', 'tags',
+          'id', 'name', 'mark', 'description', 'version', 'author', 'tags',
           'source_type', 'source_path', 'source_url',
           'security_score', 'security_warnings',
           'is_active', 'created_at', 'updated_at'
@@ -189,7 +189,7 @@ class SkillController {
   async update(ctx) {
     try {
       const { id } = ctx.params;
-      const { name, description, is_active, source_path, source_url, author, version, tags } = ctx.request.body;
+      const { name, mark, description, is_active, source_path, source_url, author, version, tags } = ctx.request.body;
 
       logger.info('[SkillController] update() called:', {
         id,
@@ -207,6 +207,15 @@ class SkillController {
 
       const updates = {};
       if (name !== undefined) updates.name = name;
+      if (mark !== undefined) {
+        // 验证 mark 格式：只允许小写字母、数字、连字符
+        const markPattern = /^[a-z0-9-]+$/;
+        if (!markPattern.test(mark)) {
+          ctx.error('mark 格式无效（只允许小写字母、数字、连字符）', 400);
+          return;
+        }
+        updates.mark = mark;
+      }
       if (description !== undefined) updates.description = description;
       if (is_active !== undefined) updates.is_active = is_active ? true : false;
       if (source_path !== undefined) updates.source_path = source_path;
@@ -475,10 +484,21 @@ class SkillController {
       const skill_id = existing_skill?.id || Utils.newID(20);
       const is_update = !!existing_skill;
 
+      // 生成 mark 字段：基于目录名生成，格式为小写字母、数字、连字符
+      // 如果是更新且已有 mark，保留原 mark；否则根据目录名生成
+      const dirName = path.basename(full_path);
+      const generatedMark = dirName
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')  // 非法字符替换为连字符
+        .replace(/-+/g, '-')          // 多个连字符合并为一个
+        .replace(/^-|-$/g, '');       // 移除首尾连字符
+      const skill_mark = existing_skill?.mark || generatedMark || skill_id.slice(-8);
+
       // 插入或更新技能
       await this.Skill.upsert({
         id: skill_id,
         name: skill_name,
+        mark: skill_mark,
         description: skill_desc,
         version: skill_info.version || '1.0.0',
         author: skill_info.author || '',

@@ -752,6 +752,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
   skills: {
     title: 'Skills Management',
     addSkill: 'Add Skill',
+    mark: 'Skill Mark',
+    markHint: 'Used for tool name generation, format: mark__tool_name',
     searchPlaceholder: 'Search skills...',
     allSkills: 'All Skills',
     active: 'Active',

@@ -241,6 +241,13 @@
                 <input :value="editingSkill?.id" type="text" class="form-input readonly" readonly />
               </div>
               
+              <!-- Mark（只读）- 技能标识，用于生成 tool_name -->
+              <div class="form-group">
+                <label>{{ $t('skills.mark') || '技能标识 (Mark)' }}</label>
+                <input :value="editingSkill?.mark" type="text" class="form-input readonly" readonly />
+                <span class="field-hint">{{ $t('skills.markHint') || '用于生成工具名称，格式：mark__tool_name' }}</span>
+              </div>
+              
               <!-- 名称 -->
               <div class="form-group">
                 <label>{{ $t('skills.name') || '名称' }}</label>
@@ -369,7 +376,7 @@
                     
                     <!-- 参数定义 -->
                     <div class="field-row">
-                      <span class="field-label">{{ $t('skills.parameters') || '参数' }}</span>
+                      <span class="field-label">{{ $t('skills.parametersTitle') || '参数' }}</span>
                       <textarea v-model="tool.parameters" class="field-textarea" rows="5" :placeholder="$t('skills.parametersPlaceholder') || 'JSON 格式的参数定义'"></textarea>
                     </div>
                     
@@ -1486,6 +1493,14 @@ onMounted(() => {
   background: var(--bg-secondary, #f5f5f5);
   color: var(--text-secondary, #666);
   cursor: not-allowed;
+}
+
+/* 字段提示 */
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
 }
 
 /* 工具列表 */

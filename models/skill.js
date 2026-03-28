@@ -100,6 +100,12 @@ export default class skill extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    mark: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: "技能标识（不可编辑，唯一），用于生成 tool_name",
+      unique: "idx_mark"
     }
   }, {
     sequelize,
@@ -121,6 +127,14 @@ export default class skill extends Model {
         using: "BTREE",
         fields: [
           { name: "name" },
+        ]
+      },
+      {
+        name: "idx_mark",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "mark" },
         ]
       },
     ]
