@@ -11,6 +11,13 @@
  * - kb_tags (标签)
  * - kb_article_tags (文章-标签关联)
  *
+ * 工具合并：25 个工具 → 5 个工具（按资源类型）
+ * - kb: 知识库操作
+ * - article: 文章操作
+ * - section: 节操作
+ * - paragraph: 段落操作
+ * - tag: 标签操作
+ *
  * @module kb-editor-skill
  */
 
@@ -47,7 +54,7 @@ function httpRequest(method, path, data) {
       method: method,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,  // 使用用户 Token
+        'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
       },
       timeout: 30000,
       // 生产环境启用 SSL 证书验证，开发环境可禁用（自签名证书）
@@ -101,419 +108,295 @@ function httpRequest(method, path, data) {
 // ==================== 知识库操作 ====================
 
 /**
- * 获取我的知识库列表
+ * 知识库统一操作处理器
  */
-async function listMyKnowledgeBases(params) {
-  const { page = 1, pageSize = 20 } = params;
-  const data = await httpRequest('GET', `/api/kb?page=${page}&pageSize=${pageSize}`);
-  return data;
-}
+async function handleKb(params) {
+  const { action, id, name, description, embedding_model_id, embedding_dim, page, pageSize } = params;
 
-/**
- * 获取可用的嵌入模型列表
- */
-async function listEmbeddingModels(params) {
-  const data = await httpRequest('GET', '/api/models');
-  // 过滤出嵌入模型
-  const embeddingModels = data
-    ?.filter(m => m.model_type === 'embedding')
-    ?.map(m => ({
-      id: m.id,
-      name: m.name,
-      model_name: m.model_name,
-      embedding_dim: m.embedding_dim,
-      provider_name: m.provider_name,
-      description: m.description,
-    })) || [];
-  return embeddingModels;
-}
+  switch (action) {
+    case 'list':
+      return await httpRequest('GET', `/api/kb?page=${page || 1}&pageSize=${pageSize || 20}`);
 
-/**
- * 获取知识库详情
- */
-async function getKnowledgeBase(params) {
-  const { id } = params;
-  if (!id) {
-    throw new Error('知识库 ID 不能为空');
+    case 'list_models':
+      const data = await httpRequest('GET', '/api/models');
+      return data?.filter(m => m.model_type === 'embedding')?.map(m => ({
+        id: m.id,
+        name: m.name,
+        model_name: m.model_name,
+        embedding_dim: m.embedding_dim,
+        provider_name: m.provider_name,
+        description: m.description,
+      })) || [];
+
+    case 'get':
+      if (!id) throw new Error('知识库 ID 不能为空');
+      return await httpRequest('GET', `/api/kb/${id}`);
+
+    case 'create':
+      if (!name) throw new Error('知识库名称不能为空');
+      return await httpRequest('POST', '/api/kb', {
+        name,
+        description,
+        embedding_model_id: embedding_model_id || 'bge-m3',
+        embedding_dim: embedding_dim || 1024,
+      });
+
+    case 'update':
+      if (!id) throw new Error('知识库 ID 不能为空');
+      const updates = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (embedding_model_id !== undefined) updates.embedding_model_id = embedding_model_id;
+      if (embedding_dim !== undefined) updates.embedding_dim = embedding_dim;
+      return await httpRequest('PUT', `/api/kb/${id}`, updates);
+
+    case 'delete':
+      if (!id) throw new Error('知识库 ID 不能为空');
+      return await httpRequest('DELETE', `/api/kb/${id}`);
+
+    default:
+      throw new Error(`未知操作: ${action}. 可用操作: list, list_models, get, create, update, delete`);
   }
-  return await httpRequest('GET', `/api/kb/${id}`);
-}
-
-/**
- * 创建知识库
- */
-async function createKnowledgeBase(params) {
-  const { name, description, embedding_model_id, embedding_dim } = params;
-  if (!name) {
-    throw new Error('知识库名称不能为空');
-  }
-  // 默认使用 bge-m3 嵌入模型
-  const finalEmbeddingModelId = embedding_model_id || 'bge-m3';
-  // bge-m3 生成的向量维度为 1024
-  const finalEmbeddingDim = embedding_dim || 1024;
-
-  return await httpRequest('POST', '/api/kb', {
-    name,
-    description,
-    embedding_model_id: finalEmbeddingModelId,
-    embedding_dim: finalEmbeddingDim,
-  });
-}
-
-/**
- * 更新知识库
- */
-async function updateKnowledgeBase(params) {
-  const { id, name, description, embedding_model_id, embedding_dim } = params;
-  if (!id) {
-    throw new Error('知识库 ID 不能为空');
-  }
-  const updates = {};
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-  if (embedding_model_id !== undefined) updates.embedding_model_id = embedding_model_id;
-  if (embedding_dim !== undefined) updates.embedding_dim = embedding_dim;
-
-  return await httpRequest('PUT', `/api/kb/${id}`, updates);
-}
-
-/**
- * 删除知识库
- */
-async function deleteKnowledgeBase(params) {
-  const { id } = params;
-  if (!id) {
-    throw new Error('知识库 ID 不能为空');
-  }
-  return await httpRequest('DELETE', `/api/kb/${id}`);
 }
 
 // ==================== 文章操作 ====================
 
 /**
- * 获取知识库下的文章列表
+ * 文章统一操作处理器
  */
-async function listArticles(params) {
-  const { kb_id, page = 1, pageSize = 20, status, search } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
+async function handleArticle(params) {
+  const { action, kb_id, id, article_id, title, summary, source_type, source_url, file_path, status, tags, page, pageSize, search } = params;
+
+  if (!kb_id) throw new Error('知识库 ID 不能为空');
+
+  switch (action) {
+    case 'list':
+      let path = `/api/kb/${kb_id}/articles?page=${page || 1}&pageSize=${pageSize || 20}`;
+      if (status) path += `&status=${status}`;
+      if (search) path += `&search=${encodeURIComponent(search)}`;
+      return await httpRequest('GET', path);
+
+    case 'get':
+      if (!id) throw new Error('文章 ID 不能为空');
+      return await httpRequest('GET', `/api/kb/${kb_id}/articles/${id}`);
+
+    case 'get_tree':
+      if (!article_id) throw new Error('文章 ID 不能为空');
+      return await httpRequest('GET', `/api/kb/${kb_id}/articles/${article_id}/tree`);
+
+    case 'create':
+      if (!title) throw new Error('文章标题不能为空');
+      return await httpRequest('POST', `/api/kb/${kb_id}/articles`, {
+        title,
+        summary,
+        source_type: source_type || 'manual',
+        source_url,
+        file_path,
+        status: status || 'pending',
+        tags,
+      });
+
+    case 'update':
+      if (!id) throw new Error('文章 ID 不能为空');
+      const updates = {};
+      if (title !== undefined) updates.title = title;
+      if (summary !== undefined) updates.summary = summary;
+      if (source_type !== undefined) updates.source_type = source_type;
+      if (source_url !== undefined) updates.source_url = source_url;
+      if (file_path !== undefined) updates.file_path = file_path;
+      if (status !== undefined) updates.status = status;
+      if (tags !== undefined) updates.tags = tags;
+      return await httpRequest('PUT', `/api/kb/${kb_id}/articles/${id}`, updates);
+
+    case 'delete':
+      if (!id) throw new Error('文章 ID 不能为空');
+      return await httpRequest('DELETE', `/api/kb/${kb_id}/articles/${id}`);
+
+    default:
+      throw new Error(`未知操作: ${action}. 可用操作: list, get, get_tree, create, update, delete`);
   }
-
-  let path = `/api/kb/${kb_id}/articles?page=${page}&pageSize=${pageSize}`;
-  if (status) path += `&status=${status}`;
-  if (search) path += `&search=${encodeURIComponent(search)}`;
-
-  return await httpRequest('GET', path);
-}
-
-/**
- * 获取文章详情
- */
-async function getArticle(params) {
-  const { kb_id, id } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和文章 ID 不能为空');
-  }
-  return await httpRequest('GET', `/api/kb/${kb_id}/articles/${id}`);
-}
-
-/**
- * 获取文章的完整树状结构（包含节和段落）
- */
-async function getArticleTree(params) {
-  const { kb_id, article_id } = params;
-  if (!kb_id || !article_id) {
-    throw new Error('知识库 ID 和文章 ID 不能为空');
-  }
-  return await httpRequest('GET', `/api/kb/${kb_id}/articles/${article_id}/tree`);
-}
-
-/**
- * 创建文章
- */
-async function createArticle(params) {
-  const { kb_id, title, summary, source_type, source_url, file_path, status, tags } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
-  }
-  if (!title) {
-    throw new Error('文章标题不能为空');
-  }
-  return await httpRequest('POST', `/api/kb/${kb_id}/articles`, {
-    title,
-    summary,
-    source_type: source_type || 'manual',
-    source_url,
-    file_path,
-    status: status || 'pending',
-    tags,
-  });
-}
-
-/**
- * 更新文章
- */
-async function updateArticle(params) {
-  const { kb_id, id, title, summary, source_type, source_url, file_path, status, tags } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和文章 ID 不能为空');
-  }
-  const updates = {};
-  if (title !== undefined) updates.title = title;
-  if (summary !== undefined) updates.summary = summary;
-  if (source_type !== undefined) updates.source_type = source_type;
-  if (source_url !== undefined) updates.source_url = source_url;
-  if (file_path !== undefined) updates.file_path = file_path;
-  if (status !== undefined) updates.status = status;
-  if (tags !== undefined) updates.tags = tags;
-
-  return await httpRequest('PUT', `/api/kb/${kb_id}/articles/${id}`, updates);
-}
-
-/**
- * 删除文章
- */
-async function deleteArticle(params) {
-  const { kb_id, id } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和文章 ID 不能为空');
-  }
-  return await httpRequest('DELETE', `/api/kb/${kb_id}/articles/${id}`);
 }
 
 // ==================== 节操作 ====================
 
 /**
- * 查询节列表
+ * 节统一操作处理器
  */
-async function listSections(params) {
-  const { kb_id, article_id, page = 1, pageSize = 100 } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
-  }
+async function handleSection(params) {
+  const { action, kb_id, id, article_id, parent_id, title, direction, page, pageSize } = params;
 
-  const body = { page, pageSize };
-  if (article_id) {
-    body.filter = [{ field: 'article_id', value: article_id }];
-  }
+  if (!kb_id) throw new Error('知识库 ID 不能为空');
 
-  return await httpRequest('POST', `/api/kb/${kb_id}/sections/query`, body);
-}
+  switch (action) {
+    case 'list':
+      const body = { page: page || 1, pageSize: pageSize || 100 };
+      if (article_id) {
+        body.filter = [{ field: 'article_id', value: article_id }];
+      }
+      return await httpRequest('POST', `/api/kb/${kb_id}/sections/query`, body);
 
-/**
- * 创建节
- */
-async function createSection(params) {
-  const { kb_id, article_id, parent_id, title } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
-  }
-  if (!article_id) {
-    throw new Error('文章 ID 不能为空');
-  }
-  if (!title) {
-    throw new Error('节标题不能为空');
-  }
-  return await httpRequest('POST', `/api/kb/${kb_id}/sections`, {
-    article_id,
-    parent_id,
-    title,
-  });
-}
+    case 'create':
+      if (!article_id) throw new Error('文章 ID 不能为空');
+      if (!title) throw new Error('节标题不能为空');
+      return await httpRequest('POST', `/api/kb/${kb_id}/sections`, {
+        article_id,
+        parent_id,
+        title,
+      });
 
-/**
- * 更新节
- */
-async function updateSection(params) {
-  const { kb_id, id, title } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和节 ID 不能为空');
-  }
-  const updates = {};
-  if (title !== undefined) updates.title = title;
+    case 'update':
+      if (!id) throw new Error('节 ID 不能为空');
+      return await httpRequest('PUT', `/api/kb/${kb_id}/sections/${id}`, { title });
 
-  return await httpRequest('PUT', `/api/kb/${kb_id}/sections/${id}`, updates);
-}
+    case 'move':
+      if (!id) throw new Error('节 ID 不能为空');
+      if (!['up', 'down'].includes(direction)) throw new Error('direction 必须是 "up" 或 "down"');
+      return await httpRequest('POST', `/api/kb/${kb_id}/sections/${id}/move`, { direction });
 
-/**
- * 移动节（调整顺序）
- */
-async function moveSection(params) {
-  const { kb_id, id, direction } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和节 ID 不能为空');
-  }
-  if (!['up', 'down'].includes(direction)) {
-    throw new Error('direction 必须是 "up" 或 "down"');
-  }
-  return await httpRequest('POST', `/api/kb/${kb_id}/sections/${id}/move`, { direction });
-}
+    case 'delete':
+      if (!id) throw new Error('节 ID 不能为空');
+      return await httpRequest('DELETE', `/api/kb/${kb_id}/sections/${id}`);
 
-/**
- * 删除节
- */
-async function deleteSection(params) {
-  const { kb_id, id } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和节 ID 不能为空');
+    default:
+      throw new Error(`未知操作: ${action}. 可用操作: list, create, update, move, delete`);
   }
-  return await httpRequest('DELETE', `/api/kb/${kb_id}/sections/${id}`);
 }
 
 // ==================== 段落操作 ====================
 
 /**
- * 查询段落列表
+ * 段落统一操作处理器
  */
-async function listParagraphs(params) {
-  const { kb_id, section_id, page = 1, pageSize = 100, is_knowledge_point } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
-  }
+async function handleParagraph(params) {
+  const { action, kb_id, id, section_id, title, content, context, is_knowledge_point, token_count, direction, page, pageSize } = params;
 
-  const body = { page, pageSize };
-  if (section_id) {
-    body.filter = [{ field: 'section_id', value: section_id }];
-  }
-  if (is_knowledge_point !== undefined) {
-    if (!body.filter) body.filter = [];
-    body.filter.push({ field: 'is_knowledge_point', value: is_knowledge_point });
-  }
+  if (!kb_id) throw new Error('知识库 ID 不能为空');
 
-  return await httpRequest('POST', `/api/kb/${kb_id}/paragraphs/query`, body);
-}
+  switch (action) {
+    case 'list':
+      const body = { page: page || 1, pageSize: pageSize || 100 };
+      if (section_id) {
+        body.filter = [{ field: 'section_id', value: section_id }];
+      }
+      if (is_knowledge_point !== undefined) {
+        if (!body.filter) body.filter = [];
+        body.filter.push({ field: 'is_knowledge_point', value: is_knowledge_point });
+      }
+      return await httpRequest('POST', `/api/kb/${kb_id}/paragraphs/query`, body);
 
-/**
- * 创建段落
- * @param {string} context - 知识点上下文（可选）。用于语义检索。
- *        当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文）。
- */
-async function createParagraph(params) {
-  const { kb_id, section_id, title, content, context, is_knowledge_point, token_count } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
-  }
-  if (!section_id) {
-    throw new Error('节 ID 不能为空');
-  }
-  if (!content) {
-    throw new Error('段落内容不能为空');
-  }
-  return await httpRequest('POST', `/api/kb/${kb_id}/paragraphs`, {
-    section_id,
-    title,
-    content,
-    context, // 知识点的上下文，用于语义检索
-    is_knowledge_point: is_knowledge_point || false,
-    token_count: token_count || 0,
-  });
-}
+    case 'create':
+      if (!section_id) throw new Error('节 ID 不能为空');
+      if (!content) throw new Error('段落内容不能为空');
+      return await httpRequest('POST', `/api/kb/${kb_id}/paragraphs`, {
+        section_id,
+        title,
+        content,
+        context,
+        is_knowledge_point: is_knowledge_point || false,
+        token_count: token_count || 0,
+      });
 
-/**
- * 更新段落
- * @param {string} context - 知识点上下文（可选）。用于语义检索。
- *        当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文）。
- */
-async function updateParagraph(params) {
-  const { kb_id, id, title, content, context, is_knowledge_point, token_count } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和段落 ID 不能为空');
-  }
-  const updates = {};
-  if (title !== undefined) updates.title = title;
-  if (content !== undefined) updates.content = content;
-  if (context !== undefined) updates.context = context;
-  if (is_knowledge_point !== undefined) updates.is_knowledge_point = is_knowledge_point;
-  if (token_count !== undefined) updates.token_count = token_count;
+    case 'update':
+      if (!id) throw new Error('段落 ID 不能为空');
+      const updates = {};
+      if (title !== undefined) updates.title = title;
+      if (content !== undefined) updates.content = content;
+      if (context !== undefined) updates.context = context;
+      if (is_knowledge_point !== undefined) updates.is_knowledge_point = is_knowledge_point;
+      if (token_count !== undefined) updates.token_count = token_count;
+      return await httpRequest('PUT', `/api/kb/${kb_id}/paragraphs/${id}`, updates);
 
-  return await httpRequest('PUT', `/api/kb/${kb_id}/paragraphs/${id}`, updates);
-}
+    case 'move':
+      if (!id) throw new Error('段落 ID 不能为空');
+      if (!['up', 'down'].includes(direction)) throw new Error('direction 必须是 "up" 或 "down"');
+      return await httpRequest('POST', `/api/kb/${kb_id}/paragraphs/${id}/move`, { direction });
 
-/**
- * 移动段落（调整顺序）
- */
-async function moveParagraph(params) {
-  const { kb_id, id, direction } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和段落 ID 不能为空');
-  }
-  if (!['up', 'down'].includes(direction)) {
-    throw new Error('direction 必须是 "up" 或 "down"');
-  }
-  return await httpRequest('POST', `/api/kb/${kb_id}/paragraphs/${id}/move`, { direction });
-}
+    case 'delete':
+      if (!id) throw new Error('段落 ID 不能为空');
+      return await httpRequest('DELETE', `/api/kb/${kb_id}/paragraphs/${id}`);
 
-/**
- * 删除段落
- */
-async function deleteParagraph(params) {
-  const { kb_id, id } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和段落 ID 不能为空');
+    default:
+      throw new Error(`未知操作: ${action}. 可用操作: list, create, update, move, delete`);
   }
-  return await httpRequest('DELETE', `/api/kb/${kb_id}/paragraphs/${id}`);
 }
 
 // ==================== 标签操作 ====================
 
 /**
- * 查询标签列表
+ * 标签统一操作处理器
  */
-async function listTags(params) {
-  const { kb_id, page = 1, pageSize = 100 } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
+async function handleTag(params) {
+  const { action, kb_id, id, name, description, page, pageSize } = params;
+
+  if (!kb_id) throw new Error('知识库 ID 不能为空');
+
+  switch (action) {
+    case 'list':
+      return await httpRequest('GET', `/api/kb/${kb_id}/tags?page=${page || 1}&pageSize=${pageSize || 100}`);
+
+    case 'create':
+      if (!name) throw new Error('标签名称不能为空');
+      return await httpRequest('POST', `/api/kb/${kb_id}/tags`, { name, description });
+
+    case 'update':
+      if (!id) throw new Error('标签 ID 不能为空');
+      const updates = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      return await httpRequest('PUT', `/api/kb/${kb_id}/tags/${id}`, updates);
+
+    case 'delete':
+      if (!id) throw new Error('标签 ID 不能为空');
+      return await httpRequest('DELETE', `/api/kb/${kb_id}/tags/${id}`);
+
+    default:
+      throw new Error(`未知操作: ${action}. 可用操作: list, create, update, delete`);
   }
-  return await httpRequest('GET', `/api/kb/${kb_id}/tags?page=${page}&pageSize=${pageSize}`);
 }
+
+// ==================== 向后兼容：旧工具名映射 ====================
 
 /**
- * 创建标签
+ * 旧工具名到新工具的映射表
  */
-async function createTag(params) {
-  const { kb_id, name, description } = params;
-  if (!kb_id) {
-    throw new Error('知识库 ID 不能为空');
-  }
-  if (!name) {
-    throw new Error('标签名称不能为空');
-  }
-  return await httpRequest('POST', `/api/kb/${kb_id}/tags`, {
-    name,
-    description,
-  });
-}
-
-/**
- * 更新标签
- */
-async function updateTag(params) {
-  const { kb_id, id, name, description } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和标签 ID 不能为空');
-  }
-  const updates = {};
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-
-  return await httpRequest('PUT', `/api/kb/${kb_id}/tags/${id}`, updates);
-}
-
-/**
- * 删除标签
- */
-async function deleteTag(params) {
-  const { kb_id, id } = params;
-  if (!kb_id || !id) {
-    throw new Error('知识库 ID 和标签 ID 不能为空');
-  }
-  return await httpRequest('DELETE', `/api/kb/${kb_id}/tags/${id}`);
-}
+const LEGACY_TOOL_MAP = {
+  // 知识库
+  'list_my_kbs': { tool: 'kb', action: 'list' },
+  'list_embedding_models': { tool: 'kb', action: 'list_models' },
+  'get_kb': { tool: 'kb', action: 'get' },
+  'create_kb': { tool: 'kb', action: 'create' },
+  'update_kb': { tool: 'kb', action: 'update' },
+  'delete_kb': { tool: 'kb', action: 'delete' },
+  // 文章
+  'list_articles': { tool: 'article', action: 'list' },
+  'get_article': { tool: 'article', action: 'get' },
+  'get_article_tree': { tool: 'article', action: 'get_tree' },
+  'create_article': { tool: 'article', action: 'create' },
+  'update_article': { tool: 'article', action: 'update' },
+  'delete_article': { tool: 'article', action: 'delete' },
+  // 节
+  'list_sections': { tool: 'section', action: 'list' },
+  'create_section': { tool: 'section', action: 'create' },
+  'update_section': { tool: 'section', action: 'update' },
+  'move_section': { tool: 'section', action: 'move' },
+  'delete_section': { tool: 'section', action: 'delete' },
+  // 段落
+  'list_paragraphs': { tool: 'paragraph', action: 'list' },
+  'create_paragraph': { tool: 'paragraph', action: 'create' },
+  'update_paragraph': { tool: 'paragraph', action: 'update' },
+  'move_paragraph': { tool: 'paragraph', action: 'move' },
+  'delete_paragraph': { tool: 'paragraph', action: 'delete' },
+  // 标签
+  'list_tags': { tool: 'tag', action: 'list' },
+  'create_tag': { tool: 'tag', action: 'create' },
+  'update_tag': { tool: 'tag', action: 'update' },
+  'delete_tag': { tool: 'tag', action: 'delete' },
+};
 
 /**
  * Skill execute function - 被 skill-runner 调用
  *
- * @param {string} toolName - 工具名称
+ * @param {string} toolName - 工具名称（新工具名或旧工具名）
  * @param {object} params - 工具参数
  * @param {object} context - 执行上下文（由 skill-loader 注入环境变量，context 可为空）
  * @returns {Promise<object>} 执行结果
@@ -524,51 +407,35 @@ async function execute(toolName, params, context = {}) {
     throw new Error('用户未登录，无法访问知识库。请确保 USER_ACCESS_TOKEN 环境变量已设置。');
   }
 
-  const tools = {
-    // 知识库操作
-    'list_my_kbs': listMyKnowledgeBases,
-    'list_embedding_models': listEmbeddingModels,
-    'get_kb': getKnowledgeBase,
-    'create_kb': createKnowledgeBase,
-    'update_kb': updateKnowledgeBase,
-    'delete_kb': deleteKnowledgeBase,
-
-    // 文章操作
-    'list_articles': listArticles,
-    'get_article': getArticle,
-    'get_article_tree': getArticleTree,
-    'create_article': createArticle,
-    'update_article': updateArticle,
-    'delete_article': deleteArticle,
-
-    // 节操作
-    'list_sections': listSections,
-    'create_section': createSection,
-    'update_section': updateSection,
-    'move_section': moveSection,
-    'delete_section': deleteSection,
-
-    // 段落操作
-    'list_paragraphs': listParagraphs,
-    'create_paragraph': createParagraph,
-    'update_paragraph': updateParagraph,
-    'move_paragraph': moveParagraph,
-    'delete_paragraph': deleteParagraph,
-
-    // 标签操作
-    'list_tags': listTags,
-    'create_tag': createTag,
-    'update_tag': updateTag,
-    'delete_tag': deleteTag,
+  // 处理器映射
+  const handlers = {
+    'kb': handleKb,
+    'article': handleArticle,
+    'section': handleSection,
+    'paragraph': handleParagraph,
+    'tag': handleTag,
   };
 
-  const tool = tools[toolName];
-  if (!tool) {
-    const availableTools = Object.keys(tools).join(', ');
-    throw new Error(`未知工具: ${toolName}. 可用工具: ${availableTools}`);
+  // 检查是否为旧工具名
+  let actualTool = toolName;
+  let actualParams = params;
+
+  if (LEGACY_TOOL_MAP[toolName]) {
+    const mapping = LEGACY_TOOL_MAP[toolName];
+    actualTool = mapping.tool;
+    actualParams = { ...params, action: mapping.action };
   }
 
-  const result = await tool(params);
+  // 获取处理器
+  const handler = handlers[actualTool];
+  if (!handler) {
+    const availableTools = Object.keys(handlers).join(', ');
+    const legacyTools = Object.keys(LEGACY_TOOL_MAP).join(', ');
+    throw new Error(`未知工具: ${toolName}. 可用工具: ${availableTools}（或旧工具名: ${legacyTools}）`);
+  }
+
+  // 执行操作
+  const result = await handler(actualParams);
 
   return {
     success: true,
@@ -582,121 +449,43 @@ async function execute(toolName, params, context = {}) {
  */
 function getTools() {
   return [
-    // 知识库操作
+    // ==================== 新工具（5个） ====================
     {
-      name: 'list_my_kbs',
-      description: '列出当前用户拥有的知识库',
+      name: 'kb',
+      description: '知识库操作。通过 action 参数区分具体操作：list（列出知识库）、list_models（列出嵌入模型）、get（获取详情）、create（创建）、update（更新）、delete（删除）。',
       parameters: {
         type: 'object',
         properties: {
-          page: { type: 'integer', description: '页码，默认 1' },
-          pageSize: { type: 'integer', description: '每页数量，默认 20' },
-        },
-      },
-    },
-    {
-      name: 'list_embedding_models',
-      description: '获取可用的嵌入模型列表，用于创建知识库时选择',
-      parameters: { type: 'object', properties: {} },
-    },
-    {
-      name: 'get_kb',
-      description: '获取知识库详情',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: '知识库 ID' },
-        },
-        required: ['id'],
-      },
-    },
-    {
-      name: 'create_kb',
-      description: '创建知识库',
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: '知识库名称' },
+          action: {
+            type: 'string',
+            enum: ['list', 'list_models', 'get', 'create', 'update', 'delete'],
+            description: '操作类型',
+          },
+          id: { type: 'string', description: '知识库 ID（get/update/delete 时必需）' },
+          name: { type: 'string', description: '知识库名称（create/update 时使用）' },
           description: { type: 'string', description: '知识库描述' },
           embedding_model_id: { type: 'string', description: '嵌入模型 ID，默认 bge-m3' },
           embedding_dim: { type: 'integer', description: '向量维度，默认 1024' },
-        },
-        required: ['name'],
-      },
-    },
-    {
-      name: 'update_kb',
-      description: '更新知识库',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: '知识库 ID' },
-          name: { type: 'string', description: '新名称' },
-          description: { type: 'string', description: '新描述' },
-          embedding_model_id: { type: 'string', description: '新嵌入模型 ID' },
-          embedding_dim: { type: 'integer', description: '新向量维度' },
-        },
-        required: ['id'],
-      },
-    },
-    {
-      name: 'delete_kb',
-      description: '删除知识库',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: '知识库 ID' },
-        },
-        required: ['id'],
-      },
-    },
-    // 文章操作
-    {
-      name: 'list_articles',
-      description: '获取知识库下的文章列表',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
           page: { type: 'integer', description: '页码，默认 1' },
           pageSize: { type: 'integer', description: '每页数量，默认 20' },
-          status: { type: 'string', description: '状态过滤（pending/processing/ready/error）' },
-          search: { type: 'string', description: '搜索关键词' },
         },
-        required: ['kb_id'],
+        required: ['action'],
       },
     },
     {
-      name: 'get_article',
-      description: '获取文章详情',
+      name: 'article',
+      description: '文章操作。通过 action 参数区分具体操作：list（列出文章）、get（获取详情）、get_tree（获取完整结构）、create（创建）、update（更新）、delete（删除）。',
       parameters: {
         type: 'object',
         properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '文章 ID' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    {
-      name: 'get_article_tree',
-      description: '获取文章的完整树状结构（包含所有节和段落）',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          article_id: { type: 'string', description: '文章 ID' },
-        },
-        required: ['kb_id', 'article_id'],
-      },
-    },
-    {
-      name: 'create_article',
-      description: '创建文章',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
+          action: {
+            type: 'string',
+            enum: ['list', 'get', 'get_tree', 'create', 'update', 'delete'],
+            description: '操作类型',
+          },
+          kb_id: { type: 'string', description: '知识库 ID（必需）' },
+          id: { type: 'string', description: '文章 ID（get/update/delete 时必需）' },
+          article_id: { type: 'string', description: '文章 ID（get_tree 时必需）' },
           title: { type: 'string', description: '文章标题' },
           summary: { type: 'string', description: '文章摘要' },
           source_type: { type: 'string', description: '来源类型（manual/upload/url）' },
@@ -704,234 +493,81 @@ function getTools() {
           file_path: { type: 'string', description: '本地文件路径' },
           status: { type: 'string', description: '状态（pending/processing/ready/error）' },
           tags: { type: 'array', items: { type: 'string' }, description: '标签名数组' },
-        },
-        required: ['kb_id', 'title'],
-      },
-    },
-    {
-      name: 'update_article',
-      description: '更新文章',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '文章 ID' },
-          title: { type: 'string', description: '新标题' },
-          summary: { type: 'string', description: '新摘要' },
-          source_type: { type: 'string', description: '来源类型' },
-          source_url: { type: 'string', description: '来源 URL' },
-          file_path: { type: 'string', description: '本地文件路径' },
-          status: { type: 'string', description: '状态' },
-          tags: { type: 'array', items: { type: 'string' }, description: '标签名数组' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    {
-      name: 'delete_article',
-      description: '删除文章（级联删除所有节和段落）',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '文章 ID' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    // 节操作
-    {
-      name: 'list_sections',
-      description: '查询节列表',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          article_id: { type: 'string', description: '文章 ID 过滤' },
           page: { type: 'integer', description: '页码，默认 1' },
-          pageSize: { type: 'integer', description: '每页数量，默认 100' },
+          pageSize: { type: 'integer', description: '每页数量，默认 20' },
+          search: { type: 'string', description: '搜索关键词' },
         },
-        required: ['kb_id'],
+        required: ['action', 'kb_id'],
       },
     },
     {
-      name: 'create_section',
-      description: '创建节（支持无限层级）',
+      name: 'section',
+      description: '节操作。通过 action 参数区分具体操作：list（列出节）、create（创建）、update（更新）、move（移动）、delete（删除）。支持无限层级。',
       parameters: {
         type: 'object',
         properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          article_id: { type: 'string', description: '所属文章 ID' },
+          action: {
+            type: 'string',
+            enum: ['list', 'create', 'update', 'move', 'delete'],
+            description: '操作类型',
+          },
+          kb_id: { type: 'string', description: '知识库 ID（必需）' },
+          id: { type: 'string', description: '节 ID（update/move/delete 时必需）' },
+          article_id: { type: 'string', description: '所属文章 ID（create/list 时使用）' },
           parent_id: { type: 'string', description: '父节 ID（用于创建子节）' },
           title: { type: 'string', description: '节标题' },
-        },
-        required: ['kb_id', 'article_id', 'title'],
-      },
-    },
-    {
-      name: 'update_section',
-      description: '更新节',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '节 ID' },
-          title: { type: 'string', description: '新标题' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    {
-      name: 'move_section',
-      description: '移动节（与相邻节交换位置）',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '节 ID' },
-          direction: { type: 'string', enum: ['up', 'down'], description: '移动方向' },
-        },
-        required: ['kb_id', 'id', 'direction'],
-      },
-    },
-    {
-      name: 'delete_section',
-      description: '删除节（级联删除所有子节和段落）',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '节 ID' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    // 段落操作
-    {
-      name: 'list_paragraphs',
-      description: '查询段落列表',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          section_id: { type: 'string', description: '节 ID 过滤' },
-          is_knowledge_point: { type: 'boolean', description: '是否知识点过滤' },
+          direction: { type: 'string', enum: ['up', 'down'], description: '移动方向（move 时必需）' },
           page: { type: 'integer', description: '页码，默认 1' },
           pageSize: { type: 'integer', description: '每页数量，默认 100' },
         },
-        required: ['kb_id'],
+        required: ['action', 'kb_id'],
       },
     },
     {
-      name: 'create_paragraph',
-      description: '创建段落（可标记为知识点）。⚠️核心原则：content必须是原文完整复制，禁止提炼、总结、改写或省略。即使原文很长也要完整录入。',
+      name: 'paragraph',
+      description: '段落操作。通过 action 参数区分具体操作：list（列出段落）、create（创建）、update（更新）、move（移动）、delete（删除）。⚠️核心原则：content必须是原文完整复制，禁止提炼、总结、改写或省略。',
       parameters: {
         type: 'object',
         properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          section_id: { type: 'string', description: '所属节 ID' },
+          action: {
+            type: 'string',
+            enum: ['list', 'create', 'update', 'move', 'delete'],
+            description: '操作类型',
+          },
+          kb_id: { type: 'string', description: '知识库 ID（必需）' },
+          id: { type: 'string', description: '段落 ID（update/move/delete 时必需）' },
+          section_id: { type: 'string', description: '所属节 ID（create/list 时使用）' },
           title: { type: 'string', description: '段落标题' },
           content: { type: 'string', description: '段落内容（必须是原文完整复制，禁止提炼、总结、改写、省略或截断）' },
           context: { type: 'string', description: '知识点上下文（可选）。当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索' },
           is_knowledge_point: { type: 'boolean', description: '是否为知识点，默认 false' },
-          token_count: { type: 'integer', description: 'Token 数量，默认 0' },
-        },
-        required: ['kb_id', 'section_id', 'content'],
-      },
-    },
-    {
-      name: 'update_paragraph',
-      description: '更新段落。⚠️核心原则：content必须是原文完整复制，禁止提炼、总结、改写或省略。',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '段落 ID' },
-          title: { type: 'string', description: '新标题' },
-          content: { type: 'string', description: '新内容（必须是原文完整复制，禁止提炼、总结、改写、省略或截断）' },
-          context: { type: 'string', description: '知识点上下文（可选）。当 is_knowledge_point 为 true 时，使用一两句话总结该知识点及其所在文章（中文），便于语义检索' },
-          is_knowledge_point: { type: 'boolean', description: '是否为知识点' },
           token_count: { type: 'integer', description: 'Token 数量' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    {
-      name: 'move_paragraph',
-      description: '移动段落（与相邻段交换位置）',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '段落 ID' },
-          direction: { type: 'string', enum: ['up', 'down'], description: '移动方向' },
-        },
-        required: ['kb_id', 'id', 'direction'],
-      },
-    },
-    {
-      name: 'delete_paragraph',
-      description: '删除段落',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '段落 ID' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    // 标签操作
-    {
-      name: 'list_tags',
-      description: '获取标签列表',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
+          direction: { type: 'string', enum: ['up', 'down'], description: '移动方向（move 时必需）' },
           page: { type: 'integer', description: '页码，默认 1' },
           pageSize: { type: 'integer', description: '每页数量，默认 100' },
         },
-        required: ['kb_id'],
+        required: ['action', 'kb_id'],
       },
     },
     {
-      name: 'create_tag',
-      description: '创建标签',
+      name: 'tag',
+      description: '标签操作。通过 action 参数区分具体操作：list（列出标签）、create（创建）、update（更新）、delete（删除）。',
       parameters: {
         type: 'object',
         properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
+          action: {
+            type: 'string',
+            enum: ['list', 'create', 'update', 'delete'],
+            description: '操作类型',
+          },
+          kb_id: { type: 'string', description: '知识库 ID（必需）' },
+          id: { type: 'string', description: '标签 ID（update/delete 时必需）' },
           name: { type: 'string', description: '标签名称' },
           description: { type: 'string', description: '标签描述' },
+          page: { type: 'integer', description: '页码，默认 1' },
+          pageSize: { type: 'integer', description: '每页数量，默认 100' },
         },
-        required: ['kb_id', 'name'],
-      },
-    },
-    {
-      name: 'update_tag',
-      description: '更新标签',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '标签 ID' },
-          name: { type: 'string', description: '新名称' },
-          description: { type: 'string', description: '新描述' },
-        },
-        required: ['kb_id', 'id'],
-      },
-    },
-    {
-      name: 'delete_tag',
-      description: '删除标签',
-      parameters: {
-        type: 'object',
-        properties: {
-          kb_id: { type: 'string', description: '知识库 ID' },
-          id: { type: 'string', description: '标签 ID' },
-        },
-        required: ['kb_id', 'id'],
+        required: ['action', 'kb_id'],
       },
     },
   ];
