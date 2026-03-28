@@ -48,6 +48,7 @@ import * as docx from 'docx';
 import mammoth from 'mammoth';
 import AdmZip from 'adm-zip';
 import xml2js from 'xml2js';
+import pptxgenjs from 'pptxgenjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -267,6 +268,8 @@ function executeSkill(code, skillId) {
         'mammoth': mammoth,
         'adm-zip': AdmZip,
         'xml2js': xml2js,
+        // npm 模块（用于测试 pptx 技能）
+        'pptxgenjs': pptxgenjs,
       };
       
       if (moduleMap[moduleName]) {
