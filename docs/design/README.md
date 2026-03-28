@@ -45,6 +45,7 @@ design/
 | [skill-import-dialog-design.md](./v2/skill-import-dialog-design.md) | Skills Studio 专家设计 | 进行中 |
 | [skill-configuration-design.md](./v2/skill-configuration-design.md) | 技能配置化设计 | 进行中 |
 | [tool-permission-design.md](./v2/tool-permission-design.md) | 内置工具权限分级设计 | 进行中 |
+| [kb-permission-design.md](./v2/kb-permission-design.md) | 知识库权限控制设计 | 草稿 |
 | [background-task-scheduler-design.md](./v2/background-task-scheduler-design.md) | 后台任务调度器 | 草稿 |
 | [code-review-2026-02-21.md](./v2/code-review-2026-02-21.md) | 代码审查记录 | - |
 

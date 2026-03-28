@@ -1027,6 +1027,31 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     updateSuccess: 'Knowledge base updated successfully',
     updateFailed: 'Failed to update knowledge base',
 
+    // Visibility
+    visibilityLabel: 'Visibility',
+    visibility: {
+      owner: 'Private (Owner only)',
+      department: 'Department',
+      all: 'Public (All users)',
+    },
+    visibilityHint: 'Set the access permission scope for this knowledge base',
+    // Permission badges
+    permissionOwner: 'Owner',
+    permissionCanEdit: 'Can Edit',
+    permissionCanDelete: 'Can Delete',
+
+    // Transfer Owner
+    transferOwner: {
+      button: 'Transfer Owner',
+      title: 'Transfer Knowledge Base Owner',
+      hint: 'Select a new owner for this knowledge base. The current owner will lose management permissions after transfer.',
+      newOwner: 'New Owner',
+      selectUser: 'Select user',
+      confirm: 'Will transfer to: {name}',
+      success: 'Owner transferred successfully',
+      failed: 'Failed to transfer owner',
+    },
+
     // Delete
     deleteConfirm: 'Confirm Delete',
     deleteConfirmMessage: 'Are you sure you want to delete "{name}"? All articles and knowledge points will be permanently deleted.',

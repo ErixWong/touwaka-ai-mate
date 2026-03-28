@@ -16,6 +16,15 @@ import {
   buildQueryOptions,
   buildPaginatedResponse,
 } from '../../lib/query-builder.js';
+import {
+  validateKbCreation,
+  buildAccessibleKbWhere,
+  canAccessKb,
+  canEditKb,
+  canDeleteKb,
+  canTransferOwner,
+  getKbPermissionInfo,
+} from '../../lib/kb-permission.js';
 
 // 最大章节层级深度限制
 const MAX_SECTION_DEPTH = 10; // 允许 10 层深度（1-10）
@@ -84,13 +93,22 @@ class KbController {
     const startTime = Date.now();
     try {
       this.ensureModels();
+      const userId = ctx.state.session.id;
       const { page = 1, pageSize = 12, search } = ctx.query;
 
-      const where = {};
+      // 构建权限过滤条件
+      const permissionWhere = await buildAccessibleKbWhere(this.db, userId);
+
+      const where = { ...permissionWhere };
       if (search) {
-        where[Op.or] = [
-          { name: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } },
+        where[Op.and] = [
+          permissionWhere,
+          {
+            [Op.or]: [
+              { name: { [Op.like]: `%${search}%` } },
+              { description: { [Op.like]: `%${search}%` } },
+            ],
+          },
         ];
       }
 
@@ -132,11 +150,15 @@ class KbController {
       });
       const paragraphCountMap = new Map(paragraphCounts.map(p => [p.kb_id, parseInt(p.count)]));
 
-      // 添加统计信息
-      const result = rows.map(kb => ({
-        ...kb.toJSON(),
-        article_count: articleCountMap.get(kb.id) || 0,
-        paragraph_count: paragraphCountMap.get(kb.id) || 0,
+      // 添加统计信息和权限信息
+      const result = await Promise.all(rows.map(async (kb) => {
+        const permInfo = await getKbPermissionInfo(this.db, kb, userId);
+        return {
+          ...kb.toJSON(),
+          article_count: articleCountMap.get(kb.id) || 0,
+          paragraph_count: paragraphCountMap.get(kb.id) || 0,
+          ...permInfo,
+        };
       }));
 
       ctx.success({
@@ -167,12 +189,24 @@ class KbController {
         ctx.throw(400, 'Knowledge base name is required');
       }
 
+      // 权限校验
+      const validation = await validateKbCreation(this.db, {
+        owner_id: data.owner_id,
+        visibility: data.visibility,
+      }, { id: userId });
+
+      if (!validation.valid) {
+        ctx.throw(403, validation.error);
+      }
+
       const id = Utils.newID(20);
       const kb = await this.KnowledgeBase.create({
         id,
         name: data.name.trim(),
         description: data.description,
-        owner_id: userId,
+        visibility: validation.visibility,
+        owner_id: validation.owner_id,
+        creator_id: validation.creator_id,
         embedding_dim: data.embedding_dim || 1536,
         is_public: data.is_public || false,
       });
@@ -193,10 +227,17 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
 
       const kb = await this.KnowledgeBase.findByPk(kb_id);
       if (!kb) {
         ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
       }
 
       // 获取文章数
@@ -204,9 +245,13 @@ class KbController {
         where: { kb_id },
       });
 
+      // 获取权限信息
+      const permInfo = await getKbPermissionInfo(this.db, kb, userId);
+
       ctx.success({
         ...kb.toJSON(),
         article_count: articleCount,
+        ...permInfo,
       });
     } catch (error) {
       logger.error('[KB] getKnowledgeBase error:', error);
@@ -223,15 +268,23 @@ class KbController {
       this.ensureModels();
       const { kb_id } = ctx.params;
       const data = ctx.request.body;
+      const userId = ctx.state.session.id;
 
       const kb = await this.KnowledgeBase.findByPk(kb_id);
       if (!kb) {
         ctx.throw(404, 'Knowledge base not found');
       }
 
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
+      }
+
       await kb.update({
         name: data.name !== undefined ? data.name : kb.name,
         description: data.description !== undefined ? data.description : kb.description,
+        visibility: data.visibility !== undefined ? data.visibility : kb.visibility,
         embedding_model_id: data.embedding_model_id !== undefined ? data.embedding_model_id : kb.embedding_model_id,
         embedding_dim: data.embedding_dim !== undefined ? data.embedding_dim : kb.embedding_dim,
         is_public: data.is_public !== undefined ? data.is_public : kb.is_public,
@@ -252,10 +305,17 @@ class KbController {
     try {
       this.ensureModels();
       const { kb_id } = ctx.params;
+      const userId = ctx.state.session.id;
 
       const kb = await this.KnowledgeBase.findByPk(kb_id);
       if (!kb) {
         ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 权限检查
+      const deleteCheck = await canDeleteKb(this.db, kb_id, userId);
+      if (!deleteCheck.canDelete) {
+        ctx.throw(403, deleteCheck.reason);
       }
 
       // 级联删除文章、节、段落、标签（由数据库外键处理）
@@ -264,6 +324,57 @@ class KbController {
       ctx.success({ success: true });
     } catch (error) {
       logger.error('[KB] deleteKnowledgeBase error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 转移知识库 owner
+   * POST /api/kb/:kb_id/transfer-owner
+   */
+  async transferOwner(ctx) {
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+      const { new_owner_id } = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      if (!new_owner_id) {
+        ctx.throw(400, 'new_owner_id is required');
+      }
+
+      // 权限检查：只有 admin 可以转移 owner
+      const canTransfer = await canTransferOwner(this.db, userId);
+      if (!canTransfer) {
+        ctx.throw(403, '只有系统管理员可以转移知识库管理员');
+      }
+
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 验证新 owner 用户存在
+      const User = this.db.getModel('user');
+      const newOwner = await User.findByPk(new_owner_id);
+      if (!newOwner) {
+        ctx.throw(404, '新管理员用户不存在');
+      }
+
+      const oldOwnerId = kb.owner_id;
+
+      // 更新 owner
+      await kb.update({ owner_id: new_owner_id });
+
+      logger.info(`[KB] transferOwner: kb ${kb_id} transferred from ${oldOwnerId} to ${new_owner_id} by ${userId}`);
+
+      ctx.success({
+        success: true,
+        old_owner_id: oldOwnerId,
+        new_owner_id: new_owner_id,
+      });
+    } catch (error) {
+      logger.error('[KB] transferOwner error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -1229,7 +1340,7 @@ class KbController {
   }
 
   /**
-   * 全局搜索（搜索用户所有知识库）
+   * 全局搜索（搜索用户所有可访问的知识库）
    * POST /api/kb/search
    */
   async globalSearch(ctx) {
@@ -1243,9 +1354,10 @@ class KbController {
         ctx.throw(400, 'Search query is required');
       }
 
-      // 获取用户的知识库列表
+      // 使用权限过滤获取用户可访问的知识库列表
+      const permissionWhere = await buildAccessibleKbWhere(this.db, userId);
       const userKBs = await this.KnowledgeBase.findAll({
-        where: { owner_id: userId },
+        where: permissionWhere,
         attributes: ['id', 'name', 'embedding_model_id'],
         raw: true,
       });

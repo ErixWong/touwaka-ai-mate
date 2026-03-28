@@ -14,6 +14,10 @@
           <span>🔍</span>
           {{ $t('knowledgeBase.search') }}
         </button>
+        <button v-if="userStore.isAdmin" class="btn-action btn-transfer" @click="handleTransferOwner">
+          <span>👤</span>
+          {{ $t('knowledgeBase.transferOwner.button') }}
+        </button>
         <button class="btn-action btn-revectorize" @click="handleRevectorize" :disabled="isRevectorizing">
           <span>🔄</span>
           {{ isRevectorizing ? $t('knowledgeBase.revectorizing') : $t('knowledgeBase.revectorize') }}
@@ -366,6 +370,33 @@
         </div>
       </div>
     </div>
+
+    <!-- Transfer Owner Dialog -->
+    <div v-if="showTransferDialog" class="dialog-overlay">
+      <div class="dialog">
+        <h3 class="dialog-title">{{ $t('knowledgeBase.transferOwner.title') }}</h3>
+        <div class="dialog-body">
+          <p class="transfer-hint">{{ $t('knowledgeBase.transferOwner.hint') }}</p>
+          <div class="form-group">
+            <label class="form-label">{{ $t('knowledgeBase.transferOwner.newOwner') }}</label>
+            <UserPicker
+              v-model="selectedNewOwnerId"
+              :placeholder="$t('knowledgeBase.transferOwner.selectUser')"
+              @change="handleOwnerSelect"
+            />
+          </div>
+          <p v-if="selectedNewOwner" class="transfer-confirm">
+            {{ $t('knowledgeBase.transferOwner.confirm', { name: selectedNewOwner.nickname || selectedNewOwner.username }) }}
+          </p>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="closeTransferDialog">{{ $t('common.cancel') }}</button>
+          <button class="btn-primary" @click="submitTransferOwner" :disabled="!selectedNewOwnerId || isTransferring">
+            {{ isTransferring ? $t('common.saving') : $t('common.confirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -375,8 +406,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
 import { useToastStore } from '@/stores/toast'
+import { useUserStore } from '@/stores/user'
 import SectionTreeNode from '@/components/SectionTreeNode.vue'
-import type { KbArticle, KbSection, KbParagraph } from '@/types'
+import UserPicker from '@/components/common/UserPicker.vue'
+import type { KbArticle, KbSection, KbParagraph, UserListItem } from '@/types'
 import { marked } from 'marked'
 import { knowledgeBaseApi } from '@/api/services'
 
@@ -385,6 +418,7 @@ const route = useRoute()
 const router = useRouter()
 const kbStore = useKnowledgeBaseStore()
 const toast = useToastStore()
+const userStore = useUserStore()
 
 // State
 const isLoading = ref(true)
@@ -414,6 +448,12 @@ let revectorizeJobId = ''
 // Search
 const searchQuery = ref('')
 const hasSearched = ref(false)
+
+// Transfer Owner
+const showTransferDialog = ref(false)
+const selectedNewOwnerId = ref<string | null>(null)
+const selectedNewOwner = ref<UserListItem | null>(null)
+const isTransferring = ref(false)
 
 // Forms
 const articleForm = ref({
@@ -795,6 +835,38 @@ const loadArticlesWithFilter = async () => {
   }
 }
 
+// Transfer Owner methods
+const handleTransferOwner = () => {
+  showTransferDialog.value = true
+}
+
+const handleOwnerSelect = (user: UserListItem | null) => {
+  selectedNewOwner.value = user
+}
+
+const closeTransferDialog = () => {
+  showTransferDialog.value = false
+  selectedNewOwnerId.value = null
+  selectedNewOwner.value = null
+}
+
+const submitTransferOwner = async () => {
+  if (!selectedNewOwnerId.value || !kbId.value) return
+
+  isTransferring.value = true
+  try {
+    await knowledgeBaseApi.transferOwner(kbId.value, selectedNewOwnerId.value)
+    toast.success(t('knowledgeBase.transferOwner.success'))
+    // Reload KB to get updated owner info
+    await kbStore.loadKnowledgeBase(requireKbId())
+    closeTransferDialog()
+  } catch (error: any) {
+    toast.error(error.message || t('knowledgeBase.transferOwner.failed'))
+  } finally {
+    isTransferring.value = false
+  }
+}
+
 // Initialize
 onMounted(async () => {
   try {
@@ -899,6 +971,16 @@ onMounted(async () => {
 .btn-revectorize:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-transfer {
+  background: var(--primary-light, #e3f2fd);
+  color: var(--primary-color, #2196f3);
+}
+
+.btn-transfer:hover {
+  background: var(--primary-color, #2196f3);
+  color: white;
 }
 
 /* 重新向量化进度 */
@@ -1643,5 +1725,21 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary, #666);
+}
+
+/* Transfer Owner Dialog */
+.transfer-hint {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  margin-bottom: 16px;
+}
+
+.transfer-confirm {
+  font-size: 13px;
+  color: var(--primary-color, #2196f3);
+  background: var(--primary-light, #e3f2fd);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-top: 8px;
 }
 </style>

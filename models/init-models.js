@@ -151,6 +151,8 @@ export default function initModels(sequelize) {
   user.hasMany(invitation, { as: "invitations", foreignKey: "creator_id"});
   knowledge_basis.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
   user.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "owner_id"});
+  knowledge_basis.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
+  user.hasMany(knowledge_basis, { as: "creator_knowledge_bases", foreignKey: "creator_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(message, { as: "messages", foreignKey: "user_id"});
   task.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});

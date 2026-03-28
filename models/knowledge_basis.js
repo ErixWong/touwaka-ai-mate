@@ -17,10 +17,26 @@ export default class knowledge_basis extends Model {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    visibility: {
+      type: DataTypes.ENUM('owner','department','all'),
+      allowNull: true,
+      defaultValue: "owner",
+      comment: "公开级别：owner=仅管理员, department=部门可见, all=全员可见"
+    },
     owner_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "创建者 user_id",
+      comment: "知识库管理员ID",
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    creator_id: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: "",
+      comment: "创建者ID",
       references: {
         model: 'users',
         key: 'id'
@@ -89,6 +105,20 @@ export default class knowledge_basis extends Model {
         using: "BTREE",
         fields: [
           { name: "is_public" },
+        ]
+      },
+      {
+        name: "idx_kb_visibility",
+        using: "BTREE",
+        fields: [
+          { name: "visibility" },
+        ]
+      },
+      {
+        name: "idx_kb_creator",
+        using: "BTREE",
+        fields: [
+          { name: "creator_id" },
         ]
       },
     ]

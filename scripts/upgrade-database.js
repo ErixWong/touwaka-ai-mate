@@ -289,6 +289,64 @@ const MIGRATIONS = [
       console.log(`  ✓ Generated mark values for ${skills.length} skills`);
     }
   },
+
+  // ==================== 知识库权限控制 ====================
+  // Issue #426: 知识库权限控制
+  // 添加 visibility、creator_id 字段，实现三级可见性
+  {
+    name: 'knowledge_bases.visibility and creator_id columns add',
+    check: async (conn) => await hasColumn(conn, 'knowledge_bases', 'visibility'),
+    migrate: async (conn) => {
+      // 1. 添加 visibility 字段
+      await conn.execute(`
+        ALTER TABLE knowledge_bases
+        ADD COLUMN visibility ENUM('owner', 'department', 'all') DEFAULT 'owner'
+          COMMENT '公开级别：owner=仅管理员, department=部门可见, all=全员可见'
+          AFTER description
+      `);
+      console.log('  ✓ Added visibility column to knowledge_bases table');
+
+      // 2. 添加 creator_id 字段
+      await conn.execute(`
+        ALTER TABLE knowledge_bases
+        ADD COLUMN creator_id VARCHAR(32) NOT NULL DEFAULT ''
+          COMMENT '创建者ID'
+          AFTER owner_id
+      `);
+      console.log('  ✓ Added creator_id column to knowledge_bases table');
+
+      // 3. 修改 owner_id 字段注释
+      await conn.execute(`
+        ALTER TABLE knowledge_bases
+        MODIFY COLUMN owner_id VARCHAR(32) NOT NULL COMMENT '知识库管理员ID'
+      `);
+      console.log('  ✓ Updated owner_id column comment');
+
+      // 4. 添加索引
+      await safeExecute(conn, `
+        CREATE INDEX idx_kb_visibility ON knowledge_bases(visibility)
+      `);
+      console.log('  ✓ Added idx_kb_visibility index');
+
+      await safeExecute(conn, `
+        CREATE INDEX idx_kb_creator ON knowledge_bases(creator_id)
+      `);
+      console.log('  ✓ Added idx_kb_creator index');
+
+      // 5. 添加外键约束
+      await safeExecute(conn, `
+        ALTER TABLE knowledge_bases
+        ADD CONSTRAINT fk_kb_creator FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+      `);
+      console.log('  ✓ Added fk_kb_creator foreign key');
+
+      // 6. 数据迁移：现有数据 creator_id = owner_id
+      await conn.execute(`
+        UPDATE knowledge_bases SET creator_id = owner_id WHERE creator_id = ''
+      `);
+      console.log('  ✓ Migrated existing data: creator_id = owner_id');
+    }
+  },
 ];
 
 /**

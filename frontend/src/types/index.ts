@@ -780,6 +780,11 @@ export interface TaskFile {
 // ============================================
 
 /**
+ * 知识库可见性类型
+ */
+export type KbVisibility = 'owner' | 'department' | 'all'
+
+/**
  * 知识库（匹配后端 knowledge_bases 表）
  */
 export interface KnowledgeBase {
@@ -787,12 +792,18 @@ export interface KnowledgeBase {
   name: string
   description?: string
   owner_id: string
+  creator_id: string
+  visibility: KbVisibility
   embedding_model_id?: string
   embedding_dim: number
-  is_public: boolean
+  is_public: boolean  // 兼容旧字段，已废弃
   // 统计信息（API 返回时附带）
   article_count?: number
   paragraph_count?: number
+  // 权限信息（API 返回时附带）
+  is_owner?: boolean
+  can_edit?: boolean
+  can_delete?: boolean
   created_at: string
   updated_at: string
 }
@@ -817,6 +828,7 @@ export type KbSourceType = 'upload' | 'url' | 'manual'
 export interface CreateKnowledgeBaseRequest {
   name: string
   description?: string
+  visibility?: KbVisibility
   embedding_model_id?: string
   embedding_dim?: number
 }
@@ -827,6 +839,7 @@ export interface CreateKnowledgeBaseRequest {
 export interface UpdateKnowledgeBaseRequest {
   name?: string
   description?: string
+  visibility?: KbVisibility
   embedding_model_id?: string
   embedding_dim?: number
 }

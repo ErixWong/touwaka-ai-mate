@@ -1019,6 +1019,31 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     updateSuccess: '知识库更新成功',
     updateFailed: '更新知识库失败',
 
+    // 可见性
+    visibilityLabel: '可见性',
+    visibility: {
+      owner: '仅自己可见',
+      department: '部门可见',
+      all: '所有人可见',
+    },
+    visibilityHint: '设置知识库的访问权限范围',
+    // 权限标识
+    permissionOwner: '拥有者',
+    permissionCanEdit: '可编辑',
+    permissionCanDelete: '可删除',
+
+    // 转移拥有者
+    transferOwner: {
+      button: '转移拥有者',
+      title: '转移知识库拥有者',
+      hint: '选择新的知识库拥有者，转移后当前拥有者将失去管理权限。',
+      newOwner: '新拥有者',
+      selectUser: '选择用户',
+      confirm: '将转移给：{name}',
+      success: '拥有者转移成功',
+      failed: '拥有者转移失败',
+    },
+
     // 删除
     deleteConfirm: '确认删除',
     deleteConfirmMessage: '确定要删除知识库"{name}"吗？此操作将删除所有文章和知识点，不可恢复。',
