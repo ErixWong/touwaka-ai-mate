@@ -734,6 +734,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
   skills: {
     title: '技能管理',
     addSkill: '添加技能',
+    mark: '技能标识 (Mark)',
+    markHint: '用于生成工具名称，格式：mark__tool_name',
     searchPlaceholder: '搜索技能...',
     allSkills: '全部技能',
     active: '已启用',

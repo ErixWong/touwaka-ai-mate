@@ -320,7 +320,7 @@
             class="task-item"
             :class="{
               'task-active': task.status === 'active',
-              'task-autonomous': task.status === 'autonomous' || task.status === 'autonomous_wait' || task.status === 'autonomous_working',
+              'task-autonomous': task.status === 'autonomous_wait' || task.status === 'autonomous_working',
               'task-archived': task.status === 'archived',
               'selected': task.id === taskStore.currentTask?.id
             }"

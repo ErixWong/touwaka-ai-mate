@@ -376,7 +376,7 @@
                     
                     <!-- 参数定义 -->
                     <div class="field-row">
-                      <span class="field-label">{{ $t('skills.parameters') || '参数' }}</span>
+                      <span class="field-label">{{ $t('skills.parametersTitle') || '参数' }}</span>
                       <textarea v-model="tool.parameters" class="field-textarea" rows="5" :placeholder="$t('skills.parametersPlaceholder') || 'JSON 格式的参数定义'"></textarea>
                     </div>
                     
