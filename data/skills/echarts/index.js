@@ -1,5 +1,5 @@
 /**
- * Chart Skill - ECharts SSR 图表生成
+ * ECharts Skill - SSR 图表生成
  * 
  * 功能：
  * - 生成各种类型的图表（柱状图、折线图、饼图等）
@@ -111,7 +111,7 @@ const CHART_TYPE_MAP = {
 };
 
 /**
- * 默认主题颜色
+ * 默认主题颜色（v5 风格）
  */
 const DEFAULT_COLORS = [
   '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
@@ -335,25 +335,38 @@ async function svgToPNG(svg, params = {}) {
 }
 
 /**
- * 生成图表
+ * 生成图表（统一入口）
+ * 
+ * 支持两种模式：
+ * 1. 简化配置模式：使用 type/data/options 参数
+ * 2. 原始配置模式：使用 option 参数直接传入 ECharts 配置
  */
 async function generate(params) {
   const {
     type = 'bar',
     data,
     options = {},
+    option,  // 原始 ECharts 配置（高级用法）
     output = 'svg',
     outputPath,
     width = DEFAULT_OPTIONS.width,
     height = DEFAULT_OPTIONS.height
   } = params;
   
-  if (data === undefined || data === null) {
-    throw new Error('Data is required');
+  // 确定使用哪种配置模式
+  let echartsOption;
+  if (option) {
+    // 原始配置模式
+    echartsOption = option;
+  } else {
+    // 简化配置模式
+    if (data === undefined || data === null) {
+      throw new Error('Data is required when using simplified config mode');
+    }
+    echartsOption = buildChartOption({ type, data, options });
   }
   
-  const option = buildChartOption({ type, data, options });
-  const svg = renderToSVG(option, { width, height });
+  const svg = renderToSVG(echartsOption, { width, height });
   
   switch (output) {
     case 'svg':
@@ -407,67 +420,6 @@ async function generate(params) {
 }
 
 /**
- * 使用原始 ECharts 配置生成图表
- */
-async function generateRaw(params) {
-  const {
-    option,
-    output = 'svg',
-    outputPath,
-    width = DEFAULT_OPTIONS.width,
-    height = DEFAULT_OPTIONS.height
-  } = params;
-  
-  if (!option) {
-    throw new Error('ECharts option is required');
-  }
-  
-  const svg = renderToSVG(option, { width, height });
-  
-  switch (output) {
-    case 'svg':
-      return { success: true, format: 'svg', data: svg, mimeType: 'image/svg+xml' };
-      
-    case 'png':
-      const pngBuffer = await svgToPNG(svg, { width, height });
-      return { success: true, format: 'png', data: pngBuffer, mimeType: 'image/png' };
-      
-    case 'base64':
-      const base64Png = await svgToPNG(svg, { width, height });
-      return { success: true, format: 'base64', data: `data:image/png;base64,${base64Png.toString('base64')}`, mimeType: 'image/png' };
-      
-    case 'file':
-      if (!outputPath) {
-        throw new Error('outputPath is required for file output');
-      }
-      
-      const resolvedPath = resolvePath(outputPath);
-      const ext = path.extname(resolvedPath).toLowerCase();
-      
-      if (ext === '.svg') {
-        fs.writeFileSync(resolvedPath, svg, 'utf-8');
-        return { success: true, format: 'svg', path: resolvedPath, mimeType: 'image/svg+xml' };
-      } else if (ext === '.png') {
-        const pngData = await svgToPNG(svg, { width, height });
-        fs.writeFileSync(resolvedPath, pngData);
-        return { success: true, format: 'png', path: resolvedPath, mimeType: 'image/png' };
-      } else {
-        throw new Error(`Unsupported file format: ${ext}. Use .svg or .png`);
-      }
-      
-    default:
-      throw new Error(`Unsupported output format: ${output}. Use svg, png, base64, or file`);
-  }
-}
-
-/**
- * 获取支持的图表类型
- */
-function getSupportedTypes() {
-  return Object.keys(CHART_TYPE_MAP);
-}
-
-/**
  * Skill execute function - called by skill-runner
  * 
  * @param {string} toolName - Name of the tool to execute
@@ -476,33 +428,11 @@ function getSupportedTypes() {
  * @returns {Promise<object>} Execution result
  */
 async function execute(toolName, params, context = {}) {
-  switch (toolName) {
-    // 新工具名
-    case 'echarts_generate':
-      return await generate(params);
-      
-    case 'echarts_raw':
-      return await generateRaw(params);
-      
-    case 'echarts_types':
-      return { success: true, types: getSupportedTypes() };
-    
-    // 旧工具名（兼容）
-    case 'generate':
-    case 'generate_chart':
-      return await generate(params);
-      
-    case 'generateRaw':
-    case 'generate_raw':
-      return await generateRaw(params);
-      
-    case 'types':
-    case 'get_types':
-      return { success: true, types: getSupportedTypes() };
-      
-    default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: echarts_generate, echarts_raw, echarts_types`);
+  if (toolName === 'generate') {
+    return await generate(params);
   }
+  
+  throw new Error(`Unknown tool: ${toolName}. Supported tool: generate`);
 }
 
 module.exports = { execute };
