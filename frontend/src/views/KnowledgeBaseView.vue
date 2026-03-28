@@ -57,8 +57,8 @@
               <div class="kb-card-icon">{{ getKbIcon(kb) }}</div>
               <div class="kb-card-name">{{ kb.name }}</div>
               <div class="kb-card-actions">
-                <button class="kb-action-btn" @click.stop="editKb(kb)" :title="$t('common.edit')">✏️</button>
-                <button class="kb-action-btn danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">🗑️</button>
+                <button v-if="kb.can_edit" class="kb-action-btn" @click.stop="editKb(kb)" :title="$t('common.edit')">✏️</button>
+                <button v-if="kb.can_delete" class="kb-action-btn danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">🗑️</button>
               </div>
             </div>
             <div class="kb-card-desc" v-if="kb.description">{{ kb.description }}</div>
@@ -66,6 +66,12 @@
               <span>{{ $t('knowledgeBase.paragraphCount', { count: kb.paragraph_count || 0 }) }}</span>
               <span class="kb-card-dim">{{ kb.embedding_dim || 384 }}D</span>
               <span class="kb-card-time">{{ formatUpdatedTime(kb.updated_at) }}</span>
+            </div>
+            <div class="kb-card-footer">
+              <span class="visibility-badge" :class="'visibility-' + (kb.visibility || 'owner')">
+                {{ $t('knowledgeBase.visibility.' + (kb.visibility || 'owner')) }}
+              </span>
+              <span v-if="kb.is_owner" class="owner-badge">{{ $t('knowledgeBase.permissionOwner') }}</span>
             </div>
             <div class="kb-card-model" v-if="kb.embedding_model_id && kb.embedding_model_id !== 'local'">
               <span class="model-badge">{{ getModelName(kb.embedding_model_id) }}</span>
@@ -142,6 +148,15 @@
             ></textarea>
           </div>
           <div class="form-group">
+            <label class="form-label">{{ $t('knowledgeBase.visibilityLabel') }}</label>
+            <select v-model="formData.visibility" class="form-select">
+              <option value="owner">{{ $t('knowledgeBase.visibility.owner') }}</option>
+              <option value="department">{{ $t('knowledgeBase.visibility.department') }}</option>
+              <option value="all">{{ $t('knowledgeBase.visibility.all') }}</option>
+            </select>
+            <p class="form-hint">{{ $t('knowledgeBase.visibilityHint') }}</p>
+          </div>
+          <div class="form-group">
             <label class="form-label">{{ $t('knowledgeBase.embeddingModelLabel') }}</label>
             <select v-model="formData.embedding_model_id" class="form-select">
               <option value="">{{ $t('knowledgeBase.useBuiltinModel') }}</option>
@@ -171,10 +186,10 @@
       class="context-menu"
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
     >
-      <div class="context-menu-item" @click="editKb(contextMenu.kb!)">
+      <div v-if="contextMenu.kb?.can_edit" class="context-menu-item" @click="editKb(contextMenu.kb!)">
         {{ $t('common.edit') }}
       </div>
-      <div class="context-menu-item danger" @click="deleteKb(contextMenu.kb!)">
+      <div v-if="contextMenu.kb?.can_delete" class="context-menu-item danger" @click="deleteKb(contextMenu.kb!)">
         {{ $t('common.delete') }}
       </div>
     </div>
@@ -264,6 +279,7 @@ const hasGlobalSearched = ref(false)
 const formData = ref({
   name: '',
   description: '',
+  visibility: 'owner' as 'owner' | 'department' | 'all',
   embedding_model_id: '' as string | number,
 })
 
@@ -361,7 +377,7 @@ const openKbDetail = (kb: KnowledgeBase) => {
 const closeDialog = () => {
   showCreateDialog.value = false
   editingKb.value = null
-  formData.value = { name: '', description: '', embedding_model_id: '' }
+  formData.value = { name: '', description: '', visibility: 'owner', embedding_model_id: '' }
 }
 
 const submitForm = async () => {
@@ -378,6 +394,7 @@ const submitForm = async () => {
       await kbStore.updateKnowledgeBase(editingKb.value.id, {
         name: formData.value.name,
         description: formData.value.description,
+        visibility: formData.value.visibility,
         embedding_model_id: embeddingModelId,
         embedding_dim: selectedEmbeddingDim.value,
       })
@@ -385,6 +402,7 @@ const submitForm = async () => {
       await kbStore.createKnowledgeBase({
         name: formData.value.name,
         description: formData.value.description,
+        visibility: formData.value.visibility,
         embedding_model_id: embeddingModelId,
         embedding_dim: selectedEmbeddingDim.value,
       })
@@ -419,6 +437,7 @@ const editKb = (kb: KnowledgeBase) => {
   formData.value = {
     name: kb.name,
     description: kb.description || '',
+    visibility: (kb as any).visibility || 'owner',
     embedding_model_id: (kb as any).embedding_model_id || '',
   }
 }
@@ -750,7 +769,7 @@ onUnmounted(() => {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
-  height: 130px;
+  min-height: 130px;
   box-sizing: border-box;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
   overflow: hidden;
@@ -883,6 +902,47 @@ onUnmounted(() => {
   font-size: 10px;
   color: #3b82f6;
   background: rgba(59, 130, 246, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* KB Card Footer - Visibility & Owner badges */
+.kb-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.06);
+}
+
+.visibility-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.visibility-badge.visibility-owner {
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.1);
+}
+
+.visibility-badge.visibility-department {
+  color: #059669;
+  background: rgba(5, 150, 105, 0.1);
+}
+
+.visibility-badge.visibility-all {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.owner-badge {
+  font-size: 10px;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;
