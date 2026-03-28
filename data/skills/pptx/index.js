@@ -1,29 +1,35 @@
 /**
- * PPTX Skill - PowerPoint 演示文稿处理技能 (Node.js 版本)
+ * PPTX Skill - PowerPoint 演示文稿处理技能 (重构版)
  * 
- * 功能：
- * - 读取演示文稿信息和结构
- * - 创建新演示文稿
- * - 添加/删除/编辑幻灯片
- * - 文本和形状操作
- * - 图片插入
- * - 表格操作
- * - 幻灯片布局
- * - 导出为图片
+ * 工具架构（4 个工具）：
+ * - pptx_file: 文件级操作 (read, create, extract)
+ * - pptx_slide: 幻灯片创建（仅限新建演示文稿）
+ * - pptx_object: 内容对象添加（仅限新建演示文稿）
+ * - pptx_master: 模板定义（仅限新建演示文稿）
+ * 
+ * 重要限制：
+ * - pptxgenjs 4.0 只能创建新演示文稿，无法编辑现有文件
+ * - 编辑操作（update/delete/move）不支持
+ * - 读取操作使用 AdmZip 解析现有 PPTX 文件
+ * - 如需编辑现有文件，建议：读取内容 → 创建新文件 → 添加修改后的内容
  * 
  * 依赖：
- * - pptxgenjs: 演示文稿创建
- * - adm-zip: ZIP 操作（项目已安装）
- * - sharp: 图片处理（项目已安装）
+ * - pptxgenjs 4.0+: 演示文稿创建
+ * - adm-zip: ZIP 操作（读取现有 PPTX）
  */
 
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 
-// 延迟加载可选依赖
+// ==================== 常量定义 ====================
+
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.emf', '.wmf', '.svg'];
+const MEDIA_EXTENSIONS = ['.mp4', '.avi', '.mov', '.mp3', '.wav', '.m4a'];
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+
+// 延迟加载 pptxgenjs
 let pptxgenjs = null;
-let sharp = null;
 
 function getPptxGenJS() {
   if (!pptxgenjs) {
@@ -32,12 +38,7 @@ function getPptxGenJS() {
   return pptxgenjs;
 }
 
-function getSharp() {
-  if (!sharp) {
-    sharp = require('sharp');
-  }
-  return sharp;
-}
+// ==================== 路径与权限管理 ====================
 
 // 用户角色检查
 const IS_ADMIN = process.env.IS_ADMIN === 'true';
@@ -53,16 +54,13 @@ const USER_WORK_DIR = process.env.WORKING_DIRECTORY
 // 根据用户角色设置允许的路径
 let ALLOWED_BASE_PATHS;
 if (IS_ADMIN) {
-  // 管理员：可以访问整个 data/ 目录
   ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
 } else if (IS_SKILL_CREATOR) {
-  // 技能创建者：可以访问 skills/ 和自己的工作目录
   ALLOWED_BASE_PATHS = [
     path.join(DATA_BASE_PATH, 'skills'),
     path.join(DATA_BASE_PATH, 'work', USER_ID)
   ];
 } else {
-  // 普通用户：只能访问自己的工作目录
   ALLOWED_BASE_PATHS = [USER_WORK_DIR];
 }
 
@@ -118,80 +116,140 @@ function resolvePath(relativePath) {
 }
 
 /**
- * 读取文件
+ * 确保目录存在
  */
-function readFile(filePath) {
-  const resolvedPath = resolvePath(filePath);
-  return fs.readFileSync(resolvedPath);
-}
-
-/**
- * 保存文件
- */
-function saveFile(filePath, data) {
-  const resolvedPath = resolvePath(filePath);
-  const dir = path.dirname(resolvedPath);
+function ensureDir(filePath) {
+  const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(resolvedPath, data);
 }
 
-// ==================== pptx_read ====================
+// ==================== pptx_file ====================
+
+/**
+ * 文件级操作
+ * @param {object} params
+ * @param {string} params.action - 操作: 'read' | 'create' | 'extract'
+ * @param {string} params.path - 文件路径
+ * @param {string} [params.scope] - 读取范围 (read): 'info' | 'text' | 'structure' | 'media'
+ * @param {number[]} [params.slideNumbers] - 幻灯片编号列表
+ * @param {string} [params.source] - 创建来源 (create): 'data' | 'markdown'
+ * @param {Array} [params.slides] - 幻灯片数据
+ * @param {string} [params.markdown] - Markdown 内容
+ * @param {object} [params.properties] - 文档属性
+ * @param {string} [params.outputDir] - 提取输出目录 (extract)
+ * @param {string} [params.extractType] - 提取类型 (extract): 'images' | 'media' | 'all'
+ */
+async function pptxFile(params) {
+  const { action, path: filePath } = params;
+  
+  switch (action) {
+    case 'read':
+      return await fileRead(params);
+    case 'create':
+      return await fileCreate(params);
+    case 'extract':
+      return await fileExtract(params);
+    default:
+      throw new Error(`Invalid action: ${action}. Must be 'read', 'create', or 'extract'`);
+  }
+}
+
+/**
+ * 安全打开 ZIP 文件
+ * @param {string} resolvedPath - 已解析的文件路径
+ * @returns {{ zip: AdmZip, entries: Array, error: string|null }}
+ */
+function safeOpenZip(resolvedPath) {
+  try {
+    // 检查文件大小
+    const stats = fs.statSync(resolvedPath);
+    if (stats.size > MAX_FILE_SIZE) {
+      return {
+        zip: null,
+        entries: null,
+        error: `File too large: ${Math.round(stats.size / 1024 / 1024)}MB. Maximum allowed: ${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB`
+      };
+    }
+    
+    const zip = new AdmZip(resolvedPath);
+    const entries = zip.getEntries();
+    
+    // 验证 PPTX 结构
+    const hasPptDir = entries.some(e => e.entryName.startsWith('ppt/'));
+    if (!hasPptDir) {
+      return { zip: null, entries: null, error: 'Invalid PPTX file: missing ppt/ directory' };
+    }
+    
+    return { zip, entries, error: null };
+  } catch (e) {
+    return { zip: null, entries: null, error: `Failed to open file: ${e.message}` };
+  }
+}
 
 /**
  * 读取演示文稿
- * @param {object} params
- * @param {string} params.path - 文件路径
- * @param {string} params.scope - 读取范围: 'info' | 'text' | 'structure'
- * @param {number[]} [params.slideNumbers] - 幻灯片编号列表（scope 为 text 时）
  */
-async function pptxRead(params) {
+async function fileRead(params) {
   const { path: filePath, scope = 'info', slideNumbers } = params;
   
-  const zip = new AdmZip(filePath);
-  const entries = zip.getEntries();
+  const resolvedPath = resolvePath(filePath);
+  const { zip, entries, error } = safeOpenZip(resolvedPath);
+  
+  if (error) {
+    return { success: false, error };
+  }
   
   // 读取基本信息
   if (scope === 'info') {
-    let slideCount = 0;
     const slides = [];
     
     for (const entry of entries) {
-      if (entry.entryName.match(/ppt\/slides\/slide\d+\.xml/)) {
-        slideCount++;
+      const match = entry.entryName.match(/ppt\/slides\/slide(\d+)\.xml/);
+      if (match) {
+        const slideNum = parseInt(match[1]);
         const slideXml = zip.readAsText(entry.entryName);
         
         const textMatches = slideXml.match(/<a:t>([^<]*)<\/a:t>/g) || [];
         const texts = textMatches.map(m => m.replace(/<a:t>|<\/a:t>/g, ''));
         
         slides.push({
-          number: slideCount,
+          number: slideNum,
           textCount: texts.length,
           preview: texts.slice(0, 5).join(' ').substring(0, 100)
         });
       }
     }
     
-    const coreXml = zip.readAsText('docProps/core.xml');
+    // 按幻灯片编号排序
+    slides.sort((a, b) => a.number - b.number);
     
-    const metadata = {};
-    
-    if (coreXml) {
-      const titleMatch = coreXml.match(/<dc:title>([^<]*)<\/dc:title>/);
-      const authorMatch = coreXml.match(/<dc:creator>([^<]*)<\/dc:creator>/);
-      const createdMatch = coreXml.match(/<dcterms:created>([^<]*)<\/dcterms:created>/);
-      const modifiedMatch = coreXml.match(/<dcterms:modified>([^<]*)<\/dcterms:modified>/);
-      
-      metadata.title = titleMatch ? titleMatch[1] : null;
-      metadata.author = authorMatch ? authorMatch[1] : null;
-      metadata.created = createdMatch ? createdMatch[1] : null;
-      metadata.modified = modifiedMatch ? modifiedMatch[1] : null;
+    // 读取元数据
+    let metadata = {};
+    try {
+      const coreXml = zip.readAsText('docProps/core.xml');
+      if (coreXml) {
+        const titleMatch = coreXml.match(/<dc:title>([^<]*)<\/dc:title>/);
+        const authorMatch = coreXml.match(/<dc:creator>([^<]*)<\/dc:creator>/);
+        const createdMatch = coreXml.match(/<dcterms:created>([^<]*)<\/dcterms:created>/);
+        const modifiedMatch = coreXml.match(/<dcterms:modified>([^<]*)<\/dcterms:modified>/);
+        
+        metadata = {
+          title: titleMatch ? titleMatch[1] : null,
+          author: authorMatch ? authorMatch[1] : null,
+          created: createdMatch ? createdMatch[1] : null,
+          modified: modifiedMatch ? modifiedMatch[1] : null
+        };
+      }
+    } catch (e) {
+      // 元数据读取失败，忽略
     }
     
     return {
       success: true,
-      slideCount,
+      path: resolvedPath,
+      slideCount: slides.length,
       slides,
       metadata
     };
@@ -221,8 +279,12 @@ async function pptxRead(params) {
       }
     }
     
+    // 按幻灯片编号排序
+    allTexts.sort((a, b) => a.slide - b.slide);
+    
     return {
       success: true,
+      path: resolvedPath,
       slides: allTexts,
       totalTexts: allTexts.reduce((sum, s) => sum + s.texts.length, 0)
     };
@@ -230,210 +292,115 @@ async function pptxRead(params) {
   
   // 提取结构
   if (scope === 'structure') {
-    let slideLayouts = [];
-    const layoutEntries = zip.getEntries().filter(e => 
-      e.entryName.match(/ppt\/slideLayouts\/slideLayout\d+\.xml/)
-    );
-    
-    for (const entry of layoutEntries) {
-      slideLayouts.push({
-        name: path.basename(entry.entryName, '.xml')
-      });
-    }
-    
-    const slideEntries = zip.getEntries().filter(e => 
-      e.entryName.match(/ppt\/slides\/slide\d+\.xml/)
-    );
-    
     const slides = [];
-    for (const entry of slideEntries) {
-      const match = entry.entryName.match(/slide(\d+)\.xml/);
-      const slideNum = match ? parseInt(match[1]) : 0;
-      
-      const slideXml = zip.readAsText(entry.entryName);
-      
-      const shapes = [];
-      const shapeMatches = slideXml.match(/<p:sp[^>]*>[\s\S]*?<\/p:sp>/g) || [];
-      
-      for (const shapeXml of shapeMatches) {
-        const textMatches = shapeXml.match(/<a:t>([^<]*)<\/a:t>/g) || [];
-        const texts = textMatches.map(m => m.replace(/<a:t>|<\/a:t>/g, ''));
+    
+    for (const entry of entries) {
+      const match = entry.entryName.match(/ppt\/slides\/slide(\d+)\.xml/);
+      if (match) {
+        const slideNum = parseInt(match[1]);
+        const slideXml = zip.readAsText(entry.entryName);
         
-        if (texts.length > 0) {
-          shapes.push({
-            type: 'text',
-            text: texts.join(' ')
-          });
+        const shapes = [];
+        const shapeMatches = slideXml.match(/<p:sp[^>]*>[\s\S]*?<\/p:sp>/g) || [];
+        
+        for (const shapeXml of shapeMatches) {
+          const textMatches = shapeXml.match(/<a:t>([^<]*)<\/a:t>/g) || [];
+          const texts = textMatches.map(m => m.replace(/<a:t>|<\/a:t>/g, ''));
+          
+          if (texts.length > 0) {
+            shapes.push({ type: 'text', text: texts.join(' ') });
+          }
         }
-      }
-      
-      const picMatches = slideXml.match(/<p:pic[^>]*>[\s\S]*?<\/p:pic>/g) || [];
-      for (const picXml of picMatches) {
-        const embedMatch = picXml.match(/r:embed="([^"]+)"/);
-        if (embedMatch) {
-          shapes.push({
-            type: 'image',
-            embedId: embedMatch[1]
-          });
+        
+        const picMatches = slideXml.match(/<p:pic[^>]*>[\s\S]*?<\/p:pic>/g) || [];
+        for (const picXml of picMatches) {
+          const embedMatch = picXml.match(/r:embed="([^"]+)"/);
+          if (embedMatch) {
+            shapes.push({ type: 'image', embedId: embedMatch[1] });
+          }
         }
+        
+        slides.push({
+          number: slideNum,
+          shapeCount: shapes.length,
+          shapes
+        });
       }
-      
-      slides.push({
-        number: slideNum,
-        shapeCount: shapes.length,
-        shapes
-      });
     }
+    
+    // 按幻灯片编号排序
+    slides.sort((a, b) => a.number - b.number);
     
     return {
       success: true,
+      path: resolvedPath,
       slideCount: slides.length,
-      layoutCount: slideLayouts.length,
       slides
     };
   }
   
-  throw new Error(`Invalid scope: ${scope}. Must be 'info', 'text', or 'structure'`);
-}
-
-// ==================== pptx_write ====================
-
-/**
- * 写入演示文稿
- * @param {object} params
- * @param {string} params.path - 文件路径
- * @param {string} params.source - 数据来源: 'data' | 'markdown'
- * @param {string} [params.title] - 标题
- * @param {Array} [params.slides] - 幻灯片数据（source 为 data 时）
- * @param {string} [params.markdown] - Markdown 内容（source 为 markdown 时）
- * @param {object} [params.properties] - 文档属性
- */
-async function pptxWrite(params) {
-  const { path: filePath, source = 'data', title, slides = [], markdown, properties = {} } = params;
-  
-  const PptxGenJS = getPptxGenJS();
-  const pptx = new PptxGenJS();
-  
-  pptx.author = properties.author || 'Touwaka Mate';
-  pptx.title = properties.title || title || '';
-  pptx.subject = properties.subject || '';
-  pptx.company = properties.company || '';
-  
-  // 从数据创建
-  if (source === 'data') {
-    for (const slideData of slides) {
-      const slide = pptx.addSlide();
+  // 提取媒体信息
+  if (scope === 'media') {
+    const images = [];
+    const media = [];
+    
+    for (const entry of entries) {
+      const entryName = entry.entryName;
+      const ext = path.extname(entryName).toLowerCase();
       
-      if (slideData.background) {
-        slide.background = slideData.background;
-      }
-      
-      if (slideData.title) {
-        slide.addText(slideData.title, {
-          x: 0.5,
-          y: 0.5,
-          w: '90%',
-          h: 1,
-          fontSize: 36,
-          bold: true,
-          color: '363636'
-        });
-      }
-      
-      if (slideData.content) {
-        slide.addText(slideData.content, {
-          x: 0.5,
-          y: 1.5,
-          w: '90%',
-          h: 4,
-          fontSize: 18,
-          color: '666666'
-        });
-      }
-      
-      if (slideData.texts && Array.isArray(slideData.texts)) {
-        let yPos = slideData.title ? 1.5 : 0.5;
-        for (const textItem of slideData.texts) {
-          if (typeof textItem === 'string') {
-            slide.addText(textItem, {
-              x: 0.5,
-              y: yPos,
-              w: '90%',
-              fontSize: 18
-            });
-            yPos += 0.8;
-          } else {
-            slide.addText(textItem.text || '', {
-              x: textItem.x || 0.5,
-              y: textItem.y || yPos,
-              w: textItem.w || '90%',
-              h: textItem.h || 0.5,
-              fontSize: textItem.fontSize || 18,
-              bold: textItem.bold,
-              italic: textItem.italic,
-              color: textItem.color,
-              align: textItem.align
-            });
-          }
-        }
-      }
-      
-      if (slideData.images && Array.isArray(slideData.images)) {
-        for (const img of slideData.images) {
-          try {
-            const imgPath = resolvePath(img.path);
-            slide.addImage({
-              path: imgPath,
-              x: img.x || 0.5,
-              y: img.y || 1,
-              w: img.w || 4,
-              h: img.h || 3
-            });
-          } catch (e) {}
-        }
-      }
-      
-      if (slideData.tables && Array.isArray(slideData.tables)) {
-        for (const tableData of slideData.tables) {
-          slide.addTable(tableData.rows || [], {
-            x: tableData.x || 0.5,
-            y: tableData.y || 1,
-            w: tableData.w || 9,
-            colW: tableData.colW,
-            border: tableData.border || { pt: 1, color: 'CFCFCF' },
-            fontFace: tableData.fontFace || 'Arial',
-            fontSize: tableData.fontSize || 12
-          });
-        }
-      }
-      
-      if (slideData.shapes && Array.isArray(slideData.shapes)) {
-        for (const shape of slideData.shapes) {
-          slide.addShape(shape.type || 'rect', {
-            x: shape.x || 0,
-            y: shape.y || 0,
-            w: shape.w || 1,
-            h: shape.h || 1,
-            fill: shape.fill || { color: 'CCCCCC' },
-            line: shape.line
-          });
+      if (entryName.startsWith('ppt/media/')) {
+        const fileName = path.basename(entryName);
+        
+        if (IMAGE_EXTENSIONS.includes(ext)) {
+          images.push({ originalPath: entryName, fileName, size: entry.header.size });
+        } else if (MEDIA_EXTENSIONS.includes(ext)) {
+          media.push({ originalPath: entryName, fileName, size: entry.header.size });
         }
       }
     }
     
-    if (slides.length === 0) {
-      const slide = pptx.addSlide();
-      if (title) {
-        slide.addText(title, {
-          x: 0.5,
-          y: 2.5,
-          w: '90%',
-          h: 1,
-          fontSize: 44,
-          bold: true,
-          align: 'center'
-        });
-      }
+    return {
+      success: true,
+      path: resolvedPath,
+      imageCount: images.length,
+      mediaCount: media.length,
+      images,
+      media
+    };
+  }
+  
+  throw new Error(`Invalid scope: ${scope}. Must be 'info', 'text', 'structure', or 'media'`);
+}
+
+/**
+ * 创建演示文稿
+ */
+async function fileCreate(params) {
+  const { path: filePath, source = 'data', slides = [], markdown, properties = {} } = params;
+  
+  const PptxGenJS = getPptxGenJS();
+  const pptx = new PptxGenJS();
+  
+  // 设置文档属性
+  pptx.author = properties.author || 'Touwaka Mate';
+  pptx.title = properties.title || '';
+  pptx.subject = properties.subject || '';
+  pptx.company = properties.company || '';
+  
+  // 设置布局
+  if (properties.layout) {
+    pptx.layout = properties.layout; // 'LAYOUT_16x9', 'LAYOUT_4x3', etc.
+  }
+  
+  // 从数据创建
+  if (source === 'data') {
+    for (const slideData of slides) {
+      addSlideFromData(pptx, slideData);
+    }
+    
+    // 如果没有幻灯片，创建空白
+    if (pptx.slides.length === 0) {
+      pptx.addSlide();
     }
   }
   
@@ -442,464 +409,928 @@ async function pptxWrite(params) {
     if (!markdown) {
       throw new Error('markdown content is required when source is "markdown"');
     }
-    
-    const lines = markdown.split('\n');
-    let currentSlide = null;
-    let slideContent = [];
-    
-    for (const line of lines) {
-      if (line.startsWith('# ') && !line.startsWith('## ')) {
-        if (currentSlide) {
-          pptx.addSlide();
-          const slide = pptx.slides[pptx.slides.length - 1];
-          
-          if (currentSlide.title) {
-            slide.addText(currentSlide.title, {
-              x: 0.5,
-              y: 0.5,
-              w: '90%',
-              h: 1,
-              fontSize: 36,
-              bold: true
-            });
-          }
-          
-          if (slideContent.length > 0) {
-            slide.addText(slideContent.map(t => ({ text: t, options: { bullet: true } })), {
-              x: 0.5,
-              y: 1.5,
-              w: '90%',
-              h: 4
-            });
-          }
-        }
-        
-        currentSlide = { title: line.substring(2) };
-        slideContent = [];
-      } else if (line.startsWith('## ')) {
-        if (currentSlide) {
-          slideContent.push(line.substring(3));
-        }
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        slideContent.push(line.substring(2));
-      } else if (line.trim() && currentSlide) {
-        slideContent.push(line);
-      }
-    }
-    
-    if (currentSlide) {
-      pptx.addSlide();
-      const slide = pptx.slides[pptx.slides.length - 1];
-      
-      if (currentSlide.title) {
-        slide.addText(currentSlide.title, {
-          x: 0.5,
-          y: 0.5,
-          w: '90%',
-          h: 1,
-          fontSize: 36,
-          bold: true
-        });
-      }
-      
-      if (slideContent.length > 0) {
-        slide.addText(slideContent.map(t => ({ text: t, options: { bullet: true } })), {
-          x: 0.5,
-          y: 1.5,
-          w: '90%',
-          h: 4
-        });
-      }
-    }
-    
-    if (pptx.slides.length === 0) {
-      pptx.addSlide();
-    }
+    createFromMarkdown(pptx, markdown);
   }
   
-  await pptx.writeFile({ fileName: resolvePath(filePath) });
+  const outputPath = resolvePath(filePath);
+  ensureDir(outputPath);
+  await pptx.writeFile({ fileName: outputPath });
   
   return {
     success: true,
-    path: resolvePath(filePath),
-    slideCount: pptx.slides.length
+    path: outputPath,
+    slideCount: pptx.slides.length,
+    note: 'Created with pptxgenjs 4.0. Editing existing files is not supported.'
+  };
+}
+
+/**
+ * 提取文件内容
+ */
+async function fileExtract(params) {
+  const { path: filePath, outputDir, extractType = 'all' } = params;
+  
+  const resolvedPath = resolvePath(filePath);
+  const { zip, entries, error } = safeOpenZip(resolvedPath);
+  
+  if (error) {
+    return { success: false, error };
+  }
+  
+  const outputPath = outputDir ? resolvePath(outputDir) : path.dirname(resolvedPath);
+  if (!fs.existsSync(outputPath)) {
+    fs.mkdirSync(outputPath, { recursive: true });
+  }
+  
+  const results = {
+    images: [],
+    media: [],
+    charts: [],
+    other: []
+  };
+  
+  for (const entry of entries) {
+    if (!entry.isDirectory && entry.entryName.startsWith('ppt/media/')) {
+      const fileName = path.basename(entry.entryName);
+      const ext = path.extname(fileName).toLowerCase();
+      
+      const shouldExtract =
+        extractType === 'all' ||
+        (extractType === 'images' && IMAGE_EXTENSIONS.includes(ext)) ||
+        (extractType === 'media' && MEDIA_EXTENSIONS.includes(ext));
+      
+      if (shouldExtract) {
+        const outFile = path.join(outputPath, fileName);
+        fs.writeFileSync(outFile, entry.getData());
+        
+        if (IMAGE_EXTENSIONS.includes(ext)) {
+          results.images.push({ fileName, outputPath: outFile, size: entry.header.size });
+        } else if (MEDIA_EXTENSIONS.includes(ext)) {
+          results.media.push({ fileName, outputPath: outFile, size: entry.header.size });
+        } else {
+          results.other.push({ fileName, outputPath: outFile, size: entry.header.size });
+        }
+      }
+    }
+  }
+  
+  return {
+    success: true,
+    sourcePath: resolvedPath,
+    outputDir: outputPath,
+    extractType,
+    imageCount: results.images.length,
+    mediaCount: results.media.length,
+    results
   };
 }
 
 // ==================== pptx_slide ====================
 
 /**
- * 幻灯片管理
+ * 幻灯片创建（仅限新建演示文稿）
+ * 
+ * 注意：此工具用于在创建新演示文稿时添加幻灯片
+ * 无法编辑现有 PPTX 文件
+ * 
  * @param {object} params
- * @param {string} params.path - 文件路径
- * @param {string} params.action - 操作: 'add' | 'delete' | 'update'
- * @param {number} [params.slideNumber] - 幻灯片编号（delete/update 时需要）
- * @param {string} [params.title] - 标题（add/update 时）
- * @param {string|string[]} [params.content] - 内容（add/update 时）
- * @param {string} [params.output] - 输出路径
+ * @param {string} params.action - 操作: 'add' (仅支持添加到新演示文稿)
+ * @param {string} params.output - 输出文件路径
+ * @param {string} [params.master] - 母版名称
+ * @param {string} [params.title] - 标题
+ * @param {string|string[]} [params.content] - 内容
+ * @param {object} [params.background] - 背景
+ * @param {object} [params.properties] - 文档属性
+ * @param {Array} [params.slides] - 多个幻灯片数据（批量添加）
  */
 async function pptxSlide(params) {
-  const { path: filePath, action, slideNumber, title, content, output } = params;
+  const { action } = params;
+  
+  if (action !== 'add') {
+    throw new Error(`Invalid action: ${action}. Only 'add' is supported for new presentations. Editing existing files is not supported by pptxgenjs 4.0.`);
+  }
+  
+  return await slideCreate(params);
+}
+
+/**
+ * 创建包含幻灯片的演示文稿
+ */
+async function slideCreate(params) {
+  const { output, master, slides, properties = {} } = params;
+  
+  if (!output) {
+    throw new Error('output path is required');
+  }
   
   const PptxGenJS = getPptxGenJS();
   const pptx = new PptxGenJS();
   
-  const tempPath = resolvePath(filePath);
-  await pptx.loadFile(tempPath);
+  // 设置文档属性
+  pptx.author = properties.author || 'Touwaka Mate';
+  pptx.title = properties.title || '';
+  pptx.subject = properties.subject || '';
+  pptx.company = properties.company || '';
+  
+  if (properties.layout) {
+    pptx.layout = properties.layout;
+  }
+  
+  // 定义母版（如果提供）
+  if (master) {
+    pptx.defineSlideMaster({
+      title: master.name || 'CustomMaster',
+      background: master.background || { color: 'FFFFFF' },
+      objects: master.objects || [],
+      slideNumber: master.slideNumber || { x: 9, y: 5, fontSize: 12 }
+    });
+  }
   
   // 添加幻灯片
-  if (action === 'add') {
-    const slide = pptx.addSlide();
+  if (slides && Array.isArray(slides)) {
+    for (const slideData of slides) {
+      addSlideFromData(pptx, slideData, master?.name);
+    }
+  } else {
+    // 单个幻灯片参数
+    const slideOptions = master?.name ? { masterName: master.name } : {};
+    const slide = pptx.addSlide(slideOptions);
     
-    if (title) {
-      slide.addText(title, {
+    if (params.background) {
+      slide.background = params.background;
+    }
+    
+    if (params.title) {
+      slide.addText(params.title, {
         x: 0.5,
         y: 0.5,
         w: '90%',
         h: 1,
         fontSize: 36,
-        bold: true
+        bold: true,
+        color: '363636'
       });
     }
     
-    if (content) {
-      if (Array.isArray(content)) {
-        slide.addText(content.map(t => ({ text: t, options: { bullet: true } })), {
+    if (params.content) {
+      if (Array.isArray(params.content)) {
+        slide.addText(params.content.map(t => ({ text: t, options: { bullet: true } })), {
           x: 0.5,
           y: 1.5,
           w: '90%',
-          h: 4
+          h: 4,
+          fontSize: 18
         });
       } else {
-        slide.addText(content, {
+        slide.addText(params.content, {
           x: 0.5,
           y: 1.5,
           w: '90%',
-          h: 4
+          h: 4,
+          fontSize: 18
         });
       }
     }
-    
-    const outputPath = output || filePath;
-    await pptx.writeFile({ fileName: resolvePath(outputPath) });
-    
-    return {
-      success: true,
-      path: resolvePath(outputPath),
-      slideAdded: true,
-      totalSlides: pptx.slides.length
-    };
   }
   
-  // 删除幻灯片
-  if (action === 'delete') {
-    if (!slideNumber || slideNumber < 1) {
-      throw new Error('Valid slideNumber is required');
-    }
-    
-    if (slideNumber > pptx.slides.length) {
-      throw new Error(`Slide ${slideNumber} does not exist. Total slides: ${pptx.slides.length}`);
-    }
-    
-    pptx.deleteSlide(slideNumber);
-    
-    const outputPath = output || filePath;
-    await pptx.writeFile({ fileName: resolvePath(outputPath) });
-    
-    return {
-      success: true,
-      path: resolvePath(outputPath),
-      deletedSlide: slideNumber,
-      remainingSlides: pptx.slides.length
-    };
+  // 如果没有幻灯片，创建空白
+  if (pptx.slides.length === 0) {
+    pptx.addSlide();
   }
   
-  // 更新幻灯片
-  if (action === 'update') {
-    if (!slideNumber || slideNumber < 1) {
-      throw new Error('Valid slideNumber is required');
-    }
-    
-    if (slideNumber > pptx.slides.length) {
-      throw new Error(`Slide ${slideNumber} does not exist. Total slides: ${pptx.slides.length}`);
-    }
-    
-    const slide = pptx.getSlide(slideNumber);
-    
-    if (title) {
-      slide.addText(title, {
-        x: 0.5,
-        y: 0.5,
-        w: '90%',
-        h: 1,
-        fontSize: 36,
-        bold: true
-      });
-    }
-    
-    if (content) {
-      if (Array.isArray(content)) {
-        slide.addText(content.map(t => ({ text: t, options: { bullet: true } })), {
-          x: 0.5,
-          y: 1.5,
-          w: '90%',
-          h: 4
-        });
-      } else {
-        slide.addText(content, {
-          x: 0.5,
-          y: 1.5,
-          w: '90%',
-          h: 4
-        });
-      }
-    }
-    
-    const outputPath = output || filePath;
-    await pptx.writeFile({ fileName: resolvePath(outputPath) });
-    
-    return {
-      success: true,
-      path: resolvePath(outputPath),
-      updatedSlide: slideNumber
-    };
-  }
+  const outputPath = resolvePath(output);
+  ensureDir(outputPath);
+  await pptx.writeFile({ fileName: outputPath });
   
-  throw new Error(`Invalid action: ${action}. Must be 'add', 'delete', or 'update'`);
+  return {
+    success: true,
+    path: outputPath,
+    slideCount: pptx.slides.length,
+    note: 'Created new presentation. Editing existing files is not supported.'
+  };
 }
 
-// ==================== pptx_image ====================
+// ==================== pptx_object ====================
 
 /**
- * 图片操作
+ * 内容对象添加（仅限新建演示文稿）
+ * 
+ * 注意：此工具用于在创建新演示文稿时添加内容对象
+ * 无法编辑现有 PPTX 文件
+ * 
  * @param {object} params
- * @param {string} params.path - 文件路径
- * @param {string} params.action - 操作: 'extract' | 'add'
- * @param {string} [params.outputDir] - 输出目录（extract 时）
- * @param {number} [params.slideNumber] - 幻灯片编号（add 时）
- * @param {string} [params.imagePath] - 图片路径（add 时）
- * @param {number} [params.x] - X 坐标（add 时）
- * @param {number} [params.y] - Y 坐标（add 时）
- * @param {number} [params.width] - 宽度（add 时）
- * @param {number} [params.height] - 高度（add 时）
- * @param {string} [params.output] - 输出路径（add 时）
+ * @param {string} params.action - 操作: 'add' | 'extract'
+ * @param {string} [params.output] - 输出文件路径 (add)
+ * @param {string} [params.path] - 现有文件路径 (extract)
+ * @param {number} [params.slideNumber] - 幻灯片编号 (add)
+ * @param {string} params.type - 对象类型: 'text' | 'image' | 'table' | 'chart' | 'shape' | 'media' | 'notes'
+ * @param {string} [params.text] - 文本内容
+ * @param {object} [params.options] - 文本选项
+ * @param {object} [params.image] - 图片配置
+ * @param {object} [params.table] - 表格配置
+ * @param {object} [params.chart] - 图表配置
+ * @param {object} [params.shape] - 形状配置
+ * @param {object} [params.media] - 媒体配置
+ * @param {string} [params.notes] - 演讲者备注
+ * @param {object} [params.properties] - 文档属性
+ * @param {string} [params.outputDir] - 提取输出目录 (extract)
  */
-async function pptxImage(params) {
-  const { path: filePath, action, outputDir, slideNumber, imagePath, x, y, width, height, output } = params;
+async function pptxObject(params) {
+  const { action } = params;
   
-  // 提取图片
-  if (action === 'extract') {
-    const zip = new AdmZip(filePath);
-    const entries = zip.getEntries();
-    
-    const images = [];
-    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.emf', '.wmf'];
-    
-    const resolvedOutputDir = outputDir ? resolvePath(outputDir) : null;
-    if (resolvedOutputDir && !fs.existsSync(resolvedOutputDir)) {
-      fs.mkdirSync(resolvedOutputDir, { recursive: true });
-    }
-    
+  switch (action) {
+    case 'add':
+      return await objectAdd(params);
+    case 'extract':
+      return await objectExtract(params);
+    default:
+      throw new Error(`Invalid action: ${action}. Must be 'add' or 'extract'. Editing existing files is not supported.`);
+  }
+}
+
+/**
+ * 添加对象到新演示文稿
+ */
+async function objectAdd(params) {
+  const { output, slideNumber = 1, type, properties = {} } = params;
+  
+  if (!output) {
+    throw new Error('output path is required');
+  }
+  
+  const PptxGenJS = getPptxGenJS();
+  const pptx = new PptxGenJS();
+  
+  // 设置文档属性
+  pptx.author = properties.author || 'Touwaka Mate';
+  pptx.title = properties.title || '';
+  
+  if (properties.layout) {
+    pptx.layout = properties.layout;
+  }
+  
+  // 创建幻灯片
+  const slide = pptx.addSlide();
+  
+  // 添加对象
+  switch (type) {
+    case 'text':
+      addObjectText(slide, params);
+      break;
+    case 'image':
+      addObjectImage(slide, params);
+      break;
+    case 'table':
+      addObjectTable(slide, params);
+      break;
+    case 'chart':
+      addObjectChart(slide, params);
+      break;
+    case 'shape':
+      addObjectShape(slide, params);
+      break;
+    case 'media':
+      addObjectMedia(slide, params);
+      break;
+    case 'notes':
+      addObjectNotes(slide, params);
+      break;
+    default:
+      throw new Error(`Invalid type: ${type}. Must be 'text', 'image', 'table', 'chart', 'shape', 'media', or 'notes'`);
+  }
+  
+  const outputPath = resolvePath(output);
+  ensureDir(outputPath);
+  await pptx.writeFile({ fileName: outputPath });
+  
+  return {
+    success: true,
+    path: outputPath,
+    objectAdded: type,
+    slideNumber,
+    note: 'Created new presentation with object. Editing existing files is not supported.'
+  };
+}
+
+/**
+ * 添加文本
+ */
+function addObjectText(slide, params) {
+  const { text, options = {} } = params;
+  
+  if (!text) {
+    throw new Error('text is required for type "text"');
+  }
+  
+  const defaultOptions = {
+    x: 0.5,
+    y: 0.5,
+    w: '90%',
+    h: 0.5,
+    fontSize: 18,
+    color: '363636'
+  };
+  
+  slide.addText(text, { ...defaultOptions, ...options });
+}
+
+/**
+ * 添加图片
+ */
+function addObjectImage(slide, params) {
+  const { image } = params;
+  
+  if (!image) {
+    throw new Error('image config is required for type "image"');
+  }
+  
+  // 支持路径或 base64
+  const imageConfig = {
+    x: image.x || 0.5,
+    y: image.y || 1,
+    w: image.w || 4,
+    h: image.h || 3,
+    sizing: image.sizing
+  };
+  
+  if (image.path) {
+    const imgPath = resolvePath(image.path);
+    imageConfig.path = imgPath;
+  } else if (image.data) {
+    imageConfig.data = image.data;
+  } else {
+    throw new Error('image.path or image.data is required');
+  }
+  
+  slide.addImage(imageConfig);
+}
+
+/**
+ * 添加表格
+ */
+function addObjectTable(slide, params) {
+  const { table } = params;
+  
+  if (!table || !table.rows) {
+    throw new Error('table.rows is required for type "table"');
+  }
+  
+  slide.addTable(table.rows, {
+    x: table.x || 0.5,
+    y: table.y || 1,
+    w: table.w || 9,
+    colW: table.colW,
+    border: table.border || { pt: 1, color: 'CFCFCF' },
+    fontFace: table.fontFace || 'Arial',
+    fontSize: table.fontSize || 12,
+    align: table.align || 'left'
+  });
+}
+
+/**
+ * 添加图表
+ */
+function addObjectChart(slide, params) {
+  const { chart } = params;
+  
+  if (!chart || !chart.type || !chart.data) {
+    throw new Error('chart.type and chart.data are required for type "chart"');
+  }
+  
+  // 支持的图表类型
+  const validTypes = [
+    'bar', 'bar3D', 'line', 'line3D', 'pie', 'pie3D', 
+    'doughnut', 'area', 'area3D', 'scatter', 'bubble', 
+    'radar', 'radar3D', 'bubble3D'
+  ];
+  
+  if (!validTypes.includes(chart.type)) {
+    throw new Error(`Invalid chart type: ${chart.type}. Valid types: ${validTypes.join(', ')}`);
+  }
+  
+  // 转换数据格式
+  const chartData = chart.data.map(series => ({
+    name: series.name,
+    labels: series.labels,
+    values: series.values
+  }));
+  
+  slide.addChart(chart.type, chartData, {
+    x: chart.x || 1,
+    y: chart.y || 1,
+    w: chart.w || 8,
+    h: chart.h || 5,
+    title: chart.title,
+    showLegend: chart.showLegend !== false,
+    legendPos: chart.legendPos || 'r',
+    chartColors: chart.colors
+  });
+}
+
+/**
+ * 添加形状
+ */
+function addObjectShape(slide, params) {
+  const { shape } = params;
+  
+  if (!shape) {
+    throw new Error('shape config is required for type "shape"');
+  }
+  
+  slide.addShape(shape.type || 'rect', {
+    x: shape.x || 0,
+    y: shape.y || 0,
+    w: shape.w || 1,
+    h: shape.h || 1,
+    fill: shape.fill || { color: 'CCCCCC' },
+    line: shape.line || { color: '000000', width: 1 }
+  });
+}
+
+/**
+ * 添加媒体
+ */
+function addObjectMedia(slide, params) {
+  const { media } = params;
+  
+  if (!media) {
+    throw new Error('media config is required for type "media"');
+  }
+  
+  const mediaConfig = {
+    type: media.type || 'video',
+    x: media.x || 1,
+    y: media.y || 1,
+    w: media.w || 6,
+    h: media.h || 4
+  };
+  
+  if (media.path) {
+    const mediaPath = resolvePath(media.path);
+    mediaConfig.path = mediaPath;
+  } else if (media.data) {
+    mediaConfig.data = media.data;
+  } else {
+    throw new Error('media.path or media.data is required');
+  }
+  
+  slide.addMedia(mediaConfig);
+}
+
+/**
+ * 添加演讲者备注
+ */
+function addObjectNotes(slide, params) {
+  const { notes } = params;
+  
+  if (!notes) {
+    throw new Error('notes is required for type "notes"');
+  }
+  
+  slide.addNotes(notes);
+}
+
+/**
+ * 提取对象
+ */
+async function objectExtract(params) {
+  const { path: filePath, type, outputDir } = params;
+  
+  const resolvedPath = resolvePath(filePath);
+  const { zip, entries, error } = safeOpenZip(resolvedPath);
+  
+  if (error) {
+    return { success: false, error };
+  }
+  
+  const outputPath = outputDir ? resolvePath(outputDir) : null;
+  if (outputPath && !fs.existsSync(outputPath)) {
+    fs.mkdirSync(outputPath, { recursive: true });
+  }
+  
+  const results = [];
+  
+  if (type === 'image' || type === 'images') {
     for (const entry of entries) {
       const entryName = entry.entryName;
       const ext = path.extname(entryName).toLowerCase();
       
-      if (entryName.startsWith('ppt/media/') && imageExtensions.includes(ext)) {
+      if (entryName.startsWith('ppt/media/') && IMAGE_EXTENSIONS.includes(ext)) {
         const fileName = path.basename(entryName);
         
-        if (resolvedOutputDir) {
-          const outputPath = path.join(resolvedOutputDir, fileName);
-          fs.writeFileSync(outputPath, entry.getData());
+        if (outputPath) {
+          const outFile = path.join(outputPath, fileName);
+          fs.writeFileSync(outFile, entry.getData());
         }
         
-        images.push({
+        results.push({
           originalPath: entryName,
-          fileName
+          fileName,
+          extracted: outputPath ? true : false
+        });
+      }
+    }
+  }
+  
+  if (type === 'media') {
+    for (const entry of entries) {
+      const entryName = entry.entryName;
+      const ext = path.extname(entryName).toLowerCase();
+      
+      if (entryName.startsWith('ppt/media/') && MEDIA_EXTENSIONS.includes(ext)) {
+        const fileName = path.basename(entryName);
+        
+        if (outputPath) {
+          const outFile = path.join(outputPath, fileName);
+          fs.writeFileSync(outFile, entry.getData());
+        }
+        
+        results.push({
+          originalPath: entryName,
+          fileName,
+          extracted: outputPath ? true : false
+        });
+      }
+    }
+  }
+  
+  if (type === 'text') {
+    for (const entry of entries) {
+      const match = entry.entryName.match(/ppt\/slides\/slide(\d+)\.xml/);
+      if (match) {
+        const slideNum = parseInt(match[1]);
+        const slideXml = zip.readAsText(entry.entryName);
+        const textMatches = slideXml.match(/<a:t>([^<]*)<\/a:t>/g) || [];
+        const texts = textMatches.map(m => m.replace(/<a:t>|<\/a:t>/g, ''));
+        
+        results.push({
+          slide: slideNum,
+          texts
         });
       }
     }
     
-    return {
-      success: true,
-      imageCount: images.length,
-      images,
-      outputDir: resolvedOutputDir
-    };
+    // 按幻灯片编号排序
+    results.sort((a, b) => a.slide - b.slide);
   }
   
-  // 添加图片
-  if (action === 'add') {
-    const PptxGenJS = getPptxGenJS();
-    const pptx = new PptxGenJS();
-    
-    const tempPath = resolvePath(filePath);
-    await pptx.loadFile(tempPath);
-    
-    const slideNum = slideNumber || 1;
-    
-    if (slideNum > pptx.slides.length) {
-      throw new Error(`Slide ${slideNum} does not exist`);
-    }
-    
-    const slide = pptx.getSlide(slideNum);
-    
-    const imgPath = resolvePath(imagePath);
-    
-    slide.addImage({
-      path: imgPath,
-      x: x || 0.5,
-      y: y || 1,
-      w: width || 4,
-      h: height || 3
-    });
-    
-    const outputPath = output || filePath;
-    await pptx.writeFile({ fileName: resolvePath(outputPath) });
-    
-    return {
-      success: true,
-      path: resolvePath(outputPath),
-      imageAdded: true
-    };
-  }
-  
-  throw new Error(`Invalid action: ${action}. Must be 'extract' or 'add'`);
+  return {
+    success: true,
+    path: resolvedPath,
+    type,
+    count: results.length,
+    outputDir: outputPath,
+    items: results
+  };
 }
 
-// ==================== pptx_table ====================
+// ==================== pptx_master ====================
 
 /**
- * 添加表格
+ * 模板定义（仅限新建演示文稿）
+ * 
+ * 注意：此工具用于在创建新演示文稿时定义母版
+ * 无法编辑现有 PPTX 文件
+ * 
  * @param {object} params
- * @param {string} params.path - 文件路径
- * @param {number} [params.slideNumber] - 幻灯片编号
- * @param {Array} params.rows - 表格行数据
- * @param {number} [params.x] - X 坐标
- * @param {number} [params.y] - Y 坐标
- * @param {number} [params.width] - 宽度
- * @param {number[]} [params.colWidths] - 列宽
- * @param {object} [params.options] - 表格选项
- * @param {string} [params.output] - 输出路径
+ * @param {string} params.action - 操作: 'define' | 'list'
+ * @param {string} [params.path] - 现有文件路径 (list)
+ * @param {string} [params.output] - 输出文件路径 (define)
+ * @param {string} [params.name] - 母版名称
+ * @param {object} [params.background] - 背景
+ * @param {Array} [params.objects] - 母版对象
+ * @param {object} [params.slideNumber] - 幻灯片编号配置
+ * @param {object} [params.margin] - 边距
+ * @param {object} [params.properties] - 文档属性
  */
-async function pptxTable(params) {
-  const { path: filePath, slideNumber, rows, x, y, width, colWidths, options = {}, output } = params;
+async function pptxMaster(params) {
+  const { action } = params;
   
-  if (!rows || !Array.isArray(rows)) {
-    throw new Error('rows array is required');
+  switch (action) {
+    case 'define':
+      return await masterDefine(params);
+    case 'list':
+      return await masterList(params);
+    default:
+      throw new Error(`Invalid action: ${action}. Must be 'define' or 'list'. Editing existing files is not supported.`);
+  }
+}
+
+/**
+ * 定义母版并创建演示文稿
+ */
+async function masterDefine(params) {
+  const { output, name, background, objects, slideNumber, margin, properties = {} } = params;
+  
+  if (!name) {
+    throw new Error('name is required for master definition');
+  }
+  
+  if (!output) {
+    throw new Error('output path is required');
   }
   
   const PptxGenJS = getPptxGenJS();
   const pptx = new PptxGenJS();
   
-  const tempPath = resolvePath(filePath);
-  await pptx.loadFile(tempPath);
+  // 设置文档属性
+  pptx.author = properties.author || 'Touwaka Mate';
+  pptx.title = properties.title || name;
   
-  const slideNum = slideNumber || 1;
-  
-  if (slideNum > pptx.slides.length) {
-    throw new Error(`Slide ${slideNum} does not exist`);
+  if (properties.layout) {
+    pptx.layout = properties.layout;
   }
   
-  const slide = pptx.getSlide(slideNum);
+  // 定义母版
+  const masterDef = {
+    title: name,
+    background: background || { color: 'FFFFFF' },
+    objects: objects || [],
+    slideNumber: slideNumber || { x: 9, y: 5, fontSize: 12 }
+  };
   
-  slide.addTable(rows, {
-    x: x || 0.5,
-    y: y || 1,
-    w: width || 9,
-    colW: colWidths,
-    border: options.border || { pt: 1, color: 'CFCFCF' },
-    fontFace: options.fontFace || 'Arial',
-    fontSize: options.fontSize || 12,
-    align: options.align || 'left'
-  });
+  if (margin) {
+    masterDef.margin = margin;
+  }
   
-  const outputPath = output || filePath;
-  await pptx.writeFile({ fileName: resolvePath(outputPath) });
+  pptx.defineSlideMaster(masterDef);
+  
+  // 创建一个使用该母版的示例幻灯片
+  pptx.addSlide({ masterName: name });
+  
+  const outputPath = resolvePath(output);
+  ensureDir(outputPath);
+  await pptx.writeFile({ fileName: outputPath });
   
   return {
     success: true,
-    path: resolvePath(outputPath),
-    tableAdded: true
+    path: outputPath,
+    masterName: name,
+    slideCount: pptx.slides.length,
+    note: 'Created new presentation with master. Editing existing files is not supported.'
   };
 }
 
-// ==================== pptx_export ====================
+/**
+ * 列出母版
+ */
+async function masterList(params) {
+  const { path: filePath } = params;
+  
+  if (!filePath) {
+    throw new Error('path is required for listing masters');
+  }
+  
+  const resolvedPath = resolvePath(filePath);
+  const { zip, entries, error } = safeOpenZip(resolvedPath);
+  
+  if (error) {
+    return { success: false, error };
+  }
+  
+  const masters = [];
+  
+  for (const entry of entries) {
+    if (entry.entryName.match(/ppt\/slideLayouts\/slideLayout\d+\.xml/)) {
+      const layoutXml = zip.readAsText(entry.entryName);
+      
+      // 提取布局名称
+      const nameMatch = layoutXml.match(/<p:cSld name="([^"]*)"/);
+      const name = nameMatch ? nameMatch[1] : path.basename(entry.entryName, '.xml');
+      
+      masters.push({
+        name,
+        path: entry.entryName
+      });
+    }
+  }
+  
+  return {
+    success: true,
+    path: resolvedPath,
+    masterCount: masters.length,
+    masters
+  };
+}
+
+// ==================== 辅助函数 ====================
 
 /**
- * 导出操作
- * @param {object} params
- * @param {string} params.path - 文件路径
- * @param {string} params.action - 操作: 'images' | 'thumbnail' | 'merge'
- * @param {string} [params.outputDir] - 输出目录（images 时）
- * @param {string} [params.output] - 输出路径（thumbnail/merge 时）
- * @param {number} [params.slideNumber] - 幻灯片编号（thumbnail 时）
- * @param {number} [params.width] - 宽度（thumbnail 时）
- * @param {number} [params.height] - 高度（thumbnail 时）
- * @param {string[]} [params.paths] - 要合并的文件列表（merge 时）
+ * 从数据添加幻灯片
  */
-async function pptxExport(params) {
-  const { path: filePath, action, outputDir, output, slideNumber, width, height, paths } = params;
+function addSlideFromData(pptx, slideData, masterName) {
+  const slideOptions = masterName ? { masterName } : {};
+  const slide = pptx.addSlide(slideOptions);
   
-  // 导出为图片
-  if (action === 'images') {
-    return {
-      success: false,
-      error: 'Direct PPTX to image export is not supported in Node.js.',
-      alternatives: [
-        'Use LibreOffice: libreoffice --headless --convert-to pdf input.pptx',
-        'Use pdf2pptx or similar tools',
-        'Use Python python-pptx with comtypes (Windows only)',
-        'Use cloud services like CloudConvert or Aspose'
-      ]
-    };
+  // 背景
+  if (slideData.background) {
+    slide.background = slideData.background;
   }
   
-  // 生成缩略图
-  if (action === 'thumbnail') {
-    return {
-      success: false,
-      error: 'Direct thumbnail generation is not supported in Node.js.',
-      alternatives: [
-        'Use LibreOffice to convert to PDF first, then use pdf2pic',
-        'Use cloud services for thumbnail generation'
-      ]
-    };
+  // 标题
+  if (slideData.title) {
+    slide.addText(slideData.title, {
+      x: 0.5,
+      y: 0.5,
+      w: '90%',
+      h: 1,
+      fontSize: 36,
+      bold: true,
+      color: '363636'
+    });
   }
   
-  // 合并演示文稿
-  if (action === 'merge') {
-    const filesToMerge = filePath ? [filePath, ...(paths || [])] : paths;
-    
-    if (!filesToMerge || filesToMerge.length < 2) {
-      throw new Error('At least 2 presentation files are required');
-    }
-    
-    const PptxGenJS = getPptxGenJS();
-    const mergedPptx = new PptxGenJS();
-    
-    for (const fp of filesToMerge) {
-      const tempPath = resolvePath(fp);
-      const tempPptx = new PptxGenJS();
-      await tempPptx.loadFile(tempPath);
-      
-      for (const slide of tempPptx.slides) {
-        const newSlide = mergedPptx.addSlide();
-        // Copy slide content - limited support
+  // 内容
+  if (slideData.content) {
+    slide.addText(slideData.content, {
+      x: 0.5,
+      y: 1.5,
+      w: '90%',
+      h: 4,
+      fontSize: 18,
+      color: '666666'
+    });
+  }
+  
+  // 文本列表
+  if (slideData.texts && Array.isArray(slideData.texts)) {
+    let yPos = slideData.title ? 1.5 : 0.5;
+    for (const textItem of slideData.texts) {
+      if (typeof textItem === 'string') {
+        slide.addText(textItem, { x: 0.5, y: yPos, w: '90%', fontSize: 18 });
+        yPos += 0.8;
+      } else {
+        slide.addText(textItem.text || '', {
+          x: textItem.x || 0.5,
+          y: textItem.y || yPos,
+          w: textItem.w || '90%',
+          h: textItem.h || 0.5,
+          fontSize: textItem.fontSize || 18,
+          bold: textItem.bold,
+          italic: textItem.italic,
+          color: textItem.color,
+          align: textItem.align
+        });
       }
     }
-    
-    const outputPath = output || 'merged.pptx';
-    await mergedPptx.writeFile({ fileName: resolvePath(outputPath) });
-    
-    return {
-      success: true,
-      path: resolvePath(outputPath),
-      mergedFrom: filesToMerge.length,
-      totalSlides: mergedPptx.slides.length
-    };
   }
   
-  throw new Error(`Invalid action: ${action}. Must be 'images', 'thumbnail', or 'merge'`);
+  // 图片
+  if (slideData.images && Array.isArray(slideData.images)) {
+    for (const img of slideData.images) {
+      try {
+        const imgConfig = {
+          x: img.x || 0.5,
+          y: img.y || 1,
+          w: img.w || 4,
+          h: img.h || 3
+        };
+        
+        if (img.path) {
+          imgConfig.path = resolvePath(img.path);
+        } else if (img.data) {
+          imgConfig.data = img.data;
+        }
+        
+        slide.addImage(imgConfig);
+      } catch (e) {}
+    }
+  }
+  
+  // 表格
+  if (slideData.tables && Array.isArray(slideData.tables)) {
+    for (const tableData of slideData.tables) {
+      slide.addTable(tableData.rows || [], {
+        x: tableData.x || 0.5,
+        y: tableData.y || 1,
+        w: tableData.w || 9,
+        colW: tableData.colW,
+        border: tableData.border || { pt: 1, color: 'CFCFCF' },
+        fontFace: tableData.fontFace || 'Arial',
+        fontSize: tableData.fontSize || 12
+      });
+    }
+  }
+  
+  // 形状
+  if (slideData.shapes && Array.isArray(slideData.shapes)) {
+    for (const shape of slideData.shapes) {
+      slide.addShape(shape.type || 'rect', {
+        x: shape.x || 0,
+        y: shape.y || 0,
+        w: shape.w || 1,
+        h: shape.h || 1,
+        fill: shape.fill || { color: 'CCCCCC' },
+        line: shape.line
+      });
+    }
+  }
+  
+  // 图表
+  if (slideData.charts && Array.isArray(slideData.charts)) {
+    for (const chartData of slideData.charts) {
+      const chartDataFormatted = chartData.data.map(series => ({
+        name: series.name,
+        labels: series.labels,
+        values: series.values
+      }));
+      
+      slide.addChart(chartData.type, chartDataFormatted, {
+        x: chartData.x || 1,
+        y: chartData.y || 1,
+        w: chartData.w || 8,
+        h: chartData.h || 5,
+        title: chartData.title,
+        showLegend: chartData.showLegend !== false
+      });
+    }
+  }
+  
+  // 演讲者备注
+  if (slideData.notes) {
+    slide.addNotes(slideData.notes);
+  }
+}
+
+/**
+ * 从 Markdown 创建演示文稿
+ */
+function createFromMarkdown(pptx, markdown) {
+  const lines = markdown.split('\n');
+  let currentSlide = null;
+  let slideContent = [];
+  
+  for (const line of lines) {
+    // 一级标题 = 新幻灯片
+    if (line.startsWith('# ') && !line.startsWith('## ')) {
+      if (currentSlide) {
+        finalizeMarkdownSlide(pptx, currentSlide, slideContent);
+      }
+      
+      currentSlide = { title: line.substring(2) };
+      slideContent = [];
+    }
+    // 二级标题 = 内容标题
+    else if (line.startsWith('## ')) {
+      if (currentSlide) {
+        slideContent.push({ type: 'heading', text: line.substring(3) });
+      }
+    }
+    // 列表项
+    else if (line.startsWith('- ') || line.startsWith('* ')) {
+      slideContent.push({ type: 'bullet', text: line.substring(2) });
+    }
+    // 普通文本
+    else if (line.trim() && currentSlide) {
+      slideContent.push({ type: 'text', text: line });
+    }
+  }
+  
+  // 处理最后一个幻灯片
+  if (currentSlide) {
+    finalizeMarkdownSlide(pptx, currentSlide, slideContent);
+  }
+  
+  // 如果没有幻灯片，创建空白
+  if (pptx.slides.length === 0) {
+    pptx.addSlide();
+  }
+}
+
+/**
+ * 完成 Markdown 幻灯片
+ */
+function finalizeMarkdownSlide(pptx, slideInfo, content) {
+  const slide = pptx.addSlide();
+  
+  // 标题
+  if (slideInfo.title) {
+    slide.addText(slideInfo.title, {
+      x: 0.5,
+      y: 0.5,
+      w: '90%',
+      h: 1,
+      fontSize: 36,
+      bold: true
+    });
+  }
+  
+  // 内容
+  if (content.length > 0) {
+    const bulletItems = content
+      .filter(c => c.type === 'bullet')
+      .map(c => ({ text: c.text, options: { bullet: true } }));
+    
+    if (bulletItems.length > 0) {
+      slide.addText(bulletItems, {
+        x: 0.5,
+        y: 1.5,
+        w: '90%',
+        h: 4,
+        fontSize: 18
+      });
+    }
+  }
 }
 
 // ==================== 技能入口 ====================
@@ -914,72 +1345,20 @@ async function pptxExport(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'pptx_read':
-      return await pptxRead(params);
-      
-    case 'pptx_write':
-      return await pptxWrite(params);
+    case 'pptx_file':
+      return await pptxFile(params);
       
     case 'pptx_slide':
       return await pptxSlide(params);
       
-    case 'pptx_image':
-      return await pptxImage(params);
+    case 'pptx_object':
+      return await pptxObject(params);
       
-    case 'pptx_table':
-      return await pptxTable(params);
-      
-    case 'pptx_export':
-      return await pptxExport(params);
-      
-    // 兼容旧工具名
-    case 'read_presentation':
-    case 'read':
-      return await pptxRead({ ...params, scope: 'info' });
-      
-    case 'extract_text':
-      return await pptxRead({ ...params, scope: 'text' });
-      
-    case 'extract_structure':
-      return await pptxRead({ ...params, scope: 'structure' });
-      
-    case 'create_presentation':
-    case 'create':
-      return await pptxWrite({ ...params, source: 'data' });
-      
-    case 'from_markdown':
-      return await pptxWrite({ ...params, source: 'markdown' });
-      
-    case 'add_slide':
-      return await pptxSlide({ ...params, action: 'add' });
-      
-    case 'delete_slide':
-      return await pptxSlide({ ...params, action: 'delete' });
-      
-    case 'update_slide':
-      return await pptxSlide({ ...params, action: 'update' });
-      
-    case 'extract_images':
-      return await pptxImage({ ...params, action: 'extract' });
-      
-    case 'add_image':
-      return await pptxImage({ ...params, action: 'add' });
-      
-    case 'add_table':
-      return await pptxTable(params);
-      
-    case 'export_to_images':
-      return await pptxExport({ ...params, action: 'images' });
-      
-    case 'generate_thumbnail':
-      return await pptxExport({ ...params, action: 'thumbnail' });
-      
-    case 'merge_presentations':
-    case 'merge':
-      return await pptxExport({ ...params, action: 'merge' });
+    case 'pptx_master':
+      return await pptxMaster(params);
       
     default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: pptx_read, pptx_write, pptx_slide, pptx_image, pptx_table, pptx_export`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: pptx_file, pptx_slide, pptx_object, pptx_master`);
   }
 }
 
