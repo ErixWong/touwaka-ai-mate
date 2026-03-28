@@ -44,6 +44,10 @@ import { fileURLToPath } from 'url';
 import xlsx from 'xlsx';
 import exceljs from 'exceljs';
 import hyperformula from 'hyperformula';
+import * as docx from 'docx';
+import mammoth from 'mammoth';
+import AdmZip from 'adm-zip';
+import xml2js from 'xml2js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -258,6 +262,11 @@ function executeSkill(code, skillId) {
         'xlsx': xlsx,
         'exceljs': exceljs,
         'hyperformula': hyperformula,
+        // npm 模块（用于测试 docx 技能）
+        'docx': docx,
+        'mammoth': mammoth,
+        'adm-zip': AdmZip,
+        'xml2js': xml2js,
       };
       
       if (moduleMap[moduleName]) {

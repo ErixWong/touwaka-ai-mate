@@ -1,19 +1,22 @@
 /**
- * DOCX Skill - Word 文档处理技能 (Node.js 版本)
+ * DOCX Skill - Word 文档处理技能 (重构版本)
  * 
  * 功能：
  * - 读取 Word 文档内容和元数据
- * - 创建新文档
- * - 编辑文档内容
+ * - 创建新文档（支持页眉页脚、分节）
+ * - 模板填充（Patcher API，保留原文档样式）
+ * - 编辑文档内容（使用 Patcher 保留格式）
  * - 段落和文本格式化
  * - 表格操作
  * - 图片插入
  * - 文档转换（Markdown、HTML）
+ * - 超链接支持
+ * - 目录生成
  * 
  * 依赖：
- * - docx: 文档创建和编辑
+ * - docx v9: 文档创建、编辑和 Patcher API
  * - mammoth: 文档读取和转换
- * - adm-zip: ZIP 操作（项目已安装）
+ * - adm-zip: ZIP 操作
  * - xml2js: XML 解析
  */
 
@@ -151,21 +154,22 @@ function saveFile(filePath, data) {
  * 读取 Word 文档
  * @param {object} params
  * @param {string} params.path - 文件路径
- * @param {string} params.scope - 读取范围: 'info' | 'text' | 'paragraphs' | 'tables' | 'comments'
+ * @param {string} params.scope - 读取范围: 'info' | 'text' | 'paragraphs' | 'tables' | 'comments' | 'images' | 'headers' | 'footers'
  * @param {boolean} [params.includeFormatting] - 是否包含格式（scope 为 text 时）
  * @param {boolean} [params.includeStyles] - 是否包含样式（scope 为 paragraphs 时）
  */
 async function docxRead(params) {
   const { path: filePath, scope = 'info', includeFormatting = false, includeStyles = false } = params;
   
-  const buffer = readFile(filePath);
+  const resolvedPath = resolvePath(filePath);
+  const buffer = fs.readFileSync(resolvedPath);
   const mammoth = getMammoth();
   
   // 读取文档信息
   if (scope === 'info') {
     const result = await mammoth.extractRawText({ buffer });
     
-    const zip = new AdmZip(filePath);
+    const zip = new AdmZip(resolvedPath);
     const coreXml = zip.readAsText('docProps/core.xml');
     
     const metadata = {};
@@ -185,6 +189,11 @@ async function docxRead(params) {
       }
     }
     
+    // 检查是否有页眉页脚
+    const entries = zip.getEntries();
+    const hasHeader = entries.some(e => e.entryName.startsWith('word/header'));
+    const hasFooter = entries.some(e => e.entryName.startsWith('word/footer'));
+    
     const paragraphs = result.value.split('\n').filter(p => p.trim());
     
     return {
@@ -192,7 +201,9 @@ async function docxRead(params) {
       metadata,
       paragraphCount: paragraphs.length,
       characterCount: result.value.length,
-      wordCount: result.value.split(/\s+/).filter(w => w).length
+      wordCount: result.value.split(/\s+/).filter(w => w).length,
+      hasHeader,
+      hasFooter
     };
   }
   
@@ -223,7 +234,7 @@ async function docxRead(params) {
     const paragraphs = result.value.split('\n').filter(p => p.trim());
     
     if (includeStyles) {
-      const zip = new AdmZip(filePath);
+      const zip = new AdmZip(resolvedPath);
       const docXml = zip.readAsText('word/document.xml');
       
       return {
@@ -297,7 +308,7 @@ async function docxRead(params) {
   
   // 提取批注
   if (scope === 'comments') {
-    const zip = new AdmZip(filePath);
+    const zip = new AdmZip(resolvedPath);
     
     let commentsXml;
     try {
@@ -358,7 +369,88 @@ async function docxRead(params) {
     };
   }
   
-  throw new Error(`Invalid scope: ${scope}. Must be 'info', 'text', 'paragraphs', 'tables', or 'comments'`);
+  // 提取图片信息
+  if (scope === 'images') {
+    const zip = new AdmZip(resolvedPath);
+    const entries = zip.getEntries();
+    
+    const images = [];
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.emf', '.wmf', '.svg'];
+    
+    for (const entry of entries) {
+      const entryName = entry.entryName;
+      const ext = path.extname(entryName).toLowerCase();
+      
+      if (entryName.startsWith('word/media/') && imageExtensions.includes(ext)) {
+        images.push({
+          path: entryName,
+          fileName: path.basename(entryName),
+          extension: ext,
+          size: entry.getData().length
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      imageCount: images.length,
+      images
+    };
+  }
+  
+  // 提取页眉内容
+  if (scope === 'headers') {
+    const zip = new AdmZip(resolvedPath);
+    const entries = zip.getEntries();
+    
+    const headers = [];
+    for (const entry of entries) {
+      if (entry.entryName.startsWith('word/header') && entry.entryName.endsWith('.xml')) {
+        const headerXml = zip.readAsText(entry.entryName);
+        // 简化提取文本
+        const textMatch = headerXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+        const text = textMatch ? textMatch.map(m => m.replace(/<[^>]+>/g, '')).join('') : '';
+        headers.push({
+          file: entry.entryName,
+          text
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      headerCount: headers.length,
+      headers
+    };
+  }
+  
+  // 提取页脚内容
+  if (scope === 'footers') {
+    const zip = new AdmZip(resolvedPath);
+    const entries = zip.getEntries();
+    
+    const footers = [];
+    for (const entry of entries) {
+      if (entry.entryName.startsWith('word/footer') && entry.entryName.endsWith('.xml')) {
+        const footerXml = zip.readAsText(entry.entryName);
+        // 简化提取文本
+        const textMatch = footerXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g);
+        const text = textMatch ? textMatch.map(m => m.replace(/<[^>]+>/g, '')).join('') : '';
+        footers.push({
+          file: entry.entryName,
+          text
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      footerCount: footers.length,
+      footers
+    };
+  }
+  
+  throw new Error(`Invalid scope: ${scope}. Must be 'info', 'text', 'paragraphs', 'tables', 'comments', 'images', 'headers', or 'footers'`);
 }
 
 // ==================== docx_write ====================
@@ -372,185 +464,297 @@ async function docxRead(params) {
  * @param {Array} [params.content] - 内容数据（source 为 data 时）
  * @param {string} [params.markdown] - Markdown 内容（source 为 markdown 时）
  * @param {object} [params.properties] - 文档属性
+ * @param {object} [params.header] - 页眉配置
+ * @param {object} [params.footer] - 页脚配置
+ * @param {Array} [params.sections] - 多节配置
  */
 async function docxWrite(params) {
-  const { path: filePath, source = 'data', title, content = [], markdown, properties = {} } = params;
+  const { 
+    path: filePath, 
+    source = 'data', 
+    title, 
+    content = [], 
+    markdown, 
+    properties = {},
+    header,
+    footer,
+    sections
+  } = params;
   
   const docx = getDocx();
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = docx;
+  const { 
+    Document, 
+    Packer, 
+    Paragraph, 
+    TextRun, 
+    HeadingLevel,
+    Header,
+    Footer,
+    PageNumber,
+    Table,
+    TableRow,
+    TableCell,
+    AlignmentType,
+    BorderStyle
+  } = docx;
   
-  const children = [];
-  
-  // 从数据创建
-  if (source === 'data') {
-    if (title) {
-      children.push(new Paragraph({
-        text: title,
-        heading: HeadingLevel.HEADING_1
-      }));
-      children.push(new Paragraph({ text: '' }));
-    }
+  // 构建节配置
+  const buildSection = (sectionContent, sectionConfig = {}) => {
+    const children = [];
     
-    for (const item of content) {
-      if (typeof item === 'string') {
-        children.push(new Paragraph({ text: item }));
-      } else if (item.type === 'heading') {
-        const level = item.level || 1;
-        const headingMap = {
-          1: HeadingLevel.HEADING_1,
-          2: HeadingLevel.HEADING_2,
-          3: HeadingLevel.HEADING_3,
-          4: HeadingLevel.HEADING_4,
-          5: HeadingLevel.HEADING_5,
-          6: HeadingLevel.HEADING_6
-        };
+    // 从数据创建
+    if (source === 'data' || sectionContent) {
+      const items = sectionContent || content;
+      
+      if (title && !sectionConfig.noTitle) {
         children.push(new Paragraph({
-          text: item.text,
-          heading: headingMap[level] || HeadingLevel.HEADING_1
+          text: title,
+          heading: HeadingLevel.HEADING_1
         }));
-      } else if (item.type === 'paragraph') {
-        const textRuns = [];
-        if (item.runs && Array.isArray(item.runs)) {
-          for (const run of item.runs) {
-            textRuns.push(new TextRun({
-              text: run.text || '',
-              bold: run.bold,
-              italics: run.italics,
-              underline: run.underline ? {} : undefined,
-              size: run.size,
-              color: run.color
-            }));
-          }
-        } else {
-          textRuns.push(new TextRun({ text: item.text || '' }));
-        }
-        children.push(new Paragraph({ children: textRuns }));
-      } else if (item.type === 'table') {
-        const tableRows = [];
-        if (item.headers) {
-          tableRows.push(new docx.TableRow({
-            children: item.headers.map(h => new docx.TableCell({
-              children: [new Paragraph({ text: h })]
-            }))
+        children.push(new Paragraph({ text: '' }));
+      }
+      
+      for (const item of items) {
+        if (typeof item === 'string') {
+          children.push(new Paragraph({ text: item }));
+        } else if (item.type === 'heading') {
+          const level = item.level || 1;
+          const headingMap = {
+            1: HeadingLevel.HEADING_1,
+            2: HeadingLevel.HEADING_2,
+            3: HeadingLevel.HEADING_3,
+            4: HeadingLevel.HEADING_4,
+            5: HeadingLevel.HEADING_5,
+            6: HeadingLevel.HEADING_6
+          };
+          children.push(new Paragraph({
+            text: item.text,
+            heading: headingMap[level] || HeadingLevel.HEADING_1
           }));
-        }
-        if (item.rows) {
-          for (const row of item.rows) {
-            tableRows.push(new docx.TableRow({
-              children: row.map(cell => new docx.TableCell({
-                children: [new Paragraph({ text: String(cell) })]
+        } else if (item.type === 'paragraph') {
+          const textRuns = [];
+          if (item.runs && Array.isArray(item.runs)) {
+            for (const run of item.runs) {
+              textRuns.push(new TextRun({
+                text: run.text || '',
+                bold: run.bold,
+                italics: run.italics,
+                underline: run.underline ? {} : undefined,
+                size: run.size,
+                color: run.color,
+                font: run.font
+              }));
+            }
+          } else {
+            textRuns.push(new TextRun({ text: item.text || '' }));
+          }
+          children.push(new Paragraph({ 
+            children: textRuns,
+            alignment: item.alignment ? AlignmentType[item.alignment] : undefined
+          }));
+        } else if (item.type === 'table') {
+          const tableRows = [];
+          if (item.headers) {
+            tableRows.push(new TableRow({
+              children: item.headers.map(h => new TableCell({
+                children: [new Paragraph({ 
+                  text: h,
+                  alignment: AlignmentType.CENTER
+                })],
+                shading: item.headerShading ? { fill: item.headerShading } : undefined
               }))
             }));
           }
-        }
-        children.push(new docx.Table({
-          rows: tableRows
-        }));
-      } else if (item.type === 'list') {
-        const listItems = item.items || [];
-        for (const listItem of listItems) {
+          if (item.rows) {
+            for (const row of item.rows) {
+              tableRows.push(new TableRow({
+                children: row.map(cell => new TableCell({
+                  children: [new Paragraph({ text: String(cell) })]
+                }))
+              }));
+            }
+          }
+          children.push(new Table({
+            rows: tableRows,
+            width: item.width ? { size: item.width, type: 'pct' } : undefined
+          }));
+        } else if (item.type === 'list') {
+          const listItems = item.items || [];
+          for (const listItem of listItems) {
+            children.push(new Paragraph({
+              text: listItem,
+              bullet: { level: item.level || 0 }
+            }));
+          }
+        } else if (item.type === 'image') {
+          // 图片将在后面处理
           children.push(new Paragraph({
-            text: listItem,
-            bullet: item.ordered ? { level: 0 } : { level: 0 }
+            text: `[Image: ${item.path || 'embedded'}]`
           }));
         }
       }
     }
-  }
-  
-  // 从 Markdown 创建
-  if (source === 'markdown') {
-    if (!markdown) {
-      throw new Error('markdown content is required when source is "markdown"');
-    }
     
-    const lines = markdown.split('\n');
-    
-    for (const line of lines) {
-      if (line.startsWith('# ')) {
-        children.push(new Paragraph({
-          text: line.substring(2),
-          heading: HeadingLevel.HEADING_1
-        }));
-      } else if (line.startsWith('## ')) {
-        children.push(new Paragraph({
-          text: line.substring(3),
-          heading: HeadingLevel.HEADING_2
-        }));
-      } else if (line.startsWith('### ')) {
-        children.push(new Paragraph({
-          text: line.substring(4),
-          heading: HeadingLevel.HEADING_3
-        }));
-      } else if (line.startsWith('#### ')) {
-        children.push(new Paragraph({
-          text: line.substring(5),
-          heading: HeadingLevel.HEADING_4
-        }));
-      } else if (line.startsWith('##### ')) {
-        children.push(new Paragraph({
-          text: line.substring(6),
-          heading: HeadingLevel.HEADING_5
-        }));
-      } else if (line.startsWith('###### ')) {
-        children.push(new Paragraph({
-          text: line.substring(7),
-          heading: HeadingLevel.HEADING_6
-        }));
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        children.push(new Paragraph({
-          text: line.substring(2),
-          bullet: { level: 0 }
-        }));
-      } else if (/^\d+\. /.test(line)) {
-        children.push(new Paragraph({
-          text: line.replace(/^\d+\. /, ''),
-          bullet: { level: 0 }
-        }));
-      } else if (line.trim() === '') {
-        children.push(new Paragraph({ text: '' }));
-      } else {
-        const boldRegex = /\*\*(.+?)\*\*/g;
-        const italicRegex = /\*(.+?)\*/g;
-        
-        const matches = [];
-        let match;
-        
-        while ((match = boldRegex.exec(line)) !== null) {
-          matches.push({ start: match.index, end: match.index + match[0].length, text: match[1], bold: true });
-        }
-        
-        while ((match = italicRegex.exec(line)) !== null) {
-          matches.push({ start: match.index, end: match.index + match[0].length, text: match[1], italics: true });
-        }
-        
-        if (matches.length === 0) {
-          children.push(new Paragraph({ text: line }));
+    // 从 Markdown 创建
+    if (source === 'markdown' && markdown) {
+      const lines = markdown.split('\n');
+      
+      for (const line of lines) {
+        if (line.startsWith('# ')) {
+          children.push(new Paragraph({
+            text: line.substring(2),
+            heading: HeadingLevel.HEADING_1
+          }));
+        } else if (line.startsWith('## ')) {
+          children.push(new Paragraph({
+            text: line.substring(3),
+            heading: HeadingLevel.HEADING_2
+          }));
+        } else if (line.startsWith('### ')) {
+          children.push(new Paragraph({
+            text: line.substring(4),
+            heading: HeadingLevel.HEADING_3
+          }));
+        } else if (line.startsWith('#### ')) {
+          children.push(new Paragraph({
+            text: line.substring(5),
+            heading: HeadingLevel.HEADING_4
+          }));
+        } else if (line.startsWith('##### ')) {
+          children.push(new Paragraph({
+            text: line.substring(6),
+            heading: HeadingLevel.HEADING_5
+          }));
+        } else if (line.startsWith('###### ')) {
+          children.push(new Paragraph({
+            text: line.substring(7),
+            heading: HeadingLevel.HEADING_6
+          }));
+        } else if (line.startsWith('- ') || line.startsWith('* ')) {
+          children.push(new Paragraph({
+            text: line.substring(2),
+            bullet: { level: 0 }
+          }));
+        } else if (/^\d+\. /.test(line)) {
+          children.push(new Paragraph({
+            text: line.replace(/^\d+\. /, ''),
+            bullet: { level: 0 }
+          }));
+        } else if (line.trim() === '') {
+          children.push(new Paragraph({ text: '' }));
         } else {
-          matches.sort((a, b) => a.start - b.start);
+          const boldRegex = /\*\*(.+?)\*\*/g;
+          const italicRegex = /\*(.+?)\*/g;
           
-          const textRuns = [];
-          let currentPos = 0;
-          for (const m of matches) {
-            if (m.start > currentPos) {
-              textRuns.push(new TextRun({ text: line.substring(currentPos, m.start) }));
+          const matches = [];
+          let match;
+          
+          while ((match = boldRegex.exec(line)) !== null) {
+            matches.push({ start: match.index, end: match.index + match[0].length, text: match[1], bold: true });
+          }
+          
+          while ((match = italicRegex.exec(line)) !== null) {
+            matches.push({ start: match.index, end: match.index + match[0].length, text: match[1], italics: true });
+          }
+          
+          if (matches.length === 0) {
+            children.push(new Paragraph({ text: line }));
+          } else {
+            matches.sort((a, b) => a.start - b.start);
+            
+            const textRuns = [];
+            let currentPos = 0;
+            for (const m of matches) {
+              if (m.start > currentPos) {
+                textRuns.push(new TextRun({ text: line.substring(currentPos, m.start) }));
+              }
+              textRuns.push(new TextRun({
+                text: m.text,
+                bold: m.bold,
+                italics: m.italics
+              }));
+              currentPos = m.end;
             }
-            textRuns.push(new TextRun({
-              text: m.text,
-              bold: m.bold,
-              italics: m.italics
-            }));
-            currentPos = m.end;
+            
+            if (currentPos < line.length) {
+              textRuns.push(new TextRun({ text: line.substring(currentPos) }));
+            }
+            
+            children.push(new Paragraph({ children: textRuns }));
           }
-          
-          if (currentPos < line.length) {
-            textRuns.push(new TextRun({ text: line.substring(currentPos) }));
-          }
-          
-          children.push(new Paragraph({ children: textRuns }));
         }
       }
     }
+    
+    return children;
+  };
+  
+  // 构建页眉
+  const buildHeader = (headerConfig) => {
+    if (!headerConfig) return undefined;
+    
+    const headerChildren = [];
+    if (headerConfig.text) {
+      headerChildren.push(new Paragraph({
+        text: headerConfig.text,
+        alignment: headerConfig.alignment ? AlignmentType[headerConfig.alignment] : AlignmentType.CENTER
+      }));
+    }
+    
+    return new Header({
+      children: headerChildren
+    });
+  };
+  
+  // 构建页脚
+  const buildFooter = (footerConfig) => {
+    if (!footerConfig) return undefined;
+    
+    const footerChildren = [];
+    if (footerConfig.text) {
+      footerChildren.push(new Paragraph({
+        text: footerConfig.text,
+        alignment: footerConfig.alignment ? AlignmentType[footerConfig.alignment] : AlignmentType.CENTER
+      }));
+    }
+    
+    if (footerConfig.pageNumber) {
+      footerChildren.push(new Paragraph({
+        alignment: footerConfig.pageAlignment ? AlignmentType[footerConfig.pageAlignment] : AlignmentType.CENTER,
+        children: [
+          new TextRun({ text: footerConfig.pagePrefix || 'Page ' }),
+          new TextRun({ children: [PageNumber.CURRENT] }),
+          new TextRun({ text: footerConfig.pageSuffix || '' })
+        ]
+      }));
+    }
+    
+    return new Footer({
+      children: footerChildren
+    });
+  };
+  
+  // 构建文档节
+  const documentSections = [];
+  
+  if (sections && Array.isArray(sections)) {
+    // 多节文档
+    for (const section of sections) {
+      documentSections.push({
+        properties: section.properties || {},
+        headers: section.header ? { default: buildHeader(section.header) } : (header ? { default: buildHeader(header) } : undefined),
+        footers: section.footer ? { default: buildFooter(section.footer) } : (footer ? { default: buildFooter(footer) } : undefined),
+        children: buildSection(section.content, section)
+      });
+    }
+  } else {
+    // 单节文档
+    documentSections.push({
+      properties: {},
+      headers: header ? { default: buildHeader(header) } : undefined,
+      footers: footer ? { default: buildFooter(footer) } : undefined,
+      children: buildSection()
+    });
   }
   
   const doc = new Document({
@@ -558,10 +762,7 @@ async function docxWrite(params) {
     title: properties.title || title,
     subject: properties.subject,
     keywords: properties.keywords,
-    sections: [{
-      properties: {},
-      children
-    }]
+    sections: documentSections
   });
   
   const buffer = await Packer.toBuffer(doc);
@@ -570,45 +771,201 @@ async function docxWrite(params) {
   return {
     success: true,
     path: resolvePath(filePath),
-    paragraphCount: children.length
+    paragraphCount: documentSections.reduce((sum, s) => sum + s.children.length, 0),
+    sectionCount: documentSections.length,
+    hasHeader: !!header || (sections && sections.some(s => s.header)),
+    hasFooter: !!footer || (sections && sections.some(s => s.footer))
+  };
+}
+
+// ==================== docx_patch ====================
+
+/**
+ * 模板填充 - 使用 Patcher API 保留原文档样式
+ * @param {object} params
+ * @param {string} params.path - 模板文件路径
+ * @param {object} params.patches - 替换数据 { placeholder: value }
+ * @param {string} [params.output] - 输出文件路径
+ * @param {boolean} [params.keepOriginalStyles] - 是否保留原文档样式（默认 true）
+ * @param {object} [params.delimiters] - 占位符分隔符 { start: '{{', end: '}}' }
+ */
+async function docxPatch(params) {
+  const { 
+    path: filePath, 
+    patches, 
+    output, 
+    keepOriginalStyles = true,
+    delimiters = { start: '{{', end: '}}' }
+  } = params;
+  
+  if (!patches || typeof patches !== 'object') {
+    throw new Error('patches is required and must be an object');
+  }
+  
+  const docx = getDocx();
+  const { patchDocument, PatchType, TextRun, Paragraph } = docx;
+  
+  const buffer = readFile(filePath);
+  
+  // 构建 patch 对象
+  const patchObject = {};
+  for (const [key, value] of Object.entries(patches)) {
+    if (typeof value === 'string' || typeof value === 'number') {
+      // 简单文本替换
+      patchObject[key] = {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun({ text: String(value) })]
+      };
+    } else if (value.type === 'paragraph') {
+      // 段落替换
+      patchObject[key] = {
+        type: PatchType.PARAGRAPH,
+        children: value.children || [new TextRun({ text: value.text || '' })]
+      };
+    } else if (value.type === 'document') {
+      // 文档级替换
+      patchObject[key] = {
+        type: PatchType.DOCUMENT,
+        children: value.children || []
+      };
+    } else if (Array.isArray(value)) {
+      // 数组替换（多个段落）
+      patchObject[key] = {
+        type: PatchType.PARAGRAPH,
+        children: value.map(v => new TextRun({ text: String(v) }))
+      };
+    } else {
+      // 对象替换
+      patchObject[key] = {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun({ text: JSON.stringify(value) })]
+      };
+    }
+  }
+  
+  const resultBuffer = await patchDocument({
+    outputType: 'buffer',
+    data: buffer,
+    patches: patchObject,
+    keepOriginalStyles,
+    placeholderDelimiters: delimiters
+  });
+  
+  const outputPath = output || filePath;
+  saveFile(outputPath, resultBuffer);
+  
+  return {
+    success: true,
+    path: resolvePath(outputPath),
+    patchCount: Object.keys(patches).length,
+    placeholders: Object.keys(patches)
   };
 }
 
 // ==================== docx_edit ====================
 
 /**
- * 编辑文档
+ * 编辑文档 - 使用 Patcher API 保留格式
  * @param {object} params
  * @param {string} params.path - 文件路径
- * @param {string} params.action - 操作: 'add_paragraph' | 'replace_text' | 'add_table'
- * @param {string} [params.text] - 文本内容（add_paragraph 时）
- * @param {string} [params.search] - 搜索文本（replace_text 时）
- * @param {string} [params.replace] - 替换文本（replace_text 时）
- * @param {string} [params.position] - 位置（add_paragraph 时: 'start' | 'end' | 数字）
- * @param {string[]} [params.headers] - 表头（add_table 时）
- * @param {Array} [params.rows] - 表格行（add_table 时）
+ * @param {string} params.action - 操作: 'replace' | 'append' | 'insert' | 'delete'
+ * @param {object} [params.replacements] - 替换数据（action 为 replace 时）
+ * @param {string} [params.text] - 文本内容（action 为 append/insert 时）
+ * @param {number} [params.position] - 位置（action 为 insert 时）
+ * @param {string} [params.placeholder] - 占位符（action 为 insert/delete 时）
  * @param {string} [params.output] - 输出路径
  */
 async function docxEdit(params) {
-  const { path: filePath, action, text, search, replace, position, headers, rows, output } = params;
+  const { 
+    path: filePath, 
+    action, 
+    replacements,
+    text,
+    position,
+    placeholder,
+    output
+  } = params;
   
-  const buffer = readFile(filePath);
-  const mammoth = getMammoth();
-  const result = await mammoth.extractRawText({ buffer });
+  const docx = getDocx();
+  const { patchDocument, PatchType, TextRun, Paragraph } = docx;
   
-  const paragraphs = result.value.split('\n').filter(p => p.trim());
-  
-  // 添加段落
-  if (action === 'add_paragraph') {
-    if (!text) {
-      throw new Error('text is required for add_paragraph action');
+  // 替换操作 - 使用 Patcher
+  if (action === 'replace') {
+    if (!replacements || typeof replacements !== 'object') {
+      throw new Error('replacements is required for replace action');
     }
     
-    if (position === 'start') {
-      paragraphs.unshift(text);
-    } else if (position === 'end' || !position) {
+    const buffer = readFile(filePath);
+    
+    const patchObject = {};
+    for (const [key, value] of Object.entries(replacements)) {
+      patchObject[key] = {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun({ text: String(value) })]
+      };
+    }
+    
+    const resultBuffer = await patchDocument({
+      outputType: 'buffer',
+      data: buffer,
+      patches: patchObject,
+      keepOriginalStyles: true
+    });
+    
+    const outputPath = output || filePath;
+    saveFile(outputPath, resultBuffer);
+    
+    return {
+      success: true,
+      path: resolvePath(outputPath),
+      replacements: Object.keys(replacements)
+    };
+  }
+  
+  // 添加/插入操作 - 需要有占位符
+  if (action === 'append' || action === 'insert') {
+    if (!text) {
+      throw new Error('text is required for append/insert action');
+    }
+    
+    // 如果有占位符，使用 Patcher
+    if (placeholder) {
+      const buffer = readFile(filePath);
+      
+      const patchObject = {
+        [placeholder]: {
+          type: PatchType.PARAGRAPH,
+          children: [new TextRun({ text: text })]
+        }
+      };
+      
+      const resultBuffer = await patchDocument({
+        outputType: 'buffer',
+        data: buffer,
+        patches: patchObject,
+        keepOriginalStyles: true
+      });
+      
+      const outputPath = output || filePath;
+      saveFile(outputPath, resultBuffer);
+      
+      return {
+        success: true,
+        path: resolvePath(outputPath),
+        insertedAt: placeholder
+      };
+    }
+    
+    // 没有占位符，使用传统方式（会丢失部分格式）
+    const mammoth = getMammoth();
+    const buffer = readFile(filePath);
+    const result = await mammoth.extractRawText({ buffer });
+    
+    const paragraphs = result.value.split('\n').filter(p => p.trim());
+    
+    if (action === 'append') {
       paragraphs.push(text);
-    } else if (typeof position === 'number') {
+    } else if (action === 'insert' && typeof position === 'number') {
       paragraphs.splice(position, 0, text);
     }
     
@@ -622,69 +979,43 @@ async function docxEdit(params) {
     return {
       success: true,
       path: resolvePath(outputPath),
-      addedText: text
+      warning: 'Format may be lost. Use placeholder for better results.'
     };
   }
   
-  // 替换文本
-  if (action === 'replace_text') {
-    if (!search) {
-      throw new Error('search is required for replace_text action');
+  // 删除操作 - 替换为空
+  if (action === 'delete') {
+    if (!placeholder) {
+      throw new Error('placeholder is required for delete action');
     }
     
-    const originalText = result.value;
-    const newText = originalText.split(search).join(replace || '');
+    const buffer = readFile(filePath);
     
-    const outputPath = output || filePath;
-    await docxWrite({
-      path: outputPath,
-      source: 'data',
-      content: newText.split('\n').filter(p => p.trim()).map(p => ({ type: 'paragraph', text: p }))
+    const patchObject = {
+      [placeholder]: {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun({ text: '' })]
+      }
+    };
+    
+    const resultBuffer = await patchDocument({
+      outputType: 'buffer',
+      data: buffer,
+      patches: patchObject,
+      keepOriginalStyles: true
     });
     
-    return {
-      success: true,
-      path: resolvePath(outputPath),
-      replacements: (originalText.match(new RegExp(search, 'g')) || []).length
-    };
-  }
-  
-  // 添加表格
-  if (action === 'add_table') {
-    const docx = getDocx();
-    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } = docx;
-    
-    const existingParagraphs = paragraphs;
-    
-    const tableContent = {
-      type: 'table',
-      headers: headers || [],
-      rows: rows || []
-    };
-    
-    const content = [];
-    for (let i = 0; i < existingParagraphs.length; i++) {
-      content.push({ type: 'paragraph', text: existingParagraphs[i] });
-      if (position !== undefined && i === position - 1) {
-        content.push(tableContent);
-      }
-    }
-    
-    if (position === undefined || position >= existingParagraphs.length) {
-      content.push(tableContent);
-    }
-    
     const outputPath = output || filePath;
-    await docxWrite({ path: outputPath, source: 'data', content });
+    saveFile(outputPath, resultBuffer);
     
     return {
       success: true,
       path: resolvePath(outputPath),
-      tableAdded: true
+      deleted: placeholder
     };
   }
   
-  throw new Error(`Invalid action: ${action}. Must be 'add_paragraph', 'replace_text', or 'add_table'`);
+  throw new Error(`Invalid action: ${action}. Must be 'replace', 'append', 'insert', or 'delete'`);
 }
 
 // ==================== docx_convert ====================
@@ -793,23 +1124,39 @@ ${html}
  * 图片操作
  * @param {object} params
  * @param {string} params.path - 文件路径
- * @param {string} params.action - 操作: 'extract' | 'insert'
+ * @param {string} params.action - 操作: 'extract' | 'insert' | 'list'
  * @param {string} [params.outputDir] - 输出目录（extract 时）
  * @param {string} [params.imagePath] - 图片路径（insert 时）
  * @param {number} [params.width] - 图片宽度（insert 时）
  * @param {number} [params.height] - 图片高度（insert 时）
+ * @param {string} [params.placeholder] - 占位符（insert 时）
  * @param {string} [params.output] - 输出路径（insert 时）
  */
 async function docxImage(params) {
-  const { path: filePath, action, outputDir, imagePath, width = 400, height = 300, output } = params;
+  const { 
+    path: filePath, 
+    action, 
+    outputDir, 
+    imagePath, 
+    width = 400, 
+    height = 300, 
+    placeholder,
+    output
+  } = params;
+  
+  // 列出图片
+  if (action === 'list') {
+    return await docxRead({ path: filePath, scope: 'images' });
+  }
   
   // 提取图片
   if (action === 'extract') {
-    const zip = new AdmZip(filePath);
+    const resolvedPath = resolvePath(filePath);
+    const zip = new AdmZip(resolvedPath);
     const entries = zip.getEntries();
     
     const images = [];
-    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.emf', '.wmf'];
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.emf', '.wmf', '.svg'];
     
     const resolvedOutputDir = outputDir ? resolvePath(outputDir) : null;
     if (resolvedOutputDir && !fs.existsSync(resolvedOutputDir)) {
@@ -846,12 +1193,47 @@ async function docxImage(params) {
   // 插入图片
   if (action === 'insert') {
     const docx = getDocx();
-    const { Document, Packer, Paragraph, ImageRun } = docx;
+    const { patchDocument, PatchType, ImageRun } = docx;
     
     const imageBuffer = readFile(imagePath);
     
-    const docBuffer = readFile(filePath);
+    // 如果有占位符，使用 Patcher
+    if (placeholder) {
+      const docBuffer = readFile(filePath);
+      
+      const patchObject = {
+        [placeholder]: {
+          type: PatchType.PARAGRAPH,
+          children: [
+            new ImageRun({
+              data: imageBuffer,
+              transformation: { width, height }
+            })
+          ]
+        }
+      };
+      
+      const resultBuffer = await patchDocument({
+        outputType: 'buffer',
+        data: docBuffer,
+        patches: patchObject,
+        keepOriginalStyles: true
+      });
+      
+      const outputPath = output || filePath;
+      saveFile(outputPath, resultBuffer);
+      
+      return {
+        success: true,
+        path: resolvePath(outputPath),
+        imageInserted: true,
+        insertedAt: placeholder
+      };
+    }
+    
+    // 没有占位符，使用传统方式
     const mammoth = getMammoth();
+    const docBuffer = readFile(filePath);
     const result = await mammoth.extractRawText({ buffer: docBuffer });
     
     const existingParagraphs = result.value.split('\n').filter(p => p.trim());
@@ -870,24 +1252,206 @@ async function docxImage(params) {
       ]
     }));
     
-    const doc = new Document({
+    const doc = new docx.Document({
       sections: [{
         children
       }]
     });
     
     const outputPath = output || filePath;
-    const buffer = await Packer.toBuffer(doc);
+    const buffer = await docx.Packer.toBuffer(doc);
     saveFile(outputPath, buffer);
     
     return {
       success: true,
       path: resolvePath(outputPath),
-      imageInserted: true
+      imageInserted: true,
+      warning: 'Format may be lost. Use placeholder for better results.'
     };
   }
   
-  throw new Error(`Invalid action: ${action}. Must be 'extract' or 'insert'`);
+  throw new Error(`Invalid action: ${action}. Must be 'extract', 'insert', or 'list'`);
+}
+
+// ==================== docx_link ====================
+
+/**
+ * 超链接操作
+ * @param {object} params
+ * @param {string} params.path - 文件路径
+ * @param {string} params.action - 操作: 'add' | 'list'
+ * @param {string} [params.placeholder] - 占位符（add 时）
+ * @param {string} [params.url] - 链接 URL（add 时）
+ * @param {string} [params.text] - 链接文本（add 时）
+ * @param {string} [params.output] - 输出路径（add 时）
+ */
+async function docxLink(params) {
+  const { path: filePath, action, placeholder, url, text, output } = params;
+  
+  const docx = getDocx();
+  const { patchDocument, PatchType, ExternalHyperlink, TextRun } = docx;
+  
+  // 列出超链接
+  if (action === 'list') {
+    const resolvedPath = resolvePath(filePath);
+    const zip = new AdmZip(resolvedPath);
+    const docXml = zip.readAsText('word/document.xml');
+    
+    const links = [];
+    const hyperlinkRegex = /<w:hyperlink[^>]*r:id="([^"]*)"[^>]*>/g;
+    let match;
+    
+    while ((match = hyperlinkRegex.exec(docXml)) !== null) {
+      links.push({ rId: match[1] });
+    }
+    
+    // 从 relationships 获取实际 URL
+    const relsXml = zip.readAsText('word/_rels/document.xml.rels');
+    if (relsXml) {
+      const parser = getXml2js().Parser();
+      const relsObj = await parser.parseStringPromise(relsXml);
+      
+      if (relsObj['Relationships'] && relsObj['Relationships']['Relationship']) {
+        for (const rel of relsObj['Relationships']['Relationship']) {
+          const attrs = rel.$ || {};
+          const id = attrs['Id'];
+          const target = attrs['Target'];
+          const type = attrs['Type'];
+          
+          if (type && type.includes('hyperlink')) {
+            const linkInfo = links.find(l => l.rId === id);
+            if (linkInfo) {
+              linkInfo.url = target;
+            }
+          }
+        }
+      }
+    }
+    
+    return {
+      success: true,
+      linkCount: links.length,
+      links
+    };
+  }
+  
+  // 添加超链接
+  if (action === 'add') {
+    if (!placeholder) {
+      throw new Error('placeholder is required for add action');
+    }
+    if (!url) {
+      throw new Error('url is required for add action');
+    }
+    
+    const buffer = readFile(filePath);
+    
+    const hyperlink = new ExternalHyperlink({
+      children: [
+        new TextRun({ 
+          text: text || url,
+          style: 'Hyperlink'
+        })
+      ],
+      link: url
+    });
+    
+    const patchObject = {
+      [placeholder]: {
+        type: PatchType.PARAGRAPH,
+        children: [hyperlink]
+      }
+    };
+    
+    const resultBuffer = await patchDocument({
+      outputType: 'buffer',
+      data: buffer,
+      patches: patchObject,
+      keepOriginalStyles: true
+    });
+    
+    const outputPath = output || filePath;
+    saveFile(outputPath, resultBuffer);
+    
+    return {
+      success: true,
+      path: resolvePath(outputPath),
+      linkAdded: true,
+      url,
+      insertedAt: placeholder
+    };
+  }
+  
+  throw new Error(`Invalid action: ${action}. Must be 'add' or 'list'`);
+}
+
+// ==================== docx_toc ====================
+
+/**
+ * 目录操作
+ * @param {object} params
+ * @param {string} params.path - 文件路径
+ * @param {string} params.action - 操作: 'insert' | 'update'
+ * @param {string} [params.placeholder] - 占位符（insert 时）
+ * @param {string} [params.output] - 输出路径
+ */
+async function docxToc(params) {
+  const { path: filePath, action, placeholder, output } = params;
+  
+  const docx = getDocx();
+  const { patchDocument, PatchType, TableOfContents, Paragraph } = docx;
+  
+  // 插入目录
+  if (action === 'insert') {
+    if (!placeholder) {
+      throw new Error('placeholder is required for insert action');
+    }
+    
+    const buffer = readFile(filePath);
+    
+    const toc = new TableOfContents('Table of Contents', {
+      hyperlink: true,
+      styles: [
+        { level: 1, name: 'Heading 1' },
+        { level: 2, name: 'Heading 2' },
+        { level: 3, name: 'Heading 3' }
+      ]
+    });
+    
+    const patchObject = {
+      [placeholder]: {
+        type: PatchType.DOCUMENT,
+        children: [toc]
+      }
+    };
+    
+    const resultBuffer = await patchDocument({
+      outputType: 'buffer',
+      data: buffer,
+      patches: patchObject,
+      keepOriginalStyles: true
+    });
+    
+    const outputPath = output || filePath;
+    saveFile(outputPath, resultBuffer);
+    
+    return {
+      success: true,
+      path: resolvePath(outputPath),
+      tocInserted: true,
+      insertedAt: placeholder
+    };
+  }
+  
+  // 更新目录 - Word 需要用户手动更新
+  if (action === 'update') {
+    return {
+      success: true,
+      message: 'TOC update requires user to open document in Word and press F9 or right-click TOC and select "Update Field"'
+    };
+  }
+  
+  throw new Error(`Invalid action: ${action}. Must be 'insert' or 'update'`);
 }
 
 // ==================== 技能入口 ====================
@@ -902,11 +1466,40 @@ async function docxImage(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
+    // 新工具名（简化版）
+    case 'read':
+      return await docxRead(params);
+      
+    case 'write':
+      return await docxWrite(params);
+      
+    case 'patch':
+      return await docxPatch(params);
+      
+    case 'edit':
+      return await docxEdit(params);
+      
+    case 'convert':
+      return await docxConvert(params);
+      
+    case 'image':
+      return await docxImage(params);
+      
+    case 'link':
+      return await docxLink(params);
+      
+    case 'toc':
+      return await docxToc(params);
+      
+    // 旧工具名（兼容）
     case 'docx_read':
       return await docxRead(params);
       
     case 'docx_write':
       return await docxWrite(params);
+      
+    case 'docx_patch':
+      return await docxPatch(params);
       
     case 'docx_edit':
       return await docxEdit(params);
@@ -917,9 +1510,14 @@ async function execute(toolName, params, context = {}) {
     case 'docx_image':
       return await docxImage(params);
       
-    // 兼容旧工具名
+    case 'docx_link':
+      return await docxLink(params);
+      
+    case 'docx_toc':
+      return await docxToc(params);
+      
+    // 更旧的兼容名
     case 'read_document':
-    case 'read':
       return await docxRead({ ...params, scope: 'info' });
       
     case 'extract_text':
@@ -942,13 +1540,13 @@ async function execute(toolName, params, context = {}) {
       return await docxWrite({ ...params, source: 'markdown' });
       
     case 'add_paragraph':
-      return await docxEdit({ ...params, action: 'add_paragraph' });
+      return await docxEdit({ ...params, action: 'append' });
       
     case 'replace_text':
-      return await docxEdit({ ...params, action: 'replace_text' });
+      return await docxEdit({ ...params, action: 'replace' });
       
     case 'add_table':
-      return await docxEdit({ ...params, action: 'add_table' });
+      return await docxEdit({ ...params, action: 'insert' });
       
     case 'to_markdown':
       return await docxConvert({ ...params, format: 'markdown' });
@@ -962,8 +1560,11 @@ async function execute(toolName, params, context = {}) {
     case 'insert_image':
       return await docxImage({ ...params, action: 'insert' });
       
+    case 'template_fill':
+      return await docxPatch(params);
+      
     default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: docx_read, docx_write, docx_edit, docx_convert, docx_image`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: read, write, patch, edit, convert, image, link, toc`);
   }
 }
 
