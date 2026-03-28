@@ -1340,7 +1340,7 @@ class KbController {
   }
 
   /**
-   * 全局搜索（搜索用户所有知识库）
+   * 全局搜索（搜索用户所有可访问的知识库）
    * POST /api/kb/search
    */
   async globalSearch(ctx) {
@@ -1354,9 +1354,10 @@ class KbController {
         ctx.throw(400, 'Search query is required');
       }
 
-      // 获取用户的知识库列表
+      // 使用权限过滤获取用户可访问的知识库列表
+      const permissionWhere = await buildAccessibleKbWhere(this.db, userId);
       const userKBs = await this.KnowledgeBase.findAll({
-        where: { owner_id: userId },
+        where: permissionWhere,
         attributes: ['id', 'name', 'embedding_model_id'],
         raw: true,
       });
