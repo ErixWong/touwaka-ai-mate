@@ -687,6 +687,12 @@ export const knowledgeBaseApi = {
     apiRequest<{ total: number; success: number; failed: number; current: number; status: string; embedding_dim: number }>(
       apiClient.get(`/kb/${kbId}/revectorize/${jobId}`)
     ),
+
+  // ========== 权限管理 ==========
+
+  // 转移知识库管理员（管理员专用）
+  transferOwner: (kbId: string, newOwnerId: string) =>
+    apiRequest<KnowledgeBase>(apiClient.post(`/kb/${kbId}/transfer-owner`, { new_owner_id: newOwnerId })),
 }
 
 // ============================================

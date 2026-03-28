@@ -1028,9 +1028,21 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     },
     visibilityHint: '设置知识库的访问权限范围',
     // 权限标识
-    permissionOwner: '管理员',
+    permissionOwner: '拥有者',
     permissionCanEdit: '可编辑',
     permissionCanDelete: '可删除',
+
+    // 转移拥有者
+    transferOwner: {
+      button: '转移拥有者',
+      title: '转移知识库拥有者',
+      hint: '选择新的知识库拥有者，转移后当前拥有者将失去管理权限。',
+      newOwner: '新拥有者',
+      selectUser: '选择用户',
+      confirm: '将转移给：{name}',
+      success: '拥有者转移成功',
+      failed: '拥有者转移失败',
+    },
 
     // 删除
     deleteConfirm: '确认删除',
