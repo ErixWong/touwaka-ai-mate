@@ -12,7 +12,7 @@
  * - kb_article_tags (文章-标签关联)
  *
  * 工具合并：25 个工具 → 5 个工具（按资源类型）
- * - kb: 知识库操作
+ * - knowledge_base: 知识库操作
  * - article: 文章操作
  * - section: 节操作
  * - paragraph: 段落操作
