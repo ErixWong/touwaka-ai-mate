@@ -15,14 +15,14 @@ allowed-tools: []
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `ssh_session` | 会话管理（连接/断开） | `operation`, `host`, `username`, `session_id` |
-| `ssh_exec` | 执行命令（同步） | `session_id`, `command` |
-| `ssh_sudo` | sudo 执行 | `session_id`, `command`, `password` |
-| `ssh_sftp` | SFTP 文件传输 | `session_id`, `operation`, `remote_path`, `local_path` |
+| `session` | 会话管理（连接/断开） | `operation`, `host`, `username`, `session_id` |
+| `exec` | 执行命令（同步） | `session_id`, `command` |
+| `sudo` | sudo 执行 | `session_id`, `command`, `password` |
+| `sftp` | SFTP 文件传输 | `session_id`, `operation`, `remote_path`, `local_path` |
 
 ## 工具详情
 
-### ssh_session
+### session
 
 会话管理（连接/断开）。
 
@@ -46,7 +46,7 @@ allowed-tools: []
 { "success": true, "operation": "disconnect", "message": "Disconnected" }
 ```
 
-### ssh_exec
+### exec
 
 在远程服务器上执行命令（同步阻塞，直接返回输出）。
 
@@ -65,7 +65,7 @@ allowed-tools: []
 }
 ```
 
-### ssh_sudo
+### sudo
 
 使用 sudo 权限执行命令。
 
@@ -79,7 +79,7 @@ allowed-tools: []
 - 密码在输出中被掩码（替换为 `********`）
 - 支持自动密码提示检测
 
-### ssh_sftp
+### sftp
 
 SFTP 文件传输（支持 list/download/upload 操作）。
 
