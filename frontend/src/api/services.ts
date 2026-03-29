@@ -320,14 +320,18 @@ export const debugApi = {
 export interface ResidentProcessStatus {
   tool_id: string
   tool_name: string
+  skill_id: string
   skill_name: string
   state: 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'ERROR'
   pid: number | null
   started_at: string | null
+  pending_tasks: number
   total_tasks: number
   success_count: number
   error_count: number
-  communications: ResidentCommunication[]
+  recent_communications: ResidentCommunication[]
+  // 前端组件内部使用 communications 别名
+  communications?: ResidentCommunication[]
 }
 
 // 驻留进程通信记录

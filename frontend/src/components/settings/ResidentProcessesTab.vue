@@ -150,7 +150,11 @@ const loadProcesses = async () => {
   loading.value = true
   try {
     const result = await debugApi.getResidentStatus()
-    processes.value = result.processes || []
+    // 将 recent_communications 映射为 communications 便于模板使用
+    processes.value = (result.processes || []).map(p => ({
+      ...p,
+      communications: p.recent_communications || []
+    }))
   } catch (error: any) {
     toast.error(t('settings.resident.loadFailed') + ': ' + error.message)
   } finally {
