@@ -166,8 +166,6 @@ async function readWebPage(params) {
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
     case 'read_web_page':
-    case 'readWebPage':
-    case 'read':
       return await readWebPage(params);
 
     default:

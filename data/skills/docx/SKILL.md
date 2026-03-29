@@ -29,8 +29,6 @@ read({ path: '/absolute/path/to/document.docx', scope: 'text' })
 
 ## 工具列表
 
-### 简化工具名（推荐）
-
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
 | `read` | 读取文档 | `scope`: info/text/paragraphs/tables/comments/images/headers/footers |
@@ -41,19 +39,6 @@ read({ path: '/absolute/path/to/document.docx', scope: 'text' })
 | `image` | 图片操作 | `action`: extract/insert/list |
 | `link` | 超链接操作 | `action`: add/list |
 | `toc` | 目录操作 | `action`: insert/update |
-
-### 兼容旧工具名
-
-| 旧工具名 | 新工具名 |
-|----------|----------|
-| `docx_read` | `read` |
-| `docx_write` | `write` |
-| `docx_edit` | `edit` |
-| `docx_convert` | `convert` |
-| `docx_image` | `image` |
-| `docx_patch` (新增) | `patch` |
-| `docx_link` (新增) | `link` |
-| `docx_toc` (新增) | `toc` |
 
 ---
 
@@ -443,4 +428,3 @@ write({
 - **占位符格式**：默认 `{{placeholder}}`，可自定义分隔符
 - **目录更新**：插入目录后需在 Word 中手动更新（F9）
 - **图片插入**：推荐使用占位符方式，可保留格式
-- **兼容性**：旧工具名（`docx_read` 等）仍然支持

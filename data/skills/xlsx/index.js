@@ -1310,69 +1310,6 @@ async function execute(toolName, params, context = {}) {
     case 'excel_calc':
       return await excelCalc(params);
       
-    // 兼容旧工具名（映射到新工具）
-    case 'read_workbook':
-    case 'read':
-      return await excelRead({ ...params, scope: 'workbook' });
-      
-    case 'read_sheet':
-      return await excelRead({ ...params, scope: 'sheet' });
-      
-    case 'read_cell':
-      return await excelRead({ ...params, scope: 'cell' });
-      
-    case 'create_workbook':
-    case 'create':
-      return await excelWrite({ ...params, scope: 'workbook' });
-      
-    case 'write_sheet':
-      return await excelWrite({ ...params, scope: 'sheet' });
-      
-    case 'write_cell':
-      return await excelWrite({ ...params, scope: 'cell' });
-      
-    case 'add_sheet':
-      return await excelSheet({ ...params, action: 'add', name: params.name || params.sheet });
-      
-    case 'delete_sheet':
-      return await excelSheet({ ...params, action: 'delete' });
-      
-    case 'rename_sheet':
-      return await excelSheet({ ...params, action: 'rename', newName: params.newName });
-      
-    case 'copy_sheet':
-      return await excelSheet({ ...params, action: 'copy' });
-      
-    case 'set_column_width':
-      return await excelFormat({ ...params, type: 'column' });
-      
-    case 'set_cell_style':
-      return await excelFormat({ ...params, type: 'cell' });
-      
-    case 'filter_data':
-      return await excelQuery({ ...params, action: 'filter' });
-      
-    case 'sort_data':
-      return await excelQuery({ ...params, action: 'sort' });
-      
-    case 'find_data':
-      return await excelQuery({ ...params, action: 'find' });
-      
-    case 'to_json':
-      return await excelConvert({ ...params, format: 'json', direction: 'to' });
-      
-    case 'from_json':
-      return await excelConvert({ ...params, format: 'json', direction: 'from' });
-      
-    case 'to_csv':
-      return await excelConvert({ ...params, format: 'csv', direction: 'to' });
-      
-    case 'from_csv':
-      return await excelConvert({ ...params, format: 'csv', direction: 'from' });
-      
-    case 'calculate_formulas':
-      return await excelCalc(params);
-      
     default:
       throw new Error(`Unknown tool: ${toolName}. Supported tools: excel_read, excel_write, excel_sheet, excel_format, excel_query, excel_convert, excel_calc`);
   }

@@ -1466,7 +1466,6 @@ async function docxToc(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    // 新工具名（简化版）
     case 'read':
       return await docxRead(params);
       
@@ -1490,78 +1489,6 @@ async function execute(toolName, params, context = {}) {
       
     case 'toc':
       return await docxToc(params);
-      
-    // 旧工具名（兼容）
-    case 'docx_read':
-      return await docxRead(params);
-      
-    case 'docx_write':
-      return await docxWrite(params);
-      
-    case 'docx_patch':
-      return await docxPatch(params);
-      
-    case 'docx_edit':
-      return await docxEdit(params);
-      
-    case 'docx_convert':
-      return await docxConvert(params);
-      
-    case 'docx_image':
-      return await docxImage(params);
-      
-    case 'docx_link':
-      return await docxLink(params);
-      
-    case 'docx_toc':
-      return await docxToc(params);
-      
-    // 更旧的兼容名
-    case 'read_document':
-      return await docxRead({ ...params, scope: 'info' });
-      
-    case 'extract_text':
-      return await docxRead({ ...params, scope: 'text' });
-      
-    case 'extract_paragraphs':
-      return await docxRead({ ...params, scope: 'paragraphs' });
-      
-    case 'extract_tables':
-      return await docxRead({ ...params, scope: 'tables' });
-      
-    case 'extract_comments':
-      return await docxRead({ ...params, scope: 'comments' });
-      
-    case 'create_document':
-    case 'create':
-      return await docxWrite({ ...params, source: 'data' });
-      
-    case 'from_markdown':
-      return await docxWrite({ ...params, source: 'markdown' });
-      
-    case 'add_paragraph':
-      return await docxEdit({ ...params, action: 'append' });
-      
-    case 'replace_text':
-      return await docxEdit({ ...params, action: 'replace' });
-      
-    case 'add_table':
-      return await docxEdit({ ...params, action: 'insert' });
-      
-    case 'to_markdown':
-      return await docxConvert({ ...params, format: 'markdown' });
-      
-    case 'to_html':
-      return await docxConvert({ ...params, format: 'html' });
-      
-    case 'extract_images':
-      return await docxImage({ ...params, action: 'extract' });
-      
-    case 'insert_image':
-      return await docxImage({ ...params, action: 'insert' });
-      
-    case 'template_fill':
-      return await docxPatch(params);
       
     default:
       throw new Error(`Unknown tool: ${toolName}. Supported tools: read, write, patch, edit, convert, image, link, toc`);

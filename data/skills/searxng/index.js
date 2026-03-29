@@ -190,8 +190,7 @@ function formatResultsTable(data, query) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'web_search':
-    case 'search': {
+    case 'web_search': {
       const searchParams = {
         query: params.query,
         n: params.n || params.limit || 10,
