@@ -14,7 +14,7 @@
 |--------|------|------|------|
 | #57 | searxng | SEARXNG_URL | SearXNG 实例 URL |
 | #58 | remote-llm | model_id, max_tokens, prompt | 远程 LLM 调用参数 |
-| #59 | unifuncs-web-reader | UNIFUNCS_API_KEY | Unifuncs API 密钥 |
+| #59 | unifuncs | UNIFUNCS_API_KEY | Unifuncs API 密钥 |
 
 ### 2. 验证现有配置
 

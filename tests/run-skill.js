@@ -178,7 +178,7 @@ async function loadSkillParameters(skillName) {
     connection = await mysql.createConnection(dbConfig);
     
     // 查询技能参数 - 支持两种方式：
-    // 1. skill_id 为技能名称（如 'unifuncs-web-reader'）
+    // 1. skill_id 为技能名称（如 'unifuncs'）
     // 2. skill_id 为技能 ID（如 'mmoasyw4iar2f9qi4z96'）
     const [rows] = await connection.query(`
       SELECT param_name, param_value 
