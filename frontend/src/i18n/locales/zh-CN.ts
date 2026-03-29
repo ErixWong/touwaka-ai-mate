@@ -38,6 +38,8 @@ export default {
     reset: '重置',
     none: '无',
     seconds: '秒',
+    restart: '重启',
+    restarting: '重启中...',
   },
 
   // 导航
@@ -439,6 +441,34 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     updateRoleFailed: '角色更新失败',
     // 组织架构管理
     organizationManagement: '组织架构',
+    // 驻留进程管理
+    residentProcesses: '驻留进程',
+    // 驻留进程详情
+    resident: {
+      noProcesses: '暂无驻留进程',
+      startedAt: '启动时间',
+      totalTasks: '总任务数',
+      successCount: '成功数',
+      errorCount: '错误数',
+      communicationRecords: '通信记录',
+      noCommunications: '暂无通信记录',
+      confirmRestart: '确认重启进程',
+      restartWarning: '即将重启进程 "{name}"，这可能会影响正在执行的任务。确定要继续吗？',
+      restartSuccess: '进程重启成功',
+      restartFailed: '进程重启失败',
+      loadFailed: '加载进程状态失败',
+      states: {
+        STARTING: '启动中',
+        RUNNING: '运行中',
+        STOPPING: '停止中',
+        STOPPED: '已停止',
+        ERROR: '错误',
+      },
+      commTypes: {
+        invoke: '调用',
+        result: '结果',
+      },
+    },
     departmentManagement: '部门管理',
     positionManagement: '职位管理',
     addDepartment: '添加部门',

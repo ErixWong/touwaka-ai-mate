@@ -617,6 +617,11 @@
       <OrganizationTab />
     </div>
 
+    <!-- 驻留进程管理（仅管理员） -->
+    <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section">
+      <ResidentProcessesTab />
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1594,6 +1599,7 @@ import OrganizationTab from '@/components/settings/OrganizationTab.vue'
 import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
+import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1612,6 +1618,7 @@ const allTabs = [
   { key: 'expert', label: t('settings.expertSettings'), adminOnly: true },
   { key: 'assistant', label: t('settings.assistantSettings'), adminOnly: true },
   { key: 'system', label: t('settings.systemConfig'), adminOnly: true },
+  { key: 'resident', label: t('settings.residentProcesses'), adminOnly: true },
   { key: 'user', label: t('settings.userManagement'), adminOnly: true },
   { key: 'role', label: t('settings.roleManagement'), adminOnly: true },
   { key: 'organization', label: t('settings.organizationManagement'), adminOnly: true },

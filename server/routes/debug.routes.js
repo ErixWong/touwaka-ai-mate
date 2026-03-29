@@ -14,6 +14,9 @@ export default (controller) => {
   // 获取驻留进程状态（需要认证）
   router.get('/resident-status', authenticate(), controller.getResidentStatus.bind(controller));
 
+  // 重启驻留进程（需要认证）Issue #433
+  router.post('/resident-restart/:tool_id', authenticate(), controller.restartResidentProcess.bind(controller));
+
   // 获取调度器状态（需要认证）
   router.get('/scheduler-status', authenticate(), controller.getSchedulerStatus.bind(controller));
 

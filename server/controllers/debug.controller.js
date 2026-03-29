@@ -58,6 +58,7 @@ class DebugController {
   /**
    * 获取驻留进程状态
    * GET /api/debug/resident-status
+   * Issue #433: 增强返回信息
    */
   async getResidentStatus(ctx) {
     try {
@@ -83,6 +84,35 @@ class DebugController {
     } catch (error) {
       logger.error('[DebugController] 获取驻留进程状态失败:', error);
       ctx.error(error.message || '获取驻留进程状态失败');
+    }
+  }
+
+  /**
+   * 重启驻留进程
+   * POST /api/debug/resident-restart/:tool_id
+   * Issue #433
+   */
+  async restartResidentProcess(ctx) {
+    try {
+      const { tool_id } = ctx.params;
+      
+      // 从全局获取 ResidentSkillManager
+      const residentSkillManager = global.residentSkillManager;
+      
+      if (!residentSkillManager) {
+        ctx.error('ResidentSkillManager 未初始化', 503);
+        return;
+      }
+
+      const result = await residentSkillManager.restart(tool_id);
+      
+      ctx.success({
+        ...result,
+        message: '进程已重启成功',
+      });
+    } catch (error) {
+      logger.error('[DebugController] 重启驻留进程失败:', error);
+      ctx.error(error.message || '重启驻留进程失败');
     }
   }
 

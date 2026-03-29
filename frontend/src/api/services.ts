@@ -302,6 +302,39 @@ export const debugApi = {
     apiRequest<{ payload: Record<string, unknown> | null; cached_at?: string; message?: string }>(
       apiClient.get('/debug/llm-payload', { params: { expert_id } })
     ),
+
+  // 获取驻留进程状态列表
+  getResidentStatus: () =>
+    apiRequest<{ processes: ResidentProcessStatus[] }>(
+      apiClient.get('/debug/resident-status')
+    ),
+
+  // 重启驻留进程
+  restartResidentProcess: (tool_id: string) =>
+    apiRequest<{ success: boolean; message: string }>(
+      apiClient.post(`/debug/resident-restart/${tool_id}`)
+    ),
+}
+
+// 驻留进程状态类型
+export interface ResidentProcessStatus {
+  tool_id: string
+  tool_name: string
+  skill_name: string
+  state: 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'ERROR'
+  pid: number | null
+  started_at: string | null
+  total_tasks: number
+  success_count: number
+  error_count: number
+  communications: ResidentCommunication[]
+}
+
+// 驻留进程通信记录
+export interface ResidentCommunication {
+  timestamp: string
+  type: 'invoke' | 'result'
+  summary: string
 }
 
 // 技能管理相关 API（Skills Studio 使用）
