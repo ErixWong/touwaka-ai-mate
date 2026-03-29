@@ -18,8 +18,8 @@ user-invocable: true
 - ❌ **不支持**：编辑现有 PPTX 文件（添加/修改/删除幻灯片或对象）
 
 **编辑现有文件的替代方案**：
-1. 使用 `pptx_file read` 读取现有文件内容
-2. 使用 `pptx_file create` 创建新文件，添加修改后的内容
+1. 使用 `file read` 读取现有文件内容
+2. 使用 `file create` 创建新文件，添加修改后的内容
 3. 删除原文件，重命名新文件
 
 ---
@@ -345,23 +345,23 @@ interface SlideData {
 
 | 任务 | 工具 | action |
 |------|------|--------|
-| 读取基本信息 | `pptx_file` | `read` (scope: `info`) |
-| 提取文本 | `pptx_file` | `read` (scope: `text`) |
-| 提取结构 | `pptx_file` | `read` (scope: `structure`) |
-| 提取媒体信息 | `pptx_file` | `read` (scope: `media`) |
-| 创建演示文稿 | `pptx_file` | `create` |
-| 提取媒体文件 | `pptx_file` | `extract` |
-| 创建幻灯片 | `pptx_slide` | `add` |
-| 添加文本 | `pptx_object` | `add` (type: `text`) |
-| 添加图片 | `pptx_object` | `add` (type: `image`) |
-| 添加表格 | `pptx_object` | `add` (type: `table`) |
-| 添加图表 | `pptx_object` | `add` (type: `chart`) |
-| 添加形状 | `pptx_object` | `add` (type: `shape`) |
-| 添加媒体 | `pptx_object` | `add` (type: `media`) |
-| 添加备注 | `pptx_object` | `add` (type: `notes`) |
-| 提取对象 | `pptx_object` | `extract` |
-| 定义母版 | `pptx_master` | `define` |
-| 列出母版 | `pptx_master` | `list` |
+| 读取基本信息 | `file` | `read` (scope: `info`) |
+| 提取文本 | `file` | `read` (scope: `text`) |
+| 提取结构 | `file` | `read` (scope: `structure`) |
+| 提取媒体信息 | `file` | `read` (scope: `media`) |
+| 创建演示文稿 | `file` | `create` |
+| 提取媒体文件 | `file` | `extract` |
+| 创建幻灯片 | `slide` | `add` |
+| 添加文本 | `object` | `add` (type: `text`) |
+| 添加图片 | `object` | `add` (type: `image`) |
+| 添加表格 | `object` | `add` (type: `table`) |
+| 添加图表 | `object` | `add` (type: `chart`) |
+| 添加形状 | `object` | `add` (type: `shape`) |
+| 添加媒体 | `object` | `add` (type: `media`) |
+| 添加备注 | `object` | `add` (type: `notes`) |
+| 提取对象 | `object` | `extract` |
+| 定义母版 | `master` | `define` |
+| 列出母版 | `master` | `list` |
 
 ---
 
