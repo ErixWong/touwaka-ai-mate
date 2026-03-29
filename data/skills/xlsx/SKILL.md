@@ -31,105 +31,105 @@ excel_read({ path: '/absolute/path/to/data.xlsx', scope: 'workbook' })
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `excel_read` | 读取 Excel | `scope`: workbook/sheet/cell |
-| `excel_write` | 写入 Excel | `scope`: workbook/sheet/cell |
-| `excel_sheet` | 工作表管理 | `action`: add/delete/rename/copy |
-| `excel_format` | 格式化 | `type`: column/cell |
-| `excel_query` | 数据查询 | `action`: filter/sort/find |
-| `excel_convert` | 格式转换 | `format`: json/csv, `direction`: to/from |
-| `excel_calc` | 公式计算 | - |
+| `read` | 读取 Excel | `scope`: workbook/sheet/cell |
+| `write` | 写入 Excel | `scope`: workbook/sheet/cell |
+| `sheet` | 工作表管理 | `action`: add/delete/rename/copy |
+| `format` | 格式化 | `type`: column/cell |
+| `query` | 数据查询 | `action`: filter/sort/find |
+| `convert` | 格式转换 | `format`: json/csv, `direction`: to/from |
+| `calc` | 公式计算 | - |
 
-## excel_read
+## read
 
 ```javascript
 // 读取工作簿
-excel_read({ path: 'data.xlsx', scope: 'workbook' })
-excel_read({ path: 'data.xlsx', scope: 'workbook', includeData: true })
+read({ path: 'data.xlsx', scope: 'workbook' })
+read({ path: 'data.xlsx', scope: 'workbook', includeData: true })
 
 // 读取工作表
-excel_read({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1' })
-excel_read({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', header: 'json', range: 'A1:C10' })
+read({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1' })
+read({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', header: 'json', range: 'A1:C10' })
 
 // 读取单元格
-excel_read({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'A1' })
+read({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'A1' })
 ```
 
-## excel_write
+## write
 
 ```javascript
 // 创建工作簿
-excel_write({
+write({
   path: 'new.xlsx',
   scope: 'workbook',
   sheets: [{ name: 'Sheet1', data: [['A', 'B'], [1, 2]] }]
 })
 
 // 写入工作表
-excel_write({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', data: [[...]], mode: 'overwrite' })
-excel_write({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', data: [[...]], mode: 'append' })
+write({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', data: [[...]], mode: 'overwrite' })
+write({ path: 'data.xlsx', scope: 'sheet', sheet: 'Sheet1', data: [[...]], mode: 'append' })
 
 // 写入单元格
-excel_write({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'A1', value: 'Hello' })
-excel_write({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'C1', formula: '=SUM(A1:B1)' })
+write({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'A1', value: 'Hello' })
+write({ path: 'data.xlsx', scope: 'cell', sheet: 'Sheet1', cell: 'C1', formula: '=SUM(A1:B1)' })
 ```
 
-## excel_sheet
+## sheet
 
 ```javascript
-excel_sheet({ path: 'data.xlsx', action: 'add', name: 'NewSheet' })
-excel_sheet({ path: 'data.xlsx', action: 'delete', sheet: 'Sheet2' })
-excel_sheet({ path: 'data.xlsx', action: 'rename', sheet: 'Sheet1', newName: 'Summary' })
-excel_sheet({ path: 'data.xlsx', action: 'copy', sourceSheet: 'Template', targetSheet: 'Copy1' })
+sheet({ path: 'data.xlsx', action: 'add', name: 'NewSheet' })
+sheet({ path: 'data.xlsx', action: 'delete', sheet: 'Sheet2' })
+sheet({ path: 'data.xlsx', action: 'rename', sheet: 'Sheet1', newName: 'Summary' })
+sheet({ path: 'data.xlsx', action: 'copy', sourceSheet: 'Template', targetSheet: 'Copy1' })
 ```
 
-## excel_format
+## format
 
 ```javascript
 // 列宽
-excel_format({
+format({
   path: 'data.xlsx', type: 'column', sheet: 'Sheet1',
   columns: [{ column: 'A', width: 20 }, { column: 'B', width: 15 }]
 })
 
 // 单元格样式
-excel_format({
+format({
   path: 'data.xlsx', type: 'cell', sheet: 'Sheet1',
   cells: ['A1', 'B1'],
   style: { font: { bold: true }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } } }
 })
 ```
 
-## excel_query
+## query
 
 ```javascript
 // 筛选
-excel_query({ path: 'data.xlsx', action: 'filter', column: 'status', condition: 'equals', value: 'active' })
+query({ path: 'data.xlsx', action: 'filter', column: 'status', condition: 'equals', value: 'active' })
 
 // 排序
-excel_query({ path: 'data.xlsx', action: 'sort', column: 'amount', order: 'desc' })
+query({ path: 'data.xlsx', action: 'sort', column: 'amount', order: 'desc' })
 
 // 查找
-excel_query({ path: 'data.xlsx', action: 'find', query: 'error' })
+query({ path: 'data.xlsx', action: 'find', query: 'error' })
 ```
 
 **筛选条件**: `equals`, `not_equals`, `greater`, `less`, `contains`, `starts_with`, `ends_with`, `is_empty`, `is_not_empty`
 
-## excel_convert
+## convert
 
 ```javascript
 // Excel ↔ JSON
-excel_convert({ path: 'data.xlsx', format: 'json', direction: 'to' })
-excel_convert({ path: 'output.xlsx', format: 'json', direction: 'from', data: [{ name: 'Alice' }] })
+convert({ path: 'data.xlsx', format: 'json', direction: 'to' })
+convert({ path: 'output.xlsx', format: 'json', direction: 'from', data: [{ name: 'Alice' }] })
 
 // Excel ↔ CSV
-excel_convert({ path: 'data.xlsx', format: 'csv', direction: 'to', output: 'data.csv' })
-excel_convert({ path: 'data.csv', format: 'csv', direction: 'from', output: 'data.xlsx' })
+convert({ path: 'data.xlsx', format: 'csv', direction: 'to', output: 'data.csv' })
+convert({ path: 'data.csv', format: 'csv', direction: 'from', output: 'data.xlsx' })
 ```
 
-## excel_calc
+## calc
 
 ```javascript
-excel_calc({ path: 'data.xlsx', sheet: 'Sheet1' })
+calc({ path: 'data.xlsx', sheet: 'Sheet1' })
 // 返回: { formulas: [{ cell: 'C1', formula: 'SUM(A1:B1)', value: 15 }] }
 ```
 

@@ -1289,29 +1289,29 @@ async function excelCalc(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'excel_read':
+    case 'read':
       return await excelRead(params);
       
-    case 'excel_write':
+    case 'write':
       return await excelWrite(params);
       
-    case 'excel_sheet':
+    case 'sheet':
       return await excelSheet(params);
       
-    case 'excel_format':
+    case 'format':
       return await excelFormat(params);
       
-    case 'excel_query':
+    case 'query':
       return await excelQuery(params);
       
-    case 'excel_convert':
+    case 'convert':
       return await excelConvert(params);
       
-    case 'excel_calc':
+    case 'calc':
       return await excelCalc(params);
       
     default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: excel_read, excel_write, excel_sheet, excel_format, excel_query, excel_convert, excel_calc`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: read, write, sheet, format, query, convert, calc`);
   }
 }
 

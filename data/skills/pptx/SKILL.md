@@ -30,14 +30,14 @@ user-invocable: true
 
 | 工具 | 最终名称 | 说明 |
 |------|----------|------|
-| `pptx_file` | `pptx__file` | 文件级操作（读取、创建、提取） |
-| `pptx_slide` | `pptx__slide` | 幻灯片创建（仅限新建演示文稿） |
-| `pptx_object` | `pptx__object` | 内容对象操作（添加、提取） |
-| `pptx_master` | `pptx__master` | 模板母版（定义、列出） |
+| `file` | `pptx__file` | 文件级操作（读取、创建、提取） |
+| `slide` | `pptx__slide` | 幻灯片创建（仅限新建演示文稿） |
+| `object` | `pptx__object` | 内容对象操作（添加、提取） |
+| `master` | `pptx__master` | 模板母版（定义、列出） |
 
 ---
 
-## pptx_file - 文件级操作
+## file - 文件级操作
 
 通过 `action` 参数区分具体操作：
 
@@ -128,7 +128,7 @@ pptx__file({
 
 ---
 
-## pptx_slide - 幻灯片创建
+## slide - 幻灯片创建
 
 创建新的演示文稿并添加幻灯片。
 
@@ -165,7 +165,7 @@ pptx__slide({
 
 ---
 
-## pptx_object - 内容对象操作
+## object - 内容对象操作
 
 通过 `action` 参数区分具体操作：
 
@@ -272,7 +272,7 @@ pptx__object({
 
 ---
 
-## pptx_master - 模板母版
+## master - 模板母版
 
 通过 `action` 参数区分具体操作：
 

@@ -330,8 +330,8 @@ async function execute(toolName, params, context = {}) {
 
   const tools = {
     // 知识库查询
-    'list_my_kbs': listMyKnowledgeBases,
-    'get_kb': getKnowledgeBase,
+    'list_mine': listMyKnowledgeBases,
+    'get': getKnowledgeBase,
 
     // 文章查询
     'list_articles': listArticles,
@@ -386,7 +386,7 @@ function getTools() {
   return [
     // 知识库查询
     {
-      name: 'list_my_kbs',
+      name: 'list_mine',
       description: '列出当前用户可访问的知识库',
       parameters: {
         type: 'object',
@@ -397,7 +397,7 @@ function getTools() {
       },
     },
     {
-      name: 'get_kb',
+      name: 'get',
       description: '获取知识库详情',
       parameters: {
         type: 'object',

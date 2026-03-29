@@ -11,7 +11,7 @@ Network utilities for DNS lookup, SSL analysis, HTTP headers analysis, connectiv
 
 ## Tools
 
-### net_check
+### check
 
 Unified check tool for DNS, SSL, and HTTP analysis. Use `type` parameter to specify check type.
 
@@ -33,16 +33,16 @@ Unified check tool for DNS, SSL, and HTTP analysis. Use `type` parameter to spec
 **Examples:**
 ```javascript
 // DNS lookup - A records (IPv4)
-{ "tool": "net_check", "params": { "hostname": "example.com" } }
+{ "tool": "check", "params": { "hostname": "example.com" } }
 
 // DNS lookup - MX records (mail servers)
-{ "tool": "net_check", "params": { "hostname": "gmail.com", "type": "dns", "record_type": "MX" } }
+{ "tool": "check", "params": { "hostname": "gmail.com", "type": "dns", "record_type": "MX" } }
 
 // SSL certificate analysis
-{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
+{ "tool": "check", "params": { "hostname": "example.com", "type": "ssl" } }
 
 // HTTP headers analysis (security & performance)
-{ "tool": "net_check", "params": { "url": "https://example.com", "type": "http" } }
+{ "tool": "check", "params": { "url": "https://example.com", "type": "http" } }
 ```
 
 **DNS Response:**
@@ -96,7 +96,7 @@ Unified check tool for DNS, SSL, and HTTP analysis. Use `type` parameter to spec
 }
 ```
 
-### net_connect
+### connect
 
 TCP connectivity testing - test if a host and port is reachable.
 
@@ -108,13 +108,13 @@ TCP connectivity testing - test if a host and port is reachable.
 **Examples:**
 ```javascript
 // Test web server connectivity
-{ "tool": "net_connect", "params": { "host": "example.com", "port": 80 } }
+{ "tool": "connect", "params": { "host": "example.com", "port": 80 } }
 
 // Test SSH port
-{ "tool": "net_connect", "params": { "host": "server.example.com", "port": 22 } }
+{ "tool": "connect", "params": { "host": "server.example.com", "port": 22 } }
 
 // Test database port
-{ "tool": "net_connect", "params": { "host": "db.example.com", "port": 3306 } }
+{ "tool": "connect", "params": { "host": "db.example.com", "port": 3306 } }
 ```
 
 **Response:**
@@ -230,13 +230,13 @@ Make HTTP/HTTPS requests.
 
 ```javascript
 // 1. Check DNS resolution
-{ "tool": "net_check", "params": { "hostname": "example.com" } }
+{ "tool": "check", "params": { "hostname": "example.com" } }
 
 // 2. Test connectivity
-{ "tool": "net_connect", "params": { "host": "example.com", "port": 443 } }
+{ "tool": "connect", "params": { "host": "example.com", "port": 443 } }
 
 // 3. Check SSL certificate
-{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
+{ "tool": "check", "params": { "hostname": "example.com", "type": "ssl" } }
 
 // 4. Test HTTP endpoint
 { "tool": "http_request", "params": { "url": "https://example.com" } }
@@ -246,10 +246,10 @@ Make HTTP/HTTPS requests.
 
 ```javascript
 // Check HTTP security headers
-{ "tool": "net_check", "params": { "url": "https://example.com", "type": "http" } }
+{ "tool": "check", "params": { "url": "https://example.com", "type": "http" } }
 
 // Check SSL certificate
-{ "tool": "net_check", "params": { "hostname": "example.com", "type": "ssl" } }
+{ "tool": "check", "params": { "hostname": "example.com", "type": "ssl" } }
 
 // Scan common ports
 { "tool": "port_scan", "params": { "host": "example.com" } }
@@ -262,10 +262,10 @@ Make HTTP/HTTPS requests.
 { "tool": "port_scan", "params": { "host": "myserver.com", "ports": "web" } }
 
 // Check database server
-{ "tool": "net_connect", "params": { "host": "db.myserver.com", "port": 3306 } }
+{ "tool": "connect", "params": { "host": "db.myserver.com", "port": 3306 } }
 
 // Check SSH access
-{ "tool": "net_connect", "params": { "host": "myserver.com", "port": 22 } }
+{ "tool": "connect", "params": { "host": "myserver.com", "port": 22 } }
 ```
 
 ## Security
@@ -288,8 +288,8 @@ All tools return a consistent error format:
 
 ## Best Practices for LLM
 
-1. **Start with DNS** - If a host is unreachable, check DNS first with `net_check`
-2. **Use `net_check` for all checks** - DNS, SSL, and HTTP analysis in one unified tool
+1. **Start with DNS** - If a host is unreachable, check DNS first with `check`
+2. **Use `check` for all checks** - DNS, SSL, and HTTP analysis in one unified tool
 3. **Use appropriate timeouts** - Increase timeout for slow networks
 4. **Check common ports** - Use `port_scan` with port groups for quick assessment
 5. **Handle errors gracefully** - Network operations can fail for many reasons

@@ -945,7 +945,7 @@ async function execute(toolName, params, context = {}) {
     case 'list_files':
       return await listFiles(params);
       
-    case 'fs_grep':
+    case 'grep':
       return await grep(params);
       
     case 'write_file':
@@ -957,14 +957,14 @@ async function execute(toolName, params, context = {}) {
     case 'edit_lines':
       return await editLines(params);
       
-    case 'fs_action':
+    case 'action':
       return await fsAction(params);
       
-    case 'fs_info':
+    case 'info':
       return await getFileInfo(params);
       
     default:
-      throw new Error(`Unknown tool: ${toolName}`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: read_file, list_files, grep, write_file, replace_in_file, edit_lines, action, info`);
   }
 }
 
