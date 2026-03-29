@@ -21,10 +21,10 @@ description: "Excel 文件处理。用于读取、写入、编辑 .xlsx/.xls/.cs
 **示例**：
 ```javascript
 // 相对路径（推荐）
-excel_read({ path: 'input/data.xlsx', scope: 'workbook' })
+read({ path: 'input/data.xlsx', scope: 'workbook' })
 
 // 绝对路径（仅管理员）
-excel_read({ path: '/absolute/path/to/data.xlsx', scope: 'workbook' })
+read({ path: '/absolute/path/to/data.xlsx', scope: 'workbook' })
 ```
 
 ## 工具
