@@ -38,6 +38,8 @@ export default {
     reset: 'Reset',
     none: 'None',
     seconds: 'seconds',
+    restart: 'Restart',
+    restarting: 'Restarting...',
   },
 
   // Navigation
@@ -600,6 +602,33 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     config_upload_max_size_hint: 'Maximum size for uploaded files (MB)',
     config_upload_allowed_types: 'Allowed File Types',
     config_upload_allowed_types_hint: 'Allowed file types for upload, separated by commas',
+    // Resident Processes
+    residentProcesses: 'Resident Processes',
+    resident: {
+      noProcesses: 'No resident processes configured',
+      startedAt: 'Started At',
+      totalTasks: 'Total Tasks',
+      successCount: 'Success',
+      errorCount: 'Errors',
+      communicationRecords: 'Communication Records',
+      noCommunications: 'No communication records',
+      confirmRestart: 'Confirm Restart Process',
+      restartWarning: 'You are about to restart process "{name}". This may affect tasks currently being executed. Continue?',
+      restartSuccess: 'Process restarted successfully',
+      restartFailed: 'Failed to restart process',
+      loadFailed: 'Failed to load process status',
+      states: {
+        STARTING: 'Starting',
+        RUNNING: 'Running',
+        STOPPING: 'Stopping',
+        STOPPED: 'Stopped',
+        ERROR: 'Error',
+      },
+      commTypes: {
+        invoke: 'Invoke',
+        result: 'Result',
+      },
+    },
   },
 
   // Login page
