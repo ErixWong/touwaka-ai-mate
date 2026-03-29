@@ -53,7 +53,7 @@
 | `kb-search` | 知识库搜索 | 查询知识库内容、搜索专业知识 | `kb-search__search`, `kb-search__global_search` |
 | `docx` | Word 文档处理 | 创建或编辑 .docx 文件 | `docx__create`, `docx__read` |
 | `pdf` | PDF 处理 | 读取或转换 PDF 文件 | `pdf__read`, `pdf__to_images` |
-| `file-operations` | 文件操作 | 文件系统操作、文件信息查询 | `file-operations__fs_info`, `file-operations__read_file` |
+| `fs` | 文件操作 | 文件系统操作、文件信息查询 | `fs__info`, `fs__read_file` |
 
 ### 使用建议
 
@@ -65,7 +65,7 @@
 ### 注意事项
 
 - 如果信息不足，先询问用户再调用工具
-- 文件操作前必须先用 `file-operations__fs_info` 检查文件类型
+- 文件操作前必须先用 `fs__info` 检查文件类型
 - 技能工具的详细参数说明在各自的工具描述中
 ```
 
@@ -170,7 +170,7 @@ System Prompt 应该包含**无法在 tools 参数中表达的信息**：
 **使用建议**：
 - 需要搜索知识库时，使用 `kb-search` 技能
 - 需要处理文档时，优先使用 `docx` 或 `pdf` 技能
-- 不确定文件类型时，先用 `file-operations` 的 `fs_info` 工具获取文件信息
+- 不确定文件类型时，先用 `fs` 技能的 `info` 工具获取文件信息
 
 **注意事项**：
 - 技能工具需要明确的参数，如果信息不足请询问用户
@@ -278,7 +278,7 @@ OpenAI 文档推荐：
 
 - `kb-search__search` - 知识库搜索技能的搜索工具
 - `kb-search__insert` - 知识库搜索技能的插入工具
-- `file-operations__fs_info` - 文件操作技能的文件信息工具
+- `fs__info` - 文件操作技能的文件信息工具
 - `docx__create` - DOCX 技能的创建文档工具
 
 **优势**：

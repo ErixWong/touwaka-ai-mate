@@ -1,10 +1,10 @@
  /**
- * File Operations Skill - Node.js Implementation
+ * FS Skill - Node.js Implementation
  * 
  * File system operations including read, write, search, and manage files.
  * All operations are restricted to allowed directories for security.
  * 
- * @module file-operations-skill
+ * @module fs-skill
  */
 
 const fs = require('fs');
@@ -45,7 +45,7 @@ if (IS_ADMIN) {
 }
 
 // 调试输出
-console.error('[file-operations] 环境变量诊断:');
+console.error('[fs] 环境变量诊断:');
 console.error(`  IS_ADMIN: ${IS_ADMIN}`);
 console.error(`  IS_SKILL_CREATOR: ${IS_SKILL_CREATOR}`);
 console.error(`  DATA_BASE_PATH: ${DATA_BASE_PATH}`);
@@ -78,7 +78,7 @@ function isPathAllowed(targetPath) {
   const resolvedLower = resolved.toLowerCase();
   
   // 调试输出
-  console.error(`[file-operations] isPathAllowed: checking "${resolved}"`);
+  console.error(`[fs] isPathAllowed: checking "${resolved}"`);
   
   const result = ALLOWED_BASE_PATHS.some(basePath => {
     let resolvedBase = path.resolve(basePath);
@@ -97,11 +97,11 @@ function isPathAllowed(targetPath) {
     // 1. 路径必须以 basePath + path.sep 开头（子目录/文件）
     // 2. 或者路径完全等于 basePath（目录本身）
     const isAllowed = resolvedLower.startsWith(resolvedBaseLower + path.sep) || resolvedLower === resolvedBaseLower;
-    console.error(`[file-operations]   vs "${resolvedBase}": ${isAllowed}`);
+    console.error(`[fs]   vs "${resolvedBase}": ${isAllowed}`);
     return isAllowed;
   });
   
-  console.error(`[file-operations] isPathAllowed result: ${result}`);
+  console.error(`[fs] isPathAllowed result: ${result}`);
   return result;
 }
 

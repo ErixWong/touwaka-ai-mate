@@ -1,11 +1,11 @@
 ---
-name: file-operations
-description: "文件系统操作。用于读取、写入、搜索、管理文件。当需要在数据目录中操作文件时触发。"
-argument-hint: "[read|write|grep|info|action] [path]"
+name: fs
+description: "文件系统操作。⚠️读取前先调用info获取文件信息：图片用read_file(mode='data_url')，大文件用from/lines分块。"
+argument-hint: "[info|read|write|grep|action] [path]"
 user-invocable: true
 ---
 
-# File Operations - 文件系统操作
+# FS - 文件系统操作
 
 完整的文件系统操作，用于读取、写入、搜索和管理文件。
 

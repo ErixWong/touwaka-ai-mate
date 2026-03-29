@@ -294,7 +294,7 @@ touwaka-mate-v2/
 
 | 技能 | 说明 |
 |------|------|
-| `file-operations` | 文件读写、搜索、管理 |
+| `fs` | 文件读写、搜索、管理 |
 | `compression` | ZIP 压缩/解压 |
 | `http-client` | HTTP GET/POST 请求 |
 | `skill-manager` | 技能注册、删除、分配 |
