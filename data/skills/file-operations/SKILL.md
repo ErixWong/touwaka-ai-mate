@@ -13,18 +13,18 @@ user-invocable: true
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `fs_info` | 获取文件/目录信息 | `path`, `include_content_preview`, `hash` |
+| `info` | 获取文件/目录信息 | `path`, `include_content_preview`, `hash` |
 | `read_file` | 读取文件 | `path`, `mode`, `from`, `lines` |
 | `list_files` | 列出目录内容 | `path`, `recursive` |
-| `fs_grep` | 搜索文本 | `pattern`, `path`, `use_regex` |
+| `grep` | 搜索文本 | `pattern`, `path`, `use_regex` |
 | `write_file` | 写入文件 | `path`, `content`, `mode` |
 | `replace_in_file` | 替换文本 | `path`, `old`, `new` |
 | `edit_lines` | 编辑行 | `path`, `operation`, `line`, `content` |
-| `fs_action` | 文件操作 | `operation`, `source`, `destination`, `path` |
+| `action` | 文件操作 | `operation`, `source`, `destination`, `path` |
 
 ## 文件信息
 
-### fs_info
+### info
 
 获取文件或目录的详细元数据。**建议在其他操作前先调用**。
 
@@ -131,7 +131,7 @@ read_file(path="tasks/screenshot.png", mode="data_url")
 
 ## 搜索
 
-### fs_grep
+### grep
 
 跨文件搜索文本。
 
@@ -181,7 +181,7 @@ read_file(path="tasks/screenshot.png", mode="data_url")
 
 ## 文件操作
 
-### fs_action
+### action
 
 统一的文件系统操作。
 
@@ -200,7 +200,7 @@ read_file(path="tasks/screenshot.png", mode="data_url")
 
 ## 最佳实践
 
-1. **先调用 `fs_info`** 检查文件是否存在、类型、大小
+1. **先调用 `info`** 检查文件是否存在、类型、大小
 2. **使用 `include_content_preview`** 快速了解文件结构
 3. **处理大文件时** 检查 `size`，使用 `from`/`lines` 分块读取
 4. **内容替换** 使用 `replace_in_file`，行操作使用 `edit_lines`

@@ -14,8 +14,8 @@ allowed-tools: []
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `list_my_kbs` | 列出我的知识库 | `page`, `pageSize` |
-| `get_kb` | 获取知识库详情 | `id` |
+| `list_mine` | 列出我的知识库 | `page`, `pageSize` |
+| `get` | 获取知识库详情 | `id` |
 | `list_articles` | 列出文章 | `kb_id`, `page`, `status`, `search` |
 | `get_article` | 获取文章详情 | `kb_id`, `id` |
 | `get_article_tree` | 获取文章完整结构 | `kb_id`, `article_id` |
@@ -29,7 +29,7 @@ allowed-tools: []
 
 ## 知识库查询
 
-### list_my_kbs
+### list_mine
 
 列出当前用户可访问的知识库。
 
@@ -37,7 +37,7 @@ allowed-tools: []
 - `page` (integer, optional): 页码，默认 1
 - `pageSize` (integer, optional): 每页数量，默认 20
 
-### get_kb
+### get
 
 获取知识库详情。
 
@@ -123,7 +123,7 @@ allowed-tools: []
 
 ### 问答检索
 
-1. `list_my_kbs` - 确认可访问的知识库
+1. `list_mine` - 确认可访问的知识库
 2. `search` 或 `global_search` - 语义搜索相关知识点
 3. `get_article_tree` - 如果需要更多上下文
 

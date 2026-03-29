@@ -1345,20 +1345,20 @@ function finalizeMarkdownSlide(pptx, slideInfo, content) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'pptx_file':
+    case 'file':
       return await pptxFile(params);
       
-    case 'pptx_slide':
+    case 'slide':
       return await pptxSlide(params);
       
-    case 'pptx_object':
+    case 'object':
       return await pptxObject(params);
       
-    case 'pptx_master':
+    case 'master':
       return await pptxMaster(params);
       
     default:
-      throw new Error(`Unknown tool: ${toolName}. Supported tools: pptx_file, pptx_slide, pptx_object, pptx_master`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: file, slide, object, master`);
   }
 }
 

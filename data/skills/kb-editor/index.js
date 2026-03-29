@@ -372,7 +372,7 @@ async function execute(toolName, params, context = {}) {
 
   // 处理器映射
   const handlers = {
-    'kb': handleKb,
+    'knowledge_base': handleKb,
     'article': handleArticle,
     'section': handleSection,
     'paragraph': handleParagraph,
@@ -408,7 +408,7 @@ function getTools() {
   return [
     // ==================== 新工具（5个） ====================
     {
-      name: 'kb',
+      name: 'knowledge_base',
       description: '知识库操作。通过 action 参数区分具体操作：list（列出知识库）、list_models（列出嵌入模型）、get（获取详情）、create（创建）、update（更新）、delete（删除）。',
       parameters: {
         type: 'object',

@@ -1,7 +1,7 @@
 ---
 name: kb-editor
 description: "知识库编辑技能。用于创建和管理知识库、文章、节、段落、标签。当知识专家需要整理知识、导入文档、构建知识结构时触发。"
-argument-hint: "[kb|article|section|paragraph|tag] --action=xxx"
+argument-hint: "[knowledge_base|article|section|paragraph|tag] --action=xxx"
 user-invocable: false
 allowed-tools: []
 ---
@@ -26,13 +26,13 @@ knowledge_bases (知识库)
 
 | 工具 | 操作（action） | 说明 |
 |------|----------------|------|
-| `kb` | list, list_models, get, create, update, delete | 知识库操作 |
+| `knowledge_base` | list, list_models, get, create, update, delete | 知识库操作 |
 | `article` | list, get, get_tree, create, update, delete | 文章操作 |
 | `section` | list, create, update, move, delete | 节操作（支持无限层级） |
 | `paragraph` | list, create, update, move, delete | 段落操作 |
 | `tag` | list, create, update, delete | 标签操作 |
 
-## kb - 知识库操作
+## knowledge_base - 知识库操作
 
 ### 参数
 
@@ -247,7 +247,7 @@ knowledge_bases (知识库)
 
 ### 导入新文档
 
-1. `kb` action=list - 查看知识库列表
+1. `knowledge_base` action=list - 查看知识库列表
 2. `article` action=create - 创建文章，设置标题和标签
 3. `section` action=create - 根据文档结构创建节（章→节→小节）
 4. `paragraph` action=create - 创建段落，标记知识点（`is_knowledge_point: true`）

@@ -666,10 +666,10 @@ async function httpRequest(params) {
  */
 async function execute(toolName, params, context = {}) {
   switch (toolName) {
-    case 'net_check':
+    case 'check':
       return await netCheck(params);
     
-    case 'net_connect':
+    case 'connect':
       return await netConnect(params);
     
     case 'port_scan':
@@ -679,7 +679,7 @@ async function execute(toolName, params, context = {}) {
       return await httpRequest(params);
     
     default:
-      throw new Error(`Unknown tool: ${toolName}`);
+      throw new Error(`Unknown tool: ${toolName}. Supported tools: check, connect, port_scan, http_request`);
   }
 }
 
