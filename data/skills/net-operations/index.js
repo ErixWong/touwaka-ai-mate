@@ -5,8 +5,8 @@
  * All operations are designed to be LLM-friendly with clear error messages.
  * 
  * Tools:
- * - net_check: Unified check tool (DNS, SSL, HTTP headers)
- * - net_connect: TCP connectivity testing
+ * - check: Unified check tool (DNS, SSL, HTTP headers)
+ * - connect: TCP connectivity testing
  * - port_scan: Port scanning
  * - http_request: HTTP/HTTPS requests
  * 
