@@ -1,10 +1,10 @@
 /**
- * Unifuncs Web Reader Skill
+ * Unifuncs Skill
  *
- * 网页内容提取服务，通过 Unifuncs API 获取网页正文内容。
+ * Unifuncs API 服务集成，提供网页内容提取等多种能力。
  * 支持微信公众号、知乎、头条等主流平台。
  *
- * @module unifuncs-web-reader
+ * @module unifuncs
  */
 
 const https = require('https');
@@ -102,12 +102,12 @@ async function readWebPage(params) {
   const apiKey = process.env.SKILL_UNIFUNCS_API_KEY || process.env.UNIFUNCS_API_KEY;
 
   // 🔍 调试日志：输出环境变量和参数信息
-  console.log('[unifuncs-web-reader] ========== DEBUG INFO ==========');
-  console.log('[unifuncs-web-reader] params:', JSON.stringify(params, null, 2));
-  console.log('[unifuncs-web-reader] SKILL_UNIFUNCS_API_KEY:', process.env.SKILL_UNIFUNCS_API_KEY ? `${process.env.SKILL_UNIFUNCS_API_KEY.substring(0, 8)}...` : '(not set)');
-  console.log('[unifuncs-web-reader] UNIFUNCS_API_KEY:', process.env.UNIFUNCS_API_KEY ? `${process.env.UNIFUNCS_API_KEY.substring(0, 8)}...` : '(not set)');
-  console.log('[unifuncs-web-reader] resolved apiKey:', apiKey ? `${apiKey.substring(0, 8)}...` : '(not set)');
-  console.log('[unifuncs-web-reader] ==============================');
+  console.log('[unifuncs] ========== DEBUG INFO ==========');
+  console.log('[unifuncs] params:', JSON.stringify(params, null, 2));
+  console.log('[unifuncs] SKILL_UNIFUNCS_API_KEY:', process.env.SKILL_UNIFUNCS_API_KEY ? `${process.env.SKILL_UNIFUNCS_API_KEY.substring(0, 8)}...` : '(not set)');
+  console.log('[unifuncs] UNIFUNCS_API_KEY:', process.env.UNIFUNCS_API_KEY ? `${process.env.UNIFUNCS_API_KEY.substring(0, 8)}...` : '(not set)');
+  console.log('[unifuncs] resolved apiKey:', apiKey ? `${apiKey.substring(0, 8)}...` : '(not set)');
+  console.log('[unifuncs] ==============================');
 
   if (!url) {
     throw new Error('URL is required');
@@ -124,16 +124,16 @@ async function readWebPage(params) {
     const urlPath = `${API_PATH}${encodedUrl}?apiKey=${apiKey}`;
 
     // 🔍 调试日志：输出请求信息（隐藏完整 API Key）
-    console.log('[unifuncs-web-reader] Request URL:', `https://${API_BASE}${API_PATH}${encodedUrl}?apiKey=${apiKey.substring(0, 8)}...`);
-    console.log('[unifuncs-web-reader] Timeout:', timeout);
+    console.log('[unifuncs] Request URL:', `https://${API_BASE}${API_PATH}${encodedUrl}?apiKey=${apiKey.substring(0, 8)}...`);
+    console.log('[unifuncs] Timeout:', timeout);
 
     const result = await makeRequest(urlPath, timeout);
 
     // 🔍 调试日志：输出响应信息
-    console.log('[unifuncs-web-reader] Response status:', result.statusCode, result.statusMessage);
-    console.log('[unifuncs-web-reader] Response size:', result.size, 'bytes');
+    console.log('[unifuncs] Response status:', result.statusCode, result.statusMessage);
+    console.log('[unifuncs] Response size:', result.size, 'bytes');
     if (!result.success) {
-      console.log('[unifuncs-web-reader] Response body:', JSON.stringify(result.body).substring(0, 500));
+      console.log('[unifuncs] Response body:', JSON.stringify(result.body).substring(0, 500));
     }
 
     return {
@@ -146,7 +146,7 @@ async function readWebPage(params) {
       originalUrl: url,
     };
   } catch (error) {
-    console.log('[unifuncs-web-reader] Error:', error.message);
+    console.log('[unifuncs] Error:', error.message);
     return {
       success: false,
       error: error.message,
@@ -178,6 +178,6 @@ async function execute(toolName, params, context = {}) {
 module.exports = {
   execute,
   readWebPage,
-  name: 'unifuncs-web-reader',
-  description: '网页内容提取服务，通过 Unifuncs API 获取网页正文内容',
+  name: 'unifuncs',
+  description: 'Unifuncs API 服务集成，提供网页内容提取等多种能力',
 };
