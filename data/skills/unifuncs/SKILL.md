@@ -1,6 +1,6 @@
 ---
-name: unifuncs-web-reader
-description: 网页内容提取服务，通过 Unifuncs API 获取网页正文内容。支持微信公众号、知乎、头条等主流平台。
+name: unifuncs
+description: Unifuncs API 服务集成，提供网页内容提取等多种能力。支持微信公众号、知乎、头条等主流平台。
 argument-hint: "[url]"
 user-invocable: true
 allowed-tools: []
@@ -10,9 +10,9 @@ env-variables:
     required: true
 ---
 
-# Unifuncs Web Reader
+# Unifuncs
 
-网页内容提取服务，通过 Unifuncs API 获取网页正文内容。
+Unifuncs API 服务集成，提供网页内容提取等多种能力。
 
 ## 功能特点
 
