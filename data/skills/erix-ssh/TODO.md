@@ -23,6 +23,7 @@
   - [x] 4.4 删除旧的 db.js SQLite 模块
 - [x] 5. 验证改造结果
 - [x] 6. 添加 handleSession 函数支持统一 session 管理
+- [x] 7. 修复工具命名冲突（去掉 ssh_前缀，避免拼接后变成 ssh__ssh_session）
 
 ## 设计原则参考
 - 参考 remote-llm 的实现模式
@@ -47,9 +48,11 @@ data/
 
 ## 核心工具（4 个）
 
-| 工具 | 说明 |
-|------|------|
-| `ssh_session` | 会话管理（connect/disconnect） |
-| `ssh_exec` | 执行命令（同步） |
-| `ssh_sudo` | sudo 执行 |
-| `ssh_sftp` | SFTP 文件传输（list/download/upload） |
+| 工具名（SKILL.md） | 最终工具名（LLM 调用） | 说明 |
+|-------------------|----------------------|------|
+| `session` | `ssh__session` | 会话管理（connect/disconnect） |
+| `exec` | `ssh__exec` | 执行命令（同步） |
+| `sudo` | `ssh__sudo` | sudo 执行 |
+| `sftp` | `ssh__sftp` | SFTP 文件传输（list/download/upload） |
+
+**命名规范：** 工具名格式为 `skill_mark__tool_name`，其中 `skill_mark` 为 `ssh`
