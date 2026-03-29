@@ -72,7 +72,7 @@ node scripts/init-core-skills.js
 
 | 技能 | 说明 |
 |------|------|
-| `file-operations` | 文件读写、搜索、管理 |
+| `fs` | 文件读写、搜索、管理 |
 | `compression` | ZIP 压缩/解压 |
 | `http-client` | HTTP GET/POST 请求 |
 | `skill-manager` | 技能注册、删除、分配 |
@@ -140,7 +140,7 @@ touwaka-mate-v2/
 │   └── sandboxie/         # Sandboxie 沙箱配置
 ├── data/                  # 数据目录
 │   ├── skills/            # 技能存储
-│   │   ├── file-operations/
+│   │   ├── fs/            # 文件系统操作
 │   │   ├── compression/
 │   │   ├── http-client/
 │   │   ├── skill-manager/
