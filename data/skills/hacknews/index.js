@@ -13,6 +13,28 @@ const AI_KEYWORDS = [
   'ChatGPT', 'Gemini', 'Llama', 'stable diffusion', 'midjourney'
 ];
 
+// Story type to endpoint mapping
+const STORY_ENDPOINTS = {
+  top: 'topstories',
+  new: 'newstories',
+  best: 'beststories',
+  ask: 'askstories',
+  show: 'showstories',
+  jobs: 'jobstories'
+};
+
+// Story type to title mapping
+const STORY_TITLES = {
+  top: '🔥 Top Stories',
+  new: '🆕 New Stories',
+  best: '⭐ Best Stories',
+  ask: '❓ Ask HN',
+  show: '👀 Show HN',
+  jobs: '💼 Jobs',
+  ai: '🤖 AI Domain Stories',
+  search: '🔍 Search Results'
+};
+
 // Helper: Fetch JSON from URL
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
@@ -47,54 +69,14 @@ function fetchJSON(url) {
   });
 }
 
-// Get top stories
-async function getTopStories(limit = 10) {
-  const ids = await fetchJSON(`${HN_API_BASE}/topstories.json`);
-  const stories = await Promise.all(
-    ids.slice(0, limit).map(id => fetchJSON(`${HN_API_BASE}/item/${id}.json`))
-  );
-  return stories.filter(s => s && s.title);
-}
+// Get stories from HN API (top, new, best, ask, show, jobs)
+async function getHNStories(type, limit = 10) {
+  const endpoint = STORY_ENDPOINTS[type];
+  if (!endpoint) {
+    throw new Error(`Invalid story type: ${type}`);
+  }
 
-// Get new stories
-async function getNewStories(limit = 10) {
-  const ids = await fetchJSON(`${HN_API_BASE}/newstories.json`);
-  const stories = await Promise.all(
-    ids.slice(0, limit).map(id => fetchJSON(`${HN_API_BASE}/item/${id}.json`))
-  );
-  return stories.filter(s => s && s.title);
-}
-
-// Get best stories
-async function getBestStories(limit = 10) {
-  const ids = await fetchJSON(`${HN_API_BASE}/beststories.json`);
-  const stories = await Promise.all(
-    ids.slice(0, limit).map(id => fetchJSON(`${HN_API_BASE}/item/${id}.json`))
-  );
-  return stories.filter(s => s && s.title);
-}
-
-// Get Ask HN stories
-async function getAskStories(limit = 10) {
-  const ids = await fetchJSON(`${HN_API_BASE}/askstories.json`);
-  const stories = await Promise.all(
-    ids.slice(0, limit).map(id => fetchJSON(`${HN_API_BASE}/item/${id}.json`))
-  );
-  return stories.filter(s => s && s.title);
-}
-
-// Get Show HN stories
-async function getShowStories(limit = 10) {
-  const ids = await fetchJSON(`${HN_API_BASE}/showstories.json`);
-  const stories = await Promise.all(
-    ids.slice(0, limit).map(id => fetchJSON(`${HN_API_BASE}/item/${id}.json`))
-  );
-  return stories.filter(s => s && s.title);
-}
-
-// Get job postings
-async function getJobStories(limit = 10) {
-  const ids = await fetchJSON(`${HN_API_BASE}/jobstories.json`);
+  const ids = await fetchJSON(`${HN_API_BASE}/${endpoint}.json`);
   const stories = await Promise.all(
     ids.slice(0, limit).map(id => fetchJSON(`${HN_API_BASE}/item/${id}.json`))
   );
@@ -112,7 +94,7 @@ async function getAIStories(limit = 10, period = 'all') {
 
   const query = AI_KEYWORDS.map(k => `"${k}"`).join(' OR ');
   let url = `${ALGOLIA_API_BASE}/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=${limit}`;
-  
+
   if (periodFilter[period]) {
     url += `&numericFilters=${periodFilter[period]}`;
   }
@@ -122,7 +104,7 @@ async function getAIStories(limit = 10, period = 'all') {
 }
 
 // Search stories
-async function searchStories(query, limit = 10, sort = 'popularity') {
+async function searchStories(query, limit = 10) {
   const url = `${ALGOLIA_API_BASE}/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=${limit}`;
   const data = await fetchJSON(url);
   return data.hits || [];
@@ -133,7 +115,7 @@ function formatOutput(stories, json = false, title = 'Stories') {
   if (json) {
     return JSON.stringify({ count: stories.length, stories }, null, 2);
   }
-  
+
   const lines = [`\n${title}\n${'='.repeat(50)}`];
   stories.forEach((s, i) => {
     const url = s.url || `https://news.ycombinator.com/item?id=${s.objectID || s.id}`;
@@ -146,49 +128,52 @@ function formatOutput(stories, json = false, title = 'Stories') {
 
 // Main execute function
 async function execute(toolName, params) {
-  const { limit = 10, json = false, period = 'all', query, sort = 'popularity' } = params || {};
-  
+  // Only support 'stories' tool
+  if (toolName !== 'stories') {
+    throw new Error(`Unknown tool: ${toolName}. Only 'stories' is supported.`);
+  }
+
+  const {
+    type = 'top',
+    limit = 10,
+    json = false,
+    period = 'all',
+    query
+  } = params || {};
+
+  // Validate type
+  const validTypes = ['top', 'new', 'best', 'ask', 'show', 'jobs', 'ai', 'search'];
+  if (!validTypes.includes(type)) {
+    throw new Error(`Invalid type: ${type}. Must be one of: ${validTypes.join(', ')}`);
+  }
+
   let stories;
-  let title;
-  
-  switch (toolName) {
-    case 'hn_top':
-      stories = await getTopStories(limit);
-      title = '🔥 Top Stories';
+  let title = STORY_TITLES[type] || 'Stories';
+
+  switch (type) {
+    case 'top':
+    case 'new':
+    case 'best':
+    case 'ask':
+    case 'show':
+    case 'jobs':
+      stories = await getHNStories(type, limit);
       break;
-    case 'hn_new':
-      stories = await getNewStories(limit);
-      title = '🆕 New Stories';
-      break;
-    case 'hn_best':
-      stories = await getBestStories(limit);
-      title = '⭐ Best Stories';
-      break;
-    case 'hn_ask':
-      stories = await getAskStories(limit);
-      title = '❓ Ask HN';
-      break;
-    case 'hn_show':
-      stories = await getShowStories(limit);
-      title = '👀 Show HN';
-      break;
-    case 'hn_jobs':
-      stories = await getJobStories(limit);
-      title = '💼 Jobs';
-      break;
-    case 'hn_ai':
+
+    case 'ai':
       stories = await getAIStories(limit, period);
-      title = '🤖 AI Domain Stories';
       break;
-    case 'hn_search':
-      if (!query) throw new Error('query parameter required for search');
-      stories = await searchStories(query, limit, sort);
+
+    case 'search':
+      if (!query) throw new Error('query parameter required for search type');
+      stories = await searchStories(query, limit);
       title = `🔍 Search: "${query}"`;
       break;
+
     default:
-      throw new Error(`Unknown tool: ${toolName}`);
+      throw new Error(`Unsupported type: ${type}`);
   }
-  
+
   return formatOutput(stories, json, title);
 }
 

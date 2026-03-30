@@ -500,16 +500,16 @@ class KbController {
       const data = ctx.request.body;
       const userId = ctx.state.session.id;
 
-      // 权限检查：只有 owner 或 admin 可以编辑
-      const canEdit = await canEditKb(this.db, kb_id, userId);
-      if (!canEdit) {
-        ctx.throw(403, '无权编辑此知识库');
-      }
-
       // 验证知识库存在
       const kb = await this.KnowledgeBase.findByPk(kb_id);
       if (!kb) {
         ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 权限检查：只有 owner 或 admin 可以编辑
+      const canEdit = await canEditKb(this.db, kb_id, userId);
+      if (!canEdit) {
+        ctx.throw(403, '无权编辑此知识库');
       }
 
       const id = Utils.newID(20);
