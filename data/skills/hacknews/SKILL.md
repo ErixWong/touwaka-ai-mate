@@ -10,61 +10,77 @@ metadata:
 
 Windows-compatible Hacker News browser with AI domain filtering and JSON output.
 
-## Quick Start
+## Tools
 
-```bash
-# Top stories
-node scripts/hn.js top
+### `stories`
 
-# AI domain stories
-node scripts/hn.js ai
+获取 Hacker News 故事，支持多种类型和搜索。
 
-# Search
-node scripts/hn.js search "LLM"
-```
+**Parameters:**
 
-## Commands
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | Story type: `top`, `new`, `best`, `ask`, `show`, `jobs`, `ai`, `search` |
+| `limit` | number | No | Number of stories to return (default: 10) |
+| `period` | string | No | Time filter for AI type: `day`, `week`, `month`, `all` (default: `all`) |
+| `query` | string | No | Search query (required when type is `search`) |
+| `json` | boolean | No | Return JSON format instead of text (default: false) |
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `top` | Top stories | `--limit`, `--json` |
-| `new` | Newest stories | `--limit`, `--json` |
-| `best` | Best stories | `--limit`, `--json` |
-| `ask` | Ask HN | `--limit`, `--json` |
-| `show` | Show HN | `--limit`, `--json` |
-| `jobs` | Job postings | `--limit`, `--json` |
-| `ai` | AI domain filter | `--limit`, `--period`, `--json` |
-| `search` | Search stories | `--limit`, `--sort`, `--json` |
+**Story Types:**
+
+| Type | Description |
+|------|-------------|
+| `top` | Top stories |
+| `new` | Newest stories |
+| `best` | Best stories |
+| `ask` | Ask HN posts |
+| `show` | Show HN posts |
+| `jobs` | Job postings |
+| `ai` | AI domain stories with time filter |
+| `search` | Search stories by query |
 
 ## Examples
 
-```bash
-# Top 10 AI stories from last 24 hours
-node scripts/hn.js ai --limit 10 --period day
+```javascript
+// Get top stories
+{ "type": "top", "limit": 10 }
 
-# Search with JSON output
-node scripts/hn.js search "machine learning" --limit 5 --json
+// Get new stories in JSON format
+{ "type": "new", "limit": 20, "json": true }
 
-# Get best stories
-node scripts/hn.js best --limit 20 --json
+// Get AI stories from last 24 hours
+{ "type": "ai", "limit": 10, "period": "day" }
+
+// Search for machine learning stories
+{ "type": "search", "query": "machine learning", "limit": 5 }
+
+// Get best stories
+{ "type": "best", "limit": 15 }
 ```
 
 ## Output Format
 
-### JSON Mode (`--json`)
+### Text Mode (default)
+```
+🔥 Top Stories
+==================================================
+
+1. Story Title
+   https://example.com/story
+   👍 523 | 💬 156 | @author
+```
+
+### JSON Mode (`json: true`)
 ```json
 {
-  "command": "ai",
-  "query": "AI OR artificial intelligence OR LLM",
   "count": 10,
   "stories": [
     {
       "id": 43050023,
-      "title": "OpenAI releases GPT-5",
-      "url": "https://openai.com/...",
+      "title": "Story Title",
+      "url": "https://example.com/story",
       "points": 523,
-      "author": "sama",
-      "time": "2026-02-06T08:30:00Z",
+      "author": "author",
       "comments": 156
     }
   ]
