@@ -183,10 +183,16 @@ async function processActionWithUser(action, params, userId, isAdmin) {
   }
 
   switch (action) {
+    case 'session':
+      // Unified session management (connect/disconnect)
+      return await handleSession(params, userId, isAdmin);
+
     case 'connect':
+      // Legacy: direct connect (for backward compatibility)
       return await handleConnectWithUser(params, userId);
 
     case 'disconnect':
+      // Legacy: direct disconnect (for backward compatibility)
       return await handleDisconnect(params);
 
     case 'exec':
@@ -234,6 +240,37 @@ async function processAction(action, params) {
 }
 
 // ============== Action Handlers ==============
+
+/**
+ * Unified session management (connect/disconnect)
+ * @param {object} params - Parameters
+ * @param {string} userId - User ID
+ * @param {boolean} isAdmin - Is admin user
+ */
+async function handleSession(params, userId, isAdmin) {
+  const operation = params.operation;
+  
+  if (!operation) {
+    throw new Error('operation is required (connect|disconnect)');
+  }
+  
+  switch (operation) {
+    case 'connect':
+      return await handleConnectWithUser(params, userId);
+    
+    case 'disconnect':
+      // For disconnect, we need to check ownership
+      if (!isAdmin && userId && params.session_id) {
+        if (!db.isSessionOwnedByUser(params.session_id, userId)) {
+          throw new Error('Session not found or access denied');
+        }
+      }
+      return await handleDisconnect(params);
+    
+    default:
+      throw new Error(`Unknown session operation: ${operation}`);
+  }
+}
 
 /**
  * Connect to SSH server (with user isolation)
