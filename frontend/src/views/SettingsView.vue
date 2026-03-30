@@ -553,11 +553,10 @@
               <div class="role-tab-footer">
                 <span class="permissions-count">
                   {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
-                  <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
                 </span>
                 <button
                   class="btn-confirm"
-                  :disabled="!rolePermissionsChanged || isAdminRole"
+                  :disabled="!rolePermissionsChanged"
                   @click="saveRolePermissions"
                 >
                   {{ $t('common.save') }}
@@ -601,11 +600,10 @@
               <div class="role-tab-footer">
                 <span class="experts-count">
                   {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
-                  <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
                 </span>
                 <button
                   class="btn-confirm"
-                  :disabled="!roleExpertsChanged || isAdminRole"
+                  :disabled="!roleExpertsChanged"
                   @click="saveRoleExperts"
                 >
                   {{ $t('common.save') }}
@@ -1895,7 +1893,6 @@ const rolePermissionsLoading = ref(false)
 const roleExpertsLoading = ref(false)
 const rolePermissionsChanged = ref(false)
 const roleExpertsChanged = ref(false)
-const isAdminRole = ref(false)  // 当前选中角色是否为管理员角色
 
 // 角色编辑对话框
 const showRoleDialog = ref(false)
@@ -2237,8 +2234,6 @@ const selectRole = async (role: Role) => {
     ])
     rolePermissionIds.value = permissionsData.permission_ids || []
     roleExpertIds.value = expertsData.expert_ids || []
-    // 判断是否为管理员角色（任一接口返回 is_admin 即为管理员）
-    isAdminRole.value = permissionsData.is_admin || expertsData.is_admin || false
     rolePermissionsChanged.value = false
     roleExpertsChanged.value = false
   } catch (err) {

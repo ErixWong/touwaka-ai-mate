@@ -87,26 +87,12 @@ async function getPermissions(ctx) {
       return;
     }
 
-    // 管理员角色拥有所有权限
-    if (roleData.mark === 'admin') {
-      const permission = ctx.db.getModel('permission');
-      const allPermissions = await permission.findAll({
-        attributes: ['id', 'code', 'name', 'type', 'parent_id'],
-      });
-      ctx.success({
-        permission_ids: allPermissions.map(p => p.id),
-        is_admin: true,
-      });
-      return;
-    }
-
     const permissions = await roleData.getPermission_id_permissions({
       attributes: ['id', 'code', 'name', 'type', 'parent_id'],
     });
 
     ctx.success({
       permission_ids: permissions.map(p => p.id),
-      is_admin: false,
     });
   } catch (error) {
     console.error('[RoleController] getPermissions error:', error);
@@ -189,7 +175,7 @@ async function getExperts(ctx) {
       return;
     }
 
-    const experts = await roleData.getExpert_id_experts_role_experts({
+    const experts = await roleData.getExpert_id_experts({
       attributes: ['id', 'name'],
     });
 
@@ -241,7 +227,7 @@ async function updateExperts(ctx) {
     }
 
     // 设置角色专家
-    await roleData.setExpert_id_experts_role_experts(expert_ids);
+    await roleData.setExpert_id_experts(expert_ids);
 
     ctx.success(null, '角色专家访问权限更新成功');
   } catch (error) {
