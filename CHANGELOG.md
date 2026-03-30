@@ -5,14 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.3] - 2026-03-30
-
-### Fixed
-- **修复角色管理页面权限配置报错** (#470)
-  - 修复后端 `getPermissions` 方法，添加管理员角色特殊处理
-  - 管理员角色返回所有权限 + `is_admin: true`，普通角色返回关联权限 + `is_admin: false`
-  - 前端添加 `isAdminRole` 状态，管理员角色显示只读提示并禁用保存按钮
-
 ## [0.2.2] - 2026-03-30
 
 ### Changed
@@ -113,7 +105,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 0.2.3 | 2026-03-30 | 修复角色管理页面权限配置报错 |
 | 0.2.2 | 2026-03-30 | 技能工具命名规范化、PDF/PPTX/DOCX 技能重构、skill-manager 精简 |
 | 0.2.0 | 2026-03-26 | 自主任务状态优化、助理系统增强、Bug 修复 |
 | 0.1.0 | 2026-03-25 | Initial release |
