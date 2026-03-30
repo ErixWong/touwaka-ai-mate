@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-03-30
+
+### Changed
+- **技能工具命名规范化** - 消除工具名与技能标记的语义重复 (#440)
+  - 所有技能工具名简化，移除冗余前缀（如 `pdf_read` → `read`）
+  - 更新 xlsx、pptx、kb-editor 等技能的 SKILL.md 文档
+- **PDF 技能重构** - 工具精简为 read/write 两个核心工具 (#419)
+- **PPTX 技能重构** - 工具架构优化为 4-tool 设计 (#428)
+- **DOCX 技能重构** - 升级到 docx v9 并实现 Patcher API (#423)
+- **skill-manager 技能精简** - 工具数量从 7 个减少到 5 个 (#454)
+  - 移除 `assign_skill` 和 `unassign_skill` 工具
+  - 简化工具名：`list_skills`→`list`, `register_skill`→`register` 等
+- **hacknews 技能重构** - 合并 8 个工具为 1 个 (#451)
+- **file-operations 技能重命名** - 更名为 `fs`，更新工具命名 (#446)
+- **unifuncs-web-reader 技能重命名** - 更名为 `unifuncs` (#435)
+- **erix-ssh 技能改造** - 代码审计与驻留程序优化 (#448)
+- 移除旧工具名向后兼容代码 (#421)
+- 清理技能工具名别名 (#438)
+
+### Fixed
+- 添加 kb-editor 子资源权限校验 (#431)
+
+### Chore
+- 同步 skill-manager 技能数据到初始化脚本 (#456)
+- 清理根目录下的临时 PR 文件 (#458)
+
 ## [0.2.1] - 2026-03-26
 
 ### Fixed
@@ -79,5 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.2.2 | 2026-03-30 | 技能工具命名规范化、PDF/PPTX/DOCX 技能重构、skill-manager 精简 |
 | 0.2.0 | 2026-03-26 | 自主任务状态优化、助理系统增强、Bug 修复 |
 | 0.1.0 | 2026-03-25 | Initial release |
+ |
