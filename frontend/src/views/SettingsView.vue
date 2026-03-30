@@ -2237,8 +2237,8 @@ const selectRole = async (role: Role) => {
     ])
     rolePermissionIds.value = permissionsData.permission_ids || []
     roleExpertIds.value = expertsData.expert_ids || []
-    // 判断是否为管理员角色（任一接口返回 is_admin 即为管理员）
-    isAdminRole.value = permissionsData.is_admin || expertsData.is_admin || false
+    // 判断是否为管理员角色（expertsData 接口返回 is_admin）
+    isAdminRole.value = expertsData.is_admin || false
     rolePermissionsChanged.value = false
     roleExpertsChanged.value = false
   } catch (err) {

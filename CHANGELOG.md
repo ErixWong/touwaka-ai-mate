@@ -8,10 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.3] - 2026-03-30
 
 ### Fixed
-- **修复角色管理页面权限配置报错** (#470)
-  - 修复后端 `getPermissions` 方法，添加管理员角色特殊处理
-  - 管理员角色返回所有权限 + `is_admin: true`，普通角色返回关联权限 + `is_admin: false`
-  - 前端添加 `isAdminRole` 状态，管理员角色显示只读提示并禁用保存按钮
+- 修复 SettingsView.vue TypeScript 类型错误 (#472)
+  - `permissionsData` 类型不包含 `is_admin` 属性
+  - 仅使用 `expertsData.is_admin` 判断管理员角色
+- 修复角色管理页面权限配置报错 (#470)
+  - 后端 `getRolePermissions` 和 `getRoleExperts` 接口添加 `is_admin` 标记
+  - 前端正确判断管理员角色并禁用权限编辑
+
+### Added
+- 管理员可修改用户邀请配额 (#468)
 
 ## [0.2.2] - 2026-03-30
 
@@ -113,7 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 0.2.3 | 2026-03-30 | 修复角色管理页面权限配置报错 |
+| 0.2.3 | 2026-03-30 | 修复 TypeScript 类型错误、角色管理权限配置修复、管理员可修改邀请配额 |
 | 0.2.2 | 2026-03-30 | 技能工具命名规范化、PDF/PPTX/DOCX 技能重构、skill-manager 精简 |
 | 0.2.0 | 2026-03-26 | 自主任务状态优化、助理系统增强、Bug 修复 |
 | 0.1.0 | 2026-03-25 | Initial release |
