@@ -1244,7 +1244,7 @@ ${description || '新技能描述'}
           param_name: gp.param_name,
           // 如果允许用户覆盖且有用户值，使用用户值；否则使用全局值
           param_value: (allowOverride && up) ? up.param_value : gp.param_value,
-          global_value: gp.param_value, // 始终返回全局值供参考
+          // 注意：不返回 global_value 以保护敏感信息（如 API keys）
           user_value: up?.param_value || null, // 用户覆盖值
           is_secret: !!gp.is_secret,
           allow_user_override: allowOverride,
