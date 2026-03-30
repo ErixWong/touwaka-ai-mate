@@ -361,6 +361,32 @@ const MIGRATIONS = [
       console.log('  ✓ Added allow_user_override column to skill_parameters table');
     }
   },
+
+  // ==================== user_skill_parameters 表创建 ====================
+  // 用户技能参数表（只存储用户覆盖的参数）
+  {
+    name: 'user_skill_parameters table create',
+    check: async (conn) => await hasTable(conn, 'user_skill_parameters'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS user_skill_parameters (
+          id VARCHAR(32) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+          skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+          param_name VARCHAR(100) NOT NULL COMMENT '参数名',
+          param_value TEXT COMMENT '参数值',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_user_skill_param (user_id, skill_id, param_name),
+          INDEX idx_user_id (user_id),
+          INDEX idx_skill_id (skill_id),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户技能参数表（只存储用户覆盖的参数）'
+      `);
+      console.log('  ✓ Created user_skill_parameters table');
+    }
+  },
 ];
 
 /**
