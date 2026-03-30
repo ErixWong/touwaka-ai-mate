@@ -37,7 +37,7 @@ async function exportData() {
     
     // 导出参数
     const [params] = await conn.execute(`
-      SELECT id, skill_id, param_name, param_value, is_secret, description
+      SELECT id, skill_id, param_name, param_value, is_secret, allow_user_override, description
       FROM skill_parameters
       ORDER BY skill_id, param_name
     `);
@@ -58,9 +58,10 @@ async function exportData() {
         parameters: typeof t.parameters === 'string' ? JSON.parse(t.parameters) : t.parameters,
       })),
       parameters: params.map(p => ({
-        ...p,
-        is_secret: !!p.is_secret,
-      })),
+          ...p,
+          is_secret: !!p.is_secret,
+          allow_user_override: !!p.allow_user_override,
+        })),
     };
     
     console.log(JSON.stringify(exportData, null, 2));

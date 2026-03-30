@@ -1201,7 +1201,12 @@ ${description || '新技能描述'}
   async getMyParameters(ctx) {
     try {
       const { id } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session?.id;
+
+      if (!userId) {
+        ctx.error('用户未认证', 401);
+        return;
+      }
 
       // 检查技能是否存在
       const skill = await this.Skill.findOne({ where: { id } });
@@ -1233,18 +1238,19 @@ ${description || '新技能描述'}
       const mergedParams = globalParams.map(gp => {
         const up = userParamMap[gp.param_name];
         const allowOverride = !!gp.allow_user_override;
+        const hasUserValue = !!(up && up.param_value !== null && up.param_value !== undefined && up.param_value !== '');
         
         return {
           id: gp.id,
           param_name: gp.param_name,
-          // 如果允许用户覆盖且有用户值，使用用户值；否则使用全局值
-          param_value: (allowOverride && up) ? up.param_value : gp.param_value,
-          global_value: gp.param_value, // 始终返回全局值供参考
-          user_value: up?.param_value || null, // 用户覆盖值
+          // 注意：不返回合并后的值，只返回用户设置的值（如果有）
+          // 这是为了保护敏感信息（如 API keys），避免在 UI 中暴露全局默认值
+          param_value: hasUserValue ? up.param_value : '',
+          user_value: up?.param_value || null, // 用户覆盖值（供参考）
           is_secret: !!gp.is_secret,
           allow_user_override: allowOverride,
           description: gp.description || '',
-          has_user_override: !!(up && up.param_value !== null && up.param_value !== undefined),
+          has_user_override: hasUserValue,
         };
       });
 
@@ -1273,7 +1279,12 @@ ${description || '新技能描述'}
     try {
       const { id } = ctx.params;
       const { parameters } = ctx.request.body;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session?.id;
+
+      if (!userId) {
+        ctx.error('用户未认证', 401);
+        return;
+      }
 
       if (!Array.isArray(parameters)) {
         ctx.error('参数格式错误，需要数组', 400);

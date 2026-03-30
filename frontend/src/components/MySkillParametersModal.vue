@@ -38,22 +38,6 @@
             <p v-if="param.description" class="param-description">{{ param.description }}</p>
             
             <div class="parameter-fields">
-              <!-- 全局值（只读） -->
-              <div class="field-group">
-                <label class="field-label">{{ $t('skills.myParameters.globalValue') }}</label>
-                <div class="field-readonly">
-                  <span v-if="param.is_secret && !showGlobalValues[param.param_name]">••••••••</span>
-                  <span v-else>{{ param.global_value || '-' }}</span>
-                  <button 
-                    v-if="param.is_secret" 
-                    class="btn-toggle"
-                    @click="toggleGlobalValue(param.param_name)"
-                  >
-                    {{ showGlobalValues[param.param_name] ? '🙈' : '👁️' }}
-                  </button>
-                </div>
-              </div>
-              
               <!-- 用户值（可编辑） -->
               <div v-if="param.allow_user_override" class="field-group">
                 <label class="field-label">{{ $t('skills.myParameters.myValue') }}</label>
@@ -61,34 +45,46 @@
                   <input
                     v-if="!param.is_secret || showUserValues[param.param_name]"
                     v-model="param.param_value"
-                    type="text"
+                    :type="param.is_secret ? 'text' : 'text'"
                     class="field-input"
                     :placeholder="$t('skills.myParameters.myValuePlaceholder')"
                   />
                   <input
                     v-else
-                    :value="param.param_value ? '••••••••' : ''"
-                    type="text"
+                    value="••••••••"
+                    type="password"
                     class="field-input"
                     readonly
                     :placeholder="$t('skills.myParameters.clickToShow')"
                     @click="showUserValues[param.param_name] = true"
                   />
-                  <button 
-                    v-if="param.is_secret" 
+                  <button
+                    v-if="param.is_secret"
                     class="btn-toggle"
+                    :title="showUserValues[param.param_name] ? $t('skills.myParameters.hide') : $t('skills.myParameters.show')"
                     @click="toggleUserValue(param.param_name)"
                   >
-                    {{ showUserValues[param.param_name] ? '🙈' : '👁️' }}
+                    <svg v-if="showUserValues[param.param_name]" class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                    <svg v-else class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
                   </button>
                 </div>
-                <button 
+                <button
                   v-if="param.has_user_override"
                   class="btn-reset"
                   @click="resetParameter(index)"
                 >
                   {{ $t('skills.myParameters.resetToGlobal') }}
                 </button>
+              </div>
+              <!-- 只读参数提示 -->
+              <div v-else class="field-group readonly-hint">
+                <span class="readonly-text">{{ $t('skills.myParameters.adminConfigured') }}</span>
               </div>
             </div>
           </div>
@@ -134,7 +130,6 @@ interface UserParameter {
   id: string
   param_name: string
   param_value: string
-  global_value: string
   user_value: string | null
   is_secret: boolean
   allow_user_override: boolean
@@ -163,44 +158,39 @@ const isSaving = ref(false)
 const saveStatus = ref<{ type: 'success' | 'error' | 'loading'; message: string } | null>(null)
 
 // 控制密码显示
-const showGlobalValues = reactive<Record<string, boolean>>({})
 const showUserValues = reactive<Record<string, boolean>>({})
-
-// 切换全局值显示
-const toggleGlobalValue = (paramName: string) => {
-  showGlobalValues[paramName] = !showGlobalValues[paramName]
-}
 
 // 切换用户值显示
 const toggleUserValue = (paramName: string) => {
   showUserValues[paramName] = !showUserValues[paramName]
 }
 
-// 重置参数为全局值
+// 重置参数为默认值（清空用户值，使用系统默认值）
 const resetParameter = (index: number) => {
   const param = parameters.value[index]
   if (param) {
-    param.param_value = param.global_value
+    // 清空用户值，让系统使用默认值
+    param.param_value = ''
     param.has_user_override = false
   }
 }
 
-// 加载参数
+    // 加载参数
 const loadParameters = async () => {
   if (!props.skill?.id) return
-  
+
   isLoading.value = true
   try {
     const response = await apiClient.get(`/skills/${props.skill.id}/my-parameters`)
     const params = response.data.data?.parameters || []
     parameters.value = params.map((p: UserParameter) => ({
       ...p,
-      // 如果有用户值，使用用户值；否则使用全局值作为编辑初始值
-      param_value: p.user_value !== null ? p.user_value : p.global_value
+      // 后端只返回用户设置的值，如果没有设置则为空字符串
+      // 这样避免在 UI 中暴露全局默认值（可能包含敏感信息）
+      param_value: p.param_value || ''
     }))
-    
+
     // 重置显示状态
-    Object.keys(showGlobalValues).forEach(key => delete showGlobalValues[key])
     Object.keys(showUserValues).forEach(key => delete showUserValues[key])
   } catch (error) {
     console.error('Failed to load parameters:', error)
@@ -443,8 +433,33 @@ const close = () => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
   padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #666);
+  transition: color 0.2s;
+}
+
+.btn-toggle:hover {
+  color: var(--primary-color, #2196f3);
+}
+
+.icon-eye {
+  width: 20px;
+  height: 20px;
+}
+
+.readonly-hint {
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #f0f0f0);
+  border-radius: 6px;
+}
+
+.readonly-text {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  font-style: italic;
 }
 
 .btn-reset {
