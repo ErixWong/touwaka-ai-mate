@@ -99,7 +99,7 @@ function httpRequest(method, path, data) {
 /**
  * 列出所有技能（精简列表，不含工具详情）
  */
-async function listSkills(params) {
+async function list(params) {
   const { is_active, search } = params;
   let query = '?';
   if (is_active !== undefined) {
@@ -114,7 +114,7 @@ async function listSkills(params) {
 /**
  * 获取技能完整详情（包含工具定义）
  */
-async function listSkillDetails(params) {
+async function details(params) {
   const { skill_id } = params;
   if (!skill_id) {
     throw new Error('技能 ID 不能为空');
@@ -125,7 +125,7 @@ async function listSkillDetails(params) {
 /**
  * 注册技能（从本地目录）
  */
-async function registerSkill(params) {
+async function register(params) {
   let { source_path, name, description, tools } = params;
   
   if (!source_path) {
@@ -171,7 +171,7 @@ async function deleteSkill(params) {
 /**
  * 启用/禁用技能
  */
-async function toggleSkill(params) {
+async function toggle(params) {
   const { skill_id, is_active } = params;
   if (!skill_id) {
     throw new Error('技能 ID 不能为空');
@@ -180,28 +180,6 @@ async function toggleSkill(params) {
     throw new Error('is_active 不能为空');
   }
   return await httpRequest('PATCH', `/api/skills/${skill_id}/toggle`, { is_active });
-}
-
-/**
- * 分配技能给专家
- */
-async function assignSkill(params) {
-  const { skill_id, expert_id } = params;
-  if (!skill_id || !expert_id) {
-    throw new Error('skill_id 和 expert_id 不能为空');
-  }
-  return await httpRequest('POST', '/api/skills/assign', { skill_id, expert_id });
-}
-
-/**
- * 取消技能分配
- */
-async function unassignSkill(params) {
-  const { skill_id, expert_id } = params;
-  if (!skill_id || !expert_id) {
-    throw new Error('skill_id 和 expert_id 不能为空');
-  }
-  return await httpRequest('POST', '/api/skills/unassign', { skill_id, expert_id });
 }
 
 /**
@@ -219,13 +197,11 @@ async function execute(toolName, params, context = {}) {
   }
 
   const tools = {
-    'list_skills': listSkills,
-    'list_skill_details': listSkillDetails,
-    'register_skill': registerSkill,
-    'delete_skill': deleteSkill,
-    'toggle_skill': toggleSkill,
-    'assign_skill': assignSkill,
-    'unassign_skill': unassignSkill,
+    'list': list,
+    'details': details,
+    'register': register,
+    'delete': deleteSkill,
+    'toggle': toggle,
   };
 
   const tool = tools[toolName];

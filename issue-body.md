@@ -1,23 +1,39 @@
-# refactor: 重命名 file-operations 技能为 fs
+## 背景
 
-## 问题描述
-`file-operations` 技能名称过长（15 字符），且不够精确（包含目录操作）。
+当前 skill-manager 技能提供了 7 个工具：
+- `list_skills` / `list_skill_details`
+- `register_skill`
+- `delete_skill`
+- `toggle_skill`
+- `assign_skill` / `unassign_skill`
 
-## 解决方案
-- 重命名技能目录：`file-operations` → `fs`
-- 更新工具命名：`file-operations__xxx` → `fs__xxx`
-- 将技能使用提示从代码硬编码移到 SKILL.md description 字段
+根据之前的优化决策，LLM 的 tools 注入格式为 `skills.mark + '__' + tools.name`，这种技能标识+工具名称的方式过于啰嗦。因此需要精简工具数量，只保留最核心的 5 个工具。
 
-## 变更内容
-- `data/skills/file-operations/` → `data/skills/fs/`
-- `data/skills/fs/SKILL.md` - 更新 name 和 description
-- `data/skills/fs/index.js` - 更新模块注释和调试标识
-- `lib/context-manager.js` - 移除硬编码检测
-- `lib/context-organizer/base-organizer.js` - 移除硬编码检测
-- `README.md`, `docs/` - 更新文档引用
+## 需求
 
-## 优势
-1. 更短更简洁：`fs` (2 字符) vs `file-operations` (15 字符)
-2. 更准确：`fs` 代表 "file system"，涵盖文件和目录操作
-3. 更优雅：技能提示通过 description 自动注入，无需硬编码
-4. 易于维护：新增或修改技能提示只需编辑 SKILL.md
+将 skill-manager 技能的工具精简为以下 5 个：
+
+| 工具名 | 功能 | 对应原工具 |
+|--------|------|-----------|
+| `list` | 列出所有技能 | `list_skills` |
+| `details` | 获取技能详情 | `list_skill_details` |
+| `register` | 注册/更新技能 | `register_skill` |
+| `delete` | 删除技能 | `delete_skill` |
+| `toggle` | 启用/禁用技能 | `toggle_skill` |
+
+**移除的工具：**
+- `assign_skill` → 移除
+- `unassign_skill` → 移除
+
+## 修改范围
+
+1. **index.js**: 更新 tools 对象，移除 assign/unassign，重命名工具
+2. **SKILL.md**: 更新工具清单文档
+3. **IMPORT_GUIDE.md**: 如有引用需要同步更新
+
+## 验收标准
+
+- [ ] 工具数量从 7 个减少到 5 个
+- [ ] 工具名称简化为：list, details, register, delete, toggle
+- [ ] SKILL.md 文档同步更新
+- [ ] 代码测试通过
