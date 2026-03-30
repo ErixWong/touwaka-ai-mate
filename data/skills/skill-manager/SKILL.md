@@ -1,7 +1,7 @@
 ---
 name: skill-manager
 description: 技能管理工具，用于注册、删除、查询技能。技能专家通过文件系统读取 SKILL.md 后，使用此工具将技能注册到数据库。
-argument-hint: "[register|delete|toggle|list] [skill_id]"
+argument-hint: "[register|delete|toggle|list|details] [skill_id]"
 user-invocable: false
 allowed-tools: []
 ---
@@ -24,7 +24,7 @@ allowed-tools: []
 
 ## 工具清单
 
-### list_skills
+### list
 
 列出数据库中所有技能（精简列表，不含工具详情）。
 
@@ -51,7 +51,7 @@ allowed-tools: []
 }
 ```
 
-### list_skill_details
+### details
 
 获取指定技能的完整详情，包括技能所有字段和工具定义列表。
 
@@ -88,7 +88,7 @@ allowed-tools: []
 }
 ```
 
-### register_skill
+### register
 
 从本地目录注册或更新技能到数据库。需要先读取 SKILL.md，理解工具定义后调用此工具。
 
@@ -101,14 +101,14 @@ allowed-tools: []
 - `description`: 技能描述（可选，默认从 SKILL.md 的 description 字段提取）
 - `tools`: 工具定义数组，每个工具包含 name、description、parameters、script_path 字段
 
-### delete_skill
+### delete
 
 从数据库中删除技能（谨慎使用）。
 
 **参数：**
 - `skill_id`: 技能ID或名称
 
-### toggle_skill
+### toggle
 
 启用或禁用技能。
 
@@ -116,31 +116,14 @@ allowed-tools: []
 - `skill_id`: 技能ID或名称
 - `is_active`: 是否启用（boolean）
 
-### assign_skill
-
-分配技能给专家。
-
-**参数：**
-- `skill_id`: 技能ID或名称
-- `expert_id`: 专家ID
-
-### unassign_skill
-
-取消技能分配。
-
-**参数：**
-- `skill_id`: 技能ID或名称
-- `expert_id`: 专家ID
-
 ## 使用流程
 
-1. 使用 `list_skills` 浏览已注册的技能精简列表
-2. 对感兴趣的技能，使用 `list_skill_details` 获取完整详情（含工具定义）
+1. 使用 `list` 浏览已注册的技能精简列表
+2. 对感兴趣的技能，使用 `details` 获取完整详情（含工具定义）
 3. 通过 `list_files` 和 `read_lines` 浏览本地技能目录
 4. 读取 SKILL.md 理解技能结构和工具定义
-5. 使用 `register_skill` 将技能注册到数据库
-6. 使用 `toggle_skill` 启用或禁用技能
-7. 使用 `assign_skill` / `unassign_skill` 管理技能与专家的关联
+5. 使用 `register` 将技能注册到数据库
+6. 使用 `toggle` 启用或禁用技能
 
 ## 架构说明
 
@@ -169,4 +152,4 @@ MySQL 数据库
 
 ---
 
-*重构时间: 2026-03-07 - 从直接数据库访问改为 API 调用模式*
+*重构时间: 2026-03-30 - 精简工具数量，移除 assign/unassign 功能*
