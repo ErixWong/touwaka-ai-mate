@@ -587,6 +587,7 @@ export interface UserListItem {
   occupation?: string
   location?: string
   status: UserStatus
+  invitation_quota?: number  // 邀请配额
   roles?: string[]
   last_login?: string
   created_at: string

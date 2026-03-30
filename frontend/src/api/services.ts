@@ -247,6 +247,20 @@ export const userApi = {
   // 更新用户角色
   updateUserRoles: (id: string, data: UpdateUserRolesRequest) =>
     apiRequest<void>(apiClient.put(`/users/${id}/roles`, data)),
+
+  // 更新用户邀请配额（管理员专用）
+  updateInvitationQuota: (id: string, quota: number) =>
+    apiRequest<{ invitation_quota: number }>(apiClient.put(`/users/${id}/invitation-quota`, { invitation_quota: quota })),
+
+  // 获取用户邀请统计（管理员专用）
+  getInvitationStats: (id: string) =>
+    apiRequest<{
+      username: string
+      invitationQuota: number
+      usedQuota: number
+      remainingQuota: number
+      activeInvitations: number
+    }>(apiClient.get(`/users/${id}/invitation-stats`)),
 }
 
 // 认证相关 API
