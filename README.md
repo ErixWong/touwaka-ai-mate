@@ -117,10 +117,16 @@ npm run init-db
 ### 4. 初始化核心技能
 
 ```bash
-node scripts/init-core-skills.js
+node scripts/init-skills-from-json.js
 ```
 
-### 5. 启动服务
+### 5. 构建前端（生产环境）
+
+```bash
+cd frontend && npm run build
+```
+
+### 6. 启动服务
 
 ```bash
 # 开发模式 (同时启动前后端)
@@ -170,7 +176,7 @@ docker-compose up -d
 
 # 5. 初始化数据库和核心技能（首次部署）
 docker-compose exec app npm run init-db
-docker-compose exec app node scripts/init-core-skills.js
+docker-compose exec app node scripts/init-skills-from-json.js
 
 # 6. 查看日志
 docker-compose logs -f app
@@ -203,7 +209,7 @@ docker-compose up -d --build
 docker-compose logs -f app
 
 # 6. 初始化核心技能 (首次部署)
-docker-compose exec app node scripts/init-core-skills.js
+docker-compose exec app node scripts/init-skills-from-json.js
 ```
 
 ### 版本升级
@@ -225,7 +231,7 @@ docker-compose up -d
 docker-compose exec app node scripts/upgrade-database.js
 
 # 5. 重新初始化核心技能（如有新技能）
-docker-compose exec app node scripts/init-core-skills.js
+docker-compose exec app node scripts/init-skills-from-json.js
 ```
 
 ### 环境变量说明
