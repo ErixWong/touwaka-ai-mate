@@ -135,7 +135,54 @@ npm run dev:frontend # 前端 :5173
 
 ## 🐳 Docker 部署
 
-### 快速启动
+### 推荐方案：使用预构建镜像（快速部署）
+
+我们推荐使用 `nikolaik/python-nodejs:python3.12-nodejs20-bullseye` 镜像，它已经预装了 Python 3.12 和 Node.js 20，无需本地构建。
+
+```bash
+# 1. 创建部署目录
+mkdir touwaka-mate && cd touwaka-mate
+
+# 2. 下载指定版本的 docker-compose 文件
+# 替换 v0.2.2 为你需要的版本号
+curl -L https://github.com/ErixWong/touwaka-ai-mate/releases/download/v0.2.2/docker-compose.yml -o docker-compose.yml
+
+# 3. 创建环境配置文件
+cat > .env << 'EOF'
+# 数据库配置
+DB_HOST=db
+DB_NAME=touwaka_mate
+DB_USER=touwaka
+DB_PASSWORD=your_secure_password
+DB_ROOT_PASSWORD=your_root_password
+
+# JWT 密钥（必须修改！使用随机字符串）
+JWT_SECRET=your_random_secret_key_here
+JWT_REFRESH_SECRET=your_random_refresh_key_here
+
+# 应用配置
+PORT=3000
+LOG_LEVEL=info
+EOF
+
+# 4. 启动服务
+docker-compose up -d
+
+# 5. 初始化数据库和核心技能（首次部署）
+docker-compose exec app npm run init-db
+docker-compose exec app node scripts/init-core-skills.js
+
+# 6. 查看日志
+docker-compose logs -f app
+```
+
+**访问应用**：http://localhost:3000
+
+---
+
+### 备选方案：本地构建镜像
+
+如果你需要修改代码或自定义构建：
 
 ```bash
 # 1. 克隆项目
@@ -149,13 +196,35 @@ cp .env.example .env
 # 必须修改: JWT_SECRET, JWT_REFRESH_SECRET
 # 可选修改: DB_USER, DB_PASSWORD, DB_ROOT_PASSWORD
 
-# 4. 启动服务
-docker-compose up -d
+# 4. 构建并启动服务
+docker-compose up -d --build
 
 # 5. 查看日志
 docker-compose logs -f app
 
 # 6. 初始化核心技能 (首次部署)
+docker-compose exec app node scripts/init-core-skills.js
+```
+
+### 版本升级
+
+使用预构建镜像部署时，升级到新版本非常简单：
+
+```bash
+# 1. 进入部署目录
+cd touwaka-mate
+
+# 2. 下载新版本的 docker-compose.yml（替换 v0.2.2 为目标版本）
+curl -L https://github.com/ErixWong/touwaka-ai-mate/releases/download/v0.2.2/docker-compose.yml -o docker-compose.yml
+
+# 3. 拉取最新镜像并重启
+docker-compose pull
+docker-compose up -d
+
+# 4. 执行数据库迁移（如有需要）
+docker-compose exec app node scripts/upgrade-database.js
+
+# 5. 重新初始化核心技能（如有新技能）
 docker-compose exec app node scripts/init-core-skills.js
 ```
 
