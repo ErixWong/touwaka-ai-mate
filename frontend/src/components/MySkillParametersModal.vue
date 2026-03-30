@@ -175,7 +175,7 @@ const resetParameter = (index: number) => {
   }
 }
 
-// 加载参数
+    // 加载参数
 const loadParameters = async () => {
   if (!props.skill?.id) return
 
@@ -185,7 +185,8 @@ const loadParameters = async () => {
     const params = response.data.data?.parameters || []
     parameters.value = params.map((p: UserParameter) => ({
       ...p,
-      // 使用后端返回的 param_value（已经是合并后的值）
+      // 后端只返回用户设置的值，如果没有设置则为空字符串
+      // 这样避免在 UI 中暴露全局默认值（可能包含敏感信息）
       param_value: p.param_value || ''
     }))
 

@@ -1238,18 +1238,19 @@ ${description || '新技能描述'}
       const mergedParams = globalParams.map(gp => {
         const up = userParamMap[gp.param_name];
         const allowOverride = !!gp.allow_user_override;
+        const hasUserValue = !!(up && up.param_value !== null && up.param_value !== undefined && up.param_value !== '');
         
         return {
           id: gp.id,
           param_name: gp.param_name,
-          // 如果允许用户覆盖且有用户值，使用用户值；否则使用全局值
-          param_value: (allowOverride && up) ? up.param_value : gp.param_value,
-          // 注意：不返回 global_value 以保护敏感信息（如 API keys）
-          user_value: up?.param_value || null, // 用户覆盖值
+          // 注意：不返回合并后的值，只返回用户设置的值（如果有）
+          // 这是为了保护敏感信息（如 API keys），避免在 UI 中暴露全局默认值
+          param_value: hasUserValue ? up.param_value : '',
+          user_value: up?.param_value || null, // 用户覆盖值（供参考）
           is_secret: !!gp.is_secret,
           allow_user_override: allowOverride,
           description: gp.description || '',
-          has_user_override: !!(up && up.param_value !== null && up.param_value !== undefined),
+          has_user_override: hasUserValue,
         };
       });
 
