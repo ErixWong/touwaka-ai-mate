@@ -1,95 +1,92 @@
-# Touwaka Mate v2 文档
+# Touwaka Mate v2 Documentation
 
-## 目录结构
+Welcome to the Touwaka Mate v2 documentation. This is an AI Expert System with dual-mind architecture (Expression Mind + Reflective Mind).
+
+## 📚 Documentation Structure
 
 ```
 docs/
-├── core/                        # 核心必读（每次开工必读）
-│   ├── SOUL.md                 # 人设 + 工作规范
-│   ├── TODO.md                 # 任务列表
-│   └── tasks/                  # 进行中的任务文档
-│       ├── README.md           # 任务文档模板说明
-│       └── YYYY-MM-DD-task/    # 任务目录（日期-任务简述）
-│           ├── README.md       # 任务概述 + 需求分析
-│           ├── design.md       # 设计文档（可选）
-│           └── review.md       # Code Review 记录
-│
-├── guides/                      # 开发手册（技术参考）
-│   ├── development/            # 开发手册
-│   │   ├── README.md           # 开发指南索引
-│   │   ├── quick-start.md      # 快速开始
-│   │   ├── coding-standards.md # 编码规范
-│   │   ├── core-modules.md     # 核心模块
-│   │   ├── frontend-components.md # 前端组件
-│   │   └── api-reference.md    # API 参考
-│   └── database/               # 数据库手册
-│       ├── README.md           # 数据库概览
-│       ├── api-query-design.md # API 查询设计
-│       └── orm-analysis.md     # ORM 分析
-│
-├── design/                      # 设计文档（版本化）
-│   ├── README.md               # 设计文档索引
-│   ├── v1/                     # v1 设计文档
-│   ├── v2/                     # v2 设计文档
-│   └── archive/                # 已废弃的设计文档
-│
-├── archive/                     # 归档目录
-│   ├── todo-archive-YYYY-MM.md # 月度 TODO 归档
-│   └── tasks/                  # 任务文档归档
-│       └── YYYY-MM/            # 按月归档
-│           └── YYYY-MM-DD-task/
-│
-└── README.md                    # 本文件
+├── README.md                    # This file - documentation index
+├── SOUL.md                      # Project guide with coding standards and conventions
+├── CONTRIBUTING.md              # Contribution guidelines
+├── function-calling-best-practices.md  # LLM function calling best practices
+├── development/                 # Development guides
+│   ├── quick-start.md          # Quick start guide
+│   ├── coding-standards.md     # Coding standards and conventions
+│   ├── core-modules.md         # Core module documentation
+│   ├── frontend-components.md  # Frontend component guide
+│   ├── api-reference.md        # API reference
+│   ├── code-review-checklist.md # Code review checklist
+│   └── skill-development-guide.md # Skill development guide
+├── database/                    # Database documentation
+│   ├── README.md               # Database overview
+│   ├── api-query-design.md     # API query design patterns
+│   └── orm-analysis.md         # ORM analysis
+└── design/                     # Architecture and design documents
+    ├── README.md               # Design documentation index
+    ├── v1/                     # V1 architecture documents
+    └── v2/                     # V2 architecture documents
 ```
 
-## 快速导航
+## 🚀 Quick Start
 
-### 📋 必读文档（开工三件套）
+- **[Quick Start Guide](development/quick-start.md)** - Get started with development
+- **[Coding Standards](development/coding-standards.md)** - Code conventions and standards
+- **[API Reference](development/api-reference.md)** - API endpoints and usage
 
-- [人设 (SOUL.md)](./core/SOUL.md) - 开发助手人设和工作规范
-- [任务列表 (TODO.md)](./core/TODO.md) - 当前任务状态
-- [开发手册](./guides/development/README.md) - 开发规范和流程
+## 🏗️ Architecture
 
-### 📚 技术手册
+**Touwaka Mate v2** - AI Expert System
 
-- [开发手册](./guides/development/README.md) - 快速开始、编码规范、核心模块、API 参考
-- [数据库手册](./guides/database/README.md) - 数据库设计、ORM 使用、查询 API
+- **Expert**: AI characters with unique personas
+- **Topic**: Phased summaries of conversation history
+- **Skill**: Tool capabilities that experts can invoke
+- **Dual-Mind Architecture**: Expression Mind + Reflective Mind
 
-### 📐 设计文档
+### Tech Stack
 
-- [设计文档索引](./design/README.md) - 设计文档总入口
-- [v1 设计文档](./design/v1/README.md) - v1 版本架构和设计
-- [v2 设计文档](./design/v2/README.md) - v2 版本设计（Task Layer、右侧面板等）
-
-### 📁 任务文档
-
-- [core/tasks/](./core/tasks/) - 进行中的任务（每个任务一个目录）
-- [任务文档模板说明](./core/tasks/README.md) - 如何创建和管理任务文档
-
-### 🗄️ 归档
-
-- [TODO 归档](./archive/) - 已完成任务的月度归档
-- [任务文档归档](./archive/tasks/) - 已完成任务文档的月度归档
-- [设计归档](./design/archive/) - 已废弃的设计文档
-
-## 项目概述
-
-**Touwaka Mate v2** - AI 专家副本系统 🤖
-
-- **Expert（专家）**：具有独特人设的 AI 角色
-- **Topic（话题）**：对话历史的阶段性总结
-- **Skill（技能）**：专家可调用的工具能力
-- **双心智架构**：表达心智 + 反思心智
-
-## 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| 前端 | Vue 3 + TypeScript + Vite + Pinia |
-| 后端 | Node.js + Koa + MySQL |
+| Layer | Technology |
+|-------|------------|
+| Frontend | Vue 3 + TypeScript + Vite + Pinia |
+| Backend | Node.js + Koa + MySQL |
 | ORM | Sequelize |
-| AI | LLM 应用开发、Prompt Engineering |
+| AI | LLM Application Development, Prompt Engineering |
+
+## 📖 Key Documentation
+
+### Development
+- [Quick Start](development/quick-start.md) - Environment setup and first steps
+- [Coding Standards](development/coding-standards.md) - Naming conventions, code style
+- [Core Modules](development/core-modules.md) - ChatService, LLMClient, MemorySystem
+- [Frontend Components](development/frontend-components.md) - UI components guide
+- [API Reference](development/api-reference.md) - Endpoints and error codes
+- [Skill Development Guide](development/skill-development-guide.md) - How to create skills
+
+### Project Guide
+- [SOUL.md](SOUL.md) - Project conventions, coding standards, and development guidelines
+
+### Database
+- [Database Overview](database/README.md) - Database design and setup
+- [API Query Design](database/api-query-design.md) - Query patterns and best practices
+- [ORM Analysis](database/orm-analysis.md) - ORM usage and patterns
+
+### Design
+- [Design Index](design/README.md) - Architecture documentation index
+- [V1 Design](design/v1/README.md) - V1 architecture and design
+- [V2 Design](design/v2/README.md) - V2 architecture (Task Layer, Right Panel, etc.)
+
+## 🤝 Contributing
+
+Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
+- Code of conduct
+- Development workflow
+- Pull request process
+- Coding standards
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ---
 
-*最后更新: 2026-03-01*
+*Last updated: 2026-03-30*
