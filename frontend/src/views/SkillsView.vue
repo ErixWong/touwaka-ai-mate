@@ -97,12 +97,14 @@
             class="btn-action secondary"
             @click="openParamsDialog(skill)"
           >
+            <span class="btn-icon">⚙️</span>
             {{ $t('skills.manageParams') }}
           </button>
           <button
             class="btn-action secondary"
             @click="openMyParamsDialog(skill)"
           >
+            <span class="btn-icon">🔧</span>
             {{ $t('skills.myParameters.title') || '我的参数' }}
           </button>
         </div>
@@ -982,6 +984,13 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-icon {
+  font-size: 14px;
 }
 
 .btn-action:hover:not(:disabled) {

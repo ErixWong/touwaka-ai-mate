@@ -262,6 +262,7 @@ export default {
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
+    selectModel: 'Select Model',
     // Expert Skills Management
     skills: 'Skills',
     manageSkills: 'Manage Skills',
