@@ -92,11 +92,11 @@ async function initSkills() {
     console.log(`\n⚙️  导入 ${data.parameters.length} 个参数...`);
     for (const param of data.parameters) {
       await conn.execute(`
-        INSERT INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, description)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO skill_parameters (id, skill_id, param_name, param_value, is_secret, allow_user_override, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [
-        param.id, param.skill_id, param.param_name, param.param_value, 
-        param.is_secret ? 1 : 0, param.description || null
+        param.id, param.skill_id, param.param_name, param.param_value,
+        param.is_secret ? 1 : 0, param.allow_user_override !== false ? 1 : 0, param.description || null
       ]);
     }
     console.log(`  ✓ ${data.parameters.length} 个参数已导入`);

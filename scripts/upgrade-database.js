@@ -347,6 +347,20 @@ const MIGRATIONS = [
       console.log('  ✓ Migrated existing data: creator_id = owner_id');
     }
   },
+
+  // ==================== skill_parameters 表添加 allow_user_override 字段 ====================
+  // 修复：导出/导入脚本缺失该字段，且数据库升级脚本缺少该迁移
+  {
+    name: 'skill_parameters.allow_user_override column add',
+    check: async (conn) => await hasColumn(conn, 'skill_parameters', 'allow_user_override'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE skill_parameters
+        ADD COLUMN allow_user_override BIT(1) DEFAULT b'1' COMMENT '是否允许用户覆盖'
+      `);
+      console.log('  ✓ Added allow_user_override column to skill_parameters table');
+    }
+  },
 ];
 
 /**
