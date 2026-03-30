@@ -26,28 +26,39 @@
               
               <div class="field-group">
                 <label class="field-label">{{ $t('skills.parameters.paramValue') }}</label>
-                <input
-                  v-if="!param.is_secret || param._showValue"
-                  v-model="param.param_value"
-                  type="text"
-                  class="field-input"
-                  :placeholder="$t('skills.parameters.paramValuePlaceholder')"
-                />
-                <input
-                  v-else
-                  :value="'••••••••'"
-                  type="text"
-                  class="field-input"
-                  readonly
-                  @click="param._showValue = true"
-                />
-                <button 
-                  v-if="param.is_secret" 
-                  class="btn-toggle-visibility"
-                  @click="param._showValue = !param._showValue"
-                >
-                  {{ param._showValue ? '🙈' : '👁️' }}
-                </button>
+                <div class="field-input-wrapper">
+                  <input
+                    v-if="!param.is_secret || param._showValue"
+                    v-model="param.param_value"
+                    type="text"
+                    class="field-input"
+                    :placeholder="$t('skills.parameters.paramValuePlaceholder')"
+                  />
+                  <input
+                    v-else
+                    :value="'••••••••'"
+                    type="password"
+                    class="field-input"
+                    readonly
+                    :placeholder="$t('skills.myParameters.clickToShow')"
+                    @click="param._showValue = true"
+                  />
+                  <button
+                    v-if="param.is_secret"
+                    class="btn-toggle"
+                    :title="param._showValue ? $t('skills.myParameters.hide') : $t('skills.myParameters.show')"
+                    @click="param._showValue = !param._showValue"
+                  >
+                    <svg v-if="param._showValue" class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                    <svg v-else class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
               
               <div class="field-group checkbox-group">
@@ -333,16 +344,22 @@ const close = () => {
 }
 
 .field-input {
+  flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px;
   font-size: 14px;
-  width: 100%;
 }
 
 .field-input:focus {
   outline: none;
   border-color: var(--primary-color, #2196f3);
+}
+
+.field-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .field-group.checkbox-group {
@@ -372,20 +389,25 @@ const close = () => {
   color: var(--text-tertiary, #999);
 }
 
-.btn-toggle-visibility {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+.btn-toggle {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
   padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #666);
+  transition: color 0.2s;
 }
 
-.field-group:nth-child(2) {
-  position: relative;
+.btn-toggle:hover {
+  color: var(--primary-color, #2196f3);
+}
+
+.icon-eye {
+  width: 20px;
+  height: 20px;
 }
 
 .btn-remove {

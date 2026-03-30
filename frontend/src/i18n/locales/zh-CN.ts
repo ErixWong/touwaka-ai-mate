@@ -262,6 +262,7 @@ export default {
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',
+    selectModel: '选择模型',
     // 专家技能管理
     skills: '技能',
     manageSkills: '管理技能',
