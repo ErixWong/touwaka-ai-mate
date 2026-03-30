@@ -99,6 +99,7 @@ ctx.success(buildPaginatedResponse(rows, count, pagination));
 | **路由顺序** | 动态路由 `/:id` 是否在静态路由之后？ |
 | **ID 类型匹配** | 自增 ID 字段是否误用手动指定（如 `Utils.newID()`）？检查 Model 定义中 `autoIncrement: true` 的字段 |
 | **数据库方法选择** | SELECT 用 `db.query()`，INSERT 用 `db.insert()`，UPDATE/DELETE 用 `db.execute()` |
+| **API 权限校验** | 所有写操作是否校验用户权限？详见下方专项检查 |
 
 ### 前端错误处理专项检查
 
@@ -145,6 +146,93 @@ grep -rn "// 错误已在" frontend/src/views/ frontend/src/components/
    ```
 
 3. **删除/保存等关键操作必须给用户明确的成功/失败反馈**
+
+---
+
+### API 权限校验专项检查
+
+> **来源**：Issue #426 知识库权限控制遗漏教训
+> **核心原则**：认证 ≠ 权限校验，所有写操作必须校验用户是否有操作权限
+
+#### 权限校验原则
+
+| 原则 | 说明 |
+|------|------|
+| **认证 ≠ 授权** | 用户已登录不代表有权限操作所有资源 |
+| **最小权限原则** | 默认拒绝，只授予必要权限 |
+| **层级权限继承** | 子资源操作必须校验父资源权限 |
+
+#### 检查清单
+
+**每个 API 端点必须检查**：
+
+| 操作类型 | 权限校验要求 |
+|----------|-------------|
+| **创建（POST）** | 校验用户是否有权限在该父资源下创建子资源 |
+| **更新（PUT）** | 校验用户是否有权限编辑该资源 |
+| **删除（DELETE）** | 校验用户是否有权限删除该资源 |
+| **查询（GET）** | 校验用户是否有权限访问该资源（或过滤结果） |
+
+**层级资源权限校验**：
+
+```
+知识库 (kb)           → canEditKb() / canAccessKb()
+  └── 文章 (article)  → 必须校验 kb 权限
+      └── 节 (section) → 必须校验 kb 权限
+          └── 段落 (paragraph) → 必须校验 kb 权限
+  └── 标签 (tag)      → 必须校验 kb 权限
+```
+
+#### 代码模板
+
+```javascript
+// ✅ 正确 - 写操作前校验权限
+async createArticle(ctx) {
+  const { kb_id } = ctx.params;
+  const userId = ctx.state.session.id;
+
+  // 权限检查：只有 owner 或 admin 可以编辑
+  const canEdit = await canEditKb(this.db, kb_id, userId);
+  if (!canEdit) {
+    ctx.throw(403, '无权编辑此知识库');
+  }
+
+  // 执行业务逻辑...
+}
+
+// ❌ 错误 - 只验证资源存在，未校验权限
+async createArticle(ctx) {
+  const { kb_id } = ctx.params;
+
+  // 只验证知识库存在，未校验用户是否有权限
+  const kb = await this.KnowledgeBase.findByPk(kb_id);
+  if (!kb) {
+    ctx.throw(404, 'Knowledge base not found');
+  }
+
+  // 直接执行业务逻辑 - 安全漏洞！
+}
+```
+
+#### 快速检查命令
+
+```bash
+# 检查所有写操作是否缺少权限校验
+# 查找 POST/PUT/DELETE 路由定义
+grep -rn "router\.\(post\|put\|delete\)" server/routes/
+
+# 对照检查对应的 controller 方法是否包含权限校验
+grep -rn "canEdit\|canAccess\|canDelete" server/controllers/
+```
+
+#### 常见遗漏场景
+
+| 场景 | 问题 | 修复 |
+|------|------|------|
+| 子资源 CRUD | 只验证父资源存在，未校验编辑权限 | 添加 `canEditKb()` 校验 |
+| 批量操作 | 只校验部分资源权限 | 所有涉及资源都必须校验 |
+| 嵌套资源 | 只校验直接父资源，忽略祖先资源 | 递归校验祖先权限 |
+| 公开资源 | 误认为公开=可编辑 | 读权限 ≠ 写权限，分别校验 |
 
 ---
 
