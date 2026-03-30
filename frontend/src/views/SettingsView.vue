@@ -401,6 +401,9 @@
               <div class="user-meta">
                 <span class="user-email">{{ user.email }}</span>
                 <span class="user-username">@{{ user.username }}</span>
+                <span v-if="user.invitation_quota !== undefined" class="user-invitation-quota">
+                  {{ $t('settings.invitationQuota') }}: {{ user.invitation_quota }}
+                </span>
               </div>
             </div>
             <div class="user-actions">
@@ -1400,9 +1403,24 @@
               </label>
             </div>
             <p v-if="rolesList.length === 0 && !rolesLoading" class="form-hint">{{ $t('settings.noRolesAvailable') }}</p>
-          </div>
-
-          <div class="form-row">
+            </div>
+  
+            <!-- 邀请配额（仅编辑时显示） -->
+            <div v-if="editingUser" class="form-row">
+              <div class="form-item">
+                <label class="form-label">{{ $t('settings.invitationQuota') }}</label>
+                <input
+                  v-model.number="userForm.invitation_quota"
+                  type="number"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                />
+                <p class="form-hint">{{ $t('settings.invitationQuotaHint') }}</p>
+              </div>
+            </div>
+  
+            <div class="form-row">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.gender') }}</label>
               <select v-model="userForm.gender" class="form-input">
@@ -1850,6 +1868,7 @@ const userForm = reactive({
   avatar: '',
   newPassword: '',
   selectedRoleIds: [] as string[],
+  invitation_quota: 1,
 })
 
 // 角色列表
@@ -1968,6 +1987,7 @@ const openUserDialog = async (user?: UserListItem) => {
     userForm.status = user.status
     userForm.avatar = user.avatar || ''
     userForm.newPassword = ''
+    userForm.invitation_quota = (user as any).invitation_quota ?? 1
     // 设置用户当前角色：根据角色标识符(mark)找到对应的角色ID
     if (user.roles && user.roles.length > 0) {
       const roleIds = rolesList.value
@@ -1991,6 +2011,7 @@ const openUserDialog = async (user?: UserListItem) => {
     userForm.avatar = ''
     userForm.newPassword = ''
     userForm.selectedRoleIds = []
+    userForm.invitation_quota = 1
   }
   showUserDialog.value = true
 }
@@ -2019,6 +2040,8 @@ const saveUser = async () => {
       await userApi.updateUser(editingUser.value.id, updateData)
       // 更新用户角色
       await userApi.updateUserRoles(editingUser.value.id, { roleIds: userForm.selectedRoleIds })
+      // 更新用户邀请配额
+      await userApi.updateInvitationQuota(editingUser.value.id, userForm.invitation_quota)
     } else {
       // 创建用户
       const createData: CreateUserRequest = {
@@ -2038,9 +2061,14 @@ const saveUser = async () => {
       if (newUser && newUser.id && userForm.selectedRoleIds.length > 0) {
         await userApi.updateUserRoles(newUser.id, { roleIds: userForm.selectedRoleIds })
       }
+      // 为新用户设置邀请配额
+      if (newUser && newUser.id) {
+        await userApi.updateInvitationQuota(newUser.id, userForm.invitation_quota)
+      }
     }
     closeUserDialog()
     loadUsers()
+    toast.success(t('settings.saveUserSuccess'))
   } catch (err) {
     console.error('保存用户失败:', err)
     toast.error(t('settings.saveUserFailed'))
@@ -3811,8 +3839,12 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
-.user-username {
-  white-space: nowrap;
+.user-invitation-quota {
+  font-size: 12px;
+  color: var(--primary-color, #2196f3);
+  background: var(--primary-light, #e3f2fd);
+  padding: 2px 8px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 

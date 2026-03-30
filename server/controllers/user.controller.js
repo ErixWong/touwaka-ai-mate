@@ -48,7 +48,7 @@ class UserController {
         attributes: [
           'id', 'username', 'email', 'nickname', 'avatar',
           'gender', 'birthday', 'occupation', 'location', 'status',
-          'last_login', 'created_at', 'updated_at'
+          'invitation_quota', 'last_login', 'created_at', 'updated_at'
         ],
         offset,
         limit,
