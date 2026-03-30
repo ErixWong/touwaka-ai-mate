@@ -1201,7 +1201,12 @@ ${description || '新技能描述'}
   async getMyParameters(ctx) {
     try {
       const { id } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session?.id;
+
+      if (!userId) {
+        ctx.error('用户未认证', 401);
+        return;
+      }
 
       // 检查技能是否存在
       const skill = await this.Skill.findOne({ where: { id } });
@@ -1273,7 +1278,12 @@ ${description || '新技能描述'}
     try {
       const { id } = ctx.params;
       const { parameters } = ctx.request.body;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session?.id;
+
+      if (!userId) {
+        ctx.error('用户未认证', 401);
+        return;
+      }
 
       if (!Array.isArray(parameters)) {
         ctx.error('参数格式错误，需要数组', 400);
