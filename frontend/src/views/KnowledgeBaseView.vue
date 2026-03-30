@@ -15,7 +15,7 @@
         type="text"
         class="search-input"
         :placeholder="$t('knowledgeBase.searchPlaceholder')"
-        @keyup.enter="performGlobalSearch"
+        @keyup.enter="searchQuery.trim() && performGlobalSearch()"
       />
       <button
         class="btn-search"
@@ -756,6 +756,7 @@ onUnmounted(() => {
   box-sizing: border-box;
   overflow-y: auto;
   flex: 1;
+  align-content: start;
 }
 
 .kb-card {
@@ -896,6 +897,12 @@ onUnmounted(() => {
   position: absolute;
   top: 8px;
   right: 8px;
+  z-index: 1;
+}
+
+/* 当显示操作按钮时，调整模型徽章位置 */
+.kb-card:hover .kb-card-model {
+  right: 60px;
 }
 
 .model-badge {

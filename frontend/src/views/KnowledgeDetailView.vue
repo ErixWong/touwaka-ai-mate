@@ -238,7 +238,7 @@
             type="text"
             class="search-input"
             :placeholder="$t('knowledgeBase.searchHint')"
-            @keyup.enter="performSearch"
+            @keyup.enter="searchQuery.trim() && performSearch()"
           />
 
           <div v-if="kbStore.isSearching" class="search-loading">
