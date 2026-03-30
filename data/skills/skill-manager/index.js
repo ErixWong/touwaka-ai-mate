@@ -1,7 +1,7 @@
 /**
  * Skill Manager - 技能管理技能
  *
- * 用于管理技能的注册、删除、分配等操作
+ * 用于管理技能的注册、删除、查询等操作
  * 仅供技能管理专家（如 skill-studio）使用
  *
  * 重构说明：此技能现在通过 API 调用后台服务，不再直接访问数据库
@@ -222,5 +222,5 @@ async function execute(toolName, params, context = {}) {
 module.exports = {
   execute,
   name: 'skill-manager',
-  description: '技能管理工具：注册、删除、分配技能（通过 API 调用）',
+  description: '技能管理工具：注册、删除、查询技能（通过 API 调用）',
 };
