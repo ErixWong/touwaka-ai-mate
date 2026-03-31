@@ -150,23 +150,13 @@
             </div>
 
             <!-- 提供商分页 -->
-            <div v-if="providerTotalPages > 1" class="pagination">
-              <button
-                class="page-btn"
-                :disabled="providerPage === 1"
-                @click="providerPage--"
-              >
-                <
-              </button>
-              <span class="page-info">{{ providerPage }} / {{ providerTotalPages }}</span>
-              <button
-                class="page-btn"
-                :disabled="providerPage === providerTotalPages"
-                @click="providerPage++"
-              >
-                >
-              </button>
-            </div>
+            <Pagination
+              v-if="providerTotalPages > 1"
+              :current-page="providerPage"
+              :total-pages="providerTotalPages"
+              :total="providerStore.providers.length"
+              @change="(page) => providerPage = page"
+            />
           </div>
         </div>
 
@@ -232,23 +222,13 @@
             </div>
 
             <!-- 模型分页 -->
-            <div v-if="modelTotalPages > 1" class="pagination">
-              <button
-                class="page-btn"
-                :disabled="modelPage === 1"
-                @click="modelPage--"
-              >
-                <
-              </button>
-              <span class="page-info">{{ modelPage }} / {{ modelTotalPages }}</span>
-              <button
-                class="page-btn"
-                :disabled="modelPage === modelTotalPages"
-                @click="modelPage++"
-              >
-                >
-              </button>
-            </div>
+            <Pagination
+              v-if="modelTotalPages > 1"
+              :current-page="modelPage"
+              :total-pages="modelTotalPages"
+              :total="filteredModels.length"
+              @change="(page) => modelPage = page"
+            />
           </div>
         </div>
       </div>
@@ -318,23 +298,13 @@
         </div>
 
         <!-- 专家分页 -->
-        <div v-if="expertTotalPages > 1" class="pagination">
-          <button
-            class="page-btn"
-            :disabled="expertPage === 1"
-            @click="expertPage--"
-          >
-            &lt;
-          </button>
-          <span class="page-info">{{ expertPage }} / {{ expertTotalPages }}</span>
-          <button
-            class="page-btn"
-            :disabled="expertPage === expertTotalPages"
-            @click="expertPage++"
-          >
-            &gt;
-          </button>
-        </div>
+        <Pagination
+          v-if="expertTotalPages > 1"
+          :current-page="expertPage"
+          :total-pages="expertTotalPages"
+          :total="expertStore.experts.length"
+          @change="(page) => expertPage = page"
+        />
       </div>
     </div>
 
@@ -426,23 +396,13 @@
         </div>
 
         <!-- 用户分页 -->
-        <div v-if="userTotalPages > 1" class="pagination">
-          <button
-            class="page-btn"
-            :disabled="userPage === 1"
-            @click="userPage--"
-          >
-            <
-          </button>
-          <span class="page-info">{{ userPage }} / {{ userTotalPages }}</span>
-          <button
-            class="page-btn"
-            :disabled="userPage === userTotalPages"
-            @click="userPage++"
-          >
-            >
-          </button>
-        </div>
+        <Pagination
+          v-if="userTotalPages > 1"
+          :current-page="userPage"
+          :total-pages="userTotalPages"
+          :total="usersList.length"
+          @change="(page) => userPage = page"
+        />
       </div>
     </div>
 
@@ -1620,6 +1580,7 @@ import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
+import Pagination from '@/components/Pagination.vue'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -3040,49 +3001,6 @@ onMounted(() => {
   color: var(--error-color, #c62828);
 }
 
-/* 分页 */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 12px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
-
-.page-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 14px;
-  color: var(--text-primary, #333);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  min-width: 60px;
-  text-align: center;
-}
-
 /* 空状态和加载状态 */
 .loading-state,
 .empty-state {
@@ -3362,6 +3280,7 @@ onMounted(() => {
 .expert-list {
   flex: 1;
   padding: 16px;
+  overflow-y: auto;
 }
 
 .expert-item {
@@ -3761,6 +3680,7 @@ onMounted(() => {
 .user-list {
   flex: 1;
   padding: 16px;
+  overflow-y: auto;
 }
 
 .user-item {
