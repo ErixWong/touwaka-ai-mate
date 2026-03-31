@@ -18,7 +18,7 @@ export { refreshAssistantsCache, getAssistant, createAssistant, updateAssistant,
 export { executeAssistant, executeDirect, executeLLM, executeLLMWithTools } from './executor.js';
 export { getAssistantTools, getInheritedToolDefinitions, executeInheritedTool } from './tool-integration.js';
 export { extractImageInput, executeVisionWithInput, readImageFile } from './vision-processor.js';
-export { pushSSENotification, notifyExpertResult, triggerExpertResponse } from './expert-notifier.js';
+export { pushSSENotification, notifyExpertResult, triggerExpertResponse, resendNotification } from './expert-notifier.js';
 
 // 默认导出
 export { default } from './manager.js';

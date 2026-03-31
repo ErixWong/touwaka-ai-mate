@@ -71,6 +71,147 @@ export function pushSSENotification(expertConnections, expertId, userId, notific
 }
 
 /**
+ * 内存中的通知状态记录（用于重发功能）
+ * key: requestId, value: { status, error, sentAt, retryCount }
+ */
+const notificationStatusMap = new Map();
+
+/**
+ * 更新通知状态到内存
+ * @param {string} requestId - 请求ID
+ * @param {string} status - 通知状态: pending, sent, failed, skipped
+ * @param {string} error - 错误信息（可选）
+ * @returns {object} 当前状态记录
+ */
+function updateNotificationStatus(requestId, status, error = null) {
+  const record = {
+    status,
+    error: error || null,
+    sentAt: status === 'sent' ? new Date() : null,
+    retryCount: (notificationStatusMap.get(requestId)?.retryCount || 0) + (status === 'sent' ? 0 : 1),
+  };
+  notificationStatusMap.set(requestId, record);
+  
+  // 控制台输出通知状态
+  console.log(`\n[通知状态] request_id: ${requestId}`);
+  console.log(`  状态: ${status}`);
+  if (error) {
+    console.log(`  失败原因: ${error}`);
+  }
+  if (record.sentAt) {
+    console.log(`  发送时间: ${record.sentAt.toISOString()}`);
+  }
+  console.log(`  重试次数: ${record.retryCount}`);
+  console.log('');
+  
+  logger.info(`[ExpertNotifier] 通知状态更新: request=${requestId}, status=${status}`);
+  return record;
+}
+
+/**
+ * 获取通知状态
+ * @param {string} requestId - 请求ID
+ * @returns {object|null} 状态记录
+ */
+export function getNotificationStatus(requestId) {
+  return notificationStatusMap.get(requestId) || null;
+}
+
+/**
+ * 清除通知状态（用于重发）
+ * @param {string} requestId - 请求ID
+ */
+function clearNotificationStatus(requestId) {
+  notificationStatusMap.delete(requestId);
+  logger.info(`[ExpertNotifier] 清除通知状态: request=${requestId}`);
+}
+
+/**
+ * 重发通知给专家
+ * @param {Database} db - 数据库实例
+ * @param {string} requestId - 请求ID
+ * @param {object} services - 服务引用
+ * @returns {Promise<object>} 重发结果
+ */
+export async function resendNotification(db, requestId, services) {
+  const { expertConnections, chatService } = services;
+  
+  logger.info(`[ExpertNotifier] 开始重发通知: request=${requestId}`);
+  
+  console.log(`\n========================================`);
+  console.log(`[重发通知] request_id: ${requestId}`);
+  console.log(`========================================\n`);
+  
+  try {
+    // 从数据库获取请求
+    const AssistantRequest = db.getModel('assistant_request');
+    const request = await AssistantRequest.findOne({
+      where: { request_id: requestId },
+      raw: true,
+    });
+    
+    if (!request) {
+      const error = `请求不存在: ${requestId}`;
+      console.log(`[重发失败] ${error}`);
+      throw new Error(error);
+    }
+    
+    // 检查请求状态
+    if (request.status !== 'completed' && request.status !== 'failed') {
+      const error = `请求状态不允许重发: ${request.status}`;
+      console.log(`[重发失败] ${error}`);
+      throw new Error(error);
+    }
+    
+    // 解析 input
+    let input = request.input;
+    if (typeof input === 'string') {
+      try {
+        input = JSON.parse(input);
+      } catch (e) {
+        input = {};
+      }
+    }
+    
+    // 构建完整的请求对象
+    const fullRequest = {
+      ...request,
+      input,
+      result: request.result,
+      status: request.status,
+      error_message: request.error_message,
+      latency_ms: request.latency_ms,
+    };
+    
+    // 清除内存中的通知标记，允许重新通知
+    const notifyKey = `${requestId}_${request.status}`;
+    notifiedRequests.delete(notifyKey);
+    
+    // 清除通知状态记录
+    clearNotificationStatus(requestId);
+    
+    console.log(`[重发] 清除历史通知标记，准备重新发送...\n`);
+    
+    // 重新发送通知
+    await notifyExpertResult(db, fullRequest, services);
+    
+    const result = {
+      success: true,
+      message: '通知已重发',
+      request_id: requestId,
+    };
+    
+    console.log(`[重发成功] request_id: ${requestId}\n`);
+    
+    return result;
+  } catch (error) {
+    console.log(`[重发失败] ${error.message}\n`);
+    logger.error(`[ExpertNotifier] 重发通知失败: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * 通过 Internal API 通知 Expert 会话结果
  * @param {Database} db - 数据库实例
  * @param {object} request - 请求对象
@@ -84,6 +225,8 @@ export async function notifyExpertResult(db, request, services) {
 
   // 检查是否已经通知过
   if (!shouldNotify(request_id, status)) {
+    // 更新状态为已跳过（重复通知）
+    updateNotificationStatus(request_id, 'skipped', '重复通知请求被跳过');
     return;
   }
 
@@ -149,11 +292,14 @@ export async function notifyExpertResult(db, request, services) {
   // P0-A 修复：不再因 topic_id 为 null 而跳过通知
   // 只有当 user_id 或 expert_id 缺失时才跳过（这是真正的必填信息）
   if (!finalUserId || !finalExpertId) {
+    const errorMsg = `缺少必填信息: user_id=${finalUserId}, expert_id=${finalExpertId}`;
     logger.error(`[ExpertNotifier] 跳过通知：request=${request_id}, 缺少必填信息:`, {
       user_id: finalUserId || 'MISSING',
       expert_id: finalExpertId || 'MISSING',
       topic_id: finalTopicId || '(已处理)',
     });
+    // 更新通知状态为失败
+    updateNotificationStatus(request_id, 'failed', errorMsg);
     return;
   }
 
@@ -347,9 +493,13 @@ export async function notifyExpertResult(db, request, services) {
       logger.warn(`[ExpertNotifier] 无 chatService，无法触发专家响应`);
     }
 
+    // 更新通知状态为已发送
+    updateNotificationStatus(request_id, 'sent');
     logger.info(`[ExpertNotifier] 通知成功: request_id=${request_id}, topic_id=${finalTopicId}`);
   } catch (err) {
     logger.error(`[ExpertNotifier] 通知失败: ${err.message}`);
+    // 更新通知状态为失败
+    updateNotificationStatus(request_id, 'failed', err.message);
     throw err;
   }
 }
@@ -508,4 +658,5 @@ export default {
   pushSSENotification,
   notifyExpertResult,
   triggerExpertResponse,
+  resendNotification,
 };

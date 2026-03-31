@@ -888,4 +888,10 @@ export const assistantApi = {
     apiRequest<{ request_id: string; original_request_id: string; message: string }>(
       apiClient.post(`/assistants/requests/${requestId}/retry`)
     ),
+
+  // 重发通知给专家
+  resendNotification: (requestId: string) =>
+    apiRequest<{ success: boolean; message: string; request_id: string }>(
+      apiClient.post(`/assistants/requests/${requestId}/resend-notification`)
+    ),
 }

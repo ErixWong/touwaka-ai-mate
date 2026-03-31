@@ -33,6 +33,9 @@ export default function createAssistantRoutes(controller) {
   // DELETE /api/assistants/requests/:request_id - 删除委托
   router.delete('/requests/:request_id', authenticate(), controller.delete.bind(controller));
 
+  // POST /api/assistants/requests/:request_id/resend-notification - 重发通知给专家
+  router.post('/requests/:request_id/resend-notification', authenticate(), controller.resendNotification.bind(controller));
+
   // POST /api/assistants/requests/:request_id/retry - 重新执行委托
   router.post('/requests/:request_id/retry', authenticate(), controller.retry.bind(controller));
 

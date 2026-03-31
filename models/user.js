@@ -65,7 +65,11 @@ export default class user extends Model {
     position_id: {
       type: DataTypes.STRING(20),
       allowNull: true,
-      comment: "职位ID"
+      comment: "职位ID",
+      references: {
+        model: 'positions',
+        key: 'id'
+      }
     },
     invitation_quota: {
       type: DataTypes.INTEGER,

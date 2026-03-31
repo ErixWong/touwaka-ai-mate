@@ -429,6 +429,7 @@ const MIGRATIONS = [
       console.log('  ✓ Added fk_user_position foreign key to users table');
     }
   },
+
 ];
 
 /**
