@@ -40,6 +40,7 @@ export default {
     seconds: 'seconds',
     restart: 'Restart',
     restarting: 'Restarting...',
+    actions: 'Actions',
   },
 
   // Navigation
@@ -1421,8 +1422,16 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     creating: 'Generating...',
     createSuccess: 'Invitation code created successfully',
     createFailed: 'Failed to create invitation code',
-    // Code info
+    // Table headers
     code: 'Invitation Code',
+    statusLabel: 'Status',
+    usage: 'Uses',
+    expiry: 'Expiry',
+    actions: 'Actions',
+    // Expiration display
+    expiresToday: 'Expires today',
+    expiresTomorrow: 'Expires tomorrow',
+    expiresInDays: 'Expires in {days} days',
     invitationLink: 'Invitation Link',
     inviteLink: 'Invitation Link',
     linkHint: 'Clipboard access is blocked by browser. Please select and copy the link below:',

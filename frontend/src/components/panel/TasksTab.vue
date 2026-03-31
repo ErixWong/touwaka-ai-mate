@@ -1169,7 +1169,7 @@ const renderMarkdownWithMermaid = async (content: string): Promise<void> => {
   
   try {
     // 先进行基础 Markdown 渲染
-    let rawHtml = marked.parse(content) as string
+    const rawHtml = marked.parse(content) as string
     
     // 使用 DOMPurify 进行 XSS 清理（允许更多标签用于 Mermaid）
     let cleanHtml = DOMPurify.sanitize(rawHtml, {
