@@ -438,9 +438,37 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE assistant_requests
-        ADD COLUMN notification_status VARCHAR(20) DEFAULT 'pending' COMMENT '通知状态: pending/sent/failed'
+        ADD COLUMN notification_status VARCHAR(20) DEFAULT 'pending' COMMENT '通知状态: pending/sent/failed/skipped'
       `);
       console.log('  ✓ Added notification_status column to assistant_requests table');
+    }
+  },
+
+  // ==================== assistant_requests 表添加 notification_error 字段 ====================
+  // Issue #493: 助理通知错误信息
+  {
+    name: 'assistant_requests.notification_error column add',
+    check: async (conn) => await hasColumn(conn, 'assistant_requests', 'notification_error'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE assistant_requests
+        ADD COLUMN notification_error TEXT COMMENT '通知失败时的错误信息'
+      `);
+      console.log('  ✓ Added notification_error column to assistant_requests table');
+    }
+  },
+
+  // ==================== assistant_requests 表添加 notification_sent_at 字段 ====================
+  // Issue #493: 助理通知发送时间
+  {
+    name: 'assistant_requests.notification_sent_at column add',
+    check: async (conn) => await hasColumn(conn, 'assistant_requests', 'notification_sent_at'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE assistant_requests
+        ADD COLUMN notification_sent_at DATETIME COMMENT '通知发送时间'
+      `);
+      console.log('  ✓ Added notification_sent_at column to assistant_requests table');
     }
   },
 
