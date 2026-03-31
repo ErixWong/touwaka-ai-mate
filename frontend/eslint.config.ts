@@ -33,7 +33,7 @@ export default defineConfigWithVueTs(
       '@intlify/vue-i18n/no-unused-keys': 'off',
       // 禁止硬编码文本（中文）
       '@intlify/vue-i18n/no-raw-text': ['warn', {
-        ignorePattern: '^[a-zA-Z0-9\s\\p{P}]*$', // 忽略纯英文数字
+        ignorePattern: '^[a-zA-Z0-9s\\p{P}]*$', // 忽略纯英文数字
         ignoreText: [' ', '  ', '\n', '...', '→', '←', '↑', '↓'],
       }],
     },
