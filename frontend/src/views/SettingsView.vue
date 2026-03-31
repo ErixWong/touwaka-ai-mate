@@ -3681,6 +3681,7 @@ onMounted(() => {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
+  max-height: calc(100vh - 320px);
 }
 
 .user-item {
