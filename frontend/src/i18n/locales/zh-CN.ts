@@ -1068,6 +1068,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     permissionCanEdit: '可编辑',
     permissionCanDelete: '可删除',
 
+    // 创建者和管理者
+    creator: '创建者',
+    owner: '管理者',
+
     // 转移拥有者
     transferOwner: {
       button: '转移拥有者',

@@ -1075,6 +1075,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     permissionCanEdit: 'Can Edit',
     permissionCanDelete: 'Can Delete',
 
+    // User info
+    creator: 'Creator',
+    owner: 'Owner',
+
     // Transfer Owner
     transferOwner: {
       button: 'Transfer Owner',

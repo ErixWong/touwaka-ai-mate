@@ -805,6 +805,9 @@ export interface KnowledgeBase {
   is_owner?: boolean
   can_edit?: boolean
   can_delete?: boolean
+  // 用户信息（API 返回时附带）
+  creator_name?: string
+  owner_name?: string
   created_at: string
   updated_at: string
 }
