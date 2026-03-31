@@ -19,7 +19,7 @@ import { getAssistantTools, getInheritedToolDefinitions, executeInheritedTool } 
 import { extractImageInput, executeVisionWithInput, readImageFile } from './vision-processor.js';
 import { refreshAssistantsCache, getAssistant, createAssistant, updateAssistant, deleteAssistant, getAssistantDetail } from './config-repository.js';
 import { executeAssistant } from './executor.js';
-import { pushSSENotification, notifyExpertResult, triggerExpertResponse } from './expert-notifier.js';
+import { pushSSENotification, notifyExpertResult, triggerExpertResponse, resendNotification } from './expert-notifier.js';
 
 class AssistantManager {
   /**
@@ -350,6 +350,10 @@ class AssistantManager {
       created_at: request.created_at,
       started_at: request.started_at,
       completed_at: request.completed_at,
+      // 通知状态字段
+      notification_status: request.notification_status,
+      notification_error: request.notification_error,
+      notification_sent_at: request.notification_sent_at,
     };
   }
 
@@ -745,6 +749,18 @@ class AssistantManager {
       default:
         throw new Error(`Unknown tool: ${toolName}`);
     }
+  }
+
+  /**
+   * 重发通知给专家
+   * @param {string} requestId - 请求ID
+   * @returns {Promise<object>} 重发结果
+   */
+  async resendNotification(requestId) {
+    return await resendNotification(this.db, requestId, {
+      expertConnections: this.expertConnections,
+      chatService: this.chatService,
+    });
   }
 
   // ==================== 视觉处理 ====================

@@ -270,6 +270,32 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
+  // 重发通知给专家
+  async function resendNotification(requestId: string) {
+    try {
+      isLoading.value = true
+      const response = await assistantApi.resendNotification(requestId)
+      // 刷新当前委托状态
+      const updated = await assistantApi.getRequest(requestId)
+      // 更新列表中的委托
+      const index = requests.value.findIndex(r => r.request_id === requestId)
+      if (index !== -1) {
+        requests.value[index] = updated
+      }
+      // 如果是当前选中的委托，也更新 activeRequest
+      if (activeRequest.value?.request_id === requestId) {
+        activeRequest.value = updated
+      }
+      return response
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to resend notification'
+      console.error('Failed to resend notification:', e)
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     // State
     assistants,
@@ -301,5 +327,6 @@ export const useAssistantStore = defineStore('assistant', () => {
     unarchiveRequest,
     deleteRequest,
     retryRequest,
+    resendNotification,
   }
 })

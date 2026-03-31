@@ -123,6 +123,8 @@ export default function initModels(sequelize) {
   permission.hasMany(permission, { as: "permissions", foreignKey: "parent_id"});
   role_permission.belongsTo(permission, { as: "permission", foreignKey: "permission_id"});
   permission.hasMany(role_permission, { as: "role_permissions", foreignKey: "permission_id"});
+  user.belongsTo(position, { as: "position", foreignKey: "position_id"});
+  position.hasMany(user, { as: "users", foreignKey: "position_id"});
   ai_model.belongsTo(provider, { as: "provider", foreignKey: "provider_id"});
   provider.hasMany(ai_model, { as: "ai_models", foreignKey: "provider_id"});
   role_expert.belongsTo(role, { as: "role", foreignKey: "role_id"});

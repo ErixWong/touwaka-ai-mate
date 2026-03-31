@@ -87,8 +87,15 @@
                 {{ $t('assistant.archived') || '已归档' }}
               </span>
             </div>
-            <!-- 操作按钮 -->
             <div class="request-actions" @click.stop>
+              <button
+                v-if="canResendNotification(request)"
+                class="action-btn resend"
+                @click="handleResendNotification(request)"
+                :title="$t('assistant.resendNotification') || '重发通知'"
+              >
+                📢
+              </button>
               <button
                 v-if="canRetry(request)"
                 class="action-btn retry"
@@ -324,6 +331,29 @@ function canRetry(request: AssistantRequest): boolean {
   if (request.is_archived) return false
   // 只允许失败的执行重试
   return ['failed', 'timeout'].includes(request.status)
+}
+
+// 判断是否可以重发通知（始终显示重发按钮给已完成的委托）
+function canResendNotification(request: AssistantRequest): boolean {
+  // 只有已完成的委托才显示重发按钮
+  if (request.status !== 'completed') return false
+  // 已归档的委托不允许重发
+  if (request.is_archived) return false
+  return true
+}
+
+// 处理重发通知
+async function handleResendNotification(request: AssistantRequest) {
+  console.log(`[重发通知] 开始重发: request_id=${request.request_id}`)
+  try {
+    const result = await assistantStore.resendNotification(request.request_id)
+    console.log(`[重发通知] 成功:`, result)
+    toast.success(t('assistant.resendNotificationSuccess') || '通知已重发，请在控制台查看详情')
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : t('assistant.resendNotificationFailed')
+    console.error(`[重发通知] 失败:`, errorMsg)
+    toast.error(errorMsg)
+  }
 }
 
 // 处理删除
@@ -672,12 +702,35 @@ onUnmounted(() => {
   background: var(--primary-light, #e3f2fd);
 }
 
+.action-btn.resend:hover {
+  background: var(--info-bg, #e1f5fe);
+}
+
 .action-btn.archive:hover {
   background: var(--warning-bg, #fff8e1);
 }
 
 .action-btn.unarchive:hover {
   background: var(--success-bg, #e8f5e9);
+}
+
+/* 重发按钮 */
+.resend-btn {
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid var(--primary-color, #2196f3);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--primary-color, #2196f3);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: all 0.2s;
+}
+
+.resend-btn:hover {
+  opacity: 1;
+  background: var(--primary-light, #e3f2fd);
 }
 
 .empty-hint {

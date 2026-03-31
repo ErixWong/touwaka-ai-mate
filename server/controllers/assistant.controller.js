@@ -400,6 +400,33 @@ class AssistantController {
   }
 
   /**
+   * 重发通知给专家
+   * POST /api/assistants/requests/:request_id/resend-notification
+   */
+  async resendNotification(ctx) {
+    try {
+      const { request_id } = ctx.params;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const result = await this.assistantManager.resendNotification(request_id);
+      ctx.success(result, '通知已重发');
+    } catch (error) {
+      logger.error('Resend notification error:', error);
+      if (error.message.includes('不存在')) {
+        ctx.error(error.message, 404);
+      } else if (error.message.includes('状态不允许')) {
+        ctx.error(error.message, 400);
+      } else {
+        ctx.app.emit('error', error, ctx);
+      }
+    }
+  }
+
+  /**
    * 重新执行委托
    * POST /api/assistants/requests/:request_id/retry
    */
