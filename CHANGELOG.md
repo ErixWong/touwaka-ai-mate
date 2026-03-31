@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-03-31
+
+### Added
+- 新增 fapiao 技能 - 中国增值税发票解析 (#498, #499)
+- 实现助理通知重发功能 (#493, #494)
+- 知识库卡片显示创建者和管理者信息 (#488, #489)
+- 管理员可修改用户邀请配额 (#468, #482)
+
+### Fixed
+- 修复 fapiao skill 的 pdfjs-dist VM 沙箱兼容性问题 (#505)
+- 修复 pdfjs-dist worker 加载错误 (#503)
+- 修复用户管理界面用户列表缺少垂直滚动条的问题 (#495, #497)
+- 修复用户管理界面滚动问题，统一使用 Pagination 组件 (#495, #496)
+- i18n 翻译键修复、邀请管理界面优化及自动化检查工具 (#491)
+- 修复 isSystemAdmin 使用 mark 字段而非 level 字段判断 admin 角色 (#485, #487)
+- 移除知识库内置模型选项并修复数据库外键约束 (#485, #486)
+- 修复 SettingsView.vue TypeScript 类型错误 (#472, #484)
+- 修复知识库页面卡片高度异常、搜索空值检查、徽章重叠问题 (#465, #483)
+- 添加 user_skill_parameters 表到数据库迁移脚本 (#479, #480)
+- 统一技能管理界面敏感参数图标样式并修复翻译缺失 (#478)
+- 修复 skill_parameters 表 allow_user_override 字段缺失数据库迁移及安全问题 (#476)
+
+### Changed
+- 重新组织文档结构以支持开源 (#472)
+- 更新 README.md，替换 init-core-skills.js 为 init-skills-from-json.js，添加前端构建说明 (#481)
+
+### Chore
+- 清理临时 Issue 和 PR body 文件
+
 ## [0.2.3] - 2026-03-30
 
 ### Fixed
@@ -118,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.2.4 | 2026-03-31 | 新增发票解析技能、助理通知重发、知识库卡片信息展示、多项 Bug 修复 |
 | 0.2.3 | 2026-03-30 | 修复 TypeScript 类型错误、角色管理权限配置修复、管理员可修改邀请配额 |
 | 0.2.2 | 2026-03-30 | 技能工具命名规范化、PDF/PPTX/DOCX 技能重构、skill-manager 精简 |
 | 0.2.0 | 2026-03-26 | 自主任务状态优化、助理系统增强、Bug 修复 |
