@@ -51,6 +51,10 @@ import xml2js from 'xml2js';
 import pptxgenjs from 'pptxgenjs';
 import * as echarts from 'echarts';
 import sharp from 'sharp';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const pdfjsDist = require('pdfjs-dist');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -275,6 +279,8 @@ function executeSkill(code, skillId) {
         // npm 模块（用于测试 echarts 技能）
         'echarts': echarts,
         'sharp': sharp,
+        // npm 模块（用于测试 fapiao 技能）
+        'pdfjs-dist': pdfjsDist,
       };
       
       if (moduleMap[moduleName]) {
