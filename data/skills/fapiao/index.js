@@ -18,8 +18,14 @@ let pdfjsLib = null;
 
 async function getPdfjsLib() {
   if (!pdfjsLib) {
+    // 使用 legacy build 避免 worker 问题
     const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
     pdfjsLib = pdfjsModule.default || pdfjsModule;
+    
+    // 设置 worker 路径（使用 legacy 构建不需要单独 worker 文件）
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+    }
   }
   return pdfjsLib;
 }
