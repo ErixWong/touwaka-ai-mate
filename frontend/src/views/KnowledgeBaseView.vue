@@ -77,7 +77,7 @@
               <span class="user-badge" :title="$t('knowledgeBase.creator') + ': ' + kb.creator_name">
                 👤 {{ kb.creator_name }}
               </span>
-              <span v-if="kb.owner_id !== kb.creator_id" class="user-badge" :title="$t('knowledgeBase.owner') + ': ' + kb.owner_name">
+              <span class="user-badge" :title="$t('knowledgeBase.owner') + ': ' + kb.owner_name">
                 🔑 {{ kb.owner_name }}
               </span>
             </div>

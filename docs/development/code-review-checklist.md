@@ -349,6 +349,9 @@ interface PaginatedResponse<T> {
 
 ## 第七步：i18n 国际化检查
 
+> **最后更新**: 2026-03-31
+> **新增**: `npm run lint:i18n` 自动化检查脚本
+
 ### 翻译键完整性检查
 
 **必须检查项**：
@@ -356,7 +359,18 @@ interface PaginatedResponse<T> {
 - [ ] 新增功能同时更新 `zh-CN.ts` 和 `en-US.ts`
 - [ ] 没有硬编码的中文/英文文本
 
-**快速检查命令**：
+**自动化检查命令（推荐）**：
+```bash
+cd frontend
+
+# 运行 i18n 检查脚本，自动检测缺失的翻译键
+npm run lint:i18n
+
+# 检查通过后会显示：✅ 所有翻译键都已正确定义！
+# 如果有缺失会显示：❌ 在 zh-CN.ts/en-US.ts 中缺失 X 个键
+```
+
+**手动检查命令（备用）**：
 ```bash
 # 查找所有 $t() 调用
 grep -rn "\$t(" frontend/src/views/ frontend/src/components/
@@ -377,6 +391,15 @@ grep -rn "[一-龥]" frontend/src/views/*.vue frontend/src/components/*.vue
 <h1>{{ $t('knowledgeBase.articles') }}</h1>
 // 同时在 zh-CN.ts 和 en-US.ts 中添加：
 // knowledgeBase: { articles: '知识库文章' / 'Knowledge Base Articles' }
+
+### ESLint i18n 规则
+
+项目已配置 `@intlify/eslint-plugin-vue-i18n`，会在 `npm run lint` 时自动检查：
+
+- `@intlify/vue-i18n/no-raw-text`: 检测硬编码中文文本
+- 其他 i18n 相关规则
+
+**注意**：ESLint 的 i18n 规则主要检测硬编码文本，缺失 key 的检测请使用 `npm run lint:i18n`
 
 ---
 

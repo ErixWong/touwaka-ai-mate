@@ -40,6 +40,7 @@ export default {
     seconds: '秒',
     restart: '重启',
     restarting: '重启中...',
+    actions: '操作',
   },
 
   // 导航
@@ -1415,8 +1416,17 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     creating: '生成中...',
     createSuccess: '邀请码创建成功',
     createFailed: '创建邀请码失败',
-    // 邀请码信息
+    // 表格列标题
     code: '邀请码',
+    statusLabel: '状态',
+    usage: '使用次数',
+    expiry: '过期时间',
+    actions: '操作',
+    // 过期时间显示
+    expiresToday: '今天过期',
+    expiresTomorrow: '明天过期',
+    expiresInDays: '{days}天后过期',
+    expired: '已过期',
     invitationLink: '邀请链接',
     inviteLink: '邀请链接',
     linkHint: '浏览器禁用了剪贴板访问，请手动选择并复制以下链接：',
@@ -1427,7 +1437,6 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     remainingUses: '剩余次数',
     expiresAt: '过期时间: {date}',
     neverExpires: '永不过期',
-    expired: '已过期',
     createdAt: '创建时间',
     status: {
       active: '有效',
