@@ -47,6 +47,7 @@
     "numpy": "^0.0.1",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.6.205",
     "pptxgenjs": "^4.0.1",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",

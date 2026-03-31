@@ -11,7 +11,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const { createRequire } = require('module');
+const { pathToFileURL } = require('url');
 
 // 延迟加载 pdfjs-dist
 let pdfjsLib = null;
@@ -20,12 +20,6 @@ async function getPdfjsLib() {
   if (!pdfjsLib) {
     const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
     pdfjsLib = pdfjsModule.default || pdfjsModule;
-    
-    // 设置 worker
-    const require = createRequire(__filename);
-    const workerPath = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
-    const { pathToFileURL } = require('url');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
   }
   return pdfjsLib;
 }
