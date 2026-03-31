@@ -430,6 +430,20 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== assistant_requests 表添加 notification_status 字段 ====================
+  // Issue #493: 助理通知状态跟踪
+  {
+    name: 'assistant_requests.notification_status column add',
+    check: async (conn) => await hasColumn(conn, 'assistant_requests', 'notification_status'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE assistant_requests
+        ADD COLUMN notification_status VARCHAR(20) DEFAULT 'pending' COMMENT '通知状态: pending/sent/failed'
+      `);
+      console.log('  ✓ Added notification_status column to assistant_requests table');
+    }
+  },
+
 ];
 
 /**
