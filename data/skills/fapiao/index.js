@@ -13,21 +13,12 @@ const fs = require('fs').promises;
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-// 延迟加载 pdfjs-dist
-let pdfjsLib = null;
+// 使用 pdfjs-dist 2.x (CommonJS 版本，兼容 VM 沙箱)
+const pdfjsLib = require('pdfjs-dist');
 
-async function getPdfjsLib() {
-  if (!pdfjsLib) {
-    // 使用 legacy build 避免 worker 问题
-    const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    pdfjsLib = pdfjsModule.default || pdfjsModule;
-    
-    // 设置 worker 路径（使用 legacy 构建不需要单独 worker 文件）
-    if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-    }
-  }
-  return pdfjsLib;
+// 禁用 worker（在 VM 沙箱中不需要）
+if (pdfjsLib.GlobalWorkerOptions) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 }
 
 // ============================================
@@ -77,11 +68,10 @@ function resolvePath(filePath) {
 // ============================================
 
 async function extractPdfText(filePath) {
-  const pdfjs = await getPdfjsLib();
   const dataBuffer = await fs.readFile(filePath);
   const uint8Array = new Uint8Array(dataBuffer);
   
-  const loadingTask = pdfjs.getDocument({
+  const loadingTask = pdfjsLib.getDocument({
     data: uint8Array,
     useWorkerFetch: false,
     isEvalSupported: false,
