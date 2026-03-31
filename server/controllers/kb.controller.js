@@ -161,8 +161,25 @@ class KbController {
         };
       }));
 
+      // 获取所有相关用户的用户名
+      const userIds = [...new Set(result.flatMap(kb => [kb.owner_id, kb.creator_id]))];
+      const User = this.db.getModel('user');
+      const users = await User.findAll({
+        where: { id: { [Op.in]: userIds } },
+        attributes: ['id', 'username'],
+        raw: true,
+      });
+      const userMap = new Map(users.map(u => [u.id, u.username]));
+
+      // 添加用户名到结果
+      const resultWithUsernames = result.map(kb => ({
+        ...kb,
+        owner_name: userMap.get(kb.owner_id) || kb.owner_id,
+        creator_name: userMap.get(kb.creator_id) || kb.creator_id,
+      }));
+
       ctx.success({
-        items: result,
+        items: resultWithUsernames,
         total: count,
         page: parseInt(page),
         limit,

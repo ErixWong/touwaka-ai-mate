@@ -73,6 +73,14 @@
               </span>
               <span v-if="kb.is_owner" class="owner-badge">{{ $t('knowledgeBase.permissionOwner') }}</span>
             </div>
+            <div class="kb-card-users">
+              <span class="user-badge" :title="$t('knowledgeBase.creator') + ': ' + kb.creator_name">
+                👤 {{ kb.creator_name }}
+              </span>
+              <span v-if="kb.owner_id !== kb.creator_id" class="user-badge" :title="$t('knowledgeBase.owner') + ': ' + kb.owner_name">
+                🔑 {{ kb.owner_name }}
+              </span>
+            </div>
             <div class="kb-card-model" v-if="kb.embedding_model_id && kb.embedding_model_id !== 'local'">
               <span class="model-badge">{{ getModelName(kb.embedding_model_id) }}</span>
             </div>
@@ -261,7 +269,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
 import { useModelStore } from '@/stores/model'
-import { useToast } from '@/components/common/Toast.vue'
+import { useToastStore } from '@/stores/toast'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { KnowledgeBase } from '@/types'
@@ -270,7 +278,7 @@ const { t } = useI18n()
 const router = useRouter()
 const kbStore = useKnowledgeBaseStore()
 const modelStore = useModelStore()
-const toast = useToast()
+const toast = useToastStore()
 
 // State
 const searchQuery = ref('')
@@ -389,13 +397,13 @@ const submitForm = async () => {
 
   // 检查是否有可用的 embedding 模型
   if (embeddingModels.value.length === 0) {
-    toast.error($t('knowledgeBase.noEmbeddingModelError') || '请先配置 Embedding 模型')
+    toast.error(t('knowledgeBase.noEmbeddingModelError') || '请先配置 Embedding 模型')
     return
   }
 
   // 检查是否选择了 embedding 模型
   if (!formData.value.embedding_model_id) {
-    toast.error($t('knowledgeBase.selectEmbeddingModelError') || '请选择 Embedding 模型')
+    toast.error(t('knowledgeBase.selectEmbeddingModelError') || '请选择 Embedding 模型')
     return
   }
 
@@ -967,6 +975,28 @@ onUnmounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;
+}
+
+/* KB Card Users - Creator and Owner */
+.kb-card-users {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.06);
+}
+
+.user-badge {
+  font-size: 11px;
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 
 /* Dialog */
