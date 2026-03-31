@@ -665,9 +665,54 @@ ls data/skills/*/package.json
 
 ## 第十步：数据库迁移检查
 
+> **⚠️ 关键提醒：修改数据库字段后，必须同步更新 `scripts/upgrade-database.js`！**
+>
+> **忘记更新的后果**：部署到其他实例时，低版本数据库会因缺少字段而报错！
+
 ### 迁移脚本规范
 
 **所有数据库迁移必须统一使用 `scripts/upgrade-database.js`，禁止创建独立的迁移脚本！**
+
+### 何时必须添加迁移
+
+| 场景 | 必须添加迁移 | 检查点 |
+|------|-------------|--------|
+| 新增表 | ✅ | `hasTable()` |
+| 新增字段 | ✅ | `hasColumn()` |
+| 修改字段类型 | ✅ | `getColumnType()` |
+| 新增索引 | ✅ | `hasIndex()` |
+| 新增外键 | ✅ | `hasForeignKey()` |
+| 修改模型关联 | ❌ | 仅代码变更 |
+
+### 重要：models/ 目录文件是自动生成的！
+
+**`models/` 目录下的所有文件都是由 `sequelize-auto` 从数据库自动生成的，禁止手动修改！**
+
+```bash
+# 重新生成模型（会覆盖所有 models/ 下的文件）
+node scripts/generate-models.js
+```
+
+**这意味着：**
+- 不要手动修改 `models/*.js` 文件
+- 不要手动修改 `models/init-models.js` 文件
+- 数据库结构变更应该通过 `scripts/upgrade-database.js` 完成
+- 变更后重新生成模型文件
+
+### 开发提醒机制
+
+**1. 修改数据库结构时，立即更新迁移脚本：**
+
+```bash
+# 修改 scripts/upgrade-database.js 后，运行测试
+node scripts/upgrade-database.js
+```
+
+**2. PR 前必须检查清单：**
+- [ ] 修改了数据库结构（表/字段/索引/外键）？
+- [ ] 是否同步更新了 `scripts/upgrade-database.js`？
+- [ ] 是否测试了迁移脚本（`node scripts/upgrade-database.js`）？
+- [ ] 是否重新生成了模型（`node scripts/generate-models.js`）？
 
 ### 幂等性检查清单
 

@@ -158,13 +158,15 @@
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('knowledgeBase.embeddingModelLabel') }}</label>
-            <select v-model="formData.embedding_model_id" class="form-select">
-              <option value="">{{ $t('knowledgeBase.useBuiltinModel') }}</option>
+            <select v-model="formData.embedding_model_id" class="form-select" :disabled="embeddingModels.length === 0">
               <option v-for="model in embeddingModels" :key="model.id" :value="model.id">
                 {{ model.name }}
               </option>
             </select>
-            <p class="form-hint">{{ $t('knowledgeBase.embeddingModelHint') }}</p>
+            <p v-if="embeddingModels.length === 0" class="form-error">
+              {{ $t('knowledgeBase.noEmbeddingModelError') || '请先配置 Embedding 模型' }}
+            </p>
+            <p v-else class="form-hint">{{ $t('knowledgeBase.embeddingModelHint') }}</p>
           </div>
         </div>
         <div class="dialog-footer">
@@ -259,6 +261,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
 import { useModelStore } from '@/stores/model'
+import { useToast } from '@/components/common/Toast.vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { KnowledgeBase } from '@/types'
@@ -267,6 +270,7 @@ const { t } = useI18n()
 const router = useRouter()
 const kbStore = useKnowledgeBaseStore()
 const modelStore = useModelStore()
+const toast = useToast()
 
 // State
 const searchQuery = ref('')
@@ -383,12 +387,22 @@ const closeDialog = () => {
 const submitForm = async () => {
   if (!formData.value.name.trim()) return
 
+  // 检查是否有可用的 embedding 模型
+  if (embeddingModels.value.length === 0) {
+    toast.error($t('knowledgeBase.noEmbeddingModelError') || '请先配置 Embedding 模型')
+    return
+  }
+
+  // 检查是否选择了 embedding 模型
+  if (!formData.value.embedding_model_id) {
+    toast.error($t('knowledgeBase.selectEmbeddingModelError') || '请选择 Embedding 模型')
+    return
+  }
+
   isSubmitting.value = true
   try {
     // 转换 embedding_model_id 为字符串
-    const embeddingModelId = formData.value.embedding_model_id
-      ? String(formData.value.embedding_model_id)
-      : 'local'
+    const embeddingModelId = String(formData.value.embedding_model_id)
 
     if (editingKb.value) {
       await kbStore.updateKnowledgeBase(editingKb.value.id, {
@@ -1058,6 +1072,12 @@ onUnmounted(() => {
 .form-hint {
   font-size: 12px;
   color: var(--text-secondary, #666);
+  margin-top: 4px;
+}
+
+.form-error {
+  font-size: 12px;
+  color: #ef4444;
   margin-top: 4px;
 }
 

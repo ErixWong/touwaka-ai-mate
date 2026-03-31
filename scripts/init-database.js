@@ -203,7 +203,8 @@ const TABLES = [
     INDEX idx_email (email),
     INDEX idx_status (status),
     INDEX idx_department (department_id),
-    INDEX idx_position (position_id)
+    INDEX idx_position (position_id),
+    CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 7. User_Profiles 表（用户画像：专家对用户的认知）

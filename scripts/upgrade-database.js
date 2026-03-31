@@ -387,6 +387,48 @@ const MIGRATIONS = [
       console.log('  ✓ Created user_skill_parameters table');
     }
   },
+
+  // ==================== knowledge_bases 表添加 embedding 相关字段 ====================
+  // 修复：低版本数据库缺少 embedding_model_id 和 embedding_dim 字段
+  {
+    name: 'knowledge_bases.embedding_model_id and embedding_dim columns add',
+    check: async (conn) => await hasColumn(conn, 'knowledge_bases', 'embedding_model_id'),
+    migrate: async (conn) => {
+      // 1. 添加 embedding_model_id 字段
+      await conn.execute(`
+        ALTER TABLE knowledge_bases
+        ADD COLUMN embedding_model_id VARCHAR(50) NULL COMMENT '关联 ai_models 表'
+      `);
+      console.log('  ✓ Added embedding_model_id column to knowledge_bases table');
+
+      // 2. 添加 embedding_dim 字段
+      await conn.execute(`
+        ALTER TABLE knowledge_bases
+        ADD COLUMN embedding_dim INT DEFAULT 1536
+      `);
+      console.log('  ✓ Added embedding_dim column to knowledge_bases table');
+
+      // 3. 添加索引
+      await safeExecute(conn, `
+        CREATE INDEX embedding_model_id ON knowledge_bases(embedding_model_id)
+      `);
+      console.log('  ✓ Added embedding_model_id index');
+    }
+  },
+
+  // ==================== users 表添加 position_id 外键 ====================
+  // 修复：sequelize-auto 需要外键才能生成 user-position 关联
+  {
+    name: 'users.position_id foreign key add',
+    check: async (conn) => await hasForeignKey(conn, 'users', 'fk_user_position'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE users
+        ADD CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL
+      `);
+      console.log('  ✓ Added fk_user_position foreign key to users table');
+    }
+  },
 ];
 
 /**
