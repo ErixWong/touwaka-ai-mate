@@ -1,26 +1,8 @@
 {
-  "name": "invoice-skill",
+  "name": "fapiao-skill",
   "version": "1.0.0",
-  "description": "发票专用解析技能 - 支持中国增值税发票、普通发票、电子发票的结构化提取",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "test": "node --test"
-  },
-  "keywords": [
-    "invoice",
-    "pdf",
-    "vat",
-    "发票",
-    "增值税",
-    "skill"
-  ],
-  "author": "",
-  "license": "MIT",
+  "description": "中国增值税发票解析技能 - 基于 pdfjs-dist 2.x",
   "dependencies": {
-    "pdfjs-dist": "^4.0.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "pdfjs-dist": "^2.16.105"
   }
 }
