@@ -591,7 +591,7 @@
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
         <h2 class="app-name">{{ $t('app.title') }}</h2>
-        <p class="app-version">Version 1.0.0</p>
+        <p class="app-version">Version {{ appVersion }}</p>
         <p class="app-description">{{ $t('app.description') }}</p>
       </div>
     </div>
@@ -1582,6 +1582,7 @@ import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
 import Pagination from '@/components/Pagination.vue'
+import packageInfo from '../../package.json'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -1589,6 +1590,9 @@ const modelStore = useModelStore()
 const providerStore = useProviderStore()
 const expertStore = useExpertStore()
 const toast = useToastStore()
+
+// 应用版本号
+const appVersion = computed(() => packageInfo.version)
 
 const activeTab = ref('profile')
 const profileSubTab = ref<'basic' | 'password'>('basic')
