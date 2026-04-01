@@ -1,5 +1,5 @@
 /**
- * 测试 user-code-executor 技能
+ * 测试 execute 工具（支持 JavaScript 和 Shell 命令）
  * 
  * 使用方式:
  * node tests/test-user-code-executor.js
@@ -92,20 +92,26 @@ async function runSkillTool(toolName, params) {
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('  User Code Executor 测试');
+  console.log('  Execute 工具测试 (JavaScript + Shell)');
   console.log('='.repeat(60));
 
   try {
+    // ========== JavaScript 模式测试 ==========
+    console.log('\n📦 JavaScript 模式测试');
+    console.log('-'.repeat(40));
+
     // 测试 1: 执行简单的 JavaScript 表达式
     console.log('\n📋 测试 1: 执行简单 JavaScript 表达式');
-    const result1 = await runSkillTool('execute_javascript', {
+    const result1 = await runSkillTool('execute', {
+      type: 'javascript',
       code: '1 + 1'
     });
     console.log('✅ 结果:', JSON.stringify(result1, null, 2));
 
     // 测试 2: 执行多行 JavaScript 代码
     console.log('\n📋 测试 2: 执行多行 JavaScript 代码');
-    const result2 = await runSkillTool('execute_javascript', {
+    const result2 = await runSkillTool('execute', {
+      type: 'javascript',
       code: `
         const x = 10;
         const y = 20;
@@ -116,17 +122,63 @@ async function main() {
 
     // 测试 3: 使用 console.log
     console.log('\n📋 测试 3: 使用 console.log');
-    const result3 = await runSkillTool('execute_javascript', {
+    const result3 = await runSkillTool('execute', {
+      type: 'javascript',
       code: 'console.log("Hello from sandbox!"); "done"'
     });
     console.log('✅ 结果:', JSON.stringify(result3, null, 2));
 
     // 测试 4: 错误处理
     console.log('\n📋 测试 4: 错误处理');
-    const result4 = await runSkillTool('execute_javascript', {
+    const result4 = await runSkillTool('execute', {
+      type: 'javascript',
       code: 'throw new Error("测试错误")'
     });
     console.log('✅ 结果:', JSON.stringify(result4, null, 2));
+
+    // ========== Shell 模式测试 ==========
+    console.log('\n📦 Shell 模式测试');
+    console.log('-'.repeat(40));
+
+    // 测试 5: 执行 ls 命令
+    console.log('\n📋 测试 5: 执行 ls 命令');
+    const result5 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'ls -la'
+    });
+    console.log('✅ 结果:', JSON.stringify(result5, null, 2));
+
+    // 测试 6: 执行 grep 命令
+    console.log('\n📋 测试 6: 执行 grep 命令');
+    const result6 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'grep -n "test" tests/test-user-code-executor.js'
+    });
+    console.log('✅ 结果:', JSON.stringify(result6, null, 2));
+
+    // 测试 7: 执行 cat 命令
+    console.log('\n📋 测试 7: 执行 cat 命令');
+    const result7 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'cat package.json'
+    });
+    console.log('✅ 结果:', JSON.stringify(result7, null, 2));
+
+    // 测试 8: 危险命令拦截
+    console.log('\n📋 测试 8: 危险命令拦截 (rm -rf)');
+    const result8 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'rm -rf /'
+    });
+    console.log('✅ 结果:', JSON.stringify(result8, null, 2));
+
+    // 测试 9: 不在白名单的命令
+    console.log('\n📋 测试 9: 不在白名单的命令 (curl)');
+    const result9 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'curl https://example.com'
+    });
+    console.log('✅ 结果:', JSON.stringify(result9, null, 2));
 
     console.log('\n' + '='.repeat(60));
     console.log('  所有测试完成！');
