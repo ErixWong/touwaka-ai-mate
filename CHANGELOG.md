@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-04-01
+
+### Added
+- 实现 Psyche 上下文管理系统 - 消息检索优化和工具调用 ID 映射 (#507, #437)
+- 为 Markdown 文件预览添加刷新按钮 (#514, #513)
+- 添加 Windows 平台支持 - 区分 Unix/Windows 命令白名单，工具描述自动显示当前平台 (#508, #510)
+- 改进 execute_javascript 工具 - 重命名为 execute 并支持安全系统命令 (#509)
+
+### Fixed
+- 安全修复 - 移除 Windows copy 命令，加强 Windows 路径检查 (#511)
+
 ## [0.2.4] - 2026-03-31
 
 ### Added
@@ -147,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.2.5 | 2026-04-01 | Psyche 上下文管理系统、Windows 平台支持、安全修复 |
 | 0.2.4 | 2026-03-31 | 新增发票解析技能、助理通知重发、知识库卡片信息展示、多项 Bug 修复 |
 | 0.2.3 | 2026-03-30 | 修复 TypeScript 类型错误、角色管理权限配置修复、管理员可修改邀请配额 |
 | 0.2.2 | 2026-03-30 | 技能工具命名规范化、PDF/PPTX/DOCX 技能重构、skill-manager 精简 |
