@@ -185,4 +185,45 @@ node scripts/generate-models.js
 
 ---
 
+## 🚀 Release 发布流程
+
+### 简要步骤
+
+```bash
+# 1. 更新 package.json 版本号
+# 2. 更新 CHANGELOG.md（新版本添加到顶部，保留历史）
+
+# 3. 提交代码
+git add package.json CHANGELOG.md
+git commit --no-verify -m "chore: 发布 v0.2.5 版本"
+
+# 4. 创建 tag
+git tag -a v0.2.5 -m "Release v0.2.5"
+
+# 5. 推送代码和标签
+git push origin master
+git push origin v0.2.5
+
+# 6. 创建 GitHub Release（Windows 必须用文件方式）
+"C:\Program Files\GitHub CLI\gh.exe" release create v0.2.5 --title "v0.2.5" --notes-file temp/release-notes.md
+
+# 7. 清理临时文件
+del temp\release-notes.md
+```
+
+### 核心区别
+
+| 文件 | 内容 |
+|------|------|
+| CHANGELOG.md | 完整历史（所有版本） |
+| Release notes | 仅当前版本（精简） |
+
+### 踩坑提醒
+- ❌ 不要把整个 CHANGELOG.md 作为 release notes
+- ✅ Release 页面只显示当前版本变更
+- ✅ CHANGELOG 文件保留所有历史版本
+- ⚠️ Windows 多行文本必须用 `--notes-file`，不能用 `--notes`（会被截断）
+
+---
+
 *让我们一起愉快地写代码吧！ 💪✨*
