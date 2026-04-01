@@ -239,7 +239,8 @@ export default {
     contextStrategy: 'Context Strategy',
     contextStrategyFull: 'Full Context',
     contextStrategySimple: 'Simple Context',
-    contextStrategyHint: 'Select context organization strategy. Full context includes all unarchived messages and 10 topics; Simple context includes recent 10 messages and 5 topics.',
+    contextStrategyMinimal: 'Psyche Minimal Context',
+    contextStrategyHint: 'Select context organization strategy. Full context includes all unarchived messages and 10 topics; Simple context includes recent 10 messages and 5 topics; Psyche minimal context uses working memory mechanism, better for long conversations.',
     // LLM Parameters
     llmParams: 'LLM Parameters',
     temperature: 'Temperature',

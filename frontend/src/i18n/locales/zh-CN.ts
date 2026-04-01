@@ -239,7 +239,8 @@ export default {
     contextStrategy: '上下文策略',
     contextStrategyFull: '完整上下文',
     contextStrategySimple: '简单上下文',
-    contextStrategyHint: '选择上下文组织策略。完整上下文包含所有未归档消息和10个Topic；简单上下文仅包含近期10条消息和5个Topic。',
+    contextStrategyMinimal: 'Psyche精简上下文',
+    contextStrategyHint: '选择上下文组织策略。完整上下文包含所有未归档消息和10个Topic；简单上下文仅包含近期10条消息和5个Topic；Psyche精简上下文使用工作记忆机制，更适合长对话。',
     // LLM 参数配置
     llmParams: 'LLM 参数',
     temperature: '表达温度 (Temperature)',
