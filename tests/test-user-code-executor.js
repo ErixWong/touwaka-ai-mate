@@ -140,27 +140,33 @@ async function main() {
     console.log('\n📦 Shell 模式测试');
     console.log('-'.repeat(40));
 
-    // 测试 5: 执行 ls 命令
-    console.log('\n📋 测试 5: 执行 ls 命令');
+    // 检测平台
+    const isWindows = process.platform === 'win32';
+    console.log(`\n🖥️  当前平台: ${isWindows ? 'Windows' : 'Unix/Linux'}`);
+
+    // 测试 5: 执行目录列表命令
+    console.log(`\n📋 测试 5: 执行 ${isWindows ? 'dir' : 'ls -la'} 命令`);
     const result5 = await runSkillTool('execute', {
       type: 'shell',
-      code: 'ls -la'
+      code: isWindows ? 'dir' : 'ls -la'
     });
     console.log('✅ 结果:', JSON.stringify(result5, null, 2));
 
-    // 测试 6: 执行 grep 命令
-    console.log('\n📋 测试 6: 执行 grep 命令');
+    // 测试 6: 执行文本查找命令
+    console.log(`\n📋 测试 6: 执行 ${isWindows ? 'findstr' : 'grep'} 命令`);
     const result6 = await runSkillTool('execute', {
       type: 'shell',
-      code: 'grep -n "test" tests/test-user-code-executor.js'
+      code: isWindows
+        ? 'findstr "test" tests\\test-user-code-executor.js'
+        : 'grep -n "test" tests/test-user-code-executor.js'
     });
     console.log('✅ 结果:', JSON.stringify(result6, null, 2));
 
-    // 测试 7: 执行 cat 命令
-    console.log('\n📋 测试 7: 执行 cat 命令');
+    // 测试 7: 执行文件查看命令
+    console.log(`\n📋 测试 7: 执行 ${isWindows ? 'type' : 'cat'} 命令`);
     const result7 = await runSkillTool('execute', {
       type: 'shell',
-      code: 'cat package.json'
+      code: isWindows ? 'type package.json' : 'cat package.json'
     });
     console.log('✅ 结果:', JSON.stringify(result7, null, 2));
 
