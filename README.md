@@ -55,6 +55,13 @@
 - **专家角色**：dialog / analyst / worker / reviewer - 细分访问控制
 - **沙箱池管理**：按需创建，闲置回收，权限继承
 
+### 🧠 Psyche 上下文管理模式 (心神)
+- **工作记忆机制**：用结构化的 Psyche JSON 替代原始消息历史，让 LLM 拥有"短期记忆"
+- **双阶段处理**：反思心智生成/更新 Psyche，表达心智基于 Psyche 生成回复
+- **智能压缩**：Token 超限自动触发压缩，将内容转移至 Notes 引用
+- **Notes 手抄系统**：LLM 主动存取关键信息，避免重复查询历史对话
+- **滑动窗口**：基于 Token 数量的动态消息截断，确保上下文不溢出
+
 ### 📝 智能上下文管理
 - **话题自动识别**：LLM 批量识别对话话题边界
 - **渐进式压缩**：Topic 总结 + 未归档消息的分层上下文
@@ -413,6 +420,7 @@ touwaka-mate-v2/
 | 文档 | 说明 |
 |------|------|
 | [V2 设计总览](docs/design/v2/README.md) | Task Layer + 右侧面板设计索引 |
+| [Psyche 上下文管理](docs/core/design/mind-context-management.md) | 心神工作记忆机制、Notes 手抄系统、上下文压缩策略 |
 | [任务层设计](docs/design/v2/task-layer-design.md) | Task 生命周期、约束机制、目录结构 |
 | [沙箱架构设计](docs/design/v2/sandbox-architecture.md) | 两层角色模型、SandboxPool、平台实现 |
 | [上下文压缩设计](docs/design/v2/context-compression-design.md) | 话题识别、渐进式压缩、分层上下文 |
