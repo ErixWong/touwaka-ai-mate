@@ -79,10 +79,10 @@ export default class expert extends Model {
       comment: "上下文压缩阈值，Token >= 阈值 × context_size 时触发压缩"
     },
     context_strategy: {
-      type: DataTypes.ENUM('full','simple'),
+      type: DataTypes.ENUM('full','simple','minimal'),
       allowNull: true,
       defaultValue: "full",
-      comment: "上下文组织策略：full=完整上下文，simple=简单上下文（近期10条消息+5个Topic）"
+      comment: "上下文组织策略：full=完整上下文，simple=简单上下文，minimal=Psyche精简上下文"
     },
     temperature: {
       type: DataTypes.DECIMAL(3,2),
@@ -123,6 +123,11 @@ export default class expert extends Model {
       type: DataTypes.INTEGER,
       allowNull: true,
       comment: "最大工具调用轮数（NULL表示使用系统默认，范围 1-50）"
+    },
+    psyche_config: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "Psyche配置（JSON格式）：{max_tokens_ratio, reflection_lookback, enable_notes}"
     },
     created_at: {
       type: DataTypes.DATE,

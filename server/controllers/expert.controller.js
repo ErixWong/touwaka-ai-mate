@@ -40,7 +40,7 @@ class ExpertController {
           'expressive_model_id', 'reflective_model_id', 'prompt_template',
           'is_active', 'created_at',
           // 上下文压缩配置
-          'context_threshold',
+          'context_threshold', 'context_strategy',
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
           'frequency_penalty', 'presence_penalty',
@@ -80,7 +80,7 @@ class ExpertController {
           'behavioral_guidelines', 'taboos', 'emotional_tone',
           'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active',
           // 上下文压缩配置
-          'context_threshold',
+          'context_threshold', 'context_strategy',
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
           'frequency_penalty', 'presence_penalty',
@@ -117,7 +117,7 @@ class ExpertController {
         taboos, emotional_tone, expressive_model_id, reflective_model_id,
         prompt_template, is_active = true,
         // 上下文压缩配置
-        context_threshold,
+        context_threshold, context_strategy,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
@@ -151,6 +151,7 @@ class ExpertController {
         is_active: is_active ? true : false,
         // 上下文压缩配置（使用系统默认值）
         context_threshold: context_threshold ?? llmDefaults.context_threshold,
+        context_strategy: context_strategy || 'full',
         // LLM 参数配置（使用系统默认值）
         temperature: temperature ?? llmDefaults.temperature,
         reflective_temperature: reflective_temperature ?? llmDefaults.reflective_temperature,
@@ -169,6 +170,7 @@ class ExpertController {
         taboos, emotional_tone, expressive_model_id, reflective_model_id, prompt_template, is_active,
         // 上下文压缩配置
         context_threshold: expertData.context_threshold,
+        context_strategy: expertData.context_strategy,
         // LLM 参数配置
         temperature: expertData.temperature,
         reflective_temperature: expertData.reflective_temperature,
@@ -195,7 +197,7 @@ class ExpertController {
         taboos, emotional_tone, expressive_model_id, reflective_model_id,
         prompt_template, is_active,
         // 上下文压缩配置
-        context_threshold,
+        context_threshold, context_strategy,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
@@ -228,6 +230,7 @@ class ExpertController {
       if (is_active !== undefined) updates.is_active = is_active ? true : false;
       // 上下文压缩配置
       if (context_threshold !== undefined) updates.context_threshold = context_threshold;
+      if (context_strategy !== undefined) updates.context_strategy = context_strategy;
       // LLM 参数配置
       if (temperature !== undefined) updates.temperature = temperature;
       if (reflective_temperature !== undefined) updates.reflective_temperature = reflective_temperature;

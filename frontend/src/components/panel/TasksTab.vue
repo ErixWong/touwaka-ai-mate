@@ -28,7 +28,7 @@
                 </button>
               </template>
               <!-- 自动刷新控制 -->
-              <template v-if="previewType === 'html' || previewType === 'pdf'">
+              <template v-if="previewType === 'html' || previewType === 'pdf' || previewType === 'markdown'">
                 <button
                   class="btn-action"
                   :class="{ active: autoRefreshEnabled }"
@@ -1067,6 +1067,19 @@ const refreshPreview = async () => {
 
   previewLoading.value = true
   try {
+    // 对于 Markdown 文件，重新获取内容并渲染
+    if (previewType.value === 'markdown') {
+      const contentUrl = await taskStore.getEmbedPreviewUrl(previewFile.value.path)
+      const response = await fetch(contentUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to load file: ${response.status}`)
+      }
+      previewContent.value = await response.text()
+      // 重新渲染 Markdown（包含 Mermaid 图表）
+      await renderMarkdownWithMermaid(previewContent.value)
+      return
+    }
+
     // 刷新 Token
     await taskStore.refreshPreviewToken()
     previewUrl.value = await taskStore.getEmbedPreviewUrl(previewFile.value.path)
