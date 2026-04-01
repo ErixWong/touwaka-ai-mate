@@ -1073,6 +1073,7 @@
                 <select v-model="expertForm.context_strategy" class="form-input">
                   <option value="full">{{ $t('settings.contextStrategyFull') }}</option>
                   <option value="simple">{{ $t('settings.contextStrategySimple') }}</option>
+                  <option value="minimal">{{ $t('settings.contextStrategyMinimal') }}</option>
                 </select>
                 <p class="form-hint">{{ $t('settings.contextStrategyHint') }}</p>
               </div>
@@ -1762,7 +1763,7 @@ const expertForm = reactive({
   reflective_model_id: '',
   prompt_template: '',
   // 上下文压缩配置
-  context_strategy: 'full' as 'full' | 'simple',
+  context_strategy: 'full' as 'full' | 'simple' | 'minimal',
   context_threshold: 0.70,
   // LLM 参数配置
   temperature: 0.70,
