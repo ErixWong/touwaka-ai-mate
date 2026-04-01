@@ -243,11 +243,11 @@
                 <input :value="editingSkill?.id" type="text" class="form-input readonly" readonly />
               </div>
               
-              <!-- Mark（只读）- 技能标识，用于生成 tool_name -->
+              <!-- Mark（可编辑）- 技能标识，用于生成 tool_name -->
               <div class="form-group">
                 <label>{{ $t('skills.mark') || '技能标识 (Mark)' }}</label>
-                <input :value="editingSkill?.mark" type="text" class="form-input readonly" readonly />
-                <span class="field-hint">{{ $t('skills.markHint') || '用于生成工具名称，格式：mark__tool_name' }}</span>
+                <input v-model="skillForm.mark" type="text" class="form-input" :placeholder="$t('skills.markPlaceholder') || '小写字母、数字、连字符'" />
+                <span class="field-hint">{{ $t('skills.markHint') || '用于生成工具名称，格式：mark__tool_name。只允许小写字母、数字、连字符' }}</span>
               </div>
               
               <!-- 名称 -->
@@ -489,6 +489,7 @@ const newTagInput = ref('')
 // 表单数据
 const skillForm = reactive({
   name: '',
+  mark: '',  // 技能标识，用于生成 tool_name
   description: '',
   version: '',
   author: '',
@@ -592,6 +593,7 @@ const openSkillEditor = async (skill: Skill) => {
     
     // 填充表单
     skillForm.name = res.skill.name
+    skillForm.mark = res.skill.mark || ''
     skillForm.description = res.skill.description || ''
     skillForm.version = res.skill.version || ''
     skillForm.author = res.skill.author || ''
@@ -675,9 +677,17 @@ const saveSkill = async () => {
   
   savingSkill.value = true
   try {
+    // 验证 mark 格式（只允许小写字母、数字、连字符）
+    const markPattern = /^[a-z0-9-]+$/
+    if (skillForm.mark && !markPattern.test(skillForm.mark)) {
+      toast.error(t('skills.markFormatError') || '技能标识格式错误，只允许小写字母、数字、连字符')
+      return
+    }
+    
     // 构建更新数据
     const updateData = {
       name: skillForm.name,
+      mark: skillForm.mark,
       description: skillForm.description,
       source_path: skillForm.source_path,
       version: skillForm.version,

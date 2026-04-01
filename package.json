@@ -12,7 +12,8 @@
     "dev:frontend": "cd frontend && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "node scripts/check-buildPaginatedResponse.js",
-    "postinstall": "node scripts/install-git-hooks.js"
+    "postinstall": "node scripts/install-git-hooks.js",
+    "postversion": "node scripts/sync-version.js && git add frontend/package.json && git commit --amend --no-edit"
   },
   "keywords": [
     "chat",
