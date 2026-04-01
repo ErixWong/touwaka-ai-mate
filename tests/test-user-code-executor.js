@@ -164,21 +164,77 @@ async function main() {
     });
     console.log('✅ 结果:', JSON.stringify(result7, null, 2));
 
-    // 测试 8: 危险命令拦截
-    console.log('\n📋 测试 8: 危险命令拦截 (rm -rf)');
+    // 测试 8: 危险命令拦截 (rm)
+    console.log('\n📋 测试 8: 危险命令拦截 (rm)');
     const result8 = await runSkillTool('execute', {
       type: 'shell',
       code: 'rm -rf /'
     });
     console.log('✅ 结果:', JSON.stringify(result8, null, 2));
 
-    // 测试 9: 不在白名单的命令
+    // 测试 9: 不在白名单的命令 (curl)
     console.log('\n📋 测试 9: 不在白名单的命令 (curl)');
     const result9 = await runSkillTool('execute', {
       type: 'shell',
       code: 'curl https://example.com'
     });
     console.log('✅ 结果:', JSON.stringify(result9, null, 2));
+
+    // 测试 10: 绝对路径拦截
+    console.log('\n📋 测试 10: 绝对路径拦截');
+    const result10 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'cat /etc/passwd'
+    });
+    console.log('✅ 结果:', JSON.stringify(result10, null, 2));
+
+    // 测试 11: 父目录引用拦截
+    console.log('\n📋 测试 11: 父目录引用拦截 (../)');
+    const result11 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'cat ../.env'
+    });
+    console.log('✅ 结果:', JSON.stringify(result11, null, 2));
+
+    // 测试 12: 管道操作拦截
+    console.log('\n📋 测试 12: 管道操作拦截 (|)');
+    const result12 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'ls | grep test'
+    });
+    console.log('✅ 结果:', JSON.stringify(result12, null, 2));
+
+    // 测试 13: 重定向拦截
+    console.log('\n📋 测试 13: 重定向拦截 (>)');
+    const result13 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'echo test > file.txt'
+    });
+    console.log('✅ 结果:', JSON.stringify(result13, null, 2));
+
+    // 测试 14: 命令替换拦截
+    console.log('\n📋 测试 14: 命令替换拦截 ($())');
+    const result14 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'echo $(whoami)'
+    });
+    console.log('✅ 结果:', JSON.stringify(result14, null, 2));
+
+    // 测试 15: 执行 head 命令
+    console.log('\n📋 测试 15: 执行 head 命令');
+    const result15 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'head -n 5 package.json'
+    });
+    console.log('✅ 结果:', JSON.stringify(result15, null, 2));
+
+    // 测试 16: 执行 wc 命令
+    console.log('\n📋 测试 16: 执行 wc 命令');
+    const result16 = await runSkillTool('execute', {
+      type: 'shell',
+      code: 'wc -l package.json'
+    });
+    console.log('✅ 结果:', JSON.stringify(result16, null, 2));
 
     console.log('\n' + '='.repeat(60));
     console.log('  所有测试完成！');
