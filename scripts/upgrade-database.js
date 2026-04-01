@@ -472,6 +472,39 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== experts 表 context_strategy 添加 minimal 选项 ====================
+  // Issue #437: Psyche 上下文管理机制
+  {
+    name: 'experts.context_strategy add minimal option',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'experts', 'context_strategy');
+      return columnType && columnType.includes('minimal');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE experts
+        MODIFY COLUMN context_strategy ENUM('full','simple','minimal')
+          DEFAULT 'full'
+          COMMENT '上下文组织策略：full=完整上下文，simple=简单上下文，minimal=Psyche精简上下文'
+      `);
+      console.log('  ✓ Added minimal option to experts.context_strategy ENUM');
+    }
+  },
+
+  // ==================== experts 表添加 psyche_config 字段 ====================
+  // Issue #437: Psyche 上下文管理机制配置
+  {
+    name: 'experts.psyche_config column add',
+    check: async (conn) => await hasColumn(conn, 'experts', 'psyche_config'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE experts
+        ADD COLUMN psyche_config TEXT COMMENT 'Psyche配置（JSON格式）：{max_tokens_ratio, reflection_lookback, enable_notes}'
+      `);
+      console.log('  ✓ Added psyche_config column to experts table');
+    }
+  },
+
 ];
 
 /**
