@@ -53,3 +53,11 @@ recall({ mode: 'messages', action: 'detail', message_id: 'xxx' })
   - [x] N+1 查询修复（并行查询总数）
   - [x] 字符串拼接隐患修复（处理 undefined 情况）
   - [x] 日志敏感信息修复（keyword 截断显示）
+- [x] PR 创建 (#518)
+- [x] PR 合并 (dbb2509)
+
+## 归档时间
+2026-04-02
+
+## 复盘
+重构顺利完成，通过代码审计发现并修复了4个问题。采用 mode+action 双参数结构使 recall 工具的语义更加清晰，支持5种使用场景。
