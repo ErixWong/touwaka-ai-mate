@@ -23,11 +23,16 @@ const path = require('path');
 const { URL } = require('url');
 
 // 配置
+const dataBasePath = process.env.DATA_BASE_PATH;
+if (!dataBasePath) {
+  throw new Error('DATA_BASE_PATH environment variable is not set');
+}
+
 const CONFIG = {
   apiBase: process.env.API_BASE || 'http://localhost:3000',
   userAccessToken: process.env.USER_ACCESS_TOKEN || '',
   defaultTimeout: 10000,
-  dataBasePath: process.env.DATA_BASE_PATH || process.cwd(),
+  dataBasePath: dataBasePath,
 };
 
 /**
