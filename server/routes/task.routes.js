@@ -12,8 +12,10 @@ import { createReadStream } from 'fs';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 
+import { getWorkspaceRoot } from '../../lib/paths.js';
+
 // 工作空间根目录
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+const WORKSPACE_ROOT = getWorkspaceRoot();
 
 // 允许的文件类型
 const ALLOWED_FILE_TYPES = [

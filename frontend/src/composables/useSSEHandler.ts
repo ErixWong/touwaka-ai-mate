@@ -5,6 +5,10 @@ import { messageApi } from '@/api/services'
 import type { Message } from '@/types'
 import type { SSEEvent } from '@/composables/useConnection'
 
+// 批量缓冲配置 - 优化SSE渲染性能
+const BATCH_SIZE = 100      // 每100个字符强制刷新
+const BATCH_INTERVAL = 100  // 最大等待100ms刷新一次
+
 export interface UseSSEHandlerOptions {
   expertId: string | (() => string)
   currentAssistantMessage: () => Message | null
@@ -48,6 +52,11 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
   // 记录上一次收到的最新消息 ID，用于避免重复拉取
   const lastKnownMessageId = ref<string | null>(null)
 
+  // 批量缓冲相关
+  let contentBuffer = ''
+  let reasoningBuffer = ''
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+
   // 安全超时：防止 isSending 永久为 true（SSE 流异常终止时）
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null
   const SENDING_TIMEOUT_MS = 5 * 60 * 1000  // 5 分钟超时
@@ -58,6 +67,39 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
       clearTimeout(sendingTimeout)
       sendingTimeout = null
     }
+  }
+
+  // 强制刷新缓冲区到UI
+  const flushBuffers = () => {
+    const assistant = options.currentAssistantMessage()
+    if (!assistant) {
+      flushTimer = null
+      return
+    }
+
+    // 刷新内容缓冲区
+    if (contentBuffer) {
+      const newContent = options.getStreamingContent() + contentBuffer
+      options.setStreamingContent(newContent)
+      chatStore.updateMessageContent(assistant.id, newContent)
+      contentBuffer = ''
+    }
+
+    // 刷新思考内容缓冲区
+    if (reasoningBuffer) {
+      const newReasoningContent = options.getReasoningContent() + reasoningBuffer
+      options.setReasoningContent(newReasoningContent)
+      chatStore.updateMessageReasoningContent(assistant.id, newReasoningContent)
+      reasoningBuffer = ''
+    }
+
+    flushTimer = null
+  }
+
+  // 安排缓冲区刷新
+  const scheduleFlush = () => {
+    if (flushTimer) return
+    flushTimer = setTimeout(flushBuffers, BATCH_INTERVAL)
   }
 
   // 设置发送超时保护
@@ -319,30 +361,38 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
         case 'delta':
           if (options.currentAssistantMessage()) {
-            // 追加内容到累积器
-            const newContent = options.getStreamingContent() + data.content
-            // 同步更新累积器 ref（用于后续增量计算）
-            options.setStreamingContent(newContent)
-            // 更新 store 中的消息内容
-            chatStore.updateMessageContent(
-              options.currentAssistantMessage()!.id,
-              newContent
-            )
+            // 使用批量缓冲机制，减少UI更新频率
+            contentBuffer += data.content
+            
+            // 达到批量大小立即刷新，否则安排定时刷新
+            if (contentBuffer.length >= BATCH_SIZE) {
+              if (flushTimer) {
+                clearTimeout(flushTimer)
+                flushTimer = null
+              }
+              flushBuffers()
+            } else {
+              scheduleFlush()
+            }
           }
           break
 
         case 'reasoning_delta':
           // 处理思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
           if (options.currentAssistantMessage()) {
-            // 追加思考内容到累积器
-            const newReasoningContent = options.getReasoningContent() + data.content
-            // 同步更新思考内容累积器 ref
-            options.setReasoningContent(newReasoningContent)
-            // 更新 store 中的思考内容
-            chatStore.updateMessageReasoningContent(
-              options.currentAssistantMessage()!.id,
-              newReasoningContent
-            )
+            // 使用批量缓冲机制
+            reasoningBuffer += data.content
+            
+            // 达到批量大小立即刷新，否则安排定时刷新
+            if (reasoningBuffer.length >= BATCH_SIZE) {
+              if (flushTimer) {
+                clearTimeout(flushTimer)
+                flushTimer = null
+              }
+              flushBuffers()
+            } else {
+              scheduleFlush()
+            }
           }
           break
 
@@ -379,11 +429,24 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           break
 
         case 'complete':
+          // 确保缓冲区内容全部刷新后再处理完成事件
+          if (flushTimer) {
+            clearTimeout(flushTimer)
+            flushTimer = null
+          }
+          flushBuffers()
           await handleCompleteEvent(data)
           break
 
         case 'error':
           console.log('[useSSEHandler] SSE error event received:', data)
+          // 确保缓冲区内容全部刷新
+          if (flushTimer) {
+            clearTimeout(flushTimer)
+            flushTimer = null
+          }
+          flushBuffers()
+          
           const assistant = options.currentAssistantMessage()
           if (assistant) {
             chatStore.updateMessageContent(
