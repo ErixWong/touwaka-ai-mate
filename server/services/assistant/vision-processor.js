@@ -307,17 +307,14 @@ export function getAllowedImagePaths(context) {
 
   // 数据目录（主要路径，优先级最高）
   // DATA_BASE_PATH 可以是相对路径（./data）或绝对路径（/var/data）
-  const dataPath = process.env.DATA_BASE_PATH || './data';
+  const dataPath = process.env.DATA_BASE_PATH || '/app/data';
   const resolvedDataPath = path.resolve(dataPath);
   paths.push(resolvedDataPath);
 
   // work 目录（AI 工作空间）- 始终在 data/work 下
-  paths.push(path.resolve(resolvedDataPath, 'work'));
-
-  // 工作区根目录（如果配置了）
-  if (process.env.WORKSPACE_ROOT) {
-    paths.push(path.resolve(process.env.WORKSPACE_ROOT));
-  }
+  // 基于 DATA_BASE_PATH 派生，保持与技能系统一致
+  const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(resolvedDataPath, 'work');
+  paths.push(path.resolve(workspaceRoot));
 
   // 上传目录（如果配置了）
   if (process.env.UPLOAD_DIR) {

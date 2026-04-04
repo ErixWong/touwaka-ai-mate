@@ -1,9 +1,9 @@
 /**
  * Task Static Routes - 任务静态文件服务路由
- * 
+ *
  * 通过 Token 认证提供静态文件访问，支持 HTML 相对路径资源
  * URL 格式: /task-static/t/:token/p/*filePath
- * 
+ *
  * Issue #140: 将文件预览窗口嵌入任务面板
  */
 
@@ -12,7 +12,10 @@ import { createReadStream } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+// 数据基础目录（技能目录等）
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH || '/app/data';
+// 工作空间根目录（基于 DATA_BASE_PATH 派生，保持与技能系统一致）
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || path.join(DATA_BASE_PATH, 'work');
 const MAX_FILE_SIZE = 50 * 1024 * 1024;  // 50MB 限制
 
 // Content-Type 映射

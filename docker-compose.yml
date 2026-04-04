@@ -16,7 +16,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
       - DATA_BASE_PATH=/app/data
-      - WORKSPACE_ROOT=/app/data/work
+      # WORKSPACE_ROOT 默认值为 ${DATA_BASE_PATH}/work，自动派生
+      # 只有当工作目录需要与数据目录分离时才需要手动设置
+      # - WORKSPACE_ROOT=/app/data/work
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./:/app

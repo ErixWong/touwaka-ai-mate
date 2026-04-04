@@ -224,24 +224,37 @@ docker-compose exec app node scripts/init-skills-from-json.js
 
 ### 环境变量说明
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `PORT` | 应用端口 | `3000` |
-| `DB_NAME` | 数据库名 | `touwaka_mate` |
-| `DB_USER` | 数据库用户 | `touwaka` |
-| `DB_PASSWORD` | 数据库密码 | `touwaka_secret` |
-| `DB_ROOT_PASSWORD` | MariaDB root 密码 | `root_secret_password` |
-| `JWT_SECRET` | JWT 密钥 (必须修改) | - |
-| `JWT_REFRESH_SECRET` | JWT 刷新密钥 (必须修改) | - |
-| `LOG_LEVEL` | 日志级别 | `info` |
-| `DATA_BASE_PATH` | 数据目录路径 | `/app/data` |
-| `WORKSPACE_ROOT` | 工作空间根目录 | `/app/data/work` |
+| 变量 | 说明 | 默认值 | 是否需要配置 |
+|------|------|--------|-------------|
+| `PORT` | 应用端口 | `3000` | 可选 |
+| `DB_NAME` | 数据库名 | `touwaka_mate` | 可选 |
+| `DB_USER` | 数据库用户 | `touwaka` | 可选 |
+| `DB_PASSWORD` | 数据库密码 | `touwaka_secret` | **必须修改** |
+| `DB_ROOT_PASSWORD` | MariaDB root 密码 | `root_secret_password` | **必须修改** |
+| `JWT_SECRET` | JWT 密钥 | - | **必须设置** |
+| `JWT_REFRESH_SECRET` | JWT 刷新密钥 | - | **必须设置** |
+| `LOG_LEVEL` | 日志级别 | `info` | 可选 |
+| `DATA_BASE_PATH` | 数据基础目录 | `/app/data` | 可选 |
+| `WORKSPACE_ROOT` | 工作空间根目录 | `${DATA_BASE_PATH}/work` | 可选 |
+
+**关于 `WORKSPACE_ROOT`：**
+- 默认值为 `${DATA_BASE_PATH}/work`，自动派生
+- 只有当工作目录需要与数据目录分离时才需要手动设置
+- 例如：`WORKSPACE_ROOT=/custom/work`
 
 ### 数据持久化
 
 以下目录会持久化到宿主机：
 - `./data/` - 应用数据（技能、知识库图片、工作文件）
 - MariaDB 数据使用 Docker named volume
+
+**推荐挂载方式：**
+
+```yaml
+# 整个 data 目录挂载（最简单）
+volumes:
+  - ./data:/app/data
+```
 
 ### 常用命令
 
