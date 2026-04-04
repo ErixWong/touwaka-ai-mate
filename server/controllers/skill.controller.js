@@ -11,6 +11,7 @@ import Utils from '../../lib/utils.js';
 import { parseSkillMd, validateSkillPath } from '../../lib/skill-parser.js';
 import fsOriginal from 'fs';
 import path from 'path';
+import { getDataBasePath } from '../../lib/paths.js';
 
 class SkillController {
   constructor(db) {
@@ -933,7 +934,8 @@ class SkillController {
         skillPath = result.path;
       } else {
         // 未注册目录，直接使用 data/skills/:name
-        skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
+        const dataBasePath = getDataBasePath();
+        skillPath = path.join(dataBasePath, 'skills', id);
       }
 
       logger.info('[listFiles] Computed skillPath:', { skillPath, exists: skillPath ? fsOriginal.existsSync(skillPath) : false });
@@ -1023,7 +1025,8 @@ class SkillController {
         skillPath = result.path;
       } else {
         // 未注册目录，直接使用 data/skills/:name
-        skillPath = path.join(PROJECT_ROOT, 'data', 'skills', id);
+        const dataBasePath = getDataBasePath();
+        skillPath = path.join(dataBasePath, 'skills', id);
       }
 
       if (!skillPath || !fsOriginal.existsSync(skillPath)) {
@@ -1080,8 +1083,8 @@ class SkillController {
    */
   async listDirectories(ctx) {
     try {
-      const PROJECT_ROOT = process.cwd();
-      const skillsDir = path.join(PROJECT_ROOT, 'data', 'skills');
+      const dataBasePath = getDataBasePath();
+      const skillsDir = path.join(dataBasePath, 'skills');
 
       // 确保 data/skills 目录存在
       if (!fsOriginal.existsSync(skillsDir)) {
@@ -1150,8 +1153,8 @@ class SkillController {
         return;
       }
 
-      const PROJECT_ROOT = process.cwd();
-      const skillsDir = path.join(PROJECT_ROOT, 'data', 'skills');
+      const dataBasePath = getDataBasePath();
+      const skillsDir = path.join(dataBasePath, 'skills');
       const newDirPath = path.join(skillsDir, name);
 
       // 检查目录是否已存在
