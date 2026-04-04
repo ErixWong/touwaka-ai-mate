@@ -151,11 +151,32 @@ const {
 } = useConnection()
 
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
-const isSending = ref(false)
-const currentAssistantMessage = ref<Message | null>(null)
-// 当前用户消息（用于 SSE 完成后获取新消息）
-const currentUserMessageId = ref<string | null>(null)
-// 流式内容累积器 - 避免依赖旧对象引用
+// 当前正在流式输出的助手消息 - 从 store 自动推导
+const currentAssistantMessage = computed<Message | null>(() =>
+  chatStore.messages.find(m => m.role === 'assistant' && m.status === 'streaming') || null
+)
+
+// 当前用户消息ID - 从当前助手消息自动推导
+const currentUserMessageId = computed<string | null>(() => {
+  const assistant = currentAssistantMessage.value
+  if (!assistant) return null
+  
+  const idx = chatStore.messages.findIndex(m => m.id === assistant.id)
+  for (let i = idx - 1; i >= 0; i--) {
+    const msg = chatStore.messages[i]
+    if (msg && msg.role === 'user') {
+      return msg.id
+    }
+  }
+  return null
+})
+
+// 是否正在发送消息 - 从 store 自动推导
+const isSending = computed<boolean>(() =>
+  chatStore.messages.some(m => m.status === 'streaming')
+)
+
+// 流式内容累积器 - 用于 SSE delta 事件
 const streamingContent = ref('')
 // 流式思考内容累积器 - 用于 reasoning_delta 事件
 const streamingReasoningContent = ref('')
@@ -178,14 +199,13 @@ const setSendingTimeoutProtection = () => {
   sendingTimeout = setTimeout(() => {
     if (isSending.value) {
       console.warn('[ChatView] Sending timeout reached, resetting isSending to false')
-      isSending.value = false
-      if (currentAssistantMessage.value) {
+      const assistant = currentAssistantMessage.value
+      if (assistant) {
         chatStore.updateMessageContent(
-          currentAssistantMessage.value.id,
+          assistant.id,
           streamingContent.value || '',
           'timeout'
         )
-        currentAssistantMessage.value = null
       }
     }
   }, SENDING_TIMEOUT_MS)
@@ -303,20 +323,21 @@ interface CompleteEventData {
  * 使用服务端返回的内容更新临时消息（fallback 方案）
  */
 const updateTempMessageWithServerData = (data: CompleteEventData) => {
-  if (!currentAssistantMessage.value) return
+  const assistant = currentAssistantMessage.value
+  if (!assistant) return
   
   const finalContent = data.content || streamingContent.value
-  chatStore.updateMessageContent(currentAssistantMessage.value.id, finalContent, 'completed')
+  chatStore.updateMessageContent(assistant.id, finalContent, 'completed')
   
   if (data.reasoning_content || streamingReasoningContent.value) {
     chatStore.updateMessageReasoningContent(
-      currentAssistantMessage.value.id,
+      assistant.id,
       data.reasoning_content || streamingReasoningContent.value
     )
   }
   
   if (data.usage && data.usage.prompt_tokens !== undefined && data.usage.completion_tokens !== undefined && data.usage.total_tokens !== undefined) {
-    chatStore.updateMessageMetadata(currentAssistantMessage.value.id, {
+    chatStore.updateMessageMetadata(assistant.id, {
       tokens: {
         prompt_tokens: data.usage.prompt_tokens,
         completion_tokens: data.usage.completion_tokens,
@@ -331,7 +352,8 @@ const updateTempMessageWithServerData = (data: CompleteEventData) => {
  * 从数据库获取消息并替换临时消息
  */
 const replaceTempMessagesWithDb = async (messageId: string): Promise<boolean> => {
-  if (!currentExpertId.value || !currentAssistantMessage.value) return false
+  const assistant = currentAssistantMessage.value
+  if (!currentExpertId.value || !assistant) return false
   
   try {
     const messagesFromDb = await messageApi.getMessagesWithBefore(
@@ -349,7 +371,7 @@ const replaceTempMessagesWithDb = async (messageId: string): Promise<boolean> =>
     
     // 移除临时消息
     const tempUserId = currentUserMessageId.value
-    const tempAssistantId = currentAssistantMessage.value.id
+    const tempAssistantId = assistant.id
     const tempUserIndex = tempUserId ? chatStore.messages.findIndex(m => m.id === tempUserId) : -1
     const tempAssistantIndex = tempAssistantId ? chatStore.messages.findIndex(m => m.id === tempAssistantId) : -1
     
@@ -436,10 +458,10 @@ const detectAndEmitSkillEvents = (content: string) => {
  * 处理 SSE complete 事件
  */
 const handleCompleteEvent = async (data: CompleteEventData) => {
-  if (!currentAssistantMessage.value) {
+  const assistant = currentAssistantMessage.value
+  if (!assistant) {
     console.log('[ChatView] Setting isSending to false on complete event (no current message)')
     clearSendingTimeout()
-    isSending.value = false
     return
   }
   
@@ -461,17 +483,12 @@ const handleCompleteEvent = async (data: CompleteEventData) => {
     updateTempMessageWithServerData(data)
   }
   
-  // 清除用户消息 ID
-  currentUserMessageId.value = null
-  
   // 检测技能相关操作
   const finalContent = data.content || streamingContent.value
   detectAndEmitSkillEvents(finalContent)
   
-  currentAssistantMessage.value = null
   console.log('[ChatView] Setting isSending to false on complete event')
   clearSendingTimeout()
-  isSending.value = false
 }
 
 // 处理 SSE 事件
@@ -597,17 +614,16 @@ const handleSSEEvent = async (event: SSEEvent) => {
 
       case 'error':
         console.log('SSE error event received:', data)
-        if (currentAssistantMessage.value) {
+        const assistant = currentAssistantMessage.value
+        if (assistant) {
           chatStore.updateMessageContent(
-            currentAssistantMessage.value.id,
+            assistant.id,
             data.message || t('error.unknownError'),
             'error'
           )
-          currentAssistantMessage.value = null
         }
         console.log('[ChatView] Setting isSending to false on error event')
         clearSendingTimeout()
-        isSending.value = false
         break
 
       default:
@@ -619,8 +635,6 @@ const handleSSEEvent = async (event: SSEEvent) => {
     if (event.event === 'complete' || event.event === 'error') {
       console.log('[ChatView] Setting isSending to false after parse error')
       clearSendingTimeout()
-      isSending.value = false
-      currentAssistantMessage.value = null
     }
   }
 }
@@ -680,17 +694,15 @@ const handleSendMessage = async (content: string) => {
   const model_id = currentModel.value?.id || currentExpert.value?.expressive_model_id
 
   // 添加用户消息到本地
-  const userMessage = chatStore.addLocalMessage({
+  chatStore.addLocalMessage({
     expert_id,
     role: 'user',
     content,
     status: 'completed',
   })
-  // 保存用户消息 ID，用于 SSE 完成后获取新消息
-  currentUserMessageId.value = userMessage.id
 
   // 添加助手消息占位（流式）
-  currentAssistantMessage.value = chatStore.addLocalMessage({
+  chatStore.addLocalMessage({
     expert_id,
     role: 'assistant',
     content: '',
@@ -699,10 +711,12 @@ const handleSendMessage = async (content: string) => {
   streamingContent.value = ''  // 重置流式内容累积器
   streamingReasoningContent.value = ''  // 重置思考内容累积器
 
-  isSending.value = true
   setSendingTimeoutProtection()  // 设置超时保护
 
   try {
+    // 获取最后一条用户消息（刚添加的）
+    const lastUserMessage = chatStore.messages[chatStore.messages.length - 1]
+    
     // 构建消息参数
     // 注意：如果有图片，userMessage.content 已经是多模态 JSON 格式
     const messageParams: {
@@ -712,7 +726,7 @@ const handleSendMessage = async (content: string) => {
       task_id?: string;
       working_path?: string;
     } = {
-      content: userMessage.content,  // 使用 chatStore 中处理后的内容（可能包含多模态 JSON）
+      content: lastUserMessage?.content || content,  // 使用 chatStore 中处理后的内容（可能包含多模态 JSON）
       expert_id,
       model_id,
     }
@@ -746,16 +760,15 @@ const handleSendMessage = async (content: string) => {
 
   } catch (error) {
     console.error('Send message error:', error)
-    if (currentAssistantMessage.value) {
+    const assistant = currentAssistantMessage.value
+    if (assistant) {
       chatStore.updateMessageContent(
-        currentAssistantMessage.value.id,
+        assistant.id,
         error instanceof Error ? error.message : t('error.networkError'),
         'error'
       )
-      currentAssistantMessage.value = null
     }
     clearSendingTimeout()
-    isSending.value = false
   }
 }
 
@@ -806,17 +819,16 @@ const handleStopGenerate = async () => {
   console.log('Stopping generation...')
 
   // 标记当前正在流式输出的消息为已停止
-  if (currentAssistantMessage.value) {
+  const assistant = currentAssistantMessage.value
+  if (assistant) {
     chatStore.updateMessageContent(
-      currentAssistantMessage.value.id,
+      assistant.id,
       streamingContent.value || '',
       'stopped'
     )
-    currentAssistantMessage.value = null
   }
 
   clearSendingTimeout()
-  isSending.value = false
 
   // 调用后端停止 API
   try {
