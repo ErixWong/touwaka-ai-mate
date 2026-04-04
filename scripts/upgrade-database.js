@@ -28,8 +28,13 @@ const DB_CONFIG = {
 
 // 知识库图片存储目录
 const KB_IMAGES_ROOT = process.env.KB_IMAGES_ROOT || './data/kb-images';
-// 工作空间根目录
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || './data/work';
+// 工作空间根目录 - 从 DATA_BASE_PATH 派生
+const DATA_BASE_PATH = process.env.DATA_BASE_PATH
+  ? (path.isAbsolute(process.env.DATA_BASE_PATH)
+      ? process.env.DATA_BASE_PATH
+      : path.join(process.cwd(), process.env.DATA_BASE_PATH))
+  : path.join(process.cwd(), 'data');
+const WORKSPACE_ROOT = path.join(DATA_BASE_PATH, 'work');
 
 /**
  * 检查表是否存在
