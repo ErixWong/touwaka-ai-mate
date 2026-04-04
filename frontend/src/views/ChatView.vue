@@ -767,11 +767,17 @@ const handleRetry = async (message: ChatMessage) => {
     // 助手消息是由某条用户消息触发的，需要找到那条特定的用户消息
     const messageIndex = chatStore.messages.findIndex(m => m.id === message.id)
     
+    // 边界检查：如果消息不存在于列表中，直接返回
+    if (messageIndex === -1) {
+      console.warn('[ChatView] Retry failed: message not found in store', message.id)
+      return
+    }
+    
     // 从当前消息往前找，找到最近的一条用户消息
     let userMessage: Message | null = null
     for (let i = messageIndex - 1; i >= 0; i--) {
       const msg = chatStore.messages[i]
-      if (msg && msg.role === 'user') {
+      if (msg?.role === 'user') {
         userMessage = msg
         break
       }
@@ -782,6 +788,8 @@ const handleRetry = async (message: ChatMessage) => {
       chatStore.removeMessage(message.id)
       // 重发对应的用户消息
       await handleSendMessage(userMessage.content)
+    } else {
+      console.warn('[ChatView] Retry failed: no user message found before assistant message', message.id)
     }
   } else {
     // 用户消息失败：直接重发原消息
