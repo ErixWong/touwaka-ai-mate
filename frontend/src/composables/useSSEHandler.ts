@@ -6,7 +6,7 @@ import type { Message } from '@/types'
 import type { SSEEvent } from '@/composables/useConnection'
 
 export interface UseSSEHandlerOptions {
-  expertId: string
+  expertId: string | (() => string)
   currentAssistantMessage: () => Message | null
   currentUserMessageId: () => string | null
   getStreamingContent: () => string
@@ -37,6 +37,11 @@ export interface CompleteEventData {
 export function useSSEHandler(options: UseSSEHandlerOptions) {
   const { t } = useI18n()
   const chatStore = useChatStore()
+
+  // 获取 expertId（支持 getter 函数）
+  const getExpertId = (): string => {
+    return typeof options.expertId === 'function' ? options.expertId() : options.expertId
+  }
 
   // 记录上一次收到的最新消息 ID，用于避免重复拉取
   const lastKnownMessageId = ref<string | null>(null)
@@ -102,11 +107,12 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
    */
   const replaceTempMessagesWithDb = async (messageId: string): Promise<boolean> => {
     const assistant = options.currentAssistantMessage()
-    if (!options.expertId || !assistant) return false
+    const expertId = getExpertId()
+    if (!expertId || !assistant) return false
 
     try {
       const messagesFromDb = await messageApi.getMessagesWithBefore(
-        options.expertId,
+        expertId,
         messageId,
         { limit: 10 }
       )
@@ -276,8 +282,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
             })
 
             // 刷新消息列表（只拉取第一页最新消息）
-            if (options.expertId) {
-              await chatStore.loadMessagesByExpert(options.expertId, 1)
+            const expertId = getExpertId()
+            if (expertId) {
+              await chatStore.loadMessagesByExpert(expertId, 1)
             }
           }
 
@@ -303,7 +310,8 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           // 如果检测到新话题，刷新话题列表
           if (data.is_new_topic) {
             console.log('[useSSEHandler] 检测到新话题，刷新话题列表')
-            chatStore.loadTopics({ expert_id: options.expertId })
+            const expertId = getExpertId()
+            chatStore.loadTopics({ expert_id: expertId })
           }
           break
 

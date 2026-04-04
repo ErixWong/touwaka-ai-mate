@@ -7,8 +7,8 @@ import { messageApi } from '@/api/services'
 import type { Message } from '@/types'
 
 export interface UseMessageSendingOptions {
-  expertId: string
-  modelId?: string
+  expertId: string | (() => string)
+  modelId?: string | (() => string | undefined)
   onError?: (error: Error) => void
 }
 
@@ -85,9 +85,20 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const getStreamingContent = () => streamingContent.value
   const getReasoningContent = () => streamingReasoningContent.value
 
+  // 获取 expertId（支持 getter 函数）
+  const getExpertId = (): string => {
+    return typeof options.expertId === 'function' ? options.expertId() : options.expertId
+  }
+
+  // 获取 modelId（支持 getter 函数）
+  const getModelId = (): string | undefined => {
+    if (!options.modelId) return undefined
+    return typeof options.modelId === 'function' ? options.modelId() : options.modelId
+  }
+
   // 发送消息
   const sendMessage = async (content: string): Promise<boolean> => {
-    const expert_id = options.expertId
+    const expert_id = getExpertId()
 
     if (!expert_id) {
       console.error('[useMessageSending] No expert selected')
@@ -127,7 +138,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       } = {
         content: lastUserMessage?.content || content,
         expert_id,
-        model_id: options.modelId,
+        model_id: getModelId(),
       }
 
       // 任务模式：只传 task_id

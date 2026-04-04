@@ -157,34 +157,6 @@ const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
 // SSE 重连配置（用于显示）
 const MAX_RECONNECT_ATTEMPTS = 10
 
-// 使用消息发送 composable
-const messageSending = useMessageSending({
-  expertId: currentExpertId.value,
-  modelId: currentModel.value?.id,
-  onError: (error) => {
-    console.error('[ChatView] Message sending error:', error)
-  }
-})
-
-// 使用 SSE 处理 composable
-const sseHandler = useSSEHandler({
-  expertId: currentExpertId.value,
-  currentAssistantMessage: () => messageSending.currentAssistantMessage.value,
-  currentUserMessageId: () => messageSending.currentUserMessageId.value,
-  getStreamingContent: messageSending.getStreamingContent,
-  getReasoningContent: messageSending.getReasoningContent,
-  resetStreamingContent: messageSending.resetStreamingContent,
-  onComplete: () => {
-    console.log('[ChatView] SSE complete')
-  },
-  onError: (error) => {
-    console.error('[ChatView] SSE error:', error)
-  }
-})
-
-// 导出状态给模板使用
-const { isSending, currentAssistantMessage, streamingContent, streamingReasoningContent } = messageSending
-
 // 从路由参数获取 expertId
 const currentExpertId = computed(() => route.params.expertId as string)
 
@@ -202,6 +174,34 @@ const currentModel = computed(() => {
   }
   return undefined
 })
+
+// 使用消息发送 composable - 使用 getter 函数获取动态值
+const messageSending = useMessageSending({
+  get expertId() { return currentExpertId.value },
+  get modelId() { return currentModel.value?.id },
+  onError: (error) => {
+    console.error('[ChatView] Message sending error:', error)
+  }
+})
+
+// 使用 SSE 处理 composable
+const sseHandler = useSSEHandler({
+  get expertId() { return currentExpertId.value },
+  currentAssistantMessage: () => messageSending.currentAssistantMessage.value,
+  currentUserMessageId: () => messageSending.currentUserMessageId.value,
+  getStreamingContent: messageSending.getStreamingContent,
+  getReasoningContent: messageSending.getReasoningContent,
+  resetStreamingContent: messageSending.resetStreamingContent,
+  onComplete: () => {
+    console.log('[ChatView] SSE complete')
+  },
+  onError: (error) => {
+    console.error('[ChatView] SSE error:', error)
+  }
+})
+
+// 导出状态给模板使用
+const { isSending, currentAssistantMessage, streamingContent, streamingReasoningContent } = messageSending
 
 // 自主运行模式 - 当任务状态为 autonomous_wait 或 autonomous_working 时禁用用户输入
 const isAutonomousMode = computed(() => {
