@@ -88,7 +88,8 @@ export function useConnection() {
       const fiveMinutes = 5 * 60 * 1000
       
       return expiresAt - now < fiveMinutes
-    } catch {
+    } catch (err) {
+      console.warn('[useConnection] Token parsing error:', err)
       return true
     }
   }
@@ -115,7 +116,8 @@ export function useConnection() {
       }
       
       return true
-    } catch {
+    } catch (err) {
+      console.error('[useConnection] Token refresh failed:', err)
       return false
     }
   }
@@ -206,7 +208,8 @@ export function useConnection() {
       })
       backendAvailable.value = response.ok
       return response.ok
-    } catch {
+    } catch (err) {
+      console.warn('[useConnection] Health check failed:', err)
       backendAvailable.value = false
       return false
     }
@@ -299,8 +302,8 @@ export function useConnection() {
           event: 'heartbeat',
           data: JSON.stringify(data),
         })
-      } catch {
-        // 解析失败则忽略
+      } catch (err) {
+        console.warn('[useConnection] Heartbeat parse error:', err)
       }
       return
     }
@@ -496,8 +499,8 @@ export function useConnection() {
     if (reader) {
       try {
         await reader.cancel()
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn('[useConnection] Reader cancel error:', err)
       }
       reader = null
     }
