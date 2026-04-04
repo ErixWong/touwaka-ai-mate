@@ -191,6 +191,8 @@ const sseHandler = useSSEHandler({
   currentUserMessageId: () => messageSending.currentUserMessageId.value,
   getStreamingContent: messageSending.getStreamingContent,
   getReasoningContent: messageSending.getReasoningContent,
+  setStreamingContent: messageSending.setStreamingContent,
+  setReasoningContent: messageSending.setReasoningContent,
   resetStreamingContent: messageSending.resetStreamingContent,
   onComplete: () => {
     console.log('[ChatView] SSE complete')

@@ -11,6 +11,8 @@ export interface UseSSEHandlerOptions {
   currentUserMessageId: () => string | null
   getStreamingContent: () => string
   getReasoningContent: () => string
+  setStreamingContent: (content: string) => void
+  setReasoningContent: (content: string) => void
   resetStreamingContent: () => void
   onSkillEvent?: (content: string) => void
   onComplete?: () => void
@@ -317,8 +319,11 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
         case 'delta':
           if (options.currentAssistantMessage()) {
-            // 使用累积器，不依赖旧对象引用
+            // 追加内容到累积器
             const newContent = options.getStreamingContent() + data.content
+            // 同步更新累积器 ref（用于后续增量计算）
+            options.setStreamingContent(newContent)
+            // 更新 store 中的消息内容
             chatStore.updateMessageContent(
               options.currentAssistantMessage()!.id,
               newContent
@@ -329,7 +334,11 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
         case 'reasoning_delta':
           // 处理思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
           if (options.currentAssistantMessage()) {
+            // 追加思考内容到累积器
             const newReasoningContent = options.getReasoningContent() + data.content
+            // 同步更新思考内容累积器 ref
+            options.setReasoningContent(newReasoningContent)
+            // 更新 store 中的思考内容
             chatStore.updateMessageReasoningContent(
               options.currentAssistantMessage()!.id,
               newReasoningContent
@@ -347,6 +356,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
             // 只显示简单的进度提示，不显示详细参数
             const newContent = options.getStreamingContent() + `\n\n🔧 正在调用工具: ${toolNames}...\n`
+            // 同步更新累积器 ref
+            options.setStreamingContent(newContent)
+            // 更新 store 中的消息内容
             chatStore.updateMessageContent(
               options.currentAssistantMessage()!.id,
               newContent

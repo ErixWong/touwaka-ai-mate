@@ -85,6 +85,16 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const getStreamingContent = () => streamingContent.value
   const getReasoningContent = () => streamingReasoningContent.value
 
+  // 设置流式内容（用于 SSE 更新后同步）
+  const setStreamingContent = (content: string) => {
+    streamingContent.value = content
+  }
+
+  // 设置思考内容
+  const setReasoningContent = (content: string) => {
+    streamingReasoningContent.value = content
+  }
+
   // 获取 expertId（支持 getter 函数）
   const getExpertId = (): string => {
     return typeof options.expertId === 'function' ? options.expertId() : options.expertId
@@ -231,5 +241,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
     appendReasoningContent,
     getStreamingContent,
     getReasoningContent,
+    setStreamingContent,
+    setReasoningContent,
   }
 }
