@@ -30,6 +30,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       - DATA_BASE_PATH=/app/data
+      - WORKSPACE_ROOT=/app/data/work
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./:/app

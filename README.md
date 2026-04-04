@@ -234,6 +234,8 @@ docker-compose exec app node scripts/init-skills-from-json.js
 | `JWT_SECRET` | JWT 密钥 (必须修改) | - |
 | `JWT_REFRESH_SECRET` | JWT 刷新密钥 (必须修改) | - |
 | `LOG_LEVEL` | 日志级别 | `info` |
+| `DATA_BASE_PATH` | 数据目录路径 | `/app/data` |
+| `WORKSPACE_ROOT` | 工作空间根目录 | `/app/data/work` |
 
 ### 数据持久化
 

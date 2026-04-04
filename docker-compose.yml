@@ -16,6 +16,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
       - DATA_BASE_PATH=/app/data
+      - WORKSPACE_ROOT=/app/data/work
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./:/app
