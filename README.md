@@ -235,12 +235,8 @@ docker-compose exec app node scripts/init-skills-from-json.js
 | `JWT_REFRESH_SECRET` | JWT 刷新密钥 | - | **必须设置** |
 | `LOG_LEVEL` | 日志级别 | `info` | 可选 |
 | `DATA_BASE_PATH` | 数据基础目录 | `/app/data` | 可选 |
-| `WORKSPACE_ROOT` | 工作空间根目录 | `${DATA_BASE_PATH}/work` | 可选 |
 
-**关于 `WORKSPACE_ROOT`：**
-- 默认值为 `${DATA_BASE_PATH}/work`，自动派生
-- 只有当工作目录需要与数据目录分离时才需要手动设置
-- 例如：`WORKSPACE_ROOT=/custom/work`
+> **注意：** 工作空间目录会自动从 `DATA_BASE_PATH` 派生为 `${DATA_BASE_PATH}/work`，无需额外配置。
 
 ### 数据持久化
 

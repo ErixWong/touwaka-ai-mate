@@ -313,7 +313,7 @@ export function getAllowedImagePaths(context) {
 
   // work 目录（AI 工作空间）- 始终在 data/work 下
   // 基于 DATA_BASE_PATH 派生，保持与技能系统一致
-  const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(resolvedDataPath, 'work');
+  const workspaceRoot = path.join(resolvedDataPath, 'work');
   paths.push(path.resolve(workspaceRoot));
 
   // 上传目录（如果配置了）
