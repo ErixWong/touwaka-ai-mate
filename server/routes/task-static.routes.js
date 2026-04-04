@@ -12,10 +12,10 @@ import { createReadStream } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 
-// 数据基础目录（技能目录等）
-const DATA_BASE_PATH = process.env.DATA_BASE_PATH || '/app/data';
-// 工作空间根目录（基于 DATA_BASE_PATH 派生，保持与技能系统一致）
-const WORKSPACE_ROOT = path.join(DATA_BASE_PATH, 'work');
+import { getWorkspaceRoot } from '../../lib/paths.js';
+
+// 工作空间根目录
+const WORKSPACE_ROOT = getWorkspaceRoot();
 const MAX_FILE_SIZE = 50 * 1024 * 1024;  // 50MB 限制
 
 // Content-Type 映射

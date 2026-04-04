@@ -11,15 +11,14 @@ import logger from '../../lib/logger.js';
 import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import path from 'path';
+import { getWorkspaceRoot } from '../../lib/paths.js';
 import {
   buildQueryOptions,
   buildPaginatedResponse,
 } from '../../lib/query-builder.js';
 
-// 数据基础目录（技能目录等）
-const DATA_BASE_PATH = process.env.DATA_BASE_PATH || '/app/data';
-// 工作空间根目录（基于 DATA_BASE_PATH 派生，保持与技能系统一致）
-const WORKSPACE_ROOT = path.join(DATA_BASE_PATH, 'work');
+// 工作空间根目录
+const WORKSPACE_ROOT = getWorkspaceRoot();
 
 // 允许过滤的字段白名单
 const ALLOWED_FILTER_FIELDS = [
