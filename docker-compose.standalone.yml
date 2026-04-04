@@ -29,7 +29,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
-      - DATA_BASE_PATH=/app/data
+      - DATA_BASE_PATH=${DATA_BASE_PATH:-/app/data}
       # WORKSPACE_ROOT 默认值为 ${DATA_BASE_PATH}/work，自动派生
       # 只有当工作目录需要与数据目录分离时才需要手动设置
       # - WORKSPACE_ROOT=/app/data/work
