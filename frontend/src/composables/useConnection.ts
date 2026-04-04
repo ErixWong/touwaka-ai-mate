@@ -447,7 +447,6 @@ export function useConnection() {
           const events = parseSSEEvents(buffer)
           
           for (const event of events) {
-            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
             handleEvent(event)
           }
           
