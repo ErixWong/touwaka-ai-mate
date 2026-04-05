@@ -225,7 +225,7 @@ class KbController {
         visibility: validation.visibility,
         owner_id: validation.owner_id,
         creator_id: validation.creator_id,
-        embedding_dim: data.embedding_dim || 1536,
+        embedding_dim: data.embedding_dim || DB_VECTOR_DIM,
         is_public: data.is_public || false,
       });
 
@@ -1842,14 +1842,14 @@ class KbController {
         failed: 0,
         current: 0,
         status: 'running',
-        embedding_dim: kb.embedding_dim || 1536,
+        embedding_dim: kb.embedding_dim || DB_VECTOR_DIM,
         started_at: new Date(),
       };
 
       KbController.revectorizeJobs.set(jobId, job);
 
       // 异步执行向量化
-      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || 1536);
+      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || DB_VECTOR_DIM);
 
       ctx.success({
         job_id: jobId,
