@@ -19,6 +19,7 @@ const initMermaid = () => {
     theme: 'default',
     securityLevel: 'loose',
     fontFamily: 'inherit',
+    suppressErrorRendering: true, // 禁止在 DOM 中插入 "Syntax error" 图表
     flowchart: {
       useMaxWidth: true,
       htmlLabels: true,
