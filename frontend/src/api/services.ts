@@ -678,7 +678,7 @@ export const knowledgeBaseApi = {
   queryParagraphs: (kbId: string, data: { section_id?: string; pagination?: PaginationParams }) =>
     apiRequest<PaginatedResponse<KbParagraph>>(apiClient.post(`/kb/${kbId}/paragraphs/query`, {
       filter: data.section_id ? { section_id: data.section_id } : undefined,
-      pagination: data.pagination ? {
+      page: data.pagination ? {
         number: data.pagination.page,
         size: data.pagination.pageSize,
       } : undefined,
