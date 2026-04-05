@@ -230,8 +230,11 @@
           class="send-button"
           :disabled="!inputText.trim() || disabled"
           @click="handleSend"
+          :title="$t('chat.send') || '发送'"
         >
-          <span>📤</span>
+          <svg class="send-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -1446,49 +1449,50 @@ defineExpose({
   margin-left: 8px;
 }
 
+/* 商务简约风格 - 输入区域 */
 .input-area {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e8e8e8);
-  background: var(--input-area-bg, #fafafa);
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: var(--input-area-bg, #f9fafb);
   position: relative;
 }
 
-/* 输入框容器 - 增加精致边框效果 */
+/* 商务简约风格 - 输入框容器 */
 .input-row {
   display: flex;
   gap: 12px;
   align-items: flex-end;
-  background: var(--input-row-bg, #fff);
-  border: 1.5px solid var(--input-border, #e0e0e0);
-  border-radius: 28px;
-  padding: 6px 8px 6px 20px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--input-row-bg, #ffffff);
+  border: 1px solid var(--input-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 8px 12px 8px 16px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .input-row:focus-within {
-  border-color: var(--primary-color, #2196f3);
-  box-shadow: 0 4px 16px rgba(33, 150, 243, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
+/* 商务简约风格 - 输入框 */
 .message-input {
   flex: 1;
-  padding: 12px 0;
+  padding: 10px 0;
   border: none;
-  border-radius: 24px;
+  border-radius: 0;
   font-size: 15px;
   resize: none;
   outline: none;
   background: transparent;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--text-primary, #1f2937);
   font-family: inherit;
-  line-height: 1.5;
+  line-height: 1.6;
   max-height: 150px;
   overflow-y: auto;
-  letter-spacing: 0.01em;
 }
 
 .message-input:focus {
@@ -1522,71 +1526,80 @@ defineExpose({
   background: var(--scrollbar-thumb-hover, #aaa);
 }
 
+/* 商务简约风格 - 发送按钮 */
 .send-button {
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary-color, #2196f3), var(--primary-gradient-end, #42a5f5));
+  background: var(--primary-color, #2563eb);
   border: none;
-  border-radius: 50%;
+  border-radius: 10px;
   cursor: pointer;
-  font-size: 16px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
 }
 
 .send-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--primary-hover, #1976d2), var(--primary-color, #2196f3));
+  background: var(--primary-hover, #1d4ed8);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
 }
 
 .send-button:active:not(:disabled) {
-  transform: translateY(0) scale(0.96);
-  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
 }
 
 .send-button:disabled {
-  background: var(--disabled-bg, #e0e0e0);
+  background: var(--disabled-bg, #e5e7eb);
   cursor: not-allowed;
   box-shadow: none;
 }
 
-.send-button span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.send-button:disabled .send-icon {
+  color: var(--text-disabled, #9ca3af);
 }
 
+.send-icon {
+  width: 18px;
+  height: 18px;
+  color: white;
+  transition: transform 0.2s ease;
+}
+
+.send-button:hover:not(:disabled) .send-icon {
+  transform: translateX(1px);
+}
+
+/* 商务简约风格 - 停止按钮 */
 .stop-button {
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--danger-color, #ef4444), var(--danger-gradient-end, #f87171));
+  border-radius: 10px;
+  background: var(--danger-color, #dc2626);
   color: white;
   cursor: pointer;
-  font-size: 16px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.2);
 }
 
 .stop-button:hover {
-  background: linear-gradient(135deg, var(--danger-hover, #dc2626), var(--danger-color, #ef4444));
+  background: var(--danger-hover, #b91c1c);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
 }
 
 .stop-button:active {
-  transform: translateY(0) scale(0.96);
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2);
 }
 
 .stop-icon {

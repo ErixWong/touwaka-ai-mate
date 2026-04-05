@@ -6,7 +6,9 @@
       <div class="browse-header">
         <div class="browse-info">
           <button class="btn-back" @click="exitBrowseMode" :title="$t('tasks.backToList') || '返回列表'">
-            <span class="icon">←</span>
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+            </svg>
           </button>
           <div class="browse-title">
             <span class="dir-icon">📁</span>
@@ -15,7 +17,9 @@
         </div>
         <div class="browse-actions">
           <button class="btn-refresh" @click="refreshFiles" :disabled="skillDirectoryStore.isLoadingFiles" :title="$t('tasks.refresh') || '刷新'">
-            <span class="icon">↻</span>
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -74,10 +78,14 @@
         <span class="skills-count">{{ skillDirectoryStore.skillDirectories.length }} {{ $t('skills.directories') || '个目录' }}</span>
         <div class="header-actions">
           <button class="action-btn-small" @click="openCreateDirectoryDialog" :title="$t('skillsDirectory.createDirectory') || '新建目录'">
-            <span>➕</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
           </button>
           <button class="refresh-btn-small" @click="loadDirectories" :disabled="skillDirectoryStore.isLoading">
-            <span :class="{ spinning: skillDirectoryStore.isLoading }">🔄</span>
+            <svg :class="{ spinning: skillDirectoryStore.isLoading }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -110,7 +118,9 @@
             <span v-if="dir.description" class="dir-desc">{{ dir.description }}</span>
           </div>
           <button class="enter-btn" @click.stop="enterDirectory(dir)" :title="$t('skillsDirectory.browseFiles') || '浏览文件'">
-            <span>→</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
           </button>
         </div>
       </div>

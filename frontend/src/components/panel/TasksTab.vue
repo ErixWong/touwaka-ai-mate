@@ -8,7 +8,9 @@
           <!-- 预览头部 -->
           <div class="embed-preview-header">
             <button class="btn-back" @click="closeEmbedPreview" :title="$t('tasks.backToFiles') || '返回文件列表'">
-              <span class="icon">←</span>
+              <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
             </button>
             <div class="preview-title-row">
               <span class="preview-icon">{{ getFileIcon(previewFile?.name || '') }}</span>
@@ -171,7 +173,9 @@
         <div class="workspace-header">
           <div class="workspace-info">
             <button class="btn-back" @click="handleExitTask" :title="$t('tasks.backToList')">
-              <span class="icon">←</span>
+              <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+              </svg>
             </button>
             <div class="workspace-title">
               <span class="task-icon">📁</span>
@@ -195,10 +199,14 @@
               <span class="icon">{{ isAutonomousMode ? '🤖' : '⚙️' }}</span>
             </button>
             <button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
-              <span class="icon">↻</span>
+              <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
             </button>
             <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
-              <span class="icon">📤</span>
+              <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
             </button>
           </div>
           <input
