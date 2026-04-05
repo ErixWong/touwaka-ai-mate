@@ -1963,8 +1963,9 @@ class KbController {
                   .replace(/'/g, "\\'")
                   .replace(/"/g, '\\"');
                 // 直接拼接 SQL，避免 Sequelize 的参数替换问题
+                // 使用 raw: true 选项禁用参数替换
                 const sql = `UPDATE kb_paragraphs SET embedding = VEC_FromText('${escapedJson}') WHERE id = '${paragraph.id}'`;
-                await this.db.execute(sql);
+                await this.db.execute(sql, [], { raw: true });
               job.success++;
             }
           } else {
