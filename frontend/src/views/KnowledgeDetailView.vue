@@ -166,7 +166,7 @@
             </div>
             <div class="content-meta">
               <span class="meta-item">
-                {{ $t('knowledgeBase.paragraphCount', { count: kbStore.paragraphs.length }) || `${kbStore.paragraphs.length} 个段落` }}
+                {{ $t('knowledgeBase.paragraphCount', { count: kbStore.paragraphTotal }) || `${kbStore.paragraphTotal} 个段落` }}
               </span>
               <span class="meta-item">
                 {{ $t('knowledgeBase.tokenCount', { count: totalTokens }) || `${totalTokens} tokens` }}
@@ -178,9 +178,18 @@
           <div class="content-section">
             <div class="section-header">
               <h4 class="section-title">{{ $t('knowledgeBase.paragraphs') || '段落列表' }}</h4>
-              <button class="btn-sm" @click="showParagraphDialog = true">
-                + {{ $t('knowledgeBase.paragraph.create') || '添加段落' }}
-              </button>
+              <div class="section-header-actions">
+                <Pagination
+                  v-if="paragraphTotalPages > 1"
+                  :current-page="paragraphPage"
+                  :total-pages="paragraphTotalPages"
+                  :total="kbStore.paragraphTotal"
+                  @change="handleParagraphPageChange"
+                />
+                <button class="btn-sm" @click="showParagraphDialog = true">
+                  + {{ $t('knowledgeBase.paragraph.create') || '添加段落' }}
+                </button>
+              </div>
             </div>
 
             <div v-if="kbStore.paragraphs.length === 0" class="points-empty">
@@ -409,6 +418,7 @@ import { useToastStore } from '@/stores/toast'
 import { useUserStore } from '@/stores/user'
 import SectionTreeNode from '@/components/SectionTreeNode.vue'
 import UserPicker from '@/components/common/UserPicker.vue'
+import Pagination from '@/components/Pagination.vue'
 import type { KbArticle, KbSection, KbParagraph, UserListItem } from '@/types'
 import { marked } from 'marked'
 import { knowledgeBaseApi } from '@/api/services'
@@ -432,6 +442,10 @@ const selectedTagIds = ref<string[]>([])
 // Tree expansion state
 const forceExpandSections = ref<boolean | null>(null)
 const sectionKey = ref(0)
+
+// Paragraph pagination
+const paragraphPage = ref(1)
+const paragraphPageSize = ref(20)
 
 // Dialogs
 const showSearchDialog = ref(false)
@@ -506,6 +520,10 @@ const flatSectionList = computed(() => {
 
 const totalTokens = computed(() => {
   return kbStore.paragraphs.reduce((sum, p) => sum + (p.token_count || 0), 0)
+})
+
+const paragraphTotalPages = computed(() => {
+  return Math.ceil(kbStore.paragraphTotal / paragraphPageSize.value)
 })
 
 // Methods
@@ -638,8 +656,22 @@ const submitArticle = async () => {
 const selectSection = async (section: KbSection) => {
   selectedSection.value = section
   selectedParagraph.value = null
-  // Load paragraphs for this section
-  await kbStore.loadParagraphs(requireKbId(), section.id)
+  paragraphPage.value = 1
+  // Load paragraphs for this section with pagination
+  await kbStore.loadParagraphs(requireKbId(), section.id, {
+    page: paragraphPage.value,
+    pageSize: paragraphPageSize.value,
+  })
+}
+
+const handleParagraphPageChange = async (page: number) => {
+  paragraphPage.value = page
+  if (selectedSection.value) {
+    await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id, {
+      page: paragraphPage.value,
+      pageSize: paragraphPageSize.value,
+    })
+  }
 }
 
 const editSection = (section: KbSection) => {
@@ -1361,6 +1393,12 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .section-title {
