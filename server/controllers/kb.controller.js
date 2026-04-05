@@ -1010,6 +1010,7 @@ class KbController {
         ...queryOptions,
         attributes: { exclude: ['embedding'] }, // 排除向量字段，减少响应数据量
         distinct: true,
+        order: [['position', 'ASC'], ['created_at', 'ASC']], // 明确指定排序：先按 position，再按 created_at
       });
 
       // 添加 is_vectorized 字段（根据 embedding 是否为 NULL 判断）
