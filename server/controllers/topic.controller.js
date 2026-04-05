@@ -73,7 +73,7 @@ class TopicController {
    */
   async list(ctx) {
     try {
-      const { status, expert_id, page = 1, pageSize = 20 } = ctx.query;
+      const { status, expert_id, page: pageNumber = 1, size: pageSize = 20 } = ctx.query;
       const { Op } = this.db;
 
       const where = { user_id: ctx.state.session.id };
@@ -84,7 +84,9 @@ class TopicController {
         where.expert_id = expert_id;
       }
 
-      const offset = (parseInt(page) - 1) * parseInt(pageSize);
+      const page = parseInt(pageNumber);
+      const size = parseInt(pageSize);
+      const offset = (page - 1) * size;
 
       // 排序逻辑：
       // 1. status 排序：active='a', archived='b'（active 在前）
@@ -109,7 +111,7 @@ class TopicController {
       const { count, rows } = await this.Topic.findAndCountAll({
         where,
         order,
-        limit: parseInt(pageSize),
+        limit: size,
         offset,
         raw: true,
       });
@@ -117,13 +119,17 @@ class TopicController {
       // 对结果进行二次排序，确保 archived 是按时间升序
       const sortedRows = this.sortTopics(rows);
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
         items: sortedRows,
         pagination: {
-          page: parseInt(page),
-          size: parseInt(pageSize),
+          page,
+          size,
           total: count,
-          pages: Math.ceil(count / parseInt(pageSize)),
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
         },
       });
     } catch (error) {

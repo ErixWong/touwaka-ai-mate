@@ -27,7 +27,7 @@ class MessageController {
   async listByExpert(ctx) {
     try {
       const { expertId } = ctx.params;
-      const { page = 1, pageSize = 30 } = ctx.query;
+      const { page: pageNumber = 1, size: pageSize = 30 } = ctx.query;
       const userId = ctx.state.session.id;  // auth 中间件设置的 userId
 
       if (!expertId) {
@@ -40,8 +40,10 @@ class MessageController {
         return;
       }
 
-      const limit = parseInt(pageSize);
-      const offset = (parseInt(page) - 1) * limit;
+      const page = parseInt(pageNumber);
+      const size = parseInt(pageSize);
+      const limit = size;
+      const offset = (page - 1) * limit;
 
       // 先按时间倒序获取最近的消息，然后再反转成正序（最早的在前）
       // 这样第1页返回的就是最近的50条消息
@@ -76,6 +78,8 @@ class MessageController {
       // 反转数组，使消息按时间正序返回（最早的在前，便于聊天界面显示）
       const sortedRows = rows.reverse();
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
         items: sortedRows.map(m => ({
           ...m,
@@ -93,10 +97,12 @@ class MessageController {
           },
         })),
         pagination: {
-          page: parseInt(page),
-          pageSize: parseInt(pageSize),
+          page,
+          size,
           total: count,
-          totalPages: Math.ceil(count / parseInt(pageSize)),
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
         },
       });
     } catch (error) {
@@ -110,14 +116,16 @@ class MessageController {
    */
   async list(ctx) {
     try {
-      const { topic_id, page = 1, pageSize = 20 } = ctx.query;
+      const { topic_id, page: pageNumber = 1, size: pageSize = 20 } = ctx.query;
 
       if (!topic_id) {
         ctx.error('缺少 topic_id 参数');
         return;
       }
 
-      const offset = (parseInt(page) - 1) * parseInt(pageSize);
+      const page = parseInt(pageNumber);
+      const size = parseInt(pageSize);
+      const offset = (page - 1) * size;
 
       // 获取消息
       const { count, rows } = await this.Message.findAndCountAll({
@@ -127,23 +135,27 @@ class MessageController {
           'error_info', 'created_at', 'latency_ms'
         ],
         order: [['created_at', 'DESC']],
-        limit: parseInt(pageSize),
+        limit: size,
         offset,
         raw: true,
       });
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
-        list: rows.map(m => ({
+        items: rows.map(m => ({
           ...m,
           inner_voice: m.inner_voice ? JSON.parse(m.inner_voice) : null,
           tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : null,
           error_info: m.error_info ? JSON.parse(m.error_info) : null,
         })),
         pagination: {
-          page: parseInt(page),
-          pageSize: parseInt(pageSize),
+          page,
+          size,
           total: count,
-          totalPages: Math.ceil(count / parseInt(pageSize)),
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
         },
       });
     } catch (error) {
@@ -158,14 +170,16 @@ class MessageController {
   async listByTopic(ctx) {
     try {
       const { topicId } = ctx.params;
-      const { page = 1, pageSize = 20 } = ctx.query;
+      const { page: pageNumber = 1, size: pageSize = 20 } = ctx.query;
 
       if (!topicId) {
         ctx.error('缺少 topicId 参数');
         return;
       }
 
-      const offset = (parseInt(page) - 1) * parseInt(pageSize);
+      const page = parseInt(pageNumber);
+      const size = parseInt(pageSize);
+      const offset = (page - 1) * size;
 
       // 获取消息
       const { count, rows } = await this.Message.findAndCountAll({
@@ -175,23 +189,27 @@ class MessageController {
           'error_info', 'created_at', 'latency_ms'
         ],
         order: [['created_at', 'ASC']],
-        limit: parseInt(pageSize),
+        limit: size,
         offset,
         raw: true,
       });
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
-        list: rows.map(m => ({
+        items: rows.map(m => ({
           ...m,
           inner_voice: m.inner_voice ? JSON.parse(m.inner_voice) : null,
           tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : null,
           error_info: m.error_info ? JSON.parse(m.error_info) : null,
         })),
         pagination: {
-          page: parseInt(page),
-          pageSize: parseInt(pageSize),
+          page,
+          size,
           total: count,
-          totalPages: Math.ceil(count / parseInt(pageSize)),
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
         },
       });
     } catch (error) {

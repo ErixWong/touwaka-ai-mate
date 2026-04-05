@@ -42,44 +42,44 @@ export const useChatStore = defineStore('chat', () => {
    *
    * 重要：如果当前有流式消息正在输出，不会清空消息列表，避免竞态条件
    */
-  const loadMessagesByExpert = async (expert_id: string, page: number = 1, pageSize: number = 30) => {
-  if (page === 1) {
-    // 检查是否有正在流式输出的消息，避免竞态条件
-    const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
-    if (hasStreamingMessage) {
-      return
-    }
-    
-    isLoading.value = true
-    messages.value = []
-    currentExpertId.value = expert_id
-  } else {
-    isLoadingMore.value = true
-  }
-  error.value = null
+   const loadMessagesByExpert = async (expert_id: string, page: number = 1, size: number = 30) => {
+   if (page === 1) {
+     // 检查是否有正在流式输出的消息，避免竞态条件
+     const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
+     if (hasStreamingMessage) {
+       return
+     }
+     
+     isLoading.value = true
+     messages.value = []
+     currentExpertId.value = expert_id
+   } else {
+     isLoadingMore.value = true
+   }
+   error.value = null
 
-  try {
-    // 统一使用 pageSize 参数
-    const response = await messageApi.getMessagesByExpert(expert_id, { page, pageSize })
-    const items = response.items || []
-    
-    if (page === 1) {
-      messages.value = items
-    } else {
-      // 加载更多历史消息，插入到前面
-      messages.value = [...items, ...messages.value]
-    }
-    
-    hasMoreMessages.value = items.length === pageSize
-    currentPage.value = page
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to load messages'
-    throw err
-  } finally {
-    isLoading.value = false
-    isLoadingMore.value = false
-  }
-}
+   try {
+     // 使用符合规范的分页参数
+     const response = await messageApi.getMessagesByExpert(expert_id, { page, size })
+     const items = response.items || []
+     
+     if (page === 1) {
+       messages.value = items
+     } else {
+       // 加载更多历史消息，插入到前面
+       messages.value = [...items, ...messages.value]
+     }
+     
+     hasMoreMessages.value = items.length === size
+     currentPage.value = page
+   } catch (err) {
+     error.value = err instanceof Error ? err.message : 'Failed to load messages'
+     throw err
+   } finally {
+     isLoading.value = false
+     isLoadingMore.value = false
+   }
+ }
 
   /**
    * 加载更多历史消息
@@ -262,10 +262,11 @@ export const useChatStore = defineStore('chat', () => {
       const filterExpertId = params?.expert_id || currentExpertId.value || undefined
       const page = params?.page || 1
       const size = params?.size || topicsPageSize.value
-      const response = await topicApi.getTopics({ ...params, page, pageSize: size, expert_id: filterExpertId })
+      // 使用符合规范的分页参数
+      const response = await topicApi.getTopics({ ...params, page, size, expert_id: filterExpertId })
       topics.value = response.items || []
-      // 更新分页状态 - 兼容两种响应格式
-      const pagination = response.pagination || { total: response.total, page: response.page, pages: response.pages, size: response.limit }
+      // 更新分页状态 - 优先使用规范格式
+      const pagination = response.pagination || { total: response.total, page: response.page, pages: response.pages, size: response.size }
       topicsTotal.value = pagination.total || 0
       topicsPage.value = pagination.page || 1
       topicsPages.value = pagination.pages || 1

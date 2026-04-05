@@ -28,9 +28,11 @@ class UserController {
         return;
       }
 
-      const { page = 1, pageSize = 10, search = '' } = ctx.query;
-      const offset = (parseInt(page) - 1) * parseInt(pageSize);
-      const limit = parseInt(pageSize);
+      const { page: pageNumber = 1, size: pageSize = 10, search = '' } = ctx.query;
+      const page = parseInt(pageNumber);
+      const size = parseInt(pageSize);
+      const offset = (page - 1) * size;
+      const limit = size;
 
       // 构建搜索条件
       const { Op } = this.db;
@@ -77,13 +79,17 @@ class UserController {
         })
       );
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
         items: usersWithRoles,
         pagination: {
-          page: parseInt(page),
-          size: limit,
+          page,
+          size,
           total: count,
-          pages: Math.ceil(count / limit),
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
         },
       });
     } catch (error) {
