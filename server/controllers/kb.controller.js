@@ -12,6 +12,7 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op, Sequelize, ForeignKeyConstraintError } from 'sequelize';
+import { DB_VECTOR_DIM, adjustVectorDimension, vectorToJson } from '../../lib/vector-utils.js';
 import {
   buildQueryOptions,
   buildPaginatedResponse,
@@ -224,7 +225,7 @@ class KbController {
         visibility: validation.visibility,
         owner_id: validation.owner_id,
         creator_id: validation.creator_id,
-        embedding_dim: data.embedding_dim || 1536,
+        embedding_dim: data.embedding_dim || DB_VECTOR_DIM,
         is_public: data.is_public || false,
       });
 
@@ -1437,6 +1438,12 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
+      // 调整查询向量维度以匹配数据库要求
+      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
+      if (!vectorToSearch) {
+        ctx.throw(500, 'Failed to adjust query embedding dimension');
+      }
+
       // 构建搜索条件（使用参数化查询避免 SQL 注入）
       const articleFilter = article_id
         ? 'AND s.article_id = ?'
@@ -1463,7 +1470,7 @@ class KbController {
         ORDER BY distance ASC
         LIMIT ?`,
         {
-          replacements: [JSON.stringify(queryEmbedding), ...replacements],
+          replacements: [JSON.stringify(vectorToSearch), ...replacements],
           type: this.db.sequelize.QueryTypes.SELECT,
         }
       );
@@ -1540,6 +1547,12 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
+      // 调整查询向量维度以匹配数据库要求
+      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
+      if (!vectorToSearch) {
+        ctx.throw(500, 'Failed to adjust query embedding dimension');
+      }
+
       const kbIds = userKBs.map(kb => kb.id);
 
       // 执行向量搜索（使用参数化查询）
@@ -1560,7 +1573,7 @@ class KbController {
         ORDER BY distance ASC
         LIMIT ?`,
         {
-          replacements: [JSON.stringify(queryEmbedding), kbIds, top_k],
+          replacements: [JSON.stringify(vectorToSearch), kbIds, top_k],
           type: this.db.sequelize.QueryTypes.SELECT,
         }
       );
@@ -1829,14 +1842,14 @@ class KbController {
         failed: 0,
         current: 0,
         status: 'running',
-        embedding_dim: kb.embedding_dim || 1536,
+        embedding_dim: kb.embedding_dim || DB_VECTOR_DIM,
         started_at: new Date(),
       };
 
       KbController.revectorizeJobs.set(jobId, job);
 
       // 异步执行向量化
-      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || 1536);
+      this._runRevectorizeJob(jobId, paragraphs, kb.embedding_model_id, kb.embedding_dim || DB_VECTOR_DIM);
 
       ctx.success({
         job_id: jobId,
@@ -1893,27 +1906,6 @@ class KbController {
   }
 
   /**
-   * 将向量数组转换为 MariaDB VECTOR 二进制格式
-   * @param {number[]} embedding 向量数组
-   * @returns {Buffer} MariaDB VECTOR 二进制格式
-   */
-  _toVectorBuffer(embedding) {
-    if (!Array.isArray(embedding)) return null;
-
-    // 验证数组元素都是数字
-    for (let i = 0; i < embedding.length; i++) {
-      if (typeof embedding[i] !== 'number' || !Number.isFinite(embedding[i])) {
-        logger.error(`[KB] Invalid embedding value at index ${i}: ${embedding[i]}`);
-        return null;
-      }
-    }
-
-    // 将浮点数数组转换为二进制 Buffer (Float32Array)
-    const floatArray = new Float32Array(embedding);
-    return Buffer.from(floatArray.buffer);
-  }
-
-  /**
    * 异步执行向量化任务
    * @private
    */
@@ -1930,33 +1922,32 @@ class KbController {
           const embedding = await this._generateEmbedding(paragraph.content, modelId);
 
           if (embedding) {
-            // 处理维度不匹配的情况
-            let finalEmbedding = embedding;
-            if (embedding.length !== embeddingDim) {
-              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: expected ${embeddingDim}, got ${embedding.length}`);
-              if (embedding.length > embeddingDim) {
-                finalEmbedding = embedding.slice(0, embeddingDim);
-              } else {
-                finalEmbedding = [...embedding, ...new Array(embeddingDim - embedding.length).fill(0)];
-              }
+            // 使用 vector-utils 提供的统一维度调整函数
+            const { vector: vectorToStore, adjusted, originalDim, message } = adjustVectorDimension(embedding);
+            
+            if (!vectorToStore) {
+              logger.error(`[KB] _runRevectorizeJob: invalid embedding for paragraph ${paragraph.id}`);
+              job.failed++;
+              continue;
+            }
+            
+            if (adjusted) {
+              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: DB requires ${DB_VECTOR_DIM}, got ${originalDim}`);
+              logger.info(`[KB] ${message}`);
             }
 
-            // 转换为二进制格式（与 embedding-worker.js 保持一致）
-            const vectorBuffer = this._toVectorBuffer(finalEmbedding);
-            if (!vectorBuffer) {
-              logger.error(`[KB] _runRevectorizeJob: failed to convert embedding for paragraph ${paragraph.id}`);
-              job.failed++;
-            } else {
-              // 使用原始 SQL 直接插入二进制数据
-              const hexString = vectorBuffer.toString('hex');
-              await this.db.sequelize.query(
-                `UPDATE kb_paragraphs SET embedding = X'${hexString}' WHERE id = ?`,
-                {
-                  replacements: [paragraph.id],
-                  type: this.db.sequelize.QueryTypes.UPDATE,
-                }
+            // 使用 VEC_FromText 函数插入向量
+            // MariaDB VECTOR 类型需要使用 VEC_FromText() 函数将 JSON 数组转换为二进制格式
+            try {
+              // 使用参数化查询避免 SQL 注入风险
+              await this.db.execute(
+                'UPDATE kb_paragraphs SET embedding = VEC_FromText(?) WHERE id = ?',
+                [vectorToJson(vectorToStore), paragraph.id]
               );
               job.success++;
+            } catch (dbError) {
+              logger.error(`[KB] _runRevectorizeJob: database error for paragraph ${paragraph.id}:`, dbError.message);
+              job.failed++;
             }
           } else {
             job.failed++;
