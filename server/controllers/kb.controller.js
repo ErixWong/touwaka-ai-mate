@@ -1957,13 +1957,14 @@ class KbController {
             } else {
               // 使用 VEC_FromText 函数插入向量
                 const embeddingJson = JSON.stringify(finalEmbedding);
-                await this.db.sequelize.query(
-                  `UPDATE kb_paragraphs SET embedding = VEC_FromText(?) WHERE id = ?`,
-                  {
-                    replacements: [embeddingJson, paragraph.id],
-                    type: this.db.sequelize.QueryTypes.UPDATE,
-                  }
-                );
+                // 将 JSON 字符串中的特殊字符转义，防止 SQL 注入
+                const escapedJson = embeddingJson
+                  .replace(/\\/g, '\\\\')
+                  .replace(/'/g, "\\'")
+                  .replace(/"/g, '\\"');
+                // 直接拼接 SQL，避免 Sequelize 的参数替换问题
+                const sql = `UPDATE kb_paragraphs SET embedding = VEC_FromText('${escapedJson}') WHERE id = '${paragraph.id}'`;
+                await this.db.execute(sql);
               job.success++;
             }
           } else {
