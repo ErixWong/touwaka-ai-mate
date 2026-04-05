@@ -179,6 +179,10 @@
             <div class="section-header">
               <h4 class="section-title">{{ $t('knowledgeBase.paragraphs') || '段落列表' }}</h4>
               <div class="section-header-actions">
+                <!-- Debug info - remove after testing -->
+                <span v-if="false" style="font-size: 12px; color: #999;">
+                  Total: {{ kbStore.paragraphTotal }}, Pages: {{ paragraphTotalPages }}, PageSize: {{ paragraphPageSize }}
+                </span>
                 <Pagination
                   v-if="paragraphTotalPages > 1"
                   :current-page="paragraphPage"
