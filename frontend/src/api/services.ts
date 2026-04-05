@@ -528,7 +528,7 @@ export const roleApi = {
 // 任务工作空间相关 API
 export const taskApi = {
   // 获取任务列表
-  getTasks: (params?: { status?: string; page?: number; limit?: number }) =>
+  getTasks: (params?: { status?: string; page?: number; size?: number }) =>
     apiRequest<PaginatedResponse<Task>>(apiClient.get('/tasks', { params })),
 
   // 获取单个任务

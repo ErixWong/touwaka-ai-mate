@@ -142,7 +142,7 @@ class TaskController {
   async list(ctx) {
     try {
       this.ensureModel();
-      const { status, page = 1, pageSize = 20 } = ctx.query;
+      const { status, page: pageNumber = 1, size: pageSize = 20 } = ctx.query;
 
       const where = { created_by: ctx.state.session.id };
       if (status && status !== 'all') {
@@ -151,24 +151,30 @@ class TaskController {
       // 如果没有指定 status 或 status='all'，则获取所有非删除的任务
       // 注意：前端会过滤，这里我们返回所有任务让前端处理
 
-      const offset = (parseInt(page) - 1) * parseInt(pageSize);
+      const page = parseInt(pageNumber);
+      const size = parseInt(pageSize);
+      const offset = (page - 1) * size;
 
       // 获取任务列表
       const { count, rows } = await this.Task.findAndCountAll({
         where,
         order: [['updated_at', 'DESC']],
-        limit: parseInt(pageSize),
+        limit: size,
         offset,
         raw: true,
       });
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
         items: rows,
         pagination: {
-          page: parseInt(page),
-          size: parseInt(pageSize),
+          page,
+          size,
           total: count,
-          pages: Math.ceil(count / parseInt(pageSize)),
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
         },
       });
     } catch (error) {

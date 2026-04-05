@@ -229,29 +229,36 @@ export enum ErrorCode {
   AI_TIMEOUT = 4001,
 }
 
-// 分页参数
+// 分页参数 - 符合 API 查询设计规范
 export interface PaginationParams {
-  page?: number
-  pageSize?: number
-  limit?: number  // 别名，与 pageSize 等价
+  page?: number  // 页码（从1开始）
+  size?: number  // 每页条数，默认10，最大100
+  limit?: number  // 别名，与 size 等价（向后兼容）
+  pageSize?: number  // 别名，与 size 等价（向后兼容）
   sort_by?: string
   sort_order?: 'asc' | 'desc'
   tag_ids?: string[]  // 标签ID数组，用于过滤文章
 }
 
-// 分页响应
+// 分页响应 - 符合 API 查询设计规范
 export interface PaginatedResponse<T> {
   items: T[]
   total: number
   page: number
-  limit: number
-  pages: number  // 总页数，与 PageResponse 统一
-  total_pages?: number  // 兼容旧代码
+  size: number  // 每页条数
+  pages: number  // 总页数
+  has_next?: boolean  // 是否有下一页
+  has_prev?: boolean  // 是否有上一页
+  // 向后兼容字段
+  limit?: number  // 别名，等于 size
+  total_pages?: number  // 别名，等于 pages
   pagination?: {
     page: number
     size: number
     total: number
     pages: number
+    has_next?: boolean
+    has_prev?: boolean
   }
 }
 
