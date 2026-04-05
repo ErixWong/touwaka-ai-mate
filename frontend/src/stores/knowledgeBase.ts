@@ -384,7 +384,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     try {
       const response = await knowledgeBaseApi.queryParagraphs(kbId, {
         section_id: sectionId,
-        pagination: params,
+        pagination: params?.page ? { page: params.page, pageSize: params.pageSize || 10 } : undefined,
       })
       paragraphs.value = response.items || []
       return response

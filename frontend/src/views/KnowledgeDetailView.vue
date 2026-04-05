@@ -223,6 +223,15 @@
                 </div>
               </div>
             </div>
+            
+            <!-- Paragraph Pagination -->
+            <Pagination
+              v-if="paragraphTotal > paragraphPageSize"
+              :current-page="paragraphPage"
+              :total-pages="Math.ceil(paragraphTotal / paragraphPageSize)"
+              :total="paragraphTotal"
+              @change="handleParagraphPageChange"
+            />
           </div>
         </div>
       </div>
@@ -409,6 +418,7 @@ import { useToastStore } from '@/stores/toast'
 import { useUserStore } from '@/stores/user'
 import SectionTreeNode from '@/components/SectionTreeNode.vue'
 import UserPicker from '@/components/common/UserPicker.vue'
+import Pagination from '@/components/Pagination.vue'
 import type { KbArticle, KbSection, KbParagraph, UserListItem } from '@/types'
 import { marked } from 'marked'
 import { knowledgeBaseApi } from '@/api/services'
@@ -454,6 +464,11 @@ const showTransferDialog = ref(false)
 const selectedNewOwnerId = ref<string | null>(null)
 const selectedNewOwner = ref<UserListItem | null>(null)
 const isTransferring = ref(false)
+
+// Paragraph Pagination
+const paragraphPage = ref(1)
+const paragraphPageSize = ref(10)
+const paragraphTotal = ref(0)
 
 // Forms
 const articleForm = ref({
@@ -638,8 +653,34 @@ const submitArticle = async () => {
 const selectSection = async (section: KbSection) => {
   selectedSection.value = section
   selectedParagraph.value = null
-  // Load paragraphs for this section
-  await kbStore.loadParagraphs(requireKbId(), section.id)
+  paragraphPage.value = 1
+  paragraphTotal.value = 0
+  // Load paragraphs for this section with pagination
+  await loadParagraphsWithPagination()
+}
+
+// Load paragraphs with pagination
+const loadParagraphsWithPagination = async () => {
+  if (!selectedSection.value) return
+  
+  try {
+    const response = await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id, {
+      page: paragraphPage.value,
+      pageSize: paragraphPageSize.value,
+    })
+    // Update total count from response
+    if (response && response.pagination) {
+      paragraphTotal.value = response.pagination.total || 0
+    }
+  } catch (error) {
+    console.error('Failed to load paragraphs:', error)
+  }
+}
+
+// Handle paragraph page change
+const handleParagraphPageChange = async (page: number) => {
+  paragraphPage.value = page
+  await loadParagraphsWithPagination()
 }
 
 const editSection = (section: KbSection) => {
