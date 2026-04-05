@@ -156,6 +156,13 @@
             <div class="title-row">
               <h2 class="content-title">{{ selectedSection.title || '未命名章节' }}</h2>
               <div class="title-actions">
+                <Pagination
+                  v-if="paragraphTotalPages > 1"
+                  :current-page="paragraphPage"
+                  :total-pages="paragraphTotalPages"
+                  :total="kbStore.paragraphTotal"
+                  @change="handleParagraphPageChange"
+                />
                 <button class="btn-icon-action btn-edit" @click="editSection(selectedSection)" :title="$t('common.edit')">
                   ✏️
                 </button>
@@ -179,17 +186,6 @@
             <div class="section-header">
               <h4 class="section-title">{{ $t('knowledgeBase.paragraphs') || '段落列表' }}</h4>
               <div class="section-header-actions">
-                <!-- Debug info - remove after testing -->
-                <span v-if="false" style="font-size: 12px; color: #999;">
-                  Total: {{ kbStore.paragraphTotal }}, Pages: {{ paragraphTotalPages }}, PageSize: {{ paragraphPageSize }}
-                </span>
-                <Pagination
-                  v-if="paragraphTotalPages > 1"
-                  :current-page="paragraphPage"
-                  :total-pages="paragraphTotalPages"
-                  :total="kbStore.paragraphTotal"
-                  @change="handleParagraphPageChange"
-                />
                 <button class="btn-sm" @click="showParagraphDialog = true">
                   + {{ $t('knowledgeBase.paragraph.create') || '添加段落' }}
                 </button>
@@ -1355,6 +1351,7 @@ onMounted(async () => {
 .title-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 .btn-icon-action {
