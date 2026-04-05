@@ -1955,12 +1955,12 @@ class KbController {
               logger.error(`[KB] _runRevectorizeJob: failed to convert embedding for paragraph ${paragraph.id}`);
               job.failed++;
             } else {
-              // 使用原始 SQL 直接插入二进制数据
-                // 使用参数化查询直接传递二进制 Buffer
+              // 使用 VEC_FromText 函数插入向量
+                const embeddingJson = JSON.stringify(finalEmbedding);
                 await this.db.sequelize.query(
-                  `UPDATE kb_paragraphs SET embedding = ? WHERE id = ?`,
+                  `UPDATE kb_paragraphs SET embedding = VEC_FromText(?) WHERE id = ?`,
                   {
-                    replacements: [vectorBuffer, paragraph.id],
+                    replacements: [embeddingJson, paragraph.id],
                     type: this.db.sequelize.QueryTypes.UPDATE,
                   }
                 );
