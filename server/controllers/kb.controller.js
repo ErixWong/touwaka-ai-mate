@@ -1955,8 +1955,11 @@ class KbController {
             // MariaDB VECTOR 类型需要使用 VEC_FromText() 函数将 JSON 数组转换为二进制格式
             try {
               const vectorJson = JSON.stringify(vectorToStore);
-              const sql = `UPDATE kb_paragraphs SET embedding = VEC_FromText('${vectorJson}') WHERE id = '${paragraph.id}'`;
-              await this.db.execute(sql, [], { raw: true });
+              // 使用参数化查询避免 SQL 注入风险
+              await this.db.execute(
+                'UPDATE kb_paragraphs SET embedding = VEC_FromText(?) WHERE id = ?',
+                [vectorJson, paragraph.id]
+              );
               job.success++;
             } catch (dbError) {
               logger.error(`[KB] _runRevectorizeJob: database error for paragraph ${paragraph.id}:`, dbError.message);
