@@ -1437,6 +1437,17 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
+      // 数据库字段固定为 VECTOR(1536)，必须调整查询向量维度
+      const DB_VECTOR_DIM = 1536;
+      let vectorToSearch = queryEmbedding;
+      if (queryEmbedding.length !== DB_VECTOR_DIM) {
+        if (queryEmbedding.length > DB_VECTOR_DIM) {
+          vectorToSearch = queryEmbedding.slice(0, DB_VECTOR_DIM);
+        } else {
+          vectorToSearch = [...queryEmbedding, ...new Array(DB_VECTOR_DIM - queryEmbedding.length).fill(0)];
+        }
+      }
+
       // 构建搜索条件（使用参数化查询避免 SQL 注入）
       const articleFilter = article_id
         ? 'AND s.article_id = ?'
@@ -1463,7 +1474,7 @@ class KbController {
         ORDER BY distance ASC
         LIMIT ?`,
         {
-          replacements: [JSON.stringify(queryEmbedding), ...replacements],
+          replacements: [JSON.stringify(vectorToSearch), ...replacements],
           type: this.db.sequelize.QueryTypes.SELECT,
         }
       );
@@ -1540,6 +1551,17 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
+      // 数据库字段固定为 VECTOR(1536)，必须调整查询向量维度
+      const DB_VECTOR_DIM = 1536;
+      let vectorToSearch = queryEmbedding;
+      if (queryEmbedding.length !== DB_VECTOR_DIM) {
+        if (queryEmbedding.length > DB_VECTOR_DIM) {
+          vectorToSearch = queryEmbedding.slice(0, DB_VECTOR_DIM);
+        } else {
+          vectorToSearch = [...queryEmbedding, ...new Array(DB_VECTOR_DIM - queryEmbedding.length).fill(0)];
+        }
+      }
+
       const kbIds = userKBs.map(kb => kb.id);
 
       // 执行向量搜索（使用参数化查询）
@@ -1560,7 +1582,7 @@ class KbController {
         ORDER BY distance ASC
         LIMIT ?`,
         {
-          replacements: [JSON.stringify(queryEmbedding), kbIds, top_k],
+          replacements: [JSON.stringify(vectorToSearch), kbIds, top_k],
           type: this.db.sequelize.QueryTypes.SELECT,
         }
       );
@@ -1893,33 +1915,19 @@ class KbController {
   }
 
   /**
-   * 将向量数组转换为 MariaDB VECTOR 二进制格式
-   * @param {number[]} embedding 向量数组
-   * @returns {Buffer} MariaDB VECTOR 二进制格式
-   */
-  _toVectorBuffer(embedding) {
-    if (!Array.isArray(embedding)) return null;
-
-    // 验证数组元素都是数字
-    for (let i = 0; i < embedding.length; i++) {
-      if (typeof embedding[i] !== 'number' || !Number.isFinite(embedding[i])) {
-        logger.error(`[KB] Invalid embedding value at index ${i}: ${embedding[i]}`);
-        return null;
-      }
-    }
-
-    // 将浮点数数组转换为二进制 Buffer (Float32Array)
-    const floatArray = new Float32Array(embedding);
-    return Buffer.from(floatArray.buffer);
-  }
-
-  /**
    * 异步执行向量化任务
    * @private
    */
   async _runRevectorizeJob(jobId, paragraphs, modelId, embeddingDim) {
     const job = KbController.revectorizeJobs.get(jobId);
     if (!job) return;
+
+    // 数据库字段固定为 VECTOR(1536)，必须填充到 1536 维
+    // 支持的模型维度：
+    // - bge-m3: 1024 维（填充到 1536）
+    // - text-embedding-3-small: 1536 维
+    // - text-embedding-ada-002: 1536 维
+    const DB_VECTOR_DIM = 1536;
 
     try {
       for (let i = 0; i < paragraphs.length; i++) {
@@ -1930,33 +1938,29 @@ class KbController {
           const embedding = await this._generateEmbedding(paragraph.content, modelId);
 
           if (embedding) {
-            // 处理维度不匹配的情况
-            let finalEmbedding = embedding;
-            if (embedding.length !== embeddingDim) {
-              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: expected ${embeddingDim}, got ${embedding.length}`);
-              if (embedding.length > embeddingDim) {
-                finalEmbedding = embedding.slice(0, embeddingDim);
+            // 处理维度不匹配的情况 - 必须调整到数据库要求的 1536 维
+            let vectorToStore = embedding;
+            if (embedding.length !== DB_VECTOR_DIM) {
+              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: DB requires ${DB_VECTOR_DIM}, got ${embedding.length}`);
+              if (embedding.length > DB_VECTOR_DIM) {
+                vectorToStore = embedding.slice(0, DB_VECTOR_DIM);
+                logger.warn(`[KB] Truncated vector from ${embedding.length} to ${DB_VECTOR_DIM} (may lose information)`);
               } else {
-                finalEmbedding = [...embedding, ...new Array(embeddingDim - embedding.length).fill(0)];
+                vectorToStore = [...embedding, ...new Array(DB_VECTOR_DIM - embedding.length).fill(0)];
+                logger.info(`[KB] Padded vector from ${embedding.length} to ${DB_VECTOR_DIM} with zeros`);
               }
             }
 
-            // 转换为二进制格式（与 embedding-worker.js 保持一致）
-            const vectorBuffer = this._toVectorBuffer(finalEmbedding);
-            if (!vectorBuffer) {
-              logger.error(`[KB] _runRevectorizeJob: failed to convert embedding for paragraph ${paragraph.id}`);
-              job.failed++;
-            } else {
-              // 使用原始 SQL 直接插入二进制数据
-              const hexString = vectorBuffer.toString('hex');
-              await this.db.sequelize.query(
-                `UPDATE kb_paragraphs SET embedding = X'${hexString}' WHERE id = ?`,
-                {
-                  replacements: [paragraph.id],
-                  type: this.db.sequelize.QueryTypes.UPDATE,
-                }
-              );
+            // 使用 VEC_FromText 函数插入向量
+            // MariaDB VECTOR 类型需要使用 VEC_FromText() 函数将 JSON 数组转换为二进制格式
+            try {
+              const vectorJson = JSON.stringify(vectorToStore);
+              const sql = `UPDATE kb_paragraphs SET embedding = VEC_FromText('${vectorJson}') WHERE id = '${paragraph.id}'`;
+              await this.db.execute(sql, [], { raw: true });
               job.success++;
+            } catch (dbError) {
+              logger.error(`[KB] _runRevectorizeJob: database error for paragraph ${paragraph.id}:`, dbError.message);
+              job.failed++;
             }
           } else {
             job.failed++;
