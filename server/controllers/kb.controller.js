@@ -1956,14 +1956,14 @@ class KbController {
               job.failed++;
             } else {
               // 使用原始 SQL 直接插入二进制数据
-              const hexString = vectorBuffer.toString('hex');
-              await this.db.sequelize.query(
-                `UPDATE kb_paragraphs SET embedding = X'${hexString}' WHERE id = ?`,
-                {
-                  replacements: [paragraph.id],
-                  type: this.db.sequelize.QueryTypes.UPDATE,
-                }
-              );
+                // 使用参数化查询直接传递二进制 Buffer
+                await this.db.sequelize.query(
+                  `UPDATE kb_paragraphs SET embedding = ? WHERE id = ?`,
+                  {
+                    replacements: [vectorBuffer, paragraph.id],
+                    type: this.db.sequelize.QueryTypes.UPDATE,
+                  }
+                );
               job.success++;
             }
           } else {
