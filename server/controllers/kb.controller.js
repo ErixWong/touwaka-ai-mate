@@ -437,8 +437,10 @@ class KbController {
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
         filterFields: ARTICLE_FILTER_FIELDS,
-        sortFields: ARTICLE_SORT_FIELDS,
-        defaultSort: [['created_at', 'DESC']],
+        sortOptions: {
+          allowedFields: ARTICLE_SORT_FIELDS,
+          defaultSort: [['created_at', 'DESC']],
+        },
       });
 
       // 始终包含 tags 关联，用于显示文章标签
@@ -689,8 +691,10 @@ class KbController {
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { article_id: { [Op.in]: articleIds } },
         filterFields: SECTION_FILTER_FIELDS,
-        sortFields: SECTION_SORT_FIELDS,
-        defaultSort: [['position', 'ASC']],
+        sortOptions: {
+          allowedFields: SECTION_SORT_FIELDS,
+          defaultSort: [['position', 'ASC']],
+        },
       });
 
       const result = await this.KbSection.findAndCountAll({
@@ -988,8 +992,10 @@ class KbController {
 
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         filterFields: PARAGRAPH_FILTER_FIELDS,
-        sortFields: PARAGRAPH_SORT_FIELDS,
-        defaultSort: [['position', 'ASC']],
+        sortOptions: {
+          allowedFields: PARAGRAPH_SORT_FIELDS,
+          defaultSort: [['position', 'ASC']],
+        },
       });
 
       // 如果有 section_id 过滤，验证其属于该知识库
@@ -1257,8 +1263,10 @@ class KbController {
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { kb_id },
         filterFields: TAG_FILTER_FIELDS,
-        sortFields: TAG_SORT_FIELDS,
-        defaultSort: [['article_count', 'DESC']],
+        sortOptions: {
+          allowedFields: TAG_SORT_FIELDS,
+          defaultSort: [['article_count', 'DESC']],
+        },
       });
 
       const result = await this.KbTag.findAndCountAll({

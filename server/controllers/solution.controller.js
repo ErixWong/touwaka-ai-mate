@@ -74,8 +74,10 @@ class SolutionController {
       const { queryOptions, pagination } = buildQueryOptions(queryRequest, {
         baseWhere: { is_active: true },
         filterFields: SOLUTION_FILTER_FIELDS,
-        sortFields: SOLUTION_SORT_FIELDS,
-        defaultSort: [['created_at', 'DESC']],
+        sortOptions: {
+          allowedFields: SOLUTION_SORT_FIELDS,
+          defaultSort: [['created_at', 'DESC']],
+        },
       });
 
       // 如果有 tag 参数，过滤标签
