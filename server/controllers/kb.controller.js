@@ -12,6 +12,7 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op, Sequelize, ForeignKeyConstraintError } from 'sequelize';
+import { DB_VECTOR_DIM, adjustVectorDimension, vectorToJson } from '../../lib/vector-utils.js';
 import {
   buildQueryOptions,
   buildPaginatedResponse,
@@ -1437,15 +1438,10 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
-      // 数据库字段固定为 VECTOR(1536)，必须调整查询向量维度
-      const DB_VECTOR_DIM = 1536;
-      let vectorToSearch = queryEmbedding;
-      if (queryEmbedding.length !== DB_VECTOR_DIM) {
-        if (queryEmbedding.length > DB_VECTOR_DIM) {
-          vectorToSearch = queryEmbedding.slice(0, DB_VECTOR_DIM);
-        } else {
-          vectorToSearch = [...queryEmbedding, ...new Array(DB_VECTOR_DIM - queryEmbedding.length).fill(0)];
-        }
+      // 调整查询向量维度以匹配数据库要求
+      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
+      if (!vectorToSearch) {
+        ctx.throw(500, 'Failed to adjust query embedding dimension');
       }
 
       // 构建搜索条件（使用参数化查询避免 SQL 注入）
@@ -1551,15 +1547,10 @@ class KbController {
         ctx.throw(500, 'Failed to generate query embedding');
       }
 
-      // 数据库字段固定为 VECTOR(1536)，必须调整查询向量维度
-      const DB_VECTOR_DIM = 1536;
-      let vectorToSearch = queryEmbedding;
-      if (queryEmbedding.length !== DB_VECTOR_DIM) {
-        if (queryEmbedding.length > DB_VECTOR_DIM) {
-          vectorToSearch = queryEmbedding.slice(0, DB_VECTOR_DIM);
-        } else {
-          vectorToSearch = [...queryEmbedding, ...new Array(DB_VECTOR_DIM - queryEmbedding.length).fill(0)];
-        }
+      // 调整查询向量维度以匹配数据库要求
+      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
+      if (!vectorToSearch) {
+        ctx.throw(500, 'Failed to adjust query embedding dimension');
       }
 
       const kbIds = userKBs.map(kb => kb.id);
@@ -1922,13 +1913,6 @@ class KbController {
     const job = KbController.revectorizeJobs.get(jobId);
     if (!job) return;
 
-    // 数据库字段固定为 VECTOR(1536)，必须填充到 1536 维
-    // 支持的模型维度：
-    // - bge-m3: 1024 维（填充到 1536）
-    // - text-embedding-3-small: 1536 维
-    // - text-embedding-ada-002: 1536 维
-    const DB_VECTOR_DIM = 1536;
-
     try {
       for (let i = 0; i < paragraphs.length; i++) {
         const paragraph = paragraphs[i];
@@ -1938,27 +1922,27 @@ class KbController {
           const embedding = await this._generateEmbedding(paragraph.content, modelId);
 
           if (embedding) {
-            // 处理维度不匹配的情况 - 必须调整到数据库要求的 1536 维
-            let vectorToStore = embedding;
-            if (embedding.length !== DB_VECTOR_DIM) {
-              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: DB requires ${DB_VECTOR_DIM}, got ${embedding.length}`);
-              if (embedding.length > DB_VECTOR_DIM) {
-                vectorToStore = embedding.slice(0, DB_VECTOR_DIM);
-                logger.warn(`[KB] Truncated vector from ${embedding.length} to ${DB_VECTOR_DIM} (may lose information)`);
-              } else {
-                vectorToStore = [...embedding, ...new Array(DB_VECTOR_DIM - embedding.length).fill(0)];
-                logger.info(`[KB] Padded vector from ${embedding.length} to ${DB_VECTOR_DIM} with zeros`);
-              }
+            // 使用 vector-utils 提供的统一维度调整函数
+            const { vector: vectorToStore, adjusted, originalDim, message } = adjustVectorDimension(embedding);
+            
+            if (!vectorToStore) {
+              logger.error(`[KB] _runRevectorizeJob: invalid embedding for paragraph ${paragraph.id}`);
+              job.failed++;
+              continue;
+            }
+            
+            if (adjusted) {
+              logger.warn(`[KB] _runRevectorizeJob: dimension mismatch for paragraph ${paragraph.id}: DB requires ${DB_VECTOR_DIM}, got ${originalDim}`);
+              logger.info(`[KB] ${message}`);
             }
 
             // 使用 VEC_FromText 函数插入向量
             // MariaDB VECTOR 类型需要使用 VEC_FromText() 函数将 JSON 数组转换为二进制格式
             try {
-              const vectorJson = JSON.stringify(vectorToStore);
               // 使用参数化查询避免 SQL 注入风险
               await this.db.execute(
                 'UPDATE kb_paragraphs SET embedding = VEC_FromText(?) WHERE id = ?',
-                [vectorJson, paragraph.id]
+                [vectorToJson(vectorToStore), paragraph.id]
               );
               job.success++;
             } catch (dbError) {
