@@ -298,20 +298,54 @@ grep -rn "canEdit\|canAccess\|canDelete" server/controllers/
 
 ### 分页响应格式
 
-**后端返回**：
+**后端返回**（必须符合 API 查询设计规范）：
 ```javascript
 { code: 200, data: { items: [...], pagination: {...} } }
 ```
+
+**分页响应规范**（来自 `docs/database/api-query-design.md`）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | Array | 数据列表 |
+| `pagination.page` | number | 当前页码（从 1 开始） |
+| `pagination.size` | number | 每页条数 |
+| `pagination.total` | number | 总条数 |
+| `pagination.pages` | number | 总页数 |
+| `pagination.has_next` | boolean | 是否有下一页 |
+| `pagination.has_prev` | boolean | 是否有上一页 |
+
+**请求参数规范**：
+- 使用 `page` 和 `size`（**不是** `page` 和 `pageSize`）
+- 示例：`GET /api/messages?expert_id=xxx&page=1&size=20`
 
 **前端期望**：
 ```typescript
 interface PaginatedResponse<T> {
   items: T[]
-  total: number
-  page: number
-  limit: number
-  pages: number
+  pagination: {
+    page: number
+    size: number
+    total: number
+    pages: number
+    has_next: boolean
+    has_prev: boolean
+  }
 }
+```
+
+**后端实现必须使用 `buildPaginatedResponse`**：
+```javascript
+// ✅ 正确 - 使用 query-builder.js 工具函数
+const { buildPaginatedResponse } = require('../../lib/query-builder');
+const result = await Model.findAndCountAll({...});
+ctx.success(buildPaginatedResponse(result, pagination, startTime));
+
+// ❌ 错误 - 手动构建分页对象（可能遗漏 has_next/has_prev）
+ctx.success({
+  items: rows,
+  pagination: { page, size, total: count, pages: Math.ceil(count / size) }
+});
 ```
 
 **契约变更流程**：
