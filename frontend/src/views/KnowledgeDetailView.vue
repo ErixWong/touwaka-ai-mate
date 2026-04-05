@@ -449,7 +449,7 @@ const sectionKey = ref(0)
 
 // Paragraph pagination
 const paragraphPage = ref(1)
-const paragraphPageSize = ref(20)
+const paragraphPageSize = ref(10)
 
 // Dialogs
 const showSearchDialog = ref(false)
