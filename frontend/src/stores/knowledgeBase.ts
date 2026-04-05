@@ -48,6 +48,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   // 段落
   const paragraphs = ref<KbParagraph[]>([])
   const currentParagraph = ref<KbParagraph | null>(null)
+  const paragraphTotal = ref<number>(0) // 段落总数量（用于分页）
 
   // 标签
   const tags = ref<KbTag[]>([])
@@ -182,6 +183,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     currentSection.value = null
     paragraphs.value = []
     currentParagraph.value = null
+    paragraphTotal.value = 0
     tags.value = []
   }
 
@@ -387,6 +389,8 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
         pagination: params,
       })
       paragraphs.value = response.items || []
+      // 从 pagination 对象中读取 total，兼容两种格式
+      paragraphTotal.value = response.pagination?.total || response.total || 0
       return response
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load paragraphs'
@@ -604,6 +608,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     currentSection,
     paragraphs,
     currentParagraph,
+    paragraphTotal,
     tags,
     searchResults,
     isLoading,
