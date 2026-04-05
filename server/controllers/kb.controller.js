@@ -95,7 +95,7 @@ class KbController {
     try {
       this.ensureModels();
       const userId = ctx.state.session.id;
-      const { page = 1, pageSize = 12, search } = ctx.query;
+      const { page: pageNumber = 1, size: pageSize = 12, search } = ctx.query;
 
       // 构建权限过滤条件
       const permissionWhere = await buildAccessibleKbWhere(this.db, userId);
@@ -113,12 +113,13 @@ class KbController {
         ];
       }
 
-      const limit = Math.min(parseInt(pageSize) || 12, 100);
-      const offset = (parseInt(page) - 1) * limit;
+      const page = parseInt(pageNumber);
+      const size = Math.min(parseInt(pageSize) || 12, 100);
+      const offset = (page - 1) * size;
 
       const { rows, count } = await this.KnowledgeBase.findAndCountAll({
         where,
-        limit,
+        limit: size,
         offset,
         order: [['created_at', 'DESC']],
       });
@@ -179,12 +180,18 @@ class KbController {
         creator_name: userMap.get(kb.creator_id) || kb.creator_id,
       }));
 
+      const pages = Math.ceil(count / size);
+
       ctx.success({
         items: resultWithUsernames,
-        total: count,
-        page: parseInt(page),
-        limit,
-        pages: Math.ceil(count / limit),
+        pagination: {
+          page,
+          size,
+          total: count,
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
+        },
       });
       logger.info(`[KB] listKnowledgeBases: ${count} kbs, ${Date.now() - startTime}ms`);
     } catch (error) {

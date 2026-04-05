@@ -79,13 +79,14 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   /**
    * 加载知识库列表
    */
-  const loadKnowledgeBases = async (params?: { page?: number; pageSize?: number; limit?: number }) => {
+  const loadKnowledgeBases = async (params?: { page?: number; size?: number; pageSize?: number; limit?: number }) => {
     isLoading.value = true
     error.value = null
     try {
+      // 使用符合规范的分页参数
       const apiParams = {
         page: params?.page,
-        pageSize: params?.pageSize || params?.limit,
+        size: params?.size || params?.pageSize || params?.limit,
       }
       const response = await knowledgeBaseApi.getKnowledgeBases(apiParams)
       knowledgeBases.value = response.items || []
