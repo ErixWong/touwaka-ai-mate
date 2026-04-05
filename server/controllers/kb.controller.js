@@ -1008,15 +1008,25 @@ class KbController {
 
       const result = await this.KbParagraph.findAndCountAll({
         ...queryOptions,
+        attributes: { exclude: ['embedding'] }, // 排除向量字段，减少响应数据量
         distinct: true,
       });
 
       // 添加 is_vectorized 字段（根据 embedding 是否为 NULL 判断）
+      // 注意：由于 attributes 排除了 embedding，我们需要重新查询获取向量化状态
+      const paragraphIds = result.rows.map(p => p.id);
+      const vectorizedStatus = await this.KbParagraph.findAll({
+        where: { id: { [Op.in]: paragraphIds } },
+        attributes: ['id', 'embedding'],
+        raw: true,
+      });
+      const vectorizedMap = new Map(vectorizedStatus.map(p => [p.id, p.embedding !== null && p.embedding !== undefined]));
+
       const rowsWithVectorizedStatus = result.rows.map(p => {
         const pJson = p.toJSON();
         return {
           ...pJson,
-          is_vectorized: pJson.embedding !== null && pJson.embedding !== undefined,
+          is_vectorized: vectorizedMap.get(pJson.id) || false,
         };
       });
 

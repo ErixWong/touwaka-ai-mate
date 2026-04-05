@@ -389,7 +389,8 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
         pagination: params,
       })
       paragraphs.value = response.items || []
-      paragraphTotal.value = response.total || 0
+      // 从 pagination 对象中读取 total，兼容两种格式
+      paragraphTotal.value = response.pagination?.total || response.total || 0
       return response
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load paragraphs'
