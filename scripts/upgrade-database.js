@@ -510,6 +510,41 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== kb_paragraphs 表 embedding 字段维度修复 ====================
+  // Issue #547: 修复向量化出错 - 向量维度不匹配
+  // 使用 1536 维作为统一标准，兼容主流 embedding 模型：
+  // - bge-m3: 1024 维（补零填充）
+  // - text-embedding-3-small: 1536 维
+  // - text-embedding-ada-002: 1536 维
+  {
+    name: 'kb_paragraphs.embedding column resize to 1536',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'kb_paragraphs', 'embedding');
+      // 检查是否已经是 vector(1536)
+      return columnType && columnType.includes('1536');
+    },
+    migrate: async (conn) => {
+      // 1. 删除旧字段（避免 MODIFY 的 tablespace 问题）
+      await safeExecute(conn, `
+        ALTER TABLE kb_paragraphs DROP COLUMN embedding
+      `);
+      console.log('  ✓ Dropped old embedding column');
+
+      // 2. 添加新字段，维度为 1536（主流模型的最大维度）
+      await conn.execute(`
+        ALTER TABLE kb_paragraphs
+        ADD COLUMN embedding VECTOR(1536) NULL
+      `);
+      console.log('  ✓ Added embedding column with VECTOR(1536)');
+
+      // 3. 重置文章状态为 pending，触发重新向量化
+      await conn.execute(`
+        UPDATE kb_articles SET status = 'pending' WHERE status = 'ready'
+      `);
+      console.log('  ✓ Reset article status to trigger re-vectorization');
+    }
+  },
+
 ];
 
 /**
