@@ -44,7 +44,7 @@ export interface AttachmentListParams {
  * 获取附件列表（管理员）
  */
 export const getAttachments = async (params: AttachmentListParams = {}): Promise<AttachmentListResponse> => {
-  const response = await apiClient.get('/api/attachments/admin', { params })
+  const response = await apiClient.get('/attachments/admin', { params })
   return response.data
 }
 
@@ -52,7 +52,7 @@ export const getAttachments = async (params: AttachmentListParams = {}): Promise
  * 获取附件元数据
  */
 export const getAttachmentMeta = async (id: string): Promise<Attachment> => {
-  const response = await apiClient.get(`/api/attachments/${id}/meta`)
+  const response = await apiClient.get(`/attachments/${id}/meta`)
   return response.data
 }
 
@@ -60,14 +60,14 @@ export const getAttachmentMeta = async (id: string): Promise<Attachment> => {
  * 删除附件（管理员）
  */
 export const deleteAttachment = async (id: string): Promise<void> => {
-  await apiClient.delete(`/api/attachments/${id}`)
+  await apiClient.delete(`/attachments/${id}`)
 }
 
 /**
  * 生成附件访问 Token
  */
 export const generateAttachmentToken = async (sourceTag: string, sourceId: string): Promise<{ token: string; expires_at: string }> => {
-  const response = await apiClient.post('/api/attachments/token', {
+  const response = await apiClient.post('/attachments/token', {
     source_tag: sourceTag,
     source_id: sourceId,
   })
