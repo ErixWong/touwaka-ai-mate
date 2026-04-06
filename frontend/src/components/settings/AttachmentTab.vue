@@ -5,13 +5,13 @@
       <div class="filter-row">
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.sourceTag') }}</label>
-          <select v-model="filters.source_tag" class="filter-select" @change="handleFilterChange">
-            <option value="">{{ $t('attachment.allSources') }}</option>
-            <option value="kb_article_image">{{ $t('attachment.sourceKbArticle') }}</option>
-            <option value="task_export">{{ $t('attachment.sourceTaskExport') }}</option>
-            <option value="chat_attachment">{{ $t('attachment.sourceChatAttachment') }}</option>
-            <option value="admin_upload">{{ $t('attachment.sourceAdminUpload') }}</option>
-          </select>
+          <input
+            v-model="filters.source_tag"
+            type="text"
+            class="filter-input"
+            :placeholder="$t('attachment.sourceTagPlaceholder')"
+            @input="handleFilterChange"
+          />
         </div>
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.mimeType') }}</label>
@@ -673,7 +673,8 @@ onMounted(() => {
 }
 
 .filter-select,
-.filter-date {
+.filter-date,
+.filter-input {
   padding: 8px 12px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px;
@@ -683,9 +684,14 @@ onMounted(() => {
 }
 
 .filter-select:focus,
-.filter-date:focus {
+.filter-date:focus,
+.filter-input:focus {
   outline: none;
   border-color: var(--primary-color, #2196f3);
+}
+
+.filter-input::placeholder {
+  color: var(--text-tertiary, #bbb);
 }
 
 .date-range {

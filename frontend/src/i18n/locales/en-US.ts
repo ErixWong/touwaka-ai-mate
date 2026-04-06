@@ -650,6 +650,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
   // Attachment Management
   attachment: {
     sourceTag: 'Source Tag',
+    sourceTagPlaceholder: 'Enter source tag, e.g.: kb_article_image',
     allSources: 'All Sources',
     sourceKbArticle: 'KB Article',
     sourceTaskExport: 'Task Export',

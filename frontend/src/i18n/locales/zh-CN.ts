@@ -1416,6 +1416,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
   // 附件管理
   attachment: {
     sourceTag: '来源标签',
+    sourceTagPlaceholder: '输入来源标签，如：kb_article_image',
     allSources: '所有来源',
     sourceKbArticle: '知识库文章',
     sourceTaskExport: '任务导出',
