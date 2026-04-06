@@ -457,6 +457,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     organizationManagement: '组织架构',
     // 附件管理
     attachmentManagement: '附件管理',
+    comingSoon: '即将上线...',
     // 驻留进程管理
     residentProcesses: '驻留进程',
     // 驻留进程详情

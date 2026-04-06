@@ -475,6 +475,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     organizationManagement: 'Organization',
     // Attachment Management
     attachmentManagement: 'Attachments',
+    comingSoon: 'Coming Soon...',
     departmentManagement: 'Department Management',
     positionManagement: 'Position Management',
     addDepartment: 'Add Department',
