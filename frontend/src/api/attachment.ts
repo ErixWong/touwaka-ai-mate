@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import apiClient from './client'
 
 /**
  * 附件信息
@@ -44,7 +44,7 @@ export interface AttachmentListParams {
  * 获取附件列表（管理员）
  */
 export const getAttachments = async (params: AttachmentListParams = {}): Promise<AttachmentListResponse> => {
-  const response = await apiClient.get('/api/attachments', { params })
+  const response = await apiClient.get('/api/attachments/admin', { params })
   return response.data
 }
 

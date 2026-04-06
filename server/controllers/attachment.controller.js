@@ -572,6 +572,103 @@ class AttachmentController {
   }
 
   /**
+   * 管理员列表（全局附件列表，支持分页和筛选）
+   * GET /api/attachments/admin
+   */
+  async listAdmin(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const { page = 1, size = 20, source_tag, mime_type, uploader_id, start_date, end_date } = ctx.query;
+      const userId = ctx.state.session.id;
+
+      // 检查管理员权限
+      const { isSystemAdmin } = await import('../../lib/kb-permission.js');
+      const isAdmin = await isSystemAdmin(this.db, userId);
+      if (!isAdmin) {
+        ctx.throw(403, '无权访问管理员接口');
+      }
+
+      // 构建查询条件
+      const where = {};
+      if (source_tag) {
+        where.source_tag = source_tag;
+      }
+      if (mime_type) {
+        // 支持 mime_type 前缀筛选（如 'image' 匹配所有 image/* 类型）
+        if (mime_type === 'image' || mime_type === 'video' || mime_type === 'document') {
+          const mimePrefixes = {
+            'image': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'],
+            'video': ['video/mp4', 'video/webm'],
+            'document': ['application/pdf', 'text/plain', 'text/markdown', 'application/json'],
+          };
+          where.mime_type = { [Op.in]: mimePrefixes[mime_type] || [mime_type] };
+        } else {
+          where.mime_type = mime_type;
+        }
+      }
+      if (uploader_id) {
+        where.created_by = uploader_id;
+      }
+      if (start_date || end_date) {
+        where.created_at = {};
+        if (start_date) {
+          where.created_at[Op.gte] = new Date(start_date);
+        }
+        if (end_date) {
+          where.created_at[Op.lte] = new Date(end_date + 'T23:59:59');
+        }
+      }
+
+      // 分页查询
+      const pagination = { page: parseInt(page), size: parseInt(size) };
+      const offset = (pagination.page - 1) * pagination.size;
+
+      const rawResult = await this.Attachment.findAndCountAll({
+        where,
+        order: [['created_at', 'DESC']],
+        limit: pagination.size,
+        offset,
+        include: [{
+          model: this.db.getModel('user'),
+          as: 'created_by_user',
+          attributes: ['id', 'username'],
+          required: false,
+        }],
+      });
+
+      // 使用 buildPaginatedResponse 构建响应
+      const { buildPaginatedResponse } = await import('../../lib/query-builder.js');
+      
+      // 转换数据格式（保持 result 结构，只转换 rows 内容）
+      const result = {
+        rows: rawResult.rows.map(a => ({
+          id: a.id,
+          filename: a.file_name,
+          mime_type: a.mime_type,
+          size: a.file_size,
+          source_tag: a.source_tag,
+          source_id: a.source_id,
+          uploader_id: a.created_by,
+          uploader_name: a.created_by_user?.username || null,
+          created_at: a.created_at,
+        })),
+        count: rawResult.count,
+      };
+
+      // 构建符合规范的分页响应
+      const response = buildPaginatedResponse(result, pagination, startTime);
+
+      ctx.success(response);
+      
+      logger.info(`[Attachment] listAdmin: ${rawResult.count} total, page ${pagination.page}`);
+    } catch (error) {
+      logger.error('[Attachment] listAdmin error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
    * 删除附件
    * DELETE /api/attachments/:id
    */

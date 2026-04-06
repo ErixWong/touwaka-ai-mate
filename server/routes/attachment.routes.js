@@ -8,6 +8,7 @@
  * GET    /api/attachments/:id      - 获取附件（返回 data_url）
  * POST   /api/attachments/meta      - 批量获取元信息
  * GET    /api/attachments            - 列出资源附件（query: source_tag, source_id）
+ * GET    /api/attachments/admin     - 管理员列表（支持分页和筛选）
  * DELETE /api/attachments/:id        - 删除附件
  * POST   /api/attachments/token     - 生成资源级 Token
  */
@@ -29,6 +30,9 @@ export default (controller) => {
 
   // 生成资源级 Token
   router.post('/token', authenticate(), (ctx) => controller.generateToken(ctx));
+
+  // 管理员列表（支持分页和筛选）- 静态路由，必须在 /:id 之前
+  router.get('/admin', authenticate(), (ctx) => controller.listAdmin(ctx));
 
   // 列出资源附件（query: source_tag, source_id）
   router.get('/', authenticate(), (ctx) => controller.list(ctx));
