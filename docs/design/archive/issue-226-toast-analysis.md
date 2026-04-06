@@ -1,8 +1,12 @@
 # Issue #226 Toast 组件设计分析报告
 
+> **状态：已实现** | 实现位置：`frontend/src/components/common/Toast.vue`、`frontend/src/stores/toast.ts`
+>
+> 本文档记录了 Toast 组件的设计分析过程，功能已实现。
+
 ## ✌Bazinga！
 
-**分析日期**: 2026-03-19  
+**分析日期**: 2026-03-19
 **分析人**: Maria
 
 ---

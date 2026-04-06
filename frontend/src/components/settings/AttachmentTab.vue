@@ -5,13 +5,23 @@
       <div class="filter-row">
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.sourceTag') }}</label>
-          <select v-model="filters.source_tag" class="filter-select" @change="handleFilterChange">
-            <option value="">{{ $t('attachment.allSources') }}</option>
-            <option value="kb_article_image">{{ $t('attachment.sourceKbArticle') }}</option>
-            <option value="task_export">{{ $t('attachment.sourceTaskExport') }}</option>
-            <option value="chat_attachment">{{ $t('attachment.sourceChatAttachment') }}</option>
-            <option value="admin_upload">{{ $t('attachment.sourceAdminUpload') }}</option>
-          </select>
+          <input
+            v-model="filters.source_tag"
+            type="text"
+            class="filter-input"
+            :placeholder="$t('attachment.sourceTagPlaceholder')"
+            @input="handleFilterChange"
+          />
+        </div>
+        <div class="filter-item">
+          <label class="filter-label">{{ $t('attachment.sourceId') }}</label>
+          <input
+            v-model="filters.source_id"
+            type="text"
+            class="filter-input"
+            :placeholder="$t('attachment.sourceIdPlaceholder')"
+            @input="handleFilterChange"
+          />
         </div>
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.mimeType') }}</label>
@@ -42,11 +52,20 @@
         </div>
       </div>
       <div class="filter-actions">
-        <button class="btn-upload" @click="openUploadModal">
-          {{ $t('attachment.upload') }}
-        </button>
-        <button class="btn-reset" @click="resetFilters">
+        <button class="btn-secondary" @click.stop="resetFilters">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+          </svg>
           {{ $t('attachment.resetFilters') }}
+        </button>
+        <button class="btn-primary" @click.stop="openUploadModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          {{ $t('attachment.upload') }}
         </button>
       </div>
     </div>
@@ -64,9 +83,19 @@
         {{ $t('common.loading') }}
       </div>
 
-      <div v-else-if="attachments.length === 0" class="empty-state">
-        <span class="empty-icon">📎</span>
-        <span>{{ $t('attachment.noAttachments') }}</span>
+      <div v-else-if="!attachments || attachments.length === 0" class="empty-state">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+        </svg>
+        <span class="empty-text">{{ $t('attachment.noAttachments') }}</span>
+        <button class="btn-primary" @click="openUploadModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          {{ $t('attachment.upload') }}
+        </button>
       </div>
 
       <div v-else class="attachments-table">
@@ -96,7 +125,10 @@
                 alt="preview"
                 class="thumb-image"
               />
-              <span v-else class="thumb-icon">{{ getFileIcon(attachment.mime_type) }}</span>
+              <svg v-else class="thumb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
             </div>
           </div>
           <div class="col-filename">
@@ -123,14 +155,20 @@
               :title="$t('attachment.preview')"
               @click="previewAttachment(attachment)"
             >
-              👁️
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
             </button>
             <button
               class="btn-icon-action delete"
               :title="$t('common.delete')"
               @click="handleDelete(attachment)"
             >
-              🗑️
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              </svg>
             </button>
           </div>
         </div>
@@ -163,7 +201,12 @@
       <div class="modal-content preview-modal">
         <div class="modal-header">
           <h3>{{ previewingAttachment?.filename }}</h3>
-          <button class="btn-close" @click="closePreviewModal">×</button>
+          <button class="btn-close" @click="closePreviewModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
         <div class="modal-body preview-body">
           <img
@@ -173,7 +216,11 @@
             class="preview-image"
           />
           <div v-else class="preview-placeholder">
-            <span class="preview-icon">{{ getFileIcon(previewingAttachment?.mime_type) }}</span>
+            <svg class="preview-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
             <p>{{ $t('attachment.noPreviewAvailable') }}</p>
           </div>
         </div>
@@ -191,17 +238,26 @@
       <div class="modal-content delete-modal">
         <div class="modal-header">
           <h3>{{ $t('attachment.deleteConfirmTitle') }}</h3>
-          <button class="btn-close" @click="closeDeleteModal">×</button>
+          <button class="btn-close" @click="closeDeleteModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
         <div class="modal-body">
           <p>{{ $t('attachment.deleteConfirmMessage', { filename: deletingAttachment?.filename }) }}</p>
         </div>
         <div class="modal-footer">
+          <button class="btn-confirm delete" @click="confirmDelete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+            </svg>
+            {{ $t('common.delete') }}
+          </button>
           <button class="btn-cancel" @click="closeDeleteModal">
             {{ $t('common.cancel') }}
-          </button>
-          <button class="btn-confirm delete" @click="confirmDelete">
-            {{ $t('common.delete') }}
           </button>
         </div>
       </div>
@@ -209,10 +265,15 @@
 
     <!-- 上传弹窗 -->
     <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
-      <div class="modal-content upload-modal">
+      <div class="modal-content upload-modal" @click.stop>
         <div class="modal-header">
           <h3>{{ $t('attachment.uploadTitle') }}</h3>
-          <button class="btn-close" @click="closeUploadModal">×</button>
+          <button class="btn-close" @click.stop="closeUploadModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
         <div class="modal-body">
           <div class="upload-area">
@@ -224,20 +285,32 @@
               class="file-input"
             />
             <div class="upload-hint" @click="triggerFileSelect">
-              <span class="upload-icon">📤</span>
+              <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
               <p>{{ $t('attachment.uploadHint') }}</p>
               <p class="upload-size-limit">{{ $t('attachment.uploadSizeLimit') }}</p>
             </div>
             <div v-if="selectedFile" class="selected-file">
-              <span class="file-icon">{{ getFileIcon(selectedFile.type) }}</span>
+              <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
               <span class="file-name">{{ selectedFile.name }}</span>
               <span class="file-size">{{ formatSize(selectedFile.size) }}</span>
-              <button class="btn-remove-file" @click="clearSelectedFile">×</button>
+              <button class="btn-remove-file" @click="clearSelectedFile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-cancel" @click="closeUploadModal">
+          <button class="btn-cancel" @click.stop="closeUploadModal">
             {{ $t('common.cancel') }}
           </button>
           <button
@@ -245,6 +318,15 @@
             :disabled="!selectedFile || uploading"
             @click="confirmUpload"
           >
+            <svg v-if="!uploading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon spinning">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
             {{ uploading ? $t('attachment.uploading') : $t('attachment.upload') }}
           </button>
         </div>
@@ -277,6 +359,7 @@ const filters = reactive<AttachmentListParams>({
   page: 1,
   size: 20,
   source_tag: '',
+  source_id: '',
   mime_type: '',
   start_date: '',
   end_date: '',
@@ -313,6 +396,7 @@ const loadAttachments = async () => {
       size: filters.size,
     }
     if (filters.source_tag) params.source_tag = filters.source_tag
+    if (filters.source_id) params.source_id = filters.source_id
     if (filters.mime_type) params.mime_type = filters.mime_type
     if (filters.start_date) params.start_date = filters.start_date
     if (filters.end_date) params.end_date = filters.end_date
@@ -340,6 +424,7 @@ const handleFilterChange = () => {
 // 重置过滤
 const resetFilters = () => {
   filters.source_tag = ''
+  filters.source_id = ''
   filters.mime_type = ''
   filters.start_date = ''
   filters.end_date = ''
@@ -601,7 +686,8 @@ onMounted(() => {
 }
 
 .filter-select,
-.filter-date {
+.filter-date,
+.filter-input {
   padding: 8px 12px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px;
@@ -611,9 +697,14 @@ onMounted(() => {
 }
 
 .filter-select:focus,
-.filter-date:focus {
+.filter-date:focus,
+.filter-input:focus {
   outline: none;
   border-color: var(--primary-color, #2196f3);
+}
+
+.filter-input::placeholder {
+  color: var(--text-tertiary, #bbb);
 }
 
 .date-range {
@@ -628,9 +719,42 @@ onMounted(() => {
 
 .filter-actions {
   margin-top: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
-.btn-reset {
+/* 按钮基础样式 */
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+}
+
+/* 主要按钮 */
+.btn-primary {
+  padding: 8px 16px;
+  background: var(--primary-color, #2196f3);
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover, #1976d2);
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
+}
+
+/* 次要按钮 */
+.btn-secondary {
   padding: 8px 16px;
   background: white;
   border: 1px solid var(--border-color, #e0e0e0);
@@ -639,10 +763,15 @@ onMounted(() => {
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
 }
 
-.btn-reset:hover {
-  background: var(--hover-bg, #e8e8e8);
+.btn-secondary:hover {
+  background: var(--hover-bg, #f5f5f5);
+  border-color: var(--text-secondary, #999);
+  color: var(--text-primary, #333);
 }
 
 /* 统计栏 */
@@ -671,14 +800,25 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 64px 24px;
   color: var(--text-secondary, #888);
-  gap: 12px;
+  gap: 16px;
 }
 
 .empty-icon {
-  font-size: 48px;
-  opacity: 0.5;
+  width: 64px;
+  height: 64px;
+  opacity: 0.4;
+  color: var(--text-tertiary, #bbb);
+}
+
+.empty-text {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+}
+
+.empty-state .btn-primary {
+  margin-top: 8px;
 }
 
 /* 表格样式 */
@@ -750,7 +890,8 @@ onMounted(() => {
 }
 
 .thumb-icon {
-  font-size: 20px;
+  width: 20px;
+  height: 20px;
 }
 
 .col-filename {
@@ -893,7 +1034,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
   padding: 16px;
 }
 
@@ -929,7 +1070,6 @@ onMounted(() => {
   height: 32px;
   border: none;
   background: none;
-  font-size: 24px;
   cursor: pointer;
   color: var(--text-tertiary, #999);
   display: flex;
@@ -937,6 +1077,12 @@ onMounted(() => {
   justify-content: center;
   border-radius: 6px;
   transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-close svg {
+  width: 20px;
+  height: 20px;
 }
 
 .btn-close:hover {
@@ -985,7 +1131,8 @@ onMounted(() => {
 }
 
 .preview-icon {
-  font-size: 64px;
+  width: 64px;
+  height: 64px;
 }
 
 .preview-meta {
@@ -1008,10 +1155,13 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary, #666);
   cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
 .btn-cancel:hover {
   background: var(--hover-bg, #f5f5f5);
+  border-color: var(--text-secondary, #999);
 }
 
 .btn-confirm.delete {
@@ -1022,28 +1172,20 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(198, 40, 40, 0.2);
 }
 
 .btn-confirm.delete:hover {
   background: var(--error-hover, #b71c1c);
+  box-shadow: 0 4px 8px rgba(198, 40, 40, 0.3);
+  transform: translateY(-1px);
 }
 
-/* 上传按钮 */
-.btn-upload {
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-right: 8px;
-}
-
-.btn-upload:hover {
-  background: var(--primary-hover, #1976d2);
-}
+/* 上传按钮 - 已合并到 .btn-primary */
 
 /* 上传弹窗 */
 .upload-modal {
@@ -1079,7 +1221,8 @@ onMounted(() => {
 }
 
 .upload-icon {
-  font-size: 48px;
+  width: 48px;
+  height: 48px;
   margin-bottom: 8px;
 }
 
@@ -1104,7 +1247,8 @@ onMounted(() => {
 }
 
 .selected-file .file-icon {
-  font-size: 24px;
+  width: 24px;
+  height: 24px;
 }
 
 .selected-file .file-name {
@@ -1150,15 +1294,37 @@ onMounted(() => {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
 }
 
 .btn-confirm.upload:hover:not(:disabled) {
   background: var(--primary-hover, #1976d2);
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
 }
 
 .btn-confirm.upload:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* 加载动画 */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 响应式 */

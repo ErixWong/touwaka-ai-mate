@@ -34,6 +34,7 @@ export interface AttachmentListParams {
   page?: number
   size?: number
   source_tag?: string
+  source_id?: string
   mime_type?: string
   uploader_id?: string
   start_date?: string
@@ -45,7 +46,7 @@ export interface AttachmentListParams {
  */
 export const getAttachments = async (params: AttachmentListParams = {}): Promise<AttachmentListResponse> => {
   const response = await apiClient.get('/attachments/admin', { params })
-  return response.data
+  return response.data.data
 }
 
 /**
@@ -53,7 +54,7 @@ export const getAttachments = async (params: AttachmentListParams = {}): Promise
  */
 export const getAttachmentMeta = async (id: string): Promise<Attachment> => {
   const response = await apiClient.get(`/attachments/${id}/meta`)
-  return response.data
+  return response.data.data
 }
 
 /**
@@ -116,5 +117,5 @@ export interface UploadAttachmentResponse {
  */
 export const uploadAttachment = async (params: UploadAttachmentParams): Promise<UploadAttachmentResponse> => {
   const response = await apiClient.post('/attachments', params)
-  return response.data
+  return response.data.data
 }
