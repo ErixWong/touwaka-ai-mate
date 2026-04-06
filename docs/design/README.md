@@ -49,6 +49,13 @@ design/
 | [background-task-scheduler-design.md](./v2/background-task-scheduler-design.md) | 后台任务调度器 | 草稿 |
 | [code-review-2026-02-21.md](./v2/code-review-2026-02-21.md) | 代码审查记录 | - |
 
+### 知识库与附件设计
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [attachment-service-design.md](./attachment-service-design.md) | 通用附件服务设计 | 已采纳 |
+| [kb-recall-design.md](./kb-recall-design.md) | 知识库召回设计（含图片处理） | 已采纳 |
+
 ### 评审报告
 
 | 文档 | 说明 |
@@ -102,4 +109,4 @@ design/
 
 ---
 
-*最后更新: 2026-02-26*
+*最后更新: 2026-04-06*
