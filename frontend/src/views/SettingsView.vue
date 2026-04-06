@@ -2,16 +2,32 @@
   <div class="settings-view">
     <h1 class="view-title">{{ $t('settings.title') }}</h1>
 
-    <div class="settings-tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="tab-btn"
-        :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
+    <div class="settings-menu">
+      <div
+        v-for="group in menuGroups"
+        :key="group.key"
+        class="menu-group"
       >
-        {{ tab.label }}
-      </button>
+        <button
+          class="menu-group-header"
+          :class="{ expanded: expandedGroups[group.key] }"
+          @click="toggleGroup(group.key)"
+        >
+          <span class="group-label">{{ group.label }}</span>
+          <span class="group-arrow">{{ expandedGroups[group.key] ? '▼' : '▶' }}</span>
+        </button>
+        <div v-if="expandedGroups[group.key]" class="menu-group-items">
+          <button
+            v-for="item in group.items"
+            :key="item.key"
+            class="menu-item-btn"
+            :class="{ active: activeTab === item.key }"
+            @click="activeTab = item.key"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 个人资料 -->
@@ -580,6 +596,11 @@
     <!-- 组织架构管理 -->
     <div v-if="activeTab === 'organization'" class="settings-section organization-section">
       <OrganizationTab />
+    </div>
+
+    <!-- 附件管理 -->
+    <div v-if="activeTab === 'attachment'" class="settings-section attachment-section">
+      <AttachmentTab />
     </div>
 
     <!-- 驻留进程管理（仅管理员） -->
@@ -1581,6 +1602,7 @@ import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
+import AttachmentTab from '@/components/settings/AttachmentTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
 
@@ -1597,26 +1619,61 @@ const appVersion = computed(() => packageInfo.version)
 const activeTab = ref('profile')
 const profileSubTab = ref<'basic' | 'password'>('basic')
 
-const allTabs = [
-  { key: 'profile', label: t('settings.profile') },
-  { key: 'invitation', label: t('settings.invitation') },
-  { key: 'model', label: t('settings.modelAndProvider'), adminOnly: true },
-  { key: 'expert', label: t('settings.expertSettings'), adminOnly: true },
-  { key: 'assistant', label: t('settings.assistantSettings'), adminOnly: true },
-  { key: 'system', label: t('settings.systemConfig'), adminOnly: true },
-  { key: 'resident', label: t('settings.residentProcesses'), adminOnly: true },
-  { key: 'user', label: t('settings.userManagement'), adminOnly: true },
-  { key: 'role', label: t('settings.roleManagement'), adminOnly: true },
-  { key: 'organization', label: t('settings.organizationManagement'), adminOnly: true },
-  { key: 'about', label: t('settings.about') },
-]
+// 菜单分组展开状态
+const expandedGroups = reactive<Record<string, boolean>>({
+  organization: true,
+  personal: true,
+  system: true,
+})
 
-// 根据用户角色过滤 tabs
-const tabs = computed(() => {
+// 切换分组展开/折叠
+const toggleGroup = (groupKey: string) => {
+  expandedGroups[groupKey] = !expandedGroups[groupKey]
+}
+
+// 菜单分组配置
+const menuGroups = computed(() => {
+  const groups = [
+    {
+      key: 'organization',
+      label: t('settings.menuGroupOrganization'),
+      adminOnly: true,
+      items: [
+        { key: 'user', label: t('settings.userManagement') },
+        { key: 'role', label: t('settings.roleManagement') },
+        { key: 'organization', label: t('settings.organizationManagement') },
+        { key: 'attachment', label: t('settings.attachmentManagement') },
+      ],
+    },
+    {
+      key: 'personal',
+      label: t('settings.menuGroupPersonal'),
+      adminOnly: false,
+      items: [
+        { key: 'profile', label: t('settings.profile') },
+        { key: 'invitation', label: t('settings.invitation') },
+        { key: 'about', label: t('settings.about') },
+      ],
+    },
+    {
+      key: 'system',
+      label: t('settings.menuGroupSystem'),
+      adminOnly: true,
+      items: [
+        { key: 'model', label: t('settings.modelAndProvider') },
+        { key: 'expert', label: t('settings.expertSettings') },
+        { key: 'assistant', label: t('settings.assistantSettings') },
+        { key: 'resident', label: t('settings.residentProcesses') },
+        { key: 'system', label: t('settings.systemConfig') },
+      ],
+    },
+  ]
+
+  // 根据用户角色过滤分组
   if (isAdmin.value) {
-    return allTabs
+    return groups
   }
-  return allTabs.filter(tab => !tab.adminOnly)
+  return groups.filter(group => !group.adminOnly)
 })
 
 const profileForm = reactive({
@@ -2754,31 +2811,93 @@ onMounted(() => {
   color: var(--text-primary, #333);
 }
 
-.settings-tabs {
+/* 设置菜单样式 */
+.settings-menu {
   display: flex;
   gap: 4px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.tab-btn {
+.menu-group {
+  position: relative;
+}
+
+.menu-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 12px 20px;
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 120px;
+}
+
+.menu-group-header:hover {
+  color: var(--text-primary, #333);
+  background: var(--secondary-bg, #f5f5f5);
+}
+
+.menu-group-header.expanded {
+  color: var(--primary-color, #2196f3);
+  border-bottom-color: var(--primary-color, #2196f3);
+}
+
+.group-label {
+  white-space: nowrap;
+}
+
+.group-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.menu-group-header.expanded .group-arrow {
+  transform: rotate(0deg);
+}
+
+.menu-group-items {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  padding: 4px 0;
+  margin-top: 2px;
+}
+
+.menu-item-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
   font-size: 14px;
   color: var(--text-secondary, #666);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all 0.2s;
 }
 
-.tab-btn:hover {
+.menu-item-btn:hover {
+  background: var(--secondary-bg, #f5f5f5);
   color: var(--text-primary, #333);
 }
 
-.tab-btn.active {
+.menu-item-btn.active {
   color: var(--primary-color, #2196f3);
-  border-bottom-color: var(--primary-color, #2196f3);
+  background: var(--primary-light, #e3f2fd);
 }
 
 .settings-section {

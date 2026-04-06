@@ -184,6 +184,10 @@ export default {
   // 设置页面
   settings: {
     title: '设置',
+    // 菜单分组
+    menuGroupOrganization: '组织管理',
+    menuGroupPersonal: '个人设置',
+    menuGroupSystem: '系统设置',
     profile: '个人资料',
     invitation: '邀请管理',
     profileBasic: '基本信息',
@@ -448,6 +452,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     updateRoleFailed: '角色更新失败',
     // 组织架构管理
     organizationManagement: '组织架构',
+    // 附件管理
+    attachmentManagement: '附件管理',
     // 驻留进程管理
     residentProcesses: '驻留进程',
     // 驻留进程详情

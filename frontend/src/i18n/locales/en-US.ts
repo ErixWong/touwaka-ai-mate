@@ -184,6 +184,10 @@ export default {
   // Settings
   settings: {
     title: 'Settings',
+    // Menu Groups
+    menuGroupOrganization: 'Organization',
+    menuGroupPersonal: 'Personal',
+    menuGroupSystem: 'System',
     profile: 'Profile',
     invitation: 'Invitation',
     profileBasic: 'Basic Info',
@@ -466,6 +470,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     updateRoleFailed: 'Failed to update role',
     // Organization Management
     organizationManagement: 'Organization',
+    // Attachment Management
+    attachmentManagement: 'Attachments',
     departmentManagement: 'Department Management',
     positionManagement: 'Position Management',
     addDepartment: 'Add Department',
