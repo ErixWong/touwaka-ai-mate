@@ -73,6 +73,17 @@ design/
 | [architecture-improvements.md](./architecture-improvements.md) | 架构改进建议（安全、高可用、监控） |
 | [references-analysis-report.md](./references-analysis-report.md) | 外部项目（Claw 系列）分析 |
 
+### 草稿文档
+
+[drafts/](./drafts/) - 设计草案和工作文档
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [kb-paragraph-context-field.md](./drafts/kb-paragraph-context-field.md) | kb_paragraphs context 字段设计 | 草稿 |
+| [mcp-system-design.md](./drafts/mcp-system-design.md) | MCP 系统设计方案 | 草稿 |
+| [chatview-message-flow-complete.md](./drafts/chatview-message-flow-complete.md) | ChatView 消息处理流程图 | 参考 |
+| [chatview-optimization-plan.md](./drafts/chatview-optimization-plan.md) | ChatView 优化计划 | 进行中 |
+
 ### 归档文档
 
 [archive/](./archive/) - 已废弃/已处理的历史文档
