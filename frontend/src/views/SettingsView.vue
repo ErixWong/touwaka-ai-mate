@@ -585,7 +585,7 @@
     </div>
 
     <!-- 附件管理 -->
-    <div v-if="activeTab === 'attachment'" class="settings-section attachment-section">
+    <div v-if="activeTab === 'attachment'" class="settings-section">
       <AttachmentTab />
     </div>
 
