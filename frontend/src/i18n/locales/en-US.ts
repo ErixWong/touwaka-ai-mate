@@ -651,6 +651,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
   attachment: {
     sourceTag: 'Source Tag',
     sourceTagPlaceholder: 'Enter source tag, e.g.: kb_article_image',
+    sourceId: 'Source ID',
+    sourceIdPlaceholder: 'Enter source ID',
     allSources: 'All Sources',
     sourceKbArticle: 'KB Article',
     sourceTaskExport: 'Task Export',

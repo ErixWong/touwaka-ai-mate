@@ -34,6 +34,7 @@ export interface AttachmentListParams {
   page?: number
   size?: number
   source_tag?: string
+  source_id?: string
   mime_type?: string
   uploader_id?: string
   start_date?: string

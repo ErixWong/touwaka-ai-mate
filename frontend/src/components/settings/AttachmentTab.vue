@@ -14,6 +14,16 @@
           />
         </div>
         <div class="filter-item">
+          <label class="filter-label">{{ $t('attachment.sourceId') }}</label>
+          <input
+            v-model="filters.source_id"
+            type="text"
+            class="filter-input"
+            :placeholder="$t('attachment.sourceIdPlaceholder')"
+            @input="handleFilterChange"
+          />
+        </div>
+        <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.mimeType') }}</label>
           <select v-model="filters.mime_type" class="filter-select" @change="handleFilterChange">
             <option value="">{{ $t('attachment.allTypes') }}</option>
@@ -349,6 +359,7 @@ const filters = reactive<AttachmentListParams>({
   page: 1,
   size: 20,
   source_tag: '',
+  source_id: '',
   mime_type: '',
   start_date: '',
   end_date: '',
@@ -385,6 +396,7 @@ const loadAttachments = async () => {
       size: filters.size,
     }
     if (filters.source_tag) params.source_tag = filters.source_tag
+    if (filters.source_id) params.source_id = filters.source_id
     if (filters.mime_type) params.mime_type = filters.mime_type
     if (filters.start_date) params.start_date = filters.start_date
     if (filters.end_date) params.end_date = filters.end_date
@@ -412,6 +424,7 @@ const handleFilterChange = () => {
 // 重置过滤
 const resetFilters = () => {
   filters.source_tag = ''
+  filters.source_id = ''
   filters.mime_type = ''
   filters.start_date = ''
   filters.end_date = ''
