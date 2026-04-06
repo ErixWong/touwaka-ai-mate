@@ -42,11 +42,20 @@
         </div>
       </div>
       <div class="filter-actions">
-        <button class="btn-upload" @click.stop="openUploadModal">
-          {{ $t('attachment.upload') }}
-        </button>
-        <button class="btn-reset" @click.stop="resetFilters">
+        <button class="btn-secondary" @click.stop="resetFilters">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+          </svg>
           {{ $t('attachment.resetFilters') }}
+        </button>
+        <button class="btn-primary" @click.stop="openUploadModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          {{ $t('attachment.upload') }}
         </button>
       </div>
     </div>
@@ -68,7 +77,15 @@
         <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
         </svg>
-        <span>{{ $t('attachment.noAttachments') }}</span>
+        <span class="empty-text">{{ $t('attachment.noAttachments') }}</span>
+        <button class="btn-primary" @click="openUploadModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          {{ $t('attachment.upload') }}
+        </button>
       </div>
 
       <div v-else class="attachments-table">
@@ -222,11 +239,15 @@
           <p>{{ $t('attachment.deleteConfirmMessage', { filename: deletingAttachment?.filename }) }}</p>
         </div>
         <div class="modal-footer">
+          <button class="btn-confirm delete" @click="confirmDelete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+            </svg>
+            {{ $t('common.delete') }}
+          </button>
           <button class="btn-cancel" @click="closeDeleteModal">
             {{ $t('common.cancel') }}
-          </button>
-          <button class="btn-confirm delete" @click="confirmDelete">
-            {{ $t('common.delete') }}
           </button>
         </div>
       </div>
@@ -287,6 +308,15 @@
             :disabled="!selectedFile || uploading"
             @click="confirmUpload"
           >
+            <svg v-if="!uploading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon spinning">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
             {{ uploading ? $t('attachment.uploading') : $t('attachment.upload') }}
           </button>
         </div>
@@ -671,10 +701,41 @@ onMounted(() => {
 .filter-actions {
   margin-top: 12px;
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
-.btn-reset {
+/* 按钮基础样式 */
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+}
+
+/* 主要按钮 */
+.btn-primary {
+  padding: 8px 16px;
+  background: var(--primary-color, #2196f3);
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover, #1976d2);
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
+}
+
+/* 次要按钮 */
+.btn-secondary {
   padding: 8px 16px;
   background: white;
   border: 1px solid var(--border-color, #e0e0e0);
@@ -683,12 +744,15 @@ onMounted(() => {
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.2s;
-  position: relative;
-  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
 }
 
-.btn-reset:hover {
-  background: var(--hover-bg, #e8e8e8);
+.btn-secondary:hover {
+  background: var(--hover-bg, #f5f5f5);
+  border-color: var(--text-secondary, #999);
+  color: var(--text-primary, #333);
 }
 
 /* 统计栏 */
@@ -717,15 +781,25 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 64px 24px;
   color: var(--text-secondary, #888);
-  gap: 12px;
+  gap: 16px;
 }
 
 .empty-icon {
-  width: 48px;
-  height: 48px;
-  opacity: 0.5;
+  width: 64px;
+  height: 64px;
+  opacity: 0.4;
+  color: var(--text-tertiary, #bbb);
+}
+
+.empty-text {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+}
+
+.empty-state .btn-primary {
+  margin-top: 8px;
 }
 
 /* 表格样式 */
@@ -1062,10 +1136,13 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary, #666);
   cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
 .btn-cancel:hover {
   background: var(--hover-bg, #f5f5f5);
+  border-color: var(--text-secondary, #999);
 }
 
 .btn-confirm.delete {
@@ -1076,29 +1153,20 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(198, 40, 40, 0.2);
 }
 
 .btn-confirm.delete:hover {
   background: var(--error-hover, #b71c1c);
+  box-shadow: 0 4px 8px rgba(198, 40, 40, 0.3);
+  transform: translateY(-1px);
 }
 
-/* 上传按钮 */
-.btn-upload {
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-  z-index: 1;
-}
-
-.btn-upload:hover {
-  background: var(--primary-hover, #1976d2);
-}
+/* 上传按钮 - 已合并到 .btn-primary */
 
 /* 上传弹窗 */
 .upload-modal {
@@ -1207,15 +1275,37 @@ onMounted(() => {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
 }
 
 .btn-confirm.upload:hover:not(:disabled) {
   background: var(--primary-hover, #1976d2);
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
 }
 
 .btn-confirm.upload:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* 加载动画 */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 响应式 */
