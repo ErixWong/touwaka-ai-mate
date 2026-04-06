@@ -178,15 +178,21 @@ class MinimalContextOrganizer {
   }
   
   async organize(memorySystem, userId, options) {
-    // 1. 获取过去 4 轮对话
-    const recentMessages = await memorySystem.getRecentMessages(userId, 4);
+    // 1. 获取过去 N 轮对话（通过时间边界查询，包含 tool 消息）
+    const { messages: recentMessages, topics, dialogCount } =
+      await this._getRecentMessages(memorySystem, userId, expertId);
     
     // 2. 从 Store 获取当前 Psyche（JSON）
     const currentPsyche = await this.psycheStore.get(userId, options.expertId)
       || this.createEmptyPsyche();
     
-    // 3. 调用反思 LLM 更新 Psyche
-    const reflection = await this.reflect(currentPsyche, recentMessages);
+    // 3. 调用反思 LLM 更新 Psyche（含滑动窗口处理）
+    const reflection = await this._reflectionService.reflect(
+      currentPsyche.toJSON(),
+      recentMessages,
+      topics,
+      { userId, expertId, dialogCount }
+    );
     
     // 4. 执行压缩、遗忘、总结、构造
     const updatedPsyche = this.processPsyche(reflection);
@@ -196,26 +202,183 @@ class MinimalContextOrganizer {
     
     // 6. 转换为文本注入 System Prompt
     const psycheText = this.formatPsycheForPrompt(updatedPsyche);
-    const systemPrompt = this.buildSystemPrompt(psycheText);
+    const systemPrompt = this.buildSystemPrompt(psycheText, options.taskContext);
     
-    // 7. 返回精简上下文（Psyche 替代 Messages）
+    // 7. 构建 messages 数组（处理 tool_calls 映射）
+    const messages = this._buildMessagesArray(recentMessages, options.currentMessage);
+    
+    // 8. 返回精简上下文（Psyche 替代 Messages）
     return new ContextResult({
       systemPrompt,
-      messages: [{ role: 'user', content: options.currentMessage }],
-      hiddenContext: { psyche: updatedPsyche }
+      messages,
+      hiddenContext: {
+        psyche: updatedPsyche,
+        stats: this._psycheManager.getStats(updatedPsyche)
+      }
     });
-  }
-  
-  processPsyche(reflection) {
-    // 压缩：Psyche 太大时，将大段内容转为 Notes 引用
-    // 遗忘：删除过时信息
-    // 总结：调整工作方向
-    // 构造：生成新的 Psyche 结构
   }
 }
 ```
 
-### 3.4 Psyche 大小限制与压缩策略
+### 3.4 反思服务的滑动窗口机制
+
+当历史消息过多时，反思 LLM 的上下文可能不足以处理全部消息。此时需要使用**滑动窗口机制**截断消息。
+
+#### 滑动窗口策略
+
+```javascript
+class ReflectionService {
+  _applySlidingWindow(messages, currentPsyche, topics) {
+    // 计算最大允许的输入 token 数（默认占反思 LLM 上下文的 85%）
+    const maxInputTokens = Math.floor(
+      this.config.reflectionContextSize * this.config.inputTokenRatio
+    );
+    
+    // 估算固定开销（Psyche + Topics + Prompt 模板）
+    const fixedTokens =
+      this._estimateJsonTokens(currentPsyche) +
+      this._estimateTopicsTokens(topics) +
+      1500; // Prompt 模板约 1500 tokens
+    
+    // 消息部分可用的 token 预算
+    const messagesBudget = maxInputTokens - fixedTokens;
+    
+    // 如果未超预算，直接返回
+    let currentTokens = this._estimateMessagesTokens(messages);
+    if (currentTokens <= messagesBudget) return messages;
+    
+    // 从最早的消息开始移除，直到符合预算
+    let result = [...messages];
+    while (result.length > 0 && currentTokens > messagesBudget) {
+      result.shift(); // 移除最早的消息
+      currentTokens = this._estimateMessagesTokens(result);
+      
+      // 安全保护：至少保留 4 条消息（2轮对话）
+      if (result.length <= 4) break;
+    }
+    
+    return result;
+  }
+}
+```
+
+#### Token 估算方法
+
+| 内容类型 | 估算方式 |
+|---------|---------|
+| JSON 对象 | `Math.ceil(JSON.stringify(obj).length / 4)` |
+| 文本消息 | `Math.ceil(content.length / 4) + 4`（格式开销） |
+| Topics | 标题+描述长度 / 4 + 4 |
+
+#### 反思服务配置参数
+
+```javascript
+{
+  // 反思模型配置（从 ai_models 表获取）
+  reflectionModel: 'gpt-4o-mini',           // 反思 LLM 模型
+  reflectionContextSize: 128000,            // 反思 LLM 上下文大小（默认 128k）
+  reflectionInputRatio: 0.85,               // 输入占反思上下文的比例（预留 15% 给输出）
+  
+  // 表达模型配置（用于 Psyche 大小限制）
+  expressiveContextSize: 128000,            // 表达 LLM 上下文大小
+  maxTokensRatio: 0.3,                       // Psyche 占表达上下文最大比例
+  
+  // 其他配置
+  lookbackRounds: 4,                        // 反思时查看过去 4 轮
+  enableNotes: true                         // 启用 Notes
+}
+```
+
+### 3.5 Messages 数组构建与 Tool Calls 映射
+
+在返回给表达 LLM 的 messages 数组中，需要正确处理 `tool_calls` 与 `tool` 消息的关联关系。
+
+#### 核心问题
+
+OpenAI 格式要求：
+- `assistant` 消息的 `tool_calls` 中的 `id` 需要与 `tool` 消息的 `tool_call_id` 对应
+- 为了便于后续 `recall` 查询，使用 tool 消息的 `messages.id` 作为 `tool_calls.id`
+
+#### 构建流程
+
+```javascript
+_buildMessagesArray(recentMessages, currentMessage) {
+  // 1. 按时间正序排列
+  const sortedMessages = [...recentMessages].sort((a, b) =>
+    a.timestamp - b.timestamp
+  );
+  
+  // 2. 构建 tool_call_id -> tool message id 的映射
+  const toolCallIdToMessageId = new Map();
+  for (const msg of sortedMessages) {
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      toolCallIdToMessageId.set(msg.tool_call_id, msg.id);
+    }
+  }
+  
+  // 3. 识别对话轮次（user -> assistant 为一个轮次）
+  const rounds = [];
+  let currentRound = null;
+  
+  for (const msg of sortedMessages) {
+    if (msg.role === 'user') {
+      if (currentRound) rounds.push(currentRound);
+      currentRound = { user: msg, assistant: null };
+    } else if (msg.role === 'assistant' && currentRound) {
+      currentRound.assistant = msg;
+      rounds.push(currentRound);
+      currentRound = null;
+    }
+    // tool 消息不加入 rounds（但已记录 id 映射）
+  }
+  
+  // 4. 只取最近 4 轮
+  const recentRounds = rounds.slice(-4);
+  
+  // 5. 构建 messages 数组
+  const messages = [];
+  for (const round of recentRounds) {
+    // 添加 user 消息
+    if (round.user) {
+      messages.push({ role: 'user', content: round.user.content });
+    }
+    
+    // 添加 assistant 消息（替换 tool_calls.id 为 tool 消息的 messages.id）
+    if (round.assistant) {
+      const assistantMsg = {
+        role: 'assistant',
+        content: round.assistant.content
+      };
+      
+      if (round.assistant.tool_calls?.length > 0) {
+        assistantMsg.tool_calls = round.assistant.tool_calls.map(tc => ({
+          id: toolCallIdToMessageId.get(tc.id),  // 使用 messages.id
+          type: tc.type,
+          function: tc.function
+        }));
+      }
+      
+      messages.push(assistantMsg);
+    }
+  }
+  
+  // 6. 添加当前用户消息
+  if (currentMessage) {
+    messages.push({ role: 'user', content: currentMessage });
+  }
+  
+  return messages;
+}
+```
+
+#### 消息角色统计
+
+构建后的 messages 数组包含：
+- `user`：用户消息
+- `assistant`：AI 回复（可能包含 `tool_calls`）
+- 不包含 `tool` 消息（已被整合到 assistant 的 tool_calls 中）
+
+### 3.6 Psyche 大小限制与压缩策略
 
 #### 大小限制
 
@@ -262,7 +425,7 @@ compressPsyche(psyche, maxTokens) {
 }
 ```
 
-### 3.5 Psyche 和 Notes 的存储
+### 3.7 Psyche 和 Notes 的存储
 
 #### 存储方案对比
 
@@ -662,26 +825,241 @@ export default StoreFactory;
 }
 ```
 
-### 4.2 Notes 排序与遗忘
+### 4.2 NotesManager 高级功能
 
-**排序策略**（多维度加权）：
+NotesManager 封装了 Notes 的高级操作，包括排序、自动遗忘和统计。
+
+#### 排序算法
+
+**多维度加权评分**：
 
 ```javascript
-const notesScore = (item) => {
-  return (
-    item.access_count * 2 +        // 访问次数（最重要）
-    item.relevance * 1.5 +         // LLM 标记的相关性
-    (1 / item.age_days) * 1        // 越新越好
-  );
-};
+class NotesManager {
+  _calculateScore(note) {
+    const metadata = note.metadata || {};
+    const accessCount = metadata.access_count || 0;
+    const relevance = metadata.relevance || 0.5;
+    
+    // 计算年龄（天数）
+    const savedAt = metadata.saved_at ? new Date(metadata.saved_at) : new Date();
+    const ageDays = (Date.now() - savedAt.getTime()) / (1000 * 60 * 60 * 24);
+    const freshness = ageDays > 0 ? 1 / ageDays : 1;
+
+    // 分数 = 访问次数*2 + 相关性*1.5 + 新鲜度*1
+    return accessCount * 2 + relevance * 1.5 + freshness * 1;
+  }
+  
+  async listWithDetails(userId, expertId) {
+    const keys = await this.list(userId, expertId);
+    const notes = [];
+    
+    for (const key of keys) {
+      const note = await this.read(userId, expertId, key);
+      if (note) {
+        notes.push({
+          key,
+          ...note,
+          score: this._calculateScore(note)
+        });
+      }
+    }
+    
+    // 按分数降序排列
+    return notes.sort((a, b) => b.score - a.score);
+  }
+}
 ```
 
-**遗忘触发**：
-1. Psyche 压缩时：将大段内容转为 Notes 引用
-2. Notes 满时：按排序删除最后 10%
-3. 会话结束时：删除临时性 Notes
+#### 自动遗忘机制
 
-### 4.3 Notes 工具接口
+当笔记数量超过限制时，自动删除分数最低的 10%：
+
+```javascript
+class NotesManager {
+  async _checkAndForget(userId, expertId) {
+    const notes = await this.listWithDetails(userId, expertId);
+    
+    if (notes.length > this.config.maxCount) {
+      const deleteCount = Math.ceil(notes.length * 0.1);
+      const toDelete = notes.slice(-deleteCount); // 分数最低的
+      
+      const keysToDelete = toDelete.map(n => n.key);
+      await this.deleteMany(userId, expertId, keysToDelete);
+      
+      logger.info(`[NotesManager] 自动遗忘 ${deleteCount} 个笔记`);
+    }
+  }
+  
+  // 保存笔记时触发遗忘检查
+  async take(userId, expertId, key, note, ttl = 3600) {
+    await this.notesStore.take(userId, expertId, key, note, ttl);
+    await this._checkAndForget(userId, expertId); // 检查是否需要遗忘
+  }
+}
+```
+
+#### 统计信息
+
+```javascript
+async getStats(userId, expertId) {
+  const notes = await this.listWithDetails(userId, expertId);
+  const totalSize = notes.reduce((sum, n) => sum + (n.metadata?.size || 0), 0);
+
+  return {
+    count: notes.length,
+    totalSize,
+    byType: notes.reduce((acc, n) => {
+      acc[n.type || 'general'] = (acc[n.type || 'general'] || 0) + 1;
+      return acc;
+    }, {})
+  };
+}
+```
+
+### 4.3 Notes 排序与遗忘触发时机
+
+**遗忘触发**：
+1. **Psyche 压缩时**：将大段内容转为 Notes 引用
+2. **Notes 满时**：按排序删除最后 10%
+3. **会话结束时**：删除临时性 Notes（`cleanupTempNotes`）
+
+### 4.4 任务上下文处理（三种工作模式）
+
+MinimalContextOrganizer 支持三种工作模式，每种模式有不同的上下文注入方式。
+
+#### 模式识别
+
+```javascript
+_buildTaskContextSection(taskContext) {
+  const fullPath = taskContext.fullWorkspacePath || '';
+  
+  const isTaskMode = taskContext.id && taskContext.title;
+  const isSkillMode = fullPath.startsWith('skills/');
+  const isChatMode = fullPath.startsWith('work/') && !isTaskMode;
+
+  if (isSkillMode) return this._buildSkillContextSection(taskContext);
+  if (isChatMode) return this._buildChatContextSection(taskContext);
+  if (isTaskMode) return this._buildTaskWorkspaceSection(taskContext);
+  return null;
+}
+```
+
+#### 1. Task 模式（任务工作空间）
+
+用户创建了明确的任务，有专门的工作目录。
+
+```javascript
+_buildTaskWorkspaceSection(taskContext) {
+  const fullPath = taskContext.fullWorkspacePath || '';
+  const userId = taskContext.userId || 'unknown';
+  
+  // 文件列表格式化
+  let filesDescription = '暂无文件';
+  if (taskContext.inputFiles?.length > 0) {
+    filesDescription = taskContext.inputFiles.map(file => {
+      const sizeKB = file.isDirectory ? '-' : `${(file.size / 1024).toFixed(1)} KB`;
+      return file.isDirectory
+        ? `📁 ${file.name}/`
+        : `📄 ${file.name} (${sizeKB})`;
+    }).join('\n');
+  }
+
+  return `## 当前任务工作空间
+
+你正在**任务工作空间模式**中。
+
+### 任务信息
+- **任务ID**: ${taskContext.id}
+- **任务标题**: ${taskContext.title}
+${taskContext.description ? `- **任务描述**: ${taskContext.description}` : ''}
+
+### 目录说明
+- **工作目录**: ${fullPath}
+- **可访问目录**: \`data/work/${userId}/\` 及其所有子目录
+- **路径格式**: 相对于 data/ 目录，例如 \`${fullPath}/input/file.xlsx\`
+
+### 当前目录下的文件
+${filesDescription}`;
+}
+```
+
+#### 2. Skill 模式（技能开发）
+
+用户在技能目录下工作，通常是查看或修改技能代码。
+
+```javascript
+_buildSkillContextSection(taskContext) {
+  const fullPath = taskContext.fullWorkspacePath || 'skills/unknown';
+  const skillName = fullPath.replace(/^skills\//, '');
+
+  return `## 当前技能工作目录
+
+你正在**技能模式**中，当前工作目录是技能的源码目录。
+
+### 技能信息
+- **技能名称**: ${skillName}
+- **工作目录**: ${fullPath}
+
+### 目录说明
+- \`SKILL.md\` 文件肯定存在，包含技能的详细说明
+- 使用 \`cat SKILL.md\` 或 \`read_file\` 查看技能说明
+- ⚠️ **技能目录是只读的**，不应该写入文件`;
+}
+```
+
+#### 3. Chat 模式（普通对话）
+
+普通对话模式，使用临时文件夹。
+
+```javascript
+_buildChatContextSection(taskContext) {
+  const fullPath = taskContext.fullWorkspacePath || 'work/unknown/temp';
+
+  return `## 当前工作目录
+
+你正在**对话模式**中，当前工作目录是用户的临时文件夹。
+
+### 路径使用规则
+- 路径是相对于系统 data/ 目录的，不需要再加 data/ 前缀
+- 可以读取临时文件夹中的现有文件
+- ⚠️ **禁止创建文件**：对话模式不支持文件创建操作
+
+### 文件操作限制
+如果用户需要创建或写入文件，请提醒用户：
+1. 创建一个任务（Task），系统会自动分配专门的工作目录
+2. 在任务目录中，可以根据需要组织合适的目录结构`;
+}
+```
+
+#### System Prompt 构建
+
+```javascript
+_buildSystemPrompt(basePrompt, psycheText, taskContext = null) {
+  const parts = [];
+  
+  if (basePrompt) parts.push(basePrompt);
+  if (psycheText) parts.push('\n\n' + psycheText);
+  
+  // 添加任务上下文（如果有）
+  if (taskContext) {
+    const taskContextSection = this._buildTaskContextSection(taskContext);
+    if (taskContextSection) parts.push('\n\n' + taskContextSection);
+  }
+
+  // 添加使用说明
+  parts.push(`
+
+【使用说明】
+- 以上【心神】是你的工作记忆，包含当前主题、关键决策和可用笔记
+- 如需查看笔记内容，使用 notes.read 工具
+- 如需保存新材料，使用 notes.take 工具
+- 如需查看所有笔记，使用 notes.list 工具`);
+
+  return parts.join('\n');
+}
+```
+
+### 4.5 Notes 工具接口
 
 ```typescript
 // notes.take - 存入笔记
@@ -858,8 +1236,10 @@ export class MinimalContextOrganizer extends IContextOrganizer {
 **关键依赖**：
 - `psycheStore`: IPsycheStore 实例（构造函数注入）
 - `notesStore`: INotesStore 实例（用于压缩时转移内容）
-- `reflect()`: 调用 LLM 生成新 Psyche
-- `compressPsyche()`: 大小限制检查与压缩（第 3.4 节）
+- `reflectionService`: 调用 LLM 生成新 Psyche（含滑动窗口机制）
+- `psycheManager.compress()`: 大小限制检查与压缩（第 3.6 节）
+- `_buildMessagesArray()`: 构建 messages 数组（处理 tool_calls 映射，第 3.5 节）
+- `_buildSystemPrompt()`: 构建 System Prompt（含任务上下文，第 4.4 节）
 
 ### 7.2 注册 Notes Skill
 
@@ -913,11 +1293,87 @@ skillManager.register({
 ### 9.2 相关代码
 
 - `lib/context-organizer/interface.js` - 上下文组织器接口
-- `lib/context-organizer/minimal-organizer.js` - 新策略实现（待添加）
-- `data/skills/notes/` - Notes 技能实现（待添加）
+- `lib/context-organizer/minimal-organizer.js` - 精简上下文组织器实现
+- `lib/context-organizer/base-organizer.js` - 基础上下文组织器
+- `lib/psyche/psyche-manager.js` - Psyche 管理器
+- `lib/psyche/psyche-model.js` - Psyche 数据模型
+- `lib/psyche/reflection-service.js` - 反思服务（含滑动窗口）
+- `lib/psyche-store/memory-store.js` - 内存存储实现
+- `lib/psyche-store/redis-store.js` - Redis 存储实现
+- `lib/notes/notes-manager.js` - Notes 管理器
+- `lib/notes/index.js` - Notes 模块入口
+
+### 9.3 反思 Prompt 示例
+
+反思服务使用的完整 Prompt 模板：
+
+```
+你是一位专业的对话分析师。请分析以下对话，更新"心神"(Psyche)状态。
+
+## 当前心神状态
+```json
+{currentPsyche}
+```
+
+## 相关话题（可用于 recall）
+{topicsText}
+
+## 工具调用摘要
+{toolCallSummary}
+
+## 最近对话（{dialogCount} 轮，{messageCount} 条消息）
+{messagesText}
+
+## 任务
+请分析对话内容，生成心神更新。你需要：
+
+1. **识别用户意图**：用户想要做什么？
+2. **判断工作方向**：是需要继续向用户提问澄清，还是继续执行任务？
+3. **给出背景和过程**：之前做了什么尝试？有什么参考？
+4. **决定下一步行动**：应该做什么？
+
+## 输出格式（必须是有效的 JSON）
+```json
+{
+  "session_meta": {
+    "current_topic": "当前讨论的主题（简洁明确）",
+    "user_intent": "用户意图（一句话描述）",
+    "conversation_round": 对话轮次数字
+  },
+  "methodology": {
+    "approach": "采用的方法论（如：收集需求 → 分析问题 → 提出方案）",
+    "current_phase": "当前阶段 (init/clarification/execution/review/complete)",
+    "next_action": "下一步行动（具体明确）"
+  },
+  "key_exchange": {
+    "round": 当前轮次,
+    "summary": "本轮对话的关键内容摘要（包含工具调用结果）"
+  },
+  "key_decisions": ["已确定的关键决策1", "已确定的关键决策2"],
+  "pending_questions": ["待确认问题1", "待确认问题2"],
+  "tool_summary": [
+    {"tool": "工具名", "action": "做了什么", "result": "结果摘要"}
+  ],
+  "topics_context": [
+    {"topic_id": "话题ID", "title": "话题标题", "relevance": 0.95}
+  ],
+  "working_memory": {
+    "calculated_values": {"key": "value"},
+    "temp_notes": "临时笔记内容"
+  }
+}
+```
+
+## 注意事项
+1. 只输出 JSON，不要其他内容
+2. 如果话题切换了，要反映在 current_topic 中
+3. 工具调用摘要要简洁，只保留关键信息
+4. pending_questions 只保留真正需要用户确认的问题
+5. 确保 JSON 格式正确
+```
 
 ---
 
-*文档版本：v2.0*
-*更新时间：2026-03-31*
+*文档版本：v3.0*
+*更新时间：2026-04-06*
 *关联 Issue：#437*
