@@ -1251,6 +1251,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     moreActions: '更多操作',
     export: '导出',
     settings: '设置',
+    organization: '组织管理',
+    personal: '个人设置',
+    system: '系统设置',
   },
 
   // 助理系统

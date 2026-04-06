@@ -1,33 +1,19 @@
 <template>
   <div class="settings-view">
-    <h1 class="view-title">{{ $t('settings.title') }}</h1>
+    <h1 class="view-title">
+      {{ currentGroup === 'organization' ? $t('nav.organization') : currentGroup === 'system' ? $t('nav.system') : $t('nav.personal') }}
+    </h1>
 
     <div class="settings-menu">
-      <div
-        v-for="group in menuGroups"
-        :key="group.key"
-        class="menu-group"
+      <button
+        v-for="item in currentMenuItems"
+        :key="item.key"
+        class="menu-item-btn"
+        :class="{ active: activeTab === item.key }"
+        @click="activeTab = item.key"
       >
-        <button
-          class="menu-group-header"
-          :class="{ expanded: expandedGroups[group.key] }"
-          @click="toggleGroup(group.key)"
-        >
-          <span class="group-label">{{ group.label }}</span>
-          <span class="group-arrow">{{ expandedGroups[group.key] ? '▼' : '▶' }}</span>
-        </button>
-        <div v-if="expandedGroups[group.key]" class="menu-group-items">
-          <button
-            v-for="item in group.items"
-            :key="item.key"
-            class="menu-item-btn"
-            :class="{ active: activeTab === item.key }"
-            @click="activeTab = item.key"
-          >
-            {{ item.label }}
-          </button>
-        </div>
-      </div>
+        {{ item.label }}
+      </button>
     </div>
 
     <!-- 个人资料 -->
@@ -1589,6 +1575,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
@@ -1607,6 +1594,7 @@ import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
 
 const { t, locale } = useI18n()
+const route = useRoute()
 const userStore = useUserStore()
 const modelStore = useModelStore()
 const providerStore = useProviderStore()
@@ -1616,65 +1604,51 @@ const toast = useToastStore()
 // 应用版本号
 const appVersion = computed(() => packageInfo.version)
 
-const activeTab = ref('profile')
-const profileSubTab = ref<'basic' | 'password'>('basic')
-
-// 菜单分组展开状态
-const expandedGroups = reactive<Record<string, boolean>>({
-  organization: true,
-  personal: true,
-  system: true,
+// 根据路由确定当前分组
+const currentGroup = computed(() => {
+  const group = route.meta?.settingsGroup as string | undefined
+  return group || 'personal'
 })
 
-// 切换分组展开/折叠
-const toggleGroup = (groupKey: string) => {
-  expandedGroups[groupKey] = !expandedGroups[groupKey]
+// 菜单项配置（按分组）
+const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
+  organization: [
+    { key: 'user', label: t('settings.userManagement') },
+    { key: 'role', label: t('settings.roleManagement') },
+    { key: 'organization', label: t('settings.organizationManagement') },
+    { key: 'attachment', label: t('settings.attachmentManagement') },
+  ],
+  personal: [
+    { key: 'profile', label: t('settings.profile') },
+    { key: 'invitation', label: t('settings.invitation') },
+    { key: 'about', label: t('settings.about') },
+  ],
+  system: [
+    { key: 'model', label: t('settings.modelAndProvider') },
+    { key: 'expert', label: t('settings.expertSettings') },
+    { key: 'assistant', label: t('settings.assistantSettings') },
+    { key: 'resident', label: t('settings.residentProcesses') },
+    { key: 'system', label: t('settings.systemConfig') },
+  ],
 }
 
-// 菜单分组配置
-const menuGroups = computed(() => {
-  const groups = [
-    {
-      key: 'organization',
-      label: t('settings.menuGroupOrganization'),
-      adminOnly: true,
-      items: [
-        { key: 'user', label: t('settings.userManagement') },
-        { key: 'role', label: t('settings.roleManagement') },
-        { key: 'organization', label: t('settings.organizationManagement') },
-        { key: 'attachment', label: t('settings.attachmentManagement') },
-      ],
-    },
-    {
-      key: 'personal',
-      label: t('settings.menuGroupPersonal'),
-      adminOnly: false,
-      items: [
-        { key: 'profile', label: t('settings.profile') },
-        { key: 'invitation', label: t('settings.invitation') },
-        { key: 'about', label: t('settings.about') },
-      ],
-    },
-    {
-      key: 'system',
-      label: t('settings.menuGroupSystem'),
-      adminOnly: true,
-      items: [
-        { key: 'model', label: t('settings.modelAndProvider') },
-        { key: 'expert', label: t('settings.expertSettings') },
-        { key: 'assistant', label: t('settings.assistantSettings') },
-        { key: 'resident', label: t('settings.residentProcesses') },
-        { key: 'system', label: t('settings.systemConfig') },
-      ],
-    },
-  ]
-
-  // 根据用户角色过滤分组
-  if (isAdmin.value) {
-    return groups
-  }
-  return groups.filter(group => !group.adminOnly)
+// 当前分组的菜单项
+const currentMenuItems = computed(() => {
+  return menuItemsByGroup[currentGroup.value] || menuItemsByGroup.personal
 })
+
+// 根据路由初始化 activeTab
+const getInitialTab = () => {
+  const group = currentGroup.value
+  const items = menuItemsByGroup[group]
+  if (items && items.length > 0) {
+    return items[0].key
+  }
+  return 'profile'
+}
+
+const activeTab = ref(getInitialTab())
+const profileSubTab = ref<'basic' | 'password'>('basic')
 
 const profileForm = reactive({
   nickname: '',
@@ -2819,14 +2793,9 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.menu-group {
-  position: relative;
-}
-
-.menu-group-header {
+.menu-item-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 12px 20px;
   background: none;
@@ -2837,66 +2806,17 @@ onMounted(() => {
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.2s;
-  min-width: 120px;
-}
-
-.menu-group-header:hover {
-  color: var(--text-primary, #333);
-  background: var(--secondary-bg, #f5f5f5);
-}
-
-.menu-group-header.expanded {
-  color: var(--primary-color, #2196f3);
-  border-bottom-color: var(--primary-color, #2196f3);
-}
-
-.group-label {
   white-space: nowrap;
 }
 
-.group-arrow {
-  font-size: 10px;
-  transition: transform 0.2s;
-}
-
-.menu-group-header.expanded .group-arrow {
-  transform: rotate(0deg);
-}
-
-.menu-group-items {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 160px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  padding: 4px 0;
-  margin-top: 2px;
-}
-
-.menu-item-btn {
-  display: block;
-  width: 100%;
-  padding: 10px 16px;
-  background: none;
-  border: none;
-  text-align: left;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
 .menu-item-btn:hover {
-  background: var(--secondary-bg, #f5f5f5);
   color: var(--text-primary, #333);
+  background: var(--secondary-bg, #f5f5f5);
 }
 
 .menu-item-btn.active {
   color: var(--primary-color, #2196f3);
+  border-bottom-color: var(--primary-color, #2196f3);
   background: var(--primary-light, #e3f2fd);
 }
 

@@ -1257,6 +1257,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     moreActions: 'More Actions',
     export: 'Export',
     settings: 'Settings',
+    organization: 'Organization',
+    personal: 'Personal',
+    system: 'System',
   },
 
   // Assistant System
