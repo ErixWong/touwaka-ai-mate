@@ -16,6 +16,8 @@ import createKbRoutes from './kb.routes.js';
 import systemSettingRoutes from './system-setting.routes.js';
 import createPackageRoutes from './package.routes.js';
 import createInternalRoutes from './internal.routes.js';
+import attachmentRoutes from './attachment.routes.js';
+import attachmentStaticRoutes from './attachment-static.routes.js';
 
 export {
   authRoutes,
@@ -32,4 +34,6 @@ export {
   systemSettingRoutes,
   createPackageRoutes,
   createInternalRoutes,
+  attachmentRoutes,
+  attachmentStaticRoutes,
 };

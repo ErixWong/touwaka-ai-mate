@@ -28,9 +28,19 @@
         <span class="nav-text">{{ $t('solutions.title', '解决方案') }}</span>
       </router-link>
 
-      <router-link to="/settings" class="nav-link" :class="{ active: isActive('/settings') }">
+      <router-link to="/organization" class="nav-link" :class="{ active: isActive('/organization') }" v-if="isAdmin">
+        <span class="nav-icon">🏢</span>
+        <span class="nav-text">{{ $t('nav.organization') }}</span>
+      </router-link>
+
+      <router-link to="/personal" class="nav-link" :class="{ active: isActive('/personal') }">
+        <span class="nav-icon">👤</span>
+        <span class="nav-text">{{ $t('nav.personal') }}</span>
+      </router-link>
+
+      <router-link to="/system" class="nav-link" :class="{ active: isActive('/system') }" v-if="isAdmin">
         <span class="nav-icon">⚙️</span>
-        <span class="nav-text">{{ $t('nav.settings') }}</span>
+        <span class="nav-text">{{ $t('nav.system') }}</span>
       </router-link>
     </nav>
 
@@ -55,9 +65,9 @@
             <div class="dropdown-email">{{ userStore.user?.email }}</div>
           </div>
           <div class="dropdown-divider"></div>
-          <router-link to="/settings" class="dropdown-item" @click="showUserMenu = false">
-            <span class="item-icon">⚙️</span>
-            <span>{{ $t('nav.settings') }}</span>
+          <router-link to="/personal" class="dropdown-item" @click="showUserMenu = false">
+            <span class="item-icon">👤</span>
+            <span>{{ $t('nav.personal') }}</span>
           </router-link>
           <button class="dropdown-item" @click="handleLogout">
             <span class="item-icon">🚪</span>
@@ -84,6 +94,9 @@ const { locale } = useI18n()
 const showUserMenu = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 
+// 是否为管理员
+const isAdmin = computed(() => userStore.isAdmin)
+
 // 当前语言
 const currentLocale = computed({
   get: () => locale.value as Locale,
@@ -105,6 +118,10 @@ const isActive = (path: string) => {
   if (path === '/experts') {
     // 专家页面和聊天页面都高亮专家导航（因为聊天基于专家）
     return route.path === '/experts' || route.path === '/' || route.path.startsWith('/chat')
+  }
+  // 设置相关页面高亮
+  if (path === '/organization' || path === '/personal' || path === '/system') {
+    return route.path === path || route.path.startsWith(`${path}/`)
   }
   return route.path.startsWith(path)
 }

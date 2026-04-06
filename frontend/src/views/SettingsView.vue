@@ -1,16 +1,18 @@
 <template>
   <div class="settings-view">
-    <h1 class="view-title">{{ $t('settings.title') }}</h1>
+    <h1 class="view-title">
+      {{ currentGroup === 'organization' ? $t('nav.organization') : currentGroup === 'system' ? $t('nav.system') : $t('nav.personal') }}
+    </h1>
 
-    <div class="settings-tabs">
+    <div class="settings-menu">
       <button
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="tab-btn"
-        :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
+        v-for="item in currentMenuItems"
+        :key="item.key"
+        class="menu-item-btn"
+        :class="{ active: activeTab === item.key }"
+        @click="activeTab = item.key"
       >
-        {{ tab.label }}
+        {{ item.label }}
       </button>
     </div>
 
@@ -585,6 +587,11 @@
     <!-- 驻留进程管理（仅管理员） -->
     <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section">
       <ResidentProcessesTab />
+    </div>
+
+    <!-- 附件管理（仅管理员） -->
+    <div v-if="activeTab === 'attachment' && isAdmin" class="settings-section attachment-section">
+      <AttachmentTab />
     </div>
 
     <!-- 关于 -->
@@ -1568,6 +1575,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
@@ -1581,10 +1589,12 @@ import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
+import AttachmentTab from '@/components/settings/AttachmentTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
 
 const { t, locale } = useI18n()
+const route = useRoute()
 const userStore = useUserStore()
 const modelStore = useModelStore()
 const providerStore = useProviderStore()
@@ -1594,30 +1604,51 @@ const toast = useToastStore()
 // 应用版本号
 const appVersion = computed(() => packageInfo.version)
 
-const activeTab = ref('profile')
-const profileSubTab = ref<'basic' | 'password'>('basic')
-
-const allTabs = [
-  { key: 'profile', label: t('settings.profile') },
-  { key: 'invitation', label: t('settings.invitation') },
-  { key: 'model', label: t('settings.modelAndProvider'), adminOnly: true },
-  { key: 'expert', label: t('settings.expertSettings'), adminOnly: true },
-  { key: 'assistant', label: t('settings.assistantSettings'), adminOnly: true },
-  { key: 'system', label: t('settings.systemConfig'), adminOnly: true },
-  { key: 'resident', label: t('settings.residentProcesses'), adminOnly: true },
-  { key: 'user', label: t('settings.userManagement'), adminOnly: true },
-  { key: 'role', label: t('settings.roleManagement'), adminOnly: true },
-  { key: 'organization', label: t('settings.organizationManagement'), adminOnly: true },
-  { key: 'about', label: t('settings.about') },
-]
-
-// 根据用户角色过滤 tabs
-const tabs = computed(() => {
-  if (isAdmin.value) {
-    return allTabs
-  }
-  return allTabs.filter(tab => !tab.adminOnly)
+// 根据路由确定当前分组
+const currentGroup = computed(() => {
+  const group = route.meta?.settingsGroup as string | undefined
+  return group || 'personal'
 })
+
+// 菜单项配置（按分组）
+const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
+  organization: [
+    { key: 'user', label: t('settings.userManagement') },
+    { key: 'role', label: t('settings.roleManagement') },
+    { key: 'organization', label: t('settings.organizationManagement') },
+  ],
+  personal: [
+    { key: 'profile', label: t('settings.profile') },
+    { key: 'invitation', label: t('settings.invitation') },
+    { key: 'about', label: t('settings.about') },
+  ],
+  system: [
+    { key: 'model', label: t('settings.modelAndProvider') },
+    { key: 'expert', label: t('settings.expertSettings') },
+    { key: 'assistant', label: t('settings.assistantSettings') },
+    { key: 'resident', label: t('settings.residentProcesses') },
+    { key: 'attachment', label: t('settings.attachmentManagement') },
+    { key: 'system', label: t('settings.systemConfig') },
+  ],
+}
+
+// 当前分组的菜单项
+const currentMenuItems = computed(() => {
+  return menuItemsByGroup[currentGroup.value] || menuItemsByGroup.personal
+})
+
+// 根据路由初始化 activeTab
+const getInitialTab = () => {
+  const group = currentGroup.value
+  const items = menuItemsByGroup[group]
+  if (items && items.length > 0) {
+    return items[0]?.key ?? 'profile'
+  }
+  return 'profile'
+}
+
+const activeTab = ref(getInitialTab())
+const profileSubTab = ref<'basic' | 'password'>('basic')
 
 const profileForm = reactive({
   nickname: '',
@@ -2754,31 +2785,39 @@ onMounted(() => {
   color: var(--text-primary, #333);
 }
 
-.settings-tabs {
+/* 设置菜单样式 */
+.settings-menu {
   display: flex;
   gap: 4px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.tab-btn {
+.menu-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 12px 20px;
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
   font-size: 14px;
+  font-weight: 500;
   color: var(--text-secondary, #666);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
-.tab-btn:hover {
+.menu-item-btn:hover {
   color: var(--text-primary, #333);
+  background: var(--secondary-bg, #f5f5f5);
 }
 
-.tab-btn.active {
+.menu-item-btn.active {
   color: var(--primary-color, #2196f3);
   border-bottom-color: var(--primary-color, #2196f3);
+  background: var(--primary-light, #e3f2fd);
 }
 
 .settings-section {

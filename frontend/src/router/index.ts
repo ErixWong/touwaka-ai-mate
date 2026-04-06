@@ -50,6 +50,27 @@ const router = createRouter({
           name: 'settings',
           component: () => import('@/views/SettingsView.vue'),
         },
+        // 组织管理（管理员专属）
+        {
+          path: 'organization',
+          name: 'organization',
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { settingsGroup: 'organization', adminOnly: true },
+        },
+        // 个人设置（所有用户）
+        {
+          path: 'personal',
+          name: 'personal',
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { settingsGroup: 'personal' },
+        },
+        // 系统设置（管理员专属）
+        {
+          path: 'system',
+          name: 'system',
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { settingsGroup: 'system', adminOnly: true },
+        },
         {
           path: 'skills',
           name: 'skills',

@@ -1,0 +1,1397 @@
+<template>
+  <div class="attachment-tab">
+    <!-- 搜索过滤栏 -->
+    <div class="filter-bar">
+      <div class="filter-row">
+        <div class="filter-item">
+          <label class="filter-label">{{ $t('attachment.sourceTag') }}</label>
+          <input
+            v-model="filters.source_tag"
+            type="text"
+            class="filter-input"
+            :placeholder="$t('attachment.sourceTagPlaceholder')"
+            @input="handleFilterChange"
+          />
+        </div>
+        <div class="filter-item">
+          <label class="filter-label">{{ $t('attachment.sourceId') }}</label>
+          <input
+            v-model="filters.source_id"
+            type="text"
+            class="filter-input"
+            :placeholder="$t('attachment.sourceIdPlaceholder')"
+            @input="handleFilterChange"
+          />
+        </div>
+        <div class="filter-item">
+          <label class="filter-label">{{ $t('attachment.mimeType') }}</label>
+          <select v-model="filters.mime_type" class="filter-select" @change="handleFilterChange">
+            <option value="">{{ $t('attachment.allTypes') }}</option>
+            <option value="image">{{ $t('attachment.typeImage') }}</option>
+            <option value="document">{{ $t('attachment.typeDocument') }}</option>
+            <option value="video">{{ $t('attachment.typeVideo') }}</option>
+          </select>
+        </div>
+        <div class="filter-item">
+          <label class="filter-label">{{ $t('attachment.dateRange') }}</label>
+          <div class="date-range">
+            <input
+              v-model="filters.start_date"
+              type="date"
+              class="filter-date"
+              @change="handleFilterChange"
+            />
+            <span class="date-separator">—</span>
+            <input
+              v-model="filters.end_date"
+              type="date"
+              class="filter-date"
+              @change="handleFilterChange"
+            />
+          </div>
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button class="btn-secondary" @click.stop="resetFilters">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+          </svg>
+          {{ $t('attachment.resetFilters') }}
+        </button>
+        <button class="btn-primary" @click.stop="openUploadModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          {{ $t('attachment.upload') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="stats-bar">
+      <span class="stats-text">
+        {{ $t('attachment.totalCount', { count: pagination.total }) }}
+      </span>
+    </div>
+
+    <!-- 附件列表 -->
+    <div class="list-container">
+      <div v-if="loading" class="loading-state">
+        {{ $t('common.loading') }}
+      </div>
+
+      <div v-else-if="!attachments || attachments.length === 0" class="empty-state">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+        </svg>
+        <span class="empty-text">{{ $t('attachment.noAttachments') }}</span>
+        <button class="btn-primary" @click="openUploadModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          {{ $t('attachment.upload') }}
+        </button>
+      </div>
+
+      <div v-else class="attachments-table">
+        <!-- 表头 -->
+        <div class="table-header">
+          <span class="col-preview">{{ $t('attachment.preview') }}</span>
+          <span class="col-filename">{{ $t('attachment.filename') }}</span>
+          <span class="col-type">{{ $t('attachment.type') }}</span>
+          <span class="col-size">{{ $t('attachment.size') }}</span>
+          <span class="col-source">{{ $t('attachment.source') }}</span>
+          <span class="col-uploader">{{ $t('attachment.uploader') }}</span>
+          <span class="col-time">{{ $t('attachment.uploadTime') }}</span>
+          <span class="col-actions">{{ $t('common.actions') }}</span>
+        </div>
+
+        <!-- 列表项 -->
+        <div
+          v-for="attachment in attachments"
+          :key="attachment.id"
+          class="attachment-row"
+        >
+          <div class="col-preview">
+            <div class="preview-thumb" @click="previewAttachment(attachment)">
+              <img
+                v-if="isImage(attachment.mime_type)"
+                :src="getPreviewUrl(attachment)"
+                alt="preview"
+                class="thumb-image"
+              />
+              <svg v-else class="thumb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+          </div>
+          <div class="col-filename">
+            <span class="filename-text" :title="attachment.filename">{{ attachment.filename }}</span>
+          </div>
+          <div class="col-type">
+            <span class="type-badge">{{ getMimeTypeLabel(attachment.mime_type) }}</span>
+          </div>
+          <div class="col-size">
+            <span class="size-text">{{ formatSize(attachment.size) }}</span>
+          </div>
+          <div class="col-source">
+            <span class="source-tag">{{ getSourceLabel(attachment.source_tag) }}</span>
+          </div>
+          <div class="col-uploader">
+            <span class="uploader-text">{{ attachment.uploader_name || '—' }}</span>
+          </div>
+          <div class="col-time">
+            <span class="time-text">{{ formatDate(attachment.created_at) }}</span>
+          </div>
+          <div class="col-actions">
+            <button
+              class="btn-icon-action preview"
+              :title="$t('attachment.preview')"
+              @click="previewAttachment(attachment)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+            <button
+              class="btn-icon-action delete"
+              :title="$t('common.delete')"
+              @click="handleDelete(attachment)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分页 -->
+    <div v-if="pagination.pages > 1" class="pagination-bar">
+      <button
+        class="btn-page"
+        :disabled="pagination.page <= 1"
+        @click="changePage(pagination.page - 1)"
+      >
+        {{ $t('pagination.prev') }}
+      </button>
+      <span class="page-info">
+        {{ pagination.page }} / {{ pagination.pages }}
+      </span>
+      <button
+        class="btn-page"
+        :disabled="pagination.page >= pagination.pages"
+        @click="changePage(pagination.page + 1)"
+      >
+        {{ $t('pagination.next') }}
+      </button>
+    </div>
+
+    <!-- 预览弹窗 -->
+    <div v-if="showPreviewModal" class="modal-overlay" @click.self="closePreviewModal">
+      <div class="modal-content preview-modal">
+        <div class="modal-header">
+          <h3>{{ previewingAttachment?.filename }}</h3>
+          <button class="btn-close" @click="closePreviewModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body preview-body">
+          <img
+            v-if="isImage(previewingAttachment?.mime_type)"
+            :src="getPreviewUrl(previewingAttachment)"
+            alt="preview"
+            class="preview-image"
+          />
+          <div v-else class="preview-placeholder">
+            <svg class="preview-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <p>{{ $t('attachment.noPreviewAvailable') }}</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="preview-meta">
+            <span>{{ $t('attachment.size') }}: {{ formatSize(previewingAttachment?.size) }}</span>
+            <span>{{ $t('attachment.type') }}: {{ previewingAttachment?.mime_type }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+      <div class="modal-content delete-modal">
+        <div class="modal-header">
+          <h3>{{ $t('attachment.deleteConfirmTitle') }}</h3>
+          <button class="btn-close" @click="closeDeleteModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>{{ $t('attachment.deleteConfirmMessage', { filename: deletingAttachment?.filename }) }}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-confirm delete" @click="confirmDelete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+            </svg>
+            {{ $t('common.delete') }}
+          </button>
+          <button class="btn-cancel" @click="closeDeleteModal">
+            {{ $t('common.cancel') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 上传弹窗 -->
+    <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
+      <div class="modal-content upload-modal" @click.stop>
+        <div class="modal-header">
+          <h3>{{ $t('attachment.uploadTitle') }}</h3>
+          <button class="btn-close" @click.stop="closeUploadModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="upload-area">
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf,text/plain,text/markdown,application/json,application/zip"
+              @change="handleFileSelect"
+              class="file-input"
+            />
+            <div class="upload-hint" @click="triggerFileSelect">
+              <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <p>{{ $t('attachment.uploadHint') }}</p>
+              <p class="upload-size-limit">{{ $t('attachment.uploadSizeLimit') }}</p>
+            </div>
+            <div v-if="selectedFile" class="selected-file">
+              <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="file-name">{{ selectedFile.name }}</span>
+              <span class="file-size">{{ formatSize(selectedFile.size) }}</span>
+              <button class="btn-remove-file" @click="clearSelectedFile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click.stop="closeUploadModal">
+            {{ $t('common.cancel') }}
+          </button>
+          <button
+            class="btn-confirm upload"
+            :disabled="!selectedFile || uploading"
+            @click="confirmUpload"
+          >
+            <svg v-if="!uploading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon spinning">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            {{ uploading ? $t('attachment.uploading') : $t('attachment.upload') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useToastStore } from '@/stores/toast'
+import {
+  getAttachments,
+  deleteAttachment,
+  generateAttachmentToken,
+  getAttachmentUrl,
+  uploadAttachment,
+  type Attachment,
+  type AttachmentListParams,
+} from '@/api/attachment'
+
+const { t } = useI18n()
+const toast = useToastStore()
+
+const attachments = ref<Attachment[]>([])
+const loading = ref(false)
+
+const filters = reactive<AttachmentListParams>({
+  page: 1,
+  size: 20,
+  source_tag: '',
+  source_id: '',
+  mime_type: '',
+  start_date: '',
+  end_date: '',
+})
+
+const pagination = reactive({
+  total: 0,
+  page: 1,
+  size: 20,
+  pages: 0,
+})
+
+// 预览弹窗
+const showPreviewModal = ref(false)
+const previewingAttachment = ref<Attachment | null>(null)
+const previewToken = ref('')
+
+// 删除确认弹窗
+const showDeleteModal = ref(false)
+const deletingAttachment = ref<Attachment | null>(null)
+
+// 上传弹窗
+const showUploadModal = ref(false)
+const selectedFile = ref<File | null>(null)
+const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+// 加载附件列表
+const loadAttachments = async () => {
+  loading.value = true
+  try {
+    const params: AttachmentListParams = {
+      page: filters.page,
+      size: filters.size,
+    }
+    if (filters.source_tag) params.source_tag = filters.source_tag
+    if (filters.source_id) params.source_id = filters.source_id
+    if (filters.mime_type) params.mime_type = filters.mime_type
+    if (filters.start_date) params.start_date = filters.start_date
+    if (filters.end_date) params.end_date = filters.end_date
+
+    const response = await getAttachments(params)
+    attachments.value = response.items
+    pagination.total = response.total
+    pagination.page = response.page
+    pagination.size = response.size
+    pagination.pages = response.pages
+  } catch (err) {
+    console.error('Failed to load attachments:', err)
+    toast.error(t('attachment.loadError'))
+  } finally {
+    loading.value = false
+  }
+}
+
+// 处理过滤变化
+const handleFilterChange = () => {
+  filters.page = 1
+  loadAttachments()
+}
+
+// 重置过滤
+const resetFilters = () => {
+  filters.source_tag = ''
+  filters.source_id = ''
+  filters.mime_type = ''
+  filters.start_date = ''
+  filters.end_date = ''
+  filters.page = 1
+  loadAttachments()
+}
+
+// 分页
+const changePage = (page: number) => {
+  filters.page = page
+  loadAttachments()
+}
+
+// 判断是否为图片
+const isImage = (mime_type?: string): boolean => {
+  if (!mime_type) return false
+  return mime_type.startsWith('image/')
+}
+
+// 获取文件图标
+const getFileIcon = (mime_type?: string): string => {
+  if (!mime_type) return '📄'
+  if (mime_type.startsWith('image/')) return '🖼️'
+  if (mime_type.startsWith('video/')) return '🎬'
+  if (mime_type.startsWith('audio/')) return '🎵'
+  if (mime_type.includes('pdf')) return '📕'
+  if (mime_type.includes('word') || mime_type.includes('document')) return '📘'
+  if (mime_type.includes('excel') || mime_type.includes('spreadsheet')) return '📊'
+  if (mime_type.includes('powerpoint') || mime_type.includes('presentation')) return '📙'
+  if (mime_type.includes('zip') || mime_type.includes('archive')) return '📦'
+  return '📄'
+}
+
+// 获取 MIME 类型标签
+const getMimeTypeLabel = (mime_type: string): string => {
+  const types: Record<string, string> = {
+    'image/jpeg': 'JPEG',
+    'image/png': 'PNG',
+    'image/gif': 'GIF',
+    'image/webp': 'WebP',
+    'video/mp4': 'MP4',
+    'video/webm': 'WebM',
+    'application/pdf': 'PDF',
+    'application/zip': 'ZIP',
+  }
+  return types[mime_type] || mime_type.split('/')[1]?.toUpperCase() || mime_type
+}
+
+// 获取来源标签
+const getSourceLabel = (source_tag: string): string => {
+  const labels: Record<string, string> = {
+    'kb_article_image': t('attachment.sourceKbArticle'),
+    'task_export': t('attachment.sourceTaskExport'),
+    'chat_attachment': t('attachment.sourceChatAttachment'),
+  }
+  return labels[source_tag] || source_tag
+}
+
+// 格式化文件大小
+const formatSize = (size?: number): string => {
+  if (!size) return '—'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+  if (size < 1024 * 1024 * 1024) return `${Math.round(size / (1024 * 1024))} MB`
+  return `${Math.round(size / (1024 * 1024 * 1024))} GB`
+}
+
+// 格式化日期
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+// 获取预览 URL
+const getPreviewUrl = (attachment?: Attachment | null): string => {
+  if (!attachment) return ''
+  if (previewToken.value) {
+    return getAttachmentUrl(attachment.id, previewToken.value)
+  }
+  return ''
+}
+
+// 预览附件
+const previewAttachment = async (attachment: Attachment) => {
+  previewingAttachment.value = attachment
+  showPreviewModal.value = true
+
+  // 生成访问 Token
+  try {
+    const result = await generateAttachmentToken(attachment.source_tag, attachment.source_id)
+    previewToken.value = result.token
+  } catch (err) {
+    console.error('Failed to generate token:', err)
+    toast.error(t('attachment.tokenError'))
+  }
+}
+
+// 关闭预览弹窗
+const closePreviewModal = () => {
+  showPreviewModal.value = false
+  previewingAttachment.value = null
+  previewToken.value = ''
+}
+
+// 删除附件
+const handleDelete = (attachment: Attachment) => {
+  deletingAttachment.value = attachment
+  showDeleteModal.value = true
+}
+
+// 关闭删除弹窗
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  deletingAttachment.value = null
+}
+
+// 确认删除
+const confirmDelete = async () => {
+  if (!deletingAttachment.value) return
+
+  try {
+    await deleteAttachment(deletingAttachment.value.id)
+    toast.success(t('attachment.deleteSuccess'))
+    closeDeleteModal()
+    loadAttachments()
+  } catch (err) {
+    console.error('Failed to delete attachment:', err)
+    toast.error(t('attachment.deleteError'))
+  }
+}
+
+// 打开上传弹窗
+const openUploadModal = () => {
+  showUploadModal.value = true
+  selectedFile.value = null
+}
+
+// 关闭上传弹窗
+const closeUploadModal = () => {
+  showUploadModal.value = false
+  selectedFile.value = null
+}
+
+// 触发文件选择
+const triggerFileSelect = () => {
+  fileInput.value?.click()
+}
+
+// 处理文件选择
+const handleFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    // 检查文件大小（10MB 限制）
+    const maxSize = 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      toast.error(t('attachment.fileSizeExceed'))
+      return
+    }
+    selectedFile.value = file
+  }
+}
+
+// 清除已选文件
+const clearSelectedFile = () => {
+  selectedFile.value = null
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
+// 确认上传
+const confirmUpload = async () => {
+  if (!selectedFile.value) return
+
+  uploading.value = true
+  try {
+    // 读取文件并转换为 Base64
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const base64Data = e.target?.result as string
+      // 移除 data URL 前缀
+      const base64Content = base64Data.split(',')[1] || ''
+
+      try {
+        await uploadAttachment({
+          source_tag: 'admin_upload',
+          source_id: 'admin_upload', // 管理员上传使用固定 source_id
+          file_name: selectedFile.value!.name,
+          mime_type: selectedFile.value!.type || 'application/octet-stream',
+          base64_data: base64Content,
+        })
+        toast.success(t('attachment.uploadSuccess'))
+        closeUploadModal()
+        loadAttachments()
+      } catch (uploadErr) {
+        console.error('Failed to upload attachment:', uploadErr)
+        toast.error(t('attachment.uploadError'))
+      } finally {
+        uploading.value = false
+      }
+    }
+    reader.onerror = () => {
+      toast.error(t('attachment.readFileError'))
+      uploading.value = false
+    }
+    reader.readAsDataURL(selectedFile.value)
+  } catch (err) {
+    console.error('Failed to read file:', err)
+    toast.error(t('attachment.readFileError'))
+    uploading.value = false
+  }
+}
+
+// 初始化
+onMounted(() => {
+  loadAttachments()
+})
+</script>
+
+<style scoped>
+.attachment-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 过滤栏 */
+.filter-bar {
+  padding: 16px;
+  background: var(--secondary-bg, #f8f9fa);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+}
+
+.filter-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+}
+
+.filter-select,
+.filter-date,
+.filter-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  min-width: 140px;
+}
+
+.filter-select:focus,
+.filter-date:focus,
+.filter-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #2196f3);
+}
+
+.filter-input::placeholder {
+  color: var(--text-tertiary, #bbb);
+}
+
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-separator {
+  color: var(--text-tertiary, #999);
+}
+
+.filter-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* 按钮基础样式 */
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+}
+
+/* 主要按钮 */
+.btn-primary {
+  padding: 8px 16px;
+  background: var(--primary-color, #2196f3);
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover, #1976d2);
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
+}
+
+/* 次要按钮 */
+.btn-secondary {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.btn-secondary:hover {
+  background: var(--hover-bg, #f5f5f5);
+  border-color: var(--text-secondary, #999);
+  color: var(--text-primary, #333);
+}
+
+/* 统计栏 */
+.stats-bar {
+  padding: 12px 16px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+}
+
+.stats-text {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+/* 列表容器 */
+.list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.loading-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  color: var(--text-secondary, #888);
+  gap: 16px;
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  opacity: 0.4;
+  color: var(--text-tertiary, #bbb);
+}
+
+.empty-text {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+}
+
+.empty-state .btn-primary {
+  margin-top: 8px;
+}
+
+/* 表格样式 */
+.attachments-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 60px 1fr 80px 80px 120px 100px 140px 80px;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--secondary-bg, #f5f5f5);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.attachment-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 80px 80px 120px 100px 140px 80px;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--card-bg, white);
+  align-items: center;
+  transition: background 0.15s;
+}
+
+.attachment-row:hover {
+  background: var(--hover-bg, #fafafa);
+}
+
+/* 列样式 */
+.col-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: var(--secondary-bg, #f0f0f0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.preview-thumb:hover {
+  background: var(--hover-bg, #e0e0e0);
+  transform: scale(1.05);
+}
+
+.thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.col-filename {
+  overflow: hidden;
+}
+
+.filename-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.col-type {
+  display: flex;
+  align-items: center;
+}
+
+.type-badge {
+  padding: 4px 8px;
+  background: var(--secondary-bg, #e8e8e8);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+}
+
+.col-size {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.col-source {
+  display: flex;
+  align-items: center;
+}
+
+.source-tag {
+  padding: 4px 8px;
+  background: var(--primary-light, #e3f2fd);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--primary-color, #2196f3);
+}
+
+.col-uploader {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-time {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.col-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.btn-icon-action {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-icon-action:hover {
+  background: var(--hover-bg, #f0f0f0);
+  transform: scale(1.1);
+}
+
+.btn-icon-action.preview:hover {
+  background: var(--primary-light, #e3f2fd);
+}
+
+.btn-icon-action.delete:hover {
+  background: var(--error-bg, #ffebee);
+}
+
+/* 分页 */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--card-bg, #fff);
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+}
+
+.btn-page {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-page:hover:not(:disabled) {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.btn-page:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.btn-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-tertiary, #999);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+.btn-close:hover {
+  background: var(--hover-bg, #f5f5f5);
+  color: var(--text-primary, #333);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color, #eee);
+}
+
+/* 预览弹窗 */
+.preview-modal {
+  max-width: 720px;
+}
+
+.preview-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  background: var(--secondary-bg, #f8f9fa);
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+}
+
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-secondary, #666);
+}
+
+.preview-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.preview-meta {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+/* 删除弹窗 */
+.delete-modal {
+  max-width: 400px;
+}
+
+.btn-cancel {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.btn-cancel:hover {
+  background: var(--hover-bg, #f5f5f5);
+  border-color: var(--text-secondary, #999);
+}
+
+.btn-confirm.delete {
+  padding: 8px 16px;
+  background: var(--error-color, #c62828);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(198, 40, 40, 0.2);
+}
+
+.btn-confirm.delete:hover {
+  background: var(--error-hover, #b71c1c);
+  box-shadow: 0 4px 8px rgba(198, 40, 40, 0.3);
+  transform: translateY(-1px);
+}
+
+/* 上传按钮 - 已合并到 .btn-primary */
+
+/* 上传弹窗 */
+.upload-modal {
+  max-width: 480px;
+}
+
+.upload-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 2px dashed var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-hint:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.upload-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+}
+
+.upload-hint p {
+  margin: 0;
+  color: var(--text-secondary, #666);
+}
+
+.upload-size-limit {
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.selected-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+}
+
+.selected-file .file-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.selected-file .file-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file .file-size {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.btn-remove-file {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: var(--error-bg, #ffebee);
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--error-color, #c62828);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-remove-file:hover {
+  background: var(--error-color, #c62828);
+  color: white;
+}
+
+.btn-confirm.upload {
+  padding: 8px 16px;
+  background: var(--primary-color, #2196f3);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+}
+
+.btn-confirm.upload:hover:not(:disabled) {
+  background: var(--primary-hover, #1976d2);
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-confirm.upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* 加载动画 */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .table-header {
+    display: none;
+  }
+
+  .attachment-row {
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    grid-template-rows: auto auto auto;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .col-preview {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+
+  .col-filename {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .col-type,
+  .col-size {
+    grid-column: 2;
+    grid-row: 2;
+    display: inline-flex;
+    gap: 8px;
+  }
+
+  .col-source,
+  .col-uploader,
+  .col-time {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    display: inline-flex;
+    gap: 12px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border-color, #eee);
+  }
+
+  .col-actions {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    flex-direction: column;
+  }
+}
+
+/* Scrollbar */
+.list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.list-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.list-container::-webkit-scrollbar-thumb {
+  background: var(--border-color, #ddd);
+  border-radius: 3px;
+}
+
+.list-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary, #ccc);
+}
+</style>

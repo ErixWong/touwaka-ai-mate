@@ -47,7 +47,15 @@ design/
 | [tool-permission-design.md](./v2/tool-permission-design.md) | 内置工具权限分级设计 | 进行中 |
 | [kb-permission-design.md](./v2/kb-permission-design.md) | 知识库权限控制设计 | 草稿 |
 | [background-task-scheduler-design.md](./v2/background-task-scheduler-design.md) | 后台任务调度器 | 草稿 |
+| [assistant-system-design.md](./v2/assistant-system-design.md) | 助理系统设计 | 已实现 |
 | [code-review-2026-02-21.md](./v2/code-review-2026-02-21.md) | 代码审查记录 | - |
+
+### 知识库与附件设计
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [attachment-service-design.md](./attachment-service-design.md) | 通用附件服务设计 | 已采纳 |
+| [kb-recall-design.md](./kb-recall-design.md) | 知识库召回设计（含图片处理） | 已采纳 |
 
 ### 评审报告
 
@@ -66,6 +74,16 @@ design/
 | [architecture-improvements.md](./architecture-improvements.md) | 架构改进建议（安全、高可用、监控） |
 | [references-analysis-report.md](./references-analysis-report.md) | 外部项目（Claw 系列）分析 |
 
+### 草稿文档
+
+[drafts/](./drafts/) - 设计草案和工作文档
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [mcp-system-design.md](./drafts/mcp-system-design.md) | MCP 系统设计方案 | 草稿 |
+| [chatview-message-flow-complete.md](./drafts/chatview-message-flow-complete.md) | ChatView 消息处理流程图 | 参考 |
+| [chatview-optimization-plan.md](./drafts/chatview-optimization-plan.md) | ChatView 优化计划 | 进行中 |
+
 ### 归档文档
 
 [archive/](./archive/) - 已废弃/已处理的历史文档
@@ -74,6 +92,8 @@ design/
 |------|------|
 | [readme-old.md](./archive/readme-old.md) | 旧版文档结构说明 |
 | [documentation-audit-report.md](./archive/documentation-audit-report.md) | 文档审查报告（已完成） |
+| [issue-226-toast-analysis.md](./archive/issue-226-toast-analysis.md) | Toast 组件设计分析（已实现） |
+| [message-retry-flow-diagram.md](./archive/message-retry-flow-diagram.md) | 消息重发流程图（已修复） |
 | [v2-obsolete/](./archive/v2-obsolete/) | 2026-02-26 归档的旧 Skill 设计 |
 
 #### v2-obsolete 归档（2026-02-26）
@@ -102,4 +122,4 @@ design/
 
 ---
 
-*最后更新: 2026-02-26*
+*最后更新: 2026-04-06*

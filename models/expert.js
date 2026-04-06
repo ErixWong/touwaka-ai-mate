@@ -124,11 +124,6 @@ export default class expert extends Model {
       allowNull: true,
       comment: "最大工具调用轮数（NULL表示使用系统默认，范围 1-50）"
     },
-    psyche_config: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "Psyche配置（JSON格式）：{max_tokens_ratio, reflection_lookback, enable_notes}"
-    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -138,6 +133,11 @@ export default class expert extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    psyche_config: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "Psyche配置（JSON格式）：{max_tokens_ratio, reflection_lookback, enable_notes}"
     }
   }, {
     sequelize,
