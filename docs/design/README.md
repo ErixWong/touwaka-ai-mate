@@ -47,6 +47,7 @@ design/
 | [tool-permission-design.md](./v2/tool-permission-design.md) | 内置工具权限分级设计 | 进行中 |
 | [kb-permission-design.md](./v2/kb-permission-design.md) | 知识库权限控制设计 | 草稿 |
 | [background-task-scheduler-design.md](./v2/background-task-scheduler-design.md) | 后台任务调度器 | 草稿 |
+| [assistant-system-design.md](./v2/assistant-system-design.md) | 助理系统设计 | 已实现 |
 | [code-review-2026-02-21.md](./v2/code-review-2026-02-21.md) | 代码审查记录 | - |
 
 ### 知识库与附件设计
@@ -91,6 +92,8 @@ design/
 |------|------|
 | [readme-old.md](./archive/readme-old.md) | 旧版文档结构说明 |
 | [documentation-audit-report.md](./archive/documentation-audit-report.md) | 文档审查报告（已完成） |
+| [issue-226-toast-analysis.md](./archive/issue-226-toast-analysis.md) | Toast 组件设计分析（已实现） |
+| [message-retry-flow-diagram.md](./archive/message-retry-flow-diagram.md) | 消息重发流程图（已修复） |
 | [v2-obsolete/](./archive/v2-obsolete/) | 2026-02-26 归档的旧 Skill 设计 |
 
 #### v2-obsolete 归档（2026-02-26）
