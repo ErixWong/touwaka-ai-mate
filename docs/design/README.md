@@ -79,7 +79,6 @@ design/
 
 | 文档 | 说明 | 状态 |
 |------|------|------|
-| [kb-paragraph-context-field.md](./drafts/kb-paragraph-context-field.md) | kb_paragraphs context 字段设计 | 草稿 |
 | [mcp-system-design.md](./drafts/mcp-system-design.md) | MCP 系统设计方案 | 草稿 |
 | [chatview-message-flow-complete.md](./drafts/chatview-message-flow-complete.md) | ChatView 消息处理流程图 | 参考 |
 | [chatview-optimization-plan.md](./drafts/chatview-optimization-plan.md) | ChatView 优化计划 | 进行中 |
