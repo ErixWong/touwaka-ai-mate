@@ -457,11 +457,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     organizationManagement: '组织架构',
     // 附件管理
     attachmentManagement: '附件管理',
-    comingSoon: '即将上线...',
     // 驻留进程管理
     residentProcesses: '驻留进程',
-    // 附件管理
-    attachmentManagement: '附件管理',
     // 驻留进程详情
     resident: {
       noProcesses: '暂无驻留进程',
@@ -1537,52 +1534,5 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     verifyTitle: '验证邀请码',
     verifySuccess: '邀请码有效',
     verifyFailed: '邀请码无效或已过期',
-  },
-
-  // 附件管理
-  attachment: {
-    // 筛选
-    sourceTag: '来源标签',
-    allSources: '全部来源',
-    sourceKbArticle: '知识库文章',
-    sourceTaskExport: '任务导出',
-    sourceChatAttachment: '对话附件',
-    sourceAdminUpload: '管理员上传',
-    mimeType: '文件类型',
-    allTypes: '全部类型',
-    typeImage: '图片',
-    typeDocument: '文档',
-    typeVideo: '视频',
-    dateRange: '时间范围',
-    resetFilters: '重置筛选',
-    totalCount: '共 {count} 个附件',
-    noAttachments: '暂无附件',
-    // 表格
-    preview: '预览',
-    filename: '文件名',
-    type: '类型',
-    size: '大小',
-    source: '来源',
-    uploader: '上传者',
-    uploadTime: '上传时间',
-    // 上传
-    upload: '上传',
-    uploadTitle: '上传附件',
-    uploadHint: '点击选择文件或拖拽文件到此处',
-    uploadSizeLimit: '支持图片、PDF、文本、JSON、ZIP，最大 10MB',
-    uploading: '上传中...',
-    uploadSuccess: '附件上传成功',
-    uploadError: '上传附件失败',
-    readFileError: '读取文件失败',
-    fileSizeExceed: '文件大小超过限制（最大 10MB）',
-    // 删除
-    deleteConfirmTitle: '确认删除附件',
-    deleteConfirmMessage: '确定要删除附件 "{filename}" 吗？此操作不可恢复。',
-    deleteSuccess: '附件已删除',
-    deleteError: '删除附件失败',
-    // 错误提示
-    loadError: '加载附件列表失败',
-    tokenError: '获取访问令牌失败',
-    noPreviewAvailable: '暂不支持此文件类型预览',
   },
 }
