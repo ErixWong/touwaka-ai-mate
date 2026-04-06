@@ -80,3 +80,41 @@ export const generateAttachmentToken = async (sourceTag: string, sourceId: strin
 export const getAttachmentUrl = (id: string, token: string): string => {
   return `/attach/t/${token}/${id}`
 }
+
+/**
+ * 上传附件参数
+ */
+export interface UploadAttachmentParams {
+  source_tag: string
+  source_id: string
+  file_name: string
+  mime_type: string
+  base64_data: string
+  alt_text?: string
+}
+
+/**
+ * 上传附件响应
+ */
+export interface UploadAttachmentResponse {
+  id: string
+  source_tag: string
+  source_id: string
+  file_name: string | null
+  mime_type: string
+  file_size: number
+  width: number | null
+  height: number | null
+  file_path: string
+  data_url: string
+  ref: string
+  created_at: string
+}
+
+/**
+ * 上传附件
+ */
+export const uploadAttachment = async (params: UploadAttachmentParams): Promise<UploadAttachmentResponse> => {
+  const response = await apiClient.post('/attachments', params)
+  return response.data
+}

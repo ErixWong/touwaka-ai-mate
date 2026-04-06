@@ -10,6 +10,7 @@
             <option value="kb_article_image">{{ $t('attachment.sourceKbArticle') }}</option>
             <option value="task_export">{{ $t('attachment.sourceTaskExport') }}</option>
             <option value="chat_attachment">{{ $t('attachment.sourceChatAttachment') }}</option>
+            <option value="admin_upload">{{ $t('attachment.sourceAdminUpload') }}</option>
           </select>
         </div>
         <div class="filter-item">
@@ -41,6 +42,9 @@
         </div>
       </div>
       <div class="filter-actions">
+        <button class="btn-upload" @click="openUploadModal">
+          {{ $t('attachment.upload') }}
+        </button>
         <button class="btn-reset" @click="resetFilters">
           {{ $t('attachment.resetFilters') }}
         </button>
@@ -202,11 +206,55 @@
         </div>
       </div>
     </div>
+
+    <!-- 上传弹窗 -->
+    <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
+      <div class="modal-content upload-modal">
+        <div class="modal-header">
+          <h3>{{ $t('attachment.uploadTitle') }}</h3>
+          <button class="btn-close" @click="closeUploadModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="upload-area">
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf,text/plain,text/markdown,application/json,application/zip"
+              @change="handleFileSelect"
+              class="file-input"
+            />
+            <div class="upload-hint" @click="triggerFileSelect">
+              <span class="upload-icon">📤</span>
+              <p>{{ $t('attachment.uploadHint') }}</p>
+              <p class="upload-size-limit">{{ $t('attachment.uploadSizeLimit') }}</p>
+            </div>
+            <div v-if="selectedFile" class="selected-file">
+              <span class="file-icon">{{ getFileIcon(selectedFile.type) }}</span>
+              <span class="file-name">{{ selectedFile.name }}</span>
+              <span class="file-size">{{ formatSize(selectedFile.size) }}</span>
+              <button class="btn-remove-file" @click="clearSelectedFile">×</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="closeUploadModal">
+            {{ $t('common.cancel') }}
+          </button>
+          <button
+            class="btn-confirm upload"
+            :disabled="!selectedFile || uploading"
+            @click="confirmUpload"
+          >
+            {{ uploading ? $t('attachment.uploading') : $t('attachment.upload') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
 import {
@@ -214,6 +262,7 @@ import {
   deleteAttachment,
   generateAttachmentToken,
   getAttachmentUrl,
+  uploadAttachment,
   type Attachment,
   type AttachmentListParams,
 } from '@/api/attachment'
@@ -248,6 +297,12 @@ const previewToken = ref('')
 // 删除确认弹窗
 const showDeleteModal = ref(false)
 const deletingAttachment = ref<Attachment | null>(null)
+
+// 上传弹窗
+const showUploadModal = ref(false)
+const selectedFile = ref<File | null>(null)
+const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 // 加载附件列表
 const loadAttachments = async () => {
@@ -419,6 +474,89 @@ const confirmDelete = async () => {
   } catch (err) {
     console.error('Failed to delete attachment:', err)
     toast.error(t('attachment.deleteError'))
+  }
+}
+
+// 打开上传弹窗
+const openUploadModal = () => {
+  showUploadModal.value = true
+  selectedFile.value = null
+}
+
+// 关闭上传弹窗
+const closeUploadModal = () => {
+  showUploadModal.value = false
+  selectedFile.value = null
+}
+
+// 触发文件选择
+const triggerFileSelect = () => {
+  fileInput.value?.click()
+}
+
+// 处理文件选择
+const handleFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    // 检查文件大小（10MB 限制）
+    const maxSize = 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      toast.error(t('attachment.fileSizeExceed'))
+      return
+    }
+    selectedFile.value = file
+  }
+}
+
+// 清除已选文件
+const clearSelectedFile = () => {
+  selectedFile.value = null
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
+// 确认上传
+const confirmUpload = async () => {
+  if (!selectedFile.value) return
+
+  uploading.value = true
+  try {
+    // 读取文件并转换为 Base64
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const base64Data = e.target?.result as string
+      // 移除 data URL 前缀
+      const base64Content = base64Data.split(',')[1] || ''
+
+      try {
+        await uploadAttachment({
+          source_tag: 'admin_upload',
+          source_id: 'admin_upload', // 管理员上传使用固定 source_id
+          file_name: selectedFile.value!.name,
+          mime_type: selectedFile.value!.type || 'application/octet-stream',
+          base64_data: base64Content,
+        })
+        toast.success(t('attachment.uploadSuccess'))
+        closeUploadModal()
+        loadAttachments()
+      } catch (uploadErr) {
+        console.error('Failed to upload attachment:', uploadErr)
+        toast.error(t('attachment.uploadError'))
+      } finally {
+        uploading.value = false
+      }
+    }
+    reader.onerror = () => {
+      toast.error(t('attachment.readFileError'))
+      uploading.value = false
+    }
+    reader.readAsDataURL(selectedFile.value)
+  } catch (err) {
+    console.error('Failed to read file:', err)
+    toast.error(t('attachment.readFileError'))
+    uploading.value = false
   }
 }
 
@@ -888,6 +1026,139 @@ onMounted(() => {
 
 .btn-confirm.delete:hover {
   background: var(--error-hover, #b71c1c);
+}
+
+/* 上传按钮 */
+.btn-upload {
+  padding: 8px 16px;
+  background: var(--primary-color, #2196f3);
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 8px;
+}
+
+.btn-upload:hover {
+  background: var(--primary-hover, #1976d2);
+}
+
+/* 上传弹窗 */
+.upload-modal {
+  max-width: 480px;
+}
+
+.upload-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--secondary-bg, #f8f9fa);
+  border: 2px dashed var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-hint:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+}
+
+.upload-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.upload-hint p {
+  margin: 0;
+  color: var(--text-secondary, #666);
+}
+
+.upload-size-limit {
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.selected-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+}
+
+.selected-file .file-icon {
+  font-size: 24px;
+}
+
+.selected-file .file-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file .file-size {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.btn-remove-file {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: var(--error-bg, #ffebee);
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--error-color, #c62828);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-remove-file:hover {
+  background: var(--error-color, #c62828);
+  color: white;
+}
+
+.btn-confirm.upload {
+  padding: 8px 16px;
+  background: var(--primary-color, #2196f3);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-confirm.upload:hover:not(:disabled) {
+  background: var(--primary-hover, #1976d2);
+}
+
+.btn-confirm.upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 响应式 */

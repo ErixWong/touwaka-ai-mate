@@ -206,6 +206,12 @@ class AttachmentController {
         return task.created_by === userId;
       }
       
+      case 'admin_upload': {
+        // 管理员直接上传的附件，只有管理员可以访问
+        const { isSystemAdmin } = await import('../../lib/kb-permission.js');
+        return await isSystemAdmin(this.db, userId);
+      }
+      
       default:
         // 未知类型默认拒绝
         return false;
