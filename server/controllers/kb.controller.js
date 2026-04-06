@@ -1803,6 +1803,592 @@ class KbController {
     return roots;
   }
 
+  // ==================== Recall (知识库召回) ====================
+
+  // Token 配置
+  static TOKEN_CONFIG = {
+    EXPIRES_IN: 3600,  // 有效期：1 小时（秒）
+  };
+
+  /**
+   * 单知识库召回
+   * POST /api/kb/:kb_id/recall
+   */
+  async recallKnowledge(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const { kb_id } = ctx.params;
+      const {
+        query,
+        top_k = 5,
+        threshold = 0.1,
+        article_id,
+        min_tokens = 200,
+        context_mode = 'auto'
+      } = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      if (!query || !query.trim()) {
+        ctx.throw(400, 'Search query is required');
+      }
+
+      // 权限检查
+      const hasAccess = await canAccessKb(this.db, kb_id, userId);
+      if (!hasAccess) {
+        ctx.throw(403, '无权访问此知识库');
+      }
+
+      // 验证知识库存在
+      const kb = await this.KnowledgeBase.findByPk(kb_id);
+      if (!kb) {
+        ctx.throw(404, 'Knowledge base not found');
+      }
+
+      // 生成查询向量
+      const queryEmbedding = await this._generateEmbedding(query, kb.embedding_model_id);
+      if (!queryEmbedding) {
+        ctx.throw(500, 'Failed to generate query embedding');
+      }
+
+      // 调整查询向量维度
+      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
+      if (!vectorToSearch) {
+        ctx.throw(500, 'Failed to adjust query embedding dimension');
+      }
+
+      // 构建搜索条件
+      const articleFilter = article_id ? 'AND s.article_id = ?' : '';
+      const replacements = article_id
+        ? [JSON.stringify(vectorToSearch), kb_id, article_id, top_k]
+        : [JSON.stringify(vectorToSearch), kb_id, top_k];
+
+      // 执行向量搜索
+      const results = await this.db.sequelize.query(
+        `SELECT
+          p.id, p.title, p.content, p.is_knowledge_point, p.token_count, p.position,
+          s.id as section_id, s.title as section_title, s.level as section_level, s.parent_id,
+          a.id as article_id, a.title as article_title,
+          k.id as kb_id, k.name as kb_name,
+          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText(?)) as distance
+        FROM kb_paragraphs p
+        JOIN kb_sections s ON p.section_id = s.id
+        JOIN kb_articles a ON s.article_id = a.id
+        JOIN knowledge_bases k ON a.kb_id = k.id
+        WHERE k.id = ? ${articleFilter}
+          AND p.embedding IS NOT NULL
+          AND p.is_knowledge_point = 1
+        ORDER BY distance ASC
+        LIMIT ?`,
+        {
+          replacements,
+          type: this.db.sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      // 过滤低于阈值的结果
+      const filteredResults = results.filter(r => (1 - r.distance) >= threshold);
+
+      // 处理召回结果：上下文增强 + 图片处理
+      const processedItems = await this._processRecallResults(
+        filteredResults,
+        min_tokens,
+        context_mode,
+        userId
+      );
+
+      // 生成资源级 Token（用于访问该知识库的所有附件）
+      const tokenInfo = await this._getOrCreateAttachmentToken(
+        'kb_article_image',
+        kb_id,
+        userId
+      );
+
+      ctx.success({
+        items: processedItems,
+        total: processedItems.length,
+        query: query,
+        token: tokenInfo ? {
+          url: tokenInfo.url,
+          expires_at: tokenInfo.expires_at,
+        } : null,
+      });
+
+      logger.info(`[KB] recallKnowledge: ${processedItems.length} results, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] recallKnowledge error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 全局召回（搜索用户所有可访问的知识库）
+   * POST /api/kb/recall
+   */
+  async globalRecall(ctx) {
+    const startTime = Date.now();
+    try {
+      this.ensureModels();
+      const userId = ctx.state.session.id;
+      const {
+        query,
+        top_k = 10,
+        threshold = 0.1,
+        kb_ids,
+        min_tokens = 200,
+        context_mode = 'auto'
+      } = ctx.request.body;
+
+      if (!query || !query.trim()) {
+        ctx.throw(400, 'Search query is required');
+      }
+
+      // 获取用户可访问的知识库
+      const permissionWhere = await buildAccessibleKbWhere(this.db, userId);
+      const where = { ...permissionWhere };
+
+      // 如果指定了 kb_ids，则限制在这些知识库中搜索
+      if (kb_ids && Array.isArray(kb_ids) && kb_ids.length > 0) {
+        where.id = { [Op.in]: kb_ids };
+      }
+
+      const userKBs = await this.KnowledgeBase.findAll({
+        where,
+        attributes: ['id', 'name', 'embedding_model_id'],
+        raw: true,
+      });
+
+      if (userKBs.length === 0) {
+        ctx.success({
+          items: [],
+          total: 0,
+          query: query,
+          token: null,
+        });
+        return;
+      }
+
+      // 使用第一个知识库的 embedding_model_id
+      const embeddingModelId = userKBs[0].embedding_model_id;
+
+      // 生成查询向量
+      const queryEmbedding = await this._generateEmbedding(query, embeddingModelId);
+      if (!queryEmbedding) {
+        ctx.throw(500, 'Failed to generate query embedding');
+      }
+
+      // 调整查询向量维度
+      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
+      if (!vectorToSearch) {
+        ctx.throw(500, 'Failed to adjust query embedding dimension');
+      }
+
+      const kbIds = userKBs.map(kb => kb.id);
+
+      // 执行向量搜索
+      const results = await this.db.sequelize.query(
+        `SELECT
+          p.id, p.title, p.content, p.is_knowledge_point, p.token_count, p.position,
+          s.id as section_id, s.title as section_title, s.level as section_level, s.parent_id,
+          a.id as article_id, a.title as article_title,
+          k.id as kb_id, k.name as kb_name,
+          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText(?)) as distance
+        FROM kb_paragraphs p
+        JOIN kb_sections s ON p.section_id = s.id
+        JOIN kb_articles a ON s.article_id = a.id
+        JOIN knowledge_bases k ON a.kb_id = k.id
+        WHERE k.id IN (?)
+          AND p.embedding IS NOT NULL
+          AND p.is_knowledge_point = 1
+        ORDER BY distance ASC
+        LIMIT ?`,
+        {
+          replacements: [JSON.stringify(vectorToSearch), kbIds, top_k],
+          type: this.db.sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      // 过滤低于阈值的结果
+      const filteredResults = results.filter(r => (1 - r.distance) >= threshold);
+
+      // 处理召回结果
+      const processedItems = await this._processRecallResults(
+        filteredResults,
+        min_tokens,
+        context_mode,
+        userId
+      );
+
+      // 为每个知识库生成 Token
+      const tokenMap = new Map();
+      for (const item of processedItems) {
+        const kbId = item.knowledge_base.id;
+        if (!tokenMap.has(kbId)) {
+          const tokenInfo = await this._getOrCreateAttachmentToken(
+            'kb_article_image',
+            kbId,
+            userId
+          );
+          tokenMap.set(kbId, tokenInfo);
+        }
+      }
+
+      ctx.success({
+        items: processedItems,
+        total: processedItems.length,
+        query: query,
+        tokens: Array.from(tokenMap.entries()).map(([kbId, tokenInfo]) => ({
+          kb_id: kbId,
+          url: tokenInfo.url,
+          expires_at: tokenInfo.expires_at,
+        })),
+      });
+
+      logger.info(`[KB] globalRecall: ${processedItems.length} results, ${Date.now() - startTime}ms`);
+    } catch (error) {
+      logger.error('[KB] globalRecall error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 处理召回结果：上下文增强 + 图片处理
+   * @private
+   */
+  async _processRecallResults(results, minTokens, contextMode, userId) {
+    const processedItems = [];
+    const articleTokenMap = new Map(); // 缓存文章的 Token
+
+    for (const result of results) {
+      // 上下文增强
+      const expanded = await this._expandContext(
+        {
+          id: result.id,
+          section_id: result.section_id,
+          position: result.position,
+          token_count: result.token_count,
+          content: result.content,
+          title: result.title,
+        },
+        minTokens,
+        contextMode
+      );
+
+      // 处理图片引用
+      let processedContent = expanded.paragraphs[0].content;
+      const articleId = result.article_id;
+
+      // 检查是否有图片引用
+      const attachPattern = /!\[([^\]]*)\]\(attach:([a-zA-Z0-9]+)\)/g;
+      const hasImages = attachPattern.test(processedContent);
+
+      if (hasImages) {
+        // 获取或生成该文章的 Token
+        let tokenInfo = articleTokenMap.get(articleId);
+        if (!tokenInfo) {
+          tokenInfo = await this._getOrCreateAttachmentToken(
+            'kb_article_image',
+            articleId,
+            userId
+          );
+          articleTokenMap.set(articleId, tokenInfo);
+        }
+
+        // 替换图片引用
+        processedContent = processedContent.replace(
+          attachPattern,
+          (match, altText, attachId) => {
+            return `![${altText}](/attach/t/${tokenInfo.token}/${attachId})`;
+          }
+        );
+      }
+
+      // 构建层级路径
+      const sectionPath = await this._buildSectionPath(result.section_id);
+
+      processedItems.push({
+        score: 1 - result.distance,
+        paragraph: {
+          id: result.id,
+          title: result.title,
+          content: processedContent,
+          is_knowledge_point: result.is_knowledge_point,
+          token_count: result.token_count,
+        },
+        section: {
+          id: result.section_id,
+          title: result.section_title,
+          level: result.section_level,
+          path: sectionPath,
+        },
+        article: {
+          id: result.article_id,
+          title: result.article_title,
+        },
+        knowledge_base: {
+          id: result.kb_id,
+          name: result.kb_name,
+        },
+        context_info: {
+          has_more_before: expanded.has_more_before,
+          has_more_after: expanded.has_more_after,
+          total_tokens: expanded.total_tokens,
+        },
+      });
+    }
+
+    return processedItems;
+  }
+
+  /**
+   * 构建节的层级路径
+   * @private
+   */
+  async _buildSectionPath(sectionId) {
+    const pathParts = [];
+    let currentSectionId = sectionId;
+    let depth = 0;
+    const maxDepth = 10; // 防止无限循环
+
+    while (currentSectionId && depth < maxDepth) {
+      const section = await this.KbSection.findByPk(currentSectionId, {
+        attributes: ['id', 'title', 'parent_id'],
+        raw: true,
+      });
+
+      if (!section) break;
+
+      pathParts.unshift(section.title);
+      currentSectionId = section.parent_id;
+      depth++;
+    }
+
+    return pathParts.join(' > ');
+  }
+
+  /**
+   * 上下文增强召回
+   * @private
+   */
+  async _expandContext(paragraph, minTokens, contextMode) {
+    const result = {
+      paragraphs: [paragraph],
+      total_tokens: paragraph.token_count || 0,
+      has_more_before: false,
+      has_more_after: false,
+    };
+
+    // 模式 1: none - 不扩展
+    if (contextMode === 'none') {
+      return result;
+    }
+
+    // 模式 2: article - 返回整篇文章
+    if (contextMode === 'article') {
+      return await this._getFullArticle(paragraph);
+    }
+
+    // 模式 3: section - 返回整个节
+    if (contextMode === 'section') {
+      return await this._getFullSection(paragraph);
+    }
+
+    // 模式 4: auto - 自动扩展直到满足 minTokens
+    if (contextMode === 'auto') {
+      // 如果已经满足最小 Token 数量，不扩展
+      if (result.total_tokens >= minTokens) {
+        // 检查是否还有更多内容
+        const neighbors = await this._getNeighborParagraphs(
+          paragraph.section_id,
+          paragraph.position,
+          'both',
+          1
+        );
+        result.has_more_before = neighbors.before.length > 0;
+        result.has_more_after = neighbors.after.length > 0;
+        return result;
+      }
+
+      // 获取相邻段落
+      const neighbors = await this._getNeighborParagraphs(
+        paragraph.section_id,
+        paragraph.position,
+        'both'
+      );
+
+      // 优先扩展前面的段落（提供上下文）
+      for (const neighbor of neighbors.before) {
+        if (result.total_tokens >= minTokens) break;
+        result.paragraphs.unshift(neighbor);
+        result.total_tokens += neighbor.token_count || 0;
+      }
+
+      // 如果还不够，扩展后面的段落
+      for (const neighbor of neighbors.after) {
+        if (result.total_tokens >= minTokens) break;
+        result.paragraphs.push(neighbor);
+        result.total_tokens += neighbor.token_count || 0;
+      }
+
+      // 按 position 排序
+      result.paragraphs.sort((a, b) => a.position - b.position);
+
+      // 标记是否还有更多内容
+      result.has_more_before = neighbors.before.length > result.paragraphs.filter(
+        p => p.position < paragraph.position
+      ).length;
+      result.has_more_after = neighbors.after.length > result.paragraphs.filter(
+        p => p.position > paragraph.position
+      ).length;
+    }
+
+    return result;
+  }
+
+  /**
+   * 获取相邻段落
+   * @private
+   */
+  async _getNeighborParagraphs(sectionId, position, direction = 'both', limit = null) {
+    const result = { before: [], after: [] };
+
+    if (direction === 'before' || direction === 'both') {
+      const where = { section_id: sectionId, position: { [Op.lt]: position } };
+      const options = {
+        where,
+        order: [['position', 'DESC']],
+        attributes: ['id', 'title', 'content', 'position', 'token_count', 'is_knowledge_point'],
+        raw: true,
+      };
+      if (limit) options.limit = limit;
+      result.before = await this.KbParagraph.findAll(options);
+    }
+
+    if (direction === 'after' || direction === 'both') {
+      const where = { section_id: sectionId, position: { [Op.gt]: position } };
+      const options = {
+        where,
+        order: [['position', 'ASC']],
+        attributes: ['id', 'title', 'content', 'position', 'token_count', 'is_knowledge_point'],
+        raw: true,
+      };
+      if (limit) options.limit = limit;
+      result.after = await this.KbParagraph.findAll(options);
+    }
+
+    return result;
+  }
+
+  /**
+   * 获取完整节的所有段落
+   * @private
+   */
+  async _getFullSection(paragraph) {
+    const paragraphs = await this.KbParagraph.findAll({
+      where: { section_id: paragraph.section_id },
+      order: [['position', 'ASC']],
+      attributes: ['id', 'title', 'content', 'position', 'token_count', 'is_knowledge_point'],
+      raw: true,
+    });
+
+    return {
+      paragraphs,
+      total_tokens: paragraphs.reduce((sum, p) => sum + (p.token_count || 0), 0),
+      has_more_before: false,
+      has_more_after: false,
+    };
+  }
+
+  /**
+   * 获取完整文章的所有段落
+   * @private
+   */
+  async _getFullArticle(paragraph) {
+    // 1. 获取段落所属的节
+    const section = await this.KbSection.findByPk(paragraph.section_id, {
+      attributes: ['article_id'],
+      raw: true,
+    });
+
+    if (!section) {
+      return {
+        paragraphs: [paragraph],
+        total_tokens: paragraph.token_count || 0,
+        has_more_before: false,
+        has_more_after: false,
+      };
+    }
+
+    // 2. 获取文章的所有节
+    const sections = await this.KbSection.findAll({
+      where: { article_id: section.article_id },
+      attributes: ['id'],
+      raw: true,
+    });
+
+    const sectionIds = sections.map(s => s.id);
+
+    // 3. 获取所有段落
+    const paragraphs = await this.KbParagraph.findAll({
+      where: { section_id: { [Op.in]: sectionIds } },
+      order: [['position', 'ASC']],
+      attributes: ['id', 'title', 'content', 'position', 'token_count', 'is_knowledge_point'],
+      raw: true,
+    });
+
+    return {
+      paragraphs,
+      total_tokens: paragraphs.reduce((sum, p) => sum + (p.token_count || 0), 0),
+      has_more_before: false,
+      has_more_after: false,
+    };
+  }
+
+  /**
+   * 获取或生成附件访问 Token
+   * @private
+   */
+  async _getOrCreateAttachmentToken(sourceTag, sourceId, userId) {
+    const AttachmentToken = this.db.getModel('attachment_token');
+
+    // 1. 查找现有有效 Token
+    const existingToken = await AttachmentToken.findOne({
+      where: {
+        source_tag: sourceTag,
+        source_id: sourceId,
+        user_id: userId,
+        expires_at: { [Op.gt]: new Date() },
+      },
+    });
+
+    if (existingToken) {
+      return {
+        token: existingToken.token,
+        url: `/attach/t/${existingToken.token}`,
+        expires_at: existingToken.expires_at,
+      };
+    }
+
+    // 2. 生成新 Token
+    const crypto = await import('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + KbController.TOKEN_CONFIG.EXPIRES_IN * 1000);
+
+    const attachmentToken = await AttachmentToken.create({
+      token,
+      source_tag: sourceTag,
+      source_id: sourceId,
+      user_id: userId,
+      expires_at: expiresAt,
+    });
+
+    return {
+      token: attachmentToken.token,
+      url: `/attach/t/${attachmentToken.token}`,
+      expires_at: attachmentToken.expires_at,
+    };
+  }
+
   // ==================== Revectorize ====================
 
   // 内存中的任务存储（生产环境应该用 Redis 或数据库）

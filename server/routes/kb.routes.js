@@ -118,6 +118,14 @@ export default (controller) => {
   // 全局搜索（搜索用户所有知识库）
   router.post('/search', authenticate(), controller.globalSearch.bind(controller));
 
+  // ==================== 召回路由 (Issue #558) ====================
+
+  // 单知识库召回（支持图文召回、上下文增强）
+  router.post('/:kb_id/recall', authenticate(), controller.recallKnowledge.bind(controller));
+
+  // 全局召回（搜索用户所有可访问的知识库）
+  router.post('/recall', authenticate(), controller.globalRecall.bind(controller));
+
   // ==================== 向量化路由 ====================
 
   // 重新向量化知识库所有段落
