@@ -4,6 +4,8 @@ import _ai_model from  "./ai_model.js";
 import _assistant_message from  "./assistant_message.js";
 import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
+import _attachment_token from  "./attachment_token.js";
+import _attachment from  "./attachment.js";
 import _department from  "./department.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
@@ -41,6 +43,8 @@ export default function initModels(sequelize) {
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
   const assistant_request = _assistant_request.init(sequelize, DataTypes);
   const assistant = _assistant.init(sequelize, DataTypes);
+  const attachment_token = _attachment_token.init(sequelize, DataTypes);
+  const attachment = _attachment.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
@@ -147,6 +151,10 @@ export default function initModels(sequelize) {
   topic.hasMany(message, { as: "messages", foreignKey: "topic_id"});
   task.belongsTo(topic, { as: "topic", foreignKey: "topic_id"});
   topic.hasMany(task, { as: "tasks", foreignKey: "topic_id"});
+  attachment_token.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(attachment_token, { as: "attachment_tokens", foreignKey: "user_id"});
+  attachment.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
+  user.hasMany(attachment, { as: "attachments", foreignKey: "created_by"});
   invitation_usage.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(invitation_usage, { as: "invitation_usages", foreignKey: "user_id"});
   invitation.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
@@ -173,6 +181,8 @@ export default function initModels(sequelize) {
     assistant_message,
     assistant_request,
     assistant,
+    attachment_token,
+    attachment,
     department,
     expert_skill,
     expert,

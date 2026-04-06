@@ -584,14 +584,14 @@
       <OrganizationTab />
     </div>
 
-    <!-- 附件管理 -->
-    <div v-if="activeTab === 'attachment'" class="settings-section">
-      <AttachmentTab />
-    </div>
-
     <!-- 驻留进程管理（仅管理员） -->
     <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section">
       <ResidentProcessesTab />
+    </div>
+
+    <!-- 附件管理（仅管理员） -->
+    <div v-if="activeTab === 'attachment' && isAdmin" class="settings-section attachment-section">
+      <AttachmentTab />
     </div>
 
     <!-- 关于 -->
