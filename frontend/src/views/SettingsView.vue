@@ -1642,7 +1642,7 @@ const getInitialTab = () => {
   const group = currentGroup.value
   const items = menuItemsByGroup[group]
   if (items && items.length > 0) {
-    return items[0].key
+    return items[0]?.key ?? 'profile'
   }
   return 'profile'
 }
