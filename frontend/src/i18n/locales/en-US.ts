@@ -611,6 +611,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     config_upload_allowed_types_hint: 'Allowed file types for upload, separated by commas',
     // Resident Processes
     residentProcesses: 'Resident Processes',
+    // Attachment Management
+    attachmentManagement: 'Attachment Management',
     resident: {
       noProcesses: 'No resident processes configured',
       startedAt: 'Started At',
@@ -1486,5 +1488,41 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     verifyTitle: 'Verify Invitation Code',
     verifySuccess: 'Invitation code is valid',
     verifyFailed: 'Invitation code is invalid or expired',
+  },
+
+  // Attachment Management
+  attachment: {
+    // Filters
+    sourceTag: 'Source Tag',
+    allSources: 'All Sources',
+    sourceKbArticle: 'KB Article',
+    sourceTaskExport: 'Task Export',
+    sourceChatAttachment: 'Chat Attachment',
+    mimeType: 'File Type',
+    allTypes: 'All Types',
+    typeImage: 'Image',
+    typeDocument: 'Document',
+    typeVideo: 'Video',
+    dateRange: 'Date Range',
+    resetFilters: 'Reset Filters',
+    totalCount: '{count} attachments total',
+    noAttachments: 'No attachments',
+    // Table
+    preview: 'Preview',
+    filename: 'Filename',
+    type: 'Type',
+    size: 'Size',
+    source: 'Source',
+    uploader: 'Uploader',
+    uploadTime: 'Upload Time',
+    // Delete
+    deleteConfirmTitle: 'Confirm Delete Attachment',
+    deleteConfirmMessage: 'Are you sure you want to delete attachment "{filename}"? This action cannot be undone.',
+    deleteSuccess: 'Attachment deleted',
+    deleteError: 'Failed to delete attachment',
+    // Errors
+    loadError: 'Failed to load attachment list',
+    tokenError: 'Failed to get access token',
+    noPreviewAvailable: 'Preview not available for this file type',
   },
 }

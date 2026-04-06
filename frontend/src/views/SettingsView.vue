@@ -587,6 +587,11 @@
       <ResidentProcessesTab />
     </div>
 
+    <!-- 附件管理（仅管理员） -->
+    <div v-if="activeTab === 'attachment' && isAdmin" class="settings-section attachment-section">
+      <AttachmentTab />
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1581,6 +1586,7 @@ import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
+import AttachmentTab from '@/components/settings/AttachmentTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
 
@@ -1608,6 +1614,7 @@ const allTabs = [
   { key: 'user', label: t('settings.userManagement'), adminOnly: true },
   { key: 'role', label: t('settings.roleManagement'), adminOnly: true },
   { key: 'organization', label: t('settings.organizationManagement'), adminOnly: true },
+  { key: 'attachment', label: t('settings.attachmentManagement'), adminOnly: true },
   { key: 'about', label: t('settings.about') },
 ]
 
