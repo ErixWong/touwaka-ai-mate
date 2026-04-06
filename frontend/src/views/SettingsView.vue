@@ -1616,7 +1616,6 @@ const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
     { key: 'user', label: t('settings.userManagement') },
     { key: 'role', label: t('settings.roleManagement') },
     { key: 'organization', label: t('settings.organizationManagement') },
-    { key: 'attachment', label: t('settings.attachmentManagement') },
   ],
   personal: [
     { key: 'profile', label: t('settings.profile') },
@@ -1628,6 +1627,7 @@ const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
     { key: 'expert', label: t('settings.expertSettings') },
     { key: 'assistant', label: t('settings.assistantSettings') },
     { key: 'resident', label: t('settings.residentProcesses') },
+    { key: 'attachment', label: t('settings.attachmentManagement') },
     { key: 'system', label: t('settings.systemConfig') },
   ],
 }
