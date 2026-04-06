@@ -510,6 +510,66 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== attachments 表创建 ====================
+  // Issue #557: 通用附件服务
+  {
+    name: 'attachments table create',
+    check: async (conn) => await hasTable(conn, 'attachments'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS attachments (
+          id VARCHAR(20) PRIMARY KEY COMMENT '附件唯一ID（Utils.newID生成）',
+          source_tag VARCHAR(50) NOT NULL COMMENT '业务标识：kb_article_image, user_avatar, task_export 等',
+          source_id VARCHAR(20) NOT NULL COMMENT '关联资源ID',
+          file_name VARCHAR(255) DEFAULT NULL COMMENT '原始文件名',
+          ext_name VARCHAR(20) DEFAULT NULL COMMENT '扩展名（png, jpg, pdf等）',
+          mime_type VARCHAR(100) NOT NULL COMMENT 'MIME类型',
+          file_size INT DEFAULT 0 COMMENT '文件大小（字节）',
+          file_path VARCHAR(500) NOT NULL COMMENT '相对路径：2026/04/05/abc123.png',
+          width INT DEFAULT NULL COMMENT '图片宽度（仅图片类型）',
+          height INT DEFAULT NULL COMMENT '图片高度',
+          alt_text VARCHAR(500) DEFAULT NULL COMMENT '替代文本',
+          description TEXT DEFAULT NULL COMMENT '文件描述（VL模型生成）',
+          created_by VARCHAR(20) DEFAULT NULL COMMENT '上传者ID',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_source (source_tag, source_id),
+          INDEX idx_created_at (created_at),
+          INDEX idx_created_by (created_by),
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通用附件表'
+      `);
+      console.log('  ✓ Created attachments table');
+    }
+  },
+
+  // ==================== attachment_token 表创建 ====================
+  // Issue #557: 附件访问 Token 表
+  {
+    name: 'attachment_token table create',
+    check: async (conn) => await hasTable(conn, 'attachment_token'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS attachment_token (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          token VARCHAR(64) NOT NULL UNIQUE COMMENT 'Token字符串(随机生成，非JWT)',
+          source_tag VARCHAR(50) NOT NULL COMMENT '资源类型：kb_article_image, task_export 等',
+          source_id VARCHAR(20) NOT NULL COMMENT '资源ID：article_id, task_id 等',
+          user_id VARCHAR(32) NOT NULL COMMENT '创建Token的用户ID',
+          expires_at DATETIME NOT NULL COMMENT '过期时间',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_access_at DATETIME DEFAULT NULL COMMENT '最后访问时间（用于续期追踪）',
+          INDEX idx_token (token),
+          INDEX idx_source (source_tag, source_id),
+          INDEX idx_user_source (user_id, source_tag, source_id),
+          INDEX idx_expires_at (expires_at),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='附件访问Token表'
+      `);
+      console.log('  ✓ Created attachment_token table');
+    }
+  },
+
 ];
 
 /**

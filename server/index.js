@@ -62,6 +62,7 @@ import KbController from './controllers/kb.controller.js';
 import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
+import AttachmentController from './controllers/attachment.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
@@ -87,6 +88,8 @@ import packageRoutes from './routes/package.routes.js';
 import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 import taskStaticRoutes from './routes/task-static.routes.js';
+import attachmentRoutes from './routes/attachment.routes.js';
+import attachmentStaticRoutes from './routes/attachment-static.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
@@ -232,6 +235,7 @@ class ApiServer {
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
       assistant: new AssistantController(this.db),
+      attachment: new AttachmentController(this.db),
     };
   }
 
@@ -399,6 +403,18 @@ class ApiServer {
     this.app.use(taskStaticRouter.allowedMethods());
     logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
 
+    // Attachment 附件服务路由（Issue #557）
+    const attachmentRouter = attachmentRoutes(this.controllers.attachment);
+    this.app.use(attachmentRouter.routes());
+    this.app.use(attachmentRouter.allowedMethods());
+    logger.info('Attachment routes registered (POST/GET/DELETE /api/attachments/*)');
+
+    // Attachment Static 静态文件服务路由（Issue #557）
+    const attachmentStaticRouter = attachmentStaticRoutes(this.db);
+    this.app.use(attachmentStaticRouter.routes());
+    this.app.use(attachmentStaticRouter.allowedMethods());
+    logger.info('Attachment static routes registered (GET /attach/t/:token/:attachment_id)');
+
     // Invitation 邀请码路由（Issue #222）
     const invitationRouter = createInvitationRoutes(this.db);
     this.app.use(invitationRouter.routes());
@@ -419,7 +435,7 @@ class ApiServer {
       // 这样前端路由 (如 /chat, /settings) 可以正常工作
       this.app.use(async (ctx, next) => {
         // 只处理非 API 请求
-        if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static')) {
+        if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static') && !ctx.path.startsWith('/attach')) {
           const indexPath = path.join(frontendDistPath, 'index.html');
           if (fs.existsSync(indexPath)) {
             ctx.type = 'html';
