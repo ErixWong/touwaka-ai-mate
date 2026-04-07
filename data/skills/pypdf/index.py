@@ -228,6 +228,20 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Extracting images without output_dir causes memory overflow and JSON truncation.'
         }
     
+    # 解析并验证 output_dir
+    output_dir = resolve_path(output_dir)
+    
+    # 检查父目录是否存在，不存在则报错
+    parent_dir = os.path.dirname(output_dir.rstrip('/'))
+    if parent_dir and not os.path.exists(parent_dir):
+        return {
+            'success': False,
+            'error': f'Parent directory does not exist: {parent_dir}'
+        }
+    
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+    
     doc = fitz.open(file_path)
     
     try:
@@ -236,9 +250,6 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
         end = to_page if to_page else total_pages
         start = max(0, min(start, total_pages - 1))
         end = max(1, min(end, total_pages))
-        
-        output_dir = resolve_path(output_dir)
-        os.makedirs(output_dir, exist_ok=True)
         
         images_info = []
         for i in range(start, end):
@@ -296,6 +307,20 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Rendering pages without output_dir causes memory overflow and JSON truncation.'
         }
     
+    # 解析并验证 output_dir
+    output_dir = resolve_path(output_dir)
+    
+    # 检查父目录是否存在，不存在则报错
+    parent_dir = os.path.dirname(output_dir.rstrip('/'))
+    if parent_dir and not os.path.exists(parent_dir):
+        return {
+            'success': False,
+            'error': f'Parent directory does not exist: {parent_dir}'
+        }
+    
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+    
     doc = fitz.open(file_path)
     
     try:
@@ -304,9 +329,6 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
         end = to_page if to_page else total_pages
         start = max(0, min(start, total_pages - 1))
         end = max(1, min(end, total_pages))
-        
-        output_dir = resolve_path(output_dir)
-        os.makedirs(output_dir, exist_ok=True)
         
         rendered = []
         for i in range(start, end):
