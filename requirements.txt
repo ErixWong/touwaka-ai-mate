@@ -7,6 +7,7 @@ xlrd
 # PDF processing
 PyPDF2
 pdfplumber
+PyMuPDF>=1.23.0
 
 # Data analysis
 pandas

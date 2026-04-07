@@ -5,8 +5,7 @@ PyPDF Skill - PDF 处理技能 (Python 版)
 使用 PyMuPDF (fitz) 实现，内存效率高，适合处理大文件
 
 工具设计：
-- read: PDF 读取工具（通过 operation 参数区分具体操作）
-- write: PDF 写入工具（通过 operation 参数区分具体操作）
+- 14个独立工具，每个工具专注于单一功能
 
 依赖：
 - PyMuPDF (fitz): PDF 操作核心库，内存映射方式处理大文件
@@ -36,7 +35,6 @@ else:
 
 # 根据用户角色设置允许的路径
 if IS_ADMIN:
-    # 管理员可以访问整个 DATA_BASE_PATH 目录树
     ALLOWED_BASE_PATHS = [DATA_BASE_PATH]
 elif IS_SKILL_CREATOR:
     ALLOWED_BASE_PATHS = [
@@ -89,21 +87,19 @@ def ensure_dir(file_path: str) -> str:
     return file_path
 
 
-# ==================== 读操作实现 ====================
+# ==================== 读取类工具实现 ====================
 
 def read_metadata(params: Dict[str, Any]) -> Dict[str, Any]:
     """读取 PDF 元数据"""
     file_path = resolve_path(params['path'])
     parse_page_info = params.get('parse_page_info', False)
     
-    # 使用内存映射打开（不加载内容到内存）
     doc = fitz.open(file_path)
     
     try:
         metadata = doc.metadata
         page_count = len(doc)
         
-        # 基础元数据
         basic_metadata = {
             'title': metadata.get('title') or None,
             'author': metadata.get('author') or None,
@@ -115,7 +111,6 @@ def read_metadata(params: Dict[str, Any]) -> Dict[str, Any]:
             'keywords': metadata.get('keywords') or None
         }
         
-        # 页面信息
         pages = []
         for i in range(page_count):
             page = doc[i]
@@ -139,7 +134,7 @@ def read_metadata(params: Dict[str, Any]) -> Dict[str, Any]:
         doc.close()
 
 
-def read_text(params: Dict[str, Any]) -> Dict[str, Any]:
+def extract_text(params: Dict[str, Any]) -> Dict[str, Any]:
     """提取文本内容"""
     file_path = resolve_path(params['path'])
     from_page = params.get('from_page')
@@ -149,151 +144,132 @@ def read_text(params: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         total_pages = len(doc)
-        start = (from_page or 1) - 1  # 转换为 0-based
-        end = (to_page or total_pages) - 1
+        start = (from_page - 1) if from_page else 0
+        end = to_page if to_page else total_pages
+        start = max(0, min(start, total_pages - 1))
+        end = max(1, min(end, total_pages))
         
-        # 边界检查
-        start = max(0, start)
-        end = min(total_pages - 1, end)
-        
-        texts = []
-        for i in range(start, end + 1):
+        pages_text = []
+        for i in range(start, end):
             page = doc[i]
-            texts.append(page.get_text())
-        
-        return {
-            'success': True,
-            'text': '\n'.join(texts),
-            'page_count': total_pages,
-            'extracted_pages': list(range(start + 1, end + 2))
-        }
-    finally:
-        doc.close()
-
-
-def read_tables(params: Dict[str, Any]) -> Dict[str, Any]:
-    """提取表格（PyMuPDF 通过 find_tables 支持）"""
-    file_path = resolve_path(params['path'])
-    from_page = params.get('from_page')
-    to_page = params.get('to_page')
-    
-    doc = fitz.open(file_path)
-    
-    try:
-        total_pages = len(doc)
-        start = (from_page or 1) - 1
-        end = (to_page or total_pages) - 1
-        
-        start = max(0, start)
-        end = min(total_pages - 1, end)
-        
-        tables_result = []
-        for i in range(start, end + 1):
-            page = doc[i]
-            page_tables = []
-            
-            # 尝试查找表格
-            try:
-                tabs = page.find_tables()
-                if tabs and tabs.tables:
-                    for tab in tabs.tables:
-                        # 提取表格数据
-                        table_data = tab.extract()
-                        page_tables.append({
-                            'rows': len(table_data) if table_data else 0,
-                            'data': table_data
-                        })
-            except Exception:
-                # 某些 PDF 可能不支持表格提取，静默忽略
-                pass
-            
-            tables_result.append({
-                'page_number': i + 1,
-                'tables': page_tables
+            text = page.get_text()
+            pages_text.append({
+                'page': i + 1,
+                'text': text
             })
         
-        total_tables = sum(len(p['tables']) for p in tables_result)
+        full_text = '\n\n'.join([p['text'] for p in pages_text])
         
         return {
             'success': True,
-            'tables': tables_result,
-            'total_tables': total_tables
+            'pages': pages_text,
+            'text': full_text,
+            'page_count': len(pages_text)
         }
     finally:
         doc.close()
 
 
-def read_images(params: Dict[str, Any]) -> Dict[str, Any]:
-    """提取图片"""
+def extract_tables(params: Dict[str, Any]) -> Dict[str, Any]:
+    """提取表格数据"""
     file_path = resolve_path(params['path'])
     from_page = params.get('from_page')
     to_page = params.get('to_page')
-    image_threshold = params.get('image_threshold', 80)
     
     doc = fitz.open(file_path)
     
     try:
         total_pages = len(doc)
-        start = (from_page or 1) - 1
-        end = (to_page or total_pages) - 1
+        start = (from_page - 1) if from_page else 0
+        end = to_page if to_page else total_pages
+        start = max(0, min(start, total_pages - 1))
+        end = max(1, min(end, total_pages))
         
-        start = max(0, start)
-        end = min(total_pages - 1, end)
-        
-        images_result = []
-        for i in range(start, end + 1):
+        all_tables = []
+        for i in range(start, end):
             page = doc[i]
-            page_images = []
+            tables = page.find_tables()
             
-            # 获取页面图片列表
-            img_list = page.get_images(full=True)
-            
-            for img_index, img in enumerate(img_list):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                
-                if base_image:
-                    width = base_image.get('width', 0)
-                    height = base_image.get('height', 0)
+            if tables and tables.tables:
+                for table_idx, table in enumerate(tables.tables):
+                    rows = []
+                    for row in table.extract():
+                        rows.append(row)
                     
-                    # 过滤小图片
-                    if width >= image_threshold and height >= image_threshold:
-                        image_data = base_image['image']
-                        ext = base_image['ext']
-                        
-                        # 转换为 base64
-                        data_url = f"data:image/{ext};base64,{base64.b64encode(image_data).decode()}"
-                        
-                        page_images.append({
-                            'index': img_index + 1,
-                            'width': width,
-                            'height': height,
-                            'data': data_url,
-                            'data_url': data_url
-                        })
-            
-            images_result.append({
-                'page_number': i + 1,
-                'images': page_images
-            })
-        
-        total_images = sum(len(p['images']) for p in images_result)
+                    all_tables.append({
+                        'page': i + 1,
+                        'table_index': table_idx,
+                        'rows': rows,
+                        'row_count': len(rows),
+                        'column_count': len(rows[0]) if rows else 0
+                    })
         
         return {
             'success': True,
-            'images': images_result,
-            'total_images': total_images
+            'tables': all_tables,
+            'table_count': len(all_tables)
         }
     finally:
         doc.close()
 
 
-def read_render(params: Dict[str, Any]) -> Dict[str, Any]:
+def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
+    """提取内嵌图片"""
+    file_path = resolve_path(params['path'])
+    from_page = params.get('from_page')
+    to_page = params.get('to_page')
+    threshold = params.get('threshold', 80)
+    
+    doc = fitz.open(file_path)
+    
+    try:
+        total_pages = len(doc)
+        start = (from_page - 1) if from_page else 0
+        end = to_page if to_page else total_pages
+        start = max(0, min(start, total_pages - 1))
+        end = max(1, min(end, total_pages))
+        
+        images_info = []
+        for i in range(start, end):
+            page = doc[i]
+            image_list = page.get_images(full=True)
+            
+            for img_index, img in enumerate(image_list, start=1):
+                xref = img[0]
+                pix = fitz.Pixmap(doc, xref)
+                
+                if pix.width >= threshold and pix.height >= threshold:
+                    if pix.n > 4:
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+                    
+                    img_data = pix.tobytes("png")
+                    img_b64 = base64.b64encode(img_data).decode('utf-8')
+                    
+                    images_info.append({
+                        'page': i + 1,
+                        'index': img_index,
+                        'width': pix.width,
+                        'height': pix.height,
+                        'data_url': f'data:image/png;base64,{img_b64}'
+                    })
+                
+                pix = None
+        
+        return {
+            'success': True,
+            'images': images_info,
+            'image_count': len(images_info)
+        }
+    finally:
+        doc.close()
+
+
+def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
     """渲染页面为图片"""
     file_path = resolve_path(params['path'])
-    output_dir = params.get('output_dir')
     from_page = params.get('from_page')
     to_page = params.get('to_page')
+    output_dir = params.get('output_dir')
     scale = params.get('scale', 1.5)
     desired_width = params.get('desired_width')
     prefix = params.get('prefix', 'page')
@@ -302,350 +278,330 @@ def read_render(params: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         total_pages = len(doc)
-        start = (from_page or 1) - 1
-        end = (to_page or total_pages) - 1
-        
-        start = max(0, start)
-        end = min(total_pages - 1, end)
-        
-        # 解析输出目录
-        resolved_output_dir = None
-        saved_files = []
+        start = (from_page - 1) if from_page else 0
+        end = to_page if to_page else total_pages
+        start = max(0, min(start, total_pages - 1))
+        end = max(1, min(end, total_pages))
         
         if output_dir:
-            resolved_output_dir = resolve_path(output_dir)
-            os.makedirs(resolved_output_dir, exist_ok=True)
+            output_dir = resolve_path(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
         
-        pages_result = []
-        
-        for i in range(start, end + 1):
+        rendered = []
+        for i in range(start, end):
             page = doc[i]
             
-            # 计算矩阵
             if desired_width:
-                # 根据期望宽度计算缩放
                 rect = page.rect
-                scale_factor = desired_width / rect.width
-                mat = fitz.Matrix(scale_factor, scale_factor)
-            else:
-                mat = fitz.Matrix(scale, scale)
+                scale = desired_width / rect.width
             
-            # 渲染为图片
+            mat = fitz.Matrix(scale, scale)
             pix = page.get_pixmap(matrix=mat)
             
-            # 转换为 PNG 数据
-            img_data = pix.tobytes('png')
-            data_url = f"data:image/png;base64,{base64.b64encode(img_data).decode()}"
+            img_data = pix.tobytes("png")
+            img_b64 = base64.b64encode(img_data).decode('utf-8')
+            data_url = f'data:image/png;base64,{img_b64}'
             
-            # 保存到文件
-            saved_path = None
-            if resolved_output_dir:
-                output_path = os.path.join(resolved_output_dir, f"{prefix}_{i + 1}.png")
-                pix.save(output_path)
-                saved_path = output_path
-                saved_files.append(output_path)
-            
-            pages_result.append({
-                'page_number': i + 1,
+            result_item = {
+                'page': i + 1,
                 'width': pix.width,
                 'height': pix.height,
-                'data_url': data_url,
-                'saved_path': saved_path
-            })
+                'data_url': data_url
+            }
             
-            pix = None  # 释放内存
+            if output_dir:
+                filename = f'{prefix}_{i+1}-{i+1}.png'
+                filepath = os.path.join(output_dir, filename)
+                pix.save(filepath)
+                result_item['file'] = filepath
+            
+            rendered.append(result_item)
+            pix = None
         
-        result = {
+        return {
             'success': True,
-            'pages': pages_result
+            'pages': rendered,
+            'page_count': len(rendered),
+            'output_dir': output_dir
         }
-        
-        if saved_files:
-            result['saved_files'] = saved_files
-            result['output_dir'] = resolved_output_dir
-        
-        return result
     finally:
         doc.close()
 
 
-def read_markdown(params: Dict[str, Any]) -> Dict[str, Any]:
+def to_markdown(params: Dict[str, Any]) -> Dict[str, Any]:
     """转换为 Markdown"""
     file_path = resolve_path(params['path'])
-    output = params.get('output')
     from_page = params.get('from_page')
     to_page = params.get('to_page')
+    output = params.get('output')
     
-    # 先提取文本
-    text_result = read_text({
-        'path': file_path,
-        'from_page': from_page,
-        'to_page': to_page
-    })
+    doc = fitz.open(file_path)
     
-    text = text_result['text']
-    
-    # 简单的 Markdown 转换
-    lines = text.split('\n')
-    processed_lines = []
-    
-    for line in lines:
-        trimmed = line.strip()
-        if trimmed and len(trimmed) < 50:
-            # 可能是标题
-            if trimmed[0].isupper() or '\u4e00' <= trimmed[0] <= '\u9fff':
-                processed_lines.append(f"## {trimmed}")
-                continue
-        processed_lines.append(line)
-    
-    markdown = '\n'.join(processed_lines)
-    
-    if output:
-        resolved_path = resolve_path(output)
-        ensure_dir(resolved_path)
-        with open(resolved_path, 'w', encoding='utf-8') as f:
-            f.write(markdown)
+    try:
+        total_pages = len(doc)
+        start = (from_page - 1) if from_page else 0
+        end = to_page if to_page else total_pages
+        start = max(0, min(start, total_pages - 1))
+        end = max(1, min(end, total_pages))
+        
+        markdown_parts = []
+        for i in range(start, end):
+            page = doc[i]
+            text = page.get_text()
+            
+            lines = text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                if line.isupper() and len(line) < 100:
+                    markdown_parts.append(f'## {line}')
+                elif line[0].isdigit() and '.' in line[:10]:
+                    markdown_parts.append(f'- {line}')
+                else:
+                    markdown_parts.append(line)
+            
+            markdown_parts.append('')
+        
+        markdown_text = '\n\n'.join(markdown_parts)
+        
+        if output:
+            output_path = resolve_path(output)
+            ensure_dir(output_path)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_text)
+        
         return {
             'success': True,
-            'path': resolved_path,
-            'markdown': markdown
+            'markdown': markdown_text,
+            'page_count': end - start,
+            'output_file': output
         }
-    
-    return {
-        'success': True,
-        'markdown': markdown
-    }
+    finally:
+        doc.close()
 
 
-def read_fields(params: Dict[str, Any]) -> Dict[str, Any]:
-    """检查表单字段"""
+def read_form_fields(params: Dict[str, Any]) -> Dict[str, Any]:
+    """读取表单字段"""
     file_path = resolve_path(params['path'])
     
     doc = fitz.open(file_path)
     
     try:
         fields = []
-        # PyMuPDF 通过遍历页面获取表单字段
-        # 新版 PyMuPDF 使用不同的 API
-        try:
-            # 尝试使用 widget 遍历方式
-            for page in doc:
-                for widget in page.widgets():
-                    if widget:
-                        fields.append({
-                            'name': widget.field_name or 'unnamed',
-                            'type': widget.field_type_string or 'unknown',
-                            'page': page.number + 1
-                        })
-        except Exception:
-            # 如果 widgets() 方法失败，尝试其他方式
-            pass
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            widgets = page.widgets()
+            
+            if widgets:
+                for widget in widgets:
+                    field_info = {
+                        'page': page_num + 1,
+                        'name': widget.field_name,
+                        'type': widget.field_type_string,
+                        'value': widget.field_value,
+                        'rect': {
+                            'x0': widget.rect.x0,
+                            'y0': widget.rect.y0,
+                            'x1': widget.rect.x1,
+                            'y1': widget.rect.y1
+                        }
+                    }
+                    fields.append(field_info)
         
         return {
             'success': True,
-            'has_fillable_fields': len(fields) > 0,
+            'fields': fields,
             'field_count': len(fields),
-            'fields': fields
+            'has_form': len(fields) > 0
         }
     finally:
         doc.close()
 
 
-# ==================== 写操作实现 ====================
+# ==================== 写入类工具实现 ====================
 
-def write_create(params: Dict[str, Any]) -> Dict[str, Any]:
-    """创建 PDF"""
+def create_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
+    """创建新 PDF"""
     output = resolve_path(params['output'])
-    title = params.get('title')
-    content = params.get('content', [])
+    content = params['content']
+    title = params.get('title', '')
     page_size = params.get('page_size', 'a4')
     
-    # 页面尺寸
-    sizes = {
-        'a4': fitz.paper_rect('a4'),
-        'letter': fitz.paper_rect('letter')
-    }
-    rect = sizes.get(page_size, sizes['a4'])
+    ensure_dir(output)
     
     doc = fitz.open()
     
     try:
+        size_map = {
+            'a4': fitz.ISO_A4,
+            'letter': fitz.ISO_LETTER
+        }
+        page_rect = size_map.get(page_size.lower(), fitz.ISO_A4)
+        
+        for text in content:
+            page = doc.new_page(width=page_rect.width, height=page_rect.height)
+            
+            margin = 72
+            text_rect = fitz.Rect(
+                margin, margin,
+                page_rect.width - margin,
+                page_rect.height - margin
+            )
+            
+            page.insert_textbox(
+                text_rect,
+                text,
+                fontsize=12,
+                fontname="helv"
+            )
+        
         if title:
             doc.set_metadata({'title': title})
         
-        for page_content in content:
-            page = doc.new_page(width=rect.width, height=rect.height)
-            
-            # 简单文本渲染
-            margin = 50
-            y = margin
-            line_height = 14
-            
-            for line in page_content.split('\n'):
-                if y > rect.height - margin:
-                    break
-                page.insert_text(
-                    (margin, y),
-                    line,
-                    fontsize=12,
-                    fontname='helv'
-                )
-                y += line_height
-        
-        ensure_dir(output)
         doc.save(output)
         
         return {
             'success': True,
             'path': output,
-            'page_count': len(doc)
+            'page_count': len(content),
+            'title': title
         }
     finally:
         doc.close()
 
 
-def write_merge(params: Dict[str, Any]) -> Dict[str, Any]:
-    """合并 PDF"""
-    paths = params.get('paths', [])
+def merge_pdfs(params: Dict[str, Any]) -> Dict[str, Any]:
+    """合并多个 PDF"""
     output = resolve_path(params['output'])
+    paths = params['paths']
     
-    if len(paths) < 2:
-        raise ValueError('At least 2 PDF files are required for merging')
+    ensure_dir(output)
     
-    merged_doc = fitz.open()
+    merged = fitz.open()
     
     try:
-        for file_path in paths:
-            resolved_path = resolve_path(file_path)
+        for pdf_path in paths:
+            resolved_path = resolve_path(pdf_path)
             doc = fitz.open(resolved_path)
-            
-            # 插入所有页面
-            merged_doc.insert_pdf(doc)
-            doc.close()
+            try:
+                merged.insert_pdf(doc)
+            finally:
+                doc.close()
         
-        ensure_dir(output)
-        merged_doc.save(output)
+        merged.save(output)
         
         return {
             'success': True,
             'path': output,
-            'page_count': len(merged_doc)
+            'source_count': len(paths),
+            'total_pages': len(merged)
         }
     finally:
-        merged_doc.close()
+        merged.close()
 
 
-def write_split(params: Dict[str, Any]) -> Dict[str, Any]:
-    """拆分 PDF - 核心功能，内存高效"""
+def split_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
+    """拆分 PDF（内存高效）"""
     file_path = resolve_path(params['path'])
     output_dir = resolve_path(params['output_dir'])
     pages_per_file = params.get('pages_per_file', 1)
     prefix = params.get('prefix', 'page')
     
-    # 确保输出目录存在
     os.makedirs(output_dir, exist_ok=True)
     
-    # 内存映射打开（不加载内容到内存）
     doc = fitz.open(file_path)
     
     try:
         total_pages = len(doc)
-        output_files = []
+        files_created = []
         
         for start in range(0, total_pages, pages_per_file):
             end = min(start + pages_per_file, total_pages)
             
-            # 创建新文档，只复制当前批次页面
             new_doc = fitz.open()
             try:
-                new_doc.insert_pdf(doc, from_page=start, to_page=end - 1)
+                new_doc.insert_pdf(doc, from_page=start, to_page=end-1)
                 
-                # 保存
-                output_path = os.path.join(output_dir, f"{prefix}_{start + 1}-{end}.pdf")
+                if pages_per_file == 1:
+                    filename = f'{prefix}_{start+1}-{end}.pdf'
+                else:
+                    filename = f'{prefix}_{start+1}-{end}.pdf'
+                
+                output_path = os.path.join(output_dir, filename)
                 new_doc.save(output_path)
-                output_files.append(output_path)
+                files_created.append(output_path)
             finally:
                 new_doc.close()
         
         return {
             'success': True,
             'output_dir': output_dir,
-            'files': output_files,
-            'total_pages': total_pages,
-            'files_created': len(output_files)
+            'files_created': files_created,
+            'file_count': len(files_created),
+            'pages_per_file': pages_per_file
         }
     finally:
         doc.close()
 
 
-def write_rotate(params: Dict[str, Any]) -> Dict[str, Any]:
-    """旋转页面"""
+def rotate_pages(params: Dict[str, Any]) -> Dict[str, Any]:
+    """旋转指定页面"""
     file_path = resolve_path(params['path'])
     output = resolve_path(params['output'])
     pages = params.get('pages', [])
     degrees = params.get('degrees', 90)
     
+    ensure_dir(output)
+    
     doc = fitz.open(file_path)
     
     try:
         total_pages = len(doc)
+        pages_to_rotate = pages if pages else list(range(1, total_pages + 1))
         
-        # 确定要旋转的页面
-        if pages:
-            pages_to_rotate = [p - 1 for p in pages if 1 <= p <= total_pages]
-        else:
-            pages_to_rotate = list(range(total_pages))
+        for page_num in pages_to_rotate:
+            if 1 <= page_num <= total_pages:
+                page = doc[page_num - 1]
+                page.set_rotation(degrees)
         
-        # 旋转页面
-        for page_idx in pages_to_rotate:
-            page = doc[page_idx]
-            page.set_rotation((page.rotation + degrees) % 360)
-        
-        ensure_dir(output)
         doc.save(output)
         
         return {
             'success': True,
             'path': output,
-            'rotated_pages': [p + 1 for p in pages_to_rotate],
+            'rotated_pages': pages_to_rotate,
             'degrees': degrees
         }
     finally:
         doc.close()
 
 
-def write_encrypt(params: Dict[str, Any]) -> Dict[str, Any]:
+def encrypt_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """加密 PDF"""
     file_path = resolve_path(params['path'])
     output = resolve_path(params['output'])
-    user_password = params.get('user_password')
-    owner_password = params.get('owner_password')
+    user_password = params['user_password']
+    owner_password = params.get('owner_password', user_password)
     
-    if not user_password:
-        raise ValueError('user_password is required')
+    ensure_dir(output)
     
     doc = fitz.open(file_path)
     
     try:
-        # 设置加密
         permissions = {
-            'print': 1,
-            'copy': 0,
-            'modify': 0,
-            'annotate': 0,
-            'form': 0,
-            'extract': 0,
-            'assemble': 0,
-            'print_hq': 0
+            fitz.PDF_PERM_PRINT: 1,
+            fitz.PDF_PERM_COPY: 1,
+            fitz.PDF_PERM_ANNOTATE: 1
         }
         
-        ensure_dir(output)
         doc.save(
             output,
             encryption=fitz.PDF_ENCRYPT_AES_256,
-            owner_pw=owner_password or user_password,
             user_pw=user_password,
-            permissions=sum(permissions.values())
+            owner_pw=owner_password,
+            permissions=permissions
         )
         
         return {
@@ -657,24 +613,25 @@ def write_encrypt(params: Dict[str, Any]) -> Dict[str, Any]:
         doc.close()
 
 
-def write_decrypt(params: Dict[str, Any]) -> Dict[str, Any]:
+def decrypt_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """解密 PDF"""
     file_path = resolve_path(params['path'])
     output = resolve_path(params['output'])
-    password = params.get('password')
+    password = params['password']
+    
+    ensure_dir(output)
     
     doc = fitz.open(file_path)
     
     try:
-        # 如果文档加密，需要密码
         if doc.is_encrypted:
-            if not password:
-                raise ValueError('Password required for encrypted PDF')
-            auth_result = doc.authenticate(password)
-            if not auth_result:
-                raise ValueError('Invalid password')
+            result = doc.authenticate(password)
+            if not result:
+                return {
+                    'success': False,
+                    'error': 'Invalid password'
+                }
         
-        ensure_dir(output)
         doc.save(output)
         
         return {
@@ -686,26 +643,24 @@ def write_decrypt(params: Dict[str, Any]) -> Dict[str, Any]:
         doc.close()
 
 
-def write_watermark(params: Dict[str, Any]) -> Dict[str, Any]:
+def add_watermark(params: Dict[str, Any]) -> Dict[str, Any]:
     """添加水印"""
     file_path = resolve_path(params['path'])
     output = resolve_path(params['output'])
-    watermark = params.get('watermark')
+    watermark = params['watermark']
     is_text = params.get('is_text', True)
+    
+    ensure_dir(output)
     
     doc = fitz.open(file_path)
     
     try:
-        for page in doc:
+        for page_num in range(len(doc)):
+            page = doc[page_num]
             rect = page.rect
             
             if is_text:
-                # 文本水印
-                # 计算中心位置
                 center = (rect.width / 2, rect.height / 2)
-                
-                # 添加半透明文本（不使用 rotate 参数，改用矩阵旋转）
-                # PyMuPDF 的 insert_text rotate 参数只接受 0, 90, 180, 270
                 page.insert_text(
                     center,
                     watermark,
@@ -714,17 +669,13 @@ def write_watermark(params: Dict[str, Any]) -> Dict[str, Any]:
                     overlay=True
                 )
             else:
-                # PDF 水印
                 watermark_path = resolve_path(watermark)
                 watermark_doc = fitz.open(watermark_path)
                 try:
-                    watermark_page = watermark_doc[0]
-                    # 将水印页面作为内容插入
                     page.show_pdf_page(rect, watermark_doc, 0, overlay=True)
                 finally:
                     watermark_doc.close()
         
-        ensure_dir(output)
         doc.save(output)
         
         return {
@@ -741,235 +692,407 @@ def write_watermark(params: Dict[str, Any]) -> Dict[str, Any]:
 def getTools():
     """获取工具清单 - 用于技能注册"""
     return [
+        # 读取类工具
         {
-            "name": "read",
-            "description": "PDF 读取工具，支持 metadata、text、tables、images、render、markdown、fields 操作",
+            "name": "read_metadata",
+            "description": "读取 PDF 元数据（标题、作者、页数等）",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "PDF 文件路径（必需）"
-                    },
-                    "operation": {
-                        "type": "string",
-                        "enum": ["metadata", "text", "tables", "images", "render", "markdown", "fields"],
-                        "description": "操作类型（必需）"
-                    },
-                    "from_page": {
-                        "type": "integer",
-                        "description": "起始页（从1开始，可选）"
-                    },
-                    "to_page": {
-                        "type": "integer",
-                        "description": "结束页（包含，可选）"
+                        "description": "PDF 文件路径"
                     },
                     "parse_page_info": {
                         "type": "boolean",
-                        "description": "metadata操作：解析每页详细信息（默认false）"
-                    },
-                    "image_threshold": {
-                        "type": "integer",
-                        "description": "images操作：图片最小尺寸阈值，像素（默认80）"
-                    },
-                    "output_dir": {
-                        "type": "string",
-                        "description": "render操作：输出目录（不指定则只返回dataUrl）"
-                    },
-                    "scale": {
-                        "type": "number",
-                        "description": "render操作：缩放比例（默认1.5，相当于150 DPI）"
-                    },
-                    "desired_width": {
-                        "type": "integer",
-                        "description": "render操作：期望宽度（像素），设置后将忽略scale"
-                    },
-                    "prefix": {
-                        "type": "string",
-                        "description": "render操作：输出文件名前缀（默认page）"
-                    },
-                    "output": {
-                        "type": "string",
-                        "description": "markdown操作：输出markdown文件路径"
+                        "description": "解析每页详细信息（默认: false）"
                     }
                 },
-                "required": ["path", "operation"]
+                "required": ["path"]
             }
         },
         {
-            "name": "write",
-            "description": "PDF 写入工具，支持 create、merge、split、rotate、encrypt、decrypt、watermark 操作",
+            "name": "extract_text",
+            "description": "提取 PDF 中的文本内容",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "PDF 文件路径（split/rotate/encrypt/decrypt/watermark操作必需）"
+                        "description": "PDF 文件路径"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含）"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "extract_tables",
+            "description": "提取 PDF 中的表格数据",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含）"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "extract_images",
+            "description": "提取 PDF 中内嵌的图片",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含）"
+                    },
+                    "threshold": {
+                        "type": "integer",
+                        "description": "图片最小尺寸阈值，像素（默认: 80）"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "render_pages",
+            "description": "将 PDF 页面渲染为图片",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含）"
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "输出目录（不指定则只返回 dataUrl）"
+                    },
+                    "scale": {
+                        "type": "number",
+                        "description": "缩放比例（默认: 1.5，相当于 150 DPI）"
+                    },
+                    "desired_width": {
+                        "type": "integer",
+                        "description": "期望宽度（像素），设置后忽略 scale"
+                    },
+                    "prefix": {
+                        "type": "string",
+                        "description": "输出文件名前缀（默认: page）"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "to_markdown",
+            "description": "将 PDF 转换为 Markdown 格式",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含）"
                     },
                     "output": {
                         "type": "string",
-                        "description": "输出文件路径（create/merge/rotate/encrypt/decrypt/watermark操作必需）"
-                    },
-                    "operation": {
+                        "description": "输出 markdown 文件路径"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "read_form_fields",
+            "description": "读取 PDF 表单字段信息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
                         "type": "string",
-                        "enum": ["create", "merge", "split", "rotate", "encrypt", "decrypt", "watermark"],
-                        "description": "操作类型（必需）"
+                        "description": "PDF 文件路径"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        # 写入类工具
+        {
+            "name": "create_pdf",
+            "description": "创建新的 PDF 文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "output": {
+                        "type": "string",
+                        "description": "输出 PDF 文件路径"
                     },
                     "content": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "create操作：文本内容数组（每项为一页，必需）"
+                        "description": "文本内容数组（每项为一页）"
                     },
                     "title": {
                         "type": "string",
-                        "description": "create操作：PDF标题（可选）"
+                        "description": "PDF 标题"
                     },
                     "page_size": {
                         "type": "string",
                         "enum": ["a4", "letter"],
-                        "description": "create操作：页面大小（默认a4）"
+                        "description": "页面大小（默认: a4）"
+                    }
+                },
+                "required": ["output", "content"]
+            }
+        },
+        {
+            "name": "merge_pdfs",
+            "description": "合并多个 PDF 文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "output": {
+                        "type": "string",
+                        "description": "输出 PDF 文件路径"
                     },
                     "paths": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "merge操作：要合并的PDF文件路径数组（至少2个，必需）"
+                        "description": "要合并的 PDF 文件路径数组（至少2个）"
+                    }
+                },
+                "required": ["output", "paths"]
+            }
+        },
+        {
+            "name": "split_pdf",
+            "description": "拆分 PDF 为多个文件（内存高效）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "split操作：输出目录（必需）"
+                        "description": "输出目录"
                     },
                     "pages_per_file": {
                         "type": "integer",
-                        "description": "split操作：每个文件的页数（默认1）"
+                        "description": "每个文件的页数（默认: 1）"
                     },
                     "prefix": {
                         "type": "string",
-                        "description": "split操作：输出文件名前缀（默认page）"
+                        "description": "输出文件名前缀（默认: page）"
+                    }
+                },
+                "required": ["path", "output_dir"]
+            }
+        },
+        {
+            "name": "rotate_pages",
+            "description": "旋转 PDF 指定页面",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "输出 PDF 文件路径"
                     },
                     "pages": {
                         "type": "array",
                         "items": {"type": "integer"},
-                        "description": "rotate操作：要旋转的页码（从1开始，为空则旋转所有）"
+                        "description": "要旋转的页码（从1开始，空则旋转所有）"
                     },
                     "degrees": {
                         "type": "integer",
                         "enum": [90, 180, 270],
-                        "description": "rotate操作：旋转角度（默认90）"
+                        "description": "旋转角度（默认: 90）"
+                    }
+                },
+                "required": ["path", "output"]
+            }
+        },
+        {
+            "name": "encrypt_pdf",
+            "description": "加密 PDF 文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "输出 PDF 文件路径"
                     },
                     "user_password": {
                         "type": "string",
-                        "description": "encrypt操作：打开PDF的密码（必需）"
+                        "description": "打开 PDF 的密码"
                     },
                     "owner_password": {
                         "type": "string",
-                        "description": "encrypt操作：编辑密码（默认使用user_password）"
+                        "description": "编辑密码（默认使用 user_password）"
+                    }
+                },
+                "required": ["path", "output", "user_password"]
+            }
+        },
+        {
+            "name": "decrypt_pdf",
+            "description": "解密 PDF 文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "输出 PDF 文件路径"
                     },
                     "password": {
                         "type": "string",
-                        "description": "decrypt操作：当前密码（必需）"
+                        "description": "当前密码"
+                    }
+                },
+                "required": ["path", "output", "password"]
+            }
+        },
+        {
+            "name": "add_watermark",
+            "description": "为 PDF 添加水印",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "输出 PDF 文件路径"
                     },
                     "watermark": {
                         "type": "string",
-                        "description": "watermark操作：水印文本或水印PDF路径（必需）"
+                        "description": "水印文本或水印 PDF 路径"
                     },
                     "is_text": {
                         "type": "boolean",
-                        "description": "watermark操作：true为文本水印，false为PDF路径（默认true）"
+                        "description": "true 为文本水印，false 为 PDF 路径（默认: true）"
                     }
                 },
-                "required": ["operation"]
+                "required": ["path", "output", "watermark"]
             }
         }
     ]
 
 
-def read(params: Dict[str, Any]) -> Dict[str, Any]:
-    """read 工具 - PDF 读取操作"""
-    operation = params.get('operation')
-    
-    if not operation:
-        raise ValueError('operation is required. Supported: metadata, text, tables, images, render, markdown, fields')
-    
-    operations = {
-        'metadata': read_metadata,
-        'text': read_text,
-        'tables': read_tables,
-        'images': read_images,
-        'render': read_render,
-        'markdown': read_markdown,
-        'fields': read_fields
-    }
-    
-    if operation not in operations:
-        raise ValueError(f"Unknown operation: {operation}. Supported: {', '.join(operations.keys())}")
-    
-    return operations[operation](params)
-
-
-def write(params: Dict[str, Any]) -> Dict[str, Any]:
-    """write 工具 - PDF 写入操作"""
-    operation = params.get('operation')
-    
-    if not operation:
-        raise ValueError('operation is required. Supported: create, merge, split, rotate, encrypt, decrypt, watermark')
-    
-    operations = {
-        'create': write_create,
-        'merge': write_merge,
-        'split': write_split,
-        'rotate': write_rotate,
-        'encrypt': write_encrypt,
-        'decrypt': write_decrypt,
-        'watermark': write_watermark
-    }
-    
-    if operation not in operations:
-        raise ValueError(f"Unknown operation: {operation}. Supported: {', '.join(operations.keys())}")
-    
-    return operations[operation](params)
-
-
+# 技能执行入口 - 适配 skill-runner.js 调用协议
 def execute(tool_name: str, params: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Skill execute function - called by skill-runner"""
-    if tool_name == 'read':
-        return read(params)
-    elif tool_name == 'write':
-        return write(params)
-    else:
-        raise ValueError(f"Unknown tool: {tool_name}. Supported tools: read, write")
+    """技能执行入口 - 由 skill-runner.js 调用"""
+    return dispatch(tool_name, params)
 
 
-# ==================== 主入口 ====================
+# 工具映射表
+tool_map = {
+    'read_metadata': read_metadata,
+    'extract_text': extract_text,
+    'extract_tables': extract_tables,
+    'extract_images': extract_images,
+    'render_pages': render_pages,
+    'to_markdown': to_markdown,
+    'read_form_fields': read_form_fields,
+    'create_pdf': create_pdf,
+    'merge_pdfs': merge_pdfs,
+    'split_pdf': split_pdf,
+    'rotate_pages': rotate_pages,
+    'encrypt_pdf': encrypt_pdf,
+    'decrypt_pdf': decrypt_pdf,
+    'add_watermark': add_watermark
+}
 
-if __name__ == '__main__':
-    # 从标准输入读取参数
+
+def dispatch(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """分发工具调用"""
+    if tool_name not in tool_map:
+        return {
+            'success': False,
+            'error': f'Unknown tool: {tool_name}'
+        }
+    
     try:
-        # 检查是否是 getTools 调用（通过命令行参数）
-        if len(sys.argv) > 1 and sys.argv[1] == '--get-tools':
-            # 直接输出工具定义
-            tools = getTools()
-            print(json.dumps(tools))
-            sys.exit(0)
-        
-        input_data = sys.stdin.read()
-        data = json.loads(input_data)
-        
-        tool_name = data.get('tool_name')
-        params = data.get('params', {})
-        context = data.get('context', {})
-        
-        result = execute(tool_name, params, context)
-        
-        # 输出结果
-        print(json.dumps({
-            'success': True,
-            'data': result
-        }))
+        func = tool_map[tool_name]
+        return func(params)
     except Exception as e:
-        error_info = {
+        return {
             'success': False,
             'error': str(e),
-            'stack': traceback.format_exc()
+            'traceback': traceback.format_exc()
         }
-        print(json.dumps(error_info))
+
+
+# 命令行入口
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print(json.dumps({
+            'success': False,
+            'error': 'Usage: python index.py <tool_name> [params_json]'
+        }))
         sys.exit(1)
+    
+    tool_name = sys.argv[1]
+    params = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+    
+    result = dispatch(tool_name, params)
+    print(json.dumps(result, ensure_ascii=False))
