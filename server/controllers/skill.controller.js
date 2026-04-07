@@ -530,18 +530,49 @@ class SkillController {
         if (entryFile) {
           logger.info(`[SkillController] No tools provided, trying to load from ${entryFile}`);
           try {
-            // Windows 需要使用 file:// URL 格式
-            const { pathToFileURL } = await import('url');
             const entry_path = path.join(full_path, entryFile);
-            const entry_url = pathToFileURL(entry_path).href + '?t=' + Date.now();
-            logger.info('[SkillController] Loading from:', entry_url);
             
-            const index_module = await import(entry_url);
-            const skill_module = index_module.default || index_module;
+            if (entryFile.endsWith('.js')) {
+              // JavaScript 技能：使用 import 加载
+              const { pathToFileURL } = await import('url');
+              const entry_url = pathToFileURL(entry_path).href + '?t=' + Date.now();
+              logger.info('[SkillController] Loading JS skill from:', entry_url);
+              
+              const index_module = await import(entry_url);
+              const skill_module = index_module.default || index_module;
 
-            if (skill_module.getTools && typeof skill_module.getTools === 'function') {
-              tools_to_register = skill_module.getTools();
-              logger.info(`[SkillController] Loaded tools from ${entryFile}:`, tools_to_register?.length);
+              if (skill_module.getTools && typeof skill_module.getTools === 'function') {
+                tools_to_register = skill_module.getTools();
+                logger.info(`[SkillController] Loaded tools from ${entryFile}:`, tools_to_register?.length);
+              }
+            } else if (entryFile.endsWith('.py')) {
+              // Python 技能：使用子进程调用获取工具定义
+              logger.info('[SkillController] Loading Python skill getTools from:', entry_path);
+              const { execFile } = await import('child_process');
+              const { promisify } = await import('util');
+              const execFileAsync = promisify(execFile);
+              
+              try {
+                // 调用 Python 脚本获取工具定义
+                const { stdout } = await execFileAsync('python', [entry_path, '--get-tools'], {
+                  timeout: 10000,
+                  maxBuffer: 1024 * 1024, // 1MB
+                });
+                
+                const pythonTools = JSON.parse(stdout);
+                if (Array.isArray(pythonTools) && pythonTools.length > 0) {
+                  // 转换 Python 工具定义为系统格式
+                  tools_to_register = pythonTools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                    script_path: 'index.py',
+                  }));
+                  logger.info(`[SkillController] Loaded ${tools_to_register.length} tools from Python skill`);
+                }
+              } catch (pyErr) {
+                logger.warn(`[SkillController] Failed to load Python getTools:`, pyErr.message);
+              }
             }
           } catch (err) {
             logger.warn(`Could not parse tools from ${source_path}:`, err.message);
