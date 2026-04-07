@@ -59,13 +59,26 @@ def is_path_allowed(target_path: str) -> bool:
     return False
 
 
-def resolve_path(relative_path: str) -> str:
-    """解析路径（支持相对路径）"""
+def resolve_path(relative_path: str, prefer_work_dir: bool = False) -> str:
+    """解析路径（支持相对路径）
+    
+    Args:
+        relative_path: 相对或绝对路径
+        prefer_work_dir: 是否优先使用工作目录（用于输出路径）
+    """
     if os.path.isabs(relative_path):
         if not is_path_allowed(relative_path):
             raise ValueError(f"Path not allowed: {relative_path}")
         return relative_path
     
+    # 如果优先使用工作目录（如 output_dir），直接使用 USER_WORK_DIR
+    if prefer_work_dir:
+        resolved = os.path.join(USER_WORK_DIR, relative_path)
+        if is_path_allowed(resolved):
+            return resolved
+        raise ValueError(f"Path not allowed: {resolved}")
+    
+    # 默认行为：遍历允许的基础路径查找已存在的文件
     for base_path in ALLOWED_BASE_PATHS:
         resolved = os.path.join(base_path, relative_path)
         if os.path.exists(resolved) or is_path_allowed(resolved):
@@ -228,8 +241,8 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Extracting images without output_dir causes memory overflow and JSON truncation.'
         }
     
-    # 解析并验证 output_dir
-    output_dir = resolve_path(output_dir)
+    # 解析并验证 output_dir（优先使用工作目录）
+    output_dir = resolve_path(output_dir, prefer_work_dir=True)
     
     # 检查父目录是否存在，不存在则报错
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -307,8 +320,8 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Rendering pages without output_dir causes memory overflow and JSON truncation.'
         }
     
-    # 解析并验证 output_dir
-    output_dir = resolve_path(output_dir)
+    # 解析并验证 output_dir（优先使用工作目录）
+    output_dir = resolve_path(output_dir, prefer_work_dir=True)
     
     # 检查父目录是否存在，不存在则报错
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -543,7 +556,7 @@ def merge_pdfs(params: Dict[str, Any]) -> Dict[str, Any]:
 def split_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """拆分 PDF（内存高效）"""
     file_path = resolve_path(params['path'])
-    output_dir = resolve_path(params['output_dir'])
+    output_dir = resolve_path(params['output_dir'], prefer_work_dir=True)
     pages_per_file = params.get('pages_per_file', 1)
     prefix = params.get('prefix', 'page')
     
@@ -817,7 +830,7 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "输出目录（必填，图片保存到文件，防止内存溢出）"
+                        "description": "图像输出目录（相对于当前工作目录）"
                     }
                 },
                 "required": ["path", "output_dir"]
@@ -843,7 +856,7 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "输出目录（必填，图片保存到文件，防止内存溢出）"
+                        "description": "图像输出目录（相对于当前工作目录）"
                     },
                     "scale": {
                         "type": "number",
@@ -961,7 +974,7 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "输出目录"
+                        "description": "输出目录（相对于当前工作目录）"
                     },
                     "pages_per_file": {
                         "type": "integer",
