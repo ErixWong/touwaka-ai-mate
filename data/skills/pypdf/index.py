@@ -219,6 +219,7 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
     from_page = params.get('from_page')
     to_page = params.get('to_page')
     threshold = params.get('threshold', 80)
+    output_dir = params.get('output_dir')
     
     doc = fitz.open(file_path)
     
@@ -228,6 +229,10 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
         end = to_page if to_page else total_pages
         start = max(0, min(start, total_pages - 1))
         end = max(1, min(end, total_pages))
+        
+        if output_dir:
+            output_dir = resolve_path(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
         
         images_info = []
         for i in range(start, end):
@@ -242,23 +247,34 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
                     if pix.n > 4:
                         pix = fitz.Pixmap(fitz.csRGB, pix)
                     
-                    img_data = pix.tobytes("png")
-                    img_b64 = base64.b64encode(img_data).decode('utf-8')
-                    
-                    images_info.append({
+                    image_info = {
                         'page': i + 1,
                         'index': img_index,
                         'width': pix.width,
-                        'height': pix.height,
-                        'data_url': f'data:image/png;base64,{img_b64}'
-                    })
+                        'height': pix.height
+                    }
+                    
+                    if output_dir:
+                        # 保存到文件，只返回路径
+                        filename = f'image_page{i+1}_idx{img_index}.png'
+                        filepath = os.path.join(output_dir, filename)
+                        pix.save(filepath)
+                        image_info['file'] = filepath
+                    else:
+                        # 返回 base64（小图片时）
+                        img_data = pix.tobytes("png")
+                        img_b64 = base64.b64encode(img_data).decode('utf-8')
+                        image_info['data_url'] = f'data:image/png;base64,{img_b64}'
+                    
+                    images_info.append(image_info)
                 
                 pix = None
         
         return {
             'success': True,
             'images': images_info,
-            'image_count': len(images_info)
+            'image_count': len(images_info),
+            'output_dir': output_dir
         }
     finally:
         doc.close()
@@ -776,6 +792,10 @@ def getTools():
                     "threshold": {
                         "type": "integer",
                         "description": "图片最小尺寸阈值，像素（默认: 80）"
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "输出目录（指定后图片保存到文件，不返回 base64，防止内存溢出）"
                     }
                 },
                 "required": ["path"]
