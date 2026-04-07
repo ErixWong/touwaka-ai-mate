@@ -2178,6 +2178,14 @@ watch(activeTab, (newTab) => {
   }
 })
 
+// 监听设置组切换，自动重置到第一个 tab
+watch(currentGroup, (newGroup) => {
+  const items = menuItemsByGroup[newGroup]
+  if (items && items.length > 0 && items[0]) {
+    activeTab.value = items[0].key
+  }
+})
+
 // =====================
 // 角色管理方法
 // =====================
