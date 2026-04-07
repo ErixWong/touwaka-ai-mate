@@ -265,9 +265,9 @@ export const useChatStore = defineStore('chat', () => {
       // 使用符合规范的分页参数
       const response = await topicApi.getTopics({ ...params, page, size, expert_id: filterExpertId })
       topics.value = response.items || []
-      // 更新分页状态 - 优先使用规范格式
-      const pagination = response.pagination || { total: response.total, page: response.page, pages: response.pages, size: response.size }
-      topicsTotal.value = pagination.total || 0
+      // 更新分页状态
+      const pagination = response.pagination
+      topicsTotal.value = pagination?.total || 0
       topicsPage.value = pagination.page || 1
       topicsPages.value = pagination.pages || 1
       return response
