@@ -59,26 +59,17 @@ def is_path_allowed(target_path: str) -> bool:
     return False
 
 
-def resolve_path(relative_path: str, prefer_work_dir: bool = False) -> str:
-    """解析路径（支持相对路径）
+def resolve_path(relative_path: str) -> str:
+    """解析输入路径（支持相对路径）
     
-    Args:
-        relative_path: 相对或绝对路径
-        prefer_work_dir: 是否优先使用工作目录（用于输出路径）
+    用于解析输入文件路径，遍历 ALLOWED_BASE_PATHS 查找已存在的文件。
     """
     if os.path.isabs(relative_path):
         if not is_path_allowed(relative_path):
             raise ValueError(f"Path not allowed: {relative_path}")
         return relative_path
     
-    # 如果优先使用工作目录（如 output_dir），直接使用 USER_WORK_DIR
-    if prefer_work_dir:
-        resolved = os.path.join(USER_WORK_DIR, relative_path)
-        if is_path_allowed(resolved):
-            return resolved
-        raise ValueError(f"Path not allowed: {resolved}")
-    
-    # 默认行为：遍历允许的基础路径查找已存在的文件
+    # 遍历允许的基础路径查找已存在的文件
     for base_path in ALLOWED_BASE_PATHS:
         resolved = os.path.join(base_path, relative_path)
         if os.path.exists(resolved) or is_path_allowed(resolved):
@@ -90,6 +81,23 @@ def resolve_path(relative_path: str, prefer_work_dir: bool = False) -> str:
     if not is_path_allowed(default_path):
         raise ValueError(f"Path not allowed: {default_path}")
     return default_path
+
+
+def resolve_output_path(relative_path: str) -> str:
+    """解析输出路径（强制使用 USER_WORK_DIR）
+    
+    用于解析输出目录路径，必须使用 USER_WORK_DIR 作为基础目录。
+    """
+    if os.path.isabs(relative_path):
+        if not is_path_allowed(relative_path):
+            raise ValueError(f"Path not allowed: {relative_path}")
+        return relative_path
+    
+    # 强制使用 USER_WORK_DIR 作为基础目录
+    resolved = os.path.join(USER_WORK_DIR, relative_path)
+    if not is_path_allowed(resolved):
+        raise ValueError(f"Path not allowed: {resolved}")
+    return resolved
 
 
 def ensure_dir(file_path: str) -> str:
@@ -241,8 +249,8 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Extracting images without output_dir causes memory overflow and JSON truncation.'
         }
     
-    # 解析并验证 output_dir（优先使用工作目录）
-    output_dir = resolve_path(output_dir, prefer_work_dir=True)
+    # 解析并验证 output_dir（强制使用 USER_WORK_DIR）
+    output_dir = resolve_output_path(output_dir)
     
     # 检查父目录是否存在，不存在则报错
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -255,6 +263,9 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
     
+    # 获取 PDF 文件名作为前缀（不含扩展名）
+    pdf_name = os.path.splitext(os.path.basename(file_path))[0]
+    
     doc = fitz.open(file_path)
     
     try:
@@ -265,11 +276,13 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
         end = max(1, min(end, total_pages))
         
         images_info = []
+        global_img_index = 1  # 全局图片序号
+        
         for i in range(start, end):
             page = doc[i]
             image_list = page.get_images(full=True)
             
-            for img_index, img in enumerate(image_list, start=1):
+            for img in image_list:
                 xref = img[0]
                 pix = fitz.Pixmap(doc, xref)
                 
@@ -277,19 +290,21 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
                     if pix.n > 4:
                         pix = fitz.Pixmap(fitz.csRGB, pix)
                     
-                    # 保存到文件，只返回路径 - 绝不返回 base64
-                    filename = f'image_page{i+1}_idx{img_index}.png'
+                    # 保存到文件，使用 PDF 文件名作为前缀
+                    # 格式：{pdf_name}-{序号}.png，如 a-1.png, a-2.png
+                    filename = f'{pdf_name}-{global_img_index}.png'
                     filepath = os.path.join(output_dir, filename)
                     pix.save(filepath)
                     
                     image_info = {
                         'page': i + 1,
-                        'index': img_index,
+                        'index': global_img_index,
                         'width': pix.width,
                         'height': pix.height,
                         'file': filepath
                     }
                     images_info.append(image_info)
+                    global_img_index += 1
                 
                 pix = None
         
@@ -311,7 +326,6 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
     output_dir = params.get('output_dir')
     scale = params.get('scale', 1.5)
     desired_width = params.get('desired_width')
-    prefix = params.get('prefix', 'page')
     
     # 强制要求 output_dir，防止内存溢出和 JSON 截断
     if not output_dir:
@@ -320,8 +334,8 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Rendering pages without output_dir causes memory overflow and JSON truncation.'
         }
     
-    # 解析并验证 output_dir（优先使用工作目录）
-    output_dir = resolve_path(output_dir, prefer_work_dir=True)
+    # 解析并验证 output_dir（强制使用 USER_WORK_DIR）
+    output_dir = resolve_output_path(output_dir)
     
     # 检查父目录是否存在，不存在则报错
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -333,6 +347,9 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
     
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
+    
+    # 获取 PDF 文件名作为前缀（不含扩展名）
+    pdf_name = os.path.splitext(os.path.basename(file_path))[0]
     
     doc = fitz.open(file_path)
     
@@ -354,8 +371,9 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
             mat = fitz.Matrix(scale, scale)
             pix = page.get_pixmap(matrix=mat)
             
-            # 保存到文件，只返回路径 - 绝不返回 base64
-            filename = f'{prefix}_{i+1}.png'
+            # 保存到文件，使用 PDF 文件名作为前缀
+            # 格式：{pdf_name}-{页码}.png，如 a-1.png, a-2.png
+            filename = f'{pdf_name}-{i+1}.png'
             filepath = os.path.join(output_dir, filename)
             pix.save(filepath)
             
@@ -556,11 +574,13 @@ def merge_pdfs(params: Dict[str, Any]) -> Dict[str, Any]:
 def split_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """拆分 PDF（内存高效）"""
     file_path = resolve_path(params['path'])
-    output_dir = resolve_path(params['output_dir'], prefer_work_dir=True)
+    output_dir = resolve_output_path(params['output_dir'])
     pages_per_file = params.get('pages_per_file', 1)
-    prefix = params.get('prefix', 'page')
     
     os.makedirs(output_dir, exist_ok=True)
+    
+    # 获取 PDF 文件名作为前缀（不含扩展名）
+    pdf_name = os.path.splitext(os.path.basename(file_path))[0]
     
     doc = fitz.open(file_path)
     
@@ -575,10 +595,12 @@ def split_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 new_doc.insert_pdf(doc, from_page=start, to_page=end-1)
                 
+                # 使用 PDF 文件名作为前缀
+                # 格式：{pdf_name}-{页码范围}.pdf，如 a-1.pdf, a-2-5.pdf
                 if pages_per_file == 1:
-                    filename = f'{prefix}_{start+1}-{end}.pdf'
+                    filename = f'{pdf_name}-{start+1}.pdf'
                 else:
-                    filename = f'{prefix}_{start+1}-{end}.pdf'
+                    filename = f'{pdf_name}-{start+1}-{end}.pdf'
                 
                 output_path = os.path.join(output_dir, filename)
                 new_doc.save(output_path)
@@ -808,7 +830,7 @@ def getTools():
         },
         {
             "name": "extract_images",
-            "description": "提取 PDF 中内嵌的图片",
+            "description": "提取 PDF 中内嵌的图片，输出文件名自动使用 PDF 文件名作为前缀（如 a.pdf → a-1.png, a-2.png）",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -830,7 +852,7 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "图像输出目录（相对于当前工作目录）"
+                        "description": "图像输出目录（相对于当前工作目录，必须在此目录下）"
                     }
                 },
                 "required": ["path", "output_dir"]
@@ -838,7 +860,7 @@ def getTools():
         },
         {
             "name": "render_pages",
-            "description": "将 PDF 页面渲染为图片",
+            "description": "将 PDF 页面渲染为图片，输出文件名自动使用 PDF 文件名作为前缀（如 a.pdf → a-1.png, a-2.png）",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -856,7 +878,7 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "图像输出目录（相对于当前工作目录）"
+                        "description": "图像输出目录（相对于当前工作目录，必须在此目录下）"
                     },
                     "scale": {
                         "type": "number",
@@ -865,10 +887,6 @@ def getTools():
                     "desired_width": {
                         "type": "integer",
                         "description": "期望宽度（像素），设置后忽略 scale"
-                    },
-                    "prefix": {
-                        "type": "string",
-                        "description": "输出文件名前缀（默认: page）"
                     }
                 },
                 "required": ["path", "output_dir"]
@@ -964,7 +982,7 @@ def getTools():
         },
         {
             "name": "split_pdf",
-            "description": "拆分 PDF 为多个文件（内存高效）",
+            "description": "拆分 PDF 为多个文件，输出文件名自动使用 PDF 文件名作为前缀（如 a.pdf → a-1.pdf, a-2.pdf）",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -974,15 +992,11 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "输出目录（相对于当前工作目录）"
+                        "description": "输出目录（相对于当前工作目录，必须在此目录下）"
                     },
                     "pages_per_file": {
                         "type": "integer",
                         "description": "每个文件的页数（默认: 1）"
-                    },
-                    "prefix": {
-                        "type": "string",
-                        "description": "输出文件名前缀（默认: page）"
                     }
                 },
                 "required": ["path", "output_dir"]
