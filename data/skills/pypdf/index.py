@@ -1073,7 +1073,16 @@ def dispatch(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         func = tool_map[tool_name]
-        return func(params)
+        result = func(params)
+        # 确保结果可以被 JSON 序列化
+        try:
+            json.dumps(result, ensure_ascii=False)
+        except (TypeError, ValueError) as json_err:
+            return {
+                'success': False,
+                'error': f'JSON serialization error: {str(json_err)}'
+            }
+        return result
     except Exception as e:
         return {
             'success': False,
@@ -1084,15 +1093,33 @@ def dispatch(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
 
 # 命令行入口
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
+    try:
+        if len(sys.argv) < 2:
+            print(json.dumps({
+                'success': False,
+                'error': 'Usage: python index.py <tool_name> [params_json]'
+            }, ensure_ascii=False))
+            sys.exit(1)
+        
+        tool_name = sys.argv[1]
+        params = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+        
+        result = dispatch(tool_name, params)
+        # 使用 ensure_ascii=False 并捕获序列化错误
+        try:
+            output = json.dumps(result, ensure_ascii=False)
+            print(output)
+        except (TypeError, ValueError) as e:
+            print(json.dumps({
+                'success': False,
+                'error': f'JSON serialization error: {str(e)}',
+                'result_type': str(type(result))
+            }, ensure_ascii=False))
+            sys.exit(1)
+    except Exception as e:
         print(json.dumps({
             'success': False,
-            'error': 'Usage: python index.py <tool_name> [params_json]'
-        }))
+            'error': f'Fatal error: {str(e)}',
+            'traceback': traceback.format_exc()
+        }, ensure_ascii=False))
         sys.exit(1)
-    
-    tool_name = sys.argv[1]
-    params = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
-    
-    result = dispatch(tool_name, params)
-    print(json.dumps(result, ensure_ascii=False))
