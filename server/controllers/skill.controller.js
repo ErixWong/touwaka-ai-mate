@@ -590,7 +590,7 @@ class SkillController {
           const tool_name = tool.function?.name || tool.name;
           const tool_desc = tool.function?.description || tool.description;
           const tool_params = tool.function?.parameters || tool.parameters;
-          const tool_script_path = tool.script_path || 'index.js';
+          const tool_script_path = tool.script_path;
 
           logger.info('[SkillController] Processing tool:', {
             tool_name,
@@ -601,6 +601,12 @@ class SkillController {
           if (!tool_name) {
             logger.warn(`Skipping tool without name:`, tool);
             continue;
+          }
+
+          // 检查 script_path 是否提供
+          if (!tool_script_path) {
+            ctx.error(`工具 "${tool_name}" 缺少 script_path 字段，请提供入口文件路径（如 index.js 或 index.py）`, 400);
+            return;
           }
 
           await this.SkillTool.create({
