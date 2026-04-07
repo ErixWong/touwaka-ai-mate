@@ -111,12 +111,22 @@ export default (controller) => {
   router.delete('/:kb_id/tags/:id', authenticate(), controller.deleteTag.bind(controller));
 
   // ==================== 搜索路由 ====================
+  // ⚠️ 注意：静态路由必须在动态路由（/:kb_id）之前定义！
 
-  // 在指定知识库中搜索
+  // 全局搜索（搜索用户所有知识库）- 静态路由，必须在前
+  router.post('/search', authenticate(), controller.globalSearch.bind(controller));
+
+  // 在指定知识库中搜索 - 动态路由
   router.post('/:kb_id/search', authenticate(), controller.searchInKnowledgeBase.bind(controller));
 
-  // 全局搜索（搜索用户所有知识库）
-  router.post('/search', authenticate(), controller.globalSearch.bind(controller));
+  // ==================== 召回路由 (Issue #558) ====================
+  // ⚠️ 注意：静态路由必须在动态路由（/:kb_id）之前定义！
+
+  // 全局召回（搜索用户所有可访问的知识库）- 静态路由，必须在前
+  router.post('/recall', authenticate(), controller.globalRecall.bind(controller));
+
+  // 单知识库召回（支持图文召回、上下文增强）- 动态路由
+  router.post('/:kb_id/recall', authenticate(), controller.recallKnowledge.bind(controller));
 
   // ==================== 向量化路由 ====================
 
