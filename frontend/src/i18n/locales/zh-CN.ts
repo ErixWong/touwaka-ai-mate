@@ -15,6 +15,7 @@ export default {
     save: '保存',
     saving: '保存中...',
     delete: '删除',
+    deleting: '删除中...',
     edit: '编辑',
     create: '创建',
     creating: '创建中...',
@@ -41,6 +42,8 @@ export default {
     restart: '重启',
     restarting: '重启中...',
     actions: '操作',
+    saveFailed: '保存失败',
+    deleteFailed: '删除失败',
   },
 
   // 导航
@@ -182,6 +185,9 @@ export default {
     loadFailed: '加载失败',
     sendFailed: '发送失败',
     backendUnavailable: '后端服务暂时不可用，请稍后重试',
+    pageNotFound: '页面未找到',
+    pageNotFoundDesc: '您访问的页面不存在或已被移除',
+    backToHome: '返回首页',
   },
 
   // 设置页面
@@ -453,6 +459,11 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     saveExpertsFailed: '保存专家访问权限失败',
     updateRoleSuccess: '角色更新成功',
     updateRoleFailed: '角色更新失败',
+    saveRoleFailed: '保存角色失败',
+    noRoles: '暂无角色',
+    noPermissionsAvailable: '暂无可用权限',
+    adminRoleNoEdit: '管理员角色不可编辑',
+    noExpertsAvailable: '暂无可用专家',
     // 组织架构管理
     organizationManagement: '组织架构',
     // 附件管理
@@ -750,6 +761,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
 
   // 话题 Tab（补充）
   topics: {
+    title: '话题',
     noTopics: '暂无话题',
     noDescription: '暂无描述',
     messages: '条消息',
@@ -762,6 +774,18 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     compressSuccess: '上下文压缩完成',
     loadFailed: '加载话题失败',
     compressFailed: '压缩失败',
+    searchPlaceholder: '搜索话题...',
+    allTopics: '全部话题',
+    active: '进行中',
+    archived: '已归档',
+    continue: '继续',
+    archive: '归档',
+    unarchive: '取消归档',
+    delete: '删除',
+    noResults: '未找到匹配的话题',
+    empty: '暂无话题',
+    loadMore: '加载更多',
+    confirmDelete: '确定要删除这个话题吗？此操作不可恢复。',
     status: {
       active: '进行中',
       archived: '已归档',
@@ -782,6 +806,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     addSkill: '添加技能',
     mark: '技能标识 (Mark)',
     markHint: '用于生成工具名称，格式：mark__tool_name',
+    markPlaceholder: '请输入技能标识，如：my_skill',
+    markFormatError: '技能标识只能包含小写字母、数字和下划线',
     searchPlaceholder: '搜索技能...',
     allSkills: '全部技能',
     active: '已启用',
@@ -849,6 +875,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     updatedAt: '更新时间',
     // 删除确认
     deleteConfirm: '确定要删除技能 "{name}" 吗？此操作不可恢复。',
+    deleteSuccess: '技能删除成功',
+    deleteFailed: '删除技能失败',
     // 参数管理
     parameters: {
       title: '参数管理',
@@ -878,6 +906,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       saveSuccess: '参数保存成功',
       saveFailed: '保存参数失败',
       clickToShow: '点击显示',
+      hide: '隐藏',
+      show: '显示',
+      adminConfigured: '管理员已配置',
     },
     manageParams: '管理参数',
     // Skills Studio
@@ -1164,6 +1195,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       updateSuccess: '文章更新成功',
       updateFailed: '更新文章失败',
       deleteConfirm: '确定要删除文章"{title}"吗？子文章和知识点也会被删除。',
+      status: {
+        failed: '处理失败',
+      },
     },
 
     // 章节
@@ -1191,6 +1225,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       vectorized: '已向量化',
       notVectorized: '未向量化',
       revectorizeHint: '重新向量化此段落',
+      deleteConfirm: '确定要删除这个段落吗？',
     },
 
     // 知识点
@@ -1317,6 +1352,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     retry: '重试',
     retrySuccess: '已重新执行委托',
     retryFailed: '重试失败',
+    // 重发通知
+    resendNotification: '重发通知',
+    resendNotificationSuccess: '通知已重发',
+    resendNotificationFailed: '重发通知失败',
 
     // 时间
     justNow: '刚刚',
@@ -1411,6 +1450,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     verifying: '验证邀请码中...',
     verifySuccess: '邀请码有效',
     verifyFailed: '邀请码验证失败',
+    error: '注册失败，请稍后重试',
   },
 
   // 附件管理
