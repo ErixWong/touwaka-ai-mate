@@ -241,24 +241,33 @@ export interface PaginationParams {
 }
 
 // 分页响应 - 符合 API 查询设计规范
+// 参考：docs/database/api-query-design.md
 export interface PaginatedResponse<T> {
+  /** 数据列表 */
   items: T[]
-  total: number
-  page: number
-  size: number  // 每页条数
-  pages: number  // 总页数
-  has_next?: boolean  // 是否有下一页
-  has_prev?: boolean  // 是否有上一页
-  // 向后兼容字段
-  limit?: number  // 别名，等于 size
-  total_pages?: number  // 别名，等于 pages
-  pagination?: {
+  /** 分页信息 */
+  pagination: {
+    /** 当前页码 */
     page: number
+    /** 每页条数 */
     size: number
+    /** 总条数 */
     total: number
+    /** 总页数 */
     pages: number
-    has_next?: boolean
-    has_prev?: boolean
+    /** 是否有下一页 */
+    has_next: boolean
+    /** 是否有上一页 */
+    has_prev: boolean
+  }
+  /** 查询摘要（可选，开发环境启用） */
+  summary?: {
+    /** 查询耗时（毫秒） */
+    took_ms: number
+    /** 应用的过滤条件数量 */
+    filters_applied?: number
+    /** 生成的 SQL（调试用） */
+    sql?: string
   }
 }
 

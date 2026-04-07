@@ -182,6 +182,8 @@ class KbController {
 
       const pages = Math.ceil(count / size);
 
+      // 返回符合 API 查询设计规范的嵌套结构
+      // 参考：docs/database/api-query-design.md
       ctx.success({
         items: resultWithUsernames,
         pagination: {
