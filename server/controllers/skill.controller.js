@@ -806,6 +806,12 @@ class SkillController {
 
       await this.SkillTool.update(updates, { where: { id: tool_id } });
 
+      // 同步更新技能表的 updated_at，触发 SkillLoader 缓存失效
+      await this.Skill.update(
+        { updated_at: new Date() },
+        { where: { id } }
+      );
+
       ctx.success({ id: tool_id }, '工具更新成功');
     } catch (error) {
       logger.error('Update tool error:', error);
@@ -856,6 +862,12 @@ class SkillController {
           });
         }
       }
+
+      // 同步更新技能表的 updated_at，触发 SkillLoader 缓存失效
+      await this.Skill.update(
+        { updated_at: new Date() },
+        { where: { id }, transaction }
+      );
 
       // 提交事务
       await transaction.commit();
