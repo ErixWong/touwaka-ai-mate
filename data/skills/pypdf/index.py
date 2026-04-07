@@ -451,6 +451,197 @@ def to_markdown(params: Dict[str, Any]) -> Dict[str, Any]:
         doc.close()
 
 
+def extract_to_markdown_with_images(params: Dict[str, Any]) -> Dict[str, Any]:
+    """提取 PDF 为 Markdown，同时提取图片并嵌入链接
+    
+    将图文混编的 PDF 转换为 Markdown 格式，图片保存到 images 子目录，
+    并在 Markdown 中插入正确的图片链接。
+    """
+    file_path = resolve_path(params['path'])
+    from_page = params.get('from_page')
+    to_page = params.get('to_page')
+    output_dir = params.get('output_dir')
+    threshold = params.get('threshold', 80)
+    
+    # 强制要求 output_dir
+    if not output_dir:
+        return {
+            'success': False,
+            'error': 'output_dir is required.'
+        }
+    
+    # 解析并验证 output_dir（强制使用 USER_WORK_DIR）
+    output_dir = resolve_output_path(output_dir)
+    
+    # 检查父目录是否存在
+    parent_dir = os.path.dirname(output_dir.rstrip('/'))
+    if parent_dir and not os.path.exists(parent_dir):
+        return {
+            'success': False,
+            'error': f'Parent directory does not exist: {parent_dir}'
+        }
+    
+    # 创建输出目录和图片子目录
+    os.makedirs(output_dir, exist_ok=True)
+    images_dir = os.path.join(output_dir, 'images')
+    os.makedirs(images_dir, exist_ok=True)
+    
+    # 获取 PDF 文件名作为前缀
+    pdf_name = os.path.splitext(os.path.basename(file_path))[0]
+    
+    doc = fitz.open(file_path)
+    
+    try:
+        total_pages = len(doc)
+        start = (from_page - 1) if from_page else 0
+        end = to_page if to_page else total_pages
+        start = max(0, min(start, total_pages - 1))
+        end = max(1, min(end, total_pages))
+        
+        markdown_parts = []
+        global_img_index = 1
+        all_images_info = []
+        
+        for page_num in range(start, end):
+            page = doc[page_num]
+            page_height = page.rect.height
+            
+            # 1. 获取页面中的图片信息（带位置）
+            # get_image_info() 返回图片的 bbox 信息
+            image_info_list = []
+            try:
+                # 获取图片的详细信息，包括位置
+                img_list = page.get_images(full=True)
+                for img in img_list:
+                    xref = img[0]
+                    # 获取图片在页面上的位置
+                    img_rects = page.get_image_rects(xref)
+                    if img_rects:
+                        for rect in img_rects:
+                            image_info_list.append({
+                                'xref': xref,
+                                'rect': rect,
+                                'y': rect.y0  # 用于排序
+                            })
+            except Exception:
+                pass
+            
+            # 2. 提取并保存图片
+            saved_images = {}  # xref -> (filename, filepath)
+            for img_info in image_info_list:
+                xref = img_info['xref']
+                if xref in saved_images:
+                    continue
+                
+                try:
+                    pix = fitz.Pixmap(doc, xref)
+                    if pix.width >= threshold and pix.height >= threshold:
+                        if pix.n > 4:
+                            pix = fitz.Pixmap(fitz.csRGB, pix)
+                        
+                        filename = f'{pdf_name}-{global_img_index}.png'
+                        filepath = os.path.join(images_dir, filename)
+                        pix.save(filepath)
+                        
+                        saved_images[xref] = (filename, filepath)
+                        all_images_info.append({
+                            'page': page_num + 1,
+                            'index': global_img_index,
+                            'width': pix.width,
+                            'height': pix.height,
+                            'file': filepath
+                        })
+                        global_img_index += 1
+                    pix = None
+                except Exception:
+                    pass
+            
+            # 3. 获取文本块（带位置信息）
+            text_dict = page.get_text("dict")
+            blocks = text_dict.get("blocks", [])
+            
+            # 4. 构建内容列表（文本块和图片），按 y 坐标排序
+            content_items = []
+            
+            # 添加文本块
+            for block in blocks:
+                if block.get('type') == 0:  # 文本块
+                    lines = block.get('lines', [])
+                    text_parts = []
+                    for line in lines:
+                        spans = line.get('spans', [])
+                        for span in spans:
+                            text_parts.append(span.get('text', ''))
+                    text = ' '.join(text_parts).strip()
+                    if text:
+                        content_items.append({
+                            'type': 'text',
+                            'y': block['bbox'][1],  # y0
+                            'text': text
+                        })
+            
+            # 添加图片
+            for img_info in image_info_list:
+                xref = img_info['xref']
+                if xref in saved_images:
+                    filename, _ = saved_images[xref]
+                    content_items.append({
+                        'type': 'image',
+                        'y': img_info['y'],
+                        'filename': filename
+                    })
+            
+            # 5. 按 y 坐标排序
+            content_items.sort(key=lambda x: x['y'])
+            
+            # 6. 生成 Markdown
+            for item in content_items:
+                if item['type'] == 'text':
+                    text = item['text']
+                    # 简单的格式判断
+                    if text.isupper() and len(text) < 100:
+                        markdown_parts.append(f'## {text}')
+                    elif text[0].isdigit() and '.' in text[:10]:
+                        markdown_parts.append(f'- {text}')
+                    else:
+                        markdown_parts.append(text)
+                elif item['type'] == 'image':
+                    markdown_parts.append(f'![{item["filename"]}](images/{item["filename"]})')
+            
+            # 页面分隔
+            markdown_parts.append('')
+            markdown_parts.append('---')
+            markdown_parts.append('')
+        
+        # 移除最后的分隔符
+        if markdown_parts and markdown_parts[-1] == '':
+            markdown_parts = markdown_parts[:-1]
+        if markdown_parts and markdown_parts[-1] == '---':
+            markdown_parts = markdown_parts[:-1]
+        if markdown_parts and markdown_parts[-1] == '':
+            markdown_parts = markdown_parts[:-1]
+        
+        markdown_text = '\n'.join(markdown_parts)
+        
+        # 保存 Markdown 文件
+        md_filename = f'{pdf_name}.md'
+        md_filepath = os.path.join(output_dir, md_filename)
+        with open(md_filepath, 'w', encoding='utf-8') as f:
+            f.write(markdown_text)
+        
+        return {
+            'success': True,
+            'markdown': markdown_text,
+            'markdown_file': md_filepath,
+            'images_dir': images_dir,
+            'images': all_images_info,
+            'image_count': len(all_images_info),
+            'output_dir': output_dir
+        }
+    finally:
+        doc.close()
+
+
 def read_form_fields(params: Dict[str, Any]) -> Dict[str, Any]:
     """读取表单字段"""
     file_path = resolve_path(params['path'])
@@ -919,6 +1110,36 @@ def getTools():
             }
         },
         {
+            "name": "extract_to_markdown_with_images",
+            "description": "将图文混编 PDF 转换为 Markdown，同时提取图片并嵌入链接。图片保存到 images 子目录，Markdown 文件保存到输出目录。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含）"
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "输出目录（相对于当前工作目录，必须在此目录下）"
+                    },
+                    "threshold": {
+                        "type": "integer",
+                        "description": "图片最小尺寸阈值，像素（默认: 80）"
+                    }
+                },
+                "required": ["path", "output_dir"]
+            }
+        },
+        {
             "name": "read_form_fields",
             "description": "读取 PDF 表单字段信息",
             "parameters": {
@@ -1121,6 +1342,7 @@ tool_map = {
     'extract_images': extract_images,
     'render_pages': render_pages,
     'to_markdown': to_markdown,
+    'extract_to_markdown_with_images': extract_to_markdown_with_images,
     'read_form_fields': read_form_fields,
     'create_pdf': create_pdf,
     'merge_pdfs': merge_pdfs,
