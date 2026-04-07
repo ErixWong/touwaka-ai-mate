@@ -214,12 +214,19 @@ def extract_tables(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
-    """提取内嵌图片"""
+    """提取内嵌图片 - 强制要求 output_dir，绝不返回 base64"""
     file_path = resolve_path(params['path'])
     from_page = params.get('from_page')
     to_page = params.get('to_page')
     threshold = params.get('threshold', 80)
     output_dir = params.get('output_dir')
+    
+    # 强制要求 output_dir，防止内存溢出和 JSON 截断
+    if not output_dir:
+        return {
+            'success': False,
+            'error': 'output_dir is required. Extracting images without output_dir causes memory overflow and JSON truncation.'
+        }
     
     doc = fitz.open(file_path)
     
@@ -230,9 +237,8 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
         start = max(0, min(start, total_pages - 1))
         end = max(1, min(end, total_pages))
         
-        if output_dir:
-            output_dir = resolve_path(output_dir)
-            os.makedirs(output_dir, exist_ok=True)
+        output_dir = resolve_path(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         
         images_info = []
         for i in range(start, end):
@@ -247,25 +253,18 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
                     if pix.n > 4:
                         pix = fitz.Pixmap(fitz.csRGB, pix)
                     
+                    # 保存到文件，只返回路径 - 绝不返回 base64
+                    filename = f'image_page{i+1}_idx{img_index}.png'
+                    filepath = os.path.join(output_dir, filename)
+                    pix.save(filepath)
+                    
                     image_info = {
                         'page': i + 1,
                         'index': img_index,
                         'width': pix.width,
-                        'height': pix.height
+                        'height': pix.height,
+                        'file': filepath
                     }
-                    
-                    if output_dir:
-                        # 保存到文件，只返回路径
-                        filename = f'image_page{i+1}_idx{img_index}.png'
-                        filepath = os.path.join(output_dir, filename)
-                        pix.save(filepath)
-                        image_info['file'] = filepath
-                    else:
-                        # 返回 base64（小图片时）
-                        img_data = pix.tobytes("png")
-                        img_b64 = base64.b64encode(img_data).decode('utf-8')
-                        image_info['data_url'] = f'data:image/png;base64,{img_b64}'
-                    
                     images_info.append(image_info)
                 
                 pix = None
@@ -281,7 +280,7 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
-    """渲染页面为图片"""
+    """渲染页面为图片 - 强制要求 output_dir，绝不返回 base64"""
     file_path = resolve_path(params['path'])
     from_page = params.get('from_page')
     to_page = params.get('to_page')
@@ -289,6 +288,13 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
     scale = params.get('scale', 1.5)
     desired_width = params.get('desired_width')
     prefix = params.get('prefix', 'page')
+    
+    # 强制要求 output_dir，防止内存溢出和 JSON 截断
+    if not output_dir:
+        return {
+            'success': False,
+            'error': 'output_dir is required. Rendering pages without output_dir causes memory overflow and JSON truncation.'
+        }
     
     doc = fitz.open(file_path)
     
@@ -299,9 +305,8 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
         start = max(0, min(start, total_pages - 1))
         end = max(1, min(end, total_pages))
         
-        if output_dir:
-            output_dir = resolve_path(output_dir)
-            os.makedirs(output_dir, exist_ok=True)
+        output_dir = resolve_path(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         
         rendered = []
         for i in range(start, end):
@@ -314,22 +319,17 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
             mat = fitz.Matrix(scale, scale)
             pix = page.get_pixmap(matrix=mat)
             
-            img_data = pix.tobytes("png")
-            img_b64 = base64.b64encode(img_data).decode('utf-8')
-            data_url = f'data:image/png;base64,{img_b64}'
+            # 保存到文件，只返回路径 - 绝不返回 base64
+            filename = f'{prefix}_{i+1}.png'
+            filepath = os.path.join(output_dir, filename)
+            pix.save(filepath)
             
             result_item = {
                 'page': i + 1,
                 'width': pix.width,
                 'height': pix.height,
-                'data_url': data_url
+                'file': filepath
             }
-            
-            if output_dir:
-                filename = f'{prefix}_{i+1}-{i+1}.png'
-                filepath = os.path.join(output_dir, filename)
-                pix.save(filepath)
-                result_item['file'] = filepath
             
             rendered.append(result_item)
             pix = None
@@ -795,10 +795,10 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "输出目录（指定后图片保存到文件，不返回 base64，防止内存溢出）"
+                        "description": "输出目录（必填，图片保存到文件，防止内存溢出）"
                     }
                 },
-                "required": ["path"]
+                "required": ["path", "output_dir"]
             }
         },
         {
@@ -821,7 +821,7 @@ def getTools():
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "输出目录（不指定则只返回 dataUrl）"
+                        "description": "输出目录（必填，图片保存到文件，防止内存溢出）"
                     },
                     "scale": {
                         "type": "number",
@@ -836,7 +836,7 @@ def getTools():
                         "description": "输出文件名前缀（默认: page）"
                     }
                 },
-                "required": ["path"]
+                "required": ["path", "output_dir"]
             }
         },
         {
