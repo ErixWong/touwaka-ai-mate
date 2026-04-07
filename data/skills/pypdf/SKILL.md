@@ -26,7 +26,7 @@ dependencies:
 | `read_metadata` | 读取 PDF 元数据 | `path`, `parse_page_info` |
 | `extract_text` | 提取文本内容 | `path`, `from_page`, `to_page` |
 | `extract_tables` | 提取表格数据 | `path`, `from_page`, `to_page` |
-| `extract_images` | 提取内嵌图片 | `path`, `from_page`, `to_page`, `threshold` |
+| `extract_images` | 提取内嵌图片 | `path`, `from_page`, `to_page`, `threshold`, `output_dir` |
 | `render_pages` | 渲染页面为图片 | `path`, `from_page`, `to_page`, `output_dir`, `scale` |
 | `to_markdown` | 转换为 Markdown | `path`, `from_page`, `to_page`, `output` |
 | `read_form_fields` | 读取表单字段 | `path` |
@@ -112,12 +112,23 @@ pypdf__extract_tables({ path: "doc.pdf", from_page: 1, to_page: 3 })
 | from_page | number | ❌ | 起始页（从1开始） |
 | to_page | number | ❌ | 结束页（包含） |
 | threshold | number | ❌ | 图片最小尺寸阈值，像素（默认: 80） |
+| output_dir | string | ❌ | 输出目录（指定后图片保存到文件，不返回 base64，防止内存溢出） |
 
 **调用示例：**
 ```javascript
-// 提取所有大于100像素的图片
+// 提取所有大于100像素的图片（返回 base64，适合小文件）
 pypdf__extract_images({ path: "doc.pdf", threshold: 100 })
+
+// 提取图片到目录（推荐，防止内存溢出）
+pypdf__extract_images({ 
+  path: "doc.pdf", 
+  output_dir: "./extracted_images"
+})
 ```
+
+**注意事项：**
+- 当 PDF 包含大量高分辨率图片时，建议使用 `output_dir` 参数将图片保存到文件
+- 不指定 `output_dir` 时，所有图片以 base64 形式返回，可能导致输出被截断
 
 ---
 
