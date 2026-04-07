@@ -17,8 +17,7 @@ import os
 import sys
 import json
 import base64
-import io
-from pathlib import Path
+import traceback
 from typing import Dict, List, Any, Optional, Tuple
 
 # 用户角色检查
@@ -203,8 +202,8 @@ def read_tables(params: Dict[str, Any]) -> Dict[str, Any]:
                             'rows': len(table_data) if table_data else 0,
                             'data': table_data
                         })
-            except Exception as e:
-                # 某些 PDF 可能不支持表格提取
+            except Exception:
+                # 某些 PDF 可能不支持表格提取，静默忽略
                 pass
             
             tables_result.append({
@@ -808,9 +807,10 @@ if __name__ == '__main__':
             'data': result
         }))
     except Exception as e:
-        print(json.dumps({
+        error_info = {
             'success': False,
             'error': str(e),
-            'stack': str(e.__traceback__)
-        }))
+            'stack': traceback.format_exc()
+        }
+        print(json.dumps(error_info))
         sys.exit(1)
