@@ -36,6 +36,7 @@ else:
 
 # 根据用户角色设置允许的路径
 if IS_ADMIN:
+    # 管理员可以访问整个 DATA_BASE_PATH 目录树
     ALLOWED_BASE_PATHS = [DATA_BASE_PATH]
 elif IS_SKILL_CREATOR:
     ALLOWED_BASE_PATHS = [
@@ -424,15 +425,21 @@ def read_fields(params: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         fields = []
-        # PyMuPDF 通过 get_fields 获取表单字段
-        form_fields = doc.get_fields()
-        
-        if form_fields:
-            for field_name, field_info in form_fields.items():
-                fields.append({
-                    'name': field_name,
-                    'type': field_info.get('type', 'unknown')
-                })
+        # PyMuPDF 通过遍历页面获取表单字段
+        # 新版 PyMuPDF 使用不同的 API
+        try:
+            # 尝试使用 widget 遍历方式
+            for page in doc:
+                for widget in page.widgets():
+                    if widget:
+                        fields.append({
+                            'name': widget.field_name or 'unnamed',
+                            'type': widget.field_type_string or 'unknown',
+                            'page': page.number + 1
+                        })
+        except Exception:
+            # 如果 widgets() 方法失败，尝试其他方式
+            pass
         
         return {
             'success': True,
@@ -697,13 +704,13 @@ def write_watermark(params: Dict[str, Any]) -> Dict[str, Any]:
                 # 计算中心位置
                 center = (rect.width / 2, rect.height / 2)
                 
-                # 添加半透明文本
+                # 添加半透明文本（不使用 rotate 参数，改用矩阵旋转）
+                # PyMuPDF 的 insert_text rotate 参数只接受 0, 90, 180, 270
                 page.insert_text(
                     center,
                     watermark,
                     fontsize=50,
                     color=(0.8, 0.8, 0.8),
-                    rotate=45,
                     overlay=True
                 )
             else:

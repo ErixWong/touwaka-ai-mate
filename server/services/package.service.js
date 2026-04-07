@@ -314,9 +314,9 @@ class PackageService {
       const packageSpec = version ? `${name}==${version}` : name;
       logger.info(`Installing Python package: ${packageSpec}`);
 
-      const { stdout, stderr } = await execAsync(`"${pythonCmd}" -m pip install ${packageSpec}`, {
+      const { stdout, stderr } = await execAsync(`"${pythonCmd}" -m pip install ${packageSpec} -i https://pypi.tuna.tsinghua.edu.cn/simple`, {
         maxBuffer: 1024 * 1024 * 5, // 5MB buffer
-        timeout: 5 * 60 * 1000, // 5 分钟超时
+        timeout: 10 * 60 * 1000, // 10 分钟超时（PyMuPDF 需要更长时间）
       });
 
       // pip 通常在 stderr 输出信息
