@@ -17,18 +17,19 @@ dependencies:
 
 ## 工具清单
 
-本技能提供 14 个独立工具，每个工具专注于单一功能：
+本技能提供 15 个独立工具，每个工具专注于单一功能：
 
-### 📖 读取类工具（7个）
+### 📖 读取类工具（8个）
 
 | 工具 | 功能 | 核心参数 |
 |------|------|----------|
 | `read_metadata` | 读取 PDF 元数据 | `path`, `parse_page_info` |
 | `extract_text` | 提取文本内容 | `path`, `from_page`, `to_page` |
 | `extract_tables` | 提取表格数据 | `path`, `from_page`, `to_page` |
-| `extract_images` | 提取内嵌图片 | `path`, `from_page`, `to_page`, `threshold`, `output_dir` |
-| `render_pages` | 渲染页面为图片 | `path`, `from_page`, `to_page`, `output_dir`, `scale` |
+| `extract_images` | 提取内嵌图片 | `path`, `output_dir`, `from_page`, `to_page`, `threshold` |
+| `render_pages` | 渲染页面为图片 | `path`, `output_dir`, `from_page`, `to_page`, `scale` |
 | `to_markdown` | 转换为 Markdown | `path`, `from_page`, `to_page`, `output` |
+| `extract_to_markdown_with_images` | 图文混编 PDF 转 Markdown | `path`, `output_dir`, `from_page`, `to_page`, `threshold` |
 | `read_form_fields` | 读取表单字段 | `path` |
 
 ### ✏️ 写入类工具（7个）
@@ -109,26 +110,32 @@ pypdf__extract_tables({ path: "doc.pdf", from_page: 1, to_page: 3 })
 | 参数 | 类型 | 必需 | 描述 |
 |------|------|------|------|
 | **path** | string | ✅ | PDF 文件路径 |
+| **output_dir** | string | ✅ | 输出目录（相对于当前工作目录，图片保存到此目录） |
 | from_page | number | ❌ | 起始页（从1开始） |
 | to_page | number | ❌ | 结束页（包含） |
 | threshold | number | ❌ | 图片最小尺寸阈值，像素（默认: 80） |
-| output_dir | string | ❌ | 输出目录（指定后图片保存到文件，不返回 base64，防止内存溢出） |
 
 **调用示例：**
 ```javascript
-// 提取所有大于100像素的图片（返回 base64，适合小文件）
-pypdf__extract_images({ path: "doc.pdf", threshold: 100 })
-
-// 提取图片到目录（推荐，防止内存溢出）
+// 提取图片到目录（输出文件名自动使用 PDF 文件名作为前缀，如 doc-1.png, doc-2.png）
 pypdf__extract_images({ 
   path: "doc.pdf", 
   output_dir: "./extracted_images"
 })
+
+// 提取第1-5页的大图片
+pypdf__extract_images({ 
+  path: "doc.pdf", 
+  output_dir: "./images",
+  from_page: 1,
+  to_page: 5,
+  threshold: 200
+})
 ```
 
 **注意事项：**
-- 当 PDF 包含大量高分辨率图片时，建议使用 `output_dir` 参数将图片保存到文件
-- 不指定 `output_dir` 时，所有图片以 base64 形式返回，可能导致输出被截断
+- `output_dir` 为必填参数，图片必须保存到文件（防止内存溢出）
+- 输出文件名自动使用 PDF 文件名作为前缀，如 `doc-1.png`, `doc-2.png`
 
 ---
 
@@ -139,16 +146,15 @@ pypdf__extract_images({
 | 参数 | 类型 | 必需 | 描述 |
 |------|------|------|------|
 | **path** | string | ✅ | PDF 文件路径 |
-| from_page | number | ❌ | 起始页（从1开始） |
+| **output_dir** | string | ✅ | 输出目录（相对于当前工作目录，图片保存到此目录） |
+| from_page | number | ❌ | 赯始页（从1开始） |
 | to_page | number | ❌ | 结束页（包含） |
-| output_dir | string | ❌ | 输出目录（不指定则返回 dataUrl） |
 | scale | number | ❌ | 缩放比例（默认: 1.5，相当于 150 DPI） |
 | desired_width | number | ❌ | 期望宽度（像素），设置后忽略 scale |
-| prefix | string | ❌ | 输出文件名前缀（默认: "page"） |
 
 **调用示例：**
 ```javascript
-// 渲染所有页面到目录
+// 渲染所有页面到目录（输出文件名自动使用 PDF 文件名作为前缀，如 doc-1.png, doc-2.png）
 pypdf__render_pages({ 
   path: "doc.pdf", 
   output_dir: "./images",
@@ -161,10 +167,13 @@ pypdf__render_pages({
   from_page: 1,
   to_page: 3,
   output_dir: "./thumbs",
-  desired_width: 800,
-  prefix: "thumb"
+  desired_width: 800
 })
 ```
+
+**注意事项：**
+- `output_dir` 为必填参数，图片必须保存到文件（防止内存溢出）
+- 输出文件名自动使用 PDF 文件名作为前缀，如 `doc-1.png`, `doc-2.png`
 
 ---
 
@@ -183,6 +192,69 @@ pypdf__render_pages({
 ```javascript
 pypdf__to_markdown({ path: "doc.pdf", output: "doc.md" })
 ```
+
+---
+
+### extract_to_markdown_with_images - 图文混编 PDF 转 Markdown
+
+**功能说明：**
+将图文混编的 PDF 转换为 Markdown 格式，同时提取图片并嵌入链接。适用于包含文字和图片混合排版的 PDF 文档。
+
+**参数：**
+
+| 参数 | 类型 | 必需 | 描述 |
+|------|------|------|------|
+| **path** | string | ✅ | PDF 文件路径 |
+| **output_dir** | string | ✅ | 输出目录（相对于当前工作目录） |
+| from_page | number | ❌ | 起始页（从1开始） |
+| to_page | number | ❌ | 结束页（包含） |
+| threshold | number | ❌ | 图片最小尺寸阈值，像素（默认: 80） |
+
+**输出结构：**
+```
+output_dir/
+├── {pdf_name}.md      # Markdown 文件
+└── images/
+    ├── {pdf_name}-1.png
+    ├── {pdf_name}-2.png
+    └── ...
+```
+
+**调用示例：**
+```javascript
+// 转换图文混编 PDF
+pypdf__extract_to_markdown_with_images({
+  path: "report.pdf",
+  output_dir: "./output"
+})
+
+// 转换指定页面
+pypdf__extract_to_markdown_with_images({
+  path: "report.pdf",
+  output_dir: "./output",
+  from_page: 1,
+  to_page: 10,
+  threshold: 100
+})
+```
+
+**返回结果：**
+```javascript
+{
+  success: true,
+  markdown: "...",           // Markdown 文本内容
+  markdown_file: "./output/report.md",
+  images_dir: "./output/images",
+  images: [...],             // 图片信息列表
+  image_count: 5,
+  output_dir: "./output"
+}
+```
+
+**注意事项：**
+- 图片保存到 `images/` 子目录
+- Markdown 中图片链接格式：`![{filename}](images/{filename})`
+- 文本和图片按页面位置排序，保持原文档顺序
 
 ---
 
@@ -252,27 +324,29 @@ pypdf__merge_pdfs({
 | 参数 | 类型 | 必需 | 描述 |
 |------|------|------|------|
 | **path** | string | ✅ | PDF 文件路径 |
-| **output_dir** | string | ✅ | 输出目录 |
+| **output_dir** | string | ✅ | 输出目录（相对于当前工作目录） |
 | pages_per_file | number | ❌ | 每个文件的页数（默认: 1） |
-| prefix | string | ❌ | 输出文件名前缀（默认: "page"） |
 
 **调用示例：**
 ```javascript
-// 拆分为单页文件
+// 拆分为单页文件（输出文件名自动使用 PDF 文件名作为前缀，如 large-1.pdf, large-2.pdf）
 pypdf__split_pdf({
   path: "large.pdf",
-  output_dir: "./split",
-  pages_per_file: 1,
-  prefix: "page"
+  output_dir: "./split"
 })
 
-// 每10页一个文件
+// 每10页一个文件（输出如 large-1-10.pdf, large-11-20.pdf）
 pypdf__split_pdf({
   path: "large.pdf",
   output_dir: "./chunks",
   pages_per_file: 10
 })
 ```
+
+**注意事项：**
+- 输出文件名自动使用 PDF 文件名作为前缀
+- 单页拆分：`{pdf_name}-{page}.pdf`，如 `doc-1.pdf`
+- 多页拆分：`{pdf_name}-{start}-{end}.pdf`，如 `doc-1-10.pdf`
 
 ---
 
