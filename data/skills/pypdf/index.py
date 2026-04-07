@@ -738,6 +738,151 @@ def write_watermark(params: Dict[str, Any]) -> Dict[str, Any]:
 
 # ==================== 技能入口 ====================
 
+def getTools():
+    """获取工具清单 - 用于技能注册"""
+    return [
+        {
+            "name": "read",
+            "description": "PDF 读取工具，支持 metadata、text、tables、images、render、markdown、fields 操作",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径（必需）"
+                    },
+                    "operation": {
+                        "type": "string",
+                        "enum": ["metadata", "text", "tables", "images", "render", "markdown", "fields"],
+                        "description": "操作类型（必需）"
+                    },
+                    "from_page": {
+                        "type": "integer",
+                        "description": "起始页（从1开始，可选）"
+                    },
+                    "to_page": {
+                        "type": "integer",
+                        "description": "结束页（包含，可选）"
+                    },
+                    "parse_page_info": {
+                        "type": "boolean",
+                        "description": "metadata操作：解析每页详细信息（默认false）"
+                    },
+                    "image_threshold": {
+                        "type": "integer",
+                        "description": "images操作：图片最小尺寸阈值，像素（默认80）"
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "render操作：输出目录（不指定则只返回dataUrl）"
+                    },
+                    "scale": {
+                        "type": "number",
+                        "description": "render操作：缩放比例（默认1.5，相当于150 DPI）"
+                    },
+                    "desired_width": {
+                        "type": "integer",
+                        "description": "render操作：期望宽度（像素），设置后将忽略scale"
+                    },
+                    "prefix": {
+                        "type": "string",
+                        "description": "render操作：输出文件名前缀（默认page）"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "markdown操作：输出markdown文件路径"
+                    }
+                },
+                "required": ["path", "operation"]
+            }
+        },
+        {
+            "name": "write",
+            "description": "PDF 写入工具，支持 create、merge、split、rotate、encrypt、decrypt、watermark 操作",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "PDF 文件路径（split/rotate/encrypt/decrypt/watermark操作必需）"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "输出文件路径（create/merge/rotate/encrypt/decrypt/watermark操作必需）"
+                    },
+                    "operation": {
+                        "type": "string",
+                        "enum": ["create", "merge", "split", "rotate", "encrypt", "decrypt", "watermark"],
+                        "description": "操作类型（必需）"
+                    },
+                    "content": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "create操作：文本内容数组（每项为一页，必需）"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "create操作：PDF标题（可选）"
+                    },
+                    "page_size": {
+                        "type": "string",
+                        "enum": ["a4", "letter"],
+                        "description": "create操作：页面大小（默认a4）"
+                    },
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "merge操作：要合并的PDF文件路径数组（至少2个，必需）"
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "split操作：输出目录（必需）"
+                    },
+                    "pages_per_file": {
+                        "type": "integer",
+                        "description": "split操作：每个文件的页数（默认1）"
+                    },
+                    "prefix": {
+                        "type": "string",
+                        "description": "split操作：输出文件名前缀（默认page）"
+                    },
+                    "pages": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "rotate操作：要旋转的页码（从1开始，为空则旋转所有）"
+                    },
+                    "degrees": {
+                        "type": "integer",
+                        "enum": [90, 180, 270],
+                        "description": "rotate操作：旋转角度（默认90）"
+                    },
+                    "user_password": {
+                        "type": "string",
+                        "description": "encrypt操作：打开PDF的密码（必需）"
+                    },
+                    "owner_password": {
+                        "type": "string",
+                        "description": "encrypt操作：编辑密码（默认使用user_password）"
+                    },
+                    "password": {
+                        "type": "string",
+                        "description": "decrypt操作：当前密码（必需）"
+                    },
+                    "watermark": {
+                        "type": "string",
+                        "description": "watermark操作：水印文本或水印PDF路径（必需）"
+                    },
+                    "is_text": {
+                        "type": "boolean",
+                        "description": "watermark操作：true为文本水印，false为PDF路径（默认true）"
+                    }
+                },
+                "required": ["operation"]
+            }
+        }
+    ]
+
+
 def read(params: Dict[str, Any]) -> Dict[str, Any]:
     """read 工具 - PDF 读取操作"""
     operation = params.get('operation')
@@ -799,6 +944,13 @@ def execute(tool_name: str, params: Dict[str, Any], context: Dict[str, Any] = No
 if __name__ == '__main__':
     # 从标准输入读取参数
     try:
+        # 检查是否是 getTools 调用（通过命令行参数）
+        if len(sys.argv) > 1 and sys.argv[1] == '--get-tools':
+            # 直接输出工具定义
+            tools = getTools()
+            print(json.dumps(tools))
+            sys.exit(0)
+        
         input_data = sys.stdin.read()
         data = json.loads(input_data)
         
