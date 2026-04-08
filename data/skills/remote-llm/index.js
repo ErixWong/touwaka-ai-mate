@@ -285,7 +285,7 @@ async function processTask(task) {
     // 3. 推送结果给专家（使用结构化 JSON 格式，与 Assistant 系统保持一致）
     const notificationContent = JSON.stringify({
       type: 'assistant_result',
-      task_id: taskId,
+      task_id: task_id,
       status: 'completed',
       result: {
         model: result.model,
@@ -311,7 +311,7 @@ async function processTask(task) {
     try {
       const errorContent = JSON.stringify({
         type: 'assistant_result',
-        task_id: taskId,
+        task_id: task_id,
         status: 'failed',
         error: { message: error.message },
       });
