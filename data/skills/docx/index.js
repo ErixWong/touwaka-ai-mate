@@ -1495,4 +1495,140 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'read',
+      description: '读取Word文档，支持info、text、paragraphs、tables、comments、images、headers、footers',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          scope: { type: 'string', enum: ['info', 'text', 'paragraphs', 'tables', 'comments', 'images', 'headers', 'footers'], description: '读取范围' },
+          includeFormatting: { type: 'boolean', description: '是否包含格式（text模式）' },
+          includeStyles: { type: 'boolean', description: '是否包含样式（paragraphs模式）' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'write',
+      description: '写入Word文档，支持从data或markdown创建',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          source: { type: 'string', enum: ['data', 'markdown'], description: '数据来源' },
+          title: { type: 'string', description: '文档标题' },
+          content: { type: 'array', description: '内容数据（source为data时）' },
+          markdown: { type: 'string', description: 'Markdown内容（source为markdown时）' },
+          properties: { type: 'object', description: '文档属性' },
+          header: { type: 'object', description: '页眉配置' },
+          footer: { type: 'object', description: '页脚配置' },
+          sections: { type: 'array', description: '多节配置' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'patch',
+      description: '模板填充，使用Patcher API保留原文档样式',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '模板文件路径' },
+          patches: { type: 'object', description: '替换数据 { placeholder: value }' },
+          output: { type: 'string', description: '输出文件路径' },
+          keepOriginalStyles: { type: 'boolean', description: '是否保留原文档样式' },
+          delimiters: { type: 'object', description: '占位符分隔符 { start, end }' }
+        },
+        required: ['path', 'patches']
+      }
+    },
+    {
+      name: 'edit',
+      description: '编辑文档，支持replace、append、insert、delete操作',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          action: { type: 'string', enum: ['replace', 'append', 'insert', 'delete'], description: '操作类型' },
+          replacements: { type: 'object', description: '替换数据（replace操作）' },
+          text: { type: 'string', description: '文本内容（append/insert操作）' },
+          position: { type: 'number', description: '位置（insert操作）' },
+          placeholder: { type: 'string', description: '占位符（insert/delete操作）' },
+          output: { type: 'string', description: '输出路径' }
+        },
+        required: ['path', 'action']
+      }
+    },
+    {
+      name: 'convert',
+      description: '格式转换，支持markdown和html',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          format: { type: 'string', enum: ['markdown', 'html'], description: '目标格式' },
+          output: { type: 'string', description: '输出文件路径' },
+          includeStyles: { type: 'boolean', description: '是否包含样式（html格式）' }
+        },
+        required: ['path', 'format']
+      }
+    },
+    {
+      name: 'image',
+      description: '图片操作，支持extract、insert、list',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          action: { type: 'string', enum: ['extract', 'insert', 'list'], description: '操作类型' },
+          outputDir: { type: 'string', description: '输出目录（extract操作）' },
+          imagePath: { type: 'string', description: '图片路径（insert操作）' },
+          width: { type: 'number', description: '图片宽度（insert操作）' },
+          height: { type: 'number', description: '图片高度（insert操作）' },
+          placeholder: { type: 'string', description: '占位符（insert操作）' },
+          output: { type: 'string', description: '输出路径（insert操作）' }
+        },
+        required: ['path', 'action']
+      }
+    },
+    {
+      name: 'link',
+      description: '超链接操作，支持add、list',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          action: { type: 'string', enum: ['add', 'list'], description: '操作类型' },
+          placeholder: { type: 'string', description: '占位符（add操作）' },
+          url: { type: 'string', description: '链接URL（add操作）' },
+          text: { type: 'string', description: '链接文本（add操作）' },
+          output: { type: 'string', description: '输出路径（add操作）' }
+        },
+        required: ['path', 'action']
+      }
+    },
+    {
+      name: 'toc',
+      description: '目录操作，支持insert、update',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          action: { type: 'string', enum: ['insert', 'update'], description: '操作类型' },
+          placeholder: { type: 'string', description: '占位符（insert操作）' },
+          output: { type: 'string', description: '输出路径' }
+        },
+        required: ['path', 'action']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

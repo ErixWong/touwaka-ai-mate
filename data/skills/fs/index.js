@@ -968,4 +968,124 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'read_file',
+      description: '读取文件内容，支持文本模式、字节模式和Data URL模式',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          mode: { type: 'string', enum: ['lines', 'bytes', 'data_url'], description: '读取模式' },
+          from: { type: 'number', description: '起始行号（lines模式，1-based）' },
+          lines: { type: 'number', description: '读取行数（lines模式）' },
+          offset: { type: 'number', description: '字节偏移（bytes模式）' },
+          bytes: { type: 'number', description: '读取字节数（bytes模式）' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'list_files',
+      description: '列出目录内容',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '目录路径' },
+          recursive: { type: 'boolean', description: '是否递归列出' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'grep',
+      description: '在文件中搜索文本',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: '搜索模式' },
+          path: { type: 'string', description: '文件或目录路径' },
+          file_pattern: { type: 'string', description: '文件匹配模式' },
+          use_regex: { type: 'boolean', description: '使用正则表达式' },
+          ignore_case: { type: 'boolean', description: '忽略大小写' }
+        },
+        required: ['pattern']
+      }
+    },
+    {
+      name: 'write_file',
+      description: '写入文件内容',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          content: { type: 'string', description: '文件内容' },
+          mode: { type: 'string', enum: ['write', 'append'], description: '写入模式' }
+        },
+        required: ['path', 'content']
+      }
+    },
+    {
+      name: 'replace_in_file',
+      description: '替换文件中的文本',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          old: { type: 'string', description: '要替换的文本' },
+          new: { type: 'string', description: '替换后的文本' }
+        },
+        required: ['path', 'old', 'new']
+      }
+    },
+    {
+      name: 'edit_lines',
+      description: '编辑文件行（插入或删除）',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          operation: { type: 'string', enum: ['insert', 'delete'], description: '操作类型' },
+          line: { type: 'number', description: '行号（1-based）' },
+          end_line: { type: 'number', description: '结束行号（delete操作）' },
+          content: { type: 'string', description: '插入内容（insert操作）' }
+        },
+        required: ['path', 'operation', 'line']
+      }
+    },
+    {
+      name: 'action',
+      description: '文件系统操作（复制、移动、删除、创建目录）',
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: { type: 'string', enum: ['copy', 'move', 'delete', 'create_dir'], description: '操作类型' },
+          source: { type: 'string', description: '源路径' },
+          destination: { type: 'string', description: '目标路径' },
+          path: { type: 'string', description: '目标路径（delete/create_dir）' }
+        },
+        required: ['operation']
+      }
+    },
+    {
+      name: 'info',
+      description: '获取文件或目录信息',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件或目录路径' },
+          include_content_preview: { type: 'boolean', description: '包含内容预览' },
+          hash: { type: 'string', enum: ['md5', 'sha256', 'sha1'], description: '计算文件哈希' }
+        },
+        required: ['path']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

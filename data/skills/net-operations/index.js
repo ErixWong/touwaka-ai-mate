@@ -683,4 +683,71 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'check',
+      description: '网络检查工具，支持DNS、SSL、HTTP检查',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['dns', 'ssl', 'http'], description: '检查类型' },
+          hostname: { type: 'string', description: '主机名（dns/ssl类型）' },
+          url: { type: 'string', description: 'URL（http类型）' },
+          record_type: { type: 'string', enum: ['A', 'AAAA', 'MX', 'TXT', 'CNAME', 'NS'], description: 'DNS记录类型（dns类型）' },
+          port: { type: 'number', description: '端口（ssl类型，默认443）' },
+          timeout: { type: 'number', description: '超时时间（毫秒）' }
+        },
+        required: ['type']
+      }
+    },
+    {
+      name: 'connect',
+      description: 'TCP连接测试',
+      parameters: {
+        type: 'object',
+        properties: {
+          host: { type: 'string', description: '主机名或IP地址' },
+          port: { type: 'number', description: '端口号（默认80）' },
+          timeout: { type: 'number', description: '超时时间（毫秒，默认5000）' }
+        },
+        required: ['host']
+      }
+    },
+    {
+      name: 'port_scan',
+      description: '端口扫描',
+      parameters: {
+        type: 'object',
+        properties: {
+          host: { type: 'string', description: '主机名或IP地址' },
+          ports: { type: ['number', 'array', 'string'], description: '端口号、端口数组或端口组名称（common/web/mail/db）' },
+          timeout: { type: 'number', description: '每个端口超时时间（毫秒，默认3000）' }
+        },
+        required: ['host']
+      }
+    },
+    {
+      name: 'http_request',
+      description: 'HTTP/HTTPS请求',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '请求URL' },
+          method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH'], description: 'HTTP方法（默认GET）' },
+          headers: { type: 'object', description: '请求头' },
+          body: { type: ['string', 'object'], description: '请求体' },
+          timeout: { type: 'number', description: '超时时间（毫秒，默认10000）' },
+          follow_redirects: { type: 'boolean', description: '是否跟随重定向（默认true）' }
+        },
+        required: ['url']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

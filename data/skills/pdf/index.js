@@ -977,4 +977,62 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'read',
+      description: 'PDF读取操作，支持metadata、text、tables、images、render、markdown、fields、field_info',
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: { type: 'string', enum: ['metadata', 'text', 'tables', 'images', 'render', 'markdown', 'fields', 'field_info'], description: '操作类型' },
+          path: { type: 'string', description: 'PDF文件路径' },
+          fromPage: { type: 'number', description: '起始页码' },
+          toPage: { type: 'number', description: '结束页码' },
+          output: { type: 'string', description: '输出路径' },
+          outputDir: { type: 'string', description: '输出目录（render操作）' },
+          scale: { type: 'number', description: '渲染缩放比例（render操作）' },
+          prefix: { type: 'string', description: '输出文件前缀（render操作）' },
+          imageThreshold: { type: 'number', description: '图片提取阈值（images操作）' },
+          parsePageInfo: { type: 'boolean', description: '是否解析页面信息（metadata操作）' },
+          suppressWarnings: { type: 'boolean', description: '是否抑制警告' }
+        },
+        required: ['operation', 'path']
+      }
+    },
+    {
+      name: 'write',
+      description: 'PDF写入操作，支持create、merge、split、rotate、encrypt、decrypt、watermark、fill',
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: { type: 'string', enum: ['create', 'merge', 'split', 'rotate', 'encrypt', 'decrypt', 'watermark', 'fill'], description: '操作类型' },
+          path: { type: 'string', description: 'PDF文件路径' },
+          output: { type: 'string', description: '输出文件路径' },
+          paths: { type: 'array', items: { type: 'string' }, description: '文件路径列表（merge操作）' },
+          outputDir: { type: 'string', description: '输出目录（split操作）' },
+          pagesPerFile: { type: 'number', description: '每文件页数（split操作）' },
+          prefix: { type: 'string', description: '文件前缀（split操作）' },
+          pages: { type: 'array', items: { type: 'number' }, description: '要旋转的页码（rotate操作）' },
+          degrees: { type: 'number', description: '旋转角度（rotate操作）' },
+          userPassword: { type: 'string', description: '用户密码（encrypt操作）' },
+          ownerPassword: { type: 'string', description: '所有者密码（encrypt操作）' },
+          password: { type: 'string', description: '密码（decrypt操作）' },
+          watermark: { type: 'string', description: '水印内容（watermark操作）' },
+          isText: { type: 'boolean', description: '是否为文本水印（watermark操作）' },
+          fieldValues: { type: 'object', description: '表单字段值（fill操作）' },
+          title: { type: 'string', description: '文档标题（create操作）' },
+          content: { type: 'array', description: '内容数组（create操作）' },
+          pageSize: { type: 'string', enum: ['a4', 'letter'], description: '页面大小（create操作）' }
+        },
+        required: ['operation']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

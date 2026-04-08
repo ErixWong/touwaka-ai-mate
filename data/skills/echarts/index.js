@@ -435,4 +435,31 @@ async function execute(toolName, params, context = {}) {
   throw new Error(`Unknown tool: ${toolName}. Supported tool: generate`);
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'generate',
+      description: '生成 ECharts 图表，支持多种图表类型（bar/line/pie/scatter/radar/gauge/funnel等），输出格式支持 SVG/PNG/Base64/文件',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', description: '图表类型：bar/line/pie/scatter/radar/gauge/funnel等' },
+          data: { type: 'array', description: '图表数据' },
+          options: { type: 'object', description: '图表配置选项（标题、颜色、图例等）' },
+          option: { type: 'object', description: '原始 ECharts 配置（高级用法）' },
+          output: { type: 'string', description: '输出格式：svg/png/base64/file' },
+          outputPath: { type: 'string', description: '输出文件路径（output为file时必需）' },
+          width: { type: 'number', description: '图表宽度（默认600）' },
+          height: { type: 'number', description: '图表高度（默认400）' }
+        },
+        required: ['data']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

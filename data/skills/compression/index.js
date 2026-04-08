@@ -237,4 +237,38 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute, zip, unzip };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'zip',
+      description: '创建ZIP压缩文件',
+      parameters: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: '源文件或目录路径' },
+          destination: { type: 'string', description: '目标ZIP文件路径' },
+          compression_level: { type: 'number', description: '压缩级别（1-9）' }
+        },
+        required: ['source']
+      }
+    },
+    {
+      name: 'unzip',
+      description: '解压ZIP文件',
+      parameters: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: 'ZIP文件路径' },
+          destination: { type: 'string', description: '解压目标目录' }
+        },
+        required: ['source']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, zip, unzip, getTools };

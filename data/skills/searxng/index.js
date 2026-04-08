@@ -222,9 +222,35 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'web_search',
+      description: '使用SearXNG进行网络搜索',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索查询词' },
+          n: { type: 'number', description: '返回结果数量（默认10，最大50）' },
+          category: { type: 'string', description: '搜索类别（默认general）' },
+          language: { type: 'string', description: '语言代码（默认auto）' },
+          time_range: { type: 'string', enum: ['day', 'week', 'month', 'year'], description: '时间范围过滤' },
+          format: { type: 'string', enum: ['json', 'table'], description: '输出格式（默认json）' }
+        },
+        required: ['query']
+      }
+    }
+  ];
+}
+
 // Export for skill-runner
 module.exports = {
   execute,
+  getTools,
   searchSearxng,
   formatResultsTable,
 };
