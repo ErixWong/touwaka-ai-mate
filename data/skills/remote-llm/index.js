@@ -282,8 +282,18 @@ async function processTask(task) {
     const result = await callRemoteLLM(modelConfig, params);
     log(`LLM call completed, latency: ${result.latency_ms}ms`);
     
-    // 3. 推送结果给专家
-    const notificationContent = `【远程 LLM 调用完成】\n\n模型: ${result.model}\n耗时: ${result.latency_ms}ms\nToken: ${result.tokens.total}\n\n---\n\n${result.content}`;
+    // 3. 推送结果给专家（使用结构化 JSON 格式，与 Assistant 系统保持一致）
+    const notificationContent = JSON.stringify({
+      type: 'assistant_result',
+      task_id: taskId,
+      status: 'completed',
+      result: {
+        model: result.model,
+        content: result.content,
+        tokens: result.tokens,
+      },
+      latency_ms: result.latency_ms,
+    });
     
     await notifyExpert({
       user_id,
@@ -297,12 +307,19 @@ async function processTask(task) {
   } catch (error) {
     log(`Task ${task_id} failed: ${error.message}`);
     
-    // 推送错误通知
+    // 推送错误通知（使用结构化 JSON 格式，与 Assistant 系统保持一致）
     try {
+      const errorContent = JSON.stringify({
+        type: 'assistant_result',
+        task_id: taskId,
+        status: 'failed',
+        error: { message: error.message },
+      });
+      
       await notifyExpert({
         user_id,
         expert_id,
-        content: `【远程 LLM 调用失败】\n\n任务ID: ${task_id}\n错误: ${error.message}`,
+        content: errorContent,
         task_id,
       });
     } catch (notifyError) {
