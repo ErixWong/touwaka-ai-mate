@@ -128,6 +128,7 @@ function clearNotificationStatus(requestId) {
 
 /**
  * 重发通知给专家
+ * 注意：重发时不插入新消息到 messages 表，只触发 LLM 响应
  * @param {Database} db - 数据库实例
  * @param {string} requestId - 请求ID
  * @param {object} services - 服务引用
@@ -163,7 +164,7 @@ export async function resendNotification(db, requestId, services) {
       throw new Error(error);
     }
     
-    // 解析 input
+    // 解析 input 获取 assistant_id
     let input = request.input;
     if (typeof input === 'string') {
       try {
@@ -173,31 +174,35 @@ export async function resendNotification(db, requestId, services) {
       }
     }
     
-    // 构建完整的请求对象
-    const fullRequest = {
-      ...request,
-      input,
-      result: request.result,
-      status: request.status,
-      error_message: request.error_message,
-      latency_ms: request.latency_ms,
-    };
+    const assistantId = request.assistant_id;
+    const finalUserId = request.user_id;
+    const finalExpertId = request.expert_id;
+    const finalTopicId = request.topic_id;
     
-    // 清除内存中的通知标记，允许重新通知
-    const notifyKey = `${requestId}_${request.status}`;
-    notifiedRequests.delete(notifyKey);
+    // 检查必要信息
+    if (!finalUserId || !finalExpertId || !chatService) {
+      const error = `缺少必要信息: user_id=${finalUserId}, expert_id=${finalExpertId}, chatService=${chatService ? '有' : '无'}`;
+      console.log(`[重发失败] ${error}`);
+      throw new Error(error);
+    }
     
     // 清除通知状态记录
     clearNotificationStatus(requestId);
     
-    console.log(`[重发] 清除历史通知标记，准备重新发送...\n`);
+    console.log(`[重发] 准备触发 LLM 响应...\n`);
     
-    // 重新发送通知
-    await notifyExpertResult(db, fullRequest, services);
+    // 重发时只触发 LLM 响应，不插入新消息
+    const triggerContent = `助理 ${assistantId} 已返回结果（request_id: ${requestId}），状态: ${request.status}，请处理。`;
+    await triggerExpertResponse(db, chatService, expertConnections, {
+      userId: finalUserId,
+      expertId: finalExpertId,
+      content: triggerContent,
+      topicId: finalTopicId,
+    });
     
     const result = {
       success: true,
-      message: '通知已重发',
+      message: '通知已重发（仅触发 LLM 响应，未插入新消息）',
       request_id: requestId,
     };
     
@@ -445,11 +450,6 @@ export async function notifyExpertResult(db, request, services) {
 
     content = `【🎯 委托目标】\n${userMessage || '（无）'}\n\n【📋 上下文摘要】\n${conversationContext || '（无）'}\n\n【当前工作目录】\n${workspacePath || '（无）'}\n\n【📦 执行摘要】\n${executionSummary}\n\n【📄 详细结果】\n${rawResult}\n\n---\n【🔗 任务绑定】\n- request_id: ${request_id}\n- assistant_id: ${assistant_id}`;
   }
-  // 构造用户消息（不存入数据库，不显示在前端）
-  const constructedUserMessage = userMessage
-    ? `用户请求：${userMessage}\n\n助理执行结果：\n${content}`
-    : content;
-
   // 在 console 中显示助理返回结果
   console.log('\n========================================');
   console.log(`[助理返回结果] request_id: ${request_id}`);
@@ -468,25 +468,56 @@ export async function notifyExpertResult(db, request, services) {
   });
 
   try {
-    // 1. 通过 SSE 推送通知（如果有连接）
+    // 1. 以 assistant 角色插入消息到 messages 表（记录助理执行结果）
+    const messageId = Utils.newID(20);
+    const messageContent = JSON.stringify({
+      type: 'assistant_result',
+      request_id: request_id,
+      assistant_id: assistant_id,
+      status: status,
+      result: status === 'completed' ? (result?.result || result || null) : null,
+      error: status === 'failed' ? { message: request.error_message || '执行失败' } : null,
+      latency_ms: latencyMs,
+    });
+
+    await Message.create({
+      id: messageId,
+      topic_id: finalTopicId,
+      user_id: finalUserId,
+      expert_id: finalExpertId,
+      role: 'assistant',
+      content: messageContent,
+      sender_type: 'assistant',
+      sender_id: request_id,
+      created_at: new Date(),
+    });
+
+    logger.info(`[ExpertNotifier] 已插入消息到 messages 表: message_id=${messageId}, topic_id=${finalTopicId}`);
+
+    // 2. 通过 SSE 推送通知前端
     const sseSent = pushSSENotification(expertConnections, finalExpertId, finalUserId, {
-      event: 'new_context',
+      event: 'assistant_complete',
       data: {
-        message_id: `assistant_${request_id}`,
+        message_id: messageId,
         topic_id: finalTopicId,
+        request_id: request_id,
+        assistant_id: assistant_id,
+        status: status,
         role: 'assistant',
+        sender_type: 'assistant',
         preview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
       }
     });
 
     logger.info(`[ExpertNotifier] SSE 通知: ${sseSent ? '已发送' : '无连接'}`);
 
-    // 2. 触发专家响应（如果有 chatService 和 SSE 连接）
+    // 3. 以 user 角色触发 LLM 响应（不存入 messages 表）
     if (chatService) {
+      const triggerContent = `助理 ${assistant_id} 已返回结果（request_id: ${request_id}），状态: ${status}，请处理。`;
       await triggerExpertResponse(db, chatService, expertConnections, {
         userId: finalUserId,
         expertId: finalExpertId,
-        content: constructedUserMessage,
+        content: triggerContent,
         topicId: finalTopicId,
       });
     } else {
@@ -507,6 +538,10 @@ export async function notifyExpertResult(db, request, services) {
 /**
  * 触发专家响应（异步执行，不阻塞返回）
  * 使用 ToolCallingExecutor 处理多轮工具调用逻辑
+ *
+ * 此函数用于以 user 角色触发 LLM 响应，不存入 messages 表。
+ * 在助理执行完成后调用，通知 Expert 处理结果。
+ *
  * @param {Database} db - 数据库实例
  * @param {ChatService} chatService - ChatService 实例
  * @param {Map} expertConnections - SSE 连接池
