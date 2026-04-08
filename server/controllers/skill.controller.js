@@ -510,6 +510,13 @@ class SkillController {
         is_active: true,
       });
 
+      // 同步更新技能表的 updated_at，触发 SkillLoader 缓存失效
+      // 注意：upsert() 在更新已存在记录时可能不会自动更新 updated_at（取决于 Sequelize 配置）
+      await this.Skill.update(
+        { updated_at: new Date() },
+        { where: { id: skill_id } }
+      );
+
       // 删除旧的工具定义
       await this.SkillTool.destroy({ where: { skill_id } });
 
