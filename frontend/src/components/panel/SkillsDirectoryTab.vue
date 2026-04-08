@@ -1232,4 +1232,12 @@ const handleCreateDirectory = async () => {
   border-radius: 4px;
   color: var(--code-color, #d63384);
 }
+
+/* Markdown 图片样式 */
+.preview-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+}
 </style>
