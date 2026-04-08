@@ -352,4 +352,26 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'submit',
+      description: '提交远程 LLM 调用请求，支持多模态（图片）输入。调用后会放入队列异步执行，完成后通过消息通知专家。',
+      parameters: {
+        type: 'object',
+        properties: {
+          file: { type: 'string', description: '本地文件路径（可选，用于图片/文件处理）' },
+          files: { type: 'array', description: '本地文件路径数组（可选，多个文件）' },
+          prompt: { type: 'string', description: '额外的提示内容（可选，会追加到默认 prompt 后）' }
+        },
+        required: []
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

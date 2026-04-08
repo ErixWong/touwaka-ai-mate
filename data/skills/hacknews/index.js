@@ -177,4 +177,28 @@ async function execute(toolName, params) {
   return formatOutput(stories, json, title);
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'stories',
+      description: '获取 Hacker News 故事列表，支持多种类型：top/new/best/ask/show/jobs/ai/search',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', description: '故事类型：top/new/best/ask/show/jobs/ai/search' },
+          limit: { type: 'number', description: '返回数量（默认10）' },
+          json: { type: 'boolean', description: '是否返回JSON格式' },
+          period: { type: 'string', description: 'AI类型的时间过滤：day/week/month/all' },
+          query: { type: 'string', description: '搜索关键词（search类型必需）' }
+        },
+        required: []
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

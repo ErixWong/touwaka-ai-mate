@@ -173,8 +173,30 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'read_web_page',
+      description: '使用Unifuncs API读取网页内容，支持微信公众号、知乎、头条等平台',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '要读取的网页URL' },
+          timeout: { type: 'number', description: '超时时间（毫秒，默认30000）' }
+        },
+        required: ['url']
+      }
+    }
+  ];
+}
+
 module.exports = {
   execute,
+  getTools,
   readWebPage,
   name: 'unifuncs',
   description: 'Unifuncs API 服务集成，提供网页内容提取等多种能力',

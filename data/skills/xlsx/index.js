@@ -1315,4 +1315,135 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'read',
+      description: '读取Excel文件，支持workbook、sheet、cell范围',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          scope: { type: 'string', enum: ['workbook', 'sheet', 'cell'], description: '读取范围' },
+          sheet: { type: 'string', description: '工作表名称（scope为sheet或cell时）' },
+          cell: { type: 'string', description: '单元格地址（scope为cell时，如A1）' },
+          includeData: { type: 'boolean', description: '是否包含数据（scope为workbook时）' },
+          range: { type: 'string', description: '数据范围（scope为sheet时）' },
+          header: { type: 'string', enum: ['1', 'json', 'object'], description: '表头模式' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'write',
+      description: '写入Excel文件，支持workbook、sheet、cell范围',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          scope: { type: 'string', enum: ['workbook', 'sheet', 'cell'], description: '写入范围' },
+          sheet: { type: 'string', description: '工作表名称' },
+          cell: { type: 'string', description: '单元格地址（scope为cell时）' },
+          value: { type: 'string', description: '单元格值（scope为cell时）' },
+          formula: { type: 'string', description: '公式（scope为cell时）' },
+          data: { type: 'array', description: '数据（scope为sheet时）' },
+          mode: { type: 'string', enum: ['overwrite', 'append', 'insert'], description: '写入模式' },
+          startCell: { type: 'string', description: '起始单元格（mode为insert时）' },
+          sheets: { type: 'array', description: '工作表数据（scope为workbook时）' },
+          properties: { type: 'object', description: '工作簿属性' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'sheet',
+      description: '工作表管理，支持add、delete、rename、copy',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          action: { type: 'string', enum: ['add', 'delete', 'rename', 'copy'], description: '操作类型' },
+          name: { type: 'string', description: '工作表名称（add操作）' },
+          sheet: { type: 'string', description: '工作表名称（delete/rename/copy操作）' },
+          newName: { type: 'string', description: '新名称（rename操作）' },
+          sourceSheet: { type: 'string', description: '源工作表（copy操作）' },
+          targetSheet: { type: 'string', description: '目标工作表（copy操作）' },
+          targetFile: { type: 'string', description: '目标文件（copy操作）' },
+          data: { type: 'array', description: '数据（add操作）' }
+        },
+        required: ['path', 'action']
+      }
+    },
+    {
+      name: 'format',
+      description: '格式化设置，支持column和cell类型',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          type: { type: 'string', enum: ['column', 'cell'], description: '格式化类型' },
+          sheet: { type: 'string', description: '工作表名称' },
+          columns: { type: 'array', description: '列宽配置（type为column时）' },
+          cells: { type: 'array', description: '单元格列表（type为cell时）' },
+          style: { type: 'object', description: '样式配置（type为cell时）' }
+        },
+        required: ['path', 'type']
+      }
+    },
+    {
+      name: 'query',
+      description: '数据查询，支持filter、sort、find',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          action: { type: 'string', enum: ['filter', 'sort', 'find'], description: '查询类型' },
+          sheet: { type: 'string', description: '工作表名称' },
+          column: { type: 'string', description: '列名（filter/sort时）' },
+          condition: { type: 'string', description: '条件（filter时）' },
+          value: { type: 'string', description: '值（filter时）' },
+          order: { type: 'string', enum: ['asc', 'desc'], description: '排序方向（sort时）' },
+          output: { type: 'string', description: '输出文件路径（sort时）' },
+          query: { type: 'string', description: '搜索关键词（find时）' },
+          columns: { type: 'array', description: '搜索列（find时）' }
+        },
+        required: ['path', 'action']
+      }
+    },
+    {
+      name: 'convert',
+      description: '格式转换，支持json和csv，支持to和from方向',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          format: { type: 'string', enum: ['json', 'csv'], description: '目标格式' },
+          direction: { type: 'string', enum: ['to', 'from'], description: '转换方向' },
+          sheet: { type: 'string', description: '工作表名称' },
+          output: { type: 'string', description: '输出文件路径' },
+          delimiter: { type: 'string', description: 'CSV分隔符' },
+          data: { type: 'array', description: 'JSON数据（direction为from时）' }
+        },
+        required: ['path', 'format', 'direction']
+      }
+    },
+    {
+      name: 'calc',
+      description: '公式计算，获取工作表中所有公式及其计算结果',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          sheet: { type: 'string', description: '工作表名称' }
+        },
+        required: ['path']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

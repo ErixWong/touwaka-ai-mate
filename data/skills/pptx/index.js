@@ -1362,4 +1362,95 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'file',
+      description: '文件级操作，支持read、create、extract',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['read', 'create', 'extract'], description: '操作类型' },
+          path: { type: 'string', description: '文件路径' },
+          scope: { type: 'string', enum: ['info', 'text', 'structure', 'media'], description: '读取范围（read操作）' },
+          slideNumbers: { type: 'array', items: { type: 'number' }, description: '幻灯片编号列表（read操作）' },
+          source: { type: 'string', enum: ['data', 'markdown'], description: '创建来源（create操作）' },
+          slides: { type: 'array', description: '幻灯片数据（create操作）' },
+          markdown: { type: 'string', description: 'Markdown内容（create操作）' },
+          properties: { type: 'object', description: '文档属性' },
+          outputDir: { type: 'string', description: '提取输出目录（extract操作）' },
+          extractType: { type: 'string', enum: ['images', 'media', 'all'], description: '提取类型（extract操作）' }
+        },
+        required: ['action', 'path']
+      }
+    },
+    {
+      name: 'slide',
+      description: '幻灯片创建（仅限新建演示文稿），支持add操作',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['add'], description: '操作类型' },
+          output: { type: 'string', description: '输出文件路径' },
+          master: { type: 'object', description: '母版配置' },
+          slides: { type: 'array', description: '多个幻灯片数据（批量添加）' },
+          title: { type: 'string', description: '标题' },
+          content: { type: 'string', description: '内容' },
+          background: { type: 'object', description: '背景配置' },
+          properties: { type: 'object', description: '文档属性' }
+        },
+        required: ['action', 'output']
+      }
+    },
+    {
+      name: 'object',
+      description: '内容对象添加（仅限新建演示文稿），支持add、extract',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['add', 'extract'], description: '操作类型' },
+          output: { type: 'string', description: '输出文件路径（add操作）' },
+          path: { type: 'string', description: '现有文件路径（extract操作）' },
+          slideNumber: { type: 'number', description: '幻灯片编号（add操作）' },
+          type: { type: 'string', enum: ['text', 'image', 'table', 'chart', 'shape', 'media', 'notes'], description: '对象类型（add操作）' },
+          text: { type: 'string', description: '文本内容（text类型）' },
+          options: { type: 'object', description: '文本选项（text类型）' },
+          image: { type: 'object', description: '图片配置（image类型）' },
+          table: { type: 'object', description: '表格配置（table类型）' },
+          chart: { type: 'object', description: '图表配置（chart类型）' },
+          shape: { type: 'object', description: '形状配置（shape类型）' },
+          media: { type: 'object', description: '媒体配置（media类型）' },
+          notes: { type: 'string', description: '演讲者备注（notes类型）' },
+          properties: { type: 'object', description: '文档属性' },
+          outputDir: { type: 'string', description: '提取输出目录（extract操作）' }
+        },
+        required: ['action']
+      }
+    },
+    {
+      name: 'master',
+      description: '模板定义（仅限新建演示文稿），支持define、list',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['define', 'list'], description: '操作类型' },
+          path: { type: 'string', description: '现有文件路径（list操作）' },
+          output: { type: 'string', description: '输出文件路径（define操作）' },
+          name: { type: 'string', description: '母版名称' },
+          background: { type: 'object', description: '背景配置' },
+          objects: { type: 'array', description: '母版对象' },
+          slideNumber: { type: 'object', description: '幻灯片编号配置' },
+          margin: { type: 'object', description: '边距' },
+          properties: { type: 'object', description: '文档属性' }
+        },
+        required: ['action']
+      }
+    }
+  ];
+}
+
+module.exports = { execute, getTools };

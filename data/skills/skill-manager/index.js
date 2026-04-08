@@ -218,9 +218,79 @@ async function execute(toolName, params, context = {}) {
   };
 }
 
+// ============================================
+// 工具定义
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'list',
+      description: '列出所有技能（精简列表，不含工具详情）',
+      parameters: {
+        type: 'object',
+        properties: {
+          is_active: { type: 'boolean', description: '是否只显示激活的技能' },
+          search: { type: 'string', description: '搜索关键词' }
+        },
+        required: []
+      }
+    },
+    {
+      name: 'details',
+      description: '获取技能完整详情（包含工具定义）',
+      parameters: {
+        type: 'object',
+        properties: {
+          skill_id: { type: 'string', description: '技能ID' }
+        },
+        required: ['skill_id']
+      }
+    },
+    {
+      name: 'register',
+      description: '注册技能（从本地目录）',
+      parameters: {
+        type: 'object',
+        properties: {
+          source_path: { type: 'string', description: '技能目录路径' },
+          name: { type: 'string', description: '技能名称' },
+          description: { type: 'string', description: '技能描述' },
+          tools: { type: 'array', description: '工具定义数组' }
+        },
+        required: ['source_path', 'tools']
+      }
+    },
+    {
+      name: 'delete',
+      description: '删除技能',
+      parameters: {
+        type: 'object',
+        properties: {
+          skill_id: { type: 'string', description: '技能ID' }
+        },
+        required: ['skill_id']
+      }
+    },
+    {
+      name: 'toggle',
+      description: '启用/禁用技能',
+      parameters: {
+        type: 'object',
+        properties: {
+          skill_id: { type: 'string', description: '技能ID' },
+          is_active: { type: 'boolean', description: '是否激活' }
+        },
+        required: ['skill_id', 'is_active']
+      }
+    }
+  ];
+}
+
 // Export for skill-runner
 module.exports = {
   execute,
+  getTools,
   name: 'skill-manager',
   description: '技能管理工具：注册、删除、查询技能（通过 API 调用）',
 };
