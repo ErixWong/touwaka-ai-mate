@@ -31,7 +31,8 @@ class SkillController {
 
       const where = {};
       if (is_active !== undefined) {
-        where.is_active = is_active === 'true';
+        // 支持多种格式：布尔值 true/false，字符串 'true'/'false'，'1'/'0'
+        where.is_active = is_active === true || is_active === 'true' || is_active === '1' || is_active === 1;
       }
 
       const skills = await this.Skill.findAll({
