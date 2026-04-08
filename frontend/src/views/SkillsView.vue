@@ -677,10 +677,10 @@ const saveSkill = async () => {
   
   savingSkill.value = true
   try {
-    // 验证 mark 格式（只允许小写字母、数字、连字符）
-    const markPattern = /^[a-z0-9-]+$/
+    // 验证 mark 格式（只允许小写字母、数字、下划线和连字符）
+    const markPattern = /^[a-z0-9_-]+$/
     if (skillForm.mark && !markPattern.test(skillForm.mark)) {
-      toast.error(t('skills.markFormatError') || '技能标识格式错误，只允许小写字母、数字、连字符')
+      toast.error(t('skills.markFormatError') || '技能标识格式错误，只允许小写字母、数字、下划线、连字符')
       return
     }
     
