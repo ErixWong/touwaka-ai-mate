@@ -309,8 +309,17 @@ async function execute(toolName, params, context = {}) {
     const resolvedModelId = defaults.model_id;
 
     // 调用驻留进程
+    // 使用环境变量中的 SKILL_ID（技能 UUID），必须存在，否则报错
+    const skillId = process.env.SKILL_ID;
+    if (!skillId) {
+      return {
+        success: false,
+        error: '缺少技能ID：SKILL_ID 环境变量未设置',
+      };
+    }
+    
     const result = await invokeResidentTool({
-      skill_id: 'remote-llm',
+      skill_id: skillId,
       tool_name: 'executor',
       params: {
         user_id,
