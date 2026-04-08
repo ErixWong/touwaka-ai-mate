@@ -225,7 +225,7 @@ function buildPromptWithImages(basePrompt, images) {
  */
 async function execute(toolName, params, context = {}) {
   // 只处理 submit 工具
-  if (toolName !== 'submit' && toolName !== 'remote_llm_submit') {
+  if (toolName !== 'submit') {
     return {
       success: false,
       error: `Unknown tool: ${toolName}`,
@@ -311,7 +311,7 @@ async function execute(toolName, params, context = {}) {
     // 调用驻留进程
     const result = await invokeResidentTool({
       skill_id: 'remote-llm',
-      tool_name: 'remote-llm-executor',
+      tool_name: 'executor',
       params: {
         user_id,
         expert_id,

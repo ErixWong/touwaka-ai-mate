@@ -13,7 +13,7 @@ allowed-tools: []
 ## 架构
 
 ```
-专家 → remote_llm_submit (提交) → 驻留进程 (异步执行) → 结果通知
+专家 → submit (提交) → 驻留进程 (异步执行) → 结果通知
 ```
 
 - **驻留进程** (`index.js`)：跟随系统启动，处理异步 LLM 调用
@@ -23,10 +23,10 @@ allowed-tools: []
 
 | 工具 | 说明 | 关键参数 |
 |------|------|----------|
-| `remote_llm_submit` | 提交 LLM 请求 | `file`, `files`, `prompt` |
-| `remote-llm-executor` | 驻留进程（内部） | - |
+| `submit` | 提交 LLM 请求 | `file`, `files`, `prompt` |
+| `executor` | 驻留进程（内部） | - |
 
-## remote_llm_submit
+## submit
 
 提交异步 LLM 请求。
 
@@ -79,7 +79,7 @@ allowed-tools: []
 
 ## 使用流程
 
-1. **专家调用**：专家调用 `remote_llm_submit` 工具
+1. **专家调用**：专家调用 `submit` 工具
 2. **提交确认**：工具立即返回 "已放入队列"
 3. **后台处理**：驻留进程异步执行 LLM 调用
 4. **结果通知**：完成后通过内部 API 将结果推送给专家
