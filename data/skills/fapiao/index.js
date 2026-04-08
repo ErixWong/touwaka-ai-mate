@@ -712,6 +712,39 @@ async function extract(params) {
 }
 
 // ============================================
+// 工具定义 - 用于技能注册
+// ============================================
+
+function getTools() {
+  return [
+    {
+      name: 'extract',
+      description: '提取发票结构化数据（支持增值税发票、普通发票、电子发票）。可提取发票号码、日期、买卖双方信息、商品明细、金额等字段。',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'PDF发票文件路径（必需）'
+          },
+          format: {
+            type: 'string',
+            enum: ['json', 'markdown'],
+            description: '输出格式，默认 json',
+            default: 'json'
+          },
+          output: {
+            type: 'string',
+            description: '输出文件路径（可选，不指定则只返回内容）'
+          }
+        },
+        required: ['path']
+      }
+    }
+  ];
+}
+
+// ============================================
 // Skill 入口
 // ============================================
 
@@ -724,4 +757,4 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute };
+module.exports = { execute, getTools };

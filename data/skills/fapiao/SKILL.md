@@ -49,20 +49,20 @@ user-invocable: true
 
 ```javascript
 // JSON 格式输出
-invoice__extract({ 
-  path: "invoice.pdf", 
-  format: "json" 
+fapiao__extract({
+  path: "invoice.pdf",
+  format: "json"
 })
 
 // Markdown 格式输出
-invoice__extract({ 
-  path: "invoice.pdf", 
-  format: "markdown" 
+fapiao__extract({
+  path: "invoice.pdf",
+  format: "markdown"
 })
 
 // 保存到文件
-invoice__extract({ 
-  path: "invoice.pdf", 
+fapiao__extract({
+  path: "invoice.pdf",
   format: "json",
   output: "invoice_result.json"
 })
@@ -187,9 +187,9 @@ const renderResult = await pdf__read({
 
 | 任务 | 调用方式 |
 |------|----------|
-| 提取发票JSON数据 | `invoice__extract({ path: "invoice.pdf", format: "json" })` |
-| 提取发票Markdown | `invoice__extract({ path: "invoice.pdf", format: "markdown" })` |
-| 保存到文件 | `invoice__extract({ path: "invoice.pdf", output: "result.json" })` |
+| 提取发票JSON数据 | `fapiao__extract({ path: "invoice.pdf", format: "json" })` |
+| 提取发票Markdown | `fapiao__extract({ path: "invoice.pdf", format: "markdown" })` |
+| 保存到文件 | `fapiao__extract({ path: "invoice.pdf", output: "result.json" })` |
 
 ## 更新日志
 
