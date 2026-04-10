@@ -91,6 +91,7 @@ import taskStaticRoutes from './routes/task-static.routes.js';
 import attachmentRoutes from './routes/attachment.routes.js';
 import attachmentStaticRoutes from './routes/attachment-static.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
+import createMcpRoutes from './routes/mcp.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
 class ApiServer {
@@ -420,6 +421,12 @@ class ApiServer {
     this.app.use(invitationRouter.routes());
     this.app.use(invitationRouter.allowedMethods());
     logger.info('Invitation routes registered (GET/POST /api/invitations)');
+
+    // MCP 服务管理路由（Issue #601）
+    const mcpRouter = createMcpRoutes(this.db, authMiddleware, this.residentSkillManager);
+    this.app.use(mcpRouter.routes());
+    this.app.use(mcpRouter.allowedMethods());
+    logger.info('MCP routes registered (GET/POST /api/mcp/*)');
 
     // 前端静态文件服务（生产环境）
     // 检查前端构建目录是否存在

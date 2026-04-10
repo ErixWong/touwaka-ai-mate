@@ -18,6 +18,7 @@ import createPackageRoutes from './package.routes.js';
 import createInternalRoutes from './internal.routes.js';
 import attachmentRoutes from './attachment.routes.js';
 import attachmentStaticRoutes from './attachment-static.routes.js';
+import createMcpRoutes from './mcp.routes.js';
 
 export {
   authRoutes,
@@ -36,4 +37,5 @@ export {
   createInternalRoutes,
   attachmentRoutes,
   attachmentStaticRoutes,
+  createMcpRoutes,
 };
