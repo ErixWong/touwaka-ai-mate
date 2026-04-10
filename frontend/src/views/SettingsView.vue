@@ -594,6 +594,11 @@
       <AttachmentTab />
     </div>
 
+    <!-- MCP 管理（仅管理员） -->
+    <div v-if="activeTab === 'mcp' && isAdmin" class="settings-section mcp-section">
+      <McpTab />
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1590,6 +1595,7 @@ import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
 import AttachmentTab from '@/components/settings/AttachmentTab.vue'
+import McpTab from '@/components/settings/McpTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
 
@@ -1628,6 +1634,7 @@ const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
     { key: 'assistant', label: t('settings.assistantSettings') },
     { key: 'resident', label: t('settings.residentProcesses') },
     { key: 'attachment', label: t('settings.attachmentManagement') },
+    { key: 'mcp', label: t('settings.mcp.management') },
     { key: 'system', label: t('settings.systemConfig') },
   ],
 }
