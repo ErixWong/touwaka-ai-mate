@@ -28,6 +28,11 @@
         <span class="nav-text">{{ $t('solutions.title', '解决方案') }}</span>
       </router-link>
 
+      <router-link to="/apps" class="nav-link" :class="{ active: isActive('/apps') }">
+        <span class="nav-icon">📱</span>
+        <span class="nav-text">{{ $t('apps.title', 'App') }}</span>
+      </router-link>
+
       <router-link to="/organization" class="nav-link" :class="{ active: isActive('/organization') }" v-if="isAdmin">
         <span class="nav-icon">🏢</span>
         <span class="nav-text">{{ $t('nav.organization') }}</span>
