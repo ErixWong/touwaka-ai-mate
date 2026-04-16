@@ -40,6 +40,7 @@ import { createEmbeddingTask } from '../lib/embedding-worker.js';
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
+import AppClock from '../lib/app-clock.js';
 import logger from '../lib/logger.js';
 
 // 中间件
@@ -63,6 +64,7 @@ import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
 import AttachmentController from './controllers/attachment.controller.js';
+import MiniAppController from './controllers/mini-app.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
@@ -90,6 +92,7 @@ import internalRoutes from './routes/internal.routes.js';
 import taskStaticRoutes from './routes/task-static.routes.js';
 import attachmentRoutes from './routes/attachment.routes.js';
 import attachmentStaticRoutes from './routes/attachment-static.routes.js';
+import miniAppRoutes from './routes/mini-app.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
@@ -102,6 +105,7 @@ class ApiServer {
     this.scheduler = null;
     this.residentSkillManager = null;
     this.tokenCleanupJob = null;
+    this.appClock = null;
     this.controllers = {};
   }
 
@@ -209,6 +213,14 @@ class ApiServer {
 
     // 初始化 Token 清理任务（Issue #140）
     this.tokenCleanupJob = new TokenCleanupJob(this.db);
+
+    // 初始化 App 时钟调度器（Issue #603）
+    this.appClock = new AppClock(this.db, {
+      intervalMs: parseInt(process.env.APP_CLOCK_INTERVAL) || 10000,
+      batchSize: parseInt(process.env.APP_CLOCK_BATCH) || 10,
+      globalConcurrency: parseInt(process.env.APP_CLOCK_CONCURRENCY) || 5,
+    });
+    await this.appClock.start();
   }
 
   /**
@@ -237,6 +249,7 @@ class ApiServer {
       }),
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
+      miniApp: new MiniAppController(this.db),
     };
   }
 
@@ -416,6 +429,12 @@ class ApiServer {
     this.app.use(attachmentStaticRouter.allowedMethods());
     logger.info('Attachment static routes registered (GET /attach/t/:token/:attachment_id)');
 
+    // Mini App 平台路由（Issue #603）
+    const miniAppRouter = miniAppRoutes(this.controllers.miniApp);
+    this.app.use(miniAppRouter.routes());
+    this.app.use(miniAppRouter.allowedMethods());
+    logger.info('Mini App routes registered (/api/mini-apps/*, /api/handlers/*)');
+
     // Invitation 邀请码路由（Issue #222）
     const invitationRouter = createInvitationRoutes(this.db);
     this.app.use(invitationRouter.routes());
@@ -590,6 +609,9 @@ process.on('SIGINT', async () => {
   if (server.tokenCleanupJob) {
     server.tokenCleanupJob.stop();
   }
+  if (server.appClock) {
+    server.appClock.stop();
+  }
   process.exit(0);
 });
 
@@ -603,6 +625,9 @@ process.on('SIGTERM', async () => {
   }
   if (server.tokenCleanupJob) {
     server.tokenCleanupJob.stop();
+  }
+  if (server.appClock) {
+    server.appClock.stop();
   }
   process.exit(0);
 });
