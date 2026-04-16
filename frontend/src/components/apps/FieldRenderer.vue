@@ -17,6 +17,8 @@ import NumberField from './fields/NumberField.vue'
 import DateField from './fields/DateField.vue'
 import SelectField from './fields/SelectField.vue'
 import BooleanField from './fields/BooleanField.vue'
+import GroupField from './fields/GroupField.vue'
+import RepeatingField from './fields/RepeatingField.vue'
 
 const props = defineProps<{
   field: AppField
@@ -33,6 +35,8 @@ const FIELD_MAP: Record<string, any> = {
   date: DateField,
   select: SelectField,
   boolean: BooleanField,
+  group: GroupField,
+  repeating: RepeatingField,
 }
 
 const fieldComponent = computed(() => {

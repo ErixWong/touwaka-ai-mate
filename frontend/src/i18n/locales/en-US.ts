@@ -634,6 +634,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     config_upload_allowed_types_hint: 'Allowed file types for upload, separated by commas',
     // Resident Processes
     residentProcesses: 'Resident Processes',
+    // App Management
+    appManagement: 'App Management',
+    // Handler Management
+    handlerManagement: 'Handlers',
     // MCP Management
     mcp: {
       management: 'MCP Services',

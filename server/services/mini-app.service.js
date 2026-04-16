@@ -501,15 +501,87 @@ class MiniAppService {
     if (!fields || !Array.isArray(fields)) return;
 
     for (const field of fields) {
-      if (field.type === 'group' || field.type === 'repeating') continue;
-
-      if (field.required && field.type !== 'file') {
-        const value = data[field.name];
-        if (value === undefined || value === null || value === '') {
-          throw new Error(`${field.label} 为必填项`);
+      if (field.type === 'group') {
+        this.validateGroupField(field, data[field.name]);
+      } else if (field.type === 'repeating') {
+        this.validateRepeatingField(field, data[field.name]);
+      } else {
+        if (field.required && field.type !== 'file') {
+          const value = data[field.name];
+          if (value === undefined || value === null || value === '') {
+            throw new Error(`${field.label} 为必填项`);
+          }
         }
       }
     }
+  }
+
+  validateGroupField(field, value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      if (field.required) {
+        throw new Error(`${field.label} 必须是对象`);
+      }
+      return;
+    }
+    for (const subField of field.fields || []) {
+      if (subField.required && subField.type !== 'file') {
+        const subValue = value[subField.name];
+        if (subValue === undefined || subValue === null || subValue === '') {
+          throw new Error(`${field.label}.${subField.label} 为必填项`);
+        }
+      }
+    }
+  }
+
+  validateRepeatingField(field, value) {
+    if (!Array.isArray(value)) {
+      if (field.required) {
+        throw new Error(`${field.label} 必须是数组`);
+      }
+      return;
+    }
+    if (field.min_items && value.length < field.min_items) {
+      throw new Error(`${field.label} 至少需要 ${field.min_items} 项`);
+    }
+    if (field.max_items && value.length > field.max_items) {
+      throw new Error(`${field.label} 最多 ${field.max_items} 项`);
+    }
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      for (const subField of field.fields || []) {
+        if (subField.required && subField.type !== 'file') {
+          const subValue = item[subField.name];
+          if (subValue === undefined || subValue === null || subValue === '') {
+            throw new Error(`${field.label} 第${i + 1}行的 ${subField.label} 为必填项`);
+          }
+        }
+      }
+    }
+  }
+
+  computeSummaries(data, fields) {
+    for (const field of fields) {
+      if (field.type === 'repeating' && field.summary_fields) {
+        const items = data[field.name] || [];
+        for (const summary of field.summary_fields) {
+          switch (summary.function) {
+            case 'sum':
+              data[summary.target] = items.reduce((sum, item) =>
+                sum + (Number(item[summary.source]) || 0), 0);
+              break;
+            case 'count':
+              data[summary.target] = items.length;
+              break;
+            case 'avg':
+              data[summary.target] = items.length > 0
+                ? items.reduce((sum, item) => sum + (Number(item[summary.source]) || 0), 0) / items.length
+                : 0;
+              break;
+          }
+        }
+      }
+    }
+    return data;
   }
 
   computeTitle(fields, data) {

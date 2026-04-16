@@ -40,6 +40,8 @@ import { createEmbeddingTask } from '../lib/embedding-worker.js';
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
+import InternalLLMService from '../lib/internal-llm-service.js';
+import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
 import logger from '../lib/logger.js';
 
@@ -219,6 +221,9 @@ class ApiServer {
       intervalMs: parseInt(process.env.APP_CLOCK_INTERVAL) || 10000,
       batchSize: parseInt(process.env.APP_CLOCK_BATCH) || 10,
       globalConcurrency: parseInt(process.env.APP_CLOCK_CONCURRENCY) || 5,
+      residentSkillManager: this.residentSkillManager,
+      llmService: new InternalLLMService(this.db),
+      skillLoader: new SkillLoader(this.db),
     });
     await this.appClock.start();
   }

@@ -470,6 +470,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     attachmentManagement: '附件管理',
     // 驻留进程管理
     residentProcesses: '驻留进程',
+    // App 管理
+    appManagement: 'App 管理',
+    // 处理脚本管理
+    handlerManagement: '处理脚本',
     // MCP 管理
     mcp: {
       management: 'MCP 服务管理',

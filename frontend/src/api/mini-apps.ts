@@ -222,3 +222,19 @@ export async function getHandlers(): Promise<AppRowHandler[]> {
 export async function getHandlerLogs(handlerId: string, limit?: number): Promise<AppActionLog[]> {
   return apiRequest<AppActionLog[]>(apiClient.get(`/handlers/${handlerId}/logs`, { params: { limit } }))
 }
+
+export async function getHandler(handlerId: string): Promise<AppRowHandler> {
+  return apiRequest<AppRowHandler>(apiClient.get(`/handlers/${handlerId}`))
+}
+
+export async function createHandler(data: Partial<AppRowHandler>): Promise<AppRowHandler> {
+  return apiRequest<AppRowHandler>(apiClient.post('/handlers', data))
+}
+
+export async function updateHandler(handlerId: string, data: Partial<AppRowHandler>): Promise<AppRowHandler> {
+  return apiRequest<AppRowHandler>(apiClient.put(`/handlers/${handlerId}`, data))
+}
+
+export async function deleteHandler(handlerId: string): Promise<void> {
+  return apiRequest<void>(apiClient.delete(`/handlers/${handlerId}`))
+}
