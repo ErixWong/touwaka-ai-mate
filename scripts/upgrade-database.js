@@ -570,6 +570,113 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== mcp_servers 表创建 ====================
+  // Issue #601: MCP Client 驻留技能实现
+  {
+    name: 'mcp_servers table create',
+    check: async (conn) => await hasTable(conn, 'mcp_servers'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+          id VARCHAR(32) PRIMARY KEY,
+          name VARCHAR(64) NOT NULL UNIQUE COMMENT 'MCP Server 名称',
+          display_name VARCHAR(128) COMMENT '显示名称',
+          description TEXT COMMENT '描述',
+          command VARCHAR(256) NOT NULL COMMENT '启动命令',
+          args JSON COMMENT '命令参数',
+          env_template JSON COMMENT '环境变量模板，支持 \${user.xxx} 占位符',
+          is_public BIT(1) DEFAULT b'0' COMMENT '是否公共（无需用户凭证）',
+          is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          requires_credentials BIT(1) DEFAULT b'0' COMMENT '是否需要用户凭证',
+          credential_fields JSON COMMENT '凭证字段定义',
+          icon VARCHAR(50) COMMENT '图标标识',
+          category VARCHAR(50) COMMENT '分类：search, storage, dev-tools, etc.',
+          created_by VARCHAR(32) COMMENT '创建者',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_name (name),
+          INDEX idx_is_enabled (is_enabled),
+          INDEX idx_category (category)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP Server 定义表'
+      `);
+      console.log('  ✓ Created mcp_servers table');
+    }
+  },
+
+  // ==================== mcp_credentials 表创建 ====================
+  // Issue #601: MCP 系统默认凭证表
+  {
+    name: 'mcp_credentials table create',
+    check: async (conn) => await hasTable(conn, 'mcp_credentials'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_credentials (
+          id VARCHAR(32) PRIMARY KEY,
+          mcp_server_id VARCHAR(32) NOT NULL COMMENT 'MCP Server ID',
+          credentials JSON NOT NULL COMMENT '系统默认凭证（加密存储）',
+          is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          created_by VARCHAR(32) COMMENT '创建者（管理员）',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_server (mcp_server_id),
+          INDEX idx_is_enabled (is_enabled),
+          FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 系统默认凭证表'
+      `);
+      console.log('  ✓ Created mcp_credentials table');
+    }
+  },
+
+  // ==================== mcp_user_credentials 表创建 ====================
+  // Issue #601: MCP 用户私有凭证表
+  {
+    name: 'mcp_user_credentials table create',
+    check: async (conn) => await hasTable(conn, 'mcp_user_credentials'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_user_credentials (
+          id VARCHAR(32) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+          mcp_server_id VARCHAR(32) NOT NULL COMMENT 'MCP Server ID',
+          credentials JSON NOT NULL COMMENT '用户凭证（加密存储）',
+          is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_user_server (user_id, mcp_server_id),
+          INDEX idx_user_id (user_id),
+          INDEX idx_mcp_server_id (mcp_server_id),
+          INDEX idx_is_enabled (is_enabled),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 用户私有凭证表'
+      `);
+      console.log('  ✓ Created mcp_user_credentials table');
+    }
+  },
+
+  // ==================== mcp_tools_cache 表创建 ====================
+  // Issue #601: MCP 工具定义缓存表
+  {
+    name: 'mcp_tools_cache table create',
+    check: async (conn) => await hasTable(conn, 'mcp_tools_cache'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_tools_cache (
+          id VARCHAR(32) PRIMARY KEY,
+          mcp_server_id VARCHAR(32) NOT NULL COMMENT 'MCP Server ID',
+          tool_name VARCHAR(64) NOT NULL COMMENT '工具名称',
+          description TEXT COMMENT '工具描述',
+          input_schema JSON COMMENT '输入参数定义',
+          cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_server_tool (mcp_server_id, tool_name),
+          INDEX idx_mcp_server_id (mcp_server_id),
+          FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 工具定义缓存表'
+      `);
+      console.log('  ✓ Created mcp_tools_cache table');
+    }
+  },
+
 ];
 
 /**
