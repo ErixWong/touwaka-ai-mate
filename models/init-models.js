@@ -20,6 +20,10 @@ import _kb_paragraph from  "./kb_paragraph.js";
 import _kb_section from  "./kb_section.js";
 import _kb_tag from  "./kb_tag.js";
 import _knowledge_basis from  "./knowledge_basis.js";
+import _mcp_credential from  "./mcp_credential.js";
+import _mcp_server from  "./mcp_server.js";
+import _mcp_tools_cache from  "./mcp_tools_cache.js";
+import _mcp_user_credential from  "./mcp_user_credential.js";
 import _message from  "./message.js";
 import _mini_app from  "./mini_app.js";
 import _mini_app_file from  "./mini_app_file.js";
@@ -66,6 +70,10 @@ export default function initModels(sequelize) {
   const kb_section = _kb_section.init(sequelize, DataTypes);
   const kb_tag = _kb_tag.init(sequelize, DataTypes);
   const knowledge_basis = _knowledge_basis.init(sequelize, DataTypes);
+  const mcp_credential = _mcp_credential.init(sequelize, DataTypes);
+  const mcp_server = _mcp_server.init(sequelize, DataTypes);
+  const mcp_tools_cache = _mcp_tools_cache.init(sequelize, DataTypes);
+  const mcp_user_credential = _mcp_user_credential.init(sequelize, DataTypes);
   const message = _message.init(sequelize, DataTypes);
   const mini_app = _mini_app.init(sequelize, DataTypes);
   const mini_app_file = _mini_app_file.init(sequelize, DataTypes);
@@ -137,6 +145,12 @@ export default function initModels(sequelize) {
   knowledge_basis.hasMany(kb_article, { as: "kb_articles", foreignKey: "kb_id"});
   kb_tag.belongsTo(knowledge_basis, { as: "kb", foreignKey: "kb_id"});
   knowledge_basis.hasMany(kb_tag, { as: "kb_tags", foreignKey: "kb_id"});
+  mcp_credential.belongsTo(mcp_server, { as: "mcp_server", foreignKey: "mcp_server_id"});
+  mcp_server.hasOne(mcp_credential, { as: "mcp_credential", foreignKey: "mcp_server_id"});
+  mcp_tools_cache.belongsTo(mcp_server, { as: "mcp_server", foreignKey: "mcp_server_id"});
+  mcp_server.hasMany(mcp_tools_cache, { as: "mcp_tools_caches", foreignKey: "mcp_server_id"});
+  mcp_user_credential.belongsTo(mcp_server, { as: "mcp_server", foreignKey: "mcp_server_id"});
+  mcp_server.hasMany(mcp_user_credential, { as: "mcp_user_credentials", foreignKey: "mcp_server_id"});
   permission.belongsTo(permission, { as: "parent", foreignKey: "parent_id"});
   permission.hasMany(permission, { as: "permissions", foreignKey: "parent_id"});
   role_permission.belongsTo(permission, { as: "permission", foreignKey: "permission_id"});
@@ -177,6 +191,8 @@ export default function initModels(sequelize) {
   user.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "owner_id"});
   knowledge_basis.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
   user.hasMany(knowledge_basis, { as: "creator_knowledge_bases", foreignKey: "creator_id"});
+  mcp_user_credential.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(mcp_user_credential, { as: "mcp_user_credentials", foreignKey: "user_id"});
   message.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(message, { as: "messages", foreignKey: "user_id"});
   task.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
@@ -241,6 +257,10 @@ export default function initModels(sequelize) {
     kb_section,
     kb_tag,
     knowledge_basis,
+    mcp_credential,
+    mcp_server,
+    mcp_tools_cache,
+    mcp_user_credential,
     message,
     mini_app,
     mini_app_file,

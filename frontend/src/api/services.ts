@@ -898,3 +898,148 @@ export const assistantApi = {
       apiClient.post(`/assistants/requests/${requestId}/resend-notification`)
     ),
 }
+
+// ============================================
+// MCP 客户端相关 API
+// ============================================
+
+// MCP Server 类型
+export interface McpServer {
+  id: string
+  name: string
+  command: string
+  args: string | null
+  env: string | null
+  is_public: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// MCP Server 创建/更新请求
+export interface CreateMcpServerRequest {
+  name: string
+  command: string
+  args?: string
+  env?: string
+  is_public?: boolean
+  is_active?: boolean
+}
+
+export interface UpdateMcpServerRequest {
+  name?: string
+  command?: string
+  args?: string
+  env?: string
+  is_public?: boolean
+  is_active?: boolean
+}
+
+// MCP 凭证类型
+export interface McpCredential {
+  id: string
+  server_id: string
+  env_overrides: string
+  created_at: string
+  updated_at: string
+}
+
+// MCP 用户凭证类型
+export interface McpUserCredential {
+  id: string
+  server_id: string
+  user_id: string
+  env_overrides: string
+  created_at: string
+  updated_at: string
+}
+
+// MCP 工具缓存类型
+export interface McpToolCache {
+  id: string
+  server_id: string
+  tool_name: string
+  tool_description: string
+  tool_input_schema: string
+  created_at: string
+  updated_at: string
+}
+
+// MCP API
+export const mcpApi = {
+  // ========== MCP Server 管理 ==========
+
+  // 获取 MCP Server 列表
+  getServers: () =>
+    apiRequest<McpServer[]>(apiClient.get('/mcp/servers')),
+
+  // 获取单个 MCP Server
+  getServer: (id: string) =>
+    apiRequest<McpServer>(apiClient.get(`/mcp/servers/${id}`)),
+
+  // 创建 MCP Server
+  createServer: (data: CreateMcpServerRequest) =>
+    apiRequest<McpServer>(apiClient.post('/mcp/servers', data)),
+
+  // 更新 MCP Server
+  updateServer: (id: string, data: UpdateMcpServerRequest) =>
+    apiRequest<McpServer>(apiClient.put(`/mcp/servers/${id}`, data)),
+
+  // 删除 MCP Server
+  deleteServer: (id: string) =>
+    apiRequest<void>(apiClient.delete(`/mcp/servers/${id}`)),
+
+  // 刷新 MCP Server 工具列表
+  refreshTools: (id: string) =>
+    apiRequest<{ tools: McpToolCache[]; message: string }>(
+      apiClient.post(`/mcp/servers/${id}/refresh-tools`)
+    ),
+
+  // 获取 MCP Server 工具列表
+  getServerTools: (id: string) =>
+    apiRequest<McpToolCache[]>(apiClient.get(`/mcp/servers/${id}/tools`)),
+
+  // ========== 用户凭证管理 ==========
+
+  // 获取当前用户的 MCP 凭证
+  getUserCredentials: () =>
+    apiRequest<McpUserCredential[]>(apiClient.get('/mcp/credentials')),
+
+  // 获取当前用户对特定 Server 的凭证
+  getUserCredentialForServer: (serverId: string) =>
+    apiRequest<McpUserCredential | null>(
+      apiClient.get(`/mcp/credentials/${serverId}`)
+    ),
+
+  // 设置当前用户对特定 Server 的凭证
+  setUserCredential: (serverId: string, data: { env_overrides?: string }) =>
+    apiRequest<McpUserCredential>(
+      apiClient.post(`/mcp/credentials/${serverId}`, data)
+    ),
+
+  // 删除当前用户对特定 Server 的凭证
+  deleteUserCredential: (serverId: string) =>
+    apiRequest<void>(apiClient.delete(`/mcp/credentials/${serverId}`)),
+
+  // ========== 系统默认凭证管理（管理员） ==========
+
+  // 获取系统默认凭证列表
+  getDefaultCredentials: () =>
+    apiRequest<McpCredential[]>(apiClient.get('/mcp/default-credentials')),
+
+  // 获取特定 Server 的系统默认凭证
+  getDefaultCredentialForServer: (serverId: string) =>
+    apiRequest<McpCredential | null>(
+      apiClient.get(`/mcp/default-credentials/${serverId}`)
+    ),
+
+  // 设置特定 Server 的系统默认凭证
+  setDefaultCredential: (serverId: string, data: { env_overrides?: string }) =>
+    apiRequest<McpCredential>(
+      apiClient.post(`/mcp/default-credentials/${serverId}`, data)
+    ),
+
+  // 删除特定 Server 的系统默认凭证
+  deleteDefaultCredential: (serverId: string) =>
+    apiRequest<void>(apiClient.delete(`/mcp/default-credentials/${serverId}`)),
+}

@@ -12,8 +12,8 @@
 - 简化前端界面，专注于展示和配置
 
 参见新设计文档：
-- [`docs/design/v2/skill-management-tools-design.md`](../v2/skill-management-tools-design.md) - 技能管理工具设计
-- [`docs/design/v2/skill-import-dialog-design.md`](../v2/skill-import-dialog-design.md) - 对话式导入界面设计
+- [`docs/design/parse2/skill-management-tools-design.md`](../parse2/skill-management-tools-design.md) - 技能管理工具设计
+- [`docs/design/parse2/skill-import-dialog-design.md`](../parse2/skill-import-dialog-design.md) - 对话式导入界面设计
 
 ## 归档文件列表
 
@@ -69,9 +69,9 @@
 
 ### 保留的功能
 
-- [`skill-configuration-design.md`](../v2/skill-configuration-design.md) - 技能参数配置（仍在使用）
-- [`skill-management-tools-design.md`](../v2/skill-management-tools-design.md) - register_skill 工具设计
-- [`skill-import-dialog-design.md`](../v2/skill-import-dialog-design.md) - 新的对话式界面设计
+- [`skill-configuration-design.md`](../parse2/skill-configuration-design.md) - 技能参数配置（仍在使用）
+- [`skill-management-tools-design.md`](../parse2/skill-management-tools-design.md) - register_skill 工具设计
+- [`skill-import-dialog-design.md`](../parse2/skill-import-dialog-design.md) - 新的对话式界面设计
 
 ### 不再需要的功能
 

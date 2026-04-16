@@ -110,8 +110,9 @@ export async function getInheritedToolDefinitions(db, toolIds, expertId) {
     const toolManager = new ToolManager(db, expertId || 'system');
     await toolManager.initialize();
 
-    // 获取所有工具定义
-    const allTools = toolManager.getToolDefinitions();
+    // 获取所有工具定义（包含 MCP 工具）
+    const toolContext = { expert_id: expertId };
+    const allTools = await toolManager.getToolDefinitions(toolContext);
 
     // 过滤出需要的工具
     const inheritedTools = allTools.filter(tool => {

@@ -24,8 +24,9 @@ docs/
 │   └── orm-analysis.md         # ORM analysis
 └── design/                     # Architecture and design documents
     ├── README.md               # Design documentation index
-    ├── v1/                     # V1 architecture documents
-    └── v2/                     # V2 architecture documents
+    ├── parse1/                 # Parse 1 architecture documents (formerly v1)
+    ├── parse2/                 # Parse 2 architecture documents (formerly v2)
+    └── parse3/                 # Parse 3 - App platform design
 ```
 
 ## 🚀 Quick Start
@@ -72,8 +73,9 @@ docs/
 
 ### Design
 - [Design Index](design/README.md) - Architecture documentation index
-- [V1 Design](design/v1/README.md) - V1 architecture and design
-- [V2 Design](design/v2/README.md) - V2 architecture (Task Layer, Right Panel, etc.)
+- [Parse 1 Design](design/parse1/README.md) - Parse 1 architecture and design
+- [Parse 2 Design](design/parse2/README.md) - Parse 2 architecture (Task Layer, Right Panel, etc.)
+- [Parse 3 - App Platform](design/parse3/app-platform-design.md) - App platform design (Bitable + AI)
 
 ## 🤝 Contributing
 
