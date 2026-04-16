@@ -1647,8 +1647,8 @@ const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
     { key: 'resident', label: t('settings.residentProcesses') },
     { key: 'attachment', label: t('settings.attachmentManagement') },
     { key: 'mcp', label: t('settings.mcp.management') },
-    { key: 'apps', label: t('settings.appManagement') },
-    { key: 'handlers', label: t('settings.handlerManagement') },
+    { key: 'apps', label: t('settings.appManagement.management') },
+    { key: 'handlers', label: t('settings.handlerManagement.management') },
     { key: 'system', label: t('settings.systemConfig') },
   ],
 }

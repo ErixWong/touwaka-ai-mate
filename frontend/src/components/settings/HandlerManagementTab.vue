@@ -227,8 +227,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
-import { getHandlers, getHandlerLogs } from '@/api/mini-apps'
-import apiClient from '@/api/client'
+import { getHandlers, getHandlerLogs, createHandler, updateHandler, deleteHandler as deleteHandlerApi } from '@/api/mini-apps'
 import type { AppRowHandler, AppActionLog } from '@/api/mini-apps'
 
 const { t } = useI18n()
@@ -344,10 +343,10 @@ async function saveHandler() {
   try {
     const data = { ...handlerForm }
     if (editingHandler.value) {
-      await apiClient.put(`/handlers/${editingHandler.value.id}`, data)
+      await updateHandler(editingHandler.value.id, data)
       toast.success(t('settings.handlerManagement.updateSuccess', '脚本更新成功'))
     } else {
-      await apiClient.post('/handlers', data)
+      await createHandler(data)
       toast.success(t('settings.handlerManagement.createSuccess', '脚本创建成功'))
     }
     closeHandlerDialog()
@@ -360,7 +359,7 @@ async function saveHandler() {
 async function deleteHandler() {
   if (!deletingHandler.value) return
   try {
-    await apiClient.delete(`/handlers/${deletingHandler.value.id}`)
+    await deleteHandlerApi(deletingHandler.value.id)
     toast.success(t('settings.handlerManagement.deleteSuccess', '脚本已删除'))
     showDeleteDialog.value = false
     deletingHandler.value = null
