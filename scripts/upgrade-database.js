@@ -570,6 +570,304 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== App 平台表 ====================
+  // Issue #603: App 平台基础架构与合同管理小程序
+  // 参见 docs/design/parse3/database-schema.md
+
+  {
+    name: 'mini_apps table',
+    check: async (conn) => await hasTable(conn, 'mini_apps'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE mini_apps (
+          id VARCHAR(32) PRIMARY KEY,
+          name VARCHAR(128) NOT NULL COMMENT '小程序/表名称',
+          description TEXT COMMENT '描述',
+          icon VARCHAR(16) DEFAULT '📱' COMMENT '图标（emoji）',
+          type ENUM('document', 'workflow', 'data', 'utility') NOT NULL COMMENT '类型',
+          component VARCHAR(128) COMMENT '前端组件名，NULL=使用GenericMiniApp',
+          fields JSON NOT NULL COMMENT '字段定义列表',
+          views JSON COMMENT '视图配置',
+          config JSON COMMENT '功能配置',
+          visibility ENUM('owner', 'department', 'all', 'role') DEFAULT 'all' COMMENT '可见范围',
+          owner_id VARCHAR(32) NOT NULL COMMENT 'App管理员',
+          creator_id VARCHAR(32) NOT NULL COMMENT '创建者',
+          sort_order INT DEFAULT 0 COMMENT '排序',
+          is_active BIT(1) DEFAULT 1 COMMENT '是否启用',
+          revision INT DEFAULT 1 COMMENT '版本号',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT,
+          FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序注册表（多维表格定义）'
+      `);
+      console.log('  ✓ Created mini_apps table');
+    }
+  },
+
+  {
+    name: 'mini_app_rows table',
+    check: async (conn) => await hasTable(conn, 'mini_app_rows'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE mini_app_rows (
+          id VARCHAR(32) PRIMARY KEY,
+          app_id VARCHAR(32) NOT NULL COMMENT '小程序ID',
+          user_id VARCHAR(32) NOT NULL COMMENT '创建用户ID',
+          data JSON NOT NULL COMMENT '行数据（字段名→值的映射）',
+          title VARCHAR(255) COMMENT '记录标题（冗余，便于列表展示）',
+          ai_extracted BIT(1) DEFAULT 0 COMMENT '是否由AI提取',
+          ai_confidence JSON COMMENT '各字段的AI置信度',
+          version VARCHAR(32) COMMENT '版本号',
+          previous_version_id VARCHAR(32) COMMENT '上一版本ID',
+          revision INT DEFAULT 1 COMMENT '数据版本号（乐观锁）',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_app_user (app_id, user_id),
+          INDEX idx_created_at (created_at),
+          FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序数据记录（多维表格行）'
+      `);
+      await conn.execute(`
+        ALTER TABLE mini_app_rows
+        ADD COLUMN _status VARCHAR(64)
+          GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(data, '$._status'))) STORED,
+        ADD INDEX idx_app_status (app_id, _status)
+      `);
+      console.log('  ✓ Created mini_app_rows table with _status virtual column');
+    }
+  },
+
+  {
+    name: 'mini_app_files table',
+    check: async (conn) => await hasTable(conn, 'mini_app_files'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE mini_app_files (
+          id VARCHAR(32) PRIMARY KEY,
+          record_id VARCHAR(32) NOT NULL COMMENT '关联记录ID',
+          app_id VARCHAR(32) NOT NULL COMMENT '小程序ID（冗余）',
+          attachment_id VARCHAR(20) NOT NULL COMMENT '附件ID（关联attachments表）',
+          field_name VARCHAR(64) COMMENT '对应的字段名',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_app (app_id),
+          INDEX idx_attachment (attachment_id),
+          FOREIGN KEY (record_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE,
+          FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序文件关联表'
+      `);
+      console.log('  ✓ Created mini_app_files table');
+    }
+  },
+
+  {
+    name: 'app_row_handlers table',
+    check: async (conn) => await hasTable(conn, 'app_row_handlers'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_row_handlers (
+          id VARCHAR(32) PRIMARY KEY,
+          name VARCHAR(128) NOT NULL COMMENT '脚本名称',
+          description TEXT COMMENT '描述',
+          handler VARCHAR(255) NOT NULL COMMENT '处理函数路径',
+          handler_function VARCHAR(128) DEFAULT 'process' COMMENT '处理函数名',
+          concurrency INT DEFAULT 3 COMMENT '最大并发数',
+          timeout INT DEFAULT 60 COMMENT '超时时间（秒）',
+          max_retries INT DEFAULT 2 COMMENT '最大重试次数',
+          is_active BIT(1) DEFAULT 1,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App 行处理器'
+      `);
+      console.log('  ✓ Created app_row_handlers table');
+    }
+  },
+
+  {
+    name: 'app_state table',
+    check: async (conn) => await hasTable(conn, 'app_state'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_state (
+          id VARCHAR(32) PRIMARY KEY,
+          app_id VARCHAR(32) NOT NULL COMMENT '小程序ID',
+          name VARCHAR(64) NOT NULL COMMENT '状态名（如pending_ocr）',
+          label VARCHAR(128) NOT NULL COMMENT '显示名（如待OCR）',
+          sort_order INT DEFAULT 0 COMMENT '流转顺序（0=初始）',
+          is_initial BIT(1) DEFAULT 0 COMMENT '是否初始状态',
+          is_terminal BIT(1) DEFAULT 0 COMMENT '是否终态',
+          is_error BIT(1) DEFAULT 0 COMMENT '是否错误状态',
+          handler_id VARCHAR(32) COMMENT '处理脚本ID',
+          success_next_state VARCHAR(64) COMMENT '成功后转到什么状态',
+          failure_next_state VARCHAR(64) COMMENT '失败后转到什么状态',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_app_name (app_id, name),
+          INDEX idx_app_sort (app_id, sort_order),
+          FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE,
+          FOREIGN KEY (handler_id) REFERENCES app_row_handlers(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App 状态定义表'
+      `);
+      console.log('  ✓ Created app_state table');
+    }
+  },
+
+  {
+    name: 'app_action_logs table',
+    check: async (conn) => await hasTable(conn, 'app_action_logs'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_action_logs (
+          id VARCHAR(32) PRIMARY KEY,
+          handler_id VARCHAR(32) NOT NULL COMMENT '处理器ID',
+          record_id VARCHAR(32) NOT NULL COMMENT '行ID',
+          app_id VARCHAR(32) NOT NULL COMMENT '小程序ID',
+          trigger_status VARCHAR(64) NOT NULL COMMENT '触发时的状态',
+          result_status VARCHAR(64) COMMENT '执行后的状态',
+          success BIT(1) NOT NULL COMMENT '是否成功',
+          output_data JSON COMMENT '处理器输出的数据',
+          error_message TEXT COMMENT '错误信息',
+          duration INT COMMENT '执行耗时（毫秒）',
+          retry_count INT DEFAULT 0 COMMENT '重试次数',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_handler (handler_id),
+          INDEX idx_record (record_id),
+          INDEX idx_app_created (app_id, created_at),
+          FOREIGN KEY (handler_id) REFERENCES app_row_handlers(id) ON DELETE CASCADE,
+          FOREIGN KEY (record_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE,
+          FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App 动作日志'
+      `);
+      console.log('  ✓ Created app_action_logs table');
+    }
+  },
+
+  {
+    name: 'mini_app_role_access table',
+    check: async (conn) => await hasTable(conn, 'mini_app_role_access'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE mini_app_role_access (
+          id VARCHAR(32) PRIMARY KEY,
+          app_id VARCHAR(32) NOT NULL COMMENT '小程序ID',
+          role_id VARCHAR(32) NOT NULL COMMENT '角色ID',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_app_role (app_id, role_id),
+          FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE,
+          FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序角色访问控制'
+      `);
+      console.log('  ✓ Created mini_app_role_access table');
+    }
+  },
+
+  // ==================== mcp_servers 表创建 ====================
+  // Issue #601: MCP Client 驻留技能实现
+  {
+    name: 'mcp_servers table create',
+    check: async (conn) => await hasTable(conn, 'mcp_servers'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+          id VARCHAR(32) PRIMARY KEY,
+          name VARCHAR(64) NOT NULL UNIQUE COMMENT 'MCP Server 名称',
+          display_name VARCHAR(128) COMMENT '显示名称',
+          description TEXT COMMENT '描述',
+          command VARCHAR(256) NOT NULL COMMENT '启动命令',
+          args JSON COMMENT '命令参数',
+          env_template JSON COMMENT '环境变量模板，支持 \${user.xxx} 占位符',
+          is_public BIT(1) DEFAULT b'0' COMMENT '是否公共（无需用户凭证）',
+          is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          requires_credentials BIT(1) DEFAULT b'0' COMMENT '是否需要用户凭证',
+          credential_fields JSON COMMENT '凭证字段定义',
+          icon VARCHAR(50) COMMENT '图标标识',
+          category VARCHAR(50) COMMENT '分类：search, storage, dev-tools, etc.',
+          created_by VARCHAR(32) COMMENT '创建者',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_name (name),
+          INDEX idx_is_enabled (is_enabled),
+          INDEX idx_category (category)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP Server 定义表'
+      `);
+      console.log('  ✓ Created mcp_servers table');
+    }
+  },
+
+  // ==================== mcp_credentials 表创建 ====================
+  // Issue #601: MCP 系统默认凭证表
+  {
+    name: 'mcp_credentials table create',
+    check: async (conn) => await hasTable(conn, 'mcp_credentials'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_credentials (
+          id VARCHAR(32) PRIMARY KEY,
+          mcp_server_id VARCHAR(32) NOT NULL COMMENT 'MCP Server ID',
+          credentials JSON NOT NULL COMMENT '系统默认凭证（加密存储）',
+          is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          created_by VARCHAR(32) COMMENT '创建者（管理员）',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_server (mcp_server_id),
+          INDEX idx_is_enabled (is_enabled),
+          FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 系统默认凭证表'
+      `);
+      console.log('  ✓ Created mcp_credentials table');
+    }
+  },
+
+  // ==================== mcp_user_credentials 表创建 ====================
+  // Issue #601: MCP 用户私有凭证表
+  {
+    name: 'mcp_user_credentials table create',
+    check: async (conn) => await hasTable(conn, 'mcp_user_credentials'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_user_credentials (
+          id VARCHAR(32) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+          mcp_server_id VARCHAR(32) NOT NULL COMMENT 'MCP Server ID',
+          credentials JSON NOT NULL COMMENT '用户凭证（加密存储）',
+          is_enabled BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_user_server (user_id, mcp_server_id),
+          INDEX idx_user_id (user_id),
+          INDEX idx_mcp_server_id (mcp_server_id),
+          INDEX idx_is_enabled (is_enabled),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 用户私有凭证表'
+      `);
+      console.log('  ✓ Created mcp_user_credentials table');
+    }
+  },
+
+  // ==================== mcp_tools_cache 表创建 ====================
+  // Issue #601: MCP 工具定义缓存表
+  {
+    name: 'mcp_tools_cache table create',
+    check: async (conn) => await hasTable(conn, 'mcp_tools_cache'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_tools_cache (
+          id VARCHAR(32) PRIMARY KEY,
+          mcp_server_id VARCHAR(32) NOT NULL COMMENT 'MCP Server ID',
+          tool_name VARCHAR(64) NOT NULL COMMENT '工具名称',
+          description TEXT COMMENT '工具描述',
+          input_schema JSON COMMENT '输入参数定义',
+          cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_server_tool (mcp_server_id, tool_name),
+          INDEX idx_mcp_server_id (mcp_server_id),
+          FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 工具定义缓存表'
+      `);
+      console.log('  ✓ Created mcp_tools_cache table');
+    }
+  },
+
 ];
 
 /**

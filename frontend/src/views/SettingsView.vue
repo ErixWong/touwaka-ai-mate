@@ -594,6 +594,21 @@
       <AttachmentTab />
     </div>
 
+    <!-- MCP 管理（仅管理员） -->
+    <div v-if="activeTab === 'mcp' && isAdmin" class="settings-section mcp-section">
+      <McpTab />
+    </div>
+
+    <!-- App 管理（仅管理员） -->
+    <div v-if="activeTab === 'apps' && isAdmin" class="settings-section apps-section">
+      <AppManagementTab />
+    </div>
+
+    <!-- 处理脚本管理（仅管理员） -->
+    <div v-if="activeTab === 'handlers' && isAdmin" class="settings-section handlers-section">
+      <HandlerManagementTab />
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1590,6 +1605,9 @@ import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
 import AttachmentTab from '@/components/settings/AttachmentTab.vue'
+import McpTab from '@/components/settings/McpTab.vue'
+import AppManagementTab from '@/components/settings/AppManagementTab.vue'
+import HandlerManagementTab from '@/components/settings/HandlerManagementTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
 
@@ -1628,6 +1646,9 @@ const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
     { key: 'assistant', label: t('settings.assistantSettings') },
     { key: 'resident', label: t('settings.residentProcesses') },
     { key: 'attachment', label: t('settings.attachmentManagement') },
+    { key: 'mcp', label: t('settings.mcp.management') },
+    { key: 'apps', label: t('settings.appManagement.management') },
+    { key: 'handlers', label: t('settings.handlerManagement.management') },
     { key: 'system', label: t('settings.systemConfig') },
   ],
 }

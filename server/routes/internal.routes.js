@@ -42,5 +42,8 @@ export default function createInternalRoutes(controller, authMiddleware) {
   // 调用驻留式技能工具 API
   router.post('/resident/invoke', requireAuth, controller.invokeResidentTool.bind(controller));
 
+  // 获取 MCP 配置 API（供驻留进程调用）
+  router.post('/mcp/config', requireAuth, controller.getMcpConfig.bind(controller));
+
   return router;
 }

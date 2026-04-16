@@ -34,13 +34,13 @@
 ### 设计文档
 | 文档 | 描述 |
 |------|------|
-| [context-compression-design.md](../../design/v2/context-compression-design.md) | ⭐ 上下文压缩设计 v2 |
-| [llm-call-scenarios.md](../../design/v1/llm-call-scenarios.md) | LLM 调用场景分析 |
-| [background-task-scheduler-design.md](../../design/v2/background-task-scheduler-design.md) | 后台任务调度器设计 |
-| [right-panel-design.md](../../design/v2/right-panel-design.md) | 右侧面板容器设计 |
-| [task-layer-design.md](../../design/v2/task-layer-design.md) | 任务层设计 |
-| [sandbox-architecture.md](../../design/v2/sandbox-architecture.md) | 沙箱架构设计 |
-| [skill-market-design.md](../../design/v2/skill-market-design.md) | 技能管理系统设计 |
+| [context-compression-design.md](../../design/parse2/context-compression-design.md) | ⭐ 上下文压缩设计 |
+| [llm-call-scenarios.md](../../design/parse1/llm-call-scenarios.md) | LLM 调用场景分析 |
+| [background-task-scheduler-design.md](../../design/parse2/background-task-scheduler-design.md) | 后台任务调度器设计 |
+| [right-panel-design.md](../../design/parse2/right-panel-design.md) | 右侧面板容器设计 |
+| [task-layer-design.md](../../design/parse2/task-layer-design.md) | 任务层设计 |
+| [sandbox-architecture.md](../../design/parse2/sandbox-architecture.md) | 沙箱架构设计 |
+| [app-platform-design.md](../../design/parse3/app-platform-design.md) | ⭐ App 平台设计（多维表格 + AI） |
 
 ---
 
@@ -117,7 +117,7 @@ Frontend (Vue 3) ←→ API Server (Koa) ←→ Service Layer ←→ MySQL
 ## 相关资源
 
 - [项目 README](../../../README.md) - 项目概览与快速开始
-- [V2 设计总览](../../design/v2/README.md) - V2 架构设计索引
+- [Parse 2 设计总览](../../design/parse2/README.md) - Parse 2 架构设计索引
 - [项目待办事项](../../core/TODO.md) - 当前任务状态
 - [已完成任务归档](../../archive/todo-archive-2026-03.md) - 历史完成记录
 - [经验教训](../../design/lessons-learned.md) - 常见问题和解决方案

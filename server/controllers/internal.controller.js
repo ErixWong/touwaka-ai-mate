@@ -179,8 +179,9 @@ class InternalController {
       // 获取模型配置
       const modelConfig = expertService.getDefaultModelConfig();
 
-      // 获取工具定义
-      const tools = expertService.toolManager.getToolDefinitions();
+      // 获取工具定义（包含 MCP 工具）
+      const toolContext = { user_id, expert_id };
+      const tools = await expertService.toolManager.getToolDefinitions(toolContext);
 
       logger.info(`[Internal API] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
 
@@ -618,6 +619,87 @@ class InternalController {
    */
   setResidentSkillManager(manager) {
     this.residentSkillManager = manager;
+  }
+
+  /**
+   * 获取 MCP 配置（供驻留进程调用）
+   * POST /internal/mcp/config
+   *
+   * @param {Object} ctx.request.body - 请求体
+   * @param {string} [ctx.request.body.user_id] - 用户ID（可选）
+   * @returns {Object} { servers, default_credentials, user_credentials }
+   */
+  async getMcpConfig(ctx) {
+    try {
+      // 1. 验证内部调用权限
+      if (!this.validateInternalAccess(ctx)) {
+        ctx.status = 403;
+        ctx.error('无权访问内部 API', 403, { code: 'FORBIDDEN' });
+        return;
+      }
+
+      const { user_id } = ctx.request.body || {};
+
+      // 2. 获取模型
+      const MCPServer = this.db.getModel('mcp_server');
+      const MCPCredential = this.db.getModel('mcp_credential');
+      const MCPUserCredential = this.db.getModel('mcp_user_credential');
+
+      // 3. 获取 MCP Server 配置
+      const servers = await MCPServer.findAll({
+        where: { is_enabled: true },
+        raw: true,
+      });
+
+      // 4. 获取系统默认凭证
+      const defaultCredentials = await MCPCredential.findAll({
+        where: { is_enabled: true },
+        raw: true,
+      });
+
+      // 5. 获取用户凭证（如果提供了 user_id）
+      let userCredentials = [];
+      if (user_id) {
+        userCredentials = await MCPUserCredential.findAll({
+          where: { user_id, is_enabled: true },
+          raw: true,
+        });
+      }
+
+      // 6. 返回配置
+      ctx.success({
+        servers: servers.map(s => ({
+          id: s.id,
+          name: s.name,
+          display_name: s.display_name,
+          description: s.description,
+          command: s.command,
+          args: s.args,
+          env_template: s.env_template,
+          is_public: s.is_public,
+          is_enabled: s.is_enabled,
+          requires_credentials: s.requires_credentials,
+          credential_fields: s.credential_fields,
+        })),
+        default_credentials: defaultCredentials.map(c => ({
+          id: c.id,
+          mcp_server_id: c.mcp_server_id,
+          credentials: c.credentials,
+          is_enabled: c.is_enabled,
+        })),
+        user_credentials: userCredentials.map(c => ({
+          id: c.id,
+          user_id: c.user_id,
+          mcp_server_id: c.mcp_server_id,
+          credentials: c.credentials,
+          is_enabled: c.is_enabled,
+        })),
+      });
+
+    } catch (error) {
+      logger.error('Internal API get MCP config error:', error);
+      ctx.error(error.message || '获取 MCP 配置失败', 500);
+    }
   }
 }
 

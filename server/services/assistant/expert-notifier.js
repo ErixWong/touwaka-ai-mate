@@ -578,8 +578,9 @@ export async function triggerExpertResponse(db, chatService, expertConnections, 
     // 获取模型配置
     const modelConfig = expertService.getDefaultModelConfig();
 
-    // 获取工具定义
-    const tools = expertService.toolManager.getToolDefinitions();
+    // 获取工具定义（包含 MCP 工具）
+    const toolContext = { user_id: userId, expert_id: expertId };
+    const tools = await expertService.toolManager.getToolDefinitions(toolContext);
 
     logger.info(`[ExpertNotifier] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
 
