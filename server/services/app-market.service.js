@@ -189,9 +189,33 @@ class AppMarketService {
     // 检查 MCP 服务
     if (compatibility.requires?.mcp) {
       const configuredMcp = await this.getConfiguredMcpServices();
-      for (const mcp of compatibility.requires.mcp) {
-        if (!configuredMcp.includes(mcp)) {
-          missing.mcp.push(mcp);
+      const requiredMcp = compatibility.requires.mcp;
+      
+      // 支持两种格式：
+      // 1. 数组格式：只要有一个满足即可（容错设计）
+      // 2. 对象格式：{ all: [...], any: [...] }
+      if (Array.isArray(requiredMcp)) {
+        // 数组格式：多服务容错，至少有一个即可
+        const hasAny = requiredMcp.some(mcp => configuredMcp.includes(mcp));
+        if (!hasAny) {
+          missing.mcp = requiredMcp; // 返回所有可能的选项
+        }
+      } else if (typeof requiredMcp === 'object') {
+        // 对象格式：精确控制
+        if (requiredMcp.all) {
+          // 必须全部满足
+          for (const mcp of requiredMcp.all) {
+            if (!configuredMcp.includes(mcp)) {
+              missing.mcp.push(mcp);
+            }
+          }
+        }
+        if (requiredMcp.any) {
+          // 至少满足一个
+          const hasAny = requiredMcp.any.some(mcp => configuredMcp.includes(mcp));
+          if (!hasAny) {
+            missing.mcp = requiredMcp.any;
+          }
         }
       }
     }
@@ -213,7 +237,7 @@ class AppMarketService {
   async getConfiguredMcpServices() {
     this.ensureModels();
     const servers = await this.models.McpServer.findAll({
-      where: { is_active: true },
+      where: { is_enabled: true },
       attributes: ['name']
     });
     return servers.map(s => s.name);

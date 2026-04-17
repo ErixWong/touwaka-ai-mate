@@ -1281,7 +1281,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     license: '许可证',
     dependencies: '依赖检查',
     allDepsSatisfied: '所有依赖已满足',
-    missingMcp: '缺少 MCP 服务',
+    missingMcp: '缺少以下任一 MCP 服务',
     fields: '字段定义',
   },
 
