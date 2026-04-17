@@ -269,12 +269,12 @@ class AppMarketService {
       'utf-8'
     );
     
-    // 6. 安装 handlers
-    const installedHandlers = await this.installHandlers(appId, manifest);
+    // 6. 安装 handlers（返回 handlerId 映射）
+    const { installed: installedHandlers, handlerIdMap } = await this.installHandlers(appId, manifest);
     
     // 7. 插入数据库
     await this.installAppMetadata(manifest, userId, visibility);
-    await this.installStates(appId, manifest);
+    await this.installStates(appId, manifest, handlerIdMap);
     
     logger.info(`App ${appId} installed successfully`);
     
@@ -312,11 +312,20 @@ class AppMarketService {
 
   /**
    * 安装状态定义到数据库
+   * @param {string} appId
+   * @param {object} manifest
+   * @param {Map} handlerIdMap - handler名称 → app_row_handlers.id 的映射
    */
-  async installStates(appId, manifest) {
+  async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
     
     for (const state of manifest.states) {
+      // handler_id 引用 app_row_handlers 表的实际 ID
+      let handlerId = null;
+      if (state.handler && handlerIdMap.has(state.handler)) {
+        handlerId = handlerIdMap.get(state.handler);
+      }
+      
       await this.models.AppState.create({
         id: Utils.newID(20),
         app_id: appId,
@@ -326,7 +335,7 @@ class AppMarketService {
         is_initial: state.is_initial || false,
         is_terminal: state.is_terminal || false,
         is_error: state.is_error || false,
-        handler_id: state.handler || null,
+        handler_id: handlerId,
         success_next_state: state.success_next || null,
         failure_next_state: state.failure_next || null
       });
@@ -338,8 +347,9 @@ class AppMarketService {
    */
   async installHandlers(appId, manifest) {
     const installed = [];
+    const handlerIdMap = new Map(); // handlerName → app_row_handlers.id
     
-    if (!manifest.states) return installed;
+    if (!manifest.states) return { installed, handlerIdMap };
     
     // 收集需要安装的 handlers（去重）
     const handlerNames = new Set();
@@ -368,18 +378,21 @@ class AppMarketService {
         );
         
         // 插入数据库记录
+        const handlerId = `${appId}-${handlerName}`;
         await this.models.AppRowHandler.create({
-          id: `${appId}-${handlerName}`,
+          id: handlerId,
           name: handlerName,
           description: `${manifest.name} - ${handlerName}`,
           handler: `apps/${appId}/handlers/${handlerName}`,
           handler_function: 'process',
-          concurrency: 3,
-          timeout: 60,
+          concurrency: manifest.config?.handler_concurrency?.[handlerName] || 3,
+          timeout: manifest.config?.handler_timeout?.[handlerName] || 60,
           max_retries: 2,
           is_active: true
         });
         
+        // 记录映射关系：handler名称 → 数据库ID
+        handlerIdMap.set(handlerName, handlerId);
         installed.push(handlerName);
         logger.info(`Installed handler ${handlerName} for ${appId}`);
       } catch (error) {
@@ -388,7 +401,7 @@ class AppMarketService {
       }
     }
     
-    return installed;
+    return { installed, handlerIdMap };
   }
 
   // ==================== App 卸载 ====================
