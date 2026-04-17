@@ -1,5 +1,5 @@
 {
-  "id": "contract-manager",
+  "id": "contract-mgr",
   "name": "销售合同管理",
   "version": "1.0.0",
   "description": "上传合同文件，AI自动提取合同元数据，支持批量处理和确认入库",

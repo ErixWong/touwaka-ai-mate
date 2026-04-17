@@ -197,11 +197,28 @@ const filters = ref({ status: '' })
 
 // Computed
 const listColumns = computed(() => {
-  const fields = props.app.fields
+  let fields = props.app.fields
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch (e) {
+      return []
+    }
+  }
   if (!fields || !Array.isArray(fields)) return []
   const views = props.app.views
-  if (views?.list?.columns) {
-    return views.list.columns
+  // views 也可能是 JSON 字符串
+  let viewsObj = views
+  if (typeof views === 'string') {
+    try {
+      viewsObj = JSON.parse(views)
+    } catch (e) {
+      viewsObj = {}
+    }
+  }
+  if (viewsObj?.list?.columns) {
+    return viewsObj.list.columns
       .map((name: string) => fields.find(f => f.name === name))
       .filter(Boolean) as AppField[]
   }
@@ -209,15 +226,36 @@ const listColumns = computed(() => {
 })
 
 const editableFields = computed(() => {
-  const fields = props.app.fields
-  if (!fields || !Array.isArray(fields)) return []
+  let fields = props.app.fields
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch (e) {
+      console.error('Failed to parse fields:', e)
+      return []
+    }
+  }
+  if (!fields || !Array.isArray(fields)) {
+    console.warn('Fields is not an array:', fields)
+    return []
+  }
+  // 创建模式下需要包含 file 字段用于上传
   return fields.filter(f =>
-    f.type !== 'file' && f.type !== 'group' && f.type !== 'repeating'
+    f.type !== 'group' && f.type !== 'repeating'
   )
 })
 
 const allFields = computed(() => {
-  const fields = props.app.fields
+  let fields = props.app.fields
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch (e) {
+      return []
+    }
+  }
   if (!fields || !Array.isArray(fields)) return []
   return fields
 })
@@ -312,7 +350,27 @@ function resetFilters() {
 
 function openCreateDialog() {
   dialogMode.value = 'create'
-  formData.value = {}
+  // 初始化所有字段的默认值
+  const initialData: Record<string, any> = {}
+  let fields = props.app.fields || []
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch (e) {
+      fields = []
+    }
+  }
+  for (const field of fields) {
+    if (field.type === 'file') {
+      initialData[field.name] = null
+    } else if (field.type === 'select') {
+      initialData[field.name] = field.default || (field.options?.[0] || '')
+    } else {
+      initialData[field.name] = field.default || ''
+    }
+  }
+  formData.value = initialData
   selectedRecord.value = null
   showDialog.value = true
 }

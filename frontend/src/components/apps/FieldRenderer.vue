@@ -19,6 +19,7 @@ import SelectField from './fields/SelectField.vue'
 import BooleanField from './fields/BooleanField.vue'
 import GroupField from './fields/GroupField.vue'
 import RepeatingField from './fields/RepeatingField.vue'
+import FileField from './fields/FileField.vue'
 
 const props = defineProps<{
   field: AppField
@@ -37,6 +38,7 @@ const FIELD_MAP: Record<string, any> = {
   boolean: BooleanField,
   group: GroupField,
   repeating: RepeatingField,
+  file: FileField,
 }
 
 const fieldComponent = computed(() => {
