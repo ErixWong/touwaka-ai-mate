@@ -177,6 +177,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   getAppMarketIndex,
   getAppManifest,
@@ -191,6 +192,7 @@ import {
 } from '@/api/app-market'
 import { useToastStore } from '@/stores/toast'
 
+const { t } = useI18n()
 const toast = useToastStore()
 
 const props = defineProps<{
@@ -283,8 +285,8 @@ async function installApp(app: AppSummary) {
     // 先检查依赖
     const deps = await checkAppDependencies(app.id)
     if (!deps.satisfied) {
-      const missingMcp = deps.missing.mcp.join(', ')
-      toast.error(`${$t('appMarket.missingMcp', '缺少 MCP 服务')}: ${missingMcp}`)
+      const missingMcp = deps.missing.mcp.join(' 或 ')
+      toast.error(`${t('appMarket.missingMcp', '缺少以下任一 MCP 服务')}: ${missingMcp}`)
       return
     }
 

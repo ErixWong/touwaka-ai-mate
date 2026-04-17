@@ -1337,7 +1337,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     license: 'License',
     dependencies: 'Dependencies',
     allDepsSatisfied: 'All dependencies satisfied',
-    missingMcp: 'Missing MCP services',
+    missingMcp: 'Missing one of the following MCP services',
     fields: 'Fields',
   },
 
