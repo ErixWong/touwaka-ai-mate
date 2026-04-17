@@ -1261,6 +1261,28 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     dragFile: '拖拽文件到此处，或',
     selectFile: '选择文件',
     uploading: '上传中...',
+    myApps: '我的应用',
+    appMarket: '应用市场',
+    noApps: '暂无可用的小程序',
+    goToMarket: '去应用市场安装',
+    hasUpdate: '有更新',
+  },
+
+  // 应用市场
+  appMarket: {
+    all: '全部',
+    searchPlaceholder: '搜索应用...',
+    updateAvailable: '有更新',
+    installed: '已安装',
+    installing: '安装中...',
+    install: '安装',
+    uninstall: '卸载',
+    author: '作者',
+    license: '许可证',
+    dependencies: '依赖检查',
+    allDepsSatisfied: '所有依赖已满足',
+    missingMcp: '缺少 MCP 服务',
+    fields: '字段定义',
   },
 
   // 知识库

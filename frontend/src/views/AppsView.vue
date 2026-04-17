@@ -101,7 +101,8 @@ async function loadMyApps() {
           try {
             const updateInfo = await checkAppUpdate(app.id)
             return { ...app, updateAvailable: updateInfo.has_update }
-          } catch {
+          } catch (e) {
+            console.warn(`Failed to check update for ${app.id}:`, e)
             return { ...app, updateAvailable: false }
           }
         })

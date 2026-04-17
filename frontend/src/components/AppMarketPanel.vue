@@ -189,6 +189,9 @@ import {
   type AppManifest,
   type DependencyCheckResult
 } from '@/api/app-market'
+import { useToastStore } from '@/stores/toast'
+
+const toast = useToastStore()
 
 const props = defineProps<{
   installedApps: string[]
@@ -281,16 +284,16 @@ async function installApp(app: AppSummary) {
     const deps = await checkAppDependencies(app.id)
     if (!deps.satisfied) {
       const missingMcp = deps.missing.mcp.join(', ')
-      alert(`Missing dependencies: ${missingMcp}`)
+      toast.error(`${$t('appMarket.missingMcp', '缺少 MCP 服务')}: ${missingMcp}`)
       return
     }
 
     // 安装
     await installAppFromMarket(app.id, 'all')
     emit('installed', app.id)
-    alert(`App ${app.name} installed successfully`)
+    toast.success(`${app.name} installed successfully`)
   } catch (err: any) {
-    alert(`Installation failed: ${err.message}`)
+    toast.error(`Installation failed: ${err.message}`)
   } finally {
     isInstalling.value = null
   }
@@ -298,17 +301,17 @@ async function installApp(app: AppSummary) {
 
 // 卸载应用
 async function uninstallApp(app: AppSummary) {
-  const confirm = window.confirm(
+  const confirmed = window.confirm(
     `Are you sure you want to uninstall ${app.name}?\n\nData will be kept by default.`
   )
-  if (!confirm) return
+  if (!confirmed) return
 
   try {
     await uninstallAppFromMarket(app.id, true)
     emit('uninstalled', app.id)
-    alert(`App ${app.name} uninstalled successfully`)
+    toast.success(`${app.name} uninstalled successfully`)
   } catch (err: any) {
-    alert(`Uninstallation failed: ${err.message}`)
+    toast.error(`Uninstallation failed: ${err.message}`)
   }
 }
 
