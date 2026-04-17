@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-04-17T17:20:00Z",
+  "registry_url": "https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps",
+  "apps": [
+    {
+      "id": "contract-manager",
+      "name": "销售合同管理",
+      "version": "1.0.0",
+      "icon": "📄",
+      "type": "document",
+      "description": "上传合同文件，AI自动提取合同元数据，支持批量处理和确认入库",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["合同", "文档", "OCR", "AI提取"],
+      "path": "apps/contract-manager",
+      "manifest_url": "apps/contract-manager/manifest.json"
+    }
+  ],
+  "categories": [
+    { "id": "document", "name": "文档管理", "icon": "📄", "description": "文档上传、OCR识别、数据提取" },
+    { "id": "workflow", "name": "流程审批", "icon": "🔄", "description": "审批流程、状态流转" },
+    { "id": "data", "name": "数据管理", "icon": "📊", "description": "结构化数据管理" },
+    { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" }
+  ],
+  "metadata": {
+    "total_apps": 1,
+    "min_platform_version": "2.0.0",
+    "last_updated_by": "Touwaka Team"
+  }
+}

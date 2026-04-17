@@ -67,6 +67,7 @@ import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
 import AttachmentController from './controllers/attachment.controller.js';
 import MiniAppController from './controllers/mini-app.controller.js';
+import AppMarketController from './controllers/app-market.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
@@ -95,6 +96,7 @@ import taskStaticRoutes from './routes/task-static.routes.js';
 import attachmentRoutes from './routes/attachment.routes.js';
 import attachmentStaticRoutes from './routes/attachment-static.routes.js';
 import miniAppRoutes from './routes/mini-app.routes.js';
+import appMarketRoutes from './routes/app-market.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
@@ -255,6 +257,7 @@ class ApiServer {
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
+      appMarket: new AppMarketController(this.db),
     };
   }
 
@@ -439,6 +442,12 @@ class ApiServer {
     this.app.use(miniAppRouter.routes());
     this.app.use(miniAppRouter.allowedMethods());
     logger.info('Mini App routes registered (/api/mini-apps/*, /api/handlers/*)');
+
+    // App Market 路由
+    const appMarketRouter = appMarketRoutes(this.controllers.appMarket);
+    this.app.use(appMarketRouter.routes());
+    this.app.use(appMarketRouter.allowedMethods());
+    logger.info('App Market routes registered (/api/app-market/*)');
 
     // Invitation 邀请码路由（Issue #222）
     const invitationRouter = createInvitationRoutes(this.db);
