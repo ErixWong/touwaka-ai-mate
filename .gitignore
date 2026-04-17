@@ -10,6 +10,7 @@ docker-data/
 # IDE 和工具配置
 .vscode/
 .kilocode/
+.kilo/
 
 # 临时文件
 *.log

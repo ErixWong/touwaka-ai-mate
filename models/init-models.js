@@ -1,6 +1,9 @@
 import _sequelize from "sequelize";
 const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
+import _app_action_log from  "./app_action_log.js";
+import _app_row_handler from  "./app_row_handler.js";
+import _app_state from  "./app_state.js";
 import _assistant_message from  "./assistant_message.js";
 import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
@@ -22,6 +25,10 @@ import _mcp_server from  "./mcp_server.js";
 import _mcp_tools_cache from  "./mcp_tools_cache.js";
 import _mcp_user_credential from  "./mcp_user_credential.js";
 import _message from  "./message.js";
+import _mini_app from  "./mini_app.js";
+import _mini_app_file from  "./mini_app_file.js";
+import _mini_app_role_access from  "./mini_app_role_access.js";
+import _mini_app_row from  "./mini_app_row.js";
 import _permission from  "./permission.js";
 import _position from  "./position.js";
 import _provider from  "./provider.js";
@@ -44,6 +51,9 @@ import _user from  "./user.js";
 
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
+  const app_action_log = _app_action_log.init(sequelize, DataTypes);
+  const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
+  const app_state = _app_state.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
   const assistant_request = _assistant_request.init(sequelize, DataTypes);
   const assistant = _assistant.init(sequelize, DataTypes);
@@ -65,6 +75,10 @@ export default function initModels(sequelize) {
   const mcp_tools_cache = _mcp_tools_cache.init(sequelize, DataTypes);
   const mcp_user_credential = _mcp_user_credential.init(sequelize, DataTypes);
   const message = _message.init(sequelize, DataTypes);
+  const mini_app = _mini_app.init(sequelize, DataTypes);
+  const mini_app_file = _mini_app_file.init(sequelize, DataTypes);
+  const mini_app_role_access = _mini_app_role_access.init(sequelize, DataTypes);
+  const mini_app_row = _mini_app_row.init(sequelize, DataTypes);
   const permission = _permission.init(sequelize, DataTypes);
   const position = _position.init(sequelize, DataTypes);
   const provider = _provider.init(sequelize, DataTypes);
@@ -192,8 +206,41 @@ export default function initModels(sequelize) {
   user_skill_parameter.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(user_skill_parameter, { as: "user_skill_parameters", foreignKey: "user_id"});
 
+  // App 平台关联
+  app_action_log.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
+  app_row_handler.hasMany(app_action_log, { as: "action_logs", foreignKey: "handler_id"});
+  app_state.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
+  app_row_handler.hasMany(app_state, { as: "app_states", foreignKey: "handler_id"});
+  app_action_log.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(app_action_log, { as: "action_logs", foreignKey: "app_id"});
+  app_action_log.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
+  mini_app_row.hasMany(app_action_log, { as: "action_logs", foreignKey: "record_id"});
+  app_state.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(app_state, { as: "states", foreignKey: "app_id"});
+  mini_app_file.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
+  mini_app_row.hasMany(mini_app_file, { as: "files", foreignKey: "record_id"});
+  mini_app_file.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(mini_app_file, { as: "files", foreignKey: "app_id"});
+  mini_app_file.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
+  attachment.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "attachment_id"});
+  mini_app_role_access.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(mini_app_role_access, { as: "role_accesses", foreignKey: "app_id"});
+  mini_app_role_access.belongsTo(role, { as: "role", foreignKey: "role_id"});
+  role.hasMany(mini_app_role_access, { as: "mini_app_role_accesses", foreignKey: "role_id"});
+  mini_app_row.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(mini_app_row, { as: "rows", foreignKey: "app_id"});
+  mini_app_row.belongsTo(user, { as: "user", foreignKey: "user_id"});
+  user.hasMany(mini_app_row, { as: "mini_app_rows", foreignKey: "user_id"});
+  mini_app.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
+  user.hasMany(mini_app, { as: "owned_mini_apps", foreignKey: "owner_id"});
+  mini_app.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
+  user.hasMany(mini_app, { as: "created_mini_apps", foreignKey: "creator_id"});
+
   return {
     ai_model,
+    app_action_log,
+    app_row_handler,
+    app_state,
     assistant_message,
     assistant_request,
     assistant,
@@ -215,6 +262,10 @@ export default function initModels(sequelize) {
     mcp_tools_cache,
     mcp_user_credential,
     message,
+    mini_app,
+    mini_app_file,
+    mini_app_role_access,
+    mini_app_row,
     permission,
     position,
     provider,

@@ -38,18 +38,6 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
-  /**
-   * 更新或添加技能到列表（避免重复）
-   */
-  const upsertSkill = (skill: Skill) => {
-    const index = skills.value.findIndex(s => s.id === skill.id)
-    if (index !== -1) {
-      skills.value[index] = skill
-    } else {
-      skills.value.push(skill)
-    }
-  }
-
   const updateSkill = async (skillId: string, data: Partial<SkillFormData>) => {
     isLoading.value = true
     error.value = null

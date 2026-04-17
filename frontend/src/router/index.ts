@@ -96,6 +96,16 @@ const router = createRouter({
           name: 'solution-detail',
           component: () => import('@/views/SolutionDetailView.vue'),
         },
+        {
+          path: 'apps',
+          name: 'apps',
+          component: () => import('@/views/AppsView.vue'),
+        },
+        {
+          path: 'apps/:appId',
+          name: 'app-detail',
+          component: () => import('@/views/AppDetailView.vue'),
+        },
       ],
     },
     {
