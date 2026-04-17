@@ -1317,6 +1317,28 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     dragFile: 'Drag files here, or',
     selectFile: 'Select files',
     uploading: 'Uploading...',
+    myApps: 'My Apps',
+    appMarket: 'App Market',
+    noApps: 'No apps available',
+    goToMarket: 'Go to App Market',
+    hasUpdate: 'Update',
+  },
+
+  // App Market
+  appMarket: {
+    all: 'All',
+    searchPlaceholder: 'Search apps...',
+    updateAvailable: 'Update available',
+    installed: 'Installed',
+    installing: 'Installing...',
+    install: 'Install',
+    uninstall: 'Uninstall',
+    author: 'Author',
+    license: 'License',
+    dependencies: 'Dependencies',
+    allDepsSatisfied: 'All dependencies satisfied',
+    missingMcp: 'Missing MCP services',
+    fields: 'Fields',
   },
 
   // Knowledge Base
