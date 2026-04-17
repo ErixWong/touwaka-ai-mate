@@ -31,7 +31,7 @@ const props = defineProps<{
 const emit = defineEmits(['update:model-value'])
 
 function handleSubFieldUpdate(name: string, value: any) {
-  const current = { ...(props.modelValue || {}) }
+  const current = { ...props.modelValue }
   current[name] = value
   emit('update:model-value', current)
 }

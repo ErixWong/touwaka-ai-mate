@@ -11,7 +11,7 @@ class MiniAppController {
 
   async listApps(ctx) {
     try {
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const apps = await this.miniAppService.getAccessibleApps(userId);
       ctx.success(apps);
     } catch (error) {
@@ -38,8 +38,8 @@ class MiniAppController {
   async createApp(ctx) {
     try {
       const data = ctx.request.body;
-      data.owner_id = data.owner_id || ctx.state.user.id;
-      data.creator_id = ctx.state.user.id;
+      data.owner_id = data.owner_id || ctx.state.session.id;
+      data.creator_id = ctx.state.session.id;
       const app = await this.miniAppService.createApp(data);
       ctx.success(app, 'Created');
     } catch (error) {
@@ -76,7 +76,7 @@ class MiniAppController {
   async listRecords(ctx) {
     try {
       const { appId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const result = await this.miniAppService.getRecords(appId, userId, ctx.query);
       ctx.success(result);
     } catch (error) {
@@ -88,7 +88,7 @@ class MiniAppController {
   async getRecord(ctx) {
     try {
       const { appId, recordId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const record = await this.miniAppService.getRecord(appId, recordId, userId);
       ctx.success(record);
     } catch (error) {
@@ -100,7 +100,7 @@ class MiniAppController {
   async createRecord(ctx) {
     try {
       const { appId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const { data, attachments } = ctx.request.body;
       const record = await this.miniAppService.createRecord(appId, userId, data || {}, attachments || []);
       ctx.success(record, 'Created');
@@ -113,7 +113,7 @@ class MiniAppController {
   async updateRecord(ctx) {
     try {
       const { appId, recordId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const { data } = ctx.request.body;
       const record = await this.miniAppService.updateRecord(appId, recordId, userId, data || {});
       ctx.success(record, 'Updated');
@@ -126,7 +126,7 @@ class MiniAppController {
   async deleteRecord(ctx) {
     try {
       const { appId, recordId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       await this.miniAppService.deleteRecord(appId, recordId, userId);
       ctx.success(null, 'Deleted');
     } catch (error) {
@@ -138,7 +138,7 @@ class MiniAppController {
   async confirmRecord(ctx) {
     try {
       const { appId, recordId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const { data } = ctx.request.body;
       const record = await this.miniAppService.confirmRecord(appId, recordId, userId, data || {});
       ctx.success(record, 'Confirmed');
@@ -151,7 +151,7 @@ class MiniAppController {
   async batchUpload(ctx) {
     try {
       const { appId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const { attachments } = ctx.request.body;
 
       if (!attachments || !Array.isArray(attachments) || attachments.length === 0) {
@@ -170,7 +170,7 @@ class MiniAppController {
   async getStatusSummary(ctx) {
     try {
       const { appId } = ctx.params;
-      const userId = ctx.state.user.id;
+      const userId = ctx.state.session.id;
       const { created_after } = ctx.query;
       const result = await this.miniAppService.getStatusSummary(appId, userId, created_after);
       ctx.success(result);

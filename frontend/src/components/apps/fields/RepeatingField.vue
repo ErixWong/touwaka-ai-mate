@@ -2,11 +2,11 @@
   <div class="repeating-field">
     <div class="repeating-header">
       <span class="repeating-label">{{ field.label }}</span>
-      <button v-if="!readonly" class="btn-add-row" @click="addRow">+ {{ addLabel }}</button>
+      <button v-if="!readonly" class="btn-add-row" @click="addRow">+ {{ t('apps.addRow') }}</button>
     </div>
 
     <div v-if="rows.length === 0" class="repeating-empty">
-      {{ emptyLabel }}
+      {{ t('apps.noData') }}
     </div>
 
     <div v-else class="repeating-table-wrapper">
@@ -31,14 +31,14 @@
               />
             </td>
             <td v-if="!readonly" class="td-action">
-              <button class="btn-remove-row" @click="removeRow(rowIndex)" :title="removeLabel">×</button>
+              <button class="btn-remove-row" @click="removeRow(rowIndex)" :title="t('apps.removeRow')">×</button>
             </td>
           </tr>
         </tbody>
         <tfoot v-if="summaryFields.length > 0">
           <tr class="summary-row">
             <td v-for="(subField, idx) in visibleFields" :key="subField.name" class="td-cell">
-              <template v-if="idx === 0">{{ summaryLabel }}</template>
+              <template v-if="idx === 0">{{ t('apps.summary') }}</template>
               <template v-else-if="getSummaryForField(subField.name) !== null">
                 {{ formatSummaryValue(getSummaryForField(subField.name)) }}
               </template>
@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AppField } from '@/api/mini-apps'
 import FieldRenderer from '@/components/apps/FieldRenderer.vue'
 
@@ -63,11 +64,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['update:model-value'])
-
-const addLabel = '添加行'
-const removeLabel = '删除'
-const emptyLabel = '暂无数据，点击上方按钮添加'
-const summaryLabel = '合计'
+const { t } = useI18n()
 
 const rows = computed(() => props.modelValue || [])
 

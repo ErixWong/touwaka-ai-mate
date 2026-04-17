@@ -1,16 +1,16 @@
 <template>
   <div class="file-uploader">
     <div class="drop-zone" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="handleDrop">
-      <p>拖拽文件到此处，或</p>
+      <p>{{ $t('apps.dragFile') }}</p>
       <label class="upload-btn">
-        选择文件
+        {{ $t('apps.selectFile') }}
         <input type="file" multiple :accept="acceptFormats" @change="handleFileSelect" class="hidden-input" />
       </label>
     </div>
     <div v-if="uploadingFiles.length > 0" class="upload-list">
       <div v-for="item in uploadingFiles" :key="item.name" class="upload-item">
         <span class="file-name">{{ item.name }}</span>
-        <span v-if="item.status === 'uploading'" class="file-status">上传中...</span>
+        <span v-if="item.status === 'uploading'" class="file-status">{{ $t('apps.uploading') }}</span>
         <span v-else-if="item.status === 'done'" class="file-status done">✓</span>
         <span v-else-if="item.status === 'error'" class="file-status error">✗ {{ item.error }}</span>
       </div>

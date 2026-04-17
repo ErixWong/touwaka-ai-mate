@@ -5,17 +5,7 @@
       <p>小程序未找到</p>
       <button class="btn-back" @click="goBack">← 返回</button>
     </div>
-    <template v-else>
-      <div class="app-header">
-        <button class="btn-back" @click="goBack">← {{ $t('apps.back', '返回') }}</button>
-        <div class="app-info">
-          <span class="app-icon">{{ currentApp.icon }}</span>
-          <h1 class="app-name">{{ currentApp.name }}</h1>
-        </div>
-      </div>
-
-      <GenericMiniApp :app="currentApp" />
-    </template>
+    <GenericMiniApp v-else :app="currentApp" />
   </div>
 </template>
 
@@ -48,9 +38,10 @@ function goBack() {
 
 <style scoped>
 .app-detail-view {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .loading-state,
@@ -58,41 +49,5 @@ function goBack() {
   text-align: center;
   padding: 60px 20px;
   color: var(--color-text-secondary, #666);
-}
-
-.app-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.btn-back {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--color-primary, #4a90d9);
-  padding: 4px 8px;
-}
-
-.btn-back:hover {
-  text-decoration: underline;
-}
-
-.app-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.app-icon {
-  font-size: 28px;
-}
-
-.app-name {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0;
 }
 </style>

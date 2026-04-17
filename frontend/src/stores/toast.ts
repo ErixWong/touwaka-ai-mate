@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { ToastItem, ToastOptions, ToastType } from '@/types/toast'
+import type { ToastItem, ToastOptions } from '@/types/toast'
 import { TOAST_DEFAULTS } from '@/types/toast'
 
 /** 生成唯一 ID */

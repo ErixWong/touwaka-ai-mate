@@ -4,12 +4,15 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AppState } from '@/api/mini-apps'
 
 const props = defineProps<{
   status?: string
   states: AppState[]
 }>()
+
+const { t } = useI18n()
 
 const stateDef = computed(() => {
   if (!props.status) return null
@@ -19,7 +22,7 @@ const stateDef = computed(() => {
 const label = computed(() => {
   if (stateDef.value) return stateDef.value.label
   if (!props.status) return '-'
-  if (props.status.startsWith('processing_')) return '处理中...'
+  if (props.status.startsWith('processing_')) return t('apps.processing')
   return props.status
 })
 
