@@ -148,13 +148,17 @@ class AppMarketController {
       const { appId } = ctx.params;
       const userId = ctx.state.session.id;
       
+      // 保留旧 App 的 visibility
+      const oldApp = await this.db.getModels().MiniApp.findByPk(appId);
+      const oldVisibility = oldApp ? oldApp.visibility : 'all';
+      
       // 先卸载旧版本（保留数据）
       await this.appMarketService.uninstallApp(appId, { keepData: true });
       
       // 安装新版本
       const result = await this.appMarketService.installApp(appId, {
         userId,
-        visibility: 'all'
+        visibility: oldVisibility
       });
       
       ctx.success(result, 'App updated successfully');

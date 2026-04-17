@@ -1,8 +1,8 @@
 import logger from '../../lib/logger.js';
+import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
-import { generateId } from '../../lib/utils.js';
 
 /**
  * App Market 服务
@@ -101,7 +101,7 @@ class AppMarketService {
     try {
       const response = await fetch(url, { 
         headers: { 'Accept': 'application/json' },
-        timeout: 10000 
+        signal: AbortSignal.timeout(10000)
       });
       
       if (!response.ok) {
@@ -135,7 +135,7 @@ class AppMarketService {
     try {
       const response = await fetch(url, { 
         headers: { 'Accept': 'application/json' },
-        timeout: 10000 
+        signal: AbortSignal.timeout(10000)
       });
       
       if (!response.ok) {
@@ -162,7 +162,7 @@ class AppMarketService {
     logger.info(`Fetching handler ${handlerName} for ${appId}`);
     
     try {
-      const response = await fetch(url, { timeout: 10000 });
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch handler: HTTP ${response.status}`);
@@ -318,7 +318,7 @@ class AppMarketService {
     
     for (const state of manifest.states) {
       await this.models.AppState.create({
-        id: generateId(),
+        id: Utils.newID(20),
         app_id: appId,
         name: state.name,
         label: state.label,
