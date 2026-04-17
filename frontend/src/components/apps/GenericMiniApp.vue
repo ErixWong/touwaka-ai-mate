@@ -177,7 +177,7 @@ const toast = useToastStore()
 // State
 const records = ref<MiniAppRecord[]>([])
 const selectedRecord = ref<MiniAppRecord | null>(null)
-const formData = ref<Record<string, any>>({})
+const formData = ref<Record<string, unknown>>({})
 const isLoading = ref(false)
 const isSaving = ref(false)
 const showDialog = ref(false)
@@ -197,11 +197,28 @@ const filters = ref({ status: '' })
 
 // Computed
 const listColumns = computed(() => {
-  const fields = props.app.fields
+  let fields = props.app.fields
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch {
+      return []
+    }
+  }
   if (!fields || !Array.isArray(fields)) return []
   const views = props.app.views
-  if (views?.list?.columns) {
-    return views.list.columns
+  // views 也可能是 JSON 字符串
+  let viewsObj = views
+  if (typeof views === 'string') {
+    try {
+      viewsObj = JSON.parse(views)
+    } catch {
+      viewsObj = {}
+    }
+  }
+  if (viewsObj?.list?.columns) {
+    return viewsObj.list.columns
       .map((name: string) => fields.find(f => f.name === name))
       .filter(Boolean) as AppField[]
   }
@@ -209,15 +226,36 @@ const listColumns = computed(() => {
 })
 
 const editableFields = computed(() => {
-  const fields = props.app.fields
-  if (!fields || !Array.isArray(fields)) return []
+  let fields = props.app.fields
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch {
+      console.error('Failed to parse fields')
+      return []
+    }
+  }
+  if (!fields || !Array.isArray(fields)) {
+    console.warn('Fields is not an array:', fields)
+    return []
+  }
+  // 创建模式下需要包含 file 字段用于上传
   return fields.filter(f =>
-    f.type !== 'file' && f.type !== 'group' && f.type !== 'repeating'
+    f.type !== 'group' && f.type !== 'repeating'
   )
 })
 
 const allFields = computed(() => {
-  const fields = props.app.fields
+  let fields = props.app.fields
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch {
+      return []
+    }
+  }
   if (!fields || !Array.isArray(fields)) return []
   return fields
 })
@@ -256,11 +294,11 @@ function goBack() {
   router.push('/apps')
 }
 
-function formatFieldValue(value: any, field: AppField): string {
+function formatFieldValue(value: unknown, field: AppField): string {
   if (value === null || value === undefined) return '-'
-  if (field.type === 'select' && field.options) return value
-  if (field.type === 'date') return value
-  if (field.type === 'number') return typeof value === 'number' ? value.toLocaleString() : value
+  if (field.type === 'select' && field.options) return String(value)
+  if (field.type === 'date') return String(value)
+  if (field.type === 'number') return typeof value === 'number' ? value.toLocaleString() : String(value)
   if (field.type === 'boolean') return value ? t('apps.yes') : t('apps.no')
   return String(value)
 }
@@ -268,7 +306,7 @@ function formatFieldValue(value: any, field: AppField): string {
 async function loadRecords() {
   isLoading.value = true
   try {
-    const filter: any = {}
+    const filter: Record<string, string> = {}
     if (filters.value.status) {
       filter._status = filters.value.status
     }
@@ -312,7 +350,27 @@ function resetFilters() {
 
 function openCreateDialog() {
   dialogMode.value = 'create'
-  formData.value = {}
+  // 初始化所有字段的默认值
+    const initialData: Record<string, unknown> = {}
+  let fields = props.app.fields || []
+  // 处理后端返回的 JSON 字符串
+  if (typeof fields === 'string') {
+    try {
+      fields = JSON.parse(fields)
+    } catch {
+      fields = []
+    }
+  }
+  for (const field of fields) {
+    if (field.type === 'file') {
+      initialData[field.name] = null
+    } else if (field.type === 'select') {
+      initialData[field.name] = field.default || (field.options?.[0] || '')
+    } else {
+      initialData[field.name] = field.default || ''
+    }
+  }
+  formData.value = initialData
   selectedRecord.value = null
   showDialog.value = true
 }

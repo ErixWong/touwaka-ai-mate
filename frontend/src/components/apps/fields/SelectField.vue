@@ -5,7 +5,7 @@
     class="field-select"
     @change="$emit('update:model-value', ($event.target as HTMLSelectElement).value)"
   >
-    <option value="">{{ $t('apps.pleaseSelect') }}</option>
+    <option value="">{{ t('apps.pleaseSelect') }}</option>
     <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
   </select>
 </template>
@@ -14,11 +14,11 @@
 import { useI18n } from 'vue-i18n'
 import type { AppField } from '@/api/mini-apps'
 
-const { $t } = useI18n()
+const { t } = useI18n()
 
 defineProps<{
   field: AppField
-  modelValue: any
+  modelValue: string | number | boolean | null
   readonly?: boolean
 }>()
 

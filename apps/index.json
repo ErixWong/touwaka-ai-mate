@@ -4,7 +4,7 @@
   "registry_url": "https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps",
   "apps": [
     {
-      "id": "contract-manager",
+      "id": "contract-mgr",
       "name": "销售合同管理",
       "version": "1.0.0",
       "icon": "📄",
@@ -13,8 +13,8 @@
       "author": "Touwaka Team",
       "license": "MIT",
       "tags": ["合同", "文档", "OCR", "AI提取"],
-      "path": "apps/contract-manager",
-      "manifest_url": "apps/contract-manager/manifest.json"
+      "path": "apps/contract-mgr",
+      "manifest_url": "apps/contract-mgr/manifest.json"
     }
   ],
   "categories": [

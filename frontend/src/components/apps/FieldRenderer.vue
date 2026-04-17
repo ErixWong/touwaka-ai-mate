@@ -10,6 +10,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { Component } from 'vue'
 import type { AppField } from '@/api/mini-apps'
 import TextField from './fields/TextField.vue'
 import TextAreaField from './fields/TextAreaField.vue'
@@ -19,16 +20,17 @@ import SelectField from './fields/SelectField.vue'
 import BooleanField from './fields/BooleanField.vue'
 import GroupField from './fields/GroupField.vue'
 import RepeatingField from './fields/RepeatingField.vue'
+import FileField from './fields/FileField.vue'
 
 const props = defineProps<{
   field: AppField
-  modelValue: any
+  modelValue: unknown
   readonly?: boolean
 }>()
 
 defineEmits(['update:model-value'])
 
-const FIELD_MAP: Record<string, any> = {
+const FIELD_MAP: Record<string, Component> = {
   text: TextField,
   textarea: TextAreaField,
   number: NumberField,
@@ -37,6 +39,7 @@ const FIELD_MAP: Record<string, any> = {
   boolean: BooleanField,
   group: GroupField,
   repeating: RepeatingField,
+  file: FileField,
 }
 
 const fieldComponent = computed(() => {
