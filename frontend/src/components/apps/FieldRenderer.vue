@@ -30,8 +30,6 @@ const props = defineProps<{
 
 defineEmits(['update:model-value'])
 
-import type { Component } from 'vue'
-
 const FIELD_MAP: Record<string, Component> = {
   text: TextField,
   textarea: TextAreaField,
