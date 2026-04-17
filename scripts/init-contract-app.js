@@ -1,110 +1,78 @@
+/**
+ * 初始化合同管理 App（通过 App Market 流程）
+ * 
+ * 使用方式：
+ *   node scripts/init-contract-app.js
+ * 
+ * 已废弃旧的直接 SQL seed 方式，改为调用 AppMarketService.installApp()
+ * 统一使用 apps/contract-manager/manifest.json 作为唯一真相源
+ */
+
 import dotenv from 'dotenv';
 dotenv.config();
 
-import mysql from 'mysql2/promise';
+import { Sequelize } from 'sequelize';
+import dbInit from '../server/models/init-models.js';
+import AppMarketService from '../server/services/app-market.service.js';
 
-const DB_CONFIG = {
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-};
+const ADMIN_USER_ID = 'mn3l9nz0g3axvxwc10fp';
 
-const ADMIN_USER_ID = 'mn3l9nz0g3axvxwc12fp';
-
-async function seed() {
-  const conn = await mysql.createConnection(DB_CONFIG);
-  console.log('Connected to database:', DB_CONFIG.database);
+async function init() {
+  const sequelize = new Sequelize(
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASSWORD,
+    {
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 3306,
+      dialect: 'mysql',
+      logging: false,
+    }
+  );
 
   try {
-    const [existing] = await conn.execute(
-      `SELECT id FROM mini_apps WHERE id = 'contract-mgr'`
-    );
-    if (existing.length > 0) {
-      console.log('Contract app already exists, skipping seed.');
+    const db = dbInit(sequelize);
+    console.log('Connected to database:', process.env.DB_NAME);
+
+    // 检查是否已安装
+    const MiniApp = db.getModel('mini_app');
+    const existing = await MiniApp.findByPk('contract-manager');
+    if (existing) {
+      console.log('contract-manager already installed, skipping.');
+      await sequelize.close();
       return;
     }
 
-    await conn.execute(`
-      INSERT INTO app_row_handlers (id, name, description, handler, handler_function, concurrency, timeout, max_retries, is_active)
-      VALUES
-        ('handler-ocr', 'OCR识别', '调用markitdown/mineru进行OCR识别', 'scripts/app-handlers/ocr-service', 'process', 3, 60, 2, 1),
-        ('handler-extract', 'LLM提取', '调用LLM从OCR文本中提取结构化元数据', 'scripts/app-handlers/llm-extract', 'process', 2, 120, 2, 1)
-    `);
-    console.log('  ✓ Created handlers: handler-ocr, handler-extract');
-
-    await conn.execute(`
-      INSERT INTO mini_apps (id, name, description, icon, type, fields, views, config, visibility, owner_id, creator_id, sort_order, is_active, revision)
-      VALUES (
-        'contract-mgr',
-        '销售合同管理',
-        '上传合同文件，AI自动提取合同元数据，支持批量处理和确认入库',
-        '📄',
-        'document',
-        ?,
-        ?,
-        ?,
-        'all',
-        ?,
-        ?,
-        1,
-        1,
-        1
-      )
-    `, [
-      JSON.stringify([
-        { name: 'contract_number', label: '合同编号', type: 'text', required: true, ai_extractable: true },
-        { name: 'contract_date', label: '签订日期', type: 'date', required: true, ai_extractable: true },
-        { name: 'party_a', label: '甲方', type: 'text', required: true, ai_extractable: true },
-        { name: 'party_b', label: '乙方', type: 'text', required: true, ai_extractable: true },
-        { name: 'contract_amount', label: '合同金额', type: 'number', required: true, ai_extractable: true },
-        { name: 'start_date', label: '开始日期', type: 'date', ai_extractable: true },
-        { name: 'end_date', label: '结束日期', type: 'date', ai_extractable: true },
-        { name: 'payment_terms', label: '付款条款', type: 'textarea', ai_extractable: true },
-        { name: 'status', label: '状态', type: 'select', options: ['待审批', '执行中', '已完成', '已终止'], default: '待审批' },
-        { name: 'contract_file', label: '合同文件', type: 'file' },
-      ]),
-      JSON.stringify({
-        list: {
-          columns: ['contract_number', 'contract_date', 'party_a', 'party_b', 'contract_amount', 'status'],
-          sort: { field: 'contract_date', order: 'desc' },
-        },
-      }),
-      JSON.stringify({
-        features: ['upload', 'list', 'detail'],
-        supported_formats: ['.pdf', '.docx', '.doc', '.jpg', '.png'],
-        max_file_size: 20971520,
-        batch_enabled: true,
-        batch_limit: 50,
-      }),
-      ADMIN_USER_ID,
-      ADMIN_USER_ID,
-    ]);
-    console.log('  ✓ Created app: contract-mgr (销售合同管理)');
-
-    await conn.execute(`
-      INSERT INTO app_state (id, app_id, name, label, sort_order, is_initial, is_terminal, is_error, handler_id, success_next_state, failure_next_state)
-      VALUES
-        ('state-1', 'contract-mgr', 'pending_ocr', '待OCR', 1, 1, 0, 0, 'handler-ocr', 'pending_extract', 'ocr_failed'),
-        ('state-2', 'contract-mgr', 'pending_extract', '待提取', 2, 0, 0, 0, 'handler-extract', 'pending_review', 'extract_failed'),
-        ('state-3', 'contract-mgr', 'pending_review', '待确认', 3, 0, 0, 0, NULL, NULL, NULL),
-        ('state-4', 'contract-mgr', 'confirmed', '已确认', 4, 0, 1, 0, NULL, NULL, NULL),
-        ('state-5', 'contract-mgr', 'ocr_failed', 'OCR失败', 99, 0, 0, 1, NULL, NULL, NULL),
-        ('state-6', 'contract-mgr', 'extract_failed', '提取失败', 99, 0, 0, 1, NULL, NULL, NULL)
-    `);
-    console.log('  ✓ Created 6 states for contract-mgr');
-
-    console.log('\n✅ Seed completed successfully!');
+    // 通过 App Market 服务安装
+    const marketService = new AppMarketService(db);
+    
+    console.log('\n📦 Installing contract-manager from Registry...\n');
+    
+    const result = await marketService.installApp('contract-manager', {
+      userId: ADMIN_USER_ID,
+      visibility: 'all'
+    });
+    
+    console.log('\n✅ Installation result:', JSON.stringify(result, null, 2));
+    console.log('\n✅ Contract manager app installed successfully!');
   } catch (error) {
-    console.error('Seed error:', error.message);
+    console.error('Init error:', error.message);
+    
+    // 提示可能的解决方案
+    if (error.message.includes('not found in Registry')) {
+      console.error('\n💡 Tips:');
+      console.error('   1. Check app_market.registry_url in system_settings');
+      console.error('   2. Ensure apps/contract-manager/manifest.json exists in GitHub repo');
+      console.error('   3. Run: node scripts/upgrade-database.js');
+    }
+    
     throw error;
   } finally {
-    await conn.end();
+    await sequelize.close();
   }
 }
 
-seed().catch(err => {
+init().catch(err => {
   console.error(err);
   process.exit(1);
 });

@@ -868,6 +868,32 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== App Market 配置初始化 ====================
+
+  {
+    name: 'app_market system_settings seed',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT COUNT(*) as cnt FROM system_settings WHERE setting_key = 'app_market.registry_url'"
+      );
+      return rows[0].cnt > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        INSERT INTO system_settings (setting_key, setting_value, value_type, description) VALUES
+        ('app_market.registry_url', 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps', 'string', 'App Market Registry URL'),
+        ('app_market.registry_branch', 'main', 'string', 'Registry 分支'),
+        ('app_market.auto_check_updates', 'true', 'boolean', '是否自动检查更新'),
+        ('app_market.check_interval_hours', '24', 'number', '自动检查间隔（小时）'),
+        ('app_market.offline_mode', 'false', 'boolean', '离线模式'),
+        ('app_market.cache_ttl_hours', '168', 'number', '缓存有效期（小时）'),
+        ('app_market.last_check_at', '', 'string', '上次检查时间')
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+      `);
+      console.log('  ✓ Seeded app_market system_settings');
+    }
+  },
+
 ];
 
 /**
