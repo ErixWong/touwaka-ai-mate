@@ -18,7 +18,7 @@ const { t } = useI18n()
 
 defineProps<{
   field: AppField
-  modelValue: any
+  modelValue: string | number | boolean | null
   readonly?: boolean
 }>()
 

@@ -177,7 +177,7 @@ const toast = useToastStore()
 // State
 const records = ref<MiniAppRecord[]>([])
 const selectedRecord = ref<MiniAppRecord | null>(null)
-const formData = ref<Record<string, any>>({})
+const formData = ref<Record<string, unknown>>({})
 const isLoading = ref(false)
 const isSaving = ref(false)
 const showDialog = ref(false)
@@ -202,7 +202,7 @@ const listColumns = computed(() => {
   if (typeof fields === 'string') {
     try {
       fields = JSON.parse(fields)
-    } catch (e) {
+    } catch {
       return []
     }
   }
@@ -213,7 +213,7 @@ const listColumns = computed(() => {
   if (typeof views === 'string') {
     try {
       viewsObj = JSON.parse(views)
-    } catch (e) {
+    } catch {
       viewsObj = {}
     }
   }
@@ -231,8 +231,8 @@ const editableFields = computed(() => {
   if (typeof fields === 'string') {
     try {
       fields = JSON.parse(fields)
-    } catch (e) {
-      console.error('Failed to parse fields:', e)
+    } catch {
+      console.error('Failed to parse fields')
       return []
     }
   }
@@ -252,7 +252,7 @@ const allFields = computed(() => {
   if (typeof fields === 'string') {
     try {
       fields = JSON.parse(fields)
-    } catch (e) {
+    } catch {
       return []
     }
   }
@@ -294,11 +294,11 @@ function goBack() {
   router.push('/apps')
 }
 
-function formatFieldValue(value: any, field: AppField): string {
+function formatFieldValue(value: unknown, field: AppField): string {
   if (value === null || value === undefined) return '-'
-  if (field.type === 'select' && field.options) return value
-  if (field.type === 'date') return value
-  if (field.type === 'number') return typeof value === 'number' ? value.toLocaleString() : value
+  if (field.type === 'select' && field.options) return String(value)
+  if (field.type === 'date') return String(value)
+  if (field.type === 'number') return typeof value === 'number' ? value.toLocaleString() : String(value)
   if (field.type === 'boolean') return value ? t('apps.yes') : t('apps.no')
   return String(value)
 }
@@ -306,7 +306,7 @@ function formatFieldValue(value: any, field: AppField): string {
 async function loadRecords() {
   isLoading.value = true
   try {
-    const filter: any = {}
+    const filter: Record<string, string> = {}
     if (filters.value.status) {
       filter._status = filters.value.status
     }
@@ -351,13 +351,13 @@ function resetFilters() {
 function openCreateDialog() {
   dialogMode.value = 'create'
   // 初始化所有字段的默认值
-  const initialData: Record<string, any> = {}
+    const initialData: Record<string, unknown> = {}
   let fields = props.app.fields || []
   // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
     try {
       fields = JSON.parse(fields)
-    } catch (e) {
+    } catch {
       fields = []
     }
   }

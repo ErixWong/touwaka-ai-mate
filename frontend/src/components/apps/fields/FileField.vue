@@ -36,18 +36,9 @@ import { useToastStore } from '@/stores/toast'
 import apiClient from '@/api/client'
 import type { AppField } from '@/api/mini-apps'
 
-interface Attachment {
-  id: string
-  file_name: string
-  file_url: string
-  file_size: number
-  mime_type: string
-  file_path: string
-}
-
 const props = defineProps<{
   field: AppField
-  modelValue: any
+  modelValue: unknown
   readonly?: boolean
 }>()
 
@@ -139,8 +130,9 @@ async function handleFileChange(event: Event) {
     })
 
     toast.success('文件上传成功')
-  } catch (e: any) {
-    error.value = e.response?.data?.message || e.message || '上传失败'
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : '上传失败'
+    error.value = errorMsg
     toast.error(error.value)
   } finally {
     uploading.value = false

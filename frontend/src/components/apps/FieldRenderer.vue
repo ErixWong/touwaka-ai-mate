@@ -10,6 +10,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { Component } from 'vue'
 import type { AppField } from '@/api/mini-apps'
 import TextField from './fields/TextField.vue'
 import TextAreaField from './fields/TextAreaField.vue'
@@ -23,13 +24,15 @@ import FileField from './fields/FileField.vue'
 
 const props = defineProps<{
   field: AppField
-  modelValue: any
+  modelValue: unknown
   readonly?: boolean
 }>()
 
 defineEmits(['update:model-value'])
 
-const FIELD_MAP: Record<string, any> = {
+import type { Component } from 'vue'
+
+const FIELD_MAP: Record<string, Component> = {
   text: TextField,
   textarea: TextAreaField,
   number: NumberField,
