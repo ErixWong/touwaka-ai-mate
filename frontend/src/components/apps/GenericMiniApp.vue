@@ -1,31 +1,53 @@
 <template>
   <div class="generic-mini-app">
-    <div class="tab-bar">
-      <button
-        v-for="tab in visibleTabs"
-        :key="tab.key"
-        class="tab-btn"
-        :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
-      >
-        {{ tab.label }}
-      </button>
+    <div class="app-header">
+      <div class="header-left">
+        <button class="btn-back" @click="goBack">← {{ $t('apps.back') }}</button>
+        <span class="app-icon">{{ app.icon }}</span>
+        <h1 class="app-name">{{ app.name }}</h1>
+      </div>
+      <div class="header-right">
+        <button v-if="canCreate" class="btn-primary" @click="openCreateDialog">
+          <span class="icon">+</span>
+          {{ $t('common.create') }}
+        </button>
+      </div>
     </div>
 
-    <!-- List View -->
-    <div v-if="activeTab === 'list'" class="tab-content">
-      <div class="list-header">
-        <h3>{{ $t('apps.recordList', '记录列表') }}</h3>
+    <div class="filter-panel">
+      <div class="filter-row">
+        <div class="filter-item">
+          <label>{{ $t('apps.status') }}</label>
+          <select v-model="filters.status" @change="handleFilterChange">
+            <option value="">{{ $t('apps.all') }}</option>
+            <option v-for="state in app.states || []" :key="state.name" :value="state.name">
+              {{ state.label || state.name }}
+            </option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn-reset" @click="resetFilters">{{ $t('apps.reset') }}</button>
+        </div>
       </div>
-      <div v-if="records.length === 0" class="empty-records">
-        暂无记录，请上传文件或手动创建
+    </div>
+
+    <div class="list-content">
+      <div v-if="isLoading" class="loading-state">{{ $t('common.loading') }}</div>
+      
+      <div v-else-if="records.length === 0" class="empty-state">
+        <div class="empty-icon">📄</div>
+        <p>{{ $t('apps.emptyRecords') }}</p>
+        <button v-if="canCreate" class="btn-primary" @click="openCreateDialog">
+          {{ $t('apps.createFirst') }}
+        </button>
       </div>
+
       <table v-else class="record-table">
         <thead>
           <tr>
             <th v-for="col in listColumns" :key="col.name">{{ col.label }}</th>
-            <th>{{ $t('apps.status', '状态') }}</th>
-            <th>{{ $t('apps.actions', '操作') }}</th>
+            <th>{{ $t('apps.status') }}</th>
+            <th>{{ $t('apps.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -36,170 +58,202 @@
             <td>
               <StateBadge :status="record.data?._status" :states="app.states || []" />
             </td>
-            <td>
-              <button class="btn-action" @click="viewRecord(record)">查看</button>
-              <button
-                v-if="record.data?._status === 'pending_review'"
-                class="btn-action btn-primary"
-                @click="editRecord(record)"
-              >确认</button>
-              <button class="btn-action btn-danger" @click="handleDelete(record)">删除</button>
+            <td class="actions-cell">
+              <button class="btn-action" @click="viewRecord(record)">{{ $t('apps.view') }}</button>
+              <button v-if="canEdit(record)" class="btn-action" @click="editRecord(record)">{{ $t('apps.edit') }}</button>
+              <button v-if="canDelete(record)" class="btn-action btn-danger" @click="handleDelete(record)">{{ $t('apps.delete') }}</button>
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="pagination.pages > 1" class="pagination">
-        <button :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">上一页</button>
-        <span>{{ pagination.page }} / {{ pagination.pages }}</span>
-        <button :disabled="pagination.page >= pagination.pages" @click="loadPage(pagination.page + 1)">下一页</button>
-      </div>
     </div>
 
-    <!-- Upload View -->
-    <div v-if="activeTab === 'upload'" class="tab-content">
-      <div class="upload-section">
-        <h3>{{ $t('apps.uploadFiles', '上传文件') }}</h3>
-        <p class="upload-hint">支持的格式：{{ (app.config?.supported_formats || []).join(', ') }}</p>
-        <FileUploader :app="app" @uploaded="onFilesUploaded" />
-      </div>
-
-      <div v-if="batchStatus" class="batch-progress">
-        <h4>批量处理进度</h4>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: batchProgressPercent + '%' }"></div>
-        </div>
-        <div class="progress-stats">
-          <span>总计: {{ batchStatus.total }}</span>
-          <span>已完成: {{ batchStatus.completed }}</span>
-          <span>处理中: {{ batchStatus.processing }}</span>
-          <span>失败: {{ batchStatus.failed }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Detail/Edit View -->
-    <div v-if="activeTab === 'detail' && selectedRecord" class="tab-content">
-      <div class="detail-header">
-        <button class="btn-back" @click="closeDetail">← 返回列表</button>
-        <div class="detail-status">
-          <StateBadge :status="selectedRecord.data?._status" :states="app.states || []" />
-        </div>
-      </div>
-
-      <div class="form-grid">
-        <div
-          v-for="field in editableFields"
-          :key="field.name"
-          class="form-field"
+    <div v-if="pagination.pages > 1" class="pagination">
+      <button class="page-btn" :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">
+        ← {{ $t('apps.prevPage') }}
+      </button>
+      <div class="page-numbers">
+        <button v-for="page in visiblePages" :key="page" class="page-num" :class="{ active: page === pagination.page }"
+          @click="loadPage(page)"
         >
-          <label class="field-label">
-            {{ field.label }}
-            <span v-if="field.required" class="required">*</span>
-            <span v-if="isAiExtracted(field.name)" class="ai-badge">🤖</span>
-          </label>
-          <FieldRenderer
-            :field="field"
-            :model-value="formData[field.name]"
-            @update:model-value="formData[field.name] = $event"
-            :readonly="!isEditing"
-          />
+          {{ page }}
+        </button>
+      </div>
+      <button class="page-btn" :disabled="pagination.page >= pagination.pages" @click="loadPage(pagination.page + 1)">
+        {{ $t('apps.nextPage') }} →
+      </button>
+      <span class="page-info">{{ $t('apps.totalRecords', { count: pagination.total }) }}</span>
+    </div>
+
+    <div v-if="showDialog" class="dialog-overlay" @click.self="closeDialog">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h3>{{ dialogTitle }}</h3>
+          <button class="btn-close" @click="closeDialog">×</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-grid">
+            <div v-for="field in editableFields" :key="field.name" class="form-field" :class="{ 'field-full': field.type === 'textarea' || field.type === 'file' }">
+              <label class="field-label">
+                {{ field.label }}
+                <span v-if="field.required" class="required">*</span>
+              </label>
+              <FieldRenderer :field="field" :model-value="formData[field.name]" @update:model-value="formData[field.name] = $event" />
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="closeDialog">{{ $t('common.cancel') }}</button>
+          <button class="btn-primary" @click="saveRecord" :disabled="isSaving">
+            {{ isSaving ? $t('common.saving') : $t('common.save') }}
+          </button>
         </div>
       </div>
+    </div>
 
-      <div v-if="selectedRecord.data?._ocr_text" class="ocr-section">
-        <details>
-          <summary>查看 OCR 原文</summary>
-          <pre class="ocr-text">{{ selectedRecord.data._ocr_text }}</pre>
-        </details>
+    <div v-if="showDetail" class="dialog-overlay" @click.self="closeDetail">
+      <div class="dialog dialog-large">
+        <div class="dialog-header">
+          <h3>{{ $t('apps.recordDetail') }}</h3>
+          <button class="btn-close" @click="closeDetail">×</button>
+        </div>
+        <div class="dialog-body">
+          <div class="detail-grid">
+            <div v-for="field in allFields" :key="field.name" class="detail-field">
+              <label class="field-label">{{ field.label }}</label>
+              <div class="field-value">
+                {{ formatFieldValue(selectedRecord?.data?.[field.name], field) }}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="closeDetail">{{ $t('common.close') }}</button>
+          <button v-if="canEdit(selectedRecord)" class="btn-primary" @click="editFromDetail">{{ $t('apps.edit') }}</button>
+        </div>
       </div>
+    </div>
 
-      <div v-if="isEditing" class="form-actions">
-        <button class="btn-cancel" @click="cancelEdit">取消</button>
-        <button class="btn-primary" @click="saveRecord">
-          {{ selectedRecord.data?._status === 'pending_review' ? '确认保存' : '保存' }}
-        </button>
+    <div v-if="showConfirm" class="dialog-overlay" @click.self="cancelConfirm">
+      <div class="dialog dialog-small">
+        <div class="dialog-header">
+          <h3>{{ $t('apps.confirmDelete') }}</h3>
+          <button class="btn-close" @click="cancelConfirm">×</button>
+        </div>
+        <div class="dialog-body">
+          <p>{{ $t('apps.confirmDeleteMessage') }}</p>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="cancelConfirm">{{ $t('common.cancel') }}</button>
+          <button class="btn-danger" @click="confirmDelete">{{ $t('common.delete') }}</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { useToastStore } from '@/stores/toast'
 import {
   getRecords,
   createRecord,
   updateRecord,
   deleteRecord,
-  confirmRecord,
-  batchUpload,
-  getStatusSummary,
   type MiniApp,
   type MiniAppRecord,
   type AppField,
-  type StatusSummary,
 } from '@/api/mini-apps'
-import { uploadAttachment } from '@/api/attachment'
 import StateBadge from './StateBadge.vue'
 import FieldRenderer from './FieldRenderer.vue'
-import FileUploader from './FileUploader.vue'
 
-const props = defineProps<{
-  app: MiniApp
-}>()
+const props = defineProps<{ app: MiniApp }>()
+const router = useRouter()
+const { t } = useI18n()
+const toast = useToastStore()
 
-const activeTab = ref('list')
+// State
 const records = ref<MiniAppRecord[]>([])
 const selectedRecord = ref<MiniAppRecord | null>(null)
 const formData = ref<Record<string, any>>({})
-const isEditing = ref(false)
 const isLoading = ref(false)
-const pagination = ref({ page: 1, size: 10, total: 0, pages: 0 })
-const batchStatus = ref<StatusSummary | null>(null)
-const batchUploadTime = ref<string | null>(null)
-let pollTimer: ReturnType<typeof setInterval> | null = null
+const isSaving = ref(false)
+const showDialog = ref(false)
+const showDetail = ref(false)
+const showConfirm = ref(false)
+const confirmTarget = ref<MiniAppRecord | null>(null)
+const dialogMode = ref<'create' | 'edit'>('create')
 
-const visibleTabs = computed(() => {
-  const features = props.app.config?.features || ['list', 'upload']
-  const tabs = []
-  if (features.includes('list')) tabs.push({ key: 'list', label: '列表' })
-  if (features.includes('upload')) tabs.push({ key: 'upload', label: '上传' })
-  tabs.push({ key: 'detail', label: '详情' })
-  return tabs
+const pagination = ref({
+  page: 1,
+  size: 10,
+  total: 0,
+  pages: 0
 })
 
+const filters = ref({ status: '' })
+
+// Computed
 const listColumns = computed(() => {
+  const fields = props.app.fields
+  if (!fields || !Array.isArray(fields)) return []
   const views = props.app.views
   if (views?.list?.columns) {
     return views.list.columns
-      .map((name: string) => props.app.fields.find(f => f.name === name))
+      .map((name: string) => fields.find(f => f.name === name))
       .filter(Boolean) as AppField[]
   }
-  return props.app.fields.filter(f => f.required || f.ai_extractable)
+  return fields.slice(0, 5)
 })
 
 const editableFields = computed(() => {
-  return props.app.fields.filter(f =>
+  const fields = props.app.fields
+  if (!fields || !Array.isArray(fields)) return []
+  return fields.filter(f =>
     f.type !== 'file' && f.type !== 'group' && f.type !== 'repeating'
   )
 })
 
-const batchProgressPercent = computed(() => {
-  if (!batchStatus.value || batchStatus.value.total === 0) return 0
-  return Math.round(((batchStatus.value.completed + batchStatus.value.failed) / batchStatus.value.total) * 100)
+const allFields = computed(() => {
+  const fields = props.app.fields
+  if (!fields || !Array.isArray(fields)) return []
+  return fields
 })
 
-onMounted(() => {
-  loadRecords()
+const dialogTitle = computed(() => {
+  return dialogMode.value === 'create' ? t('apps.newRecord') : t('apps.editRecord')
 })
 
-onUnmounted(() => {
-  stopPolling()
+const canCreate = computed(() => true)
+
+const visiblePages = computed(() => {
+  const current = pagination.value.page
+  const total = pagination.value.pages
+  const delta = 2
+  const range = []
+  for (let i = Math.max(1, current - delta); i <= Math.min(total, current + delta); i++) {
+    range.push(i)
+  }
+  return range
 })
 
-function isAiExtracted(fieldName: string): boolean {
-  if (!selectedRecord.value?.ai_extracted) return false
-  const field = props.app.fields.find(f => f.name === fieldName)
-  return !!field?.ai_extractable
+// Methods
+function canEdit(record: MiniAppRecord | null): boolean {
+  if (!record) return false
+  // TODO: 检查权限
+  return true
+}
+
+function canDelete(record: MiniAppRecord | null): boolean {
+  if (!record) return false
+  // TODO: 检查权限
+  return true
+}
+
+function goBack() {
+  router.push('/apps')
 }
 
 function formatFieldValue(value: any, field: AppField): string {
@@ -207,17 +261,25 @@ function formatFieldValue(value: any, field: AppField): string {
   if (field.type === 'select' && field.options) return value
   if (field.type === 'date') return value
   if (field.type === 'number') return typeof value === 'number' ? value.toLocaleString() : value
+  if (field.type === 'boolean') return value ? t('apps.yes') : t('apps.no')
   return String(value)
 }
 
 async function loadRecords() {
   isLoading.value = true
   try {
+    const filter: any = {}
+    if (filters.value.status) {
+      filter._status = filters.value.status
+    }
+    
     const result = await getRecords(props.app.id, {
       page: pagination.value.page,
       size: pagination.value.size,
+      filter: Object.keys(filter).length > 0 ? JSON.stringify(filter) : undefined,
     })
-    records.value = result.items
+    
+    records.value = result.items || []
     if (result.pagination) {
       pagination.value = {
         page: result.pagination.page,
@@ -238,183 +300,340 @@ function loadPage(page: number) {
   loadRecords()
 }
 
+function handleFilterChange() {
+  pagination.value.page = 1
+  loadRecords()
+}
+
+function resetFilters() {
+  filters.value = { status: '' }
+  handleFilterChange()
+}
+
+function openCreateDialog() {
+  dialogMode.value = 'create'
+  formData.value = {}
+  selectedRecord.value = null
+  showDialog.value = true
+}
+
 function viewRecord(record: MiniAppRecord) {
   selectedRecord.value = record
-  formData.value = { ...record.data }
-  isEditing.value = false
-  activeTab.value = 'detail'
+  showDetail.value = true
 }
 
 function editRecord(record: MiniAppRecord) {
+  dialogMode.value = 'edit'
   selectedRecord.value = record
   formData.value = { ...record.data }
-  isEditing.value = true
-  activeTab.value = 'detail'
+  showDialog.value = true
+}
+
+function editFromDetail() {
+  closeDetail()
+  if (selectedRecord.value) {
+    editRecord(selectedRecord.value)
+  }
+}
+
+function closeDialog() {
+  showDialog.value = false
+  formData.value = {}
+  selectedRecord.value = null
 }
 
 function closeDetail() {
+  showDetail.value = false
   selectedRecord.value = null
-  activeTab.value = 'list'
-}
-
-function cancelEdit() {
-  if (selectedRecord.value) {
-    formData.value = { ...selectedRecord.value.data }
-  }
-  isEditing.value = false
 }
 
 async function saveRecord() {
-  if (!selectedRecord.value) return
-
+  if (!formData.value) return
+  
+  isSaving.value = true
   try {
-    const status = selectedRecord.value.data?._status
-    const dataToSave = { ...formData.value }
-
-    if (status === 'pending_review') {
-      await confirmRecord(props.app.id, selectedRecord.value.id, dataToSave)
-    } else {
-      await updateRecord(props.app.id, selectedRecord.value.id, dataToSave)
+    if (dialogMode.value === 'create') {
+      await createRecord(props.app.id, formData.value)
+      toast.success(t('apps.createSuccess'))
+    } else if (selectedRecord.value) {
+      await updateRecord(props.app.id, selectedRecord.value.id, formData.value)
+      toast.success(t('apps.updateSuccess'))
     }
-
     await loadRecords()
-    closeDetail()
+    closeDialog()
   } catch (error) {
     console.error('Failed to save record:', error)
-    alert('保存失败：' + (error as Error).message)
+    toast.error(t('apps.saveFailed'))
+  } finally {
+    isSaving.value = false
   }
 }
 
 async function handleDelete(record: MiniAppRecord) {
-  if (!confirm('确定要删除此记录吗？')) return
+  confirmTarget.value = record
+  showConfirm.value = true
+}
 
+function cancelConfirm() {
+  showConfirm.value = false
+  confirmTarget.value = null
+}
+
+async function confirmDelete() {
+  if (!confirmTarget.value) return
   try {
-    await deleteRecord(props.app.id, record.id)
+    await deleteRecord(props.app.id, confirmTarget.value.id)
+    toast.success(t('apps.deleteSuccess'))
     await loadRecords()
   } catch (error) {
     console.error('Failed to delete record:', error)
+    toast.error(t('apps.deleteFailed'))
+  } finally {
+    cancelConfirm()
   }
 }
 
-async function onFilesUploaded(attachmentIds: string[]) {
-  try {
-    const result = await batchUpload(props.app.id, attachmentIds)
-    batchUploadTime.value = result.upload_time
-    startPolling()
-    await loadRecords()
-  } catch (error) {
-    console.error('Batch upload error:', error)
-    alert('上传失败：' + (error as Error).message)
-  }
-}
-
-function startPolling() {
-  stopPolling()
-  pollTimer = setInterval(async () => {
-    if (!batchUploadTime.value) return
-
-    try {
-      batchStatus.value = await getStatusSummary(props.app.id, batchUploadTime.value)
-      await loadRecords()
-
-      if (batchStatus.value.processing === 0 && batchStatus.value.failed === 0) {
-        stopPolling()
-      }
-    } catch (error) {
-      console.error('Polling error:', error)
-    }
-  }, 3000)
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
+// Watch
+watch(() => props.app.id, () => {
+  loadRecords()
+}, { immediate: true })
 </script>
 
 <style scoped>
 .generic-mini-app {
-  background: var(--color-bg-primary, #fff);
-  border-radius: 12px;
-  border: 1px solid var(--color-border, #e0e0e0);
-  overflow: hidden;
-}
-
-.tab-bar {
   display: flex;
-  border-bottom: 1px solid var(--color-border, #e0e0e0);
-  background: var(--color-bg-secondary, #f8f9fa);
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-bg-primary, #fff);
 }
 
-.tab-btn {
-  padding: 12px 24px;
-  border: none;
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  background: var(--color-bg-primary, #fff);
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-back {
   background: none;
+  border: none;
   cursor: pointer;
   font-size: 14px;
   color: var(--color-text-secondary, #666);
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.tab-btn.active {
-  color: var(--color-primary, #4a90d9);
-  border-bottom-color: var(--color-primary, #4a90d9);
-  font-weight: 600;
-}
-
-.tab-content {
-  padding: 24px;
-}
-
-.list-header {
+  padding: 4px 8px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 4px;
 }
 
-.empty-records {
+.btn-back:hover {
+  color: var(--color-primary, #4a90d9);
+}
+
+.app-icon {
+  font-size: 28px;
+}
+
+.app-name {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary, #333);
+}
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-primary, #4a90d9);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary .icon {
+  font-size: 16px;
+}
+
+/* Filter Panel */
+.filter-panel {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  background: var(--color-bg-secondary, #f8f9fa);
+  flex-shrink: 0;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-item label {
+  font-size: 14px;
+  color: var(--color-text-secondary, #666);
+  white-space: nowrap;
+}
+
+.filter-item select,
+.filter-item input {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--color-bg-primary, #fff);
+  min-width: 120px;
+}
+
+.filter-item input {
+  min-width: 200px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.btn-filter,
+.btn-reset {
+  padding: 6px 16px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--color-bg-primary, #fff);
+}
+
+.btn-filter {
+  background: var(--color-primary, #4a90d9);
+  color: #fff;
+  border-color: var(--color-primary, #4a90d9);
+}
+
+.btn-filter:hover,
+.btn-reset:hover {
+  opacity: 0.9;
+}
+
+/* List Content */
+.list-content {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.loading-state {
   text-align: center;
-  padding: 40px;
+  padding: 60px 20px;
   color: var(--color-text-secondary, #666);
 }
 
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--color-text-secondary, #666);
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+/* Table */
 .record-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 14px;
+}
+
+.record-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .record-table th,
 .record-table td {
-  padding: 10px 12px;
+  padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid var(--color-border, #eee);
-  font-size: 13px;
 }
 
 .record-table th {
   font-weight: 600;
   color: var(--color-text-secondary, #666);
   background: var(--color-bg-secondary, #f8f9fa);
+  white-space: nowrap;
+}
+
+.record-table tbody tr:hover {
+  background: var(--color-bg-secondary, #f8f9fa);
+}
+
+.record-table td {
+  color: var(--color-text-primary, #333);
+}
+
+.actions-cell {
+  white-space: nowrap;
 }
 
 .btn-action {
-  padding: 4px 8px;
+  padding: 4px 10px;
   border: 1px solid var(--color-border, #ddd);
   border-radius: 4px;
   background: var(--color-bg-primary, #fff);
   cursor: pointer;
-  font-size: 12px;
-  margin-right: 4px;
+  font-size: 13px;
+  margin-right: 6px;
+  color: var(--color-text-secondary, #666);
 }
 
-.btn-action.btn-primary {
-  background: var(--color-primary, #4a90d9);
-  color: #fff;
+.btn-action:hover {
   border-color: var(--color-primary, #4a90d9);
+  color: var(--color-primary, #4a90d9);
 }
 
 .btn-action.btn-danger {
@@ -422,78 +641,155 @@ function stopPolling() {
   border-color: var(--color-danger, #e74c3c);
 }
 
+.btn-action.btn-danger:hover {
+  background: var(--color-danger, #e74c3c);
+  color: #fff;
+}
+
+/* Pagination */
 .pagination {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 8px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--color-border, #e0e0e0);
+  background: var(--color-bg-primary, #fff);
+  flex-shrink: 0;
 }
 
-.pagination button {
+.page-btn {
   padding: 6px 12px;
   border: 1px solid var(--color-border, #ddd);
   border-radius: 4px;
   background: var(--color-bg-primary, #fff);
   cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-secondary, #666);
 }
 
-.pagination button:disabled {
-  opacity: 0.5;
+.page-btn:hover:not(:disabled) {
+  border-color: var(--color-primary, #4a90d9);
+  color: var(--color-primary, #4a90d9);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.upload-section h3 {
-  margin: 0 0 8px;
-}
-
-.upload-hint {
-  color: var(--color-text-secondary, #666);
-  font-size: 13px;
-  margin-bottom: 16px;
-}
-
-.batch-progress {
-  margin-top: 24px;
-  padding: 16px;
-  border: 1px solid var(--color-border, #eee);
-  border-radius: 8px;
-}
-
-.progress-bar {
-  height: 8px;
-  background: var(--color-bg-secondary, #f0f0f0);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 12px 0;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--color-primary, #4a90d9);
-  transition: width 0.3s;
-}
-
-.progress-stats {
+.page-numbers {
   display: flex;
-  gap: 16px;
-  font-size: 13px;
-  color: var(--color-text-secondary, #666);
+  gap: 4px;
 }
 
-.detail-header {
+.page-num {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  background: var(--color-bg-primary, #fff);
+  cursor: pointer;
+  font-size: 13px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  justify-content: center;
 }
 
-.detail-header .btn-back {
+.page-num:hover {
+  border-color: var(--color-primary, #4a90d9);
+  color: var(--color-primary, #4a90d9);
+}
+
+.page-num.active {
+  background: var(--color-primary, #4a90d9);
+  color: #fff;
+  border-color: var(--color-primary, #4a90d9);
+}
+
+.page-info {
+  font-size: 13px;
+  color: var(--color-text-secondary, #666);
+  margin-left: 12px;
+}
+
+/* Dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.dialog {
+  background: var(--color-bg-primary, #fff);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-large {
+  max-width: 800px;
+}
+
+.dialog-small {
+  max-width: 400px;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.btn-close {
   background: none;
   border: none;
+  font-size: 24px;
   cursor: pointer;
-  color: var(--color-primary, #4a90d9);
-  font-size: 14px;
+  color: var(--color-text-secondary, #666);
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.btn-close:hover {
+  background: var(--color-bg-secondary, #f0f0f0);
+}
+
+.dialog-body {
+  padding: 20px;
+  overflow: auto;
+  flex: 1;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-border, #e0e0e0);
 }
 
 .form-grid {
@@ -507,6 +803,10 @@ function stopPolling() {
   flex-direction: column;
 }
 
+.form-field.field-full {
+  grid-column: span 2;
+}
+
 .field-label {
   font-size: 13px;
   font-weight: 500;
@@ -516,44 +816,27 @@ function stopPolling() {
 
 .required {
   color: var(--color-danger, #e74c3c);
-}
-
-.ai-badge {
-  font-size: 12px;
   margin-left: 4px;
 }
 
-.ocr-section {
-  margin-top: 24px;
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
 }
 
-.ocr-section details {
-  border: 1px solid var(--color-border, #eee);
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.ocr-section summary {
-  cursor: pointer;
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.ocr-text {
-  max-height: 300px;
-  overflow-y: auto;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.form-actions {
+.detail-field {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border, #eee);
+  flex-direction: column;
+}
+
+.detail-field .field-value {
+  padding: 8px 12px;
+  background: var(--color-bg-secondary, #f8f9fa);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--color-text-primary, #333);
+  min-height: 36px;
 }
 
 .btn-cancel {
@@ -562,19 +845,25 @@ function stopPolling() {
   border-radius: 6px;
   background: var(--color-bg-primary, #fff);
   cursor: pointer;
+  font-size: 14px;
 }
 
-.btn-primary {
+.btn-cancel:hover {
+  background: var(--color-bg-secondary, #f0f0f0);
+}
+
+.btn-danger {
   padding: 8px 20px;
   border: none;
   border-radius: 6px;
-  background: var(--color-primary, #4a90d9);
+  background: var(--color-danger, #e74c3c);
   color: #fff;
   cursor: pointer;
+  font-size: 14px;
   font-weight: 500;
 }
 
-.btn-primary:hover {
+.btn-danger:hover {
   opacity: 0.9;
 }
 </style>
