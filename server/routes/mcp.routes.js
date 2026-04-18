@@ -193,16 +193,21 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
-      const residentService = ctx.appContext?.services?.residentProcess;
-      if (!residentService) {
+      if (!residentSkillManager) {
         ctx.error('驻留进程服务不可用', 500);
         return;
       }
 
-      const result = await residentService.invoke('mcp-client', {
-        action: 'refresh_tools',
-        server_name: server.name,
-      });
+      const result = await residentSkillManager.invokeByName(
+        'mcp-client',
+        'invoke',
+        {
+          action: 'refresh_tools',
+          server_name: server.name,
+        },
+        {},
+        30000
+      );
 
       if (result && result.tools) {
         for (const tool of result.tools) {
