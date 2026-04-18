@@ -178,7 +178,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 创建 MCP Server（管理员）
    * POST /api/mcp/servers
    */
-  router.post('/servers', requireAdmin, async (ctx) => {
+  router.post('/servers', requireAuth, requireAdmin, async (ctx) => {
     try {
       const userId = ctx.state.session.id;
       const {
@@ -268,7 +268,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 更新 MCP Server（管理员）
    * PUT /api/mcp/servers/:id
    */
-  router.put('/servers/:id', requireAdmin, async (ctx) => {
+  router.put('/servers/:id', requireAuth, requireAdmin, async (ctx) => {
     try {
       const { id } = ctx.params;
       const updateData = ctx.request.body;
@@ -310,7 +310,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 删除 MCP Server（管理员）
    * DELETE /api/mcp/servers/:id
    */
-  router.delete('/servers/:id', requireAdmin, async (ctx) => {
+  router.delete('/servers/:id', requireAuth, requireAdmin, async (ctx) => {
     try {
       const { id } = ctx.params;
 
@@ -622,7 +622,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 获取系统默认凭证列表（管理员）
    * GET /api/mcp/default-credentials
    */
-  router.get('/default-credentials', requireAdmin, async (ctx) => {
+  router.get('/default-credentials', requireAuth, requireAdmin, async (ctx) => {
     try {
       const credentials = await MCPCredential.findAll({
         raw: true,
@@ -664,7 +664,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 配置系统默认凭证（管理员）
    * POST /api/mcp/default-credentials
    */
-  router.post('/default-credentials', requireAdmin, async (ctx) => {
+  router.post('/default-credentials', requireAuth, requireAdmin, async (ctx) => {
     try {
       const userId = ctx.state.session.id;
       const { mcp_server_id, credentials } = ctx.request.body;
@@ -722,7 +722,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 删除系统默认凭证（管理员）
    * DELETE /api/mcp/default-credentials/:id
    */
-  router.delete('/default-credentials/:id', requireAdmin, async (ctx) => {
+  router.delete('/default-credentials/:id', requireAuth, requireAdmin, async (ctx) => {
     try {
       const { id } = ctx.params;
 
