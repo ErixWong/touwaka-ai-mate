@@ -930,6 +930,30 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== MCP Client 驻留技能注册 ====================
+  {
+    name: 'mcp-client.skill_registration',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`SELECT id FROM skills WHERE id = 'mcp-client'`);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      // 注册技能
+      await conn.execute(`
+        INSERT INTO skills (id, name, description, source_type, source_path, is_active, created_at, updated_at)
+        VALUES ('mcp-client', 'MCP Client', 'MCP 客户端驻留进程 - 管理多 MCP Server 连接（STDIO/HTTP Stream）', 'local', 'skills/mcp-client', 1, NOW(), NOW())
+      `);
+      console.log('  ✓ Registered mcp-client skill');
+
+      // 注册驻留工具
+      await conn.execute(`
+        INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, is_resident, created_at, updated_at)
+        VALUES ('mcp-client-invoke', 'mcp-client', 'invoke', 'MCP Client 驻留进程入口工具', '{"type":"object","properties":{"action":{"type":"string","description":"操作类型"}}}', 'index.js', 1, NOW(), NOW())
+      `);
+      console.log('  ✓ Registered mcp-client invoke tool (is_resident=1)');
+    }
+  },
+
 ];
 
 /**
