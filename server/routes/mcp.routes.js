@@ -691,27 +691,6 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       ctx.error(error.message || '删除用户凭证失败', 500);
     }
   });
-      const credential = await MCPUserCredential.findOne({
-        where: { id, user_id: userId },
-      });
-
-      if (!credential) {
-        ctx.status = 404;
-        ctx.error('凭证不存在');
-        return;
-      }
-
-      await credential.destroy();
-
-      logger.info(`MCP user credential deleted: id=${id}, user=${userId}`);
-
-      ctx.success({ message: '凭证已删除' });
-
-    } catch (error) {
-      logger.error('Delete MCP credential error:', error);
-      ctx.error(error.message || '删除凭证失败', 500);
-    }
-  });
 
   // ============== 系统默认凭证管理（管理员） ==============
 
