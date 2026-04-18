@@ -237,7 +237,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         display_name,
         description,
         transport_type,
-        command: command || null,
+        command: command || '',
         args: args || null,
         env_template: env_template || null,
         url: url || null,
