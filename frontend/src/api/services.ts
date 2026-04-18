@@ -1018,7 +1018,7 @@ export const mcpApi = {
 
   // 获取 MCP Server 工具列表
   getServerTools: (id: string) =>
-    apiRequest<McpToolCache[]>(apiClient.get(`/mcp/servers/${id}/tools`)),
+    apiRequest<{ tools: McpToolCache[] }>(apiClient.get(`/mcp/servers/${id}/tools`)),
 
   // ========== 用户凭证管理 ==========
 

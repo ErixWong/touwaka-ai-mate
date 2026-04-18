@@ -442,7 +442,7 @@ const selectServer = (server: McpServer) => {
 const loadServerTools = async (serverId: string) => {
   toolsLoading.value = true
   try {
-    serverTools.value = await mcpApi.getServerTools(serverId)
+    serverTools.value = (await mcpApi.getServerTools(serverId) as any)?.tools || []
   } catch (error: any) {
     toast.error(t('settings.mcp.loadToolsFailed') + ': ' + error.message)
   } finally {

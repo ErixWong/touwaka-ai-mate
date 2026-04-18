@@ -175,6 +175,73 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
+   * 刷新 MCP Server 工具列表
+   * POST /api/mcp/servers/:id/refresh-tools
+   */
+  router.post('/servers/:id/refresh-tools', requireAuth, async (ctx) => {
+    try {
+      const { id } = ctx.params;
+
+      const server = await MCPServer.findOne({
+        where: { id, is_enabled: true },
+        raw: true,
+      });
+
+      if (!server) {
+        ctx.status = 404;
+        ctx.error('MCP Server 不存在或未启用');
+        return;
+      }
+
+      const residentService = ctx.appContext?.services?.residentProcess;
+      if (!residentService) {
+        ctx.error('驻留进程服务不可用', 500);
+        return;
+      }
+
+      const result = await residentService.invoke('mcp-client', {
+        action: 'refresh_tools',
+        server_name: server.name,
+      });
+
+      if (result && result.tools) {
+        for (const tool of result.tools) {
+          await MCPToolsCache.upsert({
+            id: Utils.newID(16),
+            mcp_server_id: id,
+            tool_name: tool.name,
+            description: tool.description || '',
+            input_schema: tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
+            cached_at: new Date(),
+          });
+        }
+
+        const tools = await MCPToolsCache.findAll({
+          where: { mcp_server_id: id },
+          raw: true,
+        });
+
+        ctx.success({
+          tools: tools.map(t => ({
+            id: t.id,
+            name: t.tool_name,
+            description: t.description,
+            input_schema: t.input_schema,
+            cached_at: t.cached_at,
+          })),
+          message: `已刷新 ${tools.length} 个工具`,
+        });
+      } else {
+        ctx.success({ tools: [], message: '未获取到工具，请检查 MCP 服务器连接' });
+      }
+
+    } catch (error) {
+      logger.error('Refresh MCP tools error:', error);
+      ctx.error(error.message || '刷新工具列表失败', 500);
+    }
+  });
+
+  /**
    * 创建 MCP Server（管理员）
    * POST /api/mcp/servers
    */
@@ -820,15 +887,15 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
-   * 删除系统默认凭证（管理员）
-   * DELETE /api/mcp/default-credentials/:id
+   * 删除特定 Server 的系统默认凭证（管理员）
+   * DELETE /api/mcp/default-credentials/:serverId
    */
-  router.delete('/default-credentials/:id', requireAuth, requireAdmin, async (ctx) => {
+  router.delete('/default-credentials/:serverId', requireAuth, requireAdmin, async (ctx) => {
     try {
-      const { id } = ctx.params;
+      const { serverId } = ctx.params;
 
       const credential = await MCPCredential.findOne({
-        where: { id },
+        where: { mcp_server_id: serverId },
       });
 
       if (!credential) {
@@ -838,9 +905,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       }
 
       await credential.destroy();
-
-      logger.info(`MCP default credential deleted: id=${id}`);
-
+      logger.info(`MCP default credential deleted: server=${serverId}`);
       ctx.success({ message: '系统默认凭证已删除' });
 
     } catch (error) {
