@@ -193,52 +193,58 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
-      if (!residentSkillManager) {
-        ctx.error('驻留进程服务不可用', 500);
-        return;
+      // 先清除该 server 的旧工具缓存
+      await MCPToolsCache.destroy({
+        where: { mcp_server_id: id },
+      });
+
+      // 尝试通过驻留进程刷新
+      let refreshedTools = [];
+      try {
+        const result = await residentSkillManager.invokeByName(
+          'mcp-client',
+          'invoke',
+          {
+            action: 'refresh_tools',
+            server_name: server.name,
+          },
+          {},
+          30000
+        );
+        refreshedTools = result?.result?.tools || [];
+      } catch (err) {
+        logger.warn(`Refresh tools via resident process failed: ${err.message}, returning empty list`);
       }
 
-      const result = await residentSkillManager.invokeByName(
-        'mcp-client',
-        'invoke',
-        {
-          action: 'refresh_tools',
-          server_name: server.name,
-        },
-        {},
-        30000
-      );
-
-      if (result && result.tools) {
-        for (const tool of result.tools) {
-          await MCPToolsCache.upsert({
-            id: Utils.newID(16),
-            mcp_server_id: id,
-            tool_name: tool.name,
-            description: tool.description || '',
-            input_schema: tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
-            cached_at: new Date(),
-          });
-        }
-
-        const tools = await MCPToolsCache.findAll({
-          where: { mcp_server_id: id },
-          raw: true,
+      // 写入缓存
+      for (const tool of refreshedTools) {
+        await MCPToolsCache.create({
+          id: Utils.newID(16),
+          mcp_server_id: id,
+          tool_name: tool.name,
+          description: tool.description || '',
+          input_schema: tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
+          cached_at: new Date(),
         });
-
-        ctx.success({
-          tools: tools.map(t => ({
-            id: t.id,
-            name: t.tool_name,
-            description: t.description,
-            input_schema: t.input_schema,
-            cached_at: t.cached_at,
-          })),
-          message: `已刷新 ${tools.length} 个工具`,
-        });
-      } else {
-        ctx.success({ tools: [], message: '未获取到工具，请检查 MCP 服务器连接' });
       }
+
+      const tools = await MCPToolsCache.findAll({
+        where: { mcp_server_id: id },
+        raw: true,
+      });
+
+      ctx.success({
+        tools: tools.map(t => ({
+          id: t.id,
+          name: t.tool_name,
+          description: t.description,
+          input_schema: t.input_schema,
+          cached_at: t.cached_at,
+        })),
+        message: refreshedTools.length > 0
+          ? `已刷新 ${refreshedTools.length} 个工具`
+          : '驻留进程未就绪，工具列表已清空。请启动 mcp-client 驻留进程后重试。',
+      });
 
     } catch (error) {
       logger.error('Refresh MCP tools error:', error);
