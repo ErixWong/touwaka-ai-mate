@@ -673,9 +673,12 @@ class InternalController {
           name: s.name,
           display_name: s.display_name,
           description: s.description,
+          transport_type: s.transport_type || 'stdio',  // 新增
           command: s.command,
           args: s.args,
           env_template: s.env_template,
+          url: s.url,                                    // 新增
+          headers: s.headers,                            // 新增
           is_public: s.is_public,
           is_enabled: s.is_enabled,
           requires_credentials: s.requires_credentials,

@@ -903,13 +903,22 @@ export const assistantApi = {
 // MCP 客户端相关 API
 // ============================================
 
+// MCP 传输类型
+export type McpTransportType = 'stdio' | 'http' | 'sse'
+
 // MCP Server 类型
 export interface McpServer {
   id: string
   name: string
-  command: string
-  args: string | null
-  env: string | null
+  transport_type: McpTransportType  // MCP 传输类型
+  // STDIO 专用字段
+  command?: string
+  args?: string | null
+  env?: string | null
+  // HTTP 专用字段
+  url?: string | null
+  headers?: string | null
+  // 公共字段
   is_public: boolean
   is_active: boolean
   created_at: string
@@ -919,18 +928,30 @@ export interface McpServer {
 // MCP Server 创建/更新请求
 export interface CreateMcpServerRequest {
   name: string
-  command: string
+  transport_type?: McpTransportType
+  // STDIO 模式字段
+  command?: string
   args?: string
   env?: string
+  // HTTP 模式字段
+  url?: string
+  headers?: string
+  // 公共字段
   is_public?: boolean
   is_active?: boolean
 }
 
 export interface UpdateMcpServerRequest {
   name?: string
+  transport_type?: McpTransportType
+  // STDIO 模式字段
   command?: string
   args?: string
   env?: string
+  // HTTP 模式字段
+  url?: string
+  headers?: string
+  // 公共字段
   is_public?: boolean
   is_active?: boolean
 }

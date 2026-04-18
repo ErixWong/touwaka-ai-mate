@@ -91,6 +91,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
           name: server.name,
           display_name: server.display_name,
           description: server.description,
+          transport_type: server.transport_type,
+          command: server.command,
+          args: server.args,
+          env_template: server.env_template,
+          url: server.url,
+          headers: server.headers,
           icon: server.icon,
           category: server.category,
           is_public: server.is_public,
@@ -179,9 +185,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         name,
         display_name,
         description,
+        transport_type = 'stdio',
         command,
         args,
         env_template,
+        url,
+        headers,
         is_public,
         requires_credentials,
         credential_fields,
@@ -190,9 +199,22 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       } = ctx.request.body;
 
       // 验证必要字段
-      if (!name || !command) {
-        ctx.error('缺少必要字段：name, command');
+      if (!name) {
+        ctx.error('缺少必要字段：name');
         return;
+      }
+
+      // 根据传输类型验证对应字段
+      if (transport_type === 'stdio') {
+        if (!command) {
+          ctx.error('STDIO 模式缺少必要字段：command');
+          return;
+        }
+      } else if (transport_type === 'http' || transport_type === 'sse') {
+        if (!url) {
+          ctx.error(`${transport_type.toUpperCase()} 模式缺少必要字段：url`);
+          return;
+        }
       }
 
       // 检查名称是否已存在
@@ -214,9 +236,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         name,
         display_name,
         description,
-        command,
+        transport_type,
+        command: command || null,
         args: args || null,
         env_template: env_template || null,
+        url: url || null,
+        headers: headers || null,
         is_public: is_public || false,
         is_enabled: true,
         requires_credentials: requires_credentials || false,
@@ -226,7 +251,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         created_by: userId,
       });
 
-      logger.info(`MCP Server created: ${name} by ${userId}`);
+      logger.info(`MCP Server created: ${name} (transport_type: ${transport_type}) by ${userId}`);
 
       ctx.success({
         message: 'MCP Server 创建成功',
@@ -258,8 +283,8 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
 
       // 更新字段
       const allowedFields = [
-        'display_name', 'description', 'command', 'args', 'env_template',
-        'is_public', 'is_enabled', 'requires_credentials', 'credential_fields',
+        'display_name', 'description', 'transport_type', 'command', 'args', 'env_template',
+        'url', 'headers', 'is_public', 'is_enabled', 'requires_credentials', 'credential_fields',
         'icon', 'category'
       ];
 

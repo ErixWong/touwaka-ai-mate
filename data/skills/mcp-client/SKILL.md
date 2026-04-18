@@ -2,14 +2,20 @@
 
 name: mcp-client
 
-> 通用 MCP (Model Context Protocol) 客户端，支持多 MCP Server 连接管理
+> 通用 MCP (Model Context Protocol) 客户端，支持多 MCP Server 连接管理（STDIO / HTTP Stream）
 
 ## 功能概述
 
 本技能作为驻留进程运行，管理与多个 MCP Server 的连接，支持：
 
-- **公共 MCP Server**：所有用户共享，无需凭证
-- **用户隔离 MCP Server**：每用户独立进程，需要用户配置凭证
+- **传输类型**:
+  - **STDIO**: 本地子进程通信（默认）
+  - **HTTP Stream**: 远程 HTTP MCP Server（MCP Streamable HTTP Transport）
+  - **SSE**: Server-Sent Events 传输（预留）
+
+- **Server 类型**:
+  - **公共 MCP Server**：所有用户共享，无需凭证
+  - **用户隔离 MCP Server**：每用户独立进程，需要用户配置凭证
 
 ## 技能类型
 
@@ -85,11 +91,45 @@ MCP 工具命名格式：`mcp_{serverName}_{toolName}`
 MCP Server 配置存储在数据库中：
 
 - `mcp_servers` - MCP Server 定义
+  - `transport_type`: ENUM('stdio', 'http', 'sse')
+  - `command`, `args`, `env_template`: STDIO 模式使用
+  - `url`, `headers`: HTTP 模式使用
 - `mcp_credentials` - 系统默认凭证
 - `mcp_user_credentials` - 用户私有凭证
 - `mcp_tools_cache` - 工具定义缓存
 
 驻留进程通过内部 API `/internal/mcp/config` 获取配置。
+
+## 传输类型配置
+
+### STDIO 模式（默认）
+
+适合本地/容器内 MCP Server：
+
+```json
+{
+  "transport_type": "stdio",
+  "command": "npx",
+  "args": "[\"-y\", \"@modelcontextprotocol/server-filesystem\", \"/data\"]",
+  "env_template": "{\"NODE_ENV\": \"production\"}"
+}
+```
+
+### HTTP Stream 模式
+
+适合远程 SaaS MCP Server：
+
+```json
+{
+  "transport_type": "http",
+  "url": "https://api.firecrawl.dev/mcp",
+  "headers": "{\"Authorization\": \"Bearer ${user.token}\"}"
+}
+```
+
+Headers 支持占位符，会被用户凭证中的对应字段替换：
+- `${user.api_key}` → 替换为凭证中的 `api_key`
+- `${user.token}` → 替换为凭证中的 `token`
 
 ## 凭证优先级
 
@@ -97,7 +137,16 @@ MCP Server 配置存储在数据库中：
 2. 系统默认凭证（`mcp_credentials`）
 3. 无凭证报错
 
-## 环境变量模板
+### HTTP 模式凭证处理
+
+凭证中的以下字段会自动添加到 HTTP headers：
+- `api_key` → `Authorization: Bearer {api_key}`
+- `token` → `Authorization: Bearer {token}`
+- `API_KEY` → `X-API-Key: {API_KEY}`
+
+**安全提示**: 敏感信息（Authorization、X-API-Key）在日志中会被自动脱敏显示为 `***`。
+
+## 环境变量模板（STDIO 模式）
 
 MCP Server 配置中的 `env_template` 支持占位符：
 
@@ -112,12 +161,13 @@ MCP Server 配置中的 `env_template` 支持占位符：
 
 ## 依赖
 
-- `@modelcontextprotocol/sdk` - MCP SDK
+- `@modelcontextprotocol/sdk` - MCP SDK（支持 STDIO 和 StreamableHTTP Transport）
 
 ## 相关文档
 
 - [MCP Client 驻留技能设计方案](../../docs/design/mcp-client-resident-design.md)
 - [驻留技能设计](../../docs/design/resident-skill-design.md)
+- [MCP Streamable HTTP Transport](https://github.com/modelcontextprotocol/typescript-sdk)
 
 ---
 

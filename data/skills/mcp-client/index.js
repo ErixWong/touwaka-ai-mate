@@ -16,6 +16,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 
@@ -153,6 +154,83 @@ function buildEnv(envTemplate, credentials) {
   return env;
 }
 
+// ============== Transport 创建 ==============
+
+/**
+ * 解析 headers 字符串为对象
+ * @param {string} headersStr - JSON 格式的 headers 字符串
+ * @returns {object} headers 对象
+ */
+function parseHeaders(headersStr) {
+  if (!headersStr) return {};
+  try {
+    return JSON.parse(headersStr);
+  } catch (err) {
+    log(`Failed to parse headers: ${err.message}`);
+    return {};
+  }
+}
+
+/**
+ * 创建 Transport（根据传输类型）
+ * @param {object} serverConfig - MCP Server 配置
+ * @param {object} credentials - 凭证数据（可选）
+ * @returns {Promise<Transport>} transport 实例
+ */
+async function createTransport(serverConfig, credentials = null) {
+  const transportType = serverConfig.transport_type || 'stdio';
+  
+  if (transportType === 'http' || transportType === 'sse') {
+    // HTTP/SSE 模式
+    if (!serverConfig.url) {
+      throw new Error(`HTTP MCP Server '${serverConfig.name}' missing URL`);
+    }
+    
+    // 解析 headers 并合并凭证
+    const headers = parseHeaders(serverConfig.headers);
+    
+    // 如果凭证中有 api_key 或 token，添加到 headers
+    if (credentials?.api_key) {
+      headers['Authorization'] = `Bearer ${credentials.api_key}`;
+    } else if (credentials?.token) {
+      headers['Authorization'] = `Bearer ${credentials.token}`;
+    } else if (credentials?.API_KEY) {
+      headers['X-API-Key'] = credentials.API_KEY;
+    }
+    
+    // 脱敏 headers 用于日志
+    const sanitizedHeaders = { ...headers };
+    if (sanitizedHeaders.Authorization) {
+      sanitizedHeaders.Authorization = 'Bearer ***';
+    }
+    if (sanitizedHeaders['X-API-Key']) {
+      sanitizedHeaders['X-API-Key'] = '***';
+    }
+    
+    log(`Creating HTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
+    log(`HTTP headers: ${JSON.stringify(sanitizedHeaders)}`);
+    
+    return new StreamableHTTPClientTransport(
+      new URL(serverConfig.url),
+      { headers }
+    );
+  }
+  
+  // STDIO 模式（默认）
+  const env = buildEnv(serverConfig.env_template, credentials);
+  if (!env) {
+    throw new Error(`Missing credentials for ${serverConfig.name}`);
+  }
+  
+  log(`Creating STDIO transport: ${serverConfig.command} ${(serverConfig.args || []).join(' ')}`);
+  
+  return new StdioClientTransport({
+    command: serverConfig.command,
+    args: serverConfig.args || [],
+    env: env,
+  });
+}
+
 // ============== MCP Server 连接管理 ==============
 
 /**
@@ -172,14 +250,7 @@ async function connectServer(serverConfig, userId = null, credentials = null) {
     return connections.get(connectionKey).client;
   }
   
-  // 构建环境变量
-  const env = buildEnv(serverConfig.env_template, credentials);
-  if (!env) {
-    throw new Error(`Missing credentials for ${serverConfig.name}`);
-  }
-  
-  log(`Connecting to ${connectionKey}...`);
-  log(`Command: ${serverConfig.command} ${(serverConfig.args || []).join(' ')}`);
+  log(`Connecting to ${connectionKey} (transport: ${serverConfig.transport_type || 'stdio'})...`);
   
   // 创建 MCP Client
   const client = new Client({
@@ -193,12 +264,8 @@ async function connectServer(serverConfig, userId = null, credentials = null) {
     },
   });
   
-  // 创建 STDIO Transport（启动 MCP Server 进程）
-  const transport = new StdioClientTransport({
-    command: serverConfig.command,
-    args: serverConfig.args || [],
-    env: env,
-  });
+  // 创建 Transport（根据传输类型）
+  const transport = await createTransport(serverConfig, credentials);
   
   // 连接
   await client.connect(transport);
@@ -481,6 +548,7 @@ async function processAction(action, params, userId, accessToken) {
           name: s.name,
           display_name: s.display_name,
           description: s.description,
+          transport_type: s.transport_type || 'stdio',  // 新增
           is_public: s.is_public,
           requires_credentials: s.requires_credentials,
           is_enabled: s.is_enabled,
