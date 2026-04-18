@@ -11,7 +11,6 @@ name: mcp-client
 - **传输类型**:
   - **STDIO**: 本地子进程通信（默认）
   - **HTTP Stream**: 远程 HTTP MCP Server（MCP Streamable HTTP Transport）
-  - **SSE**: Server-Sent Events 传输（预留）
 
 - **Server 类型**:
   - **公共 MCP Server**：所有用户共享，无需凭证
@@ -91,7 +90,7 @@ MCP 工具命名格式：`mcp_{serverName}_{toolName}`
 MCP Server 配置存储在数据库中：
 
 - `mcp_servers` - MCP Server 定义
-  - `transport_type`: ENUM('stdio', 'http', 'sse')
+  - `transport_type`: ENUM('stdio', 'http')
   - `command`, `args`, `env_template`: STDIO 模式使用
   - `url`, `headers`: HTTP 模式使用
 - `mcp_credentials` - 系统默认凭证

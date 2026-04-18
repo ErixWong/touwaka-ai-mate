@@ -904,7 +904,7 @@ export const assistantApi = {
 // ============================================
 
 // MCP 传输类型
-export type McpTransportType = 'stdio' | 'http' | 'sse'
+export type McpTransportType = 'stdio' | 'http'
 
 // MCP Server 类型
 export interface McpServer {

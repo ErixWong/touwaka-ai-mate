@@ -180,7 +180,7 @@ function parseHeaders(headersStr) {
 async function createTransport(serverConfig, credentials = null) {
   const transportType = serverConfig.transport_type || 'stdio';
   
-  if (transportType === 'http' || transportType === 'sse') {
+  if (transportType === 'http') {
     // HTTP/SSE 模式
     if (!serverConfig.url) {
       throw new Error(`HTTP MCP Server '${serverConfig.name}' missing URL`);

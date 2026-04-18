@@ -758,7 +758,6 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
       transportTypes: {
         stdio: 'STDIO (Local Process)',
         http: 'HTTP Stream (Remote Service)',
-        sse: 'SSE (Server-Sent Events)',
       },
       url: 'Server URL',
       urlPlaceholder: 'https://api.example.com/mcp',

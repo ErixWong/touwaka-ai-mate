@@ -594,7 +594,6 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       transportTypes: {
         stdio: 'STDIO (本地进程)',
         http: 'HTTP Stream (远程服务)',
-        sse: 'SSE (服务器推送)',
       },
       url: '服务器地址',
       urlPlaceholder: 'https://api.example.com/mcp',

@@ -210,9 +210,9 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
           ctx.error('STDIO 模式缺少必要字段：command');
           return;
         }
-      } else if (transport_type === 'http' || transport_type === 'sse') {
+      } else if (transport_type === 'http') {
         if (!url) {
-          ctx.error(`${transport_type.toUpperCase()} 模式缺少必要字段：url`);
+          ctx.error('HTTP 模式缺少必要字段：url');
           return;
         }
       }

@@ -220,10 +220,6 @@
                 <input v-model="serverForm.transport_type" type="radio" value="http" />
                 <span>{{ $t('settings.mcp.transportTypes.http') }}</span>
               </label>
-              <label class="radio-label">
-                <input v-model="serverForm.transport_type" type="radio" value="sse" />
-                <span>{{ $t('settings.mcp.transportTypes.sse') }}</span>
-              </label>
             </div>
             <p class="form-hint">{{ $t('settings.mcp.transportTypeHint') }}</p>
           </div>
@@ -363,7 +359,7 @@ const showServerDialog = ref(false)
 const editingServer = ref<McpServer | null>(null)
 const serverForm = reactive({
   name: '',
-  transport_type: 'stdio' as 'stdio' | 'http' | 'sse',
+  transport_type: 'stdio' as 'stdio' | 'http',
   // STDIO 字段
   command: '',
   args: '',
@@ -382,16 +378,14 @@ const isServerFormValid = computed(() => {
   // 根据传输类型验证必填字段
   if (serverForm.transport_type === 'stdio') {
     return !!serverForm.command.trim()
-  } else if (serverForm.transport_type === 'http' || serverForm.transport_type === 'sse') {
+  } else if (serverForm.transport_type === 'http') {
     return !!serverForm.url.trim()
   }
   return true
 })
 
-// 当前是否为 STDIO 模式
 const isStdioMode = computed(() => serverForm.transport_type === 'stdio')
-// 当前是否为 HTTP 模式
-const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse')
+const isHttpMode = computed(() => serverForm.transport_type === 'http')
 
 // Server 删除对话框
 const showDeleteServerDialog = ref(false)
