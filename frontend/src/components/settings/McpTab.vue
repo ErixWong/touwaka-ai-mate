@@ -207,36 +207,81 @@
             />
             <p class="form-hint">{{ $t('settings.mcp.serverNameHint') }}</p>
           </div>
+          
+          <!-- 传输类型选择 -->
           <div class="form-item">
-            <label class="form-label">{{ $t('settings.mcp.command') }} *</label>
-            <input
-              v-model="serverForm.command"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.mcp.commandPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.mcp.commandHint') }}</p>
+            <label class="form-label">{{ $t('settings.mcp.transportType') }}</label>
+            <div class="transport-type-selector">
+              <label class="radio-label">
+                <input v-model="serverForm.transport_type" type="radio" value="stdio" />
+                <span>{{ $t('settings.mcp.transportTypes.stdio') }}</span>
+              </label>
+              <label class="radio-label">
+                <input v-model="serverForm.transport_type" type="radio" value="http" />
+                <span>{{ $t('settings.mcp.transportTypes.http') }}</span>
+              </label>
+            </div>
+            <p class="form-hint">{{ $t('settings.mcp.transportTypeHint') }}</p>
           </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.mcp.args') }}</label>
-            <textarea
-              v-model="serverForm.args"
-              class="form-input"
-              rows="3"
-              :placeholder="$t('settings.mcp.argsPlaceholder')"
-            ></textarea>
-            <p class="form-hint">{{ $t('settings.mcp.argsHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.mcp.env') }}</label>
-            <textarea
-              v-model="serverForm.env"
-              class="form-input"
-              rows="3"
-              :placeholder="$t('settings.mcp.envPlaceholder')"
-            ></textarea>
-            <p class="form-hint">{{ $t('settings.mcp.envHint') }}</p>
-          </div>
+
+          <!-- STDIO 模式字段 -->
+          <template v-if="isStdioMode">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.mcp.command') }} *</label>
+              <input
+                v-model="serverForm.command"
+                type="text"
+                class="form-input"
+                :placeholder="$t('settings.mcp.commandPlaceholder')"
+              />
+              <p class="form-hint">{{ $t('settings.mcp.commandHint') }}</p>
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.mcp.args') }}</label>
+              <textarea
+                v-model="serverForm.args"
+                class="form-input"
+                rows="3"
+                :placeholder="$t('settings.mcp.argsPlaceholder')"
+              ></textarea>
+              <p class="form-hint">{{ $t('settings.mcp.argsHint') }}</p>
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.mcp.env') }}</label>
+              <textarea
+                v-model="serverForm.env"
+                class="form-input"
+                rows="3"
+                :placeholder="$t('settings.mcp.envPlaceholder')"
+              ></textarea>
+              <p class="form-hint">{{ $t('settings.mcp.envHint') }}</p>
+            </div>
+          </template>
+
+          <!-- HTTP/SSE 模式字段 -->
+          <template v-if="isHttpMode">
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.mcp.url') }} *</label>
+              <input
+                v-model="serverForm.url"
+                type="text"
+                class="form-input"
+                :placeholder="$t('settings.mcp.urlPlaceholder')"
+              />
+              <p class="form-hint">{{ $t('settings.mcp.urlHint') }}</p>
+            </div>
+            <div class="form-item">
+              <label class="form-label">{{ $t('settings.mcp.headers') }}</label>
+              <textarea
+                v-model="serverForm.headers"
+                class="form-input"
+                rows="3"
+                :placeholder="$t('settings.mcp.headersPlaceholder')"
+              ></textarea>
+              <p class="form-hint">{{ $t('settings.mcp.headersHint') }}</p>
+            </div>
+          </template>
+
           <div class="form-item checkbox">
             <label class="form-label">
               <input v-model="serverForm.is_public" type="checkbox" />
@@ -290,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useToastStore } from '@/stores/toast'
@@ -314,16 +359,33 @@ const showServerDialog = ref(false)
 const editingServer = ref<McpServer | null>(null)
 const serverForm = reactive({
   name: '',
+  transport_type: 'stdio' as 'stdio' | 'http',
+  // STDIO 字段
   command: '',
   args: '',
   env: '',
+  // HTTP 字段
+  url: '',
+  headers: '',
+  // 公共字段
   is_public: false,
   is_active: true,
 })
 
 const isServerFormValid = computed(() => {
-  return serverForm.name.trim() && serverForm.command.trim()
+  if (!serverForm.name.trim()) return false
+  
+  // 根据传输类型验证必填字段
+  if (serverForm.transport_type === 'stdio') {
+    return !!serverForm.command.trim()
+  } else if (serverForm.transport_type === 'http') {
+    return !!serverForm.url.trim()
+  }
+  return true
 })
+
+const isStdioMode = computed(() => serverForm.transport_type === 'stdio')
+const isHttpMode = computed(() => serverForm.transport_type === 'http')
 
 // Server 删除对话框
 const showDeleteServerDialog = ref(false)
@@ -353,7 +415,8 @@ const defaultCredentialForm = reactive({
 const loadServers = async () => {
   loading.value = true
   try {
-    servers.value = await mcpApi.getServers()
+    const result = await mcpApi.getServers()
+    servers.value = (result as any)?.servers || result as any || []
   } catch (error: any) {
     toast.error(t('settings.mcp.loadServersFailed') + ': ' + error.message)
   } finally {
@@ -379,7 +442,7 @@ const selectServer = (server: McpServer) => {
 const loadServerTools = async (serverId: string) => {
   toolsLoading.value = true
   try {
-    serverTools.value = await mcpApi.getServerTools(serverId)
+    serverTools.value = (await mcpApi.getServerTools(serverId) as any)?.tools || []
   } catch (error: any) {
     toast.error(t('settings.mcp.loadToolsFailed') + ': ' + error.message)
   } finally {
@@ -495,17 +558,26 @@ const openServerDialog = (server?: McpServer) => {
   if (server) {
     editingServer.value = server
     serverForm.name = server.name
-    serverForm.command = server.command
+    serverForm.transport_type = server.transport_type || 'stdio'
+    // STDIO 字段
+    serverForm.command = server.command || ''
     serverForm.args = server.args || ''
     serverForm.env = server.env || ''
+    // HTTP 字段
+    serverForm.url = server.url || ''
+    serverForm.headers = server.headers || ''
+    // 公共字段
     serverForm.is_public = server.is_public
     serverForm.is_active = server.is_active
   } else {
     editingServer.value = null
     serverForm.name = ''
+    serverForm.transport_type = 'stdio'
     serverForm.command = ''
     serverForm.args = ''
     serverForm.env = ''
+    serverForm.url = ''
+    serverForm.headers = ''
     serverForm.is_public = false
     serverForm.is_active = true
   }
@@ -521,40 +593,42 @@ const closeServerDialog = () => {
 // 保存 Server
 const saveServer = async () => {
   try {
+    // 构建请求数据
+    const requestData: any = {
+      name: serverForm.name,
+      transport_type: serverForm.transport_type,
+      is_public: serverForm.is_public,
+      is_active: serverForm.is_active,
+    }
+    
+    // 根据传输类型添加对应字段
+    if (serverForm.transport_type === 'stdio') {
+      requestData.command = serverForm.command
+      requestData.args = serverForm.args || undefined
+      requestData.env = serverForm.env || undefined
+    } else if (serverForm.transport_type === 'http') {
+      requestData.url = serverForm.url
+      requestData.headers = serverForm.headers || undefined
+    }
+
     if (editingServer.value) {
-      const result = await mcpApi.updateServer(editingServer.value.id, {
-        name: serverForm.name,
-        command: serverForm.command,
-        args: serverForm.args || undefined,
-        env: serverForm.env || undefined,
-        is_public: serverForm.is_public,
-        is_active: serverForm.is_active,
-      })
-      // 更新本地列表
-      const index = servers.value.findIndex(s => s.id === editingServer.value!.id)
-      if (index !== -1) {
-        servers.value[index] = result
-      }
-      // 如果当前选中的是被编辑的 Server，更新选中状态
-      if (selectedServer.value?.id === editingServer.value.id) {
-        selectedServer.value = result
-      }
+      await mcpApi.updateServer(editingServer.value.id, requestData)
       toast.success(t('settings.mcp.saveServerSuccess'))
     } else {
-      const result = await mcpApi.createServer({
-        name: serverForm.name,
-        command: serverForm.command,
-        args: serverForm.args || undefined,
-        env: serverForm.env || undefined,
-        is_public: serverForm.is_public,
-        is_active: serverForm.is_active,
-      })
-      servers.value.push(result)
-      // 自动选中新创建的 Server
-      selectedServer.value = result
+      await mcpApi.createServer(requestData)
       toast.success(t('settings.mcp.createServerSuccess'))
     }
+    // 先记住编辑状态再关闭对话框
+    const wasEditing = !!editingServer.value
+    const editedId = editingServer.value?.id
     closeServerDialog()
+    await loadServers()
+    if (wasEditing && editedId) {
+      const updated = servers.value.find(s => s.id === editedId)
+      if (updated) selectedServer.value = updated
+    } else if (servers.value.length > 0) {
+      selectedServer.value = servers.value[servers.value.length - 1]
+    }
   } catch (error: any) {
     toast.error(t('settings.mcp.saveServerFailed') + ': ' + error.message)
   }
@@ -1063,5 +1137,42 @@ onMounted(async () => {
   font-size: 14px;
   color: var(--text-secondary, #666);
   margin: 0;
+}
+
+/* 传输类型选择器样式 */
+.transport-type-selector {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-secondary, #f8f9fa);
+}
+
+.radio-label:hover {
+  background: var(--bg-tertiary, #eee);
+}
+
+.radio-label input[type="radio"] {
+  cursor: pointer;
+}
+
+.radio-label input[type="radio"]:checked + span {
+  color: var(--primary-color, #2196f3);
+  font-weight: 500;
+}
+
+.radio-label:has(input[type="radio"]:checked) {
+  border-color: var(--primary-color, #2196f3);
+  background: rgba(33, 150, 243, 0.1);
 }
 </style>

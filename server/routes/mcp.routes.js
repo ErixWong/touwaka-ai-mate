@@ -91,6 +91,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
           name: server.name,
           display_name: server.display_name,
           description: server.description,
+          transport_type: server.transport_type,
+          command: server.command,
+          args: server.args,
+          env_template: server.env_template,
+          url: server.url,
+          headers: server.headers,
           icon: server.icon,
           category: server.category,
           is_public: server.is_public,
@@ -169,19 +175,100 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
+   * 刷新 MCP Server 工具列表
+   * POST /api/mcp/servers/:id/refresh-tools
+   */
+  router.post('/servers/:id/refresh-tools', requireAuth, async (ctx) => {
+    try {
+      const { id } = ctx.params;
+
+      const server = await MCPServer.findOne({
+        where: { id, is_enabled: true },
+        raw: true,
+      });
+
+      if (!server) {
+        ctx.status = 404;
+        ctx.error('MCP Server 不存在或未启用');
+        return;
+      }
+
+      // 先清除该 server 的旧工具缓存
+      await MCPToolsCache.destroy({
+        where: { mcp_server_id: id },
+      });
+
+      // 尝试通过驻留进程刷新
+      let refreshedTools = [];
+      try {
+        const result = await residentSkillManager.invokeByName(
+          'mcp-client',
+          'invoke',
+          {
+            action: 'refresh_tools',
+            server_name: server.name,
+          },
+          {},
+          30000
+        );
+        refreshedTools = result?.result?.tools || [];
+      } catch (err) {
+        logger.warn(`Refresh tools via resident process failed: ${err.message}, returning empty list`);
+      }
+
+      // 写入缓存
+      for (const tool of refreshedTools) {
+        await MCPToolsCache.create({
+          id: Utils.newID(16),
+          mcp_server_id: id,
+          tool_name: tool.name,
+          description: tool.description || '',
+          input_schema: tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
+          cached_at: new Date(),
+        });
+      }
+
+      const tools = await MCPToolsCache.findAll({
+        where: { mcp_server_id: id },
+        raw: true,
+      });
+
+      ctx.success({
+        tools: tools.map(t => ({
+          id: t.id,
+          name: t.tool_name,
+          description: t.description,
+          input_schema: t.input_schema,
+          cached_at: t.cached_at,
+        })),
+        message: refreshedTools.length > 0
+          ? `已刷新 ${refreshedTools.length} 个工具`
+          : '驻留进程未就绪，工具列表已清空。请启动 mcp-client 驻留进程后重试。',
+      });
+
+    } catch (error) {
+      logger.error('Refresh MCP tools error:', error);
+      ctx.error(error.message || '刷新工具列表失败', 500);
+    }
+  });
+
+  /**
    * 创建 MCP Server（管理员）
    * POST /api/mcp/servers
    */
-  router.post('/servers', requireAdmin, async (ctx) => {
+  router.post('/servers', requireAuth, requireAdmin, async (ctx) => {
     try {
       const userId = ctx.state.session.id;
       const {
         name,
         display_name,
         description,
+        transport_type = 'stdio',
         command,
         args,
         env_template,
+        url,
+        headers,
         is_public,
         requires_credentials,
         credential_fields,
@@ -190,9 +277,22 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       } = ctx.request.body;
 
       // 验证必要字段
-      if (!name || !command) {
-        ctx.error('缺少必要字段：name, command');
+      if (!name) {
+        ctx.error('缺少必要字段：name');
         return;
+      }
+
+      // 根据传输类型验证对应字段
+      if (transport_type === 'stdio') {
+        if (!command) {
+          ctx.error('STDIO 模式缺少必要字段：command');
+          return;
+        }
+      } else if (transport_type === 'http') {
+        if (!url) {
+          ctx.error('HTTP 模式缺少必要字段：url');
+          return;
+        }
       }
 
       // 检查名称是否已存在
@@ -214,9 +314,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         name,
         display_name,
         description,
-        command,
+        transport_type,
+        command: command || '',
         args: args || null,
         env_template: env_template || null,
+        url: url || null,
+        headers: headers || null,
         is_public: is_public || false,
         is_enabled: true,
         requires_credentials: requires_credentials || false,
@@ -226,7 +329,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         created_by: userId,
       });
 
-      logger.info(`MCP Server created: ${name} by ${userId}`);
+      logger.info(`MCP Server created: ${name} (transport_type: ${transport_type}) by ${userId}`);
 
       ctx.success({
         message: 'MCP Server 创建成功',
@@ -243,7 +346,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 更新 MCP Server（管理员）
    * PUT /api/mcp/servers/:id
    */
-  router.put('/servers/:id', requireAdmin, async (ctx) => {
+  router.put('/servers/:id', requireAuth, requireAdmin, async (ctx) => {
     try {
       const { id } = ctx.params;
       const updateData = ctx.request.body;
@@ -258,8 +361,8 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
 
       // 更新字段
       const allowedFields = [
-        'display_name', 'description', 'command', 'args', 'env_template',
-        'is_public', 'is_enabled', 'requires_credentials', 'credential_fields',
+        'display_name', 'description', 'transport_type', 'command', 'args', 'env_template',
+        'url', 'headers', 'is_public', 'is_enabled', 'requires_credentials', 'credential_fields',
         'icon', 'category'
       ];
 
@@ -285,7 +388,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 删除 MCP Server（管理员）
    * DELETE /api/mcp/servers/:id
    */
-  router.delete('/servers/:id', requireAdmin, async (ctx) => {
+  router.delete('/servers/:id', requireAuth, requireAdmin, async (ctx) => {
     try {
       const { id } = ctx.params;
 
@@ -470,7 +573,6 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         raw: true,
       });
 
-      // 获取关联的 MCP Server 信息
       const serverIds = credentials.map(c => c.mcp_server_id);
       const servers = await MCPServer.findAll({
         where: { id: serverIds },
@@ -489,7 +591,6 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
           is_enabled: c.is_enabled,
           created_at: c.created_at,
           updated_at: c.updated_at,
-          // 不返回凭证内容
         };
       });
 
@@ -502,22 +603,39 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
-   * 配置用户凭证
-   * POST /api/mcp/credentials
+   * 获取当前用户对特定 Server 的凭证
+   * GET /api/mcp/credentials/:serverId
    */
-  router.post('/credentials', requireAuth, async (ctx) => {
+  router.get('/credentials/:serverId', requireAuth, async (ctx) => {
     try {
       const userId = ctx.state.session.id;
-      const { mcp_server_id, credentials } = ctx.request.body;
+      const { serverId } = ctx.params;
 
-      if (!mcp_server_id || !credentials) {
-        ctx.error('缺少必要字段：mcp_server_id, credentials');
-        return;
-      }
+      const credential = await MCPUserCredential.findOne({
+        where: { user_id: userId, mcp_server_id: serverId },
+        raw: true,
+      });
 
-      // 检查 MCP Server 是否存在
+      ctx.success(credential || null);
+
+    } catch (error) {
+      logger.error('Get MCP user credential error:', error);
+      ctx.error(error.message || '获取用户凭证失败', 500);
+    }
+  });
+
+  /**
+   * 设置当前用户对特定 Server 的凭证
+   * POST /api/mcp/credentials/:serverId
+   */
+  router.post('/credentials/:serverId', requireAuth, async (ctx) => {
+    try {
+      const userId = ctx.state.session.id;
+      const { serverId } = ctx.params;
+      const { env_overrides } = ctx.request.body;
+
       const server = await MCPServer.findOne({
-        where: { id: mcp_server_id, is_enabled: true },
+        where: { id: serverId, is_enabled: true },
         raw: true,
       });
 
@@ -527,50 +645,46 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
-      // 检查是否已存在凭证
       let existing = await MCPUserCredential.findOne({
-        where: { user_id: userId, mcp_server_id },
+        where: { user_id: userId, mcp_server_id: serverId },
       });
 
       if (existing) {
-        // 更新
-        existing.credentials = credentials;
+        existing.credentials = { env_overrides };
         existing.is_enabled = true;
         await existing.save();
-        logger.info(`MCP user credential updated: user=${userId}, server=${mcp_server_id}`);
+        logger.info(`MCP user credential updated: user=${userId}, server=${serverId}`);
+        ctx.success(existing);
       } else {
-        // 创建
         const credentialId = Utils.newID(16);
-        await MCPUserCredential.create({
+        const created = await MCPUserCredential.create({
           id: credentialId,
           user_id: userId,
-          mcp_server_id,
-          credentials,
+          mcp_server_id: serverId,
+          credentials: { env_overrides },
           is_enabled: true,
         });
-        logger.info(`MCP user credential created: user=${userId}, server=${mcp_server_id}`);
+        logger.info(`MCP user credential created: user=${userId}, server=${serverId}`);
+        ctx.success(created);
       }
 
-      ctx.success({ message: '凭证配置成功' });
-
     } catch (error) {
-      logger.error('Create MCP credential error:', error);
-      ctx.error(error.message || '配置凭证失败', 500);
+      logger.error('Set MCP user credential error:', error);
+      ctx.error(error.message || '设置用户凭证失败', 500);
     }
   });
 
   /**
-   * 删除用户凭证
-   * DELETE /api/mcp/credentials/:id
+   * 删除当前用户对特定 Server 的凭证
+   * DELETE /api/mcp/credentials/:serverId
    */
-  router.delete('/credentials/:id', requireAuth, async (ctx) => {
+  router.delete('/credentials/:serverId', requireAuth, async (ctx) => {
     try {
-      const { id } = ctx.params;
       const userId = ctx.state.session.id;
+      const { serverId } = ctx.params;
 
-      // 检查凭证是否存在且属于当前用户
       const credential = await MCPUserCredential.findOne({
-        where: { id, user_id: userId },
+        where: { user_id: userId, mcp_server_id: serverId },
       });
 
       if (!credential) {
@@ -580,14 +694,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       }
 
       await credential.destroy();
-
-      logger.info(`MCP user credential deleted: id=${id}, user=${userId}`);
-
+      logger.info(`MCP user credential deleted: user=${userId}, server=${serverId}`);
       ctx.success({ message: '凭证已删除' });
 
     } catch (error) {
-      logger.error('Delete MCP credential error:', error);
-      ctx.error(error.message || '删除凭证失败', 500);
+      logger.error('Delete MCP user credential error:', error);
+      ctx.error(error.message || '删除用户凭证失败', 500);
     }
   });
 
@@ -597,7 +709,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 获取系统默认凭证列表（管理员）
    * GET /api/mcp/default-credentials
    */
-  router.get('/default-credentials', requireAdmin, async (ctx) => {
+  router.get('/default-credentials', requireAuth, requireAdmin, async (ctx) => {
     try {
       const credentials = await MCPCredential.findAll({
         raw: true,
@@ -639,7 +751,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
    * 配置系统默认凭证（管理员）
    * POST /api/mcp/default-credentials
    */
-  router.post('/default-credentials', requireAdmin, async (ctx) => {
+  router.post('/default-credentials', requireAuth, requireAdmin, async (ctx) => {
     try {
       const userId = ctx.state.session.id;
       const { mcp_server_id, credentials } = ctx.request.body;
@@ -694,15 +806,86 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
-   * 删除系统默认凭证（管理员）
-   * DELETE /api/mcp/default-credentials/:id
+   * 获取特定 Server 的系统默认凭证（管理员）
+   * GET /api/mcp/default-credentials/:serverId
    */
-  router.delete('/default-credentials/:id', requireAdmin, async (ctx) => {
+  router.get('/default-credentials/:serverId', requireAuth, requireAdmin, async (ctx) => {
     try {
-      const { id } = ctx.params;
+      const { serverId } = ctx.params;
 
       const credential = await MCPCredential.findOne({
-        where: { id },
+        where: { mcp_server_id: serverId },
+        raw: true,
+      });
+
+      ctx.success(credential || null);
+
+    } catch (error) {
+      logger.error('Get MCP default credential error:', error);
+      ctx.error(error.message || '获取系统默认凭证失败', 500);
+    }
+  });
+
+  /**
+   * 设置特定 Server 的系统默认凭证（管理员）
+   * POST /api/mcp/default-credentials/:serverId
+   */
+  router.post('/default-credentials/:serverId', requireAuth, requireAdmin, async (ctx) => {
+    try {
+      const userId = ctx.state.session.id;
+      const { serverId } = ctx.params;
+      const { env_overrides } = ctx.request.body;
+
+      const server = await MCPServer.findOne({
+        where: { id: serverId, is_enabled: true },
+        raw: true,
+      });
+
+      if (!server) {
+        ctx.status = 404;
+        ctx.error('MCP Server 不存在或未启用');
+        return;
+      }
+
+      let existing = await MCPCredential.findOne({
+        where: { mcp_server_id: serverId },
+      });
+
+      if (existing) {
+        existing.credentials = { env_overrides };
+        existing.is_enabled = true;
+        await existing.save();
+        logger.info(`MCP default credential updated: server=${serverId}, by=${userId}`);
+        ctx.success(existing);
+      } else {
+        const credentialId = Utils.newID(16);
+        const created = await MCPCredential.create({
+          id: credentialId,
+          mcp_server_id: serverId,
+          credentials: { env_overrides },
+          is_enabled: true,
+          created_by: userId,
+        });
+        logger.info(`MCP default credential created: server=${serverId}, by=${userId}`);
+        ctx.success(created);
+      }
+
+    } catch (error) {
+      logger.error('Set MCP default credential error:', error);
+      ctx.error(error.message || '设置系统默认凭证失败', 500);
+    }
+  });
+
+  /**
+   * 删除特定 Server 的系统默认凭证（管理员）
+   * DELETE /api/mcp/default-credentials/:serverId
+   */
+  router.delete('/default-credentials/:serverId', requireAuth, requireAdmin, async (ctx) => {
+    try {
+      const { serverId } = ctx.params;
+
+      const credential = await MCPCredential.findOne({
+        where: { mcp_server_id: serverId },
       });
 
       if (!credential) {
@@ -712,9 +895,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       }
 
       await credential.destroy();
-
-      logger.info(`MCP default credential deleted: id=${id}`);
-
+      logger.info(`MCP default credential deleted: server=${serverId}`);
       ctx.success({ message: '系统默认凭证已删除' });
 
     } catch (error) {

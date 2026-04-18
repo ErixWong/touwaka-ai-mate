@@ -894,6 +894,66 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== MCP HTTP 传输支持 ====================
+  {
+    name: 'mcp_servers.add_transport_type_and_http_fields',
+    check: async (conn) => await hasColumn(conn, 'mcp_servers', 'transport_type'),
+    migrate: async (conn) => {
+      // 添加 transport_type 字段
+      await conn.execute(`
+        ALTER TABLE mcp_servers 
+        ADD COLUMN transport_type ENUM('stdio', 'http', 'sse') DEFAULT 'stdio' COMMENT 'MCP 传输类型：stdio=标准输入输出, http=HTTP Stream, sse=Server-Sent Events'
+      `);
+      console.log('  ✓ Added transport_type column to mcp_servers');
+
+      // 添加 url 字段（HTTP MCP Server 地址）
+      await conn.execute(`
+        ALTER TABLE mcp_servers 
+        ADD COLUMN url VARCHAR(512) NULL COMMENT 'HTTP MCP Server URL（transport_type=http 时使用）'
+      `);
+      console.log('  ✓ Added url column to mcp_servers');
+
+      // 添加 headers 字段（HTTP 请求头）
+      await conn.execute(`
+        ALTER TABLE mcp_servers 
+        ADD COLUMN headers TEXT NULL COMMENT 'HTTP Headers，JSON 格式（transport_type=http 时使用）'
+      `);
+      console.log('  ✓ Added headers column to mcp_servers');
+
+      // 为已有数据设置默认值
+      await conn.execute(`
+        UPDATE mcp_servers 
+        SET transport_type = 'stdio' 
+        WHERE transport_type IS NULL
+      `);
+      console.log('  ✓ Set default transport_type for existing records');
+    }
+  },
+
+  // ==================== MCP Client 驻留技能注册 ====================
+  {
+    name: 'mcp-client.skill_registration',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`SELECT id FROM skills WHERE id = 'mcp-client'`);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      // 注册技能
+      await conn.execute(`
+        INSERT INTO skills (id, name, description, source_type, source_path, is_active, created_at, updated_at)
+        VALUES ('mcp-client', 'MCP Client', 'MCP 客户端驻留进程 - 管理多 MCP Server 连接（STDIO/HTTP Stream）', 'local', 'skills/mcp-client', 1, NOW(), NOW())
+      `);
+      console.log('  ✓ Registered mcp-client skill');
+
+      // 注册驻留工具
+      await conn.execute(`
+        INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, is_resident, created_at, updated_at)
+        VALUES ('mcp-client-invoke', 'mcp-client', 'invoke', 'MCP Client 驻留进程入口工具', '{"type":"object","properties":{"action":{"type":"string","description":"操作类型"}}}', 'index.js', 1, NOW(), NOW())
+      `);
+      console.log('  ✓ Registered mcp-client invoke tool (is_resident=1)');
+    }
+  },
+
 ];
 
 /**
