@@ -336,7 +336,7 @@ export interface ResidentProcessStatus {
   tool_name: string
   skill_id: string
   skill_name: string
-  state: 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'ERROR'
+  state: 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
   pid: number | null
   started_at: string | null
   pending_tasks: number
@@ -351,8 +351,11 @@ export interface ResidentProcessStatus {
 // 驻留进程通信记录
 export interface ResidentCommunication {
   timestamp: string
-  type: 'invoke' | 'result'
+  direction: 'out' | 'in'
+  task_id: string
+  type: 'invoke' | 'response'
   summary: string
+  status: 'success' | 'error' | 'pending'
 }
 
 // 技能管理相关 API（Skills Studio 使用）
