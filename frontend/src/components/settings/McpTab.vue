@@ -618,14 +618,16 @@ const saveServer = async () => {
       await mcpApi.createServer(requestData)
       toast.success(t('settings.mcp.createServerSuccess'))
     }
+    // 先记住编辑状态再关闭对话框
+    const wasEditing = !!editingServer.value
+    const editedId = editingServer.value?.id
     closeServerDialog()
     await loadServers()
-    // 如果是新建，选中新创建的 Server
-    if (editingServer.value) {
-      const updated = servers.value.find(s => s.id === editingServer.value!.id)
+    if (wasEditing && editedId) {
+      const updated = servers.value.find(s => s.id === editedId)
       if (updated) selectedServer.value = updated
-    } else {
-      selectedServer.value = servers.value[servers.value.length - 1] || null
+    } else if (servers.value.length > 0) {
+      selectedServer.value = servers.value[servers.value.length - 1]
     }
   } catch (error: any) {
     toast.error(t('settings.mcp.saveServerFailed') + ': ' + error.message)
