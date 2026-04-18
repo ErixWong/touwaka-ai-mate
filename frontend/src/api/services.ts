@@ -992,7 +992,7 @@ export const mcpApi = {
 
   // 获取 MCP Server 列表
   getServers: () =>
-    apiRequest<McpServer[]>(apiClient.get('/mcp/servers')),
+    apiRequest<{ servers: McpServer[] }>(apiClient.get('/mcp/servers')),
 
   // 获取单个 MCP Server
   getServer: (id: string) =>

@@ -415,7 +415,8 @@ const defaultCredentialForm = reactive({
 const loadServers = async () => {
   loading.value = true
   try {
-    servers.value = await mcpApi.getServers()
+    const result = await mcpApi.getServers()
+    servers.value = (result as any)?.servers || result as any || []
   } catch (error: any) {
     toast.error(t('settings.mcp.loadServersFailed') + ': ' + error.message)
   } finally {
@@ -605,31 +606,27 @@ const saveServer = async () => {
       requestData.command = serverForm.command
       requestData.args = serverForm.args || undefined
       requestData.env = serverForm.env || undefined
-    } else if (serverForm.transport_type === 'http' || serverForm.transport_type === 'sse') {
+    if (serverForm.transport_type === 'http') {
       requestData.url = serverForm.url
       requestData.headers = serverForm.headers || undefined
     }
 
     if (editingServer.value) {
-      const result = await mcpApi.updateServer(editingServer.value.id, requestData)
-      // 更新本地列表
-      const index = servers.value.findIndex(s => s.id === editingServer.value!.id)
-      if (index !== -1) {
-        servers.value[index] = result
-      }
-      // 如果当前选中的是被编辑的 Server，更新选中状态
-      if (selectedServer.value?.id === editingServer.value.id) {
-        selectedServer.value = result
-      }
+      await mcpApi.updateServer(editingServer.value.id, requestData)
       toast.success(t('settings.mcp.saveServerSuccess'))
     } else {
-      const result = await mcpApi.createServer(requestData)
-      servers.value.push(result)
-      // 自动选中新创建的 Server
-      selectedServer.value = result
+      await mcpApi.createServer(requestData)
       toast.success(t('settings.mcp.createServerSuccess'))
     }
     closeServerDialog()
+    await loadServers()
+    // 如果是新建，选中新创建的 Server
+    if (editingServer.value) {
+      const updated = servers.value.find(s => s.id === editingServer.value!.id)
+      if (updated) selectedServer.value = updated
+    } else {
+      selectedServer.value = servers.value[servers.value.length - 1] || null
+    }
   } catch (error: any) {
     toast.error(t('settings.mcp.saveServerFailed') + ': ' + error.message)
   }
