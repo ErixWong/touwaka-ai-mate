@@ -606,7 +606,7 @@ const saveServer = async () => {
       requestData.command = serverForm.command
       requestData.args = serverForm.args || undefined
       requestData.env = serverForm.env || undefined
-    if (serverForm.transport_type === 'http') {
+    } else if (serverForm.transport_type === 'http') {
       requestData.url = serverForm.url
       requestData.headers = serverForm.headers || undefined
     }
