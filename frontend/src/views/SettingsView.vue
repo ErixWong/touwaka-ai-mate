@@ -1,20 +1,33 @@
 <template>
   <div class="settings-view">
-    <h1 class="view-title">
-      {{ currentGroup === 'organization' ? $t('nav.organization') : currentGroup === 'system' ? $t('nav.system') : $t('nav.personal') }}
-    </h1>
-
-    <div class="settings-menu">
-      <button
-        v-for="item in currentMenuItems"
-        :key="item.key"
-        class="menu-item-btn"
-        :class="{ active: activeTab === item.key }"
-        @click="activeTab = item.key"
-      >
-        {{ item.label }}
-      </button>
+    <!-- 左侧菜单 -->
+    <div class="settings-sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <!-- 折叠按钮 -->
+      <div class="sidebar-header">
+        <button 
+          class="collapse-btn" 
+          @click="sidebarCollapsed = !sidebarCollapsed"
+          :title="sidebarCollapsed ? '展开菜单' : '收起菜单'"
+        >
+          <span class="collapse-icon">{{ sidebarCollapsed ? '→' : '←' }}</span>
+        </button>
+      </div>
+      <div class="sidebar-menu">
+        <button
+          v-for="item in currentMenuItems"
+          :key="item.key"
+          class="menu-item-btn"
+          :class="{ active: activeTab === item.key }"
+          @click="activeTab = item.key"
+          :title="item.label"
+        >
+          <span class="menu-text">{{ item.label }}</span>
+        </button>
+      </div>
     </div>
+
+    <!-- 右侧主显示区 -->
+    <div class="settings-main">
 
     <!-- 个人资料 -->
     <div v-if="activeTab === 'profile'" class="settings-section profile-section">
@@ -585,7 +598,7 @@
     </div>
 
     <!-- 驻留进程管理（仅管理员） -->
-    <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section">
+    <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section" style="padding: 0; overflow: hidden;">
       <ResidentProcessesTab />
     </div>
 
@@ -1585,6 +1598,7 @@
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <script setup lang="ts">
@@ -1670,6 +1684,7 @@ const getInitialTab = () => {
 
 const activeTab = ref(getInitialTab())
 const profileSubTab = ref<'basic' | 'password'>('basic')
+const sidebarCollapsed = ref(false)
 
 const profileForm = reactive({
   nickname: '',
@@ -2801,52 +2816,111 @@ onMounted(() => {
 
 <style scoped>
 .settings-view {
-  padding: 24px;
-  width: 80%;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.view-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 24px 0;
-  color: var(--text-primary, #333);
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 64px);
 }
 
 /* 设置菜单样式 */
-.settings-menu {
+.settings-sidebar {
+  flex: 0 0 220px;
+  background: var(--secondary-bg, #f8f9fa);
+  border-right: 1px solid var(--border-color, #e0e0e0);
   display: flex;
-  gap: 4px;
-  margin-bottom: 24px;
+  flex-direction: column;
+  transition: flex-basis 0.3s ease;
+}
+
+.settings-sidebar.collapsed {
+  flex-basis: 48px;
+}
+
+/* 侧边栏头部 */
+.sidebar-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.collapse-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary, #666);
+}
+
+.collapse-btn:hover {
+  background: var(--hover-bg, #e8e8e8);
+  border-color: var(--primary-color, #2196f3);
+  color: var(--primary-color, #2196f3);
+}
+
+.collapse-icon {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.sidebar-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  gap: 4px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .menu-item-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
+  padding: 10px 16px;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.2s;
+  text-align: left;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .menu-item-btn:hover {
   color: var(--text-primary, #333);
-  background: var(--secondary-bg, #f5f5f5);
+  background: var(--hover-bg, #e8e8e8);
 }
 
 .menu-item-btn.active {
   color: var(--primary-color, #2196f3);
-  border-bottom-color: var(--primary-color, #2196f3);
   background: var(--primary-light, #e3f2fd);
+}
+
+/* 收起状态下的菜单样式 */
+.settings-sidebar.collapsed .menu-item-btn {
+  padding: 10px;
+  justify-content: center;
+}
+
+.settings-sidebar.collapsed .menu-text {
+  display: none;
+}
+
+.settings-main {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  transition: padding 0.3s ease;
 }
 
 .settings-section {
@@ -3446,17 +3520,49 @@ onMounted(() => {
 }
 
 /* 响应式 */
-@media (max-width: 1024px) {
-  .settings-view {
-    width: 95%;
-    padding: 16px;
-  }
-}
-
 @media (max-width: 768px) {
   .settings-view {
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .settings-sidebar {
+    flex: none;
     width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+  }
+
+  .settings-sidebar.collapsed {
+    flex-basis: auto;
+  }
+
+  .sidebar-header {
+    display: none;
+  }
+
+  .sidebar-menu {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     padding: 12px;
+  }
+
+  .menu-item-btn {
+    white-space: nowrap;
+    padding: 8px 14px;
+  }
+
+  .settings-sidebar.collapsed .menu-item-btn {
+    padding: 8px 14px;
+  }
+
+  .settings-sidebar.collapsed .menu-text {
+    display: inline;
+  }
+
+  .settings-main {
+    padding: 16px;
   }
 
   .split-panel {
