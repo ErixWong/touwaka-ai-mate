@@ -894,6 +894,7 @@ const MIGRATIONS = [
     }
   },
 
+<<<<<<< HEAD
   // ==================== MCP HTTP 传输支持 ====================
   {
     name: 'mcp_servers.add_transport_type_and_http_fields',
