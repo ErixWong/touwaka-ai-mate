@@ -193,7 +193,7 @@ const validateInvitationCode = async (code: string) => {
   try {
     const result = await verifyInvitationCode(code)
     invitationValidation.value = result
-  } catch (err) {
+  } catch {
     invitationValidation.value = { valid: false, message: t('register.invitationCodeInvalid') }
   }
 }
@@ -267,8 +267,9 @@ const handleRegister = async () => {
 
     // 跳转到专家列表
     router.push({ name: 'experts' })
-  } catch (err: any) {
-    error.value = err.response?.data?.message || t('register.error')
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : t('register.error')
+    error.value = errorMsg
   } finally {
     loading.value = false
   }

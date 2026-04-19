@@ -108,8 +108,9 @@ const handleLogin = async () => {
       password: form.password,
     })
     router.push({ name: 'experts' })
-  } catch (err: any) {
-    error.value = err.message || err.response?.data?.message || t('login.error')
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : t('login.error')
+    error.value = errorMsg
   } finally {
     loading.value = false
   }
