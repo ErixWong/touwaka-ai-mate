@@ -147,6 +147,42 @@ grep -rn "// 错误已在" frontend/src/views/ frontend/src/components/
 
 3. **删除/保存等关键操作必须给用户明确的成功/失败反馈**
 
+4. **TypeScript 类型安全 - 禁止使用 `any` 类型**
+   ```typescript
+   // ❌ 错误 - 使用 any 类型
+   } catch (err: any) {
+     error.value = err.message || err.response?.data?.message
+   }
+   
+   // ✅ 正确 - 使用 unknown 类型 + 类型守卫
+   } catch (err: unknown) {
+     const errorMsg = err instanceof Error ? err.message : t('xxx.failed')
+     error.value = errorMsg
+   }
+   
+   // ✅ 正确 - 无需错误信息时可使用空 catch
+   } catch {
+     invitationValidation.value = { valid: false, message: t('xxx.invalid') }
+   }
+   ```
+
+5. **统一错误处理风格**
+   
+   所有错误处理必须遵循统一模式：
+   ```typescript
+   // 标准模板
+   } catch (err: unknown) {
+     const errorMsg = err instanceof Error ? err.message : t('xxx.failed')
+     // 处理错误消息：显示给用户或记录日志
+   }
+   ```
+   
+   | 场景 | 处理方式 |
+   |------|---------|
+   | 需要显示给用户 | `const errorMsg = err instanceof Error ? err.message : t('xxx.failed')` |
+   | 只需记录日志 | `console.error('描述:', err)` |
+   | 无需处理（已兜底）| `} catch { /* 静默处理 */ }` |
+
 ---
 
 ### API 权限校验专项检查
