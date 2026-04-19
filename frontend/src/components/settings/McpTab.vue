@@ -126,39 +126,48 @@
             </div>
             <div class="dialog-body">
               <p v-if="testingTool?.description" class="test-tool-desc">{{ testingTool.description }}</p>
-              <div v-if="testToolSchemaFields.length > 0" class="test-fields">
-                <div v-for="field in testToolSchemaFields" :key="field.name" class="test-field-item">
-                  <label class="test-field-label">
-                    {{ field.name }}
-                    <span v-if="field.required" class="required">*</span>
-                    <span v-if="field.type" class="field-type">{{ field.type }}</span>
-                  </label>
-                  <input
-                    v-model="testFieldValues[field.name]"
-                    class="form-input"
-                    :placeholder="field.description || field.name"
-                  />
+              <div class="test-tool-content">
+                <div class="test-tool-left">
+                  <div v-if="testToolSchemaFields.length > 0" class="test-fields">
+                    <div v-for="field in testToolSchemaFields" :key="field.name" class="test-field-item">
+                      <label class="test-field-label">
+                        {{ field.name }}
+                        <span v-if="field.required" class="required">*</span>
+                        <span v-if="field.type" class="field-type">{{ field.type }}</span>
+                      </label>
+                      <input
+                        v-model="testFieldValues[field.name]"
+                        class="form-input"
+                        :placeholder="field.description || field.name"
+                      />
+                    </div>
+                  </div>
+                  <div v-else class="form-item">
+                    <label class="form-label">{{ $t('settings.mcp.toolArgs') }}</label>
+                    <textarea
+                      v-model="testToolArgs"
+                      class="form-input"
+                      rows="6"
+                      :placeholder='$t("settings.mcp.toolArgsPlaceholder")'
+                    ></textarea>
+                  </div>
+                  <button class="btn-confirm btn-run-test" @click="executeTestTool" :disabled="testToolLoading">
+                    {{ testToolLoading ? $t('common.loading') : $t('settings.mcp.runTest') }}
+                  </button>
                 </div>
-              </div>
-              <div v-else class="form-item">
-                <label class="form-label">{{ $t('settings.mcp.toolArgs') }}</label>
-                <textarea
-                  v-model="testToolArgs"
-                  class="form-input"
-                  rows="3"
-                  :placeholder='$t("settings.mcp.toolArgsPlaceholder")'
-                ></textarea>
-              </div>
-              <div v-if="testToolResult !== null" class="test-result">
-                <label class="form-label">{{ $t('settings.mcp.testResult') }}</label>
-                <pre :class="['result-content', { 'result-error': testToolResult.startsWith('Error') }]">{{ testToolResult }}</pre>
+                <div class="test-tool-right">
+                  <label class="form-label">{{ $t('settings.mcp.testResult') }}</label>
+                  <textarea
+                    readonly
+                    :class="['result-textarea', { 'result-error': testToolResult?.startsWith('Error') }]"
+                    :value="testToolResult ?? ''"
+                    :placeholder="$t('settings.mcp.runTest')"
+                  ></textarea>
+                </div>
               </div>
             </div>
             <div class="dialog-footer">
               <button class="btn-cancel" @click="showTestToolDialog = false">{{ $t('common.cancel') }}</button>
-              <button class="btn-confirm" @click="executeTestTool" :disabled="testToolLoading">
-                {{ testToolLoading ? $t('common.loading') : $t('settings.mcp.runTest') }}
-              </button>
             </div>
           </div>
         </div>
@@ -525,6 +534,36 @@ const testToolLoading = ref(false)
 const testToolSchemaFields = ref<any[]>([])
 const testFieldValues = ref<Record<string, string>>({})
 
+function deepParseJson(val: any): any {
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val)
+      return deepParseJson(parsed)
+    } catch {
+      return val
+    }
+  }
+  if (Array.isArray(val)) return val.map(deepParseJson)
+  if (val && typeof val === 'object') {
+    const obj: Record<string, any> = {}
+    for (const [k, v] of Object.entries(val)) {
+      obj[k] = deepParseJson(v)
+    }
+    return obj
+  }
+  return val
+}
+
+function formatToolResult(result: any): string {
+  if (!result) return ''
+  // 驻留进程已经提取了 content 为字符串，需要递归解析多层转义
+  if (typeof result.content === 'string') {
+    const parsed = deepParseJson(result.content)
+    return JSON.stringify(parsed, null, 2)
+  }
+  return JSON.stringify(deepParseJson(result), null, 2)
+}
+
 const openTestToolDialog = (tool: any) => {
   testingTool.value = tool
   testToolResult.value = null
@@ -579,7 +618,7 @@ const executeTestTool = async () => {
       args = JSON.parse(testToolArgs.value || '{}')
     }
     const result = await mcpApi.callTool(selectedServer.value.id, testingTool.value.name, args)
-    testToolResult.value = JSON.stringify(result.result, null, 2)
+    testToolResult.value = formatToolResult(result.result)
   } catch (error: any) {
     testToolResult.value = `Error: ${error.message}`
   } finally {
@@ -1084,10 +1123,11 @@ onMounted(async () => {
 }
 
 .test-tool-dialog {
-  max-width: 520px;
+  max-width: 70vw !important;
+  width: 70vw;
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
+  max-height: 85vh;
 }
 .test-tool-dialog .dialog-header {
   display: flex;
@@ -1118,7 +1158,8 @@ onMounted(async () => {
 .test-tool-dialog .dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  overflow: hidden;
 }
 .test-tool-desc {
   font-size: 13px;
@@ -1126,6 +1167,32 @@ onMounted(async () => {
   margin: 0;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-light, #eee);
+}
+.test-tool-content {
+  display: flex;
+  gap: 16px;
+  min-height: 0;
+}
+.test-tool-left {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.test-tool-right {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.test-tool-right .form-label {
+  flex-shrink: 0;
+}
+.btn-run-test {
+  margin-top: 4px;
+  align-self: flex-start;
 }
 .test-fields {
   display: flex;
@@ -1152,26 +1219,26 @@ onMounted(async () => {
   font-weight: normal;
   margin-left: 6px;
 }
-.test-result {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.result-content {
-  background: var(--bg-tertiary, #1e1e1e);
-  color: #d4d4d4;
+.result-textarea {
+  flex: 1;
+  min-height: 300px;
+  background: var(--bg-secondary, #f8f9fa);
+  color: var(--text-primary, #333);
   padding: 12px;
   border-radius: 6px;
+  border: 1px solid var(--border-light, #eee);
   font-size: 12px;
   font-family: monospace;
-  max-height: 300px;
-  overflow: auto;
+  line-height: 1.5;
+  resize: none;
   white-space: pre-wrap;
   word-break: break-all;
-  margin: 0;
+}
+.result-textarea:focus {
+  outline: none;
 }
 .result-error {
-  border: 1px solid #e74c3c;
+  border-color: #e74c3c;
   color: #e74c3c;
   background: #fef5f5;
 }
