@@ -23,49 +23,48 @@
     <div v-if="activeTab === 'profile'" class="settings-section profile-section">
       <!-- 子 Tab 切换 -->
       <el-tabs v-model="profileSubTab" class="profile-tabs">
-        <el-tab-pane label="profileSubTab === 'basic' ? $t('settings.profileBasic') : ''" name="basic">
-          <div class="setting-item">
-            <label class="setting-label">{{ $t('settings.nickname') }}</label>
-            <el-input v-model="profileForm.nickname" />
-          </div>
-          <div class="setting-item">
-            <label class="setting-label">{{ $t('settings.language') }}</label>
-            <el-select v-model="profileForm.language">
-              <el-option label="中文" value="zh-CN" />
-              <el-option label="English" value="en-US" />
-            </el-select>
-          </div>
+        <el-tab-pane :label="$t('settings.profileBasic')" name="basic">
+          <el-form label-width="80px">
+            <el-form-item :label="$t('settings.nickname')">
+              <el-input v-model="profileForm.nickname" />
+            </el-form-item>
+            <el-form-item :label="$t('settings.language')">
+              <el-select v-model="profileForm.language">
+                <el-option label="中文" value="zh-CN" />
+                <el-option label="English" value="en-US" />
+              </el-select>
+            </el-form-item>
+          </el-form>
           <el-button type="primary" @click="saveProfile">{{ $t('settings.save') }}</el-button>
         </el-tab-pane>
-        
+
         <el-tab-pane :label="$t('settings.changePassword')" name="password">
-          <div class="setting-item">
-            <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
-            <el-input
-              v-model="passwordForm.old_password"
-              type="password"
-              :placeholder="$t('settings.oldPasswordPlaceholder')"
-              show-password
-            />
-          </div>
-          <div class="setting-item">
-            <label class="setting-label">{{ $t('settings.newPassword') }}</label>
-            <el-input
-              v-model="passwordForm.new_password"
-              type="password"
-              :placeholder="$t('settings.newPasswordPlaceholder')"
-              show-password
-            />
-          </div>
-          <div class="setting-item">
-            <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
-            <el-input
-              v-model="passwordForm.confirm_password"
-              type="password"
-              :placeholder="$t('settings.confirmPasswordPlaceholder')"
-              show-password
-            />
-          </div>
+          <el-form label-width="100px">
+            <el-form-item :label="$t('settings.oldPassword')">
+              <el-input
+                v-model="passwordForm.old_password"
+                type="password"
+                :placeholder="$t('settings.oldPasswordPlaceholder')"
+                show-password
+              />
+            </el-form-item>
+            <el-form-item :label="$t('settings.newPassword')">
+              <el-input
+                v-model="passwordForm.new_password"
+                type="password"
+                :placeholder="$t('settings.newPasswordPlaceholder')"
+                show-password
+              />
+            </el-form-item>
+            <el-form-item :label="$t('settings.confirmPassword')">
+              <el-input
+                v-model="passwordForm.confirm_password"
+                type="password"
+                :placeholder="$t('settings.confirmPasswordPlaceholder')"
+                show-password
+              />
+            </el-form-item>
+          </el-form>
           <el-button
             type="primary"
             :disabled="!isPasswordFormValid || passwordLoading"
@@ -2408,25 +2407,7 @@ onMounted(() => {
   color: var(--text-primary, #333);
 }
 
-.btn-icon-add {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  transition: background 0.2s;
-}
 
-.btn-icon-add:hover {
-  background: var(--primary-hover, #1976d2);
-}
 
 .provider-list-container,
 .model-list-container {
@@ -2552,23 +2533,7 @@ onMounted(() => {
   color: var(--text-secondary, #6c7780);
 }
 
-.btn-edit {
-  padding: 4px 10px;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
 
-.btn-edit:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
 
 .btn-edit.btn-inactive {
   border-color: var(--error-color, #c62828);
@@ -2596,9 +2561,6 @@ onMounted(() => {
 }
 
 /* 表单样式 */
-.setting-item {
-  margin-bottom: 20px;
-}
 
 .setting-item.checkbox {
   display: flex;
@@ -2612,126 +2574,26 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.setting-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  margin-bottom: 8px;
-}
 
 .setting-input,
-.setting-select {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-}
 
 .setting-input:focus,
-.setting-select:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
 
-.btn-save {
-  padding: 10px 24px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
 
-.btn-save:hover {
-  background: var(--primary-hover, #1976d2);
-}
 
 /* Dialog */
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
 
-.dialog {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-}
 
-.dialog-large {
-  max-width: 720px;
-}
 
-.dialog-confirm {
-  max-width: 400px;
-}
 
-.dialog-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  color: var(--text-primary, #333);
-}
 
-.dialog-body {
-  padding: 24px;
-  overflow-y: auto;
-  max-height: 60vh;
-}
 
-.dialog-message {
-  padding: 24px;
-  margin: 0;
-  color: var(--text-secondary, #666);
-}
 
-.dialog-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-}
 
-.footer-left {
-  display: flex;
-}
 
-.footer-right {
-  display: flex;
-  gap: 12px;
-}
 
-.form-row {
-  display: flex;
-  gap: 16px;
-}
 
-.form-row .form-item {
-  flex: 1;
-}
 
-.form-item {
-  margin-bottom: 16px;
-}
 
 .form-item.checkbox {
   display: flex;
@@ -2746,75 +2608,15 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.form-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary, #333);
-  margin: 20px 0 12px 0;
-  padding-top: 16px;
-  border-top: 1px dashed var(--border-color, #e0e0e0);
-}
 
-.form-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  margin-bottom: 6px;
-}
 
-.form-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-}
 
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
 
-.form-hint {
-  font-size: 12px;
-  color: var(--text-tertiary, #999);
-  margin: 6px 0 0 0;
-}
 
-.btn-cancel {
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-}
 
-.btn-cancel:hover {
-  background: var(--secondary-bg, #f5f5f5);
-}
 
-.btn-confirm {
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
 
-.btn-confirm:hover:not(:disabled) {
-  background: var(--primary-hover, #1976d2);
-}
 
-.btn-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .btn-confirm.delete {
   background: var(--error-color, #c62828);
@@ -2824,20 +2626,7 @@ onMounted(() => {
   background: var(--error-hover, #b71c1c);
 }
 
-.btn-delete {
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid var(--error-color, #c62828);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--error-color, #c62828);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.btn-delete:hover {
-  background: var(--error-bg, #ffebee);
-}
 
 /* 专家设置区域 */
 .expert-section {
@@ -2913,20 +2702,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-.btn-delete-small {
-  padding: 4px 10px;
-  background: white;
-  border: 1px solid var(--error-color, #c62828);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--error-color, #c62828);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.btn-delete-small:hover {
-  background: var(--error-bg, #ffebee);
-}
 
 /* About */
 .about-content {
@@ -2992,20 +2768,9 @@ onMounted(() => {
     max-height: 400px;
   }
 
-  .dialog-footer {
-    flex-direction: column;
-    gap: 12px;
+  .avatar-row {
+    align-items: flex-start;
   }
-
-  .footer-left,
-  .footer-right {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-.avatar-row {
-  align-items: flex-start;
 }
 
 .avatar-item {
@@ -3046,21 +2811,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-.btn-small {
-  padding: 6px 12px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-  color: var(--text-primary, #333);
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
 
-.btn-small:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
 
 .btn-small.btn-danger {
   color: var(--error-color, #c62828);
@@ -3073,22 +2824,7 @@ onMounted(() => {
 }
 
 /* 技能按钮 */
-.btn-skills {
-  padding: 4px 10px;
-  background: white;
-  border: 1px solid var(--primary-color, #2196f3);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--primary-color, #2196f3);
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
 
-.btn-skills:hover {
-  background: var(--primary-color, #2196f3);
-  color: white;
-}
 
 /* 技能管理对话框 */
 .skills-dialog-body {
@@ -3171,52 +2907,11 @@ onMounted(() => {
 }
 
 /* 切换开关 */
-.skill-toggle {
-  position: relative;
-  display: inline-block;
-  width: 48px;
-  height: 26px;
-  margin-left: 12px;
-  flex-shrink: 0;
-}
 
-.skill-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
 
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #ccc;
-  transition: .3s;
-  border-radius: 26px;
-}
 
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 20px;
-  width: 20px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: .3s;
-  border-radius: 50%;
-}
 
-.skill-toggle input:checked + .toggle-slider {
-  background: var(--primary-color, #2196f3);
-}
 
-.skill-toggle input:checked + .toggle-slider:before {
-  transform: translateX(22px);
-}
 
 .skills-count {
   font-size: 13px;
@@ -3231,10 +2926,6 @@ onMounted(() => {
     gap: 12px;
   }
 
-  .skill-toggle {
-    margin-left: 0;
-    align-self: flex-end;
-  }
 }
 
 /* 用户管理区域 */
@@ -3553,21 +3244,7 @@ onMounted(() => {
   background: var(--card-bg, #fff);
 }
 
-.sub-tab-btn {
-  padding: 14px 24px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.sub-tab-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--secondary-bg, #f5f5f5);
-}
 
 .sub-tab-btn.active {
   color: var(--primary-color, #2196f3);
@@ -3575,13 +3252,6 @@ onMounted(() => {
   background: var(--card-bg, #fff);
 }
 
-.role-tab-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
 
 .permissions-list,
 .experts-list {
@@ -3652,14 +3322,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.role-tab-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
 
 .permissions-count,
 .experts-count {
@@ -3686,10 +3348,6 @@ onMounted(() => {
     flex-wrap: wrap;
   }
 
-  .sub-tab-btn {
-    flex: 1;
-    text-align: center;
-  }
 }
 
 /* 专家对话框 Tab 样式 */
@@ -3697,30 +3355,8 @@ onMounted(() => {
   padding: 0;
 }
 
-.expert-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--secondary-bg, #f8f9fa);
-  padding: 0 24px;
-}
 
-.expert-tab-btn {
-  padding: 14px 24px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.expert-tab-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--hover-bg, #e8e8e8);
-}
 
 .expert-tab-btn.active {
   color: var(--primary-color, #2196f3);
@@ -3728,15 +3364,7 @@ onMounted(() => {
   background: var(--card-bg, #fff);
 }
 
-.expert-tab-content {
-  padding: 24px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
 
-.expert-tab-pane {
-  animation: fadeIn 0.2s ease-in-out;
-}
 
 @keyframes fadeIn {
   from {
@@ -3755,18 +3383,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.profile-sub-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
 
-.profile-tab-content {
-  padding: 24px;
-}
 
-.profile-tab-content .btn-save {
-  margin-top: 8px;
-}
 </style>
