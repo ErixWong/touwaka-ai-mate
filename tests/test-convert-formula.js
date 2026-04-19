@@ -21,7 +21,6 @@ import events from 'events';
 import string_decoder from 'string_decoder';
 import querystring from 'querystring';
 import { fileURLToPath } from 'url';
-import xlsx from 'xlsx';
 import exceljs from 'exceljs';
 import hyperformula from 'hyperformula';
 
@@ -68,7 +67,6 @@ function executeSkill(code, skillId) {
         'buffer': buffer,
         'events': events,
         'string_decoder': string_decoder,
-        'xlsx': xlsx,
         'exceljs': exceljs,
         'hyperformula': hyperformula,
       };
