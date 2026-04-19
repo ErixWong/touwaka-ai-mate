@@ -864,38 +864,6 @@
       </div>
     </div>
 
-    <!-- Provider 删除确认对话框 -->
-    <div v-if="showDeleteProviderDialog" class="dialog-overlay">
-      <div class="dialog dialog-confirm">
-        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
-        <p class="dialog-message">
-          {{ $t('settings.deleteProviderConfirm', { name: deletingProvider?.name }) }}
-        </p>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteProviderDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteProvider">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Model 删除确认对话框 -->
-    <div v-if="showDeleteModelDialog" class="dialog-overlay">
-      <div class="dialog dialog-confirm">
-        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
-        <p class="dialog-message">
-          {{ $t('settings.deleteModelConfirm', { name: deletingModel?.name }) }}
-        </p>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteModelDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteModel">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- Expert 添加/编辑对话框 -->
     <div v-if="showExpertDialog" class="dialog-overlay">
       <div class="dialog dialog-large expert-dialog">
@@ -1234,22 +1202,6 @@
       </div>
     </div>
 
-    <!-- Expert 删除确认对话框 -->
-    <div v-if="showDeleteExpertDialog" class="dialog-overlay">
-      <div class="dialog dialog-confirm">
-        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
-        <p class="dialog-message">
-          {{ $t('settings.deleteExpertConfirm', { name: deletingExpert?.name }) }}
-        </p>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteExpertDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteExpert">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 技能管理对话框 -->
     <div v-if="showSkillsDialog" class="dialog-overlay">
       <div class="dialog dialog-large">
@@ -1535,21 +1487,6 @@
     </div>
 
     <!-- 用户删除确认对话框 -->
-    <div v-if="showDeleteUserDialog" class="dialog-overlay">
-      <div class="dialog dialog-confirm">
-        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
-        <p class="dialog-message">
-          {{ $t('settings.deleteUserConfirm', { name: deletingUser?.nickname || deletingUser?.username }) }}
-        </p>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteUserDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteUser">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 角色编辑对话框 -->
     <div v-if="showRoleDialog" class="dialog-overlay">
       <div class="dialog">
@@ -1605,6 +1542,7 @@
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
@@ -1788,10 +1726,6 @@ const isProviderFormValid = computed(() => {
   return providerForm.name.trim() && providerForm.base_url.trim()
 })
 
-// Provider 删除对话框
-const showDeleteProviderDialog = ref(false)
-const deletingProvider = ref<ModelProvider | null>(null)
-
 // Model 对话框
 const showModelDialog = ref(false)
 const editingModel = ref<AIModel | null>(null)
@@ -1814,10 +1748,6 @@ const modelForm = reactive<ModelFormData>({
 const isModelFormValid = computed(() => {
   return modelForm.name?.trim() && modelForm.model_name?.trim() && modelForm.provider_id?.trim()
 })
-
-// Model 删除对话框
-const showDeleteModelDialog = ref(false)
-const deletingModel = ref<AIModel | null>(null)
 
 // Expert 对话框
 const showExpertDialog = ref(false)
@@ -1863,10 +1793,6 @@ const expertTabs = computed(() => [
   { key: 'model' as const, label: t('settings.expertTabModel') },
 ])
 
-// Expert 删除对话框
-const showDeleteExpertDialog = ref(false)
-const deletingExpert = ref<Expert | null>(null)
-
 // 技能管理对话框
 const showSkillsDialog = ref(false)
 const currentExpertForSkills = ref<Expert | null>(null)
@@ -1909,10 +1835,6 @@ const userForm = reactive({
 // 角色列表
 const rolesList = ref<import('@/types').Role[]>([])
 const rolesLoading = ref(false)
-
-// 用户删除对话框
-const showDeleteUserDialog = ref(false)
-const deletingUser = ref<UserListItem | null>(null)
 
 // 用户头像上传 ref
 const userAvatarInput = ref<HTMLInputElement | null>(null)
@@ -2112,36 +2034,51 @@ const saveUser = async () => {
 }
 
 // 确认删除用户
-const confirmDeleteUser = (user: UserListItem) => {
-  deletingUser.value = user
-  showDeleteUserDialog.value = true
-}
-
-// 从对话框内确认删除
-const confirmDeleteUserFromDialog = () => {
-  if (editingUser.value) {
-    deletingUser.value = editingUser.value
-    showDeleteUserDialog.value = true
+const confirmDeleteUser = async (user: UserListItem) => {
+  try {
+    await ElMessageBox.confirm(
+      t('settings.deleteUserConfirm', { name: user.nickname || user.username }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await userApi.deleteUser(user.id)
+    loadUsers()
+  } catch (err) {
+    if (err !== 'cancel') {
+      console.error('删除用户失败:', err)
+      toast.error(t('settings.deleteUserFailed'))
+    }
   }
 }
 
-// 关闭删除确认对话框
-const closeDeleteUserDialog = () => {
-  showDeleteUserDialog.value = false
-  deletingUser.value = null
-}
-
-// 删除用户
-const deleteUser = async () => {
-  if (!deletingUser.value) return
+// 从对话框内确认删除
+const confirmDeleteUserFromDialog = async () => {
+  if (!editingUser.value) return
+  
   try {
-    await userApi.deleteUser(deletingUser.value.id)
-    closeDeleteUserDialog()
+    await ElMessageBox.confirm(
+      t('settings.deleteUserConfirm', { name: editingUser.value.nickname || editingUser.value.username }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await userApi.deleteUser(editingUser.value.id)
     closeUserDialog()
     loadUsers()
   } catch (err) {
-    console.error('删除用户失败:', err)
-    toast.error(t('settings.deleteUserFailed'))
+    if (err !== 'cancel') {
+      console.error('删除用户失败:', err)
+      toast.error(t('settings.deleteUserFailed'))
+    }
   }
 }
 
@@ -2465,32 +2402,30 @@ const saveProvider = async () => {
   }
 }
 
-const confirmDeleteProviderFromDialog = () => {
-  if (editingProvider.value) {
-    deletingProvider.value = editingProvider.value
-    showDeleteProviderDialog.value = true
-  }
-}
-
-const closeDeleteProviderDialog = () => {
-  showDeleteProviderDialog.value = false
-  deletingProvider.value = null
-}
-
-const deleteProvider = async () => {
-  if (!deletingProvider.value) return
+const confirmDeleteProviderFromDialog = async () => {
+  if (!editingProvider.value) return
+  
   try {
-    await providerStore.deleteProvider(deletingProvider.value.id)
-    // 如果删除的是当前选中的提供商，清空选择
-    if (selectedProvider.value?.id === deletingProvider.value.id) {
+    await ElMessageBox.confirm(
+      t('settings.deleteProviderConfirm', { name: editingProvider.value.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await providerStore.deleteProvider(editingProvider.value.id)
+    if (selectedProvider.value?.id === editingProvider.value.id) {
       selectedProvider.value = null
     }
-    closeDeleteProviderDialog()
     closeProviderDialog()
   } catch (err) {
-    // 显示错误信息给用户
-    const errorMsg = err instanceof Error ? err.message : t('settings.deleteProviderFailed')
-    toast.error(errorMsg)
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteProviderFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
@@ -2550,28 +2485,27 @@ const saveModel = async () => {
   }
 }
 
-const confirmDeleteModelFromDialog = () => {
-  if (editingModel.value) {
-    deletingModel.value = editingModel.value
-    showDeleteModelDialog.value = true
-  }
-}
-
-const closeDeleteModelDialog = () => {
-  showDeleteModelDialog.value = false
-  deletingModel.value = null
-}
-
-const deleteModel = async () => {
-  if (!deletingModel.value) return
+const confirmDeleteModelFromDialog = async () => {
+  if (!editingModel.value) return
+  
   try {
-    await modelStore.deleteModel(deletingModel.value.id)
-    closeDeleteModelDialog()
+    await ElMessageBox.confirm(
+      t('settings.deleteModelConfirm', { name: editingModel.value.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await modelStore.deleteModel(editingModel.value.id)
     closeModelDialog()
   } catch (err) {
-    // 显示错误信息给用户
-    const errorMsg = err instanceof Error ? err.message : t('settings.deleteModelFailed')
-    toast.error(errorMsg)
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteModelFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
@@ -2688,33 +2622,48 @@ const handleLargeAvatarUpload = async (event: Event) => {
   input.value = ''
 }
 
-const confirmDeleteExpert = (expert: Expert) => {
-  deletingExpert.value = expert
-  showDeleteExpertDialog.value = true
-}
-
-const confirmDeleteExpertFromDialog = () => {
-  if (editingExpert.value) {
-    deletingExpert.value = editingExpert.value
-    showDeleteExpertDialog.value = true
+const confirmDeleteExpert = async (expert: Expert) => {
+  try {
+    await ElMessageBox.confirm(
+      t('settings.deleteExpertConfirm', { name: expert.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await expertStore.deleteExpert(expert.id)
+  } catch (err) {
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
-const closeDeleteExpertDialog = () => {
-  showDeleteExpertDialog.value = false
-  deletingExpert.value = null
-}
-
-const deleteExpert = async () => {
-  if (!deletingExpert.value) return
+const confirmDeleteExpertFromDialog = async () => {
+  if (!editingExpert.value) return
+  
   try {
-    await expertStore.deleteExpert(deletingExpert.value.id)
-    closeDeleteExpertDialog()
+    await ElMessageBox.confirm(
+      t('settings.deleteExpertConfirm', { name: editingExpert.value.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await expertStore.deleteExpert(editingExpert.value.id)
     closeExpertDialog()
   } catch (err) {
-    // 显示错误信息给用户
-    const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
-    toast.error(errorMsg)
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
