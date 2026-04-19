@@ -1089,281 +1089,188 @@
     </el-dialog>
 
     <!-- 用户添加/编辑对话框 -->
-    <div v-if="showUserDialog" class="dialog-overlay">
-      <div class="dialog dialog-large">
-        <h3 class="dialog-title">
-          {{ editingUser ? $t('settings.editUser') : $t('settings.addUser') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-row">
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.username') }} *</label>
-              <input
-                v-model="userForm.username"
-                type="text"
-                class="form-input"
-                :placeholder="$t('settings.usernamePlaceholder')"
-                :disabled="!!editingUser"
-                @input="handleUsernameInput"
-              />
-              <p v-if="!editingUser" class="form-hint">{{ $t('settings.usernameFormatHint') }}</p>
-            </div>
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.email') }} *</label>
-              <input
-                v-model="userForm.email"
-                type="email"
-                class="form-input"
-                :placeholder="$t('settings.emailPlaceholder')"
-              />
-            </div>
-          </div>
+    <el-dialog
+      v-model="showUserDialog"
+      :title="editingUser ? $t('settings.editUser') : $t('settings.addUser')"
+      width="640px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <div class="form-row">
+          <el-form-item :label="$t('settings.username') + ' *'" style="flex: 1">
+            <el-input v-model="userForm.username" :placeholder="$t('settings.usernamePlaceholder')" :disabled="!!editingUser" @input="handleUsernameInput" />
+            <el-text v-if="!editingUser" type="info" size="small">{{ $t('settings.usernameFormatHint') }}</el-text>
+          </el-form-item>
+          <el-form-item :label="$t('settings.email') + ' *'" style="flex: 1">
+            <el-input v-model="userForm.email" type="email" :placeholder="$t('settings.emailPlaceholder')" />
+          </el-form-item>
+        </div>
 
-          <!-- 新增用户时显示密码字段 -->
-          <div v-if="!editingUser" class="form-item">
-            <label class="form-label">{{ $t('settings.password') }} *</label>
-            <input
-              v-model="userForm.password"
-              type="password"
-              class="form-input"
-              :placeholder="$t('settings.passwordPlaceholder')"
-            />
-          </div>
+        <!-- 新增用户时显示密码字段 -->
+        <el-form-item v-if="!editingUser" :label="$t('settings.password') + ' *'">
+          <el-input v-model="userForm.password" type="password" :placeholder="$t('settings.passwordPlaceholder')" />
+        </el-form-item>
 
-          <div class="form-row">
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.userNickname') }}</label>
-              <input
-                v-model="userForm.nickname"
-                type="text"
-                class="form-input"
-                :placeholder="$t('settings.userNicknamePlaceholder')"
-              />
-            </div>
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.userStatusText') }}</label>
-              <select v-model="userForm.status" class="form-input">
-                <option value="active">{{ $t('settings.userStatus.active') }}</option>
-                <option value="inactive">{{ $t('settings.userStatus.inactive') }}</option>
-                <option value="banned">{{ $t('settings.userStatus.banned') }}</option>
-              </select>
-            </div>
-          </div>
+        <div class="form-row">
+          <el-form-item :label="$t('settings.userNickname')" style="flex: 1">
+            <el-input v-model="userForm.nickname" :placeholder="$t('settings.userNicknamePlaceholder')" />
+          </el-form-item>
+          <el-form-item :label="$t('settings.userStatusText')" style="flex: 1">
+            <el-select v-model="userForm.status" style="width: 100%">
+              <el-option :label="$t('settings.userStatus.active')" value="active" />
+              <el-option :label="$t('settings.userStatus.inactive')" value="inactive" />
+              <el-option :label="$t('settings.userStatus.banned')" value="banned" />
+            </el-select>
+          </el-form-item>
+        </div>
 
-          <!-- 角色选择 -->
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.userRoles') }}</label>
-            <div v-if="rolesLoading" class="loading-state">{{ $t('common.loading') }}</div>
-            <div v-else class="roles-checkbox-group">
-              <label v-for="role in rolesList" :key="role.id" class="role-checkbox">
-                <input
-                  type="checkbox"
-                  :value="role.id"
-                  v-model="userForm.selectedRoleIds"
-                />
-                <span class="role-label">
-                  {{ role.name }}
-                  <span v-if="role.is_system" class="badge builtin">{{ $t('settings.builtinSkill') }}</span>
-                </span>
-              </label>
-            </div>
-            <p v-if="rolesList.length === 0 && !rolesLoading" class="form-hint">{{ $t('settings.noRolesAvailable') }}</p>
-            </div>
-  
-            <!-- 邀请配额（仅编辑时显示） -->
-            <div v-if="editingUser" class="form-row">
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.invitationQuota') }}</label>
-                <input
-                  v-model.number="userForm.invitation_quota"
-                  type="number"
-                  class="form-input"
-                  min="0"
-                  max="100"
-                />
-                <p class="form-hint">{{ $t('settings.invitationQuotaHint') }}</p>
-              </div>
-            </div>
-  
-            <div class="form-row">
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.gender') }}</label>
-              <select v-model="userForm.gender" class="form-input">
-                <option value="">{{ $t('settings.selectGender') }}</option>
-                <option value="male">{{ $t('settings.genderMale') }}</option>
-                <option value="female">{{ $t('settings.genderFemale') }}</option>
-                <option value="other">{{ $t('settings.genderOther') }}</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.birthday') }}</label>
-              <input
-                v-model="userForm.birthday"
-                type="date"
-                class="form-input"
-              />
-            </div>
-          </div>
+        <!-- 角色选择 -->
+        <el-form-item :label="$t('settings.userRoles')">
+          <div v-if="rolesLoading" class="loading-state">{{ $t('common.loading') }}</div>
+          <el-checkbox-group v-else v-model="userForm.selectedRoleIds">
+            <el-checkbox v-for="role in rolesList" :key="role.id" :label="role.id" :value="role.id">
+              {{ role.name }}
+              <el-tag v-if="role.is_system" size="small" type="info">{{ $t('settings.builtinSkill') }}</el-tag>
+            </el-checkbox>
+          </el-checkbox-group>
+          <el-text v-if="rolesList.length === 0 && !rolesLoading" type="info" size="small">{{ $t('settings.noRolesAvailable') }}</el-text>
+        </el-form-item>
 
-          <div class="form-row">
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.occupation') }}</label>
-              <input
-                v-model="userForm.occupation"
-                type="text"
-                class="form-input"
-                :placeholder="$t('settings.occupationPlaceholder')"
-              />
-            </div>
-            <div class="form-item">
-              <label class="form-label">{{ $t('settings.location') }}</label>
-              <input
-                v-model="userForm.location"
-                type="text"
-                class="form-input"
-                :placeholder="$t('settings.locationPlaceholder')"
-              />
-            </div>
-          </div>
+        <!-- 邀请配额（仅编辑时显示） -->
+        <el-form-item v-if="editingUser" :label="$t('settings.invitationQuota')">
+          <el-input-number v-model="userForm.invitation_quota" :min="0" :max="100" style="width: 100%" />
+          <el-text type="info" size="small">{{ $t('settings.invitationQuotaHint') }}</el-text>
+        </el-form-item>
 
-          <!-- 头像上传 -->
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.userAvatar') }}</label>
-            <div class="avatar-upload">
-              <div
-                class="avatar-preview"
-                :style="userForm.avatar ? { backgroundImage: `url(${userForm.avatar})` } : {}"
+        <div class="form-row">
+          <el-form-item :label="$t('settings.gender')" style="flex: 1">
+            <el-select v-model="userForm.gender" style="width: 100%">
+              <el-option :label="$t('settings.selectGender')" value="" />
+              <el-option :label="$t('settings.genderMale')" value="male" />
+              <el-option :label="$t('settings.genderFemale')" value="female" />
+              <el-option :label="$t('settings.genderOther')" value="other" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="$t('settings.birthday')" style="flex: 1">
+            <el-date-picker v-model="userForm.birthday" type="date" style="width: 100%" />
+          </el-form-item>
+        </div>
+
+        <div class="form-row">
+          <el-form-item :label="$t('settings.occupation')" style="flex: 1">
+            <el-input v-model="userForm.occupation" :placeholder="$t('settings.occupationPlaceholder')" />
+          </el-form-item>
+          <el-form-item :label="$t('settings.location')" style="flex: 1">
+            <el-input v-model="userForm.location" :placeholder="$t('settings.locationPlaceholder')" />
+          </el-form-item>
+        </div>
+
+        <!-- 头像上传 -->
+        <el-form-item :label="$t('settings.userAvatar')">
+          <div class="avatar-upload">
+            <div
+              class="avatar-preview"
+              :style="userForm.avatar ? { backgroundImage: `url(${userForm.avatar})` } : {}"
+            >
+              <span v-if="!userForm.avatar">👤</span>
+            </div>
+            <div class="avatar-actions">
+              <input
+                type="file"
+                accept="image/*"
+                ref="userAvatarInput"
+                @change="handleUserAvatarUpload"
+                style="display: none"
+              />
+              <el-button size="small" @click="userAvatarInput?.click()">
+                {{ $t('settings.uploadAvatar') }}
+              </el-button>
+              <el-button
+                v-if="userForm.avatar"
+                size="small"
+                type="danger"
+                @click="userForm.avatar = ''"
               >
-                <span v-if="!userForm.avatar">👤</span>
-              </div>
-              <div class="avatar-actions">
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref="userAvatarInput"
-                  @change="handleUserAvatarUpload"
-                  style="display: none"
-                />
-                <button type="button" class="btn-small" @click="userAvatarInput?.click()">
-                  {{ $t('settings.uploadAvatar') }}
-                </button>
-                <button
-                  v-if="userForm.avatar"
-                  type="button"
-                  class="btn-small btn-danger"
-                  @click="userForm.avatar = ''"
-                >
-                  {{ $t('common.delete') }}
-                </button>
-              </div>
+                {{ $t('common.delete') }}
+              </el-button>
             </div>
           </div>
+        </el-form-item>
 
-          <!-- 重置密码（编辑时显示） -->
-          <div v-if="editingUser" class="form-section-title">{{ $t('settings.resetPassword') }}</div>
-          <div v-if="editingUser" class="form-item">
-            <label class="form-label">{{ $t('settings.newPassword') }}</label>
+        <!-- 重置密码（编辑时显示） -->
+        <template v-if="editingUser">
+          <el-divider>{{ $t('settings.resetPassword') }}</el-divider>
+          <el-form-item :label="$t('settings.newPassword')">
             <div class="reset-password-row">
-              <input
-                v-model="userForm.newPassword"
-                type="password"
-                class="form-input"
-                :placeholder="$t('settings.newPasswordPlaceholder')"
-              />
-              <button
-                type="button"
-                class="btn-small"
+              <el-input v-model="userForm.newPassword" type="password" :placeholder="$t('settings.newPasswordPlaceholder')" />
+              <el-button
+                size="small"
                 :disabled="!userForm.newPassword || userForm.newPassword.length < 6"
                 @click="handleResetPassword"
               >
                 {{ $t('settings.resetPasswordBtn') }}
-              </button>
+              </el-button>
             </div>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-left">
-            <button
-              v-if="editingUser"
-              class="btn-delete"
-              @click="confirmDeleteUserFromDialog"
-            >
-              {{ $t('common.delete') }}
-            </button>
-          </div>
+          </el-form-item>
+        </template>
+      </el-form>
+      
+      <template #footer>
+        <div class="dialog-footer-custom">
+          <el-button v-if="editingUser" type="danger" @click="confirmDeleteUserFromDialog">
+            {{ $t('common.delete') }}
+          </el-button>
           <div class="footer-right">
-            <button class="btn-cancel" @click="closeUserDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isUserFormValid" @click="saveUser">
+            <el-button @click="closeUserDialog">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" :disabled="!isUserFormValid" @click="saveUser">
               {{ $t('common.save') }}
-            </button>
+            </el-button>
           </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </el-dialog>
 
     <!-- 用户删除确认对话框 -->
-    <div v-if="showDeleteUserDialog" class="dialog-overlay">
-      <div class="dialog dialog-confirm">
-        <h3 class="dialog-title">{{ $t('common.confirmDelete') }}</h3>
-        <p class="dialog-message">
-          {{ $t('settings.deleteUserConfirm', { name: deletingUser?.nickname || deletingUser?.username }) }}
-        </p>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteUserDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteUser">
-            {{ $t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showDeleteUserDialog"
+      :title="$t('common.confirmDelete')"
+      width="400px"
+    >
+      <p>{{ $t('settings.deleteUserConfirm', { name: deletingUser?.nickname || deletingUser?.username }) }}</p>
+      <template #footer>
+        <el-button @click="closeDeleteUserDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="danger" @click="deleteUser">{{ $t('common.delete') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 角色编辑对话框 -->
-    <div v-if="showRoleDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ $t('settings.editRole') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleMark') }}</label>
-            <input
-              v-model="roleForm.mark"
-              type="text"
-              class="form-input"
-              disabled
-              :placeholder="$t('settings.roleMarkPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.roleMarkHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleName') }}</label>
-            <input
-              v-model="roleForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.roleNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleDescription') }}</label>
-            <textarea
-              v-model="roleForm.description"
-              class="form-input"
-              rows="3"
-              :placeholder="$t('settings.roleDescriptionPlaceholder')"
-            ></textarea>
-          </div>
+    <el-dialog
+      v-model="showRoleDialog"
+      :title="$t('settings.editRole')"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item :label="$t('settings.roleMark')">
+          <el-input v-model="roleForm.mark" disabled :placeholder="$t('settings.roleMarkPlaceholder')" />
+          <el-text type="info" size="small">{{ $t('settings.roleMarkHint') }}</el-text>
+        </el-form-item>
+        <el-form-item :label="$t('settings.roleName')">
+          <el-input v-model="roleForm.name" :placeholder="$t('settings.roleNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('settings.roleDescription')">
+          <el-input v-model="roleForm.description" type="textarea" :rows="3" :placeholder="$t('settings.roleDescriptionPlaceholder')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="footer-right">
+          <el-button @click="closeRoleDialog">{{ $t('common.cancel') }}</el-button>
+          <el-button type="primary" :disabled="!isRoleFormValid" @click="saveRole">
+            {{ $t('common.save') }}
+          </el-button>
         </div>
-        <div class="dialog-footer">
-          <div class="footer-right">
-            <button class="btn-cancel" @click="closeRoleDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isRoleFormValid" @click="saveRole">
-              {{ $t('common.save') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+      </template>
+    </el-dialog>
   </div>
 </div>
 </template>
