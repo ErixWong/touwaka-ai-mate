@@ -1,6 +1,6 @@
 # 代码审计清单
 
-> **最后更新**: 2026-03-13
+> **最后更新**: 2026-04-18
 > **来源**: `docs/core/SOUL.md` 自我代码审计清单
 
 ---
@@ -287,6 +287,61 @@ grep -rn "canEdit\|canAccess\|canDelete" server/controllers/
 ---
 
 ## 第四步：前后端契约检查
+
+### API 响应格式规范（重要）
+
+**所有 API 必须遵循统一的响应格式，禁止混合使用不同格式：**
+
+```javascript
+// ✅ 统一响应结构（外部 API /api/* 和内部 API /internal/* 完全一致）
+{
+  code: 200,              // HTTP 状态码或业务状态码（200=成功）
+  message: 'success',   // 提示信息（失败时显示此消息）
+  data: { ... },        // 实际业务数据（任意类型）
+  timestamp: 123456789   // 时间戳
+}
+
+// ❌ 禁止使用的格式
+{ success: true, data: { ... } }     // 没有 code 字段
+{ status: 'ok', result: { ... } }   // 字段名不统一
+{ error: null, data: { ... } }     // 混合错误处理
+```
+
+**后端使用方式：**
+```javascript
+// ✅ 正确 - 使用 ctx.success()/ctx.error()
+ctx.success({ users: [] });  // 返回 { code: 200, message: 'success', data: { users: [] }, timestamp }
+ctx.error('参数错误', 400);  // 返回 { code: 400, message: '参数错误', data: null, timestamp }
+
+// ❌ 错误 - 直接赋值 ctx.body
+ctx.body = { users: [] };    // 破坏了统一格式
+```
+
+**前端消费方式：**
+```typescript
+// ✅ 正确 - 使用 apiRequest() 自动解包 data
+const data = await apiRequest(apiClient.get('/api/users'))  // 返回 { users: [] }
+
+// ❌ 错误 - 不解包直接使用
+const response = await apiClient.get('/api/users')
+console.log(response.data)  // 错误！这是 { code, message, data } 结构
+```
+
+**驻留技能调用内部 API：**
+```javascript
+// ✅ 正确 - 手动解包 data 字段
+const response = await fetch(`${API_BASE}/internal/mcp/config`, {...})
+const result = await response.json()
+return result.data || {}  // 取 data 字段
+
+// ❌ 错误 - 直接返回整个响应
+return await response.json()  // 错误！包含了 code/message 包装
+```
+
+**成功判断标准：**
+- ✅ 使用 `response.code === 200` 判断成功
+- ❌ **禁止使用 `response.success` 字段**（不存在此字段）
+- ❌ 禁止使用 `!!response.data` 判断成功
 
 ### 新增字段完整性检查
 
@@ -667,32 +722,6 @@ async function main() {
 }
 ```
 
-### 内部 API 响应格式检查
-
-**内部 API 统一使用 `{ code, message, data }` 格式**：
-
-```javascript
-// ✅ 正确 - 检查 code 字段
-const response = await httpRequest(url, options);
-if (response.code === 200 && response.data?.model_id) {
-  return response.data.model_id;
-}
-
-// ❌ 错误 - 检查 success 字段（不存在）
-if (response.success) {  // success 字段不存在
-  return response.data.model_id;
-}
-```
-
-**API 响应格式对比**：
-
-| API 类型 | 响应格式 |
-|---------|---------|
-| 外部 API（`/api/*`） | `{ code: 200, message: 'success', data: {...} }` |
-| 内部 API（`/internal/*`） | `{ code: 200, message: 'success', data: {...} }` |
-
-**注意**：项目中不使用 `response.success` 字段，统一使用 `response.code === 200` 判断成功。
-
 ### 通用检查项
 
 | 检查项 | 说明 |
@@ -702,7 +731,7 @@ if (response.success) {  // success 字段不存在
 | **错误处理** | 所有异步操作有 try-catch |
 | **参数验证** | 检查必要参数是否存在 |
 | **日志输出** | 驻留进程用 stderr，普通工具可用 console |
-| **API 响应格式** | 使用 `response.code === 200` 而非 `response.success` |
+| **API 响应格式** | 使用 `response.code === 200` 而非 `response.success`（见第四步） |
 
 ### 快速检查命令
 

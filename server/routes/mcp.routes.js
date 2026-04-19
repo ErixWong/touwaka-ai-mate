@@ -181,6 +181,8 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   router.post('/servers/:id/refresh-tools', requireAuth, async (ctx) => {
     try {
       const { id } = ctx.params;
+      const userId = ctx.state.session.id;
+      const accessToken = ctx.state.session.accessToken;
 
       const server = await MCPServer.findOne({
         where: { id, is_enabled: true },
@@ -208,10 +210,13 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
             action: 'refresh_tools',
             server_name: server.name,
           },
-          {},
+          {
+            userId,
+            accessToken,
+          },
           30000
         );
-        refreshedTools = result?.result?.tools || [];
+        refreshedTools = result?.tools || [];
       } catch (err) {
         logger.warn(`Refresh tools via resident process failed: ${err.message}, returning empty list`);
       }
@@ -421,7 +426,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
     try {
       const { id } = ctx.params;
       const userId = ctx.state.session.id;
-      const accessToken = ctx.state.token;
+      const accessToken = ctx.state.session.accessToken;
 
       // 获取 MCP Server 配置
       const server = await MCPServer.findOne({
@@ -463,6 +468,62 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
+   * 调用 MCP 工具（管理员测试用）
+   * POST /api/mcp/servers/:id/call-tool
+   */
+  router.post('/servers/:id/call-tool', requireAuth, requireAdmin, async (ctx) => {
+    try {
+      const { id } = ctx.params;
+      const { tool_name, arguments: toolArgs } = ctx.request.body;
+      const userId = ctx.state.session.id;
+      const accessToken = ctx.state.session.accessToken;
+
+      if (!tool_name) {
+        ctx.status = 400;
+        ctx.error('缺少 tool_name 参数');
+        return;
+      }
+
+      const server = await MCPServer.findOne({
+        where: { id, is_enabled: true },
+        raw: true,
+      });
+
+      if (!server) {
+        ctx.status = 404;
+        ctx.error('MCP Server 不存在或未启用');
+        return;
+      }
+
+      const result = await residentSkillManager.invokeByName(
+        'mcp-client',
+        'invoke',
+        {
+          action: 'call_tool',
+          server_name: server.name,
+          tool_name,
+          arguments: toolArgs || {},
+        },
+        {
+          userId,
+          accessToken,
+        },
+        60000
+      );
+
+      ctx.success({
+        server_name: server.name,
+        tool_name,
+        result,
+      });
+
+    } catch (error) {
+      logger.error('Call MCP tool error:', error);
+      ctx.error(error.message || '调用工具失败', 500);
+    }
+  });
+
+  /**
    * 连接 MCP Server
    * POST /api/mcp/servers/:id/connect
    */
@@ -470,7 +531,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
     try {
       const { id } = ctx.params;
       const userId = ctx.state.session.id;
-      const accessToken = ctx.state.token;
+      const accessToken = ctx.state.session.accessToken;
 
       // 获取 MCP Server 配置
       const server = await MCPServer.findOne({
@@ -518,7 +579,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
     try {
       const { id } = ctx.params;
       const userId = ctx.state.session.id;
-      const accessToken = ctx.state.token;
+      const accessToken = ctx.state.session.accessToken;
 
       // 获取 MCP Server 配置
       const server = await MCPServer.findOne({
