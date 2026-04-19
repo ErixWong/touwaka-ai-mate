@@ -573,237 +573,122 @@
     </div>
 
     <!-- Provider 添加/编辑对话框 -->
-    <div v-if="showProviderDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingProvider ? $t('settings.editProvider') : $t('settings.addProvider') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.providerName') }} *</label>
-            <input
-              v-model="providerForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.providerNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.baseUrl') }} *</label>
-            <input
-              v-model="providerForm.base_url"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.baseUrlPlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.apiKey') }}</label>
-            <input
-              v-model="providerForm.api_key"
-              type="password"
-              class="form-input"
-              :placeholder="$t('settings.apiKeyPlaceholder')"
-            />
-            <p v-if="editingProvider" class="form-hint">{{ $t('settings.apiKeyHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.timeout') }} (秒)</label>
-            <input
-              v-model.number="providerForm.timeout"
-              type="number"
-              class="form-input"
-              min="5"
-              max="300"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.userAgent') }}</label>
-            <input
-              v-model="providerForm.user_agent"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.userAgentPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.userAgentHint') }}</p>
-          </div>
-          <div class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="providerForm.is_active" type="checkbox" />
-              {{ $t('settings.isActive') }}
-            </label>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-left">
-            <button
-              v-if="editingProvider"
-              class="btn-delete"
-              @click="confirmDeleteProviderFromDialog"
-            >
-              {{ $t('common.delete') }}
-            </button>
-          </div>
-          <div class="footer-right">
-            <button class="btn-cancel" @click="closeProviderDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isProviderFormValid" @click="saveProvider">
-              {{ $t('common.save') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showProviderDialog"
+      :title="editingProvider ? $t('settings.editProvider') : $t('settings.addProvider')"
+      width="500px"
+    >
+      <el-form label-width="100px">
+        <el-form-item :label="$t('settings.providerName')" required>
+          <el-input v-model="providerForm.name" :placeholder="$t('settings.providerNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('settings.baseUrl')" required>
+          <el-input v-model="providerForm.base_url" :placeholder="$t('settings.baseUrlPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('settings.apiKey')">
+          <el-input v-model="providerForm.api_key" type="password" :placeholder="$t('settings.apiKeyPlaceholder')" show-password />
+          <div v-if="editingProvider" class="el-form-item__tip">{{ $t('settings.apiKeyHint') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('settings.timeout') + ' (秒)'">
+          <el-input-number v-model="providerForm.timeout" :min="5" :max="300" />
+        </el-form-item>
+        <el-form-item :label="$t('settings.userAgent')">
+          <el-input v-model="providerForm.user_agent" :placeholder="$t('settings.userAgentPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.userAgentHint') }}</div>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="providerForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button v-if="editingProvider" type="danger" @click="confirmDeleteProviderFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeProviderDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isProviderFormValid" @click="saveProvider">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- Model 添加/编辑对话框 -->
-    <div v-if="showModelDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingModel ? $t('settings.editModel') : $t('settings.addModel') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.modelName') }} *</label>
-            <input
-              v-model="modelForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.modelNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.modelIdentifier') }} *</label>
-            <input
-              v-model="modelForm.model_name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.modelIdentifierPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.modelIdentifierHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.provider') }} *</label>
-            <select v-model="modelForm.provider_id" class="form-input">
-              <option value="">{{ $t('settings.selectProvider') }}</option>
-              <option v-for="provider in providerStore.providers" :key="provider.id" :value="provider.id">
-                {{ provider.name }}
-              </option>
-            </select>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.modelType') }}</label>
-            <select v-model="modelForm.model_type" class="form-input">
-              <option value="text">{{ $t('settings.modelTypeText') }}</option>
-              <option value="multimodal">{{ $t('settings.modelTypeMultimodal') }}</option>
-              <option value="embedding">{{ $t('settings.modelTypeEmbedding') }}</option>
-            </select>
-          </div>
-          <!-- 文本/多模态模型显示最大 Token -->
-          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-item">
-            <label class="form-label">{{ $t('settings.maxTokens') }}</label>
-            <input
-              v-model.number="modelForm.max_tokens"
-              type="number"
-              class="form-input"
-              :placeholder="$t('settings.maxTokensPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.maxTokensHint') }}</p>
-          </div>
-          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-item">
-            <label class="form-label">{{ $t('settings.maxOutputTokens') }}</label>
-            <input
-              v-model.number="modelForm.max_output_tokens"
-              type="number"
-              class="form-input"
-              :placeholder="$t('settings.maxOutputTokensPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.maxOutputTokensHint') }}</p>
-          </div>
-          <!-- 嵌入模型显示向量维度 -->
-          <div v-if="modelForm.model_type === 'embedding'" class="form-item">
-            <label class="form-label">{{ $t('settings.embeddingDim') }}</label>
-            <input
-              v-model.number="modelForm.embedding_dim"
-              type="number"
-              class="form-input"
-              :placeholder="$t('settings.embeddingDimPlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.costPer1kInput') }} (USD)</label>
-            <input
-              v-model.number="modelForm.cost_per_1k_input"
-              type="number"
-              step="0.0001"
-              class="form-input"
-              :placeholder="$t('settings.costPlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.costPer1kOutput') }} (USD)</label>
-            <input
-              v-model.number="modelForm.cost_per_1k_output"
-              type="number"
-              step="0.0001"
-              class="form-input"
-              :placeholder="$t('settings.costPlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.modelDescription') }}</label>
-            <textarea
-              v-model="modelForm.description"
-              class="form-input"
-              rows="3"
-              :placeholder="$t('settings.descriptionPlaceholder')"
-            ></textarea>
-          </div>
-          <!-- 思考模式配置（仅文本/多模态模型） -->
-          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-section-title">
-            {{ $t('settings.thinkingConfig') }}
-          </div>
-          <div v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="modelForm.supports_reasoning" type="checkbox" />
-              {{ $t('settings.supportsReasoning') }}
-            </label>
-            <p class="form-hint">{{ $t('settings.supportsReasoningHint') }}</p>
-          </div>
-          <div v-if="(modelForm.model_type === 'text' || modelForm.model_type === 'multimodal') && modelForm.supports_reasoning" class="form-item">
-            <label class="form-label">{{ $t('settings.thinkingFormat') }}</label>
-            <select v-model="modelForm.thinking_format" class="form-input">
-              <option value="none">{{ $t('settings.thinkingFormatNone') }}</option>
-              <option value="openai">{{ $t('settings.thinkingFormatOpenai') }}</option>
-              <option value="deepseek">{{ $t('settings.thinkingFormatDeepseek') }}</option>
-              <option value="qwen">{{ $t('settings.thinkingFormatQwen') }}</option>
-            </select>
-            <p class="form-hint">{{ $t('settings.thinkingFormatHint') }}</p>
-          </div>
-          <div class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="modelForm.is_active" type="checkbox" />
-              {{ $t('settings.isActive') }}
-            </label>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-left">
-            <button
-              v-if="editingModel"
-              class="btn-delete"
-              @click="confirmDeleteModelFromDialog"
-            >
-              {{ $t('common.delete') }}
-            </button>
-          </div>
-          <div class="footer-right">
-            <button class="btn-cancel" @click="closeModelDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isModelFormValid" @click="saveModel">
-              {{ $t('common.save') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showModelDialog"
+      :title="editingModel ? $t('settings.editModel') : $t('settings.addModel')"
+      width="600px"
+    >
+      <el-form label-width="120px">
+        <el-form-item :label="$t('settings.modelName')" required>
+          <el-input v-model="modelForm.name" :placeholder="$t('settings.modelNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('settings.modelIdentifier')" required>
+          <el-input v-model="modelForm.model_name" :placeholder="$t('settings.modelIdentifierPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.modelIdentifierHint') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('settings.provider')" required>
+          <el-select v-model="modelForm.provider_id" clearable>
+            <el-option label="" value="" />
+            <el-option v-for="provider in providerStore.providers" :key="provider.id" :value="provider.id" :label="provider.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('settings.modelType')">
+          <el-select v-model="modelForm.model_type">
+            <el-option value="text" :label="$t('settings.modelTypeText')" />
+            <el-option value="multimodal" :label="$t('settings.modelTypeMultimodal')" />
+            <el-option value="embedding" :label="$t('settings.modelTypeEmbedding')" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" :label="$t('settings.maxTokens')">
+          <el-input-number v-model="modelForm.max_tokens" :placeholder="$t('settings.maxTokensPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.maxTokensHint') }}</div>
+        </el-form-item>
+
+        <el-form-item v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" :label="$t('settings.maxOutputTokens')">
+          <el-input-number v-model="modelForm.max_output_tokens" :placeholder="$t('settings.maxOutputTokensPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.maxOutputTokensHint') }}</div>
+        </el-form-item>
+
+        <el-form-item v-if="modelForm.model_type === 'embedding'" :label="$t('settings.embeddingDim')">
+          <el-input-number v-model="modelForm.embedding_dim" :placeholder="$t('settings.embeddingDimPlaceholder')" />
+        </el-form-item>
+
+        <el-form-item :label="$t('settings.costPer1kInput') + ' (USD)'">
+          <el-input-number v-model="modelForm.cost_per_1k_input" :precision="4" :step="0.0001" :placeholder="$t('settings.costPlaceholder')" />
+        </el-form-item>
+
+        <el-form-item :label="$t('settings.costPer1kOutput') + ' (USD)'">
+          <el-input-number v-model="modelForm.cost_per_1k_output" :precision="4" :step="0.0001" :placeholder="$t('settings.costPlaceholder')" />
+        </el-form-item>
+
+        <el-form-item :label="$t('settings.modelDescription')">
+          <el-input v-model="modelForm.description" type="textarea" :rows="3" :placeholder="$t('settings.descriptionPlaceholder')" />
+        </el-form-item>
+
+        <el-divider v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'">{{ $t('settings.thinkingConfig') }}</el-divider>
+
+        <el-form-item v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'">
+          <el-checkbox v-model="modelForm.supports_reasoning">{{ $t('settings.supportsReasoning') }}</el-checkbox>
+          <div class="el-form-item__tip">{{ $t('settings.supportsReasoningHint') }}</div>
+        </el-form-item>
+
+        <el-form-item v-if="(modelForm.model_type === 'text' || modelForm.model_type === 'multimodal') && modelForm.supports_reasoning" :label="$t('settings.thinkingFormat')">
+          <el-select v-model="modelForm.thinking_format">
+            <el-option value="none" :label="$t('settings.thinkingFormatNone')" />
+            <el-option value="openai" :label="$t('settings.thinkingFormatOpenai')" />
+            <el-option value="deepseek" :label="$t('settings.thinkingFormatDeepseek')" />
+            <el-option value="qwen" :label="$t('settings.thinkingFormatQwen')" />
+          </el-select>
+          <div class="el-form-item__tip">{{ $t('settings.thinkingFormatHint') }}</div>
+        </el-form-item>
+
+        <el-form-item>
+          <el-checkbox v-model="modelForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button v-if="editingModel" type="danger" @click="confirmDeleteModelFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeModelDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isModelFormValid" @click="saveModel">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- Expert 添加/编辑对话框 -->
     <div v-if="showExpertDialog" class="dialog-overlay">
