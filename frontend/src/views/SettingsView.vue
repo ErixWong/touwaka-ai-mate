@@ -1143,76 +1143,60 @@
       </div>
     </div>
 
-    <!-- 技能管理对话框 -->
-    <div v-if="showSkillsDialog" class="dialog-overlay">
-      <div class="dialog dialog-large">
-        <h3 class="dialog-title">
-          {{ $t('settings.manageSkillsFor', { name: currentExpertForSkills?.name }) }}
-        </h3>
-        <div class="dialog-body skills-dialog-body">
-          <!-- 搜索/筛选 -->
-          <div class="skills-search">
-            <input
-              v-model="skillsSearchQuery"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.searchSkillsPlaceholder')"
-            />
-          </div>
+<!-- 技能管理对话框 -->
+    <el-dialog
+      v-model="showSkillsDialog"
+      :title="$t('settings.manageSkillsFor', { name: currentExpertForSkills?.name })"
+      width="600px"
+    >
+      <el-input
+        v-model="skillsSearchQuery"
+        :placeholder="$t('settings.searchSkillsPlaceholder')"
+        clearable
+      />
 
-          <!-- 技能列表 -->
-          <div v-if="skillsLoading" class="loading-state">
-            {{ $t('common.loading') }}
-          </div>
+      <div v-if="skillsLoading" class="loading-state">
+        {{ $t('common.loading') }}
+      </div>
 
-          <div v-else-if="filteredSkills.length === 0" class="empty-state">
-            {{ skillsSearchQuery ? $t('settings.noSkillsFound') : $t('settings.noSkillsAvailable') }}
-          </div>
+      <el-empty
+        v-else-if="filteredSkills.length === 0"
+        :description="skillsSearchQuery ? $t('settings.noSkillsFound') : $t('settings.noSkillsAvailable')"
+      />
 
-          <div v-else class="skills-list">
-            <div
-              v-for="skill in filteredSkills"
-              :key="skill.id"
-              class="skill-item"
-              :class="{ builtin: skill.is_builtin }"
-            >
-              <div class="skill-info">
-                <div class="skill-header">
-                  <span class="skill-name">{{ skill.name }}</span>
-                  <span v-if="skill.is_builtin" class="badge builtin">
-                    {{ $t('settings.builtinSkill') }}
-                  </span>
-                </div>
-                <p v-if="skill.description" class="skill-description">
-                  {{ skill.description }}
-                </p>
-              </div>
-              <label class="skill-toggle">
-                <input
-                  type="checkbox"
-                  v-model="skill.is_enabled"
-                  @change="handleSkillToggle(skill)"
-                />
-                <span class="toggle-slider"></span>
-              </label>
+      <div v-else class="skills-list">
+        <div
+          v-for="skill in filteredSkills"
+          :key="skill.id"
+          class="skill-item"
+          :class="{ builtin: skill.is_builtin }"
+        >
+          <div class="skill-info">
+            <div class="skill-header">
+              <span class="skill-name">{{ skill.name }}</span>
+              <el-tag v-if="skill.is_builtin" type="info" size="small">
+                {{ $t('settings.builtinSkill') }}
+              </el-tag>
             </div>
+            <p v-if="skill.description" class="skill-description">
+              {{ skill.description }}
+            </p>
           </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-left">
-            <span class="skills-count">
-              {{ $t('settings.enabledSkillsCount', { count: enabledSkillsCount }) }}
-            </span>
-          </div>
-          <div class="footer-right">
-            <button class="btn-cancel" @click="closeSkillsDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" @click="saveSkills">
-              {{ $t('common.save') }}
-            </button>
-          </div>
+          <el-switch
+            v-model="skill.is_enabled"
+            @change="handleSkillToggle(skill)"
+          />
         </div>
       </div>
-    </div>
+
+      <template #footer>
+        <span class="skills-count">
+          {{ $t('settings.enabledSkillsCount', { count: enabledSkillsCount }) }}
+        </span>
+        <el-button @click="closeSkillsDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveSkills">{{ $t('common.save') }}</el-button>
+</template>
+    </el-dialog>
 
     <!-- 用户添加/编辑对话框 -->
     <div v-if="showUserDialog" class="dialog-overlay">
