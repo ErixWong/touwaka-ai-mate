@@ -18,11 +18,6 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import readline from 'readline';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = new URL('.', import.meta.url).pathname;
 
 // ============== 全局状态 ==============
 
@@ -175,81 +170,43 @@ function parseHeaders(headersStr) {
   }
 }
 
-/**
- * 创建 Transport（根据传输类型）
- * @param {object} serverConfig - MCP Server 配置
- * @param {object} credentials - 凭证数据（可选）
- * @returns {Promise<Transport>} transport 实例
- */
+function buildAuthHeaders(headersStr, credentials) {
+  const headers = parseHeaders(headersStr);
+  
+  if (credentials?.api_key) {
+    headers['Authorization'] = `Bearer ${credentials.api_key}`;
+  } else if (credentials?.token) {
+    headers['Authorization'] = `Bearer ${credentials.token}`;
+  } else if (credentials?.API_KEY) {
+    headers['X-API-Key'] = credentials.API_KEY;
+  }
+  
+  return headers;
+}
+
+function sanitizeHeaders(headers) {
+  const sanitized = { ...headers };
+  if (sanitized.Authorization) sanitized.Authorization = 'Bearer ***';
+  if (sanitized['X-API-Key']) sanitized['X-API-Key'] = '***';
+  return sanitized;
+}
+
 async function createTransport(serverConfig, credentials = null) {
   const transportType = serverConfig.transport_type || 'stdio';
   
-  if (transportType === 'http' || transportType === 'streamableHttp') {
-    // HTTP/SSE 模式
+  if (transportType === 'http' || transportType === 'streamableHttp' || transportType === 'sse') {
     if (!serverConfig.url) {
-      throw new Error(`HTTP MCP Server '${serverConfig.name}' missing URL`);
+      throw new Error(`MCP Server '${serverConfig.name}' missing URL`);
     }
     
-    // 解析 headers 并合并凭证
-    const headers = parseHeaders(serverConfig.headers);
+    const headers = buildAuthHeaders(serverConfig.headers, credentials);
+    const useSSE = transportType === 'sse' || serverConfig.url.endsWith('/sse') || serverConfig.use_sse;
     
-    // 如果凭证中有 api_key 或 token，添加到 headers
-    if (credentials?.api_key) {
-      headers['Authorization'] = `Bearer ${credentials.api_key}`;
-    } else if (credentials?.token) {
-      headers['Authorization'] = `Bearer ${credentials.token}`;
-    } else if (credentials?.API_KEY) {
-      headers['X-API-Key'] = credentials.API_KEY;
-    }
+    log(`Creating ${useSSE ? 'SSE' : 'HTTP'} transport for ${serverConfig.name}: ${serverConfig.url}`);
+    log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
     
-    // 脱敏 headers 用于日志
-    const sanitizedHeaders = { ...headers };
-    if (sanitizedHeaders.Authorization) {
-      sanitizedHeaders.Authorization = 'Bearer ***';
-    }
-    if (sanitizedHeaders['X-API-Key']) {
-      sanitizedHeaders['X-API-Key'] = '***';
-    }
-    
-    log(`Creating HTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
-    log(`HTTP headers: ${JSON.stringify(sanitizedHeaders)}`);
-    
-    // 检测 URL 类型：如果是 /sse 结尾，使用 SSEClientTransport
-    if (serverConfig.url.endsWith('/sse') || serverConfig.use_sse) {
-      log(`Using SSEClientTransport for ${serverConfig.name}`);
-      return new SSEClientTransport(
-        new URL(serverConfig.url),
-        { requestInit: { headers } }
-      );
-    }
-    
-    // 默认使用 StreamableHTTPClientTransport
-    return new StreamableHTTPClientTransport(
-      new URL(serverConfig.url),
-      { requestInit: { headers } }
-    );
-  }
-  
-  if (transportType === 'sse') {
-    // 明确指定 SSE 传输
-    if (!serverConfig.url) {
-      throw new Error(`SSE MCP Server '${serverConfig.name}' missing URL`);
-    }
-    
-    const headers = parseHeaders(serverConfig.headers);
-    
-    if (credentials?.api_key) {
-      headers['Authorization'] = `Bearer ${credentials.api_key}`;
-    } else if (credentials?.token) {
-      headers['Authorization'] = `Bearer ${credentials.token}`;
-    }
-    
-    log(`Creating SSE transport for ${serverConfig.name}: ${serverConfig.url}`);
-    
-    return new SSEClientTransport(
-      new URL(serverConfig.url),
-      { requestInit: { headers } }
-    );
+    const TransportClass = useSSE ? SSEClientTransport : StreamableHTTPClientTransport;
+    return new TransportClass(new URL(serverConfig.url), { requestInit: { headers } });
   }
   
   // STDIO 模式（默认）
@@ -487,29 +444,33 @@ async function callTool(serverName, toolName, args, userId, configData) {
     }
   }
   
-  log(`Calling tool ${serverName}/${toolName} with args:`, JSON.stringify(args));
+  log(`Calling tool ${serverName}/${toolName} with args: ${JSON.stringify(args)}`);
   
-  // 调用工具
-  const response = await conn.client.callTool({
-    name: toolName,
-    arguments: args || {},
-  });
-  
-  // 处理响应内容
-  if (response.content) {
-    const textContent = response.content
-      .filter(c => c.type === 'text')
-      .map(c => c.text)
-      .join('\n');
+  try {
+    const response = await conn.client.callTool({
+      name: toolName,
+      arguments: args || {},
+    });
     
-    return {
-      content: textContent,
-      raw: response.content,
-      is_error: response.isError || false,
-    };
+    if (response.content) {
+      const textContent = response.content
+        .filter(c => c.type === 'text')
+        .map(c => c.text)
+        .join('\n');
+      
+      return {
+        content: textContent,
+        raw: response.content,
+        is_error: response.isError || false,
+      };
+    }
+    
+    return response;
+  } catch (err) {
+    const msg = err.message || err.name || JSON.stringify(Object.keys(err)) || String(err);
+    log(`callTool failed: ${msg}`);
+    throw new Error(`Tool call failed (${serverName}/${toolName}): ${msg}`);
   }
-  
-  return response;
 }
 
 // ============== 命令处理 ==============
@@ -547,17 +508,24 @@ async function processCommand(command, params, user) {
  * 处理具体操作
  */
 async function processAction(action, params, userId, accessToken) {
-  // 获取配置数据
+  // 不需要 fetchConfig 的 action
+  if (action === 'shutdown') {
+    for (const [key] of connections) {
+      await disconnectServer(key);
+    }
+    return { message: 'All connections closed' };
+  }
+  
+  // 其余 action 需要 config
   const configData = await fetchConfig({ userId, accessToken });
   
   switch (action) {
-    case 'list_tools':
-      // 获取用户可用的所有工具
+    case 'list_tools': {
       const tools = await getUserTools(userId, configData);
       return { tools };
+    }
     
     case 'call_tool':
-      // 调用 MCP 工具
       return await callTool(
         params.server_name,
         params.tool_name,
@@ -566,8 +534,7 @@ async function processAction(action, params, userId, accessToken) {
         configData
       );
     
-    case 'list_servers':
-      // 获取 MCP Server 列表
+    case 'list_servers': {
       const servers = configData.servers || [];
       return {
         servers: servers.map(s => ({
@@ -575,7 +542,7 @@ async function processAction(action, params, userId, accessToken) {
           name: s.name,
           display_name: s.display_name,
           description: s.description,
-          transport_type: s.transport_type || 'stdio',  // 新增
+          transport_type: s.transport_type || 'stdio',
           is_public: s.is_public,
           requires_credentials: s.requires_credentials,
           is_enabled: s.is_enabled,
@@ -583,68 +550,60 @@ async function processAction(action, params, userId, accessToken) {
           tools_count: (toolsCache.get(s.name) || []).length,
         })),
       };
+    }
     
-    case 'connect_server':
-      // 连接到指定 MCP Server
+    case 'connect_server': {
+      const serverConfig = (configData.servers || []).find(s => s.name === params.server_name);
+      if (!serverConfig) {
+        throw new Error(`MCP Server '${params.server_name}' not found`);
+      }
+      const credentials = getCredentials(userId, serverConfig.id, configData);
+      await connectServer(serverConfig, userId, credentials);
+      return { message: `Connected to ${params.server_name}` };
+    }
+    
+    case 'disconnect_server': {
+      const disconnectKey = userId ? `${params.server_name}:${userId}` : params.server_name;
+      return await disconnectServer(disconnectKey);
+    }
+    
+    case 'refresh_tools': {
+      if (!params.server_name) {
+        // 刷新所有已有连接
+        const allTools = [];
+        for (const [key, conn] of connections) {
+          const serverName = key.split(':')[0];
+          const tools = await cacheTools(serverName, conn.client);
+          allTools.push(...tools);
+        }
+        return { message: 'Tools cache refreshed', servers_refreshed: connections.size, tools: allTools };
+      }
+      
+      // 刷新指定 server
+      log(`Looking for server '${params.server_name}' in ${(configData.servers || []).length} servers`);
+      
       const serverConfig = (configData.servers || []).find(s => s.name === params.server_name);
       if (!serverConfig) {
         throw new Error(`MCP Server '${params.server_name}' not found`);
       }
       
-      const credentials = getCredentials(userId, serverConfig.id, configData);
-      await connectServer(serverConfig, userId, credentials);
-      return { message: `Connected to ${params.server_name}` };
-    
-    case 'disconnect_server':
-      // 断开连接
-      const disconnectKey = userId ? `${params.server_name}:${userId}` : params.server_name;
-      return await disconnectServer(disconnectKey);
-    
-    case 'refresh_tools':
-      // 刷新工具定义缓存
-      // 如果指定了 server_name，先确保连接该服务器
-      if (params.server_name) {
-        log(`Looking for server '${params.server_name}' in ${(configData.servers || []).length} servers`);
-        log(`Available servers: ${(configData.servers || []).map(s => s.name).join(', ')}`);
-        
-        const serverConfig = (configData.servers || []).find(s => s.name === params.server_name);
-        if (!serverConfig) {
-          throw new Error(`MCP Server '${params.server_name}' not found. Available: ${(configData.servers || []).map(s => s.name).join(', ')}`);
-        }
-        
-        // 检查是否已连接
-        const connectionKey = userId ? `${params.server_name}:${userId}` : params.server_name;
-        if (!connections.has(connectionKey)) {
-          // 获取凭证并连接
-          const credentials = getCredentials(userId, serverConfig.id, configData);
-          log(`Auto-connecting ${connectionKey} before refresh...`);
-          await connectServer(serverConfig, userId, credentials);
-        }
-        
-        // 刷新该服务器的工具
-        const conn = connections.get(connectionKey);
-        if (conn) {
-          const tools = await cacheTools(params.server_name, conn.client);
-          return { 
-            message: `Tools refreshed for ${params.server_name}`, 
-            servers_refreshed: 1,
-            tools: tools  // 返回工具列表！
-          };
-        }
-        return { message: `No connection found for ${params.server_name}`, servers_refreshed: 0, tools: [] };
+      const connectionKey = userId ? `${params.server_name}:${userId}` : params.server_name;
+      if (!connections.has(connectionKey)) {
+        const credentials = getCredentials(userId, serverConfig.id, configData);
+        log(`Auto-connecting ${connectionKey} before refresh...`);
+        await connectServer(serverConfig, userId, credentials);
       }
       
-      // 如果没有指定 server_name，刷新所有已有连接
-      const allTools = [];
-      for (const [key, conn] of connections) {
-        const serverName = key.split(':')[0];
-        const tools = await cacheTools(serverName, conn.client);
-        allTools.push(...tools);
+      const conn = connections.get(connectionKey);
+      if (!conn) {
+        return { message: `No connection for ${params.server_name}`, servers_refreshed: 0, tools: [] };
       }
-      return { message: 'Tools cache refreshed', servers_refreshed: connections.size, tools: allTools };
+      
+      const tools = await cacheTools(params.server_name, conn.client);
+      return { message: `Tools refreshed for ${params.server_name}`, servers_refreshed: 1, tools };
+    }
     
-    case 'init':
-      // 初始化：连接所有公共 MCP Server
+    case 'init': {
       const initResults = [];
       for (const server of (configData.servers || [])) {
         if (server.is_public && server.is_enabled) {
@@ -657,17 +616,8 @@ async function processAction(action, params, userId, accessToken) {
           }
         }
       }
-      return {
-        message: 'Initialized',
-        public_servers: initResults,
-      };
-    
-    case 'shutdown':
-      // 关闭所有连接
-      for (const [key] of connections) {
-        await disconnectServer(key);
-      }
-      return { message: 'All connections closed' };
+      return { message: 'Initialized', public_servers: initResults };
+    }
     
     default:
       throw new Error(`Unknown action: ${action}`);
@@ -718,10 +668,7 @@ async function processCommandLine(line) {
 async function initialize() {
   log('Starting MCP Client resident process...');
   
-  // 延迟初始化：等有 token 的请求来了再自动连接
-  // 启动时不传 token，init 会 401，这是正常的
-  // 公共 MCP Server 会在第一次 refresh_tools 时自动连接
-  log('Ready, waiting for commands on stdin');
+  // 延迟初始化：公共 MCP Server 会在第一次 refresh_tools 时自动连接
 }
 
 /**
