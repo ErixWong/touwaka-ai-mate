@@ -49,6 +49,7 @@ declare module 'vue' {
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
+    ElText: typeof import('element-plus/es')['ElText']
     ExpertTab: typeof import('./src/components/panel/ExpertTab.vue')['default']
     FieldRenderer: typeof import('./src/components/apps/FieldRenderer.vue')['default']
     FileField: typeof import('./src/components/apps/fields/FileField.vue')['default']
