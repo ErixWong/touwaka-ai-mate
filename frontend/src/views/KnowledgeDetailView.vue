@@ -3,10 +3,10 @@
     <!-- Header -->
     <div class="detail-header">
       <div class="header-left">
-        <button class="btn-back" @click="goBack">
+        <el-button text @click="goBack" class="btn-back">
           <span class="back-icon">←</span>
           {{ $t('knowledgeBase.backToList') }}
-        </button>
+        </el-button>
         <h1 class="kb-title">{{ kbStore.currentKb?.name }}</h1>
       </div>
       <div class="header-actions">
