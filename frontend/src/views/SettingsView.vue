@@ -691,342 +691,185 @@
     </el-dialog>
 
     <!-- Expert 添加/编辑对话框 -->
-    <div v-if="showExpertDialog" class="dialog-overlay">
-      <div class="dialog dialog-large expert-dialog">
-        <h3 class="dialog-title">
-          {{ editingExpert ? $t('settings.editExpert') : $t('settings.addExpert') }}
-        </h3>
-        <div class="dialog-body">
-          <!-- Tab Navigation -->
-          <div class="expert-tabs">
-            <button
-              v-for="tab in expertTabs"
-              :key="tab.key"
-              class="expert-tab-btn"
-              :class="{ active: expertActiveTab === tab.key }"
-              @click="expertActiveTab = tab.key"
-            >
-              {{ tab.label }}
-            </button>
-          </div>
-          
-          <!-- Tab Content -->
-          <div class="expert-tab-content">
-            <!-- 基本信息 Tab -->
-            <div v-if="expertActiveTab === 'basic'" class="expert-tab-pane">
-              <div class="form-row">
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.expertName') }} *</label>
-                  <input
-                    v-model="expertForm.name"
-                    type="text"
-                    class="form-input"
-                    :placeholder="$t('settings.expertNamePlaceholder')"
-                  />
-                </div>
-                <div class="form-item checkbox">
-                  <label class="form-label">
-                    <input v-model="expertForm.is_active" type="checkbox" />
-                    {{ $t('settings.isActive') }}
-                  </label>
-                </div>
-              </div>
-              
-              <div class="form-row avatar-row">
-                <div class="form-item avatar-item">
-                  <label class="form-label">{{ $t('settings.expertAvatar') }}</label>
-                  <div class="avatar-upload">
-                    <div 
-                      class="avatar-preview" 
-                      :style="expertForm.avatar_base64 ? { backgroundImage: `url(${expertForm.avatar_base64})` } : {}"
-                    >
-                      <span v-if="!expertForm.avatar_base64">🤖</span>
-                    </div>
-                    <div class="avatar-actions">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        ref="smallAvatarInput"
-                        @change="handleSmallAvatarUpload"
-                        style="display: none"
-                      />
-                      <button type="button" class="btn-small" @click="smallAvatarInput?.click()">
-                        {{ $t('settings.uploadAvatar') }}
-                      </button>
-                      <button 
-                        v-if="expertForm.avatar_base64" 
-                        type="button" 
-                        class="btn-small btn-danger"
-                        @click="expertForm.avatar_base64 = ''"
-                      >
-                        {{ $t('common.delete') }}
-                      </button>
-                    </div>
+    <!-- Expert 添加/编辑对话框 -->
+    <el-dialog
+      v-model="showExpertDialog"
+      :title="editingExpert ? $t('settings.editExpert') : $t('settings.addExpert')"
+      width="800px"
+      class="expert-dialog"
+    >
+      <el-tabs v-model="expertActiveTab">
+        <el-tab-pane :label="$t('settings.expertBasicInfo')" name="basic">
+          <el-row :gutter="20">
+            <el-col :span="18">
+              <el-form-item :label="$t('settings.expertName')" required>
+                <el-input v-model="expertForm.name" :placeholder="$t('settings.expertNamePlaceholder')" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-checkbox v-model="expertForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertAvatar')">
+                <div class="avatar-upload">
+                  <div class="avatar-preview" :style="expertForm.avatar_base64 ? { backgroundImage: `url(${expertForm.avatar_base64})` } : {}">
+                    <span v-if="!expertForm.avatar_base64">🤖</span>
+                  </div>
+                  <div class="avatar-actions">
+                    <input type="file" accept="image/*" ref="smallAvatarInput" @change="handleSmallAvatarUpload" style="display: none" />
+                    <el-button size="small" @click="smallAvatarInput?.click()">{{ $t('settings.uploadAvatar') }}</el-button>
+                    <el-button v-if="expertForm.avatar_base64" size="small" type="danger" @click="expertForm.avatar_base64 = ''">{{ $t('common.delete') }}</el-button>
                   </div>
                 </div>
-                <div class="form-item avatar-item">
-                  <label class="form-label">{{ $t('settings.expertAvatarLarge') }}</label>
-                  <div class="avatar-upload">
-                    <div 
-                      class="avatar-preview large" 
-                      :style="expertForm.avatar_large_base64 ? { backgroundImage: `url(${expertForm.avatar_large_base64})` } : {}"
-                    >
-                      <span v-if="!expertForm.avatar_large_base64">🖼️</span>
-                    </div>
-                    <div class="avatar-actions">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        ref="largeAvatarInput"
-                        @change="handleLargeAvatarUpload"
-                        style="display: none"
-                      />
-                      <button type="button" class="btn-small" @click="largeAvatarInput?.click()">
-                        {{ $t('settings.uploadAvatar') }}
-                      </button>
-                      <button 
-                        v-if="expertForm.avatar_large_base64" 
-                        type="button" 
-                        class="btn-small btn-danger"
-                        @click="expertForm.avatar_large_base64 = ''"
-                      >
-                        {{ $t('common.delete') }}
-                      </button>
-                    </div>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertAvatarLarge')">
+                <div class="avatar-upload">
+                  <div class="avatar-preview large" :style="expertForm.avatar_large_base64 ? { backgroundImage: `url(${expertForm.avatar_large_base64})` } : {}">
+                    <span v-if="!expertForm.avatar_large_base64">🖼️</span>
+                  </div>
+                  <div class="avatar-actions">
+                    <input type="file" accept="image/*" ref="largeAvatarInput" @change="handleLargeAvatarUpload" style="display: none" />
+                    <el-button size="small" @click="largeAvatarInput?.click()">{{ $t('settings.uploadAvatar') }}</el-button>
+                    <el-button v-if="expertForm.avatar_large_base64" size="small" type="danger" @click="expertForm.avatar_large_base64 = ''">{{ $t('common.delete') }}</el-button>
                   </div>
                 </div>
-              </div>
-              
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.expertIntroduction') }}</label>
-                <textarea
-                  v-model="expertForm.introduction"
-                  class="form-input"
-                  rows="3"
-                  :placeholder="$t('settings.expertIntroductionPlaceholder')"
-                ></textarea>
-              </div>
-            </div>
-            
-            <!-- 人设配置 Tab -->
-            <div v-if="expertActiveTab === 'personality'" class="expert-tab-pane">
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.expertCoreValues') }}</label>
-                <textarea
-                  v-model="expertForm.core_values"
-                  class="form-input"
-                  rows="3"
-                  :placeholder="$t('settings.expertCoreValuesPlaceholder')"
-                ></textarea>
-              </div>
-              
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.expertBehavioralGuidelines') }}</label>
-                <textarea
-                  v-model="expertForm.behavioral_guidelines"
-                  class="form-input"
-                  rows="4"
-                  :placeholder="$t('settings.expertBehavioralGuidelinesPlaceholder')"
-                ></textarea>
-              </div>
-              
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.expertTaboos') }}</label>
-                <textarea
-                  v-model="expertForm.taboos"
-                  class="form-input"
-                  rows="3"
-                  :placeholder="$t('settings.expertTaboosPlaceholder')"
-                ></textarea>
-              </div>
-              
-              <div class="form-row">
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.expertSpeakingStyle') }}</label>
-                  <input
-                    v-model="expertForm.speaking_style"
-                    type="text"
-                    class="form-input"
-                    :placeholder="$t('settings.expertSpeakingStylePlaceholder')"
-                  />
-                </div>
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.expertEmotionalTone') }}</label>
-                  <input
-                    v-model="expertForm.emotional_tone"
-                    type="text"
-                    class="form-input"
-                    :placeholder="$t('settings.expertEmotionalTonePlaceholder')"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <!-- 模型配置 Tab -->
-            <div v-if="expertActiveTab === 'model'" class="expert-tab-pane">
-              <div class="form-row">
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.expertExpressiveModel') }}</label>
-                  <select v-model="expertForm.expressive_model_id" class="form-input">
-                    <option value="">{{ $t('settings.selectModel') }}</option>
-                    <option v-for="model in expertAvailableModels" :key="model.id" :value="model.id">
-                      {{ model.name }}
-                    </option>
-                  </select>
-                </div>
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.expertReflectiveModel') }}</label>
-                  <select v-model="expertForm.reflective_model_id" class="form-input">
-                    <option value="">{{ $t('settings.selectModel') }}</option>
-                    <option v-for="model in expertAvailableModels" :key="model.id" :value="model.id">
-                      {{ model.name }}
-                    </option>
-                  </select>
-                </div>
-              </div>
-              
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.expertPromptTemplate') }}</label>
-                <textarea
-                  v-model="expertForm.prompt_template"
-                  class="form-input"
-                  rows="5"
-                  :placeholder="$t('settings.expertPromptTemplatePlaceholder')"
-                ></textarea>
-              </div>
-              
-              <!-- 上下文压缩配置 -->
-              <div class="form-section-title">{{ $t('settings.contextCompression') }}</div>
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.contextStrategy') }}</label>
-                <select v-model="expertForm.context_strategy" class="form-input">
-                  <option value="full">{{ $t('settings.contextStrategyFull') }}</option>
-                  <option value="simple">{{ $t('settings.contextStrategySimple') }}</option>
-                  <option value="minimal">{{ $t('settings.contextStrategyMinimal') }}</option>
-                </select>
-                <p class="form-hint">{{ $t('settings.contextStrategyHint') }}</p>
-              </div>
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.contextThreshold') }}</label>
-                <input
-                  v-model.number="expertForm.context_threshold"
-                  type="number"
-                  class="form-input"
-                  step="0.05"
-                  min="0.3"
-                  max="0.95"
-                />
-                <p class="form-hint">{{ $t('settings.contextThresholdHint') }}</p>
-              </div>
-              
-              <!-- LLM 参数配置 -->
-              <div class="form-section-title">{{ $t('settings.llmParams') }}</div>
-              <div class="form-row">
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.temperature') }}</label>
-                  <input
-                    v-model.number="expertForm.temperature"
-                    type="number"
-                    class="form-input"
-                    step="0.1"
-                    min="0"
-                    max="2"
-                  />
-                  <p class="form-hint">{{ $t('settings.temperatureHint') }}</p>
-                </div>
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.reflectiveTemperature') }}</label>
-                  <input
-                    v-model.number="expertForm.reflective_temperature"
-                    type="number"
-                    class="form-input"
-                    step="0.1"
-                    min="0"
-                    max="2"
-                  />
-                  <p class="form-hint">{{ $t('settings.reflectiveTemperatureHint') }}</p>
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.topP') }}</label>
-                  <input
-                    v-model.number="expertForm.top_p"
-                    type="number"
-                    class="form-input"
-                    step="0.1"
-                    min="0"
-                    max="1"
-                  />
-                  <p class="form-hint">{{ $t('settings.topPHint') }}</p>
-                </div>
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.frequencyPenalty') }}</label>
-                  <input
-                    v-model.number="expertForm.frequency_penalty"
-                    type="number"
-                    class="form-input"
-                    step="0.1"
-                    min="-2"
-                    max="2"
-                  />
-                  <p class="form-hint">{{ $t('settings.frequencyPenaltyHint') }}</p>
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-item">
-                  <label class="form-label">{{ $t('settings.presencePenalty') }}</label>
-                  <input
-                    v-model.number="expertForm.presence_penalty"
-                    type="number"
-                    class="form-input"
-                    step="0.1"
-                    min="-2"
-                    max="2"
-                  />
-                  <p class="form-hint">{{ $t('settings.presencePenaltyHint') }}</p>
-                </div>
-                <div class="form-item">
-                  <!-- 占位符，保持布局对称 -->
-                </div>
-              </div>
-              
-              <!-- 工具调用配置 -->
-              <div class="form-section-title">{{ $t('settings.toolCallConfig') }}</div>
-              <div class="form-item">
-                <label class="form-label">{{ $t('settings.maxToolRounds') }}</label>
-                <input
-                  v-model.number="expertForm.max_tool_rounds"
-                  type="number"
-                  class="form-input"
-                  min="1"
-                  max="50"
-                  :placeholder="$t('settings.maxToolRoundsPlaceholder')"
-                />
-                <p class="form-hint">{{ $t('settings.maxToolRoundsExpertHint') }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-left">
-            <button
-              v-if="editingExpert"
-              class="btn-delete"
-              @click="confirmDeleteExpertFromDialog"
-            >
-              {{ $t('common.delete') }}
-            </button>
-          </div>
-          <div class="footer-right">
-            <button class="btn-cancel" @click="closeExpertDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isExpertFormValid" @click="saveExpert">
-              {{ $t('common.save') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-form-item :label="$t('settings.expertIntroduction')">
+            <el-input v-model="expertForm.introduction" type="textarea" :rows="3" :placeholder="$t('settings.expertIntroductionPlaceholder')" />
+          </el-form-item>
+        </el-tab-pane>
+
+        <el-tab-pane :label="$t('settings.expertPersonality')" name="personality">
+          <el-form-item :label="$t('settings.expertCoreValues')">
+            <el-input v-model="expertForm.core_values" type="textarea" :rows="3" :placeholder="$t('settings.expertCoreValuesPlaceholder')" />
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.expertBehavioralGuidelines')">
+            <el-input v-model="expertForm.behavioral_guidelines" type="textarea" :rows="4" :placeholder="$t('settings.expertBehavioralGuidelinesPlaceholder')" />
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.expertTaboos')">
+            <el-input v-model="expertForm.taboos" type="textarea" :rows="3" :placeholder="$t('settings.expertTaboosPlaceholder')" />
+          </el-form-item>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertSpeakingStyle')">
+                <el-input v-model="expertForm.speaking_style" :placeholder="$t('settings.expertSpeakingStylePlaceholder')" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertEmotionalTone')">
+                <el-input v-model="expertForm.emotional_tone" :placeholder="$t('settings.expertEmotionalTonePlaceholder')" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-tab-pane>
+
+        <el-tab-pane :label="$t('settings.expertModelConfig')" name="model">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertExpressiveModel')">
+                <el-select v-model="expertForm.expressive_model_id" clearable>
+                  <el-option label="" value="" />
+                  <el-option v-for="model in expertAvailableModels" :key="model.id" :value="model.id" :label="model.name" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertReflectiveModel')">
+                <el-select v-model="expertForm.reflective_model_id" clearable>
+                  <el-option label="" value="" />
+                  <el-option v-for="model in expertAvailableModels" :key="model.id" :value="model.id" :label="model.name" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-form-item :label="$t('settings.expertPromptTemplate')">
+            <el-input v-model="expertForm.prompt_template" type="textarea" :rows="5" :placeholder="$t('settings.expertPromptTemplatePlaceholder')" />
+          </el-form-item>
+
+          <el-divider>{{ $t('settings.contextCompression') }}</el-divider>
+
+          <el-form-item :label="$t('settings.contextStrategy')">
+            <el-select v-model="expertForm.context_strategy">
+              <el-option value="full" :label="$t('settings.contextStrategyFull')" />
+              <el-option value="simple" :label="$t('settings.contextStrategySimple')" />
+              <el-option value="minimal" :label="$t('settings.contextStrategyMinimal')" />
+            </el-select>
+            <div class="el-form-item__tip">{{ $t('settings.contextStrategyHint') }}</div>
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.contextThreshold')">
+            <el-input-number v-model="expertForm.context_threshold" :precision="2" :step="0.05" :min="0.3" :max="0.95" />
+            <div class="el-form-item__tip">{{ $t('settings.contextThresholdHint') }}</div>
+          </el-form-item>
+
+          <el-divider>{{ $t('settings.llmParams') }}</el-divider>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.temperature')">
+                <el-input-number v-model="expertForm.temperature" :precision="1" :step="0.1" :min="0" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.temperatureHint') }}</div>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.reflectiveTemperature')">
+                <el-input-number v-model="expertForm.reflective_temperature" :precision="1" :step="0.1" :min="0" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.reflectiveTemperatureHint') }}</div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.topP')">
+                <el-input-number v-model="expertForm.top_p" :precision="1" :step="0.1" :min="0" :max="1" />
+                <div class="el-form-item__tip">{{ $t('settings.topPHint') }}</div>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.frequencyPenalty')">
+                <el-input-number v-model="expertForm.frequency_penalty" :precision="1" :step="0.1" :min="-2" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.frequencyPenaltyHint') }}</div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.presencePenalty')">
+                <el-input-number v-model="expertForm.presence_penalty" :precision="1" :step="0.1" :min="-2" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.presencePenaltyHint') }}</div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-divider>{{ $t('settings.toolCallConfig') }}</el-divider>
+
+          <el-form-item :label="$t('settings.maxToolRounds')">
+            <el-input-number v-model="expertForm.max_tool_rounds" :min="1" :max="50" :placeholder="$t('settings.maxToolRoundsPlaceholder')" />
+            <div class="el-form-item__tip">{{ $t('settings.maxToolRoundsExpertHint') }}</div>
+          </el-form-item>
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <el-button v-if="editingExpert" type="danger" @click="confirmDeleteExpertFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeExpertDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isExpertFormValid" @click="saveExpert">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
 
 <!-- 技能管理对话框 -->
     <el-dialog
