@@ -9,41 +9,50 @@
         <LangSelector />
       </div>
 
-      <form class="login-form" @submit.prevent="handleLogin">
-        <div class="form-group">
-          <label class="form-label">{{ $t('login.account') }}</label>
-          <input
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        @submit.prevent="handleLogin"
+      >
+        <el-form-item :label="$t('login.account')" prop="account">
+          <el-input
             v-model="form.account"
-            type="text"
-            class="form-input"
             :placeholder="$t('login.accountPlaceholder')"
-            required
+            @keyup.enter="handleLogin"
           />
-        </div>
+        </el-form-item>
 
-        <div class="form-group">
-          <label class="form-label">{{ $t('login.password') }}</label>
-          <input
+        <el-form-item :label="$t('login.password')" prop="password">
+          <el-input
             v-model="form.password"
             type="password"
-            class="form-input"
             :placeholder="$t('login.passwordPlaceholder')"
-            required
+            show-password
+            @keyup.enter="handleLogin"
           />
-        </div>
+        </el-form-item>
 
-        <div v-if="error" class="error-message">
-          {{ error }}
-        </div>
+        <el-alert
+          v-if="error"
+          :title="error"
+          type="error"
+          :closable="false"
+          show-icon
+          class="login-error"
+        />
 
-        <button
-          type="submit"
+        <el-button
+          type="primary"
+          size="large"
           class="btn-login"
-          :disabled="loading"
+          :loading="loading"
+          @click="handleLogin"
         >
           {{ loading ? $t('common.loading') : $t('login.submit') }}
-        </button>
-      </form>
+        </el-button>
+      </el-form>
 
       <div class="login-footer">
         <p>{{ $t('login.noAccount') }} <router-link to="/register">{{ $t('login.register') }}</router-link></p>
@@ -64,35 +73,47 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import LangSelector from '@/components/common/LangSelector.vue'
+import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
 const { t } = useI18n()
 const userStore = useUserStore()
+const formRef = ref<FormInstance>()
 
 const form = reactive({
   account: '',
   password: '',
 })
 
+const rules = reactive<FormRules>({
+  account: [{ required: true, message: t('login.accountRequired'), trigger: 'blur' }],
+  password: [{ required: true, message: t('login.passwordRequired'), trigger: 'blur' }],
+})
+
 const loading = ref(false)
 const error = ref('')
 
-  const handleLogin = async () => {
-    error.value = ''
-    loading.value = true
+const handleLogin = async () => {
+  if (!formRef.value) return
 
-    try {
-      await userStore.login({
-        account: form.account,
-        password: form.password,
-      })
-      router.push({ name: 'experts' })
-    } catch (err: any) {
-      error.value = err.message || err.response?.data?.message || t('login.error')
-    } finally {
-      loading.value = false
-    }
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  error.value = ''
+  loading.value = true
+
+  try {
+    await userStore.login({
+      account: form.account,
+      password: form.password,
+    })
+    router.push({ name: 'experts' })
+  } catch (err: any) {
+    error.value = err.message || err.response?.data?.message || t('login.error')
+  } finally {
+    loading.value = false
   }
+}
 </script>
 
 <style scoped>
@@ -142,74 +163,36 @@ const error = ref('')
   margin: 0;
 }
 
-.login-form {
-  margin-bottom: 24px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-label {
-  display: block;
+:deep(.el-form-item__label) {
   font-size: 13px;
   font-weight: 500;
   color: #555;
-  margin-bottom: 8px;
+  padding-bottom: 4px;
 }
 
-.form-input {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.error-message {
-  padding: 12px;
-  background: #ffebee;
-  border: 1px solid #ef9a9a;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #c62828;
+.login-error {
   margin-bottom: 16px;
 }
 
 .btn-login {
   width: 100%;
-  padding: 14px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
+  height: 48px;
   font-size: 15px;
   font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.2s;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
 }
 
-.btn-login:hover:not(:disabled) {
+.btn-login:hover {
   opacity: 0.95;
   transform: translateY(-1px);
-}
-
-.btn-login:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
 }
 
 .login-footer {
   text-align: center;
   font-size: 13px;
   color: #666;
+  margin-top: 24px;
 }
 
 .login-footer a {

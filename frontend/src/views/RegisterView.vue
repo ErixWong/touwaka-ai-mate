@@ -9,93 +9,87 @@
         <LangSelector />
       </div>
 
-      <form class="register-form" @submit.prevent="handleRegister">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        @submit.prevent="handleRegister"
+      >
         <!-- 邀请码 -->
-        <div class="form-group">
-          <label class="form-label">{{ $t('register.invitationCode') }}</label>
-          <input
+        <el-form-item :label="$t('register.invitationCode')" prop="invitation_code">
+          <el-input
             v-model="form.invitation_code"
-            type="text"
-            class="form-input"
             :placeholder="$t('register.invitationCodePlaceholder')"
-            :required="!allowSelfRegistration"
+            @blur="validateInvitationCode(form.invitation_code)"
           />
-          <p v-if="invitationValidation && invitationValidation.valid === false" class="field-error">
+          <el-text v-if="invitationValidation?.valid === false" type="danger" size="small">
             {{ invitationValidation.message }}
-          </p>
-          <p v-else-if="invitationValidation && invitationValidation.valid === true" class="field-success">
+          </el-text>
+          <el-text v-else-if="invitationValidation?.valid === true" type="success" size="small">
             {{ $t('register.invitationCodeValid', { remaining: invitationValidation.remaining }) }}
-          </p>
-        </div>
+          </el-text>
+        </el-form-item>
 
         <!-- 用户名 -->
-        <div class="form-group">
-          <label class="form-label">{{ $t('register.username') }}</label>
-          <input
+        <el-form-item :label="$t('register.username')" prop="username">
+          <el-input
             v-model="form.username"
-            type="text"
-            class="form-input"
             :placeholder="$t('register.usernamePlaceholder')"
-            required
-            pattern="[a-zA-Z][a-zA-Z0-9_]{5,15}"
-            :title="$t('register.usernameFormatHint')"
             @input="handleUsernameInput"
           />
-          <p class="field-hint">{{ $t('register.usernameFormatHint') }}</p>
-        </div>
+          <el-text type="info" size="small">{{ $t('register.usernameFormatHint') }}</el-text>
+        </el-form-item>
 
         <!-- 邮箱 -->
-        <div class="form-group">
-          <label class="form-label">{{ $t('register.email') }}</label>
-          <input
+        <el-form-item :label="$t('register.email')" prop="email">
+          <el-input
             v-model="form.email"
             type="email"
-            class="form-input"
             :placeholder="$t('register.emailPlaceholder')"
-            required
           />
-        </div>
+        </el-form-item>
 
         <!-- 密码 -->
-        <div class="form-group">
-          <label class="form-label">{{ $t('register.password') }}</label>
-          <input
+        <el-form-item :label="$t('register.password')" prop="password">
+          <el-input
             v-model="form.password"
             type="password"
-            class="form-input"
             :placeholder="$t('register.passwordPlaceholder')"
-            required
-            minlength="6"
+            show-password
           />
-        </div>
+        </el-form-item>
 
         <!-- 确认密码 -->
-        <div class="form-group">
-          <label class="form-label">{{ $t('register.confirmPassword') }}</label>
-          <input
+        <el-form-item :label="$t('register.confirmPassword')" prop="confirm_password">
+          <el-input
             v-model="form.confirm_password"
             type="password"
-            class="form-input"
             :placeholder="$t('register.confirmPasswordPlaceholder')"
-            required
+            show-password
           />
-          <p v-if="form.confirm_password && form.password !== form.confirm_password" class="field-error">
-            {{ $t('register.passwordMismatch') }}
-          </p>
-        </div>
+        </el-form-item>
 
-        <div v-if="error" class="error-message">
-          {{ error }}
-        </div>
+        <el-alert
+          v-if="error"
+          :title="error"
+          type="error"
+          :closable="false"
+          show-icon
+          class="register-error"
+        />
 
-        <button
-          type="submit"
+        <el-button
+          type="primary"
+          size="large"
           class="btn-register"
-          :disabled="loading || !!(form.confirm_password && form.password !== form.confirm_password)"
+          :loading="loading"
+          :disabled="isSubmitDisabled"
+          @click="handleRegister"
         >
           {{ loading ? $t('common.loading') : $t('register.submit') }}
-        </button>
-      </form>
+        </el-button>
+      </el-form>
 
       <div class="register-footer">
         <p>{{ $t('register.hasAccount') }} <router-link to="/login">{{ $t('register.login') }}</router-link></p>
@@ -111,17 +105,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import LangSelector from '@/components/common/LangSelector.vue'
 import { getRegistrationConfig, verifyInvitationCode, register, type VerifyResult } from '@/api/invitation'
+import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
 const userStore = useUserStore()
+const formRef = ref<FormInstance>()
 
 const form = reactive({
   invitation_code: '',
@@ -131,11 +127,44 @@ const form = reactive({
   confirm_password: '',
 })
 
+const rules = reactive<FormRules>({
+  invitation_code: [{ required: true, message: t('register.invitationCodeRequired'), trigger: 'blur' }],
+  username: [
+    { required: true, message: t('register.usernameRequired'), trigger: 'blur' },
+    { pattern: /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/, message: t('register.usernameFormatHint'), trigger: 'blur' },
+  ],
+  email: [
+    { required: true, message: t('register.emailRequired'), trigger: 'blur' },
+    { type: 'email', message: t('register.emailInvalid'), trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: t('register.passwordRequired'), trigger: 'blur' },
+    { min: 6, message: t('register.passwordMinLength'), trigger: 'blur' },
+  ],
+  confirm_password: [
+    { required: true, message: t('register.confirmPasswordRequired'), trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== form.password) {
+          callback(new Error(t('register.passwordMismatch')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+})
+
 const loading = ref(false)
 const error = ref('')
 const allowSelfRegistration = ref(false)
 const invitationValidation = ref<VerifyResult | null>(null)
 let validateTimeout: ReturnType<typeof setTimeout> | null = null
+
+const isSubmitDisabled = computed(() => {
+  return loading.value || (form.confirm_password && form.password !== form.confirm_password)
+})
 
 // 加载注册配置
 onMounted(async () => {
@@ -174,7 +203,7 @@ watch(() => form.invitation_code, (newCode) => {
   if (validateTimeout) {
     clearTimeout(validateTimeout)
   }
-  
+
   if (newCode) {
     validateTimeout = setTimeout(() => {
       validateInvitationCode(newCode)
@@ -185,35 +214,28 @@ watch(() => form.invitation_code, (newCode) => {
 })
 
 // 处理用户名输入，过滤非法字符
-const handleUsernameInput = (event: Event) => {
-  const input = event.target as HTMLInputElement
+const handleUsernameInput = (value: string) => {
   // 只保留字母、数字、下划线
-  let value = input.value.replace(/[^a-zA-Z0-9_]/g, '')
-  // 确保第一个字符是字母（如果不是，则删除第一个字符）
-  const firstChar = value[0]
+  let filtered = value.replace(/[^a-zA-Z0-9_]/g, '')
+  // 确保第一个字符是字母
+  const firstChar = filtered[0]
   if (firstChar && !/^[a-zA-Z]$/.test(firstChar)) {
-    value = value.substring(1)
+    filtered = filtered.substring(1)
   }
   // 限制最大长度为16
-  if (value.length > 16) {
-    value = value.substring(0, 16)
+  if (filtered.length > 16) {
+    filtered = filtered.substring(0, 16)
   }
-  // 更新表单值
-  form.username = value
-  // 如果值被修改过，更新输入框显示
-  if (input.value !== value) {
-    input.value = value
-  }
+  form.username = filtered
 }
 
 const handleRegister = async () => {
-  error.value = ''
+  if (!formRef.value) return
 
-  // 验证密码匹配
-  if (form.password !== form.confirm_password) {
-    error.value = t('register.passwordMismatch')
-    return
-  }
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  error.value = ''
 
   // 验证邀请码
   if (!allowSelfRegistration.value && !form.invitation_code) {
@@ -239,7 +261,7 @@ const handleRegister = async () => {
     // 保存 token
     localStorage.setItem('access_token', result.access_token)
     localStorage.setItem('refresh_token', result.refresh_token)
-    
+
     // 加载用户信息
     await userStore.loadUser()
 
@@ -300,92 +322,41 @@ const handleRegister = async () => {
   margin: 0;
 }
 
-.register-form {
-  margin-bottom: 20px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-label {
-  display: block;
+:deep(.el-form-item__label) {
   font-size: 13px;
   font-weight: 500;
   color: #555;
-  margin-bottom: 6px;
+  padding-bottom: 4px;
 }
 
-.form-input {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.field-error {
-  font-size: 12px;
-  color: #c62828;
+:deep(.el-text) {
   margin-top: 4px;
 }
 
-.field-success {
-  font-size: 12px;
-  color: #2e7d32;
-  margin-top: 4px;
-}
-
-.field-hint {
-  font-size: 12px;
-  color: #888;
-  margin-top: 4px;
-}
-
-.error-message {
-  padding: 10px;
-  background: #ffebee;
-  border: 1px solid #ef9a9a;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #c62828;
+.register-error {
   margin-bottom: 12px;
 }
 
 .btn-register {
   width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
+  height: 48px;
   font-size: 15px;
   font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.2s;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  margin-top: 8px;
 }
 
-.btn-register:hover:not(:disabled) {
+.btn-register:hover {
   opacity: 0.95;
   transform: translateY(-1px);
-}
-
-.btn-register:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
 }
 
 .register-footer {
   text-align: center;
   font-size: 13px;
   color: #666;
+  margin-top: 24px;
 }
 
 .register-footer a {
