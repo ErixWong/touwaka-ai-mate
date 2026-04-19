@@ -1,32 +1,20 @@
 <template>
   <div class="settings-view">
     <!-- 左侧菜单 -->
-    <div class="settings-sidebar" :class="{ collapsed: sidebarCollapsed }">
-      <!-- 折叠按钮 -->
-      <div class="sidebar-header">
-        <el-button 
-          text
-          class="collapse-btn" 
-          @click="sidebarCollapsed = !sidebarCollapsed"
-          :title="sidebarCollapsed ? '展开菜单' : '收起菜单'"
-        >
-          <span class="collapse-icon">{{ sidebarCollapsed ? '→' : '←' }}</span>
-        </el-button>
-      </div>
-      <div class="sidebar-menu">
-        <el-button
-          v-for="item in currentMenuItems"
-          :key="item.key"
-          :type="activeTab === item.key ? 'primary' : ''"
-          text
-          class="menu-item-btn"
-          @click="activeTab = item.key"
-          :title="item.label"
-        >
-          <span class="menu-text">{{ item.label }}</span>
-        </el-button>
-      </div>
-    </div>
+    <el-menu
+      :default-active="activeTab"
+      :collapse="sidebarCollapsed"
+      class="settings-sidebar"
+      @select="handleMenuSelect"
+    >
+      <el-menu-item
+        v-for="item in currentMenuItems"
+        :key="item.key"
+        :index="item.key"
+      >
+        <span>{{ item.label }}</span>
+      </el-menu-item>
+    </el-menu>
 
     <!-- 右侧主显示区 -->
     <div class="settings-main">
@@ -34,78 +22,58 @@
     <!-- 个人资料 -->
     <div v-if="activeTab === 'profile'" class="settings-section profile-section">
       <!-- 子 Tab 切换 -->
-      <div class="profile-sub-tabs">
-        <el-button
-          :type="profileSubTab === 'basic' ? 'primary' : ''"
-          text
-          class="sub-tab-btn"
-          @click="profileSubTab = 'basic'"
-        >
-          {{ $t('settings.profileBasic') }}
-        </el-button>
-        <el-button
-          :type="profileSubTab === 'password' ? 'primary' : ''"
-          text
-          class="sub-tab-btn"
-          @click="profileSubTab = 'password'"
-        >
-          {{ $t('settings.changePassword') }}
-        </el-button>
-      </div>
+      <el-tabs v-model="profileSubTab" class="profile-tabs">
+        <el-tab-pane :label="$t('settings.profileBasic')" name="basic">
+          <el-form label-width="80px">
+            <el-form-item :label="$t('settings.nickname')">
+              <el-input v-model="profileForm.nickname" />
+            </el-form-item>
+            <el-form-item :label="$t('settings.language')">
+              <el-select v-model="profileForm.language">
+                <el-option label="中文" value="zh-CN" />
+                <el-option label="English" value="en-US" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <el-button type="primary" @click="saveProfile">{{ $t('settings.save') }}</el-button>
+        </el-tab-pane>
 
-      <!-- 基本信息 Tab -->
-      <div v-if="profileSubTab === 'basic'" class="profile-tab-content">
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.nickname') }}</label>
-          <el-input
-            v-model="profileForm.nickname"
-          />
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.language') }}</label>
-          <el-select v-model="profileForm.language" style="width: 200px">
-            <el-option label="中文" value="zh-CN" />
-            <el-option label="English" value="en-US" />
-          </el-select>
-        </div>
-        <el-button type="primary" @click="saveProfile">{{ $t('settings.save') }}</el-button>
-      </div>
-
-      <!-- 修改密码 Tab -->
-      <div v-if="profileSubTab === 'password'" class="profile-tab-content">
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
-          <el-input
-            v-model="passwordForm.old_password"
-            type="password"
-            :placeholder="$t('settings.oldPasswordPlaceholder')"
-          />
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.newPassword') }}</label>
-          <el-input
-            v-model="passwordForm.new_password"
-            type="password"
-            :placeholder="$t('settings.newPasswordPlaceholder')"
-          />
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
-          <el-input
-            v-model="passwordForm.confirm_password"
-            type="password"
-            :placeholder="$t('settings.confirmPasswordPlaceholder')"
-          />
-        </div>
-        <el-button
-          type="primary"
-          :loading="passwordLoading"
-          :disabled="!isPasswordFormValid"
-          @click="handleChangePassword"
-        >
-          {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
-        </el-button>
-      </div>
+        <el-tab-pane :label="$t('settings.changePassword')" name="password">
+          <el-form label-width="100px">
+            <el-form-item :label="$t('settings.oldPassword')">
+              <el-input
+                v-model="passwordForm.old_password"
+                type="password"
+                :placeholder="$t('settings.oldPasswordPlaceholder')"
+                show-password
+              />
+            </el-form-item>
+            <el-form-item :label="$t('settings.newPassword')">
+              <el-input
+                v-model="passwordForm.new_password"
+                type="password"
+                :placeholder="$t('settings.newPasswordPlaceholder')"
+                show-password
+              />
+            </el-form-item>
+            <el-form-item :label="$t('settings.confirmPassword')">
+              <el-input
+                v-model="passwordForm.confirm_password"
+                type="password"
+                :placeholder="$t('settings.confirmPasswordPlaceholder')"
+                show-password
+              />
+            </el-form-item>
+          </el-form>
+          <el-button
+            type="primary"
+            :disabled="!isPasswordFormValid || passwordLoading"
+            @click="handleChangePassword"
+          >
+            {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
+          </el-button>
+        </el-tab-pane>
+      </el-tabs>
     </div>
 
     <!-- 邀请管理 -->
@@ -474,119 +442,91 @@
           </div>
 
           <template v-else>
-            <!-- 子 Tab 切换 -->
-            <div class="role-sub-tabs">
-              <button
-                class="sub-tab-btn"
-                :class="{ active: roleSubTab === 'permissions' }"
-                @click="roleSubTab = 'permissions'"
-              >
-                {{ $t('settings.permissionConfig') }}
-              </button>
-              <button
-                class="sub-tab-btn"
-                :class="{ active: roleSubTab === 'experts' }"
-                @click="roleSubTab = 'experts'"
-              >
-                {{ $t('settings.expertAccess') }}
-              </button>
-            </div>
+            <el-tabs v-model="roleSubTab" class="role-tabs">
+              <el-tab-pane :label="$t('settings.permissionConfig')" name="permissions">
+                <div v-if="rolePermissionsLoading" class="loading-state">
+                  {{ $t('common.loading') }}
+                </div>
 
-            <!-- 权限配置 Tab -->
-            <div v-if="roleSubTab === 'permissions'" class="role-tab-content">
-              <div v-if="rolePermissionsLoading" class="loading-state">
-                {{ $t('common.loading') }}
-              </div>
-
-              <div v-else class="permissions-list">
-                <div
-                  v-for="permission in allPermissions"
-                  :key="permission.id"
-                  class="permission-item"
-                >
-                  <label class="permission-checkbox">
-                    <input
-                      type="checkbox"
+                <div v-else class="permissions-list">
+                  <el-checkbox-group v-model="rolePermissionIds" @change="rolePermissionsChanged = true">
+                    <el-checkbox
+                      v-for="permission in allPermissions"
+                      :key="permission.id"
                       :value="permission.id"
-                      v-model="rolePermissionIds"
-                      @change="rolePermissionsChanged = true"
-                    />
-                    <span class="permission-info">
-                      <span class="permission-name">{{ permission.name }}</span>
-                      <span v-if="permission.description" class="permission-desc">
-                        {{ permission.description }}
+                      :label="permission.name"
+                    >
+                      <span class="permission-info">
+                        <span class="permission-name">{{ permission.name }}</span>
+                        <span v-if="permission.description" class="permission-desc">
+                          {{ permission.description }}
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </el-checkbox>
+                  </el-checkbox-group>
                 </div>
-              </div>
 
-              <div v-if="!rolePermissionsLoading && allPermissions.length === 0" class="empty-state">
-                {{ $t('settings.noPermissionsAvailable') }}
-              </div>
+                <div v-if="!rolePermissionsLoading && allPermissions.length === 0" class="empty-state">
+                  {{ $t('settings.noPermissionsAvailable') }}
+                </div>
 
-              <div class="role-tab-footer">
-                <span class="permissions-count">
-                  {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
-                  <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
-                </span>
-                <button
-                  class="btn-confirm"
-                  :disabled="!rolePermissionsChanged || isAdminRole"
-                  @click="saveRolePermissions"
-                >
-                  {{ $t('common.save') }}
-                </button>
-              </div>
-            </div>
+                <div class="role-tab-footer">
+                  <span class="permissions-count">
+                    {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
+                    <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
+                  </span>
+                  <el-button
+                    type="primary"
+                    :disabled="!rolePermissionsChanged || isAdminRole"
+                    @click="saveRolePermissions"
+                  >
+                    {{ $t('common.save') }}
+                  </el-button>
+                </div>
+              </el-tab-pane>
 
-            <!-- 专家访问权限 Tab -->
-            <div v-if="roleSubTab === 'experts'" class="role-tab-content">
-              <div v-if="roleExpertsLoading" class="loading-state">
-                {{ $t('common.loading') }}
-              </div>
+              <el-tab-pane :label="$t('settings.expertAccess')" name="experts">
+                <div v-if="roleExpertsLoading" class="loading-state">
+                  {{ $t('common.loading') }}
+                </div>
 
-              <div v-else class="experts-list">
-                <div
-                  v-for="expert in allExperts"
-                  :key="expert.id"
-                  class="expert-access-item"
-                >
-                  <label class="expert-checkbox">
-                    <input
-                      type="checkbox"
+                <div v-else class="experts-list">
+                  <el-checkbox-group v-model="roleExpertIds" @change="roleExpertsChanged = true">
+                    <el-checkbox
+                      v-for="expert in allExperts"
+                      :key="expert.id"
                       :value="expert.id"
-                      v-model="roleExpertIds"
-                      @change="roleExpertsChanged = true"
-                    />
-                    <span class="expert-info">
-                      <span class="expert-name">{{ expert.name }}</span>
-                      <span v-if="expert.introduction" class="expert-intro">
-                        {{ expert.introduction }}
+                      :label="expert.name"
+                    >
+                      <span class="expert-info">
+                        <span class="expert-name">{{ expert.name }}</span>
+                        <span v-if="expert.introduction" class="expert-intro">
+                          {{ expert.introduction }}
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </el-checkbox>
+                  </el-checkbox-group>
                 </div>
-              </div>
 
-              <div v-if="!roleExpertsLoading && allExperts.length === 0" class="empty-state">
-                {{ $t('settings.noExpertsAvailable') }}
-              </div>
+                <div v-if="!roleExpertsLoading && allExperts.length === 0" class="empty-state">
+                  {{ $t('settings.noExpertsAvailable') }}
+                </div>
 
-              <div class="role-tab-footer">
-                <span class="experts-count">
-                  {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
-                  <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
-                </span>
-                <button
-                  class="btn-confirm"
-                  :disabled="!roleExpertsChanged || isAdminRole"
-                  @click="saveRoleExperts"
-                >
-                  {{ $t('common.save') }}
-                </button>
-              </div>
-            </div>
+                <div class="role-tab-footer">
+                  <span class="experts-count">
+                    {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
+                    <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
+                  </span>
+                  <el-button
+                    type="primary"
+                    :disabled="!roleExpertsChanged || isAdminRole"
+                    @click="saveRoleExperts"
+                  >
+                    {{ $t('common.save') }}
+                  </el-button>
+                </div>
+              </el-tab-pane>
+            </el-tabs>
           </template>
         </div>
       </div>
@@ -635,65 +575,34 @@
     <el-dialog
       v-model="showProviderDialog"
       :title="editingProvider ? $t('settings.editProvider') : $t('settings.addProvider')"
-      width="480px"
-      destroy-on-close
+      width="500px"
     >
-      <el-form label-position="top">
-        <el-form-item :label="$t('settings.providerName') + ' *'">
-          <el-input
-            v-model="providerForm.name"
-            :placeholder="$t('settings.providerNamePlaceholder')"
-          />
+      <el-form label-width="100px">
+        <el-form-item :label="$t('settings.providerName')" required>
+          <el-input v-model="providerForm.name" :placeholder="$t('settings.providerNamePlaceholder')" />
         </el-form-item>
-        <el-form-item :label="$t('settings.baseUrl') + ' *'">
-          <el-input
-            v-model="providerForm.base_url"
-            :placeholder="$t('settings.baseUrlPlaceholder')"
-          />
+        <el-form-item :label="$t('settings.baseUrl')" required>
+          <el-input v-model="providerForm.base_url" :placeholder="$t('settings.baseUrlPlaceholder')" />
         </el-form-item>
         <el-form-item :label="$t('settings.apiKey')">
-          <el-input
-            v-model="providerForm.api_key"
-            type="password"
-            :placeholder="$t('settings.apiKeyPlaceholder')"
-          />
-          <el-text v-if="editingProvider" type="info" size="small">{{ $t('settings.apiKeyHint') }}</el-text>
+          <el-input v-model="providerForm.api_key" type="password" :placeholder="$t('settings.apiKeyPlaceholder')" show-password />
+          <div v-if="editingProvider" class="el-form-item__tip">{{ $t('settings.apiKeyHint') }}</div>
         </el-form-item>
         <el-form-item :label="$t('settings.timeout') + ' (秒)'">
-          <el-input-number
-            v-model="providerForm.timeout"
-            :min="5"
-            :max="300"
-            controls-position="right"
-          />
+          <el-input-number v-model="providerForm.timeout" :min="5" :max="300" />
         </el-form-item>
         <el-form-item :label="$t('settings.userAgent')">
-          <el-input
-            v-model="providerForm.user_agent"
-            :placeholder="$t('settings.userAgentPlaceholder')"
-          />
-          <el-text type="info" size="small">{{ $t('settings.userAgentHint') }}</el-text>
+          <el-input v-model="providerForm.user_agent" :placeholder="$t('settings.userAgentPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.userAgentHint') }}</div>
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="providerForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="dialog-footer-custom">
-          <el-button
-            v-if="editingProvider"
-            type="danger"
-            @click="confirmDeleteProviderFromDialog"
-          >
-            {{ $t('common.delete') }}
-          </el-button>
-          <div class="footer-right">
-            <el-button @click="closeProviderDialog">{{ $t('common.cancel') }}</el-button>
-            <el-button type="primary" :disabled="!isProviderFormValid" @click="saveProvider">
-              {{ $t('common.save') }}
-            </el-button>
-          </div>
-        </div>
+        <el-button v-if="editingProvider" type="danger" @click="confirmDeleteProviderFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeProviderDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isProviderFormValid" @click="saveProvider">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
@@ -701,574 +610,490 @@
     <el-dialog
       v-model="showModelDialog"
       :title="editingModel ? $t('settings.editModel') : $t('settings.addModel')"
-      width="560px"
-      destroy-on-close
+      width="600px"
     >
-      <el-form label-position="top">
-        <el-form-item :label="$t('settings.modelName') + ' *'">
+      <el-form label-width="120px">
+        <el-form-item :label="$t('settings.modelName')" required>
           <el-input v-model="modelForm.name" :placeholder="$t('settings.modelNamePlaceholder')" />
         </el-form-item>
-        <el-form-item :label="$t('settings.modelIdentifier') + ' *'">
+        <el-form-item :label="$t('settings.modelIdentifier')" required>
           <el-input v-model="modelForm.model_name" :placeholder="$t('settings.modelIdentifierPlaceholder')" />
-          <el-text type="info" size="small">{{ $t('settings.modelIdentifierHint') }}</el-text>
+          <div class="el-form-item__tip">{{ $t('settings.modelIdentifierHint') }}</div>
         </el-form-item>
-        <el-form-item :label="$t('settings.provider') + ' *'">
-          <el-select v-model="modelForm.provider_id" :placeholder="$t('settings.selectProvider')" style="width: 100%">
-            <el-option v-for="provider in providerStore.providers" :key="provider.id" :label="provider.name" :value="provider.id" />
+        <el-form-item :label="$t('settings.provider')" required>
+          <el-select v-model="modelForm.provider_id" clearable>
+            <el-option label="" value="" />
+            <el-option v-for="provider in providerStore.providers" :key="provider.id" :value="provider.id" :label="provider.name" />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('settings.modelType')">
-          <el-select v-model="modelForm.model_type" style="width: 100%">
-            <el-option :label="$t('settings.modelTypeText')" value="text" />
-            <el-option :label="$t('settings.modelTypeMultimodal')" value="multimodal" />
-            <el-option :label="$t('settings.modelTypeEmbedding')" value="embedding" />
+          <el-select v-model="modelForm.model_type">
+            <el-option value="text" :label="$t('settings.modelTypeText')" />
+            <el-option value="multimodal" :label="$t('settings.modelTypeMultimodal')" />
+            <el-option value="embedding" :label="$t('settings.modelTypeEmbedding')" />
           </el-select>
         </el-form-item>
-        <!-- 文本/多模态模型显示最大 Token -->
-        <template v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'">
-          <el-form-item :label="$t('settings.maxTokens')">
-            <el-input-number v-model="modelForm.max_tokens" :placeholder="$t('settings.maxTokensPlaceholder')" style="width: 100%" />
-            <el-text type="info" size="small">{{ $t('settings.maxTokensHint') }}</el-text>
-          </el-form-item>
-          <el-form-item :label="$t('settings.maxOutputTokens')">
-            <el-input-number v-model="modelForm.max_output_tokens" :placeholder="$t('settings.maxOutputTokensPlaceholder')" style="width: 100%" />
-            <el-text type="info" size="small">{{ $t('settings.maxOutputTokensHint') }}</el-text>
-          </el-form-item>
-        </template>
-        <!-- 嵌入模型显示向量维度 -->
+
+        <el-form-item v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" :label="$t('settings.maxTokens')">
+          <el-input-number v-model="modelForm.max_tokens" :placeholder="$t('settings.maxTokensPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.maxTokensHint') }}</div>
+        </el-form-item>
+
+        <el-form-item v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'" :label="$t('settings.maxOutputTokens')">
+          <el-input-number v-model="modelForm.max_output_tokens" :placeholder="$t('settings.maxOutputTokensPlaceholder')" />
+          <div class="el-form-item__tip">{{ $t('settings.maxOutputTokensHint') }}</div>
+        </el-form-item>
+
         <el-form-item v-if="modelForm.model_type === 'embedding'" :label="$t('settings.embeddingDim')">
-          <el-input-number v-model="modelForm.embedding_dim" :placeholder="$t('settings.embeddingDimPlaceholder')" style="width: 100%" />
+          <el-input-number v-model="modelForm.embedding_dim" :placeholder="$t('settings.embeddingDimPlaceholder')" />
         </el-form-item>
+
         <el-form-item :label="$t('settings.costPer1kInput') + ' (USD)'">
-          <el-input-number v-model="modelForm.cost_per_1k_input" :step="0.0001" :placeholder="$t('settings.costPlaceholder')" style="width: 100%" />
+          <el-input-number v-model="modelForm.cost_per_1k_input" :precision="4" :step="0.0001" :placeholder="$t('settings.costPlaceholder')" />
         </el-form-item>
+
         <el-form-item :label="$t('settings.costPer1kOutput') + ' (USD)'">
-          <el-input-number v-model="modelForm.cost_per_1k_output" :step="0.0001" :placeholder="$t('settings.costPlaceholder')" style="width: 100%" />
+          <el-input-number v-model="modelForm.cost_per_1k_output" :precision="4" :step="0.0001" :placeholder="$t('settings.costPlaceholder')" />
         </el-form-item>
+
         <el-form-item :label="$t('settings.modelDescription')">
           <el-input v-model="modelForm.description" type="textarea" :rows="3" :placeholder="$t('settings.descriptionPlaceholder')" />
         </el-form-item>
-        <!-- 思考模式配置（仅文本/多模态模型） -->
-        <template v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'">
-          <el-divider>{{ $t('settings.thinkingConfig') }}</el-divider>
-          <el-form-item>
-            <el-checkbox v-model="modelForm.supports_reasoning">{{ $t('settings.supportsReasoning') }}</el-checkbox>
-            <el-text type="info" size="small">{{ $t('settings.supportsReasoningHint') }}</el-text>
-          </el-form-item>
-          <el-form-item v-if="modelForm.supports_reasoning" :label="$t('settings.thinkingFormat')">
-            <el-select v-model="modelForm.thinking_format" style="width: 100%">
-              <el-option :label="$t('settings.thinkingFormatNone')" value="none" />
-              <el-option :label="$t('settings.thinkingFormatOpenai')" value="openai" />
-              <el-option :label="$t('settings.thinkingFormatDeepseek')" value="deepseek" />
-              <el-option :label="$t('settings.thinkingFormatQwen')" value="qwen" />
-            </el-select>
-            <el-text type="info" size="small">{{ $t('settings.thinkingFormatHint') }}</el-text>
-          </el-form-item>
-        </template>
+
+        <el-divider v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'">{{ $t('settings.thinkingConfig') }}</el-divider>
+
+        <el-form-item v-if="modelForm.model_type === 'text' || modelForm.model_type === 'multimodal'">
+          <el-checkbox v-model="modelForm.supports_reasoning">{{ $t('settings.supportsReasoning') }}</el-checkbox>
+          <div class="el-form-item__tip">{{ $t('settings.supportsReasoningHint') }}</div>
+        </el-form-item>
+
+        <el-form-item v-if="(modelForm.model_type === 'text' || modelForm.model_type === 'multimodal') && modelForm.supports_reasoning" :label="$t('settings.thinkingFormat')">
+          <el-select v-model="modelForm.thinking_format">
+            <el-option value="none" :label="$t('settings.thinkingFormatNone')" />
+            <el-option value="openai" :label="$t('settings.thinkingFormatOpenai')" />
+            <el-option value="deepseek" :label="$t('settings.thinkingFormatDeepseek')" />
+            <el-option value="qwen" :label="$t('settings.thinkingFormatQwen')" />
+          </el-select>
+          <div class="el-form-item__tip">{{ $t('settings.thinkingFormatHint') }}</div>
+        </el-form-item>
+
         <el-form-item>
           <el-checkbox v-model="modelForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <div class="dialog-footer-custom">
-          <el-button v-if="editingModel" type="danger" @click="confirmDeleteModelFromDialog">
-            {{ $t('common.delete') }}
-          </el-button>
-          <div class="footer-right">
-            <el-button @click="closeModelDialog">{{ $t('common.cancel') }}</el-button>
-            <el-button type="primary" :disabled="!isModelFormValid" @click="saveModel">
-              {{ $t('common.save') }}
-            </el-button>
-          </div>
-        </div>
-      </template>
-    </el-dialog>
 
-    <!-- Provider 删除确认对话框 -->
-    <el-dialog
-      v-model="showDeleteProviderDialog"
-      :title="$t('common.confirmDelete')"
-      width="400px"
-    >
-      <p>{{ $t('settings.deleteProviderConfirm', { name: deletingProvider?.name }) }}</p>
       <template #footer>
-        <el-button @click="closeDeleteProviderDialog">{{ $t('common.cancel') }}</el-button>
-        <el-button type="danger" @click="deleteProvider">{{ $t('common.delete') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Model 删除确认对话框 -->
-    <el-dialog
-      v-model="showDeleteModelDialog"
-      :title="$t('common.confirmDelete')"
-      width="400px"
-    >
-      <p>{{ $t('settings.deleteModelConfirm', { name: deletingModel?.name }) }}</p>
-      <template #footer>
-        <el-button @click="closeDeleteModelDialog">{{ $t('common.cancel') }}</el-button>
-        <el-button type="danger" @click="deleteModel">{{ $t('common.delete') }}</el-button>
+        <el-button v-if="editingModel" type="danger" @click="confirmDeleteModelFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeModelDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isModelFormValid" @click="saveModel">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- Expert 添加/编辑对话框 -->
+    <!-- Expert 添加/编辑对话框 -->
     <el-dialog
       v-model="showExpertDialog"
       :title="editingExpert ? $t('settings.editExpert') : $t('settings.addExpert')"
-      width="720px"
-      destroy-on-close
+      width="800px"
       class="expert-dialog"
     >
-      <el-tabs v-model="expertActiveTab" type="border-card">
-        <!-- 基本信息 Tab -->
-        <el-tab-pane :label="$t('settings.profileBasic') || '基本信息'" name="basic">
-          <el-form label-position="top">
-            <div class="form-row">
-              <el-form-item :label="$t('settings.expertName') + ' *'" style="flex: 1">
+      <el-tabs v-model="expertActiveTab">
+        <el-tab-pane :label="$t('settings.expertBasicInfo')" name="basic">
+          <el-row :gutter="20">
+            <el-col :span="18">
+              <el-form-item :label="$t('settings.expertName')" required>
                 <el-input v-model="expertForm.name" :placeholder="$t('settings.expertNamePlaceholder')" />
               </el-form-item>
-              <el-form-item>
-                <el-checkbox v-model="expertForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
-              </el-form-item>
-            </div>
-            
-            <!-- Avatar Upload -->
-            <div class="form-row avatar-row">
-              <el-form-item :label="$t('settings.expertAvatar')" class="avatar-item">
+            </el-col>
+            <el-col :span="6">
+              <el-checkbox v-model="expertForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertAvatar')">
                 <div class="avatar-upload">
-                  <div 
-                    class="avatar-preview" 
-                    :style="expertForm.avatar_base64 ? { backgroundImage: `url(${expertForm.avatar_base64})` } : {}"
-                  >
+                  <div class="avatar-preview" :style="expertForm.avatar_base64 ? { backgroundImage: `url(${expertForm.avatar_base64})` } : {}">
                     <span v-if="!expertForm.avatar_base64">🤖</span>
                   </div>
                   <div class="avatar-actions">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref="smallAvatarInput"
-                      @change="handleSmallAvatarUpload"
-                      style="display: none"
-                    />
-                    <el-button size="small" @click="smallAvatarInput?.click()">
-                      {{ $t('settings.uploadAvatar') }}
-                    </el-button>
-                    <el-button 
-                      v-if="expertForm.avatar_base64" 
-                      size="small"
-                      type="danger"
-                      @click="expertForm.avatar_base64 = ''"
-                    >
-                      {{ $t('common.delete') }}
-                    </el-button>
+                    <input type="file" accept="image/*" ref="smallAvatarInput" @change="handleSmallAvatarUpload" style="display: none" />
+                    <el-button size="small" @click="smallAvatarInput?.click()">{{ $t('settings.uploadAvatar') }}</el-button>
+                    <el-button v-if="expertForm.avatar_base64" size="small" type="danger" @click="expertForm.avatar_base64 = ''">{{ $t('common.delete') }}</el-button>
                   </div>
                 </div>
               </el-form-item>
-              <el-form-item :label="$t('settings.expertAvatarLarge')" class="avatar-item">
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertAvatarLarge')">
                 <div class="avatar-upload">
-                  <div 
-                    class="avatar-preview large" 
-                    :style="expertForm.avatar_large_base64 ? { backgroundImage: `url(${expertForm.avatar_large_base64})` } : {}"
-                  >
+                  <div class="avatar-preview large" :style="expertForm.avatar_large_base64 ? { backgroundImage: `url(${expertForm.avatar_large_base64})` } : {}">
                     <span v-if="!expertForm.avatar_large_base64">🖼️</span>
                   </div>
                   <div class="avatar-actions">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref="largeAvatarInput"
-                      @change="handleLargeAvatarUpload"
-                      style="display: none"
-                    />
-                    <el-button size="small" @click="largeAvatarInput?.click()">
-                      {{ $t('settings.uploadAvatar') }}
-                    </el-button>
-                    <el-button 
-                      v-if="expertForm.avatar_large_base64" 
-                      size="small"
-                      type="danger"
-                      @click="expertForm.avatar_large_base64 = ''"
-                    >
-                      {{ $t('common.delete') }}
-                    </el-button>
+                    <input type="file" accept="image/*" ref="largeAvatarInput" @change="handleLargeAvatarUpload" style="display: none" />
+                    <el-button size="small" @click="largeAvatarInput?.click()">{{ $t('settings.uploadAvatar') }}</el-button>
+                    <el-button v-if="expertForm.avatar_large_base64" size="small" type="danger" @click="expertForm.avatar_large_base64 = ''">{{ $t('common.delete') }}</el-button>
                   </div>
                 </div>
               </el-form-item>
-            </div>
-            
-            <el-form-item :label="$t('settings.expertIntroduction')">
-              <el-input v-model="expertForm.introduction" type="textarea" :rows="3" :placeholder="$t('settings.expertIntroductionPlaceholder')" />
-            </el-form-item>
-          </el-form>
+            </el-col>
+          </el-row>
+
+          <el-form-item :label="$t('settings.expertIntroduction')">
+            <el-input v-model="expertForm.introduction" type="textarea" :rows="3" :placeholder="$t('settings.expertIntroductionPlaceholder')" />
+          </el-form-item>
         </el-tab-pane>
-        
-        <!-- 人设配置 Tab -->
-        <el-tab-pane :label="$t('settings.personalityConfig') || '人设配置'" name="personality">
-          <el-form label-position="top">
-            <el-form-item :label="$t('settings.expertCoreValues')">
-              <el-input v-model="expertForm.core_values" type="textarea" :rows="3" :placeholder="$t('settings.expertCoreValuesPlaceholder')" />
-            </el-form-item>
-            <el-form-item :label="$t('settings.expertBehavioralGuidelines')">
-              <el-input v-model="expertForm.behavioral_guidelines" type="textarea" :rows="4" :placeholder="$t('settings.expertBehavioralGuidelinesPlaceholder')" />
-            </el-form-item>
-            <el-form-item :label="$t('settings.expertTaboos')">
-              <el-input v-model="expertForm.taboos" type="textarea" :rows="3" :placeholder="$t('settings.expertTaboosPlaceholder')" />
-            </el-form-item>
-            <div class="form-row">
-              <el-form-item :label="$t('settings.expertSpeakingStyle')" style="flex: 1">
+
+        <el-tab-pane :label="$t('settings.expertPersonality')" name="personality">
+          <el-form-item :label="$t('settings.expertCoreValues')">
+            <el-input v-model="expertForm.core_values" type="textarea" :rows="3" :placeholder="$t('settings.expertCoreValuesPlaceholder')" />
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.expertBehavioralGuidelines')">
+            <el-input v-model="expertForm.behavioral_guidelines" type="textarea" :rows="4" :placeholder="$t('settings.expertBehavioralGuidelinesPlaceholder')" />
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.expertTaboos')">
+            <el-input v-model="expertForm.taboos" type="textarea" :rows="3" :placeholder="$t('settings.expertTaboosPlaceholder')" />
+          </el-form-item>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertSpeakingStyle')">
                 <el-input v-model="expertForm.speaking_style" :placeholder="$t('settings.expertSpeakingStylePlaceholder')" />
               </el-form-item>
-              <el-form-item :label="$t('settings.expertEmotionalTone')" style="flex: 1">
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertEmotionalTone')">
                 <el-input v-model="expertForm.emotional_tone" :placeholder="$t('settings.expertEmotionalTonePlaceholder')" />
               </el-form-item>
-            </div>
-          </el-form>
+            </el-col>
+          </el-row>
         </el-tab-pane>
-        
-        <!-- 模型配置 Tab -->
-        <el-tab-pane :label="$t('settings.modelConfig') || '模型配置'" name="model">
-          <el-form label-position="top">
-            <div class="form-row">
-              <el-form-item :label="$t('settings.expertExpressiveModel')" style="flex: 1">
-                <el-select v-model="expertForm.expressive_model_id" :placeholder="$t('settings.selectModel')" style="width: 100%">
-                  <el-option label="-- {{ $t('settings.selectModel') }} --" value="" />
-                  <el-option v-for="model in expertAvailableModels" :key="model.id" :label="model.name" :value="model.id" />
+
+        <el-tab-pane :label="$t('settings.expertModelConfig')" name="model">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertExpressiveModel')">
+                <el-select v-model="expertForm.expressive_model_id" clearable>
+                  <el-option label="" value="" />
+                  <el-option v-for="model in expertAvailableModels" :key="model.id" :value="model.id" :label="model.name" />
                 </el-select>
               </el-form-item>
-              <el-form-item :label="$t('settings.expertReflectiveModel')" style="flex: 1">
-                <el-select v-model="expertForm.reflective_model_id" :placeholder="$t('settings.selectModel')" style="width: 100%">
-                  <el-option label="-- {{ $t('settings.selectModel') }} --" value="" />
-                  <el-option v-for="model in expertAvailableModels" :key="model.id" :label="model.name" :value="model.id" />
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.expertReflectiveModel')">
+                <el-select v-model="expertForm.reflective_model_id" clearable>
+                  <el-option label="" value="" />
+                  <el-option v-for="model in expertAvailableModels" :key="model.id" :value="model.id" :label="model.name" />
                 </el-select>
               </el-form-item>
-            </div>
-            
-            <el-form-item :label="$t('settings.expertPromptTemplate')">
-              <el-input v-model="expertForm.prompt_template" type="textarea" :rows="5" :placeholder="$t('settings.expertPromptTemplatePlaceholder')" />
-            </el-form-item>
-            
-            <!-- 上下文压缩配置 -->
-            <el-divider>{{ $t('settings.contextCompression') }}</el-divider>
-            <el-form-item :label="$t('settings.contextStrategy')">
-              <el-select v-model="expertForm.context_strategy" style="width: 100%">
-                <el-option :label="$t('settings.contextStrategyFull')" value="full" />
-                <el-option :label="$t('settings.contextStrategySimple')" value="simple" />
-                <el-option :label="$t('settings.contextStrategyMinimal')" value="minimal" />
-              </el-select>
-              <el-text type="info" size="small">{{ $t('settings.contextStrategyHint') }}</el-text>
-            </el-form-item>
-            <el-form-item :label="$t('settings.contextThreshold')">
-              <el-input-number v-model="expertForm.context_threshold" :step="0.05" :min="0.3" :max="0.95" style="width: 100%" />
-              <el-text type="info" size="small">{{ $t('settings.contextThresholdHint') }}</el-text>
-            </el-form-item>
-            
-            <!-- LLM 参数配置 -->
-            <el-divider>{{ $t('settings.llmParams') }}</el-divider>
-            <div class="form-row">
-              <el-form-item :label="$t('settings.temperature')" style="flex: 1">
-                <el-input-number v-model="expertForm.temperature" :step="0.1" :min="0" :max="2" style="width: 100%" />
-                <el-text type="info" size="small">{{ $t('settings.temperatureHint') }}</el-text>
+            </el-col>
+          </el-row>
+
+          <el-form-item :label="$t('settings.expertPromptTemplate')">
+            <el-input v-model="expertForm.prompt_template" type="textarea" :rows="5" :placeholder="$t('settings.expertPromptTemplatePlaceholder')" />
+          </el-form-item>
+
+          <el-divider>{{ $t('settings.contextCompression') }}</el-divider>
+
+          <el-form-item :label="$t('settings.contextStrategy')">
+            <el-select v-model="expertForm.context_strategy">
+              <el-option value="full" :label="$t('settings.contextStrategyFull')" />
+              <el-option value="simple" :label="$t('settings.contextStrategySimple')" />
+              <el-option value="minimal" :label="$t('settings.contextStrategyMinimal')" />
+            </el-select>
+            <div class="el-form-item__tip">{{ $t('settings.contextStrategyHint') }}</div>
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.contextThreshold')">
+            <el-input-number v-model="expertForm.context_threshold" :precision="2" :step="0.05" :min="0.3" :max="0.95" />
+            <div class="el-form-item__tip">{{ $t('settings.contextThresholdHint') }}</div>
+          </el-form-item>
+
+          <el-divider>{{ $t('settings.llmParams') }}</el-divider>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.temperature')">
+                <el-input-number v-model="expertForm.temperature" :precision="1" :step="0.1" :min="0" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.temperatureHint') }}</div>
               </el-form-item>
-              <el-form-item :label="$t('settings.reflectiveTemperature')" style="flex: 1">
-                <el-input-number v-model="expertForm.reflective_temperature" :step="0.1" :min="0" :max="2" style="width: 100%" />
-                <el-text type="info" size="small">{{ $t('settings.reflectiveTemperatureHint') }}</el-text>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.reflectiveTemperature')">
+                <el-input-number v-model="expertForm.reflective_temperature" :precision="1" :step="0.1" :min="0" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.reflectiveTemperatureHint') }}</div>
               </el-form-item>
-            </div>
-            <div class="form-row">
-              <el-form-item :label="$t('settings.topP')" style="flex: 1">
-                <el-input-number v-model="expertForm.top_p" :step="0.1" :min="0" :max="1" style="width: 100%" />
-                <el-text type="info" size="small">{{ $t('settings.topPHint') }}</el-text>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.topP')">
+                <el-input-number v-model="expertForm.top_p" :precision="1" :step="0.1" :min="0" :max="1" />
+                <div class="el-form-item__tip">{{ $t('settings.topPHint') }}</div>
               </el-form-item>
-              <el-form-item :label="$t('settings.frequencyPenalty')" style="flex: 1">
-                <el-input-number v-model="expertForm.frequency_penalty" :step="0.1" :min="-2" :max="2" style="width: 100%" />
-                <el-text type="info" size="small">{{ $t('settings.frequencyPenaltyHint') }}</el-text>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.frequencyPenalty')">
+                <el-input-number v-model="expertForm.frequency_penalty" :precision="1" :step="0.1" :min="-2" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.frequencyPenaltyHint') }}</div>
               </el-form-item>
-            </div>
-            <div class="form-row">
-              <el-form-item :label="$t('settings.presencePenalty')" style="flex: 1">
-                <el-input-number v-model="expertForm.presence_penalty" :step="0.1" :min="-2" :max="2" style="width: 100%" />
-                <el-text type="info" size="small">{{ $t('settings.presencePenaltyHint') }}</el-text>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item :label="$t('settings.presencePenalty')">
+                <el-input-number v-model="expertForm.presence_penalty" :precision="1" :step="0.1" :min="-2" :max="2" />
+                <div class="el-form-item__tip">{{ $t('settings.presencePenaltyHint') }}</div>
               </el-form-item>
-              <el-form-item style="flex: 1"><!-- 占位符 --></el-form-item>
-            </div>
-            
-            <!-- 工具调用配置 -->
-            <el-divider>{{ $t('settings.toolCallConfig') }}</el-divider>
-            <el-form-item :label="$t('settings.maxToolRounds')">
-              <el-input-number v-model="expertForm.max_tool_rounds" :min="1" :max="50" :placeholder="$t('settings.maxToolRoundsPlaceholder')" style="width: 100%" />
-              <el-text type="info" size="small">{{ $t('settings.maxToolRoundsExpertHint') }}</el-text>
-            </el-form-item>
-          </el-form>
+            </el-col>
+          </el-row>
+
+          <el-divider>{{ $t('settings.toolCallConfig') }}</el-divider>
+
+          <el-form-item :label="$t('settings.maxToolRounds')">
+            <el-input-number v-model="expertForm.max_tool_rounds" :min="1" :max="50" :placeholder="$t('settings.maxToolRoundsPlaceholder')" />
+            <div class="el-form-item__tip">{{ $t('settings.maxToolRoundsExpertHint') }}</div>
+          </el-form-item>
         </el-tab-pane>
       </el-tabs>
-      
+
       <template #footer>
-        <div class="dialog-footer-custom">
-          <el-button v-if="editingExpert" type="danger" @click="confirmDeleteExpertFromDialog">
-            {{ $t('common.delete') }}
-          </el-button>
-          <div class="footer-right">
-            <el-button @click="closeExpertDialog">{{ $t('common.cancel') }}</el-button>
-            <el-button type="primary" :disabled="!isExpertFormValid" @click="saveExpert">
-              {{ $t('common.save') }}
-            </el-button>
-          </div>
-        </div>
+        <el-button v-if="editingExpert" type="danger" @click="confirmDeleteExpertFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeExpertDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isExpertFormValid" @click="saveExpert">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <!-- Expert 删除确认对话框 -->
-    <el-dialog
-      v-model="showDeleteExpertDialog"
-      :title="$t('common.confirmDelete')"
-      width="400px"
-    >
-      <p>{{ $t('settings.deleteExpertConfirm', { name: deletingExpert?.name }) }}</p>
-      <template #footer>
-        <el-button @click="closeDeleteExpertDialog">{{ $t('common.cancel') }}</el-button>
-        <el-button type="danger" @click="deleteExpert">{{ $t('common.delete') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 技能管理对话框 -->
+<!-- 技能管理对话框 -->
     <el-dialog
       v-model="showSkillsDialog"
       :title="$t('settings.manageSkillsFor', { name: currentExpertForSkills?.name })"
-      width="640px"
-      destroy-on-close
+      width="600px"
     >
-      <div class="skills-dialog-body">
-        <!-- 搜索/筛选 -->
-        <div class="skills-search">
-          <el-input v-model="skillsSearchQuery" :placeholder="$t('settings.searchSkillsPlaceholder')" clearable />
-        </div>
+      <el-input
+        v-model="skillsSearchQuery"
+        :placeholder="$t('settings.searchSkillsPlaceholder')"
+        clearable
+      />
 
-        <!-- 技能列表 -->
-        <div v-if="skillsLoading" class="loading-state">
-          {{ $t('common.loading') }}
-        </div>
+      <div v-if="skillsLoading" class="loading-state">
+        {{ $t('common.loading') }}
+      </div>
 
-        <el-empty v-else-if="filteredSkills.length === 0" :description="skillsSearchQuery ? $t('settings.noSkillsFound') : $t('settings.noSkillsAvailable')" />
+      <el-empty
+        v-else-if="filteredSkills.length === 0"
+        :description="skillsSearchQuery ? $t('settings.noSkillsFound') : $t('settings.noSkillsAvailable')"
+      />
 
-        <div v-else class="skills-list">
-          <div
-            v-for="skill in filteredSkills"
-            :key="skill.id"
-            class="skill-item"
-            :class="{ builtin: skill.is_builtin }"
-          >
-            <div class="skill-info">
-              <div class="skill-header">
-                <span class="skill-name">{{ skill.name }}</span>
-                <el-tag v-if="skill.is_builtin" size="small" type="info">{{ $t('settings.builtinSkill') }}</el-tag>
-              </div>
-              <p v-if="skill.description" class="skill-description">
-                {{ skill.description }}
-              </p>
+      <div v-else class="skills-list">
+        <div
+          v-for="skill in filteredSkills"
+          :key="skill.id"
+          class="skill-item"
+          :class="{ builtin: skill.is_builtin }"
+        >
+          <div class="skill-info">
+            <div class="skill-header">
+              <span class="skill-name">{{ skill.name }}</span>
+              <el-tag v-if="skill.is_builtin" type="info" size="small">
+                {{ $t('settings.builtinSkill') }}
+              </el-tag>
             </div>
-            <el-switch
-              v-model="skill.is_enabled"
-              @change="handleSkillToggle(skill)"
-            />
+            <p v-if="skill.description" class="skill-description">
+              {{ skill.description }}
+            </p>
           </div>
+          <el-switch
+            v-model="skill.is_enabled"
+            @change="handleSkillToggle(skill)"
+          />
         </div>
       </div>
-      
+
       <template #footer>
-        <div class="dialog-footer-custom">
-          <el-text type="info">
-            {{ $t('settings.enabledSkillsCount', { count: enabledSkillsCount }) }}
-          </el-text>
-          <div class="footer-right">
-            <el-button @click="closeSkillsDialog">{{ $t('common.cancel') }}</el-button>
-            <el-button type="primary" @click="saveSkills">
-              {{ $t('common.save') }}
-            </el-button>
-          </div>
-        </div>
-      </template>
+        <span class="skills-count">
+          {{ $t('settings.enabledSkillsCount', { count: enabledSkillsCount }) }}
+        </span>
+        <el-button @click="closeSkillsDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveSkills">{{ $t('common.save') }}</el-button>
+</template>
     </el-dialog>
 
     <!-- 用户添加/编辑对话框 -->
     <el-dialog
       v-model="showUserDialog"
       :title="editingUser ? $t('settings.editUser') : $t('settings.addUser')"
-      width="640px"
-      destroy-on-close
+      width="700px"
     >
-      <el-form label-position="top">
-        <div class="form-row">
-          <el-form-item :label="$t('settings.username') + ' *'" style="flex: 1">
-            <el-input v-model="userForm.username" :placeholder="$t('settings.usernamePlaceholder')" :disabled="!!editingUser" @input="handleUsernameInput" />
-            <el-text v-if="!editingUser" type="info" size="small">{{ $t('settings.usernameFormatHint') }}</el-text>
-          </el-form-item>
-          <el-form-item :label="$t('settings.email') + ' *'" style="flex: 1">
-            <el-input v-model="userForm.email" type="email" :placeholder="$t('settings.emailPlaceholder')" />
-          </el-form-item>
-        </div>
+      <el-form label-width="100px">
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.username')" required>
+              <el-input
+                v-model="userForm.username"
+                :placeholder="$t('settings.usernamePlaceholder')"
+                :disabled="!!editingUser"
+                @input="handleUsernameInput"
+              />
+              <div v-if="!editingUser" class="el-form-item__tip">{{ $t('settings.usernameFormatHint') }}</div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.email')" required>
+              <el-input
+                v-model="userForm.email"
+                type="email"
+                :placeholder="$t('settings.emailPlaceholder')"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <!-- 新增用户时显示密码字段 -->
-        <el-form-item v-if="!editingUser" :label="$t('settings.password') + ' *'">
-          <el-input v-model="userForm.password" type="password" :placeholder="$t('settings.passwordPlaceholder')" />
+        <el-form-item v-if="!editingUser" :label="$t('settings.password')" required>
+          <el-input
+            v-model="userForm.password"
+            type="password"
+            :placeholder="$t('settings.passwordPlaceholder')"
+            show-password
+          />
         </el-form-item>
 
-        <div class="form-row">
-          <el-form-item :label="$t('settings.userNickname')" style="flex: 1">
-            <el-input v-model="userForm.nickname" :placeholder="$t('settings.userNicknamePlaceholder')" />
-          </el-form-item>
-          <el-form-item :label="$t('settings.userStatusText')" style="flex: 1">
-            <el-select v-model="userForm.status" style="width: 100%">
-              <el-option :label="$t('settings.userStatus.active')" value="active" />
-              <el-option :label="$t('settings.userStatus.inactive')" value="inactive" />
-              <el-option :label="$t('settings.userStatus.banned')" value="banned" />
-            </el-select>
-          </el-form-item>
-        </div>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.userNickname')">
+              <el-input
+                v-model="userForm.nickname"
+                :placeholder="$t('settings.userNicknamePlaceholder')"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.userStatusText')">
+              <el-select v-model="userForm.status">
+                <el-option label="active" value="active">{{ $t('settings.userStatus.active') }}</el-option>
+                <el-option label="inactive" value="inactive">{{ $t('settings.userStatus.inactive') }}</el-option>
+                <el-option label="banned" value="banned">{{ $t('settings.userStatus.banned') }}</el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <!-- 角色选择 -->
         <el-form-item :label="$t('settings.userRoles')">
-          <div v-if="rolesLoading" class="loading-state">{{ $t('common.loading') }}</div>
+          <div v-if="rolesLoading">{{ $t('common.loading') }}</div>
           <el-checkbox-group v-else v-model="userForm.selectedRoleIds">
-            <el-checkbox v-for="role in rolesList" :key="role.id" :label="role.id" :value="role.id">
+            <el-checkbox v-for="role in rolesList" :key="role.id" :value="role.id">
               {{ role.name }}
-              <el-tag v-if="role.is_system" size="small" type="info">{{ $t('settings.builtinSkill') }}</el-tag>
+              <el-tag v-if="role.is_system" type="info" size="small">{{ $t('settings.builtinSkill') }}</el-tag>
             </el-checkbox>
           </el-checkbox-group>
-          <el-text v-if="rolesList.length === 0 && !rolesLoading" type="info" size="small">{{ $t('settings.noRolesAvailable') }}</el-text>
+          <div v-if="rolesList.length === 0 && !rolesLoading" class="el-form-item__tip">{{ $t('settings.noRolesAvailable') }}</div>
         </el-form-item>
 
-        <!-- 邀请配额（仅编辑时显示） -->
         <el-form-item v-if="editingUser" :label="$t('settings.invitationQuota')">
-          <el-input-number v-model="userForm.invitation_quota" :min="0" :max="100" style="width: 100%" />
-          <el-text type="info" size="small">{{ $t('settings.invitationQuotaHint') }}</el-text>
+          <el-input-number v-model="userForm.invitation_quota" :min="0" :max="100" />
+          <div class="el-form-item__tip">{{ $t('settings.invitationQuotaHint') }}</div>
         </el-form-item>
 
-        <div class="form-row">
-          <el-form-item :label="$t('settings.gender')" style="flex: 1">
-            <el-select v-model="userForm.gender" style="width: 100%">
-              <el-option :label="$t('settings.selectGender')" value="" />
-              <el-option :label="$t('settings.genderMale')" value="male" />
-              <el-option :label="$t('settings.genderFemale')" value="female" />
-              <el-option :label="$t('settings.genderOther')" value="other" />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="$t('settings.birthday')" style="flex: 1">
-            <el-date-picker v-model="userForm.birthday" type="date" style="width: 100%" />
-          </el-form-item>
-        </div>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.gender')">
+              <el-select v-model="userForm.gender" clearable>
+                <el-option label="" value="" />
+                <el-option label="male" value="male">{{ $t('settings.genderMale') }}</el-option>
+                <el-option label="female" value="female">{{ $t('settings.genderFemale') }}</el-option>
+                <el-option label="other" value="other">{{ $t('settings.genderOther') }}</el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.birthday')">
+              <el-date-picker v-model="userForm.birthday" type="date" />
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <div class="form-row">
-          <el-form-item :label="$t('settings.occupation')" style="flex: 1">
-            <el-input v-model="userForm.occupation" :placeholder="$t('settings.occupationPlaceholder')" />
-          </el-form-item>
-          <el-form-item :label="$t('settings.location')" style="flex: 1">
-            <el-input v-model="userForm.location" :placeholder="$t('settings.locationPlaceholder')" />
-          </el-form-item>
-        </div>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.occupation')">
+              <el-input v-model="userForm.occupation" :placeholder="$t('settings.occupationPlaceholder')" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item :label="$t('settings.location')">
+              <el-input v-model="userForm.location" :placeholder="$t('settings.locationPlaceholder')" />
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-        <!-- 头像上传 -->
         <el-form-item :label="$t('settings.userAvatar')">
           <div class="avatar-upload">
-            <div
-              class="avatar-preview"
-              :style="userForm.avatar ? { backgroundImage: `url(${userForm.avatar})` } : {}"
-            >
+            <div class="avatar-preview" :style="userForm.avatar ? { backgroundImage: `url(${userForm.avatar})` } : {}">
               <span v-if="!userForm.avatar">👤</span>
             </div>
             <div class="avatar-actions">
-              <input
-                type="file"
-                accept="image/*"
-                ref="userAvatarInput"
-                @change="handleUserAvatarUpload"
-                style="display: none"
-              />
-              <el-button size="small" @click="userAvatarInput?.click()">
-                {{ $t('settings.uploadAvatar') }}
-              </el-button>
-              <el-button
-                v-if="userForm.avatar"
-                size="small"
-                type="danger"
-                @click="userForm.avatar = ''"
-              >
-                {{ $t('common.delete') }}
-              </el-button>
+              <input type="file" accept="image/*" ref="userAvatarInput" @change="handleUserAvatarUpload" style="display: none" />
+              <el-button size="small" @click="userAvatarInput?.click()">{{ $t('settings.uploadAvatar') }}</el-button>
+              <el-button v-if="userForm.avatar" size="small" type="danger" @click="userForm.avatar = ''">{{ $t('common.delete') }}</el-button>
             </div>
           </div>
         </el-form-item>
 
-        <!-- 重置密码（编辑时显示） -->
-        <template v-if="editingUser">
-          <el-divider>{{ $t('settings.resetPassword') }}</el-divider>
-          <el-form-item :label="$t('settings.newPassword')">
-            <div class="reset-password-row">
-              <el-input v-model="userForm.newPassword" type="password" :placeholder="$t('settings.newPasswordPlaceholder')" />
-              <el-button
-                size="small"
-                :disabled="!userForm.newPassword || userForm.newPassword.length < 6"
-                @click="handleResetPassword"
-              >
-                {{ $t('settings.resetPasswordBtn') }}
-              </el-button>
-            </div>
-          </el-form-item>
-        </template>
+        <el-divider v-if="editingUser">{{ $t('settings.resetPassword') }}</el-divider>
+
+        <el-form-item v-if="editingUser" :label="$t('settings.newPassword')">
+          <el-input v-model="userForm.newPassword" type="password" :placeholder="$t('settings.newPasswordPlaceholder')" show-password>
+            <template #append>
+              <el-button :disabled="!userForm.newPassword || userForm.newPassword.length < 6" @click="handleResetPassword">{{ $t('settings.resetPasswordBtn') }}</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
       </el-form>
-      
+
       <template #footer>
-        <div class="dialog-footer-custom">
-          <el-button v-if="editingUser" type="danger" @click="confirmDeleteUserFromDialog">
-            {{ $t('common.delete') }}
-          </el-button>
-          <div class="footer-right">
-            <el-button @click="closeUserDialog">{{ $t('common.cancel') }}</el-button>
-            <el-button type="primary" :disabled="!isUserFormValid" @click="saveUser">
-              {{ $t('common.save') }}
-            </el-button>
-          </div>
-        </div>
+        <el-button v-if="editingUser" type="danger" @click="confirmDeleteUserFromDialog">{{ $t('common.delete') }}</el-button>
+        <el-button @click="closeUserDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isUserFormValid" @click="saveUser">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
-
-    <!-- 用户删除确认对话框 -->
-    <el-dialog
-      v-model="showDeleteUserDialog"
-      :title="$t('common.confirmDelete')"
-      width="400px"
-    >
-      <p>{{ $t('settings.deleteUserConfirm', { name: deletingUser?.nickname || deletingUser?.username }) }}</p>
-      <template #footer>
-        <el-button @click="closeDeleteUserDialog">{{ $t('common.cancel') }}</el-button>
-        <el-button type="danger" @click="deleteUser">{{ $t('common.delete') }}</el-button>
-      </template>
-    </el-dialog>
-
     <!-- 角色编辑对话框 -->
     <el-dialog
       v-model="showRoleDialog"
       :title="$t('settings.editRole')"
-      width="480px"
-      destroy-on-close
+      width="500px"
     >
-      <el-form label-position="top">
+      <el-form label-width="100px">
         <el-form-item :label="$t('settings.roleMark')">
-          <el-input v-model="roleForm.mark" disabled :placeholder="$t('settings.roleMarkPlaceholder')" />
-          <el-text type="info" size="small">{{ $t('settings.roleMarkHint') }}</el-text>
+          <el-input
+            v-model="roleForm.mark"
+            disabled
+            :placeholder="$t('settings.roleMarkPlaceholder')"
+          />
+          <div class="el-form-item__tip">{{ $t('settings.roleMarkHint') }}</div>
         </el-form-item>
         <el-form-item :label="$t('settings.roleName')">
-          <el-input v-model="roleForm.name" :placeholder="$t('settings.roleNamePlaceholder')" />
+          <el-input
+            v-model="roleForm.name"
+            :placeholder="$t('settings.roleNamePlaceholder')"
+          />
         </el-form-item>
         <el-form-item :label="$t('settings.roleDescription')">
-          <el-input v-model="roleForm.description" type="textarea" :rows="3" :placeholder="$t('settings.roleDescriptionPlaceholder')" />
+          <el-input
+            v-model="roleForm.description"
+            type="textarea"
+            :rows="3"
+            :placeholder="$t('settings.roleDescriptionPlaceholder')"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="footer-right">
-          <el-button @click="closeRoleDialog">{{ $t('common.cancel') }}</el-button>
-          <el-button type="primary" :disabled="!isRoleFormValid" @click="saveRole">
-            {{ $t('common.save') }}
-          </el-button>
-        </div>
+        <el-button @click="closeRoleDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isRoleFormValid" @click="saveRole">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -1279,6 +1104,7 @@
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
@@ -1359,6 +1185,10 @@ const getInitialTab = () => {
 const activeTab = ref(getInitialTab())
 const profileSubTab = ref<'basic' | 'password'>('basic')
 const sidebarCollapsed = ref(false)
+
+const handleMenuSelect = (index: string) => {
+  activeTab.value = index
+}
 
 const profileForm = reactive({
   nickname: '',
@@ -1462,10 +1292,6 @@ const isProviderFormValid = computed(() => {
   return providerForm.name.trim() && providerForm.base_url.trim()
 })
 
-// Provider 删除对话框
-const showDeleteProviderDialog = ref(false)
-const deletingProvider = ref<ModelProvider | null>(null)
-
 // Model 对话框
 const showModelDialog = ref(false)
 const editingModel = ref<AIModel | null>(null)
@@ -1488,10 +1314,6 @@ const modelForm = reactive<ModelFormData>({
 const isModelFormValid = computed(() => {
   return modelForm.name?.trim() && modelForm.model_name?.trim() && modelForm.provider_id?.trim()
 })
-
-// Model 删除对话框
-const showDeleteModelDialog = ref(false)
-const deletingModel = ref<AIModel | null>(null)
 
 // Expert 对话框
 const showExpertDialog = ref(false)
@@ -1531,9 +1353,11 @@ const isExpertFormValid = computed(() => {
 // Expert 对话框 Tab 状态
 const expertActiveTab = ref<'basic' | 'personality' | 'model'>('basic')
 
-// Expert 删除对话框
-const showDeleteExpertDialog = ref(false)
-const deletingExpert = ref<Expert | null>(null)
+const expertTabs = computed(() => [
+  { key: 'basic' as const, label: t('settings.expertTabBasic') },
+  { key: 'personality' as const, label: t('settings.expertTabPersonality') },
+  { key: 'model' as const, label: t('settings.expertTabModel') },
+])
 
 // 技能管理对话框
 const showSkillsDialog = ref(false)
@@ -1577,10 +1401,6 @@ const userForm = reactive({
 // 角色列表
 const rolesList = ref<import('@/types').Role[]>([])
 const rolesLoading = ref(false)
-
-// 用户删除对话框
-const showDeleteUserDialog = ref(false)
-const deletingUser = ref<UserListItem | null>(null)
 
 // 用户头像上传 ref
 const userAvatarInput = ref<HTMLInputElement | null>(null)
@@ -1691,7 +1511,7 @@ const openUserDialog = async (user?: UserListItem) => {
     userForm.status = user.status
     userForm.avatar = user.avatar || ''
     userForm.newPassword = ''
-    userForm.invitation_quota = user.invitation_quota ?? 1
+    userForm.invitation_quota = (user as any).invitation_quota ?? 1
     // 设置用户当前角色：根据角色标识符(mark)找到对应的角色ID
     if (user.roles && user.roles.length > 0) {
       const roleIds = rolesList.value
@@ -1780,36 +1600,51 @@ const saveUser = async () => {
 }
 
 // 确认删除用户
-const confirmDeleteUser = (user: UserListItem) => {
-  deletingUser.value = user
-  showDeleteUserDialog.value = true
-}
-
-// 从对话框内确认删除
-const confirmDeleteUserFromDialog = () => {
-  if (editingUser.value) {
-    deletingUser.value = editingUser.value
-    showDeleteUserDialog.value = true
+const confirmDeleteUser = async (user: UserListItem) => {
+  try {
+    await ElMessageBox.confirm(
+      t('settings.deleteUserConfirm', { name: user.nickname || user.username }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await userApi.deleteUser(user.id)
+    loadUsers()
+  } catch (err) {
+    if (err !== 'cancel') {
+      console.error('删除用户失败:', err)
+      toast.error(t('settings.deleteUserFailed'))
+    }
   }
 }
 
-// 关闭删除确认对话框
-const closeDeleteUserDialog = () => {
-  showDeleteUserDialog.value = false
-  deletingUser.value = null
-}
-
-// 删除用户
-const deleteUser = async () => {
-  if (!deletingUser.value) return
+// 从对话框内确认删除
+const confirmDeleteUserFromDialog = async () => {
+  if (!editingUser.value) return
+  
   try {
-    await userApi.deleteUser(deletingUser.value.id)
-    closeDeleteUserDialog()
+    await ElMessageBox.confirm(
+      t('settings.deleteUserConfirm', { name: editingUser.value.nickname || editingUser.value.username }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await userApi.deleteUser(editingUser.value.id)
     closeUserDialog()
     loadUsers()
   } catch (err) {
-    console.error('删除用户失败:', err)
-    toast.error(t('settings.deleteUserFailed'))
+    if (err !== 'cancel') {
+      console.error('删除用户失败:', err)
+      toast.error(t('settings.deleteUserFailed'))
+    }
   }
 }
 
@@ -2133,32 +1968,30 @@ const saveProvider = async () => {
   }
 }
 
-const confirmDeleteProviderFromDialog = () => {
-  if (editingProvider.value) {
-    deletingProvider.value = editingProvider.value
-    showDeleteProviderDialog.value = true
-  }
-}
-
-const closeDeleteProviderDialog = () => {
-  showDeleteProviderDialog.value = false
-  deletingProvider.value = null
-}
-
-const deleteProvider = async () => {
-  if (!deletingProvider.value) return
+const confirmDeleteProviderFromDialog = async () => {
+  if (!editingProvider.value) return
+  
   try {
-    await providerStore.deleteProvider(deletingProvider.value.id)
-    // 如果删除的是当前选中的提供商，清空选择
-    if (selectedProvider.value?.id === deletingProvider.value.id) {
+    await ElMessageBox.confirm(
+      t('settings.deleteProviderConfirm', { name: editingProvider.value.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await providerStore.deleteProvider(editingProvider.value.id)
+    if (selectedProvider.value?.id === editingProvider.value.id) {
       selectedProvider.value = null
     }
-    closeDeleteProviderDialog()
     closeProviderDialog()
   } catch (err) {
-    // 显示错误信息给用户
-    const errorMsg = err instanceof Error ? err.message : t('settings.deleteProviderFailed')
-    toast.error(errorMsg)
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteProviderFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
@@ -2169,10 +2002,10 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.name = model.name
     modelForm.model_name = model.model_name || ''
     modelForm.provider_id = model.provider_id || ''
-    modelForm.model_type = model.model_type || 'text'
+    modelForm.model_type = (model as any).model_type || 'text'
     modelForm.max_tokens = model.max_tokens
     modelForm.max_output_tokens = model.max_output_tokens
-    modelForm.embedding_dim = model.embedding_dim
+    modelForm.embedding_dim = (model as any).embedding_dim
     modelForm.cost_per_1k_input = model.cost_per_1k_input
     modelForm.cost_per_1k_output = model.cost_per_1k_output
     modelForm.description = model.description || ''
@@ -2218,28 +2051,27 @@ const saveModel = async () => {
   }
 }
 
-const confirmDeleteModelFromDialog = () => {
-  if (editingModel.value) {
-    deletingModel.value = editingModel.value
-    showDeleteModelDialog.value = true
-  }
-}
-
-const closeDeleteModelDialog = () => {
-  showDeleteModelDialog.value = false
-  deletingModel.value = null
-}
-
-const deleteModel = async () => {
-  if (!deletingModel.value) return
+const confirmDeleteModelFromDialog = async () => {
+  if (!editingModel.value) return
+  
   try {
-    await modelStore.deleteModel(deletingModel.value.id)
-    closeDeleteModelDialog()
+    await ElMessageBox.confirm(
+      t('settings.deleteModelConfirm', { name: editingModel.value.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await modelStore.deleteModel(editingModel.value.id)
     closeModelDialog()
   } catch (err) {
-    // 显示错误信息给用户
-    const errorMsg = err instanceof Error ? err.message : t('settings.deleteModelFailed')
-    toast.error(errorMsg)
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteModelFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
@@ -2260,7 +2092,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = expert.expressive_model_id || ''
     expertForm.reflective_model_id = expert.reflective_model_id || ''
     expertForm.prompt_template = expert.prompt_template || ''
-    expertForm.context_strategy = expert.context_strategy ?? 'full'
+    expertForm.context_strategy = (expert as any).context_strategy ?? 'full'
     expertForm.context_threshold = expert.context_threshold ?? 0.70
     // LLM 参数
     expertForm.temperature = expert.temperature ?? 0.70
@@ -2356,33 +2188,48 @@ const handleLargeAvatarUpload = async (event: Event) => {
   input.value = ''
 }
 
-const confirmDeleteExpert = (expert: Expert) => {
-  deletingExpert.value = expert
-  showDeleteExpertDialog.value = true
-}
-
-const confirmDeleteExpertFromDialog = () => {
-  if (editingExpert.value) {
-    deletingExpert.value = editingExpert.value
-    showDeleteExpertDialog.value = true
+const confirmDeleteExpert = async (expert: Expert) => {
+  try {
+    await ElMessageBox.confirm(
+      t('settings.deleteExpertConfirm', { name: expert.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await expertStore.deleteExpert(expert.id)
+  } catch (err) {
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
-const closeDeleteExpertDialog = () => {
-  showDeleteExpertDialog.value = false
-  deletingExpert.value = null
-}
-
-const deleteExpert = async () => {
-  if (!deletingExpert.value) return
+const confirmDeleteExpertFromDialog = async () => {
+  if (!editingExpert.value) return
+  
   try {
-    await expertStore.deleteExpert(deletingExpert.value.id)
-    closeDeleteExpertDialog()
+    await ElMessageBox.confirm(
+      t('settings.deleteExpertConfirm', { name: editingExpert.value.name }),
+      t('common.confirmDelete'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    await expertStore.deleteExpert(editingExpert.value.id)
     closeExpertDialog()
   } catch (err) {
-    // 显示错误信息给用户
-    const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
-    toast.error(errorMsg)
+    if (err !== 'cancel') {
+      const errorMsg = err instanceof Error ? err.message : t('settings.deleteExpertFailed')
+      toast.error(errorMsg)
+    }
   }
 }
 
@@ -2416,7 +2263,7 @@ const loadExpertSkills = async (expertId: string) => {
   }
 }
 
-const handleSkillToggle = () => {
+const handleSkillToggle = (skill: ExpertSkill) => {
   skillsChanged.value = true
 }
 
@@ -2491,97 +2338,14 @@ onMounted(() => {
 }
 
 /* 设置菜单样式 */
-.settings-sidebar {
+/* Element Plus el-menu 样式覆盖 */
+.settings-sidebar.el-menu {
   flex: 0 0 220px;
-  background: var(--secondary-bg, #f8f9fa);
-  border-right: 1px solid var(--border-color, #e0e0e0);
-  display: flex;
-  flex-direction: column;
-  transition: flex-basis 0.3s ease;
+  border-right: 1px solid var(--el-menu-border-color);
 }
 
-.settings-sidebar.collapsed {
-  flex-basis: 48px;
-}
-
-/* 侧边栏头部 */
-.sidebar-header {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-}
-
-.collapse-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: var(--text-secondary, #666);
-}
-
-.collapse-btn:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
-
-.collapse-icon {
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.sidebar-menu {
-  display: flex;
-  flex-direction: column;
-  padding: 16px 12px;
-  gap: 4px;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.menu-item-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: none;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.menu-item-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.menu-item-btn.active {
-  color: var(--primary-color, #2196f3);
-  background: var(--primary-light, #e3f2fd);
-}
-
-/* 收起状态下的菜单样式 */
-.settings-sidebar.collapsed .menu-item-btn {
-  padding: 10px;
-  justify-content: center;
-}
-
-.settings-sidebar.collapsed .menu-text {
-  display: none;
+.settings-sidebar.el-menu--collapse {
+  flex-basis: 64px;
 }
 
 .settings-main {
@@ -2643,25 +2407,7 @@ onMounted(() => {
   color: var(--text-primary, #333);
 }
 
-.btn-icon-add {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  transition: background 0.2s;
-}
 
-.btn-icon-add:hover {
-  background: var(--primary-hover, #1976d2);
-}
 
 .provider-list-container,
 .model-list-container {
@@ -2787,23 +2533,7 @@ onMounted(() => {
   color: var(--text-secondary, #6c7780);
 }
 
-.btn-edit {
-  padding: 4px 10px;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
 
-.btn-edit:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
 
 .btn-edit.btn-inactive {
   border-color: var(--error-color, #c62828);
@@ -2831,9 +2561,6 @@ onMounted(() => {
 }
 
 /* 表单样式 */
-.setting-item {
-  margin-bottom: 20px;
-}
 
 .setting-item.checkbox {
   display: flex;
@@ -2847,126 +2574,26 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.setting-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  margin-bottom: 8px;
-}
 
 .setting-input,
-.setting-select {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-}
 
 .setting-input:focus,
-.setting-select:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
 
-.btn-save {
-  padding: 10px 24px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
 
-.btn-save:hover {
-  background: var(--primary-hover, #1976d2);
-}
 
 /* Dialog */
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
 
-.dialog {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-}
 
-.dialog-large {
-  max-width: 720px;
-}
 
-.dialog-confirm {
-  max-width: 400px;
-}
 
-.dialog-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  color: var(--text-primary, #333);
-}
 
-.dialog-body {
-  padding: 24px;
-  overflow-y: auto;
-  max-height: 60vh;
-}
 
-.dialog-message {
-  padding: 24px;
-  margin: 0;
-  color: var(--text-secondary, #666);
-}
 
-.dialog-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-}
 
-.footer-left {
-  display: flex;
-}
 
-.footer-right {
-  display: flex;
-  gap: 12px;
-}
 
-.form-row {
-  display: flex;
-  gap: 16px;
-}
 
-.form-row .form-item {
-  flex: 1;
-}
 
-.form-item {
-  margin-bottom: 16px;
-}
 
 .form-item.checkbox {
   display: flex;
@@ -2981,75 +2608,15 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.form-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary, #333);
-  margin: 20px 0 12px 0;
-  padding-top: 16px;
-  border-top: 1px dashed var(--border-color, #e0e0e0);
-}
 
-.form-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  margin-bottom: 6px;
-}
 
-.form-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-}
 
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
 
-.form-hint {
-  font-size: 12px;
-  color: var(--text-tertiary, #999);
-  margin: 6px 0 0 0;
-}
 
-.btn-cancel {
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-}
 
-.btn-cancel:hover {
-  background: var(--secondary-bg, #f5f5f5);
-}
 
-.btn-confirm {
-  padding: 8px 16px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
 
-.btn-confirm:hover:not(:disabled) {
-  background: var(--primary-hover, #1976d2);
-}
 
-.btn-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .btn-confirm.delete {
   background: var(--error-color, #c62828);
@@ -3059,20 +2626,7 @@ onMounted(() => {
   background: var(--error-hover, #b71c1c);
 }
 
-.btn-delete {
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid var(--error-color, #c62828);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--error-color, #c62828);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.btn-delete:hover {
-  background: var(--error-bg, #ffebee);
-}
 
 /* 专家设置区域 */
 .expert-section {
@@ -3148,20 +2702,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-.btn-delete-small {
-  padding: 4px 10px;
-  background: white;
-  border: 1px solid var(--error-color, #c62828);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--error-color, #c62828);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.btn-delete-small:hover {
-  background: var(--error-bg, #ffebee);
-}
 
 /* About */
 .about-content {
@@ -3201,32 +2742,8 @@ onMounted(() => {
     border-bottom: 1px solid var(--border-color, #e0e0e0);
   }
 
-  .settings-sidebar.collapsed {
+  .settings-sidebar.el-menu--collapse {
     flex-basis: auto;
-  }
-
-  .sidebar-header {
-    display: none;
-  }
-
-  .sidebar-menu {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding: 12px;
-  }
-
-  .menu-item-btn {
-    white-space: nowrap;
-    padding: 8px 14px;
-  }
-
-  .settings-sidebar.collapsed .menu-item-btn {
-    padding: 8px 14px;
-  }
-
-  .settings-sidebar.collapsed .menu-text {
-    display: inline;
   }
 
   .settings-main {
@@ -3251,20 +2768,9 @@ onMounted(() => {
     max-height: 400px;
   }
 
-  .dialog-footer {
-    flex-direction: column;
-    gap: 12px;
+  .avatar-row {
+    align-items: flex-start;
   }
-
-  .footer-left,
-  .footer-right {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-.avatar-row {
-  align-items: flex-start;
 }
 
 .avatar-item {
@@ -3305,21 +2811,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-.btn-small {
-  padding: 6px 12px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-  color: var(--text-primary, #333);
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
 
-.btn-small:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
 
 .btn-small.btn-danger {
   color: var(--error-color, #c62828);
@@ -3332,22 +2824,7 @@ onMounted(() => {
 }
 
 /* 技能按钮 */
-.btn-skills {
-  padding: 4px 10px;
-  background: white;
-  border: 1px solid var(--primary-color, #2196f3);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--primary-color, #2196f3);
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
 
-.btn-skills:hover {
-  background: var(--primary-color, #2196f3);
-  color: white;
-}
 
 /* 技能管理对话框 */
 .skills-dialog-body {
@@ -3430,52 +2907,11 @@ onMounted(() => {
 }
 
 /* 切换开关 */
-.skill-toggle {
-  position: relative;
-  display: inline-block;
-  width: 48px;
-  height: 26px;
-  margin-left: 12px;
-  flex-shrink: 0;
-}
 
-.skill-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
 
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #ccc;
-  transition: .3s;
-  border-radius: 26px;
-}
 
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 20px;
-  width: 20px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: .3s;
-  border-radius: 50%;
-}
 
-.skill-toggle input:checked + .toggle-slider {
-  background: var(--primary-color, #2196f3);
-}
 
-.skill-toggle input:checked + .toggle-slider:before {
-  transform: translateX(22px);
-}
 
 .skills-count {
   font-size: 13px;
@@ -3490,10 +2926,6 @@ onMounted(() => {
     gap: 12px;
   }
 
-  .skill-toggle {
-    margin-left: 0;
-    align-self: flex-end;
-  }
 }
 
 /* 用户管理区域 */
@@ -3812,21 +3244,7 @@ onMounted(() => {
   background: var(--card-bg, #fff);
 }
 
-.sub-tab-btn {
-  padding: 14px 24px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.sub-tab-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--secondary-bg, #f5f5f5);
-}
 
 .sub-tab-btn.active {
   color: var(--primary-color, #2196f3);
@@ -3834,13 +3252,6 @@ onMounted(() => {
   background: var(--card-bg, #fff);
 }
 
-.role-tab-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
 
 .permissions-list,
 .experts-list {
@@ -3911,14 +3322,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.role-tab-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
 
 .permissions-count,
 .experts-count {
@@ -3945,10 +3348,6 @@ onMounted(() => {
     flex-wrap: wrap;
   }
 
-  .sub-tab-btn {
-    flex: 1;
-    text-align: center;
-  }
 }
 
 /* 专家对话框 Tab 样式 */
@@ -3956,30 +3355,8 @@ onMounted(() => {
   padding: 0;
 }
 
-.expert-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--secondary-bg, #f8f9fa);
-  padding: 0 24px;
-}
 
-.expert-tab-btn {
-  padding: 14px 24px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.expert-tab-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--hover-bg, #e8e8e8);
-}
 
 .expert-tab-btn.active {
   color: var(--primary-color, #2196f3);
@@ -3987,15 +3364,7 @@ onMounted(() => {
   background: var(--card-bg, #fff);
 }
 
-.expert-tab-content {
-  padding: 24px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
 
-.expert-tab-pane {
-  animation: fadeIn 0.2s ease-in-out;
-}
 
 @keyframes fadeIn {
   from {
@@ -4014,18 +3383,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.profile-sub-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
 
-.profile-tab-content {
-  padding: 24px;
-}
 
-.profile-tab-content .btn-save {
-  margin-top: 8px;
-}
 </style>

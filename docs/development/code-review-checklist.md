@@ -1,6 +1,6 @@
 # 代码审计清单
 
-> **最后更新**: 2026-04-18
+> **最后更新**: 2026-04-19
 > **来源**: `docs/core/SOUL.md` 自我代码审计清单
 
 ---
@@ -593,7 +593,139 @@ ctx.success(buildPaginatedResponse(result, pagination, startTime));
 
 ---
 
-## 第九步：技能（Skill）代码审计
+## 第九步：Element Plus 使用规范检查
+
+> **最后更新**: 2026-04-19
+> **引入版本**: Element Plus 2.13.6
+
+### 组件使用优先级
+
+**必须优先使用 Element Plus 组件**，禁止重复造轮子：
+
+| 场景 | Element Plus 组件 | 禁止使用 |
+|------|------------------|----------|
+| 分页 | `el-pagination` | 自定义 Pagination.vue |
+| 消息提示 | `ElMessage` / `ElMessageBox` | 自定义 Toast.vue |
+| 确认对话框 | `ElMessageBox.confirm` | 手写 dialog-confirm |
+| 表单 | `el-form` + `el-form-item` | 手写 form-item |
+| 输入框 | `el-input` | 原生 `<input>` |
+| 选择框 | `el-select` | 原生 `<select>` |
+| 开关 | `el-switch` | 手写 checkbox |
+| 按钮 | `el-button` | 自定义 btn-* CSS |
+| 标签页 | `el-tabs` | 手写 sub-tab-btn |
+| 对话框 | `el-dialog` | 手写 dialog-overlay |
+| 菜单 | `el-menu` | 手写 sidebar-menu |
+
+### 按需引入验证
+
+**Element Plus 已配置自动导入**，无需手动 import：
+
+```typescript
+// ❌ 错误 - 不需要手动导入组件
+import { ElButton, ElInput } from 'element-plus'
+
+// ✅ 正确 - 自动导入，直接使用
+<el-button type="primary">保存</el-button>
+<el-input v-model="form.name" />
+```
+
+**验证配置是否生效**：
+```bash
+# 检查 vite.config.ts 是否包含 ElementPlusResolver
+grep -n "ElementPlusResolver" frontend/vite.config.ts
+```
+
+### 响应式布局规范
+
+**Element Plus 组件自带响应式**，避免重复处理：
+
+```vue
+<!-- ✅ 正确 - 使用 Element Plus 内置响应式 -->
+<el-form :label-width="labelWidth">
+  <el-form-item label="名称">
+    <el-input v-model="form.name" />
+  </el-form-item>
+</el-form>
+
+<!-- ❌ 错误 - 自定义响应式样式覆盖 Element Plus -->
+<el-form class="custom-form">
+  <el-form-item class="custom-item">
+    <el-input class="custom-input" />
+  </el-form-item>
+</el-form>
+<style>
+.custom-form { ... } /* 禁止 */
+.custom-item { ... } /* 禁止 */
+</style>
+```
+
+### i18n 集成
+
+**Element Plus 支持中文语言包**：
+
+```typescript
+// frontend/src/main.ts 已配置
+import ElementPlus from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import en from 'element-plus/es/locale/lang/en'
+
+app.use(ElementPlus, { locale: locale.value === 'zh-CN' ? zhCn : en })
+```
+
+**检查语言包是否正确切换**：
+- 确认分页、日期选择器、表单验证等组件显示中文/英文
+
+### 样式覆盖限制
+
+**允许的样式覆盖**（仅限必要场景）：
+
+```scss
+/* ✅ 允许 - 全局主题定制 */
+:root {
+  --el-color-primary: #2196f3;
+}
+
+/* ✅ 允许 - 特定场景微调 */
+.my-page .el-dialog {
+  max-width: 800px; /* 业务特定宽度 */
+}
+
+/* ❌ 禁止 - 完全重写组件样式 */
+.el-button {
+  border-radius: 20px !important; /* 禁止 */
+  background: red !important; /* 禁止 */
+}
+```
+
+### 快速检查命令
+
+```bash
+# 检查是否使用原生 input/select（应逐步替换）
+grep -rn "<input" frontend/src/views/ frontend/src/components/
+grep -rn "<select" frontend/src/views/ frontend/src/components/
+
+# 检查是否使用自定义 btn-* CSS（应替换为 el-button）
+grep -rn "class=\"btn-" frontend/src/views/ frontend/src/components/
+
+# 检查是否使用手写 dialog-overlay（应替换为 el-dialog）
+grep -rn "class=\"dialog-overlay" frontend/src/views/ frontend/src/components/
+
+# 检查是否使用自定义 sub-tab-btn（应替换为 el-tabs）
+grep -rn "class=\"sub-tab-btn" frontend/src/views/ frontend/src/components/
+```
+
+### 迁移检查清单
+
+**新增/修改前端代码时必须检查**：
+
+- [ ] 是否使用了手写 CSS 类（btn-*、form-*、card、modal 等）？
+- [ ] 能否用 Element Plus 组件替代？
+- [ ] 是否需要添加新的 Element Plus 组件？
+- [ ] 样式是否遵循 Element Plus 主题定制规范？
+
+---
+
+## 第十步：技能（Skill）代码审计
 
 ### 技能类型区分
 
@@ -793,7 +925,7 @@ ls data/skills/*/package.json
 
 ---
 
-## 第十步：数据库迁移检查
+## 第十一步：数据库迁移检查
 
 > **⚠️ 关键提醒：修改数据库字段后，必须同步更新 `scripts/upgrade-database.js`！**
 >
