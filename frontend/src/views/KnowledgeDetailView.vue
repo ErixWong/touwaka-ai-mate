@@ -578,8 +578,9 @@ const handleRevectorize = async () => {
 
     // 开始轮询
     pollProgress()
-  } catch (error: any) {
-    toast.error('重新向量化失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : '未知错误'
+    toast.error('重新向量化失败: ' + errorMsg)
     isRevectorizing.value = false
     revectorizeJobId = ''
   }
@@ -826,8 +827,9 @@ const handleParagraphRevectorize = async (paragraph: KbParagraph) => {
     // 刷新段落列表
     await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id)
     toast.info('已触发段落重新向量化，请稍后刷新查看结果')
-  } catch (error: any) {
-    toast.error('重新向量化失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : '未知错误'
+    toast.error('重新向量化失败: ' + errorMsg)
   }
 }
 
@@ -900,8 +902,9 @@ const submitTransferOwner = async () => {
     // Reload KB to get updated owner info
     await kbStore.loadKnowledgeBase(requireKbId())
     closeTransferDialog()
-  } catch (error: any) {
-    toast.error(error.message || t('knowledgeBase.transferOwner.failed'))
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : t('knowledgeBase.transferOwner.failed')
+    toast.error(errorMsg)
   } finally {
     isTransferring.value = false
   }
