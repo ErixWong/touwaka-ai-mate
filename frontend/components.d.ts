@@ -27,6 +27,7 @@ declare module 'vue' {
     DateField: typeof import('./src/components/apps/fields/DateField.vue')['default']
     DebugTab: typeof import('./src/components/panel/DebugTab.vue')['default']
     DepartmentTreeNode: typeof import('./src/components/settings/DepartmentTreeNode.vue')['default']
+    ElPagination: typeof import('element-plus/es')['ElPagination']
     ExpertTab: typeof import('./src/components/panel/ExpertTab.vue')['default']
     FieldRenderer: typeof import('./src/components/apps/FieldRenderer.vue')['default']
     FileField: typeof import('./src/components/apps/fields/FileField.vue')['default']
