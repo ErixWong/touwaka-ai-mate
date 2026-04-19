@@ -65,3 +65,12 @@ passwordRequired: 'Please enter your password',
 - ✅ ESLint 通过 (LoginView.vue & RegisterView.vue 无错误)
 - ✅ i18n 检查通过 (login 相关翻译键已补全)
 
+## 审查
+- [x] 代码风格一致
+- [x] 功能符合需求
+- [x] 无明显问题
+
+## Git
+- 分支: `feature/627-login-register-element-plus`
+- 目标: `master`
+- 提交数: 3
