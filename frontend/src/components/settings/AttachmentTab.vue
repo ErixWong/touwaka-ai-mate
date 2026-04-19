@@ -228,6 +228,7 @@
           <div class="preview-meta">
             <span>{{ $t('attachment.size') }}: {{ formatSize(previewingAttachment?.size) }}</span>
             <span>{{ $t('attachment.type') }}: {{ previewingAttachment?.mime_type }}</span>
+            <a class="preview-url" :href="getPreviewUrl(previewingAttachment)" target="_blank">点击在新窗口打开</a>
           </div>
         </div>
       </div>
@@ -375,7 +376,9 @@ const pagination = reactive({
 // 预览弹窗
 const showPreviewModal = ref(false)
 const previewingAttachment = ref<Attachment | null>(null)
-const previewToken = ref('')
+
+// Token 缓存映射：attachment_id -> token
+const attachmentTokens = ref<Record<string, string>>({})
 
 // 删除确认弹窗
 const showDeleteModal = ref(false)
@@ -407,12 +410,49 @@ const loadAttachments = async () => {
     pagination.page = response.page
     pagination.size = response.size
     pagination.pages = response.pages
+    
+    // 加载完成后，批量获取图片附件的 tokens
+    await loadAttachmentTokensBatch(response.items)
   } catch (err) {
     console.error('Failed to load attachments:', err)
     toast.error(t('attachment.loadError'))
   } finally {
     loading.value = false
   }
+}
+
+// 批量加载附件 Tokens
+const loadAttachmentTokensBatch = async (items: Attachment[]) => {
+  // 只获取图片类型的附件 token
+  const imageAttachments = items.filter(item => isImage(item.mime_type))
+  
+  // 按 source_tag + source_id 分组，避免重复请求相同资源的 token
+  const groupedBySource = new Map<string, Attachment[]>()
+  imageAttachments.forEach(attachment => {
+    const key = `${attachment.source_tag}:${attachment.source_id}`
+    if (!groupedBySource.has(key)) {
+      groupedBySource.set(key, [])
+    }
+    groupedBySource.get(key)!.push(attachment)
+  })
+  
+  // 并发获取每个资源组的 token
+  const promises = Array.from(groupedBySource.entries()).map(async ([key, attachmentsGroup]) => {
+    const firstAttachment = attachmentsGroup[0]
+    if (!firstAttachment) return
+    
+    try {
+      const result = await generateAttachmentToken(firstAttachment.source_tag, firstAttachment.source_id)
+      // 为同一资源组的所有附件设置相同的 token
+      attachmentsGroup.forEach(attachment => {
+        attachmentTokens.value[attachment.id] = result.token
+      })
+    } catch (err) {
+      console.error('Failed to load token for source:', key, err)
+    }
+  })
+  
+  await Promise.all(promises)
 }
 
 // 处理过滤变化
@@ -507,10 +547,24 @@ const formatDate = (dateStr: string): string => {
 // 获取预览 URL
 const getPreviewUrl = (attachment?: Attachment | null): string => {
   if (!attachment) return ''
-  if (previewToken.value) {
-    return getAttachmentUrl(attachment.id, previewToken.value)
+  const token = attachmentTokens.value[attachment.id]
+  if (token) {
+    return getAttachmentUrl(attachment.id, token)
   }
-  return ''
+  return ''  // 没有 token 时返回空，显示占位符
+}
+
+// 单个附件 Token 加载（用于预览弹窗）
+const loadAttachmentToken = async (attachment: Attachment) => {
+  if (attachmentTokens.value[attachment.id]) return
+  
+  try {
+    const result = await generateAttachmentToken(attachment.source_tag, attachment.source_id)
+    attachmentTokens.value[attachment.id] = result.token
+  } catch (err) {
+    console.error('Failed to load token for attachment:', attachment.id, err)
+    toast.error(t('attachment.tokenError'))
+  }
 }
 
 // 预览附件
@@ -518,13 +572,9 @@ const previewAttachment = async (attachment: Attachment) => {
   previewingAttachment.value = attachment
   showPreviewModal.value = true
 
-  // 生成访问 Token
-  try {
-    const result = await generateAttachmentToken(attachment.source_tag, attachment.source_id)
-    previewToken.value = result.token
-  } catch (err) {
-    console.error('Failed to generate token:', err)
-    toast.error(t('attachment.tokenError'))
+  // 确保有访问 Token
+  if (!attachmentTokens.value[attachment.id]) {
+    await loadAttachmentToken(attachment)
   }
 }
 
@@ -532,7 +582,6 @@ const previewAttachment = async (attachment: Attachment) => {
 const closePreviewModal = () => {
   showPreviewModal.value = false
   previewingAttachment.value = null
-  previewToken.value = ''
 }
 
 // 删除附件
