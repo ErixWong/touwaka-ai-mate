@@ -41,7 +41,6 @@ import mysql from 'mysql2/promise';
 import { fileURLToPath } from 'url';
 
 // 动态导入 npm 模块用于技能测试
-import xlsx from 'xlsx';
 import exceljs from 'exceljs';
 import hyperformula from 'hyperformula';
 import * as docx from 'docx';
@@ -266,7 +265,6 @@ function executeSkill(code, skillId) {
         'events': events,
         'string_decoder': string_decoder,
         // npm 模块（用于测试 xlsx 技能）
-        'xlsx': xlsx,
         'exceljs': exceljs,
         'hyperformula': hyperformula,
         // npm 模块（用于测试 docx 技能）
