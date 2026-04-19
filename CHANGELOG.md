@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-19
+
+### Added
+- **App Market 小程序市场** - 完整的App市场前端界面和后端实现 (#605, #606, #607, #608, #609, #610)
+- **MCP Client 支持** - SSE传输支持、HTTP Stream传输、驻留进程管理 (#616)
+- **pypdf 技能** - 全新PDF解析技能，支持图文混编PDF一次性解析 (#568, #569, #570, #575, #577)
+- **知识库图文召回 API** - 实现图片存储与召回功能 (#556, #564)
+- **版本号自动同步机制** - 新增版本同步功能 (#517)
+- **Element Plus 全面重构** - 前端界面全面升级 (#621, #622, #627, #628, #629, #630, #631, #632, #633)
+
+### Changed
+- **UI/UX 改进**: SettingsView 系统设置页面左右布局改造
+- **驻留进程管理** - 改为左右布局：左侧列表+分页，右侧详情+通信记录
+- **技能工具命名规范化** - 进一步规范化工具命名
+- **SSE流式输出性能优化** - 移除rAF等待，添加批量缓冲机制 (#523)
+- **统一分页实现规范** (#555)
+- 升级 exceljs 替代 xlsx (#621)
+
+### Fixed
+- 修复技能注册后缓存未失效问题 (#581)
+- 修复 MCP 前后端契约问题 (#614, #616)
+- 修复 App Market 安装流程问题 (#612, #613)
+- 修复 SettingsView TypeScript 类型错误 (#633)
+- 修复 pypdf 技能依赖问题 (#569, #573)
+- 修复前端代码审计问题 (#609, #611)
+- 修复多项 ESLint 错误
+
+### Security
+- 前端开发依赖漏洞修复 (#620)
+- 安全漏洞修复与依赖升级 (#620)
+
 ## [0.2.5] - 2026-04-01
 
 ### Added
@@ -158,6 +189,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.3.0 | 2026-04-19 | App Market小程序市场、MCP Client、Element Plus重构、pypdf技能 |
 | 0.2.5 | 2026-04-01 | Psyche 上下文管理系统、Windows 平台支持、安全修复 |
 | 0.2.4 | 2026-03-31 | 新增发票解析技能、助理通知重发、知识库卡片信息展示、多项 Bug 修复 |
 | 0.2.3 | 2026-03-30 | 修复 TypeScript 类型错误、角色管理权限配置修复、管理员可修改邀请配额 |

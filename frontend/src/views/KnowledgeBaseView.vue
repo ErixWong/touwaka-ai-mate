@@ -2,28 +2,25 @@
   <div class="kb-view">
     <div class="view-header">
       <h1 class="view-title">{{ $t('knowledgeBase.title') }}</h1>
-      <button class="btn-primary" @click="showCreateDialog = true">
+      <el-button type="primary" @click="showCreateDialog = true">
         <span class="icon">+</span>
         {{ $t('knowledgeBase.createNew') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- Search -->
     <div class="kb-filter">
-      <input
+      <el-input
         v-model="searchQuery"
-        type="text"
-        class="search-input"
         :placeholder="$t('knowledgeBase.searchPlaceholder')"
         @keyup.enter="searchQuery.trim() && performGlobalSearch()"
-      />
-      <button
-        class="btn-search"
-        @click="performGlobalSearch"
-        :disabled="!searchQuery.trim() || kbStore.isSearching"
       >
-        🔍 {{ kbStore.isSearching ? $t('common.loading') : $t('knowledgeBase.search') }}
-      </button>
+        <template #append>
+          <el-button @click="performGlobalSearch" :loading="kbStore.isSearching" :disabled="!searchQuery.trim()">
+            {{ kbStore.isSearching ? $t('common.loading') : $t('knowledgeBase.search') }}
+          </el-button>
+        </template>
+      </el-input>
     </div>
 
     <!-- Loading -->
@@ -35,9 +32,9 @@
     <div v-else-if="totalCount === 0" class="empty-state">
       <div class="empty-icon">📚</div>
       <p>{{ $t('knowledgeBase.empty') }}</p>
-      <button class="btn-primary" @click="showCreateDialog = true">
+      <el-button type="primary" @click="showCreateDialog = true">
         {{ $t('knowledgeBase.addFirst') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- Knowledge Base Content with Pagination -->
@@ -57,8 +54,12 @@
               <div class="kb-card-icon">{{ getKbIcon(kb) }}</div>
               <div class="kb-card-name">{{ kb.name }}</div>
               <div class="kb-card-actions">
-                <button v-if="kb.can_edit" class="kb-action-btn" @click.stop="editKb(kb)" :title="$t('common.edit')">✏️</button>
-                <button v-if="kb.can_delete" class="kb-action-btn danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">🗑️</button>
+                <el-button v-if="kb.can_edit" size="small" text @click.stop="editKb(kb)" :title="$t('common.edit')">
+                  <span class="btn-icon">✏️</span>
+                </el-button>
+                <el-button v-if="kb.can_delete" size="small" text type="danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">
+                  <span class="btn-icon">🗑️</span>
+                </el-button>
               </div>
             </div>
             <div class="kb-card-desc" v-if="kb.description">{{ kb.description }}</div>
@@ -114,11 +115,9 @@
             </button>
           </span>
           <!-- 每页数量选择器 -->
-          <select v-model="pageSize" class="page-size-select" @change="handlePageSizeChange">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">
-              {{ size }}/页
-            </option>
-          </select>
+          <el-select v-model="pageSize" @change="handlePageSizeChange" style="width: 100px">
+            <el-option v-for="size in pageSizeOptions" :key="size" :label="size + '/页'" :value="size" />
+          </el-select>
         </div>
         <button
           class="page-btn"
@@ -272,7 +271,7 @@ import { useModelStore } from '@/stores/model'
 import { useToastStore } from '@/stores/toast'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import type { KnowledgeBase } from '@/types'
+import type { KnowledgeBase, AIModel } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -307,7 +306,7 @@ const pageSizeOptions = [8, 12, 16, 24, 32]
 // 获取 embedding 模型列表
 const embeddingModels = computed(() => {
   return modelStore.models.filter(
-    (m: any) => m.model_type === 'embedding'
+    (m: AIModel) => m.model_type === 'embedding'
   )
 })
 
@@ -317,7 +316,7 @@ const selectedEmbeddingDim = computed(() => {
     return 384 // 默认本地模型维度
   }
   const model = embeddingModels.value.find(
-    (m: any) => m.id === formData.value.embedding_model_id
+    (m: AIModel) => m.id === formData.value.embedding_model_id
   )
   return model?.embedding_dim || 384
 })
@@ -367,7 +366,7 @@ const getKbIcon = (kb: KnowledgeBase) => {
 
 // 获取模型名称
 const getModelName = (modelId: string) => {
-  const model = modelStore.models.find((m: any) => m.id === modelId)
+  const model = modelStore.models.find((m: AIModel) => m.id === modelId)
   return model?.name || modelId
 }
 
@@ -459,8 +458,8 @@ const editKb = (kb: KnowledgeBase) => {
   formData.value = {
     name: kb.name,
     description: kb.description || '',
-    visibility: (kb as any).visibility || 'owner',
-    embedding_model_id: (kb as any).embedding_model_id || '',
+    visibility: kb.visibility || 'owner',
+    embedding_model_id: kb.embedding_model_id || '',
   }
 }
 

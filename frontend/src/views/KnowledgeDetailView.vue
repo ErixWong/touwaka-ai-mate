@@ -3,33 +3,36 @@
     <!-- Header -->
     <div class="detail-header">
       <div class="header-left">
-        <button class="btn-back" @click="goBack">
+        <el-button text @click="goBack" class="btn-back">
           <span class="back-icon">←</span>
           {{ $t('knowledgeBase.backToList') }}
-        </button>
+        </el-button>
         <h1 class="kb-title">{{ kbStore.currentKb?.name }}</h1>
       </div>
       <div class="header-actions">
-        <button class="btn-action" @click="showSearchDialog = true">
-          <span>🔍</span>
+        <el-button @click="showSearchDialog = true">
+          <span class="btn-icon">🔍</span>
           {{ $t('knowledgeBase.search') }}
-        </button>
-        <button v-if="userStore.isAdmin" class="btn-action btn-transfer" @click="handleTransferOwner">
-          <span>👤</span>
+        </el-button>
+        <el-button v-if="userStore.isAdmin" type="warning" @click="handleTransferOwner">
+          <span class="btn-icon">👤</span>
           {{ $t('knowledgeBase.transferOwner.button') }}
-        </button>
-        <button class="btn-action btn-revectorize" @click="handleRevectorize" :disabled="isRevectorizing">
-          <span>🔄</span>
+        </el-button>
+        <el-button type="primary" @click="handleRevectorize" :loading="isRevectorizing">
+          <span class="btn-icon">🔄</span>
           {{ isRevectorizing ? $t('knowledgeBase.revectorizing') : $t('knowledgeBase.revectorize') }}
-        </button>
+        </el-button>
         <!-- 进度显示 -->
         <div v-if="isRevectorizing && revectorizeProgress.total > 0" class="revectorize-progress">
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: (revectorizeProgress.current / revectorizeProgress.total * 100) + '%' }"></div>
-          </div>
+          <el-progress 
+            :percentage="Math.round((revectorizeProgress.current / revectorizeProgress.total) * 100)" 
+            :status="revectorizeProgress.failed > 0 ? 'exception' : ''"
+            :stroke-width="12"
+            class="progress-bar"
+          />
           <div class="progress-text">
             {{ revectorizeProgress.current }} / {{ revectorizeProgress.total }}
-            (成功: {{ revectorizeProgress.success }}, 失败: {{ revectorizeProgress.failed }})
+            ({{ $t('knowledgeBase.success') || '成功' }}: {{ revectorizeProgress.success }}, {{ $t('knowledgeBase.failed') || '失败' }}: {{ revectorizeProgress.failed }})
           </div>
         </div>
       </div>
@@ -46,14 +49,16 @@
       <div class="article-panel">
         <div class="panel-header">
           <h3>{{ $t('knowledgeBase.articles') || '文章列表' }}</h3>
-          <button class="btn-icon" @click="showArticleDialog = true" :title="$t('knowledgeBase.article.create')">+</button>
+          <el-button size="small" circle @click="showArticleDialog = true" :title="$t('knowledgeBase.article.create')">
+            <span class="btn-icon">+</span>
+          </el-button>
         </div>
 
         <!-- Tag Filter -->
         <div v-if="kbStore.tags.length > 0" class="tag-filter">
           <div class="tag-filter-header">
             <span class="tag-filter-label">{{ $t('knowledgeBase.tagFilter') }}</span>
-            <button v-if="selectedTagIds.length > 0" class="tag-clear-btn" @click="clearTagFilter">{{ $t('knowledgeBase.clearTagFilter') }}</button>
+            <el-button v-if="selectedTagIds.length > 0" size="small" text @click="clearTagFilter">{{ $t('knowledgeBase.clearTagFilter') }}</el-button>
           </div>
           <div class="tag-list">
             <span
@@ -94,8 +99,12 @@
               </span>
             </div>
             <div class="article-item-actions">
-              <button class="btn-sm-icon" @click.stop="editArticle(article)" :title="$t('common.edit')">✏️</button>
-              <button class="btn-sm-icon danger" @click.stop="deleteArticle(article)" :title="$t('common.delete')">🗑️</button>
+              <el-button size="small" text @click.stop="editArticle(article)" :title="$t('common.edit')">
+                <span class="btn-icon">✏️</span>
+              </el-button>
+              <el-button size="small" text type="danger" @click.stop="deleteArticle(article)" :title="$t('common.delete')">
+                <span class="btn-icon">🗑️</span>
+              </el-button>
             </div>
           </div>
         </div>
@@ -106,14 +115,21 @@
         <div class="panel-header">
           <h3>{{ $t('knowledgeBase.sections') || '章节结构' }}</h3>
           <div class="panel-actions">
-            <button class="btn-icon" @click="expandAllSections" :title="$t('knowledgeBase.expandAll')">+⊟</button>
-            <button class="btn-icon" @click="collapseAllSections" :title="$t('knowledgeBase.collapseAll')">⊟-</button>
-            <button
-              class="btn-icon"
+            <el-button size="small" circle @click="expandAllSections" :title="$t('knowledgeBase.expandAll')">
+              <span class="btn-icon">+⊟</span>
+            </el-button>
+            <el-button size="small" circle @click="collapseAllSections" :title="$t('knowledgeBase.collapseAll')">
+              <span class="btn-icon">⊟-</span>
+            </el-button>
+            <el-button
+              size="small"
+              circle
               @click="showSectionDialog = true"
               :title="$t('knowledgeBase.section.create') || '创建章节'"
               :disabled="!selectedArticle"
-            >+</button>
+            >
+              <span class="btn-icon">+</span>
+            </el-button>
           </div>
         </div>
 
@@ -163,12 +179,12 @@
                   :total="kbStore.paragraphTotal"
                   @change="handleParagraphPageChange"
                 />
-                <button class="btn-icon-action btn-edit" @click="editSection(selectedSection)" :title="$t('common.edit')">
-                  ✏️
-                </button>
-                <button class="btn-icon-action btn-delete" @click="deleteSection(selectedSection)" :title="$t('common.delete')">
-                  🗑️
-                </button>
+                <el-button size="small" circle @click="editSection(selectedSection)" :title="$t('common.edit')">
+                  <span class="btn-icon">✏️</span>
+                </el-button>
+                <el-button size="small" circle type="danger" @click="deleteSection(selectedSection)" :title="$t('common.delete')">
+                  <span class="btn-icon">🗑️</span>
+                </el-button>
               </div>
             </div>
             <div class="content-meta">
@@ -186,9 +202,9 @@
             <div class="section-header">
               <h4 class="section-title">{{ $t('knowledgeBase.paragraphs') || '段落列表' }}</h4>
               <div class="section-header-actions">
-                <button class="btn-sm" @click="showParagraphDialog = true">
+                <el-button size="small" @click="showParagraphDialog = true">
                   + {{ $t('knowledgeBase.paragraph.create') || '添加段落' }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -206,8 +222,12 @@
                 <div class="paragraph-header">
                   <div v-if="paragraph.title" class="paragraph-title">{{ paragraph.title }}</div>
                   <div class="paragraph-actions">
-                    <button class="btn-sm-icon" @click.stop="editParagraph(paragraph)" :title="$t('common.edit')">✏️</button>
-                    <button class="btn-sm-icon danger" @click.stop="deleteParagraph(paragraph)" :title="$t('common.delete')">🗑️</button>
+                    <el-button size="small" text @click.stop="editParagraph(paragraph)" :title="$t('common.edit')">
+                      <span class="btn-icon">✏️</span>
+                    </el-button>
+                    <el-button size="small" text type="danger" @click.stop="deleteParagraph(paragraph)" :title="$t('common.delete')">
+                      <span class="btn-icon">🗑️</span>
+                    </el-button>
                   </div>
                 </div>
                 <div class="paragraph-content" v-html="renderMarkdown(paragraph.content)"></div>
@@ -238,179 +258,167 @@
     </div>
 
     <!-- Search Dialog -->
-    <div v-if="showSearchDialog" class="dialog-overlay">
-      <div class="dialog dialog-large">
-        <h3 class="dialog-title">{{ $t('knowledgeBase.search') }}</h3>
-        <div class="dialog-body">
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="search-input"
-            :placeholder="$t('knowledgeBase.searchHint')"
-            @keyup.enter="searchQuery.trim() && performSearch()"
-          />
+    <el-dialog
+      v-model="showSearchDialog"
+      :title="$t('knowledgeBase.search')"
+      width="720px"
+      destroy-on-close
+    >
+      <div class="search-dialog-body">
+        <el-input
+          v-model="searchQuery"
+          :placeholder="$t('knowledgeBase.searchHint')"
+          @keyup.enter="searchQuery.trim() && performSearch()"
+        >
+          <template #append>
+            <el-button @click="performSearch" :loading="kbStore.isSearching" :disabled="!searchQuery.trim()">
+              {{ $t('knowledgeBase.search') }}
+            </el-button>
+          </template>
+        </el-input>
 
-          <div v-if="kbStore.isSearching" class="search-loading">
-            {{ $t('common.loading') }}
-          </div>
+        <div v-if="kbStore.isSearching" class="search-loading">
+          <el-skeleton :rows="3" animated />
+        </div>
 
-          <div v-else-if="kbStore.searchResults.length > 0" class="search-results">
-            <h4>{{ $t('knowledgeBase.searchResult.title') }}</h4>
-            <div
-              v-for="result in kbStore.searchResults"
-              :key="result.paragraph.id"
-              class="search-result-item"
-            >
-              <div class="result-score">
-                {{ Math.round(result.score * 100) }}%
-              </div>
-              <div class="result-content">
-                <div class="result-location">
-                  {{ result.article?.title || 'Unknown' }}<span v-if="result.section"> > {{ result.section.title }}</span>
-                </div>
-                <div class="result-text" v-html="renderMarkdown(result.paragraph.content)"></div>
-              </div>
+        <div v-else-if="kbStore.searchResults.length > 0" class="search-results">
+          <h4>{{ $t('knowledgeBase.searchResult.title') }}</h4>
+          <el-card
+            v-for="result in kbStore.searchResults"
+            :key="result.paragraph.id"
+            class="search-result-item"
+            shadow="hover"
+          >
+            <div class="result-score">
+              {{ Math.round(result.score * 100) }}%
             </div>
-          </div>
+            <div class="result-content">
+              <div class="result-location">
+                <el-breadcrumb separator=">">
+                  <el-breadcrumb-item>{{ result.article?.title || 'Unknown' }}</el-breadcrumb-item>
+                  <el-breadcrumb-item v-if="result.section">{{ result.section.title }}</el-breadcrumb-item>
+                </el-breadcrumb>
+              </div>
+              <div class="result-text" v-html="renderMarkdown(result.paragraph.content)"></div>
+            </div>
+          </el-card>
+        </div>
 
-          <div v-else-if="searchQuery && hasSearched" class="search-empty">
-            {{ $t('knowledgeBase.searchResult.empty') }}
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeSearchDialog">{{ $t('common.close') }}</button>
-          <button class="btn-primary" @click="performSearch" :disabled="!searchQuery.trim() || kbStore.isSearching">
-            {{ $t('knowledgeBase.search') }}
-          </button>
-        </div>
+        <el-empty v-else-if="searchQuery && hasSearched" :description="$t('knowledgeBase.searchResult.empty')" />
       </div>
-    </div>
+      <template #footer>
+        <el-button @click="closeSearchDialog">{{ $t('common.close') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- Article Dialog -->
-    <div v-if="showArticleDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingArticle ? $t('knowledgeBase.article.edit') : $t('knowledgeBase.article.create') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.article.titleLabel') || '标题' }}</label>
-            <input v-model="articleForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.article.titlePlaceholder')" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.article.summaryLabel') || '摘要' }}</label>
-            <textarea v-model="articleForm.summary" class="form-textarea" rows="3" :placeholder="$t('knowledgeBase.article.summaryPlaceholder')"></textarea>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeArticleDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="submitArticle" :disabled="!articleForm.title.trim()">
-            {{ $t('common.save') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showArticleDialog"
+      :title="editingArticle ? $t('knowledgeBase.article.edit') : $t('knowledgeBase.article.create')"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item :label="$t('knowledgeBase.article.titleLabel') || '标题'">
+          <el-input v-model="articleForm.title" :placeholder="$t('knowledgeBase.article.titlePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('knowledgeBase.article.summaryLabel') || '摘要'">
+          <el-input v-model="articleForm.summary" type="textarea" :rows="3" :placeholder="$t('knowledgeBase.article.summaryPlaceholder')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeArticleDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submitArticle" :loading="savingArticle" :disabled="!articleForm.title.trim()">
+          {{ $t('common.save') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Section Dialog -->
-    <div v-if="showSectionDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingSection ? $t('knowledgeBase.section.edit') || '编辑章节' : $t('knowledgeBase.section.create') || '创建章节' }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.section.titleLabel') || '标题' }}</label>
-            <input v-model="sectionForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.section.titlePlaceholder') || '输入章节标题'"/>
-          </div>
-          <div v-if="!editingSection" class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.section.parent') || '父章节' }}</label>
-            <select v-model="sectionForm.parent_id" class="form-select">
-              <option :value="undefined">{{ $t('knowledgeBase.section.noParent') || '无（顶级章节）' }}</option>
-              <option v-for="s in flatSectionList" :key="s.id" :value="s.id">
-                {{ '　'.repeat(s.level || 0) }}{{ s.title }}
-              </option>
-            </select>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeSectionDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="submitSection" :disabled="!sectionForm.title.trim()">
-            {{ $t('common.save') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showSectionDialog"
+      :title="editingSection ? $t('knowledgeBase.section.edit') || '编辑章节' : $t('knowledgeBase.section.create') || '创建章节'"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item :label="$t('knowledgeBase.section.titleLabel') || '标题'">
+          <el-input v-model="sectionForm.title" :placeholder="$t('knowledgeBase.section.titlePlaceholder') || '输入章节标题'" />
+        </el-form-item>
+        <el-form-item v-if="!editingSection" :label="$t('knowledgeBase.section.parent') || '父章节'">
+          <el-select v-model="sectionForm.parent_id" :placeholder="$t('knowledgeBase.section.noParent') || '无（顶级章节）'" clearable style="width: 100%">
+            <el-option v-for="s in flatSectionList" :key="s.id" :label="s.title" :value="s.id">
+              <span :style="{ paddingLeft: (s.level || 0) * 16 + 'px' }">{{ s.title }}</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeSectionDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submitSection" :disabled="!sectionForm.title.trim()">
+          {{ $t('common.save') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Paragraph Dialog -->
-    <div v-if="showParagraphDialog" class="dialog-overlay">
-      <div class="dialog dialog-large">
-        <h3 class="dialog-title">
-          {{ editingParagraph ? $t('knowledgeBase.paragraph.edit') || '编辑段落' : $t('knowledgeBase.paragraph.create') || '创建段落' }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.paragraph.titleLabel') || '标题（可选）' }}</label>
-            <input v-model="paragraphForm.title" type="text" class="form-input" :placeholder="$t('knowledgeBase.paragraph.titlePlaceholder')" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.paragraph.contentLabel') || '内容' }}</label>
-            <textarea
-              v-model="paragraphForm.content"
-              class="form-textarea"
-              rows="8"
-              :placeholder="$t('knowledgeBase.paragraph.contentPlaceholder')"
-            ></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.paragraph.contextLabel') || '上下文（可选）' }}</label>
-            <textarea
-              v-model="paragraphForm.context"
-              class="form-textarea"
-              rows="2"
-              :placeholder="$t('knowledgeBase.paragraph.contextPlaceholder')"
-            ></textarea>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeParagraphDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="submitParagraph" :disabled="!paragraphForm.content.trim()">
-            {{ $t('common.save') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showParagraphDialog"
+      :title="editingParagraph ? $t('knowledgeBase.paragraph.edit') || '编辑段落' : $t('knowledgeBase.paragraph.create') || '创建段落'"
+      width="720px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item :label="$t('knowledgeBase.paragraph.titleLabel') || '标题（可选）'">
+          <el-input v-model="paragraphForm.title" :placeholder="$t('knowledgeBase.paragraph.titlePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('knowledgeBase.paragraph.contentLabel') || '内容'">
+          <el-input v-model="paragraphForm.content" type="textarea" :rows="8" :placeholder="$t('knowledgeBase.paragraph.contentPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('knowledgeBase.paragraph.contextLabel') || '上下文（可选）'">
+          <el-input v-model="paragraphForm.context" type="textarea" :rows="2" :placeholder="$t('knowledgeBase.paragraph.contextPlaceholder')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeParagraphDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submitParagraph" :disabled="!paragraphForm.content.trim()">
+          {{ $t('common.save') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Transfer Owner Dialog -->
-    <div v-if="showTransferDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">{{ $t('knowledgeBase.transferOwner.title') }}</h3>
-        <div class="dialog-body">
-          <p class="transfer-hint">{{ $t('knowledgeBase.transferOwner.hint') }}</p>
-          <div class="form-group">
-            <label class="form-label">{{ $t('knowledgeBase.transferOwner.newOwner') }}</label>
-            <UserPicker
-              v-model="selectedNewOwnerId"
-              :placeholder="$t('knowledgeBase.transferOwner.selectUser')"
-              @change="handleOwnerSelect"
-            />
-          </div>
-          <p v-if="selectedNewOwner" class="transfer-confirm">
-            {{ $t('knowledgeBase.transferOwner.confirm', { name: selectedNewOwner.nickname || selectedNewOwner.username }) }}
-          </p>
-        </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeTransferDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="submitTransferOwner" :disabled="!selectedNewOwnerId || isTransferring">
-            {{ isTransferring ? $t('common.saving') : $t('common.confirm') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showTransferDialog"
+      :title="$t('knowledgeBase.transferOwner.title')"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-text type="info" class="transfer-hint">{{ $t('knowledgeBase.transferOwner.hint') }}</el-text>
+        <el-form-item :label="$t('knowledgeBase.transferOwner.newOwner')">
+          <UserPicker
+            v-model="selectedNewOwnerId"
+            :placeholder="$t('knowledgeBase.transferOwner.selectUser')"
+            @change="handleOwnerSelect"
+          />
+        </el-form-item>
+        <el-alert v-if="selectedNewOwner" type="warning" :closable="false">
+          {{ $t('knowledgeBase.transferOwner.confirm', { name: selectedNewOwner.nickname || selectedNewOwner.username }) }}
+        </el-alert>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeTransferDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="submitTransferOwner" :loading="isTransferring" :disabled="!selectedNewOwnerId">
+          {{ $t('common.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
@@ -570,8 +578,9 @@ const handleRevectorize = async () => {
 
     // 开始轮询
     pollProgress()
-  } catch (error: any) {
-    toast.error('重新向量化失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : '未知错误'
+    toast.error('重新向量化失败: ' + errorMsg)
     isRevectorizing.value = false
     revectorizeJobId = ''
   }
@@ -818,8 +827,9 @@ const handleParagraphRevectorize = async (paragraph: KbParagraph) => {
     // 刷新段落列表
     await kbStore.loadParagraphs(requireKbId(), selectedSection.value.id)
     toast.info('已触发段落重新向量化，请稍后刷新查看结果')
-  } catch (error: any) {
-    toast.error('重新向量化失败: ' + (error.message || '未知错误'))
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : '未知错误'
+    toast.error('重新向量化失败: ' + errorMsg)
   }
 }
 
@@ -892,8 +902,9 @@ const submitTransferOwner = async () => {
     // Reload KB to get updated owner info
     await kbStore.loadKnowledgeBase(requireKbId())
     closeTransferDialog()
-  } catch (error: any) {
-    toast.error(error.message || t('knowledgeBase.transferOwner.failed'))
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : t('knowledgeBase.transferOwner.failed')
+    toast.error(errorMsg)
   } finally {
     isTransferring.value = false
   }
