@@ -907,7 +907,7 @@ export const assistantApi = {
 // ============================================
 
 // MCP 传输类型
-export type McpTransportType = 'stdio' | 'http'
+export type McpTransportType = 'stdio' | 'http' | 'sse'
 
 // MCP Server 类型
 export interface McpServer {
@@ -923,7 +923,7 @@ export interface McpServer {
   headers?: string | null
   // 公共字段
   is_public: boolean
-  is_active: boolean
+  is_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -941,7 +941,7 @@ export interface CreateMcpServerRequest {
   headers?: string
   // 公共字段
   is_public?: boolean
-  is_active?: boolean
+  is_enabled?: boolean
 }
 
 export interface UpdateMcpServerRequest {
@@ -956,7 +956,7 @@ export interface UpdateMcpServerRequest {
   headers?: string
   // 公共字段
   is_public?: boolean
-  is_active?: boolean
+  is_enabled?: boolean
 }
 
 // MCP 凭证类型
@@ -1022,6 +1022,12 @@ export const mcpApi = {
   // 获取 MCP Server 工具列表
   getServerTools: (id: string) =>
     apiRequest<{ tools: McpToolCache[] }>(apiClient.get(`/mcp/servers/${id}/tools`)),
+
+  // 调用 MCP 工具（管理员测试用）
+  callTool: (id: string, toolName: string, args?: Record<string, any>) =>
+    apiRequest<{ server_name: string; tool_name: string; result: any }>(
+      apiClient.post(`/mcp/servers/${id}/call-tool`, { tool_name: toolName, arguments: args || {} })
+    ),
 
   // ========== 用户凭证管理 ==========
 

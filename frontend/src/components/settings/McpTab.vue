@@ -24,14 +24,14 @@
             v-for="server in servers"
             :key="server.id"
             class="server-item"
-            :class="{ active: selectedServer?.id === server.id, inactive: !server.is_active }"
+            :class="{ active: selectedServer?.id === server.id, inactive: !server.is_enabled }"
           >
             <button
               class="server-name-btn"
               @click="selectServer(server)"
             >
               <span class="server-name">{{ server.name }}</span>
-              <span v-if="!server.is_active" class="badge inactive">
+              <span v-if="!server.is_enabled" class="badge inactive">
                 {{ $t('settings.inactive') }}
               </span>
               <span v-if="server.is_public" class="badge public">
@@ -40,7 +40,7 @@
             </button>
             <button
               class="btn-edit"
-              :class="{ 'btn-inactive': !server.is_active }"
+              :class="{ 'btn-inactive': !server.is_enabled }"
               @click.stop="openServerDialog(server)"
               :title="$t('common.edit')"
             >
@@ -107,11 +107,58 @@
               class="tool-item"
             >
               <div class="tool-info">
-                <span class="tool-name">mcp_{{ selectedServer?.name }}_{{ tool.tool_name }}</span>
-                <p v-if="tool.tool_description" class="tool-description">
-                  {{ tool.tool_description }}
-                </p>
+                <span class="tool-name">{{ tool.name }}</span>
+                <span v-if="tool.description" class="tool-description">{{ tool.description }}</span>
               </div>
+              <button class="btn-test-tool" @click="openTestToolDialog(tool)" :disabled="testToolLoading">
+                ▶
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 测试工具弹窗 -->
+        <div v-if="showTestToolDialog" class="dialog-overlay" @click.self="showTestToolDialog = false">
+          <div class="dialog test-tool-dialog">
+            <div class="dialog-header">
+              <h3>▶ {{ testingTool?.name }}</h3>
+              <button class="btn-close" @click="showTestToolDialog = false">&times;</button>
+            </div>
+            <div class="dialog-body">
+              <p v-if="testingTool?.description" class="test-tool-desc">{{ testingTool.description }}</p>
+              <div v-if="testToolSchemaFields.length > 0" class="test-fields">
+                <div v-for="field in testToolSchemaFields" :key="field.name" class="test-field-item">
+                  <label class="test-field-label">
+                    {{ field.name }}
+                    <span v-if="field.required" class="required">*</span>
+                    <span v-if="field.type" class="field-type">{{ field.type }}</span>
+                  </label>
+                  <input
+                    v-model="testFieldValues[field.name]"
+                    class="form-input"
+                    :placeholder="field.description || field.name"
+                  />
+                </div>
+              </div>
+              <div v-else class="form-item">
+                <label class="form-label">{{ $t('settings.mcp.toolArgs') }}</label>
+                <textarea
+                  v-model="testToolArgs"
+                  class="form-input"
+                  rows="3"
+                  :placeholder='$t("settings.mcp.toolArgsPlaceholder")'
+                ></textarea>
+              </div>
+              <div v-if="testToolResult !== null" class="test-result">
+                <label class="form-label">{{ $t('settings.mcp.testResult') }}</label>
+                <pre :class="['result-content', { 'result-error': testToolResult.startsWith('Error') }]">{{ testToolResult }}</pre>
+              </div>
+            </div>
+            <div class="dialog-footer">
+              <button class="btn-cancel" @click="showTestToolDialog = false">{{ $t('common.cancel') }}</button>
+              <button class="btn-confirm" @click="executeTestTool" :disabled="testToolLoading">
+                {{ testToolLoading ? $t('common.loading') : $t('settings.mcp.runTest') }}
+              </button>
             </div>
           </div>
         </div>
@@ -211,7 +258,7 @@
           <!-- 传输类型选择 -->
           <div class="form-item">
             <label class="form-label">{{ $t('settings.mcp.transportType') }}</label>
-            <div class="transport-type-selector">
+             <div class="transport-type-selector">
               <label class="radio-label">
                 <input v-model="serverForm.transport_type" type="radio" value="stdio" />
                 <span>{{ $t('settings.mcp.transportTypes.stdio') }}</span>
@@ -219,6 +266,10 @@
               <label class="radio-label">
                 <input v-model="serverForm.transport_type" type="radio" value="http" />
                 <span>{{ $t('settings.mcp.transportTypes.http') }}</span>
+              </label>
+              <label class="radio-label">
+                <input v-model="serverForm.transport_type" type="radio" value="sse" />
+                <span>{{ $t('settings.mcp.transportTypes.sse') }}</span>
               </label>
             </div>
             <p class="form-hint">{{ $t('settings.mcp.transportTypeHint') }}</p>
@@ -291,7 +342,7 @@
           </div>
           <div class="form-item checkbox">
             <label class="form-label">
-              <input v-model="serverForm.is_active" type="checkbox" />
+              <input v-model="serverForm.is_enabled" type="checkbox" />
               {{ $t('settings.isActive') }}
             </label>
           </div>
@@ -359,7 +410,7 @@ const showServerDialog = ref(false)
 const editingServer = ref<McpServer | null>(null)
 const serverForm = reactive({
   name: '',
-  transport_type: 'stdio' as 'stdio' | 'http',
+  transport_type: 'stdio' as 'stdio' | 'http' | 'sse',
   // STDIO 字段
   command: '',
   args: '',
@@ -369,7 +420,7 @@ const serverForm = reactive({
   headers: '',
   // 公共字段
   is_public: false,
-  is_active: true,
+  is_enabled: true,
 })
 
 const isServerFormValid = computed(() => {
@@ -378,14 +429,14 @@ const isServerFormValid = computed(() => {
   // 根据传输类型验证必填字段
   if (serverForm.transport_type === 'stdio') {
     return !!serverForm.command.trim()
-  } else if (serverForm.transport_type === 'http') {
+  } else if (serverForm.transport_type === 'http' || serverForm.transport_type === 'sse') {
     return !!serverForm.url.trim()
   }
   return true
 })
 
 const isStdioMode = computed(() => serverForm.transport_type === 'stdio')
-const isHttpMode = computed(() => serverForm.transport_type === 'http')
+const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse')
 
 // Server 删除对话框
 const showDeleteServerDialog = ref(false)
@@ -462,6 +513,77 @@ const refreshTools = async () => {
     toast.error(t('settings.mcp.refreshToolsFailed') + ': ' + error.message)
   } finally {
     toolsLoading.value = false
+  }
+}
+
+// 测试工具
+const showTestToolDialog = ref(false)
+const testingTool = ref<any>(null)
+const testToolArgs = ref('{}')
+const testToolResult = ref<string | null>(null)
+const testToolLoading = ref(false)
+const testToolSchemaFields = ref<any[]>([])
+const testFieldValues = ref<Record<string, string>>({})
+
+const openTestToolDialog = (tool: any) => {
+  testingTool.value = tool
+  testToolResult.value = null
+  testFieldValues.value = {}
+  testToolSchemaFields.value = []
+  testToolArgs.value = '{}'
+
+  // 从 input_schema 自动解析字段
+  try {
+    const schema = typeof tool.input_schema === 'string' ? JSON.parse(tool.input_schema) : tool.input_schema
+    if (schema?.properties) {
+      const required = schema.required || []
+      testToolSchemaFields.value = Object.entries(schema.properties).map(([name, def]: [string, any]) => ({
+        name,
+        type: def.type || 'string',
+        description: def.description || '',
+        required: required.includes(name),
+        default: def.default ?? '',
+      }))
+      // 填充默认值
+      for (const field of testToolSchemaFields.value) {
+        testFieldValues.value[field.name] = field.default || ''
+      }
+    }
+  } catch (e) {
+    // schema 解析失败，使用手动 JSON 输入
+  }
+  showTestToolDialog.value = true
+}
+
+const executeTestTool = async () => {
+  if (!selectedServer.value || !testingTool.value) return
+  testToolLoading.value = true
+  testToolResult.value = null
+  try {
+    let args = {}
+    if (testToolSchemaFields.value.length > 0) {
+      // 从表单字段构建参数
+      for (const field of testToolSchemaFields.value) {
+        const val = testFieldValues.value[field.name]
+        if (val !== undefined && val !== '') {
+          if (field.type === 'number' || field.type === 'integer') {
+            args[field.name] = Number(val)
+          } else if (field.type === 'boolean') {
+            args[field.name] = val === 'true'
+          } else {
+            args[field.name] = val
+          }
+        }
+      }
+    } else {
+      args = JSON.parse(testToolArgs.value || '{}')
+    }
+    const result = await mcpApi.callTool(selectedServer.value.id, testingTool.value.name, args)
+    testToolResult.value = JSON.stringify(result.result, null, 2)
+  } catch (error: any) {
+    testToolResult.value = `Error: ${error.message}`
+  } finally {
+    testToolLoading.value = false
   }
 }
 
@@ -568,7 +690,7 @@ const openServerDialog = (server?: McpServer) => {
     serverForm.headers = server.headers || ''
     // 公共字段
     serverForm.is_public = server.is_public
-    serverForm.is_active = server.is_active
+    serverForm.is_enabled = server.is_enabled
   } else {
     editingServer.value = null
     serverForm.name = ''
@@ -579,7 +701,7 @@ const openServerDialog = (server?: McpServer) => {
     serverForm.url = ''
     serverForm.headers = ''
     serverForm.is_public = false
-    serverForm.is_active = true
+    serverForm.is_enabled = true
   }
   showServerDialog.value = true
 }
@@ -593,22 +715,19 @@ const closeServerDialog = () => {
 // 保存 Server
 const saveServer = async () => {
   try {
-    // 构建请求数据
+    // 构建请求数据 - 全量更新：表单里有什么就传什么
     const requestData: any = {
       name: serverForm.name,
       transport_type: serverForm.transport_type,
       is_public: serverForm.is_public,
-      is_active: serverForm.is_active,
-    }
-    
-    // 根据传输类型添加对应字段
-    if (serverForm.transport_type === 'stdio') {
-      requestData.command = serverForm.command
-      requestData.args = serverForm.args || undefined
-      requestData.env = serverForm.env || undefined
-    } else if (serverForm.transport_type === 'http') {
-      requestData.url = serverForm.url
-      requestData.headers = serverForm.headers || undefined
+      is_enabled: serverForm.is_enabled,
+      // HTTP/SSE 字段
+      url: serverForm.url || undefined,
+      headers: serverForm.headers || undefined,
+      // STDIO 字段
+      command: serverForm.command || undefined,
+      args: serverForm.args || undefined,
+      env: serverForm.env || undefined,
     }
 
     if (editingServer.value) {
@@ -912,16 +1031,21 @@ onMounted(async () => {
 }
 
 .tool-item {
-  padding: 16px;
+  padding: 12px 16px;
   background: var(--bg-secondary, #f8f9fa);
   border-radius: 6px;
   border: 1px solid var(--border-light, #eee);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .tool-info {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .tool-name {
@@ -932,9 +1056,124 @@ onMounted(async () => {
 }
 
 .tool-description {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-test-tool {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: var(--primary-color, #4a90d9);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+.btn-test-tool:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.btn-test-tool:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-tool-dialog {
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+.test-tool-dialog .dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 16px 0;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  margin-bottom: 16px;
+}
+.test-tool-dialog .dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  padding: 0;
+  line-height: 1;
+}
+.btn-close:hover {
+  color: var(--text-primary, #333);
+}
+.test-tool-dialog .dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.test-tool-desc {
   font-size: 13px;
   color: var(--text-secondary, #666);
   margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light, #eee);
+}
+.test-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.test-field-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.test-field-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+.test-field-label .required {
+  color: #e74c3c;
+  margin-left: 2px;
+}
+.test-field-label .field-type {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  font-weight: normal;
+  margin-left: 6px;
+}
+.test-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.result-content {
+  background: var(--bg-tertiary, #1e1e1e);
+  color: #d4d4d4;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: monospace;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+.result-error {
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  background: #fef5f5;
 }
 
 .credential-form {
@@ -1050,11 +1289,11 @@ onMounted(async () => {
 
 .dialog {
   background: var(--card-bg, #fff);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 24px;
   max-width: 500px;
   width: 90%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
 .dialog.dialog-confirm {
@@ -1073,7 +1312,11 @@ onMounted(async () => {
 
 .dialog-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  margin-top: 16px;
 }
 
 .footer-left,
