@@ -468,7 +468,15 @@ ctx.success({
 | 前端组件 | PascalCase | `KnowledgeBaseCard.vue` |
 | API 路由 | kebab-case | `/api/kb/:kb_id/articles` |
 
-**Git 提交**：`[T{编号}] {type}: 描述`
+**Git 提交**：`{type}: 描述`
+
+**提交类型**：
+- `feat` - 新功能
+- `fix` - Bug 修复
+- `refactor` - 代码重构
+- `docs` - 文档更新
+- `test` - 测试
+- `chore` - 杂项
 
 ---
 

@@ -100,8 +100,8 @@ Frontend (Vue 3) ←→ API Server (Koa) ←→ Service Layer ←→ MySQL
 
 | 操作 | 命令 |
 |------|------|
-| 创建分支 | `git checkout -b {type}/{编号}-{描述}` |
-| 提交 | `git commit -m "[T{编号}] {type}: 描述"` |
+| 创建分支 | `git checkout -b {type}/{描述}` |
+| 提交 | `git commit -m "{type}: 描述"` |
 | 推送 | `git push -u origin {分支名}` |
 | 创建 PR | 访问 GitHub，关联 Issue |
 
