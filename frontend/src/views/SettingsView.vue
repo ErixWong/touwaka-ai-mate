@@ -1,30 +1,20 @@
 <template>
   <div class="settings-view">
     <!-- 左侧菜单 -->
-    <div class="settings-sidebar" :class="{ collapsed: sidebarCollapsed }">
-      <!-- 折叠按钮 -->
-      <div class="sidebar-header">
-        <button 
-          class="collapse-btn" 
-          @click="sidebarCollapsed = !sidebarCollapsed"
-          :title="sidebarCollapsed ? '展开菜单' : '收起菜单'"
-        >
-          <span class="collapse-icon">{{ sidebarCollapsed ? '→' : '←' }}</span>
-        </button>
-      </div>
-      <div class="sidebar-menu">
-        <button
-          v-for="item in currentMenuItems"
-          :key="item.key"
-          class="menu-item-btn"
-          :class="{ active: activeTab === item.key }"
-          @click="activeTab = item.key"
-          :title="item.label"
-        >
-          <span class="menu-text">{{ item.label }}</span>
-        </button>
-      </div>
-    </div>
+    <el-menu
+      :default-active="activeTab"
+      :collapse="sidebarCollapsed"
+      class="settings-sidebar"
+      @select="handleMenuSelect"
+    >
+      <el-menu-item
+        v-for="item in currentMenuItems"
+        :key="item.key"
+        :index="item.key"
+      >
+        <span>{{ item.label }}</span>
+      </el-menu-item>
+    </el-menu>
 
     <!-- 右侧主显示区 -->
     <div class="settings-main">
@@ -32,80 +22,59 @@
     <!-- 个人资料 -->
     <div v-if="activeTab === 'profile'" class="settings-section profile-section">
       <!-- 子 Tab 切换 -->
-      <div class="profile-sub-tabs">
-        <button
-          class="sub-tab-btn"
-          :class="{ active: profileSubTab === 'basic' }"
-          @click="profileSubTab = 'basic'"
-        >
-          {{ $t('settings.profileBasic') }}
-        </button>
-        <button
-          class="sub-tab-btn"
-          :class="{ active: profileSubTab === 'password' }"
-          @click="profileSubTab = 'password'"
-        >
-          {{ $t('settings.changePassword') }}
-        </button>
-      </div>
-
-      <!-- 基本信息 Tab -->
-      <div v-if="profileSubTab === 'basic'" class="profile-tab-content">
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.nickname') }}</label>
-          <input
-            v-model="profileForm.nickname"
-            type="text"
-            class="setting-input"
-          />
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.language') }}</label>
-          <select v-model="profileForm.language" class="setting-select">
-            <option value="zh-CN">中文</option>
-            <option value="en-US">English</option>
-          </select>
-        </div>
-        <button class="btn-save" @click="saveProfile">{{ $t('settings.save') }}</button>
-      </div>
-
-      <!-- 修改密码 Tab -->
-      <div v-if="profileSubTab === 'password'" class="profile-tab-content">
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
-          <input
-            v-model="passwordForm.old_password"
-            type="password"
-            class="setting-input"
-            :placeholder="$t('settings.oldPasswordPlaceholder')"
-          />
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.newPassword') }}</label>
-          <input
-            v-model="passwordForm.new_password"
-            type="password"
-            class="setting-input"
-            :placeholder="$t('settings.newPasswordPlaceholder')"
-          />
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
-          <input
-            v-model="passwordForm.confirm_password"
-            type="password"
-            class="setting-input"
-            :placeholder="$t('settings.confirmPasswordPlaceholder')"
-          />
-        </div>
-        <button
-          class="btn-save"
-          :disabled="!isPasswordFormValid || passwordLoading"
-          @click="handleChangePassword"
-        >
-          {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
-        </button>
-      </div>
+      <el-tabs v-model="profileSubTab" class="profile-tabs">
+        <el-tab-pane label="profileSubTab === 'basic' ? $t('settings.profileBasic') : ''" name="basic">
+          <div class="setting-item">
+            <label class="setting-label">{{ $t('settings.nickname') }}</label>
+            <el-input v-model="profileForm.nickname" />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">{{ $t('settings.language') }}</label>
+            <el-select v-model="profileForm.language">
+              <el-option label="中文" value="zh-CN" />
+              <el-option label="English" value="en-US" />
+            </el-select>
+          </div>
+          <el-button type="primary" @click="saveProfile">{{ $t('settings.save') }}</el-button>
+        </el-tab-pane>
+        
+        <el-tab-pane :label="$t('settings.changePassword')" name="password">
+          <div class="setting-item">
+            <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
+            <el-input
+              v-model="passwordForm.old_password"
+              type="password"
+              :placeholder="$t('settings.oldPasswordPlaceholder')"
+              show-password
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">{{ $t('settings.newPassword') }}</label>
+            <el-input
+              v-model="passwordForm.new_password"
+              type="password"
+              :placeholder="$t('settings.newPasswordPlaceholder')"
+              show-password
+            />
+          </div>
+          <div class="setting-item">
+            <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
+            <el-input
+              v-model="passwordForm.confirm_password"
+              type="password"
+              :placeholder="$t('settings.confirmPasswordPlaceholder')"
+              show-password
+            />
+          </div>
+          <el-button
+            type="primary"
+            :disabled="!isPasswordFormValid || passwordLoading"
+            @click="handleChangePassword"
+          >
+            {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
+          </el-button>
+        </el-tab-pane>
+      </el-tabs>
     </div>
 
     <!-- 邀请管理 -->
@@ -474,119 +443,91 @@
           </div>
 
           <template v-else>
-            <!-- 子 Tab 切换 -->
-            <div class="role-sub-tabs">
-              <button
-                class="sub-tab-btn"
-                :class="{ active: roleSubTab === 'permissions' }"
-                @click="roleSubTab = 'permissions'"
-              >
-                {{ $t('settings.permissionConfig') }}
-              </button>
-              <button
-                class="sub-tab-btn"
-                :class="{ active: roleSubTab === 'experts' }"
-                @click="roleSubTab = 'experts'"
-              >
-                {{ $t('settings.expertAccess') }}
-              </button>
-            </div>
+            <el-tabs v-model="roleSubTab" class="role-tabs">
+              <el-tab-pane :label="$t('settings.permissionConfig')" name="permissions">
+                <div v-if="rolePermissionsLoading" class="loading-state">
+                  {{ $t('common.loading') }}
+                </div>
 
-            <!-- 权限配置 Tab -->
-            <div v-if="roleSubTab === 'permissions'" class="role-tab-content">
-              <div v-if="rolePermissionsLoading" class="loading-state">
-                {{ $t('common.loading') }}
-              </div>
-
-              <div v-else class="permissions-list">
-                <div
-                  v-for="permission in allPermissions"
-                  :key="permission.id"
-                  class="permission-item"
-                >
-                  <label class="permission-checkbox">
-                    <input
-                      type="checkbox"
+                <div v-else class="permissions-list">
+                  <el-checkbox-group v-model="rolePermissionIds" @change="rolePermissionsChanged = true">
+                    <el-checkbox
+                      v-for="permission in allPermissions"
+                      :key="permission.id"
                       :value="permission.id"
-                      v-model="rolePermissionIds"
-                      @change="rolePermissionsChanged = true"
-                    />
-                    <span class="permission-info">
-                      <span class="permission-name">{{ permission.name }}</span>
-                      <span v-if="permission.description" class="permission-desc">
-                        {{ permission.description }}
+                      :label="permission.name"
+                    >
+                      <span class="permission-info">
+                        <span class="permission-name">{{ permission.name }}</span>
+                        <span v-if="permission.description" class="permission-desc">
+                          {{ permission.description }}
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </el-checkbox>
+                  </el-checkbox-group>
                 </div>
-              </div>
 
-              <div v-if="!rolePermissionsLoading && allPermissions.length === 0" class="empty-state">
-                {{ $t('settings.noPermissionsAvailable') }}
-              </div>
+                <div v-if="!rolePermissionsLoading && allPermissions.length === 0" class="empty-state">
+                  {{ $t('settings.noPermissionsAvailable') }}
+                </div>
 
-              <div class="role-tab-footer">
-                <span class="permissions-count">
-                  {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
-                  <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
-                </span>
-                <button
-                  class="btn-confirm"
-                  :disabled="!rolePermissionsChanged || isAdminRole"
-                  @click="saveRolePermissions"
-                >
-                  {{ $t('common.save') }}
-                </button>
-              </div>
-            </div>
+                <div class="role-tab-footer">
+                  <span class="permissions-count">
+                    {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
+                    <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
+                  </span>
+                  <el-button
+                    type="primary"
+                    :disabled="!rolePermissionsChanged || isAdminRole"
+                    @click="saveRolePermissions"
+                  >
+                    {{ $t('common.save') }}
+                  </el-button>
+                </div>
+              </el-tab-pane>
 
-            <!-- 专家访问权限 Tab -->
-            <div v-if="roleSubTab === 'experts'" class="role-tab-content">
-              <div v-if="roleExpertsLoading" class="loading-state">
-                {{ $t('common.loading') }}
-              </div>
+              <el-tab-pane :label="$t('settings.expertAccess')" name="experts">
+                <div v-if="roleExpertsLoading" class="loading-state">
+                  {{ $t('common.loading') }}
+                </div>
 
-              <div v-else class="experts-list">
-                <div
-                  v-for="expert in allExperts"
-                  :key="expert.id"
-                  class="expert-access-item"
-                >
-                  <label class="expert-checkbox">
-                    <input
-                      type="checkbox"
+                <div v-else class="experts-list">
+                  <el-checkbox-group v-model="roleExpertIds" @change="roleExpertsChanged = true">
+                    <el-checkbox
+                      v-for="expert in allExperts"
+                      :key="expert.id"
                       :value="expert.id"
-                      v-model="roleExpertIds"
-                      @change="roleExpertsChanged = true"
-                    />
-                    <span class="expert-info">
-                      <span class="expert-name">{{ expert.name }}</span>
-                      <span v-if="expert.introduction" class="expert-intro">
-                        {{ expert.introduction }}
+                      :label="expert.name"
+                    >
+                      <span class="expert-info">
+                        <span class="expert-name">{{ expert.name }}</span>
+                        <span v-if="expert.introduction" class="expert-intro">
+                          {{ expert.introduction }}
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </el-checkbox>
+                  </el-checkbox-group>
                 </div>
-              </div>
 
-              <div v-if="!roleExpertsLoading && allExperts.length === 0" class="empty-state">
-                {{ $t('settings.noExpertsAvailable') }}
-              </div>
+                <div v-if="!roleExpertsLoading && allExperts.length === 0" class="empty-state">
+                  {{ $t('settings.noExpertsAvailable') }}
+                </div>
 
-              <div class="role-tab-footer">
-                <span class="experts-count">
-                  {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
-                  <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
-                </span>
-                <button
-                  class="btn-confirm"
-                  :disabled="!roleExpertsChanged || isAdminRole"
-                  @click="saveRoleExperts"
-                >
-                  {{ $t('common.save') }}
-                </button>
-              </div>
-            </div>
+                <div class="role-tab-footer">
+                  <span class="experts-count">
+                    {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
+                    <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
+                  </span>
+                  <el-button
+                    type="primary"
+                    :disabled="!roleExpertsChanged || isAdminRole"
+                    @click="saveRoleExperts"
+                  >
+                    {{ $t('common.save') }}
+                  </el-button>
+                </div>
+              </el-tab-pane>
+            </el-tabs>
           </template>
         </div>
       </div>
@@ -1623,6 +1564,10 @@ const getInitialTab = () => {
 const activeTab = ref(getInitialTab())
 const profileSubTab = ref<'basic' | 'password'>('basic')
 const sidebarCollapsed = ref(false)
+
+const handleMenuSelect = (index: string) => {
+  activeTab.value = index
+}
 
 const profileForm = reactive({
   nickname: '',
@@ -2772,97 +2717,14 @@ onMounted(() => {
 }
 
 /* 设置菜单样式 */
-.settings-sidebar {
+/* Element Plus el-menu 样式覆盖 */
+.settings-sidebar.el-menu {
   flex: 0 0 220px;
-  background: var(--secondary-bg, #f8f9fa);
-  border-right: 1px solid var(--border-color, #e0e0e0);
-  display: flex;
-  flex-direction: column;
-  transition: flex-basis 0.3s ease;
+  border-right: 1px solid var(--el-menu-border-color);
 }
 
-.settings-sidebar.collapsed {
-  flex-basis: 48px;
-}
-
-/* 侧边栏头部 */
-.sidebar-header {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-}
-
-.collapse-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: var(--text-secondary, #666);
-}
-
-.collapse-btn:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
-
-.collapse-icon {
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.sidebar-menu {
-  display: flex;
-  flex-direction: column;
-  padding: 16px 12px;
-  gap: 4px;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.menu-item-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: none;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.menu-item-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.menu-item-btn.active {
-  color: var(--primary-color, #2196f3);
-  background: var(--primary-light, #e3f2fd);
-}
-
-/* 收起状态下的菜单样式 */
-.settings-sidebar.collapsed .menu-item-btn {
-  padding: 10px;
-  justify-content: center;
-}
-
-.settings-sidebar.collapsed .menu-text {
-  display: none;
+.settings-sidebar.el-menu--collapse {
+  flex-basis: 64px;
 }
 
 .settings-main {
@@ -3482,32 +3344,8 @@ onMounted(() => {
     border-bottom: 1px solid var(--border-color, #e0e0e0);
   }
 
-  .settings-sidebar.collapsed {
+  .settings-sidebar.el-menu--collapse {
     flex-basis: auto;
-  }
-
-  .sidebar-header {
-    display: none;
-  }
-
-  .sidebar-menu {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding: 12px;
-  }
-
-  .menu-item-btn {
-    white-space: nowrap;
-    padding: 8px 14px;
-  }
-
-  .settings-sidebar.collapsed .menu-item-btn {
-    padding: 8px 14px;
-  }
-
-  .settings-sidebar.collapsed .menu-text {
-    display: inline;
   }
 
   .settings-main {
