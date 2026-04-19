@@ -53,5 +53,6 @@
 - 总计: ~4 小时 ✅
 
 ## ESLint 状态
-- SkillsView: 0 错误，7 警告（i18n 硬编码文本）
-- KnowledgeDetailView: 4 错误（pre-existing any 类型），20+ 警告
+- SkillsView: ✅ 0 错误，7 警告（i18n 硬编码 emoji）
+- KnowledgeDetailView: ✅ 0 错误，23 警告（i18n 硬编码 emoji）
+- 已修复 3 处 pre-existing `any` 类型错误
