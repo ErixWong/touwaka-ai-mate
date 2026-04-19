@@ -4,50 +4,73 @@
 将剩余视图的 native 组件重构为 Element Plus 组件
 
 ## 状态
-🚧 **进行中**
+⏸️ **已暂停** (核心部分已完成，剩余部分复杂度高，需单独规划)
 
-## 范围
+## 已完成 ✅
 
-### 高优先级 (复杂表单/对话框)
-- [ ] **SettingsView.vue** - 设置页面，大量对话框
-  - [ ] Provider 对话框 (input/select/checkbox/button)
-  - [ ] Model 对话框 (input/select/checkbox)
-  - [ ] Expert 对话框 (input/select/checkbox/file)
-  - [ ] User 对话框 (input/select/file)
-  - [ ] Skills 对话框
-  - [ ] 各种删除确认对话框
-  - [ ] 设置项按钮
+### KnowledgeDetailView.vue
+- [x] 返回按钮改为 el-button
 
-### 中优先级 (列表/管理页面)
-- [ ] **KnowledgeBaseView.vue** - 知识库列表
-  - [ ] 创建/编辑对话框
-  - [ ] 删除确认对话框
-  - [ ] 全局搜索对话框
-  - [ ] 按钮
-- [ ] **TopicsView.vue** - 话题列表
-  - [ ] 状态筛选 select
-  - [ ] 操作按钮
-- [ ] **SolutionsView.vue** - 方案列表
-  - [ ] 创建/编辑对话框
-  - [ ] 按钮
+### KnowledgeBaseView.vue
+- [x] 创建按钮 → el-button
+- [x] 搜索输入框 → el-input + 搜索按钮
+- [x] 分页选择器 → el-select
+- [x] 卡片操作按钮 → el-button
 
-### 低优先级 (简单页面)
-- [ ] **SolutionDetailView.vue** - 方案详情
-  - [ ] 返回按钮
-  - [ ] 创建任务按钮
-- [ ] **HomeView.vue** - 首页
-  - [ ] 设置按钮
-- [ ] **AppDetailView.vue** - 小程序详情
-  - [ ] 返回按钮
-- [ ] **ChatView.vue** - 聊天页面
-  - [ ] 选择专家按钮
+### TopicsView.vue
+- [x] 搜索输入框 → el-input
+- [x] 状态筛选 → el-select
+- [x] 操作按钮 → el-button
+
+### SolutionsView.vue
+- [x] 创建按钮 → el-button
+- [x] 搜索输入框 → el-input
+- [x] 空状态按钮 → el-button
+- [x] 卡片编辑按钮 → el-button
+
+## 剩余工作 (待后续处理)
+
+### 高复杂度 - SettingsView.vue (2600+ 行，10+ 对话框)
+待处理的对话框:
+- [ ] Provider 对话框 (已完成)
+- [ ] Model 对话框
+- [ ] Expert 对话框
+- [ ] User 对话框
+- [ ] Skills 对话框
+- [ ] 各种删除确认对话框
+- [ ] 设置项按钮
+
+### 中复杂度
+- [ ] KnowledgeBaseView - 创建/编辑对话框
+- [ ] KnowledgeBaseView - 删除确认对话框
+- [ ] KnowledgeBaseView - 全局搜索对话框
+- [ ] SolutionsView - 创建/编辑对话框
+
+### 低复杂度
+- [ ] SolutionDetailView - 按钮
+- [ ] HomeView - 按钮
+- [ ] AppDetailView - 按钮
+- [ ] ChatView - 按钮
 
 ## 分支
 `feature/629-element-plus-p3-others`
 
 ## 预估工作量
-- SettingsView: 2-3 小时 (最复杂)
-- KnowledgeBaseView: 1 小时
-- TopicsView/SolutionsView: 30 分钟 each
-- 其他: 30 分钟
-- 总计: ~5 小时
+- 已完成: ~2 小时
+- 剩余 SettingsView: 3-4 小时
+- 剩余其他视图: 1-2 小时
+- 总计剩余: ~5 小时
+
+## 变更统计
+```
+KnowledgeDetailView.vue:  +2/-3   行
+KnowledgeBaseView.vue:    +20/-21 行
+TopicsView.vue:           +12/-14 行
+SolutionsView.vue:        +13/-13 行
+```
+
+## 建议
+SettingsView 非常复杂（2600+ 行，10+ 对话框），建议:
+1. 拆分为多个子任务逐个处理
+2. 或考虑组件化重构，将对话框抽取为独立组件
+3. 优先级可适当降低，因功能已稳定
