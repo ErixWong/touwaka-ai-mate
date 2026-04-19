@@ -258,7 +258,7 @@
           <!-- 传输类型选择 -->
           <div class="form-item">
             <label class="form-label">{{ $t('settings.mcp.transportType') }}</label>
-             <div class="transport-type-selector">
+            <div class="transport-type-selector">
               <label class="radio-label">
                 <input v-model="serverForm.transport_type" type="radio" value="stdio" />
                 <span>{{ $t('settings.mcp.transportTypes.stdio') }}</span>
@@ -550,7 +550,7 @@ const openTestToolDialog = (tool: any) => {
       }
     }
   } catch (e) {
-    // schema 解析失败，使用手动 JSON 输入
+    console.warn('Failed to parse input_schema, falling back to JSON input', e)
   }
   showTestToolDialog.value = true
 }
