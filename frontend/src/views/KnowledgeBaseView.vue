@@ -2,28 +2,25 @@
   <div class="kb-view">
     <div class="view-header">
       <h1 class="view-title">{{ $t('knowledgeBase.title') }}</h1>
-      <button class="btn-primary" @click="showCreateDialog = true">
+      <el-button type="primary" @click="showCreateDialog = true">
         <span class="icon">+</span>
         {{ $t('knowledgeBase.createNew') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- Search -->
     <div class="kb-filter">
-      <input
+      <el-input
         v-model="searchQuery"
-        type="text"
-        class="search-input"
         :placeholder="$t('knowledgeBase.searchPlaceholder')"
         @keyup.enter="searchQuery.trim() && performGlobalSearch()"
-      />
-      <button
-        class="btn-search"
-        @click="performGlobalSearch"
-        :disabled="!searchQuery.trim() || kbStore.isSearching"
       >
-        🔍 {{ kbStore.isSearching ? $t('common.loading') : $t('knowledgeBase.search') }}
-      </button>
+        <template #append>
+          <el-button @click="performGlobalSearch" :loading="kbStore.isSearching" :disabled="!searchQuery.trim()">
+            {{ kbStore.isSearching ? $t('common.loading') : $t('knowledgeBase.search') }}
+          </el-button>
+        </template>
+      </el-input>
     </div>
 
     <!-- Loading -->
@@ -35,9 +32,9 @@
     <div v-else-if="totalCount === 0" class="empty-state">
       <div class="empty-icon">📚</div>
       <p>{{ $t('knowledgeBase.empty') }}</p>
-      <button class="btn-primary" @click="showCreateDialog = true">
+      <el-button type="primary" @click="showCreateDialog = true">
         {{ $t('knowledgeBase.addFirst') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- Knowledge Base Content with Pagination -->
@@ -57,8 +54,12 @@
               <div class="kb-card-icon">{{ getKbIcon(kb) }}</div>
               <div class="kb-card-name">{{ kb.name }}</div>
               <div class="kb-card-actions">
-                <button v-if="kb.can_edit" class="kb-action-btn" @click.stop="editKb(kb)" :title="$t('common.edit')">✏️</button>
-                <button v-if="kb.can_delete" class="kb-action-btn danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">🗑️</button>
+                <el-button v-if="kb.can_edit" size="small" text @click.stop="editKb(kb)" :title="$t('common.edit')">
+                  <span class="btn-icon">✏️</span>
+                </el-button>
+                <el-button v-if="kb.can_delete" size="small" text type="danger" @click.stop="deleteKb(kb)" :title="$t('common.delete')">
+                  <span class="btn-icon">🗑️</span>
+                </el-button>
               </div>
             </div>
             <div class="kb-card-desc" v-if="kb.description">{{ kb.description }}</div>
@@ -114,11 +115,9 @@
             </button>
           </span>
           <!-- 每页数量选择器 -->
-          <select v-model="pageSize" class="page-size-select" @change="handlePageSizeChange">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">
-              {{ size }}/页
-            </option>
-          </select>
+          <el-select v-model="pageSize" @change="handlePageSizeChange" style="width: 100px">
+            <el-option v-for="size in pageSizeOptions" :key="size" :label="size + '/页'" :value="size" />
+          </el-select>
         </div>
         <button
           class="page-btn"
