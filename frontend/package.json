@@ -21,12 +21,12 @@
     "axios": "^1.13.5",
     "dompurify": "^3.3.2",
     "marked": "^17.0.4",
-    "mermaid": "^11.13.0",
+    "mermaid": "^11.14.0",
     "pinia": "^3.0.4",
     "splitpanes": "^4.0.4",
-    "vue": "^3.5.28",
+    "vue": "^3.5.32",
     "vue-i18n": "^9.14.5",
-    "vue-router": "^5.0.2"
+    "vue-router": "^5.0.4"
   },
   "devDependencies": {
     "@intlify/eslint-plugin-vue-i18n": "^4.3.0",
@@ -44,7 +44,7 @@
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-vue-devtools": "^8.0.6",
-    "vue-tsc": "^3.2.4"
+    "vue-tsc": "^3.2.6"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
