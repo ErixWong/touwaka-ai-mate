@@ -72,7 +72,7 @@ export const generateAttachmentToken = async (sourceTag: string, sourceId: strin
     source_tag: sourceTag,
     source_id: sourceId,
   })
-  return response.data
+  return response.data.data
 }
 
 /**

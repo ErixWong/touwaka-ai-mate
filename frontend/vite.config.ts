@@ -32,6 +32,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // 附件静态文件服务代理
+      '/attach': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       // 任务静态文件服务代理
       '/task-static': {
         target: 'http://localhost:3000',
