@@ -4,25 +4,27 @@
     <div class="settings-sidebar" :class="{ collapsed: sidebarCollapsed }">
       <!-- 折叠按钮 -->
       <div class="sidebar-header">
-        <button 
+        <el-button 
+          text
           class="collapse-btn" 
           @click="sidebarCollapsed = !sidebarCollapsed"
           :title="sidebarCollapsed ? '展开菜单' : '收起菜单'"
         >
           <span class="collapse-icon">{{ sidebarCollapsed ? '→' : '←' }}</span>
-        </button>
+        </el-button>
       </div>
       <div class="sidebar-menu">
-        <button
+        <el-button
           v-for="item in currentMenuItems"
           :key="item.key"
+          :type="activeTab === item.key ? 'primary' : ''"
+          text
           class="menu-item-btn"
-          :class="{ active: activeTab === item.key }"
           @click="activeTab = item.key"
           :title="item.label"
         >
           <span class="menu-text">{{ item.label }}</span>
-        </button>
+        </el-button>
       </div>
     </div>
 
@@ -33,78 +35,76 @@
     <div v-if="activeTab === 'profile'" class="settings-section profile-section">
       <!-- 子 Tab 切换 -->
       <div class="profile-sub-tabs">
-        <button
+        <el-button
+          :type="profileSubTab === 'basic' ? 'primary' : ''"
+          text
           class="sub-tab-btn"
-          :class="{ active: profileSubTab === 'basic' }"
           @click="profileSubTab = 'basic'"
         >
           {{ $t('settings.profileBasic') }}
-        </button>
-        <button
+        </el-button>
+        <el-button
+          :type="profileSubTab === 'password' ? 'primary' : ''"
+          text
           class="sub-tab-btn"
-          :class="{ active: profileSubTab === 'password' }"
           @click="profileSubTab = 'password'"
         >
           {{ $t('settings.changePassword') }}
-        </button>
+        </el-button>
       </div>
 
       <!-- 基本信息 Tab -->
       <div v-if="profileSubTab === 'basic'" class="profile-tab-content">
         <div class="setting-item">
           <label class="setting-label">{{ $t('settings.nickname') }}</label>
-          <input
+          <el-input
             v-model="profileForm.nickname"
-            type="text"
-            class="setting-input"
           />
         </div>
         <div class="setting-item">
           <label class="setting-label">{{ $t('settings.language') }}</label>
-          <select v-model="profileForm.language" class="setting-select">
-            <option value="zh-CN">中文</option>
-            <option value="en-US">English</option>
-          </select>
+          <el-select v-model="profileForm.language" style="width: 200px">
+            <el-option label="中文" value="zh-CN" />
+            <el-option label="English" value="en-US" />
+          </el-select>
         </div>
-        <button class="btn-save" @click="saveProfile">{{ $t('settings.save') }}</button>
+        <el-button type="primary" @click="saveProfile">{{ $t('settings.save') }}</el-button>
       </div>
 
       <!-- 修改密码 Tab -->
       <div v-if="profileSubTab === 'password'" class="profile-tab-content">
         <div class="setting-item">
           <label class="setting-label">{{ $t('settings.oldPassword') }}</label>
-          <input
+          <el-input
             v-model="passwordForm.old_password"
             type="password"
-            class="setting-input"
             :placeholder="$t('settings.oldPasswordPlaceholder')"
           />
         </div>
         <div class="setting-item">
           <label class="setting-label">{{ $t('settings.newPassword') }}</label>
-          <input
+          <el-input
             v-model="passwordForm.new_password"
             type="password"
-            class="setting-input"
             :placeholder="$t('settings.newPasswordPlaceholder')"
           />
         </div>
         <div class="setting-item">
           <label class="setting-label">{{ $t('settings.confirmPassword') }}</label>
-          <input
+          <el-input
             v-model="passwordForm.confirm_password"
             type="password"
-            class="setting-input"
             :placeholder="$t('settings.confirmPasswordPlaceholder')"
           />
         </div>
-        <button
-          class="btn-save"
-          :disabled="!isPasswordFormValid || passwordLoading"
+        <el-button
+          type="primary"
+          :loading="passwordLoading"
+          :disabled="!isPasswordFormValid"
           @click="handleChangePassword"
         >
           {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
-        </button>
+        </el-button>
       </div>
     </div>
 
@@ -632,86 +632,70 @@
     </div>
 
     <!-- Provider 添加/编辑对话框 -->
-    <div v-if="showProviderDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingProvider ? $t('settings.editProvider') : $t('settings.addProvider') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.providerName') }} *</label>
-            <input
-              v-model="providerForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.providerNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.baseUrl') }} *</label>
-            <input
-              v-model="providerForm.base_url"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.baseUrlPlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.apiKey') }}</label>
-            <input
-              v-model="providerForm.api_key"
-              type="password"
-              class="form-input"
-              :placeholder="$t('settings.apiKeyPlaceholder')"
-            />
-            <p v-if="editingProvider" class="form-hint">{{ $t('settings.apiKeyHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.timeout') }} (秒)</label>
-            <input
-              v-model.number="providerForm.timeout"
-              type="number"
-              class="form-input"
-              min="5"
-              max="300"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.userAgent') }}</label>
-            <input
-              v-model="providerForm.user_agent"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.userAgentPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.userAgentHint') }}</p>
-          </div>
-          <div class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="providerForm.is_active" type="checkbox" />
-              {{ $t('settings.isActive') }}
-            </label>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-left">
-            <button
-              v-if="editingProvider"
-              class="btn-delete"
-              @click="confirmDeleteProviderFromDialog"
-            >
-              {{ $t('common.delete') }}
-            </button>
-          </div>
+    <el-dialog
+      v-model="showProviderDialog"
+      :title="editingProvider ? $t('settings.editProvider') : $t('settings.addProvider')"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item :label="$t('settings.providerName') + ' *'">
+          <el-input
+            v-model="providerForm.name"
+            :placeholder="$t('settings.providerNamePlaceholder')"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('settings.baseUrl') + ' *'">
+          <el-input
+            v-model="providerForm.base_url"
+            :placeholder="$t('settings.baseUrlPlaceholder')"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('settings.apiKey')">
+          <el-input
+            v-model="providerForm.api_key"
+            type="password"
+            :placeholder="$t('settings.apiKeyPlaceholder')"
+          />
+          <el-text v-if="editingProvider" type="info" size="small">{{ $t('settings.apiKeyHint') }}</el-text>
+        </el-form-item>
+        <el-form-item :label="$t('settings.timeout') + ' (秒)'">
+          <el-input-number
+            v-model="providerForm.timeout"
+            :min="5"
+            :max="300"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('settings.userAgent')">
+          <el-input
+            v-model="providerForm.user_agent"
+            :placeholder="$t('settings.userAgentPlaceholder')"
+          />
+          <el-text type="info" size="small">{{ $t('settings.userAgentHint') }}</el-text>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="providerForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer-custom">
+          <el-button
+            v-if="editingProvider"
+            type="danger"
+            @click="confirmDeleteProviderFromDialog"
+          >
+            {{ $t('common.delete') }}
+          </el-button>
           <div class="footer-right">
-            <button class="btn-cancel" @click="closeProviderDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isProviderFormValid" @click="saveProvider">
+            <el-button @click="closeProviderDialog">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" :disabled="!isProviderFormValid" @click="saveProvider">
               {{ $t('common.save') }}
-            </button>
+            </el-button>
           </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </el-dialog>
 
     <!-- Model 添加/编辑对话框 -->
     <div v-if="showModelDialog" class="dialog-overlay">
