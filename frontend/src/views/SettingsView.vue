@@ -1103,7 +1103,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
@@ -1127,6 +1127,7 @@ import packageInfo from '../../package.json'
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const modelStore = useModelStore()
 const providerStore = useProviderStore()
@@ -1138,32 +1139,38 @@ const appVersion = computed(() => packageInfo.version)
 
 // 根据路由确定当前分组
 const currentGroup = computed(() => {
-  const group = route.meta?.settingsGroup as string | undefined
-  return group || 'personal'
+  let group = route.meta?.settingsGroup as string | undefined
+  if (!group) {
+    const path = route.path
+    if (path.startsWith('/system')) group = 'system'
+    else if (path.startsWith('/organization')) group = 'organization'
+    else group = 'personal'
+  }
+  return group
 })
 
 // 菜单项配置（按分组）
-const menuItemsByGroup: Record<string, { key: string; label: string }[]> = {
+const menuItemsByGroup: Record<string, { key: string; label: string; route: string }[]> = {
   organization: [
-    { key: 'user', label: t('settings.userManagement') },
-    { key: 'role', label: t('settings.roleManagement') },
-    { key: 'organization', label: t('settings.organizationManagement') },
+    { key: 'user', label: t('settings.userManagement'), route: '/organization/users' },
+    { key: 'role', label: t('settings.roleManagement'), route: '/organization/roles' },
+    { key: 'organization', label: t('settings.organizationManagement'), route: '/organization/departments' },
   ],
   personal: [
-    { key: 'profile', label: t('settings.profile') },
-    { key: 'invitation', label: t('settings.invitation') },
-    { key: 'about', label: t('settings.about') },
+    { key: 'profile', label: t('settings.profile'), route: '/personal/profile' },
+    { key: 'invitation', label: t('settings.invitation'), route: '/personal/invitation' },
+    { key: 'about', label: t('settings.about'), route: '/personal/about' },
   ],
   system: [
-    { key: 'model', label: t('settings.modelAndProvider') },
-    { key: 'expert', label: t('settings.expertSettings') },
-    { key: 'assistant', label: t('settings.assistantSettings') },
-    { key: 'resident', label: t('settings.residentProcesses') },
-    { key: 'attachment', label: t('settings.attachmentManagement') },
-    { key: 'mcp', label: t('settings.mcp.management') },
-    { key: 'apps', label: t('settings.appManagement.management') },
-    { key: 'handlers', label: t('settings.handlerManagement.management') },
-    { key: 'system', label: t('settings.systemConfig') },
+    { key: 'model', label: t('settings.modelAndProvider'), route: '/system/models' },
+    { key: 'expert', label: t('settings.expertSettings'), route: '/system/experts' },
+    { key: 'assistant', label: t('settings.assistantSettings'), route: '/system/assistants' },
+    { key: 'resident', label: t('settings.residentProcesses'), route: '/system/resident' },
+    { key: 'attachment', label: t('settings.attachmentManagement'), route: '/system/attachments' },
+    { key: 'mcp', label: t('settings.mcp.management'), route: '/system/mcp' },
+    { key: 'apps', label: t('settings.appManagement.management'), route: '/system/apps' },
+    { key: 'handlers', label: t('settings.handlerManagement.management'), route: '/system/handlers' },
+    { key: 'system', label: t('settings.systemConfig'), route: '/system/config' },
   ],
 }
 
@@ -1172,22 +1179,33 @@ const currentMenuItems = computed(() => {
   return menuItemsByGroup[currentGroup.value] || menuItemsByGroup.personal
 })
 
-// 根据路由初始化 activeTab
-const getInitialTab = () => {
-  const group = currentGroup.value
-  const items = menuItemsByGroup[group]
-  if (items && items.length > 0) {
-    return items[0]?.key ?? 'profile'
-  }
-  return 'profile'
+// 从路由 meta 读取 activeTab
+const getTabFromRoute = (): string => {
+  const tab = route.meta?.settingsTab as string | undefined
+  if (tab) return tab
+  const items = menuItemsByGroup[currentGroup.value]
+  return items?.[0]?.key ?? 'profile'
 }
 
-const activeTab = ref(getInitialTab())
+const activeTab = computed({
+  get: () => getTabFromRoute(),
+  set: (key: string) => {
+    const items = menuItemsByGroup[currentGroup.value]
+    const item = items?.find(i => i.key === key)
+    if (item) {
+      router.push(item.route)
+    }
+  },
+})
 const profileSubTab = ref<'basic' | 'password'>('basic')
 const sidebarCollapsed = ref(false)
 
 const handleMenuSelect = (index: string) => {
-  activeTab.value = index
+  const items = menuItemsByGroup[currentGroup.value]
+  const item = items?.find(i => i.key === index)
+  if (item) {
+    router.push(item.route)
+  }
 }
 
 const profileForm = reactive({
@@ -1717,13 +1735,7 @@ watch(activeTab, (newTab) => {
   }
 })
 
-// 监听设置组切换，自动重置到第一个 tab
-watch(currentGroup, (newGroup) => {
-  const items = menuItemsByGroup[newGroup]
-  if (items && items.length > 0 && items[0]) {
-    activeTab.value = items[0].key
-  }
-})
+// 监听设置组切换（路由已处理 redirect，此处仅保留数据加载逻辑）
 
 // =====================
 // 角色管理方法
