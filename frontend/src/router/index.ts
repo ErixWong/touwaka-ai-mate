@@ -45,10 +45,18 @@ const router = createRouter({
           name: 'chat-with-skill',
           component: () => import('@/views/ChatView.vue'),
         },
+        // 个人设置
         {
-          path: 'settings',
-          name: 'settings',
+          path: 'personal',
+          name: 'personal',
           component: () => import('@/views/SettingsView.vue'),
+          meta: { settingsGroup: 'personal' },
+          children: [
+            { path: '', redirect: { name: 'personal-profile' } },
+            { path: 'profile', name: 'personal-profile', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'personal', settingsTab: 'profile' } },
+            { path: 'invitation', name: 'personal-invitation', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'personal', settingsTab: 'invitation' } },
+            { path: 'about', name: 'personal-about', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'personal', settingsTab: 'about' } },
+          ],
         },
         // 组织管理（管理员专属）
         {
@@ -56,13 +64,12 @@ const router = createRouter({
           name: 'organization',
           component: () => import('@/views/SettingsView.vue'),
           meta: { settingsGroup: 'organization', adminOnly: true },
-        },
-        // 个人设置（所有用户）
-        {
-          path: 'personal',
-          name: 'personal',
-          component: () => import('@/views/SettingsView.vue'),
-          meta: { settingsGroup: 'personal' },
+          children: [
+            { path: '', redirect: { name: 'org-users' } },
+            { path: 'users', name: 'org-users', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'user', adminOnly: true } },
+            { path: 'roles', name: 'org-roles', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'role', adminOnly: true } },
+            { path: 'departments', name: 'org-departments', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'organization', adminOnly: true } },
+          ],
         },
         // 系统设置（管理员专属）
         {
@@ -70,6 +77,18 @@ const router = createRouter({
           name: 'system',
           component: () => import('@/views/SettingsView.vue'),
           meta: { settingsGroup: 'system', adminOnly: true },
+          children: [
+            { path: '', redirect: { name: 'sys-models' } },
+            { path: 'models', name: 'sys-models', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'model', adminOnly: true } },
+            { path: 'experts', name: 'sys-experts', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'expert', adminOnly: true } },
+            { path: 'assistants', name: 'sys-assistants', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'assistant', adminOnly: true } },
+            { path: 'resident', name: 'sys-resident', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'resident', adminOnly: true } },
+            { path: 'attachments', name: 'sys-attachments', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'attachment', adminOnly: true } },
+            { path: 'mcp', name: 'sys-mcp', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'mcp', adminOnly: true } },
+            { path: 'apps', name: 'sys-apps', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'apps', adminOnly: true } },
+            { path: 'handlers', name: 'sys-handlers', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'handlers', adminOnly: true } },
+            { path: 'config', name: 'sys-config', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'system', adminOnly: true } },
+          ],
         },
         {
           path: 'skills',

@@ -17,7 +17,7 @@
       <!-- 空状态 -->
       <div v-else-if="!expertStore.activeExperts || expertStore.activeExperts.length === 0" class="empty-state">
         <p>{{ $t('experts.noExperts') }}</p>
-        <button class="btn-go-settings" @click="router.push('/settings?tab=expert')">
+        <button class="btn-go-settings" @click="router.push('/system/experts')">
           {{ $t('experts.goAddExpert') }}
         </button>
       </div>
