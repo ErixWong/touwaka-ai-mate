@@ -2,18 +2,17 @@
   <div class="solutions-view">
     <div class="view-header">
       <h1 class="view-title">{{ $t('solutions.title', '解决方案') }}</h1>
-      <button v-if="isAdmin" class="btn-create" @click="openCreateDialog">
+      <el-button v-if="isAdmin" type="primary" @click="openCreateDialog">
         + {{ $t('solutions.create', '新建解决方案') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- Search and Filter -->
     <div class="solutions-filter">
-      <input
+      <el-input
         v-model="searchQuery"
-        type="text"
-        class="search-input"
         :placeholder="$t('solutions.searchPlaceholder', '搜索解决方案...')"
+        clearable
         @input="debouncedSearch"
       />
     </div>
@@ -27,9 +26,9 @@
     <div v-else-if="solutions.length === 0" class="empty-state">
       <div class="empty-icon">🎯</div>
       <p>{{ $t('solutions.empty', '暂无解决方案') }}</p>
-      <button v-if="isAdmin" class="btn-primary" @click="openCreateDialog">
+      <el-button v-if="isAdmin" type="primary" @click="openCreateDialog">
         {{ $t('solutions.createFirst', '创建第一个解决方案') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- Solutions Grid -->
@@ -44,9 +43,9 @@
           <div class="solution-card-header">
             <div class="solution-card-icon">🎯</div>
             <div class="solution-card-name">{{ solution.name }}</div>
-            <button v-if="isAdmin" class="card-edit-btn" @click.stop="openEditDialog(solution)">
+            <el-button v-if="isAdmin" size="small" text @click.stop="openEditDialog(solution)">
               ✏️
-            </button>
+            </el-button>
           </div>
           <div class="solution-card-desc" v-if="solution.description">
             {{ solution.description }}

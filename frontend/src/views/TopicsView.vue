@@ -5,17 +5,16 @@
     </div>
 
     <div class="topics-filter">
-      <input
+      <el-input
         v-model="searchQuery"
-        type="text"
-        class="search-input"
         :placeholder="$t('topics.searchPlaceholder')"
+        clearable
       />
-      <select v-model="filterStatus" class="filter-select">
-        <option value="">{{ $t('topics.allTopics') }}</option>
-        <option value="active">{{ $t('topics.active') }}</option>
-        <option value="archived">{{ $t('topics.archived') }}</option>
-      </select>
+      <el-select v-model="filterStatus" :placeholder="$t('topics.allTopics')" style="width: 150px">
+        <el-option :label="$t('topics.allTopics')" value="" />
+        <el-option :label="$t('topics.active')" value="active" />
+        <el-option :label="$t('topics.archived')" value="archived" />
+      </el-select>
     </div>
 
     <div class="topics-list">
@@ -34,26 +33,26 @@
           <span v-if="topic.message_count">{{ topic.message_count }} {{ $t('topics.messages') }}</span>
         </div>
         <div class="topic-actions">
-          <button class="btn-action" @click="openTopic(topic.id)">
+          <el-button type="primary" size="small" @click="openTopic(topic.id)">
             {{ $t('topics.continue') }}
-          </button>
-          <button
+          </el-button>
+          <el-button
             v-if="topic.status === 'active'"
-            class="btn-action secondary"
+            size="small"
             @click="archiveTopic(topic.id)"
           >
             {{ $t('topics.archive') }}
-          </button>
-          <button
+          </el-button>
+          <el-button
             v-else
-            class="btn-action secondary"
+            size="small"
             @click="unarchiveTopic(topic.id)"
           >
             {{ $t('topics.unarchive') }}
-          </button>
-          <button class="btn-action danger" @click="deleteTopic(topic.id)">
+          </el-button>
+          <el-button type="danger" size="small" @click="deleteTopic(topic.id)">
             {{ $t('topics.delete') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
