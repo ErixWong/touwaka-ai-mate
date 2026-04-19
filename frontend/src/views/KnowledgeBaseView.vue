@@ -271,7 +271,7 @@ import { useModelStore } from '@/stores/model'
 import { useToastStore } from '@/stores/toast'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import type { KnowledgeBase } from '@/types'
+import type { KnowledgeBase, AIModel } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -306,7 +306,7 @@ const pageSizeOptions = [8, 12, 16, 24, 32]
 // 获取 embedding 模型列表
 const embeddingModels = computed(() => {
   return modelStore.models.filter(
-    (m: any) => m.model_type === 'embedding'
+    (m: AIModel) => m.model_type === 'embedding'
   )
 })
 
@@ -316,7 +316,7 @@ const selectedEmbeddingDim = computed(() => {
     return 384 // 默认本地模型维度
   }
   const model = embeddingModels.value.find(
-    (m: any) => m.id === formData.value.embedding_model_id
+    (m: AIModel) => m.id === formData.value.embedding_model_id
   )
   return model?.embedding_dim || 384
 })
@@ -366,7 +366,7 @@ const getKbIcon = (kb: KnowledgeBase) => {
 
 // 获取模型名称
 const getModelName = (modelId: string) => {
-  const model = modelStore.models.find((m: any) => m.id === modelId)
+  const model = modelStore.models.find((m: AIModel) => m.id === modelId)
   return model?.name || modelId
 }
 
@@ -458,8 +458,8 @@ const editKb = (kb: KnowledgeBase) => {
   formData.value = {
     name: kb.name,
     description: kb.description || '',
-    visibility: (kb as any).visibility || 'owner',
-    embedding_model_id: (kb as any).embedding_model_id || '',
+    visibility: kb.visibility || 'owner',
+    embedding_model_id: kb.embedding_model_id || '',
   }
 }
 
