@@ -1413,52 +1413,40 @@
 
     <!-- 用户删除确认对话框 -->
     <!-- 角色编辑对话框 -->
-    <div v-if="showRoleDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ $t('settings.editRole') }}
-        </h3>
-        <div class="dialog-body">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleMark') }}</label>
-            <input
-              v-model="roleForm.mark"
-              type="text"
-              class="form-input"
-              disabled
-              :placeholder="$t('settings.roleMarkPlaceholder')"
-            />
-            <p class="form-hint">{{ $t('settings.roleMarkHint') }}</p>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleName') }}</label>
-            <input
-              v-model="roleForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.roleNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.roleDescription') }}</label>
-            <textarea
-              v-model="roleForm.description"
-              class="form-input"
-              rows="3"
-              :placeholder="$t('settings.roleDescriptionPlaceholder')"
-            ></textarea>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <div class="footer-right">
-            <button class="btn-cancel" @click="closeRoleDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isRoleFormValid" @click="saveRole">
-              {{ $t('common.save') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <el-dialog
+      v-model="showRoleDialog"
+      :title="$t('settings.editRole')"
+      width="500px"
+    >
+      <el-form label-width="100px">
+        <el-form-item :label="$t('settings.roleMark')">
+          <el-input
+            v-model="roleForm.mark"
+            disabled
+            :placeholder="$t('settings.roleMarkPlaceholder')"
+          />
+          <div class="el-form-item__tip">{{ $t('settings.roleMarkHint') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('settings.roleName')">
+          <el-input
+            v-model="roleForm.name"
+            :placeholder="$t('settings.roleNamePlaceholder')"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('settings.roleDescription')">
+          <el-input
+            v-model="roleForm.description"
+            type="textarea"
+            :rows="3"
+            :placeholder="$t('settings.roleDescriptionPlaceholder')"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeRoleDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!isRoleFormValid" @click="saveRole">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </div>
 </template>
