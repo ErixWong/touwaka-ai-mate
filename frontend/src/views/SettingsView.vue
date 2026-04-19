@@ -1636,12 +1636,6 @@ const isExpertFormValid = computed(() => {
 // Expert 对话框 Tab 状态
 const expertActiveTab = ref<'basic' | 'personality' | 'model'>('basic')
 
-const expertTabs = computed(() => [
-  { key: 'basic' as const, label: t('settings.expertTabBasic') },
-  { key: 'personality' as const, label: t('settings.expertTabPersonality') },
-  { key: 'model' as const, label: t('settings.expertTabModel') },
-])
-
 // Expert 删除对话框
 const showDeleteExpertDialog = ref(false)
 const deletingExpert = ref<Expert | null>(null)
