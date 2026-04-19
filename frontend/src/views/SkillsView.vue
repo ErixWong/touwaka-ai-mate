@@ -6,17 +6,17 @@
 
     <!-- 搜索和过滤 -->
     <div class="skills-filter">
-      <input
+      <el-input
         v-model="searchQuery"
-        type="text"
-        class="search-input"
         :placeholder="$t('skills.searchPlaceholder')"
+        clearable
+        class="search-input"
       />
-      <select v-model="filterStatus" class="filter-select">
-        <option value="">{{ $t('skills.allSkills') }}</option>
-        <option value="active">{{ $t('skills.active') }}</option>
-        <option value="inactive">{{ $t('skills.inactive') }}</option>
-      </select>
+      <el-select v-model="filterStatus" class="filter-select" :placeholder="$t('skills.allSkills')">
+        <el-option value="" :label="$t('skills.allSkills')" />
+        <el-option value="active" :label="$t('skills.active')" />
+        <el-option value="inactive" :label="$t('skills.inactive')" />
+      </el-select>
     </div>
 
     <!-- 加载状态 -->
@@ -82,105 +82,107 @@
 
         <!-- 操作按钮 -->
         <div class="skill-actions">
-          <button class="btn-action" @click="viewSkillDetail(skill)">
+          <el-button size="small" @click="viewSkillDetail(skill)">
             {{ $t('skills.viewDetail') }}
-          </button>
-          <button 
+          </el-button>
+          <el-button 
             v-if="userStore.isAdmin"
-            class="btn-action secondary" 
+            size="small"
             @click="openSkillEditor(skill)"
           >
             {{ $t('skills.editSkill') || '编辑' }}
-          </button>
-          <button
+          </el-button>
+          <el-button
             v-if="userStore.isAdmin"
-            class="btn-action secondary"
+            size="small"
             @click="openParamsDialog(skill)"
           >
             <span class="btn-icon">⚙️</span>
             {{ $t('skills.manageParams') }}
-          </button>
-          <button
-            class="btn-action secondary"
+          </el-button>
+          <el-button
+            size="small"
             @click="openMyParamsDialog(skill)"
           >
             <span class="btn-icon">🔧</span>
             {{ $t('skills.myParameters.title') || '我的参数' }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
 
     <!-- 技能详情对话框 -->
-    <div v-if="showDetailDialog && selectedSkill" class="dialog-overlay">
-      <div class="dialog dialog-large">
-        <h3 class="dialog-title">{{ selectedSkill.name }}</h3>
-        <div class="dialog-body">
-          <div class="detail-section">
-            <h4 class="section-title">{{ $t('skills.basicInfo') }}</h4>
-            <div class="detail-grid">
-              <div class="detail-item">
-                <span class="detail-label">{{ $t('skills.description') }}</span>
-                <span class="detail-value">{{ selectedSkill.description || '-' }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">{{ $t('skills.version') }}</span>
-                <span class="detail-value">{{ selectedSkill.version || '-' }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">{{ $t('skills.author') }}</span>
-                <span class="detail-value">{{ selectedSkill.author || '-' }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">{{ $t('skills.sourceType') }}</span>
-                <span class="detail-value">{{ getSourceLabel(selectedSkill.source_type) }}</span>
-              </div>
+    <el-dialog
+      v-model="showDetailDialog"
+      :title="selectedSkill?.name"
+      width="720px"
+      destroy-on-close
+    >
+      <div class="dialog-body">
+        <div class="detail-section">
+          <h4 class="section-title">{{ $t('skills.basicInfo') }}</h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span class="detail-label">{{ $t('skills.description') }}</span>
+              <span class="detail-value">{{ selectedSkill?.description || '-' }}</span>
             </div>
-          </div>
-
-          <div class="detail-section">
-            <h4 class="section-title">{{ $t('skills.securityInfo') }}</h4>
-            <div class="security-info">
-              <div class="security-score" :class="getSecurityClass(selectedSkill.security_score ?? 0)">
-                {{ $t('skills.securityScore') }}: {{ selectedSkill.security_score ?? '-' }}/100
-              </div>
-              <div v-if="selectedSkill.security_warnings && selectedSkill.security_warnings.length > 0">
-                <p class="warnings-title">{{ $t('skills.warnings') }}:</p>
-                <ul class="warnings-list">
-                  <li v-for="(warning, index) in selectedSkill.security_warnings" :key="index">
-                    {{ warning }}
-                  </li>
-                </ul>
-              </div>
+            <div class="detail-item">
+              <span class="detail-label">{{ $t('skills.version') }}</span>
+              <span class="detail-value">{{ selectedSkill?.version || '-' }}</span>
             </div>
-          </div>
-
-          <div v-if="selectedSkill.tools && selectedSkill.tools.length > 0" class="detail-section">
-            <h4 class="section-title">{{ $t('skills.toolsList') }}</h4>
-            <div class="tools-list">
-              <div v-for="tool in selectedSkill.tools" :key="tool.id" class="tool-item">
-                <div class="tool-header">
-                  <span class="tool-name">{{ tool.name }}</span>
-                  <span v-if="tool.is_resident" class="tool-type resident">{{ $t('skills.isResident') || '驻留' }}</span>
-                </div>
-                <p class="tool-description">{{ tool.description || '-' }}</p>
-                <p v-if="tool.script_path" class="tool-usage">
-                  <code>{{ tool.script_path }}</code>
-                </p>
-              </div>
+            <div class="detail-item">
+              <span class="detail-label">{{ $t('skills.author') }}</span>
+              <span class="detail-value">{{ selectedSkill?.author || '-' }}</span>
             </div>
-          </div>
-
-          <div v-if="selectedSkill.skill_md" class="detail-section">
-            <h4 class="section-title">SKILL.md</h4>
-            <pre class="skill-md-content">{{ selectedSkill.skill_md }}</pre>
+            <div class="detail-item">
+              <span class="detail-label">{{ $t('skills.sourceType') }}</span>
+              <span class="detail-value">{{ getSourceLabel(selectedSkill?.source_type || '') }}</span>
+            </div>
           </div>
         </div>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDetailDialog">{{ $t('common.close') }}</button>
+
+        <div class="detail-section">
+          <h4 class="section-title">{{ $t('skills.securityInfo') }}</h4>
+          <div class="security-info">
+            <div class="security-score" :class="getSecurityClass(selectedSkill?.security_score ?? 0)">
+              {{ $t('skills.securityScore') }}: {{ selectedSkill?.security_score ?? '-' }}/100
+            </div>
+            <div v-if="selectedSkill?.security_warnings && selectedSkill.security_warnings.length > 0">
+              <p class="warnings-title">{{ $t('skills.warnings') }}:</p>
+              <ul class="warnings-list">
+                <li v-for="(warning, index) in selectedSkill.security_warnings" :key="index">
+                  {{ warning }}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="selectedSkill?.tools && selectedSkill.tools.length > 0" class="detail-section">
+          <h4 class="section-title">{{ $t('skills.toolsList') }}</h4>
+          <div class="tools-list">
+            <div v-for="tool in selectedSkill.tools" :key="tool.id" class="tool-item">
+              <div class="tool-header">
+                <span class="tool-name">{{ tool.name }}</span>
+                <el-tag v-if="tool.is_resident" size="small" type="success">{{ $t('skills.isResident') || '驻留' }}</el-tag>
+              </div>
+              <p class="tool-description">{{ tool.description || '-' }}</p>
+              <p v-if="tool.script_path" class="tool-usage">
+                <code>{{ tool.script_path }}</code>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="selectedSkill?.skill_md" class="detail-section">
+          <h4 class="section-title">SKILL.md</h4>
+          <pre class="skill-md-content">{{ selectedSkill.skill_md }}</pre>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <el-button @click="closeDetailDialog">{{ $t('common.close') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 参数管理对话框 -->
     <SkillParametersModal
@@ -199,247 +201,179 @@
     />
     
     <!-- 技能编辑弹窗 -->
-    <Teleport to="body">
-      <div v-if="showSkillEditor" class="skill-editor-overlay">
-        <div class="skill-editor-modal">
-          <div class="modal-header">
-            <h3>{{ editingSkill?.name || $t('skills.editSkill') || '编辑技能' }}</h3>
-            <button class="close-btn" @click="closeSkillEditor">×</button>
-          </div>
-          
-          <!-- 弹窗内部 TabPage -->
-          <div class="modal-tabs">
-            <button 
-              class="modal-tab-btn" 
-              :class="{ active: editorTab === 'basic' }"
-              @click="editorTab = 'basic'"
-            >
-              {{ $t('skills.basicInfo') || '基本信息' }}
-            </button>
-            <button 
-              class="modal-tab-btn" 
-              :class="{ active: editorTab === 'tools' }"
-              @click="editorTab = 'tools'"
-            >
-              {{ $t('skills.toolsList') || '工具列表' }}
-              <span v-if="skillForm.tools?.length" class="tab-badge">{{ skillForm.tools.length }}</span>
-            </button>
-            <button
-              class="modal-tab-btn"
-              :class="{ active: editorTab === 'params' }"
-              @click="editorTab = 'params'"
-            >
-              {{ $t('skills.parametersTitle') || '参数配置' }}
-              <span v-if="skillForm.parameters?.length" class="tab-badge">{{ skillForm.parameters.length }}</span>
-            </button>
-          </div>
-          
-          <div class="modal-body">
-            <!-- 基本信息 Tab -->
-            <div v-show="editorTab === 'basic'" class="editor-section">
-              <!-- ID（只读） -->
-              <div class="form-group">
-                <label>{{ $t('skills.id') || 'ID' }}</label>
-                <input :value="editingSkill?.id" type="text" class="form-input readonly" readonly />
-              </div>
-              
-              <!-- Mark（可编辑）- 技能标识，用于生成 tool_name -->
-              <div class="form-group">
-                <label>{{ $t('skills.mark') || '技能标识 (Mark)' }}</label>
-                <input v-model="skillForm.mark" type="text" class="form-input" :placeholder="$t('skills.markPlaceholder') || '小写字母、数字、连字符'" />
-                <span class="field-hint">{{ $t('skills.markHint') || '用于生成工具名称，格式：mark__tool_name。只允许小写字母、数字、连字符' }}</span>
-              </div>
-              
-              <!-- 名称 -->
-              <div class="form-group">
-                <label>{{ $t('skills.name') || '名称' }}</label>
-                <input v-model="skillForm.name" type="text" class="form-input" />
-              </div>
-              
-              <!-- 描述 -->
-              <div class="form-group">
-                <label>{{ $t('skills.description') || '描述' }}</label>
-                <textarea v-model="skillForm.description" class="form-textarea" rows="3"></textarea>
-              </div>
-              
-              <!-- 版本 & 作者 -->
-              <div class="form-row">
-                <div class="form-group">
-                  <label>{{ $t('skills.version') || '版本' }}</label>
-                  <input v-model="skillForm.version" type="text" class="form-input" />
-                </div>
-                <div class="form-group">
-                  <label>{{ $t('skills.author') || '作者' }}</label>
-                  <input v-model="skillForm.author" type="text" class="form-input" />
-                </div>
-              </div>
-              
-              <!-- 来源信息 -->
-              <div class="form-row">
-                <div class="form-group">
-                  <label>{{ $t('skills.sourceType') || '来源类型' }}</label>
-                  <input :value="editingSkill?.source_type" type="text" class="form-input readonly" readonly />
-                </div>
-                <div class="form-group">
-                  <label>{{ $t('skills.sourcePath') || '来源路径' }}</label>
-                  <input v-model="skillForm.source_path" type="text" class="form-input" />
-                </div>
-              </div>
-              
-              <!-- 来源 URL（如果有） -->
-              <div class="form-group" v-if="editingSkill?.source_url">
-                <label>{{ $t('skills.sourceUrl') || '来源 URL' }}</label>
-                <input :value="editingSkill?.source_url" type="text" class="form-input readonly" readonly />
-              </div>
-              
-              <!-- 标签 -->
-              <div class="form-group">
-                <label>{{ $t('skills.tags') || '标签' }}</label>
-                <div class="tags-input-container">
-                  <div class="tags-list">
-                    <span v-for="(tag, index) in skillForm.tags" :key="index" class="tag-item">
-                      {{ tag }}
-                      <button class="tag-remove" @click="removeTag(index)">×</button>
-                    </span>
-                  </div>
-                  <input
-                    v-model="newTagInput"
-                    type="text"
-                    class="form-input tag-input"
-                    :placeholder="$t('skills.addTagPlaceholder') || '输入标签后按 Enter'"
-                    @keyup.enter="addTag"
-                  />
-                </div>
-              </div>
-              
-              <!-- 安全信息 -->
-              <div class="form-row" v-if="editingSkill?.security_score !== undefined">
-                <div class="form-group">
-                  <label>{{ $t('skills.securityScore') || '安全评分' }}</label>
-                  <div class="security-score-display">
-                    <span class="score-value" :class="getSecurityScoreClass(editingSkill?.security_score)">
-                      {{ editingSkill?.security_score ?? '-' }}
-                    </span>
-                    <span class="score-max">/ 100</span>
-                  </div>
-                </div>
-                <div class="form-group" v-if="editingSkill?.security_warnings?.length">
-                  <label>{{ $t('skills.securityWarnings') || '安全警告' }}</label>
-                  <div class="security-warnings">
-                    <span v-for="(warning, index) in editingSkill?.security_warnings" :key="index" class="warning-item">
-                      ⚠️ {{ warning }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 启用状态 -->
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="skillForm.is_active" />
-                  {{ $t('skills.enabled') || '启用' }}
-                </label>
-              </div>
-              
-              <!-- 时间信息（只读） -->
-              <div class="form-row">
-                <div class="form-group">
-                  <label>{{ $t('skills.createdAt') || '创建时间' }}</label>
-                  <input :value="formatDateTime(editingSkill?.created_at)" type="text" class="form-input readonly" readonly />
-                </div>
-                <div class="form-group">
-                  <label>{{ $t('skills.updatedAt') || '更新时间' }}</label>
-                  <input :value="formatDateTime(editingSkill?.updated_at)" type="text" class="form-input readonly" readonly />
-                </div>
-              </div>
+    <el-dialog
+      v-model="showSkillEditor"
+      :title="editingSkill?.name || $t('skills.editSkill') || '编辑技能'"
+      width="640px"
+      destroy-on-close
+      class="skill-editor-dialog"
+    >
+      <el-tabs v-model="editorTab" type="border-card">
+        <!-- 基本信息 Tab -->
+        <el-tab-pane :label="$t('skills.basicInfo') || '基本信息'" name="basic">
+          <el-form label-position="top" class="skill-form">
+            <!-- ID（只读） -->
+            <el-form-item :label="$t('skills.id') || 'ID'">
+              <el-input :model-value="editingSkill?.id" readonly disabled />
+            </el-form-item>
+            
+            <!-- Mark（可编辑） -->
+            <el-form-item :label="$t('skills.mark') || '技能标识 (Mark)'">
+              <el-input 
+                v-model="skillForm.mark" 
+                :placeholder="$t('skills.markPlaceholder') || '小写字母、数字、连字符'"
+              />
+              <el-text type="info" size="small">
+                {{ $t('skills.markHint') || '用于生成工具名称，格式：mark__tool_name' }}
+              </el-text>
+            </el-form-item>
+            
+            <!-- 名称 -->
+            <el-form-item :label="$t('skills.name') || '名称'">
+              <el-input v-model="skillForm.name" />
+            </el-form-item>
+            
+            <!-- 描述 -->
+            <el-form-item :label="$t('skills.description') || '描述'">
+              <el-input v-model="skillForm.description" type="textarea" :rows="3" />
+            </el-form-item>
+            
+            <!-- 版本 & 作者 -->
+            <div class="form-row">
+              <el-form-item :label="$t('skills.version') || '版本'" class="form-item-half">
+                <el-input v-model="skillForm.version" />
+              </el-form-item>
+              <el-form-item :label="$t('skills.author') || '作者'" class="form-item-half">
+                <el-input v-model="skillForm.author" />
+              </el-form-item>
             </div>
             
-            <!-- 工具列表 Tab -->
-            <div v-show="editorTab === 'tools'" class="editor-section tools-section">
-              <div v-if="skillForm.tools?.length" class="tools-list-editor">
-                <div v-for="tool in skillForm.tools" :key="tool.id" class="tool-item-editor">
-                  <div class="tool-header">
-                    <input v-model="tool.name" type="text" class="tool-name-input" :placeholder="$t('skills.name') || '名称'" />
-                    <span v-if="tool.is_resident" class="resident-badge">驻留</span>
-                  </div>
-                  
-                  <div class="tool-fields">
-                    <!-- 描述 -->
-                    <div class="field-row">
-                      <span class="field-label">{{ $t('skills.description') || '描述' }}</span>
-                      <input v-model="tool.description" type="text" class="field-input" :placeholder="$t('skills.description') || '描述'" />
-                    </div>
-                    
-                    <!-- 脚本路径 -->
-                    <div class="field-row">
-                      <span class="field-label">{{ $t('skills.scriptPath') || '脚本路径' }}</span>
-                      <input v-model="tool.script_path" type="text" class="field-input" :placeholder="$t('skills.scriptPath') || '脚本路径'" />
-                    </div>
-                    
-                    <!-- 参数定义 -->
-                    <div class="field-row">
-                      <span class="field-label">{{ $t('skills.parametersTitle') || '参数' }}</span>
-                      <textarea v-model="tool.parameters" class="field-textarea" rows="5" :placeholder="$t('skills.parametersPlaceholder') || 'JSON 格式的参数定义'"></textarea>
-                    </div>
-                    
-                    <!-- 驻留进程 -->
-                    <div class="field-row">
-                      <span class="field-label">{{ $t('skills.isResident') || '驻留进程' }}</span>
-                      <label class="checkbox-inline">
-                        <input type="checkbox" v-model="tool.is_resident" />
-                        {{ $t('skills.isResidentHint') || '持续运行，stdio 通信' }}
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="empty-state-editor">
-                <span class="empty-icon">🔧</span>
-                <p>{{ $t('skills.noTools') || '暂无工具' }}</p>
-              </div>
+            <!-- 来源信息 -->
+            <div class="form-row">
+              <el-form-item :label="$t('skills.sourceType') || '来源类型'" class="form-item-half">
+                <el-input :model-value="editingSkill?.source_type" readonly disabled />
+              </el-form-item>
+              <el-form-item :label="$t('skills.sourcePath') || '来源路径'" class="form-item-half">
+                <el-input v-model="skillForm.source_path" />
+              </el-form-item>
             </div>
             
-            <!-- 参数配置 Tab -->
-            <div v-show="editorTab === 'params'" class="editor-section">
-              <div class="section-header">
-                <span></span>
-                <button class="add-btn" @click="addParameter">+ {{ $t('skills.addParameter') || '添加参数' }}</button>
-              </div>
-              <div v-if="skillForm.parameters?.length" class="parameters-list">
-                <div v-for="(param, index) in skillForm.parameters" :key="index" class="parameter-item">
-                  <div class="param-row">
-                    <input v-model="param.param_name" type="text" class="form-input param-name" :placeholder="$t('skills.paramName') || '参数名'" />
-                    <input v-model="param.param_value" :type="param.is_secret ? 'password' : 'text'" class="form-input param-value" :placeholder="$t('skills.paramValue') || '参数值'" />
-                    <label class="secret-label">
-                      <input type="checkbox" v-model="param.is_secret" />
-                      {{ $t('skills.secret') || '密钥' }}
-                    </label>
-                    <button class="remove-btn" @click="removeParameter(index)">×</button>
-                  </div>
+            <!-- 来源 URL -->
+            <el-form-item v-if="editingSkill?.source_url" :label="$t('skills.sourceUrl') || '来源 URL'">
+              <el-input :model-value="editingSkill?.source_url" readonly disabled />
+            </el-form-item>
+            
+            <!-- 标签 -->
+            <el-form-item :label="$t('skills.tags') || '标签'">
+              <el-tag
+                v-for="(tag, index) in skillForm.tags"
+                :key="index"
+                closable
+                @close="removeTag(index)"
+                class="tag-item"
+              >
+                {{ tag }}
+              </el-tag>
+              <el-input
+                v-if="tagInputVisible"
+                ref="tagInputRef"
+                v-model="newTagInput"
+                size="small"
+                @keyup.enter="addTag"
+                @blur="addTag"
+                class="tag-input"
+              />
+              <el-button v-else size="small" @click="showTagInput">+ {{ $t('skills.addTag') || '添加标签' }}</el-button>
+            </el-form-item>
+            
+            <!-- 启用状态 -->
+            <el-form-item>
+              <el-checkbox v-model="skillForm.is_active">
+                {{ $t('skills.enabled') || '启用' }}
+              </el-checkbox>
+            </el-form-item>
+            
+            <!-- 时间信息 -->
+            <div class="form-row">
+              <el-form-item :label="$t('skills.createdAt') || '创建时间'" class="form-item-half">
+                <el-input :model-value="formatDateTime(editingSkill?.created_at)" readonly disabled />
+              </el-form-item>
+              <el-form-item :label="$t('skills.updatedAt') || '更新时间'" class="form-item-half">
+                <el-input :model-value="formatDateTime(editingSkill?.updated_at)" readonly disabled />
+              </el-form-item>
+            </div>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 工具列表 Tab -->
+        <el-tab-pane :label="$t('skills.toolsList') || '工具列表'" name="tools">
+          <div v-if="skillForm.tools?.length" class="tools-list-editor">
+            <el-card v-for="tool in skillForm.tools" :key="tool.id" class="tool-card" shadow="never">
+              <template #header>
+                <div class="tool-card-header">
+                  <el-input v-model="tool.name" :placeholder="$t('skills.name') || '名称'" />
+                  <el-tag v-if="tool.is_resident" type="success" size="small">{{ $t('skills.isResident') || '驻留' }}</el-tag>
                 </div>
-              </div>
-              <div v-else class="empty-state-editor">
-                <span class="empty-icon">⚙️</span>
-                <p>{{ $t('skills.noParameters') || '暂无参数配置' }}</p>
-                <button class="add-btn-large" @click="addParameter">+ {{ $t('skills.addParameter') || '添加参数' }}</button>
-              </div>
+              </template>
+              
+              <el-form label-position="left" label-width="80px">
+                <el-form-item :label="$t('skills.description') || '描述'">
+                  <el-input v-model="tool.description" :placeholder="$t('skills.description') || '描述'" />
+                </el-form-item>
+                
+                <el-form-item :label="$t('skills.scriptPath') || '脚本路径'">
+                  <el-input v-model="tool.script_path" :placeholder="$t('skills.scriptPath') || '脚本路径'" />
+                </el-form-item>
+                
+                <el-form-item :label="$t('skills.parametersTitle') || '参数'">
+                  <el-input v-model="tool.parameters" type="textarea" :rows="5" :placeholder="$t('skills.parametersPlaceholder') || 'JSON 格式的参数定义'" />
+                </el-form-item>
+                
+                <el-form-item>
+                  <el-checkbox v-model="tool.is_resident">
+                    {{ $t('skills.isResidentHint') || '驻留进程（持续运行，stdio 通信）' }}
+                  </el-checkbox>
+                </el-form-item>
+              </el-form>
+            </el-card>
+          </div>
+          <el-empty v-else :description="$t('skills.noTools') || '暂无工具'" />
+        </el-tab-pane>
+
+        <!-- 参数配置 Tab -->
+        <el-tab-pane :label="$t('skills.parametersTitle') || '参数配置'" name="params">
+          <div class="section-header">
+            <span></span>
+            <el-button type="primary" size="small" @click="addParameter">+ {{ $t('skills.addParameter') || '添加参数' }}</el-button>
+          </div>
+          <div v-if="skillForm.parameters?.length" class="parameters-list">
+            <div v-for="(param, index) in skillForm.parameters" :key="index" class="parameter-item">
+              <el-input v-model="param.param_name" :placeholder="$t('skills.paramName') || '参数名'" class="param-name" />
+              <el-input v-model="param.param_value" :placeholder="$t('skills.paramValue') || '参数值'" :type="param.is_secret ? 'password' : 'text'" class="param-value" />
+              <el-checkbox v-model="param.is_secret">{{ $t('skills.secret') || '密钥' }}</el-checkbox>
+              <el-button type="danger" size="small" circle @click="removeParameter(index)">×</el-button>
             </div>
           </div>
-          
-          <div class="modal-footer">
-            <button class="btn-delete" @click="deleteSkill" :disabled="deletingSkill">
-              {{ deletingSkill ? ($t('common.deleting') || '删除中...') : ($t('common.delete') || '删除') }}
-            </button>
-            <div class="footer-right">
-              <button class="btn-cancel" @click="closeSkillEditor">{{ $t('common.cancel') || '取消' }}</button>
-              <button class="btn-save" @click="saveSkill" :disabled="savingSkill">
-                {{ savingSkill ? ($t('common.saving') || '保存中...') : ($t('common.save') || '保存') }}
-              </button>
-            </div>
+          <el-empty v-else :description="$t('skills.noParameters') || '暂无参数配置'">
+            <el-button type="primary" @click="addParameter">+ {{ $t('skills.addParameter') || '添加参数' }}</el-button>
+          </el-empty>
+        </el-tab-pane>
+      </el-tabs>
+      
+      <template #footer>
+        <div class="dialog-footer-custom">
+          <el-button type="danger" @click="deleteSkill" :loading="deletingSkill">
+            {{ deletingSkill ? ($t('common.deleting') || '删除中...') : ($t('common.delete') || '删除') }}
+          </el-button>
+          <div class="footer-right">
+            <el-button @click="closeSkillEditor">{{ $t('common.cancel') || '取消' }}</el-button>
+            <el-button type="primary" @click="saveSkill" :loading="savingSkill">
+              {{ savingSkill ? ($t('common.saving') || '保存中...') : ($t('common.save') || '保存') }}
+            </el-button>
           </div>
         </div>
-      </div>
-    </Teleport>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -485,6 +419,8 @@ const savingSkill = ref(false)
 const deletingSkill = ref(false)
 const editorTab = ref<'basic' | 'tools' | 'params'>('basic')
 const newTagInput = ref('')
+const tagInputVisible = ref(false)
+const tagInputRef = ref<HTMLInputElement>()
 
 // 表单数据
 const skillForm = reactive({
@@ -650,19 +586,21 @@ const addTag = () => {
     skillForm.tags.push(tag)
   }
   newTagInput.value = ''
+  tagInputVisible.value = false
+}
+
+// 显示标签输入框
+const showTagInput = () => {
+  tagInputVisible.value = true
+  // 下一帧聚焦输入框
+  setTimeout(() => {
+    tagInputRef.value?.focus()
+  }, 0)
 }
 
 // 移除标签
 const removeTag = (index: number) => {
   skillForm.tags.splice(index, 1)
-}
-
-// 安全评分样式类
-const getSecurityScoreClass = (score?: number): string => {
-  if (score === undefined) return ''
-  if (score >= 80) return 'high'
-  if (score >= 60) return 'medium'
-  return 'low'
 }
 
 // 格式化日期时间
@@ -986,89 +924,11 @@ onMounted(() => {
   padding-top: 12px;
 }
 
-.btn-action {
-  padding: 6px 12px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .btn-icon {
   font-size: 14px;
 }
 
-.btn-action:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.btn-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-action.secondary {
-  background: var(--secondary-bg, #f5f5f5);
-  color: var(--text-secondary, #666);
-}
-
-/* 对话框 */
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-}
-
-.dialog-large {
-  max-width: 720px;
-}
-
-.dialog-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  color: var(--text-primary, #333);
-}
-
-.dialog-body {
-  padding: 24px;
-  overflow-y: auto;
-  max-height: 60vh;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-}
-
-/* 详情对话框 */
+/* 对话框内容 */
 .detail-section {
   margin-bottom: 24px;
 }
@@ -1160,14 +1020,6 @@ onMounted(() => {
   color: var(--text-primary, #333);
 }
 
-.tool-type {
-  font-size: 11px;
-  padding: 2px 6px;
-  background: var(--primary-light, #e3f2fd);
-  color: var(--primary-color, #2196f3);
-  border-radius: 4px;
-}
-
 .tool-description {
   font-size: 13px;
   color: var(--text-secondary, #666);
@@ -1195,21 +1047,6 @@ onMounted(() => {
   overflow-x: auto;
   white-space: pre-wrap;
   max-height: 300px;
-}
-
-/* 按钮 */
-.btn-cancel {
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-}
-
-.btn-cancel:hover {
-  background: var(--secondary-bg, #f5f5f5);
 }
 
 /* 响应式 */
@@ -1241,9 +1078,8 @@ onMounted(() => {
     flex-direction: column;
   }
 
-  .btn-action {
+  .skill-actions .el-button {
     width: 100%;
-    text-align: center;
   }
 
   .detail-grid {
@@ -1281,250 +1117,27 @@ onMounted(() => {
   background: var(--text-tertiary, #999);
 }
 
-/* 技能编辑弹窗 */
-.skill-editor-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+/* 技能编辑弹窗 Element Plus 适配 */
+:deep(.skill-editor-dialog .el-tabs__content) {
+  padding: 20px;
+}
+
+.skill-form .form-row {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+  gap: 16px;
 }
 
-.skill-editor-modal {
-  background: var(--bg-primary, #fff);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  width: 90%;
-  max-width: 640px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  flex-shrink: 0;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary, #333);
-}
-
-/* 弹窗内部 TabPage */
-.modal-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  flex-shrink: 0;
-  padding: 0 20px;
-  background: var(--bg-secondary, #f9f9f9);
-}
-
-.modal-tab-btn {
-  padding: 12px 16px;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-bottom: 2px solid transparent;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.modal-tab-btn:hover {
-  color: var(--text-primary, #333);
-  background: var(--bg-hover, #f0f0f0);
-}
-
-.modal-tab-btn.active {
-  color: var(--primary-color, #2196f3);
-  border-bottom-color: var(--primary-color, #2196f3);
-  font-weight: 500;
-}
-
-.tab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-size: 10px;
-  font-weight: 500;
-  background: var(--bg-tertiary, #e0e0e0);
-  color: var(--text-secondary, #666);
-  border-radius: 9px;
-}
-
-.modal-tab-btn.active .tab-badge {
-  background: var(--primary-light, #e3f2fd);
-  color: var(--primary-color, #2196f3);
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  font-size: 20px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--bg-secondary, #f5f5f5);
-  color: var(--text-primary, #333);
-}
-
-.modal-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
-
-.editor-section {
-  margin-bottom: 20px;
-}
-
-.editor-section:last-child {
-  margin-bottom: 0;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.add-btn {
-  padding: 4px 12px;
-  font-size: 12px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.add-btn:hover {
-  background: var(--primary-dark, #1976d2);
-}
-
-.add-btn-large {
-  margin-top: 12px;
-  padding: 8px 16px;
-  font-size: 13px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.add-btn-large:hover {
-  background: var(--primary-dark, #1976d2);
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-.form-row {
-  display: flex;
-  gap: 12px;
-}
-
-.form-row .form-group {
+.skill-form .form-item-half {
   flex: 1;
 }
 
-.form-group {
-  margin-bottom: 14px;
+.tag-item {
+  margin-right: 8px;
+  margin-bottom: 8px;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary, #333);
-}
-
-.form-input,
-.form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--input-bg, #fff);
-  color: var(--text-primary, #333);
-  box-sizing: border-box;
-}
-
-.form-input:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 70px;
-}
-
-.form-input.readonly {
-  background: var(--bg-secondary, #f5f5f5);
-  color: var(--text-secondary, #666);
-  cursor: not-allowed;
-}
-
-/* 字段提示 */
-.field-hint {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text-tertiary, #999);
-}
-
-/* 工具列表 */
-.tools-section {
-  padding: 0;
+.tag-input {
+  width: 120px;
 }
 
 .tools-list-editor {
@@ -1533,128 +1146,45 @@ onMounted(() => {
   gap: 16px;
 }
 
-.tool-item-editor {
-  padding: 16px;
-  background: var(--bg-secondary, #f9f9f9);
-  border-radius: 8px;
-  border: 1px solid var(--border-color, #e0e0e0);
+.tool-card {
+  margin-bottom: 0;
 }
 
-.tool-header {
+.tool-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed var(--border-color, #e0e0e0);
-}
-
-.tool-name-input {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-primary, #333);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
-  padding: 4px 8px;
-  background: var(--bg-primary, #fff);
-  flex: 1;
-}
-
-.tool-name-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.resident-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  background: #e8f5e9;
-  color: #388e3c;
-}
-
-.tool-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field-row {
-  display: flex;
-  align-items: flex-start;
   gap: 12px;
 }
 
-.field-label {
-  min-width: 60px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  padding-top: 6px;
-}
-
-.field-input {
+.tool-card-header .el-input {
   flex: 1;
-  padding: 6px 10px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
-  font-size: 12px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #333);
 }
 
-.field-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.field-textarea {
-  flex: 1;
-  padding: 6px 10px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
-  font-size: 12px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #333);
-  resize: vertical;
-  min-height: 60px;
-  font-family: inherit;
-}
-
-.field-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.checkbox-inline {
+.section-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
+  margin-bottom: 16px;
 }
 
-/* 参数列表 */
 .parameters-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .parameter-item {
-  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
   background: var(--bg-secondary, #f9f9f9);
   border-radius: 6px;
 }
 
-.param-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .param-name {
-  width: 120px;
+  width: 140px;
   flex-shrink: 0;
 }
 
@@ -1662,180 +1192,15 @@ onMounted(() => {
   flex: 1;
 }
 
-.secret-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-secondary, #666);
-  white-space: nowrap;
-}
-
-.remove-btn {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  font-size: 16px;
-  color: var(--danger-color, #dc3545);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.remove-btn:hover {
-  background: var(--danger-light, #ffebee);
-}
-
-/* 弹窗底部 */
-.modal-footer {
+.dialog-footer-custom {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  flex-shrink: 0;
 }
 
 .footer-right {
   display: flex;
   gap: 12px;
-}
-
-.btn-delete {
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: var(--danger-color, #dc3545);
-  border: none;
-  color: white;
-}
-
-.btn-delete:hover:not(:disabled) {
-  background: #c82333;
-}
-
-.btn-delete:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-save {
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: var(--primary-color, #2196f3);
-  border: none;
-  color: white;
-}
-
-.btn-save:hover:not(:disabled) {
-  background: var(--primary-dark, #1976d2);
-}
-
-.btn-save:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* 标签输入容器 */
-.tags-input-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.tag-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: var(--primary-light, #e3f2fd);
-  color: var(--primary-color, #2196f3);
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.tag-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: none;
-  background: transparent;
-  color: var(--primary-color, #2196f3);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0;
-}
-
-.tag-remove:hover {
-  color: var(--danger-color, #dc3545);
-}
-
-.tag-input {
-  margin-top: 4px;
-}
-
-/* 安全评分显示 */
-.security-score-display {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.score-value {
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.score-value.high {
-  color: var(--success-color, #4caf50);
-}
-
-.score-value.medium {
-  color: var(--warning-color, #ff9800);
-}
-
-.score-value.low {
-  color: var(--danger-color, #dc3545);
-}
-
-.score-max {
-  font-size: 14px;
-  color: var(--text-tertiary, #999);
-}
-
-/* 安全警告列表 */
-.security-warnings {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.warning-item {
-  display: block;
-  font-size: 12px;
-  color: var(--warning-color, #ff9800);
-  padding: 4px 8px;
-  background: var(--warning-light, #fff8e1);
-  border-radius: 4px;
 }
 
 /* 空状态编辑器 */
