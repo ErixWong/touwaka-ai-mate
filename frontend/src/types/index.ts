@@ -179,6 +179,7 @@ export interface Expert {
   reflective_model_id?: string
   prompt_template?: string
   // 上下文压缩配置
+  context_strategy?: 'full' | 'simple' | 'minimal'  // 压缩策略，默认 'full'
   context_threshold?: number    // 压缩阈值，默认 0.70
   // LLM 参数配置
   temperature?: number          // Expressive Mind 温度，默认 0.70

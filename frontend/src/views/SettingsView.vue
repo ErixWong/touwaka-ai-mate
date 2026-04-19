@@ -1691,7 +1691,7 @@ const openUserDialog = async (user?: UserListItem) => {
     userForm.status = user.status
     userForm.avatar = user.avatar || ''
     userForm.newPassword = ''
-    userForm.invitation_quota = (user as any).invitation_quota ?? 1
+    userForm.invitation_quota = user.invitation_quota ?? 1
     // 设置用户当前角色：根据角色标识符(mark)找到对应的角色ID
     if (user.roles && user.roles.length > 0) {
       const roleIds = rolesList.value
@@ -2169,10 +2169,10 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.name = model.name
     modelForm.model_name = model.model_name || ''
     modelForm.provider_id = model.provider_id || ''
-    modelForm.model_type = (model as any).model_type || 'text'
+    modelForm.model_type = model.model_type || 'text'
     modelForm.max_tokens = model.max_tokens
     modelForm.max_output_tokens = model.max_output_tokens
-    modelForm.embedding_dim = (model as any).embedding_dim
+    modelForm.embedding_dim = model.embedding_dim
     modelForm.cost_per_1k_input = model.cost_per_1k_input
     modelForm.cost_per_1k_output = model.cost_per_1k_output
     modelForm.description = model.description || ''
@@ -2260,7 +2260,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = expert.expressive_model_id || ''
     expertForm.reflective_model_id = expert.reflective_model_id || ''
     expertForm.prompt_template = expert.prompt_template || ''
-    expertForm.context_strategy = (expert as any).context_strategy ?? 'full'
+    expertForm.context_strategy = expert.context_strategy ?? 'full'
     expertForm.context_threshold = expert.context_threshold ?? 0.70
     // LLM 参数
     expertForm.temperature = expert.temperature ?? 0.70
@@ -2416,7 +2416,7 @@ const loadExpertSkills = async (expertId: string) => {
   }
 }
 
-const handleSkillToggle = (skill: ExpertSkill) => {
+const handleSkillToggle = () => {
   skillsChanged.value = true
 }
 
