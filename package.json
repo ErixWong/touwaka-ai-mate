@@ -1,6 +1,6 @@
 {
   "name": "touwaka-mate",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Touwaka - AI 专家系统",
   "type": "module",
   "main": "server/index.js",

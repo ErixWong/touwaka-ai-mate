@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-19
+
+### Added
+- **Element Plus 全面重构 (续)** - SettingsView 完全重构 (#625)
+  - 左侧菜单 → `el-menu` 组件
+  - 个人资料子 Tab → `el-tabs`
+  - User/Role/Provider/Model/Expert/Skills 对话框全部使用 `el-dialog` + `el-form`
+  - 清理 380+ 行不再需要的自定义 CSS
+  - 删除确认对话框统一使用 `ElMessageBox.confirm`
+
+### Changed
+- **Pagination 组件** - 改用 `el-pagination`
+- **Toast 组件** - 内部使用 `ElMessage` 替代自定义实现
+
+### Docs
+- **代码审计清单** - 新增 Element Plus 使用规范检查项
+
 ## [0.3.0] - 2026-04-19
 
 ### Added
@@ -189,6 +206,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.3.1 | 2026-04-19 | Element Plus重构完成、SettingsView全面升级 |
 | 0.3.0 | 2026-04-19 | App Market小程序市场、MCP Client、Element Plus重构、pypdf技能 |
 | 0.2.5 | 2026-04-01 | Psyche 上下文管理系统、Windows 平台支持、安全修复 |
 | 0.2.4 | 2026-03-31 | 新增发票解析技能、助理通知重发、知识库卡片信息展示、多项 Bug 修复 |
