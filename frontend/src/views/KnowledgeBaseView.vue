@@ -622,51 +622,6 @@ onUnmounted(() => {
   padding: 12px 16px;
 }
 
-.search-input {
-  width: 100%;
-  max-width: 360px;
-  padding: 10px 16px;
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 8px;
-  font-size: 14px;
-  background: #fff;
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  outline: none;
-}
-
-.btn-search {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
-  white-space: nowrap;
-}
-
-.btn-search:hover:not(:disabled) {
-  box-shadow: 0 4px 16px rgba(33, 150, 243, 0.4);
-  transform: translateY(-1px);
-}
-
-.btn-search:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
 /* Global Search Dialog */
 .dialog-large {
   max-width: 640px;
@@ -847,30 +802,6 @@ onUnmounted(() => {
 
 .kb-card:hover .kb-card-actions {
   opacity: 1;
-}
-
-.kb-action-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.kb-action-btn:hover {
-  background: #fff;
-  transform: scale(1.1);
-}
-
-.kb-action-btn.danger:hover {
-  background: #fee2e2;
 }
 
 .kb-card-name {
@@ -1313,24 +1244,4 @@ onUnmounted(() => {
   color: white;
 }
 
-/* 每页数量选择器 */
-.page-size-select {
-  margin-left: 12px;
-  padding: 3px 6px;
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 5px;
-  font-size: 12px;
-  color: #64748b;
-  background: #fff;
-  cursor: pointer;
-  outline: none;
-}
-
-.page-size-select:hover {
-  border-color: #3b82f6;
-}
-
-.page-size-select:focus {
-  border-color: #3b82f6;
-}
 </style>

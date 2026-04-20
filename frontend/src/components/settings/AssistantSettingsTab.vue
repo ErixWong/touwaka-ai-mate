@@ -3,9 +3,9 @@
     <!-- 面板标题 -->
     <div class="panel-header">
       <h3 class="panel-title">{{ $t('settings.assistantSettings') }}</h3>
-      <button class="btn-icon-add" @click="openCreateDialog" :title="$t('assistant.addAssistant')">
+      <el-button @click="openCreateDialog" :title="$t('assistant.addAssistant')">
         <span class="icon">+</span>
-      </button>
+      </el-button>
     </div>
 
     <!-- 加载状态 -->
@@ -35,21 +35,22 @@
               </span>
             </div>
             <div class="assistant-actions">
-              <button
-                class="btn-edit"
+              <el-button
+                size="small"
                 :class="{ 'btn-inactive': !assistant.is_active }"
                 @click="openEditDialog(assistant)"
                 :title="$t('common.edit')"
               >
                 {{ $t('common.edit') }}
-              </button>
-              <button
-                class="btn-delete-small"
+              </el-button>
+              <el-button
+                size="small"
+                type="danger"
                 @click="confirmDeleteAssistant(assistant)"
                 :title="$t('common.delete')"
               >
                 {{ $t('common.delete') }}
-              </button>
+              </el-button>
             </div>
           </div>
           <p v-if="assistant.description" class="assistant-intro">{{ assistant.description }}</p>

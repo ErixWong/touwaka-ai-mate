@@ -2,9 +2,7 @@
   <div class="handler-management-tab">
     <div class="panel-header">
       <h3 class="panel-title">{{ $t('settings.handlerManagement', '处理脚本管理') }}</h3>
-      <button class="btn-icon-add" @click="openHandlerDialog()" :title="$t('settings.handlerManagement.addHandler', '添加脚本')">
-        <span class="icon">+</span>
-      </button>
+      <el-button size="small" @click="openHandlerDialog()">+ {{ $t('settings.handlerManagement.addHandler', '添加脚本') }}</el-button>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -39,15 +37,9 @@
             </div>
           </div>
           <div class="handler-actions">
-            <button class="btn-edit" @click="openHandlerDialog(handler)" :title="$t('common.edit')">
-              {{ $t('common.edit') }}
-            </button>
-            <button class="btn-view-logs" @click="viewLogs(handler)" :title="$t('settings.handlerManagement.viewLogs', '查看日志')">
-              {{ $t('settings.handlerManagement.logs', '日志') }}
-            </button>
-            <button class="btn-delete-small" @click="confirmDeleteHandler(handler)" :title="$t('common.delete')">
-              {{ $t('common.delete') }}
-            </button>
+            <el-button size="small" @click="openHandlerDialog(handler)">{{ $t('common.edit') }}</el-button>
+            <el-button size="small" @click="viewLogs(handler)">{{ $t('settings.handlerManagement.logs', '日志') }}</el-button>
+            <el-button size="small" type="danger" @click="confirmDeleteHandler(handler)">{{ $t('common.delete') }}</el-button>
           </div>
         </div>
       </div>
@@ -63,55 +55,48 @@
           <div class="form-row">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.handlerManagement.handlerName', '脚本名称') }} *</label>
-              <input v-model="handlerForm.name" type="text" class="form-input" :placeholder="$t('settings.handlerManagement.handlerNamePlaceholder', 'OCR 识别')" />
+              <el-input v-model="handlerForm.name" :placeholder="$t('settings.handlerManagement.handlerNamePlaceholder', 'OCR 识别')" />
             </div>
           </div>
           <div class="form-item">
             <label class="form-label">{{ $t('settings.handlerManagement.description', '描述') }}</label>
-            <textarea v-model="handlerForm.description" class="form-input" rows="2" :placeholder="$t('settings.handlerManagement.descriptionPlaceholder', '脚本功能描述')"></textarea>
+            <el-input v-model="handlerForm.description" type="textarea" :rows="2" :placeholder="$t('settings.handlerManagement.descriptionPlaceholder', '脚本功能描述')" />
           </div>
           <div class="form-row">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.handlerManagement.handlerPath', '处理函数路径') }} *</label>
-              <input v-model="handlerForm.handler" type="text" class="form-input" placeholder="scripts/ocr-service" />
+              <el-input v-model="handlerForm.handler" placeholder="scripts/ocr-service" />
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.handlerManagement.handlerFunction', '函数名') }}</label>
-              <input v-model="handlerForm.handler_function" type="text" class="form-input" placeholder="process" />
+              <el-input v-model="handlerForm.handler_function" placeholder="process" />
             </div>
           </div>
           <div class="form-row">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.handlerManagement.concurrency', '最大并发数') }}</label>
-              <input v-model.number="handlerForm.concurrency" type="number" class="form-input" min="1" max="20" />
+              <el-input-number v-model="handlerForm.concurrency" :min="1" :max="20" />
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.handlerManagement.timeout', '超时（秒）') }}</label>
-              <input v-model.number="handlerForm.timeout" type="number" class="form-input" min="5" max="600" />
+              <el-input-number v-model="handlerForm.timeout" :min="5" :max="600" />
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.handlerManagement.maxRetries', '最大重试次数') }}</label>
-              <input v-model.number="handlerForm.max_retries" type="number" class="form-input" min="0" max="10" />
+              <el-input-number v-model="handlerForm.max_retries" :min="0" :max="10" />
             </div>
           </div>
           <div class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="handlerForm.is_active" type="checkbox" />
-              {{ $t('settings.isActive') }}
-            </label>
+            <el-checkbox v-model="handlerForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
           </div>
         </div>
         <div class="dialog-footer">
           <div class="footer-left">
-            <button v-if="editingHandler" class="btn-delete" @click="confirmDeleteFromDialog">
-              {{ $t('common.delete') }}
-            </button>
+            <el-button v-if="editingHandler" type="danger" @click="confirmDeleteFromDialog">{{ $t('common.delete') }}</el-button>
           </div>
           <div class="footer-right">
-            <button class="btn-cancel" @click="closeHandlerDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isHandlerFormValid" @click="saveHandler">
-              {{ $t('common.save') }}
-            </button>
+            <el-button @click="closeHandlerDialog">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" :disabled="!isHandlerFormValid" @click="saveHandler">{{ $t('common.save') }}</el-button>
           </div>
         </div>
       </div>
@@ -148,14 +133,14 @@
               <span class="col-trigger">{{ log.trigger_status }}</span>
               <span class="col-duration">{{ log.duration ? (log.duration / 1000).toFixed(1) + 's' : '-' }}</span>
               <span class="col-actions">
-                <button class="btn-tiny" @click="viewLogDetail(log)">···</button>
+                <el-button size="small" @click="viewLogDetail(log)">···</el-button>
               </span>
             </div>
           </div>
         </div>
         <div class="dialog-footer">
           <div class="footer-right">
-            <button class="btn-cancel" @click="showLogsDialog = false">{{ $t('common.cancel', '关闭') }}</button>
+            <el-button @click="showLogsDialog = false">{{ $t('common.cancel', '关闭') }}</el-button>
           </div>
         </div>
       </div>
@@ -201,7 +186,7 @@
         </div>
         <div class="dialog-footer">
           <div class="footer-right">
-            <button class="btn-cancel" @click="showLogDetailDialog = false">{{ $t('common.cancel', '关闭') }}</button>
+            <el-button @click="showLogDetailDialog = false">{{ $t('common.cancel', '关闭') }}</el-button>
           </div>
         </div>
       </div>
@@ -215,8 +200,8 @@
           {{ $t('settings.handlerManagement.deleteConfirm', '确定删除脚本') }} "{{ deletingHandler?.name }}"?
         </p>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="showDeleteDialog = false">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteHandler">{{ $t('common.delete') }}</button>
+          <el-button @click="showDeleteDialog = false">{{ $t('common.cancel') }}</el-button>
+          <el-button type="danger" @click="deleteHandler">{{ $t('common.delete') }}</el-button>
         </div>
       </div>
     </div>

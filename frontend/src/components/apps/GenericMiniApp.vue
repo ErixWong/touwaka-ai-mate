@@ -2,15 +2,15 @@
   <div class="generic-mini-app">
     <div class="app-header">
       <div class="header-left">
-        <button class="btn-back" @click="goBack">← {{ $t('apps.back') }}</button>
+        <el-button @click="goBack">← {{ $t('apps.back') }}</el-button>
         <span class="app-icon">{{ app.icon }}</span>
         <h1 class="app-name">{{ app.name }}</h1>
       </div>
       <div class="header-right">
-        <button v-if="canCreate" class="btn-primary" @click="openCreateDialog">
+        <el-button v-if="canCreate" type="primary" @click="openCreateDialog">
           <span class="icon">+</span>
           {{ $t('common.create') }}
-        </button>
+        </el-button>
       </div>
     </div>
 
@@ -18,15 +18,13 @@
       <div class="filter-row">
         <div class="filter-item">
           <label>{{ $t('apps.status') }}</label>
-          <select v-model="filters.status" @change="handleFilterChange">
-            <option value="">{{ $t('apps.all') }}</option>
-            <option v-for="state in app.states || []" :key="state.name" :value="state.name">
-              {{ state.label || state.name }}
-            </option>
-          </select>
+          <el-select v-model="filters.status" @change="handleFilterChange" clearable>
+            <el-option value="" :label="$t('apps.all')" />
+            <el-option v-for="state in app.states || []" :key="state.name" :value="state.name" :label="state.label || state.name" />
+          </el-select>
         </div>
         <div class="filter-actions">
-          <button class="btn-reset" @click="resetFilters">{{ $t('apps.reset') }}</button>
+          <el-button @click="resetFilters">{{ $t('apps.reset') }}</el-button>
         </div>
       </div>
     </div>
@@ -37,9 +35,7 @@
       <div v-else-if="records.length === 0" class="empty-state">
         <div class="empty-icon">📄</div>
         <p>{{ $t('apps.emptyRecords') }}</p>
-        <button v-if="canCreate" class="btn-primary" @click="openCreateDialog">
-          {{ $t('apps.createFirst') }}
-        </button>
+        <el-button v-if="canCreate" type="primary" @click="openCreateDialog">{{ $t('apps.createFirst') }}</el-button>
       </div>
 
       <table v-else class="record-table">
@@ -59,9 +55,9 @@
               <StateBadge :status="record.data?._status" :states="app.states || []" />
             </td>
             <td class="actions-cell">
-              <button class="btn-action" @click="viewRecord(record)">{{ $t('apps.view') }}</button>
-              <button v-if="canEdit(record)" class="btn-action" @click="editRecord(record)">{{ $t('apps.edit') }}</button>
-              <button v-if="canDelete(record)" class="btn-action btn-danger" @click="handleDelete(record)">{{ $t('apps.delete') }}</button>
+              <el-button size="small" @click="viewRecord(record)">{{ $t('apps.view') }}</el-button>
+              <el-button v-if="canEdit(record)" size="small" @click="editRecord(record)">{{ $t('apps.edit') }}</el-button>
+              <el-button v-if="canDelete(record)" size="small" type="danger" @click="handleDelete(record)">{{ $t('apps.delete') }}</el-button>
             </td>
           </tr>
         </tbody>
@@ -69,19 +65,11 @@
     </div>
 
     <div v-if="pagination.pages > 1" class="pagination">
-      <button class="page-btn" :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">
-        ← {{ $t('apps.prevPage') }}
-      </button>
+      <el-button size="small" :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">← {{ $t('apps.prevPage') }}</el-button>
       <div class="page-numbers">
-        <button v-for="page in visiblePages" :key="page" class="page-num" :class="{ active: page === pagination.page }"
-          @click="loadPage(page)"
-        >
-          {{ page }}
-        </button>
+        <el-button size="small" :type="page === pagination.page ? 'primary' : ''" v-for="page in visiblePages" :key="page" @click="loadPage(page)">{{ page }}</el-button>
       </div>
-      <button class="page-btn" :disabled="pagination.page >= pagination.pages" @click="loadPage(pagination.page + 1)">
-        {{ $t('apps.nextPage') }} →
-      </button>
+      <el-button size="small" :disabled="pagination.page >= pagination.pages" @click="loadPage(pagination.page + 1)">{{ $t('apps.nextPage') }} →</el-button>
       <span class="page-info">{{ $t('apps.totalRecords', { count: pagination.total }) }}</span>
     </div>
 
@@ -89,7 +77,7 @@
       <div class="dialog">
         <div class="dialog-header">
           <h3>{{ dialogTitle }}</h3>
-          <button class="btn-close" @click="closeDialog">×</button>
+          <el-button @click="closeDialog">×</el-button>
         </div>
         <div class="dialog-body">
           <div class="form-grid">
@@ -103,10 +91,8 @@
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-primary" @click="saveRecord" :disabled="isSaving">
-            {{ isSaving ? $t('common.saving') : $t('common.save') }}
-          </button>
+          <el-button @click="closeDialog">{{ $t('common.cancel') }}</el-button>
+          <el-button type="primary" @click="saveRecord" :disabled="isSaving">{{ isSaving ? $t('common.saving') : $t('common.save') }}</el-button>
         </div>
       </div>
     </div>
@@ -115,7 +101,7 @@
       <div class="dialog dialog-large">
         <div class="dialog-header">
           <h3>{{ $t('apps.recordDetail') }}</h3>
-          <button class="btn-close" @click="closeDetail">×</button>
+          <el-button @click="closeDetail">×</el-button>
         </div>
         <div class="dialog-body">
           <div class="detail-grid">
@@ -128,8 +114,8 @@
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDetail">{{ $t('common.close') }}</button>
-          <button v-if="canEdit(selectedRecord)" class="btn-primary" @click="editFromDetail">{{ $t('apps.edit') }}</button>
+          <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
+          <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
         </div>
       </div>
     </div>
@@ -138,14 +124,14 @@
       <div class="dialog dialog-small">
         <div class="dialog-header">
           <h3>{{ $t('apps.confirmDelete') }}</h3>
-          <button class="btn-close" @click="cancelConfirm">×</button>
+          <el-button @click="cancelConfirm">×</el-button>
         </div>
         <div class="dialog-body">
           <p>{{ $t('apps.confirmDeleteMessage') }}</p>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="cancelConfirm">{{ $t('common.cancel') }}</button>
-          <button class="btn-danger" @click="confirmDelete">{{ $t('common.delete') }}</button>
+          <el-button @click="cancelConfirm">{{ $t('common.cancel') }}</el-button>
+          <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
         </div>
       </div>
     </div>
@@ -589,7 +575,6 @@ watch(() => props.app.id, () => {
   margin-left: auto;
 }
 
-.btn-filter,
 .btn-reset {
   padding: 6px 16px;
   border: 1px solid var(--color-border, #ddd);
@@ -599,13 +584,6 @@ watch(() => props.app.id, () => {
   background: var(--color-bg-primary, #fff);
 }
 
-.btn-filter {
-  background: var(--color-primary, #4a90d9);
-  color: #fff;
-  border-color: var(--color-primary, #4a90d9);
-}
-
-.btn-filter:hover,
 .btn-reset:hover {
   opacity: 0.9;
 }

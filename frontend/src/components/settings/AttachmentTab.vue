@@ -5,68 +5,62 @@
       <div class="filter-row">
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.sourceTag') }}</label>
-          <input
+          <el-input
             v-model="filters.source_tag"
-            type="text"
-            class="filter-input"
             :placeholder="$t('attachment.sourceTagPlaceholder')"
             @input="handleFilterChange"
           />
         </div>
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.sourceId') }}</label>
-          <input
+          <el-input
             v-model="filters.source_id"
-            type="text"
-            class="filter-input"
             :placeholder="$t('attachment.sourceIdPlaceholder')"
             @input="handleFilterChange"
           />
         </div>
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.mimeType') }}</label>
-          <select v-model="filters.mime_type" class="filter-select" @change="handleFilterChange">
-            <option value="">{{ $t('attachment.allTypes') }}</option>
-            <option value="image">{{ $t('attachment.typeImage') }}</option>
-            <option value="document">{{ $t('attachment.typeDocument') }}</option>
-            <option value="video">{{ $t('attachment.typeVideo') }}</option>
-          </select>
+          <el-select v-model="filters.mime_type" @change="handleFilterChange">
+            <el-option :value="''" :label="$t('attachment.allTypes')" />
+            <el-option value="image" :label="$t('attachment.typeImage')" />
+            <el-option value="document" :label="$t('attachment.typeDocument')" />
+            <el-option value="video" :label="$t('attachment.typeVideo')" />
+          </el-select>
         </div>
         <div class="filter-item">
           <label class="filter-label">{{ $t('attachment.dateRange') }}</label>
           <div class="date-range">
-            <input
+            <el-date-picker
               v-model="filters.start_date"
               type="date"
-              class="filter-date"
               @change="handleFilterChange"
             />
             <span class="date-separator">—</span>
-            <input
+            <el-date-picker
               v-model="filters.end_date"
               type="date"
-              class="filter-date"
               @change="handleFilterChange"
             />
           </div>
         </div>
       </div>
       <div class="filter-actions">
-        <button class="btn-secondary" @click.stop="resetFilters">
+        <el-button @click.stop="resetFilters">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
             <polyline points="23 4 23 10 17 10"/>
             <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
           </svg>
           {{ $t('attachment.resetFilters') }}
-        </button>
-        <button class="btn-primary" @click.stop="openUploadModal">
+        </el-button>
+        <el-button type="primary" @click.stop="openUploadModal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
           {{ $t('attachment.upload') }}
-        </button>
+        </el-button>
       </div>
     </div>
 
@@ -88,14 +82,14 @@
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
         </svg>
         <span class="empty-text">{{ $t('attachment.noAttachments') }}</span>
-        <button class="btn-primary" @click="openUploadModal">
+        <el-button type="primary" @click="openUploadModal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
           {{ $t('attachment.upload') }}
-        </button>
+        </el-button>
       </div>
 
       <div v-else class="attachments-table">
@@ -150,8 +144,8 @@
             <span class="time-text">{{ formatDate(attachment.created_at) }}</span>
           </div>
           <div class="col-actions">
-            <button
-              class="btn-icon-action preview"
+            <el-button
+              size="small"
               :title="$t('attachment.preview')"
               @click="previewAttachment(attachment)"
             >
@@ -159,9 +153,10 @@
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                 <circle cx="12" cy="12" r="3"/>
               </svg>
-            </button>
-            <button
-              class="btn-icon-action delete"
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
               :title="$t('common.delete')"
               @click="handleDelete(attachment)"
             >
@@ -169,7 +164,7 @@
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
               </svg>
-            </button>
+            </el-button>
           </div>
         </div>
       </div>
@@ -177,23 +172,23 @@
 
     <!-- 分页 -->
     <div v-if="pagination.pages > 1" class="pagination-bar">
-      <button
-        class="btn-page"
+      <el-button
+        size="small"
         :disabled="pagination.page <= 1"
         @click="changePage(pagination.page - 1)"
       >
         {{ $t('pagination.prev') }}
-      </button>
+      </el-button>
       <span class="page-info">
         {{ pagination.page }} / {{ pagination.pages }}
       </span>
-      <button
-        class="btn-page"
+      <el-button
+        size="small"
         :disabled="pagination.page >= pagination.pages"
         @click="changePage(pagination.page + 1)"
       >
         {{ $t('pagination.next') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- 预览弹窗 -->
@@ -201,12 +196,12 @@
       <div class="modal-content preview-modal">
         <div class="modal-header">
           <h3>{{ previewingAttachment?.filename }}</h3>
-          <button class="btn-close" @click="closePreviewModal">
+          <el-button @click="closePreviewModal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
-          </button>
+          </el-button>
         </div>
         <div class="modal-body preview-body">
           <img
@@ -239,27 +234,27 @@
       <div class="modal-content delete-modal">
         <div class="modal-header">
           <h3>{{ $t('attachment.deleteConfirmTitle') }}</h3>
-          <button class="btn-close" @click="closeDeleteModal">
+          <el-button @click="closeDeleteModal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
-          </button>
+          </el-button>
         </div>
         <div class="modal-body">
           <p>{{ $t('attachment.deleteConfirmMessage', { filename: deletingAttachment?.filename }) }}</p>
         </div>
         <div class="modal-footer">
-          <button class="btn-confirm delete" @click="confirmDelete">
+          <el-button type="danger" @click="confirmDelete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
             </svg>
             {{ $t('common.delete') }}
-          </button>
-          <button class="btn-cancel" @click="closeDeleteModal">
+          </el-button>
+          <el-button @click="closeDeleteModal">
             {{ $t('common.cancel') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -269,12 +264,12 @@
       <div class="modal-content upload-modal" @click.stop>
         <div class="modal-header">
           <h3>{{ $t('attachment.uploadTitle') }}</h3>
-          <button class="btn-close" @click.stop="closeUploadModal">
+          <el-button @click.stop="closeUploadModal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
-          </button>
+          </el-button>
         </div>
         <div class="modal-body">
           <div class="upload-area">
@@ -301,21 +296,21 @@
               </svg>
               <span class="file-name">{{ selectedFile.name }}</span>
               <span class="file-size">{{ formatSize(selectedFile.size) }}</span>
-              <button class="btn-remove-file" @click="clearSelectedFile">
+              <el-button size="small" type="danger" @click="clearSelectedFile">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
-              </button>
+              </el-button>
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-cancel" @click.stop="closeUploadModal">
+          <el-button @click.stop="closeUploadModal">
             {{ $t('common.cancel') }}
-          </button>
-          <button
-            class="btn-confirm upload"
+          </el-button>
+          <el-button
+            type="primary"
             :disabled="!selectedFile || uploading"
             @click="confirmUpload"
           >
@@ -329,7 +324,7 @@
               <path d="M12 6v6l4 2"/>
             </svg>
             {{ uploading ? $t('attachment.uploading') : $t('attachment.upload') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>

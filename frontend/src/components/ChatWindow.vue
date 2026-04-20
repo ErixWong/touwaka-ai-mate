@@ -1610,19 +1610,6 @@ defineExpose({
   height: 18px;
 }
 
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* 滚动到底部按钮 */
 .scroll-to-bottom-btn {
   position: absolute;
@@ -1815,11 +1802,6 @@ defineExpose({
   margin-bottom: 8px;
 }
 
-/* Tool context 样式 */
-.tool-section.context-section {
-  margin-bottom: 12px;
-}
-
 .tool-context-text {
   background: var(--code-bg, #f0f0f0);
   border-radius: 8px;
@@ -1847,16 +1829,6 @@ defineExpose({
   max-height: 200px;
   overflow-y: auto;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-}
-
-/* 行号样式 */
-.tool-section-content .line-number {
-  color: #6e7681;
-  user-select: none;
-  text-align: right;
-  padding-right: 12px;
-  margin-right: 8px;
-  border-right: 1px solid #3e3e3e;
 }
 
 /* ==================== 嵌入式工具调用卡片样式 ==================== */

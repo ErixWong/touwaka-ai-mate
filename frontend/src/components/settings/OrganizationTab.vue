@@ -1,23 +1,16 @@
 <template>
   <div class="organization-section">
     <div class="split-panel">
-      <!-- 左侧：部门树 -->
       <div class="panel department-panel">
         <div class="panel-header">
           <h3 class="panel-title">{{ $t('settings.departmentManagement') }}</h3>
-          <button class="btn-icon-add" @click="openDepartmentDialog()" :title="$t('settings.addDepartment')">
-            <span class="icon">+</span>
-          </button>
+          <el-button size="small" @click="openDepartmentDialog()">
+            + {{ $t('settings.addDepartment') }}
+          </el-button>
         </div>
 
-        <div v-if="loading" class="loading-state">
-          {{ $t('common.loading') }}
-        </div>
-
-        <div v-else-if="departmentTree.length === 0" class="empty-state">
-          {{ $t('settings.noDepartments') }}
-        </div>
-
+        <div v-if="loading" class="loading-state">{{ $t('common.loading') }}</div>
+        <div v-else-if="departmentTree.length === 0" class="empty-state">{{ $t('settings.noDepartments') }}</div>
         <div v-else class="department-tree">
           <DepartmentTreeNode
             v-for="dept in departmentTree"
@@ -32,170 +25,83 @@
         </div>
       </div>
 
-      <!-- 右侧：职位列表 -->
       <div class="panel position-panel">
         <div class="panel-header">
           <h3 class="panel-title">
-            {{ selectedDepartment 
-              ? $t('settings.positionsOfDepartment', { name: selectedDepartment.name }) 
-              : $t('settings.positionManagement') 
-            }}
+            {{ selectedDepartment ? $t('settings.positionsOfDepartment', { name: selectedDepartment.name }) : $t('settings.positionManagement') }}
           </h3>
-          <button
-            v-if="selectedDepartment"
-            class="btn-icon-add"
-            @click="openPositionDialog()"
-            :title="$t('settings.addPosition')"
-          >
-            <span class="icon">+</span>
-          </button>
+          <el-button v-if="selectedDepartment" size="small" @click="openPositionDialog()">
+            + {{ $t('settings.addPosition') }}
+          </el-button>
         </div>
 
-        <div v-if="!selectedDepartment" class="empty-state select-department-hint">
-          {{ $t('settings.selectDepartmentHint') }}
-        </div>
-
-        <div v-else-if="positionLoading" class="loading-state">
-          {{ $t('common.loading') }}
-        </div>
-
-        <div v-else-if="positions.length === 0" class="empty-state">
-          {{ $t('settings.noPositions') }}
-        </div>
-
+        <div v-if="!selectedDepartment" class="empty-state select-department-hint">{{ $t('settings.selectDepartmentHint') }}</div>
+        <div v-else-if="positionLoading" class="loading-state">{{ $t('common.loading') }}</div>
+        <div v-else-if="positions.length === 0" class="empty-state">{{ $t('settings.noPositions') }}</div>
         <div v-else class="position-list">
-          <div
-            v-for="position in positions"
-            :key="position.id"
-            class="position-item"
-          >
+          <div v-for="position in positions" :key="position.id" class="position-item">
             <div class="position-info">
               <span class="position-name">{{ position.name }}</span>
-              <span v-if="position.is_manager" class="badge manager">
-                {{ $t('settings.manager') }}
-              </span>
+              <el-tag v-if="position.is_manager" type="warning" size="small">{{ $t('settings.manager') }}</el-tag>
             </div>
             <div class="position-user">
-              <UserPicker
-                :model-value="getPositionUserId(position.id)"
-                :placeholder="$t('settings.selectUser')"
-                @change="(user) => handlePositionUserChange(position, user)"
-              />
+              <UserPicker :model-value="getPositionUserId(position.id)" :placeholder="$t('settings.selectUser')" @change="(user) => handlePositionUserChange(position, user)" />
             </div>
             <div class="position-actions">
-              <button class="btn-edit" @click="openPositionDialog(position)">
-                {{ $t('common.edit') }}
-              </button>
-              <button class="btn-delete" @click="deletePosition(position)">
-                {{ $t('common.delete') }}
-              </button>
+              <el-button size="small" @click="openPositionDialog(position)">{{ $t('common.edit') }}</el-button>
+              <el-button size="small" type="danger" @click="deletePosition(position)">{{ $t('common.delete') }}</el-button>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 部门对话框 -->
-    <div v-if="showDepartmentDialog" class="dialog-overlay" @click.self="closeDepartmentDialog">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingDepartment ? $t('settings.editDepartment') : $t('settings.addDepartment') }}
-        </h3>
-        <div class="dialog-content">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.departmentName') }}</label>
-            <input
-              v-model="departmentForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.departmentNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.departmentDescription') }}</label>
-            <textarea
-              v-model="departmentForm.description"
-              class="form-textarea"
-              :placeholder="$t('settings.departmentDescriptionPlaceholder')"
-              rows="3"
-            ></textarea>
-          </div>
-          <div v-if="editingDepartment" class="form-item">
-            <label class="form-label">{{ $t('settings.parentDepartment') }}</label>
-            <select v-model="departmentForm.parent_id" class="form-select">
-              <option value="">{{ $t('settings.noParent') }}</option>
-              <option
-                v-for="dept in availableParentDepartments"
-                :key="dept.id"
-                :value="dept.id"
-                :disabled="dept.id === editingDepartment?.id"
-              >
-                {{ '  '.repeat(dept.level - 1) }}{{ dept.name }}
-              </option>
-            </select>
-          </div>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn-cancel" @click="closeDepartmentDialog">
-            {{ $t('common.cancel') }}
-          </button>
-          <button class="btn-save" @click="saveDepartment" :disabled="!departmentForm.name">
-            {{ $t('common.save') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog v-model="showDepartmentDialog" :title="editingDepartment ? $t('settings.editDepartment') : $t('settings.addDepartment')" width="400px">
+      <el-form label-width="100px">
+        <el-form-item :label="$t('settings.departmentName')">
+          <el-input v-model="departmentForm.name" :placeholder="$t('settings.departmentNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('settings.departmentDescription')">
+          <el-input v-model="departmentForm.description" type="textarea" :rows="3" :placeholder="$t('settings.departmentDescriptionPlaceholder')" />
+        </el-form-item>
+        <el-form-item v-if="editingDepartment" :label="$t('settings.parentDepartment')">
+          <el-select v-model="departmentForm.parent_id" clearable>
+            <el-option v-for="dept in availableParentDepartments" :key="dept.id" :value="dept.id" :label="dept.name" :disabled="dept.id === editingDepartment?.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeDepartmentDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!departmentForm.name" @click="saveDepartment">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
 
-    <!-- 职位对话框 -->
-    <div v-if="showPositionDialog" class="dialog-overlay" @click.self="closePositionDialog">
-      <div class="dialog">
-        <h3 class="dialog-title">
-          {{ editingPosition ? $t('settings.editPosition') : $t('settings.addPosition') }}
-        </h3>
-        <div class="dialog-content">
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.positionName') }}</label>
-            <input
-              v-model="positionForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.positionNamePlaceholder')"
-            />
-          </div>
-          <div class="form-item">
-            <label class="form-checkbox">
-              <input type="checkbox" v-model="positionForm.is_manager" />
-              <span>{{ $t('settings.isManager') }}</span>
-            </label>
-          </div>
-          <div class="form-item">
-            <label class="form-label">{{ $t('settings.positionDescription') }}</label>
-            <textarea
-              v-model="positionForm.description"
-              class="form-textarea"
-              :placeholder="$t('settings.positionDescriptionPlaceholder')"
-              rows="3"
-            ></textarea>
-          </div>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn-cancel" @click="closePositionDialog">
-            {{ $t('common.cancel') }}
-          </button>
-          <button class="btn-save" @click="savePosition" :disabled="!positionForm.name">
-            {{ $t('common.save') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <el-dialog v-model="showPositionDialog" :title="editingPosition ? $t('settings.editPosition') : $t('settings.addPosition')" width="400px">
+      <el-form label-width="100px">
+        <el-form-item :label="$t('settings.positionName')">
+          <el-input v-model="positionForm.name" :placeholder="$t('settings.positionNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="positionForm.is_manager">{{ $t('settings.isManager') }}</el-checkbox>
+        </el-form-item>
+        <el-form-item :label="$t('settings.positionDescription')">
+          <el-input v-model="positionForm.description" type="textarea" :rows="3" :placeholder="$t('settings.positionDescriptionPlaceholder')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closePositionDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!positionForm.name" @click="savePosition">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessageBox } from 'element-plus'
 import { departmentApi, positionApi, organizationApi } from '@/api/services'
-import type { Department, Position, CreateDepartmentRequest, CreatePositionRequest, UserListItem } from '@/types'
+import type { Department, Position, UserListItem } from '@/types'
 import DepartmentTreeNode from './DepartmentTreeNode.vue'
 import UserPicker from '@/components/common/UserPicker.vue'
 import { useToastStore } from '@/stores/toast'
@@ -203,52 +109,36 @@ import { useToastStore } from '@/stores/toast'
 const { t } = useI18n()
 const toast = useToastStore()
 
-// 状态
 const loading = ref(false)
 const positionLoading = ref(false)
 const departmentTree = ref<Department[]>([])
 const selectedDepartment = ref<Department | null>(null)
 const positions = ref<Position[]>([])
-const positionUserMap = ref<Map<string, string>>(new Map()) // 职位ID -> 用户ID映射
+const positionUserMap = ref<Map<string, string>>(new Map())
 
-// 部门对话框
 const showDepartmentDialog = ref(false)
 const editingDepartment = ref<Department | null>(null)
-const departmentForm = reactive({
-  name: '',
-  description: '',
-  parent_id: '',
-})
+const departmentForm = reactive({ name: '', description: '', parent_id: '' })
 
-// 职位对话框
 const showPositionDialog = ref(false)
 const editingPosition = ref<Position | null>(null)
-const positionForm = reactive({
-  name: '',
-  is_manager: false,
-  description: '',
-})
+const positionForm = reactive({ name: '', is_manager: false, description: '' })
 
-// 可选的父部门列表（扁平化）
 const availableParentDepartments = computed(() => {
   const flatten = (items: Department[], result: Department[] = []): Department[] => {
     for (const item of items) {
       result.push(item)
-      if (item.children?.length) {
-        flatten(item.children, result)
-      }
+      if (item.children?.length) flatten(item.children, result)
     }
     return result
   }
   return flatten(departmentTree.value)
 })
 
-// 加载部门树
 const loadDepartmentTree = async () => {
   loading.value = true
   try {
-    const data = await departmentApi.getDepartmentTree()
-    departmentTree.value = data
+    departmentTree.value = await departmentApi.getDepartmentTree()
   } catch (error) {
     console.error('Failed to load department tree:', error)
     toast.error(t('error.loadFailed'))
@@ -257,19 +147,15 @@ const loadDepartmentTree = async () => {
   }
 }
 
-// 选择部门
 const selectDepartment = async (dept: Department) => {
   selectedDepartment.value = dept
   await loadPositions(dept.id)
 }
 
-// 加载职位列表
 const loadPositions = async (departmentId: string) => {
   positionLoading.value = true
   try {
-    const data = await positionApi.getDepartmentPositions(departmentId)
-    positions.value = data
-    // 加载职位用户映射
+    positions.value = await positionApi.getDepartmentPositions(departmentId)
     await loadPositionUsers()
   } catch (error) {
     console.error('Failed to load positions:', error)
@@ -279,7 +165,6 @@ const loadPositions = async (departmentId: string) => {
   }
 }
 
-// 打开部门对话框
 const openDepartmentDialog = (dept?: Department, parentId?: string) => {
   editingDepartment.value = dept || null
   departmentForm.name = dept?.name || ''
@@ -288,7 +173,6 @@ const openDepartmentDialog = (dept?: Department, parentId?: string) => {
   showDepartmentDialog.value = true
 }
 
-// 关闭部门对话框
 const closeDepartmentDialog = () => {
   showDepartmentDialog.value = false
   editingDepartment.value = null
@@ -297,22 +181,13 @@ const closeDepartmentDialog = () => {
   departmentForm.parent_id = ''
 }
 
-// 保存部门
 const saveDepartment = async () => {
   if (!departmentForm.name) return
-
   try {
     if (editingDepartment.value) {
-      await departmentApi.updateDepartment(editingDepartment.value.id, {
-        name: departmentForm.name,
-        description: departmentForm.description,
-      })
+      await departmentApi.updateDepartment(editingDepartment.value.id, { name: departmentForm.name, description: departmentForm.description })
     } else {
-      await departmentApi.createDepartment({
-        name: departmentForm.name,
-        parent_id: departmentForm.parent_id || undefined,
-        description: departmentForm.description || undefined,
-      })
+      await departmentApi.createDepartment({ name: departmentForm.name, parent_id: departmentForm.parent_id || undefined, description: departmentForm.description || undefined })
     }
     await loadDepartmentTree()
     closeDepartmentDialog()
@@ -322,11 +197,9 @@ const saveDepartment = async () => {
   }
 }
 
-// 删除部门
 const deleteDepartment = async (dept: Department) => {
-  if (!confirm(t('settings.confirmDeleteDepartment'))) return
-
   try {
+    await ElMessageBox.confirm(t('settings.confirmDeleteDepartment'), t('common.confirm'), { type: 'warning' })
     await departmentApi.deleteDepartment(dept.id)
     if (selectedDepartment.value?.id === dept.id) {
       selectedDepartment.value = null
@@ -334,12 +207,13 @@ const deleteDepartment = async (dept: Department) => {
     }
     await loadDepartmentTree()
   } catch (error: any) {
-    console.error('Failed to delete department:', error)
-    toast.error(error.response?.data?.message || t('common.deleteFailed'))
+    if (error !== 'cancel') {
+      console.error('Failed to delete department:', error)
+      toast.error(error.response?.data?.message || t('common.deleteFailed'))
+    }
   }
 }
 
-// 打开职位对话框
 const openPositionDialog = (position?: Position) => {
   editingPosition.value = position || null
   positionForm.name = position?.name || ''
@@ -348,7 +222,6 @@ const openPositionDialog = (position?: Position) => {
   showPositionDialog.value = true
 }
 
-// 关闭职位对话框
 const closePositionDialog = () => {
   showPositionDialog.value = false
   editingPosition.value = null
@@ -357,24 +230,13 @@ const closePositionDialog = () => {
   positionForm.description = ''
 }
 
-// 保存职位
 const savePosition = async () => {
   if (!positionForm.name || !selectedDepartment.value) return
-
   try {
     if (editingPosition.value) {
-      await positionApi.updatePosition(editingPosition.value.id, {
-        name: positionForm.name,
-        is_manager: positionForm.is_manager,
-        description: positionForm.description,
-      })
+      await positionApi.updatePosition(editingPosition.value.id, { name: positionForm.name, is_manager: positionForm.is_manager, description: positionForm.description })
     } else {
-      await positionApi.createPosition({
-        name: positionForm.name,
-        department_id: selectedDepartment.value.id,
-        is_manager: positionForm.is_manager,
-        description: positionForm.description || undefined,
-      })
+      await positionApi.createPosition({ name: positionForm.name, department_id: selectedDepartment.value.id, is_manager: positionForm.is_manager, description: positionForm.description || undefined })
     }
     await loadPositions(selectedDepartment.value.id)
     closePositionDialog()
@@ -384,347 +246,66 @@ const savePosition = async () => {
   }
 }
 
-// 删除职位
 const deletePosition = async (position: Position) => {
-  if (!confirm(t('settings.confirmDeletePosition'))) return
-
   try {
+    await ElMessageBox.confirm(t('settings.confirmDeletePosition'), t('common.confirm'), { type: 'warning' })
     await positionApi.deletePosition(position.id)
     await loadPositions(selectedDepartment.value!.id)
   } catch (error: any) {
-    console.error('Failed to delete position:', error)
-    toast.error(error.response?.data?.message || t('common.deleteFailed'))
+    if (error !== 'cancel') {
+      console.error('Failed to delete position:', error)
+      toast.error(error.response?.data?.message || t('common.deleteFailed'))
+    }
   }
 }
 
-// 获取职位的用户ID
-const getPositionUserId = (positionId: string): string | null => {
-  return positionUserMap.value.get(positionId) || null
-}
+const getPositionUserId = (positionId: string): string | null => positionUserMap.value.get(positionId) || null
 
-// 处理职位用户变更
 const handlePositionUserChange = async (position: Position, user: UserListItem | null) => {
   try {
-    // 更新职位用户映射
     if (user) {
       positionUserMap.value.set(position.id, user.id)
+      await organizationApi.updateUserOrganization(user.id, { department_id: selectedDepartment.value?.id || null, position_id: position.id })
     } else {
       positionUserMap.value.delete(position.id)
     }
-    
-    // 调用后端 API 更新用户组织信息
-    // 注意：这里使用 organizationApi.updateUserOrganization
-    // 将用户分配到当前选中的部门和职位
-    if (user) {
-      await organizationApi.updateUserOrganization(user.id, {
-        department_id: selectedDepartment.value?.id || null,
-        position_id: position.id,
-      })
-    }
-    
     toast.success(t('settings.assignSuccess'))
   } catch (error: any) {
     console.error('Failed to assign user to position:', error)
     toast.error(error.response?.data?.message || t('common.saveFailed'))
-    // 恢复之前的状态
     await loadPositionUsers()
   }
 }
 
-// 加载职位用户映射
 const loadPositionUsers = async () => {
   try {
-    // 获取每个职位的成员
     for (const position of positions.value) {
       const members = await positionApi.getPositionMembers(position.id)
-      if (members && members.length > 0) {
-        // 取第一个成员作为职位负责人（1:1关系）
-        positionUserMap.value.set(position.id, members[0]!.id)
-      } else {
-        positionUserMap.value.delete(position.id)
-      }
+      if (members?.length > 0) positionUserMap.value.set(position.id, members[0]!.id)
+      else positionUserMap.value.delete(position.id)
     }
   } catch (error) {
     console.error('Failed to load position users:', error)
-    toast.error(t('error.loadFailed'))
   }
 }
 
-// 初始化
-onMounted(() => {
-  loadDepartmentTree()
-})
+onMounted(() => loadDepartmentTree())
 </script>
 
 <style scoped>
-.organization-section {
-  height: 100%;
-}
-
-.split-panel {
-  display: flex;
-  gap: 20px;
-  height: calc(100vh - 250px);
-  min-height: 400px;
-}
-
-.panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.btn-icon-add {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-icon-add:hover {
-  background: var(--primary-color-dark);
-}
-
-.loading-state,
-.empty-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-}
-
-.select-department-hint {
-  font-style: italic;
-}
-
-.department-tree {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.position-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.position-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.position-item:last-child {
-  border-bottom: none;
-}
-
-.position-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.position-name {
-  font-weight: 500;
-}
-
-.badge {
-  padding: 2px 8px;
-  font-size: 12px;
-  border-radius: 4px;
-}
-
-.badge.manager {
-  background: var(--warning-color);
-  color: white;
-}
-
-.position-user {
-  flex: 0 0 auto;
-  min-width: 140px;
-}
-
-.position-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-edit,
-.btn-delete {
-  padding: 4px 12px;
-  font-size: 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-edit {
-  background: var(--primary-color);
-  color: white;
-}
-
-.btn-edit:hover {
-  background: var(--primary-color-dark);
-}
-
-.btn-delete {
-  background: var(--danger-color);
-  color: white;
-}
-
-.btn-delete:hover {
-  background: var(--danger-color-dark);
-}
-
-/* 对话框样式 */
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background: var(--bg-primary);
-  border-radius: 8px;
-  width: 400px;
-  max-width: 90vw;
-}
-
-.dialog-title {
-  margin: 0;
-  padding: 16px;
-  font-size: 16px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.dialog-content {
-  padding: 16px;
-}
-
-.form-item {
-  margin-bottom: 16px;
-}
-
-.form-item:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.form-input,
-.form-textarea,
-.form-select {
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-}
-
-.form-input:focus,
-.form-textarea:focus,
-.form-select:focus {
-  outline: none;
-  border-color: var(--primary-color);
-}
-
-.form-textarea {
-  resize: vertical;
-}
-
-.form-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.form-checkbox input {
-  width: 16px;
-  height: 16px;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
-.btn-cancel,
-.btn-save {
-  padding: 8px 16px;
-  font-size: 14px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-cancel {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.btn-cancel:hover {
-  background: var(--bg-tertiary);
-}
-
-.btn-save {
-  background: var(--primary-color);
-  color: white;
-}
-
-.btn-save:hover {
-  background: var(--primary-color-dark);
-}
-
-.btn-save:disabled {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  cursor: not-allowed;
-}
+.organization-section { height: 100%; }
+.split-panel { display: flex; gap: 20px; height: calc(100vh - 250px); min-height: 400px; }
+.panel { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
+.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.panel-title { margin: 0; font-size: 14px; font-weight: 600; }
+.loading-state, .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+.select-department-hint { font-style: italic; }
+.department-tree { flex: 1; overflow-y: auto; padding: 8px; }
+.position-list { flex: 1; overflow-y: auto; padding: 8px; }
+.position-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); }
+.position-item:last-child { border-bottom: none; }
+.position-info { display: flex; align-items: center; gap: 8px; }
+.position-name { font-weight: 500; }
+.position-user { flex: 0 0 auto; min-width: 140px; }
+.position-actions { display: flex; gap: 8px; }
 </style>

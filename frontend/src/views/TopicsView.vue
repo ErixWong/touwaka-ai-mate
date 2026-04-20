@@ -159,21 +159,8 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.search-input {
+.topics-filter .el-input {
   flex: 1;
-  padding: 10px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-}
-
-.filter-select {
-  padding: 10px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  background: white;
-  min-width: 120px;
 }
 
 .topics-list {
@@ -236,30 +223,6 @@ onMounted(() => {
 .topic-actions {
   display: flex;
   gap: 8px;
-}
-
-.btn-action {
-  padding: 6px 12px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.btn-action.secondary {
-  background: var(--secondary-bg, #f5f5f5);
-  color: var(--text-secondary, #666);
-}
-
-.btn-action.danger {
-  background: #ef5350;
-  color: white;
-}
-
-.btn-action:hover {
-  opacity: 0.9;
 }
 
 .empty-state {

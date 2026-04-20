@@ -4,9 +4,9 @@
     <div class="panel server-panel">
       <div class="panel-header">
         <h3 class="panel-title">{{ $t('settings.mcp.serverManagement') }}</h3>
-        <button class="btn-icon-add" @click="openServerDialog()" :title="$t('settings.mcp.addServer')">
-          <span class="icon">+</span>
-        </button>
+        <el-button size="small" @click="openServerDialog()">
+          + {{ $t('settings.mcp.addServer') }}
+        </el-button>
       </div>
 
       <div v-if="loading" class="loading-state">
@@ -38,14 +38,9 @@
                 {{ $t('settings.mcp.public') }}
               </span>
             </button>
-            <button
-              class="btn-edit"
-              :class="{ 'btn-inactive': !server.is_enabled }"
-              @click.stop="openServerDialog(server)"
-              :title="$t('common.edit')"
-            >
+            <el-button size="small" @click.stop="openServerDialog(server)">
               {{ $t('common.edit') }}
-            </button>
+            </el-button>
           </div>
         </div>
       </div>
@@ -60,36 +55,15 @@
       <template v-else>
         <!-- 子 Tab 切换 -->
         <div class="mcp-sub-tabs">
-          <button
-            class="sub-tab-btn"
-            :class="{ active: detailSubTab === 'tools' }"
-            @click="detailSubTab = 'tools'"
-          >
-            {{ $t('settings.mcp.tools') }}
-          </button>
-          <button
-            class="sub-tab-btn"
-            :class="{ active: detailSubTab === 'credentials' }"
-            @click="detailSubTab = 'credentials'"
-          >
-            {{ $t('settings.mcp.credentials') }}
-          </button>
-          <button
-            v-if="isAdmin"
-            class="sub-tab-btn"
-            :class="{ active: detailSubTab === 'defaultCredential' }"
-            @click="detailSubTab = 'defaultCredential'"
-          >
-            {{ $t('settings.mcp.defaultCredential') }}
-          </button>
+          <el-button :type="detailSubTab === 'tools' ? 'primary' : ''" @click="detailSubTab = 'tools'">{{ $t('settings.mcp.tools') }}</el-button>
+        <el-button :type="detailSubTab === 'credentials' ? 'primary' : ''" @click="detailSubTab = 'credentials'">{{ $t('settings.mcp.credentials') }}</el-button>
+        <el-button v-if="isAdmin" :type="detailSubTab === 'defaultCredential' ? 'primary' : ''" @click="detailSubTab = 'defaultCredential'">{{ $t('settings.mcp.defaultCredential') }}</el-button>
         </div>
 
         <!-- 工具列表 Tab -->
         <div v-if="detailSubTab === 'tools'" class="detail-tab-content">
           <div class="toolbar">
-            <button class="btn-refresh" @click="refreshTools" :disabled="toolsLoading">
-              🔄 {{ $t('settings.mcp.refreshTools') }}
-            </button>
+            <el-button @click="refreshTools" :disabled="toolsLoading">🔄 {{ $t('settings.mcp.refreshTools') }}</el-button>
           </div>
 
           <div v-if="toolsLoading" class="loading-state">
@@ -107,12 +81,10 @@
               class="tool-item"
             >
               <div class="tool-info">
-                <span class="tool-name">{{ tool.name }}</span>
-                <span v-if="tool.description" class="tool-description">{{ tool.description }}</span>
+                <span class="tool-name">{{ (tool as any).tool_name || tool.tool_name }}</span>
+                <span v-if="(tool as any).tool_description || tool.tool_description" class="tool-description">{{ (tool as any).tool_description || tool.tool_description }}</span>
               </div>
-              <button class="btn-test-tool" @click="openTestToolDialog(tool)" :disabled="testToolLoading">
-                ▶
-              </button>
+              <el-button size="small" @click="openTestToolDialog(tool)" :disabled="testToolLoading">▶</el-button>
             </div>
           </div>
         </div>
@@ -121,7 +93,7 @@
         <div v-if="showTestToolDialog" class="dialog-overlay" @click.self="showTestToolDialog = false">
           <div class="dialog test-tool-dialog">
             <div class="dialog-header">
-              <h3>▶ {{ testingTool?.name }}</h3>
+              <h3>▶ {{ (testingTool as any)?.tool_name || testingTool?.tool_name }}</h3>
               <button class="btn-close" @click="showTestToolDialog = false">&times;</button>
             </div>
             <div class="dialog-body">
@@ -135,21 +107,12 @@
                         <span v-if="field.required" class="required">*</span>
                         <span v-if="field.type" class="field-type">{{ field.type }}</span>
                       </label>
-                      <input
-                        v-model="testFieldValues[field.name]"
-                        class="form-input"
-                        :placeholder="field.description || field.name"
-                      />
+                      <el-input v-model="testFieldValues[field.name]" :placeholder="field.description || field.name" />
                     </div>
                   </div>
                   <div v-else class="form-item">
                     <label class="form-label">{{ $t('settings.mcp.toolArgs') }}</label>
-                    <textarea
-                      v-model="testToolArgs"
-                      class="form-input"
-                      rows="6"
-                      :placeholder='$t("settings.mcp.toolArgsPlaceholder")'
-                    ></textarea>
+                    <el-input v-model="testToolArgs" type="textarea" :rows="6" :placeholder="$t('settings.mcp.toolArgsPlaceholder')" />
                   </div>
                   <button class="btn-confirm btn-run-test" @click="executeTestTool" :disabled="testToolLoading">
                     {{ testToolLoading ? $t('common.loading') : $t('settings.mcp.runTest') }}
@@ -157,17 +120,12 @@
                 </div>
                 <div class="test-tool-right">
                   <label class="form-label">{{ $t('settings.mcp.testResult') }}</label>
-                  <textarea
-                    readonly
-                    :class="['result-textarea', { 'result-error': testToolResult?.startsWith('Error') }]"
-                    :value="testToolResult ?? ''"
-                    :placeholder="$t('settings.mcp.runTest')"
-                  ></textarea>
+                  <el-input :model-value="testToolResult || ''" type="textarea" readonly :rows="10" :class="{ 'result-error': testToolResult?.startsWith('Error') }" :placeholder="$t('settings.mcp.runTest')" />
                 </div>
               </div>
             </div>
             <div class="dialog-footer">
-              <button class="btn-cancel" @click="showTestToolDialog = false">{{ $t('common.cancel') }}</button>
+              <el-button @click="showTestToolDialog = false">{{ $t('common.cancel') }}</el-button>
             </div>
           </div>
         </div>
@@ -181,29 +139,12 @@
           <div v-else class="credential-form">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.envOverrides') }}</label>
-              <textarea
-                v-model="userCredentialForm.env_overrides"
-                class="form-input"
-                rows="5"
-                :placeholder="$t('settings.mcp.envOverridesPlaceholder')"
-              ></textarea>
+              <el-input v-model="userCredentialForm.env_overrides" type="textarea" :rows="5" :placeholder="$t('settings.mcp.envOverridesPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.envOverridesHint') }}</p>
             </div>
             <div class="form-actions">
-              <button
-                v-if="userCredential"
-                class="btn-delete-small"
-                @click="deleteUserCredential"
-              >
-                {{ $t('common.delete') }}
-              </button>
-              <button
-                class="btn-save"
-                :disabled="credentialsSaving"
-                @click="saveUserCredential"
-              >
-                {{ credentialsSaving ? $t('common.saving') : $t('common.save') }}
-              </button>
+              <el-button v-if="userCredential" type="danger" size="small" @click="deleteUserCredential">{{ $t('common.delete') }}</el-button>
+              <el-button type="primary" :disabled="credentialsSaving" @click="saveUserCredential">{{ credentialsSaving ? $t('common.saving') : $t('common.save') }}</el-button>
             </div>
           </div>
         </div>
@@ -217,12 +158,7 @@
           <div v-else class="credential-form">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.defaultEnvOverrides') }}</label>
-              <textarea
-                v-model="defaultCredentialForm.env_overrides"
-                class="form-input"
-                rows="5"
-                :placeholder="$t('settings.mcp.envOverridesPlaceholder')"
-              ></textarea>
+              <el-input v-model="defaultCredentialForm.env_overrides" type="textarea" :rows="5" :placeholder="$t('settings.mcp.envOverridesPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.defaultEnvOverridesHint') }}</p>
             </div>
             <div class="form-actions">
@@ -255,32 +191,18 @@
         <div class="dialog-body">
           <div class="form-item">
             <label class="form-label">{{ $t('settings.mcp.serverName') }} *</label>
-            <input
-              v-model="serverForm.name"
-              type="text"
-              class="form-input"
-              :placeholder="$t('settings.mcp.serverNamePlaceholder')"
-            />
+            <el-input v-model="serverForm.name" :placeholder="$t('settings.mcp.serverNamePlaceholder')" />
             <p class="form-hint">{{ $t('settings.mcp.serverNameHint') }}</p>
           </div>
           
           <!-- 传输类型选择 -->
           <div class="form-item">
             <label class="form-label">{{ $t('settings.mcp.transportType') }}</label>
-            <div class="transport-type-selector">
-              <label class="radio-label">
-                <input v-model="serverForm.transport_type" type="radio" value="stdio" />
-                <span>{{ $t('settings.mcp.transportTypes.stdio') }}</span>
-              </label>
-              <label class="radio-label">
-                <input v-model="serverForm.transport_type" type="radio" value="http" />
-                <span>{{ $t('settings.mcp.transportTypes.http') }}</span>
-              </label>
-              <label class="radio-label">
-                <input v-model="serverForm.transport_type" type="radio" value="sse" />
-                <span>{{ $t('settings.mcp.transportTypes.sse') }}</span>
-              </label>
-            </div>
+            <el-radio-group v-model="serverForm.transport_type">
+              <el-radio value="stdio">{{ $t('settings.mcp.transportTypes.stdio') }}</el-radio>
+              <el-radio value="http">{{ $t('settings.mcp.transportTypes.http') }}</el-radio>
+              <el-radio value="sse">{{ $t('settings.mcp.transportTypes.sse') }}</el-radio>
+            </el-radio-group>
             <p class="form-hint">{{ $t('settings.mcp.transportTypeHint') }}</p>
           </div>
 
@@ -288,32 +210,17 @@
           <template v-if="isStdioMode">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.command') }} *</label>
-              <input
-                v-model="serverForm.command"
-                type="text"
-                class="form-input"
-                :placeholder="$t('settings.mcp.commandPlaceholder')"
-              />
+              <el-input v-model="serverForm.command" :placeholder="$t('settings.mcp.commandPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.commandHint') }}</p>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.args') }}</label>
-              <textarea
-                v-model="serverForm.args"
-                class="form-input"
-                rows="3"
-                :placeholder="$t('settings.mcp.argsPlaceholder')"
-              ></textarea>
+              <el-input v-model="serverForm.args" type="textarea" :rows="3" :placeholder="$t('settings.mcp.argsPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.argsHint') }}</p>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.env') }}</label>
-              <textarea
-                v-model="serverForm.env"
-                class="form-input"
-                rows="3"
-                :placeholder="$t('settings.mcp.envPlaceholder')"
-              ></textarea>
+              <el-input v-model="serverForm.env" type="textarea" :rows="3" :placeholder="$t('settings.mcp.envPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.envHint') }}</p>
             </div>
           </template>
@@ -322,55 +229,31 @@
           <template v-if="isHttpMode">
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.url') }} *</label>
-              <input
-                v-model="serverForm.url"
-                type="text"
-                class="form-input"
-                :placeholder="$t('settings.mcp.urlPlaceholder')"
-              />
+              <el-input v-model="serverForm.url" :placeholder="$t('settings.mcp.urlPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.urlHint') }}</p>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.mcp.headers') }}</label>
-              <textarea
-                v-model="serverForm.headers"
-                class="form-input"
-                rows="3"
-                :placeholder="$t('settings.mcp.headersPlaceholder')"
-              ></textarea>
+              <el-input v-model="serverForm.headers" type="textarea" :rows="3" :placeholder="$t('settings.mcp.headersPlaceholder')" />
               <p class="form-hint">{{ $t('settings.mcp.headersHint') }}</p>
             </div>
           </template>
 
           <div class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="serverForm.is_public" type="checkbox" />
-              {{ $t('settings.mcp.isPublic') }}
-            </label>
+            <el-checkbox v-model="serverForm.is_public">{{ $t('settings.mcp.isPublic') }}</el-checkbox>
             <p class="form-hint">{{ $t('settings.mcp.isPublicHint') }}</p>
           </div>
           <div class="form-item checkbox">
-            <label class="form-label">
-              <input v-model="serverForm.is_enabled" type="checkbox" />
-              {{ $t('settings.isActive') }}
-            </label>
+            <el-checkbox v-model="serverForm.is_enabled">{{ $t('settings.isActive') }}</el-checkbox>
           </div>
         </div>
         <div class="dialog-footer">
           <div class="footer-left">
-            <button
-              v-if="editingServer"
-              class="btn-delete"
-              @click="confirmDeleteServerFromDialog"
-            >
-              {{ $t('common.delete') }}
-            </button>
+            <el-button v-if="editingServer" type="danger" @click="confirmDeleteServerFromDialog">{{ $t('common.delete') }}</el-button>
           </div>
           <div class="footer-right">
-            <button class="btn-cancel" @click="closeServerDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isServerFormValid" @click="saveServer">
-              {{ $t('common.save') }}
-            </button>
+            <el-button @click="closeServerDialog">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" :disabled="!isServerFormValid" @click="saveServer">{{ $t('common.save') }}</el-button>
           </div>
         </div>
       </div>
@@ -384,10 +267,8 @@
           {{ $t('settings.mcp.deleteServerConfirm', { name: deletingServer?.name }) }}
         </p>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDeleteServerDialog">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteServer">
-            {{ $t('common.delete') }}
-          </button>
+<el-button @click="closeDeleteServerDialog">{{ $t('common.cancel') }}</el-button>
+            <el-button type="danger" @click="deleteServer">{{ $t('common.delete') }}</el-button>
         </div>
       </div>
     </div>
@@ -599,7 +480,7 @@ const executeTestTool = async () => {
   testToolLoading.value = true
   testToolResult.value = null
   try {
-    let args = {}
+    let args: Record<string, any> = {}
     if (testToolSchemaFields.value.length > 0) {
       // 从表单字段构建参数
       for (const field of testToolSchemaFields.value) {
@@ -617,7 +498,7 @@ const executeTestTool = async () => {
     } else {
       args = JSON.parse(testToolArgs.value || '{}')
     }
-    const result = await mcpApi.callTool(selectedServer.value.id, testingTool.value.name, args)
+    const result = await mcpApi.callTool(selectedServer.value.id, (testingTool.value as any).tool_name || testingTool.value.tool_name, args)
     testToolResult.value = formatToolResult(result.result)
   } catch (error: any) {
     testToolResult.value = `Error: ${error.message}`
@@ -783,9 +664,9 @@ const saveServer = async () => {
     await loadServers()
     if (wasEditing && editedId) {
       const updated = servers.value.find(s => s.id === editedId)
-      if (updated) selectedServer.value = updated
+      if (updated) selectedServer.value = updated as McpServer
     } else if (servers.value.length > 0) {
-      selectedServer.value = servers.value[servers.value.length - 1]
+      selectedServer.value = servers.value[servers.value.length - 1] as McpServer
     }
   } catch (error: any) {
     toast.error(t('settings.mcp.saveServerFailed') + ': ' + error.message)

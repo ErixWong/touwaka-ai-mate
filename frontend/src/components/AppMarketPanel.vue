@@ -163,7 +163,7 @@
             {{ $t('common.close', '关闭') }}
           </button>
           <button
-            v-if="!isInstalled(selectedApp?.id) && dependencyCheck?.satisfied"
+            v-if="selectedApp && !isInstalled(selectedApp.id) && dependencyCheck?.satisfied"
             class="btn-primary"
             @click="installFromDetail"
           >

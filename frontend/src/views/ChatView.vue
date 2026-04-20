@@ -686,10 +686,6 @@ onMounted(async () => {
   border-radius: 50%;
 }
 
-.status-dot.connected {
-  background: #4caf50;
-}
-
 .status-dot.disconnected {
   background: #ff9800;
 }

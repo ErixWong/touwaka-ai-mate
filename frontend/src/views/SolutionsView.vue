@@ -412,21 +412,8 @@ onMounted(() => {
   padding: 12px 16px;
 }
 
-.search-input {
-  width: 100%;
+.solutions-filter .el-input {
   max-width: 360px;
-  padding: 10px 16px;
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  border-radius: 8px;
-  font-size: 14px;
-  background: #fff;
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  outline: none;
 }
 
 /* Loading and Empty */
@@ -479,7 +466,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-/* Left color bar */
 .solution-card::before {
   content: '';
   position: absolute;
@@ -609,63 +595,6 @@ onMounted(() => {
   .solutions-grid {
     grid-template-columns: 1fr;
   }
-}
-
-/* Admin Button */
-.btn-create {
-  padding: 8px 16px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
-}
-
-.btn-create:hover {
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
-  transform: translateY(-1px);
-}
-
-.btn-primary {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-top: 16px;
-}
-
-.btn-primary:hover {
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
-}
-
-.card-edit-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  flex-shrink: 0;
-}
-
-.solution-card:hover .card-edit-btn {
-  opacity: 0.6;
-}
-
-.card-edit-btn:hover {
-  opacity: 1 !important;
 }
 
 /* Dialog */

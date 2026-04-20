@@ -462,8 +462,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     saveRoleFailed: '保存角色失败',
     noRoles: '暂无角色',
     noPermissionsAvailable: '暂无可用权限',
+    selectedPermissionsCount: '已选 {count} 项权限',
     adminRoleNoEdit: '管理员角色不可编辑',
     noExpertsAvailable: '暂无可用专家',
+    selectedExpertsCount: '已选 {count} 个专家',
     // 组织架构管理
     organizationManagement: '组织架构',
     // 附件管理

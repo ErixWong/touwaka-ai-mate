@@ -164,11 +164,9 @@ const handleLogin = async () => {
   margin: 0;
 }
 
-:deep(.el-form-item__label) {
-  font-size: 13px;
-  font-weight: 500;
-  color: #555;
-  padding-bottom: 4px;
+:deep(.el-form) {
+  --el-form-item-label-font-size: 13px;
+  --el-form-item-label-color: #555;
 }
 
 .login-error {
@@ -178,10 +176,7 @@ const handleLogin = async () => {
 .btn-login {
   width: 100%;
   height: 48px;
-  font-size: 15px;
-  font-weight: 600;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
 }
 
 .btn-login:hover {

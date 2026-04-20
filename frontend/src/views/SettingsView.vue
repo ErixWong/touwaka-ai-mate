@@ -88,9 +88,9 @@
         <div class="panel provider-panel">
           <div class="panel-header">
             <h3 class="panel-title">{{ $t('settings.providerManagement') }}</h3>
-            <button class="btn-icon-add" @click="openProviderDialog()" :title="$t('settings.addProvider')">
-              <span class="icon">+</span>
-            </button>
+            <el-button @click="openProviderDialog()" :title="$t('settings.addProvider')">
+              + {{ $t('settings.addProvider') }}
+            </el-button>
           </div>
 
           <div v-if="providerStore.isLoading" class="loading-state">
@@ -121,14 +121,9 @@
                     {{ $t('settings.inactive') }}
                   </span>
                 </button>
-                <button
-                  class="btn-edit"
-                  :class="{ 'btn-inactive': !provider.is_active }"
-                  @click.stop="openProviderDialog(provider)"
-                  :title="$t('common.edit')"
-                >
+                <el-button size="small" @click.stop="openProviderDialog(provider)">
                   {{ $t('common.edit') }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -152,14 +147,13 @@
                 : $t('settings.modelManagement') 
               }}
             </h3>
-            <button
+            <el-button
               v-if="selectedProvider"
-              class="btn-icon-add"
               @click="openModelDialog()"
               :title="$t('settings.addModel')"
             >
-              <span class="icon">+</span>
-            </button>
+              + {{ $t('settings.addModel') }}
+            </el-button>
           </div>
 
           <div v-if="!selectedProvider" class="empty-state select-provider-hint">
@@ -193,14 +187,9 @@
                     {{ $t('settings.inactive') }}
                   </span>
                 </div>
-                <button
-                  class="btn-edit"
-                  :class="{ 'btn-inactive': !model.is_active }"
-                  @click.stop="openModelDialog(model)"
-                  :title="$t('common.edit')"
-                >
+                <el-button size="small" @click.stop="openModelDialog(model)">
                   {{ $t('common.edit') }}
-                </button>
+                </el-button>
               </div>
             </div>
 
@@ -221,9 +210,9 @@
     <div v-if="activeTab === 'expert'" class="settings-section expert-section">
       <div class="panel-header">
         <h3 class="panel-title">{{ $t('settings.expertManagement') }}</h3>
-        <button class="btn-icon-add" @click="openExpertDialog()" :title="$t('settings.addExpert')">
-          <span class="icon">+</span>
-        </button>
+        <el-button @click="openExpertDialog()">
+          + {{ $t('settings.addExpert') }}
+        </el-button>
       </div>
 
       <div v-if="expertStore.isLoading" class="loading-state">
@@ -252,28 +241,15 @@
                 </span>
               </div>
               <div class="expert-actions">
-                <button
-                  class="btn-skills"
-                  @click="openSkillsDialog(expert)"
-                  :title="$t('settings.manageSkills')"
-                >
+                <el-button size="small" @click="openSkillsDialog(expert)">
                   ⚡ {{ $t('settings.skills') }}
-                </button>
-                <button
-                  class="btn-edit"
-                  :class="{ 'btn-inactive': !expert.is_active }"
-                  @click="openExpertDialog(expert)"
-                  :title="$t('common.edit')"
-                >
+                </el-button>
+                <el-button size="small" @click="openExpertDialog(expert)">
                   {{ $t('common.edit') }}
-                </button>
-                <button
-                  class="btn-delete-small"
-                  @click="confirmDeleteExpert(expert)"
-                  :title="$t('common.delete')"
-                >
+                </el-button>
+                <el-button size="small" type="danger" @click="confirmDeleteExpert(expert)">
                   {{ $t('common.delete') }}
-                </button>
+                </el-button>
               </div>
             </div>
             <p v-if="expert.introduction" class="expert-intro">{{ expert.introduction }}</p>
@@ -305,18 +281,17 @@
     <div v-if="activeTab === 'user'" class="settings-section user-section">
       <div class="panel-header">
         <h3 class="panel-title">{{ $t('settings.userManagement') }}</h3>
-        <button class="btn-icon-add" @click="openUserDialog()" :title="$t('settings.addUser')">
-          <span class="icon">+</span>
-        </button>
+        <el-button @click="openUserDialog()" :title="$t('settings.addUser')">
+          + {{ $t('settings.addUser') }}
+        </el-button>
       </div>
 
       <!-- 搜索过滤 -->
       <div class="user-search">
-        <input
+        <el-input
           v-model="userSearchQuery"
-          type="text"
-          class="form-input"
           :placeholder="$t('settings.searchUsersPlaceholder')"
+          clearable
           @input="handleUserSearch"
         />
       </div>
@@ -360,20 +335,12 @@
               </div>
             </div>
             <div class="user-actions">
-              <button
-                class="btn-edit"
-                @click="openUserDialog(user)"
-                :title="$t('common.edit')"
-              >
+              <el-button size="small" @click="openUserDialog(user)">
                 {{ $t('common.edit') }}
-              </button>
-              <button
-                class="btn-delete-small"
-                @click="confirmDeleteUser(user)"
-                :title="$t('common.delete')"
-              >
+              </el-button>
+              <el-button size="small" type="danger" @click="confirmDeleteUser(user)">
                 {{ $t('common.delete') }}
-              </button>
+              </el-button>
             </div>
           </div>
         </div>
@@ -423,13 +390,9 @@
                     {{ $t('settings.builtinSkill') }}
                   </span>
                 </button>
-                <button
-                  class="btn-edit"
-                  @click.stop="openRoleDialog(role)"
-                  :title="$t('common.edit')"
-                >
+                <el-button size="small" @click.stop="openRoleDialog(role)">
                   {{ $t('common.edit') }}
-                </button>
+                </el-button>
               </div>
             </div>
           </div>
@@ -538,7 +501,7 @@
     </div>
 
     <!-- 驻留进程管理（仅管理员） -->
-    <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section" style="padding: 0; overflow: hidden;">
+    <div v-if="activeTab === 'resident' && isAdmin" class="settings-section resident-section">
       <ResidentProcessesTab />
     </div>
 
@@ -2349,11 +2312,9 @@ onMounted(() => {
   min-height: calc(100vh - 64px);
 }
 
-/* 设置菜单样式 */
-/* Element Plus el-menu 样式覆盖 */
+/* Element Plus el-menu */
 .settings-sidebar.el-menu {
   flex: 0 0 220px;
-  border-right: 1px solid var(--el-menu-border-color);
 }
 
 .settings-sidebar.el-menu--collapse {
@@ -2540,24 +2501,6 @@ onMounted(() => {
   color: var(--primary-color, #7c5c3d);
 }
 
-.badge.chat {
-  background: var(--bg-secondary, #e9ecef);
-  color: var(--text-secondary, #6c7780);
-}
-
-
-
-.btn-edit.btn-inactive {
-  border-color: var(--error-color, #c62828);
-  color: var(--error-color, #c62828);
-}
-
-.btn-edit.btn-inactive:hover {
-  background: var(--error-bg, #ffebee);
-  border-color: var(--error-color, #c62828);
-  color: var(--error-color, #c62828);
-}
-
 /* 空状态和加载状态 */
 .loading-state,
 .empty-state {
@@ -2571,73 +2514,6 @@ onMounted(() => {
   color: var(--text-tertiary, #999);
   font-style: italic;
 }
-
-/* 表单样式 */
-
-.setting-item.checkbox {
-  display: flex;
-  align-items: center;
-}
-
-.setting-item.checkbox .setting-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-
-.setting-input,
-
-.setting-input:focus,
-
-
-
-/* Dialog */
-
-
-
-
-
-
-
-
-
-
-
-
-
-.form-item.checkbox {
-  display: flex;
-  align-items: center;
-}
-
-.form-item.checkbox .form-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 0;
-  cursor: pointer;
-}
-
-
-
-
-
-
-
-
-
-
-
-.btn-confirm.delete {
-  background: var(--error-color, #c62828);
-}
-
-.btn-confirm.delete:hover {
-  background: var(--error-hover, #b71c1c);
-}
-
 
 
 /* 专家设置区域 */
@@ -2779,14 +2655,6 @@ onMounted(() => {
     width: 100%;
     max-height: 400px;
   }
-
-  .avatar-row {
-    align-items: flex-start;
-  }
-}
-
-.avatar-item {
-  flex: 1;
 }
 
 .avatar-upload {
@@ -2823,31 +2691,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-
-
-.btn-small.btn-danger {
-  color: var(--error-color, #c62828);
-  border-color: var(--error-color, #c62828);
-}
-
-.btn-small.btn-danger:hover {
-  background: var(--error-color, #c62828);
-  color: white;
-}
-
-/* 技能按钮 */
-
-
-/* 技能管理对话框 */
-.skills-dialog-body {
-  padding: 16px 24px;
-}
-
-.skills-search {
-  margin-bottom: 16px;
-}
-
-.skills-list {
+/* 技能管理对话框 */.skills-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2909,15 +2753,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.badge.builtin {
-  background: var(--secondary-bg, #e8e8e8);
-  color: var(--text-secondary, #666);
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
 /* 切换开关 */
 
 
@@ -2955,11 +2790,6 @@ onMounted(() => {
 .user-search {
   padding: 16px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
-}
-
-.user-search .form-input {
-  width: 100%;
-  max-width: 400px;
 }
 
 .user-list-container {
@@ -3071,21 +2901,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* 重置密码行 */
-.reset-password-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.reset-password-row .form-input {
-  flex: 1;
-}
-
-.reset-password-row .btn-small {
-  flex-shrink: 0;
-}
-
 /* 响应式调整 - 用户管理 */
 @media (max-width: 768px) {
   .user-item {
@@ -3103,59 +2918,6 @@ onMounted(() => {
     align-items: flex-start;
     gap: 4px;
   }
-
-  .reset-password-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .reset-password-row .btn-small {
-    width: 100%;
-  }
-}
-
-/* 角色选择样式 */
-.roles-checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.role-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--secondary-bg, #f8f9fa);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.role-checkbox:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-}
-
-.role-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: var(--primary-color, #2196f3);
-}
-
-.role-checkbox input[type="checkbox"]:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.role-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text-primary, #333);
 }
 
 /* 角色管理区域 */
@@ -3248,23 +3010,6 @@ onMounted(() => {
   padding: 60px 40px;
 }
 
-/* 子 Tab 切换 */
-.role-sub-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
-
-
-
-.sub-tab-btn.active {
-  color: var(--primary-color, #2196f3);
-  border-bottom-color: var(--primary-color, #2196f3);
-  background: var(--card-bg, #fff);
-}
-
-
 .permissions-list,
 .experts-list {
   flex: 1;
@@ -3272,40 +3017,6 @@ onMounted(() => {
   padding: 16px;
   min-height: 0;
   max-height: calc(100vh - 320px);
-}
-
-.permission-item,
-.expert-access-item {
-  margin-bottom: 8px;
-}
-
-.permission-checkbox,
-.expert-checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--secondary-bg, #f8f9fa);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.permission-checkbox:hover,
-.expert-checkbox:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--border-color, #e0e0e0);
-}
-
-.permission-checkbox input,
-.expert-checkbox input {
-  width: 18px;
-  height: 18px;
-  margin-top: 2px;
-  flex-shrink: 0;
-  cursor: pointer;
-  accent-color: var(--primary-color, #2196f3);
 }
 
 .permission-info,
@@ -3316,15 +3027,13 @@ onMounted(() => {
   min-width: 0;
 }
 
-.permission-name,
-.expert-access-item .expert-name {
+.permission-name {
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary, #333);
 }
 
-.permission-desc,
-.expert-access-item .expert-intro {
+.permission-desc {
   font-size: 12px;
   color: var(--text-secondary, #666);
   line-height: 1.4;
@@ -3355,26 +3064,10 @@ onMounted(() => {
     flex: none;
     min-height: 300px;
   }
-
-  .role-sub-tabs {
-    flex-wrap: wrap;
-  }
-
-}
-
-/* 专家对话框 Tab 样式 */
-.expert-dialog .dialog-body {
-  padding: 0;
 }
 
 
 
-
-.expert-tab-btn.active {
-  color: var(--primary-color, #2196f3);
-  border-bottom-color: var(--primary-color, #2196f3);
-  background: var(--card-bg, #fff);
-}
 
 
 
@@ -3388,13 +3081,4 @@ onMounted(() => {
     transform: translateY(0);
   }
 }
-
-/* 个人资料子 Tab 样式 */
-.profile-section {
-  padding: 0;
-  overflow: hidden;
-}
-
-
-
 </style>
