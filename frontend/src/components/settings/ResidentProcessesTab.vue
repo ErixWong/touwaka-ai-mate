@@ -17,9 +17,9 @@
       <div class="left-panel">
         <div class="panel-header">
           <h3>{{ $t('settings.resident.processList') }}</h3>
-          <button class="btn-icon" @click="loadProcesses" :disabled="loading" :title="$t('settings.resident.refresh')">
+          <el-button @click="loadProcesses" :disabled="loading" :title="$t('settings.resident.refresh')">
             🔄
-          </button>
+          </el-button>
         </div>
 
         <div class="process-list-content">
@@ -59,13 +59,14 @@
               <span class="detail-subtitle">{{ selectedProcess.skill_name }}</span>
             </div>
             <div class="detail-actions">
-              <button
-                class="btn-action restart"
+              <el-button
+                type="warning"
+                size="small"
                 @click="confirmRestart(selectedProcess)"
                 :disabled="restartingProcesses[selectedProcess.tool_id] || selectedProcess.state === 'starting'"
               >
                 {{ restartingProcesses[selectedProcess.tool_id] ? $t('common.restarting') : $t('settings.resident.restart') }}
-              </button>
+              </el-button>
             </div>
           </div>
 
@@ -203,12 +204,12 @@
         <h3>{{ $t('settings.resident.confirmRestart') }}</h3>
         <p>{{ $t('settings.resident.restartWarning', { name: restartTarget?.tool_name }) }}</p>
         <div class="dialog-actions">
-          <button class="btn-cancel" @click="closeRestartDialog">
+          <el-button @click="closeRestartDialog">
             {{ $t('common.cancel') }}
-          </button>
-          <button class="btn-confirm" @click="executeRestart">
+          </el-button>
+          <el-button type="primary" @click="executeRestart">
             {{ $t('common.confirm') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>

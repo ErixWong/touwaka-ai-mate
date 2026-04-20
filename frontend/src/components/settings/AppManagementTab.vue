@@ -2,9 +2,7 @@
   <div class="app-management-tab">
     <div class="panel-header">
       <h3 class="panel-title">{{ $t('settings.appManagement') }}</h3>
-      <button class="btn-icon-add" @click="openAppDialog()" :title="$t('settings.appManagement.addApp')">
-        <span class="icon">+</span>
-      </button>
+      <el-button size="small" @click="openAppDialog()">+ {{ $t('settings.appManagement.addApp') }}</el-button>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -39,12 +37,8 @@
             </div>
           </div>
           <div class="app-actions">
-            <button class="btn-edit" @click="openAppDialog(app)" :title="$t('common.edit')">
-              {{ $t('common.edit') }}
-            </button>
-            <button class="btn-delete-small" @click="confirmDeleteApp(app)" :title="$t('common.delete')">
-              {{ $t('common.delete') }}
-            </button>
+            <el-button size="small" @click="openAppDialog(app)">{{ $t('common.edit') }}</el-button>
+            <el-button size="small" type="danger" @click="confirmDeleteApp(app)">{{ $t('common.delete') }}</el-button>
           </div>
         </div>
       </div>
@@ -58,57 +52,51 @@
         </h3>
         <div class="dialog-body">
           <div class="app-dialog-tabs">
-            <button
+            <el-button
               v-for="tab in appDialogTabs"
               :key="tab.key"
-              class="sub-tab-btn"
-              :class="{ active: appDialogTab === tab.key }"
+              :type="appDialogTab === tab.key ? 'primary' : ''"
               @click="appDialogTab = tab.key"
-            >
-              {{ tab.label }}
-            </button>
+            >{{ tab.label }}</el-button>
           </div>
 
           <!-- 基本信息 -->
           <div v-if="appDialogTab === 'basic'" class="tab-pane"><div class="form-row">
               <div class="form-item">
                 <label class="form-label">{{ $t('settings.appManagement.appName') }} *</label>
-                <input v-model="appForm.name" type="text" class="form-input" :placeholder="$t('settings.appManagement.appNamePlaceholder')" />
+                <el-input v-model="appForm.name" :placeholder="$t('settings.appManagement.appNamePlaceholder')" />
               </div>
               <div class="form-item">
                 <label class="form-label">{{ $t('settings.appManagement.icon') }}</label>
-                <input v-model="appForm.icon" type="text" class="form-input" placeholder="📄" />
+                <el-input v-model="appForm.icon" placeholder="📄" />
               </div>
             </div>
             <div class="form-row">
               <div class="form-item">
                 <label class="form-label">{{ $t('settings.appManagement.type') }}</label>
-                <select v-model="appForm.type" class="form-input">
-                  <option value="document">{{ typeLabels.document }}</option>
-                  <option value="workflow">{{ typeLabels.workflow }}</option>
-                  <option value="data">{{ typeLabels.data }}</option>
-                  <option value="utility">{{ typeLabels.utility }}</option>
-                </select>
+                <el-select v-model="appForm.type">
+                  <el-option value="document" :label="typeLabels.document" />
+                  <el-option value="workflow" :label="typeLabels.workflow" />
+                  <el-option value="data" :label="typeLabels.data" />
+                  <el-option value="utility" :label="typeLabels.utility" />
+                </el-select>
               </div>
               <div class="form-item">
                 <label class="form-label">{{ $t('settings.appManagement.visibility') }}</label>
-                <select v-model="appForm.visibility" class="form-input">
-                  <option value="all">{{ visibilityLabels.all }}</option>
-                  <option value="department">{{ visibilityLabels.department }}</option>
-                  <option value="owner">{{ visibilityLabels.owner }}</option>
-                  <option value="role">{{ visibilityLabels.role }}</option>
-                </select>
+                <el-select v-model="appForm.visibility">
+                  <el-option value="all" :label="visibilityLabels.all" />
+                  <el-option value="department" :label="visibilityLabels.department" />
+                  <el-option value="owner" :label="visibilityLabels.owner" />
+                  <el-option value="role" :label="visibilityLabels.role" />
+                </el-select>
               </div>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('settings.appManagement.description') }}</label>
-              <textarea v-model="appForm.description" class="form-input" rows="2" :placeholder="$t('settings.appManagement.descriptionPlaceholder')"></textarea>
+              <el-input v-model="appForm.description" type="textarea" :rows="2" :placeholder="$t('settings.appManagement.descriptionPlaceholder')" />
             </div>
             <div class="form-item checkbox">
-              <label class="form-label">
-                <input v-model="appForm.is_active" type="checkbox" />
-                {{ $t('settings.isActive') }}
-              </label>
+              <el-checkbox v-model="appForm.is_active">{{ $t('settings.isActive') }}</el-checkbox>
             </div>
           </div>
 
@@ -129,15 +117,13 @@
                     <span v-if="field.required" class="required-mark">*</span>
                   </div>
                   <div class="field-item-actions">
-                    <button v-if="index > 0" class="btn-tiny" @click.stop="moveField(index, -1)">↑</button>
-                    <button v-if="index < appForm.fields.length - 1" class="btn-tiny" @click.stop="moveField(index, 1)">↓</button>
-                    <button class="btn-tiny btn-danger" @click.stop="removeField(index)">×</button>
+                    <el-button size="small" v-if="index > 0" @click.stop="moveField(index, -1)">↑</el-button>
+                    <el-button size="small" v-if="index < appForm.fields.length - 1" @click.stop="moveField(index, 1)">↓</el-button>
+                    <el-button size="small" type="danger" @click.stop="removeField(index)">×</el-button>
                   </div>
                 </div>
               </div>
-              <button class="btn-secondary" @click="addField">
-                + {{ $t('settings.appManagement.addField') }}
-              </button>
+              <el-button @click="addField">+ {{ $t('settings.appManagement.addField') }}</el-button>
             </div>
 
             <!-- 字段编辑面板 -->
@@ -146,46 +132,40 @@
               <div class="form-row">
                 <div class="form-item">
                   <label class="form-label">Name *</label>
-                  <input v-model="selectedField.name" type="text" class="form-input" placeholder="field_name" />
+                  <el-input v-model="selectedField.name" placeholder="field_name" />
                 </div>
                 <div class="form-item">
                   <label class="form-label">{{ $t('settings.appManagement.fieldLabel') }} *</label>
-                  <input v-model="selectedField.label" type="text" class="form-input" :placeholder="$t('settings.appManagement.fieldLabelPlaceholder')" />
+                  <el-input v-model="selectedField.label" :placeholder="$t('settings.appManagement.fieldLabelPlaceholder')" />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-item">
                   <label class="form-label">{{ $t('settings.appManagement.fieldType') }}</label>
-                  <select v-model="selectedField.type" class="form-input">
-                    <option value="text">Text</option>
-                    <option value="textarea">TextArea</option>
-                    <option value="number">Number</option>
-                    <option value="date">Date</option>
-                    <option value="select">Select</option>
-                    <option value="multiselect">MultiSelect</option>
-                    <option value="boolean">Boolean</option>
-                    <option value="file">File</option>
-                  </select>
+                  <el-select v-model="selectedField.type">
+                    <el-option value="text" label="Text" />
+                    <el-option value="textarea" label="TextArea" />
+                    <el-option value="number" label="Number" />
+                    <el-option value="date" label="Date" />
+                    <el-option value="select" label="Select" />
+                    <el-option value="multiselect" label="MultiSelect" />
+                    <el-option value="boolean" label="Boolean" />
+                    <el-option value="file" label="File" />
+                  </el-select>
                 </div>
                 <div class="form-item">
                   <label class="form-label">{{ $t('settings.appManagement.defaultValue') }}</label>
-                  <input v-model="selectedField.default" type="text" class="form-input" />
+                  <el-input v-model="selectedField.default" />
                 </div>
               </div>
               <div v-if="selectedField.type === 'select' || selectedField.type === 'multiselect'" class="form-item">
                 <label class="form-label">{{ $t('settings.appManagement.options') }}</label>
-                <input v-model="optionsText" type="text" class="form-input" :placeholder="$t('settings.appManagement.optionsPlaceholder')" @input="updateFieldOptions" />
+                <el-input v-model="optionsText" :placeholder="$t('settings.appManagement.optionsPlaceholder')" @input="updateFieldOptions" />
                 <p class="form-hint">{{ $t('settings.appManagement.optionsHint') }}</p>
               </div>
               <div class="form-item-group">
-                <label class="form-label checkbox">
-                  <input v-model="selectedField.required" type="checkbox" />
-                  {{ $t('settings.appManagement.required') }}
-                </label>
-                <label class="form-label checkbox">
-                  <input v-model="selectedField.ai_extractable" type="checkbox" />
-                  {{ $t('settings.appManagement.aiExtractable') }}
-                </label>
+                <el-checkbox v-model="selectedField.required">{{ $t('settings.appManagement.required') }}</el-checkbox>
+                  <el-checkbox v-model="selectedField.ai_extractable">{{ $t('settings.appManagement.aiExtractable') }}</el-checkbox>
               </div>
             </div>
             <div v-else class="field-edit-empty">
@@ -203,15 +183,11 @@
         </div>
         <div class="dialog-footer">
           <div class="footer-left">
-            <button v-if="editingApp" class="btn-delete" @click="confirmDeleteFromDialog">
-              {{ $t('common.delete') }}
-            </button>
+            <el-button v-if="editingApp" type="danger" @click="confirmDeleteFromDialog">{{ $t('common.delete') }}</el-button>
           </div>
           <div class="footer-right">
-            <button class="btn-cancel" @click="closeAppDialog">{{ $t('common.cancel') }}</button>
-            <button class="btn-confirm" :disabled="!isAppFormValid" @click="saveApp">
-              {{ $t('common.save') }}
-            </button>
+            <el-button @click="closeAppDialog">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" :disabled="!isAppFormValid" @click="saveApp">{{ $t('common.save') }}</el-button>
           </div>
         </div>
       </div>
@@ -225,8 +201,8 @@
           {{ $t('settings.appManagement.deleteConfirm', { name: deletingApp?.name }) }}
         </p>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="showDeleteDialog = false">{{ $t('common.cancel') }}</button>
-          <button class="btn-confirm delete" @click="deleteApp">{{ $t('common.delete') }}</button>
+          <el-button @click="showDeleteDialog = false">{{ $t('common.cancel') }}</el-button>
+          <el-button type="danger" @click="deleteApp">{{ $t('common.delete') }}</el-button>
         </div>
       </div>
     </div>
@@ -768,20 +744,6 @@ onMounted(() => {
 .btn-secondary:hover {
   border-color: var(--primary-color, #2196f3);
   background: var(--primary-color-light, rgba(33, 150, 243, 0.05));
-}
-
-.btn-save {
-  padding: 8px 24px;
-  border-radius: 6px;
-  border: none;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.btn-save:hover {
-  opacity: 0.9;
 }
 
 .dialog-overlay {

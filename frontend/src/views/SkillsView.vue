@@ -10,9 +10,8 @@
         v-model="searchQuery"
         :placeholder="$t('skills.searchPlaceholder')"
         clearable
-        class="search-input"
       />
-      <el-select v-model="filterStatus" class="filter-select" :placeholder="$t('skills.allSkills')">
+      <el-select v-model="filterStatus" :placeholder="$t('skills.allSkills')">
         <el-option value="" :label="$t('skills.allSkills')" />
         <el-option value="active" :label="$t('skills.active')" />
         <el-option value="inactive" :label="$t('skills.inactive')" />
@@ -732,21 +731,12 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.search-input {
+.skills-filter .el-input {
   flex: 1;
-  padding: 10px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
 }
 
-.filter-select {
-  padding: 10px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  background: white;
-  min-width: 120px;
+.skills-filter .el-select {
+  width: 160px;
 }
 
 /* 加载和空状态 */
@@ -1117,10 +1107,6 @@ onMounted(() => {
   background: var(--text-tertiary, #999);
 }
 
-/* 技能编辑弹窗 Element Plus 适配 */
-:deep(.skill-editor-dialog .el-tabs__content) {
-  padding: 20px;
-}
 
 .skill-form .form-row {
   display: flex;
@@ -1201,24 +1187,5 @@ onMounted(() => {
 .footer-right {
   display: flex;
   gap: 12px;
-}
-
-/* 空状态编辑器 */
-.empty-state-editor {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  color: var(--text-secondary, #666);
-}
-
-.empty-state-editor .empty-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
-
-.empty-state-editor p {
-  margin: 0 0 12px 0;
 }
 </style>

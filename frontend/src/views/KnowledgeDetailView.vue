@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="detail-header">
       <div class="header-left">
-        <el-button text @click="goBack" class="btn-back">
+        <el-button @click="goBack">
           <span class="back-icon">←</span>
           {{ $t('knowledgeBase.backToList') }}
         </el-button>
@@ -464,6 +464,7 @@ const editingArticle = ref<KbArticle | null>(null)
 const editingSection = ref<KbSection | null>(null)
 const editingParagraph = ref<KbParagraph | null>(null)
 const isRevectorizing = ref(false)
+const savingArticle = ref(false)
 const revectorizeProgress = ref({ total: 0, success: 0, failed: 0, current: 0, status: '' })
 let revectorizeJobId = ''
 
@@ -953,22 +954,7 @@ onMounted(async () => {
   gap: 16px;
 }
 
-.btn-back {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  color: var(--text-secondary, #666);
-}
 
-.btn-back:hover {
-  background: var(--secondary-bg, #f5f5f5);
-}
 
 .kb-title {
   font-size: 20px;
@@ -981,49 +967,6 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.btn-action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: var(--secondary-bg, #f5f5f5);
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  color: var(--text-secondary, #666);
-}
-
-.btn-action:hover {
-  background: var(--primary-light, #e3f2fd);
-  color: var(--primary-color, #2196f3);
-}
-
-.btn-revectorize {
-  background: var(--accent-bg, #fff3e0);
-  color: var(--accent-color, #ff9800);
-}
-
-.btn-revectorize:hover {
-  background: var(--accent-light, #ffe0b2);
-  color: var(--accent-dark, #f57c00);
-}
-
-.btn-revectorize:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-transfer {
-  background: var(--primary-light, #e3f2fd);
-  color: var(--primary-color, #2196f3);
-}
-
-.btn-transfer:hover {
-  background: var(--primary-color, #2196f3);
-  color: white;
 }
 
 /* 重新向量化进度 */
@@ -1042,12 +985,6 @@ onMounted(async () => {
   background: var(--border-color, #e0e0e0);
   border-radius: 4px;
   overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--accent-color, #ff9800);
-  transition: width 0.3s ease;
 }
 
 .progress-text {
@@ -1147,19 +1084,6 @@ onMounted(async () => {
 .tag-filter-label {
   font-size: 12px;
   color: var(--text-secondary, #666);
-}
-
-.tag-clear-btn {
-  font-size: 11px;
-  color: var(--primary-color, #2196f3);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 2px 6px;
-}
-
-.tag-clear-btn:hover {
-  text-decoration: underline;
 }
 
 .tag-list {
@@ -1282,23 +1206,6 @@ onMounted(async () => {
   opacity: 1;
 }
 
-.btn-sm-icon {
-  padding: 2px 6px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.btn-sm-icon:hover {
-  background: var(--border-color, #e0e0e0);
-}
-
-.btn-sm-icon.danger:hover {
-  background: var(--danger-light, #ffebee);
-}
-
 /* Section Tree */
 .section-tree {
   flex: 1;
@@ -1365,23 +1272,6 @@ onMounted(async () => {
   align-items: center;
 }
 
-.btn-icon-action {
-  padding: 6px 10px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.btn-icon-action:hover {
-  background: var(--secondary-bg, #f5f5f5);
-}
-
-.btn-icon-action.btn-delete:hover {
-  background: var(--danger-light, #ffebee);
-}
-
 .content-meta {
   display: flex;
   gap: 16px;
@@ -1418,20 +1308,6 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary, #333);
-}
-
-.btn-sm {
-  padding: 6px 12px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.btn-sm:hover {
-  background: var(--primary-dark, #1976d2);
 }
 
 /* Paragraphs */
@@ -1527,16 +1403,6 @@ onMounted(async () => {
   text-transform: uppercase;
 }
 
-.status-badge.pending {
-  background: #fff3e0;
-  color: #ef6c00;
-}
-
-.status-badge.processing {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
 .status-badge.failed {
   background: #ffebee;
   color: #c62828;
@@ -1564,162 +1430,8 @@ onMounted(async () => {
   border-radius: 4px;
 }
 
-/* Dialog */
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background: var(--card-bg, #fff);
-  border-radius: 12px;
-  width: 90%;
-  max-width: 480px;
-  max-height: 90vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.dialog-large {
-  max-width: 640px;
-}
-
-.dialog-title {
-  margin: 0;
-  padding: 16px 20px;
-  font-size: 18px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-}
-
-.dialog-body {
-  padding: 20px;
-  overflow-y: auto;
-}
-
-.dialog-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary, #333);
-}
-
-.form-input,
-.form-select,
-.form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--card-bg, #fff);
-  color: var(--text-primary, #333);
-}
-
-.form-input:focus,
-.form-select:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.btn-cancel {
-  padding: 10px 20px;
-  background: transparent;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  color: var(--text-secondary, #666);
-}
-
-.btn-cancel:hover {
-  background: var(--secondary-bg, #f5f5f5);
-}
-
-.btn-primary {
-  padding: 10px 20px;
-  background: var(--primary-color, #2196f3);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--primary-dark, #1976d2);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-danger {
-  padding: 10px 20px;
-  background: var(--danger-color, #f44336);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-danger:hover {
-  background: var(--danger-dark, #d32f2f);
-}
-
 /* Search */
-.search-input {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  margin-bottom: 16px;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-}
-
-.search-loading,
-.search-empty {
+.search-loading {
   text-align: center;
   padding: 24px;
   color: var(--text-secondary, #666);
@@ -1779,17 +1491,6 @@ onMounted(async () => {
 
 /* Transfer Owner Dialog */
 .transfer-hint {
-  font-size: 14px;
-  color: var(--text-secondary, #666);
   margin-bottom: 16px;
-}
-
-.transfer-confirm {
-  font-size: 13px;
-  color: var(--primary-color, #2196f3);
-  background: var(--primary-light, #e3f2fd);
-  padding: 10px 14px;
-  border-radius: 6px;
-  margin-top: 8px;
 }
 </style>

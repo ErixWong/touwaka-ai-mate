@@ -398,18 +398,6 @@ const close = () => {
   color: var(--text-secondary, #666);
 }
 
-.field-readonly {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-}
-
 .field-input-wrapper {
   display: flex;
   align-items: center;

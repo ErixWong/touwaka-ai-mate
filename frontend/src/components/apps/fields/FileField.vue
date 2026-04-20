@@ -3,7 +3,7 @@
     <div v-if="modelValue" class="file-preview">
       <div class="file-info">
         <span class="file-icon">📄</span>
-        <span class="file-name">{{ modelValue.name || modelValue }}</span>
+        <span class="file-name">{{ (modelValue as any).name || modelValue }}</span>
       </div>
       <button class="btn-remove" @click="clearFile" type="button">×</button>
     </div>
@@ -56,7 +56,7 @@ const accept = computed(() => {
 })
 
 const placeholder = computed(() => {
-  return props.field.placeholder || '点击上传合同文件 (PDF/DOC/图片)'
+  return (props.field as any).placeholder || '点击上传合同文件 (PDF/DOC/图片)'
 })
 
 function triggerUpload() {
@@ -69,8 +69,11 @@ function fileToBase64(file: File): Promise<string> {
     const reader = new FileReader()
     reader.onload = () => {
       const result = reader.result as string
-      // 移除 data URL 前缀，只保留 base64 数据
       const base64 = result.split(',')[1]
+      if (!base64) {
+        reject(new Error('Failed to convert file to base64'))
+        return
+      }
       resolve(base64)
     }
     reader.onerror = reject

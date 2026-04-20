@@ -447,13 +447,6 @@ const emit = defineEmits<{
   word-break: break-word;
 }
 
-.topic-date {
-  font-size: 12px;
-  color: var(--text-tertiary, #999);
-  flex-shrink: 0;
-  margin-left: 8px;
-}
-
 .topic-description {
   font-size: 13px;
   color: var(--text-secondary, #666);

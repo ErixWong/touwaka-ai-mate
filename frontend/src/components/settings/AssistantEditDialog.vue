@@ -5,7 +5,7 @@
         <h3 class="dialog-title">
           {{ isCreate ? $t('assistant.addAssistant') : `${$t('assistant.editAssistant')} - ${assistant?.name}` }}
         </h3>
-        <button class="btn-close" @click="$emit('close')">&times;</button>
+        <el-button class="btn-close" @click="$emit('close')">&times;</el-button>
       </div>
 
       <div class="dialog-body">
@@ -15,11 +15,11 @@
           <div class="form-grid">
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.name') }}</label>
-              <input v-model="form.name" type="text" class="form-input" />
+              <el-input v-model="form.name" class="form-input" />
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.description') }}</label>
-              <input v-model="form.description" type="text" class="form-input" />
+              <el-input v-model="form.description" class="form-input" />
             </div>
           </div>
         </div>
@@ -30,42 +30,33 @@
           <div class="form-grid">
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.executionMode') }}</label>
-              <select v-model="form.execution_mode" class="form-select">
-                <option value="direct">{{ $t('assistant.executionModeDirect') }}</option>
-                <option value="llm">{{ $t('assistant.executionModeLlm') }}</option>
-              </select>
+              <el-select v-model="form.execution_mode" class="form-select">
+                <el-option value="direct" :label="$t('assistant.executionModeDirect')" />
+                <el-option value="llm" :label="$t('assistant.executionModeLlm')" />
+              </el-select>
               <span v-if="isDirectMode" class="form-hint">{{ $t('assistant.directModeHint') }}</span>
             </div>
             <div v-if="!isDirectMode" class="form-item">
               <label class="form-label">{{ $t('assistant.model') }}</label>
-              <select v-model="form.model_id" class="form-select">
-                <option value="">{{ $t('common.none') }}</option>
-                <option v-for="model in models" :key="model.id" :value="model.id">
-                  {{ model.name }}
-                </option>
-              </select>
+              <el-select v-model="form.model_id" class="form-select">
+                <el-option value="" :label="$t('common.none')" />
+                <el-option v-for="model in models" :key="model.id" :value="model.id" :label="model.name" />
+              </el-select>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.maxTokens') }}</label>
-              <input v-model.number="form.max_tokens" type="number" class="form-input" min="1" />
+              <el-input-number v-model="form.max_tokens" class="form-input" :min="1" />
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.temperature') }}</label>
               <div class="slider-group">
-                <input
-                  v-model.number="form.temperature"
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  class="form-slider"
-                />
+                <el-slider v-model="form.temperature" :min="0" :max="2" :step="0.1" class="form-slider" />
                 <span class="slider-value">{{ form.temperature?.toFixed(2) }}</span>
               </div>
             </div>
             <div class="form-item">
               <label class="form-label">{{ $t('assistant.timeout') }} ({{ $t('common.seconds') }})</label>
-              <input v-model.number="form.timeout" type="number" class="form-input" min="1" />
+              <el-input-number v-model="form.timeout" class="form-input" :min="1" />
             </div>
           </div>
         </div>
@@ -76,30 +67,28 @@
           <div class="form-grid">
             <div class="form-item full-width">
               <label class="form-label">{{ $t('assistant.toolName') }}</label>
-              <select v-model="form.tool_name" class="form-select">
-                <option value="">{{ $t('common.none') }} - {{ $t('assistant.selectTool') }}</option>
-                <option v-for="skill in skillStore.skills" :key="skill.id" :value="skill.id">
-                  {{ skill.name }} ({{ skill.id }})
-                </option>
-              </select>
+              <el-select v-model="form.tool_name" class="form-select">
+                <el-option value="" :label="`${$t('common.none')} - ${$t('assistant.selectTool')}`" />
+                <el-option v-for="skill in skillStore.skills" :key="skill.id" :value="skill.id" :label="`${skill.name} (${skill.id})`" />
+              </el-select>
             </div>
             <div class="form-item full-width">
               <label class="form-label">{{ $t('assistant.toolDescription') }}</label>
-              <input
+              <el-input
                 v-model="form.tool_description"
-                type="text"
                 class="form-input"
                 :placeholder="$t('assistant.toolDescriptionPlaceholder')"
               />
             </div>
             <div class="form-item full-width">
               <label class="form-label">{{ $t('assistant.toolParameters') }} (JSON Schema)</label>
-              <textarea
+              <el-input
                 v-model="form.tool_parameters"
+                type="textarea"
                 class="form-textarea"
-                rows="4"
+                :rows="4"
                 :placeholder="$t('assistant.toolParametersPlaceholder')"
-              ></textarea>
+              />
             </div>
           </div>
         </div>
@@ -108,12 +97,13 @@
         <div class="form-section">
           <h4 class="section-title">{{ $t('assistant.promptTemplate') }}</h4>
           <div class="form-item full-width">
-            <textarea
+            <el-input
               v-model="form.prompt_template"
+              type="textarea"
               class="form-textarea"
-              rows="6"
+              :rows="6"
               :placeholder="$t('assistant.promptPlaceholder')"
-            ></textarea>
+            />
           </div>
         </div>
 
@@ -121,21 +111,18 @@
         <div class="form-section">
           <h4 class="section-title">{{ $t('assistant.advancedConfig') }}</h4>
           <div class="form-checkboxes">
-            <label class="checkbox-label">
-              <input v-model="form.is_active" type="checkbox" />
-              {{ $t('assistant.enableAssistant') }}
-            </label>
+            <el-checkbox v-model="form.is_active">{{ $t('assistant.enableAssistant') }}</el-checkbox>
           </div>
         </div>
       </div>
 
       <div class="dialog-footer">
-        <button class="btn-cancel" @click="$emit('close')">
+        <el-button class="btn-cancel" @click="$emit('close')">
           {{ $t('common.cancel') }}
-        </button>
-        <button class="btn-save" :disabled="saving" @click="handleSubmit">
+        </el-button>
+        <el-button class="btn-save" type="primary" :disabled="saving" @click="handleSubmit">
           {{ saving ? $t('common.saving') : $t('common.save') }}
-        </button>
+        </el-button>
       </div>
     </div>
   </div>

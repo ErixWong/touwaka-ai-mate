@@ -50,7 +50,6 @@ const handlePageChange = (page: number) => {
 <style scoped>
 .el-pagination {
   justify-content: center;
-  padding: 12px 0;
   margin-top: auto;
 }
 </style>

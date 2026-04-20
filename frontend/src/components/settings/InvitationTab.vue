@@ -17,14 +17,14 @@
           <span class="stat-label">{{ $t('invitation.quotaUsed') }}</span>
         </div>
       </div>
-      <button
-        class="btn-create"
+      <el-button
+        type="primary"
         :disabled="quota.remaining <= 0 || creating"
         @click="handleCreateInvitation"
       >
         <span class="btn-icon">+</span>
         {{ creating ? $t('common.loading') : $t('invitation.createCode') }}
-      </button>
+      </el-button>
     </div>
 
     <!-- 邀请码列表 -->
@@ -67,14 +67,14 @@
           </div>
           <div class="col-usage">
             <span class="usage-text">{{ invitation.usedCount }}/{{ invitation.maxUses }}</span>
-            <button
+            <el-button
               v-if="invitation.usedCount > 0"
-              class="btn-view-mini"
+              size="small"
               @click="showUsage(invitation)"
               :title="$t('invitation.viewUsage')"
             >
               👥
-            </button>
+            </el-button>
           </div>
           <div class="col-expiry">
             <span v-if="invitation.expiresAt" class="expiry-text">{{ formatDateShort(invitation.expiresAt) }}</span>
@@ -84,21 +84,22 @@
             <span class="link-text" :title="getInviteLink(invitation.code)">{{ getInviteLink(invitation.code) }}</span>
           </div>
           <div class="col-actions">
-            <button
-              class="btn-icon-action copy"
+            <el-button
+              size="small"
               :title="$t('invitation.copyLink')"
               @click="copyInviteLink(invitation.code)"
             >
               📋
-            </button>
-            <button
+            </el-button>
+            <el-button
               v-if="invitation.status === 'active'"
-              class="btn-icon-action revoke"
+              size="small"
+              type="danger"
               :title="$t('invitation.revoke')"
               @click="handleRevoke(invitation)"
             >
               🚫
-            </button>
+            </el-button>
           </div>
         </div>
       </div>
@@ -109,7 +110,7 @@
       <div class="modal-content">
         <div class="modal-header">
           <h3>{{ $t('invitation.usageTitle') }} - {{ currentInvitation?.code }}</h3>
-          <button class="btn-close" @click="closeUsageModal">×</button>
+          <el-button @click="closeUsageModal">×</el-button>
         </div>
         <div class="modal-body">
           <div v-if="usageLoading" class="loading-state">

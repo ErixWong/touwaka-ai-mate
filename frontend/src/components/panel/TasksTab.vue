@@ -2009,14 +2009,6 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.edit-indicator {
-  font-size: 12px;
-  color: var(--primary-color, #2196f3);
-  background: rgba(33, 150, 243, 0.1);
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
 .btn-close {
   width: 28px;
   height: 28px;
@@ -2135,34 +2127,6 @@ onUnmounted(() => {
   background: #d32f2f;
 }
 
-/* Download Button */
-.btn-download {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--text-secondary, #666);
-  opacity: 0;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.file-item:hover .btn-download {
-  opacity: 1;
-}
-
-.btn-download:hover {
-  background: var(--primary-color, #2196f3);
-  border-color: var(--primary-color, #2196f3);
-  color: white;
-}
-
 /* File Menu */
 .file-menu {
   position: relative;
@@ -2241,25 +2205,6 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-/* Preview Dialog */
-.preview-overlay {
-  z-index: 1001;
-}
-
-.preview-dialog {
-  max-width: 800px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.preview-body {
-  flex: 1;
-  overflow: auto;
-  min-height: 300px;
-  max-height: 60vh;
-}
-
 .preview-loading {
   display: flex;
   align-items: center;
@@ -2268,147 +2213,9 @@ onUnmounted(() => {
   color: var(--text-secondary, #666);
 }
 
-.preview-code {
-  margin: 0;
-  padding: 16px;
-  background: var(--code-bg, #f5f5f5);
-  border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow-x: auto;
-}
-
-.preview-code.code-preview {
-  white-space: pre;
-}
-
-.preview-editor {
-  width: 100%;
-  min-height: 300px;
-  padding: 16px;
-  background: var(--code-bg, #f5f5f5);
-  border: 1px solid var(--primary-color, #2196f3);
-  border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  resize: vertical;
-  box-sizing: border-box;
-}
-
-.preview-editor.code-editor {
-  white-space: pre;
-  overflow-x: auto;
-}
-
-.preview-editor:focus {
-  outline: none;
-  border-color: var(--primary-color, #2196f3);
-  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
-}
-
-.preview-image {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-}
-
-.preview-image img {
-  max-width: 100%;
-  max-height: 50vh;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.preview-pdf {
-  width: 100%;
-  height: 50vh;
-  border: none;
-  border-radius: 4px;
-}
-
-.preview-html {
-  width: 100%;
-  height: 60vh;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
-  background: #fff;
-}
-
-/* Auto Refresh Controls */
-.auto-refresh-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: auto;
-}
-
-.btn-auto-refresh {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-auto-refresh:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.btn-auto-refresh.active {
-  background: rgba(33, 150, 243, 0.1);
-  border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
-
-.btn-auto-refresh .refresh-icon {
-  font-size: 14px;
-  transition: transform 0.3s;
-}
-
-.btn-auto-refresh.active .refresh-icon {
-  animation: spin 1s linear infinite;
-}
-
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-.btn-auto-refresh .refresh-label {
-  font-size: 12px;
-}
-
-.btn-manual-refresh {
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-manual-refresh:hover:not(:disabled) {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--primary-color, #2196f3);
-  color: var(--primary-color, #2196f3);
-}
-
-.btn-manual-refresh:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .preview-unsupported {
@@ -2724,25 +2531,6 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.embed-code {
-  margin: 0;
-  padding: 16px;
-  height: 100%;
-  background: var(--code-bg, #f5f5f5);
-  border-radius: 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow: auto;
-  box-sizing: border-box;
-}
-
-.embed-code.code-preview {
-  white-space: pre;
-}
-
 .embed-editor {
   width: 100%;
   height: 100%;
@@ -2886,55 +2674,6 @@ onUnmounted(() => {
   height: auto;
   border-radius: 8px;
   margin: 8px 0;
-}
-
-.embed-preview-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  background: var(--sidebar-bg, #f5f5f5);
-}
-
-.btn-edit,
-.btn-cancel-edit,
-.btn-save {
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-edit {
-  background: transparent;
-  border: 1px solid var(--border-color, #ccc);
-  color: var(--text-secondary, #666);
-}
-
-.btn-edit:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.btn-cancel-edit {
-  background: transparent;
-  border: 1px solid var(--border-color, #ccc);
-  color: var(--text-secondary, #666);
-}
-
-.btn-cancel-edit:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.btn-save {
-  background: var(--primary-color, #2196f3);
-  border: none;
-  color: white;
-}
-
-.btn-save:hover {
-  background: var(--primary-hover, #1976d2);
 }
 
 /* 加载动画 */

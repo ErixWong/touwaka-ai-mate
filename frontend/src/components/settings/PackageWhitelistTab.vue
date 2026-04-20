@@ -7,20 +7,8 @@
     <template v-else>
       <!-- Tab 切换 -->
       <div class="tab-header">
-        <button 
-          class="tab-button" 
-          :class="{ active: activeTab === 'nodejs' }"
-          @click="activeTab = 'nodejs'"
-        >
-          📦 Node.js
-        </button>
-        <button 
-          class="tab-button" 
-          :class="{ active: activeTab === 'python' }"
-          @click="activeTab = 'python'"
-        >
-          🐍 Python
-        </button>
+        <el-button :type="activeTab === 'nodejs' ? 'primary' : ''" @click="activeTab = 'nodejs'">📦 Node.js</el-button>
+        <el-button :type="activeTab === 'python' ? 'primary' : ''" @click="activeTab = 'python'">🐍 Python</el-button>
       </div>
 
       <!-- Node.js 模块白名单 -->
@@ -28,27 +16,16 @@
         <div class="section-header">
           <h3 class="section-title">{{ $t('settings.moduleWhitelist') }}</h3>
           <div class="section-actions">
-            <button class="btn-select-all" @click="selectAllNode">
-              {{ $t('settings.selectAll') }}
-            </button>
-            <button class="btn-default" @click="selectDefaultNode">
-              {{ $t('settings.selectDefault') }}
-            </button>
-            <button class="btn-clear" @click="clearNode">
-              {{ $t('settings.clearAll') }}
-            </button>
+            <el-button size="small" @click="selectAllNode">{{ $t('settings.selectAll') }}</el-button>
+            <el-button size="small" type="primary" plain @click="selectDefaultNode">{{ $t('settings.selectDefault') }}</el-button>
+            <el-button size="small" @click="clearNode">{{ $t('settings.clearAll') }}</el-button>
           </div>
         </div>
 
         <div class="whitelist-editor">
           <div class="package-list">
             <div class="package-search">
-              <input
-                type="text"
-                v-model="nodeSearch"
-                :placeholder="$t('settings.searchPackages')"
-                class="search-input"
-              />
+              <el-input v-model="nodeSearch" :placeholder="$t('settings.searchPackages')" />
             </div>
             
             <div class="packages-grid">
@@ -58,12 +35,7 @@
                 class="package-item"
                 :class="{ selected: form.allowed_node_modules.includes(pkg.name) }"
               >
-                <input
-                  type="checkbox"
-                  :value="pkg.name"
-                  v-model="form.allowed_node_modules"
-                  class="package-checkbox"
-                />
+                <el-checkbox :value="pkg.name" v-model="form.allowed_node_modules" />
                 <span class="package-name">{{ pkg.name }}</span>
                 <span class="package-version" :class="{ 'built-in': pkg.version === 'built-in' }">
                   {{ pkg.version }}
@@ -82,27 +54,9 @@
         <div class="install-section">
           <h4 class="install-title">{{ $t('settings.installPackage') }}</h4>
           <div class="install-form">
-            <input
-              type="text"
-              v-model="nodeInstallName"
-              :placeholder="$t('settings.installPackagePlaceholder')"
-              class="install-input"
-              :disabled="nodeInstalling"
-            />
-            <input
-              type="text"
-              v-model="nodeInstallVersion"
-              :placeholder="$t('settings.installVersionPlaceholder')"
-              class="install-version-input"
-              :disabled="nodeInstalling"
-            />
-            <button
-              class="btn-install"
-              @click="installNodePackage"
-              :disabled="!nodeInstallName.trim() || nodeInstalling"
-            >
-              {{ nodeInstalling ? $t('settings.installing') : $t('settings.installPackage') }}
-            </button>
+            <el-input v-model="nodeInstallName" :placeholder="$t('settings.installPackagePlaceholder')" :disabled="nodeInstalling" />
+            <el-input v-model="nodeInstallVersion" :placeholder="$t('settings.installVersionPlaceholder')" :disabled="nodeInstalling" style="width: 120px" />
+            <el-button type="success" @click="installNodePackage" :disabled="!nodeInstallName.trim() || nodeInstalling">{{ nodeInstalling ? $t('settings.installing') : $t('settings.installPackage') }}</el-button>
           </div>
           <p class="install-hint">{{ $t('settings.installPackageHint') }}</p>
         </div>
@@ -113,27 +67,16 @@
         <div class="section-header">
           <h3 class="section-title">{{ $t('settings.packageWhitelist') }}</h3>
           <div class="section-actions">
-            <button class="btn-select-all" @click="selectAllPython">
-              {{ $t('settings.selectAll') }}
-            </button>
-            <button class="btn-default" @click="selectDefaultPython">
-              {{ $t('settings.selectDefault') }}
-            </button>
-            <button class="btn-clear" @click="clearPython">
-              {{ $t('settings.clearAll') }}
-            </button>
+            <el-button size="small" @click="selectAllPython">{{ $t('settings.selectAll') }}</el-button>
+            <el-button size="small" type="primary" plain @click="selectDefaultPython">{{ $t('settings.selectDefault') }}</el-button>
+            <el-button size="small" @click="clearPython">{{ $t('settings.clearAll') }}</el-button>
           </div>
         </div>
 
         <div class="whitelist-editor">
           <div class="package-list">
             <div class="package-search">
-              <input
-                type="text"
-                v-model="pythonSearch"
-                :placeholder="$t('settings.searchPackages')"
-                class="search-input"
-              />
+              <el-input v-model="pythonSearch" :placeholder="$t('settings.searchPackages')" />
             </div>
             
             <div class="packages-grid">
@@ -143,12 +86,7 @@
                 class="package-item"
                 :class="{ selected: form.allowed_python_packages.includes(pkg.name) }"
               >
-                <input
-                  type="checkbox"
-                  :value="pkg.name"
-                  v-model="form.allowed_python_packages"
-                  class="package-checkbox"
-                />
+                <el-checkbox :value="pkg.name" v-model="form.allowed_python_packages" />
                 <span class="package-name">{{ pkg.name }}</span>
                 <span class="package-version" :class="{ 'built-in': pkg.version === 'built-in' }">
                   {{ pkg.version }}
@@ -167,27 +105,9 @@
         <div class="install-section">
           <h4 class="install-title">{{ $t('settings.installPackage') }}</h4>
           <div class="install-form">
-            <input
-              type="text"
-              v-model="pythonInstallName"
-              :placeholder="$t('settings.installPackagePlaceholder')"
-              class="install-input"
-              :disabled="pythonInstalling"
-            />
-            <input
-              type="text"
-              v-model="pythonInstallVersion"
-              :placeholder="$t('settings.installVersionPlaceholder')"
-              class="install-version-input"
-              :disabled="pythonInstalling"
-            />
-            <button
-              class="btn-install"
-              @click="installPythonPackage"
-              :disabled="!pythonInstallName.trim() || pythonInstalling"
-            >
-              {{ pythonInstalling ? $t('settings.installing') : $t('settings.installPackage') }}
-            </button>
+            <el-input v-model="pythonInstallName" :placeholder="$t('settings.installPackagePlaceholder')" :disabled="pythonInstalling" />
+            <el-input v-model="pythonInstallVersion" :placeholder="$t('settings.installVersionPlaceholder')" :disabled="pythonInstalling" style="width: 120px" />
+            <el-button type="success" @click="installPythonPackage" :disabled="!pythonInstallName.trim() || pythonInstalling">{{ pythonInstalling ? $t('settings.installing') : $t('settings.installPackage') }}</el-button>
           </div>
           <p class="install-hint">{{ $t('settings.installPackageHint') }}</p>
         </div>
@@ -195,16 +115,8 @@
 
       <!-- 底部操作按钮 -->
       <div class="config-actions">
-        <button class="btn-reset-all" @click="resetWhitelist">
-          {{ $t('settings.resetToDefault') }}
-        </button>
-        <button
-          class="btn-save"
-          @click="saveWhitelist"
-          :disabled="!hasChanges || saving"
-        >
-          {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
-        </button>
+        <el-button @click="resetWhitelist">{{ $t('settings.resetToDefault') }}</el-button>
+        <el-button type="primary" @click="saveWhitelist" :disabled="!hasChanges || saving">{{ saving ? $t('common.saving') : $t('settings.saveChanges') }}</el-button>
       </div>
     </template>
   </div>

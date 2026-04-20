@@ -714,25 +714,6 @@ onUnmounted(() => {
   background: var(--success-bg, #e8f5e9);
 }
 
-/* 重发按钮 */
-.resend-btn {
-  margin-top: 8px;
-  padding: 4px 12px;
-  font-size: 12px;
-  border: 1px solid var(--primary-color, #2196f3);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--primary-color, #2196f3);
-  cursor: pointer;
-  opacity: 0.8;
-  transition: all 0.2s;
-}
-
-.resend-btn:hover {
-  opacity: 1;
-  background: var(--primary-light, #e3f2fd);
-}
-
 .empty-hint {
   text-align: center;
   color: var(--text-secondary, #666);

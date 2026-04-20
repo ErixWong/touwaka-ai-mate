@@ -51,7 +51,7 @@
           <div class="app-card-desc" v-if="app.description">{{ app.description }}</div>
           <div class="app-card-meta">
             <span class="app-type">{{ app.type }}</span>
-            <span v-if="app.updateAvailable" class="update-tag">{{ $t('apps.hasUpdate', '有更新') }}</span>
+            <span v-if="(app as any).updateAvailable" class="update-tag">{{ $t('apps.hasUpdate', '有更新') }}</span>
           </div>
         </div>
       </div>
