@@ -43,7 +43,18 @@
     "supported_formats": [".pdf", ".docx", ".doc", ".jpg", ".png"],
     "max_file_size": 20971520,
     "batch_enabled": true,
-    "batch_limit": 50
+    "batch_limit": 50,
+    "step_resources": {
+      "pending_ocr": {
+        "type": "mcp",
+        "primary": { "server": "markitdown", "tool": "convert" },
+        "fallback": { "server": "mineru", "tool": "parse" }
+      },
+      "pending_extract": {
+        "type": "internal_llm",
+        "temperature": 0.3
+      }
+    }
   },
   
   "states": [

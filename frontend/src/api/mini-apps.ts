@@ -53,6 +53,27 @@ export interface AppConfig {
   max_file_size?: number
   batch_enabled?: boolean
   batch_limit?: number
+  step_resources?: Record<string, StepResourceConfig>
+}
+
+export interface StepResourceConfig {
+  type: 'mcp' | 'internal_llm'
+  primary?: { server: string; tool: string }
+  fallback?: { server: string; tool: string }
+  temperature?: number
+}
+
+export interface McpServerResource {
+  id: string
+  name: string
+  display_name: string
+  transport_type: string
+  tools: { name: string; description: string }[]
+}
+
+export interface AvailableResources {
+  mcp_servers: McpServerResource[]
+  internal_llm: { available: boolean }
 }
 
 export interface AppState {
@@ -161,6 +182,20 @@ export async function updateApp(appId: string, data: Partial<MiniApp>): Promise<
 
 export async function deleteApp(appId: string): Promise<void> {
   return apiRequest<void>(apiClient.delete(`/mini-apps/${appId}`))
+}
+
+// ==================== Config ====================
+
+export async function getAppConfig(appId: string): Promise<AppConfig> {
+  return apiRequest<AppConfig>(apiClient.get(`/mini-apps/${appId}/config`))
+}
+
+export async function updateAppConfig(appId: string, config: Partial<AppConfig>): Promise<AppConfig> {
+  return apiRequest<AppConfig>(apiClient.put(`/mini-apps/${appId}/config`, config))
+}
+
+export async function getAvailableResources(appId: string): Promise<AvailableResources> {
+  return apiRequest<AvailableResources>(apiClient.get(`/mini-apps/${appId}/available-resources`))
 }
 
 // ==================== Records ====================

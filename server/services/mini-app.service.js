@@ -116,6 +116,67 @@ class MiniAppService {
     return app;
   }
 
+  async getAppConfig(appId) {
+    this.ensureModels();
+    const app = await this.models.MiniApp.findByPk(appId);
+    if (!app) throw new Error('App not found');
+
+    let config = app.config;
+    if (typeof config === 'string') {
+      try { config = JSON.parse(config); } catch { config = {}; }
+    }
+    return config || {};
+  }
+
+  async updateAppConfig(appId, configData) {
+    this.ensureModels();
+    const app = await this.models.MiniApp.findByPk(appId);
+    if (!app) throw new Error('App not found');
+
+    let currentConfig = app.config;
+    if (typeof currentConfig === 'string') {
+      try { currentConfig = JSON.parse(currentConfig); } catch { currentConfig = {}; }
+    }
+
+    const mergedConfig = { ...currentConfig, ...configData };
+    await app.update({ config: JSON.stringify(mergedConfig) });
+    return mergedConfig;
+  }
+
+  async getAvailableResources() {
+    this.ensureModels();
+    const MCPServer = this.db.getModel('mcp_server');
+    const MCPToolsCache = this.db.getModel('mcp_tools_cache');
+
+    const servers = await MCPServer.findAll({
+      where: { is_enabled: true },
+      raw: true,
+    });
+
+    const result = [];
+    for (const server of servers) {
+      const tools = await MCPToolsCache.findAll({
+        where: { mcp_server_id: server.id },
+        raw: true,
+      });
+      result.push({
+        id: server.id,
+        name: server.name,
+        display_name: server.display_name,
+        transport_type: server.transport_type,
+        tools: tools.map(t => ({
+          name: t.tool_name,
+          description: t.description,
+        })),
+      });
+    }
+
+    return {
+      mcp_servers: result,
+      internal_llm: { available: true },
+    };
+  }
+
   async deleteApp(appId) {
     this.ensureModels();
     const app = await this.models.MiniApp.findByPk(appId);

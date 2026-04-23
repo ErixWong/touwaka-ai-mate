@@ -71,6 +71,39 @@ class MiniAppController {
     }
   }
 
+  async getAppConfig(ctx) {
+    try {
+      const { appId } = ctx.params;
+      const config = await this.miniAppService.getAppConfig(appId);
+      ctx.success(config);
+    } catch (error) {
+      logger.error('Get app config error:', error);
+      ctx.error(error.message, 404);
+    }
+  }
+
+  async updateAppConfig(ctx) {
+    try {
+      const { appId } = ctx.params;
+      const configData = ctx.request.body;
+      const config = await this.miniAppService.updateAppConfig(appId, configData);
+      ctx.success(config, 'Updated');
+    } catch (error) {
+      logger.error('Update app config error:', error);
+      ctx.error(error.message, 400);
+    }
+  }
+
+  async getAvailableResources(ctx) {
+    try {
+      const resources = await this.miniAppService.getAvailableResources();
+      ctx.success(resources);
+    } catch (error) {
+      logger.error('Get available resources error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
+
   // ==================== Record CRUD ====================
 
   async listRecords(ctx) {

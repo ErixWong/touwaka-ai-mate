@@ -1,3 +1,16 @@
+const DEFAULT_EXTRACT_CONFIG = {
+  type: 'internal_llm',
+  temperature: 0.3,
+};
+
+function getExtractConfig(app) {
+  let config = app?.config;
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config); } catch { config = {}; }
+  }
+  return config?.step_resources?.pending_extract || DEFAULT_EXTRACT_CONFIG;
+}
+
 export default {
   async process(context) {
     const { record, app, services } = context;
@@ -17,11 +30,14 @@ export default {
       .map(f => `- ${f.name} (${f.label}): type=${f.type}${f.required ? ', required' : ''}`)
       .join('\n');
 
+    const extractConfig = getExtractConfig(app);
+
     try {
       const response = await services.callLlm('extract_metadata', {
         field_definitions: fieldDefs,
         ocr_text: ocrText,
         response_format: 'json',
+        temperature: extractConfig.temperature,
       });
 
       let metadata;

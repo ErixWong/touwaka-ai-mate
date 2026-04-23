@@ -1383,6 +1383,20 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     hasUpdate: 'Update',
   },
 
+  stepConfig: {
+    title: 'Step Config',
+    resourceType: 'Resource Type',
+    internalLlm: 'Internal LLM',
+    primaryServer: 'Primary Server',
+    primaryTool: 'Primary Tool',
+    fallbackServer: 'Fallback Server',
+    fallbackTool: 'Fallback Tool',
+    temperature: 'Temperature',
+    noHandlerSteps: 'No configurable steps',
+    saveSuccess: 'Config saved',
+    saveFailed: 'Failed to save config',
+  },
+
   // App Market
   appMarket: {
     all: 'All',

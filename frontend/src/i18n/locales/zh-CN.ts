@@ -1327,6 +1327,20 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     hasUpdate: '有更新',
   },
 
+  stepConfig: {
+    title: '步骤配置',
+    resourceType: '资源类型',
+    internalLlm: '内置LLM',
+    primaryServer: '主服务',
+    primaryTool: '主服务工具',
+    fallbackServer: '备用服务',
+    fallbackTool: '备用服务工具',
+    temperature: '温度',
+    noHandlerSteps: '没有需要配置的步骤',
+    saveSuccess: '配置保存成功',
+    saveFailed: '配置保存失败',
+  },
+
   // 应用市场
   appMarket: {
     all: '全部',
