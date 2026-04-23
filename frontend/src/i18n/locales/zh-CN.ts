@@ -592,11 +592,12 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       envHint: '环境变量配置，每行一个 KEY=value',
       // 传输类型和 HTTP 配置
       transportType: '传输类型',
-      transportTypeHint: '选择 MCP 服务器的通信方式：STDIO 用于本地进程，HTTP Stream 用于远程服务',
+      transportTypeHint: '选择 MCP 服务器的通信方式：STDIO 用于本地进程，HTTP Stream 用于远程服务，Stateless HTTP 用于无状态的远程服务（无 SSE）',
       transportTypes: {
         stdio: 'STDIO (本地进程)',
         http: 'HTTP Stream (远程服务)',
         sse: 'SSE (Server-Sent Events)',
+        statelessHttp: 'Stateless HTTP (无状态远程)',
       },
       url: '服务器地址',
       urlPlaceholder: 'https://api.example.com/mcp',

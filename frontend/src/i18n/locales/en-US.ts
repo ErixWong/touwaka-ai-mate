@@ -756,11 +756,12 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
       envHint: 'Environment variable configuration, one KEY=value per line',
       // Transport Type and HTTP Configuration
       transportType: 'Transport Type',
-      transportTypeHint: 'Select MCP server communication method: STDIO for local processes, HTTP Stream for remote services',
+      transportTypeHint: 'Select MCP server communication method: STDIO for local processes, HTTP Stream for remote services, Stateless HTTP for stateless remote services (no SSE)',
       transportTypes: {
         stdio: 'STDIO (Local Process)',
         http: 'HTTP Stream (Remote Service)',
         sse: 'SSE (Server-Sent Events)',
+        statelessHttp: 'Stateless HTTP (Stateless Remote)',
       },
       url: 'Server URL',
       urlPlaceholder: 'https://api.example.com/mcp',
