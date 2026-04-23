@@ -27,10 +27,10 @@
           <div v-for="param in currentToolParams" :key="param.name" class="mapping-row">
             <div class="mapping-tool-param">
               <span class="param-name">{{ param.name }}</span>
-              <span v-if="param.required" class="param-required">*</span>
-              <span class="param-type">{{ param.type || 'string' }}</span>
+              <span v-if="param.required" class="param-required">{{ $t('apps.stepConfig.required') }}</span>
+              <span class="param-type">{{ $t('apps.stepConfig.paramType', { type: param.type || 'string' }) }}</span>
             </div>
-            <span class="mapping-arrow">←</span>
+            <span class="mapping-arrow">{{ $t('apps.stepConfig.mappingArrow') }}</span>
             <div class="mapping-handler-output">
               <el-select
                 :model-value="getMapping(param.name)"

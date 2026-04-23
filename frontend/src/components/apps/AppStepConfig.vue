@@ -14,7 +14,7 @@
               <div class="form-field span-2">
                 <label class="field-label">{{ $t('apps.stepConfig.resourceType') }}</label>
                 <el-select v-model="formData[step.name].type" @change="onTypeChange(step.name)">
-                  <el-option value="mcp" label="MCP" />
+                  <el-option value="mcp" :label="$t('apps.stepConfig.mcp')" />
                   <el-option value="internal_llm" :label="$t('apps.stepConfig.internalLlm')" />
                 </el-select>
               </div>

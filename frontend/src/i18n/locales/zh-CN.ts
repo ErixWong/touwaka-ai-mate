@@ -1330,6 +1330,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
   stepConfig: {
     title: '步骤配置',
     resourceType: '资源类型',
+    mcp: 'MCP',
     internalLlm: '内置LLM',
     primaryServer: '主服务',
     primaryTool: '主服务工具',
@@ -1343,6 +1344,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     selectMapping: '选择映射',
     noToolParams: '该工具无输入参数',
     noHandlerOutputs: '该 Handler 无可用输出',
+    paramType: '{type}',
+    mappingArrow: '←',
+    required: '*',
   },
 
   // 应用市场

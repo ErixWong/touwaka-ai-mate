@@ -1386,6 +1386,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
   stepConfig: {
     title: 'Step Config',
     resourceType: 'Resource Type',
+    mcp: 'MCP',
     internalLlm: 'Internal LLM',
     primaryServer: 'Primary Server',
     primaryTool: 'Primary Tool',
@@ -1399,6 +1400,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     selectMapping: 'Select mapping',
     noToolParams: 'No input params for this tool',
     noHandlerOutputs: 'No available outputs for this handler',
+    paramType: '{type}',
+    mappingArrow: '\u2190',
+    required: '*',
   },
 
   // App Market
