@@ -981,12 +981,11 @@ export interface McpUserCredential {
 // MCP 工具缓存类型
 export interface McpToolCache {
   id: string
-  server_id: string
+  mcp_server_id: string
   tool_name: string
-  tool_description: string
-  tool_input_schema: string
-  created_at: string
-  updated_at: string
+  description: string
+  input_schema: string
+  cached_at: string
 }
 
 // MCP API

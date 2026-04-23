@@ -81,8 +81,8 @@
               class="tool-item"
             >
               <div class="tool-info">
-                <span class="tool-name">{{ (tool as any).tool_name || tool.tool_name }}</span>
-                <span v-if="(tool as any).tool_description || tool.tool_description" class="tool-description">{{ (tool as any).tool_description || tool.tool_description }}</span>
+                <span class="tool-name">{{ (tool as any).tool_name }}</span>
+                <span v-if="(tool as any).description" class="tool-description">{{ (tool as any).description }}</span>
               </div>
               <el-button size="small" @click="openTestToolDialog(tool)" :disabled="testToolLoading">▶</el-button>
             </div>
@@ -93,7 +93,7 @@
         <div v-if="showTestToolDialog" class="dialog-overlay" @click.self="showTestToolDialog = false">
           <div class="dialog test-tool-dialog">
             <div class="dialog-header">
-              <h3>▶ {{ (testingTool as any)?.tool_name || testingTool?.tool_name }}</h3>
+              <h3>▶ {{ (testingTool as any)?.tool_name }}</h3>
               <button class="btn-close" @click="showTestToolDialog = false">&times;</button>
             </div>
             <div class="dialog-body">
@@ -202,6 +202,7 @@
               <el-radio value="stdio">{{ $t('settings.mcp.transportTypes.stdio') }}</el-radio>
               <el-radio value="http">{{ $t('settings.mcp.transportTypes.http') }}</el-radio>
               <el-radio value="sse">{{ $t('settings.mcp.transportTypes.sse') }}</el-radio>
+              <el-radio value="statelessHttp">{{ $t('settings.mcp.transportTypes.statelessHttp') }}</el-radio>
             </el-radio-group>
             <p class="form-hint">{{ $t('settings.mcp.transportTypeHint') }}</p>
           </div>
@@ -326,7 +327,7 @@ const isServerFormValid = computed(() => {
 })
 
 const isStdioMode = computed(() => serverForm.transport_type === 'stdio')
-const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse')
+const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse' || serverForm.transport_type === 'statelessHttp')
 
 // Server 删除对话框
 const showDeleteServerDialog = ref(false)
@@ -498,7 +499,7 @@ const executeTestTool = async () => {
     } else {
       args = JSON.parse(testToolArgs.value || '{}')
     }
-    const result = await mcpApi.callTool(selectedServer.value.id, (testingTool.value as any).tool_name || testingTool.value.tool_name, args)
+    const result = await mcpApi.callTool(selectedServer.value.id, (testingTool.value as any).tool_name, args)
     testToolResult.value = formatToolResult(result.result)
   } catch (error: any) {
     testToolResult.value = `Error: ${error.message}`
