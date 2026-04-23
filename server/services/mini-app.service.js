@@ -230,7 +230,6 @@ class MiniAppService {
       throw new Error(`Handler script not found: ${indexPath}`);
     }
 
-    const moduleUrl = import.meta.url;
     return await import(`${pathToFileURL(indexPath).href}?t=${Date.now()}`);
   }
 
