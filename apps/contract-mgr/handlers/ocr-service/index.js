@@ -1,8 +1,18 @@
+import path from 'path';
+import fs from 'fs/promises';
+
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
-  primary: { server: 'markitdown', tool: 'convert' },
-  fallback: { server: 'mineru', tool: 'parse' },
+  primary: { server: 'markitdown', tool: 'convert', params_mapping: { file_path: 'file.path' } },
 };
+
+export const availableOutputs = [
+  { key: 'file.path', label: '文件绝对路径', type: 'string' },
+  { key: 'file.base64', label: '文件Base64内容', type: 'string' },
+  { key: 'file.mime_type', label: 'MIME类型', type: 'string' },
+  { key: 'file.name', label: '原始文件名', type: 'string' },
+  { key: 'file.data_url', label: 'Data URL', type: 'string' },
+];
 
 function getResourceConfig(app, stepName) {
   let config = app?.config;
@@ -12,35 +22,65 @@ function getResourceConfig(app, stepName) {
   return config?.step_resources?.[stepName] || DEFAULT_STEP_RESOURCES;
 }
 
+async function buildValueMap(attachment) {
+  const basePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
+  const absolutePath = path.resolve(basePath, attachment.file_path);
+  const values = {
+    'file.path': absolutePath,
+    'file.mime_type': attachment.mime_type || 'application/octet-stream',
+    'file.name': attachment.file_name || '',
+  };
+
+  const buffer = await fs.readFile(absolutePath);
+  const base64 = buffer.toString('base64');
+  values['file.base64'] = base64;
+  values['file.data_url'] = `data:${values['file.mime_type']};base64,${base64}`;
+
+  return values;
+}
+
+function resolveParams(paramsMapping, valueMap) {
+  const params = {};
+  for (const [toolParam, handlerKey] of Object.entries(paramsMapping || {})) {
+    if (valueMap[handlerKey] !== undefined) {
+      params[toolParam] = valueMap[handlerKey];
+    }
+  }
+  return params;
+}
+
+async function callMcpWithMapping(services, mcpConfig, valueMap) {
+  const params = resolveParams(mcpConfig.params_mapping, valueMap);
+  return await services.callMcp(mcpConfig.server, mcpConfig.tool, params);
+}
+
 export default {
+  availableOutputs,
   async process(context) {
-    const { record, files, services, app } = context;
+    const { record, files, services, app, stateName } = context;
 
     const file = files[0];
     if (!file || !file.attachment) {
       return { success: false, error: 'No associated file found' };
     }
 
-    const resConfig = getResourceConfig(app, 'pending_ocr');
+    const resConfig = getResourceConfig(app, stateName || 'pending_ocr');
+    const valueMap = await buildValueMap(file.attachment);
     let ocrText = '';
     let usedService = resConfig.primary?.server || 'unknown';
 
     try {
       const primary = resConfig.primary || {};
-      const result = await services.callMcp(primary.server, primary.tool, {
-        file_path: file.attachment.file_path,
-      });
+      const result = await callMcpWithMapping(services, primary, valueMap);
       ocrText = result.text;
     } catch (e) {
       const fallback = resConfig.fallback;
-      if (!fallback) {
+      if (!fallback || !fallback.server) {
         return { success: false, error: 'OCR failed: ' + e.message };
       }
       try {
         usedService = fallback.server;
-        const result = await services.callMcp(fallback.server, fallback.tool, {
-          file_path: file.attachment.file_path,
-        });
+        const result = await callMcpWithMapping(services, fallback, valueMap);
         ocrText = result.text;
       } catch (e2) {
         return { success: false, error: 'OCR failed: ' + e2.message };

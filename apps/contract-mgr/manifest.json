@@ -47,8 +47,8 @@
     "step_resources": {
       "pending_ocr": {
         "type": "mcp",
-        "primary": { "server": "markitdown", "tool": "convert" },
-        "fallback": { "server": "mineru", "tool": "parse" }
+        "primary": { "server": "markitdown", "tool": "convert", "params_mapping": { "file_path": "file.path" } },
+        "fallback": { "server": "mineru", "tool": "parse", "params_mapping": { "file_path": "file.path" } }
       },
       "pending_extract": {
         "type": "internal_llm",

@@ -58,9 +58,22 @@ export interface AppConfig {
 
 export interface StepResourceConfig {
   type: 'mcp' | 'internal_llm'
-  primary?: { server: string; tool: string }
-  fallback?: { server: string; tool: string }
+  primary?: McpResourceTarget
+  fallback?: McpResourceTarget
   temperature?: number
+}
+
+export interface McpResourceTarget {
+  server: string
+  tool: string
+  params_mapping?: Record<string, string>
+}
+
+export interface McpToolParam {
+  name: string
+  type?: string
+  description?: string
+  required?: boolean
 }
 
 export interface McpServerResource {
@@ -68,12 +81,27 @@ export interface McpServerResource {
   name: string
   display_name: string
   transport_type: string
-  tools: { name: string; description: string }[]
+  tools: {
+    name: string
+    description: string
+    input_schema?: {
+      type?: string
+      properties?: Record<string, McpToolParam>
+      required?: string[]
+    } | null
+  }[]
+}
+
+export interface HandlerOutput {
+  key: string
+  label: string
+  type: string
 }
 
 export interface AvailableResources {
   mcp_servers: McpServerResource[]
   internal_llm: { available: boolean }
+  handler_outputs: Record<string, HandlerOutput[]>
 }
 
 export interface AppState {

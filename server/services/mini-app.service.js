@@ -1,6 +1,7 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op, Sequelize } from 'sequelize';
+import { pathToFileURL } from 'url';
 import {
   buildPaginatedResponse,
 } from '../../lib/query-builder.js';
@@ -143,10 +144,11 @@ class MiniAppService {
     return mergedConfig;
   }
 
-  async getAvailableResources() {
+  async getAvailableResources(appId) {
     this.ensureModels();
     const MCPServer = this.db.getModel('mcp_server');
     const MCPToolsCache = this.db.getModel('mcp_tools_cache');
+    const AppRowHandler = this.db.getModel('app_row_handler');
 
     const servers = await MCPServer.findAll({
       where: { is_enabled: true },
@@ -164,17 +166,72 @@ class MiniAppService {
         name: server.name,
         display_name: server.display_name,
         transport_type: server.transport_type,
-        tools: tools.map(t => ({
-          name: t.tool_name,
-          description: t.description,
-        })),
+        tools: tools.map(t => {
+          let inputSchema = null;
+          if (t.input_schema) {
+            try { inputSchema = JSON.parse(t.input_schema); } catch { inputSchema = null; }
+          }
+          return {
+            name: t.tool_name,
+            description: t.description,
+            input_schema: inputSchema,
+          };
+        }),
       });
+    }
+
+    let handlerOutputs = {};
+    if (appId) {
+      const app = await this.models.MiniApp.findByPk(appId);
+      if (app) {
+        const AppState = this.db.getModel('app_state');
+        const states = await AppState.findAll({
+          where: { app_id: appId },
+          raw: true,
+        });
+
+        const handlerIds = states.filter(s => s.handler_id).map(s => s.handler_id);
+        const uniqueHandlerIds = [...new Set(handlerIds)];
+
+        for (const hid of uniqueHandlerIds) {
+          const handler = await AppRowHandler.findByPk(hid);
+          if (!handler) continue;
+
+          try {
+            const scriptModule = await this.loadHandlerScript(handler.handler);
+            const outputs = scriptModule.availableOutputs || [];
+            handlerOutputs[hid] = outputs;
+          } catch {
+            handlerOutputs[hid] = [];
+          }
+        }
+      }
     }
 
     return {
       mcp_servers: result,
       internal_llm: { available: true },
+      handler_outputs: handlerOutputs,
     };
+  }
+
+  async loadHandlerScript(handlerPath) {
+    const fs = await import('fs');
+    const path = await import('path');
+    const allowedPrefixes = ['scripts/', 'data/skills/'];
+    const absPath = path.resolve(handlerPath);
+    const isAllowed = allowedPrefixes.some(p => absPath.includes(p.replace('/', path.sep)));
+    if (!isAllowed) {
+      throw new Error(`Handler path not allowed: ${handlerPath}`);
+    }
+
+    const indexPath = path.join(absPath, 'index.js');
+    if (!fs.default.existsSync(indexPath)) {
+      throw new Error(`Handler script not found: ${indexPath}`);
+    }
+
+    const moduleUrl = import.meta.url;
+    return await import(`${pathToFileURL(indexPath).href}?t=${Date.now()}`);
   }
 
   async deleteApp(appId) {

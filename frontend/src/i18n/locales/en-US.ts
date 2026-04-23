@@ -1395,6 +1395,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     noHandlerSteps: 'No configurable steps',
     saveSuccess: 'Config saved',
     saveFailed: 'Failed to save config',
+    paramsMapping: 'Params Mapping',
+    selectMapping: 'Select mapping',
+    noToolParams: 'No input params for this tool',
+    noHandlerOutputs: 'No available outputs for this handler',
   },
 
   // App Market

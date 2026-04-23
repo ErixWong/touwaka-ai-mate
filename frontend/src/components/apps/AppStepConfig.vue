@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="dialog-overlay" @click.self="close">
-    <div class="dialog">
+    <div class="dialog dialog-large">
       <div class="dialog-header">
         <h3>{{ $t('apps.stepConfig.title') }}</h3>
         <el-button @click="close">×</el-button>
@@ -11,7 +11,7 @@
           <div v-for="step in handlerSteps" :key="step.name" class="step-section">
             <h4 class="step-title">{{ step.label }}</h4>
             <div class="step-form">
-              <div class="form-field">
+              <div class="form-field span-2">
                 <label class="field-label">{{ $t('apps.stepConfig.resourceType') }}</label>
                 <el-select v-model="formData[step.name].type" @change="onTypeChange(step.name)">
                   <el-option value="mcp" label="MCP" />
@@ -20,34 +20,29 @@
               </div>
 
               <template v-if="formData[step.name].type === 'mcp'">
-                <div class="form-field">
-                  <label class="field-label">{{ $t('apps.stepConfig.primaryServer') }}</label>
-                  <el-select v-model="formData[step.name].primary.server" @change="onServerChange(step.name, 'primary')">
-                    <el-option v-for="s in mcpServers" :key="s.name" :value="s.name" :label="s.display_name || s.name" />
-                  </el-select>
-                </div>
-                <div class="form-field">
-                  <label class="field-label">{{ $t('apps.stepConfig.primaryTool') }}</label>
-                  <el-select v-model="formData[step.name].primary.tool">
-                    <el-option v-for="t in getToolsForServer(formData[step.name].primary.server)" :key="t.name" :value="t.name" :label="t.name" />
-                  </el-select>
-                </div>
-                <div class="form-field">
-                  <label class="field-label">{{ $t('apps.stepConfig.fallbackServer') }}</label>
-                  <el-select v-model="formData[step.name].fallback.server" clearable>
-                    <el-option v-for="s in mcpServers" :key="s.name" :value="s.name" :label="s.display_name || s.name" />
-                  </el-select>
-                </div>
-                <div v-if="formData[step.name].fallback.server" class="form-field">
-                  <label class="field-label">{{ $t('apps.stepConfig.fallbackTool') }}</label>
-                  <el-select v-model="formData[step.name].fallback.tool">
-                    <el-option v-for="t in getToolsForServer(formData[step.name].fallback.server)" :key="t.name" :value="t.name" :label="t.name" />
-                  </el-select>
-                </div>
+                <McpTargetConfig
+                  :label="$t('apps.stepConfig.primaryServer')"
+                  :target="formData[step.name].primary"
+                  :mcp-servers="mcpServers"
+                  :handler-outputs="getHandlerOutputs(step)"
+                  @update:target="formData[step.name].primary = $event"
+                  @server-change="onServerChange(step.name, 'primary', $event)"
+                  @tool-change="onToolChange(step.name, 'primary')"
+                />
+                <McpTargetConfig
+                  :label="$t('apps.stepConfig.fallbackServer')"
+                  :target="formData[step.name].fallback"
+                  :mcp-servers="mcpServers"
+                  :handler-outputs="getHandlerOutputs(step)"
+                  :optional="true"
+                  @update:target="formData[step.name].fallback = $event"
+                  @server-change="onServerChange(step.name, 'fallback', $event)"
+                  @tool-change="onToolChange(step.name, 'fallback')"
+                />
               </template>
 
               <template v-if="formData[step.name].type === 'internal_llm'">
-                <div class="form-field">
+                <div class="form-field span-2">
                   <label class="field-label">{{ $t('apps.stepConfig.temperature') }}</label>
                   <el-slider v-model="formData[step.name].temperature" :min="0" :max="1" :step="0.1" show-input />
                 </div>
@@ -80,7 +75,10 @@ import {
   type AppState,
   type StepResourceConfig,
   type McpServerResource,
+  type McpResourceTarget,
+  type HandlerOutput,
 } from '@/api/mini-apps'
+import McpTargetConfig from './McpTargetConfig.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -98,6 +96,7 @@ const toast = useToastStore()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const mcpServers = ref<McpServerResource[]>([])
+const handlerOutputsMap = ref<Record<string, HandlerOutput[]>>({})
 const formData = ref<Record<string, StepResourceConfig>>({})
 
 const states = computed<AppState[]>(() => {
@@ -108,6 +107,11 @@ const handlerSteps = computed(() => {
   return states.value.filter(s => s.handler_id)
 })
 
+function getHandlerOutputs(step: AppState): HandlerOutput[] {
+  if (!step.handler_id) return []
+  return handlerOutputsMap.value[step.handler_id] || []
+}
+
 function getToolsForServer(serverName: string) {
   const server = mcpServers.value.find(s => s.name === serverName)
   return server?.tools || []
@@ -116,20 +120,27 @@ function getToolsForServer(serverName: string) {
 function onTypeChange(stepName: string) {
   const cfg = formData.value[stepName]
   if (cfg.type === 'mcp') {
-    cfg.primary = cfg.primary || { server: '', tool: '' }
-    cfg.fallback = cfg.fallback || { server: '', tool: '' }
+    cfg.primary = cfg.primary || { server: '', tool: '', params_mapping: {} }
+    cfg.fallback = cfg.fallback || { server: '', tool: '', params_mapping: {} }
   }
 }
 
-function onServerChange(stepName: string, role: 'primary' | 'fallback') {
+function onServerChange(stepName: string, role: 'primary' | 'fallback', serverName: string) {
   const cfg = formData.value[stepName]
-  if (role === 'primary' && cfg.primary) {
-    const tools = getToolsForServer(cfg.primary.server)
-    cfg.primary.tool = tools.length > 0 ? tools[0].name : ''
-  } else if (role === 'fallback' && cfg.fallback) {
-    const tools = getToolsForServer(cfg.fallback.server)
-    cfg.fallback.tool = tools.length > 0 ? tools[0].name : ''
-  }
+  const target = role === 'primary' ? cfg.primary : cfg.fallback
+  if (!target) return
+  target.server = serverName
+  const tools = getToolsForServer(serverName)
+  target.tool = tools.length > 0 ? tools[0].name : ''
+  target.params_mapping = {}
+}
+
+function onToolChange() {
+  // tool changed, params_mapping will be re-evaluated by McpTargetConfig
+}
+
+function ensureTarget(target: McpResourceTarget | undefined): McpResourceTarget {
+  return target || { server: '', tool: '', params_mapping: {} }
 }
 
 async function loadData() {
@@ -141,14 +152,20 @@ async function loadData() {
     ])
 
     mcpServers.value = resources.mcp_servers || []
+    handlerOutputsMap.value = resources.handler_outputs || {}
 
     const stepResources = config.step_resources || {}
     const initial: Record<string, StepResourceConfig> = {}
     for (const step of handlerSteps.value) {
-      initial[step.name] = stepResources[step.name] || {
+      const saved = stepResources[step.name]
+      if (saved) {
+        if (saved.primary) saved.primary = ensureTarget(saved.primary)
+        if (saved.fallback) saved.fallback = ensureTarget(saved.fallback)
+      }
+      initial[step.name] = saved || {
         type: 'mcp',
-        primary: { server: '', tool: '' },
-        fallback: { server: '', tool: '' },
+        primary: { server: '', tool: '', params_mapping: {} },
+        fallback: { server: '', tool: '', params_mapping: {} },
       }
     }
     formData.value = initial
@@ -208,6 +225,10 @@ watch(() => props.visible, (val) => {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
+.dialog-large {
+  max-width: 800px;
+}
+
 .dialog-header {
   display: flex;
   align-items: center;
@@ -255,9 +276,9 @@ watch(() => props.visible, (val) => {
 }
 
 .step-form {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .form-field {
@@ -265,8 +286,8 @@ watch(() => props.visible, (val) => {
   flex-direction: column;
 }
 
-.form-field:first-child {
-  grid-column: span 2;
+.form-field.span-2 {
+  width: 100%;
 }
 
 .field-label {

@@ -3,17 +3,31 @@ const DEFAULT_EXTRACT_CONFIG = {
   temperature: 0.3,
 };
 
-function getExtractConfig(app) {
+export const availableOutputs = [
+  { key: 'text', label: 'OCR原文', type: 'string' },
+  { key: 'field_definitions', label: '字段定义JSON', type: 'string' },
+];
+
+function getExtractConfig(app, stateName) {
   let config = app?.config;
   if (typeof config === 'string') {
     try { config = JSON.parse(config); } catch { config = {}; }
   }
-  return config?.step_resources?.pending_extract || DEFAULT_EXTRACT_CONFIG;
+  return config?.step_resources?.[stateName] || config?.step_resources?.pending_extract || DEFAULT_EXTRACT_CONFIG;
+}
+
+function parseFields(app) {
+  let fields = app?.fields;
+  if (typeof fields === 'string') {
+    try { fields = JSON.parse(fields); } catch { fields = []; }
+  }
+  return Array.isArray(fields) ? fields : [];
 }
 
 export default {
+  availableOutputs,
   async process(context) {
-    const { record, app, services } = context;
+    const { record, app, services, stateName } = context;
 
     const data = record.data || {};
     const ocrText = data._ocr_text;
@@ -21,7 +35,8 @@ export default {
       return { success: false, error: 'No OCR text found, run OCR first' };
     }
 
-    const extractableFields = (app.fields || []).filter(f => f.ai_extractable && f.type !== 'file');
+    const fields = parseFields(app);
+    const extractableFields = fields.filter(f => f.ai_extractable && f.type !== 'file');
     if (extractableFields.length === 0) {
       return { success: false, error: 'No extractable fields defined' };
     }
@@ -30,7 +45,7 @@ export default {
       .map(f => `- ${f.name} (${f.label}): type=${f.type}${f.required ? ', required' : ''}`)
       .join('\n');
 
-    const extractConfig = getExtractConfig(app);
+    const extractConfig = getExtractConfig(app, stateName || 'pending_extract');
 
     try {
       const response = await services.callLlm('extract_metadata', {

@@ -1339,6 +1339,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     noHandlerSteps: '没有需要配置的步骤',
     saveSuccess: '配置保存成功',
     saveFailed: '配置保存失败',
+    paramsMapping: '参数映射',
+    selectMapping: '选择映射',
+    noToolParams: '该工具无输入参数',
+    noHandlerOutputs: '该 Handler 无可用输出',
   },
 
   // 应用市场
