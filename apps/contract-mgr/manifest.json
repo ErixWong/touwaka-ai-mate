@@ -137,7 +137,7 @@
       "is_initial": true,
       "is_terminal": false,
       "is_error": false,
-      "handler": "submit-ocr",
+      "handler": "handler-submit-ocr",
       "success_next": "ocr_submitted",
       "failure_next": "ocr_failed"
     },
@@ -148,7 +148,7 @@
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "check-ocr-status",
+      "handler": "handler-check-ocr",
       "success_next": "pending_filter",
       "failure_next": "ocr_failed"
     },
@@ -159,7 +159,7 @@
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "text-filter",
+      "handler": "handler-text-filter",
       "success_next": "pending_extract",
       "failure_next": "filter_failed"
     },
@@ -170,7 +170,7 @@
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "llm-extract",
+      "handler": "handler-extract",
       "success_next": "pending_review",
       "failure_next": "extract_failed"
     },

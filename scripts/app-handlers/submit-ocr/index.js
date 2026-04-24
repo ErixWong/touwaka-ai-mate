@@ -43,6 +43,11 @@ export default {
 
     const basePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
     const absolutePath = path.resolve(basePath, file.attachment.file_path);
+    
+    const allowedBase = path.resolve(basePath);
+    if (!absolutePath.startsWith(allowedBase)) {
+      return { success: false, error: 'File path not allowed: outside attachment directory' };
+    }
 
     const resConfig = getResourceConfig(app, stateName || 'pending_ocr');
     const mcp = resConfig.mcp || {};

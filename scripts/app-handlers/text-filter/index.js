@@ -67,7 +67,13 @@ export default {
         },
       };
     } catch (e) {
-      return { success: false, error: 'Text filter failed: ' + e.message };
+      return {
+        success: true,
+        data: {
+          _filtered_text: ocrText,
+          _filter_note: 'LLM filter failed, kept original: ' + e.message,
+        },
+      };
     }
   },
 };

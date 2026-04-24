@@ -51,7 +51,14 @@ export default {
       }
 
       if (status === 'pending' || status === 'running' || status === 'processing' || status === 'queued') {
-        return { success: false, pending: true, error: 'OCR task still in progress' };
+        return {
+          success: true,
+          pending: true,
+          data: {
+            _ocr_status: 'processing',
+            _ocr_progress: result.progress || null,
+          },
+        };
       }
 
       return { success: false, error: 'Unknown OCR task status: ' + status };
