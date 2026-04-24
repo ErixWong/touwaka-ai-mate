@@ -8,13 +8,13 @@
     <template v-if="!optional || enabled">
       <div class="target-form">
         <div class="form-field">
-          <label class="field-label">{{ $t('apps.stepConfig.primaryServer') }}</label>
+          <label class="field-label">{{ $t('apps.stepConfig.server') }}</label>
           <el-select :model-value="target?.server" @change="onServerChange">
             <el-option v-for="s in mcpServers" :key="s.name" :value="s.name" :label="s.display_name || s.name" />
           </el-select>
         </div>
         <div class="form-field">
-          <label class="field-label">{{ $t('apps.stepConfig.primaryTool') }}</label>
+          <label class="field-label">{{ $t('apps.stepConfig.tool') }}</label>
           <el-select :model-value="target?.tool" @change="onToolChange">
             <el-option v-for="t in currentTools" :key="t.name" :value="t.name" :label="t.name" />
           </el-select>
