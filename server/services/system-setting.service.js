@@ -42,6 +42,13 @@ const DEFAULT_SETTINGS = {
     default_invitation_max_uses: { value: 5, type: 'number', description: '每个邀请码默认可邀请人数' },
     invitation_expiry_days: { value: 0, type: 'number', description: '邀请码默认有效天数（0=永久）' },
   },
+  app: {
+    clock_interval: { value: 30, type: 'number', description: 'AppClock 轮询间隔（秒）' },
+    batch_size: { value: 10, type: 'number', description: '每批处理记录数量' },
+    max_concurrency: { value: 5, type: 'number', description: '最大并发处理数' },
+    text_filter_max_length: { value: 50000, type: 'number', description: '文本过滤最大长度（字符）' },
+    attachment_base_path: { value: './data/attachments', type: 'string', description: '附件存储路径' },
+  },
 };
 
 // 配置值验证规则
@@ -64,6 +71,10 @@ const VALIDATION_RULES = {
   'registration.default_invitation_quota': { min: 0, max: 100 },
   'registration.default_invitation_max_uses': { min: 1, max: 1000 },
   'registration.invitation_expiry_days': { min: 0, max: 365 },
+  'app.clock_interval': { min: 5, max: 300 },
+  'app.batch_size': { min: 1, max: 100 },
+  'app.max_concurrency': { min: 1, max: 50 },
+  'app.text_filter_max_length': { min: 1000, max: 500000 },
 };
 
 class SystemSettingService {
@@ -306,9 +317,17 @@ class SystemSettingService {
     };
   }
 
-  /**
-   * 清除缓存
-   */
+  async getAppConfig() {
+    const settings = await this.getAllSettings();
+    return settings.app || {
+      clock_interval: 30,
+      batch_size: 10,
+      max_concurrency: 5,
+      text_filter_max_length: 50000,
+      attachment_base_path: './data/attachments',
+    };
+  }
+
   clearCache() {
     this.cache = null;
     this.cacheTime = null;

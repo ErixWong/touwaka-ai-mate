@@ -218,11 +218,12 @@ class ApiServer {
     // 初始化 Token 清理任务（Issue #140）
     this.tokenCleanupJob = new TokenCleanupJob(this.db);
 
-    // 初始化 App 时钟调度器（Issue #603）
+    const appConfig = await this.systemSettingService.getAppConfig();
+
     this.appClock = new AppClock(this.db, {
-      intervalMs: parseInt(process.env.APP_CLOCK_INTERVAL) || 10000,
-      batchSize: parseInt(process.env.APP_CLOCK_BATCH) || 10,
-      globalConcurrency: parseInt(process.env.APP_CLOCK_CONCURRENCY) || 5,
+      intervalMs: appConfig.clock_interval * 1000,
+      batchSize: appConfig.batch_size,
+      globalConcurrency: appConfig.max_concurrency,
       residentSkillManager: this.residentSkillManager,
       llmService: new InternalLLMService(this.db),
       skillLoader: new SkillLoader(this.db),

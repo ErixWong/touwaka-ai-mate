@@ -2,6 +2,7 @@ const DEFAULT_FILTER_CONFIG = {
   type: 'internal_llm',
   model_id: null,
   temperature: 0.3,
+  max_length: 50000,
 };
 
 export const availableOutputs = [
@@ -37,8 +38,9 @@ export default {
 
     const filterConfig = getFilterConfig(app, stateName || 'pending_filter');
     const filterPrompt = getFilterPrompt(app);
+    const maxLength = filterConfig.max_length || DEFAULT_FILTER_CONFIG.max_length;
 
-    if (ocrText.length > 50000) {
+    if (ocrText.length > maxLength) {
       return {
         success: true,
         data: {
