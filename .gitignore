@@ -16,3 +16,6 @@ docker-data/
 # 临时文件
 *.log
 server.log
+
+# 自动生成的类型声明
+frontend/components.d.ts
