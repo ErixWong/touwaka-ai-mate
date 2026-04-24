@@ -21,23 +21,12 @@
 
               <template v-if="formData[step.name].type === 'mcp'">
                 <McpTargetConfig
-                  :label="$t('apps.stepConfig.primaryServer')"
-                  :target="formData[step.name].primary"
+                  :label="$t('apps.stepConfig.mcpServer')"
+                  :target="formData[step.name].mcp"
                   :mcp-servers="mcpServers"
                   :handler-outputs="getHandlerOutputs(step)"
-                  @update:target="formData[step.name].primary = $event"
-                  @server-change="onServerChange(step.name, 'primary', $event)"
-                  @tool-change="onToolChange(step.name, 'primary')"
-                />
-                <McpTargetConfig
-                  :label="$t('apps.stepConfig.fallbackServer')"
-                  :target="formData[step.name].fallback"
-                  :mcp-servers="mcpServers"
-                  :handler-outputs="getHandlerOutputs(step)"
-                  :optional="true"
-                  @update:target="formData[step.name].fallback = $event"
-                  @server-change="onServerChange(step.name, 'fallback', $event)"
-                  @tool-change="onToolChange(step.name, 'fallback')"
+                  @update:target="formData[step.name].mcp = $event"
+                  @server-change="onServerChange(step.name, $event)"
                 />
                 <div class="form-field span-2">
                   <label class="field-label">{{ $t('apps.stepConfig.judgeModel') }}</label>
@@ -49,6 +38,12 @@
               </template>
 
               <template v-if="formData[step.name].type === 'internal_llm'">
+                <div class="form-field span-2">
+                  <label class="field-label">{{ $t('apps.stepConfig.model') }}</label>
+                  <el-select v-model="formData[step.name].model_id" clearable>
+                    <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
+                  </el-select>
+                </div>
                 <div class="form-field span-2">
                   <label class="field-label">{{ $t('apps.stepConfig.temperature') }}</label>
                   <el-slider v-model="formData[step.name].temperature" :min="0" :max="1" :step="0.1" show-input />
@@ -144,23 +139,17 @@ function getToolsForServer(serverName: string) {
 function onTypeChange(stepName: string) {
   const cfg = formData.value[stepName]
   if (cfg.type === 'mcp') {
-    cfg.primary = cfg.primary || { server: '', tool: '', params_mapping: {} }
-    cfg.fallback = cfg.fallback || { server: '', tool: '', params_mapping: {} }
+    cfg.mcp = cfg.mcp || { server: '', tool: '', params_mapping: {} }
   }
 }
 
-function onServerChange(stepName: string, role: 'primary' | 'fallback', serverName: string) {
+function onServerChange(stepName: string, serverName: string) {
   const cfg = formData.value[stepName]
-  const target = role === 'primary' ? cfg.primary : cfg.fallback
-  if (!target) return
-  target.server = serverName
+  if (!cfg.mcp) return
+  cfg.mcp.server = serverName
   const tools = getToolsForServer(serverName)
-  target.tool = tools.length > 0 ? tools[0].name : ''
-  target.params_mapping = {}
-}
-
-function onToolChange() {
-  // tool changed, params_mapping will be re-evaluated by McpTargetConfig
+  cfg.mcp.tool = tools.length > 0 ? tools[0].name : ''
+  cfg.mcp.params_mapping = {}
 }
 
 function ensureTarget(target: McpResourceTarget | undefined): McpResourceTarget {
@@ -184,13 +173,11 @@ async function loadData() {
     for (const step of handlerSteps.value) {
       const saved = stepResources[step.name]
       if (saved) {
-        if (saved.primary) saved.primary = ensureTarget(saved.primary)
-        if (saved.fallback) saved.fallback = ensureTarget(saved.fallback)
+        if (saved.mcp) saved.mcp = ensureTarget(saved.mcp)
       }
       initial[step.name] = saved || {
         type: 'mcp',
-        primary: { server: '', tool: '', params_mapping: {} },
-        fallback: { server: '', tool: '', params_mapping: {} },
+        mcp: { server: '', tool: '', params_mapping: {} },
         judge_model_id: null,
       }
     }

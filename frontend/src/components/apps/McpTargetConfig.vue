@@ -2,60 +2,57 @@
   <div class="target-section">
     <div class="target-header">
       <label class="field-label">{{ label }}</label>
-      <el-switch v-if="optional" v-model="enabled" @change="onToggle" />
     </div>
 
-    <template v-if="!optional || enabled">
-      <div class="target-form">
-        <div class="form-field">
-          <label class="field-label">{{ $t('apps.stepConfig.server') }}</label>
-          <el-select :model-value="target?.server" @change="onServerChange">
-            <el-option v-for="s in mcpServers" :key="s.name" :value="s.name" :label="s.display_name || s.name" />
-          </el-select>
-        </div>
-        <div class="form-field">
-          <label class="field-label">{{ $t('apps.stepConfig.tool') }}</label>
-          <el-select :model-value="target?.tool" @change="onToolChange">
-            <el-option v-for="t in currentTools" :key="t.name" :value="t.name" :label="t.name" />
-          </el-select>
-        </div>
+    <div class="target-form">
+      <div class="form-field">
+        <label class="field-label">{{ $t('apps.stepConfig.server') }}</label>
+        <el-select :model-value="target?.server" @change="onServerChange">
+          <el-option v-for="s in mcpServers" :key="s.name" :value="s.name" :label="s.display_name || s.name" />
+        </el-select>
       </div>
+      <div class="form-field">
+        <label class="field-label">{{ $t('apps.stepConfig.tool') }}</label>
+        <el-select :model-value="target?.tool" @change="onToolChange">
+          <el-option v-for="t in currentTools" :key="t.name" :value="t.name" :label="t.name" />
+        </el-select>
+      </div>
+    </div>
 
-      <div v-if="currentToolParams.length > 0 && handlerOutputs.length > 0" class="params-mapping">
-        <h5 class="mapping-title">{{ $t('apps.stepConfig.paramsMapping') }}</h5>
-        <div class="mapping-grid">
-          <div v-for="param in currentToolParams" :key="param.name" class="mapping-row">
-            <div class="mapping-tool-param">
-              <span class="param-name">{{ param.name }}</span>
-              <span v-if="param.required" class="param-required">{{ $t('apps.stepConfig.required') }}</span>
-              <span class="param-type">{{ $t('apps.stepConfig.paramType', { type: param.type || 'string' }) }}</span>
-            </div>
-            <span class="mapping-arrow">{{ $t('apps.stepConfig.mappingArrow') }}</span>
-            <div class="mapping-handler-output">
-              <el-select
-                :model-value="getMapping(param.name)"
-                @change="setMapping(param.name, $event)"
-                clearable
-                :placeholder="$t('apps.stepConfig.selectMapping')"
-              >
-                <el-option v-for="out in handlerOutputs" :key="out.key" :value="out.key" :label="out.label" />
-              </el-select>
-            </div>
+    <div v-if="currentToolParams.length > 0 && handlerOutputs.length > 0" class="params-mapping">
+      <h5 class="mapping-title">{{ $t('apps.stepConfig.paramsMapping') }}</h5>
+      <div class="mapping-grid">
+        <div v-for="param in currentToolParams" :key="param.name" class="mapping-row">
+          <div class="mapping-tool-param">
+            <span class="param-name">{{ param.name }}</span>
+            <span v-if="param.required" class="param-required">{{ $t('apps.stepConfig.required') }}</span>
+            <span class="param-type">{{ $t('apps.stepConfig.paramType', { type: param.type || 'string' }) }}</span>
+          </div>
+          <span class="mapping-arrow">{{ $t('apps.stepConfig.mappingArrow') }}</span>
+          <div class="mapping-handler-output">
+            <el-select
+              :model-value="getMapping(param.name)"
+              @change="setMapping(param.name, $event)"
+              clearable
+              :placeholder="$t('apps.stepConfig.selectMapping')"
+            >
+              <el-option v-for="out in handlerOutputs" :key="out.key" :value="out.key" :label="out.label" />
+            </el-select>
           </div>
         </div>
       </div>
-      <div v-else-if="target?.server && target?.tool && currentToolParams.length === 0" class="no-params-hint">
-        {{ $t('apps.stepConfig.noToolParams') }}
-      </div>
-      <div v-else-if="target?.server && target?.tool && handlerOutputs.length === 0" class="no-params-hint">
-        {{ $t('apps.stepConfig.noHandlerOutputs') }}
-      </div>
-    </template>
+    </div>
+    <div v-else-if="target?.server && target?.tool && currentToolParams.length === 0" class="no-params-hint">
+      {{ $t('apps.stepConfig.noToolParams') }}
+    </div>
+    <div v-else-if="target?.server && target?.tool && handlerOutputs.length === 0" class="no-params-hint">
+      {{ $t('apps.stepConfig.noHandlerOutputs') }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed } from 'vue'
 import type { McpServerResource, McpResourceTarget, HandlerOutput } from '@/api/mini-apps'
 
 const props = defineProps<{
@@ -63,16 +60,12 @@ const props = defineProps<{
   target?: McpResourceTarget
   mcpServers: McpServerResource[]
   handlerOutputs: HandlerOutput[]
-  optional?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:target', value: McpResourceTarget): void
   (e: 'server-change', serverName: string): void
-  (e: 'tool-change'): void
 }>()
-
-const enabled = ref(!!props.target?.server)
 
 const currentTools = computed(() => {
   if (!props.target?.server) return []
@@ -122,20 +115,7 @@ function onToolChange(toolName: string) {
   current.tool = toolName
   current.params_mapping = {}
   emit('update:target', current)
-  emit('tool-change')
 }
-
-function onToggle(val: boolean) {
-  if (val) {
-    emit('update:target', { server: '', tool: '', params_mapping: {} })
-  } else {
-    emit('update:target', { server: '', tool: '', params_mapping: {} })
-  }
-}
-
-watch(() => props.target?.server, (val) => {
-  if (val) enabled.value = true
-})
 </script>
 
 <style scoped>

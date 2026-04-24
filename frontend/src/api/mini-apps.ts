@@ -58,8 +58,8 @@ export interface AppConfig {
 
 export interface StepResourceConfig {
   type: 'mcp' | 'internal_llm'
-  primary?: McpResourceTarget
-  fallback?: McpResourceTarget
+  mcp?: McpResourceTarget
+  model_id?: string
   temperature?: number
   judge_model_id?: string
 }
@@ -99,9 +99,19 @@ export interface HandlerOutput {
   type: string
 }
 
+export interface InternalLlmModel {
+  id: string
+  name: string
+  model_name: string
+  provider_name: string
+}
+
 export interface AvailableResources {
   mcp_servers: McpServerResource[]
-  internal_llm: { available: boolean }
+  internal_llm: {
+    available: boolean
+    models?: InternalLlmModel[]
+  }
   handler_outputs: Record<string, HandlerOutput[]>
 }
 

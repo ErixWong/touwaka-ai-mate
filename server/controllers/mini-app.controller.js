@@ -96,7 +96,8 @@ class MiniAppController {
 
   async getAvailableResources(ctx) {
     try {
-      const resources = await this.miniAppService.getAvailableResources();
+      const { appId } = ctx.params;
+      const resources = await this.miniAppService.getAvailableResources(appId);
       ctx.success(resources);
     } catch (error) {
       logger.error('Get available resources error:', error);
