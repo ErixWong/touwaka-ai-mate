@@ -39,6 +39,13 @@
                   @server-change="onServerChange(step.name, 'fallback', $event)"
                   @tool-change="onToolChange(step.name, 'fallback')"
                 />
+                <div class="form-field span-2">
+                  <label class="field-label">{{ $t('apps.stepConfig.judgeModel') }}</label>
+                  <el-select v-model="formData[step.name].judge_model_id" clearable :placeholder="$t('apps.stepConfig.judgeModelPlaceholder')">
+                    <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
+                  </el-select>
+                  <span class="field-hint">{{ $t('apps.stepConfig.judgeModelHint') }}</span>
+                </div>
               </template>
 
               <template v-if="formData[step.name].type === 'internal_llm'">
@@ -77,6 +84,7 @@ import {
   type McpServerResource,
   type McpResourceTarget,
   type HandlerOutput,
+  type InternalLlmModel,
 } from '@/api/mini-apps'
 import McpTargetConfig from './McpTargetConfig.vue'
 
@@ -96,6 +104,7 @@ const toast = useToastStore()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const mcpServers = ref<McpServerResource[]>([])
+const llmModels = ref<InternalLlmModel[]>([])
 const handlerOutputsMap = ref<Record<string, HandlerOutput[]>>({})
 const formData = ref<Record<string, StepResourceConfig>>({})
 
@@ -152,6 +161,7 @@ async function loadData() {
     ])
 
     mcpServers.value = resources.mcp_servers || []
+    llmModels.value = resources.internal_llm?.models || []
     handlerOutputsMap.value = resources.handler_outputs || {}
 
     const stepResources = config.step_resources || {}
@@ -166,6 +176,7 @@ async function loadData() {
         type: 'mcp',
         primary: { server: '', tool: '', params_mapping: {} },
         fallback: { server: '', tool: '', params_mapping: {} },
+        judge_model_id: null,
       }
     }
     formData.value = initial
@@ -295,6 +306,12 @@ watch(() => props.visible, (val) => {
   font-weight: 500;
   margin-bottom: 6px;
   color: var(--color-text-secondary, #555);
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--color-text-tertiary, #999);
+  margin-top: 4px;
 }
 
 .loading-state {
