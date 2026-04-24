@@ -1383,6 +1383,28 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     hasUpdate: 'Update',
   },
 
+  stepConfig: {
+    title: 'Step Config',
+    resourceType: 'Resource Type',
+    mcp: 'MCP',
+    internalLlm: 'Internal LLM',
+    primaryServer: 'Primary Server',
+    primaryTool: 'Primary Tool',
+    fallbackServer: 'Fallback Server',
+    fallbackTool: 'Fallback Tool',
+    temperature: 'Temperature',
+    noHandlerSteps: 'No configurable steps',
+    saveSuccess: 'Config saved',
+    saveFailed: 'Failed to save config',
+    paramsMapping: 'Params Mapping',
+    selectMapping: 'Select mapping',
+    noToolParams: 'No input params for this tool',
+    noHandlerOutputs: 'No available outputs for this handler',
+    paramType: '{type}',
+    mappingArrow: '\u2190',
+    required: '*',
+  },
+
   // App Market
   appMarket: {
     all: 'All',

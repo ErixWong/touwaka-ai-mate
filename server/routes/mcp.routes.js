@@ -158,15 +158,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         raw: true,
       });
 
-      ctx.success({
-        tools: tools.map(t => ({
-          id: t.id,
-          name: t.tool_name,
-          description: t.description,
-          input_schema: t.input_schema,
-          cached_at: t.cached_at,
-        }))
-      });
+      ctx.success({ tools });
 
     } catch (error) {
       logger.error('Get MCP server tools error:', error);
@@ -239,13 +231,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       });
 
       ctx.success({
-        tools: tools.map(t => ({
-          id: t.id,
-          name: t.tool_name,
-          description: t.description,
-          input_schema: t.input_schema,
-          cached_at: t.cached_at,
-        })),
+        tools,
         message: refreshedTools.length > 0
           ? `已刷新 ${refreshedTools.length} 个工具`
           : '驻留进程未就绪，工具列表已清空。请启动 mcp-client 驻留进程后重试。',
