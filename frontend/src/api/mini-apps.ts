@@ -61,6 +61,7 @@ export interface StepResourceConfig {
   primary?: McpResourceTarget
   fallback?: McpResourceTarget
   temperature?: number
+  judge_model_id?: string
 }
 
 export interface McpResourceTarget {
