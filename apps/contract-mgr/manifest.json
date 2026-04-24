@@ -132,19 +132,41 @@
   "states": [
     {
       "name": "pending_ocr",
-      "label": "待OCR",
+      "label": "等待OCR",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
       "is_error": false,
-      "handler": "ocr-service",
-      "success_next": "pending_extract",
+      "handler": "submit-ocr",
+      "success_next": "ocr_submitted",
       "failure_next": "ocr_failed"
     },
     {
-      "name": "pending_extract",
-      "label": "待提取",
+      "name": "ocr_submitted",
+      "label": "OCR处理中",
       "sort_order": 2,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "check-ocr-status",
+      "success_next": "pending_filter",
+      "failure_next": "ocr_failed"
+    },
+    {
+      "name": "pending_filter",
+      "label": "等待过滤",
+      "sort_order": 3,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "text-filter",
+      "success_next": "pending_extract",
+      "failure_next": "filter_failed"
+    },
+    {
+      "name": "pending_extract",
+      "label": "等待提取",
+      "sort_order": 4,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -154,8 +176,8 @@
     },
     {
       "name": "pending_review",
-      "label": "待确认",
-      "sort_order": 3,
+      "label": "等待确认",
+      "sort_order": 5,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -166,7 +188,7 @@
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 4,
+      "sort_order": 6,
       "is_initial": false,
       "is_terminal": true,
       "is_error": false,
@@ -177,6 +199,17 @@
     {
       "name": "ocr_failed",
       "label": "OCR失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "filter_failed",
+      "label": "过滤失败",
       "sort_order": 99,
       "is_initial": false,
       "is_terminal": false,
