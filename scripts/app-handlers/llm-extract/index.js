@@ -1,5 +1,6 @@
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
+  model_id: null,
   temperature: 0.3,
 };
 
@@ -52,7 +53,8 @@ export default {
         field_definitions: fieldDefs,
         ocr_text: ocrText,
         response_format: 'json',
-        temperature: extractConfig.temperature,
+        model_id: extractConfig.model_id,
+        temperature: extractConfig.temperature || 0.3,
       });
 
       let metadata;

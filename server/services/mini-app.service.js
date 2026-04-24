@@ -149,6 +149,8 @@ class MiniAppService {
     const MCPServer = this.db.getModel('mcp_server');
     const MCPToolsCache = this.db.getModel('mcp_tools_cache');
     const AppRowHandler = this.db.getModel('app_row_handler');
+    const AiModel = this.db.getModel('ai_model');
+    const Provider = this.db.getModel('provider');
 
     const servers = await MCPServer.findAll({
       where: { is_enabled: true },
@@ -180,6 +182,19 @@ class MiniAppService {
       });
     }
 
+    const models = await AiModel.findAll({
+      where: { is_active: true },
+      attributes: ['id', 'name', 'model_name', 'provider_id', 'model_type'],
+      include: [{
+        model: Provider,
+        as: 'provider',
+        attributes: [['id', 'provider_id'], ['name', 'provider_name']],
+      }],
+      order: [['name', 'ASC']],
+      raw: true,
+      nest: true,
+    });
+
     let handlerOutputs = {};
     if (appId) {
       const app = await this.models.MiniApp.findByPk(appId);
@@ -195,13 +210,18 @@ class MiniAppService {
 
         for (const hid of uniqueHandlerIds) {
           const handler = await AppRowHandler.findByPk(hid);
-          if (!handler) continue;
+          if (!handler) {
+            logger.warn(`[getAvailableResources] Handler ${hid} not found`);
+            continue;
+          }
 
           try {
             const scriptModule = await this.loadHandlerScript(handler.handler);
             const outputs = scriptModule.availableOutputs || [];
+            logger.info(`[getAvailableResources] Handler ${hid} loaded, outputs: ${outputs.length}`);
             handlerOutputs[hid] = outputs;
-          } catch {
+          } catch (e) {
+            logger.error(`[getAvailableResources] Handler ${hid} load failed: ${e.message}`);
             handlerOutputs[hid] = [];
           }
         }
@@ -210,7 +230,15 @@ class MiniAppService {
 
     return {
       mcp_servers: result,
-      internal_llm: { available: true },
+      internal_llm: {
+        available: true,
+        models: models.map(m => ({
+          id: m.id,
+          name: m.name,
+          model_name: m.model_name,
+          provider_name: m.provider?.provider_name || '',
+        })),
+      },
       handler_outputs: handlerOutputs,
     };
   }

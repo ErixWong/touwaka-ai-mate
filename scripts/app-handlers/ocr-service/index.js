@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
-  primary: { server: 'markitdown', tool: 'convert', params_mapping: { file_path: 'file.path' } },
+  mcp: { server: 'markitdown', tool: 'submit_conversion_task', params_mapping: { file_path: 'file.path' } },
 };
 
 export const availableOutputs = [
@@ -66,34 +66,21 @@ export default {
 
     const resConfig = getResourceConfig(app, stateName || 'pending_ocr');
     const valueMap = await buildValueMap(file.attachment);
-    let ocrText = '';
-    let usedService = resConfig.primary?.server || 'unknown';
 
     try {
-      const primary = resConfig.primary || {};
-      const result = await callMcpWithMapping(services, primary, valueMap);
-      ocrText = result.text;
+      const mcp = resConfig.mcp || {};
+      const result = await callMcpWithMapping(services, mcp, valueMap);
+      const ocrText = result.text;
+      return {
+        success: true,
+        data: {
+          _ocr_text: ocrText,
+          _ocr_service: mcp.server || 'unknown',
+          _ocr_status: 'completed',
+        },
+      };
     } catch (e) {
-      const fallback = resConfig.fallback;
-      if (!fallback || !fallback.server) {
-        return { success: false, error: 'OCR failed: ' + e.message };
-      }
-      try {
-        usedService = fallback.server;
-        const result = await callMcpWithMapping(services, fallback, valueMap);
-        ocrText = result.text;
-      } catch (e2) {
-        return { success: false, error: 'OCR failed: ' + e2.message };
-      }
+      return { success: false, error: 'OCR failed: ' + e.message };
     }
-
-    return {
-      success: true,
-      data: {
-        _ocr_text: ocrText,
-        _ocr_service: usedService,
-        _ocr_status: 'completed',
-      },
-    };
   },
 };
