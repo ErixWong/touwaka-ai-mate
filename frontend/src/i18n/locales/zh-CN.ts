@@ -1359,6 +1359,15 @@ stepConfig: {
       judgeModelPlaceholder: '可选，用于判断OCR状态',
       judgeModelHint: '用于AI判断MCP返回结果的状态，推荐使用低成本模型',
     },
+    prompts: {
+      title: '提示词配置',
+      filterPrompt: '过滤提示词',
+      filterPlaceholder: '例如：去除页码、水印、乱码...',
+      filterHint: '用于 text-filter handler，清理 OCR 原文',
+      extractPrompt: '提取提示词',
+      extractPlaceholder: '例如：提取合同编号、甲方、乙方...',
+      extractHint: '用于 llm-extract handler，提取结构化数据',
+    },
   },
 
   // 应用市场

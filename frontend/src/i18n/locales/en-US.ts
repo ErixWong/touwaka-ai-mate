@@ -1415,6 +1415,15 @@ stepConfig: {
       judgeModelPlaceholder: 'Optional, for OCR status judgment',
       judgeModelHint: 'Used to judge MCP result status, recommend low-cost model',
     },
+    prompts: {
+      title: 'Prompt Configuration',
+      filterPrompt: 'Filter Prompt',
+      filterPlaceholder: 'e.g., Remove page numbers, watermarks...',
+      filterHint: 'For text-filter handler, clean OCR text',
+      extractPrompt: 'Extract Prompt',
+      extractPlaceholder: 'e.g., Extract contract number, party A/B...',
+      extractHint: 'For llm-extract handler, extract structured data',
+    },
   },
 
   // App Market
