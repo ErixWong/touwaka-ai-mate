@@ -7,6 +7,7 @@
         <h1 class="app-name">{{ app.name }}</h1>
       </div>
       <div class="header-right">
+        <el-button @click="showStepConfig = true">⚙ {{ $t('apps.stepConfig.title') }}</el-button>
         <el-button v-if="canCreate" type="primary" @click="openCreateDialog">
           <span class="icon">+</span>
           {{ $t('common.create') }}
@@ -135,6 +136,8 @@
         </div>
       </div>
     </div>
+
+    <AppStepConfig :visible="showStepConfig" :app="app" @close="showStepConfig = false" @saved="loadRecords" />
   </div>
 </template>
 
@@ -154,6 +157,7 @@ import {
 } from '@/api/mini-apps'
 import StateBadge from './StateBadge.vue'
 import FieldRenderer from './FieldRenderer.vue'
+import AppStepConfig from './AppStepConfig.vue'
 
 const props = defineProps<{ app: MiniApp }>()
 const router = useRouter()
@@ -169,6 +173,7 @@ const isSaving = ref(false)
 const showDialog = ref(false)
 const showDetail = ref(false)
 const showConfirm = ref(false)
+const showStepConfig = ref(false)
 const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
 

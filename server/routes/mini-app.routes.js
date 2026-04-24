@@ -12,6 +12,12 @@ export default (controller) => {
   router.put('/api/mini-apps/:appId', authenticate(), requireAdmin(), (ctx) => controller.updateApp(ctx));
   router.delete('/api/mini-apps/:appId', authenticate(), requireAdmin(), (ctx) => controller.deleteApp(ctx));
 
+  // ==================== App Config ====================
+
+  router.get('/api/mini-apps/:appId/config', authenticate(), requireAdmin(), (ctx) => controller.getAppConfig(ctx));
+  router.put('/api/mini-apps/:appId/config', authenticate(), requireAdmin(), (ctx) => controller.updateAppConfig(ctx));
+  router.get('/api/mini-apps/:appId/available-resources', authenticate(), requireAdmin(), (ctx) => controller.getAvailableResources(ctx));
+
   // ==================== Record CRUD ====================
 
   router.get('/api/mini-apps/:appId/data', authenticate(), (ctx) => controller.listRecords(ctx));

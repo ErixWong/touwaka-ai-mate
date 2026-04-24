@@ -8,53 +8,195 @@
   "author": "Touwaka Team",
   "license": "MIT",
   "repository": "https://github.com/ErixWong/touwaka-ai-mate/tree/main/apps/contract-manager",
-  "keywords": ["合同", "文档", "OCR", "AI提取"],
-  
+  "keywords": [
+    "合同",
+    "文档",
+    "OCR",
+    "AI提取"
+  ],
   "compatibility": {
     "min_platform_version": "2.0.0",
     "requires": {
-      "mcp": ["markitdown", "mineru"],
+      "mcp": [
+        "markitdown",
+        "mineru"
+      ],
       "skills": []
     }
   },
-  
   "fields": [
-    { "name": "contract_number", "label": "合同编号", "type": "text", "required": true, "ai_extractable": true },
-    { "name": "contract_date", "label": "签订日期", "type": "date", "required": true, "ai_extractable": true },
-    { "name": "party_a", "label": "甲方", "type": "text", "required": true, "ai_extractable": true },
-    { "name": "party_b", "label": "乙方", "type": "text", "required": true, "ai_extractable": true },
-    { "name": "contract_amount", "label": "合同金额", "type": "number", "required": true, "ai_extractable": true },
-    { "name": "start_date", "label": "开始日期", "type": "date", "ai_extractable": true },
-    { "name": "end_date", "label": "结束日期", "type": "date", "ai_extractable": true },
-    { "name": "payment_terms", "label": "付款条款", "type": "textarea", "ai_extractable": true },
-    { "name": "status", "label": "状态", "type": "select", "options": ["待审批", "执行中", "已完成", "已终止"], "default": "待审批" },
-    { "name": "contract_file", "label": "合同文件", "type": "file" }
+    {
+      "name": "contract_number",
+      "label": "合同编号",
+      "type": "text",
+      "required": true,
+      "ai_extractable": true
+    },
+    {
+      "name": "contract_date",
+      "label": "签订日期",
+      "type": "date",
+      "required": true,
+      "ai_extractable": true
+    },
+    {
+      "name": "party_a",
+      "label": "甲方",
+      "type": "text",
+      "required": true,
+      "ai_extractable": true
+    },
+    {
+      "name": "party_b",
+      "label": "乙方",
+      "type": "text",
+      "required": true,
+      "ai_extractable": true
+    },
+    {
+      "name": "contract_amount",
+      "label": "合同金额",
+      "type": "number",
+      "required": true,
+      "ai_extractable": true
+    },
+    {
+      "name": "start_date",
+      "label": "开始日期",
+      "type": "date",
+      "ai_extractable": true
+    },
+    {
+      "name": "end_date",
+      "label": "结束日期",
+      "type": "date",
+      "ai_extractable": true
+    },
+    {
+      "name": "payment_terms",
+      "label": "付款条款",
+      "type": "textarea",
+      "ai_extractable": true
+    },
+    {
+      "name": "status",
+      "label": "状态",
+      "type": "select",
+      "options": [
+        "待审批",
+        "执行中",
+        "已完成",
+        "已终止"
+      ],
+      "default": "待审批"
+    },
+    {
+      "name": "contract_file",
+      "label": "合同文件",
+      "type": "file"
+    }
   ],
-  
   "views": {
     "list": {
-      "columns": ["contract_number", "contract_date", "party_a", "party_b", "contract_amount", "status"],
-      "sort": { "field": "contract_date", "order": "desc" }
+      "columns": [
+        "contract_number",
+        "contract_date",
+        "party_a",
+        "party_b",
+        "contract_amount",
+        "status"
+      ],
+      "sort": {
+        "field": "contract_date",
+        "order": "desc"
+      }
     }
   },
-  
   "config": {
-    "features": ["upload", "list", "detail"],
-    "supported_formats": [".pdf", ".docx", ".doc", ".jpg", ".png"],
+    "features": [
+      "upload",
+      "list",
+      "detail"
+    ],
+    "supported_formats": [
+      ".pdf",
+      ".docx",
+      ".doc",
+      ".jpg",
+      ".png"
+    ],
     "max_file_size": 20971520,
     "batch_enabled": true,
     "batch_limit": 50
   },
-  
   "states": [
-    { "name": "pending_ocr", "label": "待OCR", "sort_order": 1, "is_initial": true, "is_terminal": false, "is_error": false, "handler": "ocr-service", "success_next": "pending_extract", "failure_next": "ocr_failed" },
-    { "name": "pending_extract", "label": "待提取", "sort_order": 2, "is_initial": false, "is_terminal": false, "is_error": false, "handler": "llm-extract", "success_next": "pending_review", "failure_next": "extract_failed" },
-    { "name": "pending_review", "label": "待确认", "sort_order": 3, "is_initial": false, "is_terminal": false, "is_error": false, "handler": null, "success_next": null, "failure_next": null },
-    { "name": "confirmed", "label": "已确认", "sort_order": 4, "is_initial": false, "is_terminal": true, "is_error": false, "handler": null, "success_next": null, "failure_next": null },
-    { "name": "ocr_failed", "label": "OCR失败", "sort_order": 99, "is_initial": false, "is_terminal": false, "is_error": true, "handler": null, "success_next": null, "failure_next": null },
-    { "name": "extract_failed", "label": "提取失败", "sort_order": 99, "is_initial": false, "is_terminal": false, "is_error": true, "handler": null, "success_next": null, "failure_next": null }
+    {
+      "name": "pending_ocr",
+      "label": "待OCR",
+      "sort_order": 1,
+      "is_initial": true,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "ocr-service",
+      "success_next": "pending_extract",
+      "failure_next": "ocr_failed"
+    },
+    {
+      "name": "pending_extract",
+      "label": "待提取",
+      "sort_order": 2,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "llm-extract",
+      "success_next": "pending_review",
+      "failure_next": "extract_failed"
+    },
+    {
+      "name": "pending_review",
+      "label": "待确认",
+      "sort_order": 3,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "confirmed",
+      "label": "已确认",
+      "sort_order": 4,
+      "is_initial": false,
+      "is_terminal": true,
+      "is_error": false,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "ocr_failed",
+      "label": "OCR失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "extract_failed",
+      "label": "提取失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    }
   ],
-  
   "component": null,
   "visibility": "all"
 }

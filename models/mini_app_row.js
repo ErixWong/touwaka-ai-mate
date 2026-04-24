@@ -76,7 +76,8 @@ export default class mini_app_row extends Model {
     },
     _status: {
       type: DataTypes.STRING(64),
-      allowNull: true
+      allowNull: true,
+      field: '_status'
     }
   }, {
     sequelize,
