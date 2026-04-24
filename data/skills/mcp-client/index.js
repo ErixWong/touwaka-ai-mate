@@ -18,6 +18,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import StatelessHTTPTransport from '../../../lib/mcp-stateless-http.js';
 
 // ============== 全局状态 ==============
 
@@ -173,12 +174,15 @@ function parseHeaders(headersStr) {
 function buildAuthHeaders(headersStr, credentials) {
   const headers = parseHeaders(headersStr);
   
-  if (credentials?.api_key) {
-    headers['Authorization'] = `Bearer ${credentials.api_key}`;
-  } else if (credentials?.token) {
-    headers['Authorization'] = `Bearer ${credentials.token}`;
-  } else if (credentials?.API_KEY) {
-    headers['X-API-Key'] = credentials.API_KEY;
+  // 凭证可能存储在 credentials.env_overrides 中
+  const envOverrides = credentials?.env_overrides || credentials || {};
+  
+  if (envOverrides.api_key) {
+    headers['Authorization'] = `Bearer ${envOverrides.api_key}`;
+  } else if (envOverrides.token) {
+    headers['Authorization'] = `Bearer ${envOverrides.token}`;
+  } else if (envOverrides.API_KEY) {
+    headers['X-API-Key'] = envOverrides.API_KEY;
   }
   
   return headers;
@@ -194,15 +198,27 @@ function sanitizeHeaders(headers) {
 async function createTransport(serverConfig, credentials = null) {
   const transportType = serverConfig.transport_type || 'stdio';
   
-  if (transportType === 'http' || transportType === 'streamableHttp' || transportType === 'sse') {
+  if (transportType === 'http' || transportType === 'streamableHttp' || transportType === 'sse' || transportType === 'statelessHttp') {
     if (!serverConfig.url) {
       throw new Error(`MCP Server '${serverConfig.name}' missing URL`);
     }
     
     const headers = buildAuthHeaders(serverConfig.headers, credentials);
+    
+    // 判断是否使用 StatelessHTTPTransport
+    // 1. 明确指定 statelessHttp
+    // 2. 或者 server 不支持 session（headers 中没有 mcp-session-id 提示）
+    const isStateless = transportType === 'statelessHttp' || serverConfig.stateless === true;
+    
+    if (isStateless) {
+      log(`Creating StatelessHTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
+      log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
+      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit: { headers } });
+    }
+    
     const useSSE = transportType === 'sse' || serverConfig.url.endsWith('/sse') || serverConfig.use_sse;
     
-    log(`Creating ${useSSE ? 'SSE' : 'HTTP'} transport for ${serverConfig.name}: ${serverConfig.url}`);
+    log(`Creating ${useSSE ? 'SSE' : 'StreamableHTTP'} transport for ${serverConfig.name}: ${serverConfig.url}`);
     log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
     
     const TransportClass = useSSE ? SSEClientTransport : StreamableHTTPClientTransport;

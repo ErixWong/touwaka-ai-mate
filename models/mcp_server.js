@@ -89,10 +89,10 @@ export default class mcp_server extends Model {
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     },
     transport_type: {
-      type: DataTypes.ENUM('stdio','http','sse'),
+      type: DataTypes.ENUM('stdio','http','sse','statelessHttp'),
       allowNull: true,
       defaultValue: "stdio",
-      comment: "MCP 传输类型：stdio=标准输入输出, http=HTTP Stream, sse=Server-Sent Events"
+      comment: "MCP 传输类型：stdio=标准输入输出, http=HTTP Stream, sse=Server-Sent Events, statelessHttp=无状态HTTP"
     },
     url: {
       type: DataTypes.STRING(512),

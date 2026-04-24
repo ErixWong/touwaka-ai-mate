@@ -894,7 +894,6 @@ const MIGRATIONS = [
     }
   },
 
-<<<<<<< HEAD
   // ==================== MCP HTTP 传输支持 ====================
   {
     name: 'mcp_servers.add_transport_type_and_http_fields',
@@ -952,6 +951,27 @@ const MIGRATIONS = [
         VALUES ('mcp-client-invoke', 'mcp-client', 'invoke', 'MCP Client 驻留进程入口工具', '{"type":"object","properties":{"action":{"type":"string","description":"操作类型"}}}', 'index.js', 1, NOW(), NOW())
       `);
       console.log('  ✓ Registered mcp-client invoke tool (is_resident=1)');
+    }
+  },
+
+  // ==================== MCP Stateless HTTP 传输支持 ====================
+  {
+    name: 'mcp_servers.add_stateless_http_transport',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mcp_servers' AND COLUMN_NAME = 'transport_type'
+      `);
+      const enumStr = rows[0]?.COLUMN_TYPE || '';
+      return enumStr.includes('statelessHttp');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE mcp_servers 
+        MODIFY COLUMN transport_type ENUM('stdio', 'http', 'sse', 'statelessHttp') DEFAULT 'stdio' 
+        COMMENT 'MCP 传输类型：stdio=标准输入输出, http=HTTP Stream, sse=Server-Sent Events, statelessHttp=无状态HTTP'
+      `);
+      console.log('  ✓ Added statelessHttp to transport_type ENUM');
     }
   },
 
