@@ -25,15 +25,23 @@ function parseFields(app) {
   return Array.isArray(fields) ? fields : [];
 }
 
+function getExtractPrompt(app) {
+  let config = app?.config;
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config); } catch { config = {}; }
+  }
+  return config?.prompts?.extract || null;
+}
+
 export default {
   availableOutputs,
   async process(context) {
     const { record, app, services, stateName } = context;
 
     const data = record.data || {};
-    const ocrText = data._ocr_text;
-    if (!ocrText) {
-      return { success: false, error: 'No OCR text found, run OCR first' };
+    const text = data._filtered_text || data._ocr_text;
+    if (!text) {
+      return { success: false, error: 'No text found, run OCR and filter first' };
     }
 
     const fields = parseFields(app);
@@ -47,11 +55,16 @@ export default {
       .join('\n');
 
     const extractConfig = getExtractConfig(app, stateName || 'pending_extract');
+    const customPrompt = getExtractPrompt(app);
+
+    const promptBase = customPrompt
+      ? `${customPrompt}\n\n字段定义:\n${fieldDefs}`
+      : `从以下文本中提取结构化元数据。\n\n字段定义:\n${fieldDefs}`;
 
     try {
       const response = await services.callLlm('extract_metadata', {
-        field_definitions: fieldDefs,
-        ocr_text: ocrText,
+        instruction: promptBase,
+        ocr_text: text,
         response_format: 'json',
         model_id: extractConfig.model_id,
         temperature: extractConfig.temperature || 0.3,

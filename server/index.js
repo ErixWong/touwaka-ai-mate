@@ -89,6 +89,7 @@ import solutionRoutes from './routes/solution.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes from './routes/system-setting.routes.js';
+import { getSystemSettingService } from './services/system-setting.service.js';
 import packageRoutes from './routes/package.routes.js';
 import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
@@ -218,11 +219,16 @@ class ApiServer {
     // 初始化 Token 清理任务（Issue #140）
     this.tokenCleanupJob = new TokenCleanupJob(this.db);
 
-    // 初始化 App 时钟调度器（Issue #603）
+    const systemSettingService = getSystemSettingService(this.db);
+    const appConfig = await systemSettingService.getAppConfig();
+    
+    process.env.ATTACHMENT_BASE_PATH = appConfig.attachment_base_path || './data/attachments';
+    process.env.TEXT_FILTER_MAX_LENGTH = String(appConfig.text_filter_max_length || 50000);
+
     this.appClock = new AppClock(this.db, {
-      intervalMs: parseInt(process.env.APP_CLOCK_INTERVAL) || 10000,
-      batchSize: parseInt(process.env.APP_CLOCK_BATCH) || 10,
-      globalConcurrency: parseInt(process.env.APP_CLOCK_CONCURRENCY) || 5,
+      intervalMs: appConfig.clock_interval * 1000,
+      batchSize: appConfig.batch_size,
+      globalConcurrency: appConfig.max_concurrency,
       residentSkillManager: this.residentSkillManager,
       llmService: new InternalLLMService(this.db),
       skillLoader: new SkillLoader(this.db),

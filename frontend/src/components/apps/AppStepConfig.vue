@@ -28,6 +28,13 @@
                   @update:target="formData[step.name].mcp = $event"
                   @server-change="onServerChange(step.name, $event)"
                 />
+                <div class="form-field span-2">
+                  <label class="field-label">{{ $t('apps.stepConfig.judgeModel') }}</label>
+                  <el-select v-model="formData[step.name].judge_model_id" clearable :placeholder="$t('apps.stepConfig.judgeModelPlaceholder')">
+                    <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
+                  </el-select>
+                  <span class="field-hint">{{ $t('apps.stepConfig.judgeModelHint') }}</span>
+                </div>
               </template>
 
               <template v-if="formData[step.name].type === 'internal_llm'">
@@ -47,6 +54,20 @@
 
           <div v-if="handlerSteps.length === 0" class="empty-state">
             <p>{{ $t('apps.stepConfig.noHandlerSteps') }}</p>
+          </div>
+
+          <div class="prompts-section">
+            <h4 class="section-title">🤖 {{ $t('apps.prompts.title') }}</h4>
+            <div class="prompt-field">
+              <label class="field-label">{{ $t('apps.prompts.filterPrompt') }}</label>
+              <el-input v-model="promptsData.filter" type="textarea" :rows="3" :placeholder="$t('apps.prompts.filterPlaceholder')" />
+              <span class="field-hint">{{ $t('apps.prompts.filterHint') }}</span>
+            </div>
+            <div class="prompt-field">
+              <label class="field-label">{{ $t('apps.prompts.extractPrompt') }}</label>
+              <el-input v-model="promptsData.extract" type="textarea" :rows="3" :placeholder="$t('apps.prompts.extractPlaceholder')" />
+              <span class="field-hint">{{ $t('apps.prompts.extractHint') }}</span>
+            </div>
           </div>
         </template>
       </div>
@@ -95,6 +116,7 @@ const mcpServers = ref<McpServerResource[]>([])
 const llmModels = ref<InternalLlmModel[]>([])
 const handlerOutputsMap = ref<Record<string, HandlerOutput[]>>({})
 const formData = ref<Record<string, StepResourceConfig>>({})
+const promptsData = ref({ filter: '', extract: '' })
 
 const states = computed<AppState[]>(() => {
   return props.app.states || []
@@ -156,9 +178,16 @@ async function loadData() {
       initial[step.name] = saved || {
         type: 'mcp',
         mcp: { server: '', tool: '', params_mapping: {} },
+        judge_model_id: null,
       }
     }
     formData.value = initial
+    
+    const prompts = config.prompts || {}
+    promptsData.value = {
+      filter: prompts.filter || '',
+      extract: prompts.extract || '',
+    }
   } catch (error) {
     console.error('Failed to load step config:', error)
   } finally {
@@ -169,7 +198,10 @@ async function loadData() {
 async function save() {
   isSaving.value = true
   try {
-    await updateAppConfig(props.app.id, { step_resources: formData.value })
+    await updateAppConfig(props.app.id, {
+      step_resources: formData.value,
+      prompts: promptsData.value,
+    })
     toast.success(t('apps.stepConfig.saveSuccess'))
     emit('saved')
     close()
@@ -287,6 +319,12 @@ watch(() => props.visible, (val) => {
   color: var(--color-text-secondary, #555);
 }
 
+.field-hint {
+  font-size: 11px;
+  color: var(--color-text-tertiary, #999);
+  margin-top: 4px;
+}
+
 .loading-state {
   text-align: center;
   padding: 40px;
@@ -297,5 +335,22 @@ watch(() => props.visible, (val) => {
   text-align: center;
   padding: 40px;
   color: var(--color-text-secondary, #666);
+}
+
+.prompts-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--color-border, #eee);
+}
+
+.prompts-section .section-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  color: var(--color-text-primary, #333);
+}
+
+.prompt-field {
+  margin-bottom: 20px;
 }
 </style>

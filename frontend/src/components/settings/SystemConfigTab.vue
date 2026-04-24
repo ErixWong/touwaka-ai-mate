@@ -9,6 +9,7 @@
         <el-button :type="activeSubTab === 'connection' ? 'primary' : ''" @click="activeSubTab = 'connection'">🔗 {{ $t('settings.connectionLimits') }}</el-button>
         <el-button :type="activeSubTab === 'token' ? 'primary' : ''" @click="activeSubTab = 'token'">🔑 {{ $t('settings.tokenConfig') }}</el-button>
         <el-button :type="activeSubTab === 'timeout' ? 'primary' : ''" @click="activeSubTab = 'timeout'">⏱️ {{ $t('settings.timeoutConfig') }}</el-button>
+        <el-button :type="activeSubTab === 'app' ? 'primary' : ''" @click="activeSubTab = 'app'">📱 {{ $t('settings.appConfig') }}</el-button>
         <el-button :type="activeSubTab === 'packages' ? 'primary' : ''" @click="activeSubTab = 'packages'">📦 {{ $t('settings.packageWhitelist') }}</el-button>
       </div>
 
@@ -160,6 +161,47 @@
         </div>
       </div>
 
+      <div v-if="activeSubTab === 'app'" class="tab-content">
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">📱 {{ $t('settings.appConfig') }}</h3>
+            <el-button @click="resetSection('app')">{{ $t('common.reset') }}</el-button>
+          </div>
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.clockInterval') }}</label>
+              <el-input-number v-model="form.app.clock_interval" :min="5" :max="300" />
+              <span class="config-hint">5-300 {{ $t('settings.seconds') }}</span>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.batchSize') }}</label>
+              <el-input-number v-model="form.app.batch_size" :min="1" :max="100" />
+              <span class="config-hint">1-100</span>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.maxConcurrency') }}</label>
+              <el-input-number v-model="form.app.max_concurrency" :min="1" :max="50" />
+              <span class="config-hint">1-50</span>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.textFilterMaxLength') }}</label>
+              <el-input-number v-model="form.app.text_filter_max_length" :min="1000" :max="500000" :step="1000" />
+              <span class="config-hint">1000-500000 {{ $t('settings.characters') }}</span>
+            </div>
+            <div class="config-item full-width">
+              <label class="config-label">{{ $t('settings.attachmentBasePath') }}</label>
+              <el-input v-model="form.app.attachment_base_path" placeholder="./data/attachments" />
+            </div>
+          </div>
+          <div class="config-actions">
+            <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
+            <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
+              {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+            </el-button>
+          </div>
+        </div>
+      </div>
+
       <div v-if="activeSubTab === 'packages'" class="tab-content">
         <PackageWhitelistTab />
       </div>
@@ -178,7 +220,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 const toast = useToastStore()
 
-const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'packages'>('general')
+const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'app' | 'packages'>('general')
 const saving = ref(false)
 
 const form = reactive({
@@ -186,7 +228,8 @@ const form = reactive({
   registration: { allow_self_registration: true, default_invitation_quota: 10, default_invitation_max_uses: 5, invitation_expiry_days: 30 },
   connection: { max_per_user: 5, max_per_expert: 100 },
   token: { access_expiry: '15m', refresh_expiry: '7d' },
-  tool: { max_rounds: 20 }
+  tool: { max_rounds: 20 },
+  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments' },
 })
 
 const defaults = {
@@ -194,7 +237,8 @@ const defaults = {
   registration: { allow_self_registration: true, default_invitation_quota: 10, default_invitation_max_uses: 5, invitation_expiry_days: 30 },
   connection: { max_per_user: 5, max_per_expert: 100 },
   token: { access_expiry: '15m', refresh_expiry: '7d' },
-  tool: { max_rounds: 20 }
+  tool: { max_rounds: 20 },
+  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments' },
 }
 
 const hasChanges = computed(() => {
@@ -205,7 +249,8 @@ const hasChanges = computed(() => {
     registration: { allow_self_registration: settings.registration?.allow_self_registration ?? true, default_invitation_quota: settings.registration?.default_invitation_quota ?? 10, default_invitation_max_uses: settings.registration?.default_invitation_max_uses ?? 5, invitation_expiry_days: settings.registration?.invitation_expiry_days ?? 30 },
     connection: { max_per_user: settings.connection?.max_per_user ?? 5, max_per_expert: settings.connection?.max_per_expert ?? 100 },
     token: { access_expiry: settings.token?.access_expiry ?? '15m', refresh_expiry: settings.token?.refresh_expiry ?? '7d' },
-    tool: { max_rounds: settings.tool?.max_rounds ?? 20 }
+    tool: { max_rounds: settings.tool?.max_rounds ?? 20 },
+    app: { clock_interval: settings.app?.clock_interval ?? 30, batch_size: settings.app?.batch_size ?? 10, max_concurrency: settings.app?.max_concurrency ?? 5, text_filter_max_length: settings.app?.text_filter_max_length ?? 50000, attachment_base_path: settings.app?.attachment_base_path ?? './data/attachments' },
   })
 })
 
@@ -249,6 +294,11 @@ onMounted(async () => {
     form.token.access_expiry = settings.token?.access_expiry ?? '15m'
     form.token.refresh_expiry = settings.token?.refresh_expiry ?? '7d'
     form.tool.max_rounds = settings.tool?.max_rounds ?? 20
+    form.app.clock_interval = settings.app?.clock_interval ?? 30
+    form.app.batch_size = settings.app?.batch_size ?? 10
+    form.app.max_concurrency = settings.app?.max_concurrency ?? 5
+    form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
+    form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
   }
 })
 
@@ -269,6 +319,11 @@ watch(() => systemSettingsStore.settings, (settings) => {
     form.token.access_expiry = settings.token?.access_expiry ?? '15m'
     form.token.refresh_expiry = settings.token?.refresh_expiry ?? '7d'
     form.tool.max_rounds = settings.tool?.max_rounds ?? 20
+    form.app.clock_interval = settings.app?.clock_interval ?? 30
+    form.app.batch_size = settings.app?.batch_size ?? 10
+    form.app.max_concurrency = settings.app?.max_concurrency ?? 5
+    form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
+    form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
   }
 }, { deep: true })
 </script>
