@@ -219,6 +219,9 @@ class ApiServer {
     this.tokenCleanupJob = new TokenCleanupJob(this.db);
 
     const appConfig = await this.systemSettingService.getAppConfig();
+    
+    process.env.ATTACHMENT_BASE_PATH = appConfig.attachment_base_path || './data/attachments';
+    process.env.TEXT_FILTER_MAX_LENGTH = String(appConfig.text_filter_max_length || 50000);
 
     this.appClock = new AppClock(this.db, {
       intervalMs: appConfig.clock_interval * 1000,
