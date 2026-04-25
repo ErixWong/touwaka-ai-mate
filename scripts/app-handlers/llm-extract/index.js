@@ -153,10 +153,17 @@ ${exampleJson}
 
       const contentConfig = extTables.find(t => t.type === 'content');
       if (contentConfig && services.callExtension) {
+        let extractJsonStr;
+        try {
+          extractJsonStr = JSON.stringify(cleanMetadata);
+        } catch {
+          extractJsonStr = '{}';
+        }
+        
         await services.callExtension(contentConfig.name, 'update', {
           row_id: record.id,
           extract_prompt: promptBase,
-          extract_json: JSON.stringify(cleanMetadata),
+          extract_json: extractJsonStr,
           extract_model: extractConfig.model_id || 'unknown',
           extract_at: new Date().toISOString()
         });
