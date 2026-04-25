@@ -3,6 +3,7 @@ import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
+import { pathToFileURL } from 'url';
 
 /**
  * App Market 服务
@@ -22,6 +23,51 @@ class AppMarketService {
       this.models.AppRowHandler = this.db.getModel('app_row_handler');
       this.models.SystemSetting = this.db.getModel('system_setting');
       this.models.McpServer = this.db.getModel('mcp_server');
+    }
+  }
+
+  validateTableName(tableName, appId) {
+    const safePrefix = `app_${appId.replace(/-/g, '_')}_`;
+    
+    if (!tableName.startsWith(safePrefix)) {
+      throw new Error(`Security: table ${tableName} must start with ${safePrefix}`);
+    }
+    
+    const forbidden = ['users', 'roles', 'mini_app', 'mini_apps', 'attachment', 'knowledge', 'kb_'];
+    if (forbidden.some(f => tableName.toLowerCase().includes(f))) {
+      throw new Error(`Security: table ${tableName} contains forbidden keyword`);
+    }
+    
+    return tableName;
+  }
+
+  async runMigration(appId, scriptPath, direction = 'up') {
+    const fullPath = path.join(this.appsDir, appId, scriptPath);
+    
+    try {
+      const migration = await import(pathToFileURL(fullPath).href);
+      
+      if (migration.check) {
+        const shouldRun = await migration.check(this.db.sequelize);
+        if (!shouldRun) {
+          logger.info(`Migration ${scriptPath} skipped (check returned false)`);
+          return;
+        }
+      }
+      
+      if (direction === 'up') {
+        await migration.up(this.db.sequelize);
+        logger.info(`Migration ${scriptPath} executed (up)`);
+      } else {
+        await migration.down(this.db.sequelize);
+        logger.info(`Migration ${scriptPath} executed (down)`);
+      }
+    } catch (err) {
+      if (direction === 'down') {
+        logger.warn(`Migration ${scriptPath} failed (down): ${err.message}`);
+      } else {
+        throw new Error(`Migration ${scriptPath} failed: ${err.message}`);
+      }
     }
   }
 
@@ -282,22 +328,38 @@ class AppMarketService {
       throw new Error(`缺少依赖的 MCP 服务: ${missingMcp}`);
     }
     
-    // 4. 创建 App 目录
+    // 4. 校验 extension_tables 表名（新增）
+    if (manifest.extension_tables) {
+      for (const table of manifest.extension_tables) {
+        this.validateTableName(table.name, appId);
+      }
+    }
+    
+    // 5. 执行迁移脚本（新增）
+    if (manifest.migrations?.install) {
+      await this.runMigration(appId, manifest.migrations.install, 'up');
+    }
+    
+    // 6. 创建 App 目录
     const appDir = path.join(this.appsDir, appId);
     await fs.mkdir(appDir, { recursive: true });
     
-    // 5. 保存 manifest 到本地
+    // 7. 保存 manifest 到本地
     await fs.writeFile(
       path.join(appDir, 'manifest.json'),
       JSON.stringify(manifest, null, 2),
       'utf-8'
     );
     
-    // 6. 安装 handlers（返回 handlerId 映射）
+    // 8. 安装 handlers（返回 handlerId 映射）
     const { installed: installedHandlers, handlerIdMap } = await this.installHandlers(appId, manifest);
     
-    // 7. 插入数据库
-    await this.installAppMetadata(manifest, userId, visibility);
+    // 9. 插入数据库（extension_tables 存入 config）
+    const config = {
+      ...manifest.config,
+      extension_tables: manifest.extension_tables || []
+    };
+    await this.installAppMetadata(manifest, userId, visibility, config);
     await this.installStates(appId, manifest, handlerIdMap);
     
     logger.info(`App ${appId} installed successfully`);
@@ -314,7 +376,7 @@ class AppMarketService {
   /**
    * 安装 App 元数据到数据库
    */
-  async installAppMetadata(manifest, userId, visibility) {
+  async installAppMetadata(manifest, userId, visibility, config = null) {
     await this.models.MiniApp.create({
       id: manifest.id,
       name: manifest.name,
@@ -324,7 +386,7 @@ class AppMarketService {
       component: manifest.component || null,
       fields: JSON.stringify(manifest.fields || []),
       views: JSON.stringify(manifest.views || {}),
-      config: JSON.stringify(manifest.config || {}),
+      config: JSON.stringify(config || manifest.config || {}),
       visibility,
       owner_id: userId,
       creator_id: userId,
@@ -445,20 +507,39 @@ class AppMarketService {
       throw new Error(`App ${appId} 不存在`);
     }
     
-    // 2. 删除数据库记录
+    // 2. 获取 manifest（从 app.config 或本地文件）
+    let manifest;
+    try {
+      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      manifest = JSON.parse(content);
+    } catch (err) {
+      // fallback: 从 app.config 读取 extension_tables
+      const config = app.config ? JSON.parse(app.config) : {};
+      manifest = {
+        migrations: config.migrations || null
+      };
+    }
+    
+    // 3. 执行卸载迁移脚本（新增）
+    if (manifest.migrations?.uninstall) {
+      await this.runMigration(appId, manifest.migrations.uninstall, 'down');
+    }
+    
+    // 4. 删除数据库记录
     await this.models.MiniApp.destroy({ where: { id: appId } });
     await this.models.AppState.destroy({ where: { app_id: appId } });
     await this.models.AppRowHandler.destroy({ 
       where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
     });
     
-    // 3. 根据选项决定是否删除数据行
+    // 5. 根据选项决定是否删除数据行
     if (!keepData) {
       const { MiniAppRow } = this.db.getModels();
       await MiniAppRow.destroy({ where: { app_id: appId } });
     }
     
-    // 4. 删除本地文件
+    // 6. 删除本地文件
     const appDir = path.join(this.appsDir, appId);
     try {
       await fs.rm(appDir, { recursive: true, force: true });
