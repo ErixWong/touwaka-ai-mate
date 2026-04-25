@@ -5,7 +5,6 @@ class ExtensionTableService {
   constructor(db) {
     this.db = db;
     this.sequelize = db.sequelize;
-    this.QueryTypes = Sequelize.QueryTypes;
   }
 
   ensureModels() {
@@ -77,11 +76,11 @@ class ExtensionTableService {
     const [rows, countResult] = await Promise.all([
       this.sequelize.query(sql, {
         replacements,
-        type: this.QueryTypes.SELECT
+        type: Sequelize.QueryTypes.SELECT
       }),
       this.sequelize.query(countSql, {
         replacements,
-        type: this.QueryTypes.SELECT
+        type: Sequelize.QueryTypes.SELECT
       })
     ]);
 
@@ -109,7 +108,7 @@ class ExtensionTableService {
 
     const rows = await this.sequelize.query(sql, {
       replacements: { rowId, appId },
-      type: this.QueryTypes.SELECT
+      type: Sequelize.QueryTypes.SELECT
     });
 
     return rows[0] || null;
@@ -140,7 +139,7 @@ class ExtensionTableService {
     `;
 
     return await this.sequelize.query(sql, {
-      type: this.QueryTypes.SELECT
+      type: Sequelize.QueryTypes.SELECT
     });
   }
 
@@ -239,7 +238,7 @@ class ExtensionTableService {
 
     const rows = await this.sequelize.query(sql, {
       replacements: [rowId],
-      type: this.QueryTypes.SELECT
+      type: Sequelize.QueryTypes.SELECT
     });
 
     return rows[0] || null;
@@ -294,11 +293,6 @@ class ExtensionTableService {
       return `ORDER BY e.${field} ${validOrder}`;
     }
     return `ORDER BY r.${field} ${validOrder}`;
-  }
-    if (extConfig.fields.find(f => f.name === field)) {
-      return `ORDER BY e.${field} ${order}`;
-    }
-    return `ORDER BY r.${field} ${order}`;
   }
 
   async getExtensionConfig(appId, tableName) {
