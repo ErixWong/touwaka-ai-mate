@@ -42,10 +42,21 @@ class AppMarketService {
   }
 
   async runMigration(appId, scriptPath, direction = 'up') {
+    // 校验 scriptPath 不能包含路径穿越
+    if (scriptPath.includes('..') || scriptPath.includes('/') || scriptPath.includes('\\')) {
+      throw new Error(`Security: invalid migration script path ${scriptPath}`);
+    }
+    
     const fullPath = path.join(this.appsDir, appId, scriptPath);
     
+    // 校验 fullPath 是否在 appsDir 范围内
+    const normalizedPath = path.normalize(fullPath);
+    if (!normalizedPath.startsWith(path.normalize(this.appsDir))) {
+      throw new Error(`Security: migration script path out of bounds`);
+    }
+    
     try {
-      const migration = await import(pathToFileURL(fullPath).href);
+      const migration = await import(pathToFileURL(normalizedPath).href);
       
       if (migration.check) {
         const shouldRun = await migration.check(this.db.sequelize);
