@@ -995,9 +995,9 @@ const MIGRATIONS = [
     name: 'app_contract_rows table create',
     check: async (conn) => await hasTable(conn, 'app_contract_rows'),
     migrate: async (conn) => {
-      // 先创建表（不带外键）
+      // 先创建表（不带外键，使用 IF NOT EXISTS 双重保险）
       await conn.execute(`
-        CREATE TABLE app_contract_rows (
+        CREATE TABLE IF NOT EXISTS app_contract_rows (
           row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
           contract_number VARCHAR(64) NULL COMMENT '合同编号',
           party_a VARCHAR(128) NULL COMMENT '甲方',
@@ -1031,9 +1031,9 @@ const MIGRATIONS = [
     name: 'app_document_content table create',
     check: async (conn) => await hasTable(conn, 'app_document_content'),
     migrate: async (conn) => {
-      // 先创建表（不带外键）
+      // 先创建表（不带外键，使用 IF NOT EXISTS 双重保险）
       await conn.execute(`
-        CREATE TABLE app_document_content (
+        CREATE TABLE IF NOT EXISTS app_document_content (
           row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
           ocr_text LONGTEXT NULL COMMENT 'OCR 原文',
           ocr_service VARCHAR(64) NULL COMMENT 'OCR 服务名称',
