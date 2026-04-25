@@ -105,21 +105,43 @@
           <el-button @click="closeDetail">×</el-button>
         </div>
         <div class="dialog-body">
-          <div class="detail-grid">
-            <div v-for="field in allFields" :key="field.name" class="detail-field">
-              <label class="field-label">{{ field.label }}</label>
-              <div class="field-value">
-                {{ formatFieldValue(selectedRecord?.data?.[field.name], field) }}
+          <el-tabs v-model="detailTab">
+            <el-tab-pane label="基础信息" name="basic">
+              <div class="detail-grid">
+                <div v-for="field in allFields" :key="field.name" class="detail-field">
+                  <label class="field-label">{{ field.label }}</label>
+                  <div class="field-value">
+                    {{ formatFieldValue(selectedRecord?.data?.[field.name], field) }}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </el-tab-pane>
+            <el-tab-pane label="OCR原文" name="ocr">
+              <DocumentContentViewer
+                :content-text="documentContent?.filtered_text || documentContent?.ocr_text || ''"
+                :highlights="[]"
+              />
+            </el-tab-pane>
+          </el-tabs>
         </div>
         <div class="dialog-footer">
           <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
+          <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
           <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
         </div>
       </div>
     </div>
+
+    <ReExtractDialog
+      :visible="showReExtract"
+      :app-id="app.id"
+      :record-id="selectedRecord?.id || ''"
+      :last-prompt="documentContent?.extract_prompt || ''"
+      :last-result="documentContent?.extract_json"
+      :filtered-text="documentContent?.filtered_text || ''"
+      @close="closeReExtract"
+      @confirm="handleReExtractConfirm"
+    />
 
     <div v-if="showConfirm" class="dialog-overlay" @click.self="cancelConfirm">
       <div class="dialog dialog-small">
@@ -151,13 +173,17 @@ import {
   createRecord,
   updateRecord,
   deleteRecord,
+  getDocumentContent,
   type MiniApp,
   type MiniAppRecord,
   type AppField,
+  type DocumentContent,
 } from '@/api/mini-apps'
 import StateBadge from './StateBadge.vue'
 import FieldRenderer from './FieldRenderer.vue'
 import AppStepConfig from './AppStepConfig.vue'
+import DocumentContentViewer from './DocumentContentViewer.vue'
+import ReExtractDialog from './ReExtractDialog.vue'
 
 const props = defineProps<{ app: MiniApp }>()
 const router = useRouter()
@@ -174,8 +200,11 @@ const showDialog = ref(false)
 const showDetail = ref(false)
 const showConfirm = ref(false)
 const showStepConfig = ref(false)
+const showReExtract = ref(false)
 const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
+const detailTab = ref('basic')
+const documentContent = ref<DocumentContent | null>(null)
 
 const pagination = ref({
   page: 1,
@@ -366,9 +395,17 @@ function openCreateDialog() {
   showDialog.value = true
 }
 
-function viewRecord(record: MiniAppRecord) {
+async function viewRecord(record: MiniAppRecord) {
   selectedRecord.value = record
   showDetail.value = true
+  detailTab.value = 'basic'
+  documentContent.value = null
+  
+  try {
+    documentContent.value = await getDocumentContent(props.app.id, record.id)
+  } catch {
+    documentContent.value = { has_content: false }
+  }
 }
 
 function editRecord(record: MiniAppRecord) {
@@ -394,6 +431,29 @@ function closeDialog() {
 function closeDetail() {
   showDetail.value = false
   selectedRecord.value = null
+}
+
+function openReExtract() {
+  showReExtract.value = true
+}
+
+function closeReExtract() {
+  showReExtract.value = false
+}
+
+async function handleReExtractConfirm(result: Record<string, unknown>) {
+  if (selectedRecord.value) {
+    try {
+      await updateRecord(props.app.id, selectedRecord.value.id, { ...selectedRecord.value.data, ...result })
+      toast.success(t('apps.updateSuccess'))
+      await loadRecords()
+      closeReExtract()
+      closeDetail()
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : t('apps.saveFailed')
+      toast.error(errorMsg)
+    }
+  }
 }
 
 async function saveRecord() {
@@ -779,7 +839,8 @@ watch(() => props.app.id, () => {
 }
 
 .dialog-large {
-  max-width: 800px;
+  max-width: 1200px;
+  height: 80vh;
 }
 
 .dialog-small {

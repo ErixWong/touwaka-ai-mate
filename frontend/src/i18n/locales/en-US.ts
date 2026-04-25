@@ -1391,7 +1391,35 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     goToMarket: 'Go to App Market',
     hasUpdate: 'Update',
 
-stepConfig: {
+    documentContent: {
+      sections: 'Sections',
+      scrollToTop: 'Scroll to Top',
+      noContent: 'No content',
+      section: 'Section {index}',
+      filteredText: 'Filtered Text',
+    },
+
+    treeFilter: {
+      emptyValue: '(Empty)',
+      loadFailed: 'Failed to load filter options',
+    },
+
+    reExtract: {
+      title: 'Re-extract',
+      lastPrompt: 'Last Prompt',
+      lastResult: 'Last Result',
+      newPrompt: 'Modify Prompt',
+      useLast: 'Use Last Prompt',
+      comparison: 'Result Comparison',
+      last: 'Last',
+      current: 'Current',
+      diffHighlight: 'Diff Highlight',
+      confirm: 'Confirm Update',
+      abandon: 'Abandon Update',
+      processing: 'Processing...',
+    },
+
+    stepConfig: {
       title: 'Step Config',
       resourceType: 'Resource Type',
       mcp: 'MCP',

@@ -317,3 +317,33 @@ export async function updateHandler(handlerId: string, data: Partial<AppRowHandl
 export async function deleteHandler(handlerId: string): Promise<void> {
   return apiRequest<void>(apiClient.delete(`/handlers/${handlerId}`))
 }
+
+export interface DocumentContent {
+  has_content: boolean
+  ocr_text?: string
+  filtered_text?: string
+  extract_prompt?: string
+  extract_json?: Record<string, unknown> | null
+  extract_at?: string
+}
+
+export interface DistinctValuesResponse {
+  field: string
+  values: Array<{ value: string }>
+}
+
+export interface BatchDistinctResponse {
+  [field: string]: Array<{ value: string }>
+}
+
+export async function getDistinctValues(appId: string, fields: string[]): Promise<BatchDistinctResponse> {
+  return apiRequest<BatchDistinctResponse>(apiClient.get(`/mini-apps/${appId}/extension/distinct`, { params: { fields: fields.join(',') } }))
+}
+
+export async function getDistinctField(appId: string, field: string): Promise<DistinctValuesResponse> {
+  return apiRequest<DistinctValuesResponse>(apiClient.get(`/mini-apps/${appId}/extension/distinct/${field}`))
+}
+
+export async function getDocumentContent(appId: string, rowId: string): Promise<DocumentContent> {
+  return apiRequest<DocumentContent>(apiClient.get(`/mini-apps/${appId}/content/${rowId}`))
+}
