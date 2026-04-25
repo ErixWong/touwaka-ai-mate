@@ -2,7 +2,7 @@ export default {
   async check(sequelize) {
     const [rows] = await sequelize.query(`
       SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('app_contract_rows', 'app_document_content')
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('app_contract_mgr_rows', 'app_contract_mgr_content')
     `, { type: sequelize.QueryTypes.SELECT });
     
     return rows.length < 2;
@@ -10,7 +10,7 @@ export default {
 
   async up(sequelize) {
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS app_contract_rows (
+      CREATE TABLE IF NOT EXISTS app_contract_mgr_rows (
         row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
         contract_number VARCHAR(64) NULL COMMENT '合同编号',
         party_a VARCHAR(128) NULL COMMENT '甲方',
@@ -27,10 +27,10 @@ export default {
         INDEX idx_contract_date (contract_date)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同管理扩展表'
     `);
-    console.log('  ✓ Created app_contract_rows table');
+    console.log('  ✓ Created app_contract_mgr_rows table');
 
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS app_document_content (
+      CREATE TABLE IF NOT EXISTS app_contract_mgr_content (
         row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
         ocr_text LONGTEXT NULL COMMENT 'OCR 原文',
         ocr_service VARCHAR(64) NULL COMMENT 'OCR 服务名称',
@@ -46,28 +46,28 @@ export default {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档内容表'
     `);
-    console.log('  ✓ Created app_document_content table');
+    console.log('  ✓ Created app_contract_mgr_content table');
 
     await sequelize.query(`
-      ALTER TABLE app_contract_rows
-      ADD CONSTRAINT fk_app_contract_rows_row_id
+      ALTER TABLE app_contract_mgr_rows
+      ADD CONSTRAINT fk_app_contract_mgr_rows_row_id
       FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
     `);
-    console.log('  ✓ Added FK for app_contract_rows');
+    console.log('  ✓ Added FK for app_contract_mgr_rows');
 
     await sequelize.query(`
-      ALTER TABLE app_document_content
-      ADD CONSTRAINT fk_app_document_content_row_id
+      ALTER TABLE app_contract_mgr_content
+      ADD CONSTRAINT fk_app_contract_mgr_content_row_id
       FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
     `);
-    console.log('  ✓ Added FK for app_document_content');
+    console.log('  ✓ Added FK for app_contract_mgr_content');
   },
 
   async down(sequelize) {
-    await sequelize.query(`DROP TABLE IF EXISTS app_document_content`);
-    console.log('  ✓ Dropped app_document_content table');
+    await sequelize.query(`DROP TABLE IF EXISTS app_contract_mgr_content`);
+    console.log('  ✓ Dropped app_contract_mgr_content table');
     
-    await sequelize.query(`DROP TABLE IF EXISTS app_contract_rows`);
-    console.log('  ✓ Dropped app_contract_rows table');
+    await sequelize.query(`DROP TABLE IF EXISTS app_contract_mgr_rows`);
+    console.log('  ✓ Dropped app_contract_mgr_rows table');
   }
 };
