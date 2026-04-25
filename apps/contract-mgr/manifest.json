@@ -26,27 +26,6 @@
   },
   "fields": [
     {
-      "name": "contract_number",
-      "label": "合同编号",
-      "type": "text",
-      "required": true,
-      "ai_extractable": true
-    },
-    {
-      "name": "contract_date",
-      "label": "签订日期",
-      "type": "date",
-      "required": true,
-      "ai_extractable": true
-    },
-    {
-      "name": "party_a",
-      "label": "甲方",
-      "type": "text",
-      "required": true,
-      "ai_extractable": true
-    },
-    {
       "name": "party_b",
       "label": "乙方",
       "type": "text",
@@ -54,10 +33,9 @@
       "ai_extractable": true
     },
     {
-      "name": "contract_amount",
-      "label": "合同金额",
-      "type": "number",
-      "required": true,
+      "name": "payment_terms",
+      "label": "付款条款",
+      "type": "textarea",
       "ai_extractable": true
     },
     {
@@ -70,12 +48,6 @@
       "name": "end_date",
       "label": "结束日期",
       "type": "date",
-      "ai_extractable": true
-    },
-    {
-      "name": "payment_terms",
-      "label": "付款条款",
-      "type": "textarea",
       "ai_extractable": true
     },
     {
@@ -96,6 +68,36 @@
       "type": "file"
     }
   ],
+  "extension_tables": [
+    {
+      "name": "app_contract_mgr_rows",
+      "type": "primary",
+      "fields": [
+        { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "required": true, "source": "contract_number" },
+        { "name": "party_a", "type": "VARCHAR(128)", "label": "甲方", "required": true, "source": "party_a" },
+        { "name": "parent_company", "type": "VARCHAR(128)", "label": "上级公司", "source": "parent_company" },
+        { "name": "contract_amount", "type": "DECIMAL(15,2)", "label": "合同金额", "required": true, "source": "contract_amount" },
+        { "name": "contract_date", "type": "DATE", "label": "签订日期", "required": true, "source": "contract_date" }
+      ],
+      "indexes": ["contract_number", "party_a", "parent_company", "contract_amount", "contract_date"]
+    },
+    {
+      "name": "app_contract_mgr_content",
+      "type": "content",
+      "fields": [
+        { "name": "ocr_text", "type": "LONGTEXT" },
+        { "name": "filtered_text", "type": "LONGTEXT" },
+        { "name": "extract_prompt", "type": "TEXT" },
+        { "name": "extract_json", "type": "LONGTEXT" },
+        { "name": "extract_model", "type": "VARCHAR(64)" },
+        { "name": "extract_at", "type": "DATETIME" }
+      ]
+    }
+  ],
+  "migrations": {
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
+  },
   "views": {
     "list": {
       "columns": [
@@ -133,6 +135,7 @@
     {
       "name": "pending_ocr",
       "label": "等待OCR",
+      "description": "提交OCR任务，将文件发送给OCR服务进行识别",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
@@ -144,6 +147,7 @@
     {
       "name": "ocr_submitted",
       "label": "OCR处理中",
+      "description": "检查OCR任务状态，等待OCR完成后获取结果",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,
@@ -155,6 +159,7 @@
     {
       "name": "pending_filter",
       "label": "等待过滤",
+      "description": "文本过滤，清理OCR结果中的无关内容（页码、水印、乱码等）",
       "sort_order": 3,
       "is_initial": false,
       "is_terminal": false,
@@ -166,6 +171,7 @@
     {
       "name": "pending_extract",
       "label": "等待提取",
+      "description": "提取元数据，从过滤后的文本中提取合同关键信息",
       "sort_order": 4,
       "is_initial": false,
       "is_terminal": false,

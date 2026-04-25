@@ -75,6 +75,11 @@ export default class app_state extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    description: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: "状态描述"
     }
   }, {
     sequelize,

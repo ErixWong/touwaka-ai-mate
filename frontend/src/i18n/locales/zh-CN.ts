@@ -1355,6 +1355,8 @@ stepConfig: {
       paramType: '{type}',
       mappingArrow: '←',
       required: '*',
+      executionResource: '执行资源',
+      judgeResource: '判断资源',
       judgeModel: 'AI判断模型',
       judgeModelPlaceholder: '可选，用于判断OCR状态',
       judgeModelHint: '用于AI判断MCP返回结果的状态，推荐使用低成本模型',
