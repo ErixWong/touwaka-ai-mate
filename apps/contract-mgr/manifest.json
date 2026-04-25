@@ -26,27 +26,6 @@
   },
   "fields": [
     {
-      "name": "contract_number",
-      "label": "合同编号",
-      "type": "text",
-      "required": true,
-      "ai_extractable": true
-    },
-    {
-      "name": "contract_date",
-      "label": "签订日期",
-      "type": "date",
-      "required": true,
-      "ai_extractable": true
-    },
-    {
-      "name": "party_a",
-      "label": "甲方",
-      "type": "text",
-      "required": true,
-      "ai_extractable": true
-    },
-    {
       "name": "party_b",
       "label": "乙方",
       "type": "text",
@@ -54,10 +33,9 @@
       "ai_extractable": true
     },
     {
-      "name": "contract_amount",
-      "label": "合同金额",
-      "type": "number",
-      "required": true,
+      "name": "payment_terms",
+      "label": "付款条款",
+      "type": "textarea",
       "ai_extractable": true
     },
     {
@@ -70,12 +48,6 @@
       "name": "end_date",
       "label": "结束日期",
       "type": "date",
-      "ai_extractable": true
-    },
-    {
-      "name": "payment_terms",
-      "label": "付款条款",
-      "type": "textarea",
       "ai_extractable": true
     },
     {
@@ -96,6 +68,36 @@
       "type": "file"
     }
   ],
+  "extension_tables": [
+    {
+      "name": "app_contract_rows",
+      "type": "primary",
+      "fields": [
+        { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "required": true, "source": "contract_number" },
+        { "name": "party_a", "type": "VARCHAR(128)", "label": "甲方", "required": true, "source": "party_a" },
+        { "name": "parent_company", "type": "VARCHAR(128)", "label": "上级公司", "source": "parent_company" },
+        { "name": "contract_amount", "type": "DECIMAL(15,2)", "label": "合同金额", "required": true, "source": "contract_amount" },
+        { "name": "contract_date", "type": "DATE", "label": "签订日期", "required": true, "source": "contract_date" }
+      ],
+      "indexes": ["contract_number", "party_a", "parent_company", "contract_amount", "contract_date"]
+    },
+    {
+      "name": "app_document_content",
+      "type": "content",
+      "fields": [
+        { "name": "ocr_text", "type": "LONGTEXT" },
+        { "name": "filtered_text", "type": "LONGTEXT" },
+        { "name": "extract_prompt", "type": "TEXT" },
+        { "name": "extract_json", "type": "LONGTEXT" },
+        { "name": "extract_model", "type": "VARCHAR(64)" },
+        { "name": "extract_at", "type": "DATETIME" }
+      ]
+    }
+  ],
+  "migrations": {
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
+  },
   "views": {
     "list": {
       "columns": [
