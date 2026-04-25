@@ -366,6 +366,12 @@ class MiniAppController {
       }
       
       const fieldList = fields.split(',').map(f => f.trim()).filter(f => f);
+      
+      if (fieldList.length > 10) {
+        ctx.error('Too many fields (max 10)', 400);
+        return;
+      }
+      
       const results = {};
       
       for (const field of fieldList) {
@@ -432,7 +438,7 @@ class MiniAppController {
         ocr_text: content.ocr_text || '',
         filtered_text: content.filtered_text || '',
         extract_prompt: content.extract_prompt || '',
-        extract_json: content.extract_json ? JSON.parse(content.extract_json) : null,
+        extract_json: content.extract_json ? (() => { try { return JSON.parse(content.extract_json); } catch { return null; } })() : null,
         extract_at: content.extract_at
       });
     } catch (error) {
