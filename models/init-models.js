@@ -2,6 +2,8 @@ import _sequelize from "sequelize";
 const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
 import _app_action_log from  "./app_action_log.js";
+import _app_contract_row from  "./app_contract_row.js";
+import _app_document_content from  "./app_document_content.js";
 import _app_row_handler from  "./app_row_handler.js";
 import _app_state from  "./app_state.js";
 import _assistant_message from  "./assistant_message.js";
@@ -52,6 +54,8 @@ import _user from  "./user.js";
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
   const app_action_log = _app_action_log.init(sequelize, DataTypes);
+  const app_contract_row = _app_contract_row.init(sequelize, DataTypes);
+  const app_document_content = _app_document_content.init(sequelize, DataTypes);
   const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
   const app_state = _app_state.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
@@ -159,6 +163,10 @@ export default function initModels(sequelize) {
   mcp_server.hasMany(mcp_user_credential, { as: "mcp_user_credentials", foreignKey: "mcp_server_id"});
   app_action_log.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "record_id"});
+  app_contract_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasOne(app_contract_row, { as: "app_contract_row", foreignKey: "row_id"});
+  app_document_content.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasOne(app_document_content, { as: "app_document_content", foreignKey: "row_id"});
   mini_app_file.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "record_id"});
   app_action_log.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
@@ -235,6 +243,8 @@ export default function initModels(sequelize) {
   return {
     ai_model,
     app_action_log,
+    app_contract_row,
+    app_document_content,
     app_row_handler,
     app_state,
     assistant_message,
