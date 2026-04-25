@@ -126,10 +126,22 @@
         </div>
         <div class="dialog-footer">
           <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
+          <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
           <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
         </div>
       </div>
     </div>
+
+    <ReExtractDialog
+      :visible="showReExtract"
+      :app-id="app.id"
+      :record-id="selectedRecord?.id || ''"
+      :last-prompt="documentContent?.extract_prompt || ''"
+      :last-result="documentContent?.extract_json"
+      :filtered-text="documentContent?.filtered_text || ''"
+      @close="closeReExtract"
+      @confirm="handleReExtractConfirm"
+    />
 
     <div v-if="showConfirm" class="dialog-overlay" @click.self="cancelConfirm">
       <div class="dialog dialog-small">
@@ -171,6 +183,7 @@ import StateBadge from './StateBadge.vue'
 import FieldRenderer from './FieldRenderer.vue'
 import AppStepConfig from './AppStepConfig.vue'
 import DocumentContentViewer from './DocumentContentViewer.vue'
+import ReExtractDialog from './ReExtractDialog.vue'
 
 const props = defineProps<{ app: MiniApp }>()
 const router = useRouter()
@@ -187,6 +200,7 @@ const showDialog = ref(false)
 const showDetail = ref(false)
 const showConfirm = ref(false)
 const showStepConfig = ref(false)
+const showReExtract = ref(false)
 const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
 const detailTab = ref('basic')
@@ -417,6 +431,29 @@ function closeDialog() {
 function closeDetail() {
   showDetail.value = false
   selectedRecord.value = null
+}
+
+function openReExtract() {
+  showReExtract.value = true
+}
+
+function closeReExtract() {
+  showReExtract.value = false
+}
+
+async function handleReExtractConfirm(result: Record<string, unknown>) {
+  if (selectedRecord.value) {
+    try {
+      await updateRecord(props.app.id, selectedRecord.value.id, { ...selectedRecord.value.data, ...result })
+      toast.success(t('apps.updateSuccess'))
+      await loadRecords()
+      closeReExtract()
+      closeDetail()
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : t('apps.saveFailed')
+      toast.error(errorMsg)
+    }
+  }
 }
 
 async function saveRecord() {

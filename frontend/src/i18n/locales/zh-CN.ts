@@ -1340,6 +1340,27 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       scrollToTop: '回到顶部',
       noContent: '暂无内容',
       section: '第 {index} 章节',
+      filteredText: '过滤后文本',
+    },
+
+    treeFilter: {
+      emptyValue: '(空)',
+      loadFailed: '加载筛选选项失败',
+    },
+
+    reExtract: {
+      title: '重新提取',
+      lastPrompt: '上次提示词',
+      lastResult: '上次结果',
+      newPrompt: '修改提示词',
+      useLast: '使用上次提示词',
+      comparison: '结果对比',
+      last: '上次',
+      current: '本次',
+      diffHighlight: '差异高亮',
+      confirm: '确认更新',
+      abandon: '放弃更新',
+      processing: '提取中...',
     },
 
     stepConfig: {
