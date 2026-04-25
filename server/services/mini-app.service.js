@@ -5,11 +5,13 @@ import { pathToFileURL } from 'url';
 import {
   buildPaginatedResponse,
 } from '../../lib/query-builder.js';
+import ExtensionTableService from './extension-table.service.js';
 
 class MiniAppService {
   constructor(db) {
     this.db = db;
     this.models = {};
+    this.extensionService = new ExtensionTableService(db);
   }
 
   ensureModels() {
@@ -26,6 +28,7 @@ class MiniAppService {
       this.models.UserRole = this.db.getModel('user_role');
       this.models.Attachment = this.db.getModel('attachment');
     }
+    this.extensionService.ensureModels();
   }
 
   // ==================== App CRUD ====================
@@ -273,6 +276,18 @@ class MiniAppService {
 
   async getRecords(appId, userId, queryParams) {
     this.ensureModels();
+    
+    const extRecords = await this.extensionService.getRecordsWithExtension(appId, userId, queryParams);
+    if (extRecords) {
+      const pagination = { 
+        page: queryParams?.page || 1, 
+        size: queryParams?.size || 10,
+        total: extRecords.count,
+        pages: Math.ceil(extRecords.count / (queryParams?.size || 10))
+      };
+      return buildPaginatedResponse({ rows: extRecords.rows, count: extRecords.count }, pagination, Date.now());
+    }
+
     const { page = 1, size = 10, filter, sort } = queryParams || {};
     const limit = Math.min(Math.max(parseInt(size) || 10, 1), 100);
     const offset = (parseInt(page) - 1) * limit;
@@ -309,6 +324,16 @@ class MiniAppService {
 
   async getRecord(appId, recordId, userId) {
     this.ensureModels();
+    
+    const extRecord = await this.extensionService.getRecordWithExtension(appId, recordId);
+    if (extRecord) {
+      const isAdmin = await this.isAdmin(userId);
+      if (!isAdmin && extRecord.user_id !== userId) {
+        throw new Error('Permission denied');
+      }
+      return extRecord;
+    }
+    
     const isAdmin = await this.isAdmin(userId);
     const where = { id: recordId, app_id: appId };
     if (!isAdmin) {
@@ -347,26 +372,50 @@ class MiniAppService {
 
     const title = this.computeTitle(app.fields, data);
 
-    const record = await this.models.MiniAppRow.create({
-      id: Utils.newID(20),
-      app_id: appId,
-      user_id: userId,
-      data,
-      title,
-    });
+    const transaction = await this.db.sequelize.transaction();
+    
+    try {
+      const rowId = Utils.newID(20);
+      const record = await this.models.MiniAppRow.create({
+        id: rowId,
+        app_id: appId,
+        user_id: userId,
+        data,
+        title,
+      }, { transaction });
 
-    if (attachmentIds.length > 0) {
-      for (const attId of attachmentIds) {
-        await this.models.MiniAppFile.create({
-          id: Utils.newID(20),
-          record_id: record.id,
-          app_id: appId,
-          attachment_id: attId,
-        });
+      const extConfigs = await this.extensionService.getExtensionConfigs(appId);
+      if (extConfigs && extConfigs.length > 0) {
+        const primaryConfig = extConfigs.find(c => c.type === 'primary');
+        if (primaryConfig) {
+          const extData = { row_id: rowId };
+          for (const f of primaryConfig.fields) {
+            const key = f.source || f.name;
+            if (data[key] !== undefined) {
+              extData[f.name] = data[key];
+            }
+          }
+          await this.extensionService.createExtensionRow(appId, primaryConfig.name, extData, transaction);
+        }
       }
-    }
 
-    return record;
+      if (attachmentIds.length > 0) {
+        for (const attId of attachmentIds) {
+          await this.models.MiniAppFile.create({
+            id: Utils.newID(20),
+            record_id: record.id,
+            app_id: appId,
+            attachment_id: attId,
+          }, { transaction });
+        }
+      }
+
+      await transaction.commit();
+      return record;
+    } catch (err) {
+      await transaction.rollback();
+      throw new Error(`创建失败: ${err.message}`);
+    }
   }
 
   async updateRecord(appId, recordId, userId, data) {
@@ -389,13 +438,36 @@ class MiniAppService {
     const mergedData = { ...record.data, ...data };
     const title = this.computeTitle(app.fields, mergedData);
 
-    await record.update({
-      data: mergedData,
-      title,
-      revision: record.revision + 1,
-    });
+    const transaction = await this.db.sequelize.transaction();
+    
+    try {
+      await record.update({
+        data: mergedData,
+        title,
+        revision: record.revision + 1,
+      }, { transaction });
 
-    return record;
+      const extConfigs = await this.extensionService.getExtensionConfigs(appId);
+      if (extConfigs && extConfigs.length > 0) {
+        const primaryConfig = extConfigs.find(c => c.type === 'primary');
+        if (primaryConfig) {
+          const extData = { row_id: recordId };
+          for (const f of primaryConfig.fields) {
+            const key = f.source || f.name;
+            if (data[key] !== undefined) {
+              extData[f.name] = data[key];
+            }
+          }
+          await this.extensionService.updateExtensionRow(appId, primaryConfig.name, recordId, extData, transaction);
+        }
+      }
+
+      await transaction.commit();
+      return record;
+    } catch (err) {
+      await transaction.rollback();
+      throw new Error(`更新失败: ${err.message}`);
+    }
   }
 
   async deleteRecord(appId, recordId, userId) {
