@@ -1335,7 +1335,14 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     goToMarket: '去应用市场安装',
     hasUpdate: '有更新',
 
-stepConfig: {
+    documentContent: {
+      sections: '章节导航',
+      scrollToTop: '回到顶部',
+      noContent: '暂无内容',
+      section: '第 {index} 章节',
+    },
+
+    stepConfig: {
       title: '步骤配置',
       resourceType: '资源类型',
       mcp: 'MCP',

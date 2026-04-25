@@ -1391,7 +1391,14 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     goToMarket: 'Go to App Market',
     hasUpdate: 'Update',
 
-stepConfig: {
+    documentContent: {
+      sections: 'Sections',
+      scrollToTop: 'Scroll to Top',
+      noContent: 'No content',
+      section: 'Section {index}',
+    },
+
+    stepConfig: {
       title: 'Step Config',
       resourceType: 'Resource Type',
       mcp: 'MCP',
