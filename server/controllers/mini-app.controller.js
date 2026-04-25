@@ -352,6 +352,94 @@ class MiniAppController {
       ctx.error(error.message, 500);
     }
   }
+
+  // ==================== Extension Tables ====================
+
+  async getDistinctValues(ctx) {
+    try {
+      const { appId } = ctx.params;
+      const { fields } = ctx.query;
+      
+      if (!fields) {
+        ctx.error('Missing fields parameter', 400);
+        return;
+      }
+      
+      const fieldList = fields.split(',').map(f => f.trim()).filter(f => f);
+      const results = {};
+      
+      for (const field of fieldList) {
+        try {
+          results[field] = await this.miniAppService.extensionService.getDistinctValues(appId, field);
+        } catch (err) {
+          results[field] = [];
+        }
+      }
+      
+      ctx.success(results);
+    } catch (error) {
+      logger.error('Get distinct values error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
+
+  async getDistinctField(ctx) {
+    try {
+      const { appId, field } = ctx.params;
+      const values = await this.miniAppService.extensionService.getDistinctValues(appId, field);
+      ctx.success({ field, values });
+    } catch (error) {
+      logger.error('Get distinct field error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
+
+  // ==================== Content (OCR) ====================
+
+  async getDocumentContent(ctx) {
+    try {
+      const { appId, rowId } = ctx.params;
+      const userId = ctx.state.session.id;
+      
+      const record = await this.miniAppService.getRecord(appId, rowId, userId);
+      if (!record) {
+        ctx.error('Record not found', 404);
+        return;
+      }
+      
+      const extConfigs = await this.miniAppService.extensionService.getExtensionConfigs(appId);
+      const contentConfig = extConfigs?.find(c => c.type === 'content');
+      
+      if (!contentConfig) {
+        ctx.success({ has_content: false, message: 'No content table' });
+        return;
+      }
+      
+      const content = await this.miniAppService.extensionService.readExtensionRow(
+        appId,
+        contentConfig.name,
+        rowId,
+        ['ocr_text', 'filtered_text', 'extract_prompt', 'extract_json', 'extract_at']
+      );
+      
+      if (!content) {
+        ctx.success({ has_content: false });
+        return;
+      }
+      
+      ctx.success({
+        has_content: true,
+        ocr_text: content.ocr_text || '',
+        filtered_text: content.filtered_text || '',
+        extract_prompt: content.extract_prompt || '',
+        extract_json: content.extract_json ? JSON.parse(content.extract_json) : null,
+        extract_at: content.extract_at
+      });
+    } catch (error) {
+      logger.error('Get document content error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
 }
 
 export default MiniAppController;

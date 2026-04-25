@@ -49,5 +49,14 @@ export default (controller) => {
   router.get('/api/handlers/:handlerId/logs', authenticate(), requireAdmin(), (ctx) => controller.getHandlerLogs(ctx));
   router.post('/api/handlers/:handlerId/test', authenticate(), requireAdmin(), (ctx) => controller.testHandler(ctx));
 
+  // ==================== Extension Tables ====================
+
+  router.get('/api/mini-apps/:appId/extension/distinct', authenticate(), (ctx) => controller.getDistinctValues(ctx));
+  router.get('/api/mini-apps/:appId/extension/distinct/:field', authenticate(), (ctx) => controller.getDistinctField(ctx));
+
+  // ==================== Content (OCR) ====================
+
+  router.get('/api/mini-apps/:appId/content/:rowId', authenticate(), (ctx) => controller.getDocumentContent(ctx));
+
   return router;
 };
