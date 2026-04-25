@@ -50,7 +50,8 @@ class ExtensionTableService {
 
     const isAdmin = await this.isAdmin(userId);
 
-    const whereClause = this.buildWhereClause(filter, primaryConfig, isAdmin, userId);
+    const replacements = { appId, userId, limit: parseInt(size), offset };
+    const whereClause = this.buildWhereClause(filter, primaryConfig, isAdmin, userId, replacements);
     const orderClause = this.buildOrderClause(sort, primaryConfig);
 
     const selectFields = primaryConfig.fields.map(f => `e.${f.name}`).join(', ');
@@ -73,15 +74,13 @@ class ExtensionTableService {
       WHERE r.app_id = :appId ${whereClause}
     `;
 
-    const replacements = { appId, limit: parseInt(size), offset };
-    
     const [rows, countResult] = await Promise.all([
       this.sequelize.query(sql, {
         replacements,
         type: this.QueryTypes.SELECT
       }),
       this.sequelize.query(countSql, {
-        replacements: { appId },
+        replacements,
         type: this.QueryTypes.SELECT
       })
     ]);
@@ -220,9 +219,17 @@ class ExtensionTableService {
     const extConfig = await this.getExtensionConfig(appId, tableName);
     if (!extConfig) return null;
 
-    const selectFields = fields && fields.length > 0
-      ? fields.join(', ')
-      : extConfig.fields.map(f => f.name).join(', ');
+    let selectFields;
+    if (fields && fields.length > 0) {
+      const validFields = fields.filter(f => extConfig.fields.some(ef => ef.name === f));
+      if (validFields.length === 0) {
+        selectFields = extConfig.fields.map(f => f.name).join(', ');
+      } else {
+        selectFields = validFields.join(', ');
+      }
+    } else {
+      selectFields = extConfig.fields.map(f => f.name).join(', ');
+    }
 
     const sql = `
       SELECT row_id, ${selectFields}
@@ -252,7 +259,7 @@ class ExtensionTableService {
     logger.info(`[ExtensionTableService] Deleted row in ${tableName} for row_id ${rowId}`);
   }
 
-  buildWhereClause(filter, extConfig, isAdmin, userId) {
+  buildWhereClause(filter, extConfig, isAdmin, userId, replacements) {
     const conditions = [`r.app_id = :appId`];
     
     if (!isAdmin) {
@@ -263,9 +270,13 @@ class ExtensionTableService {
       const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
       for (const [key, value] of Object.entries(filterObj)) {
         if (key === '_status') {
-          conditions.push(`r._status = '${value}'`);
+          const paramName = `filter_${key}`;
+          conditions.push(`r._status = :${paramName}`);
+          replacements[paramName] = value;
         } else if (extConfig.fields.find(f => f.name === key)) {
-          conditions.push(`e.${key} = '${value}'`);
+          const paramName = `filter_${key}`;
+          conditions.push(`e.${key} = :${paramName}`);
+          replacements[paramName] = value;
         }
       }
     }
@@ -277,6 +288,13 @@ class ExtensionTableService {
     if (!sort) return 'ORDER BY r.created_at DESC';
     
     const { field, order = 'DESC' } = sort;
+    const validOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+    
+    if (extConfig.fields.find(f => f.name === field)) {
+      return `ORDER BY e.${field} ${validOrder}`;
+    }
+    return `ORDER BY r.${field} ${validOrder}`;
+  }
     if (extConfig.fields.find(f => f.name === field)) {
       return `ORDER BY e.${field} ${order}`;
     }
