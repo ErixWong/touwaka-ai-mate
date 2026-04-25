@@ -54,6 +54,10 @@ export interface AppConfig {
   batch_enabled?: boolean
   batch_limit?: number
   step_resources?: Record<string, StepResourceConfig>
+  prompts?: {
+    filter?: string
+    extract?: string
+  }
 }
 
 export interface StepResourceConfig {
@@ -120,6 +124,7 @@ export interface AppState {
   app_id: string
   name: string
   label: string
+  description?: string
   sort_order: number
   is_initial: boolean
   is_terminal: boolean

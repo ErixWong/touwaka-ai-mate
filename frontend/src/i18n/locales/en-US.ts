@@ -1411,6 +1411,8 @@ stepConfig: {
       paramType: '{type}',
       mappingArrow: '\u2190',
       required: '*',
+      executionResource: 'Execution Resource',
+      judgeResource: 'Judge Resource',
       judgeModel: 'AI Judge Model',
       judgeModelPlaceholder: 'Optional, for OCR status judgment',
       judgeModelHint: 'Used to judge MCP result status, recommend low-cost model',

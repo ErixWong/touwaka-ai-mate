@@ -355,6 +355,7 @@ class AppMarketService {
         app_id: appId,
         name: state.name,
         label: state.label,
+        description: state.description || null,
         sort_order: state.sort_order || 0,
         is_initial: state.is_initial || false,
         is_terminal: state.is_terminal || false,

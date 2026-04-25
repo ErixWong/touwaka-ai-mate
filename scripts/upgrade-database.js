@@ -975,6 +975,19 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== app_state 表添加 description 字段 ====================
+  {
+    name: 'app_state.add_description',
+    check: async (conn) => await hasColumn(conn, 'app_state', 'description'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_state 
+        ADD COLUMN description VARCHAR(255) NULL COMMENT '状态描述'
+      `);
+      console.log('  ✓ Added description column to app_state');
+    }
+  },
+
 ];
 
 /**

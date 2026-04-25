@@ -133,6 +133,7 @@
     {
       "name": "pending_ocr",
       "label": "等待OCR",
+      "description": "提交OCR任务，将文件发送给OCR服务进行识别",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
@@ -144,6 +145,7 @@
     {
       "name": "ocr_submitted",
       "label": "OCR处理中",
+      "description": "检查OCR任务状态，等待OCR完成后获取结果",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,
@@ -155,6 +157,7 @@
     {
       "name": "pending_filter",
       "label": "等待过滤",
+      "description": "文本过滤，清理OCR结果中的无关内容（页码、水印、乱码等）",
       "sort_order": 3,
       "is_initial": false,
       "is_terminal": false,
@@ -166,6 +169,7 @@
     {
       "name": "pending_extract",
       "label": "等待提取",
+      "description": "提取元数据，从过滤后的文本中提取合同关键信息",
       "sort_order": 4,
       "is_initial": false,
       "is_terminal": false,

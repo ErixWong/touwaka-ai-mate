@@ -9,46 +9,57 @@
         <div v-if="isLoading" class="loading-state">{{ $t('common.loading') }}</div>
         <template v-else>
           <div v-for="step in handlerSteps" :key="step.name" class="step-section">
-            <h4 class="step-title">{{ step.label }}</h4>
-            <div class="step-form">
-              <div class="form-field span-2">
-                <label class="field-label">{{ $t('apps.stepConfig.resourceType') }}</label>
-                <el-select v-model="formData[step.name].type" @change="onTypeChange(step.name)">
-                  <el-option value="mcp" :label="$t('apps.stepConfig.mcp')" />
-                  <el-option value="internal_llm" :label="$t('apps.stepConfig.internalLlm')" />
-                </el-select>
+            <h4 class="step-title collapsible" @click="toggleStep(step.name)">
+              <span class="collapse-icon">{{ expandedSteps.has(step.name) ? '▼' : '▶' }}</span>
+              {{ step.label }}
+            </h4>
+            <p v-if="step.description" class="step-desc">{{ step.description }}</p>
+            <div v-show="expandedSteps.has(step.name)" class="step-form">
+              <div class="config-group">
+                <div class="group-label">🔧 {{ $t('apps.stepConfig.executionResource') }}</div>
+                <div class="form-field span-2">
+                  <label class="field-label">{{ $t('apps.stepConfig.resourceType') }}</label>
+                  <el-select v-model="getStepConfig(step.name).type" @change="onTypeChange(step.name)">
+                    <el-option value="mcp" :label="$t('apps.stepConfig.mcp')" />
+                    <el-option value="internal_llm" :label="$t('apps.stepConfig.internalLlm')" />
+                  </el-select>
+                </div>
+
+                <template v-if="getStepConfig(step.name).type === 'mcp'">
+                  <McpTargetConfig
+                    :label="$t('apps.stepConfig.mcpServer')"
+                    :target="getStepConfig(step.name).mcp!"
+                    :mcp-servers="mcpServers"
+                    :handler-outputs="getHandlerOutputs(step)"
+                    @update:target="getStepConfig(step.name).mcp = $event"
+                    @server-change="onServerChange(step.name, $event)"
+                  />
+                </template>
+
+                <template v-if="getStepConfig(step.name).type === 'internal_llm'">
+                  <div class="form-field span-2">
+                    <label class="field-label">{{ $t('apps.stepConfig.model') }}</label>
+                    <el-select v-model="getStepConfig(step.name).model_id" clearable>
+                      <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
+                    </el-select>
+                  </div>
+                  <div class="form-field span-2">
+                    <label class="field-label">{{ $t('apps.stepConfig.temperature') }}</label>
+                    <el-slider v-model="getStepConfig(step.name).temperature" :min="0" :max="1" :step="0.1" show-input />
+                  </div>
+                </template>
               </div>
 
-              <template v-if="formData[step.name].type === 'mcp'">
-                <McpTargetConfig
-                  :label="$t('apps.stepConfig.mcpServer')"
-                  :target="formData[step.name].mcp"
-                  :mcp-servers="mcpServers"
-                  :handler-outputs="getHandlerOutputs(step)"
-                  @update:target="formData[step.name].mcp = $event"
-                  @server-change="onServerChange(step.name, $event)"
-                />
+              <div v-if="getStepConfig(step.name).type === 'mcp'" class="config-group">
+                <div class="group-label">🧠 {{ $t('apps.stepConfig.judgeResource') }}</div>
                 <div class="form-field span-2">
                   <label class="field-label">{{ $t('apps.stepConfig.judgeModel') }}</label>
-                  <el-select v-model="formData[step.name].judge_model_id" clearable :placeholder="$t('apps.stepConfig.judgeModelPlaceholder')">
+                  <el-select v-model="getStepConfig(step.name).judge_model_id" clearable :placeholder="$t('apps.stepConfig.judgeModelPlaceholder')">
                     <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
                   </el-select>
                   <span class="field-hint">{{ $t('apps.stepConfig.judgeModelHint') }}</span>
                 </div>
-              </template>
-
-              <template v-if="formData[step.name].type === 'internal_llm'">
-                <div class="form-field span-2">
-                  <label class="field-label">{{ $t('apps.stepConfig.model') }}</label>
-                  <el-select v-model="formData[step.name].model_id" clearable>
-                    <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
-                  </el-select>
-                </div>
-                <div class="form-field span-2">
-                  <label class="field-label">{{ $t('apps.stepConfig.temperature') }}</label>
-                  <el-slider v-model="formData[step.name].temperature" :min="0" :max="1" :step="0.1" show-input />
-                </div>
-              </template>
+              </div>
             </div>
           </div>
 
@@ -117,6 +128,15 @@ const llmModels = ref<InternalLlmModel[]>([])
 const handlerOutputsMap = ref<Record<string, HandlerOutput[]>>({})
 const formData = ref<Record<string, StepResourceConfig>>({})
 const promptsData = ref({ filter: '', extract: '' })
+const expandedSteps = ref<Set<string>>(new Set())
+
+function getStepConfig(stepName: string): StepResourceConfig {
+  return formData.value[stepName] || {
+    type: 'mcp',
+    mcp: { server: '', tool: '', params_mapping: {} },
+    judge_model_id: undefined,
+  }
+}
 
 const states = computed<AppState[]>(() => {
   return props.app.states || []
@@ -138,18 +158,28 @@ function getToolsForServer(serverName: string) {
 
 function onTypeChange(stepName: string) {
   const cfg = formData.value[stepName]
+  if (!cfg) return
   if (cfg.type === 'mcp') {
     cfg.mcp = cfg.mcp || { server: '', tool: '', params_mapping: {} }
   }
 }
 
+function toggleStep(stepName: string) {
+  if (expandedSteps.value.has(stepName)) {
+    expandedSteps.value.delete(stepName)
+  } else {
+    expandedSteps.value.add(stepName)
+  }
+}
+
 function onServerChange(stepName: string, serverName: string) {
   const cfg = formData.value[stepName]
-  if (!cfg.mcp) return
-  cfg.mcp.server = serverName
+  if (!cfg?.mcp) return
+  const mcp = cfg.mcp
+  mcp.server = serverName
   const tools = getToolsForServer(serverName)
-  cfg.mcp.tool = tools.length > 0 ? tools[0].name : ''
-  cfg.mcp.params_mapping = {}
+  mcp.tool = tools[0]?.name || ''
+  mcp.params_mapping = {}
 }
 
 function ensureTarget(target: McpResourceTarget | undefined): McpResourceTarget {
@@ -178,7 +208,7 @@ async function loadData() {
       initial[step.name] = saved || {
         type: 'mcp',
         mcp: { server: '', tool: '', params_mapping: {} },
-        judge_model_id: null,
+        judge_model_id: undefined,
       }
     }
     formData.value = initial
@@ -280,8 +310,8 @@ watch(() => props.visible, (val) => {
 }
 
 .step-section {
-  margin-bottom: 24px;
-  padding-bottom: 24px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--color-border, #eee);
 }
 
@@ -295,6 +325,30 @@ watch(() => props.visible, (val) => {
   font-weight: 600;
   margin: 0 0 12px 0;
   color: var(--color-text-primary, #333);
+}
+
+.step-title.collapsible {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-title.collapsible:hover {
+  color: var(--color-primary, #409eff);
+}
+
+.collapse-icon {
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.step-desc {
+  font-size: 13px;
+  color: var(--color-text-secondary, #666);
+  margin: 0 0 12px 0;
+  padding-left: 20px;
 }
 
 .step-form {
@@ -352,5 +406,23 @@ watch(() => props.visible, (val) => {
 
 .prompt-field {
   margin-bottom: 20px;
+}
+
+.config-group {
+  padding: 16px;
+  background: var(--color-bg-secondary, #f5f7fa);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.config-group:last-child {
+  margin-bottom: 0;
+}
+
+.group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #333);
+  margin-bottom: 12px;
 }
 </style>
