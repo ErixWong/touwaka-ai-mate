@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "updated_at": "2026-04-17T17:20:00Z",
-  "registry_url": "https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps",
+  "registry_url": "https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps",
   "apps": [
     {
       "id": "contract-mgr",
