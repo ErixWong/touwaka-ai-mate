@@ -356,27 +356,35 @@ class MiniAppService {
 
   async createRecord(appId, userId, data, attachmentIds = [], clientRecordId = null) {
     this.ensureModels();
+    logger.info(`[MiniAppService] createRecord start: appId=${appId}, userId=${userId}, clientRecordId=${clientRecordId}`);
 
     const app = await this.models.MiniApp.findByPk(appId);
     if (!app) throw new Error('App not found');
+    logger.info(`[MiniAppService] App found: ${app.id}`);
 
     this.validateData(app.fields, data);
+    logger.info(`[MiniAppService] Data validated`);
 
     const initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
     });
+    logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
     if (initialState) {
       data._status = initialState.name;
     }
 
     const title = this.computeTitle(app.fields, data);
+    logger.info(`[MiniAppService] Title computed: ${title}`);
 
     const transaction = await this.db.sequelize.transaction();
+    logger.info(`[MiniAppService] Transaction started`);
     
     try {
       // 使用前端提供的 ID 或生成新 ID
       const rowId = clientRecordId || Utils.newID(20);
+      logger.info(`[MiniAppService] Creating row with id=${rowId}`);
+      
       const record = await this.models.MiniAppRow.create({
         id: rowId,
         app_id: appId,
@@ -384,8 +392,11 @@ class MiniAppService {
         data,
         title,
       }, { transaction });
+      logger.info(`[MiniAppService] Row created: ${record.id}`);
 
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
+      logger.info(`[MiniAppService] Extension configs: ${extConfigs?.length || 0}`);
+      
       if (extConfigs && extConfigs.length > 0) {
         const primaryConfig = extConfigs.find(c => c.type === 'primary');
         if (primaryConfig) {
@@ -396,11 +407,14 @@ class MiniAppService {
               extData[f.name] = data[key];
             }
           }
+          logger.info(`[MiniAppService] Creating extension row: ${JSON.stringify(extData)}`);
           await this.extensionService.createExtensionRow(appId, primaryConfig.name, extData, transaction);
+          logger.info(`[MiniAppService] Extension row created`);
         }
       }
 
       if (attachmentIds.length > 0) {
+        logger.info(`[MiniAppService] Creating ${attachmentIds.length} file associations`);
         for (const attId of attachmentIds) {
           await this.models.MiniAppFile.create({
             id: Utils.newID(20),
@@ -409,11 +423,14 @@ class MiniAppService {
             attachment_id: attId,
           }, { transaction });
         }
+        logger.info(`[MiniAppService] File associations created`);
       }
 
       await transaction.commit();
+      logger.info(`[MiniAppService] Transaction committed, returning record`);
       return record;
     } catch (err) {
+      logger.error(`[MiniAppService] Transaction error: ${err.message}`);
       await transaction.rollback();
       throw new Error(`创建失败: ${err.message}`);
     }
