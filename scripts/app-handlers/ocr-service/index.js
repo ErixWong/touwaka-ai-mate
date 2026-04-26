@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
+import logger from '../../lib/logger.js';
 
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
@@ -59,18 +60,27 @@ export default {
   async process(context) {
     const { record, files, services, app, stateName } = context;
 
+    logger.info(`[ocr-service] Processing record ${record.id}`);
+
     const file = files[0];
     if (!file || !file.attachment) {
+      logger.error(`[ocr-service] Record ${record.id}: No associated file found`);
       return { success: false, error: 'No associated file found' };
     }
 
     const resConfig = getResourceConfig(app, stateName || 'pending_ocr');
     const valueMap = await buildValueMap(file.attachment);
 
+    logger.info(`[ocr-service] Record ${record.id}: File ${valueMap['file.name']}, path=${valueMap['file.path']}`);
+
     try {
       const mcp = resConfig.mcp || {};
+      logger.info(`[ocr-service] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool}`);
       const result = await callMcpWithMapping(services, mcp, valueMap);
       const ocrText = result.text;
+      
+      logger.info(`[ocr-service] Record ${record.id}: OCR complete, text length=${ocrText?.length || 0}`);
+      
       return {
         success: true,
         data: {
@@ -80,6 +90,7 @@ export default {
         },
       };
     } catch (e) {
+      logger.error(`[ocr-service] Record ${record.id}: OCR failed - ${e.message}`);
       return { success: false, error: 'OCR failed: ' + e.message };
     }
   },

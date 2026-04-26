@@ -51,18 +51,6 @@
       "ai_extractable": true
     },
     {
-      "name": "status",
-      "label": "状态",
-      "type": "select",
-      "options": [
-        "待审批",
-        "执行中",
-        "已完成",
-        "已终止"
-      ],
-      "default": "待审批"
-    },
-    {
       "name": "contract_file",
       "label": "合同文件",
       "type": "file"
@@ -105,8 +93,7 @@
         "contract_date",
         "party_a",
         "party_b",
-        "contract_amount",
-        "status"
+        "contract_amount"
       ],
       "sort": {
         "field": "contract_date",

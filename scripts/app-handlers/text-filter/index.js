@@ -1,3 +1,5 @@
+import logger from '../../lib/logger.js';
+
 const DEFAULT_FILTER_CONFIG = {
   type: 'internal_llm',
   model_id: null,
@@ -29,17 +31,23 @@ export default {
   async process(context) {
     const { record, services, app, stateName } = context;
 
+    logger.info(`[text-filter] Processing record ${record.id}`);
+
     const data = record.data || {};
     const ocrText = data._ocr_text;
     if (!ocrText) {
+      logger.error(`[text-filter] Record ${record.id}: No OCR text found`);
       return { success: false, error: 'No OCR text found' };
     }
+
+    logger.info(`[text-filter] Record ${record.id}: OCR text length=${ocrText.length}`);
 
     const filterConfig = getFilterConfig(app, stateName || 'pending_filter');
     const filterPrompt = getFilterPrompt(app);
     const maxLength = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
 
     if (ocrText.length > maxLength) {
+      logger.info(`[text-filter] Record ${record.id}: Text too long (${ocrText.length}), skipping filter`);
       return {
         success: true,
         data: {
@@ -50,6 +58,7 @@ export default {
     }
 
     try {
+      logger.info(`[text-filter] Record ${record.id}: Calling LLM for filtering`);
       const response = await services.callLlm('filter_text', {
         instruction: filterPrompt,
         ocr_text: ocrText,
@@ -59,6 +68,7 @@ export default {
       });
 
       const filteredText = response.text || ocrText;
+      logger.info(`[text-filter] Record ${record.id}: Filter complete, result length=${filteredText.length}`);
 
       return {
         success: true,
@@ -68,6 +78,7 @@ export default {
         },
       };
     } catch (e) {
+      logger.error(`[text-filter] Record ${record.id}: LLM filter failed - ${e.message}, keeping original`);
       return {
         success: true,
         data: {

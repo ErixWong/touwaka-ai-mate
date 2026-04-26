@@ -135,8 +135,8 @@ class MiniAppController {
     try {
       const { appId } = ctx.params;
       const userId = ctx.state.session.id;
-      const { data, attachments } = ctx.request.body;
-      const record = await this.miniAppService.createRecord(appId, userId, data || {}, attachments || []);
+      const { data, attachments, clientRecordId } = ctx.request.body;
+      const record = await this.miniAppService.createRecord(appId, userId, data || {}, attachments || [], clientRecordId);
       ctx.success(record, 'Created');
     } catch (error) {
       logger.error('Create record error:', error);

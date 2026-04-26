@@ -1,3 +1,5 @@
+import logger from '../../lib/logger.js';
+
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
   mcp: { server: 'markitdown', tool: 'get_task' },
@@ -49,18 +51,25 @@ export default {
   async process(context) {
     const { record, services, app, stateName } = context;
 
+    logger.info(`[check-ocr] Processing record ${record.id}`);
+
     const data = record.data || {};
     const taskId = data._ocr_task_id;
     if (!taskId) {
+      logger.error(`[check-ocr] Record ${record.id}: No OCR task_id found`);
       return { success: false, error: 'No OCR task_id found' };
     }
+
+    logger.info(`[check-ocr] Record ${record.id}: Task ID ${taskId}`);
 
     const resConfig = getConfig(app, stateName || 'ocr_submitted');
     const mcp = resConfig.mcp || {};
 
     try {
+      logger.info(`[check-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool || 'get_task'}`);
       const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
       
+      logger.info(`[check-ocr] Record ${record.id}: MCP result received, judging status`);
       const judgeResult = await services.callLlm('judge_ocr_status', {
         instruction: JUDGE_PROMPT.replace('{{MCP_RESULT}}', JSON.stringify(mcpResult, null, 2)),
         model_id: resConfig.judge_model_id,
@@ -76,8 +85,11 @@ export default {
         parsed = { status: 'pending', progress: 0, reason: 'JSON parse error' };
       }
 
+      logger.info(`[check-ocr] Record ${record.id}: Judge result - status=${parsed.status}, progress=${parsed.progress}, reason=${parsed.reason}`);
+
       if (parsed.status === 'completed') {
         const ocrText = extractTextFromMcpResult(mcpResult);
+        logger.info(`[check-ocr] Record ${record.id}: OCR completed, text length=${ocrText.length}`);
         return {
           success: true,
           data: {
@@ -91,6 +103,7 @@ export default {
       }
 
       if (parsed.status === 'pending') {
+        logger.info(`[check-ocr] Record ${record.id}: OCR pending, progress=${parsed.progress}`);
         return {
           success: true,
           pending: true,
@@ -102,11 +115,13 @@ export default {
         };
       }
 
+      logger.error(`[check-ocr] Record ${record.id}: OCR failed - ${parsed.reason}`);
       return {
         success: false,
         error: 'OCR task failed: ' + parsed.reason,
       };
     } catch (e) {
+      logger.error(`[check-ocr] Record ${record.id}: Check OCR status failed - ${e.message}`);
       return { success: false, error: 'Check OCR status failed: ' + e.message };
     }
   },

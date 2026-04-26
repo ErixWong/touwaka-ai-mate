@@ -40,6 +40,8 @@ const props = defineProps<{
   field: AppField
   modelValue: unknown
   readonly?: boolean
+  app?: { id: string }
+  recordId?: string
 }>()
 
 const emit = defineEmits(['update:model-value'])
@@ -112,7 +114,7 @@ async function handleFileChange(event: Event) {
     // 调用附件上传 API
     const response = await apiClient.post('/attachments', {
       source_tag: 'mini_app',
-      source_id: 'temp', // 创建后会更新
+      source_id: props.recordId || props.app?.id || 'temp',
       file_name: file.name,
       mime_type: file.type,
       base64_data: base64Data,

@@ -354,7 +354,7 @@ class MiniAppService {
     return record;
   }
 
-  async createRecord(appId, userId, data, attachmentIds = []) {
+  async createRecord(appId, userId, data, attachmentIds = [], clientRecordId = null) {
     this.ensureModels();
 
     const app = await this.models.MiniApp.findByPk(appId);
@@ -375,7 +375,8 @@ class MiniAppService {
     const transaction = await this.db.sequelize.transaction();
     
     try {
-      const rowId = Utils.newID(20);
+      // 使用前端提供的 ID 或生成新 ID
+      const rowId = clientRecordId || Utils.newID(20);
       const record = await this.models.MiniAppRow.create({
         id: rowId,
         app_id: appId,

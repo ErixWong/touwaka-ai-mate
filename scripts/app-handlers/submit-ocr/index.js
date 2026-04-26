@@ -1,4 +1,5 @@
 import path from 'path';
+import logger from '../../lib/logger.js';
 
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
@@ -36,16 +37,22 @@ export default {
   async process(context) {
     const { record, files, services, app, stateName } = context;
 
+    logger.info(`[submit-ocr] Processing record ${record.id}`);
+
     const file = files[0];
     if (!file || !file.attachment) {
+      logger.error(`[submit-ocr] Record ${record.id}: No associated file found`);
       return { success: false, error: 'No associated file found' };
     }
 
     const basePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
     const absolutePath = path.resolve(basePath, file.attachment.file_path);
     
+    logger.info(`[submit-ocr] Record ${record.id}: File path ${absolutePath}`);
+
     const allowedBase = path.resolve(basePath);
     if (!absolutePath.startsWith(allowedBase)) {
+      logger.error(`[submit-ocr] Record ${record.id}: File path not allowed`);
       return { success: false, error: 'File path not allowed: outside attachment directory' };
     }
 
@@ -59,14 +66,20 @@ export default {
     };
 
     const params = resolveParams(mcp.params_mapping, valueMap);
+    logger.info(`[submit-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool}`);
 
     try {
       const result = await services.callMcp(mcp.server, mcp.tool, params);
       
+      logger.info(`[submit-ocr] Record ${record.id}: MCP result received`);
+
       const taskId = result.task_id || result.id;
       if (!taskId) {
+        logger.error(`[submit-ocr] Record ${record.id}: No task_id returned`);
         return { success: false, error: 'No task_id returned from OCR service' };
       }
+
+      logger.info(`[submit-ocr] Record ${record.id}: Task created ${taskId}`);
 
       return {
         success: true,
@@ -77,6 +90,7 @@ export default {
         },
       };
     } catch (e) {
+      logger.error(`[submit-ocr] Record ${record.id}: OCR submission failed - ${e.message}`);
       return { success: false, error: 'OCR submission failed: ' + e.message };
     }
   },

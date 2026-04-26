@@ -50,7 +50,7 @@
         <tbody>
           <tr v-for="record in records" :key="record.id">
             <td v-for="col in listColumns" :key="col.name">
-              {{ formatFieldValue(record.data?.[col.name], col) }}
+              {{ formatFieldValue(col._isExtension ? record[col.name] : record.data?.[col.name], col) }}
             </td>
             <td>
               <StateBadge :status="record.data?._status" :states="app.states || []" />
@@ -87,7 +87,7 @@
                 {{ field.label }}
                 <span v-if="field.required" class="required">*</span>
               </label>
-              <FieldRenderer :field="field" :model-value="formData[field.name]" @update:model-value="formData[field.name] = $event" />
+              <FieldRenderer :field="field" :model-value="formData[field.name]" :app="app" :record-id="dialogMode === 'create' ? newRecordId : selectedRecord?.id" @update:model-value="formData[field.name] = $event" />
             </div>
           </div>
         </div>
@@ -111,7 +111,7 @@
                 <div v-for="field in allFields" :key="field.name" class="detail-field">
                   <label class="field-label">{{ field.label }}</label>
                   <div class="field-value">
-                    {{ formatFieldValue(selectedRecord?.data?.[field.name], field) }}
+                    {{ formatFieldValue(field._isExtension ? selectedRecord?.[field.name] : selectedRecord?.data?.[field.name], field) }}
                   </div>
                 </div>
               </div>
@@ -174,9 +174,11 @@ import {
   updateRecord,
   deleteRecord,
   getDocumentContent,
+  newID,
   type MiniApp,
   type MiniAppRecord,
   type AppField,
+  type AppConfig,
   type DocumentContent,
 } from '@/api/mini-apps'
 import StateBadge from './StateBadge.vue'
@@ -205,6 +207,7 @@ const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
 const detailTab = ref('basic')
 const documentContent = ref<DocumentContent | null>(null)
+const newRecordId = ref('')
 
 const pagination = ref({
   page: 1,
@@ -218,28 +221,33 @@ const filters = ref({ status: '' })
 // Computed
 const listColumns = computed(() => {
   let fields = props.app.fields
-  // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields)
-    } catch {
-      return []
-    }
+    try { fields = JSON.parse(fields) } catch { return [] }
   }
   if (!fields || !Array.isArray(fields)) return []
-  const views = props.app.views
-  // views 也可能是 JSON 字符串
-  let viewsObj = views
-  if (typeof views === 'string') {
-    try {
-      viewsObj = JSON.parse(views)
-    } catch {
-      viewsObj = {}
-    }
+  
+  let config: Partial<AppConfig> = props.app.config || {}
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config) as Partial<AppConfig> } catch { config = {} }
+  }
+  const extTables = config?.extension_tables || []
+  const primaryTable = extTables.find(t => t.type === 'primary')
+  const extFields: AppField[] = (primaryTable?.fields || []).map(f => ({
+    name: f.name,
+    label: f.label || f.name,
+    type: 'text' as const,
+    _isExtension: true
+  }))
+  
+  const allFields: AppField[] = [...extFields, ...fields]
+  
+  let viewsObj = props.app.views
+  if (typeof viewsObj === 'string') {
+    try { viewsObj = JSON.parse(viewsObj) } catch { viewsObj = {} }
   }
   if (viewsObj?.list?.columns) {
     return viewsObj.list.columns
-      .map((name: string) => fields.find(f => f.name === name))
+      .map((name: string) => allFields.find(f => f.name === name))
       .filter(Boolean) as AppField[]
   }
   return fields.slice(0, 5)
@@ -247,7 +255,6 @@ const listColumns = computed(() => {
 
 const editableFields = computed(() => {
   let fields = props.app.fields
-  // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
     try {
       fields = JSON.parse(fields)
@@ -260,24 +267,34 @@ const editableFields = computed(() => {
     console.warn('Fields is not an array:', fields)
     return []
   }
-  // 创建模式下需要包含 file 字段用于上传
-  return fields.filter(f =>
-    f.type !== 'group' && f.type !== 'repeating'
-  )
+  return fields.filter(f => {
+    if (f.type === 'group' || f.type === 'repeating') return false
+    if (dialogMode.value === 'create' && f.ai_extractable && f.type !== 'file') return false
+    return true
+  })
 })
 
 const allFields = computed(() => {
   let fields = props.app.fields
-  // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields)
-    } catch {
-      return []
-    }
+    try { fields = JSON.parse(fields) } catch { return [] }
   }
   if (!fields || !Array.isArray(fields)) return []
-  return fields
+  
+  let config: Partial<AppConfig> = props.app.config || {}
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config) as Partial<AppConfig> } catch { config = {} }
+  }
+  const extTables = config?.extension_tables || []
+  const primaryTable = extTables.find(t => t.type === 'primary')
+  const extFields: AppField[] = (primaryTable?.fields || []).map(f => ({
+    name: f.name,
+    label: f.label || f.name,
+    type: 'text' as const,
+    _isExtension: true
+  }))
+  
+  return [...extFields, ...fields]
 })
 
 const dialogTitle = computed(() => {
@@ -368,8 +385,9 @@ function resetFilters() {
   handleFilterChange()
 }
 
-function openCreateDialog() {
+async function openCreateDialog() {
   dialogMode.value = 'create'
+  newRecordId.value = await newID(20)
   // 初始化所有字段的默认值
     const initialData: Record<string, unknown> = {}
   let fields = props.app.fields || []
@@ -461,8 +479,19 @@ async function saveRecord() {
   
   isSaving.value = true
   try {
+    // 收集所有文件字段的 attachment_id
+    const attachmentIds: string[] = []
+    for (const field of editableFields.value) {
+      if (field.type === 'file') {
+        const fieldValue = formData.value[field.name] as { attachment_id?: string } | null
+        if (fieldValue?.attachment_id) {
+          attachmentIds.push(fieldValue.attachment_id)
+        }
+      }
+    }
+    
     if (dialogMode.value === 'create') {
-      await createRecord(props.app.id, formData.value)
+      await createRecord(props.app.id, formData.value, attachmentIds, newRecordId.value)
       toast.success(t('apps.createSuccess'))
     } else if (selectedRecord.value) {
       await updateRecord(props.app.id, selectedRecord.value.id, formData.value)

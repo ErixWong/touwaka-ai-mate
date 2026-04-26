@@ -188,6 +188,11 @@
               <el-input-number v-model="form.app.text_filter_max_length" :min="1000" :max="500000" :step="1000" />
               <span class="config-hint">1000-500000 {{ $t('settings.characters') }}</span>
             </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.maxUploadSize') }}</label>
+              <el-input-number v-model="form.app.max_upload_size" :min="1" :max="500" />
+              <span class="config-hint">1-500</span>
+            </div>
             <div class="config-item full-width">
               <label class="config-label">{{ $t('settings.attachmentBasePath') }}</label>
               <el-input v-model="form.app.attachment_base_path" placeholder="./data/attachments" />
@@ -229,7 +234,7 @@ const form = reactive({
   connection: { max_per_user: 5, max_per_expert: 100 },
   token: { access_expiry: '15m', refresh_expiry: '7d' },
   tool: { max_rounds: 20 },
-  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments' },
+  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
 })
 
 const defaults = {
@@ -238,7 +243,7 @@ const defaults = {
   connection: { max_per_user: 5, max_per_expert: 100 },
   token: { access_expiry: '15m', refresh_expiry: '7d' },
   tool: { max_rounds: 20 },
-  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments' },
+  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
 }
 
 const hasChanges = computed(() => {
@@ -250,7 +255,7 @@ const hasChanges = computed(() => {
     connection: { max_per_user: settings.connection?.max_per_user ?? 5, max_per_expert: settings.connection?.max_per_expert ?? 100 },
     token: { access_expiry: settings.token?.access_expiry ?? '15m', refresh_expiry: settings.token?.refresh_expiry ?? '7d' },
     tool: { max_rounds: settings.tool?.max_rounds ?? 20 },
-    app: { clock_interval: settings.app?.clock_interval ?? 30, batch_size: settings.app?.batch_size ?? 10, max_concurrency: settings.app?.max_concurrency ?? 5, text_filter_max_length: settings.app?.text_filter_max_length ?? 50000, attachment_base_path: settings.app?.attachment_base_path ?? './data/attachments' },
+    app: { clock_interval: settings.app?.clock_interval ?? 30, batch_size: settings.app?.batch_size ?? 10, max_concurrency: settings.app?.max_concurrency ?? 5, text_filter_max_length: settings.app?.text_filter_max_length ?? 50000, attachment_base_path: settings.app?.attachment_base_path ?? './data/attachments', max_upload_size: settings.app?.max_upload_size ?? 50 },
   })
 })
 
@@ -299,6 +304,7 @@ onMounted(async () => {
     form.app.max_concurrency = settings.app?.max_concurrency ?? 5
     form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
     form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
+    form.app.max_upload_size = settings.app?.max_upload_size ?? 50
   }
 })
 
@@ -324,6 +330,7 @@ watch(() => systemSettingsStore.settings, (settings) => {
     form.app.max_concurrency = settings.app?.max_concurrency ?? 5
     form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
     form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
+    form.app.max_upload_size = settings.app?.max_upload_size ?? 50
   }
 }, { deep: true })
 </script>

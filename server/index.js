@@ -44,6 +44,8 @@ import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
 import logger from '../lib/logger.js';
+import Utils from '../lib/utils.js';
+import Router from '@koa/router';
 
 // 中间件
 import { responseMiddleware } from './middlewares/index.js';
@@ -442,6 +444,16 @@ class ApiServer {
     this.app.use(attachmentStaticRouter.routes());
     this.app.use(attachmentStaticRouter.allowedMethods());
     logger.info('Attachment static routes registered (GET /attach/t/:token/:attachment_id)');
+
+    // Utility 路由
+    const utilityRouter = new Router();
+    utilityRouter.get('/api/newid', authMiddleware.authenticate(), (ctx) => {
+      const length = parseInt(ctx.query.length) || 20;
+      ctx.success({ id: Utils.newID(length) });
+    });
+    this.app.use(utilityRouter.routes());
+    this.app.use(utilityRouter.allowedMethods());
+    logger.info('Utility routes registered (GET /api/newid)');
 
     // Mini App 平台路由（Issue #603）
     const miniAppRouter = miniAppRoutes(this.controllers.miniApp);
