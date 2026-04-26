@@ -60,27 +60,9 @@ export default class mini_app_row extends Model {
       comment: "是否由AI提取"
     },
     ai_confidence: {
-      type: DataTypes.TEXT('long'),
+      type: DataTypes.TEXT,
       allowNull: true,
-      comment: "各字段的AI置信度",
-      get() {
-        const value = this.getDataValue('ai_confidence');
-        if (!value) return null;
-        try {
-          return JSON.parse(value);
-        } catch {
-          return null;
-        }
-      },
-      set(value) {
-        if (value === null || value === undefined) {
-          this.setDataValue('ai_confidence', null);
-        } else if (typeof value === 'object') {
-          this.setDataValue('ai_confidence', JSON.stringify(value));
-        } else {
-          this.setDataValue('ai_confidence', value);
-        }
-      }
+      comment: "各字段的AI置信度"
     },
     version: {
       type: DataTypes.STRING(32),
@@ -109,8 +91,11 @@ export default class mini_app_row extends Model {
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     },
     _status: {
-      type: DataTypes.VIRTUAL(DataTypes.STRING(64)),
-      allowNull: true
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      set(value) {
+        // GENERATED 列，忽略写入
+      }
     }
   }, {
     sequelize,
