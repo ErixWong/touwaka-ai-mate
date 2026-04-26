@@ -28,7 +28,7 @@ export default class mini_app_row extends Model {
       }
     },
     data: {
-      type: DataTypes.TEXT,
+      type: DataTypes.JSON,
       allowNull: false,
       comment: "行数据（字段名→值的映射）"
     },
@@ -44,7 +44,7 @@ export default class mini_app_row extends Model {
       comment: "是否由AI提取"
     },
     ai_confidence: {
-      type: DataTypes.TEXT,
+      type: DataTypes.JSON,
       allowNull: true,
       comment: "各字段的AI置信度"
     },
