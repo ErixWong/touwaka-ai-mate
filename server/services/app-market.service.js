@@ -43,7 +43,7 @@ class AppMarketService {
 
   async runMigration(appId, scriptPath, direction = 'up') {
     // 校验 scriptPath 不能包含路径穿越
-    if (scriptPath.includes('..') || scriptPath.includes('/') || scriptPath.includes('\\')) {
+    if (scriptPath.includes('..')) {
       throw new Error(`Security: invalid migration script path ${scriptPath}`);
     }
     
@@ -56,7 +56,8 @@ class AppMarketService {
     }
     
     try {
-      const migration = await import(pathToFileURL(normalizedPath).href);
+      const migrationModule = await import(pathToFileURL(normalizedPath).href);
+      const migration = migrationModule.default || migrationModule;
       
       if (migration.check) {
         const shouldRun = await migration.check(this.db.sequelize);
@@ -101,8 +102,8 @@ class AppMarketService {
     }
     
     return {
-      registry_url: config.registry_url || 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps',
-      registry_branch: config.registry_branch || 'main',
+      registry_url: config.registry_url || 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps',
+      registry_branch: config.registry_branch || 'master',
       auto_check_updates: config.auto_check_updates !== 'false',
       check_interval_hours: parseInt(config.check_interval_hours) || 24,
       offline_mode: config.offline_mode === 'true',
@@ -313,6 +314,29 @@ class AppMarketService {
     return 0;
   }
 
+  /**
+   * 拉取迁移脚本
+   */
+  async fetchMigration(appId, scriptPath) {
+    const config = await this.getRegistryConfig();
+    const url = `${config.registry_url}/${appId}/${scriptPath}`;
+    
+    logger.info(`Fetching migration ${scriptPath} for ${appId}`);
+    
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch migration: HTTP ${response.status}`);
+      }
+      
+      return await response.text();
+    } catch (error) {
+      logger.error(`Failed to fetch migration ${scriptPath}:`, error);
+      throw error;
+    }
+  }
+
   // ==================== App 安装 ====================
 
   /**
@@ -339,33 +363,56 @@ class AppMarketService {
       throw new Error(`缺少依赖的 MCP 服务: ${missingMcp}`);
     }
     
-    // 4. 校验 extension_tables 表名（新增）
+    // 4. 校验 extension_tables 表名
     if (manifest.extension_tables) {
       for (const table of manifest.extension_tables) {
         this.validateTableName(table.name, appId);
       }
     }
     
-    // 5. 执行迁移脚本（新增）
+    // 5. 创建 App 目录
+    const appDir = path.join(this.appsDir, appId);
+    await fs.mkdir(appDir, { recursive: true });
+    
+    // 6. 拉取并保存 migration 文件
+    if (manifest.migrations?.install) {
+      const scriptContent = await this.fetchMigration(appId, manifest.migrations.install);
+      const scriptDir = path.join(appDir, path.dirname(manifest.migrations.install));
+      await fs.mkdir(scriptDir, { recursive: true });
+      await fs.writeFile(
+        path.join(appDir, manifest.migrations.install),
+        scriptContent,
+        'utf-8'
+      );
+    }
+    
+    if (manifest.migrations?.uninstall) {
+      const scriptContent = await this.fetchMigration(appId, manifest.migrations.uninstall);
+      const scriptDir = path.join(appDir, path.dirname(manifest.migrations.uninstall));
+      await fs.mkdir(scriptDir, { recursive: true });
+      await fs.writeFile(
+        path.join(appDir, manifest.migrations.uninstall),
+        scriptContent,
+        'utf-8'
+      );
+    }
+    
+    // 7. 执行迁移脚本
     if (manifest.migrations?.install) {
       await this.runMigration(appId, manifest.migrations.install, 'up');
     }
     
-    // 6. 创建 App 目录
-    const appDir = path.join(this.appsDir, appId);
-    await fs.mkdir(appDir, { recursive: true });
-    
-    // 7. 保存 manifest 到本地
+    // 8. 保存 manifest 到本地
     await fs.writeFile(
       path.join(appDir, 'manifest.json'),
       JSON.stringify(manifest, null, 2),
       'utf-8'
     );
     
-    // 8. 安装 handlers（返回 handlerId 映射）
+    // 9. 安装 handlers（返回 handlerId 映射）
     const { installed: installedHandlers, handlerIdMap } = await this.installHandlers(appId, manifest);
     
-    // 9. 插入数据库（extension_tables 存入 config）
+    // 10. 插入数据库（extension_tables 存入 config）
     const config = {
       ...manifest.config,
       extension_tables: manifest.extension_tables || []
@@ -463,6 +510,15 @@ class AppMarketService {
     
     for (const handlerName of handlerNames) {
       try {
+        // 先检查 handler 是否已存在于数据库（通用 handler）
+        const existingHandler = await this.models.AppRowHandler.findByPk(handlerName);
+        if (existingHandler) {
+          handlerIdMap.set(handlerName, handlerName);
+          installed.push(handlerName);
+          logger.info(`Handler ${handlerName} already exists, using existing handler`);
+          continue;
+        }
+        
         // 从 Registry 拉取脚本
         const scriptContent = await this.fetchHandler(appId, handlerName);
         
@@ -494,7 +550,7 @@ class AppMarketService {
         installed.push(handlerName);
         logger.info(`Installed handler ${handlerName} for ${appId}`);
       } catch (error) {
-        logger.error(`Failed to install handler ${handlerName}:`, error);
+        logger.error(`Failed to install handler ${handlerName}:`, error.message);
         // 继续安装其他 handlers
       }
     }
@@ -532,9 +588,9 @@ class AppMarketService {
       };
     }
     
-    // 3. 执行卸载迁移脚本（新增）
+    // 3. 执行卸载迁移脚本（执行 uninstall.js 的 up 方法删除表）
     if (manifest.migrations?.uninstall) {
-      await this.runMigration(appId, manifest.migrations.uninstall, 'down');
+      await this.runMigration(appId, manifest.migrations.uninstall, 'up');
     }
     
     // 4. 删除数据库记录

@@ -2,23 +2,23 @@
 
 > 本文档基于 `parse3` 设计文档的实施现状分析，规划后续开发任务。
 > 创建时间：2026-04-16
-> 最后更新：2026-04-16（Phase 2A/2B/2C 已完成）
+> 最后更新：2026-04-26（Phase 3 前端增强已完成）
 
 ## 实施现状
 
 | 模块 | 状态 | 已实现文件 |
 |------|------|-----------|
-| 数据库表（7/8） | ✅ | `scripts/upgrade-database.js` |
+| 数据库表（8/8） | ✅ | `scripts/upgrade-database.js` |
 | 后端 API | ✅ | `server/routes/mini-app.routes.js`, `server/controllers/mini-app.controller.js`, `server/services/mini-app.service.js` |
 | 前端路由 + 导航 | ✅ | `frontend/src/router/index.ts`, `frontend/src/components/AppHeader.vue` |
 | 用户页面 | ✅ | `frontend/src/views/AppsView.vue`, `frontend/src/views/AppDetailView.vue` |
-| 通用组件 | ✅ | `frontend/src/components/apps/GenericMiniApp.vue` (580行) |
-| 字段组件（8/9） | ✅ | `TextField`, `TextAreaField`, `SelectField`, `NumberField`, `DateField`, `BooleanField`, `GroupField`, `RepeatingField` + `FieldRenderer` |
+| 通用组件 | ✅ | `frontend/src/components/apps/GenericMiniApp.vue` |
+| 字段组件（9/9） | ✅ | `TextField`, `TextAreaField`, `SelectField`, `NumberField`, `DateField`, `BooleanField`, `FileField`, `GroupField`, `RepeatingField` + `FieldRenderer` |
 | 辅助组件 | ✅ | `FileUploader.vue`, `StateBadge.vue` |
+| 详情页增强组件 | ✅ | `DocumentContentViewer.vue`, `TreeFilter.vue`, `ReExtractDialog.vue` |
 | 初始化脚本 | ✅ | `scripts/init-contract-app.js` |
-| 嵌套字段组件 | ✅ | `GroupField.vue`, `RepeatingField.vue` + 后端校验/汇总计算 |
 | 系统管理页面 | ✅ | `AppManagementTab.vue`, `HandlerManagementTab.vue`, `StateDesigner.vue` + SettingsView 导航 |
-| 时钟调度器 + 处理脚本 | ✅ | `lib/app-clock.js`（集成 MCP/LLM/Skill）, `ocr-service/`, `llm-extract/`, `fapiao-extract/` |
+| 时钟调度器 + 处理脚本 | ✅ | `lib/app-clock.js`, `ocr-service/`, `llm-extract/`, `fapiao-extract/`, `text-filter/`, `submit-ocr/`, `check-ocr-status/` |
 | 事件驱动 | ❌ | `app_event_handlers` 表 + 后端 + 管理页面 |
 
 ### 已完成 Phase 的实际文件清单

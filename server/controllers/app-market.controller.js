@@ -102,7 +102,7 @@ class AppMarketController {
       
       ctx.success(result, 'App installed successfully');
     } catch (error) {
-      logger.error('Install app error:', error);
+      logger.error('Install app error:', error.message, error.stack);
       ctx.error(error.message, 400);
     }
   }
@@ -121,7 +121,7 @@ class AppMarketController {
       
       ctx.success(result, 'App uninstalled successfully');
     } catch (error) {
-      logger.error('Uninstall app error:', error);
+      logger.error('Uninstall app error:', error.message, error.stack);
       ctx.error(error.message, 400);
     }
   }

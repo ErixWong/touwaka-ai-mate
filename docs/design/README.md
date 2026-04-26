@@ -74,6 +74,16 @@ design/
 | [architecture-improvements.md](./architecture-improvements.md) | 架构改进建议（安全、高可用、监控） |
 | [references-analysis-report.md](./references-analysis-report.md) | 外部项目（Claw 系列）分析 |
 
+### Parse4 设计文档 — 合同管理 App 增强
+
+[parse4/](./parse4/) - 合同管理 App 功能增强设计
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [contract-mgr-metadata-design.md](./parse4/contract-mgr-metadata-design.md) | 合同管理元数据结构优化设计 | 已采纳 |
+| [resident-api-design.md](./parse4/resident-api-design.md) | 驻留进程实现小程序自定义 API 设计 | 草稿 |
+| [contract-mgr-frontend-design.md](./parse4/contract-mgr-frontend-design.md) | 合同管理前端详情页和筛选组件设计 | 进行中 |
+
 ### 草稿文档
 
 [drafts/](./drafts/) - 设计草案和工作文档
