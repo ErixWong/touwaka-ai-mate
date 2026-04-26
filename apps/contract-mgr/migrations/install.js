@@ -1,6 +1,6 @@
 export default {
   async check(sequelize) {
-    const [rows] = await sequelize.query(`
+    const rows = await sequelize.query(`
       SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('app_contract_mgr_rows', 'app_contract_mgr_content')
     `, { type: sequelize.QueryTypes.SELECT });
