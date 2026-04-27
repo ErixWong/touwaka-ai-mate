@@ -370,9 +370,8 @@ class MiniAppService {
     });
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
-    if (initialState) {
-      data._status = initialState.name;
-    }
+    // _status 现在是实体字段，不放在 data 里
+    const status = initialState?.name || 'pending_ocr';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);
@@ -394,7 +393,7 @@ class MiniAppService {
         user_id: userId,
         data: dataStr,
         title,
-        _status: initialState?.name || 'pending_ocr',
+        _status: status,
       }, { transaction });
       logger.info(`[MiniAppService] Row created: ${record.id}`);
 
