@@ -235,7 +235,8 @@ class ApiServer {
       llmService: new InternalLLMService(this.db),
       skillLoader: new SkillLoader(this.db),
     });
-    await this.appClock.start();
+    // 不在这里启动，等 server listen 后统一启动
+    logger.info('AppClock initialized');
   }
 
   /**
@@ -615,6 +616,11 @@ class ApiServer {
         // 启动后台任务调度器
         if (this.scheduler) {
           this.scheduler.startAll();
+        }
+
+        // 启动 AppClock（Issue #654）
+        if (this.appClock) {
+          this.appClock.start();
         }
 
         // 启动 Token 清理任务（Issue #140）
