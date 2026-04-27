@@ -152,23 +152,35 @@ class ExtensionTableService {
       throw new Error('row_id is required for createExtensionRow');
     }
 
-    const fields = extConfig.fields.map(f => f.name);
-    const values = extConfig.fields.map(f => {
+    // 只包含有值的字段
+    const fieldsWithData = extConfig.fields.filter(f => {
       const key = f.source || f.name;
-      return data[key];
+      return data[key] !== undefined && data[key] !== null;
     });
 
-    const placeholders = values.map(() => '?').join(', ');
+    if (fieldsWithData.length === 0) {
+      // 没有数据，只插入 row_id
+      const sql = `INSERT INTO ${extConfig.name} (row_id) VALUES (?)`;
+      await this.sequelize.query(sql, { replacements: [rowId], transaction });
+    } else {
+      const fields = fieldsWithData.map(f => f.name);
+      const values = fieldsWithData.map(f => {
+        const key = f.source || f.name;
+        return data[key];
+      });
 
-    const sql = `
-      INSERT INTO ${extConfig.name} (row_id, ${fields.join(', ')})
-      VALUES (?, ${placeholders})
-    `;
+      const placeholders = values.map(() => '?').join(', ');
 
-    await this.sequelize.query(sql, {
-      replacements: [rowId, ...values],
-      transaction
-    });
+      const sql = `
+        INSERT INTO ${extConfig.name} (row_id, ${fields.join(', ')})
+        VALUES (?, ${placeholders})
+      `;
+
+      await this.sequelize.query(sql, {
+        replacements: [rowId, ...values],
+        transaction
+      });
+    }
 
     logger.info(`[ExtensionTableService] Created row in ${tableName} for row_id ${rowId}`);
   }
