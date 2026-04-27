@@ -988,35 +988,53 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== mini_app_rows._status 改为 status 实体字段 ====================
-  // Issue #654: AppClock 状态机字段改为实体字段，去掉下划线
+  // ==================== mini_app_rows status 字段统一迁移 ====================
+  // Issue #654: 将 GENERATED _status 或实体 _status 统一改为实体 status
   {
-    name: 'mini_app_rows.status_change_to_entity',
+    name: 'mini_app_rows.status_unified_migration',
     check: async (conn) => {
-      // 检查是否有 status 字段（没有下划线）
-      const [rows] = await conn.execute(`
+      // 检查是否已有 status 字段
+      const [statusRows] = await conn.execute(`
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'mini_app_rows' AND COLUMN_NAME = 'status'
       `, [DB_CONFIG.database]);
-      return rows.length > 0;
+      return statusRows.length > 0; // 已有 status 则跳过
     },
     migrate: async (conn) => {
-      // 1. 删除 GENERATED _status 列（如果存在）
-      await conn.execute(`ALTER TABLE mini_app_rows DROP COLUMN IF EXISTS _status`);
-      console.log('  ✓ Removed _status column');
-      
-      // 2. 创建 status 实体字段
-      await conn.execute(`
-        ALTER TABLE mini_app_rows 
-        ADD COLUMN status VARCHAR(64) DEFAULT 'pending_ocr' COMMENT 'AppClock 状态机状态'
-      `);
-      console.log('  ✓ Added status column');
-      
-      // 3. 添加索引（如果不存在）
-      await conn.execute(`
-        ALTER TABLE mini_app_rows 
-        ADD INDEX IF NOT EXISTS idx_app_status (app_id, status)
-      `);
+      // 检查当前字段状态
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME, EXTRA FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'mini_app_rows' AND COLUMN_NAME IN ('_status', 'status')
+      `, [DB_CONFIG.database]);
+
+      const hasStatus = rows.some(r => r.COLUMN_NAME === 'status');
+      const hasUnderscoreStatus = rows.some(r => r.COLUMN_NAME === '_status');
+      const isGenerated = rows.some(r => r.COLUMN_NAME === '_status' && r.EXTRA?.includes('GENERATED'));
+
+      if (hasStatus) {
+        console.log('  ✓ status column already exists, skipping');
+        return;
+      }
+
+      if (hasUnderscoreStatus) {
+        if (isGenerated) {
+          // GENERATED 列：先删除后创建
+          console.log('  ⚠️ Found GENERATED _status, removing and creating entity status');
+          await conn.execute(`ALTER TABLE mini_app_rows DROP COLUMN _status`);
+          await conn.execute(`ALTER TABLE mini_app_rows ADD COLUMN status VARCHAR(64) DEFAULT 'pending_ocr'`);
+        } else {
+          // 实体列：直接重命名
+          console.log('  ✓ Renaming entity _status to status');
+          await conn.execute(`ALTER TABLE mini_app_rows CHANGE COLUMN _status status VARCHAR(64) DEFAULT 'pending_ocr'`);
+        }
+      } else {
+        // 都不存在：直接创建
+        console.log('  ✓ Creating new status column');
+        await conn.execute(`ALTER TABLE mini_app_rows ADD COLUMN status VARCHAR(64) DEFAULT 'pending_ocr'`);
+      }
+
+      // 添加索引（如果不存在）
+      await conn.execute(`ALTER TABLE mini_app_rows ADD INDEX IF NOT EXISTS idx_app_status (app_id, status)`);
       console.log('  ✓ Added idx_app_status index');
     }
   },
