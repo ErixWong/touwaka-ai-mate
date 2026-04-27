@@ -568,6 +568,10 @@ class ApiServer {
       this.chatService.assistantManager = assistantManager;
       logger.info('AssistantManager injected into ChatService');
 
+      // 启动后台任务（包括 AppClock）
+      await this.setupBackgroundTasks();
+      logger.info('Background tasks initialized');
+
       this.setupMiddlewares();
       this.setupRoutes();
 
