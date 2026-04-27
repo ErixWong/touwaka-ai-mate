@@ -74,11 +74,11 @@ export default {
     try {
       const result = await services.callMcp(mcp.server, mcp.tool, params);
       
-      logger.info(`[submit-ocr] Record ${record.id}: MCP result received`);
+      logger.info(`[submit-ocr] Record ${record.id}: MCP result received: ${JSON.stringify(result)}`);
 
-      const taskId = result.task_id || result.id;
+      const taskId = result.task_id || result.id || result?.data?.task_id || result?.data?.id;
       if (!taskId) {
-        logger.error(`[submit-ocr] Record ${record.id}: No task_id returned`);
+        logger.error(`[submit-ocr] Record ${record.id}: No task_id returned, result keys: ${Object.keys(result || {}).join(',')}`);
         return { success: false, error: 'No task_id returned from OCR service' };
       }
 
