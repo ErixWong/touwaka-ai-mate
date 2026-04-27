@@ -640,7 +640,38 @@ async function processAction(action, params, userId, accessToken) {
   }
 }
 
-// ============== 命令行处理 ==============
+// 命令队列（并行处理）
+let commandQueue = [];
+let processingCount = 0;
+const MAX_CONCURRENT = 5; // 最大并发数
+
+async function processQueue() {
+  while (commandQueue.length > 0 && processingCount < MAX_CONCURRENT) {
+    const { line, resolve, reject } = commandQueue.shift();
+    processingCount++;
+    
+    try {
+      const result = await processCommandLine(line);
+      resolve(result);
+    } catch (err) {
+      log('Error processing command:', err.message);
+      reject(err);
+    } finally {
+      processingCount--;
+      // 继续处理队列
+      if (commandQueue.length > 0) {
+        processQueue().catch(() => {});
+      }
+    }
+  }
+}
+
+function enqueueCommand(line) {
+  return new Promise((resolve, reject) => {
+    commandQueue.push({ line, resolve, reject });
+    processQueue().catch(() => {});
+  });
+}
 
 /**
  * 处理单行 JSON 命令
@@ -720,8 +751,8 @@ async function main() {
     
     for (const line of lines) {
       if (line.trim()) {
-        processCommandLine(line).catch(err => {
-          log('Error processing command:', err.message);
+        enqueueCommand(line).catch(err => {
+          log('Queue error:', err.message);
         });
       }
     }
