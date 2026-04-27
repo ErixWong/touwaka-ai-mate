@@ -93,7 +93,8 @@ export default class mini_app_row extends Model {
     _status: {
       type: DataTypes.STRING(64),
       allowNull: true,
-      defaultValue: "pending_ocr"
+      defaultValue: "pending_ocr",
+      field: "_status"
     }
   }, {
     sequelize,
