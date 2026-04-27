@@ -210,10 +210,12 @@ async function createTransport(serverConfig, credentials = null) {
     // 2. 或者 server 不支持 session（headers 中没有 mcp-session-id 提示）
     const isStateless = transportType === 'statelessHttp' || serverConfig.stateless === true;
     
+    const requestInit = { headers };
+    
     if (isStateless) {
       log(`Creating StatelessHTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
       log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
-      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit: { headers } });
+      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit });
     }
     
     const useSSE = transportType === 'sse' || serverConfig.url.endsWith('/sse') || serverConfig.use_sse;
@@ -222,7 +224,7 @@ async function createTransport(serverConfig, credentials = null) {
     log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
     
     const TransportClass = useSSE ? SSEClientTransport : StreamableHTTPClientTransport;
-    return new TransportClass(new URL(serverConfig.url), { requestInit: { headers } });
+    return new TransportClass(new URL(serverConfig.url), { requestInit });
   }
   
   // STDIO 模式（默认）
