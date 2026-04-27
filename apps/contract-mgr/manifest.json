@@ -116,7 +116,15 @@
     ],
     "max_file_size": 20971520,
     "batch_enabled": true,
-    "batch_limit": 50
+    "batch_limit": 50,
+    "step_resources": {
+      "ocr_submitted": {
+        "type": "mcp",
+        "mcp": { "server": "markitdown", "tool": "get_task" },
+        "judge_model_id": "mnclgg05y3n90jfaa1qc",
+        "judge_temperature": 0.1
+      }
+    }
   },
   "states": [
     {
