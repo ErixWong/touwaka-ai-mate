@@ -128,10 +128,8 @@ async function handleFileChange(event: Event) {
     emit('update:model-value', {
       attachment_id: result.id,
       name: result.file_name || file.name,
-      url: result.data_url,
       size: result.file_size,
       mimeType: result.mime_type,
-      file_path: result.file_path,
     })
 
     toast.success('文件上传成功')
