@@ -53,7 +53,7 @@
               {{ formatFieldValue(col._isExtension ? record[col.name] : record.data?.[col.name], col) }}
             </td>
             <td>
-              <StateBadge :status="record.data?._status" :states="app.states || []" />
+              <StateBadge :status="record._status" :states="app.states || []" />
             </td>
             <td class="actions-cell">
               <el-button size="small" @click="viewRecord(record)">{{ $t('apps.view') }}</el-button>
