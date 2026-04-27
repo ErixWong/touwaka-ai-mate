@@ -383,14 +383,18 @@ class MiniAppService {
     try {
       // 使用前端提供的 ID 或生成新 ID
       const rowId = clientRecordId || Utils.newID(20);
-      logger.info(`[MiniAppService] Creating row with id=${rowId}`);
+      logger.info(`[MiniAppService] Creating row with id=${rowId}, data=${JSON.stringify(data).substring(0, 100)}`);
+      
+      // 序列化 data 为字符串（模型 getter/setter 会处理）
+      const dataStr = typeof data === 'object' ? JSON.stringify(data) : data;
       
       const record = await this.models.MiniAppRow.create({
         id: rowId,
         app_id: appId,
         user_id: userId,
-        data,
+        data: dataStr,
         title,
+        _status: initialState?.name || 'pending_ocr',
       }, { transaction });
       logger.info(`[MiniAppService] Row created: ${record.id}`);
 
