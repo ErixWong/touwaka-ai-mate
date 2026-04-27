@@ -460,12 +460,39 @@ async function callTool(serverName, toolName, args, userId, configData) {
     }
   }
   
-  log(`Calling tool ${serverName}/${toolName} with args: ${JSON.stringify(args)}`);
+  // 处理文件路径：在驻留进程内读取文件并转 base64
+  let processedArgs = args || {};
+  if (args?.file_path && !args?.content) {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    
+    const filePath = args.file_path;
+    log(`Reading file from path: ${filePath}`);
+    
+    try {
+      const buffer = await fs.readFile(filePath);
+      const base64 = buffer.toString('base64');
+      const mimeType = args.mime_type || 'application/octet-stream';
+      
+      log(`File read: ${buffer.length} bytes, base64 length: ${base64.length}`);
+      
+      // 根据 tool schema 转换参数
+      processedArgs = {
+        content: base64,
+        filename: args.name || path.basename(filePath),
+        file_path: filePath,  // 保留原路径（MCP Server 可能需要）
+      };
+    } catch (err) {
+      throw new Error(`Failed to read file: ${err.message}`);
+    }
+  }
+  
+  log(`Calling tool ${serverName}/${toolName} with args: ${JSON.stringify(Object.keys(processedArgs))}`);
   
   try {
     const response = await conn.client.callTool({
       name: toolName,
-      arguments: args || {},
+      arguments: processedArgs,
     });
     
     if (response.content) {
@@ -640,36 +667,33 @@ async function processAction(action, params, userId, accessToken) {
   }
 }
 
-// 命令队列（并行处理）
+// 命令队列（串行处理，避免阻塞事件循环）
 let commandQueue = [];
-let processingCount = 0;
-const MAX_CONCURRENT = 5; // 最大并发数
+let isProcessing = false;
 
-async function processQueue() {
-  while (commandQueue.length > 0 && processingCount < MAX_CONCURRENT) {
-    const { line, resolve, reject } = commandQueue.shift();
-    processingCount++;
-    
-    try {
-      const result = await processCommandLine(line);
-      resolve(result);
-    } catch (err) {
-      log('Error processing command:', err.message);
-      reject(err);
-    } finally {
-      processingCount--;
-      // 继续处理队列
-      if (commandQueue.length > 0) {
-        processQueue().catch(() => {});
-      }
-    }
+async function processNextCommand() {
+  if (isProcessing || commandQueue.length === 0) return;
+  
+  isProcessing = true;
+  const { line, resolve, reject } = commandQueue.shift();
+  
+  try {
+    const result = await processCommandLine(line);
+    resolve(result);
+  } catch (err) {
+    log('Error processing command:', err.message);
+    reject(err);
+  } finally {
+    isProcessing = false;
+    // 处理下一个命令
+    processNextCommand().catch(() => {});
   }
 }
 
 function enqueueCommand(line) {
   return new Promise((resolve, reject) => {
     commandQueue.push({ line, resolve, reject });
-    processQueue().catch(() => {});
+    processNextCommand().catch(() => {});
   });
 }
 
