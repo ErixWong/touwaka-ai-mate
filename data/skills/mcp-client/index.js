@@ -476,11 +476,10 @@ async function callTool(serverName, toolName, args, userId, configData) {
       
       log(`File read: ${buffer.length} bytes, base64 length: ${base64.length}`);
       
-      // 根据 tool schema 转换参数
+      // 只传 base64 内容和文件名，不传路径（远程服务器无法访问）
       processedArgs = {
         content: base64,
         filename: args.name || path.basename(filePath),
-        file_path: filePath,  // 保留原路径（MCP Server 可能需要）
       };
     } catch (err) {
       throw new Error(`Failed to read file: ${err.message}`);
