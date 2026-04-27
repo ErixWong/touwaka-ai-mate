@@ -988,6 +988,41 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== mini_app_rows._status 从 GENERATED 改为实体字段 ====================
+  // Issue #654: AppClock 状态机字段改为实体字段
+  {
+    name: 'mini_app_rows._status_change_to_entity',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT EXTRA FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'mini_app_rows' AND COLUMN_NAME = '_status'
+      `, [DB_CONFIG.database]);
+      if (rows.length === 0) return false;
+      // 如果 EXTRA 包含 GENERATED，需要迁移；否则已迁移完成
+      const extra = rows[0].EXTRA || '';
+      return !extra.includes('GENERATED');
+    },
+    migrate: async (conn) => {
+      // 1. 删除 GENERATED 列
+      await conn.execute(`ALTER TABLE mini_app_rows DROP COLUMN IF EXISTS _status`);
+      console.log('  ✓ Removed GENERATED _status column');
+      
+      // 2. 创建实体 _status 字段
+      await conn.execute(`
+        ALTER TABLE mini_app_rows 
+        ADD COLUMN _status VARCHAR(64) DEFAULT 'pending_ocr' COMMENT 'AppClock 状态机状态'
+      `);
+      console.log('  ✓ Added entity _status column');
+      
+      // 3. 添加索引（如果不存在）
+      await conn.execute(`
+        ALTER TABLE mini_app_rows 
+        ADD INDEX IF NOT EXISTS idx_app_status (app_id, _status)
+      `);
+      console.log('  ✓ Added idx_app_status index');
+    }
+  },
+
 ];
 
 /**
