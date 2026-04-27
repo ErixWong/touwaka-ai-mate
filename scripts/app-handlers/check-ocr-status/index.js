@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
   mcp: { server: 'markitdown', tool: 'get_task' },
-  judge_model_id: null,
+  judge_model_id: 'gpt-4o-mini',  // 使用轻量级模型做状态判断
   judge_temperature: 0.1,
 };
 
