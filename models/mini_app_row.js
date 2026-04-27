@@ -93,9 +93,7 @@ export default class mini_app_row extends Model {
     _status: {
       type: DataTypes.STRING(64),
       allowNull: true,
-      set(value) {
-        // GENERATED 列，忽略写入
-      }
+      defaultValue: "pending_ocr"
     }
   }, {
     sequelize,
@@ -138,7 +136,6 @@ export default class mini_app_row extends Model {
         using: "BTREE",
         fields: [
           { name: "app_id" },
-          { name: "_status" },
         ]
       },
     ]
