@@ -90,11 +90,10 @@ export default class mini_app_row extends Model {
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     },
-    _status: {
+    status: {
       type: DataTypes.STRING(64),
       allowNull: true,
-      defaultValue: "pending_ocr",
-      field: "_status"
+      defaultValue: "pending_ocr"
     }
   }, {
     sequelize,

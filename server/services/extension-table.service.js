@@ -57,7 +57,7 @@ class ExtensionTableService {
 
     const sql = `
       SELECT 
-        r.id, r.app_id, r.user_id, r._status, r.title, r.data, r.created_at, r.updated_at,
+        r.id, r.app_id, r.user_id, r.status, r.title, r.data, r.created_at, r.updated_at,
         ${selectFields}
       FROM mini_app_rows r
       LEFT JOIN ${primaryConfig.name} e ON e.row_id = r.id
@@ -99,7 +99,7 @@ class ExtensionTableService {
 
     const sql = `
       SELECT 
-        r.id, r.app_id, r.user_id, r._status, r.title, r.data, r.created_at, r.updated_at,
+        r.id, r.app_id, r.user_id, r.status, r.title, r.data, r.created_at, r.updated_at,
         ${selectFields}
       FROM mini_app_rows r
       LEFT JOIN ${primaryConfig.name} e ON e.row_id = r.id
@@ -280,9 +280,9 @@ class ExtensionTableService {
     if (filter) {
       const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
       for (const [key, value] of Object.entries(filterObj)) {
-        if (key === '_status') {
+        if (key === 'status') {
           const paramName = `filter_${key}`;
-          conditions.push(`r._status = :${paramName}`);
+          conditions.push(`r.status = :${paramName}`);
           replacements[paramName] = value;
         } else if (extConfig.fields.find(f => f.name === key)) {
           const paramName = `filter_${key}`;

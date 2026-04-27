@@ -302,8 +302,8 @@ class MiniAppService {
       try {
         const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
         for (const [key, value] of Object.entries(filterObj)) {
-          if (key === '_status') {
-            where._status = value;
+          if (key === 'status') {
+            where.status = value;
           }
         }
       } catch (e) {
@@ -370,7 +370,7 @@ class MiniAppService {
     });
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
-    // _status 现在是实体字段，不放在 data 里
+    // status 现在是实体字段，不放在 data 里
     const status = initialState?.name || 'pending_ocr';
 
     const title = this.computeTitle(app.fields, data);
@@ -393,7 +393,7 @@ class MiniAppService {
         user_id: userId,
         data: dataStr,
         title,
-        _status: status,
+        status: status,
       }, { transaction });
       logger.info(`[MiniAppService] Row created: ${record.id}`);
 
@@ -526,19 +526,21 @@ class MiniAppService {
     const confirmedState = await this.models.AppState.findOne({
       where: { app_id: appId, is_terminal: true },
     });
-    if (confirmedState) {
-      mergedData._status = confirmedState.name;
-    }
 
     const title = this.computeTitle(app.fields, mergedData);
 
-    await record.update({
-      data: mergedData,
-      title,
-      revision: record.revision + 1,
-    });
+    // 更新 record，status 是实体字段
+    await this.models.MiniAppRow.update(
+      {
+        data: mergedData,
+        title,
+        revision: record.revision + 1,
+        status: confirmedState?.name || 'confirmed',
+      },
+      { where: { id: record.id } }
+    );
 
-    return record;
+    return await this.models.MiniAppRow.findByPk(record.id);
   }
 
   async batchUpload(appId, userId, attachmentIds) {
@@ -559,7 +561,7 @@ class MiniAppService {
       if (!attachment) continue;
       if (attachment.created_by && attachment.created_by !== userId) continue;
 
-      const data = { _status: initialStatus };
+      const data = {};
 
       const record = await this.models.MiniAppRow.create({
         id: Utils.newID(20),
@@ -567,6 +569,7 @@ class MiniAppService {
         user_id: userId,
         data,
         title: attachment.file_name || 'Unknown',
+        status: initialStatus,
       });
 
       await this.models.MiniAppFile.create({
@@ -599,7 +602,7 @@ class MiniAppService {
     }
 
     const results = await this.db.sequelize.query(
-      `SELECT _status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY _status`,
+      `SELECT status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY status`,
       {
         replacements: [
           appId,
@@ -617,7 +620,7 @@ class MiniAppService {
     let failed = 0;
 
     for (const row of results) {
-      const status = row._status || 'unknown';
+      const status = row.status || 'unknown';
       const count = row.count;
       byStatus[status] = count;
       total += count;
