@@ -1,4 +1,4 @@
-import logger from '../../lib/logger.js';
+import logger from '../../../lib/logger.js';
 
 export default {
   async process(context) {

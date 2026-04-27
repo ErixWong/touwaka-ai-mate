@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
-import logger from '../../lib/logger.js';
+import logger from '../../../lib/logger.js';
 
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
