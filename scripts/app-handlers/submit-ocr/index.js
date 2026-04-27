@@ -58,6 +58,9 @@ export default {
 
     const resConfig = getResourceConfig(app, stateName || 'pending_ocr');
     const mcp = resConfig.mcp || {};
+    
+    logger.info(`[submit-ocr] Record ${record.id}: resConfig=${JSON.stringify(resConfig)}`);
+    logger.info(`[submit-ocr] Record ${record.id}: mcp.server=${mcp.server}, mcp.tool=${mcp.tool}`);
 
     const valueMap = {
       'file.path': absolutePath,
