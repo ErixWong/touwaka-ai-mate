@@ -17,26 +17,20 @@
             <div v-show="expandedSteps.has(step.name)" class="step-form">
               <div class="config-group">
                 <div class="group-label">🔧 {{ $t('apps.stepConfig.executionResource') }}</div>
-                <div class="form-field span-2">
-                  <label class="field-label">{{ $t('apps.stepConfig.resourceType') }}</label>
-                  <el-select v-model="getStepConfig(step.name).type" @change="onTypeChange(step.name)">
-                    <el-option value="mcp" :label="$t('apps.stepConfig.mcp')" />
-                    <el-option value="internal_llm" :label="$t('apps.stepConfig.internalLlm')" />
-                  </el-select>
-                </div>
-
+                
                 <template v-if="getStepConfig(step.name).type === 'mcp'">
                   <McpTargetConfig
                     :label="$t('apps.stepConfig.mcpServer')"
                     :target="getStepConfig(step.name).mcp!"
                     :mcp-servers="mcpServers"
                     :handler-outputs="getHandlerOutputs(step)"
+                    :hide-params-mapping="getStepConfig(step.name).mcp?.hide_params_mapping"
                     @update:target="getStepConfig(step.name).mcp = $event"
                     @server-change="onServerChange(step.name, $event)"
                   />
                 </template>
 
-                <template v-if="getStepConfig(step.name).type === 'internal_llm'">
+                <template v-else-if="getStepConfig(step.name).type === 'internal_llm'">
                   <div class="form-field span-2">
                     <label class="field-label">{{ $t('apps.stepConfig.model') }}</label>
                     <el-select v-model="getStepConfig(step.name).model_id" clearable>
@@ -50,7 +44,7 @@
                 </template>
               </div>
 
-              <div v-if="getStepConfig(step.name).type === 'mcp'" class="config-group">
+              <div v-if="getStepConfig(step.name).type === 'mcp' && ('judge_model_id' in getStepConfig(step.name) || 'judge_temperature' in getStepConfig(step.name))" class="config-group">
                 <div class="group-label">🧠 {{ $t('apps.stepConfig.judgeResource') }}</div>
                 <div class="form-field span-2">
                   <label class="field-label">{{ $t('apps.stepConfig.judgeModel') }}</label>
@@ -58,6 +52,10 @@
                     <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
                   </el-select>
                   <span class="field-hint">{{ $t('apps.stepConfig.judgeModelHint') }}</span>
+                </div>
+                <div class="form-field span-2">
+                  <label class="field-label">{{ $t('apps.stepConfig.temperature') }}</label>
+                  <el-slider v-model="getStepConfig(step.name).judge_temperature" :min="0" :max="1" :step="0.1" show-input />
                 </div>
               </div>
             </div>
@@ -156,13 +154,7 @@ function getToolsForServer(serverName: string) {
   return server?.tools || []
 }
 
-function onTypeChange(stepName: string) {
-  const cfg = formData.value[stepName]
-  if (!cfg) return
-  if (cfg.type === 'mcp') {
-    cfg.mcp = cfg.mcp || { server: '', tool: '', params_mapping: {} }
-  }
-}
+
 
 function toggleStep(stepName: string) {
   if (expandedSteps.value.has(stepName)) {

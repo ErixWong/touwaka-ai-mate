@@ -48,6 +48,7 @@ const DEFAULT_SETTINGS = {
     max_concurrency: { value: 5, type: 'number', description: '最大并发处理数' },
     text_filter_max_length: { value: 50000, type: 'number', description: '文本过滤最大长度（字符）' },
     attachment_base_path: { value: './data/attachments', type: 'string', description: '附件存储路径' },
+    max_upload_size: { value: 50, type: 'number', description: '附件上传大小限制（MB）' },
   },
 };
 
@@ -75,6 +76,7 @@ const VALIDATION_RULES = {
   'app.batch_size': { min: 1, max: 100 },
   'app.max_concurrency': { min: 1, max: 50 },
   'app.text_filter_max_length': { min: 1000, max: 500000 },
+  'app.max_upload_size': { min: 1, max: 500 },
 };
 
 class SystemSettingService {

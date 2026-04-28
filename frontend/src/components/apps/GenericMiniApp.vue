@@ -50,10 +50,10 @@
         <tbody>
           <tr v-for="record in records" :key="record.id">
             <td v-for="col in listColumns" :key="col.name">
-              {{ formatFieldValue(record.data?.[col.name], col) }}
+              {{ formatFieldValue(col._isExtension ? record[col.name] : record.data?.[col.name], col) }}
             </td>
             <td>
-              <StateBadge :status="record.data?._status" :states="app.states || []" />
+              <StateBadge :status="record.status" :states="app.states || []" />
             </td>
             <td class="actions-cell">
               <el-button size="small" @click="viewRecord(record)">{{ $t('apps.view') }}</el-button>
@@ -74,63 +74,54 @@
       <span class="page-info">{{ $t('apps.totalRecords', { count: pagination.total }) }}</span>
     </div>
 
-    <div v-if="showDialog" class="dialog-overlay" @click.self="closeDialog">
-      <div class="dialog">
-        <div class="dialog-header">
-          <h3>{{ dialogTitle }}</h3>
-          <el-button @click="closeDialog">×</el-button>
+    <el-dialog v-model="showDialog" :title="dialogTitle" width="680px" destroy-on-close @close="closeDialog">
+      <div class="form-grid">
+        <div v-for="field in editableFields" :key="field.name" class="form-field" :class="{ 'field-full': field.type === 'textarea' || field.type === 'file' }">
+          <label class="field-label">
+            {{ field.label }}
+            <span v-if="field.required" class="required">*</span>
+          </label>
+          <FieldRenderer :field="field" :model-value="formData[field.name]" :app="app" :record-id="dialogMode === 'create' ? newRecordId : selectedRecord?.id" @update:model-value="formData[field.name] = $event" />
         </div>
-        <div class="dialog-body">
-          <div class="form-grid">
-            <div v-for="field in editableFields" :key="field.name" class="form-field" :class="{ 'field-full': field.type === 'textarea' || field.type === 'file' }">
-              <label class="field-label">
-                {{ field.label }}
-                <span v-if="field.required" class="required">*</span>
-              </label>
-              <FieldRenderer :field="field" :model-value="formData[field.name]" @update:model-value="formData[field.name] = $event" />
+      </div>
+      <template #footer>
+        <el-button @click="closeDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveRecord" :disabled="isSaving">{{ isSaving ? $t('common.saving') : $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="showDetail"
+      :title="$t('apps.recordDetail')"
+      width="1200px"
+      top="5vh"
+      destroy-on-close
+    >
+      <el-tabs v-model="detailTab">
+        <el-tab-pane label="基础信息" name="basic">
+          <div class="detail-grid">
+            <div v-for="field in allFields" :key="field.name" class="detail-field">
+              <label class="field-label">{{ field.label }}</label>
+              <div class="field-value">
+                {{ formatFieldValue(field._isExtension ? selectedRecord?.[field.name] : selectedRecord?.data?.[field.name], field) }}
+              </div>
             </div>
           </div>
-        </div>
-        <div class="dialog-footer">
-          <el-button @click="closeDialog">{{ $t('common.cancel') }}</el-button>
-          <el-button type="primary" @click="saveRecord" :disabled="isSaving">{{ isSaving ? $t('common.saving') : $t('common.save') }}</el-button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showDetail" class="dialog-overlay" @click.self="closeDetail">
-      <div class="dialog dialog-large">
-        <div class="dialog-header">
-          <h3>{{ $t('apps.recordDetail') }}</h3>
-          <el-button @click="closeDetail">×</el-button>
-        </div>
-        <div class="dialog-body">
-          <el-tabs v-model="detailTab">
-            <el-tab-pane label="基础信息" name="basic">
-              <div class="detail-grid">
-                <div v-for="field in allFields" :key="field.name" class="detail-field">
-                  <label class="field-label">{{ field.label }}</label>
-                  <div class="field-value">
-                    {{ formatFieldValue(selectedRecord?.data?.[field.name], field) }}
-                  </div>
-                </div>
-              </div>
-            </el-tab-pane>
-            <el-tab-pane label="OCR原文" name="ocr">
-              <DocumentContentViewer
-                :content-text="documentContent?.filtered_text || documentContent?.ocr_text || ''"
-                :highlights="[]"
-              />
-            </el-tab-pane>
-          </el-tabs>
-        </div>
-        <div class="dialog-footer">
-          <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
-          <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
-          <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
-        </div>
-      </div>
-    </div>
+        </el-tab-pane>
+        <el-tab-pane label="OCR原文" name="ocr">
+          <DocumentContentViewer
+            :content-text="documentContent?.filtered_text || documentContent?.ocr_text || ''"
+            :sections="documentContent?.sections || []"
+            :highlights="[]"
+          />
+        </el-tab-pane>
+      </el-tabs>
+      <template #footer>
+        <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
+        <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
+        <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
+      </template>
+    </el-dialog>
 
     <ReExtractDialog
       :visible="showReExtract"
@@ -143,21 +134,13 @@
       @confirm="handleReExtractConfirm"
     />
 
-    <div v-if="showConfirm" class="dialog-overlay" @click.self="cancelConfirm">
-      <div class="dialog dialog-small">
-        <div class="dialog-header">
-          <h3>{{ $t('apps.confirmDelete') }}</h3>
-          <el-button @click="cancelConfirm">×</el-button>
-        </div>
-        <div class="dialog-body">
-          <p>{{ $t('apps.confirmDeleteMessage') }}</p>
-        </div>
-        <div class="dialog-footer">
-          <el-button @click="cancelConfirm">{{ $t('common.cancel') }}</el-button>
-          <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
-        </div>
-      </div>
-    </div>
+    <el-dialog v-model="showConfirm" :title="$t('apps.confirmDelete')" width="420px" destroy-on-close>
+      <p>{{ $t('apps.confirmDeleteMessage') }}</p>
+      <template #footer>
+        <el-button @click="showConfirm = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
+      </template>
+    </el-dialog>
 
     <AppStepConfig :visible="showStepConfig" :app="app" @close="showStepConfig = false" @saved="loadRecords" />
   </div>
@@ -174,9 +157,11 @@ import {
   updateRecord,
   deleteRecord,
   getDocumentContent,
+  newID,
   type MiniApp,
   type MiniAppRecord,
   type AppField,
+  type AppConfig,
   type DocumentContent,
 } from '@/api/mini-apps'
 import StateBadge from './StateBadge.vue'
@@ -205,6 +190,7 @@ const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
 const detailTab = ref('basic')
 const documentContent = ref<DocumentContent | null>(null)
+const newRecordId = ref('')
 
 const pagination = ref({
   page: 1,
@@ -218,28 +204,33 @@ const filters = ref({ status: '' })
 // Computed
 const listColumns = computed(() => {
   let fields = props.app.fields
-  // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields)
-    } catch {
-      return []
-    }
+    try { fields = JSON.parse(fields) } catch { return [] }
   }
   if (!fields || !Array.isArray(fields)) return []
-  const views = props.app.views
-  // views 也可能是 JSON 字符串
-  let viewsObj = views
-  if (typeof views === 'string') {
-    try {
-      viewsObj = JSON.parse(views)
-    } catch {
-      viewsObj = {}
-    }
+  
+  let config: Partial<AppConfig> = props.app.config || {}
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config) as Partial<AppConfig> } catch { config = {} }
+  }
+  const extTables = config?.extension_tables || []
+  const primaryTable = extTables.find(t => t.type === 'primary')
+  const extFields: AppField[] = (primaryTable?.fields || []).map(f => ({
+    name: f.name,
+    label: f.label || f.name,
+    type: 'text' as const,
+    _isExtension: true
+  }))
+  
+  const allFields: AppField[] = [...extFields, ...fields]
+  
+  let viewsObj = props.app.views
+  if (typeof viewsObj === 'string') {
+    try { viewsObj = JSON.parse(viewsObj) } catch { viewsObj = {} }
   }
   if (viewsObj?.list?.columns) {
     return viewsObj.list.columns
-      .map((name: string) => fields.find(f => f.name === name))
+      .map((name: string) => allFields.find(f => f.name === name))
       .filter(Boolean) as AppField[]
   }
   return fields.slice(0, 5)
@@ -247,7 +238,6 @@ const listColumns = computed(() => {
 
 const editableFields = computed(() => {
   let fields = props.app.fields
-  // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
     try {
       fields = JSON.parse(fields)
@@ -260,24 +250,52 @@ const editableFields = computed(() => {
     console.warn('Fields is not an array:', fields)
     return []
   }
-  // 创建模式下需要包含 file 字段用于上传
-  return fields.filter(f =>
-    f.type !== 'group' && f.type !== 'repeating'
-  )
+
+  let config: Partial<AppConfig> = props.app.config || {}
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config) as Partial<AppConfig> } catch { config = {} }
+  }
+  const extTables = config?.extension_tables || []
+  const primaryTable = extTables.find(t => t.type === 'primary')
+  const extFields: AppField[] = (primaryTable?.fields || []).map(f => ({
+    name: f.name,
+    label: f.label || f.name,
+    type: (f.type === 'DECIMAL(15,2)' ? 'number' : f.type.startsWith('DATE') ? 'date' : 'text') as AppField['type'],
+    required: f.required,
+    _isExtension: true
+  }))
+
+  return [...extFields, ...fields].filter(f => {
+    if (f.type === 'group' || f.type === 'repeating') return false
+    if (dialogMode.value === 'create') {
+      if (f.type === 'file') return true
+      if (f.ai_extractable || f._isExtension) return false
+    }
+    return true
+  })
 })
 
 const allFields = computed(() => {
   let fields = props.app.fields
-  // 处理后端返回的 JSON 字符串
   if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields)
-    } catch {
-      return []
-    }
+    try { fields = JSON.parse(fields) } catch { return [] }
   }
   if (!fields || !Array.isArray(fields)) return []
-  return fields
+  
+  let config: Partial<AppConfig> = props.app.config || {}
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config) as Partial<AppConfig> } catch { config = {} }
+  }
+  const extTables = config?.extension_tables || []
+  const primaryTable = extTables.find(t => t.type === 'primary')
+  const extFields: AppField[] = (primaryTable?.fields || []).map(f => ({
+    name: f.name,
+    label: f.label || f.name,
+    type: 'text' as const,
+    _isExtension: true
+  }))
+  
+  return [...extFields, ...fields]
 })
 
 const dialogTitle = computed(() => {
@@ -328,7 +346,7 @@ async function loadRecords() {
   try {
     const filter: Record<string, string> = {}
     if (filters.value.status) {
-      filter._status = filters.value.status
+      filter.status = filters.value.status
     }
     
     const result = await getRecords(props.app.id, {
@@ -368,20 +386,11 @@ function resetFilters() {
   handleFilterChange()
 }
 
-function openCreateDialog() {
+async function openCreateDialog() {
   dialogMode.value = 'create'
-  // 初始化所有字段的默认值
-    const initialData: Record<string, unknown> = {}
-  let fields = props.app.fields || []
-  // 处理后端返回的 JSON 字符串
-  if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields)
-    } catch {
-      fields = []
-    }
-  }
-  for (const field of fields) {
+  newRecordId.value = await newID(20)
+  const initialData: Record<string, unknown> = {}
+  for (const field of editableFields.value) {
     if (field.type === 'file') {
       initialData[field.name] = null
     } else if (field.type === 'select') {
@@ -411,7 +420,13 @@ async function viewRecord(record: MiniAppRecord) {
 function editRecord(record: MiniAppRecord) {
   dialogMode.value = 'edit'
   selectedRecord.value = record
-  formData.value = { ...record.data }
+  const data: Record<string, unknown> = { ...record.data }
+  for (const field of editableFields.value) {
+    if (field._isExtension && record[field.name] !== undefined) {
+      data[field.name] = record[field.name]
+    }
+  }
+  formData.value = data
   showDialog.value = true
 }
 
@@ -461,8 +476,19 @@ async function saveRecord() {
   
   isSaving.value = true
   try {
+    // 收集所有文件字段的 attachment_id
+    const attachmentIds: string[] = []
+    for (const field of editableFields.value) {
+      if (field.type === 'file') {
+        const fieldValue = formData.value[field.name] as { attachment_id?: string } | null
+        if (fieldValue?.attachment_id) {
+          attachmentIds.push(fieldValue.attachment_id)
+        }
+      }
+    }
+    
     if (dialogMode.value === 'create') {
-      await createRecord(props.app.id, formData.value)
+      await createRecord(props.app.id, formData.value, attachmentIds, newRecordId.value)
       toast.success(t('apps.createSuccess'))
     } else if (selectedRecord.value) {
       await updateRecord(props.app.id, selectedRecord.value.id, formData.value)
@@ -483,11 +509,6 @@ async function handleDelete(record: MiniAppRecord) {
   showConfirm.value = true
 }
 
-function cancelConfirm() {
-  showConfirm.value = false
-  confirmTarget.value = null
-}
-
 async function confirmDelete() {
   if (!confirmTarget.value) return
   try {
@@ -498,7 +519,8 @@ async function confirmDelete() {
     console.error('Failed to delete record:', error)
     toast.error(t('apps.deleteFailed'))
   } finally {
-    cancelConfirm()
+    showConfirm.value = false
+    confirmTarget.value = null
   }
 }
 
@@ -516,7 +538,6 @@ watch(() => props.app.id, () => {
   background: var(--color-bg-primary, #fff);
 }
 
-/* Header */
 .app-header {
   display: flex;
   align-items: center;
@@ -539,22 +560,6 @@ watch(() => props.app.id, () => {
   gap: 12px;
 }
 
-.btn-back {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--color-text-secondary, #666);
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.btn-back:hover {
-  color: var(--color-primary, #4a90d9);
-}
-
 .app-icon {
   font-size: 28px;
 }
@@ -566,34 +571,6 @@ watch(() => props.app.id, () => {
   color: var(--color-text-primary, #333);
 }
 
-.btn-primary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  background: var(--color-primary, #4a90d9);
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary .icon {
-  font-size: 16px;
-}
-
-/* Filter Panel */
 .filter-panel {
   padding: 16px 24px;
   border-bottom: 1px solid var(--color-border, #e0e0e0);
@@ -620,40 +597,12 @@ watch(() => props.app.id, () => {
   white-space: nowrap;
 }
 
-.filter-item select,
-.filter-item input {
-  padding: 6px 12px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  font-size: 14px;
-  background: var(--color-bg-primary, #fff);
-  min-width: 120px;
-}
-
-.filter-item input {
-  min-width: 200px;
-}
-
 .filter-actions {
   display: flex;
   gap: 8px;
   margin-left: auto;
 }
 
-.btn-reset {
-  padding: 6px 16px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  background: var(--color-bg-primary, #fff);
-}
-
-.btn-reset:hover {
-  opacity: 0.9;
-}
-
-/* List Content */
 .list-content {
   flex: 1;
   overflow: auto;
@@ -682,7 +631,6 @@ watch(() => props.app.id, () => {
   font-size: 14px;
 }
 
-/* Table */
 .record-table {
   width: 100%;
   border-collapse: collapse;
@@ -721,33 +669,6 @@ watch(() => props.app.id, () => {
   white-space: nowrap;
 }
 
-.btn-action {
-  padding: 4px 10px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 13px;
-  margin-right: 6px;
-  color: var(--color-text-secondary, #666);
-}
-
-.btn-action:hover {
-  border-color: var(--color-primary, #4a90d9);
-  color: var(--color-primary, #4a90d9);
-}
-
-.btn-action.btn-danger {
-  color: var(--color-danger, #e74c3c);
-  border-color: var(--color-danger, #e74c3c);
-}
-
-.btn-action.btn-danger:hover {
-  background: var(--color-danger, #e74c3c);
-  color: #fff;
-}
-
-/* Pagination */
 .pagination {
   display: flex;
   align-items: center;
@@ -759,166 +680,15 @@ watch(() => props.app.id, () => {
   flex-shrink: 0;
 }
 
-.page-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text-secondary, #666);
-}
-
-.page-btn:hover:not(:disabled) {
-  border-color: var(--color-primary, #4a90d9);
-  color: var(--color-primary, #4a90d9);
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .page-numbers {
   display: flex;
   gap: 4px;
-}
-
-.page-num {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.page-num:hover {
-  border-color: var(--color-primary, #4a90d9);
-  color: var(--color-primary, #4a90d9);
-}
-
-.page-num.active {
-  background: var(--color-primary, #4a90d9);
-  color: #fff;
-  border-color: var(--color-primary, #4a90d9);
 }
 
 .page-info {
   font-size: 13px;
   color: var(--color-text-secondary, #666);
   margin-left: 12px;
-}
-
-/* Dialog */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 24px;
-}
-
-.dialog {
-  background: var(--color-bg-primary, #fff);
-  border-radius: 12px;
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.dialog-large {
-  max-width: 1200px;
-  height: 80vh;
-}
-
-.dialog-small {
-  max-width: 400px;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border, #e0e0e0);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.btn-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--color-text-secondary, #666);
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
-
-.btn-close:hover {
-  background: var(--color-bg-secondary, #f0f0f0);
-}
-
-.dialog-body {
-  padding: 20px;
-  overflow: auto;
-  flex: 1;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-border, #e0e0e0);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-}
-
-.form-field.field-full {
-  grid-column: span 2;
-}
-
-.field-label {
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 6px;
-  color: var(--color-text-secondary, #555);
-}
-
-.required {
-  color: var(--color-danger, #e74c3c);
-  margin-left: 4px;
 }
 
 .detail-grid {
@@ -934,38 +704,10 @@ watch(() => props.app.id, () => {
 
 .detail-field .field-value {
   padding: 8px 12px;
-  background: var(--color-bg-secondary, #f8f9fa);
-  border-radius: 4px;
-  font-size: 14px;
-  color: var(--color-text-primary, #333);
+  background: var(--el-fill-color-lighter);
+  border-radius: var(--el-border-radius-base);
+  font-size: var(--el-font-size-base);
+  color: var(--el-text-color-regular);
   min-height: 36px;
-}
-
-.btn-cancel {
-  padding: 8px 20px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 6px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.btn-cancel:hover {
-  background: var(--color-bg-secondary, #f0f0f0);
-}
-
-.btn-danger {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 6px;
-  background: var(--color-danger, #e74c3c);
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.btn-danger:hover {
-  opacity: 0.9;
 }
 </style>

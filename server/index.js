@@ -44,6 +44,8 @@ import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
 import logger from '../lib/logger.js';
+import Utils from '../lib/utils.js';
+import Router from '@koa/router';
 
 // 中间件
 import { responseMiddleware } from './middlewares/index.js';
@@ -233,7 +235,8 @@ class ApiServer {
       llmService: new InternalLLMService(this.db),
       skillLoader: new SkillLoader(this.db),
     });
-    await this.appClock.start();
+    // 不在这里启动，等 server listen 后统一启动
+    logger.info('AppClock initialized');
   }
 
   /**
@@ -443,6 +446,16 @@ class ApiServer {
     this.app.use(attachmentStaticRouter.allowedMethods());
     logger.info('Attachment static routes registered (GET /attach/t/:token/:attachment_id)');
 
+    // Utility 路由
+    const utilityRouter = new Router();
+    utilityRouter.get('/api/newid', authMiddleware.authenticate(), (ctx) => {
+      const length = parseInt(ctx.query.length) || 20;
+      ctx.success({ id: Utils.newID(length) });
+    });
+    this.app.use(utilityRouter.routes());
+    this.app.use(utilityRouter.allowedMethods());
+    logger.info('Utility routes registered (GET /api/newid)');
+
     // Mini App 平台路由（Issue #603）
     const miniAppRouter = miniAppRoutes(this.controllers.miniApp);
     this.app.use(miniAppRouter.routes());
@@ -599,6 +612,11 @@ class ApiServer {
         // 启动后台任务调度器
         if (this.scheduler) {
           this.scheduler.startAll();
+        }
+
+        // 启动 AppClock（Issue #654）
+        if (this.appClock) {
+          this.appClock.start();
         }
 
         // 启动 Token 清理任务（Issue #140）

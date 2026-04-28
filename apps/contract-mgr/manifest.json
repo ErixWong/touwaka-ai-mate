@@ -51,18 +51,6 @@
       "ai_extractable": true
     },
     {
-      "name": "status",
-      "label": "状态",
-      "type": "select",
-      "options": [
-        "待审批",
-        "执行中",
-        "已完成",
-        "已终止"
-      ],
-      "default": "待审批"
-    },
-    {
       "name": "contract_file",
       "label": "合同文件",
       "type": "file"
@@ -87,6 +75,7 @@
       "fields": [
         { "name": "ocr_text", "type": "LONGTEXT" },
         { "name": "filtered_text", "type": "LONGTEXT" },
+        { "name": "sections", "type": "JSON" },
         { "name": "extract_prompt", "type": "TEXT" },
         { "name": "extract_json", "type": "LONGTEXT" },
         { "name": "extract_model", "type": "VARCHAR(64)" },
@@ -105,8 +94,7 @@
         "contract_date",
         "party_a",
         "party_b",
-        "contract_amount",
-        "status"
+        "contract_amount"
       ],
       "sort": {
         "field": "contract_date",
@@ -129,7 +117,34 @@
     ],
     "max_file_size": 20971520,
     "batch_enabled": true,
-    "batch_limit": 50
+    "batch_limit": 50,
+    "step_resources": {
+      "pending_ocr": {
+        "type": "mcp",
+        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "content": "file.base64", "filename": "file.name" } }
+      },
+      "ocr_submitted": {
+        "type": "mcp",
+        "mcp": { "server": "markitdown", "tool": "get_task", "hide_params_mapping": true },
+        "judge_model_id": null,
+        "judge_temperature": 0.1
+      },
+      "pending_filter": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      },
+      "pending_extract": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      },
+      "pending_section": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      }
+    }
   },
   "states": [
     {
@@ -177,13 +192,25 @@
       "is_terminal": false,
       "is_error": false,
       "handler": "handler-extract",
-      "success_next": "pending_review",
+      "success_next": "pending_section",
       "failure_next": "extract_failed"
+    },
+    {
+      "name": "pending_section",
+      "label": "等待章节分析",
+      "description": "章节结构分析，LLM分析文档章节结构并生成导航索引",
+      "sort_order": 5,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "handler-text-section",
+      "success_next": "pending_review",
+      "failure_next": "section_failed"
     },
     {
       "name": "pending_review",
       "label": "等待确认",
-      "sort_order": 5,
+      "sort_order": 6,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -194,7 +221,7 @@
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 6,
+      "sort_order": 7,
       "is_initial": false,
       "is_terminal": true,
       "is_error": false,
@@ -227,6 +254,17 @@
     {
       "name": "extract_failed",
       "label": "提取失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "section_failed",
+      "label": "章节分析失败",
       "sort_order": 99,
       "is_initial": false,
       "is_terminal": false,

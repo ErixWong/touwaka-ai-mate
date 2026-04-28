@@ -129,7 +129,41 @@ class MiniAppService {
     if (typeof config === 'string') {
       try { config = JSON.parse(config); } catch { config = {}; }
     }
+
+    // 合并 manifest 的 step_resources 默认值
+    let manifest = app.fields;
+    if (typeof manifest === 'string') {
+      try { manifest = JSON.parse(manifest); } catch { manifest = {}; }
+    }
+    
+    // 从 app 的 manifest 字段获取 step_resources（如果存在）
+    // 注意：manifest 数据分布在 app 的各个字段中，这里需要从 manifest.json 文件读取
+    const defaultStepResources = this.getDefaultStepResources(appId);
+    
+    if (defaultStepResources && config) {
+      config.step_resources = { ...defaultStepResources, ...config.step_resources };
+    } else if (defaultStepResources) {
+      config = { ...config, step_resources: defaultStepResources };
+    }
+    
     return config || {};
+  }
+
+  getDefaultStepResources(appId) {
+    // 从 manifest 文件读取默认 step_resources
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const manifestPath = path.join(process.cwd(), 'apps', appId, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const manifestContent = fs.readFileSync(manifestPath, 'utf8');
+        const manifest = JSON.parse(manifestContent);
+        return manifest.config?.step_resources || null;
+      }
+    } catch (e) {
+      // 文件不存在或解析失败，返回 null
+    }
+    return null;
   }
 
   async updateAppConfig(appId, configData) {
@@ -302,8 +336,8 @@ class MiniAppService {
       try {
         const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
         for (const [key, value] of Object.entries(filterObj)) {
-          if (key === '_status') {
-            where._status = value;
+          if (key === 'status') {
+            where.status = value;
           }
         }
       } catch (e) {
@@ -354,37 +388,52 @@ class MiniAppService {
     return record;
   }
 
-  async createRecord(appId, userId, data, attachmentIds = []) {
+  async createRecord(appId, userId, data, attachmentIds = [], clientRecordId = null) {
     this.ensureModels();
+    logger.info(`[MiniAppService] createRecord start: appId=${appId}, userId=${userId}, clientRecordId=${clientRecordId}`);
 
     const app = await this.models.MiniApp.findByPk(appId);
     if (!app) throw new Error('App not found');
+    logger.info(`[MiniAppService] App found: ${app.id}`);
 
     this.validateData(app.fields, data);
+    logger.info(`[MiniAppService] Data validated`);
 
     const initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
     });
+    logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
-    if (initialState) {
-      data._status = initialState.name;
-    }
+    // status 现在是实体字段，不放在 data 里
+    const status = initialState?.name || 'pending_ocr';
 
     const title = this.computeTitle(app.fields, data);
+    logger.info(`[MiniAppService] Title computed: ${title}`);
 
     const transaction = await this.db.sequelize.transaction();
+    logger.info(`[MiniAppService] Transaction started`);
     
     try {
-      const rowId = Utils.newID(20);
+      // 使用前端提供的 ID 或生成新 ID
+      const rowId = clientRecordId || Utils.newID(20);
+      logger.info(`[MiniAppService] Creating row with id=${rowId}, data=${JSON.stringify(data).substring(0, 100)}`);
+      
+      // 序列化 data 为字符串（模型 getter/setter 会处理）
+      const dataStr = typeof data === 'object' ? JSON.stringify(data) : data;
+      
       const record = await this.models.MiniAppRow.create({
         id: rowId,
         app_id: appId,
         user_id: userId,
-        data,
+        data: dataStr,
         title,
+        status: status,
       }, { transaction });
+      logger.info(`[MiniAppService] Row created: ${record.id}`);
 
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
+      logger.info(`[MiniAppService] Extension configs: ${extConfigs?.length || 0}`);
+      
       if (extConfigs && extConfigs.length > 0) {
         const primaryConfig = extConfigs.find(c => c.type === 'primary');
         if (primaryConfig) {
@@ -395,11 +444,14 @@ class MiniAppService {
               extData[f.name] = data[key];
             }
           }
+          logger.info(`[MiniAppService] Creating extension row: ${JSON.stringify(extData)}`);
           await this.extensionService.createExtensionRow(appId, primaryConfig.name, extData, transaction);
+          logger.info(`[MiniAppService] Extension row created`);
         }
       }
 
       if (attachmentIds.length > 0) {
+        logger.info(`[MiniAppService] Creating ${attachmentIds.length} file associations`);
         for (const attId of attachmentIds) {
           await this.models.MiniAppFile.create({
             id: Utils.newID(20),
@@ -408,11 +460,14 @@ class MiniAppService {
             attachment_id: attId,
           }, { transaction });
         }
+        logger.info(`[MiniAppService] File associations created`);
       }
 
       await transaction.commit();
+      logger.info(`[MiniAppService] Transaction committed, returning record`);
       return record;
     } catch (err) {
+      logger.error(`[MiniAppService] Transaction error: ${err.message}`);
       await transaction.rollback();
       throw new Error(`创建失败: ${err.message}`);
     }
@@ -505,19 +560,21 @@ class MiniAppService {
     const confirmedState = await this.models.AppState.findOne({
       where: { app_id: appId, is_terminal: true },
     });
-    if (confirmedState) {
-      mergedData._status = confirmedState.name;
-    }
 
     const title = this.computeTitle(app.fields, mergedData);
 
-    await record.update({
-      data: mergedData,
-      title,
-      revision: record.revision + 1,
-    });
+    // 更新 record，status 是实体字段
+    await this.models.MiniAppRow.update(
+      {
+        data: mergedData,
+        title,
+        revision: record.revision + 1,
+        status: confirmedState?.name || 'confirmed',
+      },
+      { where: { id: record.id } }
+    );
 
-    return record;
+    return await this.models.MiniAppRow.findByPk(record.id);
   }
 
   async batchUpload(appId, userId, attachmentIds) {
@@ -538,7 +595,7 @@ class MiniAppService {
       if (!attachment) continue;
       if (attachment.created_by && attachment.created_by !== userId) continue;
 
-      const data = { _status: initialStatus };
+      const data = {};
 
       const record = await this.models.MiniAppRow.create({
         id: Utils.newID(20),
@@ -546,6 +603,7 @@ class MiniAppService {
         user_id: userId,
         data,
         title: attachment.file_name || 'Unknown',
+        status: initialStatus,
       });
 
       await this.models.MiniAppFile.create({
@@ -578,7 +636,7 @@ class MiniAppService {
     }
 
     const results = await this.db.sequelize.query(
-      `SELECT _status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY _status`,
+      `SELECT status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY status`,
       {
         replacements: [
           appId,
@@ -596,7 +654,7 @@ class MiniAppService {
     let failed = 0;
 
     for (const row of results) {
-      const status = row._status || 'unknown';
+      const status = row.status || 'unknown';
       const count = row.count;
       byStatus[status] = count;
       total += count;

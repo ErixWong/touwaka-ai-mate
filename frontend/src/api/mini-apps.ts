@@ -34,6 +34,7 @@ export interface AppField {
   min_items?: number
   max_items?: number
   summary_fields?: any[]
+  _isExtension?: boolean
 }
 
 export interface AppViews {
@@ -47,6 +48,21 @@ export interface AppViews {
   detail?: any
 }
 
+export interface ExtensionTableField {
+  name: string
+  type: string
+  label: string
+  required?: boolean
+  source?: string
+}
+
+export interface ExtensionTable {
+  name: string
+  type: 'primary' | 'content' | 'custom'
+  fields: ExtensionTableField[]
+  indexes?: string[]
+}
+
 export interface AppConfig {
   features: string[]
   supported_formats?: string[]
@@ -58,6 +74,7 @@ export interface AppConfig {
     filter?: string
     extract?: string
   }
+  extension_tables?: ExtensionTable[]
 }
 
 export interface StepResourceConfig {
@@ -148,6 +165,12 @@ export interface MiniAppRecord {
   files?: MiniAppFile[]
   created_at: string
   updated_at: string
+  contract_number?: string
+  party_a?: string
+  parent_company?: string
+  contract_amount?: number
+  contract_date?: string
+  [key: string]: any
 }
 
 export interface MiniAppFile {
@@ -256,8 +279,13 @@ export async function getRecord(appId: string, recordId: string): Promise<MiniAp
   return apiRequest<MiniAppRecord>(apiClient.get(`/mini-apps/${appId}/data/${recordId}`))
 }
 
-export async function createRecord(appId: string, data: Record<string, any>, attachments?: string[]): Promise<MiniAppRecord> {
-  return apiRequest<MiniAppRecord>(apiClient.post(`/mini-apps/${appId}/data`, { data, attachments }))
+export async function createRecord(appId: string, data: Record<string, unknown>, attachments?: string[], clientRecordId?: string): Promise<MiniAppRecord> {
+  return apiRequest<MiniAppRecord>(apiClient.post(`/mini-apps/${appId}/data`, { data, attachments, clientRecordId }))
+}
+
+export async function newID(length = 20): Promise<string> {
+  const result = await apiRequest<{ id: string }>(apiClient.get('/newid', { params: { length } }))
+  return result.id
 }
 
 export async function updateRecord(appId: string, recordId: string, data: Record<string, any>): Promise<MiniAppRecord> {
@@ -323,7 +351,7 @@ export interface DocumentContent {
   ocr_text?: string
   filtered_text?: string
   extract_prompt?: string
-  extract_json?: Record<string, unknown> | null
+  extract_json?: Record<string, unknown>
   extract_at?: string
 }
 

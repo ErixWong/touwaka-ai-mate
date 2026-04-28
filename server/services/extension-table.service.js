@@ -27,6 +27,8 @@ class ExtensionTableService {
         return await this.createExtensionRow(appId, tableName, data, transaction);
       case 'update':
         return await this.updateExtensionRow(appId, tableName, data.row_id, data, transaction);
+      case 'upsert':
+        return await this.upsertExtensionRow(appId, tableName, data.row_id, data, transaction);
       case 'read':
         return await this.readExtensionRow(appId, tableName, data.row_id, data.fields);
       case 'delete':
@@ -57,7 +59,7 @@ class ExtensionTableService {
 
     const sql = `
       SELECT 
-        r.id, r.app_id, r.user_id, r._status, r.title, r.data, r.created_at, r.updated_at,
+        r.id, r.app_id, r.user_id, r.status, r.title, r.data, r.created_at, r.updated_at,
         ${selectFields}
       FROM mini_app_rows r
       LEFT JOIN ${primaryConfig.name} e ON e.row_id = r.id
@@ -99,7 +101,7 @@ class ExtensionTableService {
 
     const sql = `
       SELECT 
-        r.id, r.app_id, r.user_id, r._status, r.title, r.data, r.created_at, r.updated_at,
+        r.id, r.app_id, r.user_id, r.status, r.title, r.data, r.created_at, r.updated_at,
         ${selectFields}
       FROM mini_app_rows r
       LEFT JOIN ${primaryConfig.name} e ON e.row_id = r.id
@@ -152,25 +154,50 @@ class ExtensionTableService {
       throw new Error('row_id is required for createExtensionRow');
     }
 
-    const fields = extConfig.fields.map(f => f.name);
-    const values = extConfig.fields.map(f => {
+    // 只包含有值的字段
+    const fieldsWithData = extConfig.fields.filter(f => {
       const key = f.source || f.name;
-      return data[key];
+      return data[key] !== undefined && data[key] !== null;
     });
 
-    const placeholders = values.map(() => '?').join(', ');
+    if (fieldsWithData.length === 0) {
+      // 没有数据，只插入 row_id
+      const sql = `INSERT INTO ${extConfig.name} (row_id) VALUES (?)`;
+      await this.sequelize.query(sql, { replacements: [rowId], transaction });
+    } else {
+      const fields = fieldsWithData.map(f => f.name);
+      const values = fieldsWithData.map(f => {
+        const key = f.source || f.name;
+        return data[key];
+      });
 
-    const sql = `
-      INSERT INTO ${extConfig.name} (row_id, ${fields.join(', ')})
-      VALUES (?, ${placeholders})
-    `;
+      const placeholders = values.map(() => '?').join(', ');
 
-    await this.sequelize.query(sql, {
-      replacements: [rowId, ...values],
-      transaction
-    });
+      const sql = `
+        INSERT INTO ${extConfig.name} (row_id, ${fields.join(', ')})
+        VALUES (?, ${placeholders})
+      `;
+
+      await this.sequelize.query(sql, {
+        replacements: [rowId, ...values],
+        transaction
+      });
+    }
 
     logger.info(`[ExtensionTableService] Created row in ${tableName} for row_id ${rowId}`);
+  }
+
+  async upsertExtensionRow(appId, tableName, rowId, data, transaction = null) {
+    const extConfig = await this.getExtensionConfig(appId, tableName);
+    if (!extConfig) return;
+
+    const existing = await this.readExtensionRow(appId, tableName, rowId);
+    if (existing) {
+      await this.updateExtensionRow(appId, tableName, rowId, data, transaction);
+    } else {
+      const createData = { row_id: rowId, ...data };
+      await this.createExtensionRow(appId, tableName, createData, transaction);
+    }
   }
 
   async updateExtensionRow(appId, tableName, rowId, data, transaction = null) {
@@ -268,9 +295,9 @@ class ExtensionTableService {
     if (filter) {
       const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
       for (const [key, value] of Object.entries(filterObj)) {
-        if (key === '_status') {
+        if (key === 'status') {
           const paramName = `filter_${key}`;
-          conditions.push(`r._status = :${paramName}`);
+          conditions.push(`r.status = :${paramName}`);
           replacements[paramName] = value;
         } else if (extConfig.fields.find(f => f.name === key)) {
           const paramName = `filter_${key}`;

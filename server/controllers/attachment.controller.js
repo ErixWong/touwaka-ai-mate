@@ -14,11 +14,15 @@ import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import SystemSettingService from '../services/system-setting.service.js';
 
 // Token 配置
 const TOKEN_CONFIG = {
   EXPIRES_IN: 3600,  // 有效期：1 小时（秒）
 };
+
+// 批量上传单次最多 10 个文件
+const MAX_BATCH_SIZE = 10;
 
 // 允许上传的 MIME 类型白名单
 const ALLOWED_MIME_TYPES = [
@@ -47,21 +51,16 @@ const MAGIC_NUMBERS = {
   'image/svg+xml': null,                     // SVG 是文本，需特殊处理
 };
 
-// 单文件大小限制：10MB
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-// 批量上传单次最多 10 个文件
-const MAX_BATCH_SIZE = 10;
+const DEFAULT_MAX_UPLOAD_SIZE_MB = 50;
 
 class AttachmentController {
   constructor(db) {
     this.db = db;
     this.Attachment = null;
     this.AttachmentToken = null;
+    this.systemSettingService = new SystemSettingService(db);
   }
 
-  /**
-   * 确保模型已初始化
-   */
   ensureModels() {
     if (!this.Attachment) {
       this.Attachment = this.db.getModel('attachment');
@@ -69,11 +68,18 @@ class AttachmentController {
     }
   }
 
-  /**
-   * 获取附件存储基础路径
-   */
   getAttachmentBasePath() {
     return process.env.ATTACHMENT_BASE_PATH || './data/attachments';
+  }
+
+  async getMaxFileSize() {
+    try {
+      const settings = await this.systemSettingService.getAllSettings();
+      const maxMb = settings?.app?.max_upload_size || DEFAULT_MAX_UPLOAD_SIZE_MB;
+      return maxMb * 1024 * 1024;
+    } catch {
+      return DEFAULT_MAX_UPLOAD_SIZE_MB * 1024 * 1024;
+    }
   }
 
   /**
@@ -212,6 +218,36 @@ class AttachmentController {
         return await isSystemAdmin(this.db, userId);
       }
       
+      case 'mini_app':
+      case 'mini_app_file': {
+        // Mini App 文件上传
+        // sourceId 可以是 app_id（新建时）或 record_id（编辑时）或 'temp'（临时）
+        const MiniApp = this.db.getModel('mini_app');
+        const MiniAppRow = this.db.getModel('mini_app_row');
+        
+        // 'temp' 是临时上传，允许所有登录用户
+        if (sourceId === 'temp') {
+          return true;
+        }
+        
+        // 先检查是否是 app_id
+        const app = await MiniApp.findByPk(sourceId);
+        if (app) {
+          // App 存在，允许上传
+          return app.visibility === 'all' || app.owner_id === userId;
+        }
+        
+        // 检查是否是 record_id
+        const record = await MiniAppRow.findByPk(sourceId);
+        if (record) {
+          const recordApp = await MiniApp.findByPk(record.app_id);
+          if (!recordApp) return false;
+          return record.user_id === userId || recordApp.owner_id === userId || recordApp.visibility === 'all';
+        }
+        
+        return false;
+      }
+      
       default:
         // 未知类型默认拒绝
         return false;
@@ -243,9 +279,10 @@ class AttachmentController {
       await this.validateMimeType(data.base64_data, data.mime_type);
 
       // 检查文件大小
+      const maxFileSize = await this.getMaxFileSize();
       const fileSize = Buffer.from(data.base64_data, 'base64').length;
-      if (fileSize > MAX_FILE_SIZE) {
-        ctx.throw(413, `File size exceeds limit of ${MAX_FILE_SIZE} bytes`);
+      if (fileSize > maxFileSize) {
+        ctx.throw(413, `File size exceeds limit of ${maxFileSize} bytes`);
       }
 
       // 权限检查
@@ -346,6 +383,7 @@ class AttachmentController {
         ctx.throw(403, '无权访问此资源');
       }
 
+      const maxFileSize = await this.getMaxFileSize();
       const results = [];
       const errors = [];
 
@@ -359,8 +397,8 @@ class AttachmentController {
 
           // 检查文件大小
           const fileSize = Buffer.from(file.base64_data, 'base64').length;
-          if (fileSize > MAX_FILE_SIZE) {
-            throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE} bytes`);
+          if (fileSize > maxFileSize) {
+            throw new Error(`File size exceeds limit of ${maxFileSize} bytes`);
           }
 
           // 生成附件 ID

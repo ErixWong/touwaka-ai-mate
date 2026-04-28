@@ -4,6 +4,7 @@
     :field="field"
     :model-value="modelValue"
     :readonly="readonly"
+    :app="app"
     @update:model-value="$emit('update:model-value', $event)"
   />
 </template>
@@ -11,7 +12,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Component } from 'vue'
-import type { AppField } from '@/api/mini-apps'
+import type { AppField, MiniApp } from '@/api/mini-apps'
 import TextField from './fields/TextField.vue'
 import TextAreaField from './fields/TextAreaField.vue'
 import NumberField from './fields/NumberField.vue'
@@ -26,6 +27,8 @@ const props = defineProps<{
   field: AppField
   modelValue: unknown
   readonly?: boolean
+  app?: MiniApp
+  recordId?: string
 }>()
 
 defineEmits(['update:model-value'])

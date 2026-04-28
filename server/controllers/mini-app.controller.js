@@ -135,8 +135,8 @@ class MiniAppController {
     try {
       const { appId } = ctx.params;
       const userId = ctx.state.session.id;
-      const { data, attachments } = ctx.request.body;
-      const record = await this.miniAppService.createRecord(appId, userId, data || {}, attachments || []);
+      const { data, attachments, clientRecordId } = ctx.request.body;
+      const record = await this.miniAppService.createRecord(appId, userId, data || {}, attachments || [], clientRecordId);
       ctx.success(record, 'Created');
     } catch (error) {
       logger.error('Create record error:', error);
@@ -425,7 +425,7 @@ class MiniAppController {
         appId,
         contentConfig.name,
         rowId,
-        ['ocr_text', 'filtered_text', 'extract_prompt', 'extract_json', 'extract_at']
+        ['ocr_text', 'filtered_text', 'sections', 'extract_prompt', 'extract_json', 'extract_at']
       );
       
       if (!content) {
@@ -433,10 +433,20 @@ class MiniAppController {
         return;
       }
       
+      let sections = [];
+      if (content.sections) {
+        try {
+          sections = typeof content.sections === 'string' ? JSON.parse(content.sections) : content.sections;
+        } catch {
+          sections = [];
+        }
+      }
+      
       ctx.success({
         has_content: true,
         ocr_text: content.ocr_text || '',
         filtered_text: content.filtered_text || '',
+        sections: sections,
         extract_prompt: content.extract_prompt || '',
         extract_json: content.extract_json ? (() => { try { return JSON.parse(content.extract_json); } catch { return null; } })() : null,
         extract_at: content.extract_at

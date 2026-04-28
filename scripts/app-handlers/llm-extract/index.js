@@ -1,3 +1,5 @@
+import logger from '../../../lib/logger.js';
+
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
   model_id: null,
@@ -74,11 +76,16 @@ export default {
   async process(context) {
     const { record, app, services, stateName } = context;
 
+    logger.info(`[llm-extract] Processing record ${record.id}`);
+
     const data = record.data || {};
     const text = data._filtered_text || data._ocr_text;
     if (!text) {
+      logger.error(`[llm-extract] Record ${record.id}: No text found`);
       return { success: false, error: 'No text found, run OCR and filter first' };
     }
+
+    logger.info(`[llm-extract] Record ${record.id}: Text length=${text.length}`);
 
     const baseFields = parseFields(app).filter(f => f.ai_extractable && f.type !== 'file');
     
@@ -94,7 +101,10 @@ export default {
     
     const allFields = [...baseFields, ...extFields];
     
+    logger.info(`[llm-extract] Record ${record.id}: Fields to extract: ${allFields.map(f => f.name).join(', ')}`);
+    
     if (allFields.length === 0) {
+      logger.error(`[llm-extract] Record ${record.id}: No extractable fields defined`);
       return { success: false, error: 'No extractable fields defined' };
     }
 
@@ -122,6 +132,7 @@ ${exampleJson}
 }`;
 
     try {
+      logger.info(`[llm-extract] Record ${record.id}: Calling LLM for extraction`);
       const response = await services.callLlm('extract_metadata', {
         instruction: promptBase,
         ocr_text: text,
@@ -130,29 +141,46 @@ ${exampleJson}
         temperature: extractConfig.temperature || 0.3,
       });
 
+      logger.info(`[llm-extract] Record ${record.id}: LLM response received`);
+
       let metadata;
       const resultText = response.text || response.parsed || response;
       if (typeof resultText === 'string') {
         const jsonMatch = resultText.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
+          logger.error(`[llm-extract] Record ${record.id}: LLM did not return valid JSON`);
           return { success: false, error: 'LLM did not return valid JSON' };
         }
         metadata = JSON.parse(jsonMatch[0]);
       } else if (typeof resultText === 'object') {
         metadata = resultText;
       } else {
+        logger.error(`[llm-extract] Record ${record.id}: LLM returned unexpected format`);
         return { success: false, error: 'LLM returned unexpected format' };
       }
 
       const cleanMetadata = {};
       for (const field of allFields) {
-        if (metadata[field.name] !== undefined) {
-          cleanMetadata[field.name] = metadata[field.name];
+        const value = metadata[field.name];
+        if (value === undefined || value === null || value === '') continue;
+        if (field.type === 'number') {
+          const num = Number(String(value).replace(/[,，]/g, ''));
+          if (isNaN(num)) continue;
+          cleanMetadata[field.name] = num;
+        } else if (field.type === 'date') {
+          const dateStr = String(value).replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '');
+          if (!/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) continue;
+          cleanMetadata[field.name] = dateStr;
+        } else {
+          cleanMetadata[field.name] = value;
         }
       }
 
+      logger.info(`[llm-extract] Record ${record.id}: Extracted fields: ${Object.keys(cleanMetadata).join(', ')}`);
+
       const contentConfig = extTables.find(t => t.type === 'content');
       if (contentConfig && services.callExtension) {
+        logger.info(`[llm-extract] Record ${record.id}: Upserting to extension table ${contentConfig.name}`);
         let extractJsonStr;
         try {
           extractJsonStr = JSON.stringify(cleanMetadata);
@@ -160,20 +188,37 @@ ${exampleJson}
           extractJsonStr = '{}';
         }
         
-        await services.callExtension(contentConfig.name, 'update', {
+        await services.callExtension(contentConfig.name, 'upsert', {
           row_id: record.id,
           extract_prompt: promptBase,
           extract_json: extractJsonStr,
           extract_model: extractConfig.model_id || 'unknown',
-          extract_at: new Date().toISOString()
+          extract_at: new Date()
         });
       }
 
+      if (primaryConfig && services.callExtension) {
+        const extData = { row_id: record.id };
+        for (const f of primaryConfig.fields) {
+          const key = f.source || f.name;
+          if (cleanMetadata[key] !== undefined) {
+            extData[f.name] = cleanMetadata[key];
+          }
+        }
+        
+        if (Object.keys(extData).length > 1) {
+          logger.info(`[llm-extract] Record ${record.id}: Upserting to primary table ${primaryConfig.name}`);
+          await services.callExtension(primaryConfig.name, 'upsert', extData);
+        }
+      }
+
+      logger.info(`[llm-extract] Record ${record.id}: Extraction complete`);
       return {
         success: true,
         data: cleanMetadata,
       };
     } catch (e) {
+      logger.error(`[llm-extract] Record ${record.id}: Extraction failed - ${e.message}`);
       return { success: false, error: 'LLM extraction failed: ' + e.message };
     }
   },

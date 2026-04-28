@@ -74,9 +74,10 @@ export default class mini_app_row extends Model {
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     },
-    _status: {
+    status: {
       type: DataTypes.STRING(64),
-      allowNull: true
+      allowNull: true,
+      defaultValue: "pending_ocr"
     }
   }, {
     sequelize,
@@ -119,7 +120,6 @@ export default class mini_app_row extends Model {
         using: "BTREE",
         fields: [
           { name: "app_id" },
-          { name: "_status" },
         ]
       },
     ]

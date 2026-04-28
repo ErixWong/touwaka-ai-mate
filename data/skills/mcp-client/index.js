@@ -210,10 +210,12 @@ async function createTransport(serverConfig, credentials = null) {
     // 2. 或者 server 不支持 session（headers 中没有 mcp-session-id 提示）
     const isStateless = transportType === 'statelessHttp' || serverConfig.stateless === true;
     
+    const requestInit = { headers };
+    
     if (isStateless) {
       log(`Creating StatelessHTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
       log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
-      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit: { headers } });
+      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit });
     }
     
     const useSSE = transportType === 'sse' || serverConfig.url.endsWith('/sse') || serverConfig.use_sse;
@@ -222,7 +224,7 @@ async function createTransport(serverConfig, credentials = null) {
     log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
     
     const TransportClass = useSSE ? SSEClientTransport : StreamableHTTPClientTransport;
-    return new TransportClass(new URL(serverConfig.url), { requestInit: { headers } });
+    return new TransportClass(new URL(serverConfig.url), { requestInit });
   }
   
   // STDIO 模式（默认）
@@ -460,12 +462,38 @@ async function callTool(serverName, toolName, args, userId, configData) {
     }
   }
   
-  log(`Calling tool ${serverName}/${toolName} with args: ${JSON.stringify(args)}`);
+  // 处理文件路径：在驻留进程内读取文件并转 base64
+  let processedArgs = args || {};
+  if (args?.file_path && !args?.content) {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    
+    const filePath = args.file_path;
+    log(`Reading file from path: ${filePath}`);
+    
+    try {
+      const buffer = await fs.readFile(filePath);
+      const base64 = buffer.toString('base64');
+      const mimeType = args.mime_type || 'application/octet-stream';
+      
+      log(`File read: ${buffer.length} bytes, base64 length: ${base64.length}`);
+      
+      // 只传 base64 内容和文件名，不传路径（远程服务器无法访问）
+      processedArgs = {
+        content: base64,
+        filename: args.name || path.basename(filePath),
+      };
+    } catch (err) {
+      throw new Error(`Failed to read file: ${err.message}`);
+    }
+  }
+  
+  log(`Calling tool ${serverName}/${toolName} with args: ${JSON.stringify(Object.keys(processedArgs))}`);
   
   try {
     const response = await conn.client.callTool({
       name: toolName,
-      arguments: args || {},
+      arguments: processedArgs,
     });
     
     if (response.content) {
@@ -640,7 +668,35 @@ async function processAction(action, params, userId, accessToken) {
   }
 }
 
-// ============== 命令行处理 ==============
+// 命令队列（串行处理，避免阻塞事件循环）
+let commandQueue = [];
+let isProcessing = false;
+
+async function processNextCommand() {
+  if (isProcessing || commandQueue.length === 0) return;
+  
+  isProcessing = true;
+  const { line, resolve, reject } = commandQueue.shift();
+  
+  try {
+    const result = await processCommandLine(line);
+    resolve(result);
+  } catch (err) {
+    log('Error processing command:', err.message);
+    reject(err);
+  } finally {
+    isProcessing = false;
+    // 处理下一个命令
+    processNextCommand().catch(() => {});
+  }
+}
+
+function enqueueCommand(line) {
+  return new Promise((resolve, reject) => {
+    commandQueue.push({ line, resolve, reject });
+    processNextCommand().catch(() => {});
+  });
+}
 
 /**
  * 处理单行 JSON 命令
@@ -720,8 +776,8 @@ async function main() {
     
     for (const line of lines) {
       if (line.trim()) {
-        processCommandLine(line).catch(err => {
-          log('Error processing command:', err.message);
+        enqueueCommand(line).catch(err => {
+          log('Queue error:', err.message);
         });
       }
     }
