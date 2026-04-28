@@ -74,29 +74,21 @@
       <span class="page-info">{{ $t('apps.totalRecords', { count: pagination.total }) }}</span>
     </div>
 
-    <div v-if="showDialog" class="dialog-overlay" @click.self="closeDialog">
-      <div class="dialog">
-        <div class="dialog-header">
-          <h3>{{ dialogTitle }}</h3>
-          <el-button @click="closeDialog">×</el-button>
-        </div>
-        <div class="dialog-body">
-          <div class="form-grid">
-            <div v-for="field in editableFields" :key="field.name" class="form-field" :class="{ 'field-full': field.type === 'textarea' || field.type === 'file' }">
-              <label class="field-label">
-                {{ field.label }}
-                <span v-if="field.required" class="required">*</span>
-              </label>
-              <FieldRenderer :field="field" :model-value="formData[field.name]" :app="app" :record-id="dialogMode === 'create' ? newRecordId : selectedRecord?.id" @update:model-value="formData[field.name] = $event" />
-            </div>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <el-button @click="closeDialog">{{ $t('common.cancel') }}</el-button>
-          <el-button type="primary" @click="saveRecord" :disabled="isSaving">{{ isSaving ? $t('common.saving') : $t('common.save') }}</el-button>
+    <el-dialog v-model="showDialog" :title="dialogTitle" width="680px" destroy-on-close @close="closeDialog">
+      <div class="form-grid">
+        <div v-for="field in editableFields" :key="field.name" class="form-field" :class="{ 'field-full': field.type === 'textarea' || field.type === 'file' }">
+          <label class="field-label">
+            {{ field.label }}
+            <span v-if="field.required" class="required">*</span>
+          </label>
+          <FieldRenderer :field="field" :model-value="formData[field.name]" :app="app" :record-id="dialogMode === 'create' ? newRecordId : selectedRecord?.id" @update:model-value="formData[field.name] = $event" />
         </div>
       </div>
-    </div>
+      <template #footer>
+        <el-button @click="closeDialog">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveRecord" :disabled="isSaving">{{ isSaving ? $t('common.saving') : $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="showDetail"
@@ -142,21 +134,13 @@
       @confirm="handleReExtractConfirm"
     />
 
-    <div v-if="showConfirm" class="dialog-overlay" @click.self="cancelConfirm">
-      <div class="dialog dialog-small">
-        <div class="dialog-header">
-          <h3>{{ $t('apps.confirmDelete') }}</h3>
-          <el-button @click="cancelConfirm">×</el-button>
-        </div>
-        <div class="dialog-body">
-          <p>{{ $t('apps.confirmDeleteMessage') }}</p>
-        </div>
-        <div class="dialog-footer">
-          <el-button @click="cancelConfirm">{{ $t('common.cancel') }}</el-button>
-          <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
-        </div>
-      </div>
-    </div>
+    <el-dialog v-model="showConfirm" :title="$t('apps.confirmDelete')" width="420px" destroy-on-close @close="cancelConfirm">
+      <p>{{ $t('apps.confirmDeleteMessage') }}</p>
+      <template #footer>
+        <el-button @click="cancelConfirm">{{ $t('common.cancel') }}</el-button>
+        <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
+      </template>
+    </el-dialog>
 
     <AppStepConfig :visible="showStepConfig" :app="app" @close="showStepConfig = false" @saved="loadRecords" />
   </div>
@@ -266,7 +250,22 @@ const editableFields = computed(() => {
     console.warn('Fields is not an array:', fields)
     return []
   }
-  return fields.filter(f => {
+
+  let config: Partial<AppConfig> = props.app.config || {}
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config) as Partial<AppConfig> } catch { config = {} }
+  }
+  const extTables = config?.extension_tables || []
+  const primaryTable = extTables.find(t => t.type === 'primary')
+  const extFields: AppField[] = (primaryTable?.fields || []).map(f => ({
+    name: f.name,
+    label: f.label || f.name,
+    type: (f.type === 'DECIMAL(15,2)' ? 'number' : f.type.startsWith('DATE') ? 'date' : 'text') as AppField['type'],
+    required: f.required,
+    _isExtension: true
+  }))
+
+  return [...extFields, ...fields].filter(f => {
     if (f.type === 'group' || f.type === 'repeating') return false
     if (dialogMode.value === 'create' && f.ai_extractable && f.type !== 'file') return false
     return true
@@ -428,7 +427,13 @@ async function viewRecord(record: MiniAppRecord) {
 function editRecord(record: MiniAppRecord) {
   dialogMode.value = 'edit'
   selectedRecord.value = record
-  formData.value = { ...record.data }
+  const data: Record<string, unknown> = { ...record.data }
+  for (const field of editableFields.value) {
+    if (field._isExtension && record[field.name] !== undefined) {
+      data[field.name] = record[field.name]
+    }
+  }
+  formData.value = data
   showDialog.value = true
 }
 
