@@ -56,6 +56,16 @@ export default {
 
     if (ocrText.length > maxLength) {
       logger.info(`[text-filter] Record ${record.id}: Text too long (${ocrText.length}), skipping filter`);
+
+      const extTables = getExtensionTables(app);
+      const contentConfig = extTables.find(t => t.type === 'content');
+      if (contentConfig && services.callExtension) {
+        await services.callExtension(contentConfig.name, 'upsert', {
+          row_id: record.id,
+          filtered_text: ocrText,
+        });
+      }
+
       return {
         success: true,
         data: {
@@ -97,6 +107,16 @@ export default {
       };
     } catch (e) {
       logger.error(`[text-filter] Record ${record.id}: LLM filter failed - ${e.message}, keeping original`);
+
+      const extTables = getExtensionTables(app);
+      const contentConfig = extTables.find(t => t.type === 'content');
+      if (contentConfig && services.callExtension) {
+        await services.callExtension(contentConfig.name, 'upsert', {
+          row_id: record.id,
+          filtered_text: ocrText,
+        });
+      }
+
       return {
         success: true,
         data: {
