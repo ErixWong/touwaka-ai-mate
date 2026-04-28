@@ -129,7 +129,41 @@ class MiniAppService {
     if (typeof config === 'string') {
       try { config = JSON.parse(config); } catch { config = {}; }
     }
+
+    // 合并 manifest 的 step_resources 默认值
+    let manifest = app.fields;
+    if (typeof manifest === 'string') {
+      try { manifest = JSON.parse(manifest); } catch { manifest = {}; }
+    }
+    
+    // 从 app 的 manifest 字段获取 step_resources（如果存在）
+    // 注意：manifest 数据分布在 app 的各个字段中，这里需要从 manifest.json 文件读取
+    const defaultStepResources = this.getDefaultStepResources(appId);
+    
+    if (defaultStepResources && config) {
+      config.step_resources = { ...defaultStepResources, ...config.step_resources };
+    } else if (defaultStepResources) {
+      config = { ...config, step_resources: defaultStepResources };
+    }
+    
     return config || {};
+  }
+
+  getDefaultStepResources(appId) {
+    // 从 manifest 文件读取默认 step_resources
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const manifestPath = path.join(process.cwd(), 'apps', appId, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const manifestContent = fs.readFileSync(manifestPath, 'utf8');
+        const manifest = JSON.parse(manifestContent);
+        return manifest.config?.step_resources || null;
+      }
+    } catch (e) {
+      // 文件不存在或解析失败，返回 null
+    }
+    return null;
   }
 
   async updateAppConfig(appId, configData) {

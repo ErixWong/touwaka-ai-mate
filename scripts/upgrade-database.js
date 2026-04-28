@@ -1039,6 +1039,20 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== app_contract_mgr_content 添加 sections 字段 ====================
+  // Issue #654: 章节结构存储
+  {
+    name: 'app_contract_mgr_content add sections column',
+    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_content', 'sections'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_content
+        ADD COLUMN sections JSON COMMENT '章节结构数组'
+      `);
+      console.log('  ✓ Added sections JSON column to app_contract_mgr_content');
+    }
+  },
+
 ];
 
 /**

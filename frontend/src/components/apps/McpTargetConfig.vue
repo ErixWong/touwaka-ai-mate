@@ -19,7 +19,7 @@
       </div>
     </div>
 
-    <div v-if="currentToolParams.length > 0 && handlerOutputs.length > 0" class="params-mapping">
+    <div v-if="!hideParamsMapping && currentToolParams.length > 0 && handlerOutputs.length > 0" class="params-mapping">
       <h5 class="mapping-title">{{ $t('apps.stepConfig.paramsMapping') }}</h5>
       <div class="mapping-grid">
         <div v-for="param in currentToolParams" :key="param.name" class="mapping-row">
@@ -60,6 +60,7 @@ const props = defineProps<{
   target?: McpResourceTarget
   mcpServers: McpServerResource[]
   handlerOutputs: HandlerOutput[]
+  hideParamsMapping?: boolean
 }>()
 
 const emit = defineEmits<{

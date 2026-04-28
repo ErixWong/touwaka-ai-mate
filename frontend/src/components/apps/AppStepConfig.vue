@@ -24,6 +24,7 @@
                     :target="getStepConfig(step.name).mcp!"
                     :mcp-servers="mcpServers"
                     :handler-outputs="getHandlerOutputs(step)"
+                    :hide-params-mapping="getStepConfig(step.name).mcp?.hide_params_mapping"
                     @update:target="getStepConfig(step.name).mcp = $event"
                     @server-change="onServerChange(step.name, $event)"
                   />
@@ -43,7 +44,7 @@
                 </template>
               </div>
 
-              <div v-if="getStepConfig(step.name).type === 'mcp' && getStepConfig(step.name).judge_model_id !== undefined" class="config-group">
+              <div v-if="getStepConfig(step.name).type === 'mcp' && ('judge_model_id' in getStepConfig(step.name) || 'judge_temperature' in getStepConfig(step.name))" class="config-group">
                 <div class="group-label">🧠 {{ $t('apps.stepConfig.judgeResource') }}</div>
                 <div class="form-field span-2">
                   <label class="field-label">{{ $t('apps.stepConfig.judgeModel') }}</label>

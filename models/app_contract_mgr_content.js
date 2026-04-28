@@ -75,6 +75,11 @@ export default class app_contract_mgr_content extends Model {
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
       comment: "更新时间"
+    },
+    sections: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "章节结构数组"
     }
   }, {
     sequelize,

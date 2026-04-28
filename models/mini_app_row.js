@@ -28,25 +28,9 @@ export default class mini_app_row extends Model {
       }
     },
     data: {
-      type: DataTypes.TEXT('long'),
+      type: DataTypes.TEXT,
       allowNull: false,
-      comment: "行数据（字段名→值的映射）",
-      get() {
-        const value = this.getDataValue('data');
-        if (!value) return {};
-        try {
-          return JSON.parse(value);
-        } catch {
-          return {};
-        }
-      },
-      set(value) {
-        if (typeof value === 'object') {
-          this.setDataValue('data', JSON.stringify(value));
-        } else {
-          this.setDataValue('data', value || '{}');
-        }
-      }
+      comment: "行数据（字段名→值的映射）"
     },
     title: {
       type: DataTypes.STRING(255),

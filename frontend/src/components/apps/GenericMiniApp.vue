@@ -98,39 +98,38 @@
       </div>
     </div>
 
-    <div v-if="showDetail" class="dialog-overlay" @click.self="closeDetail">
-      <div class="dialog dialog-large">
-        <div class="dialog-header">
-          <h3>{{ $t('apps.recordDetail') }}</h3>
-          <el-button @click="closeDetail">×</el-button>
-        </div>
-        <div class="dialog-body">
-          <el-tabs v-model="detailTab">
-            <el-tab-pane label="基础信息" name="basic">
-              <div class="detail-grid">
-                <div v-for="field in allFields" :key="field.name" class="detail-field">
-                  <label class="field-label">{{ field.label }}</label>
-                  <div class="field-value">
-                    {{ formatFieldValue(field._isExtension ? selectedRecord?.[field.name] : selectedRecord?.data?.[field.name], field) }}
-                  </div>
-                </div>
+    <el-dialog
+      v-model="showDetail"
+      :title="$t('apps.recordDetail')"
+      width="1200px"
+      top="5vh"
+      destroy-on-close
+    >
+      <el-tabs v-model="detailTab">
+        <el-tab-pane label="基础信息" name="basic">
+          <div class="detail-grid">
+            <div v-for="field in allFields" :key="field.name" class="detail-field">
+              <label class="field-label">{{ field.label }}</label>
+              <div class="field-value">
+                {{ formatFieldValue(field._isExtension ? selectedRecord?.[field.name] : selectedRecord?.data?.[field.name], field) }}
               </div>
-            </el-tab-pane>
-            <el-tab-pane label="OCR原文" name="ocr">
-              <DocumentContentViewer
-                :content-text="documentContent?.filtered_text || documentContent?.ocr_text || ''"
-                :highlights="[]"
-              />
-            </el-tab-pane>
-          </el-tabs>
-        </div>
-        <div class="dialog-footer">
-          <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
-          <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
-          <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
-        </div>
-      </div>
-    </div>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="OCR原文" name="ocr">
+          <DocumentContentViewer
+            :content-text="documentContent?.filtered_text || documentContent?.ocr_text || ''"
+            :sections="documentContent?.sections || []"
+            :highlights="[]"
+          />
+        </el-tab-pane>
+      </el-tabs>
+      <template #footer>
+        <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
+        <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
+        <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
+      </template>
+    </el-dialog>
 
     <ReExtractDialog
       :visible="showReExtract"
@@ -844,112 +843,7 @@ watch(() => props.app.id, () => {
   margin-left: 12px;
 }
 
-/* Dialog */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 24px;
-}
-
-.dialog {
-  background: var(--color-bg-primary, #fff);
-  border-radius: 12px;
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.dialog-large {
-  max-width: 1200px;
-  height: 80vh;
-}
-
-.dialog-small {
-  max-width: 400px;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border, #e0e0e0);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.btn-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--color-text-secondary, #666);
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
-
-.btn-close:hover {
-  background: var(--color-bg-secondary, #f0f0f0);
-}
-
-.dialog-body {
-  padding: 20px;
-  overflow: auto;
-  flex: 1;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-border, #e0e0e0);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-}
-
-.form-field.field-full {
-  grid-column: span 2;
-}
-
-.field-label {
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 6px;
-  color: var(--color-text-secondary, #555);
-}
-
-.required {
-  color: var(--color-danger, #e74c3c);
-  margin-left: 4px;
-}
-
+/* Detail Dialog */
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -963,34 +857,34 @@ watch(() => props.app.id, () => {
 
 .detail-field .field-value {
   padding: 8px 12px;
-  background: var(--color-bg-secondary, #f8f9fa);
-  border-radius: 4px;
-  font-size: 14px;
-  color: var(--color-text-primary, #333);
+  background: var(--el-fill-color-lighter);
+  border-radius: var(--el-border-radius-base);
+  font-size: var(--el-font-size-base);
+  color: var(--el-text-color-regular);
   min-height: 36px;
 }
 
 .btn-cancel {
   padding: 8px 20px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 6px;
-  background: var(--color-bg-primary, #fff);
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--el-font-size-base);
 }
 
 .btn-cancel:hover {
-  background: var(--color-bg-secondary, #f0f0f0);
+  background: var(--el-fill-color-light);
 }
 
 .btn-danger {
   padding: 8px 20px;
   border: none;
-  border-radius: 6px;
-  background: var(--color-danger, #e74c3c);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-color-danger);
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--el-font-size-base);
   font-weight: 500;
 }
 
