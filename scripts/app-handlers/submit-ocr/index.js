@@ -1,12 +1,13 @@
 import path from 'path';
+import fs from 'fs/promises';
 import logger from '../../../lib/logger.js';
 
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
-  mcp: { 
-    server: 'markitdown', 
-    tool: 'submit_conversion_task', 
-    params_mapping: { file_path: 'file.path' }  // 传路径，驻留进程内转base64
+  mcp: {
+    server: 'markitdown',
+    tool: 'submit_conversion_task',
+    params_mapping: { content: 'file.base64', filename: 'file.name' }
   },
 };
 
@@ -62,18 +63,30 @@ export default {
 
     const resConfig = getResourceConfig(app, stateName || 'pending_ocr');
     const mcp = resConfig.mcp || {};
-    
+
     logger.info(`[submit-ocr] Record ${record.id}: mcp.server=${mcp.server}, mcp.tool=${mcp.tool}`);
 
-    // 只传文件路径和元信息，base64编码在驻留进程内完成
+    let fileBase64;
+    try {
+      const buffer = await fs.readFile(absolutePath);
+      fileBase64 = buffer.toString('base64');
+      logger.info(`[submit-ocr] Record ${record.id}: File read ${buffer.length} bytes, base64 length ${fileBase64.length}`);
+    } catch (e) {
+      logger.error(`[submit-ocr] Record ${record.id}: Failed to read file: ${e.message}`);
+      return { success: false, error: 'Failed to read file: ' + e.message };
+    }
+
+    const fileName = file.attachment.file_name || path.basename(absolutePath);
+
     const valueMap = {
-      'file.path': absolutePath,
+      'file.base64': fileBase64,
+      'file.name': fileName,
       'file.mime_type': file.attachment.mime_type || 'application/octet-stream',
-      'file.name': file.attachment.file_name || '',
+      'file.path': absolutePath,
     };
 
     const params = resolveParams(mcp.params_mapping, valueMap);
-    logger.info(`[submit-ocr] Record ${record.id}: Resolved params keys=${Object.keys(params).join(',')}, file_path=${params.file_path}`);
+    logger.info(`[submit-ocr] Record ${record.id}: Resolved params keys=${Object.keys(params).join(',')}`);
     logger.info(`[submit-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool}`);
 
     try {

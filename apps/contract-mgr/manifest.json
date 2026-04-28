@@ -121,7 +121,7 @@
     "step_resources": {
       "pending_ocr": {
         "type": "mcp",
-        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "file_path": "file.path" } }
+        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "content": "file.base64", "filename": "file.name" } }
       },
       "ocr_submitted": {
         "type": "mcp",
