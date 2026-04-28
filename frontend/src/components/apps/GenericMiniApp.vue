@@ -134,14 +134,6 @@
       @confirm="handleReExtractConfirm"
     />
 
-    <el-dialog v-model="showConfirm" :title="$t('apps.confirmDelete')" width="420px" destroy-on-close @close="cancelConfirm">
-      <p>{{ $t('apps.confirmDeleteMessage') }}</p>
-      <template #footer>
-        <el-button @click="cancelConfirm">{{ $t('common.cancel') }}</el-button>
-        <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
-      </template>
-    </el-dialog>
-
     <AppStepConfig :visible="showStepConfig" :app="app" @close="showStepConfig = false" @saved="loadRecords" />
   </div>
 </template>
@@ -150,6 +142,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { ElMessageBox } from 'element-plus'
 import { useToastStore } from '@/stores/toast'
 import {
   getRecords,
@@ -183,10 +176,8 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 const showDialog = ref(false)
 const showDetail = ref(false)
-const showConfirm = ref(false)
 const showStepConfig = ref(false)
 const showReExtract = ref(false)
-const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
 const detailTab = ref('basic')
 const documentContent = ref<DocumentContent | null>(null)
@@ -386,19 +377,11 @@ function resetFilters() {
 async function openCreateDialog() {
   dialogMode.value = 'create'
   newRecordId.value = await newID(20)
-  // 初始化所有字段的默认值
-    const initialData: Record<string, unknown> = {}
-  let fields = props.app.fields || []
-  // 处理后端返回的 JSON 字符串
-  if (typeof fields === 'string') {
-    try {
-      fields = JSON.parse(fields)
-    } catch {
-      fields = []
-    }
-  }
-  for (const field of fields) {
-    if (field.type === 'file') {
+  const initialData: Record<string, unknown> = {}
+  for (const field of editableFields.value) {
+    if (field._isExtension) {
+      initialData[field.name] = field.type === 'number' ? null : ''
+    } else if (field.type === 'file') {
       initialData[field.name] = null
     } else if (field.type === 'select') {
       initialData[field.name] = field.default || (field.options?.[0] || '')
@@ -512,26 +495,22 @@ async function saveRecord() {
 }
 
 async function handleDelete(record: MiniAppRecord) {
-  confirmTarget.value = record
-  showConfirm.value = true
-}
-
-function cancelConfirm() {
-  showConfirm.value = false
-  confirmTarget.value = null
-}
-
-async function confirmDelete() {
-  if (!confirmTarget.value) return
   try {
-    await deleteRecord(props.app.id, confirmTarget.value.id)
+    await ElMessageBox.confirm(
+      t('apps.confirmDeleteMessage'),
+      t('apps.confirmDelete'),
+      { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
+    )
+  } catch {
+    return
+  }
+  try {
+    await deleteRecord(props.app.id, record.id)
     toast.success(t('apps.deleteSuccess'))
     await loadRecords()
   } catch (error) {
     console.error('Failed to delete record:', error)
     toast.error(t('apps.deleteFailed'))
-  } finally {
-    cancelConfirm()
   }
 }
 
@@ -549,7 +528,6 @@ watch(() => props.app.id, () => {
   background: var(--color-bg-primary, #fff);
 }
 
-/* Header */
 .app-header {
   display: flex;
   align-items: center;
@@ -572,22 +550,6 @@ watch(() => props.app.id, () => {
   gap: 12px;
 }
 
-.btn-back {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--color-text-secondary, #666);
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.btn-back:hover {
-  color: var(--color-primary, #4a90d9);
-}
-
 .app-icon {
   font-size: 28px;
 }
@@ -599,34 +561,6 @@ watch(() => props.app.id, () => {
   color: var(--color-text-primary, #333);
 }
 
-.btn-primary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  background: var(--color-primary, #4a90d9);
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary .icon {
-  font-size: 16px;
-}
-
-/* Filter Panel */
 .filter-panel {
   padding: 16px 24px;
   border-bottom: 1px solid var(--color-border, #e0e0e0);
@@ -653,40 +587,12 @@ watch(() => props.app.id, () => {
   white-space: nowrap;
 }
 
-.filter-item select,
-.filter-item input {
-  padding: 6px 12px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  font-size: 14px;
-  background: var(--color-bg-primary, #fff);
-  min-width: 120px;
-}
-
-.filter-item input {
-  min-width: 200px;
-}
-
 .filter-actions {
   display: flex;
   gap: 8px;
   margin-left: auto;
 }
 
-.btn-reset {
-  padding: 6px 16px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  background: var(--color-bg-primary, #fff);
-}
-
-.btn-reset:hover {
-  opacity: 0.9;
-}
-
-/* List Content */
 .list-content {
   flex: 1;
   overflow: auto;
@@ -715,7 +621,6 @@ watch(() => props.app.id, () => {
   font-size: 14px;
 }
 
-/* Table */
 .record-table {
   width: 100%;
   border-collapse: collapse;
@@ -754,33 +659,6 @@ watch(() => props.app.id, () => {
   white-space: nowrap;
 }
 
-.btn-action {
-  padding: 4px 10px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 13px;
-  margin-right: 6px;
-  color: var(--color-text-secondary, #666);
-}
-
-.btn-action:hover {
-  border-color: var(--color-primary, #4a90d9);
-  color: var(--color-primary, #4a90d9);
-}
-
-.btn-action.btn-danger {
-  color: var(--color-danger, #e74c3c);
-  border-color: var(--color-danger, #e74c3c);
-}
-
-.btn-action.btn-danger:hover {
-  background: var(--color-danger, #e74c3c);
-  color: #fff;
-}
-
-/* Pagination */
 .pagination {
   display: flex;
   align-items: center;
@@ -792,54 +670,9 @@ watch(() => props.app.id, () => {
   flex-shrink: 0;
 }
 
-.page-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text-secondary, #666);
-}
-
-.page-btn:hover:not(:disabled) {
-  border-color: var(--color-primary, #4a90d9);
-  color: var(--color-primary, #4a90d9);
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .page-numbers {
   display: flex;
   gap: 4px;
-}
-
-.page-num {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: 4px;
-  background: var(--color-bg-primary, #fff);
-  cursor: pointer;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.page-num:hover {
-  border-color: var(--color-primary, #4a90d9);
-  color: var(--color-primary, #4a90d9);
-}
-
-.page-num.active {
-  background: var(--color-primary, #4a90d9);
-  color: #fff;
-  border-color: var(--color-primary, #4a90d9);
 }
 
 .page-info {
@@ -848,7 +681,6 @@ watch(() => props.app.id, () => {
   margin-left: 12px;
 }
 
-/* Detail Dialog */
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -867,33 +699,5 @@ watch(() => props.app.id, () => {
   font-size: var(--el-font-size-base);
   color: var(--el-text-color-regular);
   min-height: 36px;
-}
-
-.btn-cancel {
-  padding: 8px 20px;
-  border: 1px solid var(--el-border-color);
-  border-radius: var(--el-border-radius-base);
-  background: var(--el-bg-color);
-  cursor: pointer;
-  font-size: var(--el-font-size-base);
-}
-
-.btn-cancel:hover {
-  background: var(--el-fill-color-light);
-}
-
-.btn-danger {
-  padding: 8px 20px;
-  border: none;
-  border-radius: var(--el-border-radius-base);
-  background: var(--el-color-danger);
-  color: #fff;
-  cursor: pointer;
-  font-size: var(--el-font-size-base);
-  font-weight: 500;
-}
-
-.btn-danger:hover {
-  opacity: 0.9;
 }
 </style>
