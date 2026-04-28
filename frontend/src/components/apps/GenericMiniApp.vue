@@ -8,6 +8,16 @@
       </div>
       <div class="header-right">
         <el-button @click="showStepConfig = true">⚙ {{ $t('apps.stepConfig.title') }}</el-button>
+        <el-button
+          type="warning"
+          :disabled="selectedRows.length !== 2"
+          @click="openCompare"
+        >
+          ⚖ {{ $t('apps.compare.title') }}
+          <span v-if="selectedRows.length > 0 && selectedRows.length !== 2" class="compare-hint">
+            ({{ $t('apps.compare.selectTwo') }})
+          </span>
+        </el-button>
         <el-button v-if="canCreate" type="primary" @click="openCreateDialog">
           <span class="icon">+</span>
           {{ $t('common.create') }}
@@ -42,13 +52,19 @@
       <table v-else class="record-table">
         <thead>
           <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" :checked="isAllSelected" :indeterminate.prop="isPartialSelected" @change="toggleAll" />
+            </th>
             <th v-for="col in listColumns" :key="col.name">{{ col.label }}</th>
             <th>{{ $t('apps.status') }}</th>
             <th>{{ $t('apps.actions') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="record in records" :key="record.id">
+          <tr v-for="record in records" :key="record.id" :class="{ 'row-selected': isSelected(record) }">
+            <td class="checkbox-col">
+              <input type="checkbox" :checked="isSelected(record)" @change="toggleRow(record)" />
+            </td>
             <td v-for="col in listColumns" :key="col.name">
               {{ formatFieldValue(col._isExtension ? record[col.name] : record.data?.[col.name], col) }}
             </td>
@@ -134,6 +150,13 @@
       @confirm="handleReExtractConfirm"
     />
 
+    <ContractCompareDialog
+      :visible="showCompare"
+      :app="app"
+      :records="selectedRows"
+      @close="closeCompare"
+    />
+
     <el-dialog v-model="showConfirm" :title="$t('apps.confirmDelete')" width="420px" destroy-on-close>
       <p>{{ $t('apps.confirmDeleteMessage') }}</p>
       <template #footer>
@@ -169,6 +192,7 @@ import FieldRenderer from './FieldRenderer.vue'
 import AppStepConfig from './AppStepConfig.vue'
 import DocumentContentViewer from './DocumentContentViewer.vue'
 import ReExtractDialog from './ReExtractDialog.vue'
+import ContractCompareDialog from './ContractCompareDialog.vue'
 
 const props = defineProps<{ app: MiniApp }>()
 const router = useRouter()
@@ -191,6 +215,8 @@ const dialogMode = ref<'create' | 'edit'>('create')
 const detailTab = ref('basic')
 const documentContent = ref<DocumentContent | null>(null)
 const newRecordId = ref('')
+const selectedRows = ref<MiniAppRecord[]>([])
+const showCompare = ref(false)
 
 const pagination = ref({
   page: 1,
@@ -524,6 +550,46 @@ async function confirmDelete() {
   }
 }
 
+function isSelected(record: MiniAppRecord): boolean {
+  return selectedRows.value.some(r => r.id === record.id)
+}
+
+function toggleRow(record: MiniAppRecord) {
+  const idx = selectedRows.value.findIndex(r => r.id === record.id)
+  if (idx >= 0) {
+    selectedRows.value.splice(idx, 1)
+  } else {
+    if (selectedRows.value.length < 2) {
+      selectedRows.value.push(record)
+    }
+  }
+}
+
+function toggleAll() {
+  if (isAllSelected.value) {
+    selectedRows.value = []
+  } else {
+    selectedRows.value = records.value.slice(0, 2)
+  }
+}
+
+const isAllSelected = computed(() => {
+  return records.value.length > 0 && records.value.length <= 2 && selectedRows.value.length === records.value.length
+})
+
+const isPartialSelected = computed(() => {
+  return selectedRows.value.length > 0 && !isAllSelected.value
+})
+
+function openCompare() {
+  if (selectedRows.value.length !== 2) return
+  showCompare.value = true
+}
+
+function closeCompare() {
+  showCompare.value = false
+}
+
 // Watch
 watch(() => props.app.id, () => {
   loadRecords()
@@ -661,6 +727,15 @@ watch(() => props.app.id, () => {
   background: var(--color-bg-secondary, #f8f9fa);
 }
 
+.record-table tbody tr.row-selected {
+  background: var(--el-color-warning-light-9, #fdf6ec);
+}
+
+.checkbox-col {
+  width: 40px;
+  text-align: center;
+}
+
 .record-table td {
   color: var(--color-text-primary, #333);
 }
@@ -689,6 +764,12 @@ watch(() => props.app.id, () => {
   font-size: 13px;
   color: var(--color-text-secondary, #666);
   margin-left: 12px;
+}
+
+.compare-hint {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-left: 4px;
 }
 
 .detail-grid {

@@ -6,12 +6,14 @@ import {
   buildPaginatedResponse,
 } from '../../lib/query-builder.js';
 import ExtensionTableService from './extension-table.service.js';
+import InternalLLMService from '../../lib/internal-llm-service.js';
 
 class MiniAppService {
   constructor(db) {
     this.db = db;
     this.models = {};
     this.extensionService = new ExtensionTableService(db);
+    this.llmService = new InternalLLMService(db);
   }
 
   ensureModels() {
@@ -755,6 +757,244 @@ class MiniAppService {
       order: [['created_at', 'DESC']],
       limit,
     });
+  }
+
+  // ==================== Compare ====================
+
+  async compareRecords(appId, rowIdA, rowIdB, options = {}) {
+    this.ensureModels();
+
+    logger.info(`[compareRecords] Starting compare: ${rowIdA} vs ${rowIdB}`);
+
+    const [contentA, contentB] = await Promise.all([
+      this._loadRecordContent(appId, rowIdA),
+      this._loadRecordContent(appId, rowIdB),
+    ]);
+
+    if (!contentA || !contentB) {
+      throw new Error('One or both records have no content');
+    }
+
+    logger.info(`[compareRecords] Loaded content: A=${contentA.sections.length} sections, B=${contentB.sections.length} sections`);
+
+    const matchedSections = this._matchSections(contentA.sections, contentB.sections);
+
+    logger.info(`[compareRecords] Matched sections: ${matchedSections.filter(m => m.type === 'matched').length} matched, ${matchedSections.filter(m => m.type === 'added').length} added, ${matchedSections.filter(m => m.type === 'removed').length} removed`);
+
+    const appConfig = await this.getAppConfig(appId);
+    const comparePrompt = appConfig?.prompts?.compare || this._defaultComparePrompt();
+
+    const modelId = options.model_id || null;
+    const temperature = options.temperature ?? 0.3;
+    const concurrency = Math.max(1, Math.min(options.concurrency || 3, 10));
+
+    logger.info(`[compareRecords] Model: ${modelId || 'default'}, Temperature: ${temperature}, Concurrency: ${concurrency}`);
+
+    const matchedItems = matchedSections.filter(m => m.type === 'matched');
+    const linesA = contentA.filtered_text.split('\n');
+    const linesB = contentB.filtered_text.split('\n');
+
+    const matchedResults = await this._runConcurrent(matchedItems, concurrency, async (match, index) => {
+      const textA = linesA.slice(match.sectionA.start_line, match.sectionA.end_line).join('\n');
+      const textB = linesB.slice(match.sectionB.start_line, match.sectionB.end_line).join('\n');
+
+      let result;
+      try {
+        logger.info(`[compareRecords] Comparing section ${index + 1}/${matchedItems.length}: ${match.sectionA.title} (textA=${textA.length} chars, textB=${textB.length} chars)`);
+        const startTime = Date.now();
+
+        result = await this.llmService.judge(
+          comparePrompt,
+          JSON.stringify({
+            section_title: match.sectionA.title,
+            text_a: textA,
+            text_b: textB,
+          }),
+          { modelId, temperature, defaultValue: { change_type: 'error', summary: 'LLM call failed' } }
+        );
+
+        logger.info(`[compareRecords] Section done: ${match.sectionA.title} -> ${result.change_type} (${Date.now() - startTime}ms)`);
+      } catch (e) {
+        logger.error(`[compareRecords] LLM failed for section ${match.sectionA.title}: ${e.message}`);
+        result = { change_type: 'error', summary: e.message };
+      }
+
+      return {
+        type: 'matched',
+        section_id_a: match.sectionA.id,
+        section_id_b: match.sectionB.id,
+        title: match.sectionA.title,
+        change_type: result.change_type || 'modified',
+        summary: result.summary || '',
+        key_changes: result.key_changes || [],
+        risk_level: result.risk_level || 'low',
+      };
+    });
+
+    const results = [...matchedResults];
+
+    for (const match of matchedSections.filter(m => m.type === 'added')) {
+      const textB = linesB.slice(match.section.start_line, match.section.end_line).join('\n');
+      results.push({
+        type: 'added',
+        section_id: match.section.id,
+        title: match.section.title,
+        change_type: 'added',
+        summary: 'Added in target contract',
+        content_preview: textB.substring(0, 200),
+      });
+    }
+
+    for (const match of matchedSections.filter(m => m.type === 'removed')) {
+      const textA = linesA.slice(match.section.start_line, match.section.end_line).join('\n');
+      results.push({
+        type: 'removed',
+        section_id: match.section.id,
+        title: match.section.title,
+        change_type: 'removed',
+        summary: 'Removed from base contract',
+        content_preview: textA.substring(0, 200),
+      });
+    }
+
+    const summary = {
+      total: results.length,
+      identical: results.filter(r => r.change_type === 'identical').length,
+      modified: results.filter(r => r.change_type === 'modified' || r.change_type === 'semantic_change').length,
+      added: results.filter(r => r.change_type === 'added').length,
+      removed: results.filter(r => r.change_type === 'removed').length,
+    };
+
+    logger.info(`[compareRecords] Complete: ${summary.total} sections, ${summary.identical} identical, ${summary.modified} modified, ${summary.added} added, ${summary.removed} removed`);
+
+    return { results, summary };
+  }
+
+  async _loadRecordContent(appId, rowId) {
+    const extConfigs = await this.extensionService.getExtensionConfigs(appId);
+    const contentConfig = extConfigs?.find(c => c.type === 'content');
+
+    if (!contentConfig) return null;
+
+    const content = await this.extensionService.readExtensionRow(
+      appId,
+      contentConfig.name,
+      rowId,
+      ['filtered_text', 'sections']
+    );
+
+    if (!content || !content.filtered_text) return null;
+
+    let sections = [];
+    if (content.sections) {
+      try {
+        sections = typeof content.sections === 'string' ? JSON.parse(content.sections) : content.sections;
+      } catch {
+        sections = [];
+      }
+    }
+
+    return { filtered_text: content.filtered_text, sections };
+  }
+
+  _matchSections(sectionsA, sectionsB) {
+    const matches = [];
+    const usedA = new Set();
+    const usedB = new Set();
+
+    for (const secA of sectionsA) {
+      let bestMatch = null;
+      let bestScore = 0;
+
+      for (const secB of sectionsB) {
+        if (usedB.has(secB.id)) continue;
+        const score = this._titleSimilarity(secA.title, secB.title);
+        if (score > bestScore && score > 0.4) {
+          bestScore = score;
+          bestMatch = secB;
+        }
+      }
+
+      if (bestMatch) {
+        matches.push({ type: 'matched', sectionA: secA, sectionB: bestMatch, score: bestScore });
+        usedA.add(secA.id);
+        usedB.add(bestMatch.id);
+      }
+    }
+
+    for (const secA of sectionsA) {
+      if (!usedA.has(secA.id)) {
+        matches.push({ type: 'removed', section: secA });
+      }
+    }
+
+    for (const secB of sectionsB) {
+      if (!usedB.has(secB.id)) {
+        matches.push({ type: 'added', section: secB });
+      }
+    }
+
+    return matches;
+  }
+
+  _titleSimilarity(a, b) {
+    if (!a || !b) return 0;
+    const sa = a.trim().toLowerCase();
+    const sb = b.trim().toLowerCase();
+    if (sa === sb) return 1;
+
+    const numA = sa.match(/[\d]+/);
+    const numB = sb.match(/[\d]+/);
+    if (numA && numB && numA[0] === numB[0]) return 0.8;
+
+    const keywordsA = sa.split(/[\s,，、第条第款项]/).filter(Boolean);
+    const keywordsB = sb.split(/[\s,，、第条第款项]/).filter(Boolean);
+    const common = keywordsA.filter(w => keywordsB.includes(w));
+    if (keywordsA.length === 0 || keywordsB.length === 0) return 0;
+    return common.length / Math.max(keywordsA.length, keywordsB.length);
+  }
+
+  async _runConcurrent(items, concurrency, handler) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+      while (nextIndex < items.length) {
+        const idx = nextIndex++;
+        results[idx] = await handler(items[idx], idx);
+      }
+    }
+
+    const workers = [];
+    for (let i = 0; i < Math.min(concurrency, items.length); i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+    return results;
+  }
+
+  _defaultComparePrompt() {
+    return `你是一个合同对比分析专家。请对比以下两个合同章节的文本，分析语义差异。
+
+输入是一个 JSON 对象，包含：
+- section_title: 章节标题
+- text_a: 基准合同（A）的章节文本
+- text_b: 对比合同（B）的章节文本
+
+请严格返回 JSON 格式：
+{
+  "change_type": "identical | modified | semantic_change",
+  "summary": "一句话概括差异，如果一致则写'两份合同此章节内容一致'",
+  "key_changes": [
+    { "description": "具体差异描述", "old": "A中的原文片段", "new": "B中的原文片段" }
+  ],
+  "risk_level": "low | medium | high"
+}
+
+规则：
+- change_type: identical=完全一致, modified=有文字修改, semantic_change=语义发生了变化
+- risk_level: 仅在有实质性风险变更时标 high，一般修改标 medium，无风险标 low
+- key_changes: 仅在有差异时列出，一致时为空数组`;
   }
 
   // ==================== Helpers ====================

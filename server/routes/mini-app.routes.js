@@ -58,5 +58,9 @@ export default (controller) => {
 
   router.get('/api/mini-apps/:appId/content/:rowId', authenticate(), (ctx) => controller.getDocumentContent(ctx));
 
+  // ==================== Compare ====================
+
+  router.post('/api/mini-apps/:appId/compare', authenticate(), requireAdmin(), (ctx) => controller.compareRecords(ctx));
+
   return router;
 };
