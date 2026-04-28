@@ -126,27 +126,18 @@ function trimContextSummary(summary) {
   if (!summary) return { key_terms: {}, points: [] };
 
   const points = summary.points || [];
-  let totalLen = JSON.stringify(summary).length;
+  const keyTerms = summary.key_terms || {};
   const trimmedPoints = [];
+  let result = { key_terms: keyTerms, points: trimmedPoints };
 
   for (const point of points) {
-    if (totalLen <= CONTEXT_SUMMARY_MAX_LENGTH) {
+    const candidate = { key_terms: keyTerms, points: [...trimmedPoints, point] };
+    if (JSON.stringify(candidate).length <= CONTEXT_SUMMARY_MAX_LENGTH) {
       trimmedPoints.push(point);
-    } else {
-      break;
     }
-    totalLen -= 0;
   }
 
-  let result = { key_terms: summary.key_terms || {}, points: trimmedPoints };
-  let resultStr = JSON.stringify(result);
-  while (resultStr.length > CONTEXT_SUMMARY_MAX_LENGTH && trimmedPoints.length > 0) {
-    trimmedPoints.pop();
-    result = { key_terms: summary.key_terms || {}, points: trimmedPoints };
-    resultStr = JSON.stringify(result);
-  }
-
-  return result;
+  return { key_terms: keyTerms, points: trimmedPoints };
 }
 
 async function filterWithSlidingWindow(services, filterPrompt, filterConfig, ocrText) {
@@ -158,16 +149,30 @@ async function filterWithSlidingWindow(services, filterPrompt, filterConfig, ocr
   let contextSummary = { key_terms: {}, points: [] };
 
   for (let i = 0; i < chunks.length; i++) {
-    const chunkInput = carriedOver + (carriedOver ? '\n\n' : '') + chunks[i];
+    let nextChunk = chunks[i];
+    if (carriedOver.length + nextChunk.length > CHUNK_MAX_LENGTH * 1.5) {
+      const allowLen = Math.floor(CHUNK_MAX_LENGTH * 1.5) - carriedOver.length;
+      logger.warn(`[text-filter] Chunk ${i + 1}: carried_over (${carriedOver.length}) + chunk (${nextChunk.length}) exceeds 1.5x limit, truncating chunk to ${allowLen}`);
+      allProcessed.push(nextChunk.slice(0, Math.max(0, CHUNK_MAX_LENGTH - carriedOver.length)));
+      nextChunk = nextChunk.slice(Math.max(0, CHUNK_MAX_LENGTH - carriedOver.length));
+    }
+    const chunkInput = carriedOver + (carriedOver ? '\n\n' : '') + nextChunk;
     logger.info(`[text-filter] Processing chunk ${i + 1}/${chunks.length}, input length=${chunkInput.length}`);
 
-    const result = await filterSingleChunk(services, filterPrompt, filterConfig, chunkInput, contextSummary);
+    try {
+      const result = await filterSingleChunk(services, filterPrompt, filterConfig, chunkInput, contextSummary);
 
-    allProcessed.push(result.processed_part);
-    carriedOver = result.carried_over || '';
-    contextSummary = trimContextSummary(result.context_summary);
+      allProcessed.push(result.processed_part);
+      carriedOver = result.carried_over || '';
+      contextSummary = trimContextSummary(result.context_summary);
 
-    logger.info(`[text-filter] Chunk ${i + 1} done, processed=${result.processed_part.length}, carried_over=${carriedOver.length}`);
+      logger.info(`[text-filter] Chunk ${i + 1} done, processed=${result.processed_part.length}, carried_over=${carriedOver.length}`);
+    } catch (chunkErr) {
+      logger.error(`[text-filter] Chunk ${i + 1} failed: ${chunkErr.message}, appending original text`);
+      allProcessed.push(chunkInput);
+      carriedOver = '';
+      contextSummary = { key_terms: {}, points: [] };
+    }
   }
 
   if (carriedOver) {
