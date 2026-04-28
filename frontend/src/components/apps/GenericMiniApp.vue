@@ -134,6 +134,14 @@
       @confirm="handleReExtractConfirm"
     />
 
+    <el-dialog v-model="showConfirm" :title="$t('apps.confirmDelete')" width="420px" destroy-on-close>
+      <p>{{ $t('apps.confirmDeleteMessage') }}</p>
+      <template #footer>
+        <el-button @click="showConfirm = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="danger" @click="confirmDelete">{{ $t('common.delete') }}</el-button>
+      </template>
+    </el-dialog>
+
     <AppStepConfig :visible="showStepConfig" :app="app" @close="showStepConfig = false" @saved="loadRecords" />
   </div>
 </template>
@@ -142,7 +150,6 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessageBox } from 'element-plus'
 import { useToastStore } from '@/stores/toast'
 import {
   getRecords,
@@ -176,8 +183,10 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 const showDialog = ref(false)
 const showDetail = ref(false)
+const showConfirm = ref(false)
 const showStepConfig = ref(false)
 const showReExtract = ref(false)
+const confirmTarget = ref<MiniAppRecord | null>(null)
 const dialogMode = ref<'create' | 'edit'>('create')
 const detailTab = ref('basic')
 const documentContent = ref<DocumentContent | null>(null)
@@ -495,22 +504,22 @@ async function saveRecord() {
 }
 
 async function handleDelete(record: MiniAppRecord) {
+  confirmTarget.value = record
+  showConfirm.value = true
+}
+
+async function confirmDelete() {
+  if (!confirmTarget.value) return
   try {
-    await ElMessageBox.confirm(
-      t('apps.confirmDeleteMessage'),
-      t('apps.confirmDelete'),
-      { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
-    )
-  } catch {
-    return
-  }
-  try {
-    await deleteRecord(props.app.id, record.id)
+    await deleteRecord(props.app.id, confirmTarget.value.id)
     toast.success(t('apps.deleteSuccess'))
     await loadRecords()
   } catch (error) {
     console.error('Failed to delete record:', error)
     toast.error(t('apps.deleteFailed'))
+  } finally {
+    showConfirm.value = false
+    confirmTarget.value = null
   }
 }
 
