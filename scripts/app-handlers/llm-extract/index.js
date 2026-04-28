@@ -161,8 +161,18 @@ ${exampleJson}
 
       const cleanMetadata = {};
       for (const field of allFields) {
-        if (metadata[field.name] !== undefined) {
-          cleanMetadata[field.name] = metadata[field.name];
+        const value = metadata[field.name];
+        if (value === undefined || value === null || value === '') continue;
+        if (field.type === 'number') {
+          const num = Number(String(value).replace(/[,，]/g, ''));
+          if (isNaN(num)) continue;
+          cleanMetadata[field.name] = num;
+        } else if (field.type === 'date') {
+          const dateStr = String(value).replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '');
+          if (!/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) continue;
+          cleanMetadata[field.name] = dateStr;
+        } else {
+          cleanMetadata[field.name] = value;
         }
       }
 
