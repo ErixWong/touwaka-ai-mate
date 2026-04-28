@@ -37,10 +37,18 @@ const DEFAULT_SETTINGS = {
     max_rounds: 20,         // 最大工具调用轮数
   },
   registration: {
-    allow_self_registration: true,    // 是否允许自主注册
-    default_invitation_quota: 10,     // 默认邀请配额
-    default_invitation_max_uses: 5,   // 默认邀请码最大使用次数
-    invitation_expiry_days: 30,       // 邀请码有效期（天）
+    allow_self_registration: false,    // 是否允许自主注册
+    default_invitation_quota: 1,       // 默认邀请配额
+    default_invitation_max_uses: 5,    // 默认邀请码最大使用次数
+    invitation_expiry_days: 0,         // 邀请码有效期（天）
+  },
+  app: {
+    clock_interval: 30,                // AppClock 轮询间隔（秒）
+    batch_size: 10,                    // 每批处理记录数量
+    max_concurrency: 5,                // 最大并发处理数
+    text_filter_max_length: 50000,     // 文本过滤最大长度（字符）
+    attachment_base_path: './data/attachments', // 附件存储路径
+    max_upload_size: 50,               // 附件上传大小限制（MB）
   },
 };
 
