@@ -267,7 +267,10 @@ const editableFields = computed(() => {
 
   return [...extFields, ...fields].filter(f => {
     if (f.type === 'group' || f.type === 'repeating') return false
-    if (dialogMode.value === 'create' && f.ai_extractable && f.type !== 'file') return false
+    if (dialogMode.value === 'create') {
+      if (f.type === 'file') return true
+      if (f.ai_extractable || f._isExtension) return false
+    }
     return true
   })
 })
@@ -388,9 +391,7 @@ async function openCreateDialog() {
   newRecordId.value = await newID(20)
   const initialData: Record<string, unknown> = {}
   for (const field of editableFields.value) {
-    if (field._isExtension) {
-      initialData[field.name] = field.type === 'number' ? null : ''
-    } else if (field.type === 'file') {
+    if (field.type === 'file') {
       initialData[field.name] = null
     } else if (field.type === 'select') {
       initialData[field.name] = field.default || (field.options?.[0] || '')
