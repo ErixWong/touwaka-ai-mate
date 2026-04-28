@@ -1,6 +1,15 @@
 import logger from '../../../lib/logger.js';
 
+export const availableOutputs = [
+  { key: 'invoice_number', label: '发票号码', type: 'string' },
+  { key: 'invoice_date', label: '开票日期', type: 'string' },
+  { key: 'total_amount', label: '合计金额', type: 'number' },
+  { key: 'seller_name', label: '销售方名称', type: 'string' },
+  { key: 'buyer_name', label: '购买方名称', type: 'string' },
+];
+
 export default {
+  availableOutputs,
   async process(context) {
     const { record, files, services } = context;
 

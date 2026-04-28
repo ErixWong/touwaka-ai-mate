@@ -118,11 +118,25 @@
     "batch_enabled": true,
     "batch_limit": 50,
     "step_resources": {
+      "pending_ocr": {
+        "type": "mcp",
+        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "file_path": "file.path" } }
+      },
       "ocr_submitted": {
         "type": "mcp",
         "mcp": { "server": "markitdown", "tool": "get_task" },
         "judge_model_id": "mnclgg05y3n90jfaa1qc",
         "judge_temperature": 0.1
+      },
+      "pending_filter": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      },
+      "pending_extract": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
       }
     }
   },

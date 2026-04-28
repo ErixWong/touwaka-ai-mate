@@ -170,7 +170,7 @@ ${exampleJson}
 
       const contentConfig = extTables.find(t => t.type === 'content');
       if (contentConfig && services.callExtension) {
-        logger.info(`[llm-extract] Record ${record.id}: Saving to extension table ${contentConfig.name}`);
+        logger.info(`[llm-extract] Record ${record.id}: Upserting to extension table ${contentConfig.name}`);
         let extractJsonStr;
         try {
           extractJsonStr = JSON.stringify(cleanMetadata);
@@ -178,13 +178,28 @@ ${exampleJson}
           extractJsonStr = '{}';
         }
         
-        await services.callExtension(contentConfig.name, 'update', {
+        await services.callExtension(contentConfig.name, 'upsert', {
           row_id: record.id,
           extract_prompt: promptBase,
           extract_json: extractJsonStr,
           extract_model: extractConfig.model_id || 'unknown',
-          extract_at: new Date().toISOString()
+          extract_at: new Date()
         });
+      }
+
+      if (primaryConfig && services.callExtension) {
+        const extData = { row_id: record.id };
+        for (const f of primaryConfig.fields) {
+          const key = f.source || f.name;
+          if (cleanMetadata[key] !== undefined) {
+            extData[f.name] = cleanMetadata[key];
+          }
+        }
+        
+        if (Object.keys(extData).length > 1) {
+          logger.info(`[llm-extract] Record ${record.id}: Upserting to primary table ${primaryConfig.name}`);
+          await services.callExtension(primaryConfig.name, 'upsert', extData);
+        }
       }
 
       logger.info(`[llm-extract] Record ${record.id}: Extraction complete`);

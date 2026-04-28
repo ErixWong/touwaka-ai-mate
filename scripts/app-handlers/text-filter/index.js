@@ -6,10 +6,6 @@ const DEFAULT_FILTER_CONFIG = {
   temperature: 0.3,
 };
 
-export const availableOutputs = [
-  { key: 'text', label: 'OCR原文', type: 'string' },
-];
-
 function getFilterConfig(app, stateName) {
   let config = app?.config;
   if (typeof config === 'string') {
@@ -17,6 +13,18 @@ function getFilterConfig(app, stateName) {
   }
   return config?.step_resources?.[stateName] || config?.step_resources?.pending_filter || DEFAULT_FILTER_CONFIG;
 }
+
+function getExtensionTables(app) {
+  let config = app?.config || app?.manifest;
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config); } catch { config = {}; }
+  }
+  return config?.extension_tables || [];
+}
+
+export const availableOutputs = [
+  { key: 'text', label: 'OCR原文', type: 'string' },
+];
 
 function getFilterPrompt(app) {
   let config = app?.config;
@@ -69,7 +77,17 @@ export default {
 
       const filteredText = response.text || ocrText;
       logger.info(`[text-filter] Record ${record.id}: Filter complete, result length=${filteredText.length}`);
-
+      
+      const extTables = getExtensionTables(app);
+      const contentConfig = extTables.find(t => t.type === 'content');
+      if (contentConfig && services.callExtension) {
+        logger.info(`[text-filter] Record ${record.id}: Upserting filtered_text to ${contentConfig.name}`);
+        await services.callExtension(contentConfig.name, 'upsert', {
+          row_id: record.id,
+          filtered_text: filteredText,
+        });
+      }
+      
       return {
         success: true,
         data: {

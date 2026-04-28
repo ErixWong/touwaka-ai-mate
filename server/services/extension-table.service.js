@@ -27,6 +27,8 @@ class ExtensionTableService {
         return await this.createExtensionRow(appId, tableName, data, transaction);
       case 'update':
         return await this.updateExtensionRow(appId, tableName, data.row_id, data, transaction);
+      case 'upsert':
+        return await this.upsertExtensionRow(appId, tableName, data.row_id, data, transaction);
       case 'read':
         return await this.readExtensionRow(appId, tableName, data.row_id, data.fields);
       case 'delete':
@@ -183,6 +185,19 @@ class ExtensionTableService {
     }
 
     logger.info(`[ExtensionTableService] Created row in ${tableName} for row_id ${rowId}`);
+  }
+
+  async upsertExtensionRow(appId, tableName, rowId, data, transaction = null) {
+    const extConfig = await this.getExtensionConfig(appId, tableName);
+    if (!extConfig) return;
+
+    const existing = await this.readExtensionRow(appId, tableName, rowId);
+    if (existing) {
+      await this.updateExtensionRow(appId, tableName, rowId, data, transaction);
+    } else {
+      const createData = { row_id: rowId, ...data };
+      await this.createExtensionRow(appId, tableName, createData, transaction);
+    }
   }
 
   async updateExtensionRow(appId, tableName, rowId, data, transaction = null) {
