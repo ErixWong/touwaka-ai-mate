@@ -73,6 +73,7 @@ export default {
     };
 
     const params = resolveParams(mcp.params_mapping, valueMap);
+    logger.info(`[submit-ocr] Record ${record.id}: Resolved params keys=${Object.keys(params).join(',')}, file_path=${params.file_path}`);
     logger.info(`[submit-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool}`);
 
     try {
