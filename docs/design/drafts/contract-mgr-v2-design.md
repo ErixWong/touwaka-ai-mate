@@ -356,21 +356,250 @@ DELETE /api/contract/qa/sessions/:id              删除会话
 
 ---
 
-## 七、遗留问题
+## 七、架构关键决策
 
-### 7.1 待确认事项
+### 7.1 问题1：合同数据存储策略
+
+**核心矛盾**：
+- 合同管理需要业务数据（编号、金额、状态、版本）
+- 问答功能需要向量化检索（知识库）
+- 两者数据模型不兼容
+
+**设计方案**：
+
+```
+┌──────────────────────────────────────────┐
+│ contract_main_records（业务数据）          │
+│ - 合同编号、金额、状态                     │
+│ - 组织节点、版本管理                       │
+│ - 扩展表：contract_versions               │
+├──────────────────────────────────────────┤
+│ 知识库（检索数据）                         │
+│ knowledge_bases（专用合同知识库）          │
+│ kb_articles（合同版本映射）                │
+│ kb_sections（合同章节）                    │
+│ kb_paragraphs（向量化段落）                │
+└──────────────────────────────────────────┘
+```
+
+**数据映射规则**：
+
+| 业务表 | 知识库表 | 映射关系 |
+|--------|---------|---------|
+| `contract_versions.id` | `kb_articles.id` | 版本ID → 文章ID |
+| `contract_versions.version_number` | `kb_articles.title` | 版本号 → 文章标题 |
+| `app_contract_mgr_content.sections` | `kb_sections` | 章节映射（1:1） |
+| `章节内段落` | `kb_paragraphs` | 段落向量化 |
+
+**同步流程**：
+
+```
+用户上传合同版本
+  ↓
+OCR + 清洗 + 章节分析
+  ↓
+contract_versions 创建（业务数据）
+  ↓
+自动向量化流程（后台任务）
+  ↓
+kb_articles 创建（合同版本）
+kb_sections 创建（章节）
+kb_paragraphs 创建 + 向量化（段落）
+  ↓
+合同可被检索问答
+```
+
+**保留 extension_tables 的必要性**：
+
+- ✅ **保留**：`app_contract_mgr_rows`（合同元数据）、`app_contract_mgr_content`（OCR原文）
+- ❓ **讨论**：是否保留 `extract_json`、`extract_model`？
+  - **方案A**：保留在 extension_tables（业务查询）
+  - **方案B**：也存入知识库（检索用）
+
+**推荐方案**：
+- 业务数据保留在 extension_tables
+- 自动创建合同专用知识库（每个合同类型一个）
+- 通过后台任务同步向量化
+- 用户可在知识库管理中查看合同知识库
+
+### 7.2 问题2：问答会话与专家对话绑定
+
+**核心矛盾**：
+- 现有架构：专家对话 → `topics` + `messages`
+- 新需求：合同问答 → 多合同选择 + 专用检索
+
+**设计方案**：将合同问答封装为专家技能
+
+```
+┌──────────────────────────────────────────┐
+│ 专家对话（现有）                           │
+│ topic: 用户与专家的对话会话                │
+│ messages: 对话历史                        │
+├──────────────────────────────────────────┤
+│ 合同问答技能（新增）                       │
+│ skill: contract-qa                        │
+│ tools:                                    │
+│   - contract_search（合同检索）            │
+│   - contract_context（获取合同上下文）      │
+└──────────────────────────────────────────┘
+```
+
+**技能设计**：
+
+```yaml
+---
+name: contract-qa
+description: "合同问答技能。支持检索多份合同内容，回答合同相关问题。
+             当用户询问合同条款、合同内容、合同对比时自动触发。"
+argument-hint: "[search|compare] --query=xxx --contracts=xxx"
+user-invocable: false
+allowed-tools: []
+---
+```
+
+**工具设计**：
+
+#### tool 1: `contract_search`
+
+```javascript
+{
+  contract_ids: string[],  // 合同ID数组（用户选择）
+  query: string,           // 搜索查询
+  top_k: number,           // 返回结果数量
+  threshold: number        // 相似度阈值
+}
+```
+
+返回：
+```json
+{
+  "items": [
+    {
+      "contract_id": "contract_001",
+      "contract_name": "供货协议 v2.0",
+      "section": "第5.2条",
+      "content": "产品质量标准...",
+      "score": 0.85
+    }
+  ]
+}
+```
+
+#### tool 2: `contract_context`
+
+```javascript
+{
+  paragraph_id: string,    // 段落ID
+  context_mode: "section"  // 扩展上下文模式
+}
+```
+
+返回完整章节内容。
+
+**用户操作流程**：
+
+```
+用户 → 在合同管理界面选择多份合同
+     → 点击"问答"按钮
+     → 创建新对话（或使用现有对话）
+     → 系统注入合同上下文到对话
+     → 用户提问："这几份合同的质量标准有什么不同？"
+     → 专家调用 contract-qa 技能
+     → contract_search 检索相关条款
+     → 专家生成回答（引用具体条款）
+```
+
+**前端集成**：
+
+```vue
+<!-- ContractList.vue -->
+<template>
+  <div>
+    <!-- 合同列表 -->
+    <contract-item @select="toggleContract(contract)">
+      <button @click="startQA">与专家对话</button>
+    </contract-item>
+    
+    <!-- 多选后激活 -->
+    <div v-if="selectedContracts.length > 0">
+      <button @click="createQATopic">
+        创建问答对话（已选{{ selectedContracts.length }}份）
+      </button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  methods: {
+    async createQATopic() {
+      // 1. 创建新对话
+      const topic = await createTopic({
+        expert_id: 'contract-expert',
+        title: `合同问答（${selectedContracts.length}份）`
+      });
+      
+      // 2. 注入合同上下文
+      await injectContractContext({
+        topic_id: topic.id,
+        contract_ids: selectedContracts.map(c => c.id)
+      });
+      
+      // 3. 跳转到对话页面
+      router.push(`/chat/${topic.id}`);
+    }
+  }
+}
+</script>
+```
+
+**后台注入逻辑**：
+
+```javascript
+// ContractQAService.js
+async injectContractContext(topicId, contractIds) {
+  // 1. 获取合同基本信息
+  const contracts = await ContractService.getContracts(contractIds);
+  
+  // 2. 创建系统消息（注入上下文）
+  const systemMessage = {
+    role: 'system',
+    content: `当前对话关联以下合同：
+      ${contracts.map(c => `
+        - ${c.name} (${c.version_number})
+          编号：${c.contract_number}
+          甲方：${c.party_a}
+          金额：${c.contract_amount}
+      `).join('\n')}
+      
+      用户将针对这些合同提问，请使用 contract-qa 技能检索具体内容。`,
+    topic_id: topicId
+  };
+  
+  await MessageService.createMessage(systemMessage);
+}
+```
+
+**优势**：
+- ✅ 无缝融入专家对话体验
+- ✅ 问答历史自然保存在对话中
+- ✅ 用户无需理解"会话"概念
+- ✅ 专家可基于对话上下文理解合同背景
+
+### 7.3 其他遗留问题
 
 - [ ] 是否需要导入现有合同数据？（迁移脚本）
 - [ ] 版本号命名规则？（v1.0 还是 2026-001）
 - [ ] 是否需要合同模板功能？
-- [ ] 问答是否需要保存历史？（会话持久化）
 - [ ] 是否需要合同审批流程？
+- [ ] 合同知识库是否需要独立权限管理？
 
-### 7.2 技术风险
+### 7.4 技术风险
 
 - **树状结构性能**：节点数超过1000时查询性能（需索引优化）
 - **多合同问答**：Token限制（需分块检索 + 摘要策略）
 - **版本对比**：是否需要版本对比功能（Diff算法）
+- **数据同步**：业务数据与知识库同步失败处理（需补偿机制）
 
 ---
 
