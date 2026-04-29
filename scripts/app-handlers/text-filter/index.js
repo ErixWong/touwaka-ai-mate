@@ -213,6 +213,8 @@ export default {
     const filterConfig = getFilterConfig(app, stateName || 'pending_filter');
     const filterPrompt = getFilterPrompt(app);
 
+    logger.info(`[text-filter] Record ${record.id}: Prompt="${filterPrompt.substring(0, 200)}${filterPrompt.length > 200 ? '...' : ''}"`);
+
     if (ocrText.length <= CHUNK_MAX_LENGTH) {
       try {
         logger.info(`[text-filter] Record ${record.id}: Calling LLM for single-pass filtering`);
@@ -225,7 +227,7 @@ export default {
         });
 
         const filteredText = response.text || ocrText;
-        logger.info(`[text-filter] Record ${record.id}: Filter complete, result length=${filteredText.length}`);
+        logger.info(`[text-filter] Record ${record.id}: Filter complete, result length=${filteredText.length}, preview="${filteredText.substring(0, 200).replace(/\n/g, '\\n')}"`);
 
         await upsertFilteredText(services, app, record.id, filteredText);
 

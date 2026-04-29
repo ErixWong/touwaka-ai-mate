@@ -74,6 +74,7 @@ export interface AppConfig {
     filter?: string
     extract?: string
     compare?: string
+    section?: string
   }
   extension_tables?: ExtensionTable[]
 }

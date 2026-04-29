@@ -1,9 +1,14 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self="close">
-    <div class="dialog dialog-xl">
+  <div v-if="visible" class="dialog-overlay" @click.self>
+    <div class="dialog dialog-xl" :class="{ 'dialog-fullscreen': isFullscreen }">
       <div class="dialog-header">
         <h3>{{ $t('apps.compare.title') }}</h3>
-        <el-button @click="close">×</el-button>
+        <div class="header-actions">
+          <el-button @click="isFullscreen = !isFullscreen" size="small" circle :title="$t('apps.compare.fullscreen')">
+            {{ isFullscreen ? '⧉' : '⛶' }}
+          </el-button>
+          <el-button @click="close">×</el-button>
+        </div>
       </div>
       <div class="dialog-body">
 
@@ -12,6 +17,11 @@
             <div class="record-card">
               <div class="record-label">📄 {{ $t('apps.compare.baseContract') }}</div>
               <div class="record-detail">{{ recordADisplay }}</div>
+            </div>
+            <div class="swap-btn-wrapper">
+              <el-button @click="swapRecords" circle size="small" :title="$t('apps.compare.swap')">
+                ⇄
+              </el-button>
             </div>
             <div class="record-card">
               <div class="record-label">📄 {{ $t('apps.compare.targetContract') }}</div>
@@ -39,12 +49,7 @@
         </template>
 
         <template v-if="phase === 'loading'">
-          <div class="loading-section">
-            <div class="loading-spinner">
-              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-              <p>{{ $t('apps.compare.processing') }}</p>
-              <p class="loading-hint">{{ $t('apps.compare.processingHint') }}</p>
-            </div>
+          <div class="loading-section" v-loading="true" :element-loading-text="$t('apps.compare.processing')" element-loading-background="transparent">
           </div>
         </template>
 
@@ -122,10 +127,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
-import { Loading } from '@element-plus/icons-vue'
 import {
   compareRecords,
   getAvailableResources,
@@ -160,9 +164,16 @@ const abortController = ref<AbortController | null>(null)
 const reportData = ref<{ results: CompareSectionResult[]; summary: { total: number; identical: number; modified: number; added: number; removed: number } }>({ results: [], summary: { total: 0, identical: 0, modified: 0, added: 0, removed: 0 } })
 const reportFilter = ref<'all' | 'diff' | 'high'>('all')
 const expandedSections = ref<Set<string>>(new Set())
+const isFullscreen = ref(false)
 
-const recordA = computed(() => props.records[0] || null)
-const recordB = computed(() => props.records[1] || null)
+const swapped = ref(false)
+
+const recordA = computed(() => swapped.value ? (props.records[1] || null) : (props.records[0] || null))
+const recordB = computed(() => swapped.value ? (props.records[0] || null) : (props.records[1] || null))
+
+function swapRecords() {
+  swapped.value = !swapped.value
+}
 
 const recordADisplay = computed(() => {
   if (!recordA.value) return ''
@@ -270,9 +281,20 @@ watch(() => props.visible, (val) => {
     reportData.value = { results: [], summary: { total: 0, identical: 0, modified: 0, added: 0, removed: 0 } }
     expandedSections.value = new Set()
     reportFilter.value = 'all'
+    isFullscreen.value = false
     loadModels()
   }
 })
+
+function preventEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape' && props.visible) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+}
+
+onMounted(() => document.addEventListener('keydown', preventEsc, true))
+onUnmounted(() => document.removeEventListener('keydown', preventEsc, true))
 </script>
 
 <style scoped>
@@ -301,6 +323,20 @@ watch(() => props.visible, (val) => {
 .dialog-xl {
   max-width: 960px;
   max-height: 85vh;
+}
+
+.dialog-fullscreen {
+  max-width: 100vw;
+  max-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .dialog-header {
@@ -332,9 +368,9 @@ watch(() => props.visible, (val) => {
 }
 
 .compare-records-info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 16px;
+  align-items: center;
   margin-bottom: 20px;
 }
 
@@ -381,25 +417,10 @@ watch(() => props.visible, (val) => {
 }
 
 .loading-section {
+  min-height: 200px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 60px 20px;
-}
-
-.loading-spinner {
-  text-align: center;
-}
-
-.loading-spinner p {
-  margin: 12px 0 0;
-  font-size: 14px;
-  color: var(--color-text-secondary, #666);
-}
-
-.loading-hint {
-  font-size: 12px;
-  color: var(--color-text-tertiary, #999);
+  justify-content: center;
 }
 
 .report-header {

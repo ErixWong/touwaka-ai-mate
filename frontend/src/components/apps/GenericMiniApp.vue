@@ -124,7 +124,7 @@
             </div>
           </div>
         </el-tab-pane>
-        <el-tab-pane label="OCR原文" name="ocr">
+        <el-tab-pane :label="ocrSourceLabel" name="ocr">
           <DocumentContentViewer
             :content-text="documentContent?.filtered_text || documentContent?.ocr_text || ''"
             :sections="documentContent?.sections || []"
@@ -473,6 +473,14 @@ function closeDetail() {
   showDetail.value = false
   selectedRecord.value = null
 }
+
+const ocrSourceLabel = computed(() => {
+  if (!documentContent.value) return 'OCR原文'
+  if (documentContent.value.filtered_text && documentContent.value.sections?.length > 0) return '文档内容 (filtered_text + sections)'
+  if (documentContent.value.filtered_text) return '文档内容 (filtered_text)'
+  if (documentContent.value.ocr_text) return 'OCR原文 (ocr_text)'
+  return 'OCR原文'
+})
 
 function openReExtract() {
   showReExtract.value = true

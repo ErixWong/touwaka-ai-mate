@@ -777,10 +777,6 @@ class MiniAppService {
 
     logger.info(`[compareRecords] Loaded content: A=${contentA.sections.length} sections, B=${contentB.sections.length} sections`);
 
-    const matchedSections = this._matchSections(contentA.sections, contentB.sections);
-
-    logger.info(`[compareRecords] Matched sections: ${matchedSections.filter(m => m.type === 'matched').length} matched, ${matchedSections.filter(m => m.type === 'added').length} added, ${matchedSections.filter(m => m.type === 'removed').length} removed`);
-
     const appConfig = await this.getAppConfig(appId);
     const comparePrompt = appConfig?.prompts?.compare || this._defaultComparePrompt();
 
@@ -789,6 +785,9 @@ class MiniAppService {
     const concurrency = Math.max(1, Math.min(options.concurrency || 3, 10));
 
     logger.info(`[compareRecords] Model: ${modelId || 'default'}, Temperature: ${temperature}, Concurrency: ${concurrency}`);
+
+    logger.info(`[compareRecords] Step 1: LLM section matching`);
+    const matchedSections = await this._matchSectionsWithLlm(contentA.sections, contentB.sections, modelId, temperature);
 
     const matchedItems = matchedSections.filter(m => m.type === 'matched');
     const linesA = contentA.filtered_text.split('\n');
@@ -897,6 +896,98 @@ class MiniAppService {
     return { filtered_text: content.filtered_text, sections };
   }
 
+  async _matchSectionsWithLlm(sectionsA, sectionsB, modelId, temperature) {
+    const listA = sectionsA.map((s, i) => ({ id: s.id || `a-${i}`, title: s.title }));
+    const listB = sectionsB.map((s, i) => ({ id: s.id || `b-${i}`, title: s.title }));
+
+    const matchPrompt = `你是一个合同结构分析专家。给你两组合同的章节列表，请分析它们的对应关系。
+
+合同A的章节列表：
+${JSON.stringify(listA, null, 2)}
+
+合同B的章节列表：
+${JSON.stringify(listB, null, 2)}
+
+请返回 JSON 格式：
+{
+  "matches": [
+    { "a_id": "章节A的id", "b_id": "章节B的id", "confidence": 0.9, "reason": "匹配原因" }
+  ],
+  "added_in_b": ["b-id1", "b-id2"],
+  "removed_in_a": ["a-id1", "a-id2"]
+}
+
+规则：
+1. matches: 语义上对应的章节配对（a_id 和 b_id 各只能出现一次）
+2. added_in_b: 合同B有但A没有的章节id列表
+3. removed_in_a: 合同A有但B没有的章节id列表
+4. 匹配基于章节标题的语义，而非字面文本（如"第一条 付款方式"和"Article 1 Payment Terms"应匹配）
+5. confidence: 0-1 的匹配置信度
+6. 所有章节必须被分配到 matches、added_in_b 或 removed_in_a 中`;
+
+    let result;
+    try {
+      logger.info(`[matchSections] Calling LLM for section matching (A=${listA.length}, B=${listB.length})`);
+      const startTime = Date.now();
+
+      result = await this.llmService.judge(
+        matchPrompt,
+        JSON.stringify({}),
+        { modelId, temperature: Math.min(temperature, 0.3), defaultValue: null }
+      );
+
+      logger.info(`[matchSections] LLM matching done (${Date.now() - startTime}ms)`);
+    } catch (e) {
+      logger.error(`[matchSections] LLM matching failed, fallback to algorithm: ${e.message}`);
+      return this._matchSections(sectionsA, sectionsB);
+    }
+
+    let parsed;
+    try {
+      const jsonStr = typeof result === 'string' ? result : (result?.text || JSON.stringify(result));
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch (e) {
+      logger.error(`[matchSections] Failed to parse LLM matching result: ${e.message}`);
+      return this._matchSections(sectionsA, sectionsB);
+    }
+
+    if (!parsed || !Array.isArray(parsed.matches)) {
+      logger.error(`[matchSections] Invalid LLM matching result structure`);
+      return this._matchSections(sectionsA, sectionsB);
+    }
+
+    const matchedIdsA = new Set(parsed.matches.map(m => m.a_id));
+    const matchedIdsB = new Set(parsed.matches.map(m => m.b_id));
+
+    const matches = [];
+    for (const m of parsed.matches) {
+      const secA = sectionsA.find(s => (s.id || '') === m.a_id || `a-${sectionsA.indexOf(s)}` === m.a_id);
+      const secB = sectionsB.find(s => (s.id || '') === m.b_id || `b-${sectionsB.indexOf(s)}` === m.b_id);
+      if (secA && secB) {
+        matches.push({ type: 'matched', sectionA: secA, sectionB: secB, confidence: m.confidence || 0.5 });
+      }
+    }
+
+    for (const secA of sectionsA) {
+      const aId = secA.id || `a-${sectionsA.indexOf(secA)}`;
+      if (!matchedIdsA.has(aId)) {
+        matches.push({ type: 'removed', section: secA });
+      }
+    }
+
+    for (const secB of sectionsB) {
+      const bId = secB.id || `b-${sectionsB.indexOf(secB)}`;
+      if (!matchedIdsB.has(bId)) {
+        matches.push({ type: 'added', section: secB });
+      }
+    }
+
+    logger.info(`[matchSections] LLM result: ${matches.filter(m => m.type === 'matched').length} matched, ${matches.filter(m => m.type === 'added').length} added, ${matches.filter(m => m.type === 'removed').length} removed`);
+
+    return matches;
+  }
+
   _matchSections(sectionsA, sectionsB) {
     const matches = [];
     const usedA = new Set();
@@ -994,7 +1085,8 @@ class MiniAppService {
 规则：
 - change_type: identical=完全一致, modified=有文字修改, semantic_change=语义发生了变化
 - risk_level: 仅在有实质性风险变更时标 high，一般修改标 medium，无风险标 low
-- key_changes: 仅在有差异时列出，一致时为空数组`;
+- key_changes: 仅在有差异时列出，一致时为空数组
+- 多语种比对时，忽略语言差异，只关注语义是否相同（如中文"付款期限30天"与英文"Payment terms: 30 days"视为语义一致）`;
   }
 
   // ==================== Helpers ====================
