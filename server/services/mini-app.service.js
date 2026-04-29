@@ -475,7 +475,7 @@ class MiniAppService {
     }
   }
 
-  async updateRecord(appId, recordId, userId, data) {
+  async updateRecord(appId, recordId, userId, data, options = {}) {
     this.ensureModels();
     const record = await this.models.MiniAppRow.findOne({
       where: { id: recordId, app_id: appId },
@@ -498,11 +498,17 @@ class MiniAppService {
     const transaction = await this.db.sequelize.transaction();
     
     try {
-      await record.update({
+      const updateFields = {
         data: mergedData,
         title,
         revision: record.revision + 1,
-      }, { transaction });
+      };
+      
+      if (options.status) {
+        updateFields.status = options.status;
+      }
+      
+      await record.update(updateFields, { transaction });
 
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
       if (extConfigs && extConfigs.length > 0) {
