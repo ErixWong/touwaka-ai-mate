@@ -2,7 +2,25 @@
 
 > 创建时间：2026-04-29
 > 作者：Maria
-> Issue：#662（待创建）
+> Issue：#661
+> App ID：`contract-mgr-v2`（新App，并行开发）
+
+## 部署策略
+
+**保持现有 App 不变**：
+- `contract-mgr`（v1.0）继续运行，服务现有用户
+- 现有 handler 不修改（`handler-text-filter`、`handler-extract` 等）
+
+**创建新升级版 App**：
+- `contract-mgr-v2` 作为独立 App 开发
+- 使用专用 handler（`contract-v2-extract`、`contract-v2-section`）
+- 完成测试后，用户可选择迁移或并行使用
+
+**优势**：
+- ✅ 无破坏性变更，现有业务不受影响
+- ✅ 可并行测试，稳定后再推广
+- ✅ 支持渐进式迁移（用户可自主选择）
+- ✅ 失败可回滚（v1.0 仍然可用）
 
 ## 一、需求分析
 
@@ -53,10 +71,12 @@
 
 ### 2.1 新增表结构
 
-#### 组织节点表 `contract_org_nodes`
+**注意**：以下表为 `contract-mgr-v2` App 专用，不影响现有 `contract-mgr` 的表。
+
+#### 组织节点表 `contract_v2_org_nodes`
 
 ```sql
-CREATE TABLE contract_org_nodes (
+CREATE TABLE contract_v2_org_nodes (
   id VARCHAR(32) PRIMARY KEY,
   parent_id VARCHAR(32) NULL COMMENT '父节点ID（NULL表示顶级）',
   node_type ENUM('group', 'party', 'project') NOT NULL COMMENT '节点类型',
@@ -73,14 +93,14 @@ CREATE TABLE contract_org_nodes (
   INDEX idx_parent (parent_id),
   INDEX idx_type (node_type),
   INDEX idx_path (path),
-  FOREIGN KEY (parent_id) REFERENCES contract_org_nodes(id) ON DELETE CASCADE
+  FOREIGN KEY (parent_id) REFERENCES contract_v2_org_nodes(id) ON DELETE CASCADE
 );
 ```
 
-#### 合同版本表 `contract_versions`
+#### 合同版本表 `contract_v2_versions`
 
 ```sql
-CREATE TABLE contract_versions (
+CREATE TABLE contract_v2_versions (
   id VARCHAR(32) PRIMARY KEY,
   contract_id VARCHAR(32) NOT NULL COMMENT '合同主记录ID',
   version_number VARCHAR(16) NOT NULL COMMENT '版本号（如 v1.0, v2.0）',
@@ -96,16 +116,16 @@ CREATE TABLE contract_versions (
   UNIQUE KEY uk_contract_version (contract_id, version_number),
   INDEX idx_contract (contract_id),
   INDEX idx_current (is_current),
-  FOREIGN KEY (contract_id) REFERENCES contract_main_records(id) ON DELETE CASCADE,
+  FOREIGN KEY (contract_id) REFERENCES contract_v2_main_records(id) ON DELETE CASCADE,
   FOREIGN KEY (file_id) REFERENCES mini_app_files(id) ON DELETE CASCADE,
   FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
 );
 ```
 
-#### 合同主记录表 `contract_main_records`
+#### 合同主记录表 `contract_v2_main_records`
 
 ```sql
-CREATE TABLE contract_main_records (
+CREATE TABLE contract_v2_main_records (
   id VARCHAR(32) PRIMARY KEY,
   org_node_id VARCHAR(32) NOT NULL COMMENT '所属组织节点',
   contract_name VARCHAR(128) NOT NULL COMMENT '合同名称',
@@ -119,21 +139,63 @@ CREATE TABLE contract_main_records (
   INDEX idx_org_node (org_node_id),
   INDEX idx_type (contract_type),
   INDEX idx_status (status),
-  FOREIGN KEY (org_node_id) REFERENCES contract_org_nodes(id) ON DELETE CASCADE
+  FOREIGN KEY (org_node_id) REFERENCES contract_v2_org_nodes(id) ON DELETE CASCADE
+);
+```
+
+#### 合同内容扩展表 `app_contract_v2_content`（Extension Table）
+
+```sql
+CREATE TABLE app_contract_v2_content (
+  row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+  ocr_text LONGTEXT COMMENT 'OCR 原文',
+  filtered_text LONGTEXT COMMENT '过滤后文本',
+  sections JSON COMMENT '章节结构数组',
+  extract_prompt TEXT COMMENT '提取提示词',
+  extract_json LONGTEXT COMMENT '提取的原始 JSON',
+  extract_model VARCHAR(64) COMMENT '使用的模型',
+  extract_at DATETIME COMMENT '提取时间',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+);
+```
+
+#### 合同元数据扩展表 `app_contract_v2_rows`（Extension Table）
+
+```sql
+CREATE TABLE app_contract_v2_rows (
+  row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+  contract_number VARCHAR(64) COMMENT '合同编号',
+  party_a VARCHAR(128) COMMENT '甲方',
+  parent_company VARCHAR(128) COMMENT '上级公司',
+  contract_amount DECIMAL(15,2) COMMENT '合同金额',
+  contract_date DATE COMMENT '签订日期',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_contract_number (contract_number),
+  INDEX idx_party_a (party_a),
+  INDEX idx_contract_amount (contract_amount),
+  FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
 );
 ```
 
 ### 2.2 表关系图
 
 ```
-contract_org_nodes (组织树)
-├── contract_main_records (合同主记录)
-│   └── contract_versions (版本列表)
+contract_v2_org_nodes (组织树)
+├── contract_v2_main_records (合同主记录)
+│   └── contract_v2_versions (版本列表)
 │       └── mini_app_rows (行记录，含OCR/提取数据)
-│           └── app_contract_mgr_content (内容详情)
-│           └── app_contract_mgr_rows (提取元数据)
-└── contract_qa_sessions (问答会话，未来功能)
+│           └── app_contract_v2_content (内容详情，v2专用)
+│           └── app_contract_v2_rows (提取元数据，v2专用)
+└── contract_v2_qa_sessions (问答会话，未来功能)
 ```
+
+**与 v1.0 的表隔离**：
+- `contract-mgr` 使用：`app_contract_mgr_content`、`app_contract_mgr_rows`
+- `contract-mgr-v2` 使用：`app_contract_v2_content`、`app_contract_v2_rows`
+- 组织管理表：`contract_v2_org_nodes`（v2独有）
 
 ---
 
@@ -319,40 +381,93 @@ DELETE /api/contract/qa/sessions/:id              删除会话
 
 ### 5.3 Handler调整
 
-**现有Handler**（保持不变）：
+**通用Handler**（保持不变，供 v1.0 使用）：
 - `handler-submit-ocr`
 - `handler-check-ocr`
 - `handler-text-filter`
+- `handler-extract`
 - `handler-text-section`
 
-**新增专用Handler**：
-- `contract-extract`（已创建）
-- `contract-section`（已创建）
-- `contract-version-handler`（管理版本状态）
+**v2.0专用Handler**（新增，注册为新App专属）：
+- `contract-v2-extract`：从 `mini_app_row.data` 读取提取结果，写入 `app_contract_v2_rows`
+- `contract-v2-section`：从 `mini_app_row.data` 读取章节结构，写入 `app_contract_v2_content`
+- `contract-v2-version`：管理版本状态（上传新版本、切换当前版本）
+- `contract-v2-qa`：多合同问答检索（知识库召回）
+
+**Handler注册方式**：
+- App专属handler，通过安装流程自动注册
+- ID格式：`contract-mgr-v2-handler-v2-extract`
+- 路径：`apps/contract-mgr-v2/handlers/contract-v2-extract`
 
 ---
 
 ## 六、开发计划
 
-### 6.1 阶段划分
+### 6.1 App结构设计
 
-| 阶段 | 内容 | 工期 |
-|------|------|------|
-| Phase 1 | 数据模型 + 组织管理API | 2天 |
-| Phase 2 | 合同版本管理 + 现有流程集成 | 3天 |
-| Phase 3 | UI组件开发（树状导航 + 清单） | 4天 |
-| Phase 4 | 问答功能开发 | 3天 |
-| Phase 5 | 测试 + 优化 + 文档 | 2天 |
+**创建新 App**：`apps/contract-mgr-v2/`
+
+**目录结构**：
+```
+apps/contract-mgr-v2/
+├── manifest.json              # App配置（states、handlers、extension_tables）
+├── handlers/                  # App专用handler
+│   ├── contract-v2-extract/   # 提取数据持久化
+│   ├── contract-v2-section/   # 章节结构持久化
+│   ├── contract-v2-version/   # 版本管理
+│   └── contract-v2-qa/        # 问答检索
+├── migrations/                # 数据库迁移
+│   ├── install.js             # 安装时创建表
+│   └── uninstall.js           # 卸载时删除表
+├── frontend/                  # 前端组件（可选）
+│   └── OrgTreeView.vue        # 组织树组件
+└── README.md                  # App说明
+```
+
+### 6.2 阶段划分
+
+| 阶段 | 内容 | 工期 | App组件 |
+|------|------|------|---------|
+| Phase 1 | 数据模型 + 组织管理API | 2天 | migrations/install.js + backend API |
+| Phase 2 | App manifest + 专用handler | 3天 | manifest.json + handlers/* |
+| Phase 3 | 前端组件开发（树状导航 + 清单） | 4天 | frontend组件 + 集成到主App |
+| Phase 4 | 问答功能开发 | 3天 | contract-v2-qa handler + 知识库集成 |
+| Phase 5 | 测试 + 优化 + 文档 | 2天 | - |
 
 **总计**：14天
 
-### 6.2 优先级排序
+### 6.3 数据迁移计划
 
-1. **P0**：组织节点表 + 合同版本表（数据模型）
-2. **P0**：组织管理API + 合同版本API
-3. **P1**：前端树状导航组件
-4. **P1**：前端合同详情页（含版本切换）
-5. **P2**：问答功能（可后续迭代）
+**Phase 6（可选，后续迭代）**：
+
+提供迁移工具，帮助用户从 v1.0 迁移到 v2.0：
+
+```
+scripts/migrate-contract-v1-to-v2.js
+  - 读取 app_contract_mgr_rows 数据
+  - 创建 contract_v2_org_nodes（根据甲方分组）
+  - 创建 contract_v2_main_records（主记录）
+  - 创建 contract_v2_versions（每个row一个版本）
+  - 迁移 app_contract_v2_content 数据
+  - 自动向量化到知识库
+```
+
+**迁移策略**：
+- ✅ 用户自主选择迁移时间
+- ✅ 迁移后 v1.0 数据保留（不删除）
+- ✅ 提供迁移回滚工具
+- ✅ 迁移过程中 v1.0 可继续使用
+
+### 6.4 优先级排序
+
+1. **P0**：创建新App `contract-mgr-v2`（manifest.json）
+2. **P0**：数据模型迁移脚本（migrations/install.js）
+3. **P0**：App专用handler（contract-v2-extract、contract-v2-section）
+4. **P1**：组织管理API + 合同版本API
+5. **P1**：前端树状导航组件
+6. **P1**：前端合同详情页（含版本切换）
+7. **P2**：问答功能（可后续迭代）
+8. **P3**：数据迁移工具（可选）
 
 ---
 
@@ -365,88 +480,85 @@ DELETE /api/contract/qa/sessions/:id              删除会话
 - 问答功能需要向量化检索（知识库）
 - 两者数据模型不兼容
 
-**设计方案**：
+**设计方案**：v2.0 使用独立表 + 独立知识库
 
 ```
 ┌──────────────────────────────────────────┐
-│ contract_main_records（业务数据）          │
+│ contract_v2_main_records（v2业务数据）     │
 │ - 合同编号、金额、状态                     │
 │ - 组织节点、版本管理                       │
-│ - 扩展表：contract_versions               │
+│ - 扩展表：contract_v2_versions            │
+│           app_contract_v2_content         │
+│           app_contract_v2_rows            │
 ├──────────────────────────────────────────┤
-│ 知识库（检索数据）                         │
-│ knowledge_bases（专用合同知识库）          │
+│ v2专用知识库（检索数据）                    │
+│ knowledge_bases（contract-v2专用）         │
 │ kb_articles（合同版本映射）                │
 │ kb_sections（合同章节）                    │
 │ kb_paragraphs（向量化段落）                │
 └──────────────────────────────────────────┘
 ```
 
+**与 v1.0 的隔离**：
+- **v1.0 (`contract-mgr`)**：
+  - 使用 `app_contract_mgr_content`、`app_contract_mgr_rows`
+  - 通用 handler 直接写入这些表
+  - 无组织层级、无版本管理
+  
+- **v2.0 (`contract-mgr-v2`)**：
+  - 使用独立的 `app_contract_v2_*` 表
+  - 专用 handler 写入 v2 表
+  - 新增组织管理、版本管理
+  - 自动创建合同知识库
+
 **数据映射规则**：
 
-| 业务表 | 知识库表 | 映射关系 |
-|--------|---------|---------|
-| `contract_versions.id` | `kb_articles.id` | 版本ID → 文章ID |
-| `contract_versions.version_number` | `kb_articles.title` | 版本号 → 文章标题 |
-| `app_contract_mgr_content.sections` | `kb_sections` | 章节映射（1:1） |
+| v2业务表 | 知识库表 | 映射关系 |
+|---------|---------|---------|
+| `contract_v2_versions.id` | `kb_articles.id` | 版本ID → 文章ID |
+| `contract_v2_versions.version_number` | `kb_articles.title` | 版本号 → 文章标题 |
+| `app_contract_v2_content.sections` | `kb_sections` | 章节映射（1:1） |
 | `章节内段落` | `kb_paragraphs` | 段落向量化 |
 
 **同步流程**：
 
 ```
-用户上传合同版本
+用户上传合同版本（v2.0）
   ↓
-OCR + 清洗 + 章节分析
+OCR + 清洗 + 章节分析（通用handler）
   ↓
-contract_versions 创建（业务数据）
+contract_v2_extract handler 写入 v2业务表
   ↓
-自动向量化流程（后台任务）
+contract_v2_section handler 写入 v2内容表
   ↓
-kb_articles 创建（合同版本）
-kb_sections 创建（章节）
-kb_paragraphs 创建 + 向量化（段落）
+后台向量化任务（异步）
   ↓
-合同可被检索问答
+创建 kb_articles（合同版本）
+创建 kb_sections（章节）
+创建 kb_paragraphs + 向量化（段落）
+  ↓
+合同可被检索问答（v2专用知识库）
 ```
 
-**保留 extension_tables 的必要性**：
+**v2专用Handler职责**：
 
-- ✅ **保留**：`app_contract_mgr_rows`（合同元数据）、`app_contract_mgr_content`（OCR原文）
-- ❓ **讨论**：是否保留 `extract_json`、`extract_model`？
-  - **方案A**：保留在 extension_tables（业务查询）
-  - **方案B**：也存入知识库（检索用）
+| Handler | 职责 | 数据流向 |
+|---------|------|---------|
+| `contract-v2-extract` | 从 `mini_app_row.data` 读提取结果 | 写入 `app_contract_v2_rows` |
+| `contract-v2-section` | 从 `mini_app_row.data` 读章节结构 | 写入 `app_contract_v2_content` |
+| `contract-v2-version` | 版本管理（上传/切换） | 操作 `contract_v2_versions` |
 
-**推荐方案**：
-- 业务数据保留在 extension_tables
-- 自动创建合同专用知识库（每个合同类型一个）
-- 通过后台任务同步向量化
-- 用户可在知识库管理中查看合同知识库
+**知识库自动创建**：
+- 用户首次安装 `contract-mgr-v2` 时，自动创建专用知识库
+- 知识库名称：`合同知识库（用户ID）`
+- 每个用户一个独立的合同知识库，避免数据混淆
 
-### 7.2 问题2：问答会话与专家对话绑定
+**优势**：
+- ✅ v1.0 和 v2.0 完全隔离，可并行运行
+- ✅ 用户可选择使用哪个版本
+- ✅ v2.0 失败不影响 v1.0 用户
+- ✅ 数据迁移可控（用户自主选择）
 
-**核心矛盾**：
-- 现有架构：专家对话 → `topics` + `messages`
-- 新需求：合同问答 → 多合同选择 + 专用检索
-
-**设计方案**：将合同问答封装为专家技能
-
-```
-┌──────────────────────────────────────────┐
-│ 专家对话（现有）                           │
-│ topic: 用户与专家的对话会话                │
-│ messages: 对话历史                        │
-├──────────────────────────────────────────┤
-│ 合同问答技能（新增）                       │
-│ skill: contract-qa                        │
-│ tools:                                    │
-│   - contract_search（合同检索）            │
-│   - contract_context（获取合同上下文）      │
-└──────────────────────────────────────────┘
-```
-
-**技能设计**：
-
-```yaml
 ---
 name: contract-qa
 description: "合同问答技能。支持检索多份合同内容，回答合同相关问题。
@@ -622,13 +734,94 @@ async injectContractContext(topicId, contractIds) {
 
 ---
 
-## 九、下一步行动
+## 九、App部署流程
 
-1. 创建 Issue #662（v2.0需求）
-2. 创建设计文档分支 `feature/662-contract-v2-design`
-3. 提交设计文档评审
-4. 确认遗留问题答案
-5. 开始 Phase 1 开发
+### 9.1 安装新App
+
+**用户视角**：
+```
+用户登录 → 进入App Market
+        → 看到"销售合同管理 v2.0"
+        → 点击"安装"
+        → 系统自动：
+           1. 创建 contract_v2_* 表
+           2. 注册专用handler
+           3. 创建合同知识库
+           4. 配置states流程
+```
+
+**管理员视角**：
+```bash
+# 发布新App到Registry
+node scripts/publish-app.js apps/contract-mgr-v2
+
+# 安装测试
+node scripts/init-contract-v2-app.js
+```
+
+### 9.2 使用新App
+
+**用户操作流程**：
+```
+1. 进入"销售合同管理 v2.0"
+2. 创建组织节点（集团 → 甲方 → 项目）
+3. 在节点下上传合同
+4. 系统自动执行：
+   - OCR（通用handler）
+   - 清洗（通用handler）
+   - 提取（通用handler）
+   - 持久化（v2专用handler）
+   - 向量化（后台任务）
+5. 用户确认入库
+6. 选择多份合同 → 与专家对话
+```
+
+### 9.3 v1.0与v2.0并行运行
+
+**场景**：
+- 管理员A继续使用 `contract-mgr`（v1.0）
+- 管理员B使用 `contract-mgr-v2`（v2.0）
+- 两者的数据完全隔离
+
+**数据库状态**：
+```
+app_contract_mgr_content（v1.0数据）
+app_contract_mgr_rows（v1.0数据）
+
+app_contract_v2_content（v2.0数据）
+app_contract_v2_rows（v2.0数据）
+contract_v2_org_nodes（v2.0组织树）
+contract_v2_main_records（v2.0合同主记录）
+contract_v2_versions（v2.0版本管理）
+```
+
+### 9.4 迁移时机
+
+**建议时机**：
+- ✅ v2.0稳定运行1个月后
+- ✅ 组织有明确的层级管理需求
+- ✅ 需要多合同问答功能
+- ✅ 新项目优先使用v2.0
+
+**不迁移的场景**：
+- ❌ 现有流程已满足需求
+- ❌ 合同数量少（<50份）
+- ❌ 无组织层级管理需求
+
+---
+
+## 十、下一步行动
+
+1. ✅ 设计文档已创建（本文档）
+2. ⏭ 创建 App目录结构 `apps/contract-mgr-v2/`
+3. ⏭ 编写 manifest.json（states + handlers配置）
+4. ⏭ 编写 migrations/install.js（数据模型）
+5. ⏭ 创建专用handler目录
+6. ⏭ 开始 Phase 1 开发
+
+**Issue链接**：
+- #661（设计文档）
+- 待创建：#662（开发任务）
 
 ---
 
