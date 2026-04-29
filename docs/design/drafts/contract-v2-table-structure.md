@@ -28,16 +28,11 @@ mini_app_rows体系（复用现有）
 CREATE TABLE contract_v2_org_nodes (
   id VARCHAR(32) PRIMARY KEY COMMENT '节点ID',
   parent_id VARCHAR(32) NULL COMMENT '父节点ID（NULL表示顶级）',
-  node_type ENUM('group', 'party', 'project') NOT NULL COMMENT '节点类型',
+  node_type ENUM('group', 'party', 'project') NOT NULL COMMENT '节点类型：集团/甲方/项目',
   name VARCHAR(128) NOT NULL COMMENT '节点名称',
-  code VARCHAR(64) COMMENT '节点编码（如甲方简称）',
-  full_name VARCHAR(255) COMMENT '完整路径名称（如：联想控股/联想北京/ThinkPad项目）',
-  description TEXT COMMENT '节点描述',
-  metadata JSON COMMENT '扩展信息',
-  path VARCHAR(255) COMMENT '层级路径ID（如：/org001/org002/org003）',
-  level INT DEFAULT 1 COMMENT '层级深度（1=集团, 2=甲方, 3=项目）',
+  path VARCHAR(255) NOT NULL COMMENT '层级路径（如：/org001/org002/org003，用于性能优化）',
+  level INT NOT NULL COMMENT '层级深度（1=集团, 2=甲方, 3=项目）',
   sort_order INT DEFAULT 0 COMMENT '同级排序',
-  contract_count INT DEFAULT 0 COMMENT '合同数量（缓存）',
   is_active BIT(1) DEFAULT 1 COMMENT '是否启用',
   created_by VARCHAR(32) COMMENT '创建人',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -47,26 +42,29 @@ CREATE TABLE contract_v2_org_nodes (
   INDEX idx_type (node_type),
   INDEX idx_path (path),
   INDEX idx_level (level),
-  INDEX idx_code (code),
   INDEX idx_active (is_active),
   
   FOREIGN KEY (parent_id) REFERENCES contract_v2_org_nodes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同v2组织节点表';
 ```
 
-**字段说明**：
+**字段说明**（精简版，8个核心字段）：
 
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
 | `id` | VARCHAR(32) | 节点唯一ID | org001 |
-| `parent_id` | VARCHAR(32) | 父节点ID（树状结构） | NULL（顶级） |
-| `node_type` | ENUM | 节点类型 | group/party/project |
+| `parent_id` | VARCHAR(32) | 父节点ID（树状结构） | NULL（顶级）或org001（子节点） |
+| `node_type` | ENUM | 节点类型 | group（集团）/ party（甲方）/ project（项目） |
 | `name` | VARCHAR(128) | 节点名称 | 联想控股 |
-| `code` | VARCHAR(64) | 节点编码 | LH001 |
-| `full_name` | VARCHAR(255) | 完整路径名称 | 联想控股/联想北京/ThinkPad |
-| `path` | VARCHAR(255) | 层级路径ID | /org001/org002/org003 |
-| `level` | INT | 层级深度 | 1/2/3 |
-| `contract_count` | INT | 合同数量（缓存） | 5 |
+| `path` | VARCHAR(255) | 层级路径ID | /org001/org002/org003（性能优化） |
+| `level` | INT | 层级深度 | 1（集团）/ 2（甲方）/ 3（项目） |
+| `sort_order` | INT | 同级排序 | 0 |
+| `is_active` | BIT(1) | 是否启用 | 1 |
+
+**path字段作用**：
+- 存储：节点ID路径，用斜杠分隔（如 `/org001/org002/org003`）
+- 用途：性能优化，避免递归查询
+- 示例：WHERE path LIKE '/org001%' 可一次查询所有子节点
 
 **数据示例**：
 ```
@@ -74,6 +72,13 @@ id=org001, parent_id=NULL, node_type=group, name="联想控股", level=1, path="
 id=org002, parent_id=org001, node_type=party, name="联想北京", level=2, path="/org001/org002"
 id=org003, parent_id=org002, node_type=project, name="ThinkPad X1", level=3, path="/org001/org002/org003"
 ```
+
+**已去除的冗余字段**：
+- ❌ code（节点编码）- 非必须
+- ❌ full_name（完整路径名称）- 前端动态拼接
+- ❌ description（节点描述）- 组织节点不需要
+- ❌ metadata（扩展信息）- 暂无用途
+- ❌ contract_count（合同数量缓存）- 查询时计算
 
 ---
 
