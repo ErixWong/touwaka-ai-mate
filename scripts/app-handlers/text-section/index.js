@@ -22,15 +22,7 @@ function getExtensionTables(app) {
   return config?.extension_tables || [];
 }
 
-const SECTION_PROMPT = `分析以下合同文档内容，提取文档结构。
-
-文档类型：合同/协议类文档
-
-请识别以下类型的结构节点：
-1. **标题区**：合同名称、版本、编号等基本信息
-2. **当事人区**：甲方、乙方等信息
-3. **正文条款**：按条款编号分割（如"第一条"、"第1条"、"1."、"一、"等）
-4. **附件区**：附件清单、附件内容
+const SECTION_FORMAT_SUFFIX = `
 
 **严格要求：返回完整、合法的 JSON，不能有任何语法错误！**
 
@@ -44,14 +36,6 @@ const SECTION_PROMPT = `分析以下合同文档内容，提取文档结构。
       "level": 1,
       "start_line": 0,
       "end_line": 10
-    },
-    {
-      "id": "sec-2",
-      "title": "当事人信息",
-      "type": "party",
-      "level": 1,
-      "start_line": 10,
-      "end_line": 30
     }
   ]
 }
@@ -69,10 +53,32 @@ const SECTION_PROMPT = `分析以下合同文档内容，提取文档结构。
 2. start_line 和 end_line 必须是整数
 3. 前后节点的行号范围不能重叠，要连续覆盖全文
 4. 如果某个区域没有明确标题，用"其他内容"作为title
+5. 返回值必须是合法JSON，外层结构为 { "sections": [...] }，不能是裸数组
+6. end_line 是包含的（inclusive），即该章节最后一行的行号
+7. start_line 从0开始计数`;
+
+const SECTION_PROMPT = `分析以下合同文档内容，提取文档结构。
+
+文档类型：合同/协议类文档
+
+请识别以下类型的结构节点：
+1. **标题区**：合同名称、版本、编号等基本信息
+2. **当事人区**：甲方、乙方等信息
+3. **正文条款**：按条款编号分割（如"第一条"、"第1条"、"1."、"一、"等）
+4. **附件区**：附件清单、附件内容
+${SECTION_FORMAT_SUFFIX}
 
 文档内容（按行编号）：
 {{TEXT}}
 `;
+
+function getSectionPrompt(app) {
+  let config = app?.config;
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config); } catch { config = {}; }
+  }
+  return config?.prompts?.section || SECTION_PROMPT;
+}
 
 export const availableOutputs = [
   { key: 'sections', label: '章节结构JSON', type: 'string' },
@@ -110,8 +116,12 @@ export default {
     }
     
     const sectionConfig = getSectionConfig(app, stateName || 'pending_section');
+    const userPrompt = getSectionPrompt(app);
+    const sectionPrompt = userPrompt + SECTION_FORMAT_SUFFIX;
+
+    logger.info(`[text-section] Record ${record.id}: Prompt="${sectionPrompt.substring(0, 200)}${sectionPrompt.length > 200 ? '...' : ''}"`);
     
-    const prompt = SECTION_PROMPT.replace('{{TEXT}}', filteredText);
+    const prompt = sectionPrompt.includes('{{TEXT}}') ? sectionPrompt.replace('{{TEXT}}', filteredText) : sectionPrompt + '\n\n文档内容（按行编号）：\n' + filteredText;
     
     try {
       logger.info(`[text-section] Record ${record.id}: Calling LLM for section analysis (text length: ${filteredText.length})`);
@@ -135,7 +145,7 @@ export default {
         }
       }
       
-      logger.info(`[text-section] Record ${record.id}: Found ${sections.length} sections`);
+      logger.info(`[text-section] Record ${record.id}: Found ${sections.length} sections, response preview="${response.text.substring(0, 200).replace(/\n/g, '\\n')}"`);
       
       if (contentConfig && services.callExtension) {
         logger.info(`[text-section] Record ${record.id}: Upserting sections to ${contentConfig.name}`);

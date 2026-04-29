@@ -16,7 +16,14 @@
             :highlight-current="true"
             :expand-on-click-node="false"
             @node-click="handleNodeClick"
-          />
+          >
+            <template #default="{ data }">
+              <span class="nav-node">
+                <span v-if="data.startLine !== undefined" class="nav-line">L{{ data.startLine }}</span>
+                <span class="nav-label">{{ data.label }}</span>
+              </span>
+            </template>
+          </el-tree>
         </div>
       </div>
       <div class="content-panel">
@@ -27,20 +34,7 @@
           <div v-if="!contentText" class="empty-content">
             {{ $t('apps.documentContent.noContent') }}
           </div>
-          <div v-else class="full-text">
-            <div
-              v-for="(section, index) in renderedSections"
-              :key="section.id || index"
-              :id="`section-${section.id || index}`"
-              class="text-section"
-            >
-              <h3 v-if="section.title" class="section-title" :class="[`level-${section.level || 1}`, `type-${section.type || 'other'}`]">
-              {{ section.title }}
-            </h3>
-              <div class="section-content markdown-body" v-html="section.renderedContent"></div>
-            </div>
-            <div v-if="!sections || sections.length === 0" class="plain-text markdown-body" v-html="renderedContent"></div>
-          </div>
+          <div v-else class="full-text markdown-body" v-html="renderedContent"></div>
         </div>
       </div>
     </div>
@@ -51,6 +45,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 interface Section {
   id?: string
@@ -83,9 +78,16 @@ const isNavCollapsed = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
 const treeRef = ref()
 
-marked.setOptions({
+marked.use({
   breaks: true,
   gfm: true,
+  renderer: {
+    heading({ tokens, depth }) {
+      const text = this.parser.parseInline(tokens)
+      const slug = text.toLowerCase().replace(/[^\w\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g, '')
+      return `<h${depth} id="heading-${slug}">${text}</h${depth}>\n`
+    }
+  }
 })
 
 const lines = computed(() => {
@@ -103,6 +105,7 @@ const sectionsWithContent = computed(() => {
     } else if (section.content) {
       content = section.content
     }
+    console.debug(`[DocumentContentViewer] section="${section.title}", lines=${section.start_line}-${section.end_line}, totalLines=${lines.value.length}, contentLen=${content.length}`)
     return {
       ...section,
       content
@@ -112,7 +115,21 @@ const sectionsWithContent = computed(() => {
 
 const renderedContent = computed(() => {
   if (!props.contentText) return ''
-  return marked.parse(props.contentText) as string
+  const rawHtml = marked.parse(props.contentText) as string
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li',
+      'blockquote', 'pre', 'code',
+      'a', 'img',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'hr', 'div', 'span',
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'id',
+    ],
+  })
 })
 
 const renderedSections = computed(() => {
@@ -128,9 +145,11 @@ const treeData = computed(() => {
   return props.sections.map((section, index) => ({
     id: section.id || `sec-${index}`,
     label: section.title || t('apps.documentContent.section', { index: index + 1 }),
+    startLine: section.start_line,
     children: section.children?.map((child, childIndex) => ({
       id: child.id || `sec-${index}-${childIndex}`,
-      label: child.title || t('apps.documentContent.section', { index: index + 1 })
+      label: child.title || t('apps.documentContent.section', { index: index + 1 }),
+      startLine: child.start_line
     })) || []
   }))
 })
@@ -139,7 +158,22 @@ function toggleNav() {
   isNavCollapsed.value = !isNavCollapsed.value
 }
 
-function handleNodeClick(data: { id: string }) {
+function handleNodeClick(data: { id: string; startLine?: number; label?: string }) {
+  if (data.label) {
+    const slug = data.label.toLowerCase().replace(/[^\w\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g, '')
+    const element = document.getElementById(`heading-${slug}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+  }
+  if (data.startLine !== undefined) {
+    const element = document.getElementById(`line-${data.startLine}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+  }
   const element = document.getElementById(`section-${data.id}`)
   if (element) {
     element.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -241,6 +275,30 @@ function highlightKeywords() {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+}
+
+.nav-tree :deep(.el-tree-node__content) {
+  justify-content: flex-start;
+}
+
+.nav-node {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.nav-line {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  flex-shrink: 0;
+  font-family: monospace;
+}
+
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .content-panel {

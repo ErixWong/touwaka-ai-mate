@@ -77,6 +77,16 @@
               <el-input v-model="promptsData.extract" type="textarea" :rows="3" :placeholder="$t('apps.prompts.extractPlaceholder')" />
               <span class="field-hint">{{ $t('apps.prompts.extractHint') }}</span>
             </div>
+            <div class="prompt-field">
+              <label class="field-label">{{ $t('apps.prompts.comparePrompt') }}</label>
+              <el-input v-model="promptsData.compare" type="textarea" :rows="3" :placeholder="$t('apps.prompts.comparePlaceholder')" />
+              <span class="field-hint">{{ $t('apps.prompts.compareHint') }}</span>
+            </div>
+            <div class="prompt-field">
+              <label class="field-label">{{ $t('apps.prompts.sectionPrompt') }}</label>
+              <el-input v-model="promptsData.section" type="textarea" :rows="3" :placeholder="$t('apps.prompts.sectionPlaceholder')" />
+              <span class="field-hint">{{ $t('apps.prompts.sectionHint') }}</span>
+            </div>
           </div>
         </template>
       </div>
@@ -125,7 +135,7 @@ const mcpServers = ref<McpServerResource[]>([])
 const llmModels = ref<InternalLlmModel[]>([])
 const handlerOutputsMap = ref<Record<string, HandlerOutput[]>>({})
 const formData = ref<Record<string, StepResourceConfig>>({})
-const promptsData = ref({ filter: '', extract: '' })
+const promptsData = ref({ filter: '', extract: '', compare: '', section: '' })
 const expandedSteps = ref<Set<string>>(new Set())
 
 function getStepConfig(stepName: string): StepResourceConfig {
@@ -209,6 +219,8 @@ async function loadData() {
     promptsData.value = {
       filter: prompts.filter || '',
       extract: prompts.extract || '',
+      compare: prompts.compare || '',
+      section: prompts.section || '',
     }
   } catch (error) {
     console.error('Failed to load step config:', error)

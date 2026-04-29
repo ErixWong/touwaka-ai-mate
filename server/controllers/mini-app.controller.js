@@ -355,6 +355,34 @@ class MiniAppController {
 
   // ==================== Extension Tables ====================
 
+  async compareRecords(ctx) {
+    try {
+      const { appId } = ctx.params;
+      const { row_id_a, row_id_b, model_id, temperature, concurrency } = ctx.request.body;
+
+      if (!row_id_a || !row_id_b) {
+        ctx.error('row_id_a and row_id_b are required', 400);
+        return;
+      }
+      if (row_id_a === row_id_b) {
+        ctx.error('Cannot compare the same record', 400);
+        return;
+      }
+
+      const result = await this.miniAppService.compareRecords(appId, row_id_a, row_id_b, {
+        model_id,
+        temperature,
+        concurrency,
+      });
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Compare records error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
+
+  // ==================== Extension Tables (original) ====================
+
   async getDistinctValues(ctx) {
     try {
       const { appId } = ctx.params;

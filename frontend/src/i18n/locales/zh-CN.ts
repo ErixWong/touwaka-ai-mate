@@ -1409,355 +1409,46 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       extractPrompt: '提取提示词',
       extractPlaceholder: '例如：提取合同编号、甲方、乙方...',
       extractHint: '用于 llm-extract handler，提取结构化数据',
-    },
-  },
-
-  // 应用市场
-  appMarket: {
-    all: '全部',
-    searchPlaceholder: '搜索应用...',
-    updateAvailable: '有更新',
-    installed: '已安装',
-    installing: '安装中...',
-    install: '安装',
-    uninstall: '卸载',
-    author: '作者',
-    license: '许可证',
-    dependencies: '依赖检查',
-    allDepsSatisfied: '所有依赖已满足',
-    missingMcp: '缺少以下任一 MCP 服务',
-    fields: '字段定义',
-  },
-
-  // 知识库
-  knowledgeBase: {
-    title: '知识库',
-    searchPlaceholder: '搜索知识库...',
-    empty: '暂无知识库，点击 + 创建',
-    createNew: '新建知识库',
-    addFirst: '添加第一个知识库',
-
-    // 卡片信息
-    pointCount: '{count} 知识点',
-    knowledgeCount: '{count} 篇文章',
-    paragraphCount: '{count} 个段落',
-    updatedAgo: '更新于 {time}',
-
-    // 创建/编辑对话框
-    createTitle: '创建知识库',
-    editTitle: '编辑知识库',
-    nameLabel: '知识库名称',
-    namePlaceholder: '请输入知识库名称',
-    descriptionLabel: '描述（可选）',
-    descriptionPlaceholder: '请输入知识库描述...',
-    embeddingModelLabel: 'Embedding 模型',
-    embeddingModelHint: '选择用于生成向量嵌入的模型',
-    embeddingModel: '嵌入模型',
-    noEmbeddingModelError: '请先配置 Embedding 模型',
-    selectEmbeddingModelError: '请选择 Embedding 模型',
-    selectEmbeddingModel: '选择嵌入模型',
-    createSuccess: '知识库创建成功',
-    createFailed: '创建知识库失败',
-    updateSuccess: '知识库更新成功',
-    updateFailed: '更新知识库失败',
-
-    // 可见性
-    visibilityLabel: '可见性',
-    visibility: {
-      owner: '仅自己可见',
-      department: '部门可见',
-      all: '所有人可见',
-    },
-    visibilityHint: '设置知识库的访问权限范围',
-    // 权限标识
-    permissionOwner: '拥有者',
-    permissionCanEdit: '可编辑',
-    permissionCanDelete: '可删除',
-
-    // 创建者和管理者
-    creator: '创建者',
-    owner: '管理者',
-
-    // 转移拥有者
-    transferOwner: {
-      button: '转移拥有者',
-      title: '转移知识库拥有者',
-      hint: '选择新的知识库拥有者，转移后当前拥有者将失去管理权限。',
-      newOwner: '新拥有者',
-      selectUser: '选择用户',
-      confirm: '将转移给：{name}',
-      success: '拥有者转移成功',
-      failed: '拥有者转移失败',
+      comparePrompt: '比对提示词',
+      comparePlaceholder: '留空使用默认比对提示词',
+      compareHint: '用于合同比对，支持变量：{{SECTION_TITLE}}, {{TEXT_A}}, {{TEXT_B}}',
+      sectionPrompt: '章节分析提示词',
+      sectionPlaceholder: '留空使用默认章节分析提示词',
+      sectionHint: '用于 text-section handler，分析文档结构，支持变量：{{TEXT}}',
     },
 
-    // 删除
-    deleteConfirm: '确认删除',
-    deleteConfirmMessage: '确定要删除知识库"{name}"吗？此操作将删除所有文章和知识点，不可恢复。',
-
-    // 详情页
-    backToList: '返回知识库列表',
-    importFile: '导入文件',
-    importWeb: '导入网页',
-    newArticle: '新建文章',
-    search: '搜索',
-    searchHint: '输入关键词进行语义搜索...',
-    globalSearch: '全局搜索',
-
-    // 文章树
-    articles: '文章列表',
-    sections: '章节结构',
-    paragraphs: '段落列表',
-    articleTree: '文章目录',
-    noArticles: '暂无文章，点击导入或新建',
-    noSections: '暂无章节，点击 + 创建',
-    selectArticleHint: '请先选择一篇文章',
-    selectSectionHint: '请从中间选择一个章节查看内容',
-    expandAll: '全部展开',
-    collapseAll: '全部收起',
-    tokenCount: '{count} tokens',
-
-    // 标签筛选
-    tagFilter: '标签筛选',
-    clearTagFilter: '清除',
-
-    // 批量嵌入
-    batchEmbed: '批量生成向量',
-    embedding: '生成向量中...',
-    noPointsToEmbed: '没有需要向量化的知识点',
-    embedSuccess: '成功生成 {count} 个向量',
-    embedFailed: '向量生成失败',
-    embedError: '向量生成出错',
-
-    // 重新向量化
-    revectorize: '重新向量化',
-    revectorizing: '向量化中...',
-    embedCompleted: '向量生成完成',
-
-    // 批量嵌入范围选择
-    batchEmbedScope: {
-      title: '选择向量化范围',
-      hint: '请选择要向量化的知识点范围：',
-      entireKB: '整个知识库',
-      currentArticle: '指定文章',
-      selectArticle: '选择文章',
-      selectArticlePlaceholder: '请选择一篇文章',
+    compare: {
+      title: '合同比对',
+      selectTwo: '请选择两条',
+      baseContract: '基准合同',
+      targetContract: '对比合同',
+      swap: '交换基准/对比',
+      fullscreen: '全屏',
+      model: '比对模型',
+      modelPlaceholder: '可选，留空使用默认模型',
+      startCompare: '开始比对',
+      compareFailed: '比对失败',
+      processing: '正在比对中，请耐心等待...',
+      processingHint: '合同章节较多时可能需要数分钟',
+      totalSections: '共 {count} 章节',
+      filterAll: '全部',
+      filterDiff: '仅差异',
+      filterHigh: '仅高风险',
+      statusDone: '完成',
+      statusComparing: '比对中...',
+      statusWaiting: '等待中',
+      typeIdentical: '一致',
+      typeModified: '有差异',
+      typeSemanticChange: '语义变更',
+      typeAdded: '新增',
+      typeRemoved: '删除',
+      typeError: '错误',
+      base: '基准',
+      target: '对比',
+      temperature: '温度',
+      concurrency: '并发数',
+      concurrencyHint: '同时比对的章节数，建议 3',
     },
-
-    // 文章
-    article: {
-      create: '新建文章',
-      edit: '编辑文章',
-      titleLabel: '标题',
-      titlePlaceholder: '请输入文章标题',
-      summaryLabel: '摘要',
-      summaryPlaceholder: '请输入文章摘要...',
-      parent: '父级文章',
-      noParent: '无（根级文章）',
-      summary: '摘要',
-      createSuccess: '文章创建成功',
-      createFailed: '创建文章失败',
-      updateSuccess: '文章更新成功',
-      updateFailed: '更新文章失败',
-      deleteConfirm: '确定要删除文章"{title}"吗？子文章和知识点也会被删除。',
-      status: {
-        failed: '处理失败',
-      },
-    },
-
-    // 章节
-    section: {
-      create: '创建章节',
-      edit: '编辑章节',
-      titleLabel: '标题',
-      titlePlaceholder: '输入章节标题',
-      parent: '父章节',
-      noParent: '无（顶级章节）',
-    },
-
-    // 段落
-    paragraph: {
-      create: '添加段落',
-      edit: '编辑段落',
-      titleLabel: '标题（可选）',
-      titlePlaceholder: '请输入段落标题',
-      contentLabel: '内容',
-      contentPlaceholder: '请输入段落内容（支持 Markdown）...',
-      contextLabel: '上下文（可选）',
-      contextPlaceholder: '补充上下文信息，用于提高检索精度...',
-      noParagraphs: '暂无段落，点击 + 添加',
-      tokenCount: '{count} tokens',
-      vectorized: '已向量化',
-      notVectorized: '未向量化',
-      revectorizeHint: '重新向量化此段落',
-      deleteConfirm: '确定要删除这个段落吗？',
-    },
-
-    // 知识点
-    point: {
-      title: '知识点',
-      noPoints: '暂无知识点',
-      create: '添加知识点',
-      edit: '编辑知识点',
-      titleLabel: '标题（可选）',
-      titlePlaceholder: '请输入知识点标题',
-      contentLabel: '内容',
-      contentPlaceholder: '请输入知识点内容（支持 Markdown）...',
-      contextLabel: '上下文',
-      contextPlaceholder: '补充上下文信息，用于提高检索精度...',
-      createSuccess: '知识点创建成功',
-      createFailed: '创建知识点失败',
-      updateSuccess: '知识点更新成功',
-      updateFailed: '更新知识点失败',
-      deleteConfirm: '确定要删除这个知识点吗？',
-      tokenCount: '{count} tokens',
-      vectorized: '已向量化',
-      notVectorized: '未向量化',
-      revectorize: '重新向量化',
-      revectorizeHint: '重新向量化此知识点',
-    },
-
-    // 搜索结果
-    searchResult: {
-      title: '搜索结果',
-      empty: '未找到相关内容',
-      score: '相关度',
-      location: '位置',
-    },
-
-    // 状态
-    status: {
-      pending: '待处理',
-      processing: '处理中',
-      ready: '就绪',
-      failed: '处理失败',
-    },
-
-    // 来源类型
-    sourceType: {
-      file: '文件导入',
-      web: '网页导入',
-      manual: '手动创建',
-    },
-
-    // 知识图谱
-    graph: {
-      title: '知识图谱',
-      showGraph: '查看知识图谱',
-      hideGraph: '关闭知识图谱',
-      noRelations: '暂无关联关系',
-      clickNode: '点击节点查看详情',
-      dragNode: '拖拽节点调整布局',
-    },
-
-    // 更多操作
-    moreActions: '更多操作',
-    export: '导出',
-    settings: '设置',
-    organization: '组织管理',
-    personal: '个人设置',
-    system: '系统设置',
-  },
-
-  // 助理系统
-  assistant: {
-    rosterTitle: '助理列表',
-    noAssistants: '暂无可用助理',
-    totalAssistants: '共 {count} 个助理',
-    activeAssistants: '{count} 个活跃',
-    active: '活跃',
-    inactive: '停用',
-    executionMode: '执行模式',
-    model: '模型',
-    estimatedTime: '预估时间',
-
-    // 状态
-    statusPending: '等待处理...',
-    statusRunning: '处理中...',
-    statusCompleted: '{time}秒完成',
-    statusFailed: '执行失败',
-    statusTimeout: '执行超时',
-    statusPendingText: '等待中',
-    statusRunningText: '执行中',
-    statusCompletedText: '已完成',
-    statusFailedText: '失败',
-    statusTimeoutText: '超时',
-
-    // 进度
-    estimatedWait: '预计等待: ~{time} 秒',
-    elapsedTime: '已运行: {elapsed} 秒 / 预计 {estimated} 秒',
-
-    // 结果
-    resultTitle: '执行结果',
-    noResult: '无结果',
-    viewDetail: '查看详情',
-    tokensInput: '输入 Tokens',
-    tokensOutput: '输出 Tokens',
-    latency: '耗时',
-    modelUsed: '模型',
-    warning: '警告',
-    warningTitle: '警告信息',
-
-    // 助理面板
-    availableAssistants: '可用助理',
-    currentRequests: '当前委托',
-    noRequests: '暂无委托记录',
-    requestDetail: '委托详情',
-
-    // 归档与删除
-    archive: '归档',
-    unarchive: '取消归档',
-    delete: '删除',
-    archived: '已归档',
-    showArchived: '显示归档',
-    hideArchived: '隐藏归档',
-    confirmDelete: '确定要删除此委托吗？此操作不可撤销。',
-
-    // 重试
-    retry: '重试',
-    retrySuccess: '已重新执行委托',
-    retryFailed: '重试失败',
-    // 重发通知
-    resendNotification: '重发通知',
-    resendNotificationSuccess: '通知已重发',
-    resendNotificationFailed: '重发通知失败',
-
-    // 时间
-    justNow: '刚刚',
-    minutesAgo: '分钟前',
-    hoursAgo: '小时前',
-
-    // 消息类型
-    msgTask: '任务',
-    msgStatus: '状态',
-    msgToolCall: '工具调用',
-    msgToolResult: '工具结果',
-    msgFinal: '完成',
-    msgError: '错误',
-
-    // 错误提示
-    copyFailed: '复制失败',
-    loadFailed: '加载助理列表失败',
-    deleteFailed: '删除委托失败',
-    archiveFailed: '归档委托失败',
-    unarchiveFailed: '取消归档失败',
-
-    // 助理设置
-    status: '状态',
-    enabled: '已启用',
-    disabled: '已禁用',
-    addAssistant: '添加助理',
-    editAssistant: '编辑助理',
-    basicInfo: '基本信息',
-    assistantType: '类型标识',
-    assistantTypePlaceholder: '只允许字母和下划线',
-    assistantTypeHint: '只能包含字母、数字、下划线，且不能以数字开头，最长32个字符',
-    assistantTypeRequired: '请输入类型标识',
-    name: '名称',
-    nameRequired: '请输入名称',
-    description: '描述',
-    executionConfig: '执行配置',
-    maxTokens: '最大输出 Tokens',
-    temperature: '温度',
     timeout: '超时时间',
     promptTemplate: '提示词模板',
     promptPlaceholder: '请输入系统提示词...',

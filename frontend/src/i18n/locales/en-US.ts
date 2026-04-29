@@ -1465,355 +1465,46 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
       extractPrompt: 'Extract Prompt',
       extractPlaceholder: 'e.g., Extract contract number, party A/B...',
       extractHint: 'For llm-extract handler, extract structured data',
-    },
-  },
-
-  // App Market
-  appMarket: {
-    all: 'All',
-    searchPlaceholder: 'Search apps...',
-    updateAvailable: 'Update available',
-    installed: 'Installed',
-    installing: 'Installing...',
-    install: 'Install',
-    uninstall: 'Uninstall',
-    author: 'Author',
-    license: 'License',
-    dependencies: 'Dependencies',
-    allDepsSatisfied: 'All dependencies satisfied',
-    missingMcp: 'Missing one of the following MCP services',
-    fields: 'Fields',
-  },
-
-  // Knowledge Base
-  knowledgeBase: {
-    title: 'Knowledge Base',
-    searchPlaceholder: 'Search knowledge bases...',
-    empty: 'No knowledge bases yet. Click + to create one.',
-    createNew: 'New Knowledge Base',
-    addFirst: 'Add your first knowledge base',
-
-    // Card info
-    pointCount: '{count} points',
-    knowledgeCount: '{count} articles',
-    paragraphCount: '{count} paragraphs',
-    updatedAgo: 'Updated {time}',
-
-    // Create/Edit dialog
-    createTitle: 'Create Knowledge Base',
-    editTitle: 'Edit Knowledge Base',
-    nameLabel: 'Name',
-    namePlaceholder: 'Enter knowledge base name',
-    descriptionLabel: 'Description (optional)',
-    descriptionPlaceholder: 'Enter description...',
-    embeddingModelLabel: 'Embedding Model',
-    embeddingModelHint: 'Select a model for generating embeddings',
-    embeddingModel: 'Embedding Model',
-    noEmbeddingModelError: 'Please configure an Embedding model first',
-    selectEmbeddingModelError: 'Please select an Embedding model',
-    selectEmbeddingModel: 'Select embedding model',
-    createSuccess: 'Knowledge base created successfully',
-    createFailed: 'Failed to create knowledge base',
-    updateSuccess: 'Knowledge base updated successfully',
-    updateFailed: 'Failed to update knowledge base',
-
-    // Visibility
-    visibilityLabel: 'Visibility',
-    visibility: {
-      owner: 'Private (Owner only)',
-      department: 'Department',
-      all: 'Public (All users)',
-    },
-    visibilityHint: 'Set the access permission scope for this knowledge base',
-    // Permission badges
-    permissionOwner: 'Owner',
-    permissionCanEdit: 'Can Edit',
-    permissionCanDelete: 'Can Delete',
-
-    // User info
-    creator: 'Creator',
-    owner: 'Owner',
-
-    // Transfer Owner
-    transferOwner: {
-      button: 'Transfer Owner',
-      title: 'Transfer Knowledge Base Owner',
-      hint: 'Select a new owner for this knowledge base. The current owner will lose management permissions after transfer.',
-      newOwner: 'New Owner',
-      selectUser: 'Select user',
-      confirm: 'Will transfer to: {name}',
-      success: 'Owner transferred successfully',
-      failed: 'Failed to transfer owner',
+      comparePrompt: 'Compare Prompt',
+      comparePlaceholder: 'Leave empty for default compare prompt',
+      compareHint: 'For contract comparison, supports: {{SECTION_TITLE}}, {{TEXT_A}}, {{TEXT_B}}',
+      sectionPrompt: 'Section Analysis Prompt',
+      sectionPlaceholder: 'Leave empty for default section analysis prompt',
+      sectionHint: 'For text-section handler, analyze document structure, supports: {{TEXT}}',
     },
 
-    // Delete
-    deleteConfirm: 'Confirm Delete',
-    deleteConfirmMessage: 'Are you sure you want to delete "{name}"? All articles and knowledge points will be permanently deleted.',
-
-    // Detail page
-    backToList: 'Back to Knowledge Bases',
-    importFile: 'Import File',
-    importWeb: 'Import Web',
-    newArticle: 'New Article',
-    search: 'Search',
-    searchHint: 'Enter keywords for semantic search...',
-    globalSearch: 'Global Search',
-
-    // Article tree
-    articles: 'Articles',
-    sections: 'Sections',
-    paragraphs: 'Paragraphs',
-    articleTree: 'Article Tree',
-    noArticles: 'No articles yet. Import or create one.',
-    noSections: 'No sections yet. Click + to create',
-    selectArticleHint: 'Please select an article first',
-    selectSectionHint: 'Select a section from the middle to view content',
-    expandAll: 'Expand All',
-    collapseAll: 'Collapse All',
-    tokenCount: '{count} tokens',
-
-    // Tag filter
-    tagFilter: 'Filter by Tag',
-    clearTagFilter: 'Clear',
-
-    // Batch embed
-    batchEmbed: 'Generate Embeddings',
-    embedding: 'Generating embeddings...',
-    noPointsToEmbed: 'No knowledge points to embed',
-    embedSuccess: 'Successfully embedded {count} points',
-    embedFailed: 'Failed to generate embeddings',
-    embedError: 'Error generating embeddings',
-    embedCompleted: 'Embedding generation completed',
-    // Re-vectorize
-    revectorize: 'Re-vectorize',
-    revectorizing: 'Vectorizing...',
-
-    // Batch embed scope selection
-    batchEmbedScope: {
-      title: 'Select Embedding Scope',
-      hint: 'Select the scope for embedding generation:',
-      entireKB: 'Entire Knowledge Base',
-      currentArticle: 'Specific Article',
-      selectArticle: 'Select Article',
-      selectArticlePlaceholder: 'Please select an article',
+    compare: {
+      title: 'Contract Compare',
+      selectTwo: 'Select 2 records',
+      baseContract: 'Base Contract',
+      targetContract: 'Target Contract',
+      swap: 'Swap base/target',
+      fullscreen: 'Fullscreen',
+      model: 'Compare Model',
+      modelPlaceholder: 'Optional, leave empty for default',
+      startCompare: 'Start Compare',
+      compareFailed: 'Compare failed',
+      processing: 'Comparing, please wait...',
+      processingHint: 'May take several minutes for contracts with many sections',
+      totalSections: '{count} sections',
+      filterAll: 'All',
+      filterDiff: 'Diff only',
+      filterHigh: 'High risk',
+      statusDone: 'Done',
+      statusComparing: 'Comparing...',
+      statusWaiting: 'Waiting',
+      typeIdentical: 'Identical',
+      typeModified: 'Modified',
+      typeSemanticChange: 'Semantic Change',
+      typeAdded: 'Added',
+      typeRemoved: 'Removed',
+      typeError: 'Error',
+      base: 'Base',
+      target: 'Target',
+      temperature: 'Temperature',
+      concurrency: 'Concurrency',
+      concurrencyHint: 'Parallel sections to compare, recommend 3',
     },
-
-    // Article
-    article: {
-      create: 'New Article',
-      edit: 'Edit Article',
-      titleLabel: 'Title',
-      titlePlaceholder: 'Enter article title',
-      summaryLabel: 'Summary',
-      summaryPlaceholder: 'Enter article summary...',
-      parent: 'Parent Article',
-      noParent: 'None (Root Level)',
-      summary: 'Summary',
-      createSuccess: 'Article created successfully',
-      createFailed: 'Failed to create article',
-      updateSuccess: 'Article updated successfully',
-      updateFailed: 'Failed to update article',
-      deleteConfirm: 'Are you sure you want to delete "{title}"? Child articles and knowledge points will also be deleted.',
-      status: {
-        failed: 'Failed',
-      },
-    },
-
-    // Section
-    section: {
-      create: 'Create Section',
-      edit: 'Edit Section',
-      titleLabel: 'Title',
-      titlePlaceholder: 'Enter section title',
-      parent: 'Parent Section',
-      noParent: 'None (Top Level)',
-    },
-
-    // Paragraph
-    paragraph: {
-      create: 'Add Paragraph',
-      edit: 'Edit Paragraph',
-      titleLabel: 'Title (optional)',
-      titlePlaceholder: 'Enter paragraph title',
-      contentLabel: 'Content',
-      contentPlaceholder: 'Enter paragraph content (Markdown supported)...',
-      contextLabel: 'Context (optional)',
-      contextPlaceholder: 'Additional context for better search accuracy...',
-      noParagraphs: 'No paragraphs yet. Click + to add',
-      tokenCount: '{count} tokens',
-      vectorized: 'Vectorized',
-      notVectorized: 'Not Vectorized',
-      revectorizeHint: 'Re-vectorize this paragraph',
-      deleteConfirm: 'Are you sure you want to delete this paragraph?',
-    },
-
-    // Knowledge Point
-    point: {
-      title: 'Knowledge Points',
-      noPoints: 'No knowledge points yet',
-      create: 'Add Knowledge Point',
-      edit: 'Edit Knowledge Point',
-      titleLabel: 'Title (optional)',
-      titlePlaceholder: 'Enter knowledge point title',
-      contentLabel: 'Content',
-      contentPlaceholder: 'Enter knowledge point content (Markdown supported)...',
-      contextLabel: 'Context',
-      contextPlaceholder: 'Additional context for better search accuracy...',
-      createSuccess: 'Knowledge point created successfully',
-      createFailed: 'Failed to create knowledge point',
-      updateSuccess: 'Knowledge point updated successfully',
-      updateFailed: 'Failed to update knowledge point',
-      deleteConfirm: 'Are you sure you want to delete this knowledge point?',
-      tokenCount: '{count} tokens',
-      vectorized: 'Vectorized',
-      notVectorized: 'Not Vectorized',
-      revectorize: 'Re-vectorize',
-      revectorizeHint: 'Re-vectorize this knowledge point',
-    },
-
-    // Search results
-    searchResult: {
-      title: 'Search Results',
-      empty: 'No relevant content found',
-      score: 'Relevance',
-      location: 'Location',
-    },
-
-    // Status
-    status: {
-      pending: 'Pending',
-      processing: 'Processing',
-      ready: 'Ready',
-      failed: 'Failed',
-    },
-
-    // Source type
-    sourceType: {
-      file: 'File Import',
-      web: 'Web Import',
-      manual: 'Manual Creation',
-    },
-
-    // Knowledge Graph
-    graph: {
-      title: 'Knowledge Graph',
-      showGraph: 'View Knowledge Graph',
-      hideGraph: 'Close Knowledge Graph',
-      noRelations: 'No relations yet',
-      clickNode: 'Click node to view details',
-      dragNode: 'Drag node to reposition',
-    },
-
-    // More actions
-    moreActions: 'More Actions',
-    export: 'Export',
-    settings: 'Settings',
-    organization: 'Organization',
-    personal: 'Personal',
-    system: 'System',
-  },
-
-  // Assistant System
-  assistant: {
-    rosterTitle: 'Assistant Roster',
-    noAssistants: 'No assistants available',
-    totalAssistants: '{count} assistants total',
-    activeAssistants: '{count} active',
-    active: 'Active',
-    inactive: 'Inactive',
-    executionMode: 'Execution Mode',
-    model: 'Model',
-    estimatedTime: 'Estimated Time',
-
-    // Status
-    statusPending: 'Waiting...',
-    statusRunning: 'Processing...',
-    statusCompleted: 'Completed in {time}s',
-    statusFailed: 'Execution failed',
-    statusTimeout: 'Execution timeout',
-    statusPendingText: 'Pending',
-    statusRunningText: 'Running',
-    statusCompletedText: 'Completed',
-    statusFailedText: 'Failed',
-    statusTimeoutText: 'Timeout',
-
-    // Progress
-    estimatedWait: 'Estimated wait: ~{time} seconds',
-    elapsedTime: 'Running: {elapsed}s / estimated {estimated}s',
-
-    // Result
-    resultTitle: 'Result',
-    noResult: 'No result',
-    viewDetail: 'View Detail',
-    tokensInput: 'Input Tokens',
-    tokensOutput: 'Output Tokens',
-    latency: 'Latency',
-    modelUsed: 'Model',
-    warning: 'Warning',
-    warningTitle: 'Warning',
-
-    // Assistant panel
-    availableAssistants: 'Available Assistants',
-    currentRequests: 'Current Requests',
-    noRequests: 'No requests yet',
-    requestDetail: 'Request Detail',
-
-    // Archive and delete
-    archive: 'Archive',
-    unarchive: 'Unarchive',
-    delete: 'Delete',
-    archived: 'Archived',
-    showArchived: 'Show Archived',
-    hideArchived: 'Hide Archived',
-    confirmDelete: 'Are you sure you want to delete this request? This action cannot be undone.',
-
-    // Retry
-    retry: 'Retry',
-    retrySuccess: 'Request re-executed',
-    retryFailed: 'Failed to retry',
-
-    // Time
-    justNow: 'Just now',
-    minutesAgo: 'minutes ago',
-    hoursAgo: 'hours ago',
-
-    // Message types
-    msgTask: 'Task',
-    msgStatus: 'Status',
-    msgToolCall: 'Tool Call',
-    msgToolResult: 'Tool Result',
-    msgFinal: 'Completed',
-    msgError: 'Error',
-
-    // Error messages
-    copyFailed: 'Failed to copy',
-    loadFailed: 'Failed to load assistants',
-    deleteFailed: 'Failed to delete request',
-    archiveFailed: 'Failed to archive request',
-    unarchiveFailed: 'Failed to unarchive request',
-
-    // Resend notification
-    resendNotification: 'Resend notification',
-    resendNotificationSuccess: 'Notification resent successfully',
-    resendNotificationFailed: 'Failed to resend notification',
-
-    // Assistant Settings
-    status: 'Status',
-    enabled: 'Enabled',
-    disabled: 'Disabled',
-    addAssistant: 'Add Assistant',
-    editAssistant: 'Edit Assistant',
-    basicInfo: 'Basic Info',
-    assistantType: 'Type Identifier',
-    assistantTypePlaceholder: 'Only letters and underscore allowed',
-    assistantTypeHint: 'Only letters, numbers, and underscores allowed. Cannot start with a number. Max 32 characters.',
-    assistantTypeRequired: 'Please enter type identifier',
-    name: 'Name',
-    nameRequired: 'Name is required',
-    description: 'Description',
-    executionConfig: 'Execution Config',
-    maxTokens: 'Max Output Tokens',
-    temperature: 'Temperature',
     timeout: 'Timeout',
     promptTemplate: 'Prompt Template',
     promptPlaceholder: 'Enter system prompt...',

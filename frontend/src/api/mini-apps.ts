@@ -73,6 +73,8 @@ export interface AppConfig {
   prompts?: {
     filter?: string
     extract?: string
+    compare?: string
+    section?: string
   }
   extension_tables?: ExtensionTable[]
 }
@@ -350,6 +352,7 @@ export interface DocumentContent {
   has_content: boolean
   ocr_text?: string
   filtered_text?: string
+  sections?: any[]
   extract_prompt?: string
   extract_json?: Record<string, unknown>
   extract_at?: string
@@ -374,4 +377,48 @@ export async function getDistinctField(appId: string, field: string): Promise<Di
 
 export async function getDocumentContent(appId: string, rowId: string): Promise<DocumentContent> {
   return apiRequest<DocumentContent>(apiClient.get(`/mini-apps/${appId}/content/${rowId}`))
+}
+
+// ==================== Compare ====================
+
+export interface CompareSectionResult {
+  type: 'matched' | 'added' | 'removed'
+  section_id_a?: string
+  section_id_b?: string
+  section_id?: string
+  title: string
+  change_type: 'identical' | 'modified' | 'semantic_change' | 'added' | 'removed' | 'error'
+  summary: string
+  key_changes?: Array<{ description: string; old?: string; new?: string }>
+  risk_level?: 'low' | 'medium' | 'high'
+  content_preview?: string
+}
+
+export interface CompareSummary {
+  total: number
+  identical: number
+  modified: number
+  added: number
+  removed: number
+}
+
+export interface CompareResult {
+  results: CompareSectionResult[]
+  summary: CompareSummary
+}
+
+export async function compareRecords(
+  appId: string,
+  rowIdA: string,
+  rowIdB: string,
+  options?: { model_id?: string; temperature?: number; concurrency?: number },
+  signal?: AbortSignal
+): Promise<CompareResult> {
+  return apiRequest<CompareResult>(
+    apiClient.post(`/mini-apps/${appId}/compare`, {
+      row_id_a: rowIdA,
+      row_id_b: rowIdB,
+      ...options,
+    }, { timeout: 600000, signal })
+  )
 }
