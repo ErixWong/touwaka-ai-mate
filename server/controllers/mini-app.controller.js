@@ -148,8 +148,19 @@ class MiniAppController {
     try {
       const { appId, recordId } = ctx.params;
       const userId = ctx.state.session.id;
-      const { data } = ctx.request.body;
-      const record = await this.miniAppService.updateRecord(appId, recordId, userId, data || {});
+      const { data, status } = ctx.request.body;
+      
+      const options = {};
+      if (status) {
+        const isAdmin = await this.miniAppService.isAdmin(userId);
+        if (!isAdmin) {
+          ctx.error('Only admin can change status', 403);
+          return;
+        }
+        options.status = status;
+      }
+      
+      const record = await this.miniAppService.updateRecord(appId, recordId, userId, data || {}, options);
       ctx.success(record, 'Updated');
     } catch (error) {
       logger.error('Update record error:', error);
@@ -178,6 +189,25 @@ class MiniAppController {
       ctx.success(record, 'Confirmed');
     } catch (error) {
       logger.error('Confirm record error:', error);
+      ctx.error(error.message, 400);
+    }
+  }
+
+  async reExtractRecord(ctx) {
+    try {
+      const { appId, recordId } = ctx.params;
+      const userId = ctx.state.session.id;
+      
+      const isAdmin = await this.miniAppService.isAdmin(userId);
+      if (!isAdmin) {
+        ctx.error('Only admin can re-extract', 403);
+        return;
+      }
+      
+      const record = await this.miniAppService.updateRecord(appId, recordId, userId, {}, { status: 'pending_extract' });
+      ctx.success(record, 'Re-extract triggered');
+    } catch (error) {
+      logger.error('Re-extract error:', error);
       ctx.error(error.message, 400);
     }
   }

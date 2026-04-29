@@ -30,6 +30,7 @@ export default (controller) => {
 
   router.post('/api/mini-apps/:appId/data/batch', authenticate(), (ctx) => controller.batchUpload(ctx));
   router.put('/api/mini-apps/:appId/data/:recordId/confirm', authenticate(), (ctx) => controller.confirmRecord(ctx));
+  router.post('/api/mini-apps/:appId/data/:recordId/re-extract', authenticate(), requireAdmin(), (ctx) => controller.reExtractRecord(ctx));
   router.get('/api/mini-apps/:appId/status-summary', authenticate(), (ctx) => controller.getStatusSummary(ctx));
 
   // ==================== State CRUD ====================
