@@ -192,25 +192,49 @@
       "is_terminal": false,
       "is_error": false,
       "handler": "handler-extract",
-      "success_next": "pending_section",
+      "success_next": "pending_persist_extract",
       "failure_next": "extract_failed"
+    },
+    {
+      "name": "pending_persist_extract",
+      "label": "持久化提取结果",
+      "description": "将提取的合同元数据写入专用扩展表",
+      "sort_order": 5,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "handler-contract-extract",
+      "success_next": "pending_section",
+      "failure_next": "persist_extract_failed"
     },
     {
       "name": "pending_section",
       "label": "等待章节分析",
       "description": "章节结构分析，LLM分析文档章节结构并生成导航索引",
-      "sort_order": 5,
+      "sort_order": 6,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
       "handler": "handler-text-section",
-      "success_next": "pending_review",
+      "success_next": "pending_persist_section",
       "failure_next": "section_failed"
+    },
+    {
+      "name": "pending_persist_section",
+      "label": "持久化章节结果",
+      "description": "将章节结构写入专用扩展表",
+      "sort_order": 7,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "handler-contract-section",
+      "success_next": "pending_review",
+      "failure_next": "persist_section_failed"
     },
     {
       "name": "pending_review",
       "label": "等待确认",
-      "sort_order": 6,
+      "sort_order": 8,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -221,7 +245,7 @@
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 7,
+      "sort_order": 9,
       "is_initial": false,
       "is_terminal": true,
       "is_error": false,
@@ -263,8 +287,30 @@
       "failure_next": null
     },
     {
+      "name": "persist_extract_failed",
+      "label": "持久化提取失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
       "name": "section_failed",
       "label": "章节分析失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "persist_section_failed",
+      "label": "持久化章节失败",
       "sort_order": 99,
       "is_initial": false,
       "is_terminal": false,
