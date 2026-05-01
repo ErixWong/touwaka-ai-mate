@@ -168,7 +168,18 @@ class ExtensionTableService {
       const fields = fieldsWithData.map(f => f.name);
       const values = fieldsWithData.map(f => {
         const key = f.source || f.name;
-        return data[key];
+        const val = data[key];
+        
+        if (f.type.toUpperCase().includes('DATE') && val) {
+          if (typeof val === 'string' && val.includes('T')) {
+            return val.split('T')[0];
+          }
+          if (val instanceof Date) {
+            return val.toISOString().split('T')[0];
+          }
+        }
+        
+        return val;
       });
 
       const placeholders = values.map(() => '?').join(', ');
@@ -210,8 +221,6 @@ class ExtensionTableService {
         return data[key] !== undefined;
       })
       .map(f => {
-        const key = f.source || f.name;
-        const val = data[key];
         return `${f.name} = ?`;
       });
 
@@ -224,7 +233,18 @@ class ExtensionTableService {
       })
       .map(f => {
         const key = f.source || f.name;
-        return data[key];
+        const val = data[key];
+        
+        if (f.type.toUpperCase().includes('DATE') && val) {
+          if (typeof val === 'string' && val.includes('T')) {
+            return val.split('T')[0];
+          }
+          if (val instanceof Date) {
+            return val.toISOString().split('T')[0];
+          }
+        }
+        
+        return val;
       });
 
     const sql = `

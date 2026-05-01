@@ -492,14 +492,15 @@ class MiniAppService {
 
     this.validateData(app.fields, data);
 
-    const mergedData = { ...record.data, ...data };
+    const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
+    const mergedData = { ...existingData, ...data };
     const title = this.computeTitle(app.fields, mergedData);
 
     const transaction = await this.db.sequelize.transaction();
     
     try {
       const updateFields = {
-        data: mergedData,
+        data: JSON.stringify(mergedData),
         title,
         revision: record.revision + 1,
       };
@@ -563,7 +564,8 @@ class MiniAppService {
     const app = await this.models.MiniApp.findByPk(appId);
     if (!app) throw new Error('App not found');
 
-    let mergedData = { ...record.data, ...data };
+    const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
+    const mergedData = { ...existingData, ...data };
 
     const confirmedState = await this.models.AppState.findOne({
       where: { app_id: appId, is_terminal: true },
@@ -571,10 +573,9 @@ class MiniAppService {
 
     const title = this.computeTitle(app.fields, mergedData);
 
-    // 更新 record，status 是实体字段
     await this.models.MiniAppRow.update(
       {
-        data: mergedData,
+        data: JSON.stringify(mergedData),
         title,
         revision: record.revision + 1,
         status: confirmedState?.name || 'confirmed',

@@ -311,6 +311,8 @@ class ApiServer {
     // Body 解析（增加限制以支持图片等多模态内容）
     this.app.use(bodyParser({
       jsonLimit: '50mb',  // 允许更大的 JSON 请求体
+      formLimit: '50mb',  // 允许更大的表单请求体
+      textLimit: '50mb',  // 允许更大的文本请求体
     }));
 
     // 统一响应格式

@@ -50,6 +50,11 @@ export default class app_contract_mgr_row extends Model {
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
       comment: "更新时间"
+    },
+    party_b: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      comment: "乙方"
     }
   }, {
     sequelize,
@@ -98,6 +103,13 @@ export default class app_contract_mgr_row extends Model {
         using: "BTREE",
         fields: [
           { name: "contract_date" },
+        ]
+      },
+      {
+        name: "idx_party_b",
+        using: "BTREE",
+        fields: [
+          { name: "party_b" },
         ]
       },
     ]
