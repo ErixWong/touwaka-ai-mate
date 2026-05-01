@@ -1053,6 +1053,24 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== app_contract_mgr_rows 添加 party_b 字段 ====================
+  // Issue #665: 合同管理乙方字段持久化
+  {
+    name: 'app_contract_mgr_rows add party_b column',
+    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_rows', 'party_b'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_rows
+        ADD COLUMN party_b VARCHAR(128) COMMENT '乙方'
+      `);
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_rows
+        ADD INDEX idx_party_b (party_b)
+      `);
+      console.log('  ✓ Added party_b column and index to app_contract_mgr_rows');
+    }
+  },
+
 ];
 
 /**

@@ -63,11 +63,12 @@
       "fields": [
         { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "required": true, "source": "contract_number" },
         { "name": "party_a", "type": "VARCHAR(128)", "label": "甲方", "required": true, "source": "party_a" },
+        { "name": "party_b", "type": "VARCHAR(128)", "label": "乙方", "required": true, "source": "party_b" },
         { "name": "parent_company", "type": "VARCHAR(128)", "label": "上级公司", "source": "parent_company" },
         { "name": "contract_amount", "type": "DECIMAL(15,2)", "label": "合同金额", "required": true, "source": "contract_amount" },
         { "name": "contract_date", "type": "DATE", "label": "签订日期", "required": true, "source": "contract_date" }
       ],
-      "indexes": ["contract_number", "party_a", "parent_company", "contract_amount", "contract_date"]
+      "indexes": ["contract_number", "party_a", "party_b", "parent_company", "contract_amount", "contract_date"]
     },
     {
       "name": "app_contract_mgr_content",
