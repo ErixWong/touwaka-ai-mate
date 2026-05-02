@@ -82,6 +82,21 @@
         { "name": "extract_model", "type": "VARCHAR(64)" },
         { "name": "extract_at", "type": "DATETIME" }
       ]
+    },
+    {
+      "name": "app_contract_mgr_compares",
+      "type": "compare",
+      "fields": [
+        { "name": "target_row_id", "type": "VARCHAR(32)", "label": "对比合同ID", "required": true },
+        { "name": "compare_result", "type": "JSON", "label": "比对结果" },
+        { "name": "summary_identical", "type": "INT", "label": "一致" },
+        { "name": "summary_modified", "type": "INT", "label": "修改" },
+        { "name": "summary_added", "type": "INT", "label": "新增" },
+        { "name": "summary_removed", "type": "INT", "label": "删除" },
+        { "name": "model_name", "type": "VARCHAR(64)", "label": "模型" },
+        { "name": "duration_ms", "type": "INT", "label": "耗时(ms)" }
+      ],
+      "indexes": ["target_row_id", "summary_modified"]
     }
   ],
   "migrations": {

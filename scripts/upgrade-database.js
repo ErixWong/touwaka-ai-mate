@@ -1071,6 +1071,35 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== 合同比对结果表 ====================
+  // Issue #671: 合同比对结果存储与Excel导出
+  {
+    name: 'app_contract_mgr_compares create table',
+    check: async (conn) => await hasTable(conn, 'app_contract_mgr_compares'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_contract_mgr_compares (
+          row_id VARCHAR(32) PRIMARY KEY COMMENT 'A合同 mini_app_rows.id',
+          target_row_id VARCHAR(32) NOT NULL COMMENT 'B合同 mini_app_rows.id',
+          compare_result JSON COMMENT '完整比对结果（results数组）',
+          summary_identical INT DEFAULT 0 COMMENT '一致章节数',
+          summary_modified INT DEFAULT 0 COMMENT '修改章节数',
+          summary_added INT DEFAULT 0 COMMENT '新增章节数',
+          summary_removed INT DEFAULT 0 COMMENT '删除章节数',
+          model_name VARCHAR(64) COMMENT '使用的模型名称',
+          duration_ms INT COMMENT '比对耗时（毫秒）',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_target (target_row_id),
+          INDEX idx_modified (summary_modified),
+          FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE,
+          FOREIGN KEY (target_row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同比对结果表'
+      `);
+      console.log('  ✓ Created app_contract_mgr_compares table');
+    }
+  },
+
 ];
 
 /**

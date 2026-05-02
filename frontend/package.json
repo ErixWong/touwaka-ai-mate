@@ -20,6 +20,7 @@
     "@wdns/vue-code-block": "^2.3.5",
     "axios": "^1.13.5",
     "dompurify": "^3.3.2",
+    "exceljs": "^4.4.0",
     "marked": "^17.0.4",
     "mermaid": "^11.14.0",
     "pinia": "^3.0.4",
