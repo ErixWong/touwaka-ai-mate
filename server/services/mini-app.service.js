@@ -29,6 +29,7 @@ class MiniAppService {
       this.models.Role = this.db.getModel('role');
       this.models.UserRole = this.db.getModel('user_role');
       this.models.Attachment = this.db.getModel('attachment');
+      this.models.AiModel = this.db.getModel('ai_model');
     }
     this.extensionService.ensureModels();
   }
@@ -768,10 +769,48 @@ class MiniAppService {
 
   // ==================== Compare ====================
 
+  async getCompareResult(appId, rowId) {
+    const [rows] = await this.db.sequelize.query(`
+      SELECT target_row_id, compare_result, summary_identical, summary_modified,
+             summary_added, summary_removed, model_name, duration_ms, updated_at
+      FROM app_contract_mgr_compares
+      WHERE row_id = ?
+    `, { replacements: [rowId] });
+
+    const result = rows[0];
+    if (!result) return null;
+
+    let compareResult = result.compare_result;
+    if (typeof compareResult === 'string') {
+      try {
+        compareResult = JSON.parse(compareResult);
+      } catch {
+        compareResult = [];
+      }
+    }
+
+    return {
+      target_row_id: result.target_row_id,
+      results: compareResult || [],
+      summary: {
+        total: (compareResult || []).length,
+        identical: result.summary_identical || 0,
+        modified: result.summary_modified || 0,
+        added: result.summary_added || 0,
+        removed: result.summary_removed || 0,
+      },
+      model_name: result.model_name,
+      duration_ms: result.duration_ms,
+      compared_at: result.updated_at,
+    };
+  }
+
   async compareRecords(appId, rowIdA, rowIdB, options = {}) {
     this.ensureModels();
 
     logger.info(`[compareRecords] Starting compare: ${rowIdA} vs ${rowIdB}`);
+
+    const startTime = Date.now();
 
     const [contentA, contentB] = await Promise.all([
       this._loadRecordContent(appId, rowIdA),
@@ -807,7 +846,7 @@ class MiniAppService {
       let result;
       try {
         logger.info(`[compareRecords] Comparing section ${index + 1}/${matchedItems.length}: ${match.sectionA.title} (textA=${textA.length} chars, textB=${textB.length} chars)`);
-        const startTime = Date.now();
+        const sectionStart = Date.now();
 
         result = await this.llmService.judge(
           comparePrompt,
@@ -819,7 +858,7 @@ class MiniAppService {
           { modelId, temperature, defaultValue: { change_type: 'error', summary: 'LLM call failed' } }
         );
 
-        logger.info(`[compareRecords] Section done: ${match.sectionA.title} -> ${result.change_type} (${Date.now() - startTime}ms)`);
+        logger.info(`[compareRecords] Section done: ${match.sectionA.title} -> ${result.change_type} (${Date.now() - sectionStart}ms)`);
       } catch (e) {
         logger.error(`[compareRecords] LLM failed for section ${match.sectionA.title}: ${e.message}`);
         result = { change_type: 'error', summary: e.message };
@@ -871,9 +910,40 @@ class MiniAppService {
       removed: results.filter(r => r.change_type === 'removed').length,
     };
 
-    logger.info(`[compareRecords] Complete: ${summary.total} sections, ${summary.identical} identical, ${summary.modified} modified, ${summary.added} added, ${summary.removed} removed`);
+    const durationMs = Date.now() - startTime;
 
-    return { results, summary };
+    logger.info(`[compareRecords] Complete: ${summary.total} sections, ${summary.identical} identical, ${summary.modified} modified, ${summary.added} added, ${summary.removed} removed (${durationMs}ms)`);
+
+    if (options.save !== false) {
+      try {
+        let modelName = null;
+        if (modelId) {
+          const model = await this.models.AiModel.findByPk(modelId);
+          modelName = model?.name || null;
+        }
+
+        await this.extensionService.upsertExtensionRow(
+          appId,
+          'app_contract_mgr_compares',
+          rowIdA,
+          {
+            target_row_id: rowIdB,
+            compare_result: JSON.stringify(results),
+            summary_identical: summary.identical,
+            summary_modified: summary.modified,
+            summary_added: summary.added,
+            summary_removed: summary.removed,
+            model_name: modelName,
+            duration_ms: durationMs,
+          }
+        );
+        logger.info(`[compareRecords] Saved compare result for row_id ${rowIdA}`);
+      } catch (e) {
+        logger.error(`[compareRecords] Failed to save compare result: ${e.message}`);
+      }
+    }
+
+    return { results, summary, duration_ms: durationMs };
   }
 
   async _loadRecordContent(appId, rowId) {

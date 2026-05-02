@@ -405,6 +405,16 @@ export interface CompareSummary {
 export interface CompareResult {
   results: CompareSectionResult[]
   summary: CompareSummary
+  duration_ms?: number
+}
+
+export interface SavedCompareResult {
+  target_row_id: string
+  results: CompareSectionResult[]
+  summary: CompareSummary
+  model_name: string | null
+  duration_ms: number | null
+  compared_at: string | null
 }
 
 export async function compareRecords(
@@ -420,5 +430,14 @@ export async function compareRecords(
       row_id_b: rowIdB,
       ...options,
     }, { timeout: 600000, signal })
+  )
+}
+
+export async function getCompareResult(
+  appId: string,
+  rowId: string
+): Promise<SavedCompareResult | null> {
+  return apiRequest<SavedCompareResult | null>(
+    apiClient.get(`/mini-apps/${appId}/data/${rowId}/compare`)
   )
 }

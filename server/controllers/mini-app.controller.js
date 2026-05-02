@@ -411,6 +411,21 @@ class MiniAppController {
     }
   }
 
+  async getCompareResult(ctx) {
+    try {
+      const { appId, rowId } = ctx.params;
+      const result = await this.miniAppService.getCompareResult(appId, rowId);
+      if (!result) {
+        ctx.error('No compare result found', 404);
+        return;
+      }
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Get compare result error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
+
   // ==================== Extension Tables (original) ====================
 
   async getDistinctValues(ctx) {

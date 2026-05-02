@@ -135,6 +135,7 @@
       <template #footer>
         <el-button @click="closeDetail">{{ $t('common.close') }}</el-button>
         <el-button v-if="documentContent?.has_content" @click="openReExtract">{{ $t('apps.reExtract.title') }}</el-button>
+        <el-button v-if="savedCompareResult" type="warning" @click="viewSavedCompare">⚖ {{ $t('apps.compare.viewResult') }}</el-button>
         <el-button v-if="canEdit(selectedRecord)" type="primary" @click="editFromDetail">{{ $t('apps.edit') }}</el-button>
       </template>
     </el-dialog>
@@ -153,7 +154,8 @@
     <ContractCompareDialog
       :visible="showCompare"
       :app="app"
-      :records="selectedRows"
+      :records="compareRecords"
+      :saved-result="compareSavedResult"
       @close="closeCompare"
     />
 
@@ -180,12 +182,14 @@ import {
   updateRecord,
   deleteRecord,
   getDocumentContent,
+  getCompareResult,
   newID,
   type MiniApp,
   type MiniAppRecord,
   type AppField,
   type AppConfig,
   type DocumentContent,
+  type SavedCompareResult,
 } from '@/api/mini-apps'
 import StateBadge from './StateBadge.vue'
 import FieldRenderer from './FieldRenderer.vue'
@@ -217,6 +221,9 @@ const documentContent = ref<DocumentContent | null>(null)
 const newRecordId = ref('')
 const selectedRows = ref<MiniAppRecord[]>([])
 const showCompare = ref(false)
+const savedCompareResult = ref<SavedCompareResult | null>(null)
+const compareRecords = ref<MiniAppRecord[]>([])
+const compareSavedResult = ref<SavedCompareResult | null>(null)
 
 const pagination = ref({
   page: 1,
@@ -435,11 +442,19 @@ async function viewRecord(record: MiniAppRecord) {
   showDetail.value = true
   detailTab.value = 'basic'
   documentContent.value = null
+  savedCompareResult.value = null
   
   try {
     documentContent.value = await getDocumentContent(props.app.id, record.id)
   } catch {
     documentContent.value = { has_content: false }
+  }
+
+  try {
+    const compareData = await getCompareResult(props.app.id, record.id)
+    savedCompareResult.value = compareData
+  } catch {
+    savedCompareResult.value = null
   }
 }
 
@@ -476,7 +491,7 @@ function closeDetail() {
 
 const ocrSourceLabel = computed(() => {
   if (!documentContent.value) return 'OCR原文'
-  if (documentContent.value.filtered_text && documentContent.value.sections?.length > 0) return '文档内容 (filtered_text + sections)'
+  if (documentContent.value.filtered_text && (documentContent.value.sections?.length ?? 0) > 0) return '文档内容 (filtered_text + sections)'
   if (documentContent.value.filtered_text) return '文档内容 (filtered_text)'
   if (documentContent.value.ocr_text) return 'OCR原文 (ocr_text)'
   return 'OCR原文'
@@ -591,11 +606,21 @@ const isPartialSelected = computed(() => {
 
 function openCompare() {
   if (selectedRows.value.length !== 2) return
+  compareRecords.value = selectedRows.value
+  compareSavedResult.value = null
+  showCompare.value = true
+}
+
+function viewSavedCompare() {
+  if (!selectedRecord.value || !savedCompareResult.value) return
+  compareRecords.value = [selectedRecord.value]
+  compareSavedResult.value = savedCompareResult.value
   showCompare.value = true
 }
 
 function closeCompare() {
   showCompare.value = false
+  compareSavedResult.value = null
 }
 
 // Watch

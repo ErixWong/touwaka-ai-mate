@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self>
+  <div v-if="visible" class="dialog-overlay" @click.self="close">
     <div class="dialog dialog-xl" :class="{ 'dialog-fullscreen': isFullscreen }">
       <div class="dialog-header">
         <h3>{{ $t('apps.compare.title') }}</h3>
@@ -61,6 +61,7 @@
               <span class="summary-item modified">🟡 {{ reportData.summary.modified }}</span>
               <span class="summary-item added">🔵 {{ reportData.summary.added }}</span>
               <span class="summary-item removed">🔴 {{ reportData.summary.removed }}</span>
+              <span v-if="reportData.duration_ms" class="summary-item">⏱ {{ (reportData.duration_ms / 1000).toFixed(1) }}s</span>
             </div>
             <div class="report-filter">
               <el-radio-group v-model="reportFilter" size="small">
@@ -119,6 +120,7 @@
           <el-button @click="cancelCompare">{{ $t('common.cancel') }}</el-button>
         </template>
         <template v-if="phase === 'report'">
+          <el-button @click="exportExcel" :loading="isExporting">{{ $t('apps.compare.exportExcel') }}</el-button>
           <el-button @click="close">{{ $t('common.close') }}</el-button>
         </template>
       </div>
@@ -137,12 +139,14 @@ import {
   type MiniAppRecord,
   type InternalLlmModel,
   type CompareSectionResult,
+  type SavedCompareResult,
 } from '@/api/mini-apps'
 
 const props = defineProps<{
   visible: boolean
   app: MiniApp
   records: MiniAppRecord[]
+  savedResult?: SavedCompareResult | null
 }>()
 
 const emit = defineEmits<{
@@ -161,10 +165,11 @@ const concurrency = ref(3)
 const isComparing = ref(false)
 const cancelled = ref(false)
 const abortController = ref<AbortController | null>(null)
-const reportData = ref<{ results: CompareSectionResult[]; summary: { total: number; identical: number; modified: number; added: number; removed: number } }>({ results: [], summary: { total: 0, identical: 0, modified: 0, added: 0, removed: 0 } })
+const reportData = ref<{ results: CompareSectionResult[]; summary: { total: number; identical: number; modified: number; added: number; removed: number }; duration_ms?: number }>({ results: [], summary: { total: 0, identical: 0, modified: 0, added: 0, removed: 0 } })
 const reportFilter = ref<'all' | 'diff' | 'high'>('all')
 const expandedSections = ref<Set<string>>(new Set())
 const isFullscreen = ref(false)
+const isExporting = ref(false)
 
 const swapped = ref(false)
 
@@ -223,7 +228,7 @@ async function loadModels() {
     const resources = await getAvailableResources(props.app.id)
     models.value = resources.internal_llm?.models || []
     if (models.value.length > 0 && !modelId.value) {
-      modelId.value = models.value[0].id
+      modelId.value = models.value[0]?.id || ''
     }
   } catch {
     models.value = []
@@ -270,6 +275,118 @@ function cancelCompare() {
   phase.value = 'config'
 }
 
+async function exportExcel() {
+  isExporting.value = true
+  try {
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.default.Workbook()
+
+    const detailSheet = workbook.addWorksheet(t('apps.compare.sheetDetail'))
+    detailSheet.columns = [
+      { header: t('apps.compare.colSection'), key: 'section', width: 30 },
+      { header: t('apps.compare.colChangeType'), key: 'changeType', width: 14 },
+      { header: t('apps.compare.colRiskLevel'), key: 'riskLevel', width: 12 },
+      { header: t('apps.compare.colSummary'), key: 'summary', width: 50 },
+      { header: t('apps.compare.colChanges'), key: 'changes', width: 40 },
+      { header: t('apps.compare.colBase'), key: 'base', width: 30 },
+      { header: t('apps.compare.colTarget'), key: 'target', width: 30 },
+    ]
+
+    const headerRow = detailSheet.getRow(1)
+    headerRow.font = { bold: true }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }
+
+    const changeTypeMap: Record<string, string> = {
+      identical: t('apps.compare.typeIdentical'),
+      modified: t('apps.compare.typeModified'),
+      semantic_change: t('apps.compare.typeSemanticChange'),
+      added: t('apps.compare.typeAdded'),
+      removed: t('apps.compare.typeRemoved'),
+      error: t('apps.compare.typeError'),
+    }
+
+    const changeColors: Record<string, string> = {
+      identical: 'FFE8F5E9',
+      modified: 'FFFFF3E0',
+      semantic_change: 'FFFFF3E0',
+      added: 'FFE3F2FD',
+      removed: 'FFFCE4EC',
+      error: 'FFEFEBE9',
+    }
+
+    for (const item of reportData.value.results) {
+      const changes = (item.key_changes || [])
+        .map(c => c.description)
+        .join('; ')
+      const baseParts = (item.key_changes || [])
+        .filter(c => c.old)
+        .map(c => c.old)
+        .join('\n')
+      const targetParts = (item.key_changes || [])
+        .filter(c => c.new)
+        .map(c => c.new)
+        .join('\n')
+
+      const row = detailSheet.addRow({
+        section: item.title,
+        changeType: changeTypeMap[item.change_type] || item.change_type,
+        riskLevel: item.risk_level || 'low',
+        summary: item.summary,
+        changes: changes || '',
+        base: baseParts,
+        target: targetParts,
+      })
+
+      const fillColor = changeColors[item.change_type]
+      if (fillColor) {
+        for (let col = 1; col <= 7; col++) {
+          row.getCell(col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } }
+        }
+      }
+    }
+
+    const summarySheet = workbook.addWorksheet(t('apps.compare.sheetSummary'))
+    summarySheet.columns = [
+      { header: t('apps.compare.colMetric'), key: 'metric', width: 20 },
+      { header: t('apps.compare.colValue'), key: 'value', width: 12 },
+    ]
+
+    const summaryHeaderRow = summarySheet.getRow(1)
+    summaryHeaderRow.font = { bold: true }
+    summaryHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }
+
+    const s = reportData.value.summary
+    summarySheet.addRow({ metric: t('apps.compare.totalSections', { count: '' }).replace(/\s*$/, ''), value: s.total })
+    summarySheet.addRow({ metric: t('apps.compare.typeIdentical'), value: s.identical })
+    summarySheet.addRow({ metric: t('apps.compare.typeModified'), value: s.modified })
+    summarySheet.addRow({ metric: t('apps.compare.typeAdded'), value: s.added })
+    summarySheet.addRow({ metric: t('apps.compare.typeRemoved'), value: s.removed })
+
+    if (reportData.value.duration_ms) {
+      summarySheet.addRow({ metric: t('apps.compare.duration'), value: `${(reportData.value.duration_ms / 1000).toFixed(1)}s` })
+    }
+
+    const nameA = recordADisplay.value || 'A'
+    const nameB = recordBDisplay.value || props.savedResult?.target_row_id || 'B'
+    const filename = `compare_${nameA}_vs_${nameB}.xlsx`.replace(/[\\/:*?"<>|]/g, '_')
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+
+    toast.success(t('apps.compare.exportSuccess'))
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : t('apps.compare.exportFailed'))
+  } finally {
+    isExporting.value = false
+  }
+}
+
 function close() {
   phase.value = 'config'
   emit('close')
@@ -277,12 +394,26 @@ function close() {
 
 watch(() => props.visible, (val) => {
   if (val) {
-    phase.value = 'config'
-    reportData.value = { results: [], summary: { total: 0, identical: 0, modified: 0, added: 0, removed: 0 } }
-    expandedSections.value = new Set()
+    if (props.savedResult) {
+      phase.value = 'report'
+      reportData.value = {
+        results: props.savedResult.results || [],
+        summary: props.savedResult.summary || { total: 0, identical: 0, modified: 0, added: 0, removed: 0 },
+        duration_ms: props.savedResult.duration_ms || undefined,
+      }
+      expandedSections.value = new Set(
+        (props.savedResult.results || [])
+          .map((r, i) => r.change_type !== 'identical' ? String(i) : '')
+          .filter(Boolean)
+      )
+    } else {
+      phase.value = 'config'
+      reportData.value = { results: [], summary: { total: 0, identical: 0, modified: 0, added: 0, removed: 0 } }
+      expandedSections.value = new Set()
+      loadModels()
+    }
     reportFilter.value = 'all'
     isFullscreen.value = false
-    loadModels()
   }
 })
 
