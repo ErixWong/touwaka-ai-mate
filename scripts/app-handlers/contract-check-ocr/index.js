@@ -2,8 +2,8 @@ import logger from '../../../lib/logger.js';
 
 const JUDGE_PROMPT = `判断OCR任务是否完成。
 
-MCP返回结果：
-{{MCP_RESULT}}
+任务返回信息（截取前1000字符）：
+{{TASK_INFO}}
 
 请返回JSON格式：
 {
@@ -22,6 +22,14 @@ function getConfig(app, stateName) {
 
 function extractTextFromMcpResult(mcpResult) {
   return mcpResult.content || mcpResult.text || mcpResult.output || mcpResult.markdown || mcpResult.result || '';
+}
+
+function truncateTaskInfo(mcpResult, maxLen = 1000) {
+  const jsonStr = JSON.stringify(mcpResult, null, 2);
+  if (jsonStr.length <= maxLen) {
+    return jsonStr;
+  }
+  return jsonStr.substring(0, maxLen) + '\n... (截取前' + maxLen + '字符)';
 }
 
 export const availableOutputs = [
@@ -53,8 +61,13 @@ export default {
       const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
       
       logger.info(`[contract-check-ocr] Record ${record.id}: MCP result received, judging status`);
+      
+      // ✅ 截取前1000字符避免token超限
+      const taskInfo = truncateTaskInfo(mcpResult, 1000);
+      logger.info(`[contract-check-ocr] Record ${record.id}: Task info length=${taskInfo.length}`);
+      
       const judgeResult = await services.callLlm('judge_ocr_status', {
-        instruction: JUDGE_PROMPT.replace('{{MCP_RESULT}}', JSON.stringify(mcpResult, null, 2)),
+        instruction: JUDGE_PROMPT.replace('{{TASK_INFO}}', taskInfo),
         model_id: resConfig.judge_model_id,
         temperature: resConfig.judge_temperature || 0.1,
         response_format: 'json',
@@ -74,7 +87,6 @@ export default {
         const ocrText = extractTextFromMcpResult(mcpResult);
         logger.info(`[contract-check-ocr] Record ${record.id}: OCR completed, text length=${ocrText.length}`);
         
-        // ✅ 写入扩展表（大文本存扩展表）
         await services.callExtension('app_contract_mgr_content', 'upsert', {
           row_id: record.id,
           ocr_text: ocrText,
@@ -82,7 +94,6 @@ export default {
         
         logger.info(`[contract-check-ocr] Record ${record.id}: OCR text saved to extension table`);
         
-        // ✅ 只返回标记（不返回OCR文本）
         return {
           success: true,
           data: {
