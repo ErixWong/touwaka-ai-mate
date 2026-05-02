@@ -168,7 +168,7 @@
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "handler-check-ocr",
+      "handler": "contract-check-ocr",
       "success_next": "pending_filter",
       "failure_next": "ocr_failed"
     },
@@ -180,7 +180,7 @@
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "handler-text-filter",
+      "handler": "contract-text-filter",
       "success_next": "pending_extract",
       "failure_next": "filter_failed"
     },
@@ -192,8 +192,8 @@
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "handler-extract",
-      "success_next": "pending_persist_extract",
+      "handler": "contract-llm-extract",
+      "success_next": "pending_section",
       "failure_next": "extract_failed"
     },
     {
