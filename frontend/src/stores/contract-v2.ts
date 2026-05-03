@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import {
   getOrgTree,
@@ -31,6 +31,21 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   const tree = ref<OrgNode[]>([])
   const treeLoading = ref(false)
   const selectedNodeId = ref<string | null>(null)
+
+  const selectedNode = computed<OrgNode | null>(() => {
+    if (!selectedNodeId.value) return null
+    const find = (nodes: OrgNode[]): OrgNode | null => {
+      for (const n of nodes) {
+        if (n.id === selectedNodeId.value) return n
+        if (n.children) {
+          const found = find(n.children)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    return find(tree.value)
+  })
 
   const contracts = ref<ContractMainRecord[]>([])
   const contractsTotal = ref(0)
@@ -226,6 +241,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     tree,
     treeLoading,
     selectedNodeId,
+    selectedNode,
     contracts,
     contractsTotal,
     contractsPage,
