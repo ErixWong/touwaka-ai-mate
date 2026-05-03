@@ -47,7 +47,7 @@
   ],
   "extension_tables": [
     {
-      "name": "app_contract_v2_rows",
+      "name": "app_contract_mgr_v2_rows",
       "type": "primary",
       "fields": [
         { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "source": "contract_number" },
@@ -59,7 +59,7 @@
       "indexes": ["contract_number", "party_a", "contract_amount", "contract_date"]
     },
     {
-      "name": "app_contract_v2_content",
+      "name": "app_contract_mgr_v2_content",
       "type": "content",
       "fields": [
         { "name": "ocr_text", "type": "LONGTEXT" },

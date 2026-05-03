@@ -6,8 +6,8 @@ export default {
         'contract_v2_org_nodes',
         'contract_v2_main_records',
         'contract_v2_versions',
-        'app_contract_v2_rows',
-        'app_contract_v2_content'
+        'app_contract_mgr_v2_rows',
+        'app_contract_mgr_v2_content'
       )
     `, { type: sequelize.QueryTypes.SELECT });
 
@@ -15,11 +15,11 @@ export default {
   },
 
   async up(sequelize) {
-    await sequelize.query(`DROP TABLE IF EXISTS app_contract_v2_rows`);
-    console.log('  ✓ Dropped app_contract_v2_rows table');
+    await sequelize.query(`DROP TABLE IF EXISTS app_contract_mgr_v2_rows`);
+    console.log('  ✓ Dropped app_contract_mgr_v2_rows table');
 
-    await sequelize.query(`DROP TABLE IF EXISTS app_contract_v2_content`);
-    console.log('  ✓ Dropped app_contract_v2_content table');
+    await sequelize.query(`DROP TABLE IF EXISTS app_contract_mgr_v2_content`);
+    console.log('  ✓ Dropped app_contract_mgr_v2_content table');
 
     await sequelize.query(`DROP TABLE IF EXISTS contract_v2_versions`);
     console.log('  ✓ Dropped contract_v2_versions table');
@@ -106,7 +106,7 @@ export default {
     console.log('  ✓ Recreated contract_v2_versions table');
 
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS app_contract_v2_content (
+      CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_content (
         row_id VARCHAR(32) PRIMARY KEY,
         ocr_text LONGTEXT NULL,
         ocr_service VARCHAR(64) NULL,
@@ -123,17 +123,17 @@ export default {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ Recreated app_contract_v2_content table');
+    console.log('  ✓ Recreated app_contract_mgr_v2_content table');
 
     await sequelize.query(`
-      ALTER TABLE app_contract_v2_content
-      ADD CONSTRAINT fk_app_contract_v2_content_row_id
+      ALTER TABLE app_contract_mgr_v2_content
+      ADD CONSTRAINT fk_app_contract_mgr_v2_content_row_id
       FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
     `);
-    console.log('  ✓ Added FK for app_contract_v2_content');
+    console.log('  ✓ Added FK for app_contract_mgr_v2_content');
 
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS app_contract_v2_rows (
+      CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_rows (
         row_id VARCHAR(32) PRIMARY KEY,
         contract_number VARCHAR(64) NULL,
         party_a VARCHAR(128) NULL,
@@ -148,13 +148,13 @@ export default {
         INDEX idx_contract_date (contract_date)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ Recreated app_contract_v2_rows table');
+    console.log('  ✓ Recreated app_contract_mgr_v2_rows table');
 
     await sequelize.query(`
-      ALTER TABLE app_contract_v2_rows
-      ADD CONSTRAINT fk_app_contract_v2_rows_row_id
+      ALTER TABLE app_contract_mgr_v2_rows
+      ADD CONSTRAINT fk_app_contract_mgr_v2_rows_row_id
       FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
     `);
-    console.log('  ✓ Added FK for app_contract_v2_rows');
+    console.log('  ✓ Added FK for app_contract_mgr_v2_rows');
   }
 };

@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 
-const CONTENT_TABLE = 'app_contract_v2_content';
+const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 
 export const availableOutputs = [
   { key: 'section_count', label: '章节数量', type: 'number' },
