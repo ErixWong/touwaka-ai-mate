@@ -1,0 +1,268 @@
+{
+  "id": "contract-mgr-v2",
+  "name": "销售合同管理 v2",
+  "version": "2.0.0",
+  "description": "支持组织层级、多版本管理、AI问答的销售合同管理系统",
+  "icon": "📋",
+  "type": "document",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "keywords": [
+    "合同",
+    "文档",
+    "OCR",
+    "AI提取",
+    "多版本",
+    "组织管理"
+  ],
+  "compatibility": {
+    "min_platform_version": "2.0.0",
+    "requires": {
+      "mcp": [
+        "markitdown",
+        "mineru"
+      ],
+      "skills": []
+    }
+  },
+  "fields": [
+    {
+      "name": "contract_name",
+      "label": "合同名称",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "contract_type",
+      "label": "合同类型",
+      "type": "select",
+      "options": ["strategy", "framework", "development", "supply", "purchase", "quality", "nda", "technical", "other"],
+      "required": true
+    },
+    {
+      "name": "contract_file",
+      "label": "合同文件",
+      "type": "file"
+    }
+  ],
+  "extension_tables": [
+    {
+      "name": "app_contract_v2_rows",
+      "type": "primary",
+      "fields": [
+        { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "source": "contract_number" },
+        { "name": "party_a", "type": "VARCHAR(128)", "label": "甲方", "source": "party_a" },
+        { "name": "parent_company", "type": "VARCHAR(128)", "label": "上级公司", "source": "parent_company" },
+        { "name": "contract_amount", "type": "DECIMAL(15,2)", "label": "合同金额", "source": "contract_amount" },
+        { "name": "contract_date", "type": "DATE", "label": "签订日期", "source": "contract_date" }
+      ],
+      "indexes": ["contract_number", "party_a", "contract_amount", "contract_date"]
+    },
+    {
+      "name": "app_contract_v2_content",
+      "type": "content",
+      "fields": [
+        { "name": "ocr_text", "type": "LONGTEXT" },
+        { "name": "ocr_service", "type": "VARCHAR(64)" },
+        { "name": "ocr_at", "type": "DATETIME" },
+        { "name": "filtered_text", "type": "LONGTEXT" },
+        { "name": "filter_at", "type": "DATETIME" },
+        { "name": "sections", "type": "JSON" },
+        { "name": "extract_prompt", "type": "TEXT" },
+        { "name": "extract_json", "type": "LONGTEXT" },
+        { "name": "extract_model", "type": "VARCHAR(64)" },
+        { "name": "extract_temperature", "type": "DECIMAL(3,2)" },
+        { "name": "extract_at", "type": "DATETIME" }
+      ]
+    }
+  ],
+  "migrations": {
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
+  },
+  "views": {
+    "list": {
+      "columns": [
+        "contract_number",
+        "contract_date",
+        "party_a",
+        "contract_amount"
+      ],
+      "sort": {
+        "field": "contract_date",
+        "order": "desc"
+      }
+    }
+  },
+  "config": {
+    "features": [
+      "upload",
+      "list",
+      "detail",
+      "org_tree",
+      "versions",
+      "dashboard"
+    ],
+    "supported_formats": [".pdf", ".docx", ".doc", ".jpg", ".png"],
+    "max_file_size": 20971520,
+    "batch_enabled": true,
+    "batch_limit": 50,
+    "step_resources": {
+      "pending_ocr": {
+        "type": "mcp",
+        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "content": "file.base64", "filename": "file.name" } }
+      },
+      "ocr_submitted": {
+        "type": "mcp",
+        "mcp": { "server": "markitdown", "tool": "get_task", "hide_params_mapping": true },
+        "judge_model_id": null,
+        "judge_temperature": 0.1
+      },
+      "pending_filter": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      },
+      "pending_extract": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      },
+      "pending_section": {
+        "type": "internal_llm",
+        "model_id": null,
+        "temperature": 0.3
+      }
+    }
+  },
+  "states": [
+    {
+      "name": "pending_ocr",
+      "label": "等待OCR",
+      "description": "提交OCR任务",
+      "sort_order": 1,
+      "is_initial": true,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "handler-submit-ocr",
+      "success_next": "ocr_submitted",
+      "failure_next": "ocr_failed"
+    },
+    {
+      "name": "ocr_submitted",
+      "label": "OCR处理中",
+      "description": "检查OCR状态并持久化OCR文本到扩展表",
+      "sort_order": 2,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "contract-v2-check-ocr",
+      "success_next": "pending_filter",
+      "failure_next": "ocr_failed"
+    },
+    {
+      "name": "pending_filter",
+      "label": "等待过滤",
+      "description": "LLM文本过滤并持久化到扩展表",
+      "sort_order": 3,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "contract-v2-text-filter",
+      "success_next": "pending_extract",
+      "failure_next": "filter_failed"
+    },
+    {
+      "name": "pending_extract",
+      "label": "等待提取",
+      "description": "LLM提取元数据并持久化到扩展表",
+      "sort_order": 4,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "contract-v2-llm-extract",
+      "success_next": "pending_section",
+      "failure_next": "extract_failed"
+    },
+    {
+      "name": "pending_section",
+      "label": "等待章节分析",
+      "description": "LLM章节结构分析并持久化到扩展表",
+      "sort_order": 5,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "contract-v2-text-section",
+      "success_next": "pending_review",
+      "failure_next": "section_failed"
+    },
+    {
+      "name": "pending_review",
+      "label": "等待确认",
+      "sort_order": 6,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "confirmed",
+      "label": "已确认",
+      "sort_order": 7,
+      "is_initial": false,
+      "is_terminal": true,
+      "is_error": false,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "ocr_failed",
+      "label": "OCR失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "filter_failed",
+      "label": "过滤失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "extract_failed",
+      "label": "提取失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "section_failed",
+      "label": "章节分析失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    }
+  ],
+  "component": null,
+  "visibility": "all"
+}
