@@ -125,6 +125,11 @@ const router = createRouter({
           name: 'app-detail',
           component: () => import('@/views/AppDetailView.vue'),
         },
+        {
+          path: 'contract-v2',
+          name: 'contract-v2',
+          component: () => import('@/views/contract-v2/ContractV2View.vue'),
+        },
       ],
     },
     {

@@ -15,6 +15,19 @@
       "tags": ["合同", "文档", "OCR", "AI提取"],
       "path": "apps/contract-mgr",
       "manifest_url": "apps/contract-mgr/manifest.json"
+    },
+    {
+      "id": "contract-mgr-v2",
+      "name": "销售合同管理 v2",
+      "version": "2.0.0",
+      "icon": "📋",
+      "type": "document",
+      "description": "支持组织层级、多版本管理、AI问答的销售合同管理系统",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["合同", "文档", "OCR", "AI提取", "多版本", "组织管理"],
+      "path": "apps/contract-mgr-v2",
+      "manifest_url": "apps/contract-mgr-v2/manifest.json"
     }
   ],
   "categories": [
@@ -24,7 +37,7 @@
     { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" }
   ],
   "metadata": {
-    "total_apps": 1,
+    "total_apps": 2,
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }

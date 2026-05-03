@@ -70,6 +70,7 @@ import AssistantController from './controllers/assistant.controller.js';
 import AttachmentController from './controllers/attachment.controller.js';
 import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
+import ContractV2Controller from './controllers/contract-v2.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
@@ -102,6 +103,7 @@ import miniAppRoutes from './routes/mini-app.routes.js';
 import appMarketRoutes from './routes/app-market.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
+import contractV2Routes from './routes/contract-v2.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
 class ApiServer {
@@ -267,6 +269,7 @@ class ApiServer {
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
       appMarket: new AppMarketController(this.db),
+      contractV2: new ContractV2Controller(this.db),
     };
   }
 
@@ -481,6 +484,12 @@ class ApiServer {
     this.app.use(mcpRouter.routes());
     this.app.use(mcpRouter.allowedMethods());
     logger.info('MCP routes registered (GET/POST /api/mcp/*)');
+
+    // Contract V2 合同管理v2路由
+    const contractV2Router = contractV2Routes(this.controllers.contractV2);
+    this.app.use(contractV2Router.routes());
+    this.app.use(contractV2Router.allowedMethods());
+    logger.info('Contract V2 routes registered (/api/contract-v2/*)');
 
     // 前端静态文件服务（生产环境）
     // 检查前端构建目录是否存在
