@@ -36,7 +36,17 @@
       "name": "contract_type",
       "label": "合同类型",
       "type": "select",
-      "options": ["strategy", "framework", "development", "supply", "purchase", "quality", "nda", "technical", "other"],
+      "options": [
+        "strategy",
+        "framework",
+        "development",
+        "supply",
+        "purchase",
+        "quality",
+        "nda",
+        "technical",
+        "other"
+      ],
       "required": true
     },
     {
@@ -50,29 +60,92 @@
       "name": "app_contract_mgr_v2_rows",
       "type": "primary",
       "fields": [
-        { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "source": "contract_number" },
-        { "name": "party_a", "type": "VARCHAR(128)", "label": "甲方", "source": "party_a" },
-        { "name": "parent_company", "type": "VARCHAR(128)", "label": "上级公司", "source": "parent_company" },
-        { "name": "contract_amount", "type": "DECIMAL(15,2)", "label": "合同金额", "source": "contract_amount" },
-        { "name": "contract_date", "type": "DATE", "label": "签订日期", "source": "contract_date" }
+        {
+          "name": "contract_number",
+          "type": "VARCHAR(64)",
+          "label": "合同编号",
+          "source": "contract_number"
+        },
+        {
+          "name": "party_a",
+          "type": "VARCHAR(128)",
+          "label": "甲方",
+          "source": "party_a"
+        },
+        {
+          "name": "parent_company",
+          "type": "VARCHAR(128)",
+          "label": "上级公司",
+          "source": "parent_company"
+        },
+        {
+          "name": "contract_amount",
+          "type": "DECIMAL(15,2)",
+          "label": "合同金额",
+          "source": "contract_amount"
+        },
+        {
+          "name": "contract_date",
+          "type": "DATE",
+          "label": "签订日期",
+          "source": "contract_date"
+        }
       ],
-      "indexes": ["contract_number", "party_a", "contract_amount", "contract_date"]
+      "indexes": [
+        "contract_number",
+        "party_a",
+        "contract_amount",
+        "contract_date"
+      ]
     },
     {
       "name": "app_contract_mgr_v2_content",
       "type": "content",
       "fields": [
-        { "name": "ocr_text", "type": "LONGTEXT" },
-        { "name": "ocr_service", "type": "VARCHAR(64)" },
-        { "name": "ocr_at", "type": "DATETIME" },
-        { "name": "filtered_text", "type": "LONGTEXT" },
-        { "name": "filter_at", "type": "DATETIME" },
-        { "name": "sections", "type": "JSON" },
-        { "name": "extract_prompt", "type": "TEXT" },
-        { "name": "extract_json", "type": "LONGTEXT" },
-        { "name": "extract_model", "type": "VARCHAR(64)" },
-        { "name": "extract_temperature", "type": "DECIMAL(3,2)" },
-        { "name": "extract_at", "type": "DATETIME" }
+        {
+          "name": "ocr_text",
+          "type": "LONGTEXT"
+        },
+        {
+          "name": "ocr_service",
+          "type": "VARCHAR(64)"
+        },
+        {
+          "name": "ocr_at",
+          "type": "DATETIME"
+        },
+        {
+          "name": "filtered_text",
+          "type": "LONGTEXT"
+        },
+        {
+          "name": "filter_at",
+          "type": "DATETIME"
+        },
+        {
+          "name": "sections",
+          "type": "JSON"
+        },
+        {
+          "name": "extract_prompt",
+          "type": "TEXT"
+        },
+        {
+          "name": "extract_json",
+          "type": "LONGTEXT"
+        },
+        {
+          "name": "extract_model",
+          "type": "VARCHAR(64)"
+        },
+        {
+          "name": "extract_temperature",
+          "type": "DECIMAL(3,2)"
+        },
+        {
+          "name": "extract_at",
+          "type": "DATETIME"
+        }
       ]
     }
   ],
@@ -103,18 +176,35 @@
       "versions",
       "dashboard"
     ],
-    "supported_formats": [".pdf", ".docx", ".doc", ".jpg", ".png"],
+    "supported_formats": [
+      ".pdf",
+      ".docx",
+      ".doc",
+      ".jpg",
+      ".png"
+    ],
     "max_file_size": 20971520,
     "batch_enabled": true,
     "batch_limit": 50,
     "step_resources": {
       "pending_ocr": {
         "type": "mcp",
-        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "content": "file.base64", "filename": "file.name" } }
+        "mcp": {
+          "server": "markitdown",
+          "tool": "submit_conversion_task",
+          "params_mapping": {
+            "content": "file.base64",
+            "filename": "file.name"
+          }
+        }
       },
       "ocr_submitted": {
         "type": "mcp",
-        "mcp": { "server": "markitdown", "tool": "get_task", "hide_params_mapping": true },
+        "mcp": {
+          "server": "markitdown",
+          "tool": "get_task",
+          "hide_params_mapping": true
+        },
         "judge_model_id": null,
         "judge_temperature": 0.1
       },
