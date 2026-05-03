@@ -21,10 +21,10 @@ pending_ocr → ocr_submitted → pending_filter → pending_extract
 | Handler | 读 | 写 |
 |---------|----|----|
 | handler-submit-ocr | record.data | MCP |
-| contract-v2-check-ocr | MCP结果 | app_contract_v2_content.ocr_text |
-| contract-v2-text-filter | app_contract_v2_content.ocr_text | app_contract_v2_content.filtered_text |
-| contract-v2-llm-extract | app_contract_v2_content.filtered_text | app_contract_v2_rows + app_contract_v2_content |
-| contract-v2-text-section | app_contract_v2_content.filtered_text | app_contract_v2_content.sections |
+| contract-v2-check-ocr | MCP结果 | app_contract_mgr_v2_content.ocr_text |
+| contract-v2-text-filter | app_contract_mgr_v2_content.ocr_text | app_contract_mgr_v2_content.filtered_text |
+| contract-v2-llm-extract | app_contract_mgr_v2_content.filtered_text | app_contract_mgr_v2_rows + app_contract_mgr_v2_content |
+| contract-v2-text-section | app_contract_mgr_v2_content.filtered_text | app_contract_mgr_v2_content.sections |
 
 > **设计原则**：业务数据直接读写扩展表，不经过 `record.data`（`mini_app_rows.data`）中转。
 
@@ -35,5 +35,5 @@ pending_ocr → ocr_submitted → pending_filter → pending_extract
 | contract_v2_org_nodes | 独立表 | 组织树 |
 | contract_v2_main_records | 独立表 | 合同主记录 |
 | contract_v2_versions | 独立表 | 合同版本 |
-| app_contract_v2_content | 扩展表 | 内容数据 |
-| app_contract_v2_rows | 扩展表 | 元数据 |
+| app_contract_mgr_v2_content | 扩展表 | 内容数据 |
+| app_contract_mgr_v2_rows | 扩展表 | 元数据 |

@@ -95,10 +95,10 @@ CREATE TABLE contract_v2_versions (
 );
 ```
 
-### 4. app_contract_v2_content（Extension Table）
+### 4. app_contract_mgr_v2_content（Extension Table）
 
 ```sql
-CREATE TABLE app_contract_v2_content (
+CREATE TABLE app_contract_mgr_v2_content (
   row_id VARCHAR(32) PRIMARY KEY,
   ocr_text LONGTEXT,
   ocr_service VARCHAR(64),
@@ -117,10 +117,10 @@ CREATE TABLE app_contract_v2_content (
 );
 ```
 
-### 5. app_contract_v2_rows（Extension Table）
+### 5. app_contract_mgr_v2_rows（Extension Table）
 
 ```sql
-CREATE TABLE app_contract_v2_rows (
+CREATE TABLE app_contract_mgr_v2_rows (
   row_id VARCHAR(32) PRIMARY KEY,
   contract_number VARCHAR(64),
   party_a VARCHAR(128),
@@ -162,10 +162,10 @@ pending_review → (用户确认) → confirmed
 | Handler | 类型 | 读 | 写 |
 |---------|------|----|----|
 | handler-submit-ocr | 共享 | record.data | MCP提交 |
-| contract-v2-check-ocr | v2专用 | MCP结果 | app_contract_v2_content.ocr_text |
-| contract-v2-text-filter | v2专用 | app_contract_v2_content.ocr_text | app_contract_v2_content.filtered_text |
-| contract-v2-llm-extract | v2专用 | app_contract_v2_content.filtered_text | app_contract_v2_rows + app_contract_v2_content |
-| contract-v2-text-section | v2专用 | app_contract_v2_content.filtered_text | app_contract_v2_content.sections |
+| contract-v2-check-ocr | v2专用 | MCP结果 | app_contract_mgr_v2_content.ocr_text |
+| contract-v2-text-filter | v2专用 | app_contract_mgr_v2_content.ocr_text | app_contract_mgr_v2_content.filtered_text |
+| contract-v2-llm-extract | v2专用 | app_contract_mgr_v2_content.filtered_text | app_contract_mgr_v2_rows + app_contract_mgr_v2_content |
+| contract-v2-text-section | v2专用 | app_contract_mgr_v2_content.filtered_text | app_contract_mgr_v2_content.sections |
 
 ---
 

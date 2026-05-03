@@ -6,8 +6,8 @@ const DEFAULT_EXTRACT_CONFIG = {
   temperature: 0.3,
 };
 
-const CONTENT_TABLE = 'app_contract_v2_content';
-const ROWS_TABLE = 'app_contract_v2_rows';
+const CONTENT_TABLE = 'app_contract_mgr_v2_content';
+const ROWS_TABLE = 'app_contract_mgr_v2_rows';
 
 const CONTRACT_FIELDS = [
   { name: 'contract_number', label: '合同编号', guide: '查找合同编号，通常在合同首页顶部，格式如 HT-XXX 或 合同编号：XXX' },

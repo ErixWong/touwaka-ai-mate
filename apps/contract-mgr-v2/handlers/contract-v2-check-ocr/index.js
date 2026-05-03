@@ -75,7 +75,7 @@ export default {
         const ocrText = extractTextFromMcpResult(mcpResult);
         logger.info(`[contract-v2-check-ocr] Record ${record.id}: OCR completed, text length=${ocrText.length}`);
 
-        await services.callExtension('app_contract_v2_content', 'upsert', {
+        await services.callExtension('app_contract_mgr_v2_content', 'upsert', {
           row_id: record.id,
           ocr_text: ocrText,
           ocr_service: mcp.server || 'markitdown',
