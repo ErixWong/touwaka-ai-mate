@@ -23,7 +23,15 @@ function getConfig(app, stateName) {
 function extractTextFromMcpResult(mcpResult) {
   if (!mcpResult) return '';
   if (typeof mcpResult === 'string') return mcpResult;
-  return mcpResult.content || mcpResult.text || mcpResult.output || mcpResult.markdown || mcpResult.result || '';
+  const r = mcpResult.result;
+  if (typeof r === 'string') return r;
+  const content = mcpResult.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    const texts = content.filter((c: any) => c.type === 'text').map((c: any) => c.text);
+    if (texts.length) return texts.join('\n');
+  }
+  return mcpResult.text || mcpResult.output || mcpResult.markdown || '';
 }
 
 function truncateTaskInfo(mcpResult, maxLen = 1000) {
