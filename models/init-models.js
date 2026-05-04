@@ -2,8 +2,11 @@ import _sequelize from "sequelize";
 const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
 import _app_action_log from  "./app_action_log.js";
+import _app_contract_mgr_compare from  "./app_contract_mgr_compare.js";
 import _app_contract_mgr_content from  "./app_contract_mgr_content.js";
 import _app_contract_mgr_row from  "./app_contract_mgr_row.js";
+import _app_contract_mgr_v2_content from  "./app_contract_mgr_v2_content.js";
+import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
 import _app_row_handler from  "./app_row_handler.js";
 import _app_state from  "./app_state.js";
 import _assistant_message from  "./assistant_message.js";
@@ -11,6 +14,9 @@ import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
 import _attachment_token from  "./attachment_token.js";
 import _attachment from  "./attachment.js";
+import _contract_v2_main_record from  "./contract_v2_main_record.js";
+import _contract_v2_org_node from  "./contract_v2_org_node.js";
+import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
@@ -54,8 +60,11 @@ import _user from  "./user.js";
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
   const app_action_log = _app_action_log.init(sequelize, DataTypes);
+  const app_contract_mgr_compare = _app_contract_mgr_compare.init(sequelize, DataTypes);
   const app_contract_mgr_content = _app_contract_mgr_content.init(sequelize, DataTypes);
   const app_contract_mgr_row = _app_contract_mgr_row.init(sequelize, DataTypes);
+  const app_contract_mgr_v2_content = _app_contract_mgr_v2_content.init(sequelize, DataTypes);
+  const app_contract_mgr_v2_row = _app_contract_mgr_v2_row.init(sequelize, DataTypes);
   const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
   const app_state = _app_state.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
@@ -63,6 +72,9 @@ export default function initModels(sequelize) {
   const assistant = _assistant.init(sequelize, DataTypes);
   const attachment_token = _attachment_token.init(sequelize, DataTypes);
   const attachment = _attachment.init(sequelize, DataTypes);
+  const contract_v2_main_record = _contract_v2_main_record.init(sequelize, DataTypes);
+  const contract_v2_org_node = _contract_v2_org_node.init(sequelize, DataTypes);
+  const contract_v2_version = _contract_v2_version.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
@@ -125,6 +137,12 @@ export default function initModels(sequelize) {
   app_row_handler.hasMany(app_state, { as: "app_states", foreignKey: "handler_id"});
   mini_app_file.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
   attachment.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "attachment_id"});
+  contract_v2_version.belongsTo(contract_v2_main_record, { as: "contract", foreignKey: "contract_id"});
+  contract_v2_main_record.hasMany(contract_v2_version, { as: "contract_v2_versions", foreignKey: "contract_id"});
+  contract_v2_main_record.belongsTo(contract_v2_org_node, { as: "org_node", foreignKey: "org_node_id"});
+  contract_v2_org_node.hasMany(contract_v2_main_record, { as: "contract_v2_main_records", foreignKey: "org_node_id"});
+  contract_v2_org_node.belongsTo(contract_v2_org_node, { as: "parent", foreignKey: "parent_id"});
+  contract_v2_org_node.hasMany(contract_v2_org_node, { as: "contract_v2_org_nodes", foreignKey: "parent_id"});
   position.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -163,10 +181,20 @@ export default function initModels(sequelize) {
   mcp_server.hasMany(mcp_user_credential, { as: "mcp_user_credentials", foreignKey: "mcp_server_id"});
   app_action_log.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "record_id"});
+  app_contract_mgr_compare.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasOne(app_contract_mgr_compare, { as: "app_contract_mgr_compare", foreignKey: "row_id"});
+  app_contract_mgr_compare.belongsTo(mini_app_row, { as: "target_row", foreignKey: "target_row_id"});
+  mini_app_row.hasMany(app_contract_mgr_compare, { as: "target_row_app_contract_mgr_compares", foreignKey: "target_row_id"});
   app_contract_mgr_content.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasOne(app_contract_mgr_content, { as: "app_contract_mgr_content", foreignKey: "row_id"});
   app_contract_mgr_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasOne(app_contract_mgr_row, { as: "app_contract_mgr_row", foreignKey: "row_id"});
+  app_contract_mgr_v2_content.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasOne(app_contract_mgr_v2_content, { as: "app_contract_mgr_v2_content", foreignKey: "row_id"});
+  app_contract_mgr_v2_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasOne(app_contract_mgr_v2_row, { as: "app_contract_mgr_v2_row", foreignKey: "row_id"});
+  contract_v2_version.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasMany(contract_v2_version, { as: "contract_v2_versions", foreignKey: "row_id"});
   mini_app_file.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "record_id"});
   app_action_log.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
@@ -243,8 +271,11 @@ export default function initModels(sequelize) {
   return {
     ai_model,
     app_action_log,
+    app_contract_mgr_compare,
     app_contract_mgr_content,
     app_contract_mgr_row,
+    app_contract_mgr_v2_content,
+    app_contract_mgr_v2_row,
     app_row_handler,
     app_state,
     assistant_message,
@@ -252,6 +283,9 @@ export default function initModels(sequelize) {
     assistant,
     attachment_token,
     attachment,
+    contract_v2_main_record,
+    contract_v2_org_node,
+    contract_v2_version,
     department,
     expert_skill,
     expert,
