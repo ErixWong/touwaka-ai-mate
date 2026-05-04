@@ -286,7 +286,7 @@ class MiniAppService {
   async loadHandlerScript(handlerPath) {
     const fs = await import('fs');
     const path = await import('path');
-    const allowedPrefixes = ['scripts/', 'data/skills/'];
+    const allowedPrefixes = ['scripts/', 'apps/'];
     const absPath = path.resolve(handlerPath);
     const isAllowed = allowedPrefixes.some(p => absPath.includes(p.replace('/', path.sep)));
     if (!isAllowed) {
