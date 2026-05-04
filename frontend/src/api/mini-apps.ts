@@ -85,7 +85,6 @@ export interface StepResourceConfig {
   model_id?: string
   temperature?: number
   enable_thinking?: boolean
-  thinking_budget?: number
   judge_model_id?: string
 }
 

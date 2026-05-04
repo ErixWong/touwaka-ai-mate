@@ -45,10 +45,6 @@
                     <label class="field-label">{{ $t('apps.stepConfig.enableThinking') }}</label>
                     <el-switch v-model="getStepConfig(step.name).enable_thinking" />
                   </div>
-                  <div v-if="getStepConfig(step.name).enable_thinking" class="form-field">
-                    <label class="field-label">{{ $t('apps.stepConfig.thinkingBudget') }}</label>
-                    <el-input-number v-model="getStepConfig(step.name).thinking_budget" :min="512" :max="32768" :step="1024" />
-                  </div>
                 </template>
               </div>
 
