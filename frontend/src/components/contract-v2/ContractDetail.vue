@@ -3,7 +3,8 @@ import { computed, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { useContractV2Store } from '@/stores/contract-v2'
 import { uploadAttachment } from '@/api/attachment'
-import { createRecord, newID } from '@/api/mini-apps'
+import { createRecord, newID, getDocumentContent, type DocumentContent } from '@/api/mini-apps'
+import DocumentContentViewer from '@/components/apps/DocumentContentViewer.vue'
 
 const APP_ID = 'contract-mgr-v2'
 
@@ -18,6 +19,10 @@ const versions = computed(() => store.currentContractVersions)
 
 const uploading = ref(false)
 const showUploadDialog = ref(false)
+const showContentDialog = ref(false)
+const documentContent = ref<DocumentContent | null>(null)
+const contentLoading = ref(false)
+const contentVersionName = ref('')
 
 const versionTypeLabels: Record<string, string> = {
   draft: '草稿',
@@ -67,6 +72,20 @@ async function handleDeleteVersion(versionId: string) {
 
 function openUploadDialog() {
   showUploadDialog.value = true
+}
+
+async function handleViewContent(row: any) {
+  if (!row.row_id) return
+  contentLoading.value = true
+  contentVersionName.value = row.version_name || `V${row.version_number}`
+  showContentDialog.value = true
+  try {
+    documentContent.value = await getDocumentContent(APP_ID, row.row_id)
+  } catch {
+    documentContent.value = null
+  } finally {
+    contentLoading.value = false
+  }
 }
 
 async function handleFileUpload(event: Event) {
@@ -181,8 +200,14 @@ function fileToBase64(file: File): Promise<string> {
             {{ row.party_a || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
+            <el-button
+              v-if="row.row_id"
+              size="small"
+              text
+              @click="handleViewContent(row)"
+            >查看</el-button>
             <el-button
               v-if="!row.is_current"
               size="small"
@@ -221,6 +246,48 @@ function fileToBase64(file: File): Promise<string> {
             <input type="file" accept=".pdf,.docx,.doc,.jpg,.png" @change="handleFileUpload" class="hidden-input" />
           </label>
         </div>
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="showContentDialog"
+      :title="`文档内容 - ${contentVersionName}`"
+      width="1200px"
+      top="5vh"
+      destroy-on-close
+    >
+      <div v-if="contentLoading" style="text-align: center; padding: 60px 0;">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <p>加载中...</p>
+      </div>
+      <div v-else-if="documentContent && documentContent.has_content">
+        <el-tabs>
+          <el-tab-pane label="基本信息">
+            <div class="detail-grid">
+              <div v-for="v in versions" :key="v.id" class="detail-row" v-show="v.row_id && v.id === versions.find(ver => ver.row_id)?.id">
+              </div>
+              <template v-if="documentContent.extract_json">
+                <div v-for="(val, key) in documentContent.extract_json" :key="key" class="detail-row">
+                  <span class="detail-label">{{ key }}</span>
+                  <span class="detail-value">{{ val ?? '-' }}</span>
+                </div>
+              </template>
+              <div v-if="documentContent.extract_at" class="detail-row">
+                <span class="detail-label">提取时间</span>
+                <span class="detail-value">{{ documentContent.extract_at }}</span>
+              </div>
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="文档内容">
+            <DocumentContentViewer
+              :content-text="documentContent.filtered_text || documentContent.ocr_text || ''"
+              :sections="documentContent.sections || []"
+            />
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+      <div v-else style="text-align: center; padding: 60px 0; color: var(--el-text-color-placeholder);">
+        暂无文档内容（可能正在处理中）
       </div>
     </el-dialog>
   </div>
@@ -316,5 +383,23 @@ function fileToBase64(file: File): Promise<string> {
 
 .hidden-input {
   display: none;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px 16px;
+  padding: 8px 0;
+}
+
+.detail-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
 }
 </style>
