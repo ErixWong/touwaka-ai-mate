@@ -92,9 +92,12 @@ async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInpu
     parsed = response.parsed;
   } else {
     try {
-      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+      let text = response.text || '';
+      text = text.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
+    } catch (e) {
+      logger.warn(`[contract-v2-text-filter] JSON parse failed: ${e.message}, text preview: ${(response.text || '').substring(0, 300)}`);
       parsed = null;
     }
   }
