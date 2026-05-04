@@ -184,7 +184,6 @@ import {
   checkAppDependencies,
   installAppFromMarket,
   uninstallAppFromMarket,
-  checkAppUpdate,
   type AppSummary,
   type Category,
   type AppManifest,

@@ -16,7 +16,6 @@
           @click="currentTab = 'market'"
         >
           {{ $t('apps.appMarket', '应用市场') }}
-          <span v-if="hasUpdates" class="update-badge">{{ updateCount }}</span>
         </button>
       </div>
     </div>
@@ -51,7 +50,6 @@
           <div class="app-card-desc" v-if="app.description">{{ app.description }}</div>
           <div class="app-card-meta">
             <span class="app-type">{{ app.type }}</span>
-            <span v-if="(app as any).updateAvailable" class="update-tag">{{ $t('apps.hasUpdate', '有更新') }}</span>
           </div>
         </div>
       </div>
@@ -73,7 +71,6 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getApps, type MiniApp } from '@/api/mini-apps'
-import { checkAppUpdate } from '@/api/app-market'
 import AppMarketPanel from '@/components/AppMarketPanel.vue'
 
 const router = useRouter()
@@ -85,34 +82,13 @@ const currentTab = ref<'my-apps' | 'market'>('my-apps')
 // 我的应用
 const myApps = ref<MiniApp[]>([])
 const isLoadingMyApps = ref(true)
-const hasUpdates = ref(false)
-const updateCount = ref(0)
 
 // 加载我的应用
 async function loadMyApps() {
   isLoadingMyApps.value = true
   try {
     const apps = await getApps()
-    
-    // 检查更新（仅管理员）
-    if (userStore.isAdmin) {
-      const appsWithUpdate = await Promise.all(
-        apps.map(async (app) => {
-          try {
-            const updateInfo = await checkAppUpdate(app.id)
-            return { ...app, updateAvailable: updateInfo.has_update }
-          } catch (e) {
-            console.warn(`Failed to check update for ${app.id}:`, e)
-            return { ...app, updateAvailable: false }
-          }
-        })
-      )
-      myApps.value = appsWithUpdate
-      updateCount.value = appsWithUpdate.filter(a => a.updateAvailable).length
-      hasUpdates.value = updateCount.value > 0
-    } else {
-      myApps.value = apps
-    }
+    myApps.value = apps
   } catch (error) {
     console.error('Failed to load apps:', error)
   } finally {
@@ -206,20 +182,6 @@ watch(currentTab, (tab) => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.update-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  background: #ff4d4f;
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 9px;
-}
-
 .tab-content {
   min-height: 400px;
 }
@@ -304,14 +266,5 @@ watch(currentTab, (tab) => {
   font-size: 12px;
   color: var(--color-text-tertiary, #999);
   text-transform: uppercase;
-}
-
-.update-tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #fff2f0;
-  color: #ff4d4f;
-  border-radius: 4px;
-  border: 1px solid #ffccc7;
 }
 </style>
