@@ -122,7 +122,11 @@ async function loadMyApps() {
 
 // 打开 App
 function openApp(app: MiniApp) {
-  router.push(`/apps/${app.id}`)
+  if (app.id === 'contract-mgr-v2') {
+    router.push('/contract-v2')
+  } else {
+    router.push(`/apps/${app.id}`)
+  }
 }
 
 // 处理应用安装完成
