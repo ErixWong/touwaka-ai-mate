@@ -1,4 +1,5 @@
 import logger from '../../../../lib/logger.js';
+import { parseLlmResponse, extractKeyParts, getStepResource, getPrompt } from '../shared.js';
 
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
@@ -20,19 +21,11 @@ const CONTRACT_FIELDS = [
 ];
 
 function getExtractConfig(app, stateName) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.step_resources?.[stateName] || config?.step_resources?.pending_extract || DEFAULT_EXTRACT_CONFIG;
+  return getStepResource(app, stateName, getStepResource(app, 'pending_extract', DEFAULT_EXTRACT_CONFIG));
 }
 
 function getExtractPrompt(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.prompts?.extract || null;
+  return getPrompt(app, 'extract');
 }
 
 function buildPrompt(customPrompt, fieldDefs, exampleJson, partHint) {
@@ -48,45 +41,6 @@ ${fieldDefs}
 ${exampleJson}
 }`;
   return partHint ? base + `\n\n注意：${partHint}` : base;
-}
-
-function extractKeyParts(text) {
-  const lines = text.split('\n');
-  const totalLines = lines.length;
-
-  const headEnd = Math.min(Math.floor(totalLines * 0.15), 200);
-  const head = lines.slice(0, headEnd).join('\n');
-
-  const tailStart = Math.max(totalLines - Math.min(Math.floor(totalLines * 0.1), 100), headEnd);
-  const tail = lines.slice(tailStart).join('\n');
-
-  const amountKeywords = ['金额', '总额', '合同金额', '价格', '价款', '人民币', 'RMB', '¥', '元'];
-  const amountLines = [];
-  for (let i = 0; i < totalLines; i++) {
-    if (amountKeywords.some(k => lines[i].includes(k))) {
-      const start = Math.max(0, i - 2);
-      const end = Math.min(totalLines, i + 3);
-      amountLines.push(...lines.slice(start, end));
-    }
-  }
-  const amountPart = [...new Set(amountLines)].join('\n');
-
-  return { head, tail, amountPart };
-}
-
-function parseLlmResponse(response) {
-  const resultText = response.text || response.parsed || response;
-  if (typeof resultText === 'string') {
-    let text = resultText.trim();
-    if (text.startsWith('```')) {
-      text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-    }
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    return JSON.parse(jsonMatch[0]);
-  }
-  if (typeof resultText === 'object') return resultText;
-  return null;
 }
 
 function mergeMetadata(partialResults) {

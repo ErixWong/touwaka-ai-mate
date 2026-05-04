@@ -1,70 +1,15 @@
 import logger from '../../../../lib/logger.js';
+import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt } from '../shared.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 const SECTION_MAX_INPUT_CHARS = 60000;
 
 function getSectionConfig(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.step_resources?.pending_section || { type: 'internal_llm', temperature: 0.3 };
+  return getStepResource(app, 'pending_section', { type: 'internal_llm', temperature: 0.3 });
 }
 
 function getSectionPrompt(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.prompts?.section || null;
-}
-
-function splitTextIntoChunks(text, maxChars) {
-  const paragraphs = text.split('\n\n');
-  const chunks = [];
-  let current = '';
-
-  for (const para of paragraphs) {
-    if (current.length + para.length + 2 <= maxChars) {
-      current += (current ? '\n\n' : '') + para;
-    } else {
-      if (current) chunks.push(current);
-      if (para.length > maxChars) {
-        const lines = para.split('\n');
-        let lineChunk = '';
-        for (const line of lines) {
-          if (lineChunk.length + line.length + 1 <= maxChars) {
-            lineChunk += (lineChunk ? '\n' : '') + line;
-          } else {
-            if (lineChunk) chunks.push(lineChunk);
-            lineChunk = line;
-          }
-        }
-        current = lineChunk;
-      } else {
-        current = para;
-      }
-    }
-  }
-  if (current) chunks.push(current);
-
-  return chunks.length > 0 ? chunks : [text];
-}
-
-function parseLlmResponse(response) {
-  const resultText = response.text || response.parsed || response;
-  if (typeof resultText === 'string') {
-    let text = resultText.trim();
-    if (text.startsWith('```')) {
-      text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-    }
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]);
-    return parsed.sections || parsed;
-  }
-  if (typeof resultText === 'object') return resultText.sections || resultText;
-  return null;
+  return getPrompt(app, 'section');
 }
 
 function mergeSections(chunkResults) {
@@ -144,11 +89,12 @@ export default {
           model_id: sectionConfig.model_id,
           temperature: sectionConfig.temperature || 0.3,
         });
-        sections = parseLlmResponse(response);
+        const raw = parseLlmResponse(response);
+        sections = raw && (raw.sections || raw);
         if (!sections) return { success: false, error: 'LLM did not return valid JSON' };
       } else {
         logger.info(`[contract-v2-text-section] Record ${record.id}: Text too long (${text.length} chars), using chunked analysis`);
-        const chunks = splitTextIntoChunks(text, SECTION_MAX_INPUT_CHARS);
+        const chunks = splitIntoChunks(text, SECTION_MAX_INPUT_CHARS);
         logger.info(`[contract-v2-text-section] Record ${record.id}: Split into ${chunks.length} chunks`);
 
         const chunkResults = [];
@@ -162,7 +108,8 @@ export default {
               model_id: sectionConfig.model_id,
               temperature: sectionConfig.temperature || 0.3,
             });
-            const parsed = parseLlmResponse(response);
+            const raw = parseLlmResponse(response);
+            const parsed = raw && (raw.sections || raw);
             if (Array.isArray(parsed)) chunkResults.push(parsed);
           } catch (chunkErr) {
             logger.warn(`[contract-v2-text-section] Chunk ${i + 1} failed: ${chunkErr.message}`);
