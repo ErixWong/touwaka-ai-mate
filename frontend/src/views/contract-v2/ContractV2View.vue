@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useContractV2Store } from '@/stores/contract-v2'
+import { getApp, type MiniApp } from '@/api/mini-apps'
 import OrgTree from '@/components/contract-v2/OrgTree.vue'
 import ContractList from '@/components/contract-v2/ContractList.vue'
 import ContractDetail from '@/components/contract-v2/ContractDetail.vue'
 import DashboardPanel from '@/components/contract-v2/DashboardPanel.vue'
+import AppStepConfig from '@/components/apps/AppStepConfig.vue'
+
+const APP_ID = 'contract-mgr-v2'
 
 const store = useContractV2Store()
 const activeTab = ref('list')
 const showDetail = ref(false)
+const showStepConfig = ref(false)
+const appData = ref<MiniApp | null>(null)
 
 onMounted(async () => {
   await Promise.all([
@@ -35,6 +41,11 @@ function onContractClick(contractId: string) {
 function onBackToList() {
   showDetail.value = false
 }
+
+async function openStepConfig() {
+  appData.value = await getApp(APP_ID)
+  showStepConfig.value = true
+}
 </script>
 
 <template>
@@ -43,6 +54,12 @@ function onBackToList() {
       <OrgTree />
     </div>
     <div class="cv2-main">
+      <div class="cv2-toolbar">
+        <el-button text @click="openStepConfig">
+          <el-icon><Setting /></el-icon>
+          流程配置
+        </el-button>
+      </div>
       <div v-if="!showDetail" class="cv2-list-view">
         <el-tabs v-model="activeTab" class="cv2-tabs">
           <el-tab-pane label="合同列表" name="list">
@@ -61,6 +78,14 @@ function onBackToList() {
         />
       </div>
     </div>
+
+    <AppStepConfig
+      v-if="appData"
+      :visible="showStepConfig"
+      :app="appData"
+      @close="showStepConfig = false"
+      @saved="showStepConfig = false"
+    />
   </div>
 </template>
 
@@ -83,6 +108,12 @@ function onBackToList() {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+}
+
+.cv2-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
 }
 
 .cv2-tabs {

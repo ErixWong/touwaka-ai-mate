@@ -1411,10 +1411,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
       extractHint: '用于 llm-extract handler，提取结构化数据',
       comparePrompt: '比对提示词',
       comparePlaceholder: '留空使用默认比对提示词',
-      compareHint: '用于合同比对，支持变量：{{SECTION_TITLE}}, {{TEXT_A}}, {{TEXT_B}}',
+      compareHint: "用于合同比对，支持变量：{'{'}SECTION_TITLE{'}'}, {'{'}TEXT_A{'}'}, {'{'}TEXT_B{'}'}",
       sectionPrompt: '章节分析提示词',
       sectionPlaceholder: '留空使用默认章节分析提示词',
-      sectionHint: '用于 text-section handler，分析文档结构，支持变量：{{TEXT}}',
+      sectionHint: "用于 text-section handler，分析文档结构，支持变量：{'{'}TEXT{'}'}",
     },
 
     compare: {

@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 

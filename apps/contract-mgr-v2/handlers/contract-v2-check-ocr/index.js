@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 
 const JUDGE_PROMPT = `判断OCR任务是否完成。
 
@@ -21,12 +21,15 @@ function getConfig(app, stateName) {
 }
 
 function extractTextFromMcpResult(mcpResult) {
+  if (!mcpResult) return '';
+  if (typeof mcpResult === 'string') return mcpResult;
   return mcpResult.content || mcpResult.text || mcpResult.output || mcpResult.markdown || mcpResult.result || '';
 }
 
 function truncateTaskInfo(mcpResult, maxLen = 1000) {
+  if (mcpResult == null) return '(no result)';
   const jsonStr = JSON.stringify(mcpResult, null, 2);
-  if (jsonStr.length <= maxLen) return jsonStr;
+  if (!jsonStr || jsonStr.length <= maxLen) return jsonStr || '(empty)';
   return jsonStr.substring(0, maxLen) + '\n... (截取前' + maxLen + '字符)';
 }
 

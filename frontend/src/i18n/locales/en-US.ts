@@ -1467,10 +1467,10 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
       extractHint: 'For llm-extract handler, extract structured data',
       comparePrompt: 'Compare Prompt',
       comparePlaceholder: 'Leave empty for default compare prompt',
-      compareHint: 'For contract comparison, supports: {{SECTION_TITLE}}, {{TEXT_A}}, {{TEXT_B}}',
+      compareHint: "For contract comparison, supports: {'{'}SECTION_TITLE{'}'}, {'{'}TEXT_A{'}'}, {'{'}TEXT_B{'}'}",
       sectionPrompt: 'Section Analysis Prompt',
       sectionPlaceholder: 'Leave empty for default section analysis prompt',
-      sectionHint: 'For text-section handler, analyze document structure, supports: {{TEXT}}',
+      sectionHint: "For text-section handler, analyze document structure, supports: {'{'}TEXT{'}'}",
     },
 
     compare: {
