@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useContractV2Store } from '@/stores/contract-v2'
+import { uploadAttachment } from '@/api/attachment'
+import { createRecord, newID } from '@/api/mini-apps'
+
+const APP_ID = 'contract-mgr-v2'
 
 const emit = defineEmits<{
   back: []
@@ -10,6 +15,9 @@ const store = useContractV2Store()
 
 const contract = computed(() => store.currentContract)
 const versions = computed(() => store.currentContractVersions)
+
+const uploading = ref(false)
+const showUploadDialog = ref(false)
 
 const versionTypeLabels: Record<string, string> = {
   draft: '草稿',
@@ -56,6 +64,60 @@ async function handleDeleteVersion(versionId: string) {
     await store.removeVersion(versionId)
   } catch {}
 }
+
+function openUploadDialog() {
+  showUploadDialog.value = true
+}
+
+async function handleFileUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files?.length || !contract.value) return
+  const file = input.files[0]!
+  input.value = ''
+
+  uploading.value = true
+  try {
+    const base64Data = await fileToBase64(file)
+    const att = await uploadAttachment({
+      source_tag: 'mini_app_file',
+      source_id: APP_ID,
+      file_name: file.name,
+      mime_type: file.type,
+      base64_data: base64Data,
+    })
+
+    const clientId = await newID(20)
+    const record = await createRecord(APP_ID, {}, [att.id], clientId)
+
+    const nextVerNum = String(versions.value.length + 1)
+    await store.addVersion(contract.value.id, {
+      row_id: record.id,
+      file_id: att.id,
+      version_number: nextVerNum,
+      version_name: file.name,
+      version_type: 'draft',
+    })
+
+    showUploadDialog.value = false
+  } catch (e: any) {
+    console.error('Upload failed:', e)
+  } finally {
+    uploading.value = false
+  }
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.split(',')[1]!
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 </script>
 
 <template>
@@ -79,7 +141,12 @@ async function handleDeleteVersion(versionId: string) {
     <el-divider />
 
     <div class="contract-detail-section">
-      <h3>版本历史</h3>
+      <div class="contract-detail-section-header">
+        <h3>版本历史</h3>
+        <el-button type="primary" size="small" @click="openUploadDialog">
+          + 上传新版本
+        </el-button>
+      </div>
       <el-table :data="versions" stripe>
         <el-table-column prop="version_number" label="版本号" width="100" />
         <el-table-column prop="version_name" label="版本名称" min-width="150">
@@ -140,6 +207,22 @@ async function handleDeleteVersion(versionId: string) {
         </el-table-column>
       </el-table>
     </div>
+    <el-dialog v-model="showUploadDialog" title="上传合同文件" width="480px" destroy-on-close>
+      <div class="upload-zone">
+        <div v-if="uploading" class="upload-loading">
+          <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+          <span>正在上传并处理中...</span>
+        </div>
+        <div v-else class="upload-drop">
+          <p>点击选择合同文件</p>
+          <p class="upload-hint">支持 PDF、DOCX、DOC、JPG、PNG 格式</p>
+          <label class="upload-btn">
+            选择文件
+            <input type="file" accept=".pdf,.docx,.doc,.jpg,.png" @change="handleFileUpload" class="hidden-input" />
+          </label>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -179,5 +262,59 @@ async function handleDeleteVersion(versionId: string) {
 .contract-detail-section h3 {
   margin: 0 0 12px 0;
   font-size: 16px;
+}
+
+.contract-detail-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.contract-detail-section-header h3 {
+  margin: 0;
+}
+
+.upload-zone {
+  padding: 20px;
+  text-align: center;
+}
+
+.upload-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 30px 0;
+  color: var(--el-text-color-secondary);
+}
+
+.upload-drop {
+  padding: 20px 0;
+}
+
+.upload-drop p {
+  margin: 0 0 8px;
+  color: var(--el-text-color-regular);
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 16px !important;
+}
+
+.upload-btn {
+  display: inline-block;
+  padding: 8px 24px;
+  background: var(--el-color-primary);
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.hidden-input {
+  display: none;
 }
 </style>
