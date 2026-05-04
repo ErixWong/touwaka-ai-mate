@@ -89,6 +89,7 @@ export default {
           ...buildLlmParams(sectionConfig),
         });
         const raw = parseLlmResponse(response);
+        logger.info(`[contract-v2-text-section] Record ${record.id}: raw type=${typeof raw}, isArr=${Array.isArray(raw)}, keys=${raw ? Object.keys(raw).join(',') : 'null'}, preview=${JSON.stringify(raw)?.substring(0, 300)}`);
         sections = raw && (raw.sections || raw);
         if (!sections) return { success: false, error: 'LLM did not return valid JSON' };
       } else {
