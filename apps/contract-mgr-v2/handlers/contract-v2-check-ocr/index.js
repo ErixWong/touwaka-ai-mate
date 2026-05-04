@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 
 const JUDGE_PROMPT = `判断OCR任务是否完成。
 

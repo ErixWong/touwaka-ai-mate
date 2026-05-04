@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
