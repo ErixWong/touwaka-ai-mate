@@ -1,4 +1,5 @@
 import logger from '../../../../lib/logger.js';
+import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
 const DEFAULT_FILTER_CONFIG = {
   type: 'internal_llm',
@@ -6,51 +7,16 @@ const DEFAULT_FILTER_CONFIG = {
   temperature: 0.3,
 };
 
-const CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 120000;
+const CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 60000;
 const CONTEXT_SUMMARY_MAX_LENGTH = 2000;
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 
 function getFilterConfig(app, stateName) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.step_resources?.[stateName] || config?.step_resources?.pending_filter || DEFAULT_FILTER_CONFIG;
+  return getStepResource(app, stateName, getStepResource(app, 'pending_filter', DEFAULT_FILTER_CONFIG));
 }
 
 function getFilterPrompt(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.prompts?.filter || '去除页码、水印、乱码、多余的空白字符，保留正文内容';
-}
-
-function splitIntoChunks(text, maxLen) {
-  const paragraphs = text.split('\n\n');
-  const chunks = [];
-  let current = '';
-
-  for (const para of paragraphs) {
-    if (current.length + para.length + 2 <= maxLen) {
-      current += (current ? '\n\n' : '') + para;
-    } else {
-      if (current) chunks.push(current);
-      if (para.length > maxLen) {
-        let remaining = para;
-        while (remaining.length > 0) {
-          chunks.push(remaining.slice(0, maxLen));
-          remaining = remaining.slice(maxLen);
-        }
-        current = '';
-      } else {
-        current = para;
-      }
-    }
-  }
-  if (current) chunks.push(current);
-
-  return chunks.length > 0 ? chunks : [text];
+  return getPrompt(app, 'filter', '去除页码、水印、乱码、多余的空白字符，保留正文内容');
 }
 
 const CHUNK_SYSTEM_SUFFIX = `
@@ -83,23 +49,14 @@ async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInpu
     instruction: promptBase,
     ocr_text: chunkInput + contextNote,
     response_format: 'json',
-    model_id: filterConfig.model_id,
-    temperature: filterConfig.temperature || 0.3,
+    ...buildLlmParams(filterConfig),
   });
 
   let parsed;
   if (response.parsed && typeof response.parsed === 'object') {
     parsed = response.parsed;
   } else {
-    try {
-      let text = response.text || '';
-      text = text.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch (e) {
-      logger.warn(`[contract-v2-text-filter] JSON parse failed: ${e.message}, text preview: ${(response.text || '').substring(0, 300)}`);
-      parsed = null;
-    }
+    parsed = parseLlmResponse(response);
   }
 
   if (!parsed || typeof parsed.processed_part !== 'string') {
@@ -199,8 +156,7 @@ export default {
           instruction: filterPrompt,
           ocr_text: ocrText,
           response_format: 'text',
-          model_id: filterConfig.model_id,
-          temperature: filterConfig.temperature || 0.3,
+          ...buildLlmParams(filterConfig),
         });
         filteredText = response.text || ocrText;
       } catch (e) {

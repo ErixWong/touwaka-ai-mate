@@ -1,4 +1,5 @@
 import logger from '../../../../lib/logger.js';
+import { parseLlmResponse, extractKeyParts, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
@@ -8,6 +9,7 @@ const DEFAULT_EXTRACT_CONFIG = {
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 const ROWS_TABLE = 'app_contract_mgr_v2_rows';
+const EXTRACT_MAX_INPUT_CHARS = 60000;
 
 const CONTRACT_FIELDS = [
   { name: 'contract_number', label: '合同编号', guide: '查找合同编号，通常在合同首页顶部，格式如 HT-XXX 或 合同编号：XXX' },
@@ -19,19 +21,60 @@ const CONTRACT_FIELDS = [
 ];
 
 function getExtractConfig(app, stateName) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config?.step_resources?.[stateName] || config?.step_resources?.pending_extract || DEFAULT_EXTRACT_CONFIG;
+  return getStepResource(app, stateName, getStepResource(app, 'pending_extract', DEFAULT_EXTRACT_CONFIG));
 }
 
 function getExtractPrompt(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
+  return getPrompt(app, 'extract');
+}
+
+function buildPrompt(customPrompt, fieldDefs, exampleJson, partHint) {
+  const base = customPrompt
+    ? `${customPrompt}\n\n字段定义:\n${fieldDefs}\n\n期望返回 JSON 格式:\n{\n${exampleJson}\n}`
+    : `从以下文本中提取结构化元数据。
+
+字段定义:
+${fieldDefs}
+
+期望返回 JSON 格式:
+{
+${exampleJson}
+}`;
+  return partHint ? base + `\n\n注意：${partHint}` : base;
+}
+
+function mergeMetadata(partialResults) {
+  const merged = {};
+  for (const result of partialResults) {
+    if (!result) continue;
+    for (const field of CONTRACT_FIELDS) {
+      const value = result[field.name];
+      if (value === undefined || value === null || value === '') continue;
+      if (merged[field.name] === undefined) {
+        merged[field.name] = value;
+      }
+    }
   }
-  return config?.prompts?.extract || null;
+  return merged;
+}
+
+function cleanMetadata(metadata) {
+  const cleaned = {};
+  for (const field of CONTRACT_FIELDS) {
+    const value = metadata[field.name];
+    if (value === undefined || value === null || value === '') continue;
+
+    if (field.name === 'contract_amount') {
+      const num = Number(String(value).replace(/[,，]/g, ''));
+      if (!isNaN(num)) cleaned[field.name] = num;
+    } else if (field.name === 'contract_date') {
+      const dateStr = String(value).replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '');
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) cleaned[field.name] = dateStr;
+    } else {
+      cleaned[field.name] = value;
+    }
+  }
+  return cleaned;
 }
 
 export const availableOutputs = [
@@ -63,65 +106,64 @@ export default {
     const fieldDefs = CONTRACT_FIELDS.map(f => `- ${f.name} (${f.label}): ${f.guide}`).join('\n');
     const exampleJson = CONTRACT_FIELDS.map(f => `  "${f.name}": "提取值"`).join(',\n');
 
-    const promptBase = customPrompt
-      ? `${customPrompt}\n\n字段定义:\n${fieldDefs}\n\n期望返回 JSON 格式:\n{\n${exampleJson}\n}`
-      : `从以下文本中提取结构化元数据。
-
-字段定义:
-${fieldDefs}
-
-期望返回 JSON 格式:
-{
-${exampleJson}
-}`;
-
     try {
-      const response = await services.callLlm('extract_metadata', {
-        instruction: promptBase,
-        ocr_text: text,
-        response_format: 'json',
-        model_id: extractConfig.model_id,
-        temperature: extractConfig.temperature || 0.3,
-      });
-
       let metadata;
-      const resultText = response.text || response.parsed || response;
-      if (typeof resultText === 'string') {
-        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return { success: false, error: 'LLM did not return valid JSON' };
-        metadata = JSON.parse(jsonMatch[0]);
-      } else if (typeof resultText === 'object') {
-        metadata = resultText;
+
+      if (text.length <= EXTRACT_MAX_INPUT_CHARS) {
+        const promptBase = buildPrompt(customPrompt, fieldDefs, exampleJson);
+        const response = await services.callLlm('extract_metadata', {
+          instruction: promptBase,
+          ocr_text: text,
+          response_format: 'json',
+          ...buildLlmParams(extractConfig),
+        });
+        metadata = parseLlmResponse(response);
+        if (!metadata) return { success: false, error: 'LLM did not return valid JSON' };
       } else {
-        return { success: false, error: 'LLM returned unexpected format' };
-      }
+        logger.info(`[contract-v2-llm-extract] Record ${record.id}: Text too long (${text.length} chars), using segmented extraction`);
+        const parts = extractKeyParts(text);
+        const partialResults = [];
 
-      const cleanMetadata = {};
-      for (const field of CONTRACT_FIELDS) {
-        const value = metadata[field.name];
-        if (value === undefined || value === null || value === '') continue;
+        const prompts = [
+          { text: parts.head, hint: '这是合同开头部分，重点提取合同编号、甲方、乙方' },
+          { text: parts.amountPart, hint: '这是合同金额相关部分，重点提取合同金额' },
+          { text: parts.tail, hint: '这是合同末尾部分，重点提取签订日期' },
+        ];
 
-        if (field.name === 'contract_amount') {
-          const num = Number(String(value).replace(/[,，]/g, ''));
-          if (!isNaN(num)) cleanMetadata[field.name] = num;
-        } else if (field.name === 'contract_date') {
-          const dateStr = String(value).replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '');
-          if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) cleanMetadata[field.name] = dateStr;
-        } else {
-          cleanMetadata[field.name] = value;
+        for (const part of prompts) {
+          if (!part.text || part.text.trim().length === 0) continue;
+          const promptBase = buildPrompt(customPrompt, fieldDefs, exampleJson, part.hint);
+          try {
+            const response = await services.callLlm('extract_metadata_segment', {
+              instruction: promptBase,
+              ocr_text: part.text.substring(0, EXTRACT_MAX_INPUT_CHARS),
+              response_format: 'json',
+              ...buildLlmParams(extractConfig),
+            });
+            const parsed = parseLlmResponse(response);
+            if (parsed) partialResults.push(parsed);
+          } catch (segErr) {
+            logger.warn(`[contract-v2-llm-extract] Segment extraction failed: ${segErr.message}`);
+          }
+        }
+
+        metadata = mergeMetadata(partialResults);
+        if (Object.keys(metadata).length === 0) {
+          return { success: false, error: 'Segmented extraction produced no results' };
         }
       }
 
-      logger.info(`[contract-v2-llm-extract] Record ${record.id}: Extracted fields: ${Object.keys(cleanMetadata).join(', ')}`);
+      const finalMetadata = cleanMetadata(metadata);
+      logger.info(`[contract-v2-llm-extract] Record ${record.id}: Extracted fields: ${Object.keys(finalMetadata).join(', ') || '(none)'}`);
 
       await services.callExtension(ROWS_TABLE, 'upsert', {
         row_id: record.id,
-        ...cleanMetadata,
+        ...finalMetadata,
       });
 
       await services.callExtension(CONTENT_TABLE, 'upsert', {
         row_id: record.id,
-        extract_json: JSON.stringify(cleanMetadata),
+        extract_json: JSON.stringify(finalMetadata),
         extract_model: extractConfig.model_id || null,
         extract_temperature: extractConfig.temperature || 0.3,
         extract_at: new Date(),

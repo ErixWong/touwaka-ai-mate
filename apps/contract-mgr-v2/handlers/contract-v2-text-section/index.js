@@ -1,6 +1,41 @@
 import logger from '../../../../lib/logger.js';
+import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
+const SECTION_MAX_INPUT_CHARS = 60000;
+
+function getSectionConfig(app) {
+  return getStepResource(app, 'pending_section', { type: 'internal_llm', temperature: 0.3 });
+}
+
+function getSectionPrompt(app) {
+  return getPrompt(app, 'section');
+}
+
+function mergeSections(chunkResults) {
+  const all = [];
+  let offset = 0;
+
+  for (const sections of chunkResults) {
+    if (!Array.isArray(sections)) continue;
+    for (const sec of sections) {
+      all.push({
+        ...sec,
+        start_offset: (sec.start_offset || 0) + offset,
+        index: all.length,
+      });
+    }
+    offset += sections.length;
+  }
+
+  const seen = new Set();
+  return all.filter(s => {
+    const key = (s.title || '').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export const availableOutputs = [
   { key: 'section_count', label: '章节数量', type: 'number' },
@@ -22,12 +57,11 @@ export default {
       return { success: false, error: 'No filtered text found in extension table' };
     }
 
-    let config = app?.config;
-    if (typeof config === 'string') {
-      try { config = JSON.parse(config); } catch { config = {}; }
-    }
-    const sectionConfig = config?.step_resources?.pending_section || { type: 'internal_llm', temperature: 0.3 };
-    const sectionPrompt = config?.prompts?.section || null;
+    const text = content.filtered_text;
+    logger.info(`[contract-v2-text-section] Record ${record.id}: Filtered text length=${text.length}`);
+
+    const sectionConfig = getSectionConfig(app);
+    const sectionPrompt = getSectionPrompt(app);
 
     const promptBase = sectionPrompt || `分析以下合同文本的章节结构。
 
@@ -45,25 +79,43 @@ export default {
 }`;
 
     try {
-      const response = await services.callLlm('analyze_sections', {
-        instruction: promptBase,
-        ocr_text: content.filtered_text,
-        response_format: 'json',
-        model_id: sectionConfig.model_id,
-        temperature: sectionConfig.temperature || 0.3,
-      });
-
       let sections;
-      const resultText = response.text || response.parsed || response;
-      if (typeof resultText === 'string') {
-        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return { success: false, error: 'LLM did not return valid JSON' };
-        const parsed = JSON.parse(jsonMatch[0]);
-        sections = parsed.sections || parsed;
-      } else if (typeof resultText === 'object') {
-        sections = resultText.sections || resultText;
+
+      if (text.length <= SECTION_MAX_INPUT_CHARS) {
+        const response = await services.callLlm('analyze_sections', {
+          instruction: promptBase,
+          ocr_text: text,
+          response_format: 'json',
+          ...buildLlmParams(sectionConfig),
+        });
+        const raw = parseLlmResponse(response);
+        logger.info(`[contract-v2-text-section] Record ${record.id}: raw type=${typeof raw}, isArr=${Array.isArray(raw)}, keys=${raw ? Object.keys(raw).join(',') : 'null'}, preview=${JSON.stringify(raw)?.substring(0, 300)}`);
+        sections = raw && (raw.sections || raw);
+        if (!sections) return { success: false, error: 'LLM did not return valid JSON' };
       } else {
-        return { success: false, error: 'LLM returned unexpected format' };
+        logger.info(`[contract-v2-text-section] Record ${record.id}: Text too long (${text.length} chars), using chunked analysis`);
+        const chunks = splitIntoChunks(text, SECTION_MAX_INPUT_CHARS);
+        logger.info(`[contract-v2-text-section] Record ${record.id}: Split into ${chunks.length} chunks`);
+
+        const chunkResults = [];
+        for (let i = 0; i < chunks.length; i++) {
+          try {
+            const hint = i === 0 ? '这是文档前半部分' : `这是文档第 ${i + 1} 段（共 ${chunks.length} 段）`;
+            const response = await services.callLlm('analyze_sections_chunk', {
+              instruction: promptBase + `\n\n注意：${hint}`,
+              ocr_text: chunks[i],
+              response_format: 'json',
+              ...buildLlmParams(sectionConfig),
+            });
+            const raw = parseLlmResponse(response);
+            const parsed = raw && (raw.sections || raw);
+            if (Array.isArray(parsed)) chunkResults.push(parsed);
+          } catch (chunkErr) {
+            logger.warn(`[contract-v2-text-section] Chunk ${i + 1} failed: ${chunkErr.message}`);
+          }
+        }
+
+        sections = mergeSections(chunkResults);
       }
 
       if (!Array.isArray(sections)) {
