@@ -64,6 +64,7 @@ export default {
         model_id: resConfig.judge_model_id,
         temperature: resConfig.judge_temperature || 0.1,
         response_format: 'json',
+        enable_thinking: false,
       });
 
       let parsed;
