@@ -6,7 +6,7 @@ const DEFAULT_FILTER_CONFIG = {
   temperature: 0.3,
 };
 
-const CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 120000;
+const CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 60000;
 const CONTEXT_SUMMARY_MAX_LENGTH = 2000;
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 
