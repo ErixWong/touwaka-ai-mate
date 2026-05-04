@@ -28,7 +28,7 @@ function extractTextFromMcpResult(mcpResult) {
   const content = mcpResult.content;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    const texts = content.filter((c: any) => c.type === 'text').map((c: any) => c.text);
+    const texts = content.filter(c => c.type === 'text').map(c => c.text);
     if (texts.length) return texts.join('\n');
   }
   return mcpResult.text || mcpResult.output || mcpResult.markdown || '';
