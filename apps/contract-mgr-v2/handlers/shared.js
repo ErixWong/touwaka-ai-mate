@@ -1,4 +1,4 @@
-import logger from '../../../../lib/logger.js';
+import logger from '../../../lib/logger.js';
 
 export function splitIntoChunks(text, maxChars) {
   if (!text || text.length <= maxChars) return text ? [text] : [];
