@@ -76,13 +76,19 @@ const defaultProps = {
   <div class="org-tree-container">
     <div class="org-tree-header">
       <span class="org-tree-title">组织结构</span>
-      <el-button size="small" @click="openAddDialog(null)" text>
+      <el-button size="small" type="primary" @click="openAddDialog(null)">
         <el-icon><Plus /></el-icon>
+        新建
       </el-button>
     </div>
 
     <div v-if="store.treeLoading" class="org-tree-loading">
       <el-skeleton :rows="5" animated />
+    </div>
+
+    <div v-else-if="store.tree.length === 0" class="org-tree-empty">
+      <el-empty description="暂无组织节点" :image-size="48" />
+      <el-button type="primary" size="small" @click="openAddDialog(null)">创建集团节点</el-button>
     </div>
 
     <el-tree
@@ -151,6 +157,14 @@ const defaultProps = {
 
 .org-tree-loading {
   padding: 16px;
+}
+
+.org-tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px;
+  gap: 8px;
 }
 
 .el-tree {
