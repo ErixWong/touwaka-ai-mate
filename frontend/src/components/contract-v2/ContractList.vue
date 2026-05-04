@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useContractV2Store } from '@/stores/contract-v2'
+import { uploadAttachment } from '@/api/attachment'
+import { createRecord, newID } from '@/api/mini-apps'
 import Pagination from '@/components/Pagination.vue'
+
+const APP_ID = 'contract-mgr-v2'
 
 const emit = defineEmits<{
   'click-contract': [contractId: string]
@@ -45,6 +49,7 @@ const createForm = ref({
   org_node_id: '' as string,
 })
 const creating = ref(false)
+const selectedFile = ref<File | null>(null)
 
 const filteredContracts = computed(() => {
   let list = store.contracts
@@ -78,7 +83,33 @@ function openCreateDialog() {
     contract_type: '',
     org_node_id: store.selectedNodeId || '',
   }
+  selectedFile.value = null
   showCreateDialog.value = true
+}
+
+function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files?.length) {
+    selectedFile.value = input.files[0]!
+  }
+  input.value = ''
+}
+
+function clearFile() {
+  selectedFile.value = null
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.split(',')[1]!
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 async function handleCreate() {
@@ -90,6 +121,30 @@ async function handleCreate() {
       contract_name: createForm.value.contract_name.trim(),
       contract_type: createForm.value.contract_type || undefined,
     })
+
+    if (newContract?.id && selectedFile.value) {
+      const file = selectedFile.value
+      const base64Data = await fileToBase64(file)
+      const att = await uploadAttachment({
+        source_tag: 'mini_app_file',
+        source_id: APP_ID,
+        file_name: file.name,
+        mime_type: file.type,
+        base64_data: base64Data,
+      })
+
+      const clientId = await newID(20)
+      const record = await createRecord(APP_ID, {}, [att.id], clientId)
+
+      await store.addVersion(newContract.id, {
+        row_id: record.id,
+        file_id: att.id,
+        version_number: '1',
+        version_name: file.name,
+        version_type: 'draft',
+      })
+    }
+
     showCreateDialog.value = false
     if (newContract?.id) {
       emit('click-contract', newContract.id)
@@ -180,10 +235,10 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
         @current-change="handlePageChange"
       />
     </div>
-    <el-dialog v-model="showCreateDialog" title="新建合同" width="480px" destroy-on-close>
+    <el-dialog v-model="showCreateDialog" title="新建合同" width="520px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="合同名称" required>
-          <el-input v-model="createForm.contract_name" placeholder="请输入合同名称" @keyup.enter="handleCreate" />
+          <el-input v-model="createForm.contract_name" placeholder="请输入合同名称" />
         </el-form-item>
         <el-form-item label="合同类型">
           <el-select v-model="createForm.contract_type" placeholder="请选择类型" clearable style="width: 100%;">
@@ -200,11 +255,28 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="合同文件">
+          <div class="create-file-upload">
+            <div v-if="selectedFile" class="create-file-selected">
+              <el-icon><Document /></el-icon>
+              <span class="create-file-name">{{ selectedFile.name }}</span>
+              <el-button size="small" text type="danger" @click="clearFile">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+            <label v-else class="create-file-trigger">
+              <el-icon><Upload /></el-icon>
+              <span>选择文件</span>
+              <input type="file" accept=".pdf,.docx,.doc,.jpg,.png" @change="handleFileSelect" class="hidden-input" />
+            </label>
+            <div class="create-file-hint">支持 PDF、DOCX、DOC、JPG、PNG（可选，创建后也可上传）</div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
         <el-button type="primary" @click="handleCreate" :disabled="!createForm.contract_name.trim()" :loading="creating">
-          创建
+          创建并上传
         </el-button>
       </template>
     </el-dialog>
@@ -311,5 +383,51 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
   justify-content: center;
   margin-top: 16px;
   padding-top: 12px;
+}
+
+.create-file-upload {
+  width: 100%;
+}
+
+.create-file-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+
+.create-file-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-file-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  transition: border-color 0.2s;
+}
+
+.create-file-trigger:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+.create-file-hint {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 6px;
 }
 </style>
