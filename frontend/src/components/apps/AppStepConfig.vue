@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self="close">
+  <div v-if="visible" class="dialog-overlay">
     <div class="dialog dialog-large">
       <div class="dialog-header">
         <h3>{{ $t('apps.stepConfig.title') }}</h3>
