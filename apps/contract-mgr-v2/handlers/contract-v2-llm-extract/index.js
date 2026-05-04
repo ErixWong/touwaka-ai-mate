@@ -1,5 +1,5 @@
 import logger from '../../../../lib/logger.js';
-import { parseLlmResponse, extractKeyParts, getStepResource, getPrompt } from '../shared.js';
+import { parseLlmResponse, extractKeyParts, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
@@ -115,8 +115,7 @@ export default {
           instruction: promptBase,
           ocr_text: text,
           response_format: 'json',
-          model_id: extractConfig.model_id,
-          temperature: extractConfig.temperature || 0.3,
+          ...buildLlmParams(extractConfig),
         });
         metadata = parseLlmResponse(response);
         if (!metadata) return { success: false, error: 'LLM did not return valid JSON' };
@@ -139,8 +138,7 @@ export default {
               instruction: promptBase,
               ocr_text: part.text.substring(0, EXTRACT_MAX_INPUT_CHARS),
               response_format: 'json',
-              model_id: extractConfig.model_id,
-              temperature: extractConfig.temperature || 0.3,
+              ...buildLlmParams(extractConfig),
             });
             const parsed = parseLlmResponse(response);
             if (parsed) partialResults.push(parsed);

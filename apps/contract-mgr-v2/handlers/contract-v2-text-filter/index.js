@@ -1,5 +1,5 @@
 import logger from '../../../../lib/logger.js';
-import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt } from '../shared.js';
+import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
 const DEFAULT_FILTER_CONFIG = {
   type: 'internal_llm',
@@ -49,8 +49,7 @@ async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInpu
     instruction: promptBase,
     ocr_text: chunkInput + contextNote,
     response_format: 'json',
-    model_id: filterConfig.model_id,
-    temperature: filterConfig.temperature || 0.3,
+    ...buildLlmParams(filterConfig),
   });
 
   let parsed;
@@ -157,8 +156,7 @@ export default {
           instruction: filterPrompt,
           ocr_text: ocrText,
           response_format: 'text',
-          model_id: filterConfig.model_id,
-          temperature: filterConfig.temperature || 0.3,
+          ...buildLlmParams(filterConfig),
         });
         filteredText = response.text || ocrText;
       } catch (e) {

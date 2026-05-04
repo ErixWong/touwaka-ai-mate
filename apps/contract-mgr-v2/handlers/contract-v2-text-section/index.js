@@ -1,5 +1,5 @@
 import logger from '../../../../lib/logger.js';
-import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt } from '../shared.js';
+import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 const SECTION_MAX_INPUT_CHARS = 60000;
@@ -86,8 +86,7 @@ export default {
           instruction: promptBase,
           ocr_text: text,
           response_format: 'json',
-          model_id: sectionConfig.model_id,
-          temperature: sectionConfig.temperature || 0.3,
+          ...buildLlmParams(sectionConfig),
         });
         const raw = parseLlmResponse(response);
         sections = raw && (raw.sections || raw);
@@ -105,8 +104,7 @@ export default {
               instruction: promptBase + `\n\n注意：${hint}`,
               ocr_text: chunks[i],
               response_format: 'json',
-              model_id: sectionConfig.model_id,
-              temperature: sectionConfig.temperature || 0.3,
+              ...buildLlmParams(sectionConfig),
             });
             const raw = parseLlmResponse(response);
             const parsed = raw && (raw.sections || raw);
