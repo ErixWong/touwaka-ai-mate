@@ -518,10 +518,18 @@ class AppMarketService {
           logger.info(`Handler ${handlerName} already exists, using existing handler`);
           continue;
         }
-        
-        // 从 Registry 拉取脚本
-        const scriptContent = await this.fetchHandler(appId, handlerName);
-        
+
+        // 先检查本地是否已有 handler 脚本
+        const localHandlerPath = path.join(appHandlersDir, handlerName, 'index.js');
+        let scriptContent;
+        try {
+          scriptContent = await fs.readFile(localHandlerPath, 'utf-8');
+          logger.info(`Handler ${handlerName} found locally at ${localHandlerPath}`);
+        } catch {
+          // 本地没有，从 Registry 拉取
+          scriptContent = await this.fetchHandler(appId, handlerName);
+        }
+
         // 保存到本地
         const handlerDir = path.join(appHandlersDir, handlerName);
         await fs.mkdir(handlerDir, { recursive: true });
@@ -530,7 +538,7 @@ class AppMarketService {
           scriptContent,
           'utf-8'
         );
-        
+
         // 插入数据库记录
         const handlerId = `${appId}-${handlerName}`;
         await this.models.AppRowHandler.create({
@@ -544,7 +552,7 @@ class AppMarketService {
           max_retries: 2,
           is_active: true
         });
-        
+
         // 记录映射关系：handler名称 → 数据库ID
         handlerIdMap.set(handlerName, handlerId);
         installed.push(handlerName);
