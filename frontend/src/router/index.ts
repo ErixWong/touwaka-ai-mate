@@ -141,48 +141,32 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, from) => {
   const userStore = useUserStore()
   const token = localStorage.getItem('access_token')
 
-  // 如果有 token 但用户信息未加载，先尝试加载
   if (token && !userStore.isLoggedIn && !userStore.isLoading) {
     try {
       await userStore.loadUser()
     } catch (error) {
       console.error('Failed to load user:', error)
-      // 加载失败，清除登录状态
-      // 注意：loadUser 内部已经清除了 token 和状态
     }
   }
 
-  // 检查是否需要登录
   if (!to.meta.public && !userStore.isLoggedIn) {
-    // 仍然未登录，跳转到登录页
-    next({ name: 'login', query: { redirect: to.fullPath } })
-    return
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  // 如果已登录访问登录页，跳转到专家页
   if (to.name === 'login' && userStore.isLoggedIn) {
-    next({ name: 'experts' })
-    return
+    return { name: 'experts' }
   }
 
-  // 如果访问聊天页面但没有有效的 expertId，重定向到专家选择页面
   if (to.name === 'chat' && !to.params.expertId) {
-    next({ name: 'experts' })
-    return
+    return { name: 'experts' }
   }
 
-  // 设置页面标题
-  const defaultTitle = 'Touwaka Mate'
-  document.title = to.meta.title ? `${to.meta.title} - ${defaultTitle}` : defaultTitle
-
-  // 设置 HTML lang 属性
+  document.title = to.meta.title ? `${to.meta.title} - Touwaka Mate` : 'Touwaka Mate'
   document.documentElement.setAttribute('lang', getLocale())
-
-  next()
 })
 
 export default router
