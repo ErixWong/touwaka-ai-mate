@@ -170,7 +170,7 @@ class ExtensionTableService {
         const key = f.source || f.name;
         const val = data[key];
         
-        if (f.type.toUpperCase().includes('DATE') && val) {
+        if (f.type.toUpperCase() === 'DATE' && val) {
           if (typeof val === 'string' && val.includes('T')) {
             return val.split('T')[0];
           }
@@ -235,7 +235,7 @@ class ExtensionTableService {
         const key = f.source || f.name;
         const val = data[key];
         
-        if (f.type.toUpperCase().includes('DATE') && val) {
+        if (f.type.toUpperCase() === 'DATE' && val) {
           if (typeof val === 'string' && val.includes('T')) {
             return val.split('T')[0];
           }
