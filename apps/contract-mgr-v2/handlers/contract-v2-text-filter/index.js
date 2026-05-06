@@ -10,6 +10,11 @@ const CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 120000;
 const CONTEXT_SUMMARY_MAX_LENGTH = 2000;
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 
+function normalizeText(text) {
+  if (!text) return '';
+  return text.replace(/\\n/g, '\n');
+}
+
 function getFilterConfig(app, stateName) {
   let config = app?.config;
   if (typeof config === 'string') {
@@ -57,19 +62,22 @@ const CHUNK_SYSTEM_SUFFIX = `
 
 你必须返回严格的JSON格式：
 {
-  "processed_part": "本轮清洗后的文本片段",
-  "carried_over": "未完成的尾部内容（空字符串表示无剩余）",
+  "processed_text": "本轮清洗后的完整章节内容",
+  "carried_over": "末尾不完整章节的原文（未清洗）",
   "context_summary": {
     "key_terms": {},
     "points": []
   }
 }
 
-规则：
-- processed_part: 本轮已完整清洗的文本
-- carried_over: 如果末尾文本不完整（如句子被截断），放到这里，会拼接到下轮输入开头
-- context_summary.key_terms: 已出现的专业术语及其标准译名/写法
-- context_summary.points: 已处理文本的摘要要点列表（字符串数组），总长度不超过${CONTEXT_SUMMARY_MAX_LENGTH}字符`;
+处理规则：
+1. 首先识别输入中的OCR文本内容（跳过任务状态JSON、元数据等无关信息）
+2. 按章节整理内容，识别章节边界（如"第一章"、"第一条"、"一、"等）
+3. processed_text: 只包含本轮能完整处理的章节，末尾章节如果不完整则不放入
+4. carried_over: 末尾不完整章节的原文（保持原样，不清洗），会拼接到下轮继续处理；如果末尾章节完整则为空字符串
+5. context_summary: 已处理内容的关键术语和摘要，用于跨块保持一致性
+
+注意：如果输入开头是上一轮的carried_over（原文），请完整处理该章节后，再继续处理后续内容。`;
 
 async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInput, contextSummary) {
   const promptBase = filterPrompt + CHUNK_SYSTEM_SUFFIX;
@@ -102,12 +110,12 @@ async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInpu
     }
   }
 
-  if (!parsed || typeof parsed.processed_part !== 'string') {
+  if (!parsed || typeof parsed.processed_text !== 'string') {
     throw new Error('LLM返回的JSON格式无效');
   }
 
   return {
-    processed_part: parsed.processed_part || '',
+    processed_text: parsed.processed_text || '',
     carried_over: parsed.carried_over || '',
     context_summary: parsed.context_summary || { key_terms: {}, points: [] },
   };
@@ -139,19 +147,15 @@ async function filterWithSlidingWindow(services, filterPrompt, filterConfig, ocr
   let contextSummary = { key_terms: {}, points: [] };
 
   for (let i = 0; i < chunks.length; i++) {
-    let nextChunk = chunks[i];
-    if (carriedOver.length + nextChunk.length > CHUNK_MAX_LENGTH * 1.5) {
-      const allowLen = Math.floor(CHUNK_MAX_LENGTH * 1.5) - carriedOver.length;
-      allProcessed.push(nextChunk.slice(0, Math.max(0, CHUNK_MAX_LENGTH - carriedOver.length)));
-      nextChunk = nextChunk.slice(Math.max(0, CHUNK_MAX_LENGTH - carriedOver.length));
-    }
-    const chunkInput = carriedOver + (carriedOver ? '\n\n' : '') + nextChunk;
+    // 拼接上一轮截断的章节内容到本轮chunk开头，用换行分隔
+    const chunkInput = carriedOver + (carriedOver ? '\n' : '') + chunks[i];
 
     try {
       const result = await filterSingleChunk(services, filterPrompt, filterConfig, chunkInput, contextSummary);
-      allProcessed.push(result.processed_part);
+      allProcessed.push(result.processed_text);
       carriedOver = result.carried_over || '';
       contextSummary = trimContextSummary(result.context_summary);
+      logger.info(`[contract-v2-text-filter] Chunk ${i + 1}/${chunks.length} done, output=${result.processed_text.length}, carried=${carriedOver.length}`);
     } catch (chunkErr) {
       logger.error(`[contract-v2-text-filter] Chunk ${i + 1} failed: ${chunkErr.message}`);
       allProcessed.push(chunkInput);
@@ -160,9 +164,18 @@ async function filterWithSlidingWindow(services, filterPrompt, filterConfig, ocr
     }
   }
 
-  if (carriedOver) allProcessed.push(carriedOver);
+  // 处理最后一轮截断的内容
+  if (carriedOver) {
+    try {
+      const result = await filterSingleChunk(services, filterPrompt, filterConfig, carriedOver, contextSummary);
+      allProcessed.push(result.processed_text);
+    } catch (e) {
+      logger.error(`[contract-v2-text-filter] Final carried_over failed: ${e.message}`);
+      allProcessed.push(carriedOver);
+    }
+  }
 
-  return allProcessed.join('\n\n');
+  return allProcessed.join('\n');
 }
 
 export const availableOutputs = [
@@ -185,7 +198,7 @@ export default {
       return { success: false, error: 'No OCR text found in extension table' };
     }
 
-    const ocrText = content.ocr_text;
+    const ocrText = normalizeText(content.ocr_text);
     logger.info(`[contract-v2-text-filter] Record ${record.id}: OCR text length=${ocrText.length}`);
 
     const filterConfig = getFilterConfig(app, 'pending_filter');
