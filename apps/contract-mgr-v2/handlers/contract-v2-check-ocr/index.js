@@ -100,7 +100,8 @@ export default {
       }
 
       if (parsed.status === 'completed') {
-        const ocrText = extractTextFromMcpResult(mcpResult);
+        let ocrText = extractTextFromMcpResult(mcpResult);
+        ocrText = ocrText.replace(/\\n/g, '\n');
         logger.info(`[contract-v2-check-ocr] Record ${record.id}: OCR completed, text length=${ocrText.length}`);
 
         await services.callExtension('app_contract_mgr_v2_content', 'upsert', {
