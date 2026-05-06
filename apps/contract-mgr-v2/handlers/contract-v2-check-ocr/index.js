@@ -22,8 +22,33 @@ function getConfig(app, stateName) {
 
 function extractTextFromMcpResult(mcpResult) {
   if (!mcpResult) return '';
-  if (typeof mcpResult === 'string') return mcpResult;
-  return mcpResult.content || mcpResult.text || mcpResult.output || mcpResult.markdown || mcpResult.result || '';
+  
+  if (typeof mcpResult === 'string') {
+    try {
+      const parsed = JSON.parse(mcpResult);
+      if (parsed.result && typeof parsed.result === 'string') {
+        return parsed.result;
+      }
+      return mcpResult;
+    } catch {
+      return mcpResult;
+    }
+  }
+  
+  if (typeof mcpResult === 'object') {
+    if (mcpResult.result && typeof mcpResult.result === 'string') {
+      return mcpResult.result;
+    }
+    const content = mcpResult.content;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      const texts = content.filter(c => c.type === 'text').map(c => c.text);
+      if (texts.length) return texts.join('\n');
+    }
+    return mcpResult.text || mcpResult.output || mcpResult.markdown || '';
+  }
+  
+  return '';
 }
 
 function truncateTaskInfo(mcpResult, maxLen = 1000) {

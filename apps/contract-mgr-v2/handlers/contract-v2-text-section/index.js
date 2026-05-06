@@ -29,7 +29,7 @@ export default {
     const sectionConfig = config?.step_resources?.pending_section || { type: 'internal_llm', temperature: 0.3 };
     const sectionPrompt = config?.prompts?.section || null;
 
-    const promptBase = sectionPrompt || `分析以下合同文本的章节结构。
+    const jsonFormat = `
 
 返回JSON格式：
 {
@@ -43,6 +43,8 @@ export default {
     }
   ]
 }`;
+
+    const promptBase = (sectionPrompt || '分析以下合同文本的章节结构') + jsonFormat;
 
     try {
       const response = await services.callLlm('analyze_sections', {
