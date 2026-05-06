@@ -84,12 +84,10 @@ export function buildLlmParams(stepConfig) {
   const params = {
     model_id: stepConfig.model_id || null,
     temperature: stepConfig.temperature ?? 0.3,
+    enable_thinking: stepConfig.enable_thinking ?? false,
   };
-  if (stepConfig.enable_thinking) {
-    params.enable_thinking = true;
-    if (stepConfig.thinking_budget) {
-      params.thinking_budget = stepConfig.thinking_budget;
-    }
+  if (params.enable_thinking && stepConfig.thinking_budget) {
+    params.thinking_budget = stepConfig.thinking_budget;
   }
   return params;
 }
