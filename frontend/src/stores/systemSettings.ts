@@ -176,7 +176,13 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const loadBranding = async (): Promise<BrandingSettings> => {
     try {
       const response = await apiClient.get('/branding')
-      return response.data.data
+      const data = response.data.data
+      if (settings.value) {
+        settings.value.branding = data
+      } else {
+        settings.value = { ...defaultSettings, branding: data } as SystemSettings
+      }
+      return data
     } catch {
       return { app_name: 'Touwaka Mate', logo_icon: '🤖' }
     }
