@@ -11,14 +11,32 @@ export default (db) => {
   const router = new Router({ prefix: '/api/system-settings' });
   const controller = new SystemSettingController(db);
 
-  // 获取所有系统配置（需要认证）
   router.get('/', authenticate(), (ctx) => controller.getAll(ctx));
-
-  // 更新系统配置（需要认证）
   router.put('/', authenticate(), (ctx) => controller.update(ctx));
-
-  // 重置配置为默认值（需要认证）
   router.post('/reset', authenticate(), (ctx) => controller.reset(ctx));
 
   return router;
 };
+
+export function createBrandingRoutes(db) {
+  const router = new Router({ prefix: '/api/branding' });
+  const controller = new SystemSettingController(db);
+
+  router.get('/', async (ctx) => {
+    try {
+      const records = await controller.SystemSetting.findAll({ raw: true });
+      const result = controller._parseSettings(records);
+      ctx.success({
+        app_name: result.branding?.app_name || 'Touwaka Mate',
+        logo_icon: result.branding?.logo_icon || '🤖',
+      });
+    } catch (error) {
+      ctx.success({
+        app_name: 'Touwaka Mate',
+        logo_icon: '🤖',
+      });
+    }
+  });
+
+  return router;
+}

@@ -165,7 +165,10 @@ router.beforeEach(async (to, from) => {
     return { name: 'experts' }
   }
 
-  document.title = to.meta.title ? `${to.meta.title} - Touwaka Mate` : 'Touwaka Mate'
+  const systemSettingsStore = (await import('@/stores/systemSettings')).useSystemSettingsStore()
+  const branding = systemSettingsStore().brandingSettings
+  const appName = branding?.app_name || 'Touwaka Mate'
+  document.title = to.meta.title ? `${to.meta.title} - ${appName}` : appName
   document.documentElement.setAttribute('lang', getLocale())
 })
 

@@ -50,6 +50,10 @@ const DEFAULT_SETTINGS = {
     attachment_base_path: { value: './data/attachments', type: 'string', description: '附件存储路径' },
     max_upload_size: { value: 50, type: 'number', description: '附件上传大小限制（MB）' },
   },
+  branding: {
+    app_name: { value: 'Touwaka Mate', type: 'string', description: '系统名称' },
+    logo_icon: { value: '🤖', type: 'string', description: '系统图标（emoji 或图片 URL）' },
+  },
 };
 
 // 配置值验证规则

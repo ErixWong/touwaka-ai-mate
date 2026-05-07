@@ -811,6 +811,12 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     invitationExpiryDaysHint: '邀请码的有效期（天），0 表示永不过期',
     // 通用配置
     generalConfig: '通用配置',
+    brandingConfig: '外观配置',
+    brandingAppName: '系统名称',
+    brandingAppNameHint: '显示在左上角和浏览器标签页',
+    brandingLogoIcon: '系统图标',
+    brandingLogoIconHint: '支持 emoji 或图片 URL',
+    brandingPreview: '预览',
     // 包白名单配置
     packageWhitelist: '包白名单',
     moduleWhitelist: '模块白名单',

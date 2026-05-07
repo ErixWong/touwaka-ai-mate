@@ -91,7 +91,7 @@ import kbRoutes from './routes/kb.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
-import systemSettingRoutes from './routes/system-setting.routes.js';
+import systemSettingRoutes, { createBrandingRoutes } from './routes/system-setting.routes.js';
 import { getSystemSettingService } from './services/system-setting.service.js';
 import packageRoutes from './routes/package.routes.js';
 import assistantRoutes from './routes/assistant.routes.js';
@@ -409,6 +409,11 @@ class ApiServer {
     const systemSettingRouter = systemSettingRoutes(this.db);
     this.app.use(systemSettingRouter.routes());
     this.app.use(systemSettingRouter.allowedMethods());
+
+    // Branding 路由（公开，无需认证）
+    const brandingRouter = createBrandingRoutes(this.db);
+    this.app.use(brandingRouter.routes());
+    this.app.use(brandingRouter.allowedMethods());
 
     // Package 白名单路由
     const packageRouter = packageRoutes(this.db);

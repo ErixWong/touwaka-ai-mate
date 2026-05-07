@@ -2,8 +2,8 @@
   <header class="app-header">
     <div class="header-left">
       <router-link to="/experts" class="logo">
-        <span class="logo-icon">🤖</span>
-        <span class="logo-text">Touwaka Mate</span>
+        <span class="logo-icon">{{ appIcon }}</span>
+        <span class="logo-text">{{ appName }}</span>
       </router-link>
     </div>
 
@@ -88,13 +88,18 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useI18n } from 'vue-i18n'
 import type { Locale } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const systemSettingsStore = useSystemSettingsStore()
 const { locale } = useI18n()
+
+const appName = computed(() => systemSettingsStore.brandingSettings?.app_name || 'Touwaka Mate')
+const appIcon = computed(() => systemSettingsStore.brandingSettings?.logo_icon || '🤖')
 
 const showUserMenu = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
@@ -146,6 +151,9 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  if (!systemSettingsStore.brandingSettings?.app_name) {
+    systemSettingsStore.loadBranding()
+  }
 })
 
 onUnmounted(() => {

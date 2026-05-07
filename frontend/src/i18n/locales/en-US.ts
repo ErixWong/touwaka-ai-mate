@@ -591,6 +591,12 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     invitationExpiryDaysHint: 'Number of days until invitation codes expire, 0 for no expiry',
     // General Config
     generalConfig: 'General Config',
+    brandingConfig: 'Branding',
+    brandingAppName: 'App Name',
+    brandingAppNameHint: 'Displayed in header and browser tab',
+    brandingLogoIcon: 'Logo Icon',
+    brandingLogoIconHint: 'Supports emoji or image URL',
+    brandingPreview: 'Preview',
     // Package Whitelist
     packageWhitelist: 'Package Whitelist',
     moduleWhitelist: 'Module Whitelist',
