@@ -3,7 +3,6 @@ const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
 import _app_action_log from  "./app_action_log.js";
 import _app_clock_registry from  "./app_clock_registry.js";
-import _app_tick_log from  "./app_tick_log.js";
 import _app_contract_mgr_compare from  "./app_contract_mgr_compare.js";
 import _app_contract_mgr_content from  "./app_contract_mgr_content.js";
 import _app_contract_mgr_row from  "./app_contract_mgr_row.js";
@@ -11,6 +10,7 @@ import _app_contract_mgr_v2_content from  "./app_contract_mgr_v2_content.js";
 import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
 import _app_row_handler from  "./app_row_handler.js";
 import _app_state from  "./app_state.js";
+import _app_tick_log from  "./app_tick_log.js";
 import _assistant_message from  "./assistant_message.js";
 import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
@@ -63,7 +63,6 @@ export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
   const app_action_log = _app_action_log.init(sequelize, DataTypes);
   const app_clock_registry = _app_clock_registry.init(sequelize, DataTypes);
-  const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const app_contract_mgr_compare = _app_contract_mgr_compare.init(sequelize, DataTypes);
   const app_contract_mgr_content = _app_contract_mgr_content.init(sequelize, DataTypes);
   const app_contract_mgr_row = _app_contract_mgr_row.init(sequelize, DataTypes);
@@ -71,6 +70,7 @@ export default function initModels(sequelize) {
   const app_contract_mgr_v2_row = _app_contract_mgr_v2_row.init(sequelize, DataTypes);
   const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
   const app_state = _app_state.init(sequelize, DataTypes);
+  const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
   const assistant_request = _assistant_request.init(sequelize, DataTypes);
   const assistant = _assistant.init(sequelize, DataTypes);
@@ -135,6 +135,8 @@ export default function initModels(sequelize) {
   ai_model.hasMany(expert, { as: "reflective_model_experts", foreignKey: "reflective_model_id"});
   knowledge_basis.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
   ai_model.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "embedding_model_id"});
+  app_tick_log.belongsTo(app_clock_registry, { as: "registry", foreignKey: "registry_id"});
+  app_clock_registry.hasMany(app_tick_log, { as: "app_tick_logs", foreignKey: "registry_id"});
   app_action_log.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
   app_row_handler.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "handler_id"});
   app_state.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
@@ -203,6 +205,8 @@ export default function initModels(sequelize) {
   mini_app_row.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "record_id"});
   app_action_log.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
   mini_app.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "app_id"});
+  app_clock_registry.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(app_clock_registry, { as: "app_clock_registries", foreignKey: "app_id"});
   app_state.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
   mini_app.hasMany(app_state, { as: "app_states", foreignKey: "app_id"});
   mini_app_role_access.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
@@ -276,7 +280,6 @@ export default function initModels(sequelize) {
     ai_model,
     app_action_log,
     app_clock_registry,
-    app_tick_log,
     app_contract_mgr_compare,
     app_contract_mgr_content,
     app_contract_mgr_row,
@@ -284,6 +287,7 @@ export default function initModels(sequelize) {
     app_contract_mgr_v2_row,
     app_row_handler,
     app_state,
+    app_tick_log,
     assistant_message,
     assistant_request,
     assistant,
