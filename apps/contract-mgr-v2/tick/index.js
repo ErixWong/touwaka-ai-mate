@@ -49,6 +49,7 @@ export async function tick(context) {
   const pending = await services.query(`
     SELECT id, status, data FROM mini_app_rows 
     WHERE app_id = ? AND status IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section')
+    ORDER BY created_at ASC
     LIMIT 5
   `, [app.id]);
   

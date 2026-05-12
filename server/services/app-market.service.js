@@ -20,6 +20,8 @@ class AppMarketService {
     if (!this.models.MiniApp) {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.AppClockRegistry = this.db.getModel('app_clock_registry');
+      this.models.AppState = this.db.getModel('app_state');
+      this.models.AppRowHandler = this.db.getModel('app_row_handler');
       this.models.SystemSetting = this.db.getModel('system_setting');
       this.models.McpServer = this.db.getModel('mcp_server');
     }
