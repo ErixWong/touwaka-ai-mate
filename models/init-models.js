@@ -2,6 +2,8 @@ import _sequelize from "sequelize";
 const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
 import _app_action_log from  "./app_action_log.js";
+import _app_clock_registry from  "./app_clock_registry.js";
+import _app_tick_log from  "./app_tick_log.js";
 import _app_contract_mgr_compare from  "./app_contract_mgr_compare.js";
 import _app_contract_mgr_content from  "./app_contract_mgr_content.js";
 import _app_contract_mgr_row from  "./app_contract_mgr_row.js";
@@ -60,6 +62,8 @@ import _user from  "./user.js";
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
   const app_action_log = _app_action_log.init(sequelize, DataTypes);
+  const app_clock_registry = _app_clock_registry.init(sequelize, DataTypes);
+  const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const app_contract_mgr_compare = _app_contract_mgr_compare.init(sequelize, DataTypes);
   const app_contract_mgr_content = _app_contract_mgr_content.init(sequelize, DataTypes);
   const app_contract_mgr_row = _app_contract_mgr_row.init(sequelize, DataTypes);
@@ -271,6 +275,8 @@ export default function initModels(sequelize) {
   return {
     ai_model,
     app_action_log,
+    app_clock_registry,
+    app_tick_log,
     app_contract_mgr_compare,
     app_contract_mgr_content,
     app_contract_mgr_row,

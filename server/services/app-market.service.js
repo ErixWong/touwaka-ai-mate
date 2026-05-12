@@ -19,8 +19,7 @@ class AppMarketService {
   ensureModels() {
     if (!this.models.MiniApp) {
       this.models.MiniApp = this.db.getModel('mini_app');
-      this.models.AppState = this.db.getModel('app_state');
-      this.models.AppRowHandler = this.db.getModel('app_row_handler');
+      this.models.AppClockRegistry = this.db.getModel('app_clock_registry');
       this.models.SystemSetting = this.db.getModel('system_setting');
       this.models.McpServer = this.db.getModel('mcp_server');
     }
@@ -409,16 +408,15 @@ class AppMarketService {
       'utf-8'
     );
     
-    // 9. 安装 handlers（返回 handlerId 映射）
-    const { installed: installedHandlers, handlerIdMap } = await this.installHandlers(appId, manifest);
-    
-    // 10. 插入数据库（extension_tables 存入 config）
+    // 9. 插入数据库（extension_tables 存入 config）
     const config = {
       ...manifest.config,
       extension_tables: manifest.extension_tables || []
     };
     await this.installAppMetadata(manifest, userId, visibility, config);
-    await this.installStates(appId, manifest, handlerIdMap);
+    
+    // 10. 注册到 app_clock_registry
+    await this.registerToClockRegistry(appId);
     
     logger.info(`App ${appId} installed successfully`);
     
@@ -426,8 +424,7 @@ class AppMarketService {
       success: true,
       app_id: appId,
       name: manifest.name,
-      version: manifest.version,
-      installed_handlers: installedHandlers
+      version: manifest.version
     };
   }
 
@@ -455,11 +452,24 @@ class AppMarketService {
   }
 
   /**
-   * 安装状态定义到数据库
-   * @param {string} appId
-   * @param {object} manifest
-   * @param {Map} handlerIdMap - handler名称 → app_row_handlers.id 的映射
+   * 注册 App 到 app_clock_registry
    */
+  async registerToClockRegistry(appId) {
+    this.ensureModels();
+    
+    const Utils = await import('../../lib/utils.js');
+    
+    await this.models.AppClockRegistry.create({
+      id: Utils.default.newID(20),
+      app_id: appId,
+      tick_script: null,
+      is_active: true
+    });
+    
+    logger.info(`App ${appId} registered to app_clock_registry`);
+  }
+
+  // ==================== 废弃方法（保留以兼容旧数据） ====================
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
     

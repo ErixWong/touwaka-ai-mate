@@ -17,6 +17,7 @@ import mysql from 'mysql2/promise';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -1097,6 +1098,78 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同比对结果表'
       `);
       console.log('  ✓ Created app_contract_mgr_compares table');
+    }
+  },
+
+  // ==================== AppClock 回调模式表 ====================
+  // Issue #693: AppClock 回调模式升级
+  {
+    name: 'app_clock_registry create table',
+    check: async (conn) => await hasTable(conn, 'app_clock_registry'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_clock_registry (
+          id VARCHAR(32) PRIMARY KEY,
+          app_id VARCHAR(32) NOT NULL COMMENT '关联 mini_apps.id',
+          tick_script VARCHAR(64) NULL COMMENT '自定义脚本名，空则用默认 tick',
+          is_active BIT(1) DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE,
+          INDEX idx_active (is_active)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App调度注册表'
+      `);
+      console.log('  ✓ Created app_clock_registry table');
+    }
+  },
+
+  {
+    name: 'app_tick_log create table',
+    check: async (conn) => await hasTable(conn, 'app_tick_log'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_tick_log (
+          id VARCHAR(32) PRIMARY KEY,
+          registry_id VARCHAR(32) NOT NULL,
+          app_id VARCHAR(32) NOT NULL,
+          success BIT(1) DEFAULT 1,
+          output_data TEXT COMMENT 'JSON 输出',
+          error_message TEXT,
+          duration INT DEFAULT 0 COMMENT '耗时(ms)',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (registry_id) REFERENCES app_clock_registry(id) ON DELETE CASCADE,
+          INDEX idx_registry (registry_id),
+          INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App执行日志'
+      `);
+      console.log('  ✓ Created app_tick_log table');
+    }
+  },
+
+  // ==================== 注册现有 App 到 app_clock_registry ====================
+  // Issue #693: 现有 contract-mgr-v2 注册
+  {
+    name: 'register contract-mgr-v2 to app_clock_registry',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT id FROM app_clock_registry WHERE app_id = 'contract-mgr-v2'
+      `);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const [apps] = await conn.execute(`
+        SELECT id FROM mini_apps WHERE id = 'contract-mgr-v2'
+      `);
+      
+      if (apps.length > 0) {
+        const id = crypto.randomBytes(10).toString('hex').slice(0, 20);
+        await conn.execute(`
+          INSERT INTO app_clock_registry (id, app_id, tick_script, is_active)
+          VALUES (?, 'contract-mgr-v2', NULL, 1)
+        `, [id]);
+        console.log('  ✓ Registered contract-mgr-v2 to app_clock_registry');
+      } else {
+        console.log('  ⏭️  Skipped: contract-mgr-v2 not found in mini_apps');
+      }
     }
   },
 
