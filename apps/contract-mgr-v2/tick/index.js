@@ -31,22 +31,6 @@ export async function tick(context) {
     return { skipped: true, reason: 'no_app' };
   }
   
-  const lastRun = await services.query(`
-    SELECT created_at FROM app_tick_log
-    WHERE registry_id = ? AND success = 1
-    ORDER BY created_at DESC LIMIT 1
-  `, [registry.id]);
-  
-  if (lastRun.length > 0) {
-    const elapsed = Date.now() - new Date(lastRun[0].created_at).getTime();
-    const minInterval = 1 * 60 * 1000;
-    
-    if (elapsed < minInterval) {
-      logger.info(`[tick] Skipped: last run ${Math.round(elapsed/1000)}s ago`);
-      return { skipped: true, reason: 'interval_not_reached' };
-    }
-  }
-  
   const pending = await services.query(`
     SELECT row_id, process_step, ocr_task_id, file_id, filter_carried_over, filter_chunk_index
     FROM ${CONTENT_TABLE}
