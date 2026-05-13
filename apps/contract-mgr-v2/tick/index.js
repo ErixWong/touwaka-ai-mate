@@ -39,7 +39,7 @@ export async function tick(context) {
   
   if (lastRun.length > 0) {
     const elapsed = Date.now() - new Date(lastRun[0].created_at).getTime();
-    const minInterval = 10 * 60 * 1000;
+    const minInterval = 1 * 60 * 1000;
     
     if (elapsed < minInterval) {
       logger.info(`[tick] Skipped: last run ${Math.round(elapsed/1000)}s ago`);
