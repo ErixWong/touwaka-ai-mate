@@ -103,31 +103,47 @@ async function handleOcrSubmit(row, app, services) {
     return;
   }
   
-  const files = await services.query(`
-    SELECT a.id, a.file_name, a.file_path, a.mime_type
+  // 获取文件信息（用于 params_mapping）
+  const fileInfo = await services.query(`
+    SELECT a.id, a.file_name, a.file_path
     FROM attachments a
     WHERE a.id = ?
   `, [row.file_id]);
   
-  if (!files || files.length === 0) {
+  if (!fileInfo || fileInfo.length === 0) {
     await updateProcessStep(services, row.row_id, 'ocr_failed');
     return;
   }
   
-  const file = files[0];
+  const file = fileInfo[0];
+  
+  // 读取文件为 base64
+  const fullPath = path.join(process.cwd(), 'data', 'attachments', file.file_path);
+  const fs = await import('fs/promises');
+  const buffer = await fs.readFile(fullPath);
+  const base64 = buffer.toString('base64');
   
   const config = getStepResource(app, 'pending_ocr', {});
   const mcp = config.mcp || { server: 'markitdown', tool: 'submit_conversion_task' };
   
-  // 构建完整文件路径
-  const fullPath = path.join(process.cwd(), 'data', 'attachments', file.file_path);
-  
   try {
-    const result = await services.callMcp(mcp.server, mcp.tool, {
-      file_path: fullPath,
-      name: file.file_name,
-      mime_type: file.mime_type
-    });
+    // 按 params_mapping 传递参数
+    const params = {};
+    if (mcp.params_mapping) {
+      for (const [paramKey, sourcePath] of Object.entries(mcp.params_mapping)) {
+        if (sourcePath === 'file.base64') {
+          params[paramKey] = base64;
+        } else if (sourcePath === 'file.name') {
+          params[paramKey] = file.file_name;
+        }
+      }
+    } else {
+      // 默认参数
+      params.content = base64;
+      params.filename = file.file_name;
+    }
+    
+    const result = await services.callMcp(mcp.server, mcp.tool, params);
     
     let taskId;
     if (typeof result === 'string') {
