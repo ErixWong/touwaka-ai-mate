@@ -145,29 +145,18 @@ async function handleOcrSubmit(row, app, services) {
     
     const result = await services.callMcp(mcp.server, mcp.tool, params);
     
-    logger.info(`[tick] OCR result type: ${typeof result}, preview: ${JSON.stringify(result).substring(0, 200)}`);
-    
-    let taskId;
+    let taskId = '';
     if (typeof result === 'string') {
-      try {
-        const parsed = JSON.parse(result);
-        taskId = parsed.task_id || parsed.id || parsed.result?.task_id || result.substring(0, 100);
-      } catch {
-        taskId = result.substring(0, 100);
-      }
-    } else if (typeof result === 'object') {
+      taskId = result;
+    } else if (typeof result === 'object' && result !== null) {
       taskId = result.task_id || result.id || result.result?.task_id || result.content?.task_id || '';
-      if (!taskId && result.result && typeof result.result === 'string') {
-        taskId = result.result.substring(0, 100);
-      }
     }
     
     if (!taskId) {
-      throw new Error('OCR returned no task_id');
+      logger.error(`[tick] OCR returned no task_id for ${row.row_id}, result: ${JSON.stringify(result).substring(0, 200)}`);
+      await updateProcessStep(services, row.row_id, 'ocr_failed');
+      return;
     }
-    
-    // 截断防止超长
-    taskId = String(taskId).substring(0, 200);
     
     await services.execute(`
       UPDATE ${CONTENT_TABLE} 
