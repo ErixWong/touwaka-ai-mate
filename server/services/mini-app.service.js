@@ -594,6 +594,11 @@ class MiniAppService {
     if (!app) throw new Error('App not found');
     if (!app.is_active) throw new Error('App is not active');
 
+    // contract-mgr-v2 使用独立的 content 表管理状态
+    if (appId === 'contract-mgr-v2') {
+      return await this.batchUploadForContractMgrV2(userId, attachmentIds);
+    }
+
     const initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
     });
@@ -624,6 +629,37 @@ class MiniAppService {
       });
 
       records.push(record);
+    }
+
+    return {
+      upload_time: new Date().toISOString(),
+      count: records.length,
+      records,
+    };
+  }
+
+  async batchUploadForContractMgrV2(userId, attachmentIds) {
+    const records = [];
+    
+    for (const attId of attachmentIds) {
+      const attachment = await this.models.Attachment.findByPk(attId);
+      if (!attachment) continue;
+      if (attachment.created_by && attachment.created_by !== userId) continue;
+
+      const rowId = Utils.newID(20);
+      
+      await this.db.sequelize.query(`
+        INSERT INTO app_contract_mgr_v2_content 
+        (row_id, process_step, file_id, created_at, updated_at)
+        VALUES (?, 'pending_ocr', ?, NOW(), NOW())
+      `, { replacements: [rowId, attId] });
+
+      records.push({
+        id: rowId,
+        process_step: 'pending_ocr',
+        file_id: attId,
+        title: attachment.file_name || 'Unknown',
+      });
     }
 
     return {

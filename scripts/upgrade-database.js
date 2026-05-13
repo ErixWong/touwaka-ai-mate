@@ -1173,6 +1173,69 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== contract-mgr-v2 状态自主管理 ====================
+  // Issue #693: content 表新增状态字段，移除 mini_app_rows 依赖
+  {
+    name: 'app_contract_mgr_v2_content add process_step',
+    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_v2_content', 'process_step'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_v2_content
+        ADD COLUMN process_step VARCHAR(32) DEFAULT 'pending_ocr' COMMENT '处理步骤',
+        ADD COLUMN ocr_task_id VARCHAR(64) NULL COMMENT 'OCR任务ID',
+        ADD COLUMN filter_carried_over LONGTEXT NULL COMMENT '滑动窗口中间状态',
+        ADD COLUMN filter_chunk_index INT DEFAULT 0 COMMENT '当前处理chunk索引',
+        ADD COLUMN file_id VARCHAR(32) NULL COMMENT '关联文件ID',
+        ADD INDEX idx_process_step (process_step)
+      `);
+      
+      // 根据现有数据推断状态
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'done' 
+        WHERE sections IS NOT NULL AND filtered_text IS NOT NULL
+      `);
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'pending_section' 
+        WHERE filtered_text IS NOT NULL AND sections IS NULL AND extract_json IS NOT NULL
+      `);
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'pending_extract' 
+        WHERE filtered_text IS NOT NULL AND extract_json IS NULL
+      `);
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'pending_filter' 
+        WHERE ocr_text IS NOT NULL AND filtered_text IS NULL
+      `);
+      
+      console.log('  ✓ Added process_step and related columns to app_contract_mgr_v2_content');
+    }
+  },
+
+  // 移除 content 表的外键约束，允许独立存在
+  {
+    name: 'app_contract_mgr_v2_content drop foreign key',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'app_contract_mgr_v2_content'
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+      `);
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_v2_content
+        DROP FOREIGN KEY fk_app_contract_mgr_v2_content_row_id
+      `);
+      console.log('  ✓ Removed foreign key from app_contract_mgr_v2_content');
+    }
+  },
+
 ];
 
 /**

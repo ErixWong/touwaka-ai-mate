@@ -23,7 +23,7 @@ const JSON_FORMAT_PROMPT = `
 }`;
 
 export async function tick(context) {
-  const { db, app, registry, services } = context;
+  const { app, registry, services } = context;
   
   if (!app) {
     logger.info('[tick] No app found');
@@ -47,11 +47,12 @@ export async function tick(context) {
   }
   
   const pending = await services.query(`
-    SELECT id, status, data FROM mini_app_rows 
-    WHERE app_id = ? AND status IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section')
+    SELECT row_id, process_step, ocr_task_id, file_id, filter_carried_over, filter_chunk_index
+    FROM ${CONTENT_TABLE}
+    WHERE process_step IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section')
     ORDER BY created_at ASC
     LIMIT 5
-  `, [app.id]);
+  `);
   
   if (pending.length === 0) {
     logger.info('[tick] No pending records');
@@ -65,7 +66,7 @@ export async function tick(context) {
       await processRow(row, app, services);
       processed++;
     } catch (e) {
-      logger.error(`[tick] Row ${row.id} failed: ${e.message}`);
+      logger.error(`[tick] Row ${row.row_id} failed: ${e.message}`);
     }
   }
   
@@ -74,14 +75,12 @@ export async function tick(context) {
 }
 
 async function processRow(row, app, services) {
-  const rowData = typeof row.data === 'string' ? JSON.parse(row.data || '{}') : (row.data || {});
-  
-  switch (row.status) {
+  switch (row.process_step) {
     case 'pending_ocr':
-      await handleOcrSubmit(row, rowData, app, services);
+      await handleOcrSubmit(row, app, services);
       break;
     case 'ocr_submitted':
-      await handleOcrCheck(row, rowData, app, services);
+      await handleOcrCheck(row, app, services);
       break;
     case 'pending_filter':
       await handleFilter(row, app, services);
@@ -95,25 +94,34 @@ async function processRow(row, app, services) {
   }
 }
 
-async function handleOcrSubmit(row, rowData, app, services) {
-  logger.info(`[tick] Submitting OCR for ${row.id}`);
+async function handleOcrSubmit(row, app, services) {
+  logger.info(`[tick] Submitting OCR for ${row.row_id}`);
   
-  const files = await services.getFiles(row.id);
+  if (!row.file_id) {
+    await updateProcessStep(services, row.row_id, 'ocr_failed');
+    return;
+  }
+  
+  const files = await services.query(`
+    SELECT a.id, a.filename, a.content, a.base64
+    FROM attachments a
+    WHERE a.id = ?
+  `, [row.file_id]);
+  
   if (!files || files.length === 0) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'ocr_failed' WHERE id = ?`, [row.id]);
+    await updateProcessStep(services, row.row_id, 'ocr_failed');
     return;
   }
   
   const file = files[0];
-  const attachment = file.attachment || file;
   
   const config = getStepResource(app, 'pending_ocr', {});
   const mcp = config.mcp || { server: 'markitdown', tool: 'submit_conversion_task' };
   
   try {
     const result = await services.callMcp(mcp.server, mcp.tool, {
-      content: attachment.base64 || attachment.content,
-      filename: attachment.filename || attachment.name
+      content: file.base64 || file.content,
+      filename: file.filename
     });
     
     let taskId;
@@ -128,25 +136,25 @@ async function handleOcrSubmit(row, rowData, app, services) {
       taskId = result.task_id || result.id || JSON.stringify(result);
     }
     
-    const newData = { ...rowData, _ocr_task_id: taskId };
-    await services.execute(
-      `UPDATE mini_app_rows SET status = 'ocr_submitted', data = ? WHERE id = ?`,
-      [JSON.stringify(newData), row.id]
-    );
+    await services.execute(`
+      UPDATE ${CONTENT_TABLE} 
+      SET process_step = 'ocr_submitted', ocr_task_id = ?
+      WHERE row_id = ?
+    `, [taskId, row.row_id]);
     
-    logger.info(`[tick] OCR submitted for ${row.id}, task_id=${taskId}`);
+    logger.info(`[tick] OCR submitted for ${row.row_id}, task_id=${taskId}`);
   } catch (e) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'ocr_failed' WHERE id = ?`, [row.id]);
-    logger.error(`[tick] OCR submit failed for ${row.id}: ${e.message}`);
+    await updateProcessStep(services, row.row_id, 'ocr_failed');
+    logger.error(`[tick] OCR submit failed for ${row.row_id}: ${e.message}`);
   }
 }
 
-async function handleOcrCheck(row, rowData, app, services) {
-  logger.info(`[tick] Checking OCR for ${row.id}`);
+async function handleOcrCheck(row, app, services) {
+  logger.info(`[tick] Checking OCR for ${row.row_id}`);
   
-  const taskId = rowData._ocr_task_id;
+  const taskId = row.ocr_task_id;
   if (!taskId) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'ocr_failed' WHERE id = ?`, [row.id]);
+    await updateProcessStep(services, row.row_id, 'ocr_failed');
     return;
   }
   
@@ -177,22 +185,20 @@ ${taskInfo}
       let ocrText = extractTextFromMcpResult(mcpResult);
       ocrText = ocrText.replace(/\\n/g, '\n');
       
-      await services.callExtension(CONTENT_TABLE, 'upsert', {
-        row_id: row.id,
-        ocr_text: ocrText,
-        ocr_service: mcp.server,
-        ocr_at: new Date()
-      });
+      await services.execute(`
+        UPDATE ${CONTENT_TABLE} 
+        SET process_step = 'pending_filter', ocr_text = ?, ocr_service = ?, ocr_at = NOW()
+        WHERE row_id = ?
+      `, [ocrText, mcp.server, row.row_id]);
       
-      await services.execute(`UPDATE mini_app_rows SET status = 'pending_filter' WHERE id = ?`, [row.id]);
-      logger.info(`[tick] OCR completed for ${row.id}, text length=${ocrText.length}`);
+      logger.info(`[tick] OCR completed for ${row.row_id}, text length=${ocrText.length}`);
     } else if (parsed.status === 'pending') {
-      logger.info(`[tick] OCR pending for ${row.id}, progress=${parsed.progress}`);
+      logger.info(`[tick] OCR pending for ${row.row_id}, progress=${parsed.progress}`);
     } else {
-      await services.execute(`UPDATE mini_app_rows SET status = 'ocr_failed' WHERE id = ?`, [row.id]);
+      await updateProcessStep(services, row.row_id, 'ocr_failed');
     }
   } catch (e) {
-    logger.error(`[tick] OCR check failed for ${row.id}: ${e.message}`);
+    logger.error(`[tick] OCR check failed for ${row.row_id}: ${e.message}`);
   }
 }
 
@@ -206,17 +212,21 @@ function extractTextFromMcpResult(mcpResult) {
 }
 
 async function handleFilter(row, app, services) {
-  logger.info(`[tick] Filtering text for ${row.id}`);
+  logger.info(`[tick] Filtering text for ${row.row_id}`);
   
-  const content = await services.callExtension(CONTENT_TABLE, 'read', {
-    row_id: row.id,
-    fields: ['ocr_text']
-  });
+  const content = await services.query(`
+    SELECT ocr_text, filter_carried_over, filter_chunk_index FROM ${CONTENT_TABLE}
+    WHERE row_id = ?
+  `, [row.row_id]);
   
-  if (!content || !content.ocr_text) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'filter_failed' WHERE id = ?`, [row.id]);
+  if (!content.length || !content[0].ocr_text) {
+    await updateProcessStep(services, row.row_id, 'filter_failed');
     return;
   }
+  
+  const ocrText = content[0].ocr_text;
+  const existingCarriedOver = content[0].filter_carried_over || '';
+  const existingChunkIndex = content[0].filter_chunk_index || 0;
   
   const filterConfig = getStepResource(app, 'pending_filter', { temperature: 0.3 });
   const filterPrompt = getPrompt(app, 'filter', '去除页码、水印、乱码，保留正文');
@@ -224,41 +234,59 @@ async function handleFilter(row, app, services) {
   
   let filteredText;
   
-  if (content.ocr_text.length <= maxLen) {
+  if (ocrText.length <= maxLen) {
     try {
       const response = await services.callLlm('filter_text', {
         instruction: filterPrompt + JSON_FORMAT_PROMPT,
-        ocr_text: content.ocr_text,
+        ocr_text: ocrText,
         response_format: 'json',
         ...buildLlmParams(filterConfig)
       });
       const parsed = parseLlmResponse(response);
-      filteredText = parsed?.processed_text || content.ocr_text;
+      filteredText = parsed?.processed_text || ocrText;
     } catch (e) {
-      filteredText = content.ocr_text;
+      filteredText = ocrText;
     }
+    
+    await services.execute(`
+      UPDATE ${CONTENT_TABLE} 
+      SET process_step = 'pending_extract', filtered_text = ?, filter_at = NOW(),
+          filter_carried_over = NULL, filter_chunk_index = 0
+      WHERE row_id = ?
+    `, [filteredText, row.row_id]);
+    
+    logger.info(`[tick] Filter completed for ${row.row_id}, length=${filteredText.length}`);
   } else {
-    filteredText = await filterWithSlidingWindow(content.ocr_text, filterPrompt, filterConfig, services);
+    const result = await filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services, row.row_id, existingCarriedOver, existingChunkIndex);
+    
+    if (result.completed) {
+      await services.execute(`
+        UPDATE ${CONTENT_TABLE} 
+        SET process_step = 'pending_extract', filtered_text = ?, filter_at = NOW(),
+            filter_carried_over = NULL, filter_chunk_index = 0
+        WHERE row_id = ?
+      `, [result.filteredText, row.row_id]);
+      logger.info(`[tick] Filter completed for ${row.row_id}, length=${result.filteredText.length}`);
+    } else {
+      await services.execute(`
+        UPDATE ${CONTENT_TABLE} 
+        SET filter_carried_over = ?, filter_chunk_index = ?
+        WHERE row_id = ?
+      `, [result.carriedOver, result.chunkIndex, row.row_id]);
+      logger.info(`[tick] Filter progress for ${row.row_id}, chunk ${result.chunkIndex}`);
+    }
   }
-  
-  await services.callExtension(CONTENT_TABLE, 'upsert', {
-    row_id: row.id,
-    filtered_text: filteredText,
-    filter_at: new Date()
-  });
-  
-  await services.execute(`UPDATE mini_app_rows SET status = 'pending_extract' WHERE id = ?`, [row.id]);
-  logger.info(`[tick] Filter completed for ${row.id}, length=${filteredText.length}`);
 }
 
-async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services) {
+async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services, rowId, existingCarriedOver, existingChunkIndex) {
   const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
   const chunks = splitIntoChunks(ocrText, maxLen);
   
   const allProcessed = [];
-  let carriedOver = '';
+  let carriedOver = existingCarriedOver || '';
+  let startIndex = existingChunkIndex || 0;
   
-  for (let i = 0; i < chunks.length; i++) {
+  for (let i = startIndex; i < chunks.length; i++) {
     const chunkInput = carriedOver + (carriedOver ? '\n' : '') + chunks[i];
     
     try {
@@ -268,28 +296,50 @@ async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, serv
         response_format: 'json',
         ...buildLlmParams(filterConfig)
       });
-      const result = parseLlmResponse(response);
-      allProcessed.push(result?.processed_text || chunkInput);
-      carriedOver = result?.carried_over || '';
+      const parsed = parseLlmResponse(response);
+      allProcessed.push(parsed?.processed_text || chunkInput);
+      carriedOver = parsed?.carried_over || '';
+      
+      logger.info(`[tick] Chunk ${i + 1}/${chunks.length} done for ${rowId}`);
     } catch (e) {
       allProcessed.push(chunkInput);
       carriedOver = '';
     }
   }
   
-  return allProcessed.join('\n');
+  if (carriedOver) {
+    try {
+      const response = await services.callLlm('filter_text', {
+        instruction: filterPrompt + JSON_FORMAT_PROMPT,
+        ocr_text: carriedOver,
+        response_format: 'json',
+        ...buildLlmParams(filterConfig)
+      });
+      const parsed = parseLlmResponse(response);
+      allProcessed.push(parsed?.processed_text || carriedOver);
+    } catch (e) {
+      allProcessed.push(carriedOver);
+    }
+  }
+  
+  return {
+    completed: true,
+    filteredText: allProcessed.join('\n'),
+    carriedOver: '',
+    chunkIndex: chunks.length
+  };
 }
 
 async function handleExtract(row, app, services) {
-  logger.info(`[tick] Extracting metadata for ${row.id}`);
+  logger.info(`[tick] Extracting metadata for ${row.row_id}`);
   
-  const content = await services.callExtension(CONTENT_TABLE, 'read', {
-    row_id: row.id,
-    fields: ['filtered_text']
-  });
+  const content = await services.query(`
+    SELECT filtered_text FROM ${CONTENT_TABLE}
+    WHERE row_id = ?
+  `, [row.row_id]);
   
-  if (!content || !content.filtered_text) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'extract_failed' WHERE id = ?`, [row.id]);
+  if (!content.length || !content[0].filtered_text) {
+    await updateProcessStep(services, row.row_id, 'extract_failed');
     return;
   }
   
@@ -310,7 +360,7 @@ ${exampleJson}
   try {
     const response = await services.callLlm('extract_metadata', {
       instruction: prompt,
-      ocr_text: content.filtered_text,
+      ocr_text: content[0].filtered_text,
       response_format: 'json',
       ...buildLlmParams(extractConfig)
     });
@@ -318,7 +368,7 @@ ${exampleJson}
     const metadata = parseLlmResponse(response);
     
     if (!metadata) {
-      await services.execute(`UPDATE mini_app_rows SET status = 'extract_failed' WHERE id = ?`, [row.id]);
+      await updateProcessStep(services, row.row_id, 'extract_failed');
       return;
     }
     
@@ -338,37 +388,45 @@ ${exampleJson}
       }
     }
     
-    await services.callExtension(ROWS_TABLE, 'upsert', {
-      row_id: row.id,
-      ...cleanMetadata
-    });
+    await services.execute(`
+      INSERT INTO ${ROWS_TABLE} (row_id, contract_number, party_a, party_b, parent_company, contract_amount, contract_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        contract_number = VALUES(contract_number),
+        party_a = VALUES(party_a),
+        party_b = VALUES(party_b),
+        parent_company = VALUES(parent_company),
+        contract_amount = VALUES(contract_amount),
+        contract_date = VALUES(contract_date)
+    `, [row.row_id, cleanMetadata.contract_number || null, cleanMetadata.party_a || null, 
+        cleanMetadata.party_b || null, cleanMetadata.parent_company || null,
+        cleanMetadata.contract_amount || null, cleanMetadata.contract_date || null]);
     
-    await services.callExtension(CONTENT_TABLE, 'upsert', {
-      row_id: row.id,
-      extract_json: JSON.stringify(cleanMetadata),
-      extract_model: extractConfig.model_id,
-      extract_temperature: extractConfig.temperature,
-      extract_at: new Date()
-    });
+    await services.execute(`
+      UPDATE ${CONTENT_TABLE} 
+      SET process_step = 'pending_section', 
+          extract_json = ?, extract_model = ?, extract_temperature = ?, extract_at = NOW()
+      WHERE row_id = ?
+    `, [JSON.stringify(cleanMetadata), extractConfig.model_id || null, 
+        extractConfig.temperature || 0.3, row.row_id]);
     
-    await services.execute(`UPDATE mini_app_rows SET status = 'pending_section' WHERE id = ?`, [row.id]);
-    logger.info(`[tick] Extract completed for ${row.id}`);
+    logger.info(`[tick] Extract completed for ${row.row_id}`);
   } catch (e) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'extract_failed' WHERE id = ?`, [row.id]);
-    logger.error(`[tick] Extract failed for ${row.id}: ${e.message}`);
+    await updateProcessStep(services, row.row_id, 'extract_failed');
+    logger.error(`[tick] Extract failed for ${row.row_id}: ${e.message}`);
   }
 }
 
 async function handleSection(row, app, services) {
-  logger.info(`[tick] Analyzing sections for ${row.id}`);
+  logger.info(`[tick] Analyzing sections for ${row.row_id}`);
   
-  const content = await services.callExtension(CONTENT_TABLE, 'read', {
-    row_id: row.id,
-    fields: ['filtered_text']
-  });
+  const content = await services.query(`
+    SELECT filtered_text FROM ${CONTENT_TABLE}
+    WHERE row_id = ?
+  `, [row.row_id]);
   
-  if (!content || !content.filtered_text) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'section_failed' WHERE id = ?`, [row.id]);
+  if (!content.length || !content[0].filtered_text) {
+    await updateProcessStep(services, row.row_id, 'section_failed');
     return;
   }
   
@@ -386,7 +444,7 @@ async function handleSection(row, app, services) {
   try {
     const response = await services.callLlm('analyze_sections', {
       instruction: sectionPrompt + jsonFormat,
-      ocr_text: content.filtered_text,
+      ocr_text: content[0].filtered_text,
       response_format: 'json',
       ...buildLlmParams(sectionConfig)
     });
@@ -395,19 +453,25 @@ async function handleSection(row, app, services) {
     const sections = result?.sections || result;
     
     if (!Array.isArray(sections)) {
-      await services.execute(`UPDATE mini_app_rows SET status = 'section_failed' WHERE id = ?`, [row.id]);
+      await updateProcessStep(services, row.row_id, 'section_failed');
       return;
     }
     
-    await services.callExtension(CONTENT_TABLE, 'upsert', {
-      row_id: row.id,
-      sections: JSON.stringify(sections)
-    });
+    await services.execute(`
+      UPDATE ${CONTENT_TABLE} 
+      SET process_step = 'pending_review', sections = ?
+      WHERE row_id = ?
+    `, [JSON.stringify(sections), row.row_id]);
     
-    await services.execute(`UPDATE mini_app_rows SET status = 'pending_review' WHERE id = ?`, [row.id]);
-    logger.info(`[tick] Section completed for ${row.id}, found ${sections.length} sections`);
+    logger.info(`[tick] Section completed for ${row.row_id}, found ${sections.length} sections`);
   } catch (e) {
-    await services.execute(`UPDATE mini_app_rows SET status = 'section_failed' WHERE id = ?`, [row.id]);
-    logger.error(`[tick] Section failed for ${row.id}: ${e.message}`);
+    await updateProcessStep(services, row.row_id, 'section_failed');
+    logger.error(`[tick] Section failed for ${row.row_id}: ${e.message}`);
   }
+}
+
+async function updateProcessStep(services, rowId, newStep) {
+  await services.execute(`
+    UPDATE ${CONTENT_TABLE} SET process_step = ? WHERE row_id = ?
+  `, [newStep, rowId]);
 }
