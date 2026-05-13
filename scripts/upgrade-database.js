@@ -1182,7 +1182,7 @@ const MIGRATIONS = [
       await conn.execute(`
         ALTER TABLE app_contract_mgr_v2_content
         ADD COLUMN process_step VARCHAR(32) DEFAULT 'pending_ocr' COMMENT '处理步骤',
-        ADD COLUMN ocr_task_id VARCHAR(64) NULL COMMENT 'OCR任务ID',
+        ADD COLUMN ocr_task_id VARCHAR(128) NULL COMMENT 'OCR任务ID',
         ADD COLUMN filter_carried_over LONGTEXT NULL COMMENT '滑动窗口中间状态',
         ADD COLUMN filter_chunk_index INT DEFAULT 0 COMMENT '当前处理chunk索引',
         ADD COLUMN file_id VARCHAR(32) NULL COMMENT '关联文件ID',
@@ -1233,6 +1233,27 @@ const MIGRATIONS = [
         DROP FOREIGN KEY fk_app_contract_mgr_v2_content_row_id
       `);
       console.log('  ✓ Removed foreign key from app_contract_mgr_v2_content');
+    }
+  },
+
+  // 扩展 ocr_task_id 字段长度（适配长 task_id）
+  {
+    name: 'app_contract_mgr_v2_content extend ocr_task_id',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'app_contract_mgr_v2_content'
+        AND COLUMN_NAME = 'ocr_task_id'
+      `);
+      return rows.length > 0 && rows[0].CHARACTER_MAXIMUM_LENGTH >= 128;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_v2_content
+        MODIFY COLUMN ocr_task_id VARCHAR(128) NULL COMMENT 'OCR任务ID'
+      `);
+      console.log('  ✓ Extended ocr_task_id to VARCHAR(128)');
     }
   },
 
