@@ -1,4 +1,5 @@
 import logger from '../../../lib/logger.js';
+import path from 'path';
 import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../handlers/shared.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
@@ -103,7 +104,7 @@ async function handleOcrSubmit(row, app, services) {
   }
   
   const files = await services.query(`
-    SELECT a.id, a.filename, a.content, a.base64
+    SELECT a.id, a.file_name, a.file_path, a.mime_type
     FROM attachments a
     WHERE a.id = ?
   `, [row.file_id]);
@@ -118,10 +119,14 @@ async function handleOcrSubmit(row, app, services) {
   const config = getStepResource(app, 'pending_ocr', {});
   const mcp = config.mcp || { server: 'markitdown', tool: 'submit_conversion_task' };
   
+  // 构建完整文件路径
+  const fullPath = path.join(process.cwd(), 'data', 'attachments', file.file_path);
+  
   try {
     const result = await services.callMcp(mcp.server, mcp.tool, {
-      content: file.base64 || file.content,
-      filename: file.filename
+      file_path: fullPath,
+      name: file.file_name,
+      mime_type: file.mime_type
     });
     
     let taskId;
