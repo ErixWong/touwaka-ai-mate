@@ -1182,7 +1182,7 @@ const MIGRATIONS = [
       await conn.execute(`
         ALTER TABLE app_contract_mgr_v2_content
         ADD COLUMN process_step VARCHAR(32) DEFAULT 'pending_ocr' COMMENT '处理步骤',
-        ADD COLUMN ocr_task_id VARCHAR(128) NULL COMMENT 'OCR任务ID',
+        ADD COLUMN ocr_task_id VARCHAR(255) NULL COMMENT 'OCR任务ID',
         ADD COLUMN filter_carried_over LONGTEXT NULL COMMENT '滑动窗口中间状态',
         ADD COLUMN filter_chunk_index INT DEFAULT 0 COMMENT '当前处理chunk索引',
         ADD COLUMN file_id VARCHAR(32) NULL COMMENT '关联文件ID',
@@ -1251,9 +1251,9 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE app_contract_mgr_v2_content
-        MODIFY COLUMN ocr_task_id VARCHAR(128) NULL COMMENT 'OCR任务ID'
+        MODIFY COLUMN ocr_task_id VARCHAR(255) NULL COMMENT 'OCR任务ID'
       `);
-      console.log('  ✓ Extended ocr_task_id to VARCHAR(128)');
+      console.log('  ✓ Extended ocr_task_id to VARCHAR(255)');
     }
   },
 
