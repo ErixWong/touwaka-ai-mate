@@ -255,11 +255,13 @@ class ContractV2Service {
       });
       if (existing) throw new Error(`版本号 ${versionNumber} 已存在`);
 
+      const rowId = Utils.newID(20);
       const isFirst = existingCount === 0;
+      
       const version = await this.models.Version.create({
         id: Utils.newID(20),
         contract_id: contractId,
-        row_id: data.row_id,
+        row_id: rowId,
         file_id: data.file_id || null,
         version_number: versionNumber,
         version_name: data.version_name || null,
@@ -269,6 +271,16 @@ class ContractV2Service {
         created_by: userId,
       }, { transaction: t });
 
+      // 创建 content 记录，启动处理流程
+      await this.db.sequelize.query(`
+        INSERT INTO app_contract_mgr_v2_content 
+        (row_id, process_step, file_id, created_at, updated_at)
+        VALUES (?, 'pending_ocr', ?, NOW(), NOW())
+      `, {
+        replacements: [rowId, data.file_id || null],
+        transaction: t
+      });
+
       await contract.update({
         version_count: existingCount + 1,
         current_version_id: isFirst ? version.id : contract.current_version_id,
@@ -276,7 +288,7 @@ class ContractV2Service {
       }, { transaction: t });
 
       await t.commit();
-      return version.toJSON();
+      return { ...version.toJSON(), row_id: rowId };
     } catch (e) {
       await t.rollback();
       throw e;
