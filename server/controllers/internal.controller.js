@@ -684,19 +684,31 @@ class InternalController {
           requires_credentials: s.requires_credentials,
           credential_fields: s.credential_fields,
         })),
-        default_credentials: defaultCredentials.map(c => ({
-          id: c.id,
-          mcp_server_id: c.mcp_server_id,
-          credentials: c.credentials,
-          is_enabled: c.is_enabled,
-        })),
-        user_credentials: userCredentials.map(c => ({
-          id: c.id,
-          user_id: c.user_id,
-          mcp_server_id: c.mcp_server_id,
-          credentials: c.credentials,
-          is_enabled: c.is_enabled,
-        })),
+        default_credentials: defaultCredentials.map(c => {
+          let parsedCreds = c.credentials;
+          if (typeof parsedCreds === 'string') {
+            try { parsedCreds = JSON.parse(parsedCreds); } catch { }
+          }
+          return {
+            id: c.id,
+            mcp_server_id: c.mcp_server_id,
+            credentials: parsedCreds,
+            is_enabled: c.is_enabled,
+          };
+        }),
+        user_credentials: userCredentials.map(c => {
+          let parsedCreds = c.credentials;
+          if (typeof parsedCreds === 'string') {
+            try { parsedCreds = JSON.parse(parsedCreds); } catch { }
+          }
+          return {
+            id: c.id,
+            user_id: c.user_id,
+            mcp_server_id: c.mcp_server_id,
+            credentials: parsedCreds,
+            is_enabled: c.is_enabled,
+          };
+        }),
       });
 
     } catch (error) {

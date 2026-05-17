@@ -663,6 +663,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         raw: true,
       });
 
+      if (credential && typeof credential.credentials === 'string') {
+        try {
+          credential.credentials = JSON.parse(credential.credentials);
+        } catch { }
+      }
+
       ctx.success(credential || null);
 
     } catch (error) {
@@ -679,7 +685,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
     try {
       const userId = ctx.state.session.id;
       const { serverId } = ctx.params;
-      const { env_overrides } = ctx.request.body;
+      const rawInput = ctx.request.body;
 
       const server = await MCPServer.findOne({
         where: { id: serverId, is_enabled: true },
@@ -692,27 +698,38 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
+      let credentialsObj;
+      if (rawInput.env_overrides) {
+        credentialsObj = parseCredentialInput(rawInput.env_overrides);
+      } else if (typeof rawInput === 'string') {
+        credentialsObj = parseCredentialInput(rawInput);
+      } else {
+        credentialsObj = rawInput;
+      }
+
+      const credentialsJson = JSON.stringify(credentialsObj);
+
       let existing = await MCPUserCredential.findOne({
         where: { user_id: userId, mcp_server_id: serverId },
       });
 
       if (existing) {
-        existing.credentials = { env_overrides };
+        existing.credentials = credentialsJson;
         existing.is_enabled = true;
         await existing.save();
         logger.info(`MCP user credential updated: user=${userId}, server=${serverId}`);
-        ctx.success(existing);
+        ctx.success({ ...existing.toJSON(), credentials: credentialsObj });
       } else {
         const credentialId = Utils.newID(16);
         const created = await MCPUserCredential.create({
           id: credentialId,
           user_id: userId,
           mcp_server_id: serverId,
-          credentials: { env_overrides },
+          credentials: credentialsJson,
           is_enabled: true,
         });
         logger.info(`MCP user credential created: user=${userId}, server=${serverId}`);
-        ctx.success(created);
+        ctx.success({ ...created.toJSON(), credentials: credentialsObj });
       }
 
     } catch (error) {
@@ -865,6 +882,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         raw: true,
       });
 
+      if (credential && typeof credential.credentials === 'string') {
+        try {
+          credential.credentials = JSON.parse(credential.credentials);
+        } catch { }
+      }
+
       ctx.success(credential || null);
 
     } catch (error) {
@@ -874,6 +897,37 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   });
 
   /**
+   * 解析凭证输入，支持两种格式：
+   * - JSON: {"api_key": "xxx"} 直接解析
+   * - key=value: api_key=xxx 解析成 {api_key: "xxx"}
+   */
+  function parseCredentialInput(input) {
+    if (!input || typeof input !== 'string') return {};
+    
+    const trimmed = input.trim();
+    
+    // 尝试 JSON 解析
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {}
+    }
+    
+    // 解析 key=value 格式（支持多行）
+    const result = {};
+    const lines = trimmed.split('\n');
+    for (const line of lines) {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx > 0) {
+        const key = line.slice(0, eqIdx).trim();
+        const value = line.slice(eqIdx + 1).trim();
+        if (key) result[key] = value;
+      }
+    }
+    return result;
+  }
+
+  /**
    * 设置特定 Server 的系统默认凭证（管理员）
    * POST /api/mcp/default-credentials/:serverId
    */
@@ -881,7 +935,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
     try {
       const userId = ctx.state.session.id;
       const { serverId } = ctx.params;
-      const { env_overrides } = ctx.request.body;
+      const rawInput = ctx.request.body;
 
       const server = await MCPServer.findOne({
         where: { id: serverId, is_enabled: true },
@@ -894,27 +948,39 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
+      // 直接解析 body（可能包含 env_overrides 字段或直接是 key=value）
+      let credentialsObj;
+      if (rawInput.env_overrides) {
+        credentialsObj = parseCredentialInput(rawInput.env_overrides);
+      } else if (typeof rawInput === 'string') {
+        credentialsObj = parseCredentialInput(rawInput);
+      } else {
+        credentialsObj = rawInput;
+      }
+
       let existing = await MCPCredential.findOne({
         where: { mcp_server_id: serverId },
       });
 
+      const credentialsJson = JSON.stringify(credentialsObj);
+      
       if (existing) {
-        existing.credentials = { env_overrides };
+        existing.credentials = credentialsJson;
         existing.is_enabled = true;
         await existing.save();
         logger.info(`MCP default credential updated: server=${serverId}, by=${userId}`);
-        ctx.success(existing);
+        ctx.success({ ...existing.toJSON(), credentials: credentialsObj });
       } else {
         const credentialId = Utils.newID(16);
         const created = await MCPCredential.create({
           id: credentialId,
           mcp_server_id: serverId,
-          credentials: { env_overrides },
+          credentials: credentialsJson,
           is_enabled: true,
           created_by: userId,
         });
         logger.info(`MCP default credential created: server=${serverId}, by=${userId}`);
-        ctx.success(created);
+        ctx.success({ ...created.toJSON(), credentials: credentialsObj });
       }
 
     } catch (error) {
