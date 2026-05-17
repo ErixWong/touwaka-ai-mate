@@ -110,8 +110,10 @@ async function handleOcrSubmit(row, app, services) {
   const config = getStepResource(app, 'pending_ocr', {});
   const mcp = config.mcp || { server: 'markitdown', tool: 'submit_conversion_task' };
   
+  logger.info(`[tick] OCR MCP config: server=${mcp.server}, tool=${mcp.tool}`);
+  logger.info(`[tick] OCR file: ${file.file_name}, size=${buffer.length} bytes`);
+  
   try {
-    // 按 params_mapping 传递参数
     const params = {};
     if (mcp.params_mapping) {
       for (const [paramKey, sourcePath] of Object.entries(mcp.params_mapping)) {
@@ -122,18 +124,59 @@ async function handleOcrSubmit(row, app, services) {
         }
       }
     } else {
-      // 默认参数
       params.content = base64;
       params.filename = file.file_name;
     }
     
+    logger.info(`[tick] OCR request params: filename=${params.filename || params.name}, base64_length=${base64.length}`);
+    logger.debug(`[tick] OCR request full params keys: ${Object.keys(params).join(', ')}`);
+    
     const result = await services.callMcp(mcp.server, mcp.tool, params);
     
+    logger.info(`[tick] OCR response type: ${typeof result}`);
+    logger.debug(`[tick] OCR response: ${JSON.stringify(result).substring(0, 500)}`);
+    
     let taskId = '';
-    if (typeof result === 'string') {
-      taskId = result;
-    } else if (typeof result === 'object' && result !== null) {
-      taskId = result.task_id || result.id || result.result?.task_id || result.content?.task_id || '';
+    
+    const parsePrompt = `从以下 MCP 工具调用结果中提取 task_id（任务ID）。
+如果结果中包含任务ID，返回JSON格式：{"task_id": "提取的ID值"}
+如果没有找到task_id但有其他标识符（如id、job_id等），也提取出来。
+如果完全无法提取，返回：{"task_id": ""}
+
+MCP返回结果：
+${JSON.stringify(result).substring(0, 1000)}`;
+
+    try {
+      const parseResult = await services.callLlm('parse_task_id', {
+        instruction: parsePrompt,
+        response_format: 'json',
+        model_id: config.parse_model_id,
+        temperature: 0.1,
+      });
+      
+      const parsed = parseLlmResponse(parseResult);
+      if (parsed && parsed.task_id) {
+        taskId = parsed.task_id;
+        logger.info(`[tick] OCR task_id extracted by LLM: ${taskId}`);
+      }
+    } catch (e) {
+      logger.warn(`[tick] LLM parse failed, fallback to hardcoded: ${e.message}`);
+    }
+    
+    if (!taskId) {
+      if (typeof result === 'string') {
+        taskId = result;
+      } else if (typeof result === 'object' && result !== null) {
+        taskId = result.task_id || result.id || result.result?.task_id || '';
+        if (!taskId && result.content) {
+          try {
+            const parsed = JSON.parse(result.content);
+            taskId = parsed.task_id || parsed.id || '';
+          } catch (e) {
+            logger.warn(`[tick] Failed to parse result.content: ${e.message}`);
+          }
+        }
+      }
     }
     
     if (!taskId) {
@@ -152,6 +195,8 @@ async function handleOcrSubmit(row, app, services) {
   } catch (e) {
     await updateProcessStep(services, row.row_id, 'ocr_failed');
     logger.error(`[tick] OCR submit failed for ${row.row_id}: ${e.message}`);
+    logger.error(`[tick] OCR submit error stack: ${e.stack}`);
+    logger.error(`[tick] OCR submit error details: ${JSON.stringify({ name: e.name, message: e.message, code: e.code, cause: e.cause })}`);
   }
 }
 
