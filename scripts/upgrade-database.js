@@ -1257,6 +1257,23 @@ const MIGRATIONS = [
     }
   },
 
+  // 补录 contract-mgr-v2 的 component 字段（安装时未写入）
+  {
+    name: 'mini_apps contract-mgr-v2 set component',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT component FROM mini_apps WHERE id = 'contract-mgr-v2'
+      `);
+      return rows.length > 0 && rows[0].component === 'ContractV2View';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        UPDATE mini_apps SET component = 'ContractV2View' WHERE id = 'contract-mgr-v2'
+      `);
+      console.log('  ✓ Set contract-mgr-v2 component to ContractV2View');
+    }
+  },
+
 ];
 
 /**
