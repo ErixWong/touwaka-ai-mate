@@ -22,16 +22,33 @@ function getConfig(app, stateName) {
 
 function extractTextFromMcpResult(mcpResult) {
   if (!mcpResult) return '';
-  if (typeof mcpResult === 'string') return mcpResult;
-  const r = mcpResult.result;
-  if (typeof r === 'string') return r;
-  const content = mcpResult.content;
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    const texts = content.filter(c => c.type === 'text').map(c => c.text);
-    if (texts.length) return texts.join('\n');
+  
+  if (typeof mcpResult === 'string') {
+    try {
+      const parsed = JSON.parse(mcpResult);
+      if (parsed.result && typeof parsed.result === 'string') {
+        return parsed.result;
+      }
+      return mcpResult;
+    } catch {
+      return mcpResult;
+    }
   }
-  return mcpResult.text || mcpResult.output || mcpResult.markdown || '';
+  
+  if (typeof mcpResult === 'object') {
+    if (mcpResult.result && typeof mcpResult.result === 'string') {
+      return mcpResult.result;
+    }
+    const content = mcpResult.content;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      const texts = content.filter(c => c.type === 'text').map(c => c.text);
+      if (texts.length) return texts.join('\n');
+    }
+    return mcpResult.text || mcpResult.output || mcpResult.markdown || '';
+  }
+  
+  return '';
 }
 
 function truncateTaskInfo(mcpResult, maxLen = 1000) {
@@ -84,7 +101,8 @@ export default {
       }
 
       if (parsed.status === 'completed') {
-        const ocrText = extractTextFromMcpResult(mcpResult);
+        let ocrText = extractTextFromMcpResult(mcpResult);
+        ocrText = ocrText.replace(/\\n/g, '\n');
         logger.info(`[contract-v2-check-ocr] Record ${record.id}: OCR completed, text length=${ocrText.length}`);
 
         await services.callExtension('app_contract_mgr_v2_content', 'upsert', {

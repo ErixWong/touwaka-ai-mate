@@ -514,7 +514,9 @@ const loadUserCredential = async (serverId: string) => {
   try {
     const result = await mcpApi.getUserCredentialForServer(serverId)
     userCredential.value = result
-    userCredentialForm.env_overrides = result?.env_overrides || ''
+    // credentials 是对象 { api_key: "xxx" }，转成 key=value 格式显示
+    const creds = result?.credentials || {}
+    userCredentialForm.env_overrides = Object.entries(creds).map(([k, v]) => `${k}=${v}`).join('\n')
   } catch (error: any) {
     toast.error(t('settings.mcp.loadCredentialFailed') + ': ' + error.message)
   } finally {
@@ -558,7 +560,9 @@ const loadDefaultCredential = async (serverId: string) => {
   try {
     const result = await mcpApi.getDefaultCredentialForServer(serverId)
     defaultCredential.value = result
-    defaultCredentialForm.env_overrides = result?.env_overrides || ''
+    // credentials 是对象 { api_key: "xxx" }，转成 key=value 格式显示
+    const creds = result?.credentials || {}
+    defaultCredentialForm.env_overrides = Object.entries(creds).map(([k, v]) => `${k}=${v}`).join('\n')
   } catch (error: any) {
     toast.error(t('settings.mcp.loadDefaultCredentialFailed') + ': ' + error.message)
   } finally {

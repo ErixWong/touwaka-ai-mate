@@ -141,30 +141,56 @@ class AppMarketController {
   }
 
   /**
-   * 更新 App（重新安装最新版本）
+   * 更新 App（重新安装最新版本，失败时恢复原状态）
    */
   async updateApp(ctx) {
+    const { appId } = ctx.params;
+    const userId = ctx.state.session.id;
+    const { MiniApp } = this.db.getModels();
+    
+    // 1. 备份旧 App 的完整 metadata
+    const oldApp = await MiniApp.findByPk(appId);
+    if (!oldApp) {
+      ctx.error('App not found', 404);
+      return;
+    }
+    
+    const backup = {
+      visibility: oldApp.visibility,
+      owner_id: oldApp.owner_id,
+      sort_order: oldApp.sort_order,
+      is_active: oldApp.is_active
+    };
+    
     try {
-      const { appId } = ctx.params;
-      const userId = ctx.state.session.id;
-      
-      // 保留旧 App 的 visibility
-      const oldApp = await this.db.getModels().MiniApp.findByPk(appId);
-      const oldVisibility = oldApp ? oldApp.visibility : 'all';
-      
-      // 先卸载旧版本（保留数据）
+      // 2. 卸载旧版本（保留数据和表结构）
       await this.appMarketService.uninstallApp(appId, { keepData: true });
       
-      // 安装新版本
+      // 3. 安装新版本
       const result = await this.appMarketService.installApp(appId, {
         userId,
-        visibility: oldVisibility
+        visibility: backup.visibility
       });
+      
+      // 4. 恢复备份的 metadata（除了 visibility 已在 install 时恢复）
+      await MiniApp.update(
+        { owner_id: backup.owner_id, sort_order: backup.sort_order, is_active: backup.is_active },
+        { where: { id: appId } }
+      );
       
       ctx.success(result, 'App updated successfully');
     } catch (error) {
       logger.error('Update app error:', error);
-      ctx.error(error.message, 400);
+      
+      // 5. 尝试恢复备份状态
+      try {
+        await this.appMarketService.restoreAppMetadata(appId, backup, userId);
+        logger.info(`App ${appId} restored after failed update`);
+        ctx.error(`更新失败，已恢复原状态: ${error.message}`, 400);
+      } catch (restoreError) {
+        logger.error('Failed to restore app after update failure:', restoreError);
+        ctx.error(`更新失败，恢复也失败: ${error.message}`, 500);
+      }
     }
   }
 

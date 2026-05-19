@@ -13,7 +13,6 @@ export interface SystemSettings {
     top_p: number
     frequency_penalty: number
     presence_penalty: number
-    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
   }
   connection: {
     max_per_user: number
@@ -24,20 +23,29 @@ export interface SystemSettings {
     refresh_expiry: string
   }
   timeout: {
-    vm_execution: number      // VM 执行超时（秒）
-    python_execution: number  // Python 执行超时（秒）
-    skill_call: number        // 技能调用超时（秒）
-    remote_llm: number        // 远程 LLM 调用超时（秒）
+    vm_execution: number
+    python_execution: number
+    skill_call: number
+    remote_llm: number
   }
   tool: {
-    max_rounds: number        // 最大工具调用轮数
+    max_rounds: number
   }
   registration: {
-    allow_self_registration: boolean    // 是否允许自主注册
-    default_invitation_quota: number    // 默认邀请配额
-    default_invitation_max_uses: number // 默认邀请码最大使用次数
-    invitation_expiry_days: number      // 邀请码有效期（天）
+    allow_self_registration: boolean
+    default_invitation_quota: number
+    default_invitation_max_uses: number
+    invitation_expiry_days: number
   }
+  branding: {
+    app_name: string
+    logo_icon: string
+  }
+}
+
+export interface BrandingSettings {
+  app_name: string
+  logo_icon: string
 }
 
 /**
@@ -83,6 +91,10 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       default_invitation_max_uses: 5,
       invitation_expiry_days: 30,
     },
+    branding: {
+      app_name: 'Touwaka Mate',
+      logo_icon: '🤖',
+    },
   }
 
   // Getters
@@ -92,6 +104,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const timeoutSettings = computed(() => settings.value?.timeout || defaultSettings.timeout)
   const toolSettings = computed(() => settings.value?.tool || defaultSettings.tool)
   const registrationSettings = computed(() => settings.value?.registration || defaultSettings.registration)
+  const brandingSettings = computed(() => settings.value?.branding || defaultSettings.branding)
 
   // Actions
   // 加载系统配置
@@ -160,23 +173,37 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     return result
   }
 
+  const loadBranding = async (): Promise<BrandingSettings> => {
+    try {
+      const response = await apiClient.get('/branding')
+      const data = response.data.data
+      if (settings.value) {
+        settings.value.branding = data
+      } else {
+        settings.value = { ...defaultSettings, branding: data } as SystemSettings
+      }
+      return data
+    } catch {
+      return { app_name: 'Touwaka Mate', logo_icon: '🤖' }
+    }
+  }
+
   return {
-    // State
     settings,
     isLoading,
     error,
     defaultSettings,
-    // Getters
     llmSettings,
     connectionSettings,
     tokenSettings,
     timeoutSettings,
     toolSettings,
     registrationSettings,
-    // Actions
+    brandingSettings,
     loadSettings,
     updateSettings,
     resetSettings,
     getSetting,
+    loadBranding,
   }
 })

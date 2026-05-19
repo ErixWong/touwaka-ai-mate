@@ -11,6 +11,7 @@
         <el-button :type="activeSubTab === 'timeout' ? 'primary' : ''" @click="activeSubTab = 'timeout'">⏱️ {{ $t('settings.timeoutConfig') }}</el-button>
         <el-button :type="activeSubTab === 'app' ? 'primary' : ''" @click="activeSubTab = 'app'">📱 {{ $t('settings.appConfig') }}</el-button>
         <el-button :type="activeSubTab === 'packages' ? 'primary' : ''" @click="activeSubTab = 'packages'">📦 {{ $t('settings.packageWhitelist') }}</el-button>
+        <el-button :type="activeSubTab === 'branding' ? 'primary' : ''" @click="activeSubTab = 'branding'">🎨 {{ $t('settings.brandingConfig') }}</el-button>
       </div>
 
       <div v-if="activeSubTab === 'general'" class="tab-content">
@@ -210,6 +211,42 @@
       <div v-if="activeSubTab === 'packages'" class="tab-content">
         <PackageWhitelistTab />
       </div>
+
+      <div v-if="activeSubTab === 'branding'" class="tab-content">
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">🎨 {{ $t('settings.brandingConfig') }}</h3>
+            <el-button @click="resetSection('branding')">{{ $t('common.reset') }}</el-button>
+          </div>
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.brandingAppName') }}</label>
+              <el-input v-model="form.branding.app_name" placeholder="Touwaka Mate" />
+              <span class="config-hint">{{ $t('settings.brandingAppNameHint') }}</span>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.brandingLogoIcon') }}</label>
+              <el-input v-model="form.branding.logo_icon" placeholder="🤖" />
+              <span class="config-hint">{{ $t('settings.brandingLogoIconHint') }}</span>
+            </div>
+            <div class="config-item full-width">
+              <div class="branding-preview">
+                <span class="branding-preview-label">{{ $t('settings.brandingPreview') }}</span>
+                <div class="branding-preview-content">
+                  <span class="preview-icon">{{ form.branding.logo_icon }}</span>
+                  <span class="preview-name">{{ form.branding.app_name }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="config-actions">
+            <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
+            <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
+              {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+            </el-button>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -225,7 +262,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 const toast = useToastStore()
 
-const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'app' | 'packages'>('general')
+const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'app' | 'packages' | 'branding'>('general')
 const saving = ref(false)
 
 const form = reactive({
@@ -235,6 +272,7 @@ const form = reactive({
   token: { access_expiry: '15m', refresh_expiry: '7d' },
   tool: { max_rounds: 20 },
   app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
+  branding: { app_name: 'Touwaka Mate', logo_icon: '🤖' },
 })
 
 const defaults = {
@@ -244,6 +282,7 @@ const defaults = {
   token: { access_expiry: '15m', refresh_expiry: '7d' },
   tool: { max_rounds: 20 },
   app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
+  branding: { app_name: 'Touwaka Mate', logo_icon: '🤖' },
 }
 
 const hasChanges = computed(() => {
@@ -256,6 +295,7 @@ const hasChanges = computed(() => {
     token: { access_expiry: settings.token?.access_expiry ?? '15m', refresh_expiry: settings.token?.refresh_expiry ?? '7d' },
     tool: { max_rounds: settings.tool?.max_rounds ?? 20 },
     app: { clock_interval: settings.app?.clock_interval ?? 30, batch_size: settings.app?.batch_size ?? 10, max_concurrency: settings.app?.max_concurrency ?? 5, text_filter_max_length: settings.app?.text_filter_max_length ?? 50000, attachment_base_path: settings.app?.attachment_base_path ?? './data/attachments', max_upload_size: settings.app?.max_upload_size ?? 50 },
+    branding: { app_name: settings.branding?.app_name ?? 'Touwaka Mate', logo_icon: settings.branding?.logo_icon ?? '🤖' },
   })
 })
 
@@ -305,6 +345,8 @@ onMounted(async () => {
     form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
     form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
     form.app.max_upload_size = settings.app?.max_upload_size ?? 50
+    form.branding.app_name = settings.branding?.app_name ?? 'Touwaka Mate'
+    form.branding.logo_icon = settings.branding?.logo_icon ?? '🤖'
   }
 })
 
@@ -331,6 +373,8 @@ watch(() => systemSettingsStore.settings, (settings) => {
     form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
     form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
     form.app.max_upload_size = settings.app?.max_upload_size ?? 50
+    form.branding.app_name = settings.branding?.app_name ?? 'Touwaka Mate'
+    form.branding.logo_icon = settings.branding?.logo_icon ?? '🤖'
   }
 }, { deep: true })
 </script>
@@ -351,4 +395,9 @@ watch(() => systemSettingsStore.settings, (settings) => {
 .config-hint { font-size: 11px; color: var(--text-tertiary, #999); }
 .config-description { font-size: 11px; color: var(--text-tertiary, #999); margin: 4px 0 0 0; }
 .config-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-light, #eee); }
+.branding-preview { display: flex; flex-direction: column; gap: 8px; }
+.branding-preview-label { font-size: 12px; color: var(--text-tertiary, #999); }
+.branding-preview-content { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--hover-bg, #f5f5f5); border-radius: 8px; }
+.preview-icon { font-size: 24px; }
+.preview-name { font-size: 18px; font-weight: 600; color: var(--text-primary, #333); }
 </style>

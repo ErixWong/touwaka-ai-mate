@@ -19,6 +19,7 @@ class AppMarketService {
   ensureModels() {
     if (!this.models.MiniApp) {
       this.models.MiniApp = this.db.getModel('mini_app');
+      this.models.AppClockRegistry = this.db.getModel('app_clock_registry');
       this.models.AppState = this.db.getModel('app_state');
       this.models.AppRowHandler = this.db.getModel('app_row_handler');
       this.models.SystemSetting = this.db.getModel('system_setting');
@@ -372,63 +373,108 @@ class AppMarketService {
     
     // 5. 创建 App 目录
     const appDir = path.join(this.appsDir, appId);
-    await fs.mkdir(appDir, { recursive: true });
+    let migrationExecuted = false;
     
-    // 6. 拉取并保存 migration 文件
-    if (manifest.migrations?.install) {
-      const scriptContent = await this.fetchMigration(appId, manifest.migrations.install);
-      const scriptDir = path.join(appDir, path.dirname(manifest.migrations.install));
-      await fs.mkdir(scriptDir, { recursive: true });
+    try {
+      await fs.mkdir(appDir, { recursive: true });
+      
+      // 6. 拉取并保存 migration 文件
+      if (manifest.migrations?.install) {
+        const scriptContent = await this.fetchMigration(appId, manifest.migrations.install);
+        const scriptDir = path.join(appDir, path.dirname(manifest.migrations.install));
+        await fs.mkdir(scriptDir, { recursive: true });
+        await fs.writeFile(
+          path.join(appDir, manifest.migrations.install),
+          scriptContent,
+          'utf-8'
+        );
+      }
+      
+      if (manifest.migrations?.uninstall) {
+        const scriptContent = await this.fetchMigration(appId, manifest.migrations.uninstall);
+        const scriptDir = path.join(appDir, path.dirname(manifest.migrations.uninstall));
+        await fs.mkdir(scriptDir, { recursive: true });
+        await fs.writeFile(
+          path.join(appDir, manifest.migrations.uninstall),
+          scriptContent,
+          'utf-8'
+        );
+      }
+      
+      // 7. 执行迁移脚本
+      if (manifest.migrations?.install) {
+        await this.runMigration(appId, manifest.migrations.install, 'up');
+        migrationExecuted = true;
+      }
+      
+      // 8. 保存 manifest 到本地
       await fs.writeFile(
-        path.join(appDir, manifest.migrations.install),
-        scriptContent,
+        path.join(appDir, 'manifest.json'),
+        JSON.stringify(manifest, null, 2),
         'utf-8'
       );
+      
+      // 9. 插入数据库（extension_tables 存入 config）
+      const config = {
+        ...manifest.config,
+        extension_tables: manifest.extension_tables || []
+      };
+      await this.installAppMetadata(manifest, userId, visibility, config);
+      
+      // 10. 注册到 app_clock_registry
+      await this.registerToClockRegistry(appId);
+      
+      logger.info(`App ${appId} installed successfully`);
+      
+      return {
+        success: true,
+        app_id: appId,
+        name: manifest.name,
+        version: manifest.version
+      };
+    } catch (error) {
+      logger.error(`App ${appId} installation failed, rolling back:`, error);
+      await this.rollbackInstall(appId, appDir, migrationExecuted, manifest);
+      throw error;
+    }
+  }
+
+  /**
+   * 安装失败回滚
+   */
+  async rollbackInstall(appId, appDir, migrationExecuted, manifest) {
+    // 1. 如果已执行 install migration，尝试执行 uninstall migration 回滚
+    if (migrationExecuted && manifest.migrations?.uninstall) {
+      try {
+        await this.runMigration(appId, manifest.migrations.uninstall, 'up');
+        logger.info(`Rolled back migration for ${appId}`);
+      } catch (err) {
+        logger.warn(`Failed to rollback migration for ${appId}:`, err);
+      }
     }
     
-    if (manifest.migrations?.uninstall) {
-      const scriptContent = await this.fetchMigration(appId, manifest.migrations.uninstall);
-      const scriptDir = path.join(appDir, path.dirname(manifest.migrations.uninstall));
-      await fs.mkdir(scriptDir, { recursive: true });
-      await fs.writeFile(
-        path.join(appDir, manifest.migrations.uninstall),
-        scriptContent,
-        'utf-8'
-      );
+    // 2. 删除数据库记录（如果已创建）
+    try {
+      await this.models.MiniApp.destroy({ where: { id: appId } });
+      await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
+      await this.models.AppState.destroy({ where: { app_id: appId } });
+      await this.models.AppRowHandler.destroy({ 
+        where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
+      });
+      logger.info(`Rolled back DB records for ${appId}`);
+    } catch (err) {
+      logger.warn(`Failed to rollback DB records for ${appId}:`, err);
     }
     
-    // 7. 执行迁移脚本
-    if (manifest.migrations?.install) {
-      await this.runMigration(appId, manifest.migrations.install, 'up');
+    // 3. 删除目录
+    try {
+      await fs.rm(appDir, { recursive: true, force: true });
+      logger.info(`Rolled back app directory for ${appId}`);
+    } catch (err) {
+      logger.warn(`Failed to rollback app directory for ${appId}:`, err);
     }
     
-    // 8. 保存 manifest 到本地
-    await fs.writeFile(
-      path.join(appDir, 'manifest.json'),
-      JSON.stringify(manifest, null, 2),
-      'utf-8'
-    );
-    
-    // 9. 安装 handlers（返回 handlerId 映射）
-    const { installed: installedHandlers, handlerIdMap } = await this.installHandlers(appId, manifest);
-    
-    // 10. 插入数据库（extension_tables 存入 config）
-    const config = {
-      ...manifest.config,
-      extension_tables: manifest.extension_tables || []
-    };
-    await this.installAppMetadata(manifest, userId, visibility, config);
-    await this.installStates(appId, manifest, handlerIdMap);
-    
-    logger.info(`App ${appId} installed successfully`);
-    
-    return {
-      success: true,
-      app_id: appId,
-      name: manifest.name,
-      version: manifest.version,
-      installed_handlers: installedHandlers
-    };
+    logger.info(`Installation rollback completed for ${appId}`);
   }
 
   /**
@@ -455,11 +501,60 @@ class AppMarketService {
   }
 
   /**
-   * 安装状态定义到数据库
-   * @param {string} appId
-   * @param {object} manifest
-   * @param {Map} handlerIdMap - handler名称 → app_row_handlers.id 的映射
+   * 注册 App 到 app_clock_registry
    */
+  async registerToClockRegistry(appId) {
+    this.ensureModels();
+    
+    const Utils = await import('../../lib/utils.js');
+    
+    await this.models.AppClockRegistry.create({
+      id: Utils.default.newID(20),
+      app_id: appId,
+      tick_script: null,
+      is_active: true
+    });
+    
+    logger.info(`App ${appId} registered to app_clock_registry`);
+  }
+
+  /**
+   * 恢复 App metadata（用于更新失败时回滚）
+   */
+  async restoreAppMetadata(appId, backup, userId) {
+    this.ensureModels();
+    
+    const Utils = await import('../../lib/utils.js');
+    
+    await this.models.MiniApp.create({
+      id: appId,
+      name: backup.name || appId,
+      description: backup.description || '',
+      icon: backup.icon || '',
+      type: backup.type || 'document',
+      component: backup.component || null,
+      fields: backup.fields || '[]',
+      views: backup.views || '{}',
+      config: backup.config || '{}',
+      visibility: backup.visibility || 'all',
+      owner_id: backup.owner_id || userId,
+      creator_id: backup.creator_id || userId,
+      sort_order: backup.sort_order || 0,
+      is_active: backup.is_active !== undefined ? backup.is_active : true,
+      revision: backup.revision || 1
+    });
+    
+    await this.models.AppClockRegistry.create({
+      id: Utils.default.newID(20),
+      app_id: appId,
+      tick_script: null,
+      is_active: true
+    });
+    
+    logger.info(`App ${appId} metadata restored after failed update`);
+  }
+
+  // ==================== 废弃方法（保留以兼容旧数据） ====================
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
     
@@ -596,8 +691,8 @@ class AppMarketService {
       };
     }
     
-    // 3. 执行卸载迁移脚本（执行 uninstall.js 的 up 方法删除表）
-    if (manifest.migrations?.uninstall) {
+    // 3. 执行卸载迁移脚本（keepData=true 时不执行，避免删除表结构）
+    if (!keepData && manifest.migrations?.uninstall) {
       await this.runMigration(appId, manifest.migrations.uninstall, 'up');
     }
     
@@ -607,6 +702,7 @@ class AppMarketService {
     await this.models.AppRowHandler.destroy({ 
       where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
     });
+    await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
     
     // 5. 根据选项决定是否删除数据行
     if (!keepData) {

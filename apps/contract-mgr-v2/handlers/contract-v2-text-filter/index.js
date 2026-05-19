@@ -1,6 +1,7 @@
 import logger from '../../../../lib/logger.js';
 import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
 
+const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
 const DEFAULT_FILTER_CONFIG = {
   type: 'internal_llm',
   model_id: null,
@@ -23,31 +24,22 @@ const CHUNK_SYSTEM_SUFFIX = `
 
 你必须返回严格的JSON格式：
 {
-  "processed_part": "本轮清洗后的文本片段",
-  "carried_over": "未完成的尾部内容（空字符串表示无剩余）",
-  "context_summary": {
-    "key_terms": {},
-    "points": []
-  }
+  "processed_text": "本轮清洗后的完整章节内容",
+  "carried_over": "末尾不完整章节的原文（未清洗）"
 }
 
-规则：
-- processed_part: 本轮已完整清洗的文本
-- carried_over: 如果末尾文本不完整（如句子被截断），放到这里，会拼接到下轮输入开头
-- context_summary.key_terms: 已出现的专业术语及其标准译名/写法
-- context_summary.points: 已处理文本的摘要要点列表（字符串数组），总长度不超过${CONTEXT_SUMMARY_MAX_LENGTH}字符`;
+处理规则：
+1. 识别输入中的OCR文本内容（跳过任务状态JSON、元数据等无关信息）
+2. 按章节整理内容，识别章节边界（如"第一章"、"第一条"、"一、"等）
+3. processed_text: 只包含本轮能完整处理的章节，末尾不完整的章节不放入
+4. carried_over: 末尾不完整章节的原文（保持原样不清洗），会拼接到下轮继续处理；末尾完整则为空字符串
 
-async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInput, contextSummary) {
-  const promptBase = filterPrompt + CHUNK_SYSTEM_SUFFIX;
+注意：如果输入开头是上一轮的carried_over（原文），请完整处理该章节后，再继续处理后续内容。`;
 
-  let contextNote = '';
-  if (contextSummary && (Object.keys(contextSummary.key_terms || {}).length > 0 || (contextSummary.points || []).length > 0)) {
-    contextNote = `\n\n[前文上下文摘要]\n${JSON.stringify(contextSummary, null, 2)}\n请参考以上上下文保持术语和风格一致。`;
-  }
-
-  const response = await services.callLlm('filter_text_chunked', {
-    instruction: promptBase,
-    ocr_text: chunkInput + contextNote,
+async function filterChunk(services, filterPrompt, filterConfig, chunkInput) {
+  const response = await services.callLlm('filter_text', {
+    instruction: filterPrompt + JSON_FORMAT_PROMPT,
+    ocr_text: chunkInput,
     response_format: 'json',
     ...buildLlmParams(filterConfig),
   });
@@ -59,67 +51,50 @@ async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInpu
     parsed = parseLlmResponse(response);
   }
 
-  if (!parsed || typeof parsed.processed_part !== 'string') {
+  if (!parsed || typeof parsed.processed_text !== 'string') {
     throw new Error('LLM返回的JSON格式无效');
   }
 
   return {
-    processed_part: parsed.processed_part || '',
+    processed_text: parsed.processed_text || '',
     carried_over: parsed.carried_over || '',
-    context_summary: parsed.context_summary || { key_terms: {}, points: [] },
   };
 }
 
-function trimContextSummary(summary) {
-  if (!summary) return { key_terms: {}, points: [] };
-
-  const points = summary.points || [];
-  const keyTerms = summary.key_terms || {};
-  const trimmedPoints = [];
-
-  for (const point of points) {
-    const candidate = { key_terms: keyTerms, points: [...trimmedPoints, point] };
-    if (JSON.stringify(candidate).length <= CONTEXT_SUMMARY_MAX_LENGTH) {
-      trimmedPoints.push(point);
-    }
-  }
-
-  return { key_terms: keyTerms, points: trimmedPoints };
-}
-
 async function filterWithSlidingWindow(services, filterPrompt, filterConfig, ocrText) {
-  const chunks = splitIntoChunks(ocrText, CHUNK_MAX_LENGTH);
+  const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
+  const chunks = splitIntoChunks(ocrText, maxLen);
   logger.info(`[contract-v2-text-filter] Sliding window: split into ${chunks.length} chunks`);
 
   const allProcessed = [];
   let carriedOver = '';
-  let contextSummary = { key_terms: {}, points: [] };
 
   for (let i = 0; i < chunks.length; i++) {
-    let nextChunk = chunks[i];
-    if (carriedOver.length + nextChunk.length > CHUNK_MAX_LENGTH * 1.5) {
-      const allowLen = Math.floor(CHUNK_MAX_LENGTH * 1.5) - carriedOver.length;
-      allProcessed.push(nextChunk.slice(0, Math.max(0, CHUNK_MAX_LENGTH - carriedOver.length)));
-      nextChunk = nextChunk.slice(Math.max(0, CHUNK_MAX_LENGTH - carriedOver.length));
-    }
-    const chunkInput = carriedOver + (carriedOver ? '\n\n' : '') + nextChunk;
+    const chunkInput = carriedOver + (carriedOver ? '\n' : '') + chunks[i];
 
     try {
-      const result = await filterSingleChunk(services, filterPrompt, filterConfig, chunkInput, contextSummary);
-      allProcessed.push(result.processed_part);
-      carriedOver = result.carried_over || '';
-      contextSummary = trimContextSummary(result.context_summary);
+      const result = await filterChunk(services, filterPrompt, filterConfig, chunkInput);
+      allProcessed.push(result.processed_text);
+      carriedOver = result.carried_over;
+      logger.info(`[contract-v2-text-filter] Chunk ${i + 1}/${chunks.length} done, output=${result.processed_text.length}, carried=${carriedOver.length}`);
     } catch (chunkErr) {
       logger.error(`[contract-v2-text-filter] Chunk ${i + 1} failed: ${chunkErr.message}`);
-      allProcessed.push(chunkInput);
+      allProcessed.push(`<!-- FILTER_FAILED: chunk ${i + 1} -->\n${chunkInput}`);
       carriedOver = '';
-      contextSummary = { key_terms: {}, points: [] };
     }
   }
 
-  if (carriedOver) allProcessed.push(carriedOver);
+  if (carriedOver) {
+    try {
+      const result = await filterChunk(services, filterPrompt, filterConfig, carriedOver);
+      allProcessed.push(result.processed_text);
+    } catch (e) {
+      logger.error(`[contract-v2-text-filter] Final carried_over failed: ${e.message}`);
+      allProcessed.push(`<!-- FILTER_FAILED: final carried_over -->\n${carriedOver}`);
+    }
+  }
 
-  return allProcessed.join('\n\n');
+  return allProcessed.join('\n');
 }
 
 export const availableOutputs = [
@@ -145,20 +120,22 @@ export default {
     const ocrText = content.ocr_text;
     logger.info(`[contract-v2-text-filter] Record ${record.id}: OCR text length=${ocrText.length}`);
 
-    const filterConfig = getFilterConfig(app, 'pending_filter');
+    const filterConfig = getFilterConfig(app);
     const filterPrompt = getFilterPrompt(app);
+    const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
 
     let filteredText;
 
-    if (ocrText.length <= CHUNK_MAX_LENGTH) {
+    if (ocrText.length <= maxLen) {
       try {
         const response = await services.callLlm('filter_text', {
-          instruction: filterPrompt,
+          instruction: filterPrompt + JSON_FORMAT_PROMPT,
           ocr_text: ocrText,
-          response_format: 'text',
+          response_format: 'json',
           ...buildLlmParams(filterConfig),
         });
-        filteredText = response.text || ocrText;
+        const parsed = parseLlmResponse(response);
+        filteredText = (parsed && parsed.processed_text) || ocrText;
       } catch (e) {
         logger.error(`[contract-v2-text-filter] Record ${record.id}: LLM filter failed - ${e.message}`);
         filteredText = ocrText;

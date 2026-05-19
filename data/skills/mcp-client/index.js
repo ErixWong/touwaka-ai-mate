@@ -204,27 +204,49 @@ async function createTransport(serverConfig, credentials = null) {
     }
     
     const headers = buildAuthHeaders(serverConfig.headers, credentials);
+    const timeoutMs = serverConfig.timeout_ms || 600000;
     
-    // 判断是否使用 StatelessHTTPTransport
-    // 1. 明确指定 statelessHttp
-    // 2. 或者 server 不支持 session（headers 中没有 mcp-session-id 提示）
     const isStateless = transportType === 'statelessHttp' || serverConfig.stateless === true;
     
-    const requestInit = { headers };
+    const customFetch = async (url, init) => {
+      log(`Custom fetch: url=${url}, method=${init?.method}, timeout=${timeoutMs}ms`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        log(`Custom fetch timeout triggered after ${timeoutMs}ms`);
+        controller.abort();
+      }, timeoutMs);
+      
+      try {
+        const response = await fetch(url, { ...init, signal: controller.signal });
+        clearTimeout(timeoutId);
+        log(`Custom fetch response: status=${response.status}`);
+        return response;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          log(`Custom fetch aborted due to timeout`);
+          throw new Error(`Request timeout after ${timeoutMs}ms`);
+        }
+        log(`Custom fetch error: ${err.message}`);
+        throw err;
+      }
+    };
+    
+    const requestInit = { headers, fetch: customFetch };
     
     if (isStateless) {
       log(`Creating StatelessHTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
-      log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
-      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit });
+      log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}, timeout=${timeoutMs}ms`);
+      return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit: { headers }, timeout: timeoutMs });
     }
     
     const useSSE = transportType === 'sse' || serverConfig.url.endsWith('/sse') || serverConfig.use_sse;
     
     log(`Creating ${useSSE ? 'SSE' : 'StreamableHTTP'} transport for ${serverConfig.name}: ${serverConfig.url}`);
-    log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}`);
+    log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}, timeout=${timeoutMs}ms`);
     
     const TransportClass = useSSE ? SSEClientTransport : StreamableHTTPClientTransport;
-    return new TransportClass(new URL(serverConfig.url), { requestInit });
+    return new TransportClass(new URL(serverConfig.url), { requestInit, fetch: customFetch });
   }
   
   // STDIO 模式（默认）
@@ -252,50 +274,53 @@ async function createTransport(serverConfig, credentials = null) {
  * @returns {Promise<Client>}
  */
 async function connectServer(serverConfig, userId = null, credentials = null) {
-  // 构建连接 key
   const connectionKey = userId ? `${serverConfig.name}:${userId}` : serverConfig.name;
   
-  // 检查是否已连接
   if (connections.has(connectionKey)) {
     log(`Already connected: ${connectionKey}`);
     return connections.get(connectionKey).client;
   }
   
   log(`Connecting to ${connectionKey} (transport: ${serverConfig.transport_type || 'stdio'})...`);
+  log(`Server config: ${JSON.stringify({ name: serverConfig.name, transport_type: serverConfig.transport_type, url: serverConfig.url, command: serverConfig.command })}`);
   
-  // 创建 MCP Client
-  const client = new Client({
-    name: 'touwaka-mate-mcp-client',
-    version: '1.0.0',
-  }, {
-    capabilities: {
-      tools: {},
-      resources: {},
-      prompts: {},
-    },
-  });
-  
-  // 创建 Transport（根据传输类型）
-  const transport = await createTransport(serverConfig, credentials);
-  
-  // 连接
-  await client.connect(transport);
-  
-  // 存储连接
-  connections.set(connectionKey, {
-    client,
-    transport,
-    config: serverConfig,
-    userId,
-    startedAt: new Date().toISOString(),
-  });
-  
-  // 获取并缓存工具定义
-  await cacheTools(serverConfig.name, client);
-  
-  log(`Connected: ${connectionKey}`);
-  
-  return client;
+  try {
+    const client = new Client({
+      name: 'touwaka-mate-mcp-client',
+      version: '1.0.0',
+    }, {
+      capabilities: {
+        tools: {},
+        resources: {},
+        prompts: {},
+      },
+    });
+    
+    log(`Client created for ${connectionKey}, creating transport...`);
+    const transport = await createTransport(serverConfig, credentials);
+    log(`Transport created for ${connectionKey}, connecting...`);
+    
+    await client.connect(transport);
+    log(`Client connected for ${connectionKey}`);
+    
+    connections.set(connectionKey, {
+      client,
+      transport,
+      config: serverConfig,
+      userId,
+      startedAt: new Date().toISOString(),
+    });
+    
+    await cacheTools(serverConfig.name, client);
+    log(`Tools cached for ${connectionKey}`);
+    
+    log(`Connected: ${connectionKey}`);
+    return client;
+  } catch (err) {
+    log(`connectServer ERROR for ${connectionKey}: ${err.message}`);
+    log(`connectServer ERROR stack: ${err.stack}`);
+    throw err;
+  }
 }
 
 /**
@@ -430,39 +455,61 @@ async function getUserTools(userId, configData) {
  * @returns {Promise<object>} 工具结果
  */
 async function callTool(serverName, toolName, args, userId, configData) {
-  // 查找连接
-  let connectionKey = serverName; // 先尝试公共连接
-  let conn = connections.get(connectionKey);
+  log(`callTool start: server=${serverName}, tool=${toolName}, userId=${userId || 'none'}`);
   
-  // 如果公共连接不存在，尝试用户连接
+  let connectionKey = serverName;
+  let conn = connections.get(connectionKey);
+  log(`callTool: initial lookup for key=${connectionKey}, found=${conn ? 'yes' : 'no'}`);
+  
   if (!conn && userId) {
     connectionKey = `${serverName}:${userId}`;
     conn = connections.get(connectionKey);
+    log(`callTool: fallback lookup for key=${connectionKey}, found=${conn ? 'yes' : 'no'}`);
   }
   
-  // 如果连接不存在，尝试建立连接
   if (!conn) {
-    const serverConfig = (configData.servers || []).find(s => s.name === serverName);
+    const servers = configData.servers || [];
+    const serverConfig = servers.find(s => s.name === serverName);
+    log(`callTool: auto-connect search, servers count=${servers.length}, found=${serverConfig ? 'yes' : 'no'}`);
+    
     if (!serverConfig) {
+      log(`callTool: server '${serverName}' not found in config`);
       throw new Error(`MCP Server '${serverName}' not found`);
     }
     
-    // 获取凭证
     const credentials = getCredentials(userId, serverConfig.id, configData);
+    log(`callTool: auto-connect, is_public=${serverConfig.is_public}, has_credentials=${credentials ? 'yes' : 'no'}`);
+    log(`callTool: server config details: ${JSON.stringify({ name: serverConfig.name, transport_type: serverConfig.transport_type, url: serverConfig.url })}`);
     
-    // 建立连接
-    if (serverConfig.is_public) {
-      await connectServer(serverConfig);
-      conn = connections.get(serverName);
-    } else if (credentials) {
-      await connectServer(serverConfig, userId, credentials);
-      conn = connections.get(`${serverName}:${userId}`);
-    } else {
-      throw new Error(`No credentials available for ${serverName}. Please configure credentials in MCP management panel.`);
+    try {
+      if (serverConfig.is_public) {
+        log(`callTool: connecting to public server ${serverName}`);
+        await connectServer(serverConfig);
+        conn = connections.get(serverName);
+        log(`callTool: after public connect, conn=${conn ? 'found' : 'NOT FOUND'}`);
+      } else if (credentials) {
+        log(`callTool: connecting to private server ${serverName} for user ${userId || 'none'}`);
+        await connectServer(serverConfig, userId, credentials);
+        const connKey = userId ? `${serverName}:${userId}` : serverName;
+        conn = connections.get(connKey);
+        log(`callTool: after private connect, key=${connKey}, conn=${conn ? 'found' : 'NOT FOUND'}`);
+      } else {
+        throw new Error(`No credentials available for ${serverName}. Please configure credentials in MCP management panel.`);
+      }
+    } catch (connectErr) {
+      log(`callTool: auto-connect FAILED: ${connectErr.message}`);
+      log(`callTool: auto-connect error stack: ${connectErr.stack}`);
+      throw connectErr;
     }
+    
+    if (!conn) {
+      log(`callTool: CRITICAL - conn still undefined after connectServer`);
+      throw new Error(`Connection established but not found in pool for ${serverName}`);
+    }
+    
+    log(`callTool: auto-connect complete, conn found=${conn ? 'yes' : 'no'}, client exists=${conn?.client ? 'yes' : 'no'}`);
   }
   
-  // 处理文件路径：在驻留进程内读取文件并转 base64
   let processedArgs = args || {};
   if (args?.file_path && !args?.content) {
     const fs = await import('fs/promises');
@@ -478,7 +525,6 @@ async function callTool(serverName, toolName, args, userId, configData) {
       
       log(`File read: ${buffer.length} bytes, base64 length: ${base64.length}`);
       
-      // 只传 base64 内容和文件名，不传路径（远程服务器无法访问）
       processedArgs = {
         content: base64,
         filename: args.name || path.basename(filePath),
@@ -488,13 +534,29 @@ async function callTool(serverName, toolName, args, userId, configData) {
     }
   }
   
-  log(`Calling tool ${serverName}/${toolName} with args: ${JSON.stringify(Object.keys(processedArgs))}`);
+  const argsPreview = Object.keys(processedArgs).map(k => {
+    const v = processedArgs[k];
+    if (typeof v === 'string' && v.length > 100) return `${k}: [${v.length} chars]`;
+    return `${k}: ${typeof v}`;
+  }).join(', ');
+  log(`callTool: calling ${serverName}/${toolName}, args: ${argsPreview}`);
+  
+  if (!conn) {
+    throw new Error(`No connection available for ${serverName}`);
+  }
+  
+  if (!conn.client) {
+    log(`callTool: CRITICAL - conn exists but client is undefined for ${serverName}`);
+    throw new Error(`Connection exists but client is undefined for ${serverName}`);
+  }
   
   try {
     const response = await conn.client.callTool({
       name: toolName,
       arguments: processedArgs,
     });
+    
+    log(`callTool: response received, isError=${response.isError || false}, content count=${response.content?.length || 0}`);
     
     if (response.content) {
       const textContent = response.content
@@ -511,9 +573,10 @@ async function callTool(serverName, toolName, args, userId, configData) {
     
     return response;
   } catch (err) {
-    const msg = err.message || err.name || JSON.stringify(Object.keys(err)) || String(err);
-    log(`callTool failed: ${msg}`);
-    throw new Error(`Tool call failed (${serverName}/${toolName}): ${msg}`);
+    log(`callTool ERROR: ${serverName}/${toolName} - ${err.message}`);
+    log(`callTool ERROR stack: ${err.stack}`);
+    log(`callTool ERROR details: ${JSON.stringify({ name: err.name, message: err.message, code: err.code })}`);
+    throw new Error(`Tool call failed (${serverName}/${toolName}): ${err.message}`);
   }
 }
 

@@ -25,6 +25,9 @@
       "skills": []
     }
   },
+  "custom_handlers": {
+    "batch_upload": "controllers/batch-upload.js"
+  },
   "fields": [
     {
       "name": "contract_name",
@@ -353,6 +356,6 @@
       "failure_next": null
     }
   ],
-  "component": null,
+  "component": "ContractV2View",
   "visibility": "all"
 }

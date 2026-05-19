@@ -63,7 +63,7 @@ export default {
     const sectionConfig = getSectionConfig(app);
     const sectionPrompt = getSectionPrompt(app);
 
-    const promptBase = sectionPrompt || `分析以下合同文本的章节结构。
+    const jsonFormat = `
 
 返回JSON格式：
 {
@@ -77,6 +77,8 @@ export default {
     }
   ]
 }`;
+
+    const promptBase = (sectionPrompt || '分析以下合同文本的章节结构') + jsonFormat;
 
     try {
       let sections;

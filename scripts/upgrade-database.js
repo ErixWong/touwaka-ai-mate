@@ -17,6 +17,7 @@ import mysql from 'mysql2/promise';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -1097,6 +1098,179 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同比对结果表'
       `);
       console.log('  ✓ Created app_contract_mgr_compares table');
+    }
+  },
+
+  // ==================== AppClock 回调模式表 ====================
+  // Issue #693: AppClock 回调模式升级
+  {
+    name: 'app_clock_registry create table',
+    check: async (conn) => await hasTable(conn, 'app_clock_registry'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_clock_registry (
+          id VARCHAR(32) PRIMARY KEY,
+          app_id VARCHAR(32) NOT NULL COMMENT '关联 mini_apps.id',
+          tick_script VARCHAR(64) NULL COMMENT '自定义脚本名，空则用默认 tick',
+          is_active BIT(1) DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE,
+          INDEX idx_active (is_active)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App调度注册表'
+      `);
+      console.log('  ✓ Created app_clock_registry table');
+    }
+  },
+
+  {
+    name: 'app_tick_log create table',
+    check: async (conn) => await hasTable(conn, 'app_tick_log'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_tick_log (
+          id VARCHAR(32) PRIMARY KEY,
+          registry_id VARCHAR(32) NOT NULL,
+          app_id VARCHAR(32) NOT NULL,
+          success BIT(1) DEFAULT 1,
+          output_data TEXT COMMENT 'JSON 输出',
+          error_message TEXT,
+          duration INT DEFAULT 0 COMMENT '耗时(ms)',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (registry_id) REFERENCES app_clock_registry(id) ON DELETE CASCADE,
+          INDEX idx_registry (registry_id),
+          INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App执行日志'
+      `);
+      console.log('  ✓ Created app_tick_log table');
+    }
+  },
+
+  // ==================== 注册现有 App 到 app_clock_registry ====================
+  // Issue #693: 现有 contract-mgr-v2 注册
+  {
+    name: 'register contract-mgr-v2 to app_clock_registry',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT id FROM app_clock_registry WHERE app_id = 'contract-mgr-v2'
+      `);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const [apps] = await conn.execute(`
+        SELECT id FROM mini_apps WHERE id = 'contract-mgr-v2'
+      `);
+      
+      if (apps.length > 0) {
+        const id = crypto.randomBytes(10).toString('hex').slice(0, 20);
+        await conn.execute(`
+          INSERT INTO app_clock_registry (id, app_id, tick_script, is_active)
+          VALUES (?, 'contract-mgr-v2', NULL, 1)
+        `, [id]);
+        console.log('  ✓ Registered contract-mgr-v2 to app_clock_registry');
+      } else {
+        console.log('  ⏭️  Skipped: contract-mgr-v2 not found in mini_apps');
+      }
+    }
+  },
+
+  // ==================== contract-mgr-v2 状态自主管理 ====================
+  // Issue #693: content 表新增状态字段，移除 mini_app_rows 依赖
+  {
+    name: 'app_contract_mgr_v2_content add process_step',
+    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_v2_content', 'process_step'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_v2_content
+        ADD COLUMN process_step VARCHAR(32) DEFAULT 'pending_ocr' COMMENT '处理步骤',
+        ADD COLUMN ocr_task_id VARCHAR(255) NULL COMMENT 'OCR任务ID',
+        ADD COLUMN filter_carried_over LONGTEXT NULL COMMENT '滑动窗口中间状态',
+        ADD COLUMN filter_chunk_index INT DEFAULT 0 COMMENT '当前处理chunk索引',
+        ADD COLUMN file_id VARCHAR(32) NULL COMMENT '关联文件ID',
+        ADD INDEX idx_process_step (process_step)
+      `);
+      
+      // 根据现有数据推断状态
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'done' 
+        WHERE sections IS NOT NULL AND filtered_text IS NOT NULL
+      `);
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'pending_section' 
+        WHERE filtered_text IS NOT NULL AND sections IS NULL AND extract_json IS NOT NULL
+      `);
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'pending_extract' 
+        WHERE filtered_text IS NOT NULL AND extract_json IS NULL
+      `);
+      await conn.execute(`
+        UPDATE app_contract_mgr_v2_content 
+        SET process_step = 'pending_filter' 
+        WHERE ocr_text IS NOT NULL AND filtered_text IS NULL
+      `);
+      
+      console.log('  ✓ Added process_step and related columns to app_contract_mgr_v2_content');
+    }
+  },
+
+  // 移除 content 表的外键约束，允许独立存在
+  {
+    name: 'app_contract_mgr_v2_content drop foreign key',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'app_contract_mgr_v2_content'
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+      `);
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_v2_content
+        DROP FOREIGN KEY fk_app_contract_mgr_v2_content_row_id
+      `);
+      console.log('  ✓ Removed foreign key from app_contract_mgr_v2_content');
+    }
+  },
+
+  // 扩展 ocr_task_id 字段长度（适配长 task_id）
+  {
+    name: 'app_contract_mgr_v2_content extend ocr_task_id',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'app_contract_mgr_v2_content'
+        AND COLUMN_NAME = 'ocr_task_id'
+      `);
+      return rows.length > 0 && rows[0].CHARACTER_MAXIMUM_LENGTH >= 128;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_v2_content
+        MODIFY COLUMN ocr_task_id VARCHAR(255) NULL COMMENT 'OCR任务ID'
+      `);
+      console.log('  ✓ Extended ocr_task_id to VARCHAR(255)');
+    }
+  },
+
+  // 补录 contract-mgr-v2 的 component 字段（安装时未写入）
+  {
+    name: 'mini_apps contract-mgr-v2 set component',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT component FROM mini_apps WHERE id = 'contract-mgr-v2'
+      `);
+      return rows.length > 0 && rows[0].component === 'ContractV2View';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        UPDATE mini_apps SET component = 'ContractV2View' WHERE id = 'contract-mgr-v2'
+      `);
+      console.log('  ✓ Set contract-mgr-v2 component to ContractV2View');
     }
   },
 

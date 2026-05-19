@@ -98,11 +98,7 @@ async function loadMyApps() {
 
 // 打开 App
 function openApp(app: MiniApp) {
-  if (app.id === 'contract-mgr-v2') {
-    router.push('/contract-v2')
-  } else {
-    router.push(`/apps/${app.id}`)
-  }
+  router.push(`/apps/${app.id}`)
 }
 
 // 处理应用安装完成
@@ -215,7 +211,7 @@ watch(currentTab, (tab) => {
 
 .apps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
