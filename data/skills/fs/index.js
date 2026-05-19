@@ -2,7 +2,7 @@
  * FS Skill - Node.js Implementation
  * 
  * File system operations including read, write, search, and manage files.
- * All operations are restricted to allowed directories for security.
+ * All operations are restricted to current working directory.
  * 
  * @module fs-skill
  */
@@ -11,48 +11,28 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// 用户角色检查
-const IS_ADMIN = process.env.IS_ADMIN === 'true';
-const IS_SKILL_CREATOR = process.env.IS_SKILL_CREATOR === 'true';
-
-// Allowed base directories (from environment or default)
-// 统一使用 DATA_BASE_PATH，技能路径为 DATA_BASE_PATH/skills
+// 数据基础路径
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 
-// 技能目录（普通用户禁止访问）
-const SKILLS_DIR = path.join(DATA_BASE_PATH, 'skills');
-
-// 用户工作目录
+// 用户工作目录（唯一允许访问的路径）
 const USER_ID = process.env.USER_ID || 'default';
 const USER_WORK_DIR = process.env.WORKING_DIRECTORY
   ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
   : path.join(DATA_BASE_PATH, 'work', USER_ID);
 
-// 权限控制：
-// - 管理员：整个 data/ 目录
-// - 技能创建者（creator）：skills/ 目录 + 自己的工作目录
-// - 普通用户：仅自己的工作目录
-let ALLOWED_BASE_PATHS;
-if (IS_ADMIN) {
-  // 管理员：可以访问整个 data/ 目录
-  ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
-} else if (IS_SKILL_CREATOR) {
-  // 技能创建者：可以访问 skills/ 和自己的工作目录
-  ALLOWED_BASE_PATHS = [SKILLS_DIR, USER_WORK_DIR];
-} else {
-  // 普通用户：只能访问自己的工作目录
-  ALLOWED_BASE_PATHS = [USER_WORK_DIR];
+// 简化权限：所有用户都只能访问当前工作目录
+const ALLOWED_BASE_PATHS = [USER_WORK_DIR];
+
+// 检查工作目录是否存在
+if (!fs.existsSync(USER_WORK_DIR)) {
+  console.error(`[fs] 工作目录不存在: ${USER_WORK_DIR}`);
+  throw new Error(`Working directory does not exist: ${USER_WORK_DIR}`);
 }
 
 // 调试输出
 console.error('[fs] 环境变量诊断:');
-console.error(`  IS_ADMIN: ${IS_ADMIN}`);
-console.error(`  IS_SKILL_CREATOR: ${IS_SKILL_CREATOR}`);
-console.error(`  DATA_BASE_PATH: ${DATA_BASE_PATH}`);
-console.error(`  SKILLS_DIR: ${SKILLS_DIR}`);
 console.error(`  USER_WORK_DIR: ${USER_WORK_DIR}`);
 console.error(`  WORKING_DIRECTORY: ${process.env.WORKING_DIRECTORY || '(未设置)'}`);
-console.error(`  ALLOWED_BASE_PATHS: ${JSON.stringify(ALLOWED_BASE_PATHS)}`);
 
 // Maximum file size to read (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -106,45 +86,19 @@ function isPathAllowed(targetPath) {
 }
 
 /**
- * Resolve path relative to allowed base directories
- * 防护：确保所有返回的路径都在允许的目录内
- *
- * 权限规则：
- * - 普通用户：只能使用相对路径（相对于工作目录）
- * - 管理员：可以使用绝对路径和相对路径
+ * Resolve path relative to current working directory
+ * 简化：所有用户都只在 USER_WORK_DIR 下操作
  */
 function resolvePath(relativePath) {
-  // 如果是绝对路径
   if (path.isAbsolute(relativePath)) {
-    // 只有管理员可以使用绝对路径
-    if (!IS_ADMIN) {
-      throw new Error(`Absolute path not allowed for non-admin users: ${relativePath}`);
-    }
-    // 检查绝对路径是否在允许范围内
-    if (!isPathAllowed(relativePath)) {
-      throw new Error(`Path not allowed: ${relativePath}`);
-    }
-    return relativePath;
+    throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
   
-  // 相对路径：尝试每个允许的基础路径
-  for (const basePath of ALLOWED_BASE_PATHS) {
-    const resolved = path.join(basePath, relativePath);
-    if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
-      // 再次检查解析后的路径是否被允许（防止路径遍历）
-      if (!isPathAllowed(resolved)) {
-        throw new Error(`Path not allowed: ${resolved}`);
-      }
-      return resolved;
-    }
+  const resolved = path.join(USER_WORK_DIR, relativePath);
+  if (!isPathAllowed(resolved)) {
+    throw new Error(`Path not allowed: ${resolved}`);
   }
-  
-  // 默认使用第一个基础路径，但必须检查权限
-  const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
-  if (!isPathAllowed(defaultPath)) {
-    throw new Error(`Path not allowed: ${defaultPath}`);
-  }
-  return defaultPath;
+  return resolved;
 }
 
 /**
