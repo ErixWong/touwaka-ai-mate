@@ -2,7 +2,7 @@
  * FS Skill - Node.js Implementation
  * 
  * File system operations including read, write, search, and manage files.
- * All operations are restricted to current working directory.
+ * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
  * 
  * @module fs-skill
  */
@@ -11,94 +11,22 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// 数据基础路径
-const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
-
-// 用户工作目录（唯一允许访问的路径）
-const USER_ID = process.env.USER_ID || 'default';
-const USER_WORK_DIR = process.env.WORKING_DIRECTORY
-  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
-  : path.join(DATA_BASE_PATH, 'work', USER_ID);
-
-// 简化权限：所有用户都只能访问当前工作目录
-const ALLOWED_BASE_PATHS = [USER_WORK_DIR];
-
-// 检查工作目录是否存在
-if (!fs.existsSync(USER_WORK_DIR)) {
-  console.error(`[fs] 工作目录不存在: ${USER_WORK_DIR}`);
-  throw new Error(`Working directory does not exist: ${USER_WORK_DIR}`);
-}
-
 // 调试输出
-console.error('[fs] 环境变量诊断:');
-console.error(`  USER_WORK_DIR: ${USER_WORK_DIR}`);
+console.error('[fs] Skill executing, cwd is set by VM');
 console.error(`  WORKING_DIRECTORY: ${process.env.WORKING_DIRECTORY || '(未设置)'}`);
+console.error(`  USER_ID: ${process.env.USER_ID || 'default'}`);
 
 // Maximum file size to read (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 /**
- * Check if path is within allowed directories
- * 防护：路径遍历攻击和符号链接攻击
- */
-function isPathAllowed(targetPath) {
-  // 使用 path.resolve 规范化路径（处理 .. 等）
-  let resolved = path.resolve(targetPath);
-  
-  // 使用 fs.realpathSync 解析符号链接（防止符号链接逃逸）
-  try {
-    if (fs.existsSync(resolved)) {
-      resolved = fs.realpathSync(resolved);
-    }
-  } catch (e) {
-    // 路径不存在时，继续使用 path.resolve 的结果
-  }
-  
-  // Windows 路径不区分大小写，统一转换为小写进行比较
-  const resolvedLower = resolved.toLowerCase();
-  
-  // 调试输出
-  console.error(`[fs] isPathAllowed: checking "${resolved}"`);
-  
-  const result = ALLOWED_BASE_PATHS.some(basePath => {
-    let resolvedBase = path.resolve(basePath);
-    try {
-      if (fs.existsSync(resolvedBase)) {
-        resolvedBase = fs.realpathSync(resolvedBase);
-      }
-    } catch (e) {
-      // 基础路径不存在时，继续使用 path.resolve 的结果
-    }
-    
-    // Windows 路径不区分大小写，统一转换为小写进行比较
-    const resolvedBaseLower = resolvedBase.toLowerCase();
-    
-    // 正确的路径边界检查：
-    // 1. 路径必须以 basePath + path.sep 开头（子目录/文件）
-    // 2. 或者路径完全等于 basePath（目录本身）
-    const isAllowed = resolvedLower.startsWith(resolvedBaseLower + path.sep) || resolvedLower === resolvedBaseLower;
-    console.error(`[fs]   vs "${resolvedBase}": ${isAllowed}`);
-    return isAllowed;
-  });
-  
-  console.error(`[fs] isPathAllowed result: ${result}`);
-  return result;
-}
-
-/**
- * Resolve path relative to current working directory
- * 简化：所有用户都只在 USER_WORK_DIR 下操作
+ * Resolve path - VM 已设置 cwd，直接使用相对路径即可
  */
 function resolvePath(relativePath) {
   if (path.isAbsolute(relativePath)) {
     throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
-  
-  const resolved = path.join(USER_WORK_DIR, relativePath);
-  if (!isPathAllowed(resolved)) {
-    throw new Error(`Path not allowed: ${resolved}`);
-  }
-  return resolved;
+  return relativePath;
 }
 
 /**
