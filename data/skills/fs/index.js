@@ -112,6 +112,11 @@ function isPathAllowed(targetPath) {
  * 权限规则：
  * - 普通用户：只能使用相对路径（相对于工作目录）
  * - 管理员：可以使用绝对路径和相对路径
+ * 
+ * 路径解析优先级：
+ * 1. 绝对路径：直接使用（仅管理员）
+ * 2. 相对路径：优先使用 USER_WORK_DIR（当前工作目录）
+ * 3. 如果 USER_WORK_DIR 下不存在，再尝试其他允许的基础路径
  */
 function resolvePath(relativePath) {
   // 如果是绝对路径
@@ -127,8 +132,29 @@ function resolvePath(relativePath) {
     return relativePath;
   }
   
-  // 相对路径：尝试每个允许的基础路径
+  // 相对路径：优先使用 USER_WORK_DIR（当前工作目录）
+  // 这是关键修复：确保文件创建在正确的工作目录下
+  const workingDirPath = path.join(USER_WORK_DIR, relativePath);
+  
+  // 检查工作目录路径是否被允许
+  if (isPathAllowed(workingDirPath)) {
+    // 如果文件已存在，直接返回
+    if (fs.existsSync(workingDirPath)) {
+      return workingDirPath;
+    }
+    // 对于新文件创建，也使用工作目录（只要路径在允许范围内）
+    // 检查工作目录本身是否存在
+    const workingDirParent = path.dirname(workingDirPath);
+    if (fs.existsSync(workingDirParent)) {
+      return workingDirPath;
+    }
+  }
+  
+  // 如果工作目录路径不可用，尝试其他允许的基础路径（用于读取已存在的文件）
   for (const basePath of ALLOWED_BASE_PATHS) {
+    // 跳过 USER_WORK_DIR（已经尝试过了）
+    if (basePath === USER_WORK_DIR) continue;
+    
     const resolved = path.join(basePath, relativePath);
     if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
       // 再次检查解析后的路径是否被允许（防止路径遍历）
@@ -139,7 +165,12 @@ function resolvePath(relativePath) {
     }
   }
   
-  // 默认使用第一个基础路径，但必须检查权限
+  // 默认使用 USER_WORK_DIR（即使目录不存在，也应该在工作目录下创建）
+  if (isPathAllowed(workingDirPath)) {
+    return workingDirPath;
+  }
+  
+  // 最后 fallback：使用第一个基础路径，但必须检查权限
   const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
   if (!isPathAllowed(defaultPath)) {
     throw new Error(`Path not allowed: ${defaultPath}`);
