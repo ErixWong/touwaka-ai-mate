@@ -1,0 +1,325 @@
+{
+  "id": "invoice-mgr",
+  "name": "发票管理",
+  "version": "1.0.0",
+  "description": "上传发票文件，AI自动识别并结构化提取发票信息（支持fapiao技能 + markitdown OCR回退），自动去重入库",
+  "icon": "🧾",
+  "type": "document",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "keywords": [
+    "发票",
+    "invoice",
+    "OCR",
+    "AI识别",
+    "fapiao"
+  ],
+  "compatibility": {
+    "min_platform_version": "2.0.0",
+    "requires": {
+      "mcp": [
+        "markitdown"
+      ],
+      "skills": [
+        "fapiao"
+      ]
+    }
+  },
+  "fields": [
+    {
+      "name": "invoice_file",
+      "label": "发票文件",
+      "type": "file",
+      "accept": ".pdf,.jpg,.jpeg,.png"
+    }
+  ],
+  "extension_tables": [
+    {
+      "name": "app_invoice_mgr_rows",
+      "type": "primary",
+      "fields": [
+        {
+          "name": "invoice_number",
+          "type": "VARCHAR(20)",
+          "label": "发票号码",
+          "source": "invoice_number"
+        },
+        {
+          "name": "invoice_date",
+          "type": "DATE",
+          "label": "开票日期",
+          "source": "invoice_date"
+        },
+        {
+          "name": "invoice_type",
+          "type": "VARCHAR(64)",
+          "label": "发票类型",
+          "source": "invoice_type"
+        },
+        {
+          "name": "seller_name",
+          "type": "VARCHAR(128)",
+          "label": "销售方",
+          "source": "seller_name"
+        },
+        {
+          "name": "seller_tax_id",
+          "type": "VARCHAR(20)",
+          "label": "销售方税号",
+          "source": "seller_tax_id"
+        },
+        {
+          "name": "buyer_name",
+          "type": "VARCHAR(128)",
+          "label": "购买方",
+          "source": "buyer_name"
+        },
+        {
+          "name": "buyer_tax_id",
+          "type": "VARCHAR(20)",
+          "label": "购买方税号",
+          "source": "buyer_tax_id"
+        },
+        {
+          "name": "total_amount",
+          "type": "DECIMAL(12,2)",
+          "label": "合计金额",
+          "source": "total_amount"
+        },
+        {
+          "name": "total_tax",
+          "type": "DECIMAL(12,2)",
+          "label": "税额",
+          "source": "total_tax"
+        },
+        {
+          "name": "total_with_tax",
+          "type": "DECIMAL(12,2)",
+          "label": "价税合计",
+          "source": "total_with_tax"
+        },
+        {
+          "name": "item_count",
+          "type": "INT",
+          "label": "商品项数",
+          "source": "item_count"
+        },
+        {
+          "name": "page_count",
+          "type": "INT",
+          "label": "PDF页数",
+          "source": "page_count"
+        },
+        {
+          "name": "remarks",
+          "type": "TEXT",
+          "label": "备注",
+          "source": "remarks"
+        },
+        {
+          "name": "ocr_method",
+          "type": "VARCHAR(32)",
+          "label": "识别方法",
+          "source": "ocr_method"
+        },
+        {
+          "name": "extraction_status",
+          "type": "VARCHAR(16)",
+          "label": "提取状态",
+          "source": "extraction_status"
+        }
+      ],
+      "indexes": [
+        "invoice_number",
+        "seller_name",
+        "buyer_name",
+        "invoice_date",
+        "total_with_tax"
+      ]
+    },
+    {
+      "name": "app_invoice_mgr_items",
+      "type": "detail",
+      "fields": [
+        {
+          "name": "page_number",
+          "type": "INT",
+          "label": "页码"
+        },
+        {
+          "name": "sort_order",
+          "type": "INT",
+          "label": "序号"
+        },
+        {
+          "name": "category",
+          "type": "VARCHAR(64)",
+          "label": "分类"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(128)",
+          "label": "商品名称"
+        },
+        {
+          "name": "model",
+          "type": "VARCHAR(64)",
+          "label": "规格型号"
+        },
+        {
+          "name": "unit",
+          "type": "VARCHAR(16)",
+          "label": "单位"
+        },
+        {
+          "name": "quantity",
+          "type": "DECIMAL(12,4)",
+          "label": "数量"
+        },
+        {
+          "name": "price",
+          "type": "DECIMAL(12,4)",
+          "label": "单价"
+        },
+        {
+          "name": "amount",
+          "type": "DECIMAL(12,2)",
+          "label": "金额"
+        },
+        {
+          "name": "tax_rate",
+          "type": "VARCHAR(8)",
+          "label": "税率"
+        },
+        {
+          "name": "tax_amount",
+          "type": "DECIMAL(12,2)",
+          "label": "税额"
+        },
+        {
+          "name": "issuer",
+          "type": "VARCHAR(32)",
+          "label": "开票人"
+        }
+      ]
+    }
+  ],
+  "migrations": {
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
+  },
+  "config": {
+    "features": [
+      "upload",
+      "list",
+      "detail"
+    ],
+    "supported_formats": [
+      ".pdf",
+      ".jpg",
+      ".jpeg",
+      ".png"
+    ],
+    "max_file_size": 20971520,
+    "batch_enabled": true,
+    "batch_limit": 20
+  },
+  "states": [
+    {
+      "name": "pending_process",
+      "label": "待处理",
+      "description": "文件路由：PDF走fapiao技能，图片直通OCR",
+      "sort_order": 1,
+      "is_initial": true,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "invoice-extract",
+      "success_next": "pending_review",
+      "failure_next": "pending_ocr"
+    },
+    {
+      "name": "pending_ocr",
+      "label": "OCR识别中",
+      "description": "提交markitdown OCR任务",
+      "sort_order": 2,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "invoice-ocr-submit",
+      "success_next": "ocr_submitted",
+      "failure_next": "ocr_failed"
+    },
+    {
+      "name": "ocr_submitted",
+      "label": "等待OCR结果",
+      "description": "检查OCR状态 + LLM结构化提取",
+      "sort_order": 3,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": "invoice-ocr-check",
+      "success_next": "pending_review",
+      "failure_next": "extract_failed"
+    },
+    {
+      "name": "pending_review",
+      "label": "待确认",
+      "sort_order": 4,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "confirmed",
+      "label": "已确认",
+      "sort_order": 5,
+      "is_initial": false,
+      "is_terminal": true,
+      "is_error": false,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "extract_failed",
+      "label": "识别失败",
+      "sort_order": 98,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    },
+    {
+      "name": "ocr_failed",
+      "label": "OCR失败",
+      "sort_order": 99,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": true,
+      "handler": null,
+      "success_next": null,
+      "failure_next": null
+    }
+  ],
+  "views": {
+    "list": {
+      "columns": [
+        "invoice_number",
+        "invoice_date",
+        "seller_name",
+        "buyer_name",
+        "total_with_tax"
+      ],
+      "sort": {
+        "field": "invoice_date",
+        "order": "desc"
+      }
+    }
+  },
+  "visibility": "all"
+}
