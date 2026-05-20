@@ -53,11 +53,21 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   const contractsPageSize = ref(20)
   const contractsLoading = ref(false)
 
+  const filterStatus = ref<string>('')
+  const filterType = ref<string>('')
+  const searchText = ref<string>('')
+
   const currentContract = ref<ContractMainRecord | null>(null)
   const currentContractVersions = ref<ContractVersion[]>([])
 
   const dashboard = ref<DashboardData | null>(null)
   const dashboardLoading = ref(false)
+
+  function resetFilters() {
+    filterStatus.value = ''
+    filterType.value = ''
+    searchText.value = ''
+  }
 
   async function loadTree() {
     treeLoading.value = true
@@ -247,6 +257,10 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     contractsPage,
     contractsPageSize,
     contractsLoading,
+    filterStatus,
+    filterType,
+    searchText,
+    resetFilters,
     currentContract,
     currentContractVersions,
     dashboard,

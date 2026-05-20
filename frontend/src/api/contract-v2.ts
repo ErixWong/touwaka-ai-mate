@@ -22,6 +22,8 @@ export interface ContractMainRecord {
   current_version_id: string | null
   version_count: number
   status: 'draft' | 'active' | 'expired' | 'terminated'
+  party_a?: string | null
+  total_amount?: number | null
   created_by: string
   created_at: string
   updated_at: string

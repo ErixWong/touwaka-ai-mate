@@ -30,6 +30,7 @@ watch(() => store.selectedNodeId, (nodeId) => {
     include_children: true,
     page: 1,
   })
+  store.resetFilters()
   showDetail.value = false
 }, { immediate: false })
 

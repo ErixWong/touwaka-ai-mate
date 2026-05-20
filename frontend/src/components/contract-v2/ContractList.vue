@@ -38,9 +38,18 @@ const statusLabels: Record<string, { label: string; type: string }> = {
   terminated: { label: '终止', type: 'danger' },
 }
 
-const filterStatus = ref('')
-const filterType = ref('')
-const searchText = ref('')
+const filterStatus = computed({
+  get: () => store.filterStatus,
+  set: (val) => { store.filterStatus = val }
+})
+const filterType = computed({
+  get: () => store.filterType,
+  set: (val) => { store.filterType = val }
+})
+const searchText = computed({
+  get: () => store.searchText,
+  set: (val) => { store.searchText = val }
+})
 
 const showCreateDialog = ref(false)
 const createForm = ref({
