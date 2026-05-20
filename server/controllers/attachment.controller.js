@@ -53,6 +53,9 @@ const MAGIC_NUMBERS = {
   'application/pdf': [0x25, 0x50, 0x44, 0x46], // %PDF
   'application/zip': [0x50, 0x4B, 0x03, 0x04], // PK (ZIP)
   'application/x-zip-compressed': [0x50, 0x4B, 0x03, 0x04], // PK (ZIP)
+  'text/plain': [0x54, 0x58, 0x54],        // TXT: TXT
+  'application/json': [0x7B, 0x22],        // JSON: {"
+  'text/markdown': null,                    // Markdown 是文本，跳过验证
 };
 
 const DEFAULT_MAX_UPLOAD_SIZE_MB = 50;
