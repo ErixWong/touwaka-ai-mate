@@ -15,6 +15,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import SystemSettingService from '../services/system-setting.service.js';
+import multer from '@koa/multer';
 
 // Token 配置
 const TOKEN_CONFIG = {
@@ -49,6 +50,9 @@ const MAGIC_NUMBERS = {
   'image/gif': [0x47, 0x49, 0x46],         // GIF
   'image/webp': [0x52, 0x49, 0x46, 0x46],   // RIFF (WebP)
   'image/svg+xml': null,                     // SVG 是文本，需特殊处理
+  'application/pdf': [0x25, 0x50, 0x44, 0x46], // %PDF
+  'application/zip': [0x50, 0x4B, 0x03, 0x04], // PK (ZIP)
+  'application/x-zip-compressed': [0x50, 0x4B, 0x03, 0x04], // PK (ZIP)
 };
 
 const DEFAULT_MAX_UPLOAD_SIZE_MB = 50;
@@ -133,6 +137,31 @@ class AttachmentController {
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
       throw new Error(`MIME type not allowed: ${mimeType}`);
     }
+  }
+
+  /**
+   * 验证 MIME 类型（通过文件魔数 - Buffer 版本）
+   */
+  async validateMimeTypeFromBuffer(buffer, declaredMimeType) {
+    const magicNumber = MAGIC_NUMBERS[declaredMimeType];
+    if (!magicNumber) {
+      if (declaredMimeType === 'image/svg+xml') {
+        const content = buffer.toString('utf-8').trim();
+        if (!content.startsWith('<svg') && !content.startsWith('<?xml')) {
+          throw new Error('Invalid SVG file');
+        }
+        return true;
+      }
+      return true;
+    }
+
+    for (let i = 0; i < magicNumber.length; i++) {
+      if (buffer[i] !== magicNumber[i]) {
+        throw new Error(`File content does not match declared MIME type: ${declaredMimeType}`);
+      }
+    }
+
+    return true;
   }
 
   /**
@@ -352,6 +381,111 @@ class AttachmentController {
       logger.info(`[Attachment] upload: ${id} - ${data.file_name || 'unnamed'}`);
     } catch (error) {
       logger.error('[Attachment] upload error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 上传附件 (FormData)
+   * POST /api/attachments/upload
+   */
+  async uploadFormData(ctx) {
+    try {
+      this.ensureModels();
+      const userId = ctx.state.session.id;
+      const file = ctx.file;
+      const body = ctx.request.body;
+
+      // 参数验证
+      if (!file) {
+        ctx.throw(400, 'file is required');
+      }
+      if (!body.source_tag || !body.source_id) {
+        ctx.throw(400, 'source_tag and source_id are required');
+      }
+
+      // 验证文件大小
+      const maxFileSize = await this.getMaxFileSize();
+      if (file.size > maxFileSize) {
+        ctx.throw(413, `File size exceeds limit of ${maxFileSize} bytes`);
+      }
+
+      // 权限检查
+      const hasPermission = await this.checkAttachmentPermission(ctx, body.source_tag, body.source_id);
+      if (!hasPermission) {
+        ctx.throw(403, '无权访问此资源');
+      }
+
+      // 读取文件内容并转为 base64（用于统一存储逻辑）
+      const buffer = file.buffer;
+      const base64Data = buffer.toString('base64');
+
+      // 验证 MIME 类型白名单
+      this.validateMimeTypeWhitelist(file.mimetype);
+
+      // 验证文件魔数（防止客户端伪造 mimetype）
+      await this.validateMimeTypeFromBuffer(buffer, file.mimetype);
+
+      // 生成附件 ID
+      const id = Utils.newID(20);
+
+      // 提取扩展名
+      const extName = file.originalname
+        ? path.extname(file.originalname).slice(1)
+        : file.mimetype.split('/')[1];
+
+      // 生成文件路径
+      const filePath = this.generateFilePath(id, extName);
+      const fullPath = path.join(this.getAttachmentBasePath(), filePath);
+
+      // 确保目录存在
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+
+      // 写入文件
+      await fs.writeFile(fullPath, buffer);
+
+      // 获取图片尺寸
+      const { width, height } = await this.getImageDimensions(base64Data, file.mimetype);
+
+      // 创建数据库记录
+      const attachment = await this.Attachment.create({
+        id,
+        source_tag: body.source_tag,
+        source_id: body.source_id,
+        file_name: file.originalname || null,
+        ext_name: extName,
+        mime_type: file.mimetype,
+        file_size: file.size,
+        file_path: filePath,
+        width,
+        height,
+        alt_text: body.alt_text || null,
+        description: null,
+        created_by: userId,
+      });
+
+      // 生成 data_url
+      const dataUrl = `data:${file.mimetype};base64,${base64Data}`;
+
+      ctx.success({
+        id: attachment.id,
+        source_tag: attachment.source_tag,
+        source_id: attachment.source_id,
+        file_name: attachment.file_name,
+        mime_type: attachment.mime_type,
+        file_size: attachment.file_size,
+        width: attachment.width,
+        height: attachment.height,
+        file_path: attachment.file_path,
+        data_url: dataUrl,
+        ref: `attach:${attachment.id}`,
+        created_at: attachment.created_at,
+      });
+      ctx.status = 201;
+
+      logger.info(`[Attachment] uploadFormData: ${id} - ${file.originalname || 'unnamed'}`);
+    } catch (error) {
+      logger.error('[Attachment] uploadFormData error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

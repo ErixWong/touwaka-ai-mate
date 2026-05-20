@@ -119,3 +119,29 @@ export const uploadAttachment = async (params: UploadAttachmentParams): Promise<
   const response = await apiClient.post('/attachments', params)
   return response.data.data
 }
+
+/**
+ * 上传附件 (FormData)
+ */
+export interface UploadAttachmentFormDataParams {
+  source_tag: string
+  source_id: string
+  file: File
+  alt_text?: string
+}
+
+export const uploadAttachmentFormData = async (params: UploadAttachmentFormDataParams): Promise<UploadAttachmentResponse> => {
+  const formData = new FormData()
+  formData.append('file', params.file)
+  formData.append('source_tag', params.source_tag)
+  formData.append('source_id', params.source_id)
+  if (params.alt_text) {
+    formData.append('alt_text', params.alt_text)
+  }
+  const response = await apiClient.post('/attachments/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return response.data.data
+}

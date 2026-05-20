@@ -3,7 +3,8 @@
  *
  * Issue #557: 实现通用附件服务
  * API 设计：
- * POST   /api/attachments           - 上传附件
+ * POST   /api/attachments           - 上传附件 (base64)
+ * POST   /api/attachments/upload    - 上传附件 (FormData)
  * POST   /api/attachments/batch     - 批量上传
  * GET    /api/attachments/:id      - 获取附件（返回 data_url）
  * POST   /api/attachments/meta      - 批量获取元信息
@@ -15,12 +16,26 @@
 
 import Router from '@koa/router';
 import { authenticate } from '../middlewares/auth.js';
+import multer from '@koa/multer';
+
+const createUploadMiddleware = () => {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+    },
+  });
+  return upload.single('file');
+};
 
 export default (controller) => {
   const router = new Router({ prefix: '/api/attachments' });
 
-  // 上传附件
+  // 上传附件 (base64)
   router.post('/', authenticate(), (ctx) => controller.upload(ctx));
+
+  // 上传附件 (FormData)
+  router.post('/upload', authenticate(), createUploadMiddleware(), (ctx) => controller.uploadFormData(ctx));
 
   // 批量上传
   router.post('/batch', authenticate(), (ctx) => controller.uploadBatch(ctx));
