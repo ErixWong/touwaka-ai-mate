@@ -4,6 +4,19 @@
   "registry_url": "https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps",
   "apps": [
     {
+      "id": "downtime-analyzer",
+      "name": "误工分析工具",
+      "version": "1.0.0",
+      "icon": "📊",
+      "type": "utility",
+      "description": "分析误工数据，按账号分类汇总直接工资和附加费",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["误工", "分析", "汇总"],
+      "path": "apps/downtime-analyzer",
+      "manifest_url": "apps/downtime-analyzer/manifest.json"
+    },
+    {
       "id": "contract-mgr",
       "name": "销售合同管理",
       "version": "1.0.0",

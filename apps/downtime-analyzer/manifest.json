@@ -1,0 +1,20 @@
+{
+  "id": "downtime-analyzer",
+  "name": "误工分析工具",
+  "version": "1.0.0",
+  "description": "分析误工数据，按账号分类汇总直接工资和附加费",
+  "icon": "📊",
+  "type": "utility",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "keywords": [
+    "误工",
+    "分析",
+    "汇总"
+  ],
+  "compatibility": {
+    "min_platform_version": "2.0.0"
+  },
+  "component": "DowntimeAnalyzer",
+  "visibility": "all"
+}

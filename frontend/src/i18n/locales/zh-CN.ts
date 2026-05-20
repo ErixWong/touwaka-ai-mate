@@ -1656,4 +1656,21 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     verifySuccess: '邀请码有效',
     verifyFailed: '邀请码无效或已过期',
   },
+
+  // 误工分析工具
+  downtimeAnalyzer: {
+    title: '误工分析工具',
+    inputLabel: '粘贴误工数据（Tab分隔格式）',
+    inputPlaceholder: '将误工数据粘贴到此处...',
+    resultLabel: '分析结果',
+    accountCategory: '账号分类',
+    directWage: '直接工资',
+    surcharge: '附加费',
+    totalLaborCost: '总计人工费用',
+    total: '合计',
+    analyze: '分析',
+    emptyHint: '数据已粘贴，正在自动分析...',
+    noValidData: '未检测到有效数据，请检查格式是否正确（Tab分隔，至少5列）',
+    analysisComplete: '分析完成',
+  },
 }

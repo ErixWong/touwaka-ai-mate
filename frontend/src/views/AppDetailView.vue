@@ -17,6 +17,7 @@ import GenericMiniApp from '@/components/apps/GenericMiniApp.vue'
 
 const AppComponentMap: Record<string, Component> = {
   'ContractV2View': defineAsyncComponent(() => import('@/views/contract-v2/ContractV2View.vue')),
+  'DowntimeAnalyzer': defineAsyncComponent(() => import('@/views/downtime-analyzer/DowntimeAnalyzer.vue')),
 }
 
 const route = useRoute()

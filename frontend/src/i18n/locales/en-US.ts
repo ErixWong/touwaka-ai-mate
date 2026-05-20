@@ -1667,4 +1667,21 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     verifySuccess: 'Invitation code is valid',
     verifyFailed: 'Invitation code is invalid or expired',
   },
+
+  // Downtime Analyzer
+  downtimeAnalyzer: {
+    title: 'Downtime Analyzer',
+    inputLabel: 'Paste downtime data (Tab-separated format)',
+    inputPlaceholder: 'Paste downtime data here...',
+    resultLabel: 'Analysis Result',
+    accountCategory: 'Account Category',
+    directWage: 'Direct Wage',
+    surcharge: 'Surcharge',
+    totalLaborCost: 'Total Labor Cost',
+    total: 'Total',
+    analyze: 'Analyze',
+    emptyHint: 'Data pasted, auto-analyzing...',
+    noValidData: 'No valid data detected. Please check format (Tab-separated, at least 5 columns)',
+    analysisComplete: 'Analysis complete',
+  },
 }
