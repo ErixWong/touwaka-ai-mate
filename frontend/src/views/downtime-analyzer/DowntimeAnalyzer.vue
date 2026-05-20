@@ -330,6 +330,7 @@ function clearInput() {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .result-table th,
@@ -337,6 +338,24 @@ function clearInput() {
   padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid var(--color-border, #eee);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-table th:first-child,
+.result-table td:first-child {
+  width: 45%;
+  text-align: left;
+}
+
+.result-table th:nth-child(2),
+.result-table td:nth-child(2),
+.result-table th:nth-child(3),
+.result-table td:nth-child(3),
+.result-table th:nth-child(4),
+.result-table td:nth-child(4) {
+  width: 18.33%;
+  text-align: right;
 }
 
 .result-table th {
