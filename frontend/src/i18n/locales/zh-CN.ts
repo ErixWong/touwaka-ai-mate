@@ -1658,7 +1658,7 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
   },
 
   // 误工分析工具
-  downtimeAnalyzer: {
+downtimeAnalyzer: {
     title: '误工分析工具',
     inputLabel: '粘贴误工数据（Tab分隔格式）',
     inputPlaceholder: '将误工数据粘贴到此处...',
@@ -1675,5 +1675,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     emptyHint: '数据已粘贴，正在自动分析...',
     noValidData: '未检测到有效数据，请检查格式是否正确（Tab分隔，至少5列）',
     analysisComplete: '分析完成',
+    copyToExcel: '复制到Excel',
+    copySuccess: '已复制到剪贴板',
+    copyFailed: '复制失败',
   },
 }

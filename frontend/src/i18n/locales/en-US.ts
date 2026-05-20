@@ -1686,5 +1686,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     emptyHint: 'Data pasted, auto-analyzing...',
     noValidData: 'No valid data detected. Please check format (Tab-separated, at least 5 columns)',
     analysisComplete: 'Analysis complete',
+    copyToExcel: 'Copy to Excel',
+    copySuccess: 'Copied to clipboard',
+    copyFailed: 'Copy failed',
   },
 }
