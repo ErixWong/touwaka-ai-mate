@@ -446,20 +446,20 @@ onMounted(() => {
 
 .market-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .market-app-card {
   background: var(--color-bg-primary, #fff);
   border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 14px;
   transition: all 0.2s;
 }
 
 .market-app-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .market-app-card.installed {
@@ -471,29 +471,32 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .app-icon {
-  font-size: 36px;
+  font-size: 28px;
 }
 
 .app-version {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-tertiary, #999);
 }
 
 .app-name {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 600;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-desc {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--color-text-secondary, #666);
-  margin-bottom: 12px;
-  line-height: 1.4;
+  margin-bottom: 8px;
+  line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -502,50 +505,50 @@ onMounted(() => {
 
 .app-tags {
   display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 4px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
 
 .tag {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: 10px;
+  padding: 1px 6px;
   background: var(--color-bg-secondary, #f5f5f5);
   color: var(--color-text-secondary, #666);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .app-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .app-author {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-tertiary, #999);
 }
 
 .update-badge {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: 10px;
+  padding: 1px 6px;
   background: #fff2f0;
   color: #ff4d4f;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .app-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .app-actions button {
   flex: 1;
-  padding: 10px 16px;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
   border: none;
   transition: all 0.2s;
 }

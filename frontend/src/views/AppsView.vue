@@ -45,10 +45,12 @@
           class="app-card"
           @click="openApp(app)"
         >
-          <div class="app-card-icon">{{ app.icon || '📱' }}</div>
-          <div class="app-card-name">{{ app.name }}</div>
-          <div class="app-card-desc" v-if="app.description">{{ app.description }}</div>
-          <div class="app-card-meta">
+          <div class="app-header">
+            <span class="app-icon">{{ app.icon || '📱' }}</span>
+          </div>
+          <h3 class="app-name">{{ app.name }}</h3>
+          <p class="app-desc" v-if="app.description">{{ app.description }}</p>
+          <div class="app-meta">
             <span class="app-type">{{ app.type }}</span>
           </div>
         </div>
@@ -127,8 +129,9 @@ watch(currentTab, (tab) => {
 <style scoped>
 .apps-view {
   padding: 24px;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .view-header {
@@ -211,56 +214,62 @@ watch(currentTab, (tab) => {
 
 .apps-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .app-card {
   background: var(--color-bg-primary, #fff);
   border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 8px;
+  padding: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .app-card:hover {
-  border-color: var(--color-primary, #4a90d9);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.app-card-icon {
-  font-size: 32px;
-  margin-bottom: 12px;
-}
-
-.app-card-name {
-  font-size: 16px;
-  font-weight: 600;
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 8px;
 }
 
-.app-card-desc {
+.app-icon {
+  font-size: 28px;
+}
+
+.app-name {
   font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-desc {
+  font-size: 11px;
   color: var(--color-text-secondary, #666);
-  margin-bottom: 12px;
-  line-height: 1.4;
+  margin-bottom: 8px;
+  line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.app-card-meta {
+.app-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .app-type {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-tertiary, #999);
-  text-transform: uppercase;
 }
 </style>
