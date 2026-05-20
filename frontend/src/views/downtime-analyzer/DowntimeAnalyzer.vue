@@ -10,26 +10,39 @@ const rawInput = ref('')
 const errorMessage = ref('')
 const hasResult = computed(() => groupedData.value.length > 0)
 
-interface GroupedRow {
-  accountCategory: string
+interface DataRow {
+  account: string
+  category: string
   directWage: number
   surcharge: number
   totalLaborCost: number
 }
 
-const groupedData = ref<GroupedRow[]>([])
-const totalRow = ref<GroupedRow | null>(null)
+interface CategoryGroup {
+  category: string
+  rows: DataRow[]
+  subtotal: {
+    directWage: number
+    surcharge: number
+    totalLaborCost: number
+  }
+}
+
+const groupedData = ref<CategoryGroup[]>([])
+const grandTotal = ref<{ directWage: number; surcharge: number; totalLaborCost: number } | null>(null)
+
+const CATEGORY_ORDER = ['LH', 'DM', 'ME', 'SH']
 
 function parseNumber(val: string): number {
-  const cleaned = val.replace(/\s/g, '')
+  const cleaned = (val || '').replace(/\s/g, '')
   const num = parseFloat(cleaned)
   return isNaN(num) ? 0 : num
 }
 
 function extractCategory(account: string): string {
   const parts = account.split('-')
-  if (parts.length >= 3 && parts[1]) return parts[1]
-  return account
+  if (parts.length >= 2 && parts[1]) return parts[1]
+  return ''
 }
 
 function analyze() {
@@ -37,20 +50,21 @@ function analyze() {
   const lines = rawInput.value.split('\n').filter(line => line.trim())
   if (lines.length === 0) {
     groupedData.value = []
-    totalRow.value = null
+    grandTotal.value = null
     return
   }
 
-  const groups: Record<string, { directWage: number; surcharge: number }> = {}
+  const accountMap = new Map<string, { category: string; directWage: number; surcharge: number }>()
   let validRowCount = 0
 
   for (const line of lines) {
     const cols = line.split('\t')
     if (cols.length < 5) continue
 
-    const firstCol = cols[0].trim()
+    const firstCol = (cols[0] || '').trim()
     if (firstCol === '合计' || firstCol === '总计' || firstCol === '共计') continue
-    if (firstCol === '车间' && cols[1]?.trim() === '上班误工工时') continue
+    if (firstCol === '车间' && (cols[1] || '').trim() === '上班误工工时') continue
+    if (firstCol === '审核') continue
 
     const account = cols[3]?.trim() || ''
     if (!account) continue
@@ -60,45 +74,71 @@ function analyze() {
     const wage = parseNumber(cols[4] || '0')
     const surcharge = cols.length >= 6 ? parseNumber(cols[5] || '0') : 0
 
-    if (!groups[category]) {
-      groups[category] = { directWage: 0, surcharge: 0 }
+    if (accountMap.has(account)) {
+      const existing = accountMap.get(account)!
+      existing.directWage += wage
+      existing.surcharge += surcharge
+    } else {
+      accountMap.set(account, { category, directWage: wage, surcharge })
     }
-    groups[category].directWage += wage
-    groups[category].surcharge += surcharge
   }
 
   if (validRowCount === 0) {
     errorMessage.value = t('downtimeAnalyzer.noValidData')
     ElMessage.warning(t('downtimeAnalyzer.noValidData'))
     groupedData.value = []
-    totalRow.value = null
+    grandTotal.value = null
     return
   }
 
-  const sorted = Object.entries(groups)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([category, data]) => ({
-      accountCategory: category,
+  const categoryMap = new Map<string, DataRow[]>()
+  for (const [account, data] of accountMap) {
+    const category = data.category || 'OTHER'
+    const row: DataRow = {
+      account,
+      category,
       directWage: Math.round(data.directWage * 100) / 100,
       surcharge: Math.round(data.surcharge * 100) / 100,
       totalLaborCost: Math.round((data.directWage + data.surcharge) * 100) / 100,
-    }))
-
-  groupedData.value = sorted
-
-  if (sorted.length > 0) {
-    const totalWage = sorted.reduce((s, r) => s + r.directWage, 0)
-    const totalSurcharge = sorted.reduce((s, r) => s + r.surcharge, 0)
-    totalRow.value = {
-      accountCategory: t('downtimeAnalyzer.total'),
-      directWage: Math.round(totalWage * 100) / 100,
-      surcharge: Math.round(totalSurcharge * 100) / 100,
-      totalLaborCost: Math.round((totalWage + totalSurcharge) * 100) / 100,
     }
-    ElMessage.success(t('downtimeAnalyzer.analysisComplete'))
-  } else {
-    totalRow.value = null
+    if (!categoryMap.has(category)) {
+      categoryMap.set(category, [])
+    }
+    categoryMap.get(category)!.push(row)
   }
+
+  const sortedCategories = CATEGORY_ORDER.filter(cat => categoryMap.has(cat))
+  const result: CategoryGroup[] = []
+  let totalWage = 0
+  let totalSurcharge = 0
+
+  for (const category of sortedCategories) {
+    const rows = categoryMap.get(category)!.sort((a, b) => a.account.localeCompare(b.account))
+    const subtotalWage = rows.reduce((s, r) => s + r.directWage, 0)
+    const subtotalSurcharge = rows.reduce((s, r) => s + r.surcharge, 0)
+
+    result.push({
+      category,
+      rows,
+      subtotal: {
+        directWage: Math.round(subtotalWage * 100) / 100,
+        surcharge: Math.round(subtotalSurcharge * 100) / 100,
+        totalLaborCost: Math.round((subtotalWage + subtotalSurcharge) * 100) / 100,
+      },
+    })
+
+    totalWage += subtotalWage
+    totalSurcharge += subtotalSurcharge
+  }
+
+  groupedData.value = result
+  grandTotal.value = {
+    directWage: Math.round(totalWage * 100) / 100,
+    surcharge: Math.round(totalSurcharge * 100) / 100,
+    totalLaborCost: Math.round((totalWage + totalSurcharge) * 100) / 100,
+  }
+
+  ElMessage.success(t('downtimeAnalyzer.analysisComplete'))
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -110,7 +150,7 @@ watch(rawInput, (newVal) => {
     }, 500)
   } else {
     groupedData.value = []
-    totalRow.value = null
+    grandTotal.value = null
     errorMessage.value = ''
     debounceTimer = null
   }
@@ -127,7 +167,7 @@ function fmt(n: number): string {
 function clearInput() {
   rawInput.value = ''
   groupedData.value = []
-  totalRow.value = null
+  grandTotal.value = null
   errorMessage.value = ''
 }
 </script>
@@ -171,26 +211,34 @@ function clearInput() {
         <table class="result-table">
           <thead>
             <tr>
-              <th>{{ t('downtimeAnalyzer.accountCategory') }}</th>
+              <th>{{ t('downtimeAnalyzer.account') }}</th>
               <th>{{ t('downtimeAnalyzer.directWage') }}</th>
               <th>{{ t('downtimeAnalyzer.surcharge') }}</th>
               <th>{{ t('downtimeAnalyzer.totalLaborCost') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in groupedData" :key="row.accountCategory">
-              <td>{{ row.accountCategory }}</td>
-              <td class="num">{{ fmt(row.directWage) }}</td>
-              <td class="num">{{ fmt(row.surcharge) }}</td>
-              <td class="num highlight">{{ fmt(row.totalLaborCost) }}</td>
-            </tr>
+            <template v-for="(group, idx) in groupedData" :key="group.category">
+              <tr v-for="(row, rowIdx) in group.rows" :key="`${group.category}-${rowIdx}`">
+                <td>{{ row.account }}</td>
+                <td class="num">{{ fmt(row.directWage) }}</td>
+                <td class="num">{{ row.surcharge > 0 ? fmt(row.surcharge) : '' }}</td>
+                <td class="num highlight">{{ fmt(row.totalLaborCost) }}</td>
+              </tr>
+              <tr class="subtotal-row">
+                <td>{{ t('downtimeAnalyzer.subtotal') }}({{ group.category }})</td>
+                <td class="num">{{ fmt(group.subtotal.directWage) }}</td>
+                <td class="num">{{ group.subtotal.surcharge > 0 ? fmt(group.subtotal.surcharge) : '' }}</td>
+                <td class="num highlight">{{ fmt(group.subtotal.totalLaborCost) }}</td>
+              </tr>
+            </template>
           </tbody>
-          <tfoot v-if="totalRow">
+          <tfoot v-if="grandTotal">
             <tr class="total-row">
-              <td>{{ totalRow.accountCategory }}</td>
-              <td class="num">{{ fmt(totalRow.directWage) }}</td>
-              <td class="num">{{ fmt(totalRow.surcharge) }}</td>
-              <td class="num highlight">{{ fmt(totalRow.totalLaborCost) }}</td>
+              <td>{{ t('downtimeAnalyzer.grandTotal') }}</td>
+              <td class="num">{{ fmt(grandTotal.directWage) }}</td>
+              <td class="num">{{ grandTotal.surcharge > 0 ? fmt(grandTotal.surcharge) : '' }}</td>
+              <td class="num highlight">{{ fmt(grandTotal.totalLaborCost) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -319,6 +367,16 @@ function clearInput() {
 
 .total-row td {
   border-top: 2px solid var(--color-border, #d0d0d0);
+}
+
+.subtotal-row {
+  background: var(--color-bg-secondary, #f5f5f5);
+  font-weight: 600;
+}
+
+.subtotal-row td {
+  border-top: 1px solid var(--color-border, #ddd);
+  color: var(--color-text-primary, #333);
 }
 
 .empty-hint {
