@@ -1678,5 +1678,9 @@ downtimeAnalyzer: {
     copyToExcel: '复制到Excel',
     copySuccess: '已复制到剪贴板',
     copyFailed: '复制失败',
+    chart: {
+      byCategory: '按类别费用对比',
+      costDistribution: '总成本占比分布',
+    },
   },
 }

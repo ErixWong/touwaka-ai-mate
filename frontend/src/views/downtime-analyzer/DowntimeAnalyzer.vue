@@ -3,6 +3,27 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart, PieChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+} from 'echarts/components'
+
+// 注册 ECharts 组件
+use([
+  CanvasRenderer,
+  BarChart,
+  PieChart,
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+])
 
 const { t } = useI18n()
 const router = useRouter()
@@ -32,6 +53,141 @@ const groupedData = ref<CategoryGroup[]>([])
 const grandTotal = ref<{ directWage: number; surcharge: number; totalLaborCost: number } | null>(null)
 
 const CATEGORY_ORDER = ['LH', 'DM', 'ME', 'SH']
+
+// 图表颜色配置
+const CHART_COLORS = {
+  directWage: '#5470c6',
+  surcharge: '#91cc75',
+  totalLaborCost: '#fac858',
+}
+
+// 类别颜色（用于饼图）
+const CATEGORY_COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4']
+
+// 柱状图配置
+const barChartOption = computed(() => {
+  if (!groupedData.value.length) return null
+
+  const categories = groupedData.value.map((g) => g.category)
+  const directWages = groupedData.value.map((g) => g.subtotal.directWage)
+  const surcharges = groupedData.value.map((g) => g.subtotal.surcharge)
+  const totalCosts = groupedData.value.map((g) => g.subtotal.totalLaborCost)
+
+  return {
+    title: {
+      text: t('downtimeAnalyzer.chart.byCategory'),
+      left: 'center',
+      textStyle: { fontSize: 16, fontWeight: 600 },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params: { seriesName: string; value: number }[]) => {
+        const category = params[0].axisValue
+        let html = `<strong>${category}</strong><br/>`
+        params.forEach((p) => {
+          html += `${p.seriesName}: ${p.value.toFixed(2)}<br/>`
+        })
+        return html
+      },
+    },
+    legend: {
+      bottom: 0,
+      data: [t('downtimeAnalyzer.directWage'), t('downtimeAnalyzer.surcharge'), t('downtimeAnalyzer.totalLaborCost')],
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      top: '15%',
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      data: categories,
+    },
+    yAxis: {
+      type: 'value',
+    },
+    series: [
+      {
+        name: t('downtimeAnalyzer.directWage'),
+        type: 'bar',
+        data: directWages,
+        itemStyle: { color: CHART_COLORS.directWage },
+      },
+      {
+        name: t('downtimeAnalyzer.surcharge'),
+        type: 'bar',
+        data: surcharges,
+        itemStyle: { color: CHART_COLORS.surcharge },
+      },
+      {
+        name: t('downtimeAnalyzer.totalLaborCost'),
+        type: 'bar',
+        data: totalCosts,
+        itemStyle: { color: CHART_COLORS.totalLaborCost },
+      },
+    ],
+  }
+})
+
+// 饼图配置 - 按类别总成本占比
+const pieChartOption = computed(() => {
+  if (!groupedData.value.length) return null
+
+  const data = groupedData.value.map((g, idx) => ({
+    name: g.category,
+    value: Math.round(g.subtotal.totalLaborCost * 100) / 100,
+    itemStyle: { color: CATEGORY_COLORS[idx % CATEGORY_COLORS.length] },
+  }))
+
+  return {
+    title: {
+      text: t('downtimeAnalyzer.chart.costDistribution'),
+      left: 'center',
+      top: '5%',
+      textStyle: { fontSize: 16, fontWeight: 600 },
+    },
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: { name: string; value: number; percent: number }) => {
+        return `${params.name}: ${params.value.toFixed(2)} (${params.percent}%)`
+      },
+    },
+    legend: {
+      orient: 'vertical',
+      left: 'left',
+      top: 'middle',
+    },
+    series: [
+      {
+        name: t('downtimeAnalyzer.totalLaborCost'),
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['60%', '55%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 2,
+        },
+        label: {
+          show: true,
+          formatter: '{b}: {d}%',
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 14,
+            fontWeight: 'bold',
+          },
+        },
+        data,
+      },
+    ],
+  }
+})
 
 function parseNumber(val: string): number {
   const cleaned = (val || '').replace(/\s/g, '')
@@ -245,6 +401,17 @@ async function copyToClipboard() {
           <label class="section-label">{{ t('downtimeAnalyzer.resultLabel') }}</label>
           <el-button size="small" @click="copyToClipboard">{{ t('downtimeAnalyzer.copyToExcel') }}</el-button>
         </div>
+
+        <!-- 图表区域 -->
+        <div class="chart-section">
+          <div class="chart-container">
+            <v-chart v-if="barChartOption" :option="barChartOption" class="chart" autoresize />
+          </div>
+          <div class="chart-container">
+            <v-chart v-if="pieChartOption" :option="pieChartOption" class="chart" autoresize />
+          </div>
+        </div>
+
         <table class="result-table">
           <thead>
             <tr>
@@ -372,6 +539,26 @@ async function copyToClipboard() {
 
 .result-header .section-label {
   margin-bottom: 0;
+}
+
+.chart-section {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.chart-container {
+  flex: 1;
+  min-width: 300px;
+  background: var(--color-bg-secondary, #f8f9fa);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border, #e0e0e0);
+}
+
+.chart {
+  width: 100%;
+  height: 380px;
 }
 
 .result-table {

@@ -1689,5 +1689,9 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     copyToExcel: 'Copy to Excel',
     copySuccess: 'Copied to clipboard',
     copyFailed: 'Copy failed',
+    chart: {
+      byCategory: 'Cost Comparison by Category',
+      costDistribution: 'Cost Distribution',
+    },
   },
 }
