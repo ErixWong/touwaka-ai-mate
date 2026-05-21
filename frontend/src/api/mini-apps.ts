@@ -430,7 +430,7 @@ export async function compareRecords(
       row_id_a: rowIdA,
       row_id_b: rowIdB,
       ...options,
-    }, { timeout: 600000, signal })
+    }, { timeout: 1800000, signal })
   )
 }
 
