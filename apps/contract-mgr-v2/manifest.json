@@ -186,7 +186,7 @@
       ".jpg",
       ".png"
     ],
-    "max_file_size": 20971520,
+    "max_file_size": 52428800,
     "batch_enabled": true,
     "batch_limit": 50,
     "step_resources": {

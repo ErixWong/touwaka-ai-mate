@@ -38,6 +38,15 @@ const ALLOWED_MIME_TYPES = [
   'text/plain',
   'text/markdown',
   'application/json',
+  // Word 文档
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  // Excel 表格
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // PowerPoint 演示文稿
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   // 压缩包
   'application/zip',
   'application/x-zip-compressed'
@@ -56,6 +65,13 @@ const MAGIC_NUMBERS = {
   'text/plain': [0x54, 0x58, 0x54],        // TXT: TXT
   'application/json': [0x7B, 0x22],        // JSON: {"
   'text/markdown': null,                    // Markdown 是文本，跳过验证
+  // Office 文档 (都是 ZIP 格式)
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [0x50, 0x4B, 0x03, 0x04],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [0x50, 0x4B, 0x03, 0x04],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': [0x50, 0x4B, 0x03, 0x04],
+  'application/msword': [0xD0, 0xCF, 0x11, 0xE0],  // DOC (OLE compound)
+  'application/vnd.ms-excel': [0xD0, 0xCF, 0x11, 0xE0],  // XLS (OLE compound)
+  'application/vnd.ms-powerpoint': [0xD0, 0xCF, 0x11, 0xE0],  // PPT (OLE compound)
 };
 
 const DEFAULT_MAX_UPLOAD_SIZE_MB = 50;

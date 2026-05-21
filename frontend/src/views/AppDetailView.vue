@@ -34,6 +34,7 @@ onMounted(async () => {
     const componentKey = currentApp.value?.component
     if (componentKey && componentKey in AppComponentMap) {
       AppComponent.value = AppComponentMap[componentKey]!
+    }
   } catch (error) {
     console.error('Failed to load app:', error)
   } finally {

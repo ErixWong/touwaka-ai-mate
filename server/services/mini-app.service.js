@@ -163,6 +163,16 @@ class MiniAppService {
 
     const appJson = app.toJSON();
     appJson.states = states;
+
+    // 解析 config 字段（JSON 字符串 -> 对象）
+    if (appJson.config && typeof appJson.config === 'string') {
+      try {
+        appJson.config = JSON.parse(appJson.config);
+      } catch {
+        appJson.config = {};
+      }
+    }
+
     return appJson;
   }
 
