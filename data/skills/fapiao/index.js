@@ -7,6 +7,8 @@
  * - extract: 提取发票结构化数据（支持增值税发票、普通发票、电子发票）
  * 
  * 依赖：pdfjs-dist (Mozilla PDF.js)
+ * 
+ * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
  */
 
 const fs = require('fs').promises;
@@ -21,46 +23,14 @@ if (pdfjsLib.GlobalWorkerOptions) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 }
 
-// ============================================
-// 路径安全检查
-// ============================================
-
-const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
-const USER_ID = process.env.USER_ID || 'default';
-const USER_WORK_DIR = process.env.WORKING_DIRECTORY
-  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
-  : path.join(DATA_BASE_PATH, 'work', USER_ID);
-
-const IS_ADMIN = process.env.IS_ADMIN === 'true';
-
-let ALLOWED_BASE_PATHS;
-if (IS_ADMIN) {
-  ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
-} else {
-  ALLOWED_BASE_PATHS = [USER_WORK_DIR];
-}
-
-function isPathAllowed(targetPath) {
-  let resolved = path.resolve(targetPath);
-  return ALLOWED_BASE_PATHS.some(basePath => {
-    let resolvedBase = path.resolve(basePath);
-    return resolved.startsWith(resolvedBase);
-  });
-}
-
-function resolvePath(filePath) {
-  if (path.isAbsolute(filePath)) {
-    if (!isPathAllowed(filePath)) {
-      throw new Error(`Path not allowed: ${filePath}`);
-    }
-    return filePath;
+/**
+ * Resolve path - VM 已设置 cwd，直接使用相对路径即可（与 FS 技能一致）
+ */
+function resolvePath(relativePath) {
+  if (path.isAbsolute(relativePath)) {
+    throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
-  
-  const resolved = path.join(ALLOWED_BASE_PATHS[0], filePath);
-  if (!isPathAllowed(resolved)) {
-    throw new Error(`Path not allowed: ${resolved}`);
-  }
-  return resolved;
+  return relativePath;
 }
 
 // ============================================
