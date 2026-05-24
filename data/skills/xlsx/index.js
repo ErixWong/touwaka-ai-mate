@@ -82,9 +82,33 @@ function encodeCell(cell) {
   return result + (cell.row + 1);
 }
 
-function sheetToAoA(worksheet) {
+function parseRange(rangeStr) {
+  const parts = rangeStr.split(':');
+  if (parts.length !== 2) throw new Error('Invalid range format, expected A1:B2 style');
+  const start = decodeCell(parts[0].toUpperCase());
+  const end = decodeCell(parts[1].toUpperCase());
+  return { start, end };
+}
+
+function sheetToAoA(worksheet, range) {
   const result = [];
   if (!worksheet || !worksheet.rowCount) return result;
+  if (range) {
+    const { start, end } = parseRange(range);
+    const actualRowCount = worksheet.rowCount || 0;
+    const actualColCount = worksheet.columnCount || 0;
+    const maxRow = Math.min(end.row, actualRowCount - 1);
+    const maxCol = Math.min(end.col, actualColCount - 1);
+    if (start.row > maxRow || start.col > maxCol) return result;
+    for (let r = start.row; r <= maxRow; r++) {
+      const rowData = [];
+      for (let c = start.col; c <= maxCol; c++) {
+        rowData.push(worksheet.getCell(r + 1, c + 1).value);
+      }
+      result.push(rowData);
+    }
+    return result;
+  }
   worksheet.eachRow((row) => {
     const rowData = [];
     row.eachCell((cell) => { rowData[cell.col - 1] = cell.value; });
@@ -128,7 +152,7 @@ function jsonToSheet(worksheet, data) {
 }
 
 async function excelRead(params) {
-  const { path: filePath, scope = 'workbook', sheet, cell, includeData, header } = params;
+  const { path: filePath, scope = 'workbook', sheet, cell, includeData, header, range } = params;
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(readExcelFile(filePath));
   
@@ -136,7 +160,7 @@ async function excelRead(params) {
     const result = { success: true, sheetNames: workbook.worksheets.map(ws => ws.name), sheetCount: workbook.worksheets.length, properties: {} };
     if (includeData) {
       result.sheets = {};
-      for (const ws of workbook.worksheets) result.sheets[ws.name] = { range: '', data: sheetToAoA(ws) };
+      for (const ws of workbook.worksheets) result.sheets[ws.name] = { range: range || '', data: sheetToAoA(ws, range) };
     }
     return result;
   }
@@ -145,7 +169,19 @@ async function excelRead(params) {
     const sheetName = sheet || workbook.worksheets[0]?.name;
     const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) throw new Error('Sheet not found: ' + sheetName);
-    return { success: true, sheetName, range: '', data: header === 'json' ? sheetToJsonObj(worksheet) : sheetToAoA(worksheet) };
+    const data = sheetToAoA(worksheet, range);
+    if (header === 'json') {
+      const headers = data[0] || [];
+      const rows = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = {};
+        const rowData = data[i] || [];
+        for (let j = 0; j < headers.length; j++) row[headers[j] || 'col' + (j + 1)] = rowData[j] !== undefined ? rowData[j] : null;
+        rows.push(row);
+      }
+      return { success: true, sheetName, range: range || '', data: rows };
+    }
+    return { success: true, sheetName, range: range || '', data };
   }
   
   if (scope === 'cell') {
@@ -350,6 +386,8 @@ async function excelQuery(params) {
         case 'less': case '<': return cv < value;
         case 'less_equals': case '<=': return cv <= value;
         case 'contains': return String(cv).includes(value);
+        case 'starts_with': return String(cv).startsWith(value);
+        case 'ends_with': return String(cv).endsWith(value);
         case 'is_empty': return cv === null || cv === undefined || cv === '';
         case 'is_not_empty': return cv !== null && cv !== undefined && cv !== '';
         default: return true;
@@ -538,7 +576,7 @@ async function execute(toolName, params) {
 
 function getTools() {
   return [
-    { name: 'excel_read', description: '读取Excel文件', parameters: { type: 'object', properties: { path: { type: 'string' }, scope: { type: 'string', enum: ['workbook', 'sheet', 'cell'] }, sheet: { type: 'string' }, cell: { type: 'string' }, includeData: { type: 'boolean' }, header: { type: 'string' } }, required: ['path'] } },
+    { name: 'excel_read', description: '读取Excel文件', parameters: { type: 'object', properties: { path: { type: 'string' }, scope: { type: 'string', enum: ['workbook', 'sheet', 'cell'] }, sheet: { type: 'string' }, cell: { type: 'string' }, includeData: { type: 'boolean' }, header: { type: 'string' }, range: { type: 'string', description: '单元格范围，如 A1:C10' } }, required: ['path'] } },
     { name: 'excel_write', description: '写入Excel文件', parameters: { type: 'object', properties: { path: { type: 'string' }, scope: { type: 'string', enum: ['workbook', 'sheet', 'cell'] }, sheet: { type: 'string' }, cell: { type: 'string' }, value: { type: 'string' }, formula: { type: 'string' }, data: { type: 'array' }, mode: { type: 'string', enum: ['overwrite', 'append', 'insert'] }, startCell: { type: 'string' }, sheets: { type: 'array' }, properties: { type: 'object' } }, required: ['path'] } },
     { name: 'excel_sheet', description: '工作表管理', parameters: { type: 'object', properties: { path: { type: 'string' }, action: { type: 'string', enum: ['add', 'delete', 'rename', 'copy'] }, name: { type: 'string' }, sheet: { type: 'string' }, newName: { type: 'string' }, sourceSheet: { type: 'string' }, targetSheet: { type: 'string' }, targetFile: { type: 'string' }, data: { type: 'array' } }, required: ['path', 'action'] } },
     { name: 'excel_format', description: '格式化设置', parameters: { type: 'object', properties: { path: { type: 'string' }, type: { type: 'string', enum: ['column', 'cell'] }, sheet: { type: 'string' }, columns: { type: 'array' }, cells: { type: 'array' }, style: { type: 'object' } }, required: ['path', 'type'] } },
