@@ -5,7 +5,7 @@
         <span class="file-icon">📄</span>
         <span class="file-name">{{ (modelValue as any).name || modelValue }}</span>
       </div>
-      <button class="btn-remove" @click="clearFile" type="button">×</button>
+      <el-button class="btn-remove" @click="clearFile">×</el-button>
     </div>
     <div v-else class="file-upload">
       <input

@@ -1,21 +1,16 @@
 <template>
-  <div class="model-selector">
-    <select 
-      :value="modelValue" 
-      @change="handleChange"
-      class="model-select"
-    >
-      <option value="" disabled>{{ $t('chat.selectModel') || '选择模型' }}</option>
-      <option 
-        v-for="model in availableModels" 
-        :key="model.id" 
-        :value="model.id"
-      >
-        {{ model.name }}
-      </option>
-    </select>
-    <span class="select-icon">▼</span>
-  </div>
+  <el-select 
+    :model-value="modelValue"
+    @update:model-value="$emit('update:modelValue', $event)"
+    :placeholder="$t('chat.selectModel') || '选择模型'"
+  >
+    <el-option 
+      v-for="model in availableModels" 
+      :key="model.id" 
+      :value="model.id"
+      :label="model.name"
+    />
+  </el-select>
 </template>
 
 <script setup lang="ts">

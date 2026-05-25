@@ -67,23 +67,23 @@
 
       <!-- Pagination -->
       <div class="pagination" v-if="totalPages > 1">
-        <button
-          class="page-btn"
+        <el-button
+          size="small"
           :disabled="currentPage === 1"
           @click="changePage(currentPage - 1)"
         >
           ← {{ $t('pagination.prev', '上一页') }}
-        </button>
+        </el-button>
         <div class="page-info">
           <span>{{ $t('pagination.info', { total: totalCount }, `共 ${totalCount} 条`) }}</span>
         </div>
-        <button
-          class="page-btn"
+        <el-button
+          size="small"
           :disabled="currentPage === totalPages"
           @click="changePage(currentPage + 1)"
         >
           {{ $t('pagination.next', '下一页') }} →
-        </button>
+        </el-button>
       </div>
     </template>
 
@@ -96,60 +96,54 @@
         <div class="dialog-body">
           <div class="form-group">
             <label class="form-label">{{ $t('solutions.name', '名称') }} *</label>
-            <input
+            <el-input
               v-model="formData.name"
-              type="text"
-              class="form-input"
               :placeholder="$t('solutions.namePlaceholder', '输入解决方案名称')"
             />
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('solutions.slug', 'URL标识') }}</label>
-            <input
+            <el-input
               v-model="formData.slug"
-              type="text"
-              class="form-input"
               :placeholder="$t('solutions.slugPlaceholder', '自动生成或自定义')"
             />
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('solutions.description', '描述') }}</label>
-            <textarea
+            <el-input
               v-model="formData.description"
-              class="form-textarea"
-              rows="2"
+              type="textarea"
+              :rows="2"
               :placeholder="$t('solutions.descriptionPlaceholder', '简要描述该解决方案')"
-            ></textarea>
+            />
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('solutions.tags', '标签') }}</label>
-            <input
+            <el-input
               v-model="tagsInput"
-              type="text"
-              class="form-input"
               :placeholder="$t('solutions.tagsPlaceholder', '多个标签用逗号分隔')"
             />
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('solutions.guide', '执行指南') }} (Markdown)</label>
-            <textarea
+            <el-input
               v-model="formData.guide"
-              class="form-textarea form-textarea-large"
-              rows="12"
+              type="textarea"
+              :rows="12"
               :placeholder="$t('solutions.guidePlaceholder', '使用 Markdown 格式编写执行指南...')"
-            ></textarea>
+            />
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDialog">
+          <el-button @click="closeDialog">
             {{ $t('common.cancel', '取消') }}
-          </button>
-          <button v-if="isEditing" class="btn-delete" @click="deleteSolution">
+          </el-button>
+          <el-button v-if="isEditing" type="danger" @click="deleteSolution">
             {{ $t('common.delete', '删除') }}
-          </button>
-          <button class="btn-save" @click="saveSolution" :disabled="isSaving">
+          </el-button>
+          <el-button type="primary" @click="saveSolution" :disabled="isSaving">
             {{ isSaving ? $t('common.saving', '保存中...') : $t('common.save', '保存') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>

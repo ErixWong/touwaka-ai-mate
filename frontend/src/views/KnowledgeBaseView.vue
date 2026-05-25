@@ -94,38 +94,38 @@
         <div class="pagination-debug" v-if="false">
           totalPages: {{ totalPages }}, currentPage: {{ currentPage }}, totalCount: {{ totalCount }}
         </div>
-        <button
-          class="page-btn"
+        <el-button
+          size="small"
           :disabled="currentPage === 1"
           @click="changePage(currentPage - 1)"
         >
           ← {{ $t('pagination.prev') }}
-        </button>
+        </el-button>
         <div class="page-info">
           <span>{{ $t('pagination.info', { total: totalCount }) }}</span>
           <span class="page-numbers">
-            <button
+            <el-button
               v-for="page in visiblePages"
               :key="page"
-              class="page-num"
-              :class="{ active: page === currentPage }"
+              size="small"
+              :type="page === currentPage ? 'primary' : ''"
               @click="changePage(page)"
             >
               {{ page }}
-            </button>
+            </el-button>
           </span>
           <!-- 每页数量选择器 -->
           <el-select v-model="pageSize" @change="handlePageSizeChange" style="width: 100px">
             <el-option v-for="size in pageSizeOptions" :key="size" :label="size + '/页'" :value="size" />
           </el-select>
         </div>
-        <button
-          class="page-btn"
+        <el-button
+          size="small"
           :disabled="currentPage === totalPages"
           @click="changePage(currentPage + 1)"
         >
           {{ $t('pagination.next') }} →
-        </button>
+        </el-button>
       </div>
     </template>
 
@@ -138,38 +138,34 @@
         <div class="dialog-body">
           <div class="form-group">
             <label class="form-label">{{ $t('knowledgeBase.nameLabel') }}</label>
-            <input
+            <el-input
               v-model="formData.name"
-              type="text"
-              class="form-input"
               :placeholder="$t('knowledgeBase.namePlaceholder')"
             />
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('knowledgeBase.descriptionLabel') }}</label>
-            <textarea
+            <el-input
               v-model="formData.description"
-              class="form-textarea"
+              type="textarea"
               :placeholder="$t('knowledgeBase.descriptionPlaceholder')"
-              rows="3"
-            ></textarea>
+              :rows="3"
+            />
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('knowledgeBase.visibilityLabel') }}</label>
-            <select v-model="formData.visibility" class="form-select">
-              <option value="owner">{{ $t('knowledgeBase.visibility.owner') }}</option>
-              <option value="department">{{ $t('knowledgeBase.visibility.department') }}</option>
-              <option value="all">{{ $t('knowledgeBase.visibility.all') }}</option>
-            </select>
+            <el-select v-model="formData.visibility">
+              <el-option value="owner" :label="$t('knowledgeBase.visibility.owner')" />
+              <el-option value="department" :label="$t('knowledgeBase.visibility.department')" />
+              <el-option value="all" :label="$t('knowledgeBase.visibility.all')" />
+            </el-select>
             <p class="form-hint">{{ $t('knowledgeBase.visibilityHint') }}</p>
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('knowledgeBase.embeddingModelLabel') }}</label>
-            <select v-model="formData.embedding_model_id" class="form-select" :disabled="embeddingModels.length === 0">
-              <option v-for="model in embeddingModels" :key="model.id" :value="model.id">
-                {{ model.name }}
-              </option>
-            </select>
+            <el-select v-model="formData.embedding_model_id" :disabled="embeddingModels.length === 0">
+              <el-option v-for="model in embeddingModels" :key="model.id" :value="model.id" :label="model.name" />
+            </el-select>
             <p v-if="embeddingModels.length === 0" class="form-error">
               {{ $t('knowledgeBase.noEmbeddingModelError') || '请先配置 Embedding 模型' }}
             </p>
@@ -177,14 +173,14 @@
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeDialog">{{ $t('common.cancel') }}</button>
-          <button
-            class="btn-primary"
+          <el-button @click="closeDialog">{{ $t('common.cancel') }}</el-button>
+          <el-button
+            type="primary"
             :disabled="!formData.name.trim() || isSubmitting"
             @click="submitForm"
           >
             {{ isSubmitting ? $t('common.saving') : $t('common.save') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -211,10 +207,10 @@
           <p>{{ $t('knowledgeBase.deleteConfirmMessage', { name: deletingKb.name }) }}</p>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="deletingKb = null">{{ $t('common.cancel') }}</button>
-          <button class="btn-danger" @click="confirmDelete">
+          <el-button @click="deletingKb = null">{{ $t('common.cancel') }}</el-button>
+          <el-button type="danger" @click="confirmDelete">
             {{ $t('common.delete') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -255,7 +251,7 @@
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeGlobalSearchDialog">{{ $t('common.close') }}</button>
+          <el-button @click="closeGlobalSearchDialog">{{ $t('common.close') }}</el-button>
         </div>
       </div>
     </div>

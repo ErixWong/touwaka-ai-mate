@@ -53,7 +53,7 @@
         <thead>
           <tr>
             <th class="checkbox-col">
-              <input type="checkbox" :checked="isAllSelected" :indeterminate.prop="isPartialSelected" @change="toggleAll" />
+              <el-checkbox :model-value="isAllSelected" :indeterminate="isPartialSelected" @change="toggleAll" />
             </th>
             <th v-for="col in listColumns" :key="col.name">{{ col.label }}</th>
             <th>{{ $t('apps.status') }}</th>
@@ -63,7 +63,7 @@
         <tbody>
           <tr v-for="record in records" :key="record.id" :class="{ 'row-selected': isSelected(record) }">
             <td class="checkbox-col">
-              <input type="checkbox" :checked="isSelected(record)" @change="toggleRow(record)" />
+              <el-checkbox :model-value="isSelected(record)" @change="toggleRow(record)" />
             </td>
             <td v-for="col in listColumns" :key="col.name">
               {{ formatFieldValue(col._isExtension ? record[col.name] : record.data?.[col.name], col) }}

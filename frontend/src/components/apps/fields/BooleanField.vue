@@ -1,13 +1,11 @@
 <template>
-  <label class="field-boolean">
-    <input
-      type="checkbox"
-      :checked="!!modelValue"
-      :disabled="readonly"
-      @change="$emit('update:model-value', ($event.target as HTMLInputElement).checked)"
-    />
-    <span>{{ field.label }}</span>
-  </label>
+  <el-checkbox
+    :model-value="!!modelValue"
+    :disabled="readonly"
+    @update:model-value="$emit('update:model-value', $event)"
+  >
+    {{ field.label }}
+  </el-checkbox>
 </template>
 
 <script setup lang="ts">
