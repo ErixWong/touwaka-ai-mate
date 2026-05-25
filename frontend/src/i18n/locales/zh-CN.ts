@@ -275,6 +275,8 @@ export default {
     expertTabPersonality: '人设配置',
     expertTabModel: '模型配置',
     expertBasicInfo: '基本信息',
+    expertPersonality: '人设配置',
+    expertModelConfig: '模型配置',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',

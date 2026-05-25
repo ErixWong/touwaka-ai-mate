@@ -275,6 +275,8 @@ export default {
     expertTabPersonality: 'Personality',
     expertTabModel: 'Model Config',
     expertBasicInfo: 'Basic Info',
+    expertPersonality: 'Personality',
+    expertModelConfig: 'Model Config',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
