@@ -1,4 +1,5 @@
 import logger from '../../../../lib/logger.js';
+import { callLlmJson } from '../shared.js';
 
 const JUDGE_PROMPT = `判断OCR任务是否完成。
 
@@ -84,18 +85,14 @@ export default {
       const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
       const taskInfo = truncateTaskInfo(mcpResult, 1000);
 
-      const judgeResult = await services.callLlm('judge_ocr_status', {
-        instruction: JUDGE_PROMPT.replace('{{TASK_INFO}}', taskInfo),
-        model_id: resConfig.judge_model_id,
-        temperature: resConfig.judge_temperature || 0.1,
-        response_format: 'json',
-        enable_thinking: false,
-      });
-
+      const judgePrompt = JUDGE_PROMPT.replace('{{TASK_INFO}}', taskInfo);
       let parsed;
       try {
-        const jsonMatch = judgeResult.text.match(/\{[\s\S]*\}/);
-        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { status: 'pending', progress: 0, reason: 'Parse failed' };
+        parsed = await services.llm.extractJson(judgePrompt, '', {
+          modelId: resConfig.judge_model_id || null,
+          temperature: resConfig.judge_temperature || 0.1,
+          defaultValue: { status: 'pending', progress: 0, reason: 'Parse failed' },
+        });
       } catch {
         parsed = { status: 'pending', progress: 0, reason: 'JSON parse error' };
       }

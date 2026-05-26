@@ -1,5 +1,5 @@
 import logger from '../../../../lib/logger.js';
-import { parseLlmResponse, extractKeyParts, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
+import { extractKeyParts, getStepResource, getPrompt, callLlmJson } from '../shared.js';
 
 const DEFAULT_EXTRACT_CONFIG = {
   type: 'internal_llm',
@@ -111,13 +111,7 @@ export default {
 
       if (text.length <= EXTRACT_MAX_INPUT_CHARS) {
         const promptBase = buildPrompt(customPrompt, fieldDefs, exampleJson);
-        const response = await services.callLlm('extract_metadata', {
-          instruction: promptBase,
-          ocr_text: text,
-          response_format: 'json',
-          ...buildLlmParams(extractConfig),
-        });
-        metadata = parseLlmResponse(response);
+        metadata = await callLlmJson(services, promptBase, text, extractConfig);
         if (!metadata) return { success: false, error: 'LLM did not return valid JSON' };
       } else {
         logger.info(`[contract-v2-llm-extract] Record ${record.id}: Text too long (${text.length} chars), using segmented extraction`);
@@ -134,13 +128,7 @@ export default {
           if (!part.text || part.text.trim().length === 0) continue;
           const promptBase = buildPrompt(customPrompt, fieldDefs, exampleJson, part.hint);
           try {
-            const response = await services.callLlm('extract_metadata_segment', {
-              instruction: promptBase,
-              ocr_text: part.text.substring(0, EXTRACT_MAX_INPUT_CHARS),
-              response_format: 'json',
-              ...buildLlmParams(extractConfig),
-            });
-            const parsed = parseLlmResponse(response);
+            const parsed = await callLlmJson(services, promptBase, part.text.substring(0, EXTRACT_MAX_INPUT_CHARS), extractConfig);
             if (parsed) partialResults.push(parsed);
           } catch (segErr) {
             logger.warn(`[contract-v2-llm-extract] Segment extraction failed: ${segErr.message}`);
