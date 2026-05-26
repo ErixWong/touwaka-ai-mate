@@ -62,20 +62,11 @@ export default {
       const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
       
       logger.info(`[check-ocr] Record ${record.id}: MCP result received, judging status`);
-      const judgeResult = await services.callLlm('judge_ocr_status', {
-        instruction: JUDGE_PROMPT.replace('{{MCP_RESULT}}', JSON.stringify(mcpResult, null, 2)),
-        model_id: resConfig.judge_model_id,
+      const parsed = await services.llm.extractJson(JUDGE_PROMPT.replace('{{MCP_RESULT}}', JSON.stringify(mcpResult, null, 2)), {
+        modelId: resConfig.judge_model_id || null,
         temperature: resConfig.judge_temperature || 0.1,
-        response_format: 'json',
+        defaultValue: { status: 'pending', progress: 0, reason: 'Parse failed' },
       });
-
-      let parsed;
-      try {
-        const jsonMatch = judgeResult.text.match(/\{[\s\S]*\}/);
-        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { status: 'pending', progress: 0, reason: 'Parse failed' };
-      } catch {
-        parsed = { status: 'pending', progress: 0, reason: 'JSON parse error' };
-      }
 
       logger.info(`[check-ocr] Record ${record.id}: Judge result - status=${parsed.status}, progress=${parsed.progress}, reason=${parsed.reason}`);
 

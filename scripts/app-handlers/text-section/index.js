@@ -126,26 +126,14 @@ export default {
     try {
       logger.info(`[text-section] Record ${record.id}: Calling LLM for section analysis (text length: ${filteredText.length})`);
       
-      const response = await services.callLlm('analyze_sections', {
-        instruction: prompt,
-        response_format: 'json',
-        model_id: sectionConfig.model_id,
+      const parsed = await services.llm.extractJson(prompt, {
+        modelId: sectionConfig.model_id || null,
         temperature: sectionConfig.temperature || 0.3,
       });
       
-      let sections = [];
-      try {
-        const parsed = JSON.parse(response.text);
-        sections = parsed.sections || [];
-      } catch {
-        const jsonMatch = response.text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          sections = parsed.sections || [];
-        }
-      }
+      const sections = (parsed?.sections) || [];
       
-      logger.info(`[text-section] Record ${record.id}: Found ${sections.length} sections, response preview="${response.text.substring(0, 200).replace(/\n/g, '\\n')}"`);
+      logger.info(`[text-section] Record ${record.id}: Found ${sections.length} sections`);
       
       if (contentConfig && services.callExtension) {
         logger.info(`[text-section] Record ${record.id}: Upserting sections to ${contentConfig.name}`);
