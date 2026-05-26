@@ -694,11 +694,21 @@ def create_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     doc = fitz.open()
     
     try:
-        size_map = {
-            'a4': fitz.ISO_A4,
-            'letter': fitz.ISO_LETTER
-        }
-        page_rect = size_map.get(page_size.lower(), fitz.ISO_A4)
+        # PyMuPDF 1.16+ 使用 paper_rect() 获取页面尺寸
+        # 支持的尺寸: a0-a10, letter, legal, tabloid, executive 等
+        try:
+            page_rect = fitz.paper_rect(page_size.lower())
+        except (AttributeError, ValueError):
+            # 回退: 手动定义常用尺寸
+            size_map = {
+                'a4': fitz.Rect(0, 0, 595, 842),
+                'a3': fitz.Rect(0, 0, 842, 1191),
+                'a5': fitz.Rect(0, 0, 420, 595),
+                'letter': fitz.Rect(0, 0, 612, 792),
+                'legal': fitz.Rect(0, 0, 612, 1008),
+                'tabloid': fitz.Rect(0, 0, 792, 1224),
+            }
+            page_rect = size_map.get(page_size.lower(), fitz.Rect(0, 0, 595, 842))
         
         for text in content:
             page = doc.new_page(width=page_rect.width, height=page_rect.height)
