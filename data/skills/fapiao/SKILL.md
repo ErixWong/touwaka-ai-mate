@@ -30,7 +30,9 @@ user-invocable: true
 
 | 字段 | 类型 | 描述 |
 |------|------|------|
-| `success` | boolean | 是否成功 |
+| `success` | boolean | 是否成功提取有效发票数据 |
+| `extraction_status` | string | 提取状态：`success` / `no_text_layer` / `not_invoice` / `partial` |
+| `ocr_method` | string | 识别方法：固定为 `fapiao`（坐标解析） |
 | `invoice_number` | string | 发票号码（20位数字） |
 | `invoice_date` | string | 开票日期（格式：xxxx年xx月xx日） |
 | `invoice_type` | string | 发票类型（如：电子发票（增值税专用发票）） |
@@ -42,8 +44,19 @@ user-invocable: true
 | `item_count` | number | 商品明细总数 |
 | `page_count` | number | PDF页数 |
 | `remarks` | string | 备注信息 |
+| `text_items_count` | number | PDF文本项总数（用于判断是否有文本层） |
+| `keyword_count` | number | 发票关键词匹配数量 |
 | `content` | string | 格式化后的内容（JSON或Markdown） |
 | `output_file` | string | 保存的文件路径（如果指定了output参数） |
+
+**extraction_status 状态说明：**
+
+| 状态 | 条件 | 说明 |
+|------|------|------|
+| `success` | 20位发票号 + 金额 > 0 | 完整解析成功 |
+| `partial` | 有发票特征但字段解析失败 | 部分提取失败 |
+| `not_invoice` | 有文本但缺少发票关键词（<3） | 不是发票或非标准发票 |
+| `no_text_layer` | 文本项 < 20 | 扫描件（无文本层） |
 
 ### 调用示例
 
@@ -70,9 +83,12 @@ fapiao__extract({
 
 ### 返回示例
 
+**成功提取：**
 ```json
 {
   "success": true,
+  "extraction_status": "success",
+  "ocr_method": "fapiao",
   "invoice_number": "26512000000351324826",
   "invoice_date": "2024年03月15日",
   "invoice_type": "电子发票（增值税专用发票）",
@@ -90,8 +106,38 @@ fapiao__extract({
   "item_count": 5,
   "page_count": 1,
   "remarks": "",
+  "text_items_count": 156,
+  "keyword_count": 6,
   "content": "{...}",
   "format": "json"
+}
+```
+
+**扫描件（无文本层）：**
+```json
+{
+  "success": false,
+  "extraction_status": "no_text_layer",
+  "ocr_method": "fapiao",
+  "invoice_number": "",
+  "total_with_tax": 0,
+  "text_items_count": 8,
+  "keyword_count": 0,
+  "page_count": 1
+}
+```
+
+**非发票文档：**
+```json
+{
+  "success": false,
+  "extraction_status": "not_invoice",
+  "ocr_method": "fapiao",
+  "invoice_number": "",
+  "total_with_tax": 0,
+  "text_items_count": 120,
+  "keyword_count": 1,
+  "page_count": 5
 }
 ```
 

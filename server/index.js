@@ -236,7 +236,6 @@ class ApiServer {
       batchSize: appConfig.batch_size,
       globalConcurrency: appConfig.max_concurrency,
       residentSkillManager: this.residentSkillManager,
-      llmService: new InternalLLMService(this.db),
       skillLoader: new SkillLoader(this.db),
     });
     // 不在这里启动，等 server listen 后统一启动

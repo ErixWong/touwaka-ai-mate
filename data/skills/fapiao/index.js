@@ -662,8 +662,29 @@ async function extract(params) {
   // 计算总商品数
   const itemCount = invoice.pages.reduce((sum, p) => sum + p.itemCount, 0);
   
+  // 判断提取状态
+  const invoiceKeywords = ['发票号码', '开票日期', '价税合计', '购买方', '销售方', '纳税人识别号', '合计'];
+  const allText = pagesWithPositions.flatMap(p => p.items || []).map(i => i.str).join('');
+  const keywordCount = invoiceKeywords.filter(kw => allText.includes(kw)).length;
+  const totalItems = pagesWithPositions.reduce((sum, p) => sum + (p.items?.length || 0), 0);
+  
+  let extractionStatus;
+  if (totalItems < 20) {
+    extractionStatus = 'no_text_layer';
+  } else if (keywordCount < 3) {
+    extractionStatus = 'not_invoice';
+  } else if (!invoice.invoiceNumber || invoice.totalWithTax === 0) {
+    extractionStatus = 'partial';
+  } else {
+    extractionStatus = 'success';
+  }
+  
+  const isValid = extractionStatus === 'success';
+  
   return {
-    success: true,
+    success: isValid,
+    extraction_status: extractionStatus,
+    ocr_method: 'fapiao',
     invoice_number: invoice.invoiceNumber,
     invoice_date: invoice.invoiceDate,
     invoice_type: invoice.invoiceType,
@@ -675,6 +696,8 @@ async function extract(params) {
     item_count: itemCount,
     page_count: pageCount,
     remarks: invoice.remarks,
+    text_items_count: totalItems,
+    keyword_count: keywordCount,
     output_file: outputFile,
     content: outputContent,
     format: format

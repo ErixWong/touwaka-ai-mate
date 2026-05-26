@@ -1,8 +1,8 @@
 {
   "id": "invoice-mgr",
   "name": "发票管理",
-  "version": "1.0.0",
-  "description": "上传发票文件，AI自动识别并结构化提取发票信息（支持fapiao技能 + markitdown OCR回退），自动去重入库",
+  "version": "1.1.0",
+  "description": "上传发票文件，AI自动识别并结构化提取发票信息（fapiao技能 + VL模型），自动去重入库",
   "icon": "🧾",
   "type": "document",
   "author": "Touwaka Team",
@@ -12,16 +12,15 @@
     "invoice",
     "OCR",
     "AI识别",
-    "fapiao"
+    "fapiao",
+    "VL"
   ],
   "compatibility": {
     "min_platform_version": "2.0.0",
     "requires": {
-      "mcp": [
-        "markitdown"
-      ],
       "skills": [
-        "fapiao"
+        "fapiao",
+        "pdf"
       ]
     }
   },
@@ -127,6 +126,18 @@
           "type": "VARCHAR(16)",
           "label": "提取状态",
           "source": "extraction_status"
+        },
+        {
+          "name": "text_items_count",
+          "type": "INT",
+          "label": "文本项数",
+          "source": "text_items_count"
+        },
+        {
+          "name": "keyword_count",
+          "type": "INT",
+          "label": "关键词数",
+          "source": "keyword_count"
         }
       ],
       "indexes": [
@@ -222,49 +233,46 @@
     ],
     "max_file_size": 20971520,
     "batch_enabled": true,
-    "batch_limit": 20
+    "batch_limit": 20,
+    "step_resources": {
+      "pending_vl": {
+        "type": "vl_extract",
+        "model_id": null,
+        "temperature": 0.1,
+        "min_image_width": 800,
+        "prompt": "你是一个中国发票识别专家。请从图片中提取发票结构化信息。\n\n发票类型：增值税专用发票、增值税普通发票、电子发票。\n\n严格返回JSON格式：\n{\n  \"invoice_number\": \"20位数字发票号码\",\n  \"invoice_date\": \"YYYY-MM-DD\",\n  \"invoice_type\": \"发票类型描述\",\n  \"seller\": { \"name\": \"销售方名称\", \"taxId\": \"纳税人识别号\" },\n  \"buyer\": { \"name\": \"购买方名称\", \"taxId\": \"纳税人识别号\" },\n  \"total_amount\": 合计金额(不含税),\n  \"total_tax\": 税额,\n  \"total_with_tax\": 价税合计,\n  \"remarks\": \"备注\",\n  \"items\": [\n    { \"category\": \"分类\", \"name\": \"商品名称\", \"model\": \"规格\", \"unit\": \"单位\",\n      \"quantity\": 数量, \"price\": 单价, \"amount\": 金额,\n      \"taxRate\": \"税率\", \"taxAmount\": 税额 }\n  ]\n}\n\n规则：\n- 金额为纯数字，不含逗号和符号\n- 日期严格YYYY-MM-DD\n- 发票号码20位数字\n- 无法识别的字段用空字符串或0\n- 无商品明细则items为空数组"
+      }
+    }
   },
   "states": [
     {
       "name": "pending_process",
       "label": "待处理",
-      "description": "文件路由：PDF走fapiao技能，图片直通OCR",
+      "description": "PDF走fapiao技能，失败跳转VL",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
       "is_error": false,
       "handler": "invoice-extract",
       "success_next": "pending_review",
-      "failure_next": "pending_ocr"
+      "failure_next": "pending_vl"
     },
     {
-      "name": "pending_ocr",
-      "label": "OCR识别中",
-      "description": "提交markitdown OCR任务",
+      "name": "pending_vl",
+      "label": "VL识别中",
+      "description": "PDF渲染 + VL模型提取",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
-      "handler": "invoice-ocr-submit",
-      "success_next": "ocr_submitted",
-      "failure_next": "ocr_failed"
-    },
-    {
-      "name": "ocr_submitted",
-      "label": "等待OCR结果",
-      "description": "检查OCR状态 + LLM结构化提取",
-      "sort_order": 3,
-      "is_initial": false,
-      "is_terminal": false,
-      "is_error": false,
-      "handler": "invoice-ocr-check",
+      "handler": "invoice-vl-extract",
       "success_next": "pending_review",
       "failure_next": "extract_failed"
     },
     {
       "name": "pending_review",
       "label": "待确认",
-      "sort_order": 4,
+      "sort_order": 3,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -275,7 +283,7 @@
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 5,
+      "sort_order": 4,
       "is_initial": false,
       "is_terminal": true,
       "is_error": false,
@@ -293,19 +301,9 @@
       "handler": null,
       "success_next": null,
       "failure_next": null
-    },
-    {
-      "name": "ocr_failed",
-      "label": "OCR失败",
-      "sort_order": 99,
-      "is_initial": false,
-      "is_terminal": false,
-      "is_error": true,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
     }
   ],
+  "component": "InvoiceView",
   "views": {
     "list": {
       "columns": [
