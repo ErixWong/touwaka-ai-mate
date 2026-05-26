@@ -23,12 +23,12 @@ const filters = ref<InvoiceListParams>({
 
 const statusLabels: Record<string, { label: string; type: string }> = {
   pending_process: { label: '待处理', type: 'info' },
-  pending_ocr: { label: 'OCR中', type: 'warning' },
-  ocr_submitted: { label: '等待OCR', type: 'warning' },
+  pending_vl: { label: 'VL识别中', type: 'warning' },
   pending_review: { label: '待确认', type: '' },
   confirmed: { label: '已确认', type: 'success' },
   extract_failed: { label: '识别失败', type: 'danger' },
-  ocr_failed: { label: 'OCR失败', type: 'danger' },
+  not_invoice: { label: '非发票', type: 'danger' },
+  duplicate: { label: '已存在', type: 'warning' },
 }
 
 onMounted(() => {
