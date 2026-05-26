@@ -155,14 +155,12 @@ ${JSON.stringify(result).substring(0, 1000)}`;
 
     try {
       const ocrSubmittedConfig = getConfig(app, 'ocr_submitted');
-      const parseResult = await services.callLlm('parse_task_id', {
-        instruction: parsePrompt,
-        response_format: 'json',
-        model_id: ocrSubmittedConfig.judge_model_id,
+      const parsed = await services.llm.extractJson(parsePrompt, '', {
+        modelId: ocrSubmittedConfig.judge_model_id || null,
         temperature: 0.1,
+        defaultValue: { task_id: '' },
       });
-      
-      const parsed = parseLlmResponse(parseResult);
+
       if (parsed && parsed.task_id) {
         taskId = parsed.task_id;
         logger.info(`[contract-mgr tick] OCR task_id extracted by LLM: ${taskId}`);
@@ -215,14 +213,14 @@ async function handleOcrCheck(record, app, services) {
     
     const judgePrompt = `判断OCR任务是否完成。任务返回信息：${JSON.stringify(result).substring(0, 1000)}。返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
     
-    const judgeResult = await services.callLlm('judge_ocr_status', {
-      instruction: judgePrompt,
-      model_id: config.judge_model_id,
+    const judgeResult = await services.llm.extractJson(judgePrompt, '', {
+      modelId: config.judge_model_id || null,
       temperature: config.judge_temperature || 0.1,
-      response_format: 'json'
+      defaultValue: { status: 'pending', progress: 0 },
     });
-    
-    const parsed = parseLlmResponse(judgeResult) || { status: 'pending', progress: 0 };
+
+    const parsed = { ...judgeResult };
+    if (!parsed.status) parsed.status = 'pending';
     
     if (parsed.status === 'completed') {
       const ocrText = result.content || result.text || result.output || JSON.stringify(result);
@@ -262,15 +260,10 @@ async function handleFilter(record, app, services) {
   const filterPrompt = '去除页码、水印、乱码，保留正文';
   
   try {
-    const response = await services.callLlm('filter_text', {
-      instruction: filterPrompt,
-      ocr_text: ocrText,
-      response_format: 'text',
-      model_id: config.model_id,
+    const filteredText = await services.llm.generateText(filterPrompt, ocrText, {
+      modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
-    });
-    
-    const filteredText = response.text || ocrText;
+    }) || ocrText;
     
     await services.execute(
       `UPDATE ${CONTENT_TABLE} SET filtered_text = ?, filter_at = NOW() WHERE row_id = ?`,
@@ -302,15 +295,10 @@ async function handleExtract(record, app, services) {
   const extractPrompt = `从文本中提取元数据：合同编号、甲方、乙方、上级公司、合同金额、签订日期。返回JSON格式：{"contract_number": "...", "party_a": "...", "party_b": "...", "parent_company": "...", "contract_amount": 0, "contract_date": "YYYY-MM-DD"}`;
   
   try {
-    const response = await services.callLlm('extract_metadata', {
-      instruction: extractPrompt,
-      ocr_text: contentRows[0].filtered_text,
-      response_format: 'json',
-      model_id: config.model_id,
+    const metadata = await services.llm.extractJson(extractPrompt, contentRows[0].filtered_text, {
+      modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
     });
-    
-    const metadata = parseLlmResponse(response);
     
     if (metadata) {
       await services.execute(
@@ -351,15 +339,10 @@ async function handleSection(record, app, services) {
   const sectionPrompt = '分析章节结构，返回JSON：{"sections": [{"title": "章节标题", "level": 1}]}';
   
   try {
-    const response = await services.callLlm('analyze_sections', {
-      instruction: sectionPrompt,
-      ocr_text: contentRows[0].filtered_text,
-      response_format: 'json',
-      model_id: config.model_id,
+    const result = await services.llm.extractJson(sectionPrompt, contentRows[0].filtered_text, {
+      modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
     });
-    
-    const result = parseLlmResponse(response);
     const sections = result?.sections || [];
     
     await services.execute(
