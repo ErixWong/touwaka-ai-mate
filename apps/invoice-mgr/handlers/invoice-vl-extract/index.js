@@ -1,6 +1,5 @@
 import logger from '../../../lib/logger.js';
 import path from 'path';
-import fs from 'fs';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -40,15 +39,6 @@ function isValidInvoice(data) {
   return invNum && /^\d{20}$/.test(invNum) && total > 0;
 }
 
-function parseLLMResponse(text) {
-  if (!text) return null;
-  if (typeof text === 'object') return text;
-  try { return JSON.parse(text); } catch {}
-  const m = text.match(/\{[\s\S]*\}/);
-  if (m) { try { return JSON.parse(m[0]); } catch {} }
-  return null;
-}
-
 async function checkDuplicate(services, invoiceNumber, currentRowId) {
   const rows = await services.query(
     'SELECT row_id FROM app_invoice_mgr_rows WHERE invoice_number = ? LIMIT 1',
@@ -79,6 +69,8 @@ async function upsertRows(services, recordId, data, ocrMethod) {
     ocr_method: ocrMethod,
     ocr_raw: JSON.stringify(data),
     extraction_status: 'success',
+    text_items_count: 0,
+    keyword_count: 0,
   });
 }
 
@@ -126,26 +118,31 @@ export default {
     const filePath = file.attachment.file_path;
     const fileName = file.attachment.file_name;
     const ext = path.extname(fileName).toLowerCase();
+    const absolutePath = path.join(process.cwd(), 'data', 'attachments', filePath);
 
     logger.info(`[invoice-vl-extract] Record ${record.id}: ${fileName} (${ext})`);
 
     let images = [];
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-      const buffer = await fs.promises.readFile(filePath);
-      const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+      const { readFile } = await import('fs/promises');
+      const buffer = await readFile(absolutePath);
+      const mimeType = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      }[ext];
       images.push(`data:${mimeType};base64,${buffer.toString('base64')}`);
       logger.info(`[invoice-vl-extract] Record ${record.id}: 图片已转为dataUrl`);
     } else if (ext === '.pdf') {
       try {
-        const pdfBytes = await fs.promises.readFile(filePath);
-        const { PDFParse } = await import('pdf-parse');
-        const parser = new PDFParse({ data: pdfBytes });
-        const result = await parser.getScreenshot({ scale: 1.5 });
+        const renderResult = await services.callSkill('pdf', 'read', {
+          operation: 'render',
+          path: filePath,
+          scale: 1.5,
+        });
 
-        if (result.pages && result.pages.length > 0) {
-          images = result.pages.map(p => p.dataUrl);
-          logger.info(`[invoice-vl-extract] Record ${record.id}: PDF渲染 ${result.pages.length} 页 → VL`);
+        if (renderResult.pages && renderResult.pages.length > 0) {
+          images = renderResult.pages.map(p => p.dataUrl);
+          logger.info(`[invoice-vl-extract] Record ${record.id}: PDF渲染 ${renderResult.pages.length} 页 → VL`);
         } else {
           logger.warn(`[invoice-vl-extract] Record ${record.id}: PDF 渲染无页面`);
           return { success: false, error: 'PDF渲染失败' };
@@ -163,9 +160,9 @@ export default {
       return { success: false, error: '无图片数据' };
     }
 
-    let llmResult;
+    let data;
     try {
-      llmResult = await services.llm.extractJson(EXTRACT_PROMPT, '', {
+      data = await services.llm.extractJson(EXTRACT_PROMPT, '', {
         images: images,
         temperature: 0.1,
       });
@@ -174,10 +171,9 @@ export default {
       return { success: false, error: `VL提取失败: ${e.message}` };
     }
 
-    const data = parseLLMResponse(llmResult?.text || llmResult?.parsed || llmResult);
     if (!data) {
-      logger.error(`[invoice-vl-extract] Record ${record.id}: VL返回无法解析为JSON`);
-      return { success: false, error: 'VL提取结果无法解析' };
+      logger.error(`[invoice-vl-extract] Record ${record.id}: VL返回空`);
+      return { success: false, error: 'VL提取结果为空' };
     }
 
     if (!isValidInvoice(data)) {
