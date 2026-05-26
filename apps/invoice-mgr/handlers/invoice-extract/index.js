@@ -45,7 +45,9 @@ async function upsertRows(services, recordId, data, ocrMethod) {
     remarks: data.remarks || '',
     ocr_method: ocrMethod,
     ocr_raw: typeof data.content === 'string' ? data.content : JSON.stringify(data),
-    extraction_status: 'success',
+    extraction_status: data.extraction_status || 'success',
+    text_items_count: data.text_items_count || 0,
+    keyword_count: data.keyword_count || 0,
   });
 }
 
@@ -147,14 +149,33 @@ export default {
     }
 
     const data = result.data || result;
+    const extractionStatus = data.extraction_status || (isValidInvoice(data) ? 'success' : 'failed');
+
+    if (extractionStatus === 'no_text_layer') {
+      logger.info(`[invoice-extract] Record ${record.id}: 无文本层(扫描版) → 路由到VL`);
+      return { success: false, error: 'no_text_layer' };
+    }
 
     if (!isValidInvoice(data)) {
-      logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax}）`);
+      logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax} status=${extractionStatus}）`);
       await services.callExtension(ROWS_TABLE, 'upsert', {
         row_id: record.id,
+        invoice_number: data.invoice_number || '',
+        invoice_date: parseDate(data.invoice_date),
+        invoice_type: data.invoice_type || '',
+        seller_name: data.seller?.name || '',
+        seller_tax_id: data.seller?.taxId || '',
+        buyer_name: data.buyer?.name || '',
+        buyer_tax_id: data.buyer?.taxId || '',
+        total_amount: data.total_amount || 0,
+        total_tax: data.total_tax || 0,
+        total_with_tax: data.total_with_tax || 0,
+        item_count: data.item_count || 0,
+        page_count: data.page_count || 0,
+        remarks: data.remarks || '',
         ocr_method: 'fapiao',
+        ocr_raw: JSON.stringify({ error: extractionStatus, reason: 'fapiao did not extract valid invoice data', extraction_status: extractionStatus }),
         extraction_status: 'failed',
-        ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'fapiao did not extract valid invoice data' }),
       });
       return { success: false, error: 'not_invoice' };
     }
@@ -182,7 +203,7 @@ export default {
     await upsertRows(services, record.id, data, 'fapiao');
     const itemCount = await insertItems(services, record.id, data);
 
-    logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品`);
+    logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品 (status=${extractionStatus})`);
     return {
       success: true,
       data: {
