@@ -75,6 +75,7 @@ function onBack() {
   showDetail.value = false
   selectedRowId.value = ''
 }
+
 </script>
 
 <template>

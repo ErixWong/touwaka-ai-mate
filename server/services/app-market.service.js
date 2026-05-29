@@ -493,7 +493,13 @@ class AppMarketService {
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
       
-      // 10. 注册到 app_clock_registry
+      // 10. 安装 handlers（处理脚本）
+      const { handlerIdMap } = await this.installHandlers(appId, manifest);
+      
+      // 11. 安装 states（状态机），传入 handlerIdMap
+      await this.installStates(appId, manifest, handlerIdMap);
+      
+      // 12. 注册到 app_clock_registry
       await this.registerToClockRegistry(appId);
       
       logger.info(`App ${appId} installed successfully`);
@@ -626,7 +632,7 @@ class AppMarketService {
     logger.info(`App ${appId} metadata restored after failed update`);
   }
 
-  // ==================== 废弃方法（保留以兼容旧数据） ====================
+  // ==================== 安装 States（状态机）====================
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
     

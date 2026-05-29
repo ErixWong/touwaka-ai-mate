@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 import path from 'path';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
@@ -115,12 +115,14 @@ export default {
       return { success: false, error: '未找到文件' };
     }
 
-    const filePath = file.attachment.file_path;
+    // 附件路径是相对于 data/attachments/ 的，需要加上前缀
+    // 统一使用正斜杠，避免路径问题
+    const filePath = 'attachments/' + file.attachment.file_path.replace(/\\/g, '/');
     const fileName = file.attachment.file_name;
     const ext = path.extname(fileName).toLowerCase();
-    const absolutePath = path.join(process.cwd(), 'data', 'attachments', filePath);
+    const absolutePath = path.join(process.cwd(), 'data', filePath);
 
-    logger.info(`[invoice-vl-extract] Record ${record.id}: ${fileName} (${ext})`);
+    logger.info(`[invoice-vl-extract] Record ${record.id}: ${fileName} (${ext}), path=${filePath}`);
 
     let images = [];
 

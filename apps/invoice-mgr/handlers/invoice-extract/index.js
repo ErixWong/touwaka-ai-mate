@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 import path from 'path';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
@@ -121,10 +121,12 @@ export default {
     }
 
     const fileName = file.attachment.file_name;
-    const filePath = file.attachment.file_path;
+    // 附件路径是相对于 data/attachments/ 的，需要加上前缀
+    // 统一使用正斜杠，避免路径问题
+    const filePath = 'attachments/' + file.attachment.file_path.replace(/\\/g, '/');
     const ext = path.extname(fileName).toLowerCase();
 
-    logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext})`);
+    logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext}), path=${filePath}`);
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
       logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到OCR`);
@@ -138,7 +140,7 @@ export default {
 
     let result;
     try {
-      result = await services.callSkill('fapiao', 'extract', { file_path: filePath });
+      result = await services.callSkill('fapiao', 'extract', { path: filePath });
     } catch (e) {
       logger.warn(`[invoice-extract] Record ${record.id}: fapiao异常 → ${e.message}`);
       return { success: false, error: `fapiao异常: ${e.message}` };
@@ -154,6 +156,12 @@ export default {
     if (extractionStatus === 'no_text_layer') {
       logger.info(`[invoice-extract] Record ${record.id}: 无文本层(扫描版) → 路由到VL`);
       return { success: false, error: 'no_text_layer' };
+    }
+
+    // 处理 partial 状态（发票号码为空或总金额为0）
+    if (extractionStatus === 'partial') {
+      logger.warn(`[invoice-extract] Record ${record.id}: 发票数据不完整（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax}）→ 路由到VL`);
+      return { success: false, error: 'partial' };
     }
 
     if (!isValidInvoice(data)) {

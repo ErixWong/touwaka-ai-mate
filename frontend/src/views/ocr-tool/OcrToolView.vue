@@ -58,18 +58,15 @@
       </div>
     </Teleport>
 
-    <el-dialog
-      v-model="showFullscreen"
-      width="90%"
-      :show-close="false"
-      :close-on-click-modal="true"
-      class="fullscreen-preview-dialog"
-      destroy-on-close
-    >
-      <div class="fullscreen-content">
-        <img :src="previewUrl" alt="preview" />
+<!-- 全屏预览图片 -->
+    <Teleport to="body">
+      <div v-if="showFullscreen && previewUrl" class="fullscreen-overlay" @click="showFullscreen = false">
+        <div class="fullscreen-content" @click.stop>
+          <img :src="previewUrl" alt="preview" />
+          <el-icon class="close-btn" @click="showFullscreen = false"><Close /></el-icon>
+        </div>
       </div>
-    </el-dialog>
+    </Teleport>
 
     <section class="hero">
       <div class="hero-left">
@@ -147,6 +144,7 @@
             <span>识别结果</span>
             <span v-if="elapsedTime > 0" class="elapsed-time">用时 {{ elapsedTime }} 秒</span>
             <el-button v-if="result" link type="primary" size="small" @click="copyResult">复制文本</el-button>
+            <el-button v-if="showCopyAsExcel && result" link type="primary" size="small" @click="copyAsExcel">复制表格</el-button>
           </div>
         </template>
 
@@ -163,7 +161,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { marked } from 'marked'
 import { ElMessage } from 'element-plus'
-import { Upload, WarningFilled, InfoFilled, Setting, Loading, Camera, ZoomIn, Document } from '@element-plus/icons-vue'
+import { Upload, WarningFilled, InfoFilled, Setting, Loading, Camera, ZoomIn, Close, Document } from '@element-plus/icons-vue'
 import { analyzeOcrImage, getOcrStatus, getOcrPromptPresets, type OcrPromptPreset } from '@/api/ocr-tool'
 import { getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import { modelApi } from '@/api/services'
@@ -345,6 +343,36 @@ async function handlePasteFromClipboard() {
   setTimeout(() => document.removeEventListener('paste', pasteHandler), 10000)
 }
 
+// 处理粘贴事件，支持 Ctrl+V 粘贴图片
+async function handlePaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault()
+      const file = item.getAsFile()
+      if (!file) return
+
+      if (file.size > MAX_IMAGE_SIZE) {
+        ElMessage.error('图片大小不能超过 5MB，请压缩后重试')
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = () => {
+        previewUrl.value = String(reader.result || '')
+        result.value = ''
+        error.value = ''
+        status.value = 'idle'
+        taskId.value = ''
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+  }
+}
+
 async function submit() {
   if (!previewUrl.value) return
   isSubmitting.value = true
@@ -472,6 +500,7 @@ async function copyAsExcel() {
 onBeforeUnmount(() => {
   stopPolling()
   stopElapsedTimer()
+  document.removeEventListener('paste', handlePaste)
 })
 
 async function openConfigDialog() {
@@ -514,6 +543,9 @@ onMounted(async () => {
   } catch (err) {
     console.error('Failed to load prompt presets:', err)
   }
+
+  // 监听粘贴事件，支持 Ctrl+V 粘贴图片
+  document.addEventListener('paste', handlePaste)
 })
 
 watch(showFullscreen, (val) => {
@@ -1137,6 +1169,13 @@ watch(showFullscreen, (val) => {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.fullscreen-content img {
+  max-height: 80vh;
+  object-fit: contain;
+}
+</style>
 }
 
 .fullscreen-content img {
