@@ -58,6 +58,19 @@
       </div>
     </Teleport>
 
+    <el-dialog
+      v-model="showFullscreen"
+      width="90%"
+      :show-close="false"
+      :close-on-click-modal="true"
+      class="fullscreen-preview-dialog"
+      destroy-on-close
+    >
+      <div class="fullscreen-content">
+        <img :src="previewUrl" alt="preview" />
+      </div>
+    </el-dialog>
+
     <section class="hero">
       <div class="hero-left">
         <p class="eyebrow">OCR TOOL</p>
@@ -81,17 +94,30 @@
           </div>
         </template>
 
-        <label class="dropzone" :class="{ filled: !!previewUrl }">
-          <input type="file" accept="image/*" @change="handleFileChange" />
-          <div v-if="!previewUrl" class="placeholder">
-            <el-icon class="upload-icon"><Upload /></el-icon>
-            <div>
-              <strong>选择图片</strong>
-              <p>或拖拽到此处</p>
+        <div class="dropzone-wrapper">
+          <label class="dropzone" :class="{ filled: !!previewUrl }">
+            <input type="file" accept="image/*" @change="handleFileChange" />
+            <div v-if="!previewUrl" class="placeholder">
+              <el-icon class="upload-icon"><Upload /></el-icon>
+              <div>
+                <strong>选择图片</strong>
+                <p>或拖拽到此处</p>
+                <p class="paste-hint">或点击按钮从剪贴板粘贴</p>
+              </div>
             </div>
+            <img v-else :src="previewUrl" alt="preview" />
+          </label>
+          <div class="dropzone-actions">
+            <el-button type="info" plain size="small" @click="handlePasteFromClipboard">
+              <el-icon><Document /></el-icon>
+              剪贴板粘贴
+            </el-button>
+            <el-button v-if="previewUrl" size="small" @click="showFullscreen = true">
+              <el-icon><ZoomIn /></el-icon>
+              放大
+            </el-button>
           </div>
-          <img v-else :src="previewUrl" alt="preview" />
-        </label>
+        </div>
 
         <div class="field">
           <label>输出格式</label>
@@ -134,10 +160,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { marked } from 'marked'
 import { ElMessage } from 'element-plus'
-import { Upload, WarningFilled, InfoFilled, Setting, Loading, Camera } from '@element-plus/icons-vue'
+import { Upload, WarningFilled, InfoFilled, Setting, Loading, Camera, ZoomIn, Document } from '@element-plus/icons-vue'
 import { analyzeOcrImage, getOcrStatus, getOcrPromptPresets, type OcrPromptPreset } from '@/api/ocr-tool'
 import { getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import { modelApi } from '@/api/services'
@@ -166,6 +192,8 @@ const pollingCount = ref(0)
 const elapsedTime = ref(0)
 const showToast = ref(false)
 const showConfigDialog = ref(false)
+const showFullscreen = ref(false)
+let defaultPresetId = 'text'
 const multimodalModels = ref<{ id: string; name: string }[]>([])
 const configData = ref({
   vlm_model_id: '',
@@ -237,6 +265,21 @@ const renderedResult = computed(() => {
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 
+function loadImageFile(file: File) {
+  const reader = new FileReader()
+  reader.onerror = () => {
+    ElMessage.error('图片读取失败，请重试')
+  }
+  reader.onload = () => {
+    previewUrl.value = String(reader.result || '')
+    result.value = ''
+    error.value = ''
+    status.value = 'idle'
+    taskId.value = ''
+  }
+  reader.readAsDataURL(file)
+}
+
 function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -247,21 +290,59 @@ function handleFileChange(event: Event) {
     return
   }
 
-  // Check file size
   if (file.size > MAX_IMAGE_SIZE) {
     ElMessage.error('图片大小不能超过 5MB，请压缩后重试')
     return
   }
 
-  const reader = new FileReader()
-  reader.onload = () => {
-    previewUrl.value = String(reader.result || '')
-    result.value = ''
-    error.value = ''
-    status.value = 'idle'
-    taskId.value = ''
+  loadImageFile(file)
+}
+
+async function handlePasteFromClipboard() {
+  if (navigator.clipboard && navigator.clipboard.read) {
+    try {
+      const clipboardItems = await navigator.clipboard.read()
+      for (const item of clipboardItems) {
+        const imageType = item.types.find(t => t.startsWith('image/'))
+        if (imageType) {
+          const blob = await item.getType(imageType)
+          if (blob.size > MAX_IMAGE_SIZE) {
+            ElMessage.error('图片大小不能超过 5MB，请压缩后重试')
+            return
+          }
+          const file = new File([blob], 'clipboard-image.png', { type: imageType })
+          loadImageFile(file)
+          return
+        }
+      }
+      ElMessage.warning('剪贴板中没有图片')
+      return
+    } catch {
+      // Clipboard API 失败，继续尝试 paste 事件
+    }
   }
-  reader.readAsDataURL(file)
+
+  ElMessage.info('请在页面任意位置按 Ctrl+V 粘贴图片')
+  const pasteHandler = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (!file) return
+        if (file.size > MAX_IMAGE_SIZE) {
+          ElMessage.error('图片大小不能超过 5MB，请压缩后重试')
+          return
+        }
+        loadImageFile(file)
+        document.removeEventListener('paste', pasteHandler)
+        return
+      }
+    }
+  }
+  document.addEventListener('paste', pasteHandler)
+  setTimeout(() => document.removeEventListener('paste', pasteHandler), 10000)
 }
 
 async function submit() {
@@ -342,45 +423,49 @@ function reset() {
   status.value = 'idle'
   result.value = ''
   error.value = ''
-  selectedPresetId.value = 'markdown'
+  selectedPresetId.value = defaultPresetId
   stopPolling()
 }
 
-async function copyResult() {
-  try {
-    await navigator.clipboard.writeText(result.value)
-  } catch {
-    // 复制可能成功但抛出异常，忽略错误
+function copyToClipboard(text: string): boolean {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => true).catch(() => false)
+    return true
   }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const success = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  return success
+}
+
+async function copyResult() {
+  copyToClipboard(result.value)
   showCopySuccess()
 }
 
 async function copyAsExcel() {
-  try {
-    // 去掉 VLM 返回的代码块标记 ```markdown 和 ```
-    let tabSeparated = result.value
-    tabSeparated = tabSeparated.replace(/^```markdown\s*/g, '').replace(/```$/g, '').trim()
-    
-    // 把 Markdown 表格（|---| 格式）转换为 Tab 分割的格式
-    const lines = tabSeparated.split('\n')
-    const processedLines = lines.map(line => {
-      // 只处理包含 | 的行（表格行）
-      if (line.includes('|')) {
-        // 去掉首尾的 |，然后把中间的 | 替换为 Tab
-        let content = line.trim()
-        if (content.startsWith('|')) content = content.slice(1)
-        if (content.endsWith('|')) content = content.slice(0, -1)
-        // 把 | 替换为 Tab
-        return content.split('|').map(s => s.trim()).join('\t')
-      }
-      return line
-    })
-    
-    tabSeparated = processedLines.join('\n')
-    await navigator.clipboard.writeText(tabSeparated)
-  } catch {
-    // 复制可能成功但抛出异常，忽略错误
-  }
+  let tabSeparated = result.value
+  tabSeparated = tabSeparated.replace(/^```markdown\s*/g, '').replace(/```$/g, '').trim()
+  
+  const lines = tabSeparated.split('\n')
+  const processedLines = lines.map(line => {
+    if (line.includes('|')) {
+      let content = line.trim()
+      if (content.startsWith('|')) content = content.slice(1)
+      if (content.endsWith('|')) content = content.slice(0, -1)
+      return content.split('|').map(s => s.trim()).join('\t')
+    }
+    return line
+  })
+  
+  tabSeparated = processedLines.join('\n')
+  copyToClipboard(tabSeparated)
   showCopySuccess()
 }
 
@@ -424,10 +509,15 @@ onMounted(async () => {
   try {
     const res = await getOcrPromptPresets()
     promptPresets.value = res.presets || []
-    selectedPresetId.value = res.defaultId || 'markdown'
+    defaultPresetId = res.defaultId || promptPresets.value[0]?.id || 'text'
+    selectedPresetId.value = defaultPresetId
   } catch (err) {
     console.error('Failed to load prompt presets:', err)
   }
+})
+
+watch(showFullscreen, (val) => {
+  document.body.style.overflow = val ? 'hidden' : ''
 })
 </script>
 
@@ -603,6 +693,18 @@ onMounted(async () => {
   background: #fff;
 }
 
+.dropzone-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dropzone-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .upload-icon {
   font-size: 48px;
   color: #909399;
@@ -624,6 +726,12 @@ onMounted(async () => {
   margin: 0;
   font-size: 13px;
   color: #909399;
+}
+
+.placeholder .paste-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #c0c4cc;
 }
 
 .field {
@@ -1017,5 +1125,23 @@ onMounted(async () => {
   color: #409eff;
   margin: 0;
   letter-spacing: 4px;
+}
+
+/* 全屏预览 */
+.fullscreen-preview-dialog :deep(.el-dialog__header) {
+  display: none;
+}
+
+.fullscreen-preview-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.fullscreen-content img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
 }
 </style>
