@@ -2,7 +2,7 @@
   <div class="repeating-field">
     <div class="repeating-header">
       <span class="repeating-label">{{ field.label }}</span>
-      <button v-if="!readonly" class="btn-add-row" @click="addRow">+ {{ t('apps.addRow') }}</button>
+      <el-button v-if="!readonly" size="small" @click="addRow">+ {{ t('apps.addRow') }}</el-button>
     </div>
 
     <div v-if="rows.length === 0" class="repeating-empty">
@@ -31,7 +31,7 @@
               />
             </td>
             <td v-if="!readonly" class="td-action">
-              <button class="btn-remove-row" @click="removeRow(rowIndex)" :title="t('apps.removeRow')">×</button>
+              <el-button size="small" type="danger" @click="removeRow(rowIndex)" :title="t('apps.removeRow')">×</el-button>
             </td>
           </tr>
         </tbody>

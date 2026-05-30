@@ -18,6 +18,8 @@
  * - mammoth: 文档读取和转换
  * - adm-zip: ZIP 操作
  * - xml2js: XML 解析
+ * 
+ * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
  */
 
 const fs = require('fs');
@@ -50,82 +52,14 @@ function getXml2js() {
   return xml2js;
 }
 
-// 用户角色检查
-const IS_ADMIN = process.env.IS_ADMIN === 'true';
-const IS_SKILL_CREATOR = process.env.IS_SKILL_CREATOR === 'true';
-
-// 允许的基础路径
-const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
-const USER_ID = process.env.USER_ID || 'default';
-const USER_WORK_DIR = process.env.WORKING_DIRECTORY
-  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
-  : path.join(DATA_BASE_PATH, 'work', USER_ID);
-
-// 根据用户角色设置允许的路径
-let ALLOWED_BASE_PATHS;
-if (IS_ADMIN) {
-  // 管理员：可以访问整个 data/ 目录
-  ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
-} else if (IS_SKILL_CREATOR) {
-  // 技能创建者：可以访问 skills/ 和自己的工作目录
-  ALLOWED_BASE_PATHS = [
-    path.join(DATA_BASE_PATH, 'skills'),
-    path.join(DATA_BASE_PATH, 'work', USER_ID)
-  ];
-} else {
-  // 普通用户：只能访问自己的工作目录
-  ALLOWED_BASE_PATHS = [USER_WORK_DIR];
-}
-
 /**
- * 检查路径是否被允许
- */
-function isPathAllowed(targetPath) {
-  let resolved = path.resolve(targetPath);
-  
-  try {
-    if (fs.existsSync(resolved)) {
-      resolved = fs.realpathSync(resolved);
-    }
-  } catch (e) {}
-  
-  return ALLOWED_BASE_PATHS.some(basePath => {
-    let resolvedBase = path.resolve(basePath);
-    try {
-      if (fs.existsSync(resolvedBase)) {
-        resolvedBase = fs.realpathSync(resolvedBase);
-      }
-    } catch (e) {}
-    return resolved.startsWith(resolvedBase);
-  });
-}
-
-/**
- * 解析路径（支持相对路径）
+ * Resolve path - VM 已设置 cwd，直接使用相对路径即可（与 FS 技能一致）
  */
 function resolvePath(relativePath) {
   if (path.isAbsolute(relativePath)) {
-    if (!isPathAllowed(relativePath)) {
-      throw new Error(`Path not allowed: ${relativePath}`);
-    }
-    return relativePath;
+    throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
-  
-  for (const basePath of ALLOWED_BASE_PATHS) {
-    const resolved = path.join(basePath, relativePath);
-    if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
-      if (!isPathAllowed(resolved)) {
-        throw new Error(`Path not allowed: ${resolved}`);
-      }
-      return resolved;
-    }
-  }
-  
-  const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
-  if (!isPathAllowed(defaultPath)) {
-    throw new Error(`Path not allowed: ${defaultPath}`);
-  }
-  return defaultPath;
+  return relativePath;
 }
 
 /**

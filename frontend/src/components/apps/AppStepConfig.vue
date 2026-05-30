@@ -24,7 +24,6 @@
                     :target="getStepConfig(step.name).mcp!"
                     :mcp-servers="mcpServers"
                     :handler-outputs="getHandlerOutputs(step)"
-                    :hide-params-mapping="getStepConfig(step.name).mcp?.hide_params_mapping"
                     @update:target="getStepConfig(step.name).mcp = $event"
                     @server-change="onServerChange(step.name, $event)"
                   />

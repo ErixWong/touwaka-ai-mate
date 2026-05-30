@@ -72,6 +72,7 @@ import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
 import ContractV2Controller from './controllers/contract-v2.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
+import OcrToolController from './controllers/ocr-tool.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
@@ -106,6 +107,7 @@ import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
 import contractV2Routes from './routes/contract-v2.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
+import ocrToolRoutes from './routes/ocr-tool.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
 class ApiServer {
@@ -236,7 +238,6 @@ class ApiServer {
       batchSize: appConfig.batch_size,
       globalConcurrency: appConfig.max_concurrency,
       residentSkillManager: this.residentSkillManager,
-      llmService: new InternalLLMService(this.db),
       skillLoader: new SkillLoader(this.db),
     });
     // 不在这里启动，等 server listen 后统一启动
@@ -273,6 +274,7 @@ class ApiServer {
       appMarket: new AppMarketController(this.db),
       contractV2: new ContractV2Controller(this.db),
       invoice: new InvoiceController(this.db),
+      ocrTool: new OcrToolController(this.db),
     };
   }
 
@@ -323,6 +325,12 @@ class ApiServer {
 
     // 统一响应格式
     this.app.use(responseMiddleware());
+
+    // 将控制器注入到 ctx.state 中，供路由使用
+    this.app.use(async (ctx, next) => {
+      ctx.state.controllers = this.controllers;
+      await next();
+    });
   }
 
   /**
@@ -503,6 +511,11 @@ class ApiServer {
     this.app.use(invoiceRouter.routes());
     this.app.use(invoiceRouter.allowedMethods());
     logger.info('Invoice routes registered (/api/invoice/*)');
+
+    const ocrToolRouter = ocrToolRoutes;
+    this.app.use(ocrToolRouter.routes());
+    this.app.use(ocrToolRouter.allowedMethods());
+    logger.info('OCR Tool routes registered (/api/ocr/*)');
 
     // 前端静态文件服务（生产环境）
     // 检查前端构建目录是否存在

@@ -327,7 +327,7 @@ const isServerFormValid = computed(() => {
 })
 
 const isStdioMode = computed(() => serverForm.transport_type === 'stdio')
-const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse' || serverForm.transport_type === 'statelessHttp')
+const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse' || serverForm.transport_type === ('statelessHttp' as any))
 
 // Server 删除对话框
 const showDeleteServerDialog = ref(false)

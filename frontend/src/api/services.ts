@@ -964,6 +964,7 @@ export interface McpCredential {
   id: string
   server_id: string
   env_overrides: string
+  credentials?: Record<string, string>
   created_at: string
   updated_at: string
 }
@@ -974,6 +975,7 @@ export interface McpUserCredential {
   server_id: string
   user_id: string
   env_overrides: string
+  credentials?: Record<string, string>
   created_at: string
   updated_at: string
 }

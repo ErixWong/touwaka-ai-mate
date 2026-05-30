@@ -91,25 +91,10 @@ async function filterSingleChunk(services, filterPrompt, filterConfig, chunkInpu
     contextNote = `\n\n[前文上下文摘要]\n${JSON.stringify(contextSummary, null, 2)}\n请参考以上上下文保持术语和风格一致。`;
   }
 
-  const response = await services.callLlm('filter_text_chunked', {
-    instruction: promptBase,
-    ocr_text: chunkInput + contextNote,
-    response_format: 'json',
-    model_id: filterConfig.model_id,
+  const parsed = await services.llm.extractJson(promptBase, chunkInput + contextNote, {
+    modelId: filterConfig.model_id || null,
     temperature: filterConfig.temperature || 0.3,
   });
-
-  let parsed;
-  if (response.parsed && typeof response.parsed === 'object') {
-    parsed = response.parsed;
-  } else {
-    try {
-      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
-      parsed = null;
-    }
-  }
 
   if (!parsed || typeof parsed.processed_part !== 'string') {
     throw new Error('LLM返回的JSON格式无效');
@@ -218,15 +203,10 @@ export default {
     if (ocrText.length <= CHUNK_MAX_LENGTH) {
       try {
         logger.info(`[text-filter] Record ${record.id}: Calling LLM for single-pass filtering`);
-        const response = await services.callLlm('filter_text', {
-          instruction: filterPrompt,
-          ocr_text: ocrText,
-          response_format: 'text',
-          model_id: filterConfig.model_id,
+        const filteredText = await services.llm.generateText(filterPrompt, ocrText, {
+          modelId: filterConfig.model_id || null,
           temperature: filterConfig.temperature || 0.3,
-        });
-
-        const filteredText = response.text || ocrText;
+        }) || ocrText;
         logger.info(`[text-filter] Record ${record.id}: Filter complete, result length=${filteredText.length}, preview="${filteredText.substring(0, 200).replace(/\n/g, '\\n')}"`);
 
         await upsertFilteredText(services, app, record.id, filteredText);

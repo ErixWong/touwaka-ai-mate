@@ -52,18 +52,18 @@
     <div class="header-right">
       <!-- 语言切换 -->
       <div class="lang-selector">
-        <select v-model="currentLocale" @change="handleLocaleChange" class="lang-select">
-          <option value="zh-CN">中文</option>
-          <option value="en-US">English</option>
-        </select>
+        <el-select v-model="currentLocale" @change="handleLocaleChange" size="small" style="width: 100px">
+          <el-option value="zh-CN" label="中文" />
+          <el-option value="en-US" label="English" />
+        </el-select>
       </div>
       
       <div class="user-menu" ref="menuRef">
-        <button class="btn-user" @click="showUserMenu = !showUserMenu">
+        <el-button class="btn-user" @click="showUserMenu = !showUserMenu">
           <span class="user-avatar">{{ userInitial }}</span>
           <span class="user-name">{{ userStore.user?.nickname }}</span>
           <span class="arrow">▼</span>
-        </button>
+        </el-button>
         <div class="user-dropdown" v-if="showUserMenu">
           <div class="dropdown-header">
             <div class="dropdown-username">{{ userStore.user?.nickname }}</div>
@@ -74,10 +74,10 @@
             <span class="item-icon">👤</span>
             <span>{{ $t('nav.personal') }}</span>
           </router-link>
-          <button class="dropdown-item" @click="handleLogout">
+          <el-button class="dropdown-item" text @click="handleLogout">
             <span class="item-icon">🚪</span>
             <span>{{ $t('nav.logout') }}</span>
-          </button>
+          </el-button>
         </div>
       </div>
     </div>

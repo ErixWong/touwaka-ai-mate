@@ -102,7 +102,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   lastPrompt: '',
-  lastResult: () => {},
+  lastResult: () => ({}),
   filteredText: ''
 })
 

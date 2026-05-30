@@ -4,6 +4,8 @@
  * ZIP file operations for creating and extracting archives.
  * Uses adm-zip library (no child_process required).
  * 
+ * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
+ * 
  * @module compression-skill
  */
 
@@ -18,44 +20,17 @@ try {
   // Will handle in execute function
 }
 
-// Allowed base directories
-const ALLOWED_BASE_PATHS = [
-  process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data'),
-];
-
 // Maximum file size for compression (500MB)
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
 /**
- * Check if path is within allowed directories
- */
-function isPathAllowed(targetPath) {
-  const resolved = path.resolve(targetPath);
-  return ALLOWED_BASE_PATHS.some(basePath => {
-    const resolvedBase = path.resolve(basePath);
-    return resolved.startsWith(resolvedBase);
-  });
-}
-
-/**
- * Resolve path relative to allowed base directories
+ * Resolve path - VM 已设置 cwd，直接使用相对路径即可（与 FS 技能一致）
  */
 function resolvePath(relativePath) {
   if (path.isAbsolute(relativePath)) {
-    if (!isPathAllowed(relativePath)) {
-      throw new Error(`Path not allowed: ${relativePath}`);
-    }
-    return relativePath;
+    throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
-  
-  for (const basePath of ALLOWED_BASE_PATHS) {
-    const resolved = path.join(basePath, relativePath);
-    if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
-      return resolved;
-    }
-  }
-  
-  return path.join(ALLOWED_BASE_PATHS[0], relativePath);
+  return relativePath;
 }
 
 /**

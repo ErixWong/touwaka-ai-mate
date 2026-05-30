@@ -1,11 +1,10 @@
 <template>
-  <input
-    type="number"
-    :value="modelValue"
-    :readonly="readonly"
-    class="field-input"
+  <el-input-number
+    :model-value="modelValue"
+    :disabled="readonly"
     :placeholder="field.label"
-    @input="$emit('update:model-value', ($event.target as HTMLInputElement).value ? Number(($event.target as HTMLInputElement).value) : null)"
+    controls-position="right"
+    @update:model-value="$emit('update:model-value', $event)"
   />
 </template>
 

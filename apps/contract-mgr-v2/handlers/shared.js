@@ -92,15 +92,16 @@ export function getPrompt(app, promptKey, fallback = null) {
 }
 
 export function buildLlmParams(stepConfig) {
-  const params = {
-    model_id: stepConfig.model_id || null,
+  return {
+    modelId: stepConfig.model_id || null,
     temperature: stepConfig.temperature ?? 0.3,
   };
-  if (stepConfig.enable_thinking) {
-    params.enable_thinking = true;
-    if (stepConfig.thinking_budget) {
-      params.thinking_budget = stepConfig.thinking_budget;
-    }
-  }
-  return params;
+}
+
+export async function callLlmJson(services, systemPrompt, userPrompt, stepConfig = {}) {
+  return await services.llm.extractJson(systemPrompt, userPrompt, {
+    modelId: stepConfig.model_id || null,
+    temperature: stepConfig.temperature ?? 0.3,
+    defaultValue: null,
+  });
 }

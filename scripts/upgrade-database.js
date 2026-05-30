@@ -875,15 +875,17 @@ const MIGRATIONS = [
     name: 'app_market system_settings seed',
     check: async (conn) => {
       const [rows] = await conn.execute(
-        "SELECT COUNT(*) as cnt FROM system_settings WHERE setting_key = 'app_market.registry_url'"
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'app_market.registry_url'"
       );
-      return rows[0].cnt > 0;
+      if (rows.length === 0) return false;
+      const correctUrl = 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps';
+      return rows[0].setting_value === correctUrl;
     },
     migrate: async (conn) => {
       await conn.execute(`
         INSERT INTO system_settings (setting_key, setting_value, value_type, description) VALUES
-        ('app_market.registry_url', 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps', 'string', 'App Market Registry URL'),
-        ('app_market.registry_branch', 'main', 'string', 'Registry 分支'),
+        ('app_market.registry_url', 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps', 'string', 'App Market Registry URL'),
+        ('app_market.registry_branch', 'master', 'string', 'Registry 分支'),
         ('app_market.auto_check_updates', 'true', 'boolean', '是否自动检查更新'),
         ('app_market.check_interval_hours', '24', 'number', '自动检查间隔（小时）'),
         ('app_market.offline_mode', 'false', 'boolean', '离线模式'),
@@ -1044,7 +1046,10 @@ const MIGRATIONS = [
   // Issue #654: 章节结构存储
   {
     name: 'app_contract_mgr_content add sections column',
-    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_content', 'sections'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_content', 'sections');
+    },
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE app_contract_mgr_content
@@ -1058,7 +1063,10 @@ const MIGRATIONS = [
   // Issue #665: 合同管理乙方字段持久化
   {
     name: 'app_contract_mgr_rows add party_b column',
-    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_rows', 'party_b'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_rows')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_rows', 'party_b');
+    },
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE app_contract_mgr_rows
@@ -1177,7 +1185,10 @@ const MIGRATIONS = [
   // Issue #693: content 表新增状态字段，移除 mini_app_rows 依赖
   {
     name: 'app_contract_mgr_v2_content add process_step',
-    check: async (conn) => await hasColumn(conn, 'app_contract_mgr_v2_content', 'process_step'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_v2_content', 'process_step');
+    },
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE app_contract_mgr_v2_content
@@ -1240,6 +1251,7 @@ const MIGRATIONS = [
   {
     name: 'app_contract_mgr_v2_content extend ocr_task_id',
     check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
       const [rows] = await conn.execute(`
         SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() 
@@ -1271,6 +1283,23 @@ const MIGRATIONS = [
         UPDATE mini_apps SET component = 'ContractV2View' WHERE id = 'contract-mgr-v2'
       `);
       console.log('  ✓ Set contract-mgr-v2 component to ContractV2View');
+    }
+  },
+
+  // 补录 ocr-tool 的 component 字段（安装时未写入）
+  {
+    name: 'mini_apps ocr-tool set component',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT component FROM mini_apps WHERE id = 'ocr-tool'
+      `);
+      return rows.length > 0 && rows[0].component === 'OcrToolView';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        UPDATE mini_apps SET component = 'OcrToolView' WHERE id = 'ocr-tool'
+      `);
+      console.log('  ✓ Set ocr-tool component to OcrToolView');
     }
   },
 

@@ -81,9 +81,9 @@ const currentToolParams = computed(() => {
   const required = tool.input_schema.required || []
   return Object.entries(tool.input_schema.properties).map(([name, schema]) => ({
     name,
-    type: (schema as Record<string, string>).type || 'string',
+    type: schema.type || 'string',
     required: required.includes(name),
-    description: (schema as Record<string, string>).description,
+    description: schema.description,
   }))
 })
 

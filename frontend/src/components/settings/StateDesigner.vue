@@ -40,16 +40,16 @@
           </span>
         </div>
         <div class="state-card-actions">
-          <button v-if="index > 0" class="btn-tiny" @click.stop="moveState(index, -1)">↑</button>
-          <button v-if="index < states.length - 1" class="btn-tiny" @click.stop="moveState(index, 1)">↓</button>
-          <button class="btn-tiny btn-danger" @click.stop="removeState(index)">×</button>
+          <el-button v-if="index > 0" size="small" @click.stop="moveState(index, -1)">↑</el-button>
+          <el-button v-if="index < states.length - 1" size="small" @click.stop="moveState(index, 1)">↓</el-button>
+          <el-button size="small" type="danger" @click.stop="removeState(index)">×</el-button>
         </div>
       </div>
     </div>
 
-    <button class="btn-secondary" @click="addState">
+    <el-button @click="addState">
       + {{ $t('settings.appManagement.stateDesigner.addState', '添加状态') }}
-    </button>
+    </el-button>
 
     <!-- 流转可视化 -->
     <div v-if="states.length > 1" class="state-flow">
@@ -70,49 +70,44 @@
       <div class="form-row">
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.stateName', '状态标识') }} *</label>
-          <input v-model="selectedState.name" type="text" class="form-input" placeholder="pending_ocr" />
+          <el-input v-model="selectedState.name" placeholder="pending_ocr" />
           <p class="form-hint">{{ $t('settings.appManagement.stateDesigner.stateNameHint', '英文标识，用于系统内部') }}</p>
         </div>
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.stateLabel', '显示名称') }} *</label>
-          <input v-model="selectedState.label" type="text" class="form-input" :placeholder="$t('settings.appManagement.stateDesigner.stateLabelPlaceholder', '待OCR')" />
+          <el-input v-model="selectedState.label" :placeholder="$t('settings.appManagement.stateDesigner.stateLabelPlaceholder', '待OCR')" />
         </div>
       </div>
       <div class="form-item-group">
-        <label class="form-label checkbox">
-          <input v-model="selectedState.is_initial" type="checkbox" @change="handleInitialChange" />
+        <el-checkbox v-model="selectedState.is_initial" @change="handleInitialChange">
           {{ $t('settings.appManagement.stateDesigner.initial', '初始状态') }}
-        </label>
-        <label class="form-label checkbox">
-          <input v-model="selectedState.is_terminal" type="checkbox" />
+        </el-checkbox>
+        <el-checkbox v-model="selectedState.is_terminal">
           {{ $t('settings.appManagement.stateDesigner.terminal', '终态') }}
-        </label>
-        <label class="form-label checkbox">
-          <input v-model="selectedState.is_error" type="checkbox" />
+        </el-checkbox>
+        <el-checkbox v-model="selectedState.is_error">
           {{ $t('settings.appManagement.stateDesigner.error', '错误状态') }}
-        </label>
+        </el-checkbox>
       </div>
       <div class="form-item">
         <label class="form-label">{{ $t('settings.appManagement.stateDesigner.handler', '处理脚本') }}</label>
-        <select v-model="selectedState.handler_id" class="form-input">
-          <option value="">{{ $t('settings.appManagement.stateDesigner.noHandler', '无（手动处理）') }}</option>
-          <option v-for="h in handlers" :key="h.id" :value="h.id">{{ h.name }}</option>
-        </select>
+        <el-select v-model="selectedState.handler_id" clearable>
+          <el-option value="" :label="$t('settings.appManagement.stateDesigner.noHandler', '无（手动处理）')" />
+          <el-option v-for="h in handlers" :key="h.id" :value="h.id" :label="h.name" />
+        </el-select>
       </div>
       <div class="form-row">
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.successNext', '成功后转到') }}</label>
-          <select v-model="selectedState.success_next_state" class="form-input">
-            <option value="">-</option>
-            <option v-for="s in otherStates(selectedState.name)" :key="s.name" :value="s.name">{{ s.label || s.name }}</option>
-          </select>
+          <el-select v-model="selectedState.success_next_state" clearable>
+            <el-option v-for="s in otherStates(selectedState.name)" :key="s.name" :value="s.name" :label="s.label || s.name" />
+          </el-select>
         </div>
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.failureNext', '失败后转到') }}</label>
-          <select v-model="selectedState.failure_next_state" class="form-input">
-            <option value="">-</option>
-            <option v-for="s in otherStates(selectedState.name)" :key="s.name" :value="s.name">{{ s.label || s.name }}</option>
-          </select>
+          <el-select v-model="selectedState.failure_next_state" clearable>
+            <el-option v-for="s in otherStates(selectedState.name)" :key="s.name" :value="s.name" :label="s.label || s.name" />
+          </el-select>
         </div>
       </div>
     </div>

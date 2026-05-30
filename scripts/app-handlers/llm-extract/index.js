@@ -133,30 +133,16 @@ ${exampleJson}
 
     try {
       logger.info(`[llm-extract] Record ${record.id}: Calling LLM for extraction`);
-      const response = await services.callLlm('extract_metadata', {
-        instruction: promptBase,
-        ocr_text: text,
-        response_format: 'json',
-        model_id: extractConfig.model_id,
+      const metadata = await services.llm.extractJson(promptBase, text, {
+        modelId: extractConfig.model_id || null,
         temperature: extractConfig.temperature || 0.3,
       });
 
       logger.info(`[llm-extract] Record ${record.id}: LLM response received`);
 
-      let metadata;
-      const resultText = response.text || response.parsed || response;
-      if (typeof resultText === 'string') {
-        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          logger.error(`[llm-extract] Record ${record.id}: LLM did not return valid JSON`);
-          return { success: false, error: 'LLM did not return valid JSON' };
-        }
-        metadata = JSON.parse(jsonMatch[0]);
-      } else if (typeof resultText === 'object') {
-        metadata = resultText;
-      } else {
-        logger.error(`[llm-extract] Record ${record.id}: LLM returned unexpected format`);
-        return { success: false, error: 'LLM returned unexpected format' };
+      if (!metadata || typeof metadata !== 'object') {
+        logger.error(`[llm-extract] Record ${record.id}: LLM did not return valid JSON`);
+        return { success: false, error: 'LLM did not return valid JSON' };
       }
 
       const cleanMetadata = {};

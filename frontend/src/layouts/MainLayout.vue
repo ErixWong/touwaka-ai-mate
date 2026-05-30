@@ -35,7 +35,7 @@ import AppHeader from '@/components/AppHeader.vue'
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
   background: var(--main-bg, #ffffff);
 }
 </style>

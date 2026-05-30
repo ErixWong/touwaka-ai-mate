@@ -9,6 +9,8 @@ PyPDF Skill - PDF 处理技能 (Python 版)
 
 依赖：
 - PyMuPDF (fitz): PDF 操作核心库，内存映射方式处理大文件
+
+注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
 """
 
 import fitz  # PyMuPDF
@@ -19,85 +21,20 @@ import base64
 import traceback
 from typing import Dict, List, Any, Optional, Tuple
 
-# 用户角色检查
-IS_ADMIN = os.environ.get('IS_ADMIN') == 'true'
-IS_SKILL_CREATOR = os.environ.get('IS_SKILL_CREATOR') == 'true'
-
-# 允许的基础路径
-DATA_BASE_PATH = os.environ.get('DATA_BASE_PATH') or os.path.join(os.getcwd(), 'data')
-USER_ID = os.environ.get('USER_ID') or 'default'
-WORKING_DIRECTORY = os.environ.get('WORKING_DIRECTORY')
-
-if WORKING_DIRECTORY:
-    USER_WORK_DIR = os.path.join(DATA_BASE_PATH, WORKING_DIRECTORY)
-else:
-    USER_WORK_DIR = os.path.join(DATA_BASE_PATH, 'work', USER_ID)
-
-# 根据用户角色设置允许的路径
-if IS_ADMIN:
-    ALLOWED_BASE_PATHS = [DATA_BASE_PATH]
-elif IS_SKILL_CREATOR:
-    ALLOWED_BASE_PATHS = [
-        os.path.join(DATA_BASE_PATH, 'skills'),
-        os.path.join(DATA_BASE_PATH, 'work', USER_ID)
-    ]
-else:
-    ALLOWED_BASE_PATHS = [USER_WORK_DIR]
-
-
-def is_path_allowed(target_path: str) -> bool:
-    """检查路径是否被允许"""
-    resolved = os.path.realpath(os.path.abspath(target_path))
-    
-    for base_path in ALLOWED_BASE_PATHS:
-        resolved_base = os.path.realpath(os.path.abspath(base_path))
-        try:
-            if resolved.startswith(resolved_base):
-                return True
-        except Exception:
-            pass
-    return False
-
 
 def resolve_path(relative_path: str) -> str:
-    """解析输入路径（支持相对路径）
+    """解析路径 - VM 已设置 cwd，直接使用相对路径即可
     
-    用于解析输入文件路径，遍历 ALLOWED_BASE_PATHS 查找已存在的文件。
+    禁止绝对路径，防止路径遍历攻击。
     """
     if os.path.isabs(relative_path):
-        if not is_path_allowed(relative_path):
-            raise ValueError(f"Path not allowed: {relative_path}")
-        return relative_path
+        raise ValueError(f"Absolute path not allowed: {relative_path}. Use relative path instead.")
     
-    # 遍历允许的基础路径查找已存在的文件
-    for base_path in ALLOWED_BASE_PATHS:
-        resolved = os.path.join(base_path, relative_path)
-        if os.path.exists(resolved) or is_path_allowed(resolved):
-            if not is_path_allowed(resolved):
-                raise ValueError(f"Path not allowed: {resolved}")
-            return resolved
+    # 检查路径遍历
+    if '..' in relative_path:
+        raise ValueError(f"Path traversal not allowed: {relative_path}")
     
-    default_path = os.path.join(ALLOWED_BASE_PATHS[0], relative_path)
-    if not is_path_allowed(default_path):
-        raise ValueError(f"Path not allowed: {default_path}")
-    return default_path
-
-
-def resolve_output_path(relative_path: str) -> str:
-    """解析输出路径（强制使用 USER_WORK_DIR）
-    
-    用于解析输出目录路径，必须使用 USER_WORK_DIR 作为基础目录。
-    """
-    if os.path.isabs(relative_path):
-        if not is_path_allowed(relative_path):
-            raise ValueError(f"Path not allowed: {relative_path}")
-        return relative_path
-    
-    # 强制使用 USER_WORK_DIR 作为基础目录
-    resolved = os.path.join(USER_WORK_DIR, relative_path)
-    if not is_path_allowed(resolved):
-        raise ValueError(f"Path not allowed: {resolved}")
-    return resolved
+    return relative_path
 
 
 def ensure_dir(file_path: str) -> str:
@@ -249,8 +186,7 @@ def extract_images(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Extracting images without output_dir causes memory overflow and JSON truncation.'
         }
     
-    # 解析并验证 output_dir（强制使用 USER_WORK_DIR）
-    output_dir = resolve_output_path(output_dir)
+    output_dir = resolve_path(output_dir)
     
     # 检查父目录是否存在，不存在则报错
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -334,8 +270,7 @@ def render_pages(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required. Rendering pages without output_dir causes memory overflow and JSON truncation.'
         }
     
-    # 解析并验证 output_dir（强制使用 USER_WORK_DIR）
-    output_dir = resolve_output_path(output_dir)
+    output_dir = resolve_path(output_dir)
     
     # 检查父目录是否存在，不存在则报错
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -470,8 +405,7 @@ def extract_to_markdown_with_images(params: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'output_dir is required.'
         }
     
-    # 解析并验证 output_dir（强制使用 USER_WORK_DIR）
-    output_dir = resolve_output_path(output_dir)
+    output_dir = resolve_path(output_dir)
     
     # 检查父目录是否存在
     parent_dir = os.path.dirname(output_dir.rstrip('/'))
@@ -694,11 +628,21 @@ def create_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     doc = fitz.open()
     
     try:
-        size_map = {
-            'a4': fitz.ISO_A4,
-            'letter': fitz.ISO_LETTER
-        }
-        page_rect = size_map.get(page_size.lower(), fitz.ISO_A4)
+        # PyMuPDF 1.16+ 使用 paper_rect() 获取页面尺寸
+        # 支持的尺寸: a0-a10, letter, legal, tabloid, executive 等
+        try:
+            page_rect = fitz.paper_rect(page_size.lower())
+        except (AttributeError, ValueError):
+            # 回退: 手动定义常用尺寸
+            size_map = {
+                'a4': fitz.Rect(0, 0, 595, 842),
+                'a3': fitz.Rect(0, 0, 842, 1191),
+                'a5': fitz.Rect(0, 0, 420, 595),
+                'letter': fitz.Rect(0, 0, 612, 792),
+                'legal': fitz.Rect(0, 0, 612, 1008),
+                'tabloid': fitz.Rect(0, 0, 792, 1224),
+            }
+            page_rect = size_map.get(page_size.lower(), fitz.Rect(0, 0, 595, 842))
         
         for text in content:
             page = doc.new_page(width=page_rect.width, height=page_rect.height)
@@ -765,7 +709,7 @@ def merge_pdfs(params: Dict[str, Any]) -> Dict[str, Any]:
 def split_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """拆分 PDF（内存高效）"""
     file_path = resolve_path(params['path'])
-    output_dir = resolve_output_path(params['output_dir'])
+    output_dir = resolve_path(params['output_dir'])
     pages_per_file = params.get('pages_per_file', 1)
     
     os.makedirs(output_dir, exist_ok=True)

@@ -1,11 +1,7 @@
 <template>
-  <div class="lang-selector">
-    <select v-model="currentLocale" class="lang-select">
-      <option v-for="lang in availableLocales" :key="lang.value" :value="lang.value">
-        {{ lang.label }}
-      </option>
-    </select>
-  </div>
+  <el-select v-model="currentLocale" size="small">
+    <el-option v-for="lang in availableLocales" :key="lang.value" :value="lang.value" :label="lang.label" />
+  </el-select>
 </template>
 
 <script setup lang="ts">

@@ -37,6 +37,14 @@ export interface SystemSettings {
     default_invitation_max_uses: number
     invitation_expiry_days: number
   }
+  app?: {
+    clock_interval?: number
+    batch_size?: number
+    max_concurrency?: number
+    text_filter_max_length?: number
+    attachment_base_path?: string
+    max_upload_size?: number
+  }
   branding: {
     app_name: string
     logo_icon: string

@@ -163,6 +163,16 @@ class MiniAppService {
 
     const appJson = app.toJSON();
     appJson.states = states;
+
+    // 解析 config 字段（JSON 字符串 -> 对象）
+    if (appJson.config && typeof appJson.config === 'string') {
+      try {
+        appJson.config = JSON.parse(appJson.config);
+      } catch {
+        appJson.config = {};
+      }
+    }
+
     return appJson;
   }
 
@@ -934,7 +944,7 @@ async batchUpload(appId, userId, attachmentIds) {
         logger.info(`[compareRecords] Comparing section ${index + 1}/${matchedItems.length}: ${match.sectionA.title} (textA=${textA.length} chars, textB=${textB.length} chars)`);
         const sectionStart = Date.now();
 
-        result = await this.llmService.judge(
+        result = await this.llmService.extractJson(
           comparePrompt,
           JSON.stringify({
             section_title: match.sectionA.title,
@@ -1093,7 +1103,7 @@ ${JSON.stringify(listB, null, 2)}
       logger.info(`[matchSections] Calling LLM for section matching (A=${listA.length}, B=${listB.length})`);
       const startTime = Date.now();
 
-      result = await this.llmService.judge(
+      result = await this.llmService.extractJson(
         matchPrompt,
         JSON.stringify({}),
         { modelId, temperature: Math.min(temperature, 0.3), defaultValue: null }

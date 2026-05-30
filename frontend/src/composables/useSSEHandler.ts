@@ -438,6 +438,34 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           await handleCompleteEvent(data)
           break
 
+        case 'tool_limit_warning':
+          // 工具调用即将达到上限（80%阈值），显示警告提示
+          console.log('[useSSEHandler] Tool limit warning:', data)
+          if (data.message) {
+            const assistant = options.currentAssistantMessage()
+            if (assistant) {
+              const currentContent = options.getStreamingContent() || ''
+              const warningText = `\n\n⚠️ ${data.message}\n`
+              options.setStreamingContent(currentContent + warningText)
+              chatStore.updateMessageContent(assistant.id, currentContent + warningText)
+            }
+          }
+          break
+
+        case 'tool_limit_reached':
+          // 工具调用已达到上限（100%），显示总结
+          console.log('[useSSEHandler] Tool limit reached:', data)
+          if (data.summary) {
+            const assistant = options.currentAssistantMessage()
+            if (assistant) {
+              const currentContent = options.getStreamingContent() || ''
+              const summaryText = `\n\n📊 ${data.summary}\n\n${data.message || ''}`
+              options.setStreamingContent(currentContent + summaryText)
+              chatStore.updateMessageContent(assistant.id, currentContent + summaryText)
+            }
+          }
+          break
+
         case 'error':
           console.log('[useSSEHandler] SSE error event received:', data)
           // 确保缓冲区内容全部刷新

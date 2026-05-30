@@ -77,6 +77,9 @@ export interface AppConfig {
     section?: string
   }
   extension_tables?: ExtensionTable[]
+  vlm_model_id?: string
+  vlm_temperature?: number
+  vlm_timeout_ms?: number
 }
 
 export interface StepResourceConfig {
@@ -86,6 +89,7 @@ export interface StepResourceConfig {
   temperature?: number
   enable_thinking?: boolean
   judge_model_id?: string
+  judge_temperature?: number
 }
 
 export interface McpResourceTarget {
@@ -430,7 +434,7 @@ export async function compareRecords(
       row_id_a: rowIdA,
       row_id_b: rowIdB,
       ...options,
-    }, { timeout: 600000, signal })
+    }, { timeout: 1800000, signal })
   )
 }
 

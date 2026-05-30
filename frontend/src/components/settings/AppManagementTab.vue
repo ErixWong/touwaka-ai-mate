@@ -38,6 +38,7 @@
           </div>
           <div class="app-actions">
             <el-button size="small" @click="openAppDialog(app)">{{ $t('common.edit') }}</el-button>
+            <el-button size="small" type="primary" plain @click="openConfigDialog(app)">{{ $t('settings.appManagement.config', '配置') }}</el-button>
             <el-button size="small" type="danger" @click="confirmDeleteApp(app)">{{ $t('common.delete') }}</el-button>
           </div>
         </div>
@@ -206,6 +207,29 @@
         </div>
       </div>
     </div>
+
+    <!-- Config 配置对话框 -->
+    <div v-if="showConfigDialog" class="dialog-overlay" @click.self="closeConfigDialog">
+      <div class="dialog dialog-large">
+        <h3 class="dialog-title">{{ $t('settings.appManagement.configTitle', 'App 配置') }} - {{ configingApp?.name }}</h3>
+        <div class="dialog-body">
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.appManagement.configJson', '配置 JSON') }}</label>
+            <el-input
+              v-model="configJsonText"
+              type="textarea"
+              :rows="20"
+              placeholder="{}"
+            />
+            <span class="field-hint">{{ $t('settings.appManagement.configHint', '请输入有效的 JSON 格式配置') }}</span>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <el-button @click="closeConfigDialog">{{ $t('common.cancel') }}</el-button>
+          <el-button type="primary" @click="saveConfig" :disabled="!configJsonValid">{{ $t('common.save') }}</el-button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -214,7 +238,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
 import { useUserStore } from '@/stores/user'
-import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getHandlers } from '@/api/mini-apps'
+import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getHandlers, getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import type { MiniApp, AppField, AppState, AppRowHandler } from '@/api/mini-apps'
 import StateDesigner from '@/components/settings/StateDesigner.vue'
 
@@ -228,10 +252,22 @@ const apps = ref<MiniApp[]>([])
 const handlers = ref<AppRowHandler[]>([])
 const showAppDialog = ref(false)
 const showDeleteDialog = ref(false)
+const showConfigDialog = ref(false)
 const editingApp = ref<MiniApp | null>(null)
 const deletingApp = ref<MiniApp | null>(null)
+const configingApp = ref<MiniApp | null>(null)
+const configJsonText = ref('')
 const appDialogTab = ref<string>('basic')
 const selectedFieldIndex = ref(-1)
+
+const configJsonValid = computed(() => {
+  try {
+    JSON.parse(configJsonText.value || '{}')
+    return true
+  } catch {
+    return false
+  }
+})
 
 const typeLabels: Record<string, string> = {
   document: t('settings.appManagement.typeDocument', '文档'),
@@ -356,6 +392,35 @@ function closeAppDialog() {
 function confirmDeleteApp(app: MiniApp) {
   deletingApp.value = app
   showDeleteDialog.value = true
+}
+
+async function openConfigDialog(app: MiniApp) {
+  configingApp.value = app
+  try {
+    const config = await getAppConfig(app.id)
+    configJsonText.value = JSON.stringify(config, null, 2)
+  } catch {
+    configJsonText.value = '{}'
+  }
+  showConfigDialog.value = true
+}
+
+function closeConfigDialog() {
+  showConfigDialog.value = false
+  configingApp.value = null
+  configJsonText.value = ''
+}
+
+async function saveConfig() {
+  if (!configingApp.value || !configJsonValid.value) return
+  try {
+    const config = JSON.parse(configJsonText.value)
+    await updateAppConfig(configingApp.value.id, config)
+    toast.success(t('settings.appManagement.configSaved', '配置已保存'))
+    closeConfigDialog()
+  } catch (error: any) {
+    toast.error(t('settings.appManagement.configSaveFailed', '配置保存失败') + ': ' + error.message)
+  }
 }
 
 function confirmDeleteFromDialog() {
