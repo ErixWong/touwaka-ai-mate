@@ -126,8 +126,8 @@ export default {
     logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext})`);
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-      logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到OCR`);
-      return { success: false, error: '图片文件需OCR识别' };
+      logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到VL视觉提取`);
+      return { success: false, target_state: 'pending_vl_extract', error: '图片文件路由到VL' };
     }
 
     if (ext !== '.pdf') {
@@ -137,14 +137,16 @@ export default {
 
     let result;
     try {
-      result = await services.callSkill('fapiao', 'extract', { file_path: filePath });
+      result = await services.callSkill('fapiao', 'extract', { path: filePath });
     } catch (e) {
       logger.warn(`[invoice-extract] Record ${record.id}: fapiao异常 → ${e.message}`);
-      return { success: false, error: `fapiao异常: ${e.message}` };
+      logger.info(`[invoice-extract] Record ${record.id}: PDF fapiao失败，路由到VL`);
+      return { success: false, target_state: 'pending_vl_extract', error: `fapiao异常: ${e.message}` };
     }
 
     if (!result) {
-      return { success: false, error: 'fapiao返回为空' };
+      logger.info(`[invoice-extract] Record ${record.id}: PDF fapiao返回空，路由到VL`);
+      return { success: false, target_state: 'pending_vl_extract', error: 'fapiao返回为空' };
     }
 
     const data = result.data || result;
@@ -157,7 +159,7 @@ export default {
         extraction_status: 'failed',
         ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'fapiao did not extract valid invoice data' }),
       });
-      return { success: false, error: 'not_invoice' };
+      return { success: false, target_state: 'pending_vl_extract', error: 'not_invoice' };
     }
 
     const existing = await checkDuplicate(services, data.invoice_number, record.id);

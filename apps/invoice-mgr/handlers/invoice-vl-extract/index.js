@@ -1,5 +1,6 @@
 import logger from '../../../../lib/logger.js';
 import path from 'path';
+import { getStepResource, resolveAttachmentPath } from '../shared.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -107,7 +108,7 @@ export const availableOutputs = [
 export default {
   availableOutputs,
   async process(context) {
-    const { record, files, services } = context;
+    const { record, files, services, app } = context;
     const file = files[0];
 
     if (!file || !file.attachment) {
@@ -115,20 +116,24 @@ export default {
       return { success: false, error: '未找到文件' };
     }
 
-    // 附件路径是相对于 data/attachments/ 的，需要加上前缀
-    // 统一使用正斜杠，避免路径问题
-    const filePath = 'attachments/' + file.attachment.file_path.replace(/\\/g, '/');
+    const resolvedPath = file.attachment._resolvedPath || resolveAttachmentPath(file.attachment);
+    if (!resolvedPath) {
+      logger.error(`[invoice-vl-extract] Record ${record.id}: 无法解析文件路径`);
+      return { success: false, error: '无法解析文件路径' };
+    }
+
+    const skillPath = 'attachments/' + file.attachment.file_path.replace(/\\/g, '/');
+
     const fileName = file.attachment.file_name;
     const ext = path.extname(fileName).toLowerCase();
-    const absolutePath = path.join(process.cwd(), 'data', filePath);
 
-    logger.info(`[invoice-vl-extract] Record ${record.id}: ${fileName} (${ext}), path=${filePath}`);
+    logger.info(`[invoice-vl-extract] Record ${record.id}: ${fileName} (${ext}), path=${skillPath}`);
 
     let images = [];
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
       const { readFile } = await import('fs/promises');
-      const buffer = await readFile(absolutePath);
+      const buffer = await readFile(resolvedPath);
       const mimeType = {
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
       }[ext];
@@ -138,7 +143,7 @@ export default {
       try {
         const renderResult = await services.callSkill('pdf', 'read', {
           operation: 'render',
-          path: filePath,
+          path: skillPath,
           scale: 1.5,
         });
 
@@ -162,11 +167,19 @@ export default {
       return { success: false, error: '无图片数据' };
     }
 
+    const stepConfig = getStepResource(app, 'pending_vl_extract', {
+      type: 'internal_llm',
+      llm: { model_id: null, temperature: 0.1, timeout_ms: 120000 },
+    });
+    const llmCfg = stepConfig.llm || {};
+
     let data;
     try {
       data = await services.llm.extractJson(EXTRACT_PROMPT, '', {
         images: images,
-        temperature: 0.1,
+        modelId: llmCfg.model_id || undefined,
+        temperature: llmCfg.temperature ?? 0.1,
+        timeout: llmCfg.timeout_ms ?? 120000,
       });
     } catch (e) {
       logger.error(`[invoice-vl-extract] Record ${record.id}: VL提取异常: ${e.message}`);

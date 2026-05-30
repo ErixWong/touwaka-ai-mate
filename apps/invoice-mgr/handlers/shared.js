@@ -1,18 +1,7 @@
 import path from 'path';
-import fs from 'fs';
 
 const ATTACHMENT_BASE_PATH = process.env.ATTACHMENT_BASE_PATH
   || path.join(process.cwd(), 'data', 'attachments');
-
-function loadManifestForApp(app) {
-  const appId = app?.app_id || app?.id;
-  const manifestPath = path.join(process.cwd(), 'apps', appId, 'manifest.json');
-  try {
-    return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
 
 export function resolveAttachmentPath(attachment) {
   if (!attachment || !attachment.file_path) return null;
@@ -45,32 +34,6 @@ export function getAppConfig(app) {
 export function getStepResource(app, stateName, fallback = {}) {
   const config = getAppConfig(app);
   return config?.step_resources?.[stateName] || fallback;
-}
-
-export function getManifestState(app, stateName) {
-  const states = getManifestStates(app);
-  return states.find(s => s.name === stateName) || null;
-}
-
-export function getManifestStates(app) {
-  const manifest = loadManifestForApp(app);
-  return manifest.states || [];
-}
-
-export function validateManifestStates(app) {
-  const states = getManifestStates(app);
-  const config = getAppConfig(app);
-  const stepResources = config.step_resources || {};
-  const stateNames = new Set(states.map(s => s.name));
-  const orphans = [];
-
-  for (const key of Object.keys(stepResources)) {
-    if (!stateNames.has(key) && key !== 'pending_extract') {
-      orphans.push(key);
-    }
-  }
-
-  return { valid: orphans.length === 0, orphans };
 }
 
 export function parseLlmResponse(response) {
