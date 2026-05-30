@@ -86,7 +86,9 @@ export interface StepResourceConfig {
   type: 'mcp' | 'internal_llm'
   mcp?: McpResourceTarget
   model_id?: string
+  model_type?: string | null
   temperature?: number
+  timeout_ms?: number
   enable_thinking?: boolean
   judge_model_id?: string
   judge_temperature?: number
@@ -131,6 +133,7 @@ export interface InternalLlmModel {
   id: string
   name: string
   model_name: string
+  model_type?: string
   provider_name: string
 }
 
@@ -141,6 +144,10 @@ export interface AvailableResources {
     models?: InternalLlmModel[]
   }
   handler_outputs: Record<string, HandlerOutput[]>
+  configurable_states?: Record<string, {
+    type: string
+    model_type: string | null
+  }>
 }
 
 export interface AppState {

@@ -2,7 +2,7 @@
   "id": "invoice-mgr",
   "name": "发票管理",
   "version": "1.1.0",
-  "description": "上传发票文件，AI自动识别并结构化提取发票信息（支持fapiao技能 + markitdown OCR回退），自动去重入库",
+  "description": "上传发票文件，AI自动识别并结构化提取发票信息。PDF使用fapiao技能，图片使用多模态VL模型直接识别。自动去重入库",
   "icon": "🧾",
   "type": "document",
   "author": "Touwaka Team",
@@ -10,17 +10,13 @@
   "keywords": [
     "发票",
     "invoice",
-    "OCR",
     "AI识别",
     "fapiao",
-    "markitdown"
+    "VLM"
   ],
   "compatibility": {
     "min_platform_version": "2.0.0",
     "requires": {
-      "mcp": [
-        "markitdown"
-      ],
       "skills": [
         "fapiao",
         "pdf"
@@ -238,25 +234,21 @@
     "batch_enabled": true,
     "batch_limit": 20,
     "step_resources": {
-      "pending_ocr": {
-        "type": "mcp",
-        "mcp": {
-          "server": "markitdown",
-          "tool": "submit_conversion_task"
-        }
-      },
-      "ocr_submitted": {
-        "type": "mcp",
-        "mcp": {
-          "server": "markitdown",
-          "tool": "get_task"
-        }
-      },
       "pending_extract": {
         "type": "internal_llm",
+        "model_type": "text",
         "llm": {
           "prompt_type": "extract_invoice_from_ocr",
           "temperature": 0.1
+        }
+      },
+      "pending_vl_extract": {
+        "type": "internal_llm",
+        "model_type": "multimodal",
+        "llm": {
+          "model_id": null,
+          "temperature": 0.1,
+          "timeout_ms": 120000
         }
       }
     }
@@ -265,60 +257,36 @@
     {
       "name": "pending_process",
       "label": "待处理",
-      "description": "文件路由：PDF走fapiao技能，图片直通OCR",
+      "description": "PDF走fapiao技能，图片直通多模态VL视觉提取",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
-      "is_error": false,
-      "handler": "invoice-extract",
-      "success_next": "pending_review",
-      "failure_next": "pending_ocr"
+      "is_error": false
     },
     {
-      "name": "pending_ocr",
-      "label": "OCR识别中",
-      "description": "提交markitdown OCR任务",
+      "name": "pending_vl_extract",
+      "label": "VL视觉提取",
+      "description": "调用多模态Vision-Language模型直接识别发票图片",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,
-      "is_error": false,
-      "handler": "invoice-ocr-submit",
-      "success_next": "ocr_submitted",
-      "failure_next": "ocr_failed"
-    },
-    {
-      "name": "ocr_submitted",
-      "label": "等待OCR结果",
-      "description": "检查OCR状态 + LLM结构化提取",
-      "sort_order": 3,
-      "is_initial": false,
-      "is_terminal": false,
-      "is_error": false,
-      "handler": "invoice-ocr-check",
-      "success_next": "pending_review",
-      "failure_next": "extract_failed"
+      "is_error": false
     },
     {
       "name": "pending_review",
       "label": "待确认",
-      "sort_order": 4,
+      "sort_order": 3,
       "is_initial": false,
       "is_terminal": false,
-      "is_error": false,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
+      "is_error": false
     },
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 5,
+      "sort_order": 4,
       "is_initial": false,
       "is_terminal": true,
-      "is_error": false,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
+      "is_error": false
     },
     {
       "name": "extract_failed",
@@ -326,21 +294,7 @@
       "sort_order": 98,
       "is_initial": false,
       "is_terminal": false,
-      "is_error": true,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
-    },
-    {
-      "name": "ocr_failed",
-      "label": "OCR失败",
-      "sort_order": 99,
-      "is_initial": false,
-      "is_terminal": false,
-      "is_error": true,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
+      "is_error": true
     }
   ],
   "component": "InvoiceView",

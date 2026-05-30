@@ -323,6 +323,7 @@ class MiniAppService {
     });
 
     let handlerOutputs = {};
+    let configurableStates = {};
     if (appId) {
       const app = await this.models.MiniApp.findByPk(appId);
       if (app) {
@@ -352,6 +353,30 @@ class MiniAppService {
             handlerOutputs[hid] = [];
           }
         }
+
+        const stateHandlerMap = new Map(
+          states.filter(s => s.handler_id).map(s => [s.name, s.handler_id])
+        );
+
+        let appConfig = {};
+        if (app.config) {
+          try {
+            appConfig = typeof app.config === 'string' ? JSON.parse(app.config) : app.config;
+          } catch { appConfig = {}; }
+        }
+
+        const defaultStepResources = this.getDefaultStepResources(appId) || {};
+        const stepResources = { ...defaultStepResources, ...(appConfig.step_resources || {}) };
+
+        for (const stateName of stateHandlerMap.keys()) {
+          const resource = stepResources[stateName];
+          if (resource) {
+            configurableStates[stateName] = {
+              type: resource.type,
+              model_type: resource.model_type || null,
+            };
+          }
+        }
       }
     }
 
@@ -363,10 +388,12 @@ class MiniAppService {
           id: m.id,
           name: m.name,
           model_name: m.model_name,
+          model_type: m.model_type || null,
           provider_name: m.provider?.provider_name || '',
         })),
       },
       handler_outputs: handlerOutputs,
+      configurable_states: configurableStates,
     };
   }
 
@@ -496,7 +523,7 @@ class MiniAppService {
 
     // status 现在是实体字段，不放在 data 里
     const manifestInitialState = initialState ? null : await this.getInitialStateFromManifest(appId);
-    const status = initialState?.name || manifestInitialState || 'pending_ocr';
+    const status = initialState?.name || manifestInitialState || 'pending_process';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);

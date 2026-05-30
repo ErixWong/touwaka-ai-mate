@@ -28,12 +28,10 @@ const filters = ref<InvoiceListParams>({
 
 const statusLabels: Record<string, { label: string; type: string }> = {
   pending_process: { label: '待处理', type: 'info' },
-  pending_ocr: { label: 'OCR中', type: 'warning' },
-  ocr_submitted: { label: '等待OCR', type: 'warning' },
+  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
   pending_review: { label: '待确认', type: '' },
   confirmed: { label: '已确认', type: 'success' },
   extract_failed: { label: '识别失败', type: 'danger' },
-  ocr_failed: { label: 'OCR失败', type: 'danger' },
 }
 
 onMounted(() => {
@@ -215,7 +213,7 @@ async function onDeleted() {
           <span>选择发票文件</span>
           <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="handleFileSelect" class="hidden-input" />
         </label>
-        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG；创建后自动进入 OCR 流程</div>
+        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG；创建后自动识别发票信息</div>
       </div>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>

@@ -1,19 +1,27 @@
 import path from 'path';
 import { pathToFileURL } from 'url';
 import logger from '../../../lib/logger.js';
-import { getManifestStates, resolveAttachmentPath, validateManifestStates } from '../handlers/shared.js';
+import { resolveAttachmentPath } from '../handlers/shared.js';
 
 const APP_ID = 'invoice-mgr';
+const HANDLERS_DIR = path.join(process.cwd(), 'apps', APP_ID, 'handlers');
+
+const STATE_GRAPH = {
+  pending_process: {
+    handler: 'invoice-extract',
+    success_next: 'pending_review',
+    failure_next: 'pending_vl_extract',
+  },
+  pending_vl_extract: {
+    handler: 'invoice-vl-extract',
+    success_next: 'pending_review',
+    failure_next: 'extract_failed',
+  },
+};
 
 function loadHandlersModule(handlerDir, handlerName) {
   const handlerPath = pathToFileURL(path.join(handlerDir, handlerName, 'index.js')).href;
   return import(handlerPath);
-}
-
-function getPendingStates(states) {
-  return states
-    .filter(s => s.handler && !s.is_terminal && !s.is_error)
-    .map(s => s.name);
 }
 
 function mergeRecordData(existingData, handlerData) {
@@ -25,6 +33,10 @@ function mergeRecordData(existingData, handlerData) {
   return data;
 }
 
+export function getStateGraph() {
+  return STATE_GRAPH;
+}
+
 export async function tick(context) {
   const { app, services } = context;
 
@@ -32,47 +44,33 @@ export async function tick(context) {
     return { skipped: true, reason: 'no_app' };
   }
 
-  const states = getManifestStates(app);
+  const stateNames = Object.keys(STATE_GRAPH);
 
-  if (states.length === 0) {
-    logger.warn('[invoice-mgr tick] No states defined in manifest');
+  if (stateNames.length === 0) {
     return { skipped: true, reason: 'no_states' };
   }
 
-  const manifestValidation = validateManifestStates(app);
-  if (!manifestValidation.valid) {
-    logger.warn(`[invoice-mgr tick] Ghost states in step_resources (not in states): ${manifestValidation.orphans.join(', ')}`);
-  }
-
-  const pendingStates = getPendingStates(states);
-  if (pendingStates.length === 0) {
-    return { skipped: true, reason: 'no_pending_states' };
-  }
-
-  const stateMap = new Map(states.map(s => [s.name, s]));
-
-  const placeholders = pendingStates.map(() => '?').join(',');
+  const placeholders = stateNames.map(() => '?').join(',');
   const rows = await services.query(
     `SELECT id, status, data FROM mini_app_rows
      WHERE app_id = ? AND status IN (${placeholders})
      ORDER BY created_at ASC
      LIMIT 5`,
-    [APP_ID, ...pendingStates]
+    [APP_ID, ...stateNames]
   );
 
   if (rows.length === 0) {
     return { skipped: true, reason: 'no_pending_records' };
   }
 
-  const handlersDir = path.join(process.cwd(), 'apps', APP_ID, 'handlers');
   let processed = 0;
 
   for (const row of rows) {
     try {
-      const state = stateMap.get(row.status);
-      if (!state || !state.handler) continue;
+      const graphEntry = STATE_GRAPH[row.status];
+      if (!graphEntry) continue;
 
-      logger.info(`[invoice-mgr tick] Processing row ${row.id} (status=${row.status}, handler=${state.handler})`);
+      logger.info(`[invoice-mgr tick] Processing row ${row.id} (status=${row.status}, handler=${graphEntry.handler})`);
 
       const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
       const record = { id: row.id, status: row.status, data: recordData };
@@ -87,7 +85,7 @@ export async function tick(context) {
         }
       }
 
-      const handlerModule = await loadHandlersModule(handlersDir, state.handler);
+      const handlerModule = await loadHandlersModule(HANDLERS_DIR, graphEntry.handler);
       const handlerFn = handlerModule.default || handlerModule;
 
       const result = await handlerFn.process({ record, files, services, app });
@@ -101,7 +99,7 @@ export async function tick(context) {
         logger.info(`[invoice-mgr tick] Row ${row.id}: pending, keep status=${row.status}`);
       } else if (result.success) {
         const newData = mergeRecordData(recordData, result.data);
-        const nextState = state.success_next;
+        const nextState = graphEntry.success_next;
 
         if (nextState) {
           await services.execute(
@@ -118,7 +116,7 @@ export async function tick(context) {
         }
       } else {
         const newData = mergeRecordData(recordData, result.data);
-        const nextState = state.failure_next;
+        const nextState = result.target_state || graphEntry.failure_next;
 
         if (nextState) {
           await services.execute(

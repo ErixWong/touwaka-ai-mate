@@ -18,6 +18,9 @@ tmp/
 *.log
 server.log
 
+# Playwright MCP 自动生成
+.playwright-mcp/
+
 # 自动生成的类型声明
 frontend/components.d.ts
 frontend/auto-imports.d.ts
