@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { listInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
+import { uploadAttachment } from '@/api/attachment'
+import { createRecord, newID } from '@/api/mini-apps'
 import { ElMessage } from 'element-plus'
 import InvoiceDetail from './InvoiceDetail.vue'
 
@@ -13,6 +15,9 @@ const page = ref(1)
 const size = ref(20)
 const showDetail = ref(false)
 const selectedRowId = ref('')
+const showCreateDialog = ref(false)
+const creating = ref(false)
+const selectedFile = ref<File | null>(null)
 
 const filters = ref<InvoiceListParams>({
   page: 1,
@@ -60,6 +65,69 @@ function onReset() {
   loadList()
 }
 
+function openCreateDialog() {
+  selectedFile.value = null
+  showCreateDialog.value = true
+}
+
+function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files?.length) {
+    selectedFile.value = input.files[0]!
+  }
+  input.value = ''
+}
+
+function clearFile() {
+  selectedFile.value = null
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.split(',')[1]!
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function handleCreate() {
+  if (!selectedFile.value) {
+    ElMessage.warning('请先选择发票文件')
+    return
+  }
+  creating.value = true
+  try {
+    const file = selectedFile.value
+    const base64Data = await fileToBase64(file)
+    const att = await uploadAttachment({
+      source_tag: 'mini_app_file',
+      source_id: APP_ID,
+      file_name: file.name,
+      mime_type: file.type,
+      base64_data: base64Data,
+    })
+
+    const clientId = await newID(20)
+    await createRecord(APP_ID, {}, [att.id], clientId)
+
+    showCreateDialog.value = false
+    selectedFile.value = null
+    page.value = 1
+    filters.value.page = 1
+    await loadList()
+    ElMessage.success('发票已创建，正在识别中')
+  } catch (e: any) {
+    ElMessage.error(e.message || '创建失败')
+  } finally {
+    creating.value = false
+  }
+}
+
 function onPageChange(p: number) {
   page.value = p
   filters.value.page = p
@@ -74,6 +142,12 @@ function onRowClick(row: InvoiceRow) {
 function onBack() {
   showDetail.value = false
   selectedRowId.value = ''
+}
+
+async function onDeleted() {
+  showDetail.value = false
+  selectedRowId.value = ''
+  await loadList()
 }
 </script>
 
@@ -93,6 +167,9 @@ function onBack() {
         </el-select>
         <el-button type="primary" @click="onSearch">搜索</el-button>
         <el-button @click="onReset">重置</el-button>
+        <el-button type="primary" @click="openCreateDialog" style="margin-left:auto;">
+          + 新增发票
+        </el-button>
       </div>
 
       <el-table :data="invoices" v-loading="loading" stripe @row-click="onRowClick" style="cursor:pointer">
@@ -125,8 +202,28 @@ function onBack() {
     </div>
 
     <div v-else class="invoice-detail-view">
-      <InvoiceDetail :row-id="selectedRowId" @back="onBack" />
+      <InvoiceDetail :row-id="selectedRowId" @back="onBack" @deleted="onDeleted" />
     </div>
+
+    <el-dialog v-model="showCreateDialog" title="新增发票" width="520px" destroy-on-close>
+      <div class="create-file-upload">
+        <div v-if="selectedFile" class="create-file-selected">
+          <span class="create-file-name">{{ selectedFile.name }}</span>
+          <el-button size="small" text type="danger" @click="clearFile">移除</el-button>
+        </div>
+        <label v-else class="create-file-trigger">
+          <span>选择发票文件</span>
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="handleFileSelect" class="hidden-input" />
+        </label>
+        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG；创建后自动进入 OCR 流程</div>
+      </div>
+      <template #footer>
+        <el-button @click="showCreateDialog = false">取消</el-button>
+        <el-button type="primary" :loading="creating" :disabled="!selectedFile" @click="handleCreate">
+          创建并上传
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -157,5 +254,45 @@ function onBack() {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.create-file-upload {
+  border: 1px dashed var(--el-border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.create-file-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.create-file-name {
+  color: var(--el-text-color-primary);
+  word-break: break-all;
+}
+
+.create-file-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+}
+
+.create-file-hint {
+  margin-top: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.hidden-input {
+  display: none;
 }
 </style>

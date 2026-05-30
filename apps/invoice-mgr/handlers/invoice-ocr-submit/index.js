@@ -1,17 +1,5 @@
-import logger from '../../../lib/logger.js';
-
-function getAppConfig(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config || {};
-}
-
-function getStepResource(app, stateName, fallback = {}) {
-  const config = getAppConfig(app);
-  return config?.step_resources?.[stateName] || fallback;
-}
+import logger from '../../../../lib/logger.js';
+import { getStepResource, resolveAttachmentPath } from '../shared.js';
 
 export const availableOutputs = [
   { key: 'ocr_task_id', label: 'OCR任务ID', type: 'string' },
@@ -29,7 +17,7 @@ export default {
     }
 
     const fileName = file.attachment.file_name;
-    const filePath = file.attachment.file_path;
+    const filePath = file.attachment._resolvedPath || resolveAttachmentPath(file.attachment);
 
     const stepConfig = getStepResource(app, 'pending_ocr', {
       type: 'mcp',

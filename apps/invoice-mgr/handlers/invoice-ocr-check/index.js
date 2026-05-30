@@ -1,17 +1,5 @@
-import logger from '../../../lib/logger.js';
-
-function getAppConfig(app) {
-  let config = app?.config;
-  if (typeof config === 'string') {
-    try { config = JSON.parse(config); } catch { config = {}; }
-  }
-  return config || {};
-}
-
-function getStepResource(app, stateName, fallback = {}) {
-  const config = getAppConfig(app);
-  return config?.step_resources?.[stateName] || fallback;
-}
+import logger from '../../../../lib/logger.js';
+import { getStepResource } from '../shared.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -22,7 +10,7 @@ const EXTRACT_PROMPT = `你是一个中国发票识别专家。请从OCR文本�
 
 严格返回JSON格式：
 {
-  "invoice_number": "20位数字发票号码",
+  "invoice_number": "8或20位数字发票号码",
   "invoice_date": "YYYY-MM-DD",
   "invoice_type": "发票类型描述",
   "seller": { "name": "销售方名称", "taxId": "纳税人识别号" },
@@ -41,14 +29,14 @@ const EXTRACT_PROMPT = `你是一个中国发票识别专家。请从OCR文本�
 规则：
 - 金额为纯数字，不含逗号和符号
 - 日期严格YYYY-MM-DD
-- 发票号码20位数字
+- 发票号码8或20位数字
 - 无法识别的字段用空字符串或0
 - 无商品明细则items为空数组`;
 
 function isValidInvoice(data) {
   const invNum = data.invoice_number;
   const total = data.total_with_tax || 0;
-  return invNum && /^\d{20}$/.test(invNum) && total > 0;
+  return invNum && /^\d{8,20}$/.test(invNum) && total > 0;
 }
 
 function parseLLMResponse(text) {
@@ -125,10 +113,7 @@ export default {
   async process(context) {
     const { record, services, app } = context;
 
-    const ocrStepConfig = getStepResource(app, 'ocr_submitted', {
-      type: 'mcp',
-      mcp: { server: 'markitdown', tool: 'get_task' },
-    });
+    const ocrStepConfig = getStepResource(app, 'ocr_submitted', { mcp: { server: 'markitdown', tool: 'get_task' } });
     const mcpServer = ocrStepConfig.mcp?.server || 'markitdown';
     const mcpTool = ocrStepConfig.mcp?.tool || 'get_task';
 
@@ -176,12 +161,11 @@ export default {
 
     logger.info(`[invoice-ocr-check] Record ${record.id}: OCR完成, 文本长度=${ocrText.length}`);
 
-    const llmStepConfig = getStepResource(app, 'pending_extract', {
-      type: 'internal_llm',
-      model_id: null,
-      temperature: 0.1,
-      prompt_type: 'extract_invoice_from_ocr',
-    });
+    const llmStepResource = getStepResource(app, 'pending_extract');
+    const llmStepConfig = {
+      ...(llmStepResource || {}),
+      ...(llmStepResource?.llm || {}),
+    };
 
     const promptType = llmStepConfig.prompt_type || 'extract_invoice_from_ocr';
     const llmParams = {

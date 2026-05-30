@@ -640,7 +640,9 @@ class ApiServer {
 
         // 启动 AppClock（Issue #654）
         if (this.appClock) {
-          this.appClock.start();
+          this.appClock.start().catch(err => {
+            logger.error('[Startup] Failed to start AppClock:', err.message);
+          });
         }
 
         // 启动 Token 清理任务（Issue #140）

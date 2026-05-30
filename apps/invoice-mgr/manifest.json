@@ -1,7 +1,7 @@
 {
   "id": "invoice-mgr",
   "name": "发票管理",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "上传发票文件，AI自动识别并结构化提取发票信息（支持fapiao技能 + markitdown OCR回退），自动去重入库",
   "icon": "🧾",
   "type": "document",
@@ -12,7 +12,8 @@
     "invoice",
     "OCR",
     "AI识别",
-    "fapiao"
+    "fapiao",
+    "markitdown"
   ],
   "compatibility": {
     "min_platform_version": "2.0.0",
@@ -21,7 +22,8 @@
         "markitdown"
       ],
       "skills": [
-        "fapiao"
+        "fapiao",
+        "pdf"
       ]
     }
   },
@@ -127,6 +129,18 @@
           "type": "VARCHAR(16)",
           "label": "提取状态",
           "source": "extraction_status"
+        },
+        {
+          "name": "text_items_count",
+          "type": "INT",
+          "label": "文本项数",
+          "source": "text_items_count"
+        },
+        {
+          "name": "keyword_count",
+          "type": "INT",
+          "label": "关键词数",
+          "source": "keyword_count"
         }
       ],
       "indexes": [
@@ -240,9 +254,10 @@
       },
       "pending_extract": {
         "type": "internal_llm",
-        "model_id": null,
-        "temperature": 0.1,
-        "prompt_type": "extract_invoice_from_ocr"
+        "llm": {
+          "prompt_type": "extract_invoice_from_ocr",
+          "temperature": 0.1
+        }
       }
     }
   },
@@ -328,6 +343,7 @@
       "failure_next": null
     }
   ],
+  "component": "InvoiceView",
   "views": {
     "list": {
       "columns": [
@@ -343,6 +359,5 @@
       }
     }
   },
-  "visibility": "all",
-  "component": "InvoiceView"
+  "visibility": "all"
 }

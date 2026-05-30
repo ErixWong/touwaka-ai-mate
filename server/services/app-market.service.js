@@ -414,14 +414,20 @@ class AppMarketService {
         'utf-8'
       );
       
-      // 9. 插入数据库（extension_tables 存入 config）
+      // 9. 安装 handlers（用于状态流转执行）
+      const { handlerIdMap } = await this.installHandlers(appId, manifest);
+
+      // 10. 插入数据库（extension_tables 存入 config）
       const config = {
         ...manifest.config,
         extension_tables: manifest.extension_tables || []
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
+
+      // 11. 安装状态定义（用于 createRecord 初始状态与配置界面）
+      await this.installStates(appId, manifest, handlerIdMap);
       
-      // 10. 注册到 app_clock_registry
+      // 12. 注册到 app_clock_registry
       await this.registerToClockRegistry(appId);
       
       logger.info(`App ${appId} installed successfully`);
@@ -587,6 +593,7 @@ class AppMarketService {
    */
   async installHandlers(appId, manifest) {
     const installed = [];
+    const failed = [];
     const handlerIdMap = new Map(); // handlerName → app_row_handlers.id
     
     if (!manifest.states) return { installed, handlerIdMap };
@@ -654,8 +661,13 @@ class AppMarketService {
         logger.info(`Installed handler ${handlerName} for ${appId}`);
       } catch (error) {
         logger.error(`Failed to install handler ${handlerName}:`, error.message);
-        // 继续安装其他 handlers
+        failed.push({ handlerName, error: error.message });
       }
+    }
+
+    if (failed.length > 0) {
+      const detail = failed.map(item => `${item.handlerName}: ${item.error}`).join('; ');
+      throw new Error(`Failed to install handlers for ${appId}: ${detail}`);
     }
     
     return { installed, handlerIdMap };

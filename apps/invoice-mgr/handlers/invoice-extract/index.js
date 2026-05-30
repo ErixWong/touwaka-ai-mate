@@ -1,5 +1,6 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 import path from 'path';
+import { resolveAttachmentPath } from '../shared.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -7,7 +8,7 @@ const ITEMS_TABLE = 'app_invoice_mgr_items';
 function isValidInvoice(data) {
   const invNum = data.invoice_number;
   const total = data.total_with_tax || 0;
-  return invNum && /^\d{20}$/.test(invNum) && total > 0;
+  return invNum && /^\d{8,20}$/.test(invNum) && total > 0;
 }
 
 function parseDate(dateStr) {
@@ -119,7 +120,7 @@ export default {
     }
 
     const fileName = file.attachment.file_name;
-    const filePath = file.attachment.file_path;
+    const filePath = file.attachment._resolvedPath || resolveAttachmentPath(file.attachment);
     const ext = path.extname(fileName).toLowerCase();
 
     logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext})`);

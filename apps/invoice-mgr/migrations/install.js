@@ -31,6 +31,8 @@ export default {
         ocr_method VARCHAR(32) COMMENT '识别方法：fapiao/markitdown',
         ocr_raw LONGTEXT COMMENT 'OCR原始输出JSON',
         extraction_status VARCHAR(16) DEFAULT 'success' COMMENT '提取状态',
+        text_items_count INT DEFAULT 0 COMMENT 'PDF文本项总数',
+        keyword_count INT DEFAULT 0 COMMENT '发票关键词匹配数',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uk_invoice_number (invoice_number),
