@@ -1,5 +1,6 @@
 import logger from '../../../../lib/logger.js';
 import path from 'path';
+import { resolveAttachmentPath } from '../shared.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -7,7 +8,7 @@ const ITEMS_TABLE = 'app_invoice_mgr_items';
 function isValidInvoice(data) {
   const invNum = data.invoice_number;
   const total = data.total_with_tax || 0;
-  return invNum && /^\d{20}$/.test(invNum) && total > 0;
+  return invNum && /^\d{8,20}$/.test(invNum) && total > 0;
 }
 
 function parseDate(dateStr) {
@@ -45,9 +46,7 @@ async function upsertRows(services, recordId, data, ocrMethod) {
     remarks: data.remarks || '',
     ocr_method: ocrMethod,
     ocr_raw: typeof data.content === 'string' ? data.content : JSON.stringify(data),
-    extraction_status: data.extraction_status || 'success',
-    text_items_count: data.text_items_count || 0,
-    keyword_count: data.keyword_count || 0,
+    extraction_status: 'success',
   });
 }
 
@@ -121,12 +120,10 @@ export default {
     }
 
     const fileName = file.attachment.file_name;
-    // 附件路径是相对于 data/attachments/ 的，需要加上前缀
-    // 统一使用正斜杠，避免路径问题
-    const filePath = 'attachments/' + file.attachment.file_path.replace(/\\/g, '/');
+    const filePath = file.attachment._resolvedPath || resolveAttachmentPath(file.attachment);
     const ext = path.extname(fileName).toLowerCase();
 
-    logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext}), path=${filePath}`);
+    logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext})`);
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
       logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到OCR`);
@@ -140,7 +137,7 @@ export default {
 
     let result;
     try {
-      result = await services.callSkill('fapiao', 'extract', { path: filePath });
+      result = await services.callSkill('fapiao', 'extract', { file_path: filePath });
     } catch (e) {
       logger.warn(`[invoice-extract] Record ${record.id}: fapiao异常 → ${e.message}`);
       return { success: false, error: `fapiao异常: ${e.message}` };
@@ -151,39 +148,14 @@ export default {
     }
 
     const data = result.data || result;
-    const extractionStatus = data.extraction_status || (isValidInvoice(data) ? 'success' : 'failed');
-
-    if (extractionStatus === 'no_text_layer') {
-      logger.info(`[invoice-extract] Record ${record.id}: 无文本层(扫描版) → 路由到VL`);
-      return { success: false, error: 'no_text_layer' };
-    }
-
-    // 处理 partial 状态（发票号码为空或总金额为0）
-    if (extractionStatus === 'partial') {
-      logger.warn(`[invoice-extract] Record ${record.id}: 发票数据不完整（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax}）→ 路由到VL`);
-      return { success: false, error: 'partial' };
-    }
 
     if (!isValidInvoice(data)) {
-      logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax} status=${extractionStatus}）`);
+      logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax}）`);
       await services.callExtension(ROWS_TABLE, 'upsert', {
         row_id: record.id,
-        invoice_number: data.invoice_number || '',
-        invoice_date: parseDate(data.invoice_date),
-        invoice_type: data.invoice_type || '',
-        seller_name: data.seller?.name || '',
-        seller_tax_id: data.seller?.taxId || '',
-        buyer_name: data.buyer?.name || '',
-        buyer_tax_id: data.buyer?.taxId || '',
-        total_amount: data.total_amount || 0,
-        total_tax: data.total_tax || 0,
-        total_with_tax: data.total_with_tax || 0,
-        item_count: data.item_count || 0,
-        page_count: data.page_count || 0,
-        remarks: data.remarks || '',
         ocr_method: 'fapiao',
-        ocr_raw: JSON.stringify({ error: extractionStatus, reason: 'fapiao did not extract valid invoice data', extraction_status: extractionStatus }),
         extraction_status: 'failed',
+        ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'fapiao did not extract valid invoice data' }),
       });
       return { success: false, error: 'not_invoice' };
     }
@@ -211,7 +183,7 @@ export default {
     await upsertRows(services, record.id, data, 'fapiao');
     const itemCount = await insertItems(services, record.id, data);
 
-    logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品 (status=${extractionStatus})`);
+    logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品`);
     return {
       success: true,
       data: {

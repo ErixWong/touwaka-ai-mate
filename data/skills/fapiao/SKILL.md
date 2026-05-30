@@ -9,7 +9,7 @@ user-invocable: true
 # Invoice - 发票专用解析技能
 
 > **依赖**：pdfjs-dist (Mozilla PDF.js) - 提供坐标提取能力
-> 
+>
 > **注意**：本技能专门用于发票解析，与通用 PDF 处理技能 (`pdf`) 分离，避免重型依赖影响通用场景性能。
 
 ## 工具
@@ -30,33 +30,26 @@ user-invocable: true
 
 | 字段 | 类型 | 描述 |
 |------|------|------|
-| `success` | boolean | 是否成功提取有效发票数据 |
-| `extraction_status` | string | 提取状态：`success` / `no_text_layer` / `not_invoice` / `partial` |
-| `ocr_method` | string | 识别方法：固定为 `fapiao`（坐标解析） |
-| `invoice_number` | string | 发票号码（20位数字） |
-| `invoice_date` | string | 开票日期（格式：xxxx年xx月xx日） |
-| `invoice_type` | string | 发票类型（如：电子发票（增值税专用发票）） |
+| `success` | boolean | 是否成功（提取到至少一个关键字段为 true） |
+| `failure_reason` | string\|null | 失败原因码（`NO_TEXT_LAYER`, `PARSE_INCOMPLETE`, `FILE_NOT_FOUND` 等） |
+| `message` | string\|null | 失败时可读的消息 |
+| `text_content_length` | number | 提取到的文本总长度（用于判断是否为扫描件） |
+| `extraction_status` | string | 提取状态：`SUCCESS` 或 `NO_TEXT_LAYER` |
+| `invoice_number` | string | 发票号码（8位或20位数字） |
+| `invoice_date` | string | 开票日期（格式：xxxx年xx月xx日，支持多种输入格式） |
+| `invoice_type` | string | 发票类型（识别增值税专票/普票、电子发票等多种类型） |
 | `seller` | object | 销售方信息 `{ name, taxId }` |
 | `buyer` | object | 购买方信息 `{ name, taxId }` |
 | `total_amount` | number | 合计金额 |
 | `total_tax` | number | 税额 |
-| `total_with_tax` | number | 价税合计 |
+| `total_with_tax` | number | 价税合计（含一致性校验） |
 | `item_count` | number | 商品明细总数 |
 | `page_count` | number | PDF页数 |
 | `remarks` | string | 备注信息 |
-| `text_items_count` | number | PDF文本项总数（用于判断是否有文本层） |
-| `keyword_count` | number | 发票关键词匹配数量 |
+| `field_sources` | object | 关键字段来源页映射 `{ invoiceNumber, invoiceDate, ... }` |
+| `error` | object\|null | 异常详情 `{ code, stage, message, cause }`（仅失败时） |
 | `content` | string | 格式化后的内容（JSON或Markdown） |
 | `output_file` | string | 保存的文件路径（如果指定了output参数） |
-
-**extraction_status 状态说明：**
-
-| 状态 | 条件 | 说明 |
-|------|------|------|
-| `success` | 20位发票号 + 金额 > 0 | 完整解析成功 |
-| `partial` | 有发票特征但字段解析失败 | 部分提取失败 |
-| `not_invoice` | 有文本但缺少发票关键词（<3） | 不是发票或非标准发票 |
-| `no_text_layer` | 文本项 < 20 | 扫描件（无文本层） |
 
 ### 调用示例
 
@@ -83,12 +76,15 @@ fapiao__extract({
 
 ### 返回示例
 
-**成功提取：**
+**成功示例：**
+
 ```json
 {
   "success": true,
-  "extraction_status": "success",
-  "ocr_method": "fapiao",
+  "failure_reason": null,
+  "message": null,
+  "text_content_length": 1423,
+  "extraction_status": "SUCCESS",
   "invoice_number": "26512000000351324826",
   "invoice_date": "2024年03月15日",
   "invoice_type": "电子发票（增值税专用发票）",
@@ -106,38 +102,57 @@ fapiao__extract({
   "item_count": 5,
   "page_count": 1,
   "remarks": "",
-  "text_items_count": 156,
-  "keyword_count": 6,
+  "field_sources": {
+    "invoiceNumber": 1,
+    "invoiceDate": 1,
+    "buyer": 1,
+    "seller": 1,
+    "amount": 1
+  },
   "content": "{...}",
   "format": "json"
 }
 ```
 
-**扫描件（无文本层）：**
+**扫描件示例：**
+
 ```json
 {
   "success": false,
-  "extraction_status": "no_text_layer",
-  "ocr_method": "fapiao",
+  "failure_reason": "NO_TEXT_LAYER",
+  "message": "PDF has no text layer (scanned image). Use OCR or VL model first.",
+  "text_content_length": 0,
+  "extraction_status": "NO_TEXT_LAYER",
   "invoice_number": "",
+  "invoice_date": "",
+  "invoice_type": "",
+  "seller": { "name": "", "taxId": "" },
+  "buyer": { "name": "", "taxId": "" },
+  "total_amount": 0,
+  "total_tax": 0,
   "total_with_tax": 0,
-  "text_items_count": 8,
-  "keyword_count": 0,
-  "page_count": 1
+  "item_count": 0,
+  "page_count": 1,
+  "remarks": "",
+  "output_file": null,
+  "content": "",
+  "format": "json"
 }
 ```
 
-**非发票文档：**
+**异常示例：**
+
 ```json
 {
   "success": false,
-  "extraction_status": "not_invoice",
-  "ocr_method": "fapiao",
-  "invoice_number": "",
-  "total_with_tax": 0,
-  "text_items_count": 120,
-  "keyword_count": 1,
-  "page_count": 5
+  "failure_reason": "FILE_NOT_FOUND",
+  "message": "Cannot read file: /path/to/missing.pdf",
+  "error": {
+    "code": "FILE_NOT_FOUND",
+    "stage": "pdf_read",
+    "message": "Cannot read file: /path/to/missing.pdf",
+    "cause": "ENOENT: no such file or directory"
+  }
 }
 ```
 
@@ -176,7 +191,6 @@ fapiao__extract({
 const page = await pdfDocument.getPage(1);
 const textContent = await page.getTextContent();
 
-// 每个文本项包含坐标信息
 const items = textContent.items.map(item => ({
   text: item.str,
   x: item.transform[4],      // x坐标
@@ -188,14 +202,17 @@ const items = textContent.items.map(item => ({
 
 ### 发票解析算法
 
-1. **坐标聚类**：按 y 坐标聚类识别文本行
-2. **列边界检测**：基于标准发票布局定义列范围
-3. **字段定位**：
-   - 发票号码：20位数字，位于页面顶部
-   - 开票日期：位于"开票日期"标签右侧
-   - 公司信息：基于"名称："标签定位
-   - 金额信息：基于"¥"符号和"价税合计"标签
-4. **商品明细解析**：识别以 `*` 开头的商品行，按列分配字段
+1. **路径安全**：使用 `path.relative` + `..` 边界判断 + `realpath` 双端校验，防止前缀欺骗和软链绕过
+2. **坐标聚类**：按 y 坐标聚类识别文本行
+3. **列边界检测**：基于标准发票布局定义列范围
+4. **字段定位**：
+   - 发票号码：支持 8/20 位数字 + "发票号码"标签邻域提取
+   - 开票日期：支持 `YYYY年MM月DD日`、`YYYY-MM-DD`、`YYYY.MM.DD`、`YYYY/MM/DD` 及 token 拼接
+   - 公司信息：基于"名称："标签定位，支持右列搜索
+   - 金额信息：基于 `¥`/`￥` 符号 + "价税合计"/"小写"标签 + 合计行 + 一致性校验
+5. **商品明细解析**：基于列覆盖率和坐标聚类判行，不强制 `*` 起始，允许 category 为空
+6. **多页策略**：全页扫描候选字段打分，自动选取最优值，保留字段来源页映射
+7. **异常模型**：统一 `{ code, stage, message, cause }` 结构化异常
 
 ## 支持的发票类型
 
@@ -203,12 +220,15 @@ const items = textContent.items.map(item => ({
 |------|----------|------|
 | 增值税专用发票 | ✅ 完整支持 | 标准布局 |
 | 增值税普通发票 | ✅ 完整支持 | 与专票布局相同 |
-| 电子发票 | ✅ 完整支持 | 包括电子专票和普票 |
+| 电子发票（专票） | ✅ 完整支持 | 关键字识别 |
+| 电子发票（普票） | ✅ 完整支持 | 关键字识别 |
+| 机动车销售统一发票 | ✅ 支持 | 关键字识别 |
+| 二手车销售统一发票 | ✅ 支持 | 关键字识别 |
 | 多页发票 | ✅ 完整支持 | 提取每页开票人信息 |
 
 ## 限制与注意事项
 
-1. **扫描版发票**：本技能基于文本坐标解析，对于纯图片的扫描版发票无法识别。建议先用 `pdf` 技能的 `render` 操作将页面转为图片，再使用 VL 模型识别。
+1. **扫描版发票**：本技能基于文本坐标解析。当 `extraction_status === 'NO_TEXT_LAYER'` 时表示没有文本层（纯图片扫描件），返回 `success: false`。建议先用 `pdf` 技能的 `render` 操作将页面转为图片，再使用 VL 模型识别。
 
 2. **非标准布局**：如果发票布局与标准增值税发票差异较大，解析结果可能不准确。
 
@@ -218,16 +238,32 @@ const items = textContent.items.map(item => ({
 
 ```javascript
 // 场景：扫描版发票处理
-// 1. 先用 pdf skill 渲染页面
+// 1. 先用 fapiao 技能尝试提取（会返回 NO_TEXT_LAYER 状态）
+const result = await fapiao__extract({ path: "scanned_invoice.pdf" });
+if (result.extraction_status === 'NO_TEXT_LAYER') {
+  // 处理扫描件...
+}
+
+// 2. 用 pdf skill 渲染页面
 const renderResult = await pdf__read({
   path: "scanned_invoice.pdf",
   operation: "render",
   output_dir: "./invoice_images"
 });
 
-// 2. 将图片发送给 VL 模型识别文字
-// 3. 如需结构化数据，可手动整理或使用 invoice skill 处理原始PDF（如果有文本层）
+// 3. 将图片发送给 VL 模型识别文字
 ```
+
+## 错误码参考
+
+| 错误码 | 描述 |
+|--------|------|
+| `NO_TEXT_LAYER` | PDF 无文本层（扫描件） |
+| `PARSE_INCOMPLETE` | 解析不完整，未提取到关键字段 |
+| `PATH_NOT_ALLOWED` | 路径不在允许范围内（含前缀欺骗/软链绕过检测） |
+| `FILE_NOT_FOUND` | 文件不存在或不可读 |
+| `PDF_READ_ERROR` | PDF 解析失败 |
+| `UNEXPECTED_ERROR` | 未预期的运行时错误 |
 
 ## 快速参考
 
@@ -238,6 +274,18 @@ const renderResult = await pdf__read({
 | 保存到文件 | `fapiao__extract({ path: "invoice.pdf", output: "result.json" })` |
 
 ## 更新日志
+
+- **2026-05-30**: 架构审计修复版本
+  - 修复路径安全：`path.relative` + `realpath` 双端校验替代 `startsWith`
+  - 增加扫描件显式分类：`text_content_length` + `extraction_status`（`NO_TEXT_LAYER`）
+  - 修正 `success` 语义：失败返回 `success: false` + `failure_reason`
+  - 强化发票号解析：支持 8/20 位 + "发票号码"标签邻域提取
+  - 强化日期解析：支持 `-`、`.`、`/` 及 token 拼接多格式
+  - 强化金额解析：统一清洗 + 合计一致性校验
+  - 强化明细解析：列覆盖率判行，允许 category 为空
+  - 扩展发票类型识别：专票/普票/机动车/二手车等关键词集
+  - 多页字段选取优化：全页候选打分，保留 `field_sources` 来源页
+  - 异常模型结构化：统一 `{ code, stage, message, cause }`
 
 - **2026-03-31**: 初始版本，支持中国增值税发票解析
   - 基于 pdfjs-dist 实现坐标提取

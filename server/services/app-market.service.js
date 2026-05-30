@@ -149,26 +149,12 @@ class AppMarketService {
   // ==================== Registry 拉取 ====================
 
   /**
-   * 从本地 apps 目录读取 index.json
-   */
-  async fetchLocalIndex() {
-    const indexPath = path.join(this.appsDir, 'index.json');
-    const content = await fs.readFile(indexPath, 'utf-8');
-    return JSON.parse(content);
-  }
-
-  /**
-   * 从 GitHub Registry 拉取索引（失败时 fallback 到本地）
+   * 从 GitHub Registry 拉取索引
    */
   async fetchIndex() {
     const config = await this.getRegistryConfig();
-    
-    if (config.offline_mode) {
-      logger.info('Offline mode: reading from local apps/index.json');
-      return await this.fetchLocalIndex();
-    }
-    
     const url = `${config.registry_url}/index.json`;
+    
     logger.info(`Fetching Registry index from: ${url}`);
     
     try {
@@ -183,6 +169,7 @@ class AppMarketService {
       
       const index = await response.json();
       
+      // 更新最后检查时间
       await this.models.SystemSetting.update(
         { setting_value: new Date().toISOString() },
         { where: { setting_key: 'app_market.last_check_at' } }
@@ -190,32 +177,18 @@ class AppMarketService {
       
       return index;
     } catch (error) {
-      logger.warn('Remote Registry failed, fallback to local:', error.message);
-      return await this.fetchLocalIndex();
+      logger.error('Failed to fetch Registry index:', error);
+      throw new Error(`无法连接到 App Market Registry: ${error.message}`);
     }
   }
 
   /**
-   * 从本地 apps 目录读取 manifest.json
-   */
-  async fetchLocalManifest(appId) {
-    const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
-    const content = await fs.readFile(manifestPath, 'utf-8');
-    return JSON.parse(content);
-  }
-
-  /**
-   * 从 GitHub Registry 拉取 App manifest（失败时 fallback 到本地）
+   * 从 GitHub Registry 拉取 App manifest
    */
   async fetchManifest(appId) {
     const config = await this.getRegistryConfig();
-    
-    if (config.offline_mode) {
-      logger.info(`Offline mode: reading local manifest for ${appId}`);
-      return await this.fetchLocalManifest(appId);
-    }
-    
     const url = `${config.registry_url}/${appId}/manifest.json`;
+    
     logger.info(`Fetching manifest for ${appId} from: ${url}`);
     
     try {
@@ -233,36 +206,18 @@ class AppMarketService {
       
       return await response.json();
     } catch (error) {
-      logger.warn(`Remote manifest failed for ${appId}, fallback to local:`, error.message);
-      try {
-        return await this.fetchLocalManifest(appId);
-      } catch (localError) {
-        logger.error(`App ${appId} not found locally either:`, localError.message);
-        throw new Error(`App ${appId} not found in Registry or local apps`);
-      }
+      logger.error(`Failed to fetch manifest for ${appId}:`, error);
+      throw error;
     }
   }
 
   /**
-   * 从本地 apps 目录读取 handler 脚本
-   */
-  async fetchLocalHandler(appId, handlerName) {
-    const handlerPath = path.join(this.appsDir, appId, 'handlers', handlerName, 'index.js');
-    return await fs.readFile(handlerPath, 'utf-8');
-  }
-
-  /**
-   * 拉取处理脚本内容（失败时 fallback 到本地）
+   * 拉取处理脚本内容
    */
   async fetchHandler(appId, handlerName) {
     const config = await this.getRegistryConfig();
-    
-    if (config.offline_mode) {
-      logger.info(`Offline mode: reading local handler ${handlerName} for ${appId}`);
-      return await this.fetchLocalHandler(appId, handlerName);
-    }
-    
     const url = `${config.registry_url}/${appId}/handlers/${handlerName}/index.js`;
+    
     logger.info(`Fetching handler ${handlerName} for ${appId}`);
     
     try {
@@ -274,13 +229,8 @@ class AppMarketService {
       
       return await response.text();
     } catch (error) {
-      logger.warn(`Remote handler failed for ${handlerName}, fallback to local:`, error.message);
-      try {
-        return await this.fetchLocalHandler(appId, handlerName);
-      } catch (localError) {
-        logger.error(`Handler ${handlerName} not found locally:`, localError.message);
-        throw error;
-      }
+      logger.error(`Failed to fetch handler ${handlerName}:`, error);
+      throw error;
     }
   }
 
@@ -368,27 +318,10 @@ class AppMarketService {
   /**
    * 拉取迁移脚本
    */
-  async fetchLocalMigration(appId, scriptPath) {
-    if (scriptPath.includes('..')) {
-      throw new Error(`Security: invalid migration script path ${scriptPath}`);
-    }
-    const fullPath = path.join(this.appsDir, appId, scriptPath);
-    const normalizedPath = path.normalize(fullPath);
-    if (!normalizedPath.startsWith(path.normalize(this.appsDir))) {
-      throw new Error(`Security: migration script path out of bounds`);
-    }
-    return await fs.readFile(normalizedPath, 'utf-8');
-  }
-
   async fetchMigration(appId, scriptPath) {
     const config = await this.getRegistryConfig();
-    
-    if (config.offline_mode) {
-      logger.info(`Offline mode: reading local migration ${scriptPath} for ${appId}`);
-      return await this.fetchLocalMigration(appId, scriptPath);
-    }
-    
     const url = `${config.registry_url}/${appId}/${scriptPath}`;
+    
     logger.info(`Fetching migration ${scriptPath} for ${appId}`);
     
     try {
@@ -400,13 +333,8 @@ class AppMarketService {
       
       return await response.text();
     } catch (error) {
-      logger.warn(`Remote migration failed for ${scriptPath}, fallback to local:`, error.message);
-      try {
-        return await this.fetchLocalMigration(appId, scriptPath);
-      } catch (localError) {
-        logger.error(`Migration ${scriptPath} not found locally:`, localError.message);
-        throw error;
-      }
+      logger.error(`Failed to fetch migration ${scriptPath}:`, error);
+      throw error;
     }
   }
 
@@ -486,17 +414,17 @@ class AppMarketService {
         'utf-8'
       );
       
-      // 9. 插入数据库（extension_tables 存入 config）
+      // 9. 安装 handlers（用于状态流转执行）
+      const { handlerIdMap } = await this.installHandlers(appId, manifest);
+
+      // 10. 插入数据库（extension_tables 存入 config）
       const config = {
         ...manifest.config,
         extension_tables: manifest.extension_tables || []
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
-      
-      // 10. 安装 handlers（处理脚本）
-      const { handlerIdMap } = await this.installHandlers(appId, manifest);
-      
-      // 11. 安装 states（状态机），传入 handlerIdMap
+
+      // 11. 安装状态定义（用于 createRecord 初始状态与配置界面）
       await this.installStates(appId, manifest, handlerIdMap);
       
       // 12. 注册到 app_clock_registry
@@ -632,7 +560,7 @@ class AppMarketService {
     logger.info(`App ${appId} metadata restored after failed update`);
   }
 
-  // ==================== 安装 States（状态机）====================
+  // ==================== 废弃方法（保留以兼容旧数据） ====================
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
     
@@ -665,6 +593,7 @@ class AppMarketService {
    */
   async installHandlers(appId, manifest) {
     const installed = [];
+    const failed = [];
     const handlerIdMap = new Map(); // handlerName → app_row_handlers.id
     
     if (!manifest.states) return { installed, handlerIdMap };
@@ -732,8 +661,13 @@ class AppMarketService {
         logger.info(`Installed handler ${handlerName} for ${appId}`);
       } catch (error) {
         logger.error(`Failed to install handler ${handlerName}:`, error.message);
-        // 继续安装其他 handlers
+        failed.push({ handlerName, error: error.message });
       }
+    }
+
+    if (failed.length > 0) {
+      const detail = failed.map(item => `${item.handlerName}: ${item.error}`).join('; ');
+      throw new Error(`Failed to install handlers for ${appId}: ${detail}`);
     }
     
     return { installed, handlerIdMap };

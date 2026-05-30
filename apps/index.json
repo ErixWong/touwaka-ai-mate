@@ -76,7 +76,7 @@
     { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" }
   ],
   "metadata": {
-    "total_apps": 5,
+    "total_apps": 5
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }

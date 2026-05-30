@@ -1,161 +1,147 @@
-import logger from '../../../lib/logger.js';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import logger from '../../../lib/logger.js';
+import { getManifestStates, resolveAttachmentPath, validateManifestStates } from '../handlers/shared.js';
 
-const ROWS_TABLE = 'app_invoice_mgr_rows';
+const APP_ID = 'invoice-mgr';
+
+function loadHandlersModule(handlerDir, handlerName) {
+  const handlerPath = pathToFileURL(path.join(handlerDir, handlerName, 'index.js')).href;
+  return import(handlerPath);
+}
+
+function getPendingStates(states) {
+  return states
+    .filter(s => s.handler && !s.is_terminal && !s.is_error)
+    .map(s => s.name);
+}
+
+function mergeRecordData(existingData, handlerData) {
+  if (!handlerData) return existingData;
+  const data = typeof existingData === 'string' ? JSON.parse(existingData || '{}') : { ...(existingData || {}) };
+  if (typeof handlerData === 'object' && !Array.isArray(handlerData)) {
+    Object.assign(data, handlerData);
+  }
+  return data;
+}
 
 export async function tick(context) {
   const { app, services } = context;
-  
+
   if (!app) {
-    logger.info('[invoice-mgr tick] No app found');
     return { skipped: true, reason: 'no_app' };
   }
-  
-  logger.info(`[invoice-mgr tick] App loaded: id=${app.id}, name=${app.name}`);
-  
-  const MiniAppRow = services.getModel('mini_app_row');
-  const AppState = services.getModel('app_state');
-  const AppRowHandler = services.getModel('app_row_handler');
-  
-  // 获取所有状态及其 handler 配置
-  const states = await AppState.findAll({
-    where: { app_id: app.id },
-    raw: true,
-  });
-  
-  // 找出有待处理记录的 handler 状态（有 handler_id 的非终态）
-  const handlerStates = states.filter(s => s.handler_id && !s.is_terminal);
-  
-  if (handlerStates.length === 0) {
-    logger.info('[invoice-mgr tick] No handler states found');
-    return { skipped: true, reason: 'no_handler_states' };
+
+  const states = getManifestStates(app);
+
+  if (states.length === 0) {
+    logger.warn('[invoice-mgr tick] No states defined in manifest');
+    return { skipped: true, reason: 'no_states' };
   }
-  
-  // 获取所有 handler 信息
-  const handlerIds = handlerStates.map(s => s.handler_id);
-  const handlers = await AppRowHandler.findAll({
-    where: { id: handlerIds },
-    raw: true,
-  });
-  
-  // 构建 handler_id -> handler name 的映射
-  const handlerMap = {};
-  for (const h of handlers) {
-    handlerMap[h.id] = h.name;
+
+  const manifestValidation = validateManifestStates(app);
+  if (!manifestValidation.valid) {
+    logger.warn(`[invoice-mgr tick] Ghost states in step_resources (not in states): ${manifestValidation.orphans.join(', ')}`);
   }
-  
-  // 收集所有需要处理的状态
-  const statusList = handlerStates.map(s => s.name);
-  
-  // 查询待处理记录
-  const pendingRecords = await MiniAppRow.findAll({
-    where: {
-      app_id: app.id,
-      status: statusList
-    },
-    limit: 10,
-    order: [['created_at', 'ASC']]
-  });
-  
-  if (pendingRecords.length === 0) {
-    logger.info('[invoice-mgr tick] No pending records');
-    return { skipped: true, reason: 'no_data' };
+
+  const pendingStates = getPendingStates(states);
+  if (pendingStates.length === 0) {
+    return { skipped: true, reason: 'no_pending_states' };
   }
-  
-  logger.info(`[invoice-mgr tick] Found ${pendingRecords.length} pending records`);
-  
-  // 构建状态映射
-  const stateMap = {};
-  for (const s of states) {
-    stateMap[s.name] = s;
+
+  const stateMap = new Map(states.map(s => [s.name, s]));
+
+  const placeholders = pendingStates.map(() => '?').join(',');
+  const rows = await services.query(
+    `SELECT id, status, data FROM mini_app_rows
+     WHERE app_id = ? AND status IN (${placeholders})
+     ORDER BY created_at ASC
+     LIMIT 5`,
+    [APP_ID, ...pendingStates]
+  );
+
+  if (rows.length === 0) {
+    return { skipped: true, reason: 'no_pending_records' };
   }
-  
+
+  const handlersDir = path.join(process.cwd(), 'apps', APP_ID, 'handlers');
   let processed = 0;
-  let errors = 0;
-  
-  for (const record of pendingRecords) {
+
+  for (const row of rows) {
     try {
-      const currentState = stateMap[record.status];
-      if (!currentState || !currentState.handler_id) {
-        logger.warn(`[invoice-mgr tick] Record ${record.id}: No handler for status ${record.status}`);
-        continue;
-      }
-      
-      // 从 handler_id 获取 handler 名称
-      const handlerName = handlerMap[currentState.handler_id];
-      if (!handlerName) {
-        logger.error(`[invoice-mgr tick] Record ${record.id}: Handler not found for handler_id ${currentState.handler_id}`);
-        await updateStatus(services, record.id, currentState.failure_next_state || 'extract_failed');
-        errors++;
-        continue;
-      }
-      
-      // 加载 handler
-      const handlerModule = await loadHandler(app.id, handlerName);
-      if (!handlerModule || !handlerModule.default?.process) {
-        logger.error(`[invoice-mgr tick] Record ${record.id}: Handler ${handlerName} not found or has no process function`);
-        await updateStatus(services, record.id, currentState.failure_next_state || 'extract_failed');
-        errors++;
-        continue;
-      }
-      
-      // 获取文件
-      const files = await services.getFiles(record.id);
-      
-      // 构建 context
-      const handlerContext = {
-        record: record.toJSON(),
-        files,
-        services: {
-          callSkill: services.callSkill,
-          callMcp: services.callMcp,
-          callExtension: services.callExtension,
-          query: services.query,
-          execute: services.execute,
-          getModel: services.getModel,
+      const state = stateMap.get(row.status);
+      if (!state || !state.handler) continue;
+
+      logger.info(`[invoice-mgr tick] Processing row ${row.id} (status=${row.status}, handler=${state.handler})`);
+
+      const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
+      const record = { id: row.id, status: row.status, data: recordData };
+
+      const files = await services.getFiles(row.id);
+
+      for (const file of files) {
+        if (file.attachment) {
+          if (!file.attachment._resolvedPath) {
+            file.attachment._resolvedPath = resolveAttachmentPath(file.attachment);
+          }
         }
-      };
-      
-      // 执行 handler
-      logger.info(`[invoice-mgr tick] Executing handler ${handlerName} for record ${record.id}`);
-      const result = await handlerModule.default.process(handlerContext);
-      
-      // 根据结果更新状态
-      if (result && result.success) {
-        const nextStatus = currentState.success_next_state || 'pending_review';
-        await updateStatus(services, record.id, nextStatus);
-        logger.info(`[invoice-mgr tick] Record ${record.id}: Handler succeeded, status -> ${nextStatus}`);
-      } else {
-        const nextStatus = currentState.failure_next_state || 'extract_failed';
-        await updateStatus(services, record.id, nextStatus);
-        logger.info(`[invoice-mgr tick] Record ${record.id}: Handler failed (${result?.error || 'unknown'}), status -> ${nextStatus}`);
       }
-      
+
+      const handlerModule = await loadHandlersModule(handlersDir, state.handler);
+      const handlerFn = handlerModule.default || handlerModule;
+
+      const result = await handlerFn.process({ record, files, services, app });
+
+      if (result.pending) {
+        const newData = mergeRecordData(recordData, result.data);
+        await services.execute(
+          'UPDATE mini_app_rows SET data = ? WHERE id = ?',
+          [JSON.stringify(newData), row.id]
+        );
+        logger.info(`[invoice-mgr tick] Row ${row.id}: pending, keep status=${row.status}`);
+      } else if (result.success) {
+        const newData = mergeRecordData(recordData, result.data);
+        const nextState = state.success_next;
+
+        if (nextState) {
+          await services.execute(
+            'UPDATE mini_app_rows SET status = ?, data = ? WHERE id = ?',
+            [nextState, JSON.stringify(newData), row.id]
+          );
+          logger.info(`[invoice-mgr tick] Row ${row.id}: ${row.status} → ${nextState}`);
+        } else {
+          await services.execute(
+            'UPDATE mini_app_rows SET data = ? WHERE id = ?',
+            [JSON.stringify(newData), row.id]
+          );
+          logger.warn(`[invoice-mgr tick] Row ${row.id} success but no success_next defined for ${row.status}`);
+        }
+      } else {
+        const newData = mergeRecordData(recordData, result.data);
+        const nextState = state.failure_next;
+
+        if (nextState) {
+          await services.execute(
+            'UPDATE mini_app_rows SET status = ?, data = ? WHERE id = ?',
+            [nextState, JSON.stringify(newData), row.id]
+          );
+          logger.warn(`[invoice-mgr tick] Row ${row.id}: ${row.status} → ${nextState} (error: ${result.error || 'unknown'})`);
+        } else {
+          await services.execute(
+            'UPDATE mini_app_rows SET data = ? WHERE id = ?',
+            [JSON.stringify(newData), row.id]
+          );
+          logger.warn(`[invoice-mgr tick] Row ${row.id} failed but no failure_next defined for ${row.status}`);
+        }
+      }
+
       processed++;
     } catch (e) {
-      logger.error(`[invoice-mgr tick] Record ${record.id} failed: ${e.message}`);
-      errors++;
+      logger.error(`[invoice-mgr tick] Row ${row.id} error: ${e.message}`);
+      logger.error(`[invoice-mgr tick] Row ${row.id} stack: ${e.stack}`);
     }
   }
-  
-  logger.info(`[invoice-mgr tick] Processed ${processed} records, errors: ${errors}`);
-  return { success: true, processed, errors };
-}
 
-async function loadHandler(appId, handlerName) {
-  const handlerPath = path.join(process.cwd(), 'apps', appId, 'handlers', handlerName, 'index.js');
-  
-  try {
-    const module = await import(`${pathToFileURL(handlerPath).href}?t=${Date.now()}`);
-    return module;
-  } catch (e) {
-    logger.error(`[invoice-mgr tick] Failed to load handler ${handlerName}: ${e.message}`);
-    return null;
-  }
-}
-
-async function updateStatus(services, recordId, newStatus) {
-  const MiniAppRow = services.getModel('mini_app_row');
-  await MiniAppRow.update({ status: newStatus }, { where: { id: recordId } });
+  logger.info(`[invoice-mgr tick] Processed ${processed} records`);
+  return { success: true, processed };
 }

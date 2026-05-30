@@ -7,9 +7,14 @@ class InvoiceService {
     this.sequelize = db.sequelize;
   }
 
-  async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'invoice_date', order = 'desc' }) {
-    const conditions = [];
-    const replacements = [];
+  async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'invoice_date', order = 'desc', userId, isAdmin }) {
+    const conditions = ['m.app_id = ?'];
+    const replacements = ['invoice-mgr'];
+
+    if (!isAdmin) {
+      conditions.push('m.user_id = ?');
+      replacements.push(userId);
+    }
 
     if (invoiceNumber) {
       conditions.push('r.invoice_number LIKE ?');
@@ -36,9 +41,17 @@ class InvoiceService {
       replacements.push(endDate);
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const allowedSort = ['invoice_number', 'invoice_date', 'seller_name', 'buyer_name', 'total_with_tax', 'm.created_at'];
-    const sortField = allowedSort.includes(sort) ? `r.${sort}` : 'r.invoice_date';
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    const sortFieldMap = {
+      invoice_number: 'r.invoice_number',
+      invoice_date: 'r.invoice_date',
+      seller_name: 'r.seller_name',
+      buyer_name: 'r.buyer_name',
+      total_with_tax: 'r.total_with_tax',
+      created_at: 'm.created_at',
+      'm.created_at': 'm.created_at',
+    };
+    const sortField = sortFieldMap[sort] || 'r.invoice_date';
     const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
     const offset = (page - 1) * size;
 
@@ -73,7 +86,17 @@ class InvoiceService {
     };
   }
 
-  async detail(rowId) {
+  async detail(rowId, userId, isAdmin) {
+    const conditions = ['m.id = ?', 'm.app_id = ?'];
+    const replacements = [rowId, 'invoice-mgr'];
+
+    if (!isAdmin) {
+      conditions.push('m.user_id = ?');
+      replacements.push(userId);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+
     const [rows, items] = await Promise.all([
       this.sequelize.query(
         `SELECT m.id, m.status, m.created_at,
@@ -83,8 +106,8 @@ class InvoiceService {
                 r.item_count, r.page_count, r.remarks, r.ocr_method, r.ocr_raw, r.extraction_status
          FROM mini_app_rows m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
-         WHERE m.id = ?`,
-        { replacements: [rowId], type: Sequelize.QueryTypes.SELECT }
+         ${where}`,
+        { replacements, type: Sequelize.QueryTypes.SELECT }
       ),
       this.sequelize.query(
         `SELECT * FROM app_invoice_mgr_items WHERE row_id = ? ORDER BY sort_order`,

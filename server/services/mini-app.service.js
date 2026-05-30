@@ -176,6 +176,19 @@ class MiniAppService {
     return appJson;
   }
 
+  async getInitialStateFromManifest(appId) {
+    try {
+      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(content);
+      const states = Array.isArray(manifest.states) ? manifest.states : [];
+      const initial = states.find(s => s?.is_initial);
+      return initial?.name || null;
+    } catch {
+      return null;
+    }
+  }
+
   async createApp(data) {
     this.ensureModels();
     const app = await this.models.MiniApp.create({
@@ -482,7 +495,8 @@ class MiniAppService {
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
     // status 现在是实体字段，不放在 data 里
-    const status = initialState?.name || 'pending_ocr';
+    const manifestInitialState = initialState ? null : await this.getInitialStateFromManifest(appId);
+    const status = initialState?.name || manifestInitialState || 'pending_ocr';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);
