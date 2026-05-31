@@ -2,22 +2,24 @@
 import { ref, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { getInvoiceDetail, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
-import { ElMessage } from 'element-plus'
+import { deleteRecord } from '@/api/mini-apps'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps<{ rowId: string }>()
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ back: []; deleted: [] }>()
 
 const loading = ref(false)
 const detail = ref<InvoiceDetailType | null>(null)
+const deleting = ref(false)
+
+const APP_ID = 'invoice-mgr'
 
 const statusLabels: Record<string, { label: string; type: string }> = {
   pending_process: { label: '待处理', type: 'info' },
-  pending_ocr: { label: 'OCR中', type: 'warning' },
-  ocr_submitted: { label: '等待OCR', type: 'warning' },
+  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
   pending_review: { label: '待确认', type: '' },
   confirmed: { label: '已确认', type: 'success' },
   extract_failed: { label: '识别失败', type: 'danger' },
-  ocr_failed: { label: 'OCR失败', type: 'danger' },
 }
 
 onMounted(async () => {
@@ -30,6 +32,30 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function onDelete() {
+  try {
+    await ElMessageBox.confirm('删除后不可恢复，是否继续？', '删除发票记录', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  deleting.value = true
+  try {
+    await deleteRecord(APP_ID, props.rowId)
+    ElMessage.success('记录已删除')
+    emit('deleted')
+    emit('back')
+  } catch (e: any) {
+    ElMessage.error(e.message || '删除失败')
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -38,6 +64,9 @@ onMounted(async () => {
       <el-button text @click="emit('back')">
         <el-icon><ArrowLeft /></el-icon>
         返回列表
+      </el-button>
+      <el-button type="danger" plain :loading="deleting" @click="onDelete">
+        删除记录
       </el-button>
     </div>
 
@@ -105,6 +134,9 @@ onMounted(async () => {
 
 .detail-header {
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .detail-card {

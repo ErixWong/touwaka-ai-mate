@@ -1,5 +1,5 @@
 import logger from '../../../../lib/logger.js';
-import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
+import { splitIntoChunks, getStepResource, getPrompt, callLlmJson } from '../shared.js';
 
 const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
 const DEFAULT_FILTER_CONFIG = {
@@ -37,19 +37,7 @@ const CHUNK_SYSTEM_SUFFIX = `
 注意：如果输入开头是上一轮的carried_over（原文），请完整处理该章节后，再继续处理后续内容。`;
 
 async function filterChunk(services, filterPrompt, filterConfig, chunkInput) {
-  const response = await services.callLlm('filter_text', {
-    instruction: filterPrompt + JSON_FORMAT_PROMPT,
-    ocr_text: chunkInput,
-    response_format: 'json',
-    ...buildLlmParams(filterConfig),
-  });
-
-  let parsed;
-  if (response.parsed && typeof response.parsed === 'object') {
-    parsed = response.parsed;
-  } else {
-    parsed = parseLlmResponse(response);
-  }
+  const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, chunkInput, filterConfig);
 
   if (!parsed || typeof parsed.processed_text !== 'string') {
     throw new Error('LLM返回的JSON格式无效');
@@ -128,14 +116,8 @@ export default {
 
     if (ocrText.length <= maxLen) {
       try {
-        const response = await services.callLlm('filter_text', {
-          instruction: filterPrompt + JSON_FORMAT_PROMPT,
-          ocr_text: ocrText,
-          response_format: 'json',
-          ...buildLlmParams(filterConfig),
-        });
-        const parsed = parseLlmResponse(response);
-        filteredText = (parsed && parsed.processed_text) || ocrText;
+        const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, ocrText, filterConfig);
+        filteredText = parsed?.processed_text || ocrText;
       } catch (e) {
         logger.error(`[contract-v2-text-filter] Record ${record.id}: LLM filter failed - ${e.message}`);
         filteredText = ocrText;

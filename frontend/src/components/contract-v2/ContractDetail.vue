@@ -295,7 +295,7 @@ function fileToBase64(file: File): Promise<string> {
 
 <style scoped>
 .contract-detail {
-  max-width: 1200px;
+  padding: 0 4px;
 }
 
 .contract-detail-header {

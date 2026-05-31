@@ -37,6 +37,7 @@ export default {
         ocr_at DATETIME NULL COMMENT 'OCR 时间',
         filtered_text LONGTEXT NULL COMMENT '过滤后文本',
         filter_at DATETIME NULL COMMENT '过滤时间',
+        sections JSON NULL COMMENT '章节结构',
         extract_prompt TEXT NULL COMMENT '提取提示词',
         extract_json LONGTEXT NULL COMMENT '提取的原始 JSON',
         extract_model VARCHAR(64) NULL COMMENT '使用的模型',

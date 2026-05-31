@@ -414,14 +414,20 @@ class AppMarketService {
         'utf-8'
       );
       
-      // 9. 插入数据库（extension_tables 存入 config）
+      // 9. 安装 handlers（用于状态流转执行）
+      const { handlerIdMap } = await this.installHandlers(appId, manifest);
+
+      // 10. 插入数据库（extension_tables 存入 config）
       const config = {
         ...manifest.config,
         extension_tables: manifest.extension_tables || []
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
+
+      // 11. 安装状态定义（用于 createRecord 初始状态与配置界面）
+      await this.installStates(appId, manifest, handlerIdMap);
       
-      // 10. 注册到 app_clock_registry
+      // 12. 注册到 app_clock_registry
       await this.registerToClockRegistry(appId);
       
       logger.info(`App ${appId} installed successfully`);
@@ -558,11 +564,35 @@ class AppMarketService {
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
     
+    let stateHandlerMap = new Map();
+    const hasHandlers = manifest.states.some(s => s.handler);
+    
+    if (!hasHandlers) {
+      try {
+        const tickPath = path.join(this.appsDir, appId, 'tick', 'index.js');
+        const tickModule = await import(tickPath);
+        if (tickModule.getStateGraph) {
+          const stateGraph = tickModule.getStateGraph();
+          for (const [name, entry] of Object.entries(stateGraph)) {
+            if (entry.handler) {
+              stateHandlerMap.set(name, entry.handler);
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn(`[installStates] Failed to load tick state graph for ${appId}: ${e.message}`);
+      }
+    }
+    
     for (const state of manifest.states) {
-      // handler_id 引用 app_row_handlers 表的实际 ID
       let handlerId = null;
       if (state.handler && handlerIdMap.has(state.handler)) {
         handlerId = handlerIdMap.get(state.handler);
+      } else {
+        const handlerName = stateHandlerMap.get(state.name);
+        if (handlerName && handlerIdMap.has(handlerName)) {
+          handlerId = handlerIdMap.get(handlerName);
+        }
       }
       
       await this.models.AppState.create({
@@ -587,17 +617,41 @@ class AppMarketService {
    */
   async installHandlers(appId, manifest) {
     const installed = [];
+    const failed = [];
     const handlerIdMap = new Map(); // handlerName → app_row_handlers.id
-    
-    if (!manifest.states) return { installed, handlerIdMap };
     
     // 收集需要安装的 handlers（去重）
     const handlerNames = new Set();
-    for (const state of manifest.states) {
-      if (state.handler) {
-        handlerNames.add(state.handler);
+    
+    // 优先从 tick 模块的 getStateGraph() 收集 handler
+    let fromTick = false;
+    try {
+      const tickPath = path.join(this.appsDir, appId, 'tick', 'index.js');
+      const tickModule = await import(tickPath);
+      if (tickModule.getStateGraph) {
+        const stateGraph = tickModule.getStateGraph();
+        for (const entry of Object.values(stateGraph)) {
+          if (entry.handler) {
+            handlerNames.add(entry.handler);
+          }
+        }
+        fromTick = handlerNames.size > 0;
+        logger.info(`Handlers collected from tick getStateGraph: ${[...handlerNames].join(', ')}`);
+      }
+    } catch (e) {
+      logger.warn(`Failed to load tick getStateGraph for ${appId}: ${e.message}`);
+    }
+    
+    // 回退到 manifest.states[].handler
+    if (!fromTick && manifest.states) {
+      for (const state of manifest.states) {
+        if (state.handler) {
+          handlerNames.add(state.handler);
+        }
       }
     }
+    
+    if (handlerNames.size === 0) return { installed, handlerIdMap };
     
     // App 专属 handlers 目录
     const appHandlersDir = path.join(this.appsDir, appId, 'handlers');
@@ -654,8 +708,13 @@ class AppMarketService {
         logger.info(`Installed handler ${handlerName} for ${appId}`);
       } catch (error) {
         logger.error(`Failed to install handler ${handlerName}:`, error.message);
-        // 继续安装其他 handlers
+        failed.push({ handlerName, error: error.message });
       }
+    }
+
+    if (failed.length > 0) {
+      const detail = failed.map(item => `${item.handlerName}: ${item.error}`).join('; ');
+      throw new Error(`Failed to install handlers for ${appId}: ${detail}`);
     }
     
     return { installed, handlerIdMap };

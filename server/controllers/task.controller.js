@@ -304,17 +304,25 @@ class TaskController {
         return;
       }
 
-      const result = await this.Task.update(updates, {
-        where: {
-          id,
-          created_by: userId,
-        },
-      });
+      // 检查是否需要更新：只有当字段值确实变化时才写入数据库
+      let hasRealChange = false;
+      for (const [key, value] of Object.entries(updates)) {
+        if (existingTask[key] !== value) {
+          hasRealChange = true;
+          break;
+        }
+      }
 
-      if (result[0] === 0) {
-        ctx.error('任务更新失败', 500);
+      if (!hasRealChange) {
+        // 字段值未变化，无需 UPDATE，直接返回原对象
+        ctx.success(existingTask, '状态未变化，无需更新');
         return;
       }
+
+      updates.updated_at = new Date();
+      await this.Task.update(updates, {
+        where: { id, created_by: userId },
+      });
 
       // 返回更新后的任务对象
       const updatedTask = await this.Task.findOne({

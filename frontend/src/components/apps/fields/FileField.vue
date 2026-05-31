@@ -5,7 +5,7 @@
         <span class="file-icon">📄</span>
         <span class="file-name">{{ (modelValue as any).name || modelValue }}</span>
       </div>
-      <button class="btn-remove" @click="clearFile" type="button">×</button>
+      <el-button class="btn-remove" @click="clearFile">×</el-button>
     </div>
     <div v-else class="file-upload">
       <input
@@ -34,13 +34,13 @@
 import { ref, computed } from 'vue'
 import { useToastStore } from '@/stores/toast'
 import apiClient from '@/api/client'
-import type { AppField } from '@/api/mini-apps'
+import type { AppField, AppConfig } from '@/api/mini-apps'
 
 const props = defineProps<{
   field: AppField
   modelValue: unknown
   readonly?: boolean
-  app?: { id: string }
+  app?: { id: string; config?: AppConfig }
   recordId?: string
 }>()
 
@@ -53,8 +53,7 @@ const progress = ref(0)
 const error = ref('')
 
 const accept = computed(() => {
-  // 从 App config 中获取支持的格式
-  return '.pdf,.docx,.doc,.jpg,.png'
+  return props.app?.config?.supported_formats?.join(',') || '.pdf,.docx,.doc,.jpg,.png'
 })
 
 const placeholder = computed(() => {
@@ -88,10 +87,10 @@ async function handleFileChange(event: Event) {
   const file = target.files?.[0]
   if (!file) return
 
-  // 检查文件大小 (20MB)
-  const maxSize = 20 * 1024 * 1024
+  const maxSize = props.app?.config?.max_file_size || 50 * 1024 * 1024
+  const maxSizeMB = Math.round(maxSize / 1024 / 1024)
   if (file.size > maxSize) {
-    error.value = `文件大小超过限制 (最大 20MB)`
+    error.value = `文件大小超过限制 (最大 ${maxSizeMB}MB)`
     toast.error(error.value)
     return
   }

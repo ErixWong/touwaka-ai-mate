@@ -55,28 +55,21 @@ async function openStepConfig() {
       <OrgTree />
     </div>
     <div class="cv2-main">
-      <div class="cv2-toolbar">
-        <el-button text @click="openStepConfig">
+      <div class="cv2-header">
+        <el-tabs v-model="activeTab" class="cv2-tabs">
+          <el-tab-pane label="合同列表" name="list" />
+          <el-tab-pane label="统计概览" name="dashboard" />
+        </el-tabs>
+        <el-button text @click="openStepConfig" class="cv2-setting-btn">
           <el-icon><Setting /></el-icon>
-          流程配置
         </el-button>
       </div>
       <div v-if="!showDetail" class="cv2-list-view">
-        <el-tabs v-model="activeTab" class="cv2-tabs">
-          <el-tab-pane label="合同列表" name="list">
-            <ContractList
-              @click-contract="onContractClick"
-            />
-          </el-tab-pane>
-          <el-tab-pane label="统计概览" name="dashboard">
-            <DashboardPanel />
-          </el-tab-pane>
-        </el-tabs>
+        <ContractList v-if="activeTab === 'list'" @click-contract="onContractClick" />
+        <DashboardPanel v-else />
       </div>
       <div v-else class="cv2-detail-view">
-        <ContractDetail
-          @back="onBackToList"
-        />
+        <ContractDetail @back="onBackToList" />
       </div>
     </div>
 
@@ -108,25 +101,46 @@ async function openStepConfig() {
 .cv2-main {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 12px 16px;
 }
 
-.cv2-toolbar {
+.cv2-header {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 8px;
 }
 
 .cv2-tabs {
-  height: 100%;
+  flex: 1;
+  height: auto;
 }
 
-.cv2-tabs :deep(.el-tabs__content) {
-  height: calc(100% - 50px);
+.cv2-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.cv2-tabs :deep(.el-tabs__item) {
+  padding: 0 16px;
+  height: 36px;
+  line-height: 36px;
+}
+
+.cv2-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.cv2-setting-btn {
+  padding: 6px 8px;
+}
+
+.cv2-list-view {
+  height: calc(100% - 48px);
   overflow-y: auto;
 }
 
-.cv2-tabs :deep(.el-tab-pane) {
+.cv2-detail-view {
   height: 100%;
+  overflow-y: auto;
 }
 </style>

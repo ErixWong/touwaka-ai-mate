@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useContractV2Store } from '@/stores/contract-v2'
 import type { OrgNode } from '@/api/contract-v2'
 
@@ -46,7 +47,7 @@ function openAddDialog(parentId: string | null) {
 async function handleAddNode() {
   if (!addForm.value.name.trim()) return
   try {
-    await store.addNode(addForm.value)
+    await store.addNode({ ...addForm.value, parent_id: addForm.value.parent_id || undefined })
     showAddDialog.value = false
   } catch {}
 }

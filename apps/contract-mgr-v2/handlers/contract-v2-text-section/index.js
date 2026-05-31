@@ -1,5 +1,5 @@
 import logger from '../../../../lib/logger.js';
-import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../shared.js';
+import { splitIntoChunks, getStepResource, getPrompt, callLlmJson } from '../shared.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 const SECTION_MAX_INPUT_CHARS = 60000;
@@ -84,13 +84,7 @@ export default {
       let sections;
 
       if (text.length <= SECTION_MAX_INPUT_CHARS) {
-        const response = await services.callLlm('analyze_sections', {
-          instruction: promptBase,
-          ocr_text: text,
-          response_format: 'json',
-          ...buildLlmParams(sectionConfig),
-        });
-        const raw = parseLlmResponse(response);
+        const raw = await callLlmJson(services, promptBase, text, sectionConfig);
         logger.info(`[contract-v2-text-section] Record ${record.id}: raw type=${typeof raw}, isArr=${Array.isArray(raw)}, keys=${raw ? Object.keys(raw).join(',') : 'null'}, preview=${JSON.stringify(raw)?.substring(0, 300)}`);
         sections = raw && (raw.sections || raw);
         if (!sections) return { success: false, error: 'LLM did not return valid JSON' };
@@ -103,13 +97,7 @@ export default {
         for (let i = 0; i < chunks.length; i++) {
           try {
             const hint = i === 0 ? '这是文档前半部分' : `这是文档第 ${i + 1} 段（共 ${chunks.length} 段）`;
-            const response = await services.callLlm('analyze_sections_chunk', {
-              instruction: promptBase + `\n\n注意：${hint}`,
-              ocr_text: chunks[i],
-              response_format: 'json',
-              ...buildLlmParams(sectionConfig),
-            });
-            const raw = parseLlmResponse(response);
+            const raw = await callLlmJson(services, promptBase + `\n\n注意：${hint}`, chunks[i], sectionConfig);
             const parsed = raw && (raw.sections || raw);
             if (Array.isArray(parsed)) chunkResults.push(parsed);
           } catch (chunkErr) {

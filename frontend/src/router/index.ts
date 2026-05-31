@@ -107,6 +107,26 @@ const router = createRouter({
           component: () => import('@/views/KnowledgeDetailView.vue'),
         },
         {
+          path: 'docs',
+          name: 'docs',
+          component: () => import('@/views/CollectionListView.vue'),
+        },
+        {
+          path: 'docs/collections/:id',
+          name: 'doc-collection-detail',
+          component: () => import('@/views/CollectionDetailView.vue'),
+        },
+        {
+          path: 'docs/collections/:id/settings',
+          name: 'doc-collection-settings',
+          component: () => import('@/views/CollectionSettingsView.vue'),
+        },
+        {
+          path: 'docs/:documentId',
+          name: 'doc-detail',
+          component: () => import('@/views/DocDetailView.vue'),
+        },
+        {
           path: 'solutions',
           name: 'solutions',
           component: () => import('@/views/SolutionsView.vue'),

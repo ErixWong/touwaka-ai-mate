@@ -112,6 +112,7 @@ export default (controller) => {
 
   // ==================== 搜索路由 ====================
   // ⚠️ 注意：静态路由必须在动态路由（/:kb_id）之前定义！
+  // @deprecated 底层已切流到统一文档平台 /api/docs/recall
 
   // 全局搜索（搜索用户所有知识库）- 静态路由，必须在前
   router.post('/search', authenticate(), controller.globalSearch.bind(controller));
@@ -121,6 +122,7 @@ export default (controller) => {
 
   // ==================== 召回路由 (Issue #558) ====================
   // ⚠️ 注意：静态路由必须在动态路由（/:kb_id）之前定义！
+  // @deprecated 底层已切流到统一文档平台 /api/docs/recall
 
   // 全局召回（搜索用户所有可访问的知识库）- 静态路由，必须在前
   router.post('/recall', authenticate(), controller.globalRecall.bind(controller));

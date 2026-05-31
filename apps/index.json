@@ -54,6 +54,19 @@
       "tags": ["发票", "invoice", "OCR", "AI识别", "fapiao"],
       "path": "apps/invoice-mgr",
       "manifest_url": "apps/invoice-mgr/manifest.json"
+    },
+    {
+      "id": "ocr-tool",
+      "name": "OCR 文字识别工具",
+      "version": "2.0.0",
+      "icon": "📝",
+      "type": "utility",
+      "description": "上传图片，自动识别并提取文字内容（不保存原图）。",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["OCR", "文字识别", "VLM", "图片"],
+      "path": "apps/ocr-tool",
+      "manifest_url": "apps/ocr-tool/manifest.json"
     }
   ],
   "categories": [
@@ -63,7 +76,7 @@
     { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" }
   ],
   "metadata": {
-    "total_apps": 3,
+    "total_apps": 5
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }

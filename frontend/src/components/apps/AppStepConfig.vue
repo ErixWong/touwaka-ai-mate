@@ -24,7 +24,6 @@
                     :target="getStepConfig(step.name).mcp!"
                     :mcp-servers="mcpServers"
                     :handler-outputs="getHandlerOutputs(step)"
-                    :hide-params-mapping="getStepConfig(step.name).mcp?.hide_params_mapping"
                     @update:target="getStepConfig(step.name).mcp = $event"
                     @server-change="onServerChange(step.name, $event)"
                   />
@@ -34,7 +33,7 @@
                   <div class="form-field span-2">
                     <label class="field-label">{{ $t('apps.stepConfig.model') }}</label>
                     <el-select v-model="getStepConfig(step.name).model_id" clearable>
-                      <el-option v-for="m in llmModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
+                      <el-option v-for="m in filteredModels(step)" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name})`" />
                     </el-select>
                   </div>
                   <div class="form-field span-2">
@@ -44,6 +43,10 @@
                   <div class="form-field">
                     <label class="field-label">{{ $t('apps.stepConfig.enableThinking') }}</label>
                     <el-switch v-model="getStepConfig(step.name).enable_thinking" />
+                  </div>
+                  <div class="form-field span-2" v-if="getStepConfig(step.name).timeout_ms !== undefined">
+                    <label class="field-label">超时 (ms)</label>
+                    <el-input-number v-model="getStepConfig(step.name).timeout_ms" :min="30000" :max="300000" :step="10000" />
                   </div>
                 </template>
               </div>
@@ -138,6 +141,8 @@ const isSaving = ref(false)
 const mcpServers = ref<McpServerResource[]>([])
 const llmModels = ref<InternalLlmModel[]>([])
 const handlerOutputsMap = ref<Record<string, HandlerOutput[]>>({})
+const configurableStatesInfo = ref<Record<string, { type: string; model_type: string | null }>>({})
+const initialStepResources = ref<Record<string, StepResourceConfig>>({})
 const formData = ref<Record<string, StepResourceConfig>>({})
 const promptsData = ref({ filter: '', extract: '', compare: '', section: '' })
 const expandedSteps = ref<Set<string>>(new Set())
@@ -154,7 +159,12 @@ const states = computed<AppState[]>(() => {
   return props.app.states || []
 })
 
+const configurableStateNames = computed(() => Object.keys(configurableStatesInfo.value))
+
 const handlerSteps = computed(() => {
+  if (configurableStateNames.value.length > 0) {
+    return states.value.filter(s => configurableStateNames.value.includes(s.name))
+  }
   return states.value.filter(s => s.handler_id)
 })
 
@@ -166,6 +176,12 @@ function getHandlerOutputs(step: AppState): HandlerOutput[] {
 function getToolsForServer(serverName: string) {
   const server = mcpServers.value.find(s => s.name === serverName)
   return server?.tools || []
+}
+
+function filteredModels(step: AppState) {
+  const hint = configurableStatesInfo.value[step.name]?.model_type
+  if (!hint) return llmModels.value
+  return llmModels.value.filter(m => m.model_type === hint)
 }
 
 
@@ -203,8 +219,10 @@ async function loadData() {
     mcpServers.value = resources.mcp_servers || []
     llmModels.value = resources.internal_llm?.models || []
     handlerOutputsMap.value = resources.handler_outputs || {}
+    configurableStatesInfo.value = resources.configurable_states || {}
 
     const stepResources = config.step_resources || {}
+    initialStepResources.value = { ...stepResources }
     const initial: Record<string, StepResourceConfig> = {}
     for (const step of handlerSteps.value) {
       const saved = stepResources[step.name]
@@ -236,8 +254,9 @@ async function loadData() {
 async function save() {
   isSaving.value = true
   try {
+    const mergedStepResources = { ...initialStepResources.value, ...formData.value }
     await updateAppConfig(props.app.id, {
-      step_resources: formData.value,
+      step_resources: mergedStepResources,
       prompts: promptsData.value,
     })
     toast.success(t('apps.stepConfig.saveSuccess'))

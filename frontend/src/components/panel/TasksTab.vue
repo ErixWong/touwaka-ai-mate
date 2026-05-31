@@ -7,11 +7,11 @@
         <div class="embed-preview">
           <!-- 预览头部 -->
           <div class="embed-preview-header">
-            <button class="btn-back" @click="closeEmbedPreview" :title="$t('tasks.backToFiles') || '返回文件列表'">
+            <el-button class="btn-back" @click="closeEmbedPreview" :title="$t('tasks.backToFiles') || '返回文件列表'">
               <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 12H5M12 19l-7-7 7-7"/>
               </svg>
-            </button>
+            </el-button>
             <div class="preview-title-row">
               <span class="preview-icon">{{ getFileIcon(previewFile?.name || '') }}</span>
               <span class="preview-filename">{{ previewFile?.name }}</span>
@@ -19,7 +19,7 @@
             <div class="preview-actions">
               <!-- HTML 源码/预览切换 -->
               <template v-if="previewType === 'html'">
-                <button
+                <el-button
                   class="btn-action"
                   :class="{ active: showHtmlSource }"
                   @click="toggleHtmlSourceMode"
@@ -27,11 +27,11 @@
                 >
                   <span class="action-icon">{{ showHtmlSource ? '👁️' : '📝' }}</span>
                   <span class="action-label">{{ showHtmlSource ? ($t('tasks.preview') || '预览') : ($t('tasks.source') || '源码') }}</span>
-                </button>
+                </el-button>
               </template>
               <!-- 自动刷新控制 -->
               <template v-if="previewType === 'html' || previewType === 'pdf' || previewType === 'markdown'">
-                <button
+                <el-button
                   class="btn-action"
                   :class="{ active: autoRefreshEnabled }"
                   @click="toggleAutoRefresh"
@@ -40,31 +40,31 @@
                   <span class="action-icon">↻</span>
                   <span v-if="autoRefreshEnabled" class="action-label">{{ $t('tasks.refreshing') }}</span>
                   <span v-else class="action-label">{{ $t('tasks.auto') }}</span>
-                </button>
-                <button class="btn-action" @click="refreshPreview" :disabled="previewLoading" :title="$t('tasks.refreshNow')">
+                </el-button>
+                <el-button class="btn-action" @click="refreshPreview" :disabled="previewLoading" :title="$t('tasks.refreshNow')">
                   <span class="action-icon">⟳</span>
                   <span class="action-label">{{ $t('tasks.refreshLabel') }}</span>
-                </button>
+                </el-button>
               </template>
-              <button class="btn-action" @click="handleDownload(previewFile!)" :title="$t('tasks.downloadFile')">
+              <el-button class="btn-action" @click="handleDownload(previewFile!)" :title="$t('tasks.downloadFile')">
                 <span class="action-icon">↓</span>
                 <span class="action-label">{{ $t('tasks.downloadLabel') }}</span>
-              </button>
+              </el-button>
               <!-- 编辑/保存按钮（仅限可编辑文件） -->
               <template v-if="canEditFile && !previewLoading && !previewSaving">
-                <button v-if="!isEditing" class="btn-action btn-edit-primary" @click="startEdit" :title="$t('tasks.edit') || '编辑'">
+                <el-button v-if="!isEditing" class="btn-action btn-edit-primary" @click="startEdit" :title="$t('tasks.edit') || '编辑'">
                   <span class="action-icon">✏️</span>
                   <span class="action-label">{{ $t('tasks.edit') || '编辑' }}</span>
-                </button>
+                </el-button>
                 <template v-else>
-                  <button class="btn-action" @click="cancelEdit" :title="$t('common.cancel') || '取消'">
+                  <el-button class="btn-action" @click="cancelEdit" :title="$t('common.cancel') || '取消'">
                     <span class="action-icon">✖️</span>
                     <span class="action-label">{{ $t('common.cancel') || '取消' }}</span>
-                  </button>
-                  <button class="btn-action btn-save-primary" @click="saveEdit" :title="$t('common.save') || '保存'">
+                  </el-button>
+                  <el-button class="btn-action btn-save-primary" @click="saveEdit" :title="$t('common.save') || '保存'">
                     <span class="action-icon">💾</span>
                     <span class="action-label">{{ $t('common.save') || '保存' }}</span>
-                  </button>
+                  </el-button>
                 </template>
               </template>
             </div>
@@ -158,9 +158,9 @@
               <!-- 不支持的类型 -->
               <div v-else class="preview-unsupported">
                 <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
-                <button class="btn-confirm" @click="handleDownload(previewFile!)">
+                <el-button type="primary" @click="handleDownload(previewFile!)">
                   {{ $t('tasks.download') || '下载文件' }}
-                </button>
+                </el-button>
               </div>
             </template>
           </div>
@@ -172,11 +172,11 @@
       <template v-else>
         <div class="workspace-header">
           <div class="workspace-info">
-            <button class="btn-back" @click="handleExitTask" :title="$t('tasks.backToList')">
+            <el-button class="btn-back" @click="handleExitTask" :title="$t('tasks.backToList')">
               <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
               </svg>
-            </button>
+            </el-button>
             <div class="workspace-title">
               <span class="task-icon">📁</span>
               <span class="task-name">{{ taskStore.currentTask.title }}</span>
@@ -189,7 +189,7 @@
           </div>
           <div class="workspace-actions">
             <!-- 自动运行切换按钮 -->
-            <button
+            <el-button
               class="btn-autonomous"
               :class="{ active: isAutonomousMode }"
               @click="toggleAutonomousMode"
@@ -197,17 +197,17 @@
               :disabled="isTogglingAutonomous"
             >
               <span class="icon">{{ isAutonomousMode ? '🤖' : '⚙️' }}</span>
-            </button>
-            <button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
+            </el-button>
+            <el-button class="btn-refresh" @click="handleRefreshFiles" :title="$t('tasks.refresh') || '刷新'" :disabled="taskStore.isLoadingFiles">
               <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
               </svg>
-            </button>
-            <button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
+            </el-button>
+            <el-button class="btn-upload" @click="triggerUpload" :title="$t('tasks.uploadFile')">
               <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
               </svg>
-            </button>
+            </el-button>
           </div>
           <input
             ref="fileInputRef"
@@ -260,22 +260,24 @@
               </div>
               <!-- 文件操作菜单 -->
               <div v-if="file.type === 'file'" class="file-menu" @click.stop>
-                <button class="btn-menu-trigger" @click="toggleFileMenu(file)" :title="$t('tasks.moreActions') || '更多操作'">
+                <el-button class="btn-menu-trigger" @click="toggleFileMenu(file)" :title="$t('tasks.moreActions') || '更多操作'">
                   ⋯
-                </button>
+                </el-button>
                 <div v-if="activeMenuFile?.path === file.path" class="file-menu-dropdown">
-                  <button class="menu-item" @click="handleDownload(file)">
+                  <el-button class="menu-item" text @click="handleDownload(file)">
                     <span class="menu-icon">↓</span>
                     <span>{{ $t('tasks.download') || '下载' }}</span>
-                  </button>
-                  <button
+                  </el-button>
+                  <el-button
                     v-if="canDeleteFile(file)"
                     class="menu-item menu-item-danger"
+                    text
+                    type="danger"
                     @click="confirmDeleteFile(file)"
                   >
                     <span class="menu-icon">🗑</span>
                     <span>{{ $t('tasks.delete') || '删除' }}</span>
-                  </button>
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -290,24 +292,23 @@
       <div class="tasks-header">
         <h2 class="title">{{ $t('tasks.title') }}</h2>
         <div class="header-actions">
-          <select v-model="statusFilter" class="status-filter">
-            <option value="all">{{ $t('tasks.allStatus') || '全部' }}</option>
-            <option value="active">{{ $t('tasks.activeStatus') || '进行中' }}</option>
-            <option value="archived">{{ $t('tasks.archivedStatus') || '已归档' }}</option>
-          </select>
-          <button class="btn-create" @click="openCreateDialog" :title="$t('tasks.create')">
+          <el-select v-model="statusFilter" size="small" style="width: 100px">
+            <el-option value="all" :label="$t('tasks.allStatus') || '全部'" />
+            <el-option value="active" :label="$t('tasks.activeStatus') || '进行中'" />
+            <el-option value="archived" :label="$t('tasks.archivedStatus') || '已归档'" />
+          </el-select>
+          <el-button type="primary" @click="openCreateDialog" :title="$t('tasks.create')">
             <span class="icon">+</span>
-          </button>
+          </el-button>
         </div>
       </div>
 
       <!-- 搜索框 -->
       <div class="search-box">
-        <input
+        <el-input
           v-model="searchQuery"
-          type="text"
           :placeholder="$t('tasks.searchPlaceholder')"
-          class="search-input"
+          clearable
         />
       </div>
 
@@ -350,7 +351,7 @@
               <div class="task-actions" @click.stop>
                 <!-- 自动运行切换按钮（仅 active 或 autonomous 相关状态显示） -->
                 <template v-if="task.status === 'active' || isAutonomousStatus(task.status)">
-                  <button
+                  <el-button
                     class="btn-task"
                     :class="{ 'btn-autonomous-active': isAutonomousStatus(task.status) }"
                     @click="handleToggleAutonomousFromList(task, $event)"
@@ -358,38 +359,39 @@
                   >
                     <span class="btn-icon">{{ isAutonomousStatus(task.status) ? '🤖' : '⚙️' }}</span>
                     <span class="btn-label">{{ isAutonomousStatus(task.status) ? ($t('tasks.autonomous') || '自动') : ($t('tasks.autoRun') || '自运') }}</span>
-                  </button>
+                  </el-button>
                 </template>
-                <button
+                <el-button
                   v-if="task.status === 'active' || isAutonomousStatus(task.status)"
                   class="btn-task btn-archive"
                   @click="handleArchiveTask(task)"
                 >
                   <span class="btn-icon">📦</span>
                   <span class="btn-label">{{ $t('tasks.archive') || '归档' }}</span>
-                </button>
-                <button
+                </el-button>
+                <el-button
                   v-else
                   class="btn-task btn-restore"
                   @click="handleRestoreTask(task)"
                 >
                   <span class="btn-icon">↩️</span>
                   <span class="btn-label">{{ $t('tasks.restore') || '恢复' }}</span>
-                </button>
-                <button
+                </el-button>
+                <el-button
                   class="btn-task btn-edit"
                   @click="openEditDialog(task)"
                 >
                   <span class="btn-icon">✏️</span>
                   <span class="btn-label">{{ $t('tasks.edit') || '编辑' }}</span>
-                </button>
-                <button
+                </el-button>
+                <el-button
                   class="btn-task btn-delete"
+                  type="danger"
                   @click="handleDeleteTask(task)"
                 >
                   <span class="btn-icon">🗑️</span>
                   <span class="btn-label">{{ $t('tasks.delete') || '删除' }}</span>
-                </button>
+                </el-button>
               </div>
             </div>
           </div>
@@ -411,40 +413,38 @@
       <div class="dialog">
         <div class="dialog-header">
           <h3>{{ isEditMode ? ($t('tasks.editTitle') || '编辑任务') : ($t('tasks.createTitle') || '创建任务') }}</h3>
-          <button class="btn-close" @click="closeTaskDialog">×</button>
+          <el-button class="btn-close" text @click="closeTaskDialog">×</el-button>
         </div>
         <div class="dialog-body">
           <div class="form-group">
             <label>{{ $t('tasks.titleLabel') || '标题' }}</label>
-            <input
+            <el-input
               v-model="taskForm.title"
-              type="text"
               :placeholder="$t('tasks.titlePlaceholder') || '输入任务标题'"
-              class="form-input"
               @keyup.enter="handleSubmitTask"
             />
           </div>
           <div class="form-group">
             <label>{{ $t('tasks.descriptionLabel') || '描述' }}</label>
-            <textarea
+            <el-input
               v-model="taskForm.description"
+              type="textarea"
               :placeholder="$t('tasks.descriptionPlaceholder') || '输入任务描述（可选）'"
-              class="form-textarea"
-              rows="3"
-            ></textarea>
+              :rows="3"
+            />
           </div>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="closeTaskDialog">
+          <el-button @click="closeTaskDialog">
             {{ $t('common.cancel') || '取消' }}
-          </button>
-          <button
-            class="btn-confirm"
+          </el-button>
+          <el-button
+            type="primary"
             @click="handleSubmitTask"
             :disabled="!taskForm.title.trim() || isSubmitting"
           >
             {{ isSubmitting ? ($t('common.saving') || '保存中...') : ($t('common.save') || '保存') }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -454,18 +454,18 @@
       <div class="dialog dialog-small">
         <div class="dialog-header">
           <h3>{{ $t('tasks.deleteConfirm') || '确认删除' }}</h3>
-          <button class="btn-close" @click="showDeleteConfirm = false">×</button>
+          <el-button class="btn-close" text @click="showDeleteConfirm = false">×</el-button>
         </div>
         <div class="dialog-body">
           <p>{{ $t('tasks.deleteConfirmMessage', { title: taskToDelete?.title }) || `确定要删除任务"${taskToDelete?.title}"吗？此操作不可恢复。` }}</p>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="showDeleteConfirm = false">
+          <el-button @click="showDeleteConfirm = false">
             {{ $t('common.cancel') || '取消' }}
-          </button>
-          <button class="btn-confirm btn-danger" @click="confirmDeleteTask">
+          </el-button>
+          <el-button type="danger" @click="confirmDeleteTask">
             {{ $t('common.delete') || '删除' }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -475,18 +475,18 @@
       <div class="dialog dialog-small">
         <div class="dialog-header">
           <h3>{{ $t('tasks.deleteConfirm') || '确认删除' }}</h3>
-          <button class="btn-close" @click="showDeleteFileConfirm = false">×</button>
+          <el-button class="btn-close" text @click="showDeleteFileConfirm = false">×</el-button>
         </div>
         <div class="dialog-body">
           <p>{{ $t('tasks.deleteFileConfirmMessage', { name: fileToDelete?.name }) || `确定要删除文件"${fileToDelete?.name}"吗？此操作不可恢复。` }}</p>
         </div>
         <div class="dialog-footer">
-          <button class="btn-cancel" @click="showDeleteFileConfirm = false">
+          <el-button @click="showDeleteFileConfirm = false">
             {{ $t('common.cancel') || '取消' }}
-          </button>
-          <button class="btn-confirm btn-danger" @click="handleDeleteFile">
+          </el-button>
+          <el-button type="danger" @click="handleDeleteFile">
             {{ $t('common.delete') || '删除' }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>

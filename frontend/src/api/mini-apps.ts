@@ -77,15 +77,21 @@ export interface AppConfig {
     section?: string
   }
   extension_tables?: ExtensionTable[]
+  vlm_model_id?: string
+  vlm_temperature?: number
+  vlm_timeout_ms?: number
 }
 
 export interface StepResourceConfig {
   type: 'mcp' | 'internal_llm'
   mcp?: McpResourceTarget
   model_id?: string
+  model_type?: string | null
   temperature?: number
+  timeout_ms?: number
   enable_thinking?: boolean
   judge_model_id?: string
+  judge_temperature?: number
 }
 
 export interface McpResourceTarget {
@@ -127,6 +133,7 @@ export interface InternalLlmModel {
   id: string
   name: string
   model_name: string
+  model_type?: string
   provider_name: string
 }
 
@@ -137,6 +144,10 @@ export interface AvailableResources {
     models?: InternalLlmModel[]
   }
   handler_outputs: Record<string, HandlerOutput[]>
+  configurable_states?: Record<string, {
+    type: string
+    model_type: string | null
+  }>
 }
 
 export interface AppState {
@@ -430,7 +441,7 @@ export async function compareRecords(
       row_id_a: rowIdA,
       row_id_b: rowIdB,
       ...options,
-    }, { timeout: 600000, signal })
+    }, { timeout: 1800000, signal })
   )
 }
 

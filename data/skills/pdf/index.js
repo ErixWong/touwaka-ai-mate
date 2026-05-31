@@ -8,11 +8,21 @@
  * 依赖：
  * - pdf-lib: PDF 操作核心库
  * - pdf-parse v2.4+: 文本提取、图片提取、表格提取、页面渲染
+ * 
+ * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
  */
 
 const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
+
+// 尝试加载 fontkit 模块（延迟注册到每个 PDFDocument 实例）
+let fontkitModule = null;
+try {
+  fontkitModule = require('@pdf-lib/fontkit');
+} catch (e) {
+  // fontkit 不可用，仅使用标准字体（无法渲染中文）
+}
 
 // pdf-parse v2 延迟加载
 let PDFParse = null;
@@ -27,82 +37,14 @@ function getPdfParse() {
   return { PDFParse, VerbosityLevel };
 }
 
-// 用户角色检查
-const IS_ADMIN = process.env.IS_ADMIN === 'true';
-const IS_SKILL_CREATOR = process.env.IS_SKILL_CREATOR === 'true';
-
-// 允许的基础路径
-const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
-const USER_ID = process.env.USER_ID || 'default';
-const USER_WORK_DIR = process.env.WORKING_DIRECTORY
-  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
-  : path.join(DATA_BASE_PATH, 'work', USER_ID);
-
-// 根据用户角色设置允许的路径
-let ALLOWED_BASE_PATHS;
-if (IS_ADMIN) {
-  // 管理员：可以访问整个 data/ 目录
-  ALLOWED_BASE_PATHS = [DATA_BASE_PATH];
-} else if (IS_SKILL_CREATOR) {
-  // 技能创建者：可以访问 skills/ 和自己的工作目录
-  ALLOWED_BASE_PATHS = [
-    path.join(DATA_BASE_PATH, 'skills'),
-    path.join(DATA_BASE_PATH, 'work', USER_ID)
-  ];
-} else {
-  // 普通用户：只能访问自己的工作目录
-  ALLOWED_BASE_PATHS = [USER_WORK_DIR];
-}
-
 /**
- * 检查路径是否被允许
- */
-function isPathAllowed(targetPath) {
-  let resolved = path.resolve(targetPath);
-  
-  try {
-    if (fs.existsSync(resolved)) {
-      resolved = fs.realpathSync(resolved);
-    }
-  } catch (e) {}
-  
-  return ALLOWED_BASE_PATHS.some(basePath => {
-    let resolvedBase = path.resolve(basePath);
-    try {
-      if (fs.existsSync(resolvedBase)) {
-        resolvedBase = fs.realpathSync(resolvedBase);
-      }
-    } catch (e) {}
-    return resolved.startsWith(resolvedBase);
-  });
-}
-
-/**
- * 解析路径（支持相对路径）
+ * Resolve path - VM 已设置 cwd，直接使用相对路径即可（与 FS 技能一致）
  */
 function resolvePath(relativePath) {
   if (path.isAbsolute(relativePath)) {
-    if (!isPathAllowed(relativePath)) {
-      throw new Error(`Path not allowed: ${relativePath}`);
-    }
-    return relativePath;
+    throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
-  
-  for (const basePath of ALLOWED_BASE_PATHS) {
-    const resolved = path.join(basePath, relativePath);
-    if (fs.existsSync(resolved) || isPathAllowed(resolved)) {
-      if (!isPathAllowed(resolved)) {
-        throw new Error(`Path not allowed: ${resolved}`);
-      }
-      return resolved;
-    }
-  }
-  
-  const defaultPath = path.join(ALLOWED_BASE_PATHS[0], relativePath);
-  if (!isPathAllowed(defaultPath)) {
-    throw new Error(`Path not allowed: ${defaultPath}`);
-  }
-  return defaultPath;
+  return relativePath;
 }
 
 /**
@@ -123,42 +65,6 @@ function savePdfFile(filePath, pdfBytes) {
     fs.mkdirSync(dir, { recursive: true });
   }
   fs.writeFileSync(resolvedPath, pdfBytes);
-}
-
-/**
- * 文本换行辅助函数
- */
-function wrapText(text, maxWidth, font, fontSize) {
-  const lines = [];
-  const paragraphs = text.split('\n');
-  
-  for (const paragraph of paragraphs) {
-    if (paragraph.trim() === '') {
-      lines.push('');
-      continue;
-    }
-    
-    let currentLine = '';
-    const words = paragraph.split(' ');
-    
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const width = font.widthOfTextAtSize(testLine, fontSize);
-      
-      if (width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-  }
-  
-  return lines;
 }
 
 // ==================== 读操作实现 ====================
@@ -569,10 +475,149 @@ async function readFieldInfo(params) {
 // ==================== 写操作实现 ====================
 
 /**
+ * 将页面大小字符串转换为 [width, height] 数组
+ */
+function parsePageSize(pageSizeStr) {
+  if (!pageSizeStr || typeof pageSizeStr !== 'string') {
+    return [595.28, 841.89];
+  }
+  
+  const normalized = pageSizeStr.trim().toLowerCase();
+  
+  const sizeMap = {
+    'a4': [595.28, 841.89],
+    'a3': [841.89, 1190.55],
+    'a5': [419.53, 595.28],
+    'letter': [612, 792],
+    'legal': [612, 1008],
+    'tabloid': [792, 1224],
+    'executive': [521.86, 756],
+    'statement': [396, 612],
+    'folio': [612, 936],
+    'quarteravo': [482.75, 701.75],
+    'octavo': [425.13, 658.27],
+    'twelvemo': [367.56, 582.66]
+  };
+  
+  const dimensions = sizeMap[normalized];
+  if (dimensions && Array.isArray(dimensions)) {
+    const [w, h] = dimensions;
+    if (typeof w === 'number' && typeof h === 'number' && isFinite(w) && isFinite(h) && w > 0 && h > 0) {
+      return dimensions;
+    }
+  }
+  
+  return [595.28, 841.89];
+}
+
+/**
+ * 将文本按字符/单词换行
+ */
+function wrapTextFull(text, maxWidth, font, fontSize) {
+  const lines = [];
+  const paragraphs = text.split('\n');
+  
+  for (const paragraph of paragraphs) {
+    if (paragraph.trim() === '') {
+      lines.push('');
+      continue;
+    }
+    
+    // 检查是否包含CJK字符
+    const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(paragraph);
+    
+    if (hasCJK) {
+      // CJK文本：逐字符测量，到达最大宽度时换行
+      let currentLine = '';
+      for (const char of paragraph) {
+        if (char === ' ') {
+          if (currentLine) {
+            lines.push(currentLine);
+            currentLine = '';
+          }
+          continue;
+        }
+        
+        const testLine = currentLine + char;
+        const charWidth = font.widthOfTextAtSize(char, fontSize);
+        const currentWidth = currentLine ? font.widthOfTextAtSize(currentLine, fontSize) : 0;
+        
+        if (currentWidth + charWidth > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = char;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+    } else {
+      // 西文文本：按单词换行
+      let currentLine = '';
+      const words = paragraph.split(/\s+/);
+      
+      for (const word of words) {
+        if (!word) continue;
+        
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const width = font.widthOfTextAtSize(testLine, fontSize);
+        
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+    }
+  }
+  
+  return lines;
+}
+
+/**
+ * 加载中文字体
+ */
+async function loadCJKFont(pdfDoc) {
+  if (!fontkitModule) {
+    return null;
+  }
+  
+  // 在实例级别注册 fontkit（pdf-lib v1.17.1+ 正确方式）
+  pdfDoc.registerFontkit(fontkitModule);
+  
+  const fontPaths = [
+    path.join(process.env.SKILL_PATH || '', '..', '..', 'fonts', 'simhei.ttf'),
+    path.join(process.cwd(), '..', 'fonts', 'simhei.ttf'),
+    'data/fonts/simhei.ttf',
+  ];
+  
+  for (const fontPath of fontPaths) {
+    try {
+      const fontBytes = fs.readFileSync(fontPath);
+      return await pdfDoc.embedFont(fontBytes);
+    } catch (e) {
+      // try next path
+    }
+  }
+  
+  return null;
+}
+
+/**
  * 创建 PDF
  */
 async function writeCreate(params) {
-  const { output, title, content = [], pageSize = 'a4' } = params;
+  if (!params || typeof params !== 'object' || typeof params.output !== 'string') {
+    throw new Error('Invalid params: output path is required');
+  }
+  const { output, title, content = [], pageSize } = params;
   
   const pdfDoc = await PDFDocument.create();
   
@@ -580,31 +625,44 @@ async function writeCreate(params) {
     pdfDoc.setTitle(title);
   }
   
-  const sizes = {
-    a4: [595.28, 841.89],
-    letter: [612, 792]
-  };
-  const [width, height] = sizes[pageSize] || sizes.a4;
+  const [width, height] = parsePageSize(pageSize);
   
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const cjkFont = await loadCJKFont(pdfDoc);
+  
+  // 检测是否有 CJK 内容
+  const hasCJKContent = content.some(text => 
+    /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text || '')
+  );
+  
+  // 若有 CJK 内容但无 CJK 字体，发出警告（仍尝试渲染，但中文可能显示为方框）
+  if (hasCJKContent && !cjkFont) {
+    console.log('Warning: CJK content detected but no CJK font available. Chinese characters may not render correctly.');
+  }
   
   for (const pageContent of content) {
+    if (!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) {
+      throw new Error(`Invalid page dimensions: [${width}, ${height}]`);
+    }
     const page = pdfDoc.addPage([width, height]);
     const margin = 50;
     const maxWidth = width - margin * 2;
     const fontSize = 12;
     const lineHeight = fontSize * 1.5;
     
-    const lines = wrapText(pageContent, maxWidth, font, fontSize);
+    // 使用统一字体测量和渲染（避免宽度不一致）
+    const effectiveFont = cjkFont || helveticaFont;
+    const lines = wrapTextFull(pageContent, maxWidth, effectiveFont, fontSize);
     
     let y = height - margin;
     for (const line of lines) {
       if (y < margin) break;
+      // 所有行用同一字体渲染（CJK 字体通常也支持西文）
       page.drawText(line, {
         x: margin,
         y,
         size: fontSize,
-        font,
+        font: effectiveFont,
         color: rgb(0, 0, 0)
       });
       y -= lineHeight;
@@ -617,7 +675,8 @@ async function writeCreate(params) {
   return {
     success: true,
     path: resolvePath(output),
-    pageCount: pdfDoc.getPageCount()
+    pageCount: pdfDoc.getPageCount(),
+    cjkFontUsed: !!cjkFont
   };
 }
 

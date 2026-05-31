@@ -66,20 +66,11 @@ export default {
       const taskInfo = truncateTaskInfo(mcpResult, 1000);
       logger.info(`[contract-check-ocr] Record ${record.id}: Task info length=${taskInfo.length}`);
       
-      const judgeResult = await services.callLlm('judge_ocr_status', {
-        instruction: JUDGE_PROMPT.replace('{{TASK_INFO}}', taskInfo),
-        model_id: resConfig.judge_model_id,
+      const parsed = await services.llm.extractJson(JUDGE_PROMPT.replace('{{TASK_INFO}}', taskInfo), {
+        modelId: resConfig.judge_model_id || null,
         temperature: resConfig.judge_temperature || 0.1,
-        response_format: 'json',
+        defaultValue: { status: 'pending', progress: 0, reason: 'Parse failed' },
       });
-
-      let parsed;
-      try {
-        const jsonMatch = judgeResult.text.match(/\{[\s\S]*\}/);
-        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { status: 'pending', progress: 0, reason: 'Parse failed' };
-      } catch {
-        parsed = { status: 'pending', progress: 0, reason: 'JSON parse error' };
-      }
 
       logger.info(`[contract-check-ocr] Record ${record.id}: Judge result - status=${parsed.status}, progress=${parsed.progress}`);
 

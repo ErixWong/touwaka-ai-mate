@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 import path from 'path';
-import { splitIntoChunks, parseLlmResponse, getStepResource, getPrompt, buildLlmParams } from '../handlers/shared.js';
+import { splitIntoChunks, getStepResource, getPrompt, callLlmJson } from '../handlers/shared.js';
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 const ROWS_TABLE = 'app_contract_mgr_v2_rows';
@@ -147,14 +147,12 @@ MCP返回结果：
 ${JSON.stringify(result).substring(0, 1000)}`;
 
     try {
-      const parseResult = await services.callLlm('parse_task_id', {
-        instruction: parsePrompt,
-        response_format: 'json',
-        model_id: config.parse_model_id,
+      const parsed = await services.llm.extractJson(parsePrompt, '', {
+        modelId: config.parse_model_id || null,
         temperature: 0.1,
+        defaultValue: { task_id: '' },
       });
-      
-      const parsed = parseLlmResponse(parseResult);
+
       if (parsed && parsed.task_id) {
         taskId = parsed.task_id;
         logger.info(`[tick] OCR task_id extracted by LLM: ${taskId}`);
@@ -223,14 +221,14 @@ ${taskInfo}
 
 返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
     
-    const judgeResult = await services.callLlm('judge_ocr_status', {
-      instruction: judgePrompt,
-      model_id: config.judge_model_id,
+    const judgeResult = await services.llm.extractJson(judgePrompt, '', {
+      modelId: config.judge_model_id || null,
       temperature: config.judge_temperature || 0.1,
-      response_format: 'json'
+      defaultValue: { status: 'pending', progress: 0 },
     });
-    
-    const parsed = parseLlmResponse(judgeResult) || { status: 'pending', progress: 0 };
+
+    const parsed = { ...judgeResult };
+    if (!parsed.status) parsed.status = 'pending';
     
     if (parsed.status === 'completed') {
       let ocrText = extractTextFromMcpResult(mcpResult);
@@ -287,13 +285,7 @@ async function handleFilter(row, app, services) {
   
   if (ocrText.length <= maxLen) {
     try {
-      const response = await services.callLlm('filter_text', {
-        instruction: filterPrompt + JSON_FORMAT_PROMPT,
-        ocr_text: ocrText,
-        response_format: 'json',
-        ...buildLlmParams(filterConfig)
-      });
-      const parsed = parseLlmResponse(response);
+      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, ocrText, filterConfig);
       filteredText = parsed?.processed_text || ocrText;
     } catch (e) {
       filteredText = ocrText;
@@ -341,13 +333,7 @@ async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, serv
     const chunkInput = carriedOver + (carriedOver ? '\n' : '') + chunks[i];
     
     try {
-      const response = await services.callLlm('filter_text', {
-        instruction: filterPrompt + JSON_FORMAT_PROMPT,
-        ocr_text: chunkInput,
-        response_format: 'json',
-        ...buildLlmParams(filterConfig)
-      });
-      const parsed = parseLlmResponse(response);
+      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, chunkInput, filterConfig);
       allProcessed.push(parsed?.processed_text || chunkInput);
       carriedOver = parsed?.carried_over || '';
       
@@ -360,13 +346,7 @@ async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, serv
   
   if (carriedOver) {
     try {
-      const response = await services.callLlm('filter_text', {
-        instruction: filterPrompt + JSON_FORMAT_PROMPT,
-        ocr_text: carriedOver,
-        response_format: 'json',
-        ...buildLlmParams(filterConfig)
-      });
-      const parsed = parseLlmResponse(response);
+      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, carriedOver, filterConfig);
       allProcessed.push(parsed?.processed_text || carriedOver);
     } catch (e) {
       allProcessed.push(carriedOver);
@@ -409,14 +389,7 @@ ${exampleJson}
 }`;
   
   try {
-    const response = await services.callLlm('extract_metadata', {
-      instruction: prompt,
-      ocr_text: content[0].filtered_text,
-      response_format: 'json',
-      ...buildLlmParams(extractConfig)
-    });
-    
-    const metadata = parseLlmResponse(response);
+    const metadata = await callLlmJson(services, prompt, content[0].filtered_text, extractConfig);
     
     if (!metadata) {
       await updateProcessStep(services, row.row_id, 'extract_failed');
@@ -493,14 +466,7 @@ async function handleSection(row, app, services) {
 }`;
   
   try {
-    const response = await services.callLlm('analyze_sections', {
-      instruction: sectionPrompt + jsonFormat,
-      ocr_text: content[0].filtered_text,
-      response_format: 'json',
-      ...buildLlmParams(sectionConfig)
-    });
-    
-    const result = parseLlmResponse(response);
+    const result = await callLlmJson(services, sectionPrompt + jsonFormat, content[0].filtered_text, sectionConfig);
     const sections = result?.sections || result;
     
     if (!Array.isArray(sections)) {

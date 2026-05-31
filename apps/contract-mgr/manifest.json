@@ -74,12 +74,19 @@
       "name": "app_contract_mgr_content",
       "type": "content",
       "fields": [
+        { "name": "process_step", "type": "VARCHAR(32)", "label": "处理步骤" },
+        { "name": "file_id", "type": "VARCHAR(32)", "label": "文件ID" },
+        { "name": "ocr_task_id", "type": "VARCHAR(128)", "label": "OCR任务ID" },
         { "name": "ocr_text", "type": "LONGTEXT" },
+        { "name": "ocr_service", "type": "VARCHAR(64)" },
+        { "name": "ocr_at", "type": "DATETIME" },
         { "name": "filtered_text", "type": "LONGTEXT" },
+        { "name": "filter_at", "type": "DATETIME" },
         { "name": "sections", "type": "JSON" },
         { "name": "extract_prompt", "type": "TEXT" },
         { "name": "extract_json", "type": "LONGTEXT" },
         { "name": "extract_model", "type": "VARCHAR(64)" },
+        { "name": "extract_temperature", "type": "DECIMAL(3,2)" },
         { "name": "extract_at", "type": "DATETIME" }
       ]
     },
@@ -101,7 +108,8 @@
   ],
   "migrations": {
     "install": "migrations/install.js",
-    "uninstall": "migrations/uninstall.js"
+    "uninstall": "migrations/uninstall.js",
+    "register_clock": "migrations/20250520_register_clock.js"
   },
   "views": {
     "list": {

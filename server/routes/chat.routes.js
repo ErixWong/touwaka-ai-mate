@@ -4,6 +4,7 @@
 
 import Router from '@koa/router';
 import { authenticate } from '../middlewares/auth.js';
+import logger from '../../lib/logger.js';
 
 export default (controller) => {
   const router = new Router({ prefix: '/api/chat' });
@@ -19,12 +20,23 @@ export default (controller) => {
     const { expert_id } = ctx.request.body || {};
     const user_id = ctx.state.session.id;
 
-    // 简化实现：返回成功，前端会标记消息为已停止
-    ctx.body = {
-      code: 0,
-      message: 'success',
-      data: { success: true, expert_id, user_id },
-    };
+    try {
+      // 真正中止 LLM 请求
+      const aborted = await controller.chatService.abortUserRequest(user_id, expert_id);
+      
+      ctx.body = {
+        code: 0,
+        message: 'success',
+        data: { success: true, aborted, expert_id, user_id },
+      };
+    } catch (error) {
+      logger.error('[ChatRoutes] Stop generation error:', error);
+      ctx.body = {
+        code: 500,
+        message: error.message,
+        data: { success: false },
+      };
+    }
   });
 
   return router;

@@ -1,11 +1,9 @@
 <template>
-  <input
-    type="text"
-    :value="modelValue"
-    :readonly="readonly"
-    class="field-input"
+  <el-input
+    :model-value="modelValue"
+    :disabled="readonly"
     :placeholder="field.label"
-    @input="$emit('update:model-value', ($event.target as HTMLInputElement).value)"
+    @update:model-value="$emit('update:model-value', $event)"
   />
 </template>
 

@@ -597,29 +597,29 @@ export const knowledgeBaseApi = {
 
   // 获取知识库列表
   getKnowledgeBases: (params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<KnowledgeBase>>(apiClient.get('/kb', { params })),
+    apiRequest<PaginatedResponse<KnowledgeBase>>(apiClient.get('/docs/kb', { params })),
 
   // 获取知识库详情
   getKnowledgeBase: (id: string) =>
-    apiRequest<KnowledgeBase>(apiClient.get(`/kb/${id}`)),
+    apiRequest<KnowledgeBase>(apiClient.get(`/docs/kb/${id}`)),
 
   // 创建知识库
   createKnowledgeBase: (data: CreateKnowledgeBaseRequest) =>
-    apiRequest<KnowledgeBase>(apiClient.post('/kb', data)),
+    apiRequest<KnowledgeBase>(apiClient.post('/docs/kb', data)),
 
   // 更新知识库
   updateKnowledgeBase: (id: string, data: UpdateKnowledgeBaseRequest) =>
-    apiRequest<KnowledgeBase>(apiClient.put(`/kb/${id}`, data)),
+    apiRequest<KnowledgeBase>(apiClient.put(`/docs/kb/${id}`, data)),
 
   // 删除知识库
   deleteKnowledgeBase: (id: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${id}`)),
+    apiRequest<void>(apiClient.delete(`/docs/kb/${id}`)),
 
   // ========== 文章管理 ==========
 
   // 获取文章列表
   getArticles: (kbId: string, params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<KbArticle>>(apiClient.get(`/kb/${kbId}/articles`, {
+    apiRequest<PaginatedResponse<KbArticle>>(apiClient.get(`/docs/kb/${kbId}/articles`, {
       params,
       // 序列化数组为逗号分隔的字符串，如 tag_ids=xxx,yyy
       paramsSerializer: (p: any) => {
@@ -639,47 +639,47 @@ export const knowledgeBaseApi = {
 
   // 获取文章详情
   getArticle: (kbId: string, articleId: string) =>
-    apiRequest<KbArticle>(apiClient.get(`/kb/${kbId}/articles/${articleId}`)),
+    apiRequest<KbArticle>(apiClient.get(`/docs/kb/${kbId}/articles/${articleId}`)),
 
   // 创建文章
   createArticle: (kbId: string, data: CreateKbArticleRequest) =>
-    apiRequest<KbArticle>(apiClient.post(`/kb/${kbId}/articles`, data)),
+    apiRequest<KbArticle>(apiClient.post(`/docs/kb/${kbId}/articles`, data)),
 
   // 更新文章
   updateArticle: (kbId: string, articleId: string, data: UpdateKbArticleRequest) =>
-    apiRequest<KbArticle>(apiClient.put(`/kb/${kbId}/articles/${articleId}`, data)),
+    apiRequest<KbArticle>(apiClient.put(`/docs/kb/${kbId}/articles/${articleId}`, data)),
 
   // 删除文章
   deleteArticle: (kbId: string, articleId: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${kbId}/articles/${articleId}`)),
+    apiRequest<void>(apiClient.delete(`/docs/kb/${kbId}/articles/${articleId}`)),
 
   // 获取文章节树
   getArticleTree: (kbId: string, articleId: string) =>
-    apiRequest<{ article: KbArticle; tree: KbSection[] }>(apiClient.get(`/kb/${kbId}/articles/${articleId}/tree`)),
+    apiRequest<{ article: KbArticle; tree: KbSection[] }>(apiClient.get(`/docs/kb/${kbId}/articles/${articleId}/tree`)),
 
   // ========== 章节管理 ==========
 
   // 创建章节
   createSection: (kbId: string, data: CreateKbSectionRequest) =>
-    apiRequest<KbSection>(apiClient.post(`/kb/${kbId}/sections`, data)),
+    apiRequest<KbSection>(apiClient.post(`/docs/kb/${kbId}/sections`, data)),
 
   // 更新章节
   updateSection: (kbId: string, sectionId: string, data: UpdateKbSectionRequest) =>
-    apiRequest<KbSection>(apiClient.put(`/kb/${kbId}/sections/${sectionId}`, data)),
+    apiRequest<KbSection>(apiClient.put(`/docs/kb/${kbId}/sections/${sectionId}`, data)),
 
   // 删除章节
   deleteSection: (kbId: string, sectionId: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${kbId}/sections/${sectionId}`)),
+    apiRequest<void>(apiClient.delete(`/docs/kb/${kbId}/sections/${sectionId}`)),
 
   // 移动章节（上移/下移）
   moveSection: (kbId: string, sectionId: string, data: MoveKbSectionRequest) =>
-    apiRequest<{ success: boolean }>(apiClient.post(`/kb/${kbId}/sections/${sectionId}/move`, data)),
+    apiRequest<{ success: boolean }>(apiClient.post(`/docs/kb/${kbId}/sections/${sectionId}/move`, data)),
 
   // ========== 段落管理 ==========
 
   // 查询段落列表
   queryParagraphs: (kbId: string, data: { section_id?: string; pagination?: PaginationParams }) =>
-    apiRequest<PaginatedResponse<KbParagraph>>(apiClient.post(`/kb/${kbId}/paragraphs/query`, {
+    apiRequest<PaginatedResponse<KbParagraph>>(apiClient.post(`/docs/kb/${kbId}/paragraphs/query`, {
       filter: data.section_id ? { section_id: data.section_id } : undefined,
       page: data.pagination ? {
         number: data.pagination.page,
@@ -689,67 +689,67 @@ export const knowledgeBaseApi = {
 
   // 创建段落
   createParagraph: (kbId: string, data: CreateKbParagraphRequest) =>
-    apiRequest<KbParagraph>(apiClient.post(`/kb/${kbId}/paragraphs`, data)),
+    apiRequest<KbParagraph>(apiClient.post(`/docs/kb/${kbId}/paragraphs`, data)),
 
   // 更新段落
   updateParagraph: (kbId: string, paragraphId: string, data: UpdateKbParagraphRequest) =>
-    apiRequest<KbParagraph>(apiClient.put(`/kb/${kbId}/paragraphs/${paragraphId}`, data)),
+    apiRequest<KbParagraph>(apiClient.put(`/docs/kb/${kbId}/paragraphs/${paragraphId}`, data)),
 
   // 删除段落
   deleteParagraph: (kbId: string, paragraphId: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${kbId}/paragraphs/${paragraphId}`)),
+    apiRequest<void>(apiClient.delete(`/docs/kb/${kbId}/paragraphs/${paragraphId}`)),
 
   // 移动段落（上移/下移）
   moveParagraph: (kbId: string, paragraphId: string, data: MoveKbParagraphRequest) =>
-    apiRequest<{ success: boolean }>(apiClient.post(`/kb/${kbId}/paragraphs/${paragraphId}/move`, data)),
+    apiRequest<{ success: boolean }>(apiClient.post(`/docs/kb/${kbId}/paragraphs/${paragraphId}/move`, data)),
 
   // ========== 标签管理 ==========
 
   // 获取标签列表
   getTags: (kbId: string) =>
-    apiRequest<PaginatedResponse<KbTag>>(apiClient.get(`/kb/${kbId}/tags`)),
+    apiRequest<PaginatedResponse<KbTag>>(apiClient.get(`/docs/kb/${kbId}/tags`)),
 
   // 创建标签
   createTag: (kbId: string, data: CreateKbTagRequest) =>
-    apiRequest<KbTag>(apiClient.post(`/kb/${kbId}/tags`, data)),
+    apiRequest<KbTag>(apiClient.post(`/docs/kb/${kbId}/tags`, data)),
 
   // 更新标签
   updateTag: (kbId: string, tagId: string, data: UpdateKbTagRequest) =>
-    apiRequest<KbTag>(apiClient.put(`/kb/${kbId}/tags/${tagId}`, data)),
+    apiRequest<KbTag>(apiClient.put(`/docs/kb/${kbId}/tags/${tagId}`, data)),
 
   // 删除标签
   deleteTag: (kbId: string, tagId: string) =>
-    apiRequest<void>(apiClient.delete(`/kb/${kbId}/tags/${tagId}`)),
+    apiRequest<void>(apiClient.delete(`/docs/kb/${kbId}/tags/${tagId}`)),
 
   // ========== 搜索 ==========
 
   // 语义搜索（单个知识库内）
   search: (kbId: string, data: KbSearchRequest) =>
-    apiRequest<KbSearchResult[]>(apiClient.post(`/kb/${kbId}/search`, data)),
+    apiRequest<KbSearchResult[]>(apiClient.post(`/docs/kb/${kbId}/search`, data)),
 
   // 全局语义搜索（跨所有知识库）
   globalSearch: (data: KbSearchRequest) =>
-    apiRequest<KbSearchResult[]>(apiClient.post('/kb/search', data)),
+    apiRequest<KbSearchResult[]>(apiClient.post('/docs/kb/search', data)),
 
   // ========== 向量化（待实现） ==========
 
   // 重新向量化知识库所有段落
   revectorize: (kbId: string) =>
     apiRequest<{ job_id: string; total: number; success: number; failed: number; embedding_dim: number }>(
-      apiClient.post(`/kb/${kbId}/revectorize`, {}, { timeout: 600000 })
+      apiClient.post(`/docs/kb/${kbId}/revectorize`, {}, { timeout: 600000 })
     ),
 
   // 获取重新向量化进度
   getRevectorizeProgress: (kbId: string, jobId: string) =>
     apiRequest<{ total: number; success: number; failed: number; current: number; status: string; embedding_dim: number }>(
-      apiClient.get(`/kb/${kbId}/revectorize/${jobId}`)
+      apiClient.get(`/docs/kb/${kbId}/revectorize/${jobId}`)
     ),
 
   // ========== 权限管理 ==========
 
   // 转移知识库管理员（管理员专用）
   transferOwner: (kbId: string, newOwnerId: string) =>
-    apiRequest<KnowledgeBase>(apiClient.post(`/kb/${kbId}/transfer-owner`, { new_owner_id: newOwnerId })),
+    apiRequest<KnowledgeBase>(apiClient.post(`/docs/kb/${kbId}/transfer-owner`, { new_owner_id: newOwnerId })),
 }
 
 // ============================================
@@ -964,6 +964,7 @@ export interface McpCredential {
   id: string
   server_id: string
   env_overrides: string
+  credentials?: Record<string, string>
   created_at: string
   updated_at: string
 }
@@ -974,6 +975,7 @@ export interface McpUserCredential {
   server_id: string
   user_id: string
   env_overrides: string
+  credentials?: Record<string, string>
   created_at: string
   updated_at: string
 }

@@ -163,7 +163,30 @@ class MiniAppService {
 
     const appJson = app.toJSON();
     appJson.states = states;
+
+    // 解析 config 字段（JSON 字符串 -> 对象）
+    if (appJson.config && typeof appJson.config === 'string') {
+      try {
+        appJson.config = JSON.parse(appJson.config);
+      } catch {
+        appJson.config = {};
+      }
+    }
+
     return appJson;
+  }
+
+  async getInitialStateFromManifest(appId) {
+    try {
+      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(content);
+      const states = Array.isArray(manifest.states) ? manifest.states : [];
+      const initial = states.find(s => s?.is_initial);
+      return initial?.name || null;
+    } catch {
+      return null;
+    }
   }
 
   async createApp(data) {
@@ -300,6 +323,7 @@ class MiniAppService {
     });
 
     let handlerOutputs = {};
+    let configurableStates = {};
     if (appId) {
       const app = await this.models.MiniApp.findByPk(appId);
       if (app) {
@@ -329,6 +353,30 @@ class MiniAppService {
             handlerOutputs[hid] = [];
           }
         }
+
+        const stateHandlerMap = new Map(
+          states.filter(s => s.handler_id).map(s => [s.name, s.handler_id])
+        );
+
+        let appConfig = {};
+        if (app.config) {
+          try {
+            appConfig = typeof app.config === 'string' ? JSON.parse(app.config) : app.config;
+          } catch { appConfig = {}; }
+        }
+
+        const defaultStepResources = this.getDefaultStepResources(appId) || {};
+        const stepResources = { ...defaultStepResources, ...(appConfig.step_resources || {}) };
+
+        for (const stateName of stateHandlerMap.keys()) {
+          const resource = stepResources[stateName];
+          if (resource) {
+            configurableStates[stateName] = {
+              type: resource.type,
+              model_type: resource.model_type || null,
+            };
+          }
+        }
       }
     }
 
@@ -340,10 +388,12 @@ class MiniAppService {
           id: m.id,
           name: m.name,
           model_name: m.model_name,
+          model_type: m.model_type || null,
           provider_name: m.provider?.provider_name || '',
         })),
       },
       handler_outputs: handlerOutputs,
+      configurable_states: configurableStates,
     };
   }
 
@@ -472,7 +522,8 @@ class MiniAppService {
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
     // status 现在是实体字段，不放在 data 里
-    const status = initialState?.name || 'pending_ocr';
+    const manifestInitialState = initialState ? null : await this.getInitialStateFromManifest(appId);
+    const status = initialState?.name || manifestInitialState || 'pending_process';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);
@@ -920,7 +971,7 @@ async batchUpload(appId, userId, attachmentIds) {
         logger.info(`[compareRecords] Comparing section ${index + 1}/${matchedItems.length}: ${match.sectionA.title} (textA=${textA.length} chars, textB=${textB.length} chars)`);
         const sectionStart = Date.now();
 
-        result = await this.llmService.judge(
+        result = await this.llmService.extractJson(
           comparePrompt,
           JSON.stringify({
             section_title: match.sectionA.title,
@@ -1079,7 +1130,7 @@ ${JSON.stringify(listB, null, 2)}
       logger.info(`[matchSections] Calling LLM for section matching (A=${listA.length}, B=${listB.length})`);
       const startTime = Date.now();
 
-      result = await this.llmService.judge(
+      result = await this.llmService.extractJson(
         matchPrompt,
         JSON.stringify({}),
         { modelId, temperature: Math.min(temperature, 0.3), defaultValue: null }

@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-26
+
+### Added
+- **前端组件统一迁移** - 所有前端组件统一使用 Element Plus (#752)
+- **LLM 请求中断支持** - 支持 abort 取消 LLM 请求 (#747)
+- **多模态图片识别处理优化** - 改进图片识别流程 (#747)
+- **工具调用限制通知** - 80% 警告 + 100% 摘要 (#737)
+- **ECharts 可视化集成** - vue-echarts + echarts 依赖 (#729, #718)
+- **发票管理小程序** - 完整的发票管理功能 (#715, #720, #723, #725)
+- **合同管理v2** - 全新合同管理应用架构 (#665, #667, #669, #670, #673, #674, #676, #677, #679, #683)
+- **动态组件加载** - 消除 AppComponentMap 硬编码 (#696, #699)
+- **Handler Registry** - 消除后端硬编码特判 (#696)
+- **MCP Stateless HTTP 传输支持** - 支持无状态 HTTP 传输 (#635)
+- **App Step 资源配置化** - Handler MCP/LLM 可选 + params_mapping (#634)
+- **合同比对功能** - 选中两份合同逐章节语义比对生成报告 (#662, #671)
+- **App Market 动态组件注册** - 支持动态注册前端组件
+- **误工分析工具优化** - ECharts 可视化 + 按账号聚合 (#710, #717)
+- **PM Judge 机制增强** - 自主任务判断优化 (#731)
+- **LLM 上下文大小评估与自动分块** (#685)
+
+### Changed
+- **合同管理v2 架构优化** - Handler 分层、专用持久化、文本过滤 (#663, #687, #689)
+- **销售合同管理 Handler 配置优化** (#639, #643)
+- **OCR 异步处理与文本过滤流程** (#644)
+- **Vue Router 导航守卫优化** - 去除废弃的 next() 回调 (#672)
+- **前端类型系统完善** - 修复 TypeScript 类型错误
+
+### Fixed
+- **i18n 翻译键补充** - 知识库、专家、Tab 标签等翻译键 (#749, #750)
+- **Excel 技能路径规则统一** - 与 FS 技能一致 (#736, #739, #740)
+- **docx 技能路径说明** - 统一规则 (#741)
+- **技能访问权限限制** - fs skill 只能访问当前工作目录 (#707)
+- **App 生命周期缺陷修复** - uninstall 清理 registry + 安装回滚 + 安全更新 (#696)
+- **前端语法错误修复** - AppDetailView 等 (#727)
+- **重提取 API 实现** - 支持状态重置触发重新提取 (#649, #666)
+- **App 安装卸载流程多项修复** (#652)
+- **文本过滤分块滑动窗口** - 支持超长文本 (#657)
+- **内网访问优化** - 移除自动更新检查和 modal 点击关闭 (#686)
+- **多模态重试机制** - 添加 EOF 和 do_request_failed 到可重试错误 (#745)
+
 ## [0.3.1] - 2026-04-19
 
 ### Added

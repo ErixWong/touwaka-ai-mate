@@ -1,10 +1,10 @@
 <template>
-  <input
+  <el-date-picker
+    :model-value="modelValue"
+    :disabled="readonly"
     type="date"
-    :value="modelValue"
-    :readonly="readonly"
-    class="field-input"
-    @input="$emit('update:model-value', ($event.target as HTMLInputElement).value)"
+    value-format="YYYY-MM-DD"
+    @update:model-value="$emit('update:model-value', $event)"
   />
 </template>
 

@@ -4,7 +4,7 @@
  * 用于从知识库召回相关内容，支持图文召回和上下文增强
  * 返回可直接渲染的 Markdown（图片 URL 已包含 Token）
  *
- * Issue #558: 实现知识库图文召回 API
+ * 已切换到统一文档平台 /api/docs/recall
  *
  * @module kb-recall-skill
  */
@@ -98,69 +98,34 @@ async function handleRecall(params) {
     query,
     top_k = 5,
     threshold = 0.1,
-    article_id,
-    min_tokens = 200,
-    context_mode = 'auto'
   } = params;
 
   if (!kb_id) throw new Error('知识库 ID 不能为空');
   if (!query) throw new Error('查询文本不能为空');
 
-  // 验证 context_mode
-  const validModes = ['none', 'auto', 'section', 'article'];
-  if (!validModes.includes(context_mode)) {
-    throw new Error(`无效的 context_mode: ${context_mode}。可选值: ${validModes.join(', ')}`);
-  }
-
-  const requestBody = {
+  return await httpRequest('POST', '/api/docs/recall', {
     query,
+    scope: 'knowledge',
     top_k,
     threshold,
-    min_tokens,
-    context_mode,
-  };
-
-  if (article_id) {
-    requestBody.article_id = article_id;
-  }
-
-  return await httpRequest('POST', `/api/kb/${kb_id}/recall`, requestBody);
+  });
 }
 
-/**
- * 全局召回（搜索用户所有可访问的知识库）
- */
 async function handleGlobalRecall(params) {
   const {
     query,
     top_k = 10,
     threshold = 0.1,
-    kb_ids,
-    min_tokens = 200,
-    context_mode = 'auto'
   } = params;
 
   if (!query) throw new Error('查询文本不能为空');
 
-  // 验证 context_mode
-  const validModes = ['none', 'auto', 'section', 'article'];
-  if (!validModes.includes(context_mode)) {
-    throw new Error(`无效的 context_mode: ${context_mode}。可选值: ${validModes.join(', ')}`);
-  }
-
-  const requestBody = {
+  return await httpRequest('POST', '/api/docs/recall', {
     query,
+    scope: 'all',
     top_k,
     threshold,
-    min_tokens,
-    context_mode,
-  };
-
-  if (kb_ids && Array.isArray(kb_ids) && kb_ids.length > 0) {
-    requestBody.kb_ids = kb_ids;
-  }
-
-  return await httpRequest('POST', '/api/kb/recall', requestBody);
+  });
 }
 
 // ==================== 执行入口 ====================
@@ -209,7 +174,7 @@ function getTools() {
   return [
     {
       name: 'recall',
-      description: '从指定知识库召回相关内容，返回可直接渲染的 Markdown（图片 URL 已包含 Token）。支持上下文增强：当召回内容 Token 不足时，自动扩展相邻段落提供完整上下文。',
+      description: '从指定知识库召回相关内容。已切换统一文档平台 /api/docs/recall。',
       parameters: {
         type: 'object',
         properties: {
@@ -231,28 +196,13 @@ function getTools() {
             description: '相似度阈值（0-1），默认 0.1',
             default: 0.1,
           },
-          article_id: {
-            type: 'string',
-            description: '限定在特定文章内搜索（可选）',
-          },
-          min_tokens: {
-            type: 'integer',
-            description: '最小 Token 数量，不足时自动扩展上下文，默认 200',
-            default: 200,
-          },
-          context_mode: {
-            type: 'string',
-            enum: ['none', 'auto', 'section', 'article'],
-            description: '上下文模式：none=仅返回匹配段落, auto=自动扩展相邻段落, section=返回整个节, article=返回整篇文章。默认 auto',
-            default: 'auto',
-          },
         },
         required: ['kb_id', 'query'],
       },
     },
     {
       name: 'global_recall',
-      description: '从用户所有可访问的知识库中召回相关内容，返回可直接渲染的 Markdown（图片 URL 已包含 Token）。适用于不确定内容在哪个知识库的场景。',
+      description: '从用户所有可访问的文档中召回相关内容。已切换统一文档平台 /api/docs/recall。',
       parameters: {
         type: 'object',
         properties: {
@@ -262,29 +212,14 @@ function getTools() {
           },
           top_k: {
             type: 'integer',
-            description: '返回结果数量，默认 10',
+            description: '返回结果数量（默认 10，最大 50）',
             default: 10,
+            maximum: 50,
           },
-          threshold: {
+threshold: {
             type: 'number',
             description: '相似度阈值（0-1），默认 0.1',
             default: 0.1,
-          },
-          kb_ids: {
-            type: 'array',
-            items: { type: 'string' },
-            description: '限定知识库 ID 数组（可选，不提供则搜索所有可访问知识库）',
-          },
-          min_tokens: {
-            type: 'integer',
-            description: '最小 Token 数量，不足时自动扩展上下文，默认 200',
-            default: 200,
-          },
-          context_mode: {
-            type: 'string',
-            enum: ['none', 'auto', 'section', 'article'],
-            description: '上下文模式：none=仅返回匹配段落, auto=自动扩展相邻段落, section=返回整个节, article=返回整篇文章。默认 auto',
-            default: 'auto',
           },
         },
         required: ['query'],
