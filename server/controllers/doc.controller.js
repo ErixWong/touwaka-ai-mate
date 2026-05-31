@@ -15,12 +15,14 @@ import Utils from '../../lib/utils.js';
 import { Op, Sequelize } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
+import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 
 class DocController {
   constructor(db) {
     this.db = db;
     this.models = {};
     this.docRecallService = null;
+    this.compareExecutor = null;
   }
 
   // ==================== 版本状态机 ====================
@@ -52,6 +54,12 @@ class DocController {
       this.models.DocPermission = this.db.getModel('doc_permission');
       this.models.DocCompareRun = this.db.getModel('doc_compare_run');
       this.models.DocCompareItem = this.db.getModel('doc_compare_item');
+    }
+  }
+
+  ensureCompareExecutor() {
+    if (!this.compareExecutor) {
+      this.compareExecutor = new DocCompareExecutor(this.db);
     }
   }
 
@@ -493,6 +501,9 @@ class DocController {
 
       ctx.success(run);
       logger.info(`[Doc] createCompareRun: ${run.id}`);
+
+      this.ensureCompareExecutor();
+      setImmediate(() => this.compareExecutor.execute(run.id));
     } catch (error) {
       logger.error('[Doc] createCompareRun error:', error);
       ctx.throw(error.status || 500, error.message);

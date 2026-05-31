@@ -123,9 +123,11 @@ async function migrateContractV1(connection) {
   const [rows] = await connection.query(`
     SELECT r.row_id, r.contract_number, r.party_a, r.party_b, r.parent_company,
            r.contract_amount, r.contract_date, r.created_at, r.updated_at,
-           c.sections, c.filtered_text, c.extract_json
+           c.sections, c.filtered_text, c.extract_json,
+           mr.user_id as owner_id
     FROM app_contract_mgr_rows r
     LEFT JOIN app_contract_mgr_content c ON r.row_id = c.row_id
+    LEFT JOIN mini_app_rows mr ON r.row_id = mr.id
     WHERE r.contract_number IS NOT NULL OR c.filtered_text IS NOT NULL
   `);
 
@@ -133,13 +135,14 @@ async function migrateContractV1(connection) {
 
   for (const row of rows) {
     try {
-      const docId = `ct1_${row.row_id.substring(0, 16)}`;
+      const docId = `ct1_${shortHash(row.row_id)}`;
       const existing = await checkExisting(connection, 'doc_documents', docId);
       if (existing) {
         report.v1_documents.skipped++;
         continue;
       }
 
+      const ownerId = row.owner_id || '0';
       const extractData = row.extract_json ? JSON.parse(row.extract_json) : {};
 
       await connection.execute(`
@@ -152,8 +155,8 @@ async function migrateContractV1(connection) {
         docId,
         row.row_id,
         row.contract_number || extractData.contract_number || '未命名合同',
-        'mn3l9nz0g3axvxwc12fp',
-        'mn3l9nz0g3axvxwc12fp',
+        ownerId,
+        ownerId,
         JSON.stringify({
           contract_number: row.contract_number,
           party_a: row.party_a || extractData.party_a,
@@ -212,7 +215,7 @@ async function migrateContractV2(connection) {
 
   for (const contract of contracts) {
     try {
-      const docId = `ct2_${contract.contract_id.substring(0, 16)}`;
+      const docId = `ct2_${shortHash(contract.contract_id)}`;
       const existing = await checkExisting(connection, 'doc_documents', docId);
       if (existing) {
         report.v2_documents.skipped++;
@@ -353,8 +356,8 @@ async function migrateCompares(connection) {
   for (const compare of compares) {
     try {
       const runId = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
-      const docId = `ct1_${compare.row_id.substring(0, 16)}`;
-      const targetDocId = `ct1_${compare.target_row_id.substring(0, 16)}`;
+      const docId = `ct1_${shortHash(compare.row_id)}`;
+      const targetDocId = `ct1_${shortHash(compare.target_row_id)}`;
 
       let compareResult = null;
       if (compare.compare_result) {
@@ -425,14 +428,18 @@ async function migrateCompares(connection) {
 }
 
 function mapChangeType(type) {
-  const map = {
-    'matched': 'identical',
-    'modified': 'modified',
-    'added': 'added',
-    'removed': 'removed',
-  };
-  return map[type] || 'identical';
-}
+    const map = {
+      'matched': 'identical',
+      'modified': 'modified',
+      'added': 'added',
+      'removed': 'removed',
+    };
+    return map[type] || 'identical';
+  }
+
+  function shortHash(str) {
+    return crypto.createHash('md5').update(str).digest('hex').substring(0, 12);
+  }
 
 async function checkExisting(connection, table, id) {
   const [rows] = await connection.query(
