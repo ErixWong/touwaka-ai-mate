@@ -11,6 +11,8 @@ export interface User {
   email: string
   nickname: string
   avatar?: string
+  department_id?: string
+  position_id?: string
   roles?: string[]
   is_active: boolean
   created_at: string

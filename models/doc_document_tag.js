@@ -1,54 +1,41 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class app_tick_log extends Model {
+export default class doc_document_tag extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      primaryKey: true
+      primaryKey: true,
+      comment: "关联ID"
     },
-    registry_id: {
+    document_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
+      comment: "文档ID",
       references: {
-        model: 'app_clock_registry',
+        model: 'doc_documents',
         key: 'id'
       }
     },
-    app_id: {
+    tag_id: {
       type: DataTypes.STRING(32),
-      allowNull: false
-    },
-    success: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true
-    },
-    output_data: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "JSON 输出"
-    },
-    error_message: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    duration: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0,
-      comment: "耗时(ms)"
+      allowNull: false,
+      comment: "标签ID",
+      references: {
+        model: 'doc_tags',
+        key: 'id'
+      }
     },
     created_at: {
       type: DataTypes.DATE,
-      allowNull: true,
+      allowNull: false,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     }
   }, {
     sequelize,
-    tableName: 'app_tick_log',
+    tableName: 'doc_document_tags',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -61,17 +48,19 @@ export default class app_tick_log extends Model {
         ]
       },
       {
-        name: "idx_registry",
+        name: "idx_doc_tag",
+        unique: true,
         using: "BTREE",
         fields: [
-          { name: "registry_id" },
+          { name: "document_id" },
+          { name: "tag_id" },
         ]
       },
       {
-        name: "idx_created",
+        name: "fk_doc_tag_tag",
         using: "BTREE",
         fields: [
-          { name: "created_at" },
+          { name: "tag_id" },
         ]
       },
     ]

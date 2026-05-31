@@ -26,6 +26,7 @@ import {
   canTransferOwner,
   getKbPermissionInfo,
 } from '../../lib/kb-permission.js';
+import DocRecallService from '../../lib/doc-recall-service.js';
 
 // 最大章节层级深度限制
 const MAX_SECTION_DEPTH = 10; // 允许 10 层深度（1-10）
@@ -68,11 +69,9 @@ class KbController {
     this.KbTag = null;
     this.KbArticleTag = null;
     this.KnowledgeBase = null;
+    this.docRecallService = null;
   }
 
-  /**
-   * 确保模型已初始化
-   */
   ensureModels() {
     if (!this.KbArticle) {
       this.KbArticle = this.db.getModel('kb_article');
@@ -81,6 +80,12 @@ class KbController {
       this.KbTag = this.db.getModel('kb_tag');
       this.KbArticleTag = this.db.getModel('kb_article_tag');
       this.KnowledgeBase = this.db.getModel('knowledge_basis');
+    }
+  }
+
+  ensureDocRecallService(configLoader) {
+    if (!this.docRecallService) {
+      this.docRecallService = new DocRecallService(this.db, configLoader);
     }
   }
 
@@ -1422,105 +1427,68 @@ class KbController {
     }
   }
 
-  // ==================== Search ====================
+// ==================== Search ====================
 
   /**
    * 在指定知识库中搜索
    * POST /api/kb/:kb_id/search
+   * 
+   * 已切换到统一文档平台检索
    */
   async searchInKnowledgeBase(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
+      this.ensureDocRecallService();
       const { kb_id } = ctx.params;
-      const { query, top_k = 5, threshold = 0.1, article_id } = ctx.request.body;
+      const { query, top_k = 5, threshold = 0.1 } = ctx.request.body;
       const userId = ctx.state.session.id;
+      const orgId = ctx.state.session.org_id;
 
       if (!query || !query.trim()) {
         ctx.throw(400, 'Search query is required');
       }
 
-      // 权限检查
       const hasAccess = await canAccessKb(this.db, kb_id, userId);
       if (!hasAccess) {
         ctx.throw(403, '无权访问此知识库');
       }
 
-      // 验证知识库存在
-      const kb = await this.KnowledgeBase.findByPk(kb_id);
-      if (!kb) {
-        ctx.throw(404, 'Knowledge base not found');
+      const result = await this.docRecallService.recall(query, {
+        scope: 'knowledge',
+        top_k: parseInt(top_k),
+        threshold: parseFloat(threshold),
+        userId,
+        org_id: orgId,
+      });
+
+      if (!result.success) {
+        ctx.throw(500, result.message || 'Recall failed');
       }
 
-      // 生成查询向量
-      const queryEmbedding = await this._generateEmbedding(query, kb.embedding_model_id);
-      if (!queryEmbedding) {
-        ctx.throw(500, 'Failed to generate query embedding');
-      }
-
-      // 调整查询向量维度以匹配数据库要求
-      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
-      if (!vectorToSearch) {
-        ctx.throw(500, 'Failed to adjust query embedding dimension');
-      }
-
-      // 构建搜索条件（使用参数化查询避免 SQL 注入）
-      const articleFilter = article_id
-        ? 'AND s.article_id = ?'
-        : '';
-      const replacements = article_id
-        ? [kb_id, article_id, top_k]
-        : [kb_id, top_k];
-
-      // 执行向量搜索（使用 MariaDB VECTOR 功能）
-      const results = await this.db.sequelize.query(
-        `SELECT
-          p.id, p.title, p.content, p.is_knowledge_point, p.token_count,
-          s.id as section_id, s.title as section_title, s.level as section_level,
-          a.id as article_id, a.title as article_title,
-          k.id as kb_id, k.name as kb_name,
-          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText(?)) as distance
-        FROM kb_paragraphs p
-        JOIN kb_sections s ON p.section_id = s.id
-        JOIN kb_articles a ON s.article_id = a.id
-        JOIN knowledge_bases k ON a.kb_id = k.id
-        WHERE k.id = ? ${articleFilter}
-          AND p.embedding IS NOT NULL
-          AND p.is_knowledge_point = 1
-        ORDER BY distance ASC
-        LIMIT ?`,
-        {
-          replacements: [JSON.stringify(vectorToSearch), ...replacements],
-          type: this.db.sequelize.QueryTypes.SELECT,
-        }
-      );
-
-      // 过滤低于阈值的结果并格式化
-      const filteredResults = results
-        .filter(r => (1 - r.distance) >= threshold)
-        .map(r => ({
-          score: 1 - r.distance,
-          paragraph: {
-            id: r.id,
-            title: r.title,
-            content: r.content?.substring(0, 500), // 截取前 500 字符
-            is_knowledge_point: r.is_knowledge_point,
-            token_count: r.token_count,
-          },
-          section: {
-            id: r.section_id,
-            title: r.section_title,
-            level: r.section_level,
-          },
-          article: {
-            id: r.article_id,
-            title: r.article_title,
-          },
-          knowledge_base: {
-            id: r.kb_id,
-            name: r.kb_name,
-          },
-        }));
+      const filteredResults = result.items.map(item => ({
+        score: item.score,
+        paragraph: {
+          id: item.content_unit?.id,
+          title: item.content_unit?.title,
+          content: item.content_unit?.content,
+          is_knowledge_point: true,
+          token_count: null,
+        },
+        section: {
+          id: null,
+          title: null,
+          level: null,
+        },
+        article: {
+          id: item.document?.id,
+          title: item.document?.title,
+        },
+        knowledge_base: {
+          id: kb_id,
+          name: null,
+        },
+      }));
 
       ctx.success(filteredResults);
       logger.info(`[KB] searchInKnowledgeBase: ${filteredResults.length} results, ${Date.now() - startTime}ms`);
@@ -1533,97 +1501,57 @@ class KbController {
   /**
    * 全局搜索（搜索用户所有可访问的知识库）
    * POST /api/kb/search
+   * 
+   * 已切换到统一文档平台检索
    */
   async globalSearch(ctx) {
     const startTime = Date.now();
     try {
       this.ensureModels();
+      this.ensureDocRecallService();
       const userId = ctx.state.session.id;
+      const orgId = ctx.state.session.org_id;
       const { query, top_k = 10, threshold = 0.1 } = ctx.request.body;
 
       if (!query || !query.trim()) {
         ctx.throw(400, 'Search query is required');
       }
 
-      // 使用权限过滤获取用户可访问的知识库列表
-      const permissionWhere = await buildAccessibleKbWhere(this.db, userId);
-      const userKBs = await this.KnowledgeBase.findAll({
-        where: permissionWhere,
-        attributes: ['id', 'name', 'embedding_model_id'],
-        raw: true,
+      const result = await this.docRecallService.recall(query, {
+        scope: 'knowledge',
+        top_k: parseInt(top_k),
+        threshold: parseFloat(threshold),
+        userId,
+        org_id: orgId,
       });
 
-      if (userKBs.length === 0) {
-        ctx.success([]);
-        return;
+      if (!result.success) {
+        ctx.throw(500, result.message || 'Recall failed');
       }
 
-      // 使用第一个知识库的 embedding_model_id（假设用户使用统一的嵌入模型）
-      const embeddingModelId = userKBs[0].embedding_model_id;
-
-      // 生成查询向量
-      const queryEmbedding = await this._generateEmbedding(query, embeddingModelId);
-      if (!queryEmbedding) {
-        ctx.throw(500, 'Failed to generate query embedding');
-      }
-
-      // 调整查询向量维度以匹配数据库要求
-      const { vector: vectorToSearch } = adjustVectorDimension(queryEmbedding);
-      if (!vectorToSearch) {
-        ctx.throw(500, 'Failed to adjust query embedding dimension');
-      }
-
-      const kbIds = userKBs.map(kb => kb.id);
-
-      // 执行向量搜索（使用参数化查询）
-      const results = await this.db.sequelize.query(
-        `SELECT
-          p.id, p.title, p.content, p.is_knowledge_point, p.token_count,
-          s.id as section_id, s.title as section_title, s.level as section_level,
-          a.id as article_id, a.title as article_title,
-          k.id as kb_id, k.name as kb_name,
-          VEC_DISTANCE_COSINE(p.embedding, VEC_FromText(?)) as distance
-        FROM kb_paragraphs p
-        JOIN kb_sections s ON p.section_id = s.id
-        JOIN kb_articles a ON s.article_id = a.id
-        JOIN knowledge_bases k ON a.kb_id = k.id
-        WHERE k.id IN (?)
-          AND p.embedding IS NOT NULL
-          AND p.is_knowledge_point = 1
-        ORDER BY distance ASC
-        LIMIT ?`,
-        {
-          replacements: [JSON.stringify(vectorToSearch), kbIds, top_k],
-          type: this.db.sequelize.QueryTypes.SELECT,
-        }
-      );
-
-      // 过滤低于阈值的结果并格式化
-      const filteredResults = results
-        .filter(r => (1 - r.distance) >= threshold)
-        .map(r => ({
-          score: 1 - r.distance,
-          paragraph: {
-            id: r.id,
-            title: r.title,
-            content: r.content?.substring(0, 500),
-            is_knowledge_point: r.is_knowledge_point,
-            token_count: r.token_count,
-          },
-          section: {
-            id: r.section_id,
-            title: r.section_title,
-            level: r.section_level,
-          },
-          article: {
-            id: r.article_id,
-            title: r.article_title,
-          },
-          knowledge_base: {
-            id: r.kb_id,
-            name: r.kb_name,
-          },
-        }));
+      const filteredResults = result.items.map(item => ({
+        score: item.score,
+        paragraph: {
+          id: item.content_unit?.id,
+          title: item.content_unit?.title,
+          content: item.content_unit?.content,
+          is_knowledge_point: true,
+          token_count: null,
+        },
+        section: {
+          id: null,
+          title: null,
+          level: null,
+        },
+        article: {
+          id: item.document?.id,
+          title: item.document?.title,
+        },
+        knowledge_base: {
+          id: item.document?.id,
+          name: item.document?.title,
+        },
+      }));
 
       ctx.success(filteredResults);
       logger.info(`[KB] globalSearch: ${filteredResults.length} results, ${Date.now() - startTime}ms`);

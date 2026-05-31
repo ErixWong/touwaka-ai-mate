@@ -3,14 +3,16 @@ const DataTypes = _sequelize.DataTypes;
 import _ai_model from  "./ai_model.js";
 import _app_action_log from  "./app_action_log.js";
 import _app_clock_registry from  "./app_clock_registry.js";
-import _app_tick_log from  "./app_tick_log.js";
 import _app_contract_mgr_compare from  "./app_contract_mgr_compare.js";
 import _app_contract_mgr_content from  "./app_contract_mgr_content.js";
 import _app_contract_mgr_row from  "./app_contract_mgr_row.js";
 import _app_contract_mgr_v2_content from  "./app_contract_mgr_v2_content.js";
 import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
+import _app_invoice_mgr_item from  "./app_invoice_mgr_item.js";
+import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
 import _app_row_handler from  "./app_row_handler.js";
 import _app_state from  "./app_state.js";
+import _app_tick_log from  "./app_tick_log.js";
 import _assistant_message from  "./assistant_message.js";
 import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
@@ -20,6 +22,17 @@ import _contract_v2_main_record from  "./contract_v2_main_record.js";
 import _contract_v2_org_node from  "./contract_v2_org_node.js";
 import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
+import _doc_collection_document from  "./doc_collection_document.js";
+import _doc_collection from  "./doc_collection.js";
+import _doc_compare_item from  "./doc_compare_item.js";
+import _doc_compare_run from  "./doc_compare_run.js";
+import _doc_content_unit from  "./doc_content_unit.js";
+import _doc_document_tag from  "./doc_document_tag.js";
+import _doc_document from  "./doc_document.js";
+import _doc_embedding from  "./doc_embedding.js";
+import _doc_permission from  "./doc_permission.js";
+import _doc_tag from  "./doc_tag.js";
+import _doc_version from  "./doc_version.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
 import _invitation_usage from  "./invitation_usage.js";
@@ -63,14 +76,16 @@ export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
   const app_action_log = _app_action_log.init(sequelize, DataTypes);
   const app_clock_registry = _app_clock_registry.init(sequelize, DataTypes);
-  const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const app_contract_mgr_compare = _app_contract_mgr_compare.init(sequelize, DataTypes);
   const app_contract_mgr_content = _app_contract_mgr_content.init(sequelize, DataTypes);
   const app_contract_mgr_row = _app_contract_mgr_row.init(sequelize, DataTypes);
   const app_contract_mgr_v2_content = _app_contract_mgr_v2_content.init(sequelize, DataTypes);
   const app_contract_mgr_v2_row = _app_contract_mgr_v2_row.init(sequelize, DataTypes);
+  const app_invoice_mgr_item = _app_invoice_mgr_item.init(sequelize, DataTypes);
+  const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
   const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
   const app_state = _app_state.init(sequelize, DataTypes);
+  const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
   const assistant_request = _assistant_request.init(sequelize, DataTypes);
   const assistant = _assistant.init(sequelize, DataTypes);
@@ -80,6 +95,17 @@ export default function initModels(sequelize) {
   const contract_v2_org_node = _contract_v2_org_node.init(sequelize, DataTypes);
   const contract_v2_version = _contract_v2_version.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
+  const doc_collection_document = _doc_collection_document.init(sequelize, DataTypes);
+  const doc_collection = _doc_collection.init(sequelize, DataTypes);
+  const doc_compare_item = _doc_compare_item.init(sequelize, DataTypes);
+  const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
+  const doc_content_unit = _doc_content_unit.init(sequelize, DataTypes);
+  const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
+  const doc_document = _doc_document.init(sequelize, DataTypes);
+  const doc_embedding = _doc_embedding.init(sequelize, DataTypes);
+  const doc_permission = _doc_permission.init(sequelize, DataTypes);
+  const doc_tag = _doc_tag.init(sequelize, DataTypes);
+  const doc_version = _doc_version.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
   const invitation_usage = _invitation_usage.init(sequelize, DataTypes);
@@ -129,12 +155,16 @@ export default function initModels(sequelize) {
   role.belongsToMany(user, { as: 'user_id_users', through: user_role, foreignKey: "role_id", otherKey: "user_id" });
   skill.belongsToMany(expert, { as: 'expert_id_experts', through: expert_skill, foreignKey: "skill_id", otherKey: "expert_id" });
   user.belongsToMany(role, { as: 'role_id_roles_user_roles', through: user_role, foreignKey: "user_id", otherKey: "role_id" });
+  doc_collection.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
+  ai_model.hasMany(doc_collection, { as: "doc_collections", foreignKey: "embedding_model_id"});
   expert.belongsTo(ai_model, { as: "expressive_model", foreignKey: "expressive_model_id"});
   ai_model.hasMany(expert, { as: "experts", foreignKey: "expressive_model_id"});
   expert.belongsTo(ai_model, { as: "reflective_model", foreignKey: "reflective_model_id"});
   ai_model.hasMany(expert, { as: "reflective_model_experts", foreignKey: "reflective_model_id"});
   knowledge_basis.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
   ai_model.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "embedding_model_id"});
+  app_tick_log.belongsTo(app_clock_registry, { as: "registry", foreignKey: "registry_id"});
+  app_clock_registry.hasMany(app_tick_log, { as: "app_tick_logs", foreignKey: "registry_id"});
   app_action_log.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
   app_row_handler.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "handler_id"});
   app_state.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
@@ -147,8 +177,44 @@ export default function initModels(sequelize) {
   contract_v2_org_node.hasMany(contract_v2_main_record, { as: "contract_v2_main_records", foreignKey: "org_node_id"});
   contract_v2_org_node.belongsTo(contract_v2_org_node, { as: "parent", foreignKey: "parent_id"});
   contract_v2_org_node.hasMany(contract_v2_org_node, { as: "contract_v2_org_nodes", foreignKey: "parent_id"});
+  doc_collection.belongsTo(department, { as: "department", foreignKey: "department_id"});
+  department.hasMany(doc_collection, { as: "doc_collections", foreignKey: "department_id"});
   position.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
+  doc_collection_document.belongsTo(doc_collection, { as: "collection", foreignKey: "collection_id"});
+  doc_collection.hasMany(doc_collection_document, { as: "doc_collection_documents", foreignKey: "collection_id"});
+  doc_compare_item.belongsTo(doc_compare_run, { as: "run", foreignKey: "run_id"});
+  doc_compare_run.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "run_id"});
+  doc_compare_item.belongsTo(doc_content_unit, { as: "base_unit", foreignKey: "base_unit_id"});
+  doc_content_unit.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "base_unit_id"});
+  doc_compare_item.belongsTo(doc_content_unit, { as: "target_unit", foreignKey: "target_unit_id"});
+  doc_content_unit.hasMany(doc_compare_item, { as: "target_unit_doc_compare_items", foreignKey: "target_unit_id"});
+  doc_content_unit.belongsTo(doc_content_unit, { as: "parent", foreignKey: "parent_id"});
+  doc_content_unit.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "parent_id"});
+  doc_embedding.belongsTo(doc_content_unit, { as: "content_unit", foreignKey: "content_unit_id"});
+  doc_content_unit.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "content_unit_id"});
+  doc_collection_document.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasOne(doc_collection_document, { as: "doc_collection_document", foreignKey: "document_id"});
+  doc_compare_run.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "document_id"});
+  doc_document_tag.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "document_id"});
+  doc_embedding.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "document_id"});
+  doc_permission.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasMany(doc_permission, { as: "doc_permissions", foreignKey: "document_id"});
+  doc_version.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasMany(doc_version, { as: "doc_versions", foreignKey: "document_id"});
+  doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
+  doc_tag.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "tag_id"});
+  doc_compare_run.belongsTo(doc_version, { as: "base_version", foreignKey: "base_version_id"});
+  doc_version.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "base_version_id"});
+  doc_compare_run.belongsTo(doc_version, { as: "target_version", foreignKey: "target_version_id"});
+  doc_version.hasMany(doc_compare_run, { as: "target_version_doc_compare_runs", foreignKey: "target_version_id"});
+  doc_content_unit.belongsTo(doc_version, { as: "version", foreignKey: "version_id"});
+  doc_version.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "version_id"});
+  doc_embedding.belongsTo(doc_version, { as: "version", foreignKey: "version_id"});
+  doc_version.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "version_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(expert_skill, { as: "expert_skills", foreignKey: "expert_id"});
   message.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -193,16 +259,20 @@ export default function initModels(sequelize) {
   mini_app_row.hasOne(app_contract_mgr_content, { as: "app_contract_mgr_content", foreignKey: "row_id"});
   app_contract_mgr_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasOne(app_contract_mgr_row, { as: "app_contract_mgr_row", foreignKey: "row_id"});
-  app_contract_mgr_v2_content.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasOne(app_contract_mgr_v2_content, { as: "app_contract_mgr_v2_content", foreignKey: "row_id"});
   app_contract_mgr_v2_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasOne(app_contract_mgr_v2_row, { as: "app_contract_mgr_v2_row", foreignKey: "row_id"});
+  app_invoice_mgr_item.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasMany(app_invoice_mgr_item, { as: "app_invoice_mgr_items", foreignKey: "row_id"});
+  app_invoice_mgr_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
+  mini_app_row.hasOne(app_invoice_mgr_row, { as: "app_invoice_mgr_row", foreignKey: "row_id"});
   contract_v2_version.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasMany(contract_v2_version, { as: "contract_v2_versions", foreignKey: "row_id"});
   mini_app_file.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "record_id"});
   app_action_log.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
   mini_app.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "app_id"});
+  app_clock_registry.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
+  mini_app.hasMany(app_clock_registry, { as: "app_clock_registries", foreignKey: "app_id"});
   app_state.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
   mini_app.hasMany(app_state, { as: "app_states", foreignKey: "app_id"});
   mini_app_role_access.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
@@ -243,6 +313,10 @@ export default function initModels(sequelize) {
   user.hasMany(attachment_token, { as: "attachment_tokens", foreignKey: "user_id"});
   attachment.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
   user.hasMany(attachment, { as: "attachments", foreignKey: "created_by"});
+  doc_collection.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
+  user.hasMany(doc_collection, { as: "doc_collections", foreignKey: "owner_id"});
+  doc_collection.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
+  user.hasMany(doc_collection, { as: "created_by_doc_collections", foreignKey: "created_by"});
   invitation_usage.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(invitation_usage, { as: "invitation_usages", foreignKey: "user_id"});
   invitation.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
@@ -276,14 +350,16 @@ export default function initModels(sequelize) {
     ai_model,
     app_action_log,
     app_clock_registry,
-    app_tick_log,
     app_contract_mgr_compare,
     app_contract_mgr_content,
     app_contract_mgr_row,
     app_contract_mgr_v2_content,
     app_contract_mgr_v2_row,
+    app_invoice_mgr_item,
+    app_invoice_mgr_row,
     app_row_handler,
     app_state,
+    app_tick_log,
     assistant_message,
     assistant_request,
     assistant,
@@ -293,6 +369,17 @@ export default function initModels(sequelize) {
     contract_v2_org_node,
     contract_v2_version,
     department,
+    doc_collection_document,
+    doc_collection,
+    doc_compare_item,
+    doc_compare_run,
+    doc_content_unit,
+    doc_document_tag,
+    doc_document,
+    doc_embedding,
+    doc_permission,
+    doc_tag,
+    doc_version,
     expert_skill,
     expert,
     invitation_usage,
