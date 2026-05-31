@@ -106,7 +106,7 @@ class DocController {
         where: { id: documentId },
         include: [{
           model: this.models.DocVersion,
-          as: 'versions',
+          as: 'doc_versions',
           attributes: ['id', 'version_no', 'version_label', 'version_status', 'is_current', 'effective_from', 'effective_to', 'created_at'],
           order: [['version_no', 'DESC']],
         }],
@@ -203,7 +203,7 @@ class DocController {
       }
 
       const document = await this.models.DocDocument.create({
-        id: Utils.generateId(),
+        id: Utils.newID(),
         doc_type,
         source_system: 'doc_platform',
         source_ref_id: null,
@@ -274,7 +274,7 @@ class DocController {
       const versionNo = maxVersion ? maxVersion.version_no + 1 : 1;
 
       const version = await this.models.DocVersion.create({
-        id: Utils.generateId(),
+        id: Utils.newID(),
         document_id: documentId,
         version_no: versionNo,
         version_label: version_label || `v${versionNo}`,
@@ -426,7 +426,7 @@ class DocController {
       }
 
       const run = await this.models.DocCompareRun.create({
-        id: Utils.generateId(),
+        id: Utils.newID(),
         document_id,
         base_version_id,
         target_version_id,
