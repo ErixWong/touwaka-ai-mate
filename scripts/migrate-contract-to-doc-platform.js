@@ -180,7 +180,7 @@ async function migrateContractV1(connection) {
       `, [
         versionId,
         docId,
-        'mn3l9nz0g3axvxwc12fp',
+        ownerId,
         JSON.stringify({ original_row_id: row.row_id }),
         row.created_at,
         row.updated_at,
@@ -386,7 +386,7 @@ async function migrateCompares(connection) {
         }),
         JSON.stringify({ model_name: compare.model_name }),
         compare.duration_ms,
-        'mn3l9nz0g3axvxwc12fp',
+        '0',
         compare.created_at,
       ]);
 

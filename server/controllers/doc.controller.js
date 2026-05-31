@@ -181,6 +181,11 @@ class DocController {
       this.ensureModels();
       const { documentId, versionId } = ctx.params;
 
+      const version = await this.models.DocVersion.findOne({
+        where: { id: versionId, document_id: documentId },
+      });
+      if (!version) ctx.throw(404, 'Version not found for this document');
+
       const units = await this.models.DocContentUnit.findAll({
         where: { version_id: versionId },
         order: [['position', 'ASC']],
