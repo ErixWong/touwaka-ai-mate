@@ -14,7 +14,7 @@ export default (controller) => {
 
   // ==================== 文档路由 ====================
 
-  // 获取文档列表
+  // 获取文档列表（支持 collection_id 过滤）
   router.get('/', authenticate(), controller.listDocuments.bind(controller));
 
   // 创建文档

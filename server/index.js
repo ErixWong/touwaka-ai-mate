@@ -65,6 +65,7 @@ import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
 import DocController from './controllers/doc.controller.js';
+import DocCollectionController from './controllers/doc-collection.controller.js';
 import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
@@ -92,6 +93,7 @@ import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
 import kbV2Routes from './routes/kb-v2.routes.js';
 import docRoutes from './routes/doc.routes.js';
+import docCollectionRoutes from './routes/doc-collection.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
@@ -266,6 +268,7 @@ class ApiServer {
       task: new TaskController(this.db),
       kb: new KbController(this.db),
       doc: new DocController(this.db),
+      docCollection: new DocCollectionController(this.db),
       solution: new SolutionController(this.db),
       internal: new InternalController(this.db, {
         expertConnections: streamController.expertConnections, // 传递 SSE 连接池
@@ -404,6 +407,10 @@ class ApiServer {
     // KB 知识库路由（/api/docs/kb/* 统一入口）
     this.app.use(kbV2Routes(this.controllers.kb).routes());
     this.app.use(kbV2Routes(this.controllers.kb).allowedMethods());
+
+    // Doc Collection 文档集合路由（/api/docs/collections/* 必须在 Doc 路由之前，防止 /collections 被 /:documentId 捕获）
+    this.app.use(docCollectionRoutes(this.controllers.docCollection).routes());
+    this.app.use(docCollectionRoutes(this.controllers.docCollection).allowedMethods());
 
     // Doc 统一文档平台路由（主入口 /api/docs/*）
     this.app.use(docRoutes(this.controllers.doc).routes());

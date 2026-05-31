@@ -109,7 +109,17 @@ const router = createRouter({
         {
           path: 'docs',
           name: 'docs',
-          component: () => import('@/views/DocsView.vue'),
+          component: () => import('@/views/CollectionListView.vue'),
+        },
+        {
+          path: 'docs/collections/:id',
+          name: 'doc-collection-detail',
+          component: () => import('@/views/CollectionDetailView.vue'),
+        },
+        {
+          path: 'docs/collections/:id/settings',
+          name: 'doc-collection-settings',
+          component: () => import('@/views/CollectionSettingsView.vue'),
         },
         {
           path: 'docs/:documentId',

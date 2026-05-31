@@ -1560,6 +1560,137 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== 文档集合 (Collection) 核心表 ====================
+  // Task: task-20260531-kb-contract-unification-analysis - 文档中心改造 PRD
+
+  // 10. doc_collections - 文档集合主表
+  {
+    name: 'doc_collections table create',
+    check: async (conn) => await hasTable(conn, 'doc_collections'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_collections (
+          id VARCHAR(32) NOT NULL COMMENT '集合ID',
+          name VARCHAR(100) NOT NULL COMMENT '集合名称',
+          description TEXT NULL COMMENT '集合描述',
+          owner_id VARCHAR(32) NOT NULL COMMENT '所有者ID',
+          created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
+          department_id VARCHAR(20) NOT NULL COMMENT '所属部门ID',
+          visibility ENUM('private', 'department', 'public') NOT NULL DEFAULT 'private' COMMENT '可见范围',
+          department_scope ENUM('self', 'self_and_descendants') NULL DEFAULT 'self' COMMENT '部门范围(仅department可见时生效)',
+          embedding_model_id VARCHAR(32) NOT NULL COMMENT '嵌入模型ID',
+          metadata JSON NULL COMMENT '扩展字段',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          INDEX idx_coll_owner (owner_id),
+          INDEX idx_coll_dept_vis (department_id, visibility),
+          INDEX idx_coll_created_by (created_by),
+          CONSTRAINT fk_coll_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_coll_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_coll_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_coll_emb_model FOREIGN KEY (embedding_model_id) REFERENCES ai_models(id) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档集合主表'
+      `);
+      console.log('  ✓ Created doc_collections table');
+    }
+  },
+
+  // 11. doc_collection_documents - 集合文档关联表
+  {
+    name: 'doc_collection_documents table create',
+    check: async (conn) => await hasTable(conn, 'doc_collection_documents'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_collection_documents (
+          id VARCHAR(32) NOT NULL COMMENT '关联ID',
+          collection_id VARCHAR(32) NOT NULL COMMENT '集合ID',
+          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE INDEX idx_coll_doc (collection_id, document_id),
+          UNIQUE INDEX idx_doc_unique (document_id),
+          CONSTRAINT fk_coldoc_collection FOREIGN KEY (collection_id) REFERENCES doc_collections(id) ON DELETE CASCADE,
+          CONSTRAINT fk_coldoc_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='集合文档关联表'
+      `);
+      console.log('  ✓ Created doc_collection_documents table');
+    }
+  },
+
+  // 12. doc_documents org_id → department_id 重命名
+  {
+    name: 'doc_documents org_id rename to department_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_documents')) return true;
+      return await hasColumn(conn, 'doc_documents', 'department_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`ALTER TABLE doc_documents CHANGE COLUMN org_id department_id VARCHAR(32) NOT NULL COMMENT '部门ID'`);
+      await safeExecute(conn, `ALTER TABLE doc_documents DROP INDEX idx_doc_type_org_status`);
+      await safeExecute(conn, `ALTER TABLE doc_documents ADD INDEX idx_doc_type_dept_status (doc_type, department_id, lifecycle_status)`);
+      console.log('  ✓ Renamed doc_documents.org_id → department_id');
+    }
+  },
+
+  // 13. doc_documents visibility ENUM org → department
+  {
+    name: 'doc_documents visibility enum org to department',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_documents')) return true;
+      const colType = await getColumnType(conn, 'doc_documents', 'visibility');
+      return colType && !colType.includes("org");
+    },
+    migrate: async (conn) => {
+      await conn.execute(`ALTER TABLE doc_documents MODIFY COLUMN visibility ENUM('private', 'department', 'public') NOT NULL DEFAULT 'private' COMMENT '可见范围'`);
+      await conn.execute(`UPDATE doc_documents SET visibility = 'department' WHERE visibility = 'org'`);
+      console.log('  ✓ Changed doc_documents.visibility ENUM org → department');
+    }
+  },
+
+  // 14. doc_tags org_id → department_id 重命名
+  {
+    name: 'doc_tags org_id rename to department_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_tags')) return true;
+      return await hasColumn(conn, 'doc_tags', 'department_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`ALTER TABLE doc_tags CHANGE COLUMN org_id department_id VARCHAR(32) NOT NULL COMMENT '部门ID'`);
+      await safeExecute(conn, `ALTER TABLE doc_tags DROP INDEX idx_org_name`);
+      await safeExecute(conn, `ALTER TABLE doc_tags ADD UNIQUE INDEX idx_dept_name (department_id, name)`);
+      await safeExecute(conn, `ALTER TABLE doc_tags DROP INDEX idx_org`);
+      await safeExecute(conn, `ALTER TABLE doc_tags ADD INDEX idx_dept (department_id)`);
+      console.log('  ✓ Renamed doc_tags.org_id → department_id');
+    }
+  },
+
+  // 15. doc_documents FK to departments
+  {
+    name: 'doc_documents fk to departments on department_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_documents')) return true;
+      return await hasForeignKey(conn, 'doc_documents', 'fk_doc_document_dept');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE doc_documents ADD CONSTRAINT fk_doc_document_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT`);
+      console.log('  ✓ Added FK doc_documents.department_id → departments.id');
+    }
+  },
+
+  // 16. doc_tags FK to departments
+  {
+    name: 'doc_tags fk to departments on department_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_tags')) return true;
+      return await hasForeignKey(conn, 'doc_tags', 'fk_doc_tag_dept');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE doc_tags ADD CONSTRAINT fk_doc_tag_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT`);
+      console.log('  ✓ Added FK doc_tags.department_id → departments.id');
+    }
+  },
+
 ];
 
 /**

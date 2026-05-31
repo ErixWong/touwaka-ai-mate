@@ -1,44 +1,51 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class doc_document extends Model {
+export default class doc_collection extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "文档ID"
+      comment: "集合ID"
     },
-    doc_type: {
-      type: DataTypes.ENUM('knowledge','contract','department_doc','standard'),
+    name: {
+      type: DataTypes.STRING(100),
       allowNull: false,
-      comment: "文档类型"
+      comment: "集合名称"
     },
-    source_system: {
-      type: DataTypes.STRING(50),
-      allowNull: false,
-      comment: "来源系统(kb\/contract_mgr\/contract_mgr_v2)"
-    },
-    source_ref_id: {
-      type: DataTypes.STRING(32),
-      allowNull: false,
-      comment: "来源主键(回溯旧系统)"
-    },
-    title: {
-      type: DataTypes.STRING(500),
-      allowNull: false,
-      comment: "文档标题"
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "集合描述"
     },
     owner_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "所有者ID"
+      comment: "所有者ID",
+      references: {
+        model: 'users',
+        key: 'id'
+      }
     },
-    department_id: {
+    created_by: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "部门ID"
+      comment: "创建者ID",
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    department_id: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      comment: "所属部门ID",
+      references: {
+        model: 'departments',
+        key: 'id'
+      }
     },
     visibility: {
       type: DataTypes.ENUM('private','department','public'),
@@ -46,21 +53,25 @@ export default class doc_document extends Model {
       defaultValue: "private",
       comment: "可见范围"
     },
-    current_version_id: {
-      type: DataTypes.STRING(32),
+    department_scope: {
+      type: DataTypes.ENUM('self','self_and_descendants'),
       allowNull: true,
-      comment: "当前版本ID"
+      defaultValue: "self",
+      comment: "部门范围(仅department可见时生效)"
     },
-    lifecycle_status: {
-      type: DataTypes.ENUM('active','archived'),
+    embedding_model_id: {
+      type: DataTypes.STRING(32),
       allowNull: false,
-      defaultValue: "active",
-      comment: "文档级状态"
+      comment: "嵌入模型ID",
+      references: {
+        model: 'ai_models',
+        key: 'id'
+      }
     },
     metadata: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "场景扩展字段"
+      comment: "扩展字段"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -74,7 +85,7 @@ export default class doc_document extends Model {
     }
   }, {
     sequelize,
-    tableName: 'doc_documents',
+    tableName: 'doc_collections',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -87,28 +98,32 @@ export default class doc_document extends Model {
         ]
       },
       {
-        name: "idx_source_system_ref",
-        using: "BTREE",
-        fields: [
-          { name: "source_system" },
-          { name: "source_ref_id" },
-        ]
-      },
-      {
-        name: "idx_owner_updated",
+        name: "idx_coll_owner",
         using: "BTREE",
         fields: [
           { name: "owner_id" },
-          { name: "updated_at" },
         ]
       },
       {
-        name: "idx_doc_type_dept_status",
+        name: "idx_coll_dept_vis",
         using: "BTREE",
         fields: [
-          { name: "doc_type" },
           { name: "department_id" },
-          { name: "lifecycle_status" },
+          { name: "visibility" },
+        ]
+      },
+      {
+        name: "idx_coll_created_by",
+        using: "BTREE",
+        fields: [
+          { name: "created_by" },
+        ]
+      },
+      {
+        name: "fk_coll_emb_model",
+        using: "BTREE",
+        fields: [
+          { name: "embedding_model_id" },
         ]
       },
     ]

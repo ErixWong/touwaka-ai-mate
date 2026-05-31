@@ -87,18 +87,29 @@ class DocController {
       this.ensureModels();
       this.ensureDocAccessService();
       const userId = ctx.state.session.id;
-      const orgId = ctx.state.session.org_id;
-      const { page = 1, size = 20, doc_type } = ctx.query;
+      const { page = 1, size = 20, doc_type, collection_id } = ctx.query;
 
       const where = {
-        ...this.docAccessService.buildAccessFilter(userId, orgId),
+        ...await this.docAccessService.buildAccessFilter(userId),
         lifecycle_status: 'active',
       };
       if (doc_type) where.doc_type = doc_type;
 
+      let include = [];
+      if (collection_id) {
+        const DocCollectionDocument = this.db.getModel('doc_collection_document');
+        include.push({
+          model: DocCollectionDocument,
+          where: { collection_id },
+          attributes: [],
+          required: true,
+        });
+      }
+
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,
-        attributes: ['id', 'doc_type', 'title', 'owner_id', 'org_id', 'visibility', 'current_version_id', 'created_at', 'updated_at'],
+        attributes: ['id', 'doc_type', 'title', 'owner_id', 'department_id', 'visibility', 'current_version_id', 'created_at', 'updated_at'],
+        include,
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
         limit: parseInt(size),
@@ -123,9 +134,8 @@ class DocController {
       this.ensureDocAccessService();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
-      const orgId = ctx.state.session.org_id;
 
-      const canRead = await this.docAccessService.canRead(documentId, userId, orgId);
+      const canRead = await this.docAccessService.canRead(documentId, userId);
       if (!canRead) ctx.throw(403, 'Access denied');
 
       const document = await this.models.DocDocument.findOne({
@@ -160,9 +170,8 @@ class DocController {
       this.ensureDocAccessService();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
-      const orgId = ctx.state.session.org_id;
 
-      const canRead = await this.docAccessService.canRead(documentId, userId, orgId);
+      const canRead = await this.docAccessService.canRead(documentId, userId);
       if (!canRead) ctx.throw(403, 'Access denied');
 
       const versions = await this.models.DocVersion.findAll({
@@ -232,12 +241,13 @@ class DocController {
     try {
       this.ensureModels();
       const userId = ctx.state.session.id;
-      const orgId = ctx.state.session.org_id;
-      const { doc_type, title, visibility = 'private', metadata } = ctx.request.body;
+      const { doc_type, title, visibility = 'private', department_id, metadata } = ctx.request.body;
 
       if (!title || !doc_type) {
         ctx.throw(400, 'title and doc_type are required');
       }
+
+      const finalDepartmentId = department_id || await this.getUserDepartmentId(userId);
 
       const docId = Utils.newID();
       const document = await this.models.DocDocument.create({
@@ -247,7 +257,7 @@ class DocController {
         source_ref_id: docId,
         title,
         owner_id: userId,
-        org_id: orgId,
+        department_id: finalDepartmentId,
         visibility,
         lifecycle_status: 'active',
         metadata: metadata || null,
@@ -456,7 +466,6 @@ async createVersion(ctx) {
       this.ensureDocRecallService();
 
       const userId = ctx.state.session.id;
-      const orgId = ctx.state.session.org_id;
 
       const {
         query,
@@ -476,7 +485,6 @@ async createVersion(ctx) {
         top_k: parseInt(top_k),
         threshold: parseFloat(threshold),
         userId,
-        org_id: orgId,
       });
 
       if (!result.success) {
@@ -539,7 +547,6 @@ async createVersion(ctx) {
       this.ensureDocAccessService();
       const { runId } = ctx.params;
       const userId = ctx.state.session.id;
-      const orgId = ctx.state.session.org_id;
 
       const run = await this.models.DocCompareRun.findOne({
         where: { id: runId },
@@ -551,13 +558,27 @@ async createVersion(ctx) {
 
       if (!run) ctx.throw(404, 'Compare run not found');
 
-      const canRead = await this.docAccessService.canRead(run.document_id, userId, orgId);
+      const canRead = await this.docAccessService.canRead(run.document_id, userId);
       if (!canRead) ctx.throw(403, 'Access denied');
 
       ctx.success(run);
     } catch (error) {
       logger.error('[Doc] getCompareRun error:', error);
       ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async getUserDepartmentId(userId) {
+    try {
+      const User = this.db.getModel('user');
+      const user = await User.findOne({
+        where: { id: userId },
+        attributes: ['department_id'],
+        raw: true,
+      });
+      return user?.department_id || null;
+    } catch {
+      return null;
     }
   }
 }

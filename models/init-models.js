@@ -22,6 +22,8 @@ import _contract_v2_main_record from  "./contract_v2_main_record.js";
 import _contract_v2_org_node from  "./contract_v2_org_node.js";
 import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
+import _doc_collection_document from  "./doc_collection_document.js";
+import _doc_collection from  "./doc_collection.js";
 import _doc_compare_item from  "./doc_compare_item.js";
 import _doc_compare_run from  "./doc_compare_run.js";
 import _doc_content_unit from  "./doc_content_unit.js";
@@ -93,6 +95,8 @@ export default function initModels(sequelize) {
   const contract_v2_org_node = _contract_v2_org_node.init(sequelize, DataTypes);
   const contract_v2_version = _contract_v2_version.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
+  const doc_collection_document = _doc_collection_document.init(sequelize, DataTypes);
+  const doc_collection = _doc_collection.init(sequelize, DataTypes);
   const doc_compare_item = _doc_compare_item.init(sequelize, DataTypes);
   const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
   const doc_content_unit = _doc_content_unit.init(sequelize, DataTypes);
@@ -151,6 +155,8 @@ export default function initModels(sequelize) {
   role.belongsToMany(user, { as: 'user_id_users', through: user_role, foreignKey: "role_id", otherKey: "user_id" });
   skill.belongsToMany(expert, { as: 'expert_id_experts', through: expert_skill, foreignKey: "skill_id", otherKey: "expert_id" });
   user.belongsToMany(role, { as: 'role_id_roles_user_roles', through: user_role, foreignKey: "user_id", otherKey: "role_id" });
+  doc_collection.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
+  ai_model.hasMany(doc_collection, { as: "doc_collections", foreignKey: "embedding_model_id"});
   expert.belongsTo(ai_model, { as: "expressive_model", foreignKey: "expressive_model_id"});
   ai_model.hasMany(expert, { as: "experts", foreignKey: "expressive_model_id"});
   expert.belongsTo(ai_model, { as: "reflective_model", foreignKey: "reflective_model_id"});
@@ -171,8 +177,12 @@ export default function initModels(sequelize) {
   contract_v2_org_node.hasMany(contract_v2_main_record, { as: "contract_v2_main_records", foreignKey: "org_node_id"});
   contract_v2_org_node.belongsTo(contract_v2_org_node, { as: "parent", foreignKey: "parent_id"});
   contract_v2_org_node.hasMany(contract_v2_org_node, { as: "contract_v2_org_nodes", foreignKey: "parent_id"});
+  doc_collection.belongsTo(department, { as: "department", foreignKey: "department_id"});
+  department.hasMany(doc_collection, { as: "doc_collections", foreignKey: "department_id"});
   position.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
+  doc_collection_document.belongsTo(doc_collection, { as: "collection", foreignKey: "collection_id"});
+  doc_collection.hasMany(doc_collection_document, { as: "doc_collection_documents", foreignKey: "collection_id"});
   doc_compare_item.belongsTo(doc_compare_run, { as: "run", foreignKey: "run_id"});
   doc_compare_run.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "run_id"});
   doc_compare_item.belongsTo(doc_content_unit, { as: "base_unit", foreignKey: "base_unit_id"});
@@ -183,6 +193,8 @@ export default function initModels(sequelize) {
   doc_content_unit.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "parent_id"});
   doc_embedding.belongsTo(doc_content_unit, { as: "content_unit", foreignKey: "content_unit_id"});
   doc_content_unit.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "content_unit_id"});
+  doc_collection_document.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
+  doc_document.hasOne(doc_collection_document, { as: "doc_collection_document", foreignKey: "document_id"});
   doc_compare_run.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
   doc_document.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "document_id"});
   doc_document_tag.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
@@ -301,6 +313,10 @@ export default function initModels(sequelize) {
   user.hasMany(attachment_token, { as: "attachment_tokens", foreignKey: "user_id"});
   attachment.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
   user.hasMany(attachment, { as: "attachments", foreignKey: "created_by"});
+  doc_collection.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
+  user.hasMany(doc_collection, { as: "doc_collections", foreignKey: "owner_id"});
+  doc_collection.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
+  user.hasMany(doc_collection, { as: "created_by_doc_collections", foreignKey: "created_by"});
   invitation_usage.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(invitation_usage, { as: "invitation_usages", foreignKey: "user_id"});
   invitation.belongsTo(user, { as: "creator", foreignKey: "creator_id"});
@@ -353,6 +369,8 @@ export default function initModels(sequelize) {
     contract_v2_org_node,
     contract_v2_version,
     department,
+    doc_collection_document,
+    doc_collection,
     doc_compare_item,
     doc_compare_run,
     doc_content_unit,
