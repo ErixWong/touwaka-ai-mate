@@ -4,7 +4,7 @@
  * 用于从知识库召回相关内容，支持图文召回和上下文增强
  * 返回可直接渲染的 Markdown（图片 URL 已包含 Token）
  *
- * Issue #558: 实现知识库图文召回 API
+ * 已切换到统一文档平台 /api/docs/recall
  *
  * @module kb-recall-skill
  */
@@ -124,12 +124,14 @@ async function handleRecall(params) {
     requestBody.article_id = article_id;
   }
 
-  return await httpRequest('POST', `/api/kb/${kb_id}/recall`, requestBody);
+  return await httpRequest('POST', '/api/docs/recall', {
+    query,
+    scope: 'knowledge',
+    top_k,
+    threshold,
+  });
 }
 
-/**
- * 全局召回（搜索用户所有可访问的知识库）
- */
 async function handleGlobalRecall(params) {
   const {
     query,
@@ -160,7 +162,12 @@ async function handleGlobalRecall(params) {
     requestBody.kb_ids = kb_ids;
   }
 
-  return await httpRequest('POST', '/api/kb/recall', requestBody);
+  return await httpRequest('POST', '/api/docs/recall', {
+    query,
+    scope: 'all',
+    top_k,
+    threshold,
+  });
 }
 
 // ==================== 执行入口 ====================
