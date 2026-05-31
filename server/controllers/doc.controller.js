@@ -78,19 +78,12 @@ class DocController {
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,
         attributes: ['id', 'doc_type', 'title', 'owner_id', 'org_id', 'visibility', 'current_version_id', 'created_at', 'updated_at'],
-        include: [{
-          model: this.models.DocVersion,
-          as: 'versions',
-          where: { is_current: 1 },
-          attributes: ['id', 'version_no', 'version_label', 'version_status', 'effective_from', 'effective_to'],
-          required: false,
-        }],
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
         limit: parseInt(size),
       });
 
-      ctx.success(buildPaginatedResponse(rows, count, page, size));
+      ctx.success(buildPaginatedResponse({ count, rows }, { page: parseInt(page), pageSize: parseInt(size) }, startTime));
       logger.info(`[Doc] listDocuments: ${rows.length} results, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] listDocuments error:', error);
