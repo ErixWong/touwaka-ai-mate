@@ -16,6 +16,7 @@ import { Op, Sequelize } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
+import DocAccessService from '../../lib/doc-access-service.js';
 
 class DocController {
   constructor(db) {
@@ -23,6 +24,7 @@ class DocController {
     this.models = {};
     this.docRecallService = null;
     this.compareExecutor = null;
+    this.docAccessService = null;
   }
 
   // ==================== 版本状态机 ====================
@@ -63,6 +65,12 @@ class DocController {
     }
   }
 
+  ensureDocAccessService() {
+    if (!this.docAccessService) {
+      this.docAccessService = new DocAccessService(this.db);
+    }
+  }
+
   ensureDocRecallService() {
     if (!this.docRecallService) {
       this.docRecallService = new DocRecallService(this.db, null);
@@ -77,19 +85,13 @@ class DocController {
     const startTime = Date.now();
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const userId = ctx.state.session.id;
       const orgId = ctx.state.session.org_id;
       const { page = 1, size = 20, doc_type } = ctx.query;
 
-      const visibilityFilter = {
-        [Op.or]: [
-          { owner_id: userId },
-          { visibility: 'public' },
-          { visibility: 'org', org_id: orgId },
-        ],
-      };
       const where = {
-        ...visibilityFilter,
+        ...this.docAccessService.buildAccessFilter(userId, orgId),
         lifecycle_status: 'active',
       };
       if (doc_type) where.doc_type = doc_type;
@@ -118,19 +120,16 @@ class DocController {
     const startTime = Date.now();
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
       const orgId = ctx.state.session.org_id;
 
+      const canRead = await this.docAccessService.canRead(documentId, userId, orgId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
       const document = await this.models.DocDocument.findOne({
-        where: {
-          id: documentId,
-          [Op.or]: [
-            { owner_id: userId },
-            { visibility: 'public' },
-            { visibility: 'org', org_id: orgId },
-          ],
-        },
+        where: { id: documentId },
         include: [{
           model: this.models.DocVersion,
           as: 'doc_versions',

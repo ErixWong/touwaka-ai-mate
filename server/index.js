@@ -401,11 +401,12 @@ class ApiServer {
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
 
-    // KB 知识库路由
+    // KB 知识库路由（兼容模式）
+    // 搜索/召回已切流到 /api/docs/recall，KB CRUD/编辑仍在此路由
     this.app.use(kbRoutes(this.controllers.kb).routes());
     this.app.use(kbRoutes(this.controllers.kb).allowedMethods());
 
-    // Doc 统一文档平台路由
+    // Doc 统一文档平台路由（主入口）
     this.app.use(docRoutes(this.controllers.doc).routes());
     this.app.use(docRoutes(this.controllers.doc).allowedMethods());
 

@@ -62,15 +62,10 @@ allowed-tools: []
       "knowledge_base": {
         "id": "kb_001",
         "name": "技术文档库"
-      },
-      "context_info": {
-        "has_more_before": true,
-        "has_more_after": true,
-        "total_tokens": 350
       }
     }
   ],
-  "total": 5,
+  "total": 5
   "query": "如何设计 API 接口",
   "token": {
     "url": "/attach/t/abc123xyz",
@@ -88,21 +83,14 @@ allowed-tools: []
 | `query` | string | ✅ | 搜索查询文本 |
 | `top_k` | integer | - | 返回结果数量，默认 10 |
 | `threshold` | number | - | 相似度阈值（0-1），默认 0.1 |
-| `kb_ids` | string[] | - | 限定知识库 ID 数组（可选） |
-| `min_tokens` | integer | - | 最小 Token 数量，默认 200 |
-| `context_mode` | string | - | 上下文模式，默认 `auto` |
+
+> **废弃字段**：`kb_ids`, `min_tokens`, `context_mode` 已在新 API 中移除。
 
 ### 示例
 
 ```javascript
-// 搜索所有可访问的知识库
 { query: 'Python 装饰器' }
-
-// 限定在特定知识库中搜索
-{ query: '数据库索引', kb_ids: ['kb_001', 'kb_002'] }
-
-// 获取更多结果
-{ query: '微服务架构', top_k: 20, min_tokens: 300 }
+{ query: '微服务架构', top_k: 20 }
 ```
 
 ### 返回结果
