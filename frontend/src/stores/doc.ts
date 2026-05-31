@@ -5,7 +5,9 @@ import {
   getDocument,
   listVersions,
   getContentTree,
-  recall
+  recall,
+  setCurrentVersion,
+  transitionVersion
 } from '@/api/docs'
 import type {
   DocDocument,
@@ -100,6 +102,27 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
+  async function setCurrent(documentId: string, versionId: string) {
+    error.value = null
+    try {
+      await setCurrentVersion(documentId, versionId)
+      await fetchVersions(documentId)
+      await fetchDocument(documentId)
+    } catch (e: any) {
+      error.value = e.message || 'Failed to set current version'
+    }
+  }
+
+  async function transition(documentId: string, versionId: string, toStatus: string) {
+    error.value = null
+    try {
+      await transitionVersion(documentId, versionId, toStatus)
+      await fetchVersions(documentId)
+    } catch (e: any) {
+      error.value = e.message || 'Failed to transition version'
+    }
+  }
+
   return {
     documents,
     total,
@@ -116,5 +139,7 @@ export const useDocStore = defineStore('doc', () => {
     fetchVersions,
     fetchContentTree,
     docRecall,
+    setCurrent,
+    transition,
   }
 })

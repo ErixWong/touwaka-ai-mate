@@ -133,3 +133,11 @@ export async function createCompareRun(data: {
 export async function getCompareRun(runId: string): Promise<DocCompareRun> {
   return apiRequest<DocCompareRun>(apiClient.get(`/docs/compare-runs/${runId}`))
 }
+
+export async function setCurrentVersion(documentId: string, versionId: string): Promise<void> {
+  return apiRequest<void>(apiClient.post(`/docs/${documentId}/versions/${versionId}/set-current`))
+}
+
+export async function transitionVersion(documentId: string, versionId: string, to_status: string): Promise<void> {
+  return apiRequest<void>(apiClient.post(`/docs/${documentId}/versions/${versionId}/transition`, { to_status }))
+}
