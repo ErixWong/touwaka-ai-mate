@@ -70,9 +70,20 @@ class DocController {
     try {
       this.ensureModels();
       const userId = ctx.state.session.id;
-      const { page = 1, size = 20, doc_type, status, scope } = ctx.query;
+      const orgId = ctx.state.session.org_id;
+      const { page = 1, size = 20, doc_type } = ctx.query;
 
-      const where = { lifecycle_status: 'active' };
+      const visibilityFilter = {
+        [Op.or]: [
+          { owner_id: userId },
+          { visibility: 'public' },
+          { visibility: 'org', org_id: orgId },
+        ],
+      };
+      const where = {
+        ...visibilityFilter,
+        lifecycle_status: 'active',
+      };
       if (doc_type) where.doc_type = doc_type;
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
@@ -101,9 +112,17 @@ class DocController {
       this.ensureModels();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
+      const orgId = ctx.state.session.org_id;
 
       const document = await this.models.DocDocument.findOne({
-        where: { id: documentId },
+        where: {
+          id: documentId,
+          [Op.or]: [
+            { owner_id: userId },
+            { visibility: 'public' },
+            { visibility: 'org', org_id: orgId },
+          ],
+        },
         include: [{
           model: this.models.DocVersion,
           as: 'doc_versions',
@@ -202,11 +221,12 @@ class DocController {
         ctx.throw(400, 'title and doc_type are required');
       }
 
+      const docId = Utils.newID();
       const document = await this.models.DocDocument.create({
-        id: Utils.newID(),
+        id: docId,
         doc_type,
         source_system: 'doc_platform',
-        source_ref_id: null,
+        source_ref_id: docId,
         title,
         owner_id: userId,
         org_id: orgId,
@@ -261,31 +281,50 @@ class DocController {
       const document = await this.models.DocDocument.findOne({
         where: { id: documentId },
       });
-
-      if (!document) {
-        ctx.throw(404, 'Document not found');
-      }
+      if (!document) ctx.throw(404, 'Document not found');
 
       const maxVersion = await this.models.DocVersion.findOne({
         where: { document_id: documentId },
         order: [['version_no', 'DESC']],
       });
-
       const versionNo = maxVersion ? maxVersion.version_no + 1 : 1;
+      const versionId = Utils.newID();
 
-      const version = await this.models.DocVersion.create({
-        id: Utils.newID(),
-        document_id: documentId,
-        version_no: versionNo,
-        version_label: version_label || `v${versionNo}`,
-        version_status: 'draft',
-        is_current: 0,
-        change_summary: change_summary || null,
-        created_by: userId,
+      await this.db.sequelize.transaction(async (t) => {
+        await this.models.DocVersion.create({
+          id: versionId,
+          document_id: documentId,
+          version_no: versionNo,
+          version_label: version_label || `v${versionNo}`,
+          version_status: 'draft',
+          is_current: 0,
+          change_summary: change_summary || null,
+          created_by: userId,
+        }, { transaction: t });
+
+        if (content_units && Array.isArray(content_units) && content_units.length > 0) {
+          for (let i = 0; i < content_units.length; i++) {
+            const unit = content_units[i];
+            await this.models.DocContentUnit.create({
+              id: Utils.newID(),
+              version_id: versionId,
+              parent_id: unit.parent_id || null,
+              unit_type: unit.unit_type || 'paragraph',
+              title: unit.title || null,
+              content: unit.content || null,
+              position: unit.position ?? i,
+              level: unit.level || 1,
+              token_count: unit.token_count || null,
+              is_knowledge_point: unit.is_knowledge_point ? 1 : 0,
+              metadata: unit.metadata || null,
+            }, { transaction: t });
+          }
+        }
       });
 
+      const version = await this.models.DocVersion.findByPk(versionId);
       ctx.success(version);
-      logger.info(`[Doc] createVersion: ${version.id} for document ${documentId}`);
+      logger.info(`[Doc] createVersion: ${versionId} for ${documentId}, ${content_units?.length || 0} units`);
     } catch (error) {
       logger.error('[Doc] createVersion error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -310,18 +349,36 @@ class DocController {
       this.validateTransition(version.version_status, 'effective');
 
       await this.db.sequelize.transaction(async (t) => {
+        const [locked] = await this.db.sequelize.query(
+          'SELECT id, current_version_id FROM doc_documents WHERE id = ? FOR UPDATE',
+          { replacements: [documentId], type: this.db.sequelize.QueryTypes.SELECT, transaction: t }
+        );
+        if (!locked || locked.length === 0) {
+          throw new Error('Document not found');
+        }
+
+        const currentVersionId = locked[0].current_version_id;
+        if (currentVersionId === versionId) {
+          return;
+        }
+
         await this.models.DocVersion.update(
           { is_current: 0 },
           { where: { document_id: documentId }, transaction: t }
         );
+
         version.is_current = 1;
         version.version_status = 'effective';
         version.published_at = new Date();
         await version.save({ transaction: t });
-        document.current_version_id = versionId;
-        await document.save({ transaction: t });
+
+        await this.models.DocDocument.update(
+          { current_version_id: versionId },
+          { where: { id: documentId }, transaction: t }
+        );
       });
 
+      await document.reload();
       ctx.success({ document, version });
       logger.info(`[Doc] setCurrentVersion: ${versionId} for ${documentId}`);
     } catch (error) {

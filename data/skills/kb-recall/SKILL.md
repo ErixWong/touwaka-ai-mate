@@ -10,12 +10,14 @@ allowed-tools: []
 
 知识库召回技能，用于从知识库召回相关内容，支持图文召回和上下文增强。
 
+> **API 已切换到统一文档平台**：底层检索通过 `POST /api/docs/recall` 执行，支持跨类型（knowledge/contract）统一召回。
+
 ## 工具（2个）
 
 | 工具 | 说明 |
 |------|------|
 | `recall` | 从指定知识库召回相关内容 |
-| `global_recall` | 从用户所有可访问的知识库中召回相关内容 |
+| `global_recall` | 从用户所有可访问的文档中召回相关内容 |
 
 ## recall - 单知识库召回
 
@@ -27,36 +29,13 @@ allowed-tools: []
 | `query` | string | ✅ | 搜索查询文本 |
 | `top_k` | integer | - | 返回结果数量，默认 5 |
 | `threshold` | number | - | 相似度阈值（0-1），默认 0.1 |
-| `article_id` | string | - | 限定在特定文章内搜索（可选） |
-| `min_tokens` | integer | - | 最小 Token 数量，默认 200 |
-| `context_mode` | string | - | 上下文模式：`none`/`auto`/`section`/`article`，默认 `auto` |
+| `scope` | string | - | `knowledge`（默认，仅知识库）/ `all`（全部文档）/ `contract`（合同） |
 
-### context_mode 模式说明
-
-| 模式 | 行为 | 适用场景 |
-|------|------|----------|
-| `none` | 仅返回匹配段落，不扩展上下文 | 精确问答 |
-| `auto` | 自动扩展相邻段落，直到满足 `min_tokens` | 默认模式，平衡精确性和上下文 |
-| `section` | 返回匹配段落所在节的全部段落 | 需要完整章节上下文 |
-| `article` | 返回匹配段落所在文章的全部段落 | LLM 需要完整文档理解 |
-
-### 示例
-
-```javascript
-// 基本召回
-{ kb_id: 'kb_001', query: '如何设计 API 接口' }
-
-// 指定返回数量和阈值
-{ kb_id: 'kb_001', query: 'Python 异步编程', top_k: 10, threshold: 0.2 }
-
-// 在特定文章内搜索
-{ kb_id: 'kb_001', query: '数据库优化', article_id: 'art_001' }
-
-// 获取更多上下文
-{ kb_id: 'kb_001', query: '高层次人才落户', min_tokens: 500, context_mode: 'section' }
-```
+> **废弃字段**：`article_id`, `min_tokens`, `context_mode` 已在新 API 中移除。
 
 ### 返回结果
+
+> 新 API 返回格式已简化，`context_info` 字段已移除。
 
 ```json
 {
