@@ -91,6 +91,7 @@ import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
 import kbRoutes from './routes/kb.routes.js';
+import kbV2Routes from './routes/kb-v2.routes.js';
 import docRoutes from './routes/doc.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
 import departmentRoutes from './routes/department.routes.js';
@@ -401,12 +402,16 @@ class ApiServer {
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
 
-    // KB 知识库路由（兼容模式）
-    // 搜索/召回已切流到 /api/docs/recall，KB CRUD/编辑仍在此路由
+    // KB 知识库路由（兼容模式 /api/kb/*，待废弃）
+    // 新路由：/api/docs/kb/* 已独立注册
     this.app.use(kbRoutes(this.controllers.kb).routes());
     this.app.use(kbRoutes(this.controllers.kb).allowedMethods());
 
-    // Doc 统一文档平台路由（主入口）
+    // KB 知识库 v2 路由（/api/docs/kb/*）
+    this.app.use(kbV2Routes(this.controllers.kb).routes());
+    this.app.use(kbV2Routes(this.controllers.kb).allowedMethods());
+
+    // Doc 统一文档平台路由（主入口 /api/docs/*）
     this.app.use(docRoutes(this.controllers.doc).routes());
     this.app.use(docRoutes(this.controllers.doc).allowedMethods());
 
