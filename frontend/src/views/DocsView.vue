@@ -6,10 +6,16 @@
 
     <div class="doc-filter">
       <el-select v-model="filterDocType" :placeholder="$t('docs.filterType')" clearable @change="loadDocuments">
+        <el-option :label="$t('docs.typeAll')" value="" />
         <el-option label="KB" value="knowledge" />
         <el-option label="Contract" value="contract" />
         <el-option label="Department" value="department_doc" />
         <el-option label="Standard" value="standard" />
+      </el-select>
+      <el-select v-model="recallScope" :placeholder="$t('docs.recallScope')" class="scope-select">
+        <el-option label="All" value="all" />
+        <el-option label="KB" value="knowledge" />
+        <el-option label="Contract" value="contract" />
       </el-select>
       <el-input
         v-model="recallQuery"
@@ -40,11 +46,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="source_system" :label="$t('docs.source')" width="150" />
-        <el-table-column prop="visibility" :label="$t('docs.visibility')" width="100">
-          <template #default="{ row }">
-            {{ row.visibility }}
-          </template>
-        </el-table-column>
+        <el-table-column prop="visibility" :label="$t('docs.visibility')" width="100" />
         <el-table-column :label="$t('docs.updatedAt')" width="180">
           <template #default="{ row }">
             {{ formatTime(row.updated_at) }}
@@ -75,7 +77,10 @@
         <div v-for="item in docStore.recallResults" :key="item.content_unit.id" class="recall-item">
           <div class="recall-header">
             <span class="recall-score">{{ (item.score * 100).toFixed(1) }}%</span>
-            <el-tag size="small" :type="docTypeTag(item.document.doc_type)">{{ item.document.title }}</el-tag>
+            <el-tag size="small" :type="docTypeTag(item.document.doc_type)">{{ docTypeLabel(item.document.doc_type) }}</el-tag>
+            <span class="recall-doc-title" @click="openDocById(item.document.id)" style="cursor:pointer;color:#409eff">
+              {{ item.document.title }}
+            </span>
             <span class="recall-unit-title">{{ item.content_unit.title }}</span>
           </div>
           <div class="recall-content">{{ item.content_unit.content }}</div>
@@ -95,6 +100,7 @@ const docStore = useDocStore()
 
 const filterDocType = ref('')
 const recallQuery = ref('')
+const recallScope = ref('all')
 const showRecallDialog = ref(false)
 
 function docTypeTag(type: string) {
@@ -116,13 +122,21 @@ function openDoc(row: any) {
   router.push(`/docs/${row.id}`)
 }
 
+function openDocById(id: string) {
+  router.push(`/docs/${id}`)
+}
+
 async function loadDocuments() {
   await docStore.fetchDocuments({ doc_type: filterDocType.value || undefined })
 }
 
 async function doRecall() {
   if (!recallQuery.value.trim()) return
-  await docStore.docRecall({ query: recallQuery.value, scope: 'all', top_k: 10 })
+  await docStore.docRecall({
+    query: recallQuery.value,
+    scope: recallScope.value as any,
+    top_k: 10,
+  })
   showRecallDialog.value = true
 }
 
@@ -137,6 +151,7 @@ onMounted(() => {
 .view-title { font-size: 24px; margin: 0; }
 
 .doc-filter { display: flex; gap: 12px; margin-bottom: 16px; }
+.scope-select { width: 140px; }
 .recall-input { flex: 1; }
 
 .loading-state, .empty-state { padding: 60px 0; text-align: center; color: #999; font-size: 16px; }
@@ -149,6 +164,7 @@ onMounted(() => {
 .recall-item:last-child { border-bottom: none; }
 .recall-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .recall-score { font-weight: bold; color: #409eff; min-width: 60px; }
+.recall-doc-title { font-weight: 500; margin-left: 4px; }
 .recall-unit-title { font-weight: 500; }
 .recall-content { font-size: 13px; color: #666; line-height: 1.6; max-height: 80px; overflow: hidden; }
 </style>
