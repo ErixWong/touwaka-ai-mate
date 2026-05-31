@@ -188,4 +188,44 @@ frontend/src/
 
 ---
 
+## 8. 实施进度 (2026-05-31)
+
+| Phase | 状态 | 提交 |
+|-------|------|------|
+| P1 最小可用 | ✅ | a85f08a |
+| P2 详情与版本 | ✅ | de47a1c |
+| P3 统一搜索 | ✅ | 3a9ff6f |
+| P4 合同切换 | ⏳ | DocsView 已支持 doc_type=contract 筛选，合同数据已在 doc_documents 中 |
+| P5 清理 | ✅ | KB store 搜索已标记 @deprecated |
+
+### API 字段对齐矩阵
+
+| 前端字段 | 后端 doc_documents 字段 | 状态 |
+|----------|------------------------|------|
+| doc_type | doc_type (ENUM) | ✅ |
+| title | title (VARCHAR 500) | ✅ |
+| source_system | source_system (VARCHAR 50) | ✅ |
+| visibility | visibility (ENUM) | ✅ |
+| current_version_id | current_version_id | ✅ |
+| lifecycle_status | lifecycle_status (ENUM) | ✅ |
+
+| 前端字段 | 后端 doc_versions 字段 | 状态 |
+|----------|------------------------|------|
+| version_no | version_no (INT) | ✅ |
+| version_label | version_label (VARCHAR 20) | ✅ |
+| version_status | version_status (ENUM) | ✅ |
+| is_current | is_current (BIT) | ✅ |
+| effective_from | effective_from (DATE) | ✅ |
+| effective_to | effective_to (DATE) | ✅ |
+
+| 前端字段 | 后端 doc_content_units 字段 | 状态 |
+|----------|-----------------------------|------|
+| unit_type | unit_type (ENUM) | ✅ |
+| title | title | ✅ |
+| content | content (LONGTEXT) | ✅ |
+| position | position (INT) | ✅ |
+| level | level (INT) | ✅ |
+
+---
+
 *本路线基于后端 API 已就绪的状态编写，Phase 1 完成后即可开始联调。*
