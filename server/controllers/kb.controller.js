@@ -26,6 +26,7 @@ import {
   canTransferOwner,
   getKbPermissionInfo,
 } from '../../lib/kb-permission.js';
+import DocRecallService from '../../lib/doc-recall-service.js';
 
 // 最大章节层级深度限制
 const MAX_SECTION_DEPTH = 10; // 允许 10 层深度（1-10）
@@ -68,11 +69,9 @@ class KbController {
     this.KbTag = null;
     this.KbArticleTag = null;
     this.KnowledgeBase = null;
+    this.docRecallService = null;
   }
 
-  /**
-   * 确保模型已初始化
-   */
   ensureModels() {
     if (!this.KbArticle) {
       this.KbArticle = this.db.getModel('kb_article');
@@ -81,6 +80,12 @@ class KbController {
       this.KbTag = this.db.getModel('kb_tag');
       this.KbArticleTag = this.db.getModel('kb_article_tag');
       this.KnowledgeBase = this.db.getModel('knowledge_basis');
+    }
+  }
+
+  ensureDocRecallService(configLoader) {
+    if (!this.docRecallService) {
+      this.docRecallService = new DocRecallService(this.db, configLoader);
     }
   }
 
