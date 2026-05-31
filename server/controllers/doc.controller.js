@@ -296,6 +296,43 @@ async createVersion(ctx) {
       const { version_label, change_summary, content_units } = ctx.request.body;
       const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
+
+      const maxVersion = await this.models.DocVersion.findOne({
+        where: { document_id: documentId },
+        order: [['version_no', 'DESC']],
+      });
+      const versionNo = maxVersion ? maxVersion.version_no + 1 : 1;
+      const versionId = Utils.newID();
+
+      await this.db.sequelize.transaction(async (t) => {
+        await this.models.DocVersion.create({
+          id: versionId,
+          document_id: documentId,
+          version_no: versionNo,
+          version_label: version_label || `v${versionNo}`,
+          version_status: 'draft',
+          is_current: 0,
+          change_summary: change_summary || null,
+          created_by: userId,
+        }, { transaction: t });
+
+        if (content_units && Array.isArray(content_units) && content_units.length > 0) {
+          for (let i = 0; i < content_units.length; i++) {
+            const unit = content_units[i];
+            await this.models.DocContentUnit.create({
+              id: Utils.newID(),
+              version_id: versionId,
+              parent_id: unit.parent_id || null,
+              unit_type: unit.unit_type || 'paragraph',
+              title: unit.title || null,
+              content: unit.content || null,
+              position: unit.position ?? i,
+              level: unit.level || 1,
+              token_count: unit.token_count || null,
+              is_knowledge_point: unit.is_knowledge_point ? 1 : 0,
+              metadata: unit.metadata || null,
+            }, { transaction: t });
+          }
         }
       });
 
