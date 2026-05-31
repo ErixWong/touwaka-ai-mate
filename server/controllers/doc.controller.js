@@ -258,16 +258,16 @@ class DocController {
   async updateDocument(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
       const { title, visibility, metadata } = ctx.request.body;
-
-      const document = await this.models.DocDocument.findOne({
-        where: { id: documentId },
-      });
-
-      if (!document) {
-        ctx.throw(404, 'Document not found');
-      }
+      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
+      if (!document) ctx.throw(404, 'Document not found');
 
       if (title) document.title = title;
       if (visibility) document.visibility = visibility;
@@ -283,54 +283,19 @@ class DocController {
     }
   }
 
-  async createVersion(ctx) {
+async createVersion(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
       const { version_label, change_summary, content_units } = ctx.request.body;
-
-      const document = await this.models.DocDocument.findOne({
-        where: { id: documentId },
-      });
+      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
-
-      const maxVersion = await this.models.DocVersion.findOne({
-        where: { document_id: documentId },
-        order: [['version_no', 'DESC']],
-      });
-      const versionNo = maxVersion ? maxVersion.version_no + 1 : 1;
-      const versionId = Utils.newID();
-
-      await this.db.sequelize.transaction(async (t) => {
-        await this.models.DocVersion.create({
-          id: versionId,
-          document_id: documentId,
-          version_no: versionNo,
-          version_label: version_label || `v${versionNo}`,
-          version_status: 'draft',
-          is_current: 0,
-          change_summary: change_summary || null,
-          created_by: userId,
-        }, { transaction: t });
-
-        if (content_units && Array.isArray(content_units) && content_units.length > 0) {
-          for (let i = 0; i < content_units.length; i++) {
-            const unit = content_units[i];
-            await this.models.DocContentUnit.create({
-              id: Utils.newID(),
-              version_id: versionId,
-              parent_id: unit.parent_id || null,
-              unit_type: unit.unit_type || 'paragraph',
-              title: unit.title || null,
-              content: unit.content || null,
-              position: unit.position ?? i,
-              level: unit.level || 1,
-              token_count: unit.token_count || null,
-              is_knowledge_point: unit.is_knowledge_point ? 1 : 0,
-              metadata: unit.metadata || null,
-            }, { transaction: t });
-          }
         }
       });
 
@@ -346,11 +311,14 @@ class DocController {
   async setCurrentVersion(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { documentId, versionId } = ctx.params;
+      const userId = ctx.state.session.id;
 
-      const document = await this.models.DocDocument.findOne({
-        where: { id: documentId },
-      });
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
 
       const version = await this.models.DocVersion.findOne({
@@ -487,12 +455,16 @@ class DocController {
   async createCompareRun(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const userId = ctx.state.session.id;
       const { document_id, base_version_id, target_version_id } = ctx.request.body;
 
       if (!document_id || !base_version_id || !target_version_id) {
         ctx.throw(400, 'document_id, base_version_id and target_version_id are required');
       }
+
+      const canWrite = await this.docAccessService.canWrite(document_id, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
 
       const run = await this.models.DocCompareRun.create({
         id: Utils.newID(),

@@ -90,7 +90,6 @@ import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
-import kbRoutes from './routes/kb.routes.js';
 import kbV2Routes from './routes/kb-v2.routes.js';
 import docRoutes from './routes/doc.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
@@ -402,12 +401,7 @@ class ApiServer {
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
 
-    // KB 知识库路由（兼容模式 /api/kb/*，待废弃）
-    // 新路由：/api/docs/kb/* 已独立注册
-    this.app.use(kbRoutes(this.controllers.kb).routes());
-    this.app.use(kbRoutes(this.controllers.kb).allowedMethods());
-
-    // KB 知识库 v2 路由（/api/docs/kb/*）
+    // KB 知识库路由（/api/docs/kb/* 统一入口）
     this.app.use(kbV2Routes(this.controllers.kb).routes());
     this.app.use(kbV2Routes(this.controllers.kb).allowedMethods());
 
@@ -648,11 +642,12 @@ class ApiServer {
         logger.info('  PUT  /api/roles/:id/permissions');
         logger.info('  GET  /api/roles/:id/experts');
         logger.info('  PUT  /api/roles/:id/experts');
-        logger.info('  GET  /api/kb/articles (知识库)');
-        logger.info('  POST /api/kb/articles');
-        logger.info('  GET  /api/kb/articles/:id');
-        logger.info('  GET  /api/kb/articles/:id/sections');
-        logger.info('  GET  /api/kb/sections/:id/paragraphs');
+        logger.info('  GET  /api/docs/kb (知识库列表)');
+        logger.info('  POST /api/docs/kb (创建知识库)');
+        logger.info('  GET  /api/docs/kb/:id/articles (文章列表)');
+        logger.info('  POST /api/docs/kb/:id/articles (创建文章)');
+        logger.info('  POST /api/docs/recall (统一召回)');
+        logger.info('  GET  /api/docs (文档列表)');
 
         // 异步处理未回复的消息（不阻塞服务器启动）
         this.chatService.processUnrepliedMessages().catch(err => {
