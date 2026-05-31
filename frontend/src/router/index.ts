@@ -107,6 +107,16 @@ const router = createRouter({
           component: () => import('@/views/KnowledgeDetailView.vue'),
         },
         {
+          path: 'docs',
+          name: 'docs',
+          component: () => import('@/views/DocsView.vue'),
+        },
+        {
+          path: 'docs/:documentId',
+          name: 'doc-detail',
+          component: () => import('@/views/DocDetailView.vue'),
+        },
+        {
           path: 'solutions',
           name: 'solutions',
           component: () => import('@/views/SolutionsView.vue'),
