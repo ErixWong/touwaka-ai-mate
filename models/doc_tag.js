@@ -1,54 +1,43 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class app_tick_log extends Model {
+export default class doc_tag extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      primaryKey: true
+      primaryKey: true,
+      comment: "标签ID"
     },
-    registry_id: {
+    org_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      references: {
-        model: 'app_clock_registry',
-        key: 'id'
-      }
+      comment: "组织ID"
     },
-    app_id: {
-      type: DataTypes.STRING(32),
-      allowNull: false
+    name: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      comment: "标签名称"
     },
-    success: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true
-    },
-    output_data: {
+    description: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "JSON 输出"
-    },
-    error_message: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    duration: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0,
-      comment: "耗时(ms)"
+      comment: "标签描述"
     },
     created_at: {
       type: DataTypes.DATE,
-      allowNull: true,
+      allowNull: false,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: false,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     }
   }, {
     sequelize,
-    tableName: 'app_tick_log',
+    tableName: 'doc_tags',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -61,17 +50,19 @@ export default class app_tick_log extends Model {
         ]
       },
       {
-        name: "idx_registry",
+        name: "idx_org_name",
+        unique: true,
         using: "BTREE",
         fields: [
-          { name: "registry_id" },
+          { name: "org_id" },
+          { name: "name" },
         ]
       },
       {
-        name: "idx_created",
+        name: "idx_org",
         using: "BTREE",
         fields: [
-          { name: "created_at" },
+          { name: "org_id" },
         ]
       },
     ]
