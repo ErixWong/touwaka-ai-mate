@@ -23,6 +23,24 @@ class DocController {
     this.docRecallService = null;
   }
 
+  // ==================== 版本状态机 ====================
+  VALID_TRANSITIONS = {
+    'draft':    ['review', 'archived'],
+    'review':   ['approved', 'draft', 'archived'],
+    'approved': ['effective', 'draft', 'archived'],
+    'effective':['expired', 'archived'],
+    'expired':  ['draft', 'archived'],
+    'archived': [],
+  };
+
+  validateTransition(from, to) {
+    const valid = this.VALID_TRANSITIONS[from];
+    if (!valid || !valid.includes(to)) {
+      throw new Error(`Invalid status transition: ${from} → ${to}`);
+    }
+    return true;
+  }
+
   ensureModels() {
     if (!this.models.DocDocument) {
       this.models.DocDocument = this.db.getModel('doc_document');
@@ -289,30 +307,24 @@ class DocController {
       const document = await this.models.DocDocument.findOne({
         where: { id: documentId },
       });
-
-      if (!document) {
-        ctx.throw(404, 'Document not found');
-      }
+      if (!document) ctx.throw(404, 'Document not found');
 
       const version = await this.models.DocVersion.findOne({
         where: { id: versionId, document_id: documentId },
       });
+      if (!version) ctx.throw(404, 'Version not found');
 
-      if (!version) {
-        ctx.throw(404, 'Version not found');
-      }
+      this.validateTransition(version.version_status, 'effective');
 
       await this.db.sequelize.transaction(async (t) => {
         await this.models.DocVersion.update(
           { is_current: 0 },
           { where: { document_id: documentId }, transaction: t }
         );
-
         version.is_current = 1;
         version.version_status = 'effective';
         version.published_at = new Date();
         await version.save({ transaction: t });
-
         document.current_version_id = versionId;
         await document.save({ transaction: t });
       });
@@ -321,6 +333,39 @@ class DocController {
       logger.info(`[Doc] setCurrentVersion: ${versionId} for ${documentId}`);
     } catch (error) {
       logger.error('[Doc] setCurrentVersion error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async transitionVersionStatus(ctx) {
+    try {
+      this.ensureModels();
+      const { documentId, versionId } = ctx.params;
+      const { to_status } = ctx.request.body;
+
+      if (!to_status) ctx.throw(400, 'to_status is required');
+
+      const version = await this.models.DocVersion.findOne({
+        where: { id: versionId, document_id: documentId },
+      });
+      if (!version) ctx.throw(404, 'Version not found');
+
+      this.validateTransition(version.version_status, to_status);
+
+      const updates = { version_status: to_status };
+      if (to_status === 'approved') {
+        updates.approved_at = new Date();
+        updates.approved_by = ctx.state.session.id;
+      }
+      if (to_status === 'expired') {
+        updates.effective_to = new Date();
+      }
+
+      await version.update(updates);
+      ctx.success(version);
+      logger.info(`[Doc] transitionVersionStatus: ${versionId} ${version.version_status} → ${to_status}`);
+    } catch (error) {
+      logger.error('[Doc] transitionVersionStatus error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

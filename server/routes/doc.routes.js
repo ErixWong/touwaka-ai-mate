@@ -37,6 +37,9 @@ export default (controller) => {
   // 设为当前版本
   router.post('/:documentId/versions/:versionId/set-current', authenticate(), controller.setCurrentVersion.bind(controller));
 
+  // 版本状态流转
+  router.post('/:documentId/versions/:versionId/transition', authenticate(), controller.transitionVersionStatus.bind(controller));
+
   // 获取内容树
   router.get('/:documentId/versions/:versionId/content-tree', authenticate(), controller.getContentTree.bind(controller));
 
