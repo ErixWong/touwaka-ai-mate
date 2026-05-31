@@ -157,7 +157,13 @@ class DocController {
   async listVersions(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+      const orgId = ctx.state.session.org_id;
+
+      const canRead = await this.docAccessService.canRead(documentId, userId, orgId);
+      if (!canRead) ctx.throw(403, 'Access denied');
 
       const versions = await this.models.DocVersion.findAll({
         where: { document_id: documentId },
@@ -530,7 +536,10 @@ async createVersion(ctx) {
   async getCompareRun(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { runId } = ctx.params;
+      const userId = ctx.state.session.id;
+      const orgId = ctx.state.session.org_id;
 
       const run = await this.models.DocCompareRun.findOne({
         where: { id: runId },
@@ -540,9 +549,10 @@ async createVersion(ctx) {
         }],
       });
 
-      if (!run) {
-        ctx.throw(404, 'Compare run not found');
-      }
+      if (!run) ctx.throw(404, 'Compare run not found');
+
+      const canRead = await this.docAccessService.canRead(run.document_id, userId, orgId);
+      if (!canRead) ctx.throw(403, 'Access denied');
 
       ctx.success(run);
     } catch (error) {
