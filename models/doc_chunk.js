@@ -1,23 +1,14 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class doc_embedding extends Model {
+export default class doc_chunk extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "向量ID"
-    },
-    content_unit_id: {
-      type: DataTypes.STRING(32),
-      allowNull: false,
-      comment: "内容单元ID",
-      references: {
-        model: 'doc_content_units',
-        key: 'id'
-      }
+      comment: "分块ID"
     },
     version_id: {
       type: DataTypes.STRING(32),
@@ -28,24 +19,36 @@ export default class doc_embedding extends Model {
         key: 'id'
       }
     },
-    document_id: {
-      type: DataTypes.STRING(32),
+    chunk_type: {
+      type: DataTypes.ENUM('chapter','section','paragraph','chunk'),
       allowNull: false,
-      comment: "文档ID",
-      references: {
-        model: 'doc_documents',
-        key: 'id'
-      }
+      comment: "分块类型"
     },
-    embedding_model_id: {
-      type: DataTypes.STRING(32),
+    title: {
+      type: DataTypes.STRING(500),
       allowNull: true,
-      comment: "Embedding模型ID"
+      comment: "标题"
     },
-    embedding_dim: {
+    content: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "内容"
+    },
+    seq: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "向量维度"
+      defaultValue: 0,
+      comment: "全局序号"
+    },
+    chapter_title: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: "所属章节标题"
+    },
+    section_title: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: "所属节标题"
     },
     embedding_vector: {
       type: "VECTOR(1536)",
@@ -58,10 +61,31 @@ export default class doc_embedding extends Model {
       defaultValue: "pending",
       comment: "向量状态"
     },
+    embedding_model_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "Embedding模型ID"
+    },
     embedded_at: {
       type: DataTypes.DATE,
       allowNull: true,
       comment: "向量生成时间"
+    },
+    token_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "Token数量"
+    },
+    is_knowledge_point: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: "是否知识点"
+    },
+    metadata: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "扩展字段"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -75,7 +99,7 @@ export default class doc_embedding extends Model {
     }
   }, {
     sequelize,
-    tableName: 'doc_embeddings',
+    tableName: 'doc_chunks',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -88,26 +112,18 @@ export default class doc_embedding extends Model {
         ]
       },
       {
-        name: "idx_version_emb_status",
+        name: "idx_version_seq",
         using: "BTREE",
         fields: [
           { name: "version_id" },
+          { name: "seq" },
+        ]
+      },
+      {
+        name: "idx_chunk_emb_status",
+        using: "BTREE",
+        fields: [
           { name: "embedding_status" },
-        ]
-      },
-      {
-        name: "idx_doc_model",
-        using: "BTREE",
-        fields: [
-          { name: "document_id" },
-          { name: "embedding_model_id" },
-        ]
-      },
-      {
-        name: "fk_emb_unit",
-        using: "BTREE",
-        fields: [
-          { name: "content_unit_id" },
         ]
       },
     ]

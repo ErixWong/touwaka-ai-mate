@@ -1,4 +1,5 @@
 import apiClient, { apiRequest } from './client'
+import type { DocDocument } from './docs'
 
 export interface DocCollection {
   id: string
@@ -24,25 +25,8 @@ export interface CollectionListResult {
   page_size: number
 }
 
-export interface CollectionDocumentItem {
-  id: string
-  collection_id: string
-  document_id: string
-  document: {
-    id: string
-    title: string
-    doc_type: string
-    visibility: string
-    lifecycle_status: string
-    current_version_id: string | null
-    created_at: string
-    updated_at: string
-  }
-  created_at: string
-}
-
 export interface CollectionDocumentListResult {
-  items: CollectionDocumentItem[]
+  items: DocDocument[]
   total: number
   page: number
   page_size: number

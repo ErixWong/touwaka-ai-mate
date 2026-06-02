@@ -5,9 +5,9 @@
  * 映射策略（每篇文章一文档一版本）：
  * - kb_articles → doc_documents
  * - 每个 document 创建一个初始 version
- * - kb_sections → doc_content_units (unit_type='section')
- * - kb_paragraphs → doc_content_units (unit_type='paragraph')
- * - kb_paragraphs.embedding → doc_embeddings
+ * - kb_sections → doc_chunks (chunk_type='section')
+ * - kb_paragraphs → doc_chunks (chunk_type='paragraph')
+ * - kb_paragraphs.embedding → doc_chunks.embedding_vector
  * - kb_tags → doc_tags
  * - kb_article_tags → doc_document_tags
  * 
@@ -236,7 +236,7 @@ async function migrateSections(connection) {
 
   for (const section of sections) {
     try {
-      const existing = await checkExisting(connection, 'doc_content_units', section.id);
+      const existing = await checkExisting(connection, 'doc_chunks', section.id);
       if (existing) {
         report.content_units.skipped++;
         sectionIdMap.set(section.id, section.id);
@@ -244,7 +244,7 @@ async function migrateSections(connection) {
       }
 
       await connection.execute(`
-        INSERT INTO doc_content_units (
+        INSERT INTO doc_chunks (
           id, version_id, parent_id, unit_type, title,
           content, position, level, path, is_knowledge_point,
           metadata, created_at, updated_at
@@ -293,7 +293,7 @@ async function migrateParagraphs(connection) {
 
   for (const paragraph of paragraphs) {
     try {
-      const existing = await checkExisting(connection, 'doc_content_units', paragraph.id);
+      const existing = await checkExisting(connection, 'doc_chunks', paragraph.id);
       if (existing) {
         report.content_units.skipped++;
       } else {
@@ -302,7 +302,7 @@ async function migrateParagraphs(connection) {
             paragraph.is_knowledge_point.data[0] : 1) : 0;
 
         await connection.execute(`
-          INSERT INTO doc_content_units (
+          INSERT INTO doc_chunks (
             id, version_id, parent_id, unit_type, title,
             content, position, level, path, token_count, is_knowledge_point,
             metadata, created_at, updated_at
@@ -346,7 +346,7 @@ async function migrateParagraphs(connection) {
 
 async function migrateSingleEmbedding(connection, paragraph) {
   try {
-    const existing = await checkExisting(connection, 'doc_embeddings', paragraph.id);
+    const existing = await checkExisting(connection, 'doc_chunks', paragraph.id);
     if (existing) {
       report.embeddings.skipped++;
       return;
@@ -384,7 +384,7 @@ async function migrateSingleEmbedding(connection, paragraph) {
     const originalDim = kbInfo[0]?.embedding_dim || embeddingArray.length;
 
     await connection.execute(`
-      INSERT INTO doc_embeddings (
+      INSERT INTO doc_chunks (
         id, content_unit_id, version_id, document_id,
         embedding_model_id, embedding_dim, embedding_vector, embedding_status,
         embedded_at, created_at, updated_at

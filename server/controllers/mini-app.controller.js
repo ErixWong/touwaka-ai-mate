@@ -204,7 +204,7 @@ class MiniAppController {
         return;
       }
       
-      const record = await this.miniAppService.updateRecord(appId, recordId, userId, {}, { status: 'pending_extract' });
+      const record = await this.miniAppService.updateRecord(appId, recordId, userId, {}, { status: 'pending_process' });
       ctx.success(record, 'Re-extract triggered');
     } catch (error) {
       logger.error('Re-extract error:', error);

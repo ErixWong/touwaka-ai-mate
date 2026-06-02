@@ -63,10 +63,13 @@
 
     <el-dialog v-model="showContentDialog" :title="$t('docs.contentTree')" width="800px">
       <div v-if="docStore.contentTree.length === 0">{{ $t('docs.noContent') }}</div>
-      <div v-else class="content-tree">
-        <div v-for="unit in flattenTree(docStore.contentTree)" :key="unit.id" class="content-unit" :style="{ paddingLeft: unit.level * 20 + 'px' }">
-          <div class="unit-title" v-if="unit.title">{{ unit.title }}</div>
-          <div class="unit-content" v-if="unit.content">{{ unit.content }}</div>
+      <div v-else class="chunk-list">
+        <div v-for="chunk in docStore.contentTree" :key="chunk.id" class="chunk-item">
+          <el-tag size="small" :type="chunkTypeTag(chunk.chunk_type)" style="margin-right:8px">{{ chunk.chunk_type }}</el-tag>
+          <span v-if="chunk.chapter_title" style="color:#999;font-size:12px">{{ chunk.chapter_title }}</span>
+          <span v-if="chunk.section_title" style="color:#bbb;font-size:12px;margin-left:8px">{{ chunk.section_title }}</span>
+          <div class="chunk-title" v-if="chunk.title">{{ chunk.title }}</div>
+          <div class="chunk-content" v-if="chunk.content">{{ chunk.content }}</div>
         </div>
       </div>
     </el-dialog>
@@ -77,7 +80,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
-import type { DocContentUnit } from '@/api/docs'
+import type { DocChunk } from '@/api/docs'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
@@ -116,16 +119,9 @@ function fmt(t: string) {
   return t ? new Date(t).toLocaleString() : ''
 }
 
-function flattenTree(tree: DocContentUnit[]): DocContentUnit[] {
-  const result: DocContentUnit[] = []
-  function walk(units: DocContentUnit[], level: number) {
-    for (const u of units) {
-      result.push({ ...u, level })
-      if (u.children) walk(u.children, level + 1)
-    }
-  }
-  walk(tree, 0)
-  return result
+function chunkTypeTag(type: string) {
+  const m: Record<string, string> = { chapter: '', section: 'info', paragraph: '', chunk: 'warning' }
+  return m[type] || ''
 }
 
 async function doSetCurrent(versionId: string) {
@@ -165,8 +161,8 @@ onMounted(async () => {
 .version-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .version-header h3 { margin: 0; }
 .loading-state, .error-state, .empty-state { padding: 60px 0; text-align: center; color: #999; }
-.content-tree { max-height: 500px; overflow-y: auto; }
-.content-unit { margin-bottom: 12px; border-left: 2px solid #e0e0e0; padding-left: 12px; }
-.unit-title { font-weight: bold; margin-bottom: 4px; }
-.unit-content { color: #666; font-size: 13px; line-height: 1.6; }
+.chunk-list { max-height: 500px; overflow-y: auto; }
+.chunk-item { margin-bottom: 12px; border-left: 2px solid #e0e0e0; padding-left: 12px; }
+.chunk-title { font-weight: bold; margin-bottom: 4px; }
+.chunk-content { color: #666; font-size: 13px; line-height: 1.6; }
 </style>
