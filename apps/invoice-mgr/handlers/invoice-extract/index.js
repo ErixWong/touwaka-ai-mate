@@ -110,7 +110,7 @@ async function insertItems(services, recordId, data) {
   `;
 
   for (const row of insertList) {
-    await services.query(sql, [
+    await services.execute(sql, [
       row.id,
       row.row_id,
       row.page_number,
