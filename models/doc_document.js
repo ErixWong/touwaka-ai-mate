@@ -57,6 +57,15 @@ export default class doc_document extends Model {
       defaultValue: "active",
       comment: "文档级状态"
     },
+    collection_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "所属集合ID",
+      references: {
+        model: 'doc_collections',
+        key: 'id'
+      }
+    },
     metadata: {
       type: DataTypes.TEXT,
       allowNull: true,
@@ -109,6 +118,13 @@ export default class doc_document extends Model {
           { name: "doc_type" },
           { name: "department_id" },
           { name: "lifecycle_status" },
+        ]
+      },
+      {
+        name: "idx_collection",
+        using: "BTREE",
+        fields: [
+          { name: "collection_id" },
         ]
       },
     ]

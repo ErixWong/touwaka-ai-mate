@@ -74,16 +74,16 @@
         {{ $t('docs.noRecallResults') }}
       </div>
       <div v-else class="recall-list">
-        <div v-for="item in docStore.recallResults" :key="item.content_unit.id" class="recall-item">
+        <div v-for="item in docStore.recallResults" :key="item.chunk.id" class="recall-item">
           <div class="recall-header">
             <span class="recall-score">{{ (item.score * 100).toFixed(1) }}%</span>
             <el-tag size="small" :type="docTypeTag(item.document.doc_type)">{{ docTypeLabel(item.document.doc_type) }}</el-tag>
             <span class="recall-doc-title" @click="openDocById(item.document.id)" style="cursor:pointer;color:#409eff">
               {{ item.document.title }}
             </span>
-            <span class="recall-unit-title">{{ item.content_unit.title }}</span>
+            <span class="recall-unit-title">{{ item.chunk.title }}</span>
           </div>
-          <div class="recall-content">{{ item.content_unit.content }}</div>
+          <div class="recall-content">{{ item.chunk.content }}</div>
         </div>
       </div>
     </el-dialog>

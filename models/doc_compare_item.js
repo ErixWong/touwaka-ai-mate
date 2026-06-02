@@ -24,7 +24,7 @@ export default class doc_compare_item extends Model {
       allowNull: true,
       comment: "基准内容单元ID",
       references: {
-        model: 'doc_content_units',
+        model: 'doc_chunks',
         key: 'id'
       }
     },
@@ -33,7 +33,7 @@ export default class doc_compare_item extends Model {
       allowNull: true,
       comment: "目标内容单元ID",
       references: {
-        model: 'doc_content_units',
+        model: 'doc_chunks',
         key: 'id'
       }
     },

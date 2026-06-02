@@ -65,7 +65,7 @@
 
       <div class="action-section danger-section">
         <h3>删除集合</h3>
-        <p class="action-desc">删除集合将移除集合及其与文档的关联关系（文档本身不会被删除）。集合内有关联文档时不可删除。</p>
+        <p class="action-desc">仅可删除空集合，请先移除集合内所有文档后再执行删除操作。</p>
         <el-button
           type="danger"
           @click="doDelete"

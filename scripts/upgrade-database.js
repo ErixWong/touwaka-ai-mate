@@ -1691,6 +1691,131 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== 文档平台重构 (task-20260601-doc-platform-refactor) ====================
+
+  // 17. 删除 doc_permissions 表
+  {
+    name: 'doc_permissions table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_permissions')),
+    migrate: async (conn) => {
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_permissions`);
+      console.log('  ✓ Dropped doc_permissions table');
+    }
+  },
+
+  // 18. 删除 doc_collection_documents 表
+  {
+    name: 'doc_collection_documents table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_collection_documents')),
+    migrate: async (conn) => {
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_collection_documents`);
+      console.log('  ✓ Dropped doc_collection_documents table');
+    }
+  },
+
+  // 19. 删除 doc_embeddings 表
+  {
+    name: 'doc_embeddings table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_embeddings')),
+    migrate: async (conn) => {
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_embeddings`);
+      console.log('  ✓ Dropped doc_embeddings table');
+    }
+  },
+
+  // 20. doc_documents 添加 collection_id
+  {
+    name: 'doc_documents add collection_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_documents')) return true;
+      return await hasColumn(conn, 'doc_documents', 'collection_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`ALTER TABLE doc_documents ADD COLUMN collection_id VARCHAR(32) NULL COMMENT '所属集合ID' AFTER lifecycle_status`);
+      await safeExecute(conn, `ALTER TABLE doc_documents ADD INDEX idx_collection (collection_id)`);
+      await safeExecute(conn, `ALTER TABLE doc_documents ADD CONSTRAINT fk_doc_document_collection FOREIGN KEY (collection_id) REFERENCES doc_collections(id) ON DELETE SET NULL`);
+      console.log('  ✓ Added doc_documents.collection_id');
+    }
+  },
+
+  // 21. 重命名 doc_content_units → doc_chunks
+  {
+    name: 'doc_content_units rename to doc_chunks',
+    check: async (conn) => !(await hasTable(conn, 'doc_content_units')),
+    migrate: async (conn) => {
+      if (!await hasTable(conn, 'doc_content_units')) {
+        console.log('  ⏭️  doc_content_units table not found, skipping rename');
+        return;
+      }
+      await conn.execute(`RENAME TABLE doc_content_units TO doc_chunks`);
+      console.log('  ✓ Renamed doc_content_units → doc_chunks');
+    }
+  },
+
+  // 22. doc_chunks 列改名: unit_type → chunk_type, position → seq
+  {
+    name: 'doc_chunks rename unit_type to chunk_type and position to seq',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_chunks')) return true;
+      return await hasColumn(conn, 'doc_chunks', 'chunk_type');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`ALTER TABLE doc_chunks CHANGE COLUMN unit_type chunk_type ENUM('chapter','section','paragraph','chunk') NOT NULL COMMENT '分块类型'`);
+      console.log('  ✓ Renamed unit_type → chunk_type');
+      await conn.execute(`ALTER TABLE doc_chunks CHANGE COLUMN position seq INT NOT NULL DEFAULT 0 COMMENT '全局序号'`);
+      console.log('  ✓ Renamed position → seq');
+    }
+  },
+
+  // 23. doc_chunks 删除列: parent_id, path, level
+  {
+    name: 'doc_chunks drop tree columns',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_chunks')) return true;
+      return !(await hasColumn(conn, 'doc_chunks', 'parent_id'));
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE doc_chunks DROP FOREIGN KEY fk_unit_parent`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks DROP INDEX idx_version_parent_pos`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks DROP INDEX fk_unit_parent`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks DROP COLUMN parent_id`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks DROP COLUMN path`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks DROP COLUMN level`);
+      console.log('  ✓ Dropped tree columns (parent_id, path, level)');
+    }
+  },
+
+  // 24. doc_chunks 新增列: chapter_title, section_title
+  {
+    name: 'doc_chunks add chapter_title and section_title',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_chunks')) return true;
+      return await hasColumn(conn, 'doc_chunks', 'section_title');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN chapter_title VARCHAR(500) NULL COMMENT '所属章节标题' AFTER seq`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN section_title VARCHAR(500) NULL COMMENT '所属节标题' AFTER chapter_title`);
+      console.log('  ✓ Added chapter_title, section_title');
+    }
+  },
+
+  // 25. doc_chunks 新增向量列 (从 doc_embeddings 合并)
+  {
+    name: 'doc_chunks add embedding columns',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'doc_chunks')) return true;
+      return await hasColumn(conn, 'doc_chunks', 'embedding_vector');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedding_vector VECTOR(1536) NULL COMMENT '向量数据' AFTER section_title`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedding_status ENUM('pending','processing','ready','error') NOT NULL DEFAULT 'pending' COMMENT '向量状态' AFTER embedding_vector`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedding_model_id VARCHAR(32) NULL COMMENT 'Embedding模型ID' AFTER embedding_status`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedded_at DATETIME NULL COMMENT '向量生成时间' AFTER embedding_model_id`);
+      await safeExecute(conn, `ALTER TABLE doc_chunks ADD INDEX idx_chunk_emb_status (embedding_status)`);
+      console.log('  ✓ Added embedding columns to doc_chunks');
+    }
+  },
+
 ];
 
 /**

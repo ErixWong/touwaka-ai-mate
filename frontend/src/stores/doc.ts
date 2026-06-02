@@ -12,7 +12,7 @@ import {
 import type {
   DocDocument,
   DocVersion,
-  DocContentUnit,
+  DocChunk,
   DocRecallItem,
   DocListResult
 } from '@/api/docs'
@@ -25,7 +25,7 @@ export const useDocStore = defineStore('doc', () => {
 
   const currentDoc = ref<DocDocument | null>(null)
   const versions = ref<DocVersion[]>([])
-  const contentTree = ref<DocContentUnit[]>([])
+  const contentTree = ref<DocChunk[]>([])
   const recallResults = ref<DocRecallItem[]>([])
 
   const isLoading = ref(false)

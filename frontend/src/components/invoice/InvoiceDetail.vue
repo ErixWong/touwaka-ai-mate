@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { getInvoiceDetail, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
-import { deleteRecord } from '@/api/mini-apps'
+import { deleteRecord, reExtractRecord } from '@/api/mini-apps'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps<{ rowId: string }>()
@@ -11,6 +11,7 @@ const emit = defineEmits<{ back: []; deleted: [] }>()
 const loading = ref(false)
 const detail = ref<InvoiceDetailType | null>(null)
 const deleting = ref(false)
+const reExtracting = ref(false)
 
 const APP_ID = 'invoice-mgr'
 
@@ -56,6 +57,37 @@ async function onDelete() {
     deleting.value = false
   }
 }
+
+async function onReExtract() {
+  const currentStatus = detail.value?.status
+  const statusLabel = currentStatus ? (statusLabels[currentStatus]?.label || currentStatus) : '未知'
+
+  try {
+    await ElMessageBox.confirm(
+      `当前状态为「${statusLabel}」，重新分析将重置为初始状态并重新提取数据，是否继续？`,
+      '重新分析发票',
+      {
+        confirmButtonText: '确认重置',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  reExtracting.value = true
+  try {
+    await reExtractRecord(APP_ID, props.rowId)
+    ElMessage.success('已重置为初始状态，系统将自动重新分析')
+    emit('deleted')
+    emit('back')
+  } catch (e: any) {
+    ElMessage.error(e.message || '重置失败')
+  } finally {
+    reExtracting.value = false
+  }
+}
 </script>
 
 <template>
@@ -65,9 +97,20 @@ async function onDelete() {
         <el-icon><ArrowLeft /></el-icon>
         返回列表
       </el-button>
-      <el-button type="danger" plain :loading="deleting" @click="onDelete">
-        删除记录
-      </el-button>
+      <div class="header-actions">
+        <el-button
+          v-if="detail && detail.status !== 'pending_process' && detail.status !== 'pending_vl_extract'"
+          type="warning"
+          plain
+          :loading="reExtracting"
+          @click="onReExtract"
+        >
+          重新分析
+        </el-button>
+        <el-button type="danger" plain :loading="deleting" @click="onDelete">
+          删除记录
+        </el-button>
+      </div>
     </div>
 
     <template v-if="detail">
@@ -137,6 +180,12 @@ async function onDelete() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .detail-card {
