@@ -152,6 +152,12 @@
       "type": "detail",
       "fields": [
         {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "label": "ID",
+          "source": "id"
+        },
+        {
           "name": "page_number",
           "type": "INT",
           "label": "页码"

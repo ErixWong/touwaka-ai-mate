@@ -479,6 +479,15 @@ function cleanAmount(raw) {
   return isNaN(n) ? 0 : n;
 }
 
+function extractNumbersFromText(raw) {
+  if (!raw) return [];
+  const text = String(raw).replace(/[¥￥,，\s]/g, '');
+  const matches = text.match(/-?\d+(?:\.\d+)?/g) || [];
+  return matches
+    .map(v => Number(v))
+    .filter(v => Number.isFinite(v));
+}
+
 function extractAmountInfo(items) {
   const yenItems = items.filter(i => i.str && (i.str.includes('¥') || i.str.includes('￥')))
     .sort((a, b) => a.y - b.y);
@@ -536,6 +545,53 @@ function extractAmountInfo(items) {
     }
   } else if (totalWithTax === 0 && amount > 0 && tax > 0) {
     totalWithTax = Math.round((amount + tax) * 100) / 100;
+  }
+
+  // 兜底：兼容电子发票中“¥”与数字分离、标签被拆词等情况
+  if (totalWithTax === 0 || amount === 0 || tax === 0) {
+    const clusters = clusterByY(items, 6);
+
+    // 1) 通过“小写”行提取价税合计
+    if (totalWithTax === 0) {
+      for (const cluster of clusters) {
+        const rowText = cluster.items.map(it => (it.str || '')).join('');
+        if (!rowText) continue;
+
+        const compact = rowText.replace(/\s+/g, '');
+        const hasXiaoXie = compact.includes('小写') || (compact.includes('小') && compact.includes('写'));
+        if (!hasXiaoXie) continue;
+
+        const nums = extractNumbersFromText(compact);
+        if (nums.length > 0) {
+          totalWithTax = nums[nums.length - 1];
+          break;
+        }
+      }
+    }
+
+    // 2) 通过“合计”行提取金额与税额
+    if (amount === 0 || tax === 0) {
+      for (const cluster of clusters) {
+        const rowText = cluster.items.map(it => (it.str || '')).join('');
+        if (!rowText) continue;
+
+        const compact = rowText.replace(/\s+/g, '');
+        if (!compact.includes('合') || !compact.includes('计')) continue;
+        if (compact.includes('价税合计')) continue;
+
+        const nums = extractNumbersFromText(compact);
+        if (nums.length >= 2) {
+          amount = amount || nums[nums.length - 2];
+          tax = tax || nums[nums.length - 1];
+          break;
+        }
+      }
+    }
+
+    // 3) 若仍无价税合计，按 金额+税额 回填
+    if (totalWithTax === 0 && amount > 0 && tax > 0) {
+      totalWithTax = Math.round((amount + tax) * 100) / 100;
+    }
   }
 
   return { amount, tax, totalWithTax };
@@ -963,6 +1019,8 @@ async function extract(params) {
     item_count: itemCount,
     page_count: pageCount,
     remarks: invoice.remarks,
+    pages: invoice.pages,
+    invoice: invoice,
     field_sources: invoice.fieldSources,
     output_file: outputFile,
     content: outputContent,
