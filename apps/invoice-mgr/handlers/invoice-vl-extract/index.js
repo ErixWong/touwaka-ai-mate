@@ -3,7 +3,6 @@ import path from 'path';
 import { getStepResource, resolveAttachmentPath } from '../shared.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
-const ITEMS_TABLE = 'app_invoice_mgr_items';
 
 const EXTRACT_PROMPT = `你是一个中国发票识别专家。请从图片中提取发票结构化信息。
 
@@ -76,10 +75,13 @@ async function upsertRows(services, recordId, data, ocrMethod) {
 }
 
 async function insertItems(services, recordId, items) {
+  if (!items || items.length === 0) return 0;
+
+  const insertList = [];
   let sortOrder = 0;
-  for (const item of (items || [])) {
+  for (const item of items) {
     sortOrder++;
-    await services.callExtension(ITEMS_TABLE, 'create', {
+    insertList.push({
       id: `${recordId}_${String(sortOrder).padStart(3, '0')}`,
       row_id: recordId,
       page_number: 1,
@@ -95,7 +97,32 @@ async function insertItems(services, recordId, items) {
       tax_amount: item.taxAmount || 0,
     });
   }
-  return sortOrder;
+
+  const sql = `
+    INSERT INTO app_invoice_mgr_items
+    (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  for (const row of insertList) {
+    await services.execute(sql, [
+      row.id,
+      row.row_id,
+      row.page_number,
+      row.sort_order,
+      row.category,
+      row.name,
+      row.model,
+      row.unit,
+      row.quantity,
+      row.price,
+      row.amount,
+      row.tax_rate,
+      row.tax_amount,
+    ]);
+  }
+
+  return insertList.length;
 }
 
 export const availableOutputs = [
@@ -122,7 +149,7 @@ export default {
       return { success: false, error: '无法解析文件路径' };
     }
 
-    const skillPath = 'attachments/' + file.attachment.file_path.replace(/\\/g, '/');
+    const skillPath = path.join('data', 'attachments', file.attachment.file_path);
 
     const fileName = file.attachment.file_name;
     const ext = path.extname(fileName).toLowerCase();

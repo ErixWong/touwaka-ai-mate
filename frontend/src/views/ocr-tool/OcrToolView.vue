@@ -1160,27 +1160,43 @@ watch(showFullscreen, (val) => {
 }
 
 /* 全屏预览 */
-.fullscreen-preview-dialog :deep(.el-dialog__header) {
-  display: none;
-}
-
-.fullscreen-preview-dialog :deep(.el-dialog__body) {
-  padding: 0;
+.fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.fullscreen-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
 }
 
 .fullscreen-content img {
-  max-height: 80vh;
+  max-width: 90vw;
+  max-height: 85vh;
   object-fit: contain;
-}
-</style>
+  border-radius: 8px;
 }
 
-.fullscreen-content img {
-  max-width: 100%;
-  max-height: 80vh;
-  object-fit: contain;
+.close-btn {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  font-size: 28px;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.close-btn:hover {
+  opacity: 0.7;
 }
 </style>
