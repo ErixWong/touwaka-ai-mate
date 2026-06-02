@@ -53,13 +53,14 @@ async function upsertRows(services, recordId, data, ocrMethod) {
 async function insertItems(services, recordId, data) {
   const pages = data.pages || (data.invoice?.pages) || [];
   const items = data.items || [];
-  let sortOrder = 0;
+  const insertList = [];
 
   if (pages.length > 0) {
+    let sortOrder = 0;
     for (const page of pages) {
       for (const item of (page.items || [])) {
         sortOrder++;
-        await services.callExtension(ITEMS_TABLE, 'create', {
+        insertList.push({
           id: `${recordId}_${String(sortOrder).padStart(3, '0')}`,
           row_id: recordId,
           page_number: page.pageNumber || 1,
@@ -78,9 +79,10 @@ async function insertItems(services, recordId, data) {
       }
     }
   } else if (items.length > 0) {
+    let sortOrder = 0;
     for (const item of items) {
       sortOrder++;
-      await services.callExtension(ITEMS_TABLE, 'create', {
+      insertList.push({
         id: `${recordId}_${String(sortOrder).padStart(3, '0')}`,
         row_id: recordId,
         page_number: 1,
@@ -94,10 +96,39 @@ async function insertItems(services, recordId, data) {
         amount: item.amount || 0,
         tax_rate: item.taxRate || '',
         tax_amount: item.taxAmount || 0,
+        issuer: '',
       });
     }
   }
-  return sortOrder;
+
+  if (insertList.length === 0) return 0;
+
+  const sql = `
+    INSERT INTO app_invoice_mgr_items
+    (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount, issuer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  for (const row of insertList) {
+    await services.execute(sql, [
+      row.id,
+      row.row_id,
+      row.page_number,
+      row.sort_order,
+      row.category,
+      row.name,
+      row.model,
+      row.unit,
+      row.quantity,
+      row.price,
+      row.amount,
+      row.tax_rate,
+      row.tax_amount,
+      row.issuer,
+    ]);
+  }
+
+  return insertList.length;
 }
 
 export const availableOutputs = [
