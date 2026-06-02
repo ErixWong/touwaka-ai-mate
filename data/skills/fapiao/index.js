@@ -1019,6 +1019,8 @@ async function extract(params) {
     item_count: itemCount,
     page_count: pageCount,
     remarks: invoice.remarks,
+    pages: invoice.pages,
+    invoice: invoice,
     field_sources: invoice.fieldSources,
     output_file: outputFile,
     content: outputContent,
