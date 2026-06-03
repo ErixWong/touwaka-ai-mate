@@ -33,6 +33,12 @@ onMounted(async () => {
   }
 })
 
+function formatQuantity(v: any): string {
+  const n = Number(v)
+  if (isNaN(n)) return String(v ?? '')
+  return n.toFixed(2)
+}
+
 async function onDelete() {
   try {
     await ElMessageBox.confirm('删除后不可恢复，是否继续？', '删除发票记录', {
@@ -110,7 +116,9 @@ async function onDelete() {
           <el-table-column prop="name" label="商品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="model" label="规格型号" width="120" show-overflow-tooltip />
           <el-table-column prop="unit" label="单位" width="60" />
-          <el-table-column prop="quantity" label="数量" width="80" align="right" />
+          <el-table-column prop="quantity" label="数量" width="80" align="right">
+            <template #default="{ row: r }">{{ formatQuantity(r.quantity) }}</template>
+          </el-table-column>
           <el-table-column prop="price" label="单价" width="100" align="right">
             <template #default="{ row: r }">¥{{ r.price?.toLocaleString() }}</template>
           </el-table-column>

@@ -34,6 +34,24 @@ const EXTRACT_PROMPT = `你是一个中国发票识别专家。请从图片中�
 - 无法识别的字段用空字符串或0
 - 无商品明细则items为空数组`;
 
+// 第2页及之后只提取 items，不需要表头信息
+const ITEMS_ONLY_PROMPT = `你是一个中国发票识别专家。请从这张发票**续页**图片中提取商品明细。
+
+严格返回JSON格式：
+{
+  "items": [
+    { "category": "分类", "name": "商品名称", "model": "规格", "unit": "单位",
+      "quantity": 数量, "price": 单价, "amount": 金额,
+      "taxRate": "税率", "taxAmount": 税额 }
+  ]
+}
+
+规则：
+- 金额为纯数字，不含逗号和符号
+- 无法识别的字段用空字符串或0
+- 无商品明细则items为空数组
+- **注意：你只看到发票的续页，不要返回发票号、日期等表头信息**`;
+
 function isValidInvoice(data) {
   const invNum = data.invoice_number;
   const total = data.total_with_tax || 0;
@@ -141,6 +159,14 @@ export default {
     const { record, files, services, app } = context;
     const file = files[0];
 
+    const stepConfig = getStepResource(app, 'pending_vl_extract', {
+      type: 'internal_llm',
+      llm: { model_id: null, temperature: 0.1, timeout_ms: 300000 },
+      render: { scale: 1.0, desired_width: 1400, retry_scale: 0.8, retry_desired_width: 1100 },
+    });
+    const llmCfg = stepConfig.llm || {};
+    const renderCfg = stepConfig.render || {};
+
     if (!file || !file.attachment) {
       logger.error(`[invoice-vl-extract] Record ${record.id}: No file`);
       return { success: false, error: '未找到文件' };
@@ -160,6 +186,27 @@ export default {
     logger.info(`[invoice-vl-extract] Record ${record.id}: ${fileName} (${ext}), path=${skillPath}`);
 
     let images = [];
+    const isPdf = ext === '.pdf';
+
+    const renderPdfPages = async ({ fromPage, toPage, scale, desiredWidth, tag }) => {
+      const params = {
+        operation: 'render',
+        path: skillPath,
+        scale,
+        fromPage,
+        toPage,
+      };
+      if (desiredWidth) {
+        params.desiredWidth = desiredWidth;
+      }
+
+      const result = await services.callSkill('pdf', 'read', params);
+      const pages = result?.pages || [];
+      logger.info(
+        `[invoice-vl-extract] Record ${record.id}: PDF渲染(${tag}) scale=${scale}, desiredWidth=${desiredWidth || 'n/a'}, pages=${pages.length}`
+      );
+      return pages;
+    };
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
       const { readFile } = await import('fs/promises');
@@ -169,17 +216,19 @@ export default {
       }[ext];
       images.push(`data:${mimeType};base64,${buffer.toString('base64')}`);
       logger.info(`[invoice-vl-extract] Record ${record.id}: 图片已转为dataUrl`);
-    } else if (ext === '.pdf') {
+    } else if (isPdf) {
       try {
-        const renderResult = await services.callSkill('pdf', 'read', {
-          operation: 'render',
-          path: skillPath,
-          scale: 1.5,
+        const renderResultPages = await renderPdfPages({
+          fromPage: undefined,
+          toPage: undefined,
+          scale: renderCfg.scale ?? 1.0,
+          desiredWidth: renderCfg.desired_width,
+          tag: 'normal',
         });
 
-        if (renderResult.pages && renderResult.pages.length > 0) {
-          images = renderResult.pages.map(p => p.dataUrl);
-          logger.info(`[invoice-vl-extract] Record ${record.id}: PDF渲染 ${renderResult.pages.length} 页 → VL`);
+        if (renderResultPages.length > 0) {
+          images = renderResultPages.map(p => p.dataUrl);
+          logger.info(`[invoice-vl-extract] Record ${record.id}: PDF渲染 ${renderResultPages.length} 页 → VL`);
         } else {
           logger.warn(`[invoice-vl-extract] Record ${record.id}: PDF 渲染无页面`);
           return { success: false, error: 'PDF渲染失败' };
@@ -197,29 +246,86 @@ export default {
       return { success: false, error: '无图片数据' };
     }
 
-    const stepConfig = getStepResource(app, 'pending_vl_extract', {
-      type: 'internal_llm',
-      llm: { model_id: null, temperature: 0.1, timeout_ms: 120000 },
+    const callVL = (prompt, imageUrl) => services.llm.extractJson(prompt, '', {
+      images: [imageUrl],
+      modelId: llmCfg.model_id || undefined,
+      temperature: llmCfg.temperature ?? 0.1,
+      timeout: llmCfg.timeout_ms ?? 300000,
     });
-    const llmCfg = stepConfig.llm || {};
+
+    // ========== 逐页调用 VL（每页一次请求，避免多页图片 payload 过大超时）==========
 
     let data;
-    try {
-      data = await services.llm.extractJson(EXTRACT_PROMPT, '', {
-        images: images,
-        modelId: llmCfg.model_id || undefined,
-        temperature: llmCfg.temperature ?? 0.1,
-        timeout: llmCfg.timeout_ms ?? 120000,
-      });
-    } catch (e) {
-      logger.error(`[invoice-vl-extract] Record ${record.id}: VL提取异常: ${e.message}`);
-      return { success: false, error: `VL提取失败: ${e.message}` };
+    const allItems = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const isFirstPage = (i === 0);
+      const prompt = isFirstPage ? EXTRACT_PROMPT : ITEMS_ONLY_PROMPT;
+      logger.info(`[invoice-vl-extract] Record ${record.id}: VL 第${i + 1}/${images.length}页...`);
+
+      let pageResult;
+      try {
+        pageResult = await callVL(prompt, images[i]);
+      } catch (e) {
+        logger.error(`[invoice-vl-extract] Record ${record.id}: 第${i + 1}页 VL 异常: ${e.message}`);
+        if (isFirstPage) {
+          if (isPdf) {
+            logger.warn(`[invoice-vl-extract] Record ${record.id}: 首页VL失败，尝试低分辨率重试`);
+            try {
+              const retryPages = await renderPdfPages({
+                fromPage: 1,
+                toPage: 1,
+                scale: renderCfg.retry_scale ?? 0.8,
+                desiredWidth: renderCfg.retry_desired_width ?? 1100,
+                tag: 'retry-lowres',
+              });
+              const retryImage = retryPages?.[0]?.dataUrl;
+              if (!retryImage) {
+                throw new Error('低分辨率渲染首页为空');
+              }
+              pageResult = await callVL(prompt, retryImage);
+              logger.info(`[invoice-vl-extract] Record ${record.id}: 首页VL低分辨率重试成功`);
+            } catch (retryErr) {
+              return { success: false, error: `首页 VL 提取失败: ${retryErr.message}` };
+            }
+          } else {
+            return { success: false, error: `首页 VL 提取失败: ${e.message}` };
+          }
+        }
+        // 续页失败跳过，不阻塞整张发票
+        else {
+          continue;
+        }
+      }
+
+      if (!pageResult) {
+        logger.warn(`[invoice-vl-extract] Record ${record.id}: 第${i + 1}页 VL 返回空，跳过`);
+        if (isFirstPage) {
+          return { success: false, error: '首页 VL 返回空' };
+        }
+        continue;
+      }
+
+      if (isFirstPage) {
+        data = pageResult;
+      }
+
+      const pageItems = pageResult.items || [];
+      allItems.push(...pageItems);
+      logger.info(`[invoice-vl-extract] Record ${record.id}: 第${i + 1}页 → ${pageItems.length} 项商品`);
     }
 
     if (!data) {
-      logger.error(`[invoice-vl-extract] Record ${record.id}: VL返回空`);
+      logger.error(`[invoice-vl-extract] Record ${record.id}: 首页 VL 返回空`);
       return { success: false, error: 'VL提取结果为空' };
     }
+
+    // 合并所有页的 items
+    data.items = allItems;
+    data.page_count = images.length;
+
+    logger.info(`[invoice-vl-extract] Record ${record.id}: VL 完成，共 ${images.length} 页 ${allItems.length} 项商品`);
+
 
     if (!isValidInvoice(data)) {
       logger.warn(`[invoice-vl-extract] Record ${record.id}: VL提取结果无效(非发票)`);
