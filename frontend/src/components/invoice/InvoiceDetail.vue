@@ -85,6 +85,7 @@ async function onDelete() {
           <el-descriptions-item label="发票类型">{{ detail.invoice_type || '-' }}</el-descriptions-item>
           <el-descriptions-item label="识别方法">{{ detail.ocr_method || '-' }}</el-descriptions-item>
           <el-descriptions-item label="备注" :span="2">{{ detail.remarks || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="开票人">{{ detail.issuer || '-' }}</el-descriptions-item>
         </el-descriptions>
 
         <el-descriptions :column="2" border style="margin-top:16px" title="交易方信息">
@@ -120,7 +121,6 @@ async function onDelete() {
           <el-table-column prop="tax_amount" label="税额" width="100" align="right">
             <template #default="{ row: r }">¥{{ r.tax_amount?.toLocaleString() }}</template>
           </el-table-column>
-          <el-table-column prop="issuer" label="开票人" width="80" />
         </el-table>
       </div>
     </template>

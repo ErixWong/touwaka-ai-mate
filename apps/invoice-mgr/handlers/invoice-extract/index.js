@@ -44,6 +44,7 @@ async function upsertRows(services, recordId, data, ocrMethod) {
     item_count: data.item_count || 0,
     page_count: data.page_count || 0,
     remarks: data.remarks || '',
+    issuer: data.issuer || '',
     ocr_method: ocrMethod,
     ocr_raw: typeof data.content === 'string' ? data.content : JSON.stringify(data),
     extraction_status: 'success',
@@ -74,7 +75,6 @@ async function insertItems(services, recordId, data) {
           amount: item.amount || 0,
           tax_rate: item.taxRate || '',
           tax_amount: item.taxAmount || 0,
-          issuer: page.issuer || '',
         });
       }
     }
@@ -96,7 +96,6 @@ async function insertItems(services, recordId, data) {
         amount: item.amount || 0,
         tax_rate: item.taxRate || '',
         tax_amount: item.taxAmount || 0,
-        issuer: '',
       });
     }
   }
@@ -105,8 +104,8 @@ async function insertItems(services, recordId, data) {
 
   const sql = `
     INSERT INTO app_invoice_mgr_items
-    (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount, issuer)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   for (const row of insertList) {
@@ -124,7 +123,6 @@ async function insertItems(services, recordId, data) {
       row.amount,
       row.tax_rate,
       row.tax_amount,
-      row.issuer,
     ]);
   }
 
@@ -137,6 +135,7 @@ export const availableOutputs = [
   { key: 'seller_name', label: '销售方', type: 'string' },
   { key: 'buyer_name', label: '购买方', type: 'string' },
   { key: 'total_with_tax', label: '价税合计', type: 'number' },
+  { key: 'issuer', label: '开票人', type: 'string' },
 ];
 
 export default {
@@ -211,6 +210,12 @@ export default {
           existing_row_id: existing.row_id,
         },
       };
+    }
+
+    // 从 fapiao 数据中提取开票人（取第一页的 issuer）
+    if (!data.issuer) {
+      const pages = data.pages || (data.invoice?.pages) || [];
+      data.issuer = pages[0]?.issuer || '';
     }
 
     await upsertRows(services, record.id, data, 'fapiao');

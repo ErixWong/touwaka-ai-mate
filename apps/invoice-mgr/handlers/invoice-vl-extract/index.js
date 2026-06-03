@@ -18,6 +18,7 @@ const EXTRACT_PROMPT = `你是一个中国发票识别专家。请从图片中�
   "total_amount": 合计金额(不含税),
   "total_tax": 税额,
   "total_with_tax": 价税合计,
+  "issuer": "开票人",
   "remarks": "备注",
   "items": [
     { "category": "分类", "name": "商品名称", "model": "规格", "unit": "单位",
@@ -66,6 +67,7 @@ async function upsertRows(services, recordId, data, ocrMethod) {
     item_count: (data.items || []).length,
     page_count: data.page_count || 0,
     remarks: data.remarks || '',
+    issuer: data.issuer || '',
     ocr_method: ocrMethod,
     ocr_raw: JSON.stringify(data),
     extraction_status: 'success',
@@ -130,6 +132,7 @@ export const availableOutputs = [
   { key: 'invoice_date', label: '开票日期', type: 'string' },
   { key: 'seller_name', label: '销售方', type: 'string' },
   { key: 'total_with_tax', label: '价税合计', type: 'number' },
+  { key: 'issuer', label: '开票人', type: 'string' },
 ];
 
 export default {
