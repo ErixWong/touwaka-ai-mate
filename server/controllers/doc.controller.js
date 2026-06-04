@@ -49,11 +49,9 @@ class DocController {
     if (!this.models.DocDocument) {
       this.models.DocDocument = this.db.getModel('doc_document');
       this.models.DocVersion = this.db.getModel('doc_version');
-      this.models.DocContentUnit = this.db.getModel('doc_content_unit');
-      this.models.DocEmbedding = this.db.getModel('doc_embedding');
+      this.models.DocChunk = this.db.getModel('doc_chunk');
       this.models.DocTag = this.db.getModel('doc_tag');
       this.models.DocDocumentTag = this.db.getModel('doc_document_tag');
-      this.models.DocPermission = this.db.getModel('doc_permission');
       this.models.DocCompareRun = this.db.getModel('doc_compare_run');
       this.models.DocCompareItem = this.db.getModel('doc_compare_item');
     }
@@ -94,22 +92,11 @@ class DocController {
         lifecycle_status: 'active',
       };
       if (doc_type) where.doc_type = doc_type;
-
-      let include = [];
-      if (collection_id) {
-        const DocCollectionDocument = this.db.getModel('doc_collection_document');
-        include.push({
-          model: DocCollectionDocument,
-          where: { collection_id },
-          attributes: [],
-          required: true,
-        });
-      }
+      if (collection_id) where.collection_id = collection_id;
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,
-        attributes: ['id', 'doc_type', 'title', 'owner_id', 'department_id', 'visibility', 'current_version_id', 'created_at', 'updated_at'],
-        include,
+        attributes: ['id', 'doc_type', 'title', 'owner_id', 'department_id', 'visibility', 'current_version_id', 'collection_id', 'created_at', 'updated_at'],
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
         limit: parseInt(size),
@@ -187,7 +174,7 @@ class DocController {
   }
 
   /**
-   * 获取内容树
+   * 获取内容块列表（扁平有序）
    * GET /api/docs/:documentId/versions/:versionId/content-tree
    */
   async getContentTree(ctx) {
@@ -200,41 +187,17 @@ class DocController {
       });
       if (!version) ctx.throw(404, 'Version not found for this document');
 
-      const units = await this.models.DocContentUnit.findAll({
+      const chunks = await this.models.DocChunk.findAll({
         where: { version_id: versionId },
-        order: [['position', 'ASC']],
+        order: [['seq', 'ASC']],
+        attributes: ['id', 'chunk_type', 'title', 'content', 'seq', 'chapter_title', 'section_title', 'token_count', 'is_knowledge_point'],
       });
 
-      const tree = this.buildContentTree(units);
-
-      ctx.success(tree);
+      ctx.success(chunks);
     } catch (error) {
       logger.error('[Doc] getContentTree error:', error);
       ctx.throw(error.status || 500, error.message);
     }
-  }
-
-  buildContentTree(units) {
-    const unitMap = new Map();
-    const rootUnits = [];
-
-    units.forEach(unit => {
-      unitMap.set(unit.id, { ...unit.toJSON(), children: [] });
-    });
-
-    units.forEach(unit => {
-      const node = unitMap.get(unit.id);
-      if (unit.parent_id) {
-        const parent = unitMap.get(unit.parent_id);
-        if (parent) {
-          parent.children.push(node);
-        }
-      } else {
-        rootUnits.push(node);
-      }
-    });
-
-    return rootUnits;
   }
 
   async createDocument(ctx) {
@@ -309,7 +272,8 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      const { version_label, change_summary, content_units } = ctx.request.body;
+       const { version_label, change_summary, chunks: chunksInput, content_units } = ctx.request.body;
+       const chunks = chunksInput || content_units;
       const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
 
@@ -332,21 +296,21 @@ async createVersion(ctx) {
           created_by: userId,
         }, { transaction: t });
 
-        if (content_units && Array.isArray(content_units) && content_units.length > 0) {
-          for (let i = 0; i < content_units.length; i++) {
-            const unit = content_units[i];
-            await this.models.DocContentUnit.create({
+        if (chunks && Array.isArray(chunks) && chunks.length > 0) {
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            await this.models.DocChunk.create({
               id: Utils.newID(),
               version_id: versionId,
-              parent_id: unit.parent_id || null,
-              unit_type: unit.unit_type || 'paragraph',
-              title: unit.title || null,
-              content: unit.content || null,
-              position: unit.position ?? i,
-              level: unit.level || 1,
-              token_count: unit.token_count || null,
-              is_knowledge_point: unit.is_knowledge_point ? 1 : 0,
-              metadata: unit.metadata || null,
+              chunk_type: chunk.chunk_type || 'paragraph',
+              title: chunk.title || null,
+              content: chunk.content || null,
+              seq: chunk.seq ?? i,
+              chapter_title: chunk.chapter_title || null,
+              section_title: chunk.section_title || null,
+              token_count: chunk.token_count || null,
+              is_knowledge_point: chunk.is_knowledge_point ? 1 : 0,
+              metadata: chunk.metadata || null,
             }, { transaction: t });
           }
         }
@@ -354,7 +318,7 @@ async createVersion(ctx) {
 
       const version = await this.models.DocVersion.findByPk(versionId);
       ctx.success(version);
-      logger.info(`[Doc] createVersion: ${versionId} for ${documentId}, ${content_units?.length || 0} units`);
+      logger.info(`[Doc] createVersion: ${versionId} for ${documentId}, ${chunks?.length || 0} chunks`);
     } catch (error) {
       logger.error('[Doc] createVersion error:', error);
       ctx.throw(error.status || 500, error.message);

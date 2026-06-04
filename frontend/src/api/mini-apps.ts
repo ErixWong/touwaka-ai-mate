@@ -310,6 +310,10 @@ export async function deleteRecord(appId: string, recordId: string): Promise<voi
   return apiRequest<void>(apiClient.delete(`/mini-apps/${appId}/data/${recordId}`))
 }
 
+export async function reExtractRecord(appId: string, recordId: string): Promise<MiniAppRecord> {
+  return apiRequest<MiniAppRecord>(apiClient.post(`/mini-apps/${appId}/data/${recordId}/re-extract`))
+}
+
 export async function confirmRecord(appId: string, recordId: string, data: Record<string, any>): Promise<MiniAppRecord> {
   return apiRequest<MiniAppRecord>(apiClient.put(`/mini-apps/${appId}/data/${recordId}/confirm`, { data }))
 }

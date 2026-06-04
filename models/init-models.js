@@ -22,15 +22,12 @@ import _contract_v2_main_record from  "./contract_v2_main_record.js";
 import _contract_v2_org_node from  "./contract_v2_org_node.js";
 import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
-import _doc_collection_document from  "./doc_collection_document.js";
 import _doc_collection from  "./doc_collection.js";
 import _doc_compare_item from  "./doc_compare_item.js";
 import _doc_compare_run from  "./doc_compare_run.js";
-import _doc_content_unit from  "./doc_content_unit.js";
+import _doc_chunk from  "./doc_chunk.js";
 import _doc_document_tag from  "./doc_document_tag.js";
 import _doc_document from  "./doc_document.js";
-import _doc_embedding from  "./doc_embedding.js";
-import _doc_permission from  "./doc_permission.js";
 import _doc_tag from  "./doc_tag.js";
 import _doc_version from  "./doc_version.js";
 import _expert_skill from  "./expert_skill.js";
@@ -95,15 +92,12 @@ export default function initModels(sequelize) {
   const contract_v2_org_node = _contract_v2_org_node.init(sequelize, DataTypes);
   const contract_v2_version = _contract_v2_version.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
-  const doc_collection_document = _doc_collection_document.init(sequelize, DataTypes);
   const doc_collection = _doc_collection.init(sequelize, DataTypes);
   const doc_compare_item = _doc_compare_item.init(sequelize, DataTypes);
   const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
-  const doc_content_unit = _doc_content_unit.init(sequelize, DataTypes);
+  const doc_chunk = _doc_chunk.init(sequelize, DataTypes);
   const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
   const doc_document = _doc_document.init(sequelize, DataTypes);
-  const doc_embedding = _doc_embedding.init(sequelize, DataTypes);
-  const doc_permission = _doc_permission.init(sequelize, DataTypes);
   const doc_tag = _doc_tag.init(sequelize, DataTypes);
   const doc_version = _doc_version.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
@@ -179,30 +173,20 @@ export default function initModels(sequelize) {
   contract_v2_org_node.hasMany(contract_v2_org_node, { as: "contract_v2_org_nodes", foreignKey: "parent_id"});
   doc_collection.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(doc_collection, { as: "doc_collections", foreignKey: "department_id"});
+  doc_document.belongsTo(doc_collection, { as: "collection", foreignKey: "collection_id"});
+  doc_collection.hasMany(doc_document, { as: "doc_documents", foreignKey: "collection_id"});
   position.belongsTo(department, { as: "department", foreignKey: "department_id"});
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
-  doc_collection_document.belongsTo(doc_collection, { as: "collection", foreignKey: "collection_id"});
-  doc_collection.hasMany(doc_collection_document, { as: "doc_collection_documents", foreignKey: "collection_id"});
   doc_compare_item.belongsTo(doc_compare_run, { as: "run", foreignKey: "run_id"});
   doc_compare_run.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "run_id"});
-  doc_compare_item.belongsTo(doc_content_unit, { as: "base_unit", foreignKey: "base_unit_id"});
-  doc_content_unit.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "base_unit_id"});
-  doc_compare_item.belongsTo(doc_content_unit, { as: "target_unit", foreignKey: "target_unit_id"});
-  doc_content_unit.hasMany(doc_compare_item, { as: "target_unit_doc_compare_items", foreignKey: "target_unit_id"});
-  doc_content_unit.belongsTo(doc_content_unit, { as: "parent", foreignKey: "parent_id"});
-  doc_content_unit.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "parent_id"});
-  doc_embedding.belongsTo(doc_content_unit, { as: "content_unit", foreignKey: "content_unit_id"});
-  doc_content_unit.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "content_unit_id"});
-  doc_collection_document.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
-  doc_document.hasOne(doc_collection_document, { as: "doc_collection_document", foreignKey: "document_id"});
+  doc_compare_item.belongsTo(doc_chunk, { as: "base_unit", foreignKey: "base_unit_id"});
+  doc_chunk.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "base_unit_id"});
+  doc_compare_item.belongsTo(doc_chunk, { as: "target_unit", foreignKey: "target_unit_id"});
+  doc_chunk.hasMany(doc_compare_item, { as: "target_unit_doc_compare_items", foreignKey: "target_unit_id"});
   doc_compare_run.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
   doc_document.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "document_id"});
   doc_document_tag.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
   doc_document.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "document_id"});
-  doc_embedding.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
-  doc_document.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "document_id"});
-  doc_permission.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
-  doc_document.hasMany(doc_permission, { as: "doc_permissions", foreignKey: "document_id"});
   doc_version.belongsTo(doc_document, { as: "document", foreignKey: "document_id"});
   doc_document.hasMany(doc_version, { as: "doc_versions", foreignKey: "document_id"});
   doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
@@ -211,10 +195,8 @@ export default function initModels(sequelize) {
   doc_version.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "base_version_id"});
   doc_compare_run.belongsTo(doc_version, { as: "target_version", foreignKey: "target_version_id"});
   doc_version.hasMany(doc_compare_run, { as: "target_version_doc_compare_runs", foreignKey: "target_version_id"});
-  doc_content_unit.belongsTo(doc_version, { as: "version", foreignKey: "version_id"});
-  doc_version.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "version_id"});
-  doc_embedding.belongsTo(doc_version, { as: "version", foreignKey: "version_id"});
-  doc_version.hasMany(doc_embedding, { as: "doc_embeddings", foreignKey: "version_id"});
+  doc_chunk.belongsTo(doc_version, { as: "version", foreignKey: "version_id"});
+  doc_version.hasMany(doc_chunk, { as: "doc_chunks", foreignKey: "version_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(expert_skill, { as: "expert_skills", foreignKey: "expert_id"});
   message.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -369,15 +351,12 @@ export default function initModels(sequelize) {
     contract_v2_org_node,
     contract_v2_version,
     department,
-    doc_collection_document,
     doc_collection,
     doc_compare_item,
     doc_compare_run,
-    doc_content_unit,
+    doc_chunk,
     doc_document_tag,
     doc_document,
-    doc_embedding,
-    doc_permission,
     doc_tag,
     doc_version,
     expert_skill,

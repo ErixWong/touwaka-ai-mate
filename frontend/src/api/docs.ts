@@ -7,9 +7,10 @@ export interface DocDocument {
   source_ref_id: string
   title: string
   owner_id: string
-  org_id: string
-  visibility: 'private' | 'org' | 'public'
+  department_id: string
+  visibility: 'private' | 'department' | 'public'
   current_version_id: string | null
+  collection_id: string | null
   lifecycle_status: string
   metadata: any
   created_at: string
@@ -35,18 +36,17 @@ export interface DocVersion {
   updated_at: string
 }
 
-export interface DocContentUnit {
+export interface DocChunk {
   id: string
   version_id: string
-  parent_id: string | null
-  unit_type: string
+  chunk_type: 'chapter' | 'section' | 'paragraph' | 'chunk'
   title: string | null
   content: string | null
-  position: number
-  level: number
-  path: string | null
+  seq: number
+  chapter_title: string | null
+  section_title: string | null
   token_count: number | null
-  children?: DocContentUnit[]
+  is_knowledge_point: boolean
 }
 
 export interface DocRecallParams {
@@ -55,15 +55,17 @@ export interface DocRecallParams {
   doc_types?: string[]
   top_k?: number
   threshold?: number
+  context_window?: number
 }
 
 export interface DocRecallItem {
   score: number
-  content_unit: {
+  chunk: {
     id: string
     title: string
     content: string
-    unit_type: string
+    chunk_type: string
+    seq: number
   }
   version: {
     id: string
@@ -100,6 +102,7 @@ export interface DocListResult {
 
 export async function listDocuments(params?: {
   doc_type?: string
+  collection_id?: string
   page?: number
   size?: number
 }): Promise<DocListResult> {
@@ -114,8 +117,8 @@ export async function listVersions(documentId: string): Promise<DocVersion[]> {
   return apiRequest<DocVersion[]>(apiClient.get(`/docs/${documentId}/versions`))
 }
 
-export async function getContentTree(documentId: string, versionId: string): Promise<DocContentUnit[]> {
-  return apiRequest<DocContentUnit[]>(apiClient.get(`/docs/${documentId}/versions/${versionId}/content-tree`))
+export async function getContentTree(documentId: string, versionId: string): Promise<DocChunk[]> {
+  return apiRequest<DocChunk[]>(apiClient.get(`/docs/${documentId}/versions/${versionId}/content-tree`))
 }
 
 export async function recall(params: DocRecallParams): Promise<DocRecallItem[]> {

@@ -5,7 +5,7 @@
  * 映射策略：
  * - v1: app_contract_mgr_rows → doc_documents (每个 row 一文档)
  * - v2: contract_v2_versions.contract_id → doc_documents (每个 contract 一文档)
- * - 合同内容 sections → doc_content_units
+ * - 合同内容 sections → doc_chunks
  * - app_contract_mgr_compares → doc_compare_runs + doc_compare_items
  * 
  * 使用方法：
@@ -314,7 +314,7 @@ async function migrateSections(connection, versionId, sections, source, rowId) {
       const unitId = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
 
       await connection.execute(`
-        INSERT INTO doc_content_units (
+        INSERT INTO doc_chunks (
           id, version_id, parent_id, unit_type, title,
           content, position, level, metadata, created_at, updated_at
         ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, NOW(), NOW())
