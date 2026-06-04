@@ -105,9 +105,14 @@ export async function exportInvoices(params: InvoiceExportParams = {}) {
   const ts = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   let filename = `发票信息全部导出-${ts}.xlsx`
   if (disposition) {
-    const match = disposition.match(/filename\*=UTF-8''(.+)/)
+    let match = disposition.match(/filename\*=UTF-8''(.+)/)
     if (match) {
       filename = decodeURIComponent(match[1])
+    } else {
+      match = disposition.match(/filename="?([^";\s]+)"?/)
+      if (match) {
+        filename = decodeURIComponent(match[1])
+      }
     }
   }
 

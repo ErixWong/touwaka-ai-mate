@@ -8,6 +8,29 @@ class InvoiceService {
     this.sequelize = db.sequelize;
   }
 
+  /**
+   * 从备注中提取四位基地代码
+   * 策略：找出所有四位数字，排除年份"XXXX年"，取"年"之后的第一个
+   * 覆盖格式：
+   *   "511045 吉利梅山基地（3316）"  → 3316
+   *   "511045 5103 2025年9月(...)" → 5103
+   *   "2026年3月，基地5812" → 5812
+   */
+  _extractSiteCode(remarks) {
+    if (!remarks) return '';
+    // (?<!\d) 前面不是数字, (?!\d|年) 后面不是数字也不是"年"
+    const matches = [...remarks.matchAll(/(?<!\d)\d{4}(?!\d|年)/g)];
+    if (matches.length === 0) return '';
+    // 如果有"年"，取它之后第一个匹配
+    const yearIdx = remarks.indexOf('年');
+    if (yearIdx >= 0) {
+      for (const m of matches) {
+        if (m.index > yearIdx) return m[0];
+      }
+    }
+    return matches[0][0];
+  }
+
   _buildConditions({ invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin }) {
     const conditions = ['m.app_id = ?'];
     const replacements = ['invoice-mgr'];
@@ -242,7 +265,7 @@ class InvoiceService {
    * 个性化导出：用户选择字段 + 可选商品明细
    */
   async exportCustom({ startDate, endDate, sort = 'invoice_date', order = 'desc', userId, isAdmin, fields, includeItems }) {
-    // 字段定义（与前端保持一致）
+    // ⚠️ 字段定义需与前端 exportFieldGroups (InvoiceList.vue) 保持同步
     const ALL_HEADER_FIELDS = [
       { key: 'invoice_number', header: '发票号码', width: 22 },
       { key: 'invoice_date', header: '开票日期', width: 14 },
@@ -399,8 +422,10 @@ class InvoiceService {
       { header: '开票日期', key: 'invoice_date', width: 14 },
       { header: '购买方名称', key: 'buyer_name', width: 30 },
       { header: '销售方名称', key: 'seller_name', width: 30 },
+      { header: '商品名称', key: 'item_name', width: 26 },
       { header: '负值金额', key: 'amount', width: 14 },
       { header: '负值税额', key: 'tax_amount', width: 14 },
+      { header: '基地代码', key: 'site_code', width: 12 },
       { header: '备注', key: 'remarks', width: 30 },
     ];
 
@@ -409,7 +434,7 @@ class InvoiceService {
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
     for (const row of rows) {
-      sheet.addRow(row);
+      sheet.addRow({ ...row, site_code: this._extractSiteCode(row.remarks) });
     }
 
     const buffer = await workbook.xlsx.writeBuffer();

@@ -118,29 +118,16 @@ async function insertItems(services, recordId, items) {
     });
   }
 
-  const sql = `
-    INSERT INTO app_invoice_mgr_items
-    (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-
+  // 批量插入：单条多行 SQL，减少 RTT 并保证原子性
+  const COLUMNS = ['id', 'row_id', 'page_number', 'sort_order', 'category', 'name', 'model', 'unit', 'quantity', 'price', 'amount', 'tax_rate', 'tax_amount'];
+  const placeholders = insertList.map(() => `(${COLUMNS.map(() => '?').join(',')})`).join(', ');
+  const flatValues = [];
   for (const row of insertList) {
-    await services.execute(sql, [
-      row.id,
-      row.row_id,
-      row.page_number,
-      row.sort_order,
-      row.category,
-      row.name,
-      row.model,
-      row.unit,
-      row.quantity,
-      row.price,
-      row.amount,
-      row.tax_rate,
-      row.tax_amount,
-    ]);
+    flatValues.push(row.id, row.row_id, row.page_number, row.sort_order, row.category, row.name, row.model, row.unit, row.quantity, row.price, row.amount, row.tax_rate, row.tax_amount);
   }
+
+  const sql = `INSERT INTO app_invoice_mgr_items (${COLUMNS.join(', ')}) VALUES ${placeholders}`;
+  await services.execute(sql, flatValues);
 
   return insertList.length;
 }

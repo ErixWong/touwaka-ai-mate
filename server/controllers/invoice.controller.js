@@ -68,7 +68,8 @@ class InvoiceController {
       if (!userId) return ctx.error('未登录', 401);
 
       const type = query.type || 'full';
-      logger.info(`[Invoice] export type=${type}, query=${JSON.stringify(query)}`);
+      const fieldCount = query.fields ? query.fields.split(',').length : 0;
+      logger.info(`[Invoice] export type=${type}, fields=${fieldCount}, include_items=${query.include_items || '0'}`);
       const params = {
         startDate: query.start_date,
         endDate: query.end_date,

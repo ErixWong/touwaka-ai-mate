@@ -35,6 +35,7 @@ const exportSelectedFields = ref<string[]>([
 ])
 const exportIncludeItems = ref(true)
 
+// ⚠️ 字段定义需与后端 ALL_HEADER_FIELDS (invoice.service.js exportCustom) 保持同步
 const exportFieldGroups = [
   {
     label: '基本信息',
