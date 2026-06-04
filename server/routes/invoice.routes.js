@@ -5,6 +5,7 @@ export default (controller) => {
   const router = new Router();
 
   router.get('/api/invoice/list', authenticate(), (ctx) => controller.list(ctx));
+  router.get('/api/invoice/export', authenticate(), (ctx) => controller.exportExcel(ctx));
   router.get('/api/invoice/:rowId', authenticate(), (ctx) => controller.detail(ctx));
 
   return router;
