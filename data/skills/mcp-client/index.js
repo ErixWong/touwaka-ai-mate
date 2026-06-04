@@ -204,7 +204,9 @@ async function createTransport(serverConfig, credentials = null) {
     }
     
     const headers = buildAuthHeaders(serverConfig.headers, credentials);
-    const timeoutMs = serverConfig.timeout_ms || 600000;
+    const configuredTimeoutMs = Number(serverConfig.timeout_ms) || 600000;
+    const minTimeoutMs = Number(process.env.MCP_CLIENT_MIN_TIMEOUT_MS || 1200000);
+    const timeoutMs = Math.max(configuredTimeoutMs, minTimeoutMs);
     
     const isStateless = transportType === 'statelessHttp' || serverConfig.stateless === true;
     

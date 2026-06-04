@@ -437,7 +437,7 @@ export async function compareRecords(
   appId: string,
   rowIdA: string,
   rowIdB: string,
-  options?: { model_id?: string; temperature?: number; concurrency?: number },
+  options?: { model_id?: string; temperature?: number; concurrency?: number; timeout_ms?: number },
   signal?: AbortSignal
 ): Promise<CompareResult> {
   return apiRequest<CompareResult>(

@@ -952,11 +952,15 @@ async batchUpload(appId, userId, attachmentIds) {
     const modelId = options.model_id || null;
     const temperature = options.temperature ?? 0.3;
     const concurrency = Math.max(1, Math.min(options.concurrency || 3, 10));
+    const timeoutCandidate = Number(
+      options.timeout_ms ?? appConfig?.compare?.timeout_ms ?? appConfig?.compare_timeout_ms ?? 600000
+    );
+    const timeoutMs = Math.max(60000, Math.min(Number.isFinite(timeoutCandidate) ? timeoutCandidate : 600000, 1800000));
 
-    logger.info(`[compareRecords] Model: ${modelId || 'default'}, Temperature: ${temperature}, Concurrency: ${concurrency}`);
+    logger.info(`[compareRecords] Model: ${modelId || 'default'}, Temperature: ${temperature}, Concurrency: ${concurrency}, Timeout: ${timeoutMs}ms`);
 
     logger.info(`[compareRecords] Step 1: LLM section matching`);
-    const matchedSections = await this._matchSectionsWithLlm(contentA.sections, contentB.sections, modelId, temperature);
+    const matchedSections = await this._matchSectionsWithLlm(contentA.sections, contentB.sections, modelId, temperature, timeoutMs);
 
     const matchedItems = matchedSections.filter(m => m.type === 'matched');
     const linesA = contentA.filtered_text.split('\n');
@@ -978,7 +982,12 @@ async batchUpload(appId, userId, attachmentIds) {
             text_a: textA,
             text_b: textB,
           }),
-          { modelId, temperature, defaultValue: { change_type: 'error', summary: 'LLM call failed' } }
+          {
+            modelId,
+            temperature,
+            timeout: timeoutMs,
+            defaultValue: { change_type: 'error', summary: 'LLM call failed' },
+          }
         );
 
         logger.info(`[compareRecords] Section done: ${match.sectionA.title} -> ${result.change_type} (${Date.now() - sectionStart}ms)`);
@@ -1096,7 +1105,7 @@ async batchUpload(appId, userId, attachmentIds) {
     return { filtered_text: content.filtered_text, sections };
   }
 
-  async _matchSectionsWithLlm(sectionsA, sectionsB, modelId, temperature) {
+  async _matchSectionsWithLlm(sectionsA, sectionsB, modelId, temperature, timeoutMs = 600000) {
     const listA = sectionsA.map((s, i) => ({ id: s.id || `a-${i}`, title: s.title }));
     const listB = sectionsB.map((s, i) => ({ id: s.id || `b-${i}`, title: s.title }));
 
@@ -1133,7 +1142,12 @@ ${JSON.stringify(listB, null, 2)}
       result = await this.llmService.extractJson(
         matchPrompt,
         JSON.stringify({}),
-        { modelId, temperature: Math.min(temperature, 0.3), defaultValue: null }
+        {
+          modelId,
+          temperature: Math.min(temperature, 0.3),
+          timeout: timeoutMs,
+          defaultValue: null,
+        }
       );
 
       logger.info(`[matchSections] LLM matching done (${Date.now() - startTime}ms)`);
