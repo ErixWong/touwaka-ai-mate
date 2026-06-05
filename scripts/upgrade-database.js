@@ -1816,6 +1816,20 @@ const MIGRATIONS = [
     }
   },
 
+  // 26. topics 新增 start_time / end_time（Phase 2 WP-1）
+  {
+    name: 'topics add start_time and end_time',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'topics')) return true;
+      return await hasColumn(conn, 'topics', 'end_time');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE topics ADD COLUMN start_time DATETIME NULL COMMENT '话题起始时间' AFTER message_count`);
+      await safeExecute(conn, `ALTER TABLE topics ADD COLUMN end_time DATETIME NULL COMMENT '话题结束时间（归档时写入）' AFTER start_time`);
+      console.log('  ✓ Added start_time, end_time to topics');
+    }
+  },
+
 ];
 
 /**

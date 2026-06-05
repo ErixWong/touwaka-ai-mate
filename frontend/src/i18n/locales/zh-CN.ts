@@ -254,6 +254,13 @@ export default {
     contextStrategySimple: '简单上下文',
     contextStrategyMinimal: 'Psyche精简上下文',
     contextStrategyHint: '选择上下文组织策略。完整上下文包含所有未归档消息和10个Topic；简单上下文仅包含近期10条消息和5个Topic；Psyche精简上下文使用工作记忆机制，更适合长对话。',
+    // Psyche 配置
+    maxTokensRatio: '最大 Token 比例',
+    maxTokensRatioHint: 'Psyche 占表达模型上下文的比例（0.1-0.5），越小越节省 token',
+    reflectionLookback: '反思回看轮数',
+    reflectionLookbackHint: '反思时分析的历史对话轮数（1-10），越大分析越多',
+    enableNotes: '启用 Notes',
+    enableNotesHint: '允许模型创建临时笔记辅助记忆',
     // LLM 参数配置
     llmParams: 'LLM 参数',
     temperature: '表达温度 (Temperature)',

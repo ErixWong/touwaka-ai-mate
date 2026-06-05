@@ -254,6 +254,13 @@ export default {
     contextStrategySimple: 'Simple Context',
     contextStrategyMinimal: 'Psyche Minimal Context',
     contextStrategyHint: 'Select context organization strategy. Full context includes all unarchived messages and 10 topics; Simple context includes recent 10 messages and 5 topics; Psyche minimal context uses working memory mechanism, better for long conversations.',
+    // Psyche Config
+    maxTokensRatio: 'Max Token Ratio',
+    maxTokensRatioHint: 'Psyche max token ratio (0.1-0.5). Lower = less tokens',
+    reflectionLookback: 'Reflection Lookback',
+    reflectionLookbackHint: 'Number of conversation rounds analyzed during reflection (1-10)',
+    enableNotes: 'Enable Notes',
+    enableNotesHint: 'Allow model to create temporary notes',
     // LLM Parameters
     llmParams: 'LLM Parameters',
     temperature: 'Temperature',
