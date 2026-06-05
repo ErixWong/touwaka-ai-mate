@@ -10,6 +10,16 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 
+const safeParseJson = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
 class ExpertController {
   constructor(db, chatService = null) {
     this.db = db;
@@ -41,6 +51,8 @@ class ExpertController {
           'is_active', 'created_at',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
+          // P2-1: Psyche 配置
+          'psyche_config',
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
           'frequency_penalty', 'presence_penalty',
@@ -53,10 +65,11 @@ class ExpertController {
         raw: true,
       });
 
-      // 将 bit 类型转换为 boolean，字符串字段直接返回
+      // 将 bit 类型转换为 boolean，psyche_config 解析为对象
       const formattedExperts = experts.map(e => ({
         ...e,
         is_active: !!e.is_active,
+        psyche_config: e.psyche_config ? safeParseJson(e.psyche_config) : null,
       }));
 
       ctx.success(formattedExperts);
@@ -81,6 +94,8 @@ class ExpertController {
           'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
+          // P2-1: Psyche 配置
+          'psyche_config',
           // LLM 参数配置
           'temperature', 'reflective_temperature', 'top_p',
           'frequency_penalty', 'presence_penalty',
@@ -100,6 +115,7 @@ class ExpertController {
       ctx.success({
         ...expert,
         is_active: !!expert.is_active,
+        psyche_config: expert.psyche_config ? safeParseJson(expert.psyche_config) : null,
       });
     } catch (error) {
       logger.error('Get expert error:', error);
@@ -121,6 +137,8 @@ class ExpertController {
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
+        // P2-1: Psyche 配置
+        psyche_config,
         // 头像
         avatar_base64, avatar_large_base64
       } = ctx.request.body;
@@ -158,6 +176,8 @@ class ExpertController {
         top_p: top_p ?? llmDefaults.top_p,
         frequency_penalty: frequency_penalty ?? llmDefaults.frequency_penalty,
         presence_penalty: presence_penalty ?? llmDefaults.presence_penalty,
+        // P2-1: Psyche 配置（JSON 字符串存储）
+        psyche_config: typeof psyche_config === 'object' ? JSON.stringify(psyche_config) : (psyche_config || null),
         // 头像
         avatar_base64: avatar_base64 || null,
         avatar_large_base64: avatar_large_base64 || null,
@@ -177,6 +197,8 @@ class ExpertController {
         top_p: expertData.top_p,
         frequency_penalty: expertData.frequency_penalty,
         presence_penalty: expertData.presence_penalty,
+        // P2-1: Psyche 配置
+        psyche_config: psyche_config || null,
         // 头像
         avatar_base64, avatar_large_base64,
       }, '专家创建成功');
@@ -203,6 +225,8 @@ class ExpertController {
         frequency_penalty, presence_penalty,
         // 工具调用配置
         max_tool_rounds,
+        // P2-1: Psyche 配置
+        psyche_config,
         // 头像
         avatar_base64, avatar_large_base64
       } = ctx.request.body;
@@ -239,6 +263,10 @@ class ExpertController {
       if (presence_penalty !== undefined) updates.presence_penalty = presence_penalty;
       // 工具调用配置
       if (max_tool_rounds !== undefined) updates.max_tool_rounds = max_tool_rounds;
+      // P2-1: Psyche 配置
+      if (psyche_config !== undefined) {
+        updates.psyche_config = typeof psyche_config === 'object' ? JSON.stringify(psyche_config) : (psyche_config || null);
+      }
       // 头像
       if (avatar_base64 !== undefined) updates.avatar_base64 = avatar_base64 || null;
       if (avatar_large_base64 !== undefined) updates.avatar_large_base64 = avatar_large_base64 || null;

@@ -762,7 +762,7 @@
 
           <el-divider>{{ $t('settings.contextCompression') }}</el-divider>
 
-          <el-form-item :label="$t('settings.contextStrategy')">
+<el-form-item :label="$t('settings.contextStrategy')">
             <el-select v-model="expertForm.context_strategy">
               <el-option value="full" :label="$t('settings.contextStrategyFull')" />
               <el-option value="simple" :label="$t('settings.contextStrategySimple')" />
@@ -771,7 +771,12 @@
             <div class="el-form-item__tip">{{ $t('settings.contextStrategyHint') }}</div>
           </el-form-item>
 
-          <el-form-item :label="$t('settings.contextThreshold')">
+          <PsycheConfigPanel
+            v-if="expertForm.context_strategy === 'minimal'"
+            v-model="expertForm.psyche_config"
+          />
+
+          <el-form-item :label="$t('settings.contextThreshold')"> 
             <el-input-number v-model="expertForm.context_threshold" :precision="2" :step="0.05" :min="0.3" :max="0.95" />
             <div class="el-form-item__tip">{{ $t('settings.contextThresholdHint') }}</div>
           </el-form-item>
@@ -1086,6 +1091,7 @@ import McpTab from '@/components/settings/McpTab.vue'
 import AppManagementTab from '@/components/settings/AppManagementTab.vue'
 import HandlerManagementTab from '@/components/settings/HandlerManagementTab.vue'
 import Pagination from '@/components/Pagination.vue'
+import PsycheConfigPanel from '@/components/PsycheConfigPanel.vue'
 import packageInfo from '../../package.json'
 
 const { t, locale } = useI18n()
@@ -1313,6 +1319,7 @@ const expertForm = reactive({
   // 上下文压缩配置
   context_strategy: 'full' as 'full' | 'simple' | 'minimal',
   context_threshold: 0.70,
+  psyche_config: {} as Record<string, any>,
   // LLM 参数配置
   temperature: 0.70,
   reflective_temperature: 0.30,
@@ -2069,6 +2076,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.prompt_template = expert.prompt_template || ''
     expertForm.context_strategy = (expert as any).context_strategy ?? 'full'
     expertForm.context_threshold = expert.context_threshold ?? 0.70
+    expertForm.psyche_config = (expert as any).psyche_config || {}  // P1-1: 回显
     // LLM 参数
     expertForm.temperature = expert.temperature ?? 0.70
     expertForm.reflective_temperature = expert.reflective_temperature ?? 0.30
@@ -2095,6 +2103,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.prompt_template = ''
     expertForm.context_strategy = 'full'
     expertForm.context_threshold = 0.70
+    expertForm.psyche_config = {}  // P1-1: 重置
     // LLM 参数默认值
     expertForm.temperature = 0.70
     expertForm.reflective_temperature = 0.30
