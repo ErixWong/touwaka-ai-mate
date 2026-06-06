@@ -20,6 +20,7 @@ const AppComponentMap: Record<string, Component> = {
   'DowntimeAnalyzer': defineAsyncComponent(() => import('@/views/downtime-analyzer/DowntimeAnalyzer.vue')),
   'InvoiceView': defineAsyncComponent(() => import('@/views/invoice/InvoiceView.vue')),
   'OcrToolView': defineAsyncComponent(() => import('@/views/ocr-tool/OcrToolView.vue')),
+  'ResumeScreeningView': defineAsyncComponent(() => import('@/views/resume-fast-screening/ResumeScreeningView.vue')),
 }
 
 const route = useRoute()
