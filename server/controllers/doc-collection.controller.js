@@ -2,7 +2,7 @@
  * Doc Collection Controller - 文档集合管理控制器
  *
  * 提供集合 CRUD、文档关联、可见性判定、重新向量化等能力。
- * 重构后: doc_documents.collection_id 直连，不再使用桥接表。
+ * 重构后: documents.collection_id 直连，不再使用桥接表。
  */
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
@@ -19,8 +19,8 @@ class DocCollectionController {
 
   ensureModels() {
     if (!this.models.DocCollection) {
-      this.models.DocCollection = this.db.getModel('doc_collection');
-      this.models.DocDocument = this.db.getModel('doc_document');
+      this.models.DocCollection = this.db.getModel('document_collection');
+      this.models.DocDocument = this.db.getModel('document');
     }
   }
 
@@ -228,7 +228,7 @@ class DocCollectionController {
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where: { collection_id: id },
-        attributes: ['id', 'title', 'doc_type', 'visibility', 'lifecycle_status', 'current_version_id', 'created_at', 'updated_at'],
+        attributes: ['id', 'title', 'doc_type', 'processing_status', 'current_revision_id', 'created_at', 'updated_at'],
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
         limit: parseInt(size),
@@ -254,7 +254,6 @@ class DocCollectionController {
 
       const document = await this.models.DocDocument.findByPk(document_id);
       if (!document) ctx.throw(404, 'Document not found');
-      if (document.owner_id !== userId) ctx.throw(403, 'Only the document owner can add it to a collection');
 
       if (document.collection_id) {
         if (document.collection_id === id) {
@@ -287,12 +286,7 @@ class DocCollectionController {
 
       const document = await this.models.DocDocument.findOne({ where: { id: docId, collection_id: id } });
       if (!document) ctx.throw(404, 'Document not found in this collection');
-
-      document.collection_id = null;
-      await document.save();
-
-      ctx.success({ removed: true });
-      logger.info(`[Collection] removeDocument: ${docId} from collection ${id}`);
+      ctx.throw(409, 'Document must belong to a collection. Use moveDocument to move it to another collection.');
     } catch (error) {
       logger.error('[Collection] removeDocument error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -314,7 +308,11 @@ class DocCollectionController {
 
       const document = await this.models.DocDocument.findByPk(docId);
       if (!document) ctx.throw(404, 'Document not found');
-      if (document.owner_id !== userId) ctx.throw(403, 'Only the document owner can move it');
+
+      if (document.collection_id) {
+        const canWriteSource = await this.accessService.canWrite(document.collection_id, userId);
+        if (!canWriteSource) ctx.throw(403, 'Only the owner of the source collection can move this document');
+      }
 
       document.collection_id = target_collection_id;
       await document.save();
@@ -353,8 +351,8 @@ class DocCollectionController {
       }
 
       const docIds = documents.map(d => d.id);
-      const DocVersion = this.db.getModel('doc_version');
-      const DocChunk = this.db.getModel('doc_chunk');
+      const DocVersion = this.db.getModel('document_revision');
+      const DocChunk = this.db.getModel('document_chunk');
 
       const currentVersions = await DocVersion.findAll({
         where: { document_id: { [Op.in]: docIds }, is_current: 1 },
@@ -374,7 +372,7 @@ class DocCollectionController {
           embedding_vector: null,
           updated_at: new Date(),
         },
-        { where: { version_id: { [Op.in]: versionIds } } }
+        { where: { revision_id: { [Op.in]: versionIds } } }
       );
 
       ctx.success({

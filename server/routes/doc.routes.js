@@ -1,9 +1,8 @@
 /**
  * Doc Routes - 统一文档平台路由
  *
- * API 规范见 docs/tasks/active/task-20260531-kb-contract-unification-analysis/UNIFIED_DOCUMENT_PLATFORM_PLAN.md §20
- *
- * 路径前缀：/api/docs
+ * API 契约: docs/tasks/active/task-20260605-document-platform-refactor/API-CONTRACTS.md
+ * 前缀: /api/docs
  */
 
 import Router from '@koa/router';
@@ -14,34 +13,52 @@ export default (controller) => {
 
   // ==================== 文档路由 ====================
 
-  // 获取文档列表（支持 collection_id 过滤）
-  router.get('/', authenticate(), controller.listDocuments.bind(controller));
+  // 文档接入（启动固定流水线）— 2.1
+  router.post('/intakes', authenticate(), controller.createIntake.bind(controller));
+
+  // 获取文档列表 — 2.2
+  router.get('/documents', authenticate(), controller.listDocuments.bind(controller));
 
   // 创建文档
-  router.post('/', authenticate(), controller.createDocument.bind(controller));
+  router.post('/documents', authenticate(), controller.createDocument.bind(controller));
 
   // 获取文档详情
-  router.get('/:documentId', authenticate(), controller.getDocument.bind(controller));
+  router.get('/documents/:documentId', authenticate(), controller.getDocument.bind(controller));
 
   // 更新文档
-  router.patch('/:documentId', authenticate(), controller.updateDocument.bind(controller));
+  router.patch('/documents/:documentId', authenticate(), controller.updateDocument.bind(controller));
 
-  // ==================== 版本路由 ====================
+  // 查询处理状态 — 2.3
+  router.get('/documents/:documentId/processing', authenticate(), controller.getProcessingStatus.bind(controller));
 
-  // 获取版本列表
-  router.get('/:documentId/versions', authenticate(), controller.listVersions.bind(controller));
+  // 重试失败处理 — 2.4
+  router.post('/documents/:documentId/retry', authenticate(), controller.retryProcessing.bind(controller));
+
+  // 查询文档权限 — 2.8
+  router.get('/documents/:documentId/permissions', authenticate(), controller.getDocumentPermissions.bind(controller));
+
+  // 迁移文档集合 — 2.9
+  router.post('/documents/:documentId/relocate', authenticate(), controller.relocateDocument.bind(controller));
+
+  // ==================== 版本(revision)路由 ====================
+
+  // 获取版本列表 — 2.5
+  router.get('/documents/:documentId/revisions', authenticate(), controller.listVersions.bind(controller));
 
   // 创建新版本
-  router.post('/:documentId/versions', authenticate(), controller.createVersion.bind(controller));
-
-  // 设为当前版本
-  router.post('/:documentId/versions/:versionId/set-current', authenticate(), controller.setCurrentVersion.bind(controller));
-
-  // 版本状态流转
-  router.post('/:documentId/versions/:versionId/transition', authenticate(), controller.transitionVersionStatus.bind(controller));
+  router.post('/documents/:documentId/revisions', authenticate(), controller.createVersion.bind(controller));
 
   // 获取内容树
-  router.get('/:documentId/versions/:versionId/content-tree', authenticate(), controller.getContentTree.bind(controller));
+  router.get('/documents/:documentId/revisions/:revisionId/content-tree', authenticate(), controller.getContentTree.bind(controller));
+
+  // 设为当前版本 — 2.6
+  router.post('/revisions/:revisionId/set-current', authenticate(), controller.setCurrentVersion.bind(controller));
+
+  // 版本状态流转
+  router.post('/revisions/:revisionId/transition', authenticate(), controller.transitionVersionStatus.bind(controller));
+
+  // 查询版本差异状态 — 2.7
+  router.get('/revisions/:revisionId/diff-status', authenticate(), controller.getDiffStatus.bind(controller));
 
   // ==================== 检索路由 ====================
 

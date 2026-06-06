@@ -15,7 +15,7 @@ export default class doc_document_tag extends Model {
       allowNull: false,
       comment: "文档ID",
       references: {
-        model: 'doc_documents',
+        model: 'documents',
         key: 'id'
       }
     },

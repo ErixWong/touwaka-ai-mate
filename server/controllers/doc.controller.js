@@ -17,6 +17,7 @@ import { buildPaginatedResponse } from '../../lib/query-builder.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
+import CollectionAccessService from '../../lib/collection-access-service.js';
 
 class DocController {
   constructor(db) {
@@ -25,6 +26,7 @@ class DocController {
     this.docRecallService = null;
     this.compareExecutor = null;
     this.docAccessService = null;
+    this.collectionAccessService = null;
   }
 
   // ==================== 版本状态机 ====================
@@ -47,9 +49,9 @@ class DocController {
 
   ensureModels() {
     if (!this.models.DocDocument) {
-      this.models.DocDocument = this.db.getModel('doc_document');
-      this.models.DocVersion = this.db.getModel('doc_version');
-      this.models.DocChunk = this.db.getModel('doc_chunk');
+      this.models.DocDocument = this.db.getModel('document');
+      this.models.DocVersion = this.db.getModel('document_revision');
+      this.models.DocChunk = this.db.getModel('document_chunk');
       this.models.DocTag = this.db.getModel('doc_tag');
       this.models.DocDocumentTag = this.db.getModel('doc_document_tag');
       this.models.DocCompareRun = this.db.getModel('doc_compare_run');
@@ -75,9 +77,15 @@ class DocController {
     }
   }
 
+  ensureCollectionAccessService() {
+    if (!this.collectionAccessService) {
+      this.collectionAccessService = new CollectionAccessService(this.db);
+    }
+  }
+
   /**
    * 获取文档列表
-   * GET /api/docs
+   * GET /api/docs/documents
    */
   async listDocuments(ctx) {
     const startTime = Date.now();
@@ -85,24 +93,26 @@ class DocController {
       this.ensureModels();
       this.ensureDocAccessService();
       const userId = ctx.state.session.id;
-      const { page = 1, size = 20, doc_type, collection_id } = ctx.query;
+      const { page = 1, page_size = 20, doc_type, collection_id, processing_status, keyword } = ctx.query;
+      const size = parseInt(page_size);
 
       const where = {
         ...await this.docAccessService.buildAccessFilter(userId),
-        lifecycle_status: 'active',
       };
       if (doc_type) where.doc_type = doc_type;
       if (collection_id) where.collection_id = collection_id;
+      if (processing_status) where.processing_status = processing_status;
+      if (keyword) where.title = { [Op.like]: `%${keyword}%` };
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,
-        attributes: ['id', 'doc_type', 'title', 'owner_id', 'department_id', 'visibility', 'current_version_id', 'collection_id', 'created_at', 'updated_at'],
+        attributes: ['id', 'doc_type', 'title', 'collection_id', 'current_revision_id', 'processing_status', 'created_at', 'updated_at'],
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
-        limit: parseInt(size),
+        limit: size,
       });
 
-      ctx.success(buildPaginatedResponse({ count, rows }, { page: parseInt(page), pageSize: parseInt(size) }, startTime));
+      ctx.success(buildPaginatedResponse({ count, rows }, { page: parseInt(page), pageSize: size }, startTime));
       logger.info(`[Doc] listDocuments: ${rows.length} results, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] listDocuments error:', error);
@@ -129,9 +139,9 @@ class DocController {
         where: { id: documentId },
         include: [{
           model: this.models.DocVersion,
-          as: 'doc_versions',
-          attributes: ['id', 'version_no', 'version_label', 'version_status', 'is_current', 'effective_from', 'effective_to', 'created_at'],
-          order: [['version_no', 'DESC']],
+          as: 'document_revisions',
+          attributes: ['id', 'revision_no', 'revision_label', 'revision_status', 'is_current', 'effective_from', 'effective_to', 'created_at'],
+          order: [['revision_no', 'DESC']],
         }],
       });
 
@@ -149,7 +159,7 @@ class DocController {
 
   /**
    * 获取版本列表
-   * GET /api/docs/:documentId/versions
+   * GET /api/docs/documents/:documentId/revisions
    */
   async listVersions(ctx) {
     try {
@@ -161,12 +171,21 @@ class DocController {
       const canRead = await this.docAccessService.canRead(documentId, userId);
       if (!canRead) ctx.throw(403, 'Access denied');
 
-      const versions = await this.models.DocVersion.findAll({
-        where: { document_id: documentId },
-        order: [['version_no', 'DESC']],
+      const document = await this.models.DocDocument.findOne({
+        where: { id: documentId },
+        attributes: ['id', 'current_revision_id'],
       });
 
-      ctx.success(versions);
+      const versions = await this.models.DocVersion.findAll({
+        where: { document_id: documentId },
+        order: [['revision_no', 'DESC']],
+      });
+
+      ctx.success({
+        document_id: document.id,
+        current_revision_id: document.current_revision_id,
+        items: versions,
+      });
     } catch (error) {
       logger.error('[Doc] listVersions error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -175,22 +194,22 @@ class DocController {
 
   /**
    * 获取内容块列表（扁平有序）
-   * GET /api/docs/:documentId/versions/:versionId/content-tree
+   * GET /api/docs/documents/:documentId/revisions/:revisionId/content-tree
    */
   async getContentTree(ctx) {
     try {
       this.ensureModels();
-      const { documentId, versionId } = ctx.params;
+      const { documentId, revisionId } = ctx.params;
 
       const version = await this.models.DocVersion.findOne({
-        where: { id: versionId, document_id: documentId },
+        where: { id: revisionId, document_id: documentId },
       });
       if (!version) ctx.throw(404, 'Version not found for this document');
 
       const chunks = await this.models.DocChunk.findAll({
-        where: { version_id: versionId },
+        where: { revision_id: revisionId },
         order: [['seq', 'ASC']],
-        attributes: ['id', 'chunk_type', 'title', 'content', 'seq', 'chapter_title', 'section_title', 'token_count', 'is_knowledge_point'],
+        attributes: ['id', 'chunk_type', 'title', 'content', 'seq', 'token_count', 'embedding_status'],
       });
 
       ctx.success(chunks);
@@ -203,26 +222,29 @@ class DocController {
   async createDocument(ctx) {
     try {
       this.ensureModels();
+      this.ensureCollectionAccessService();
       const userId = ctx.state.session.id;
-      const { doc_type, title, visibility = 'private', department_id, metadata } = ctx.request.body;
+      const { doc_type, title, collection_id, source_system = 'doc_platform', source_ref_id, metadata } = ctx.request.body;
 
       if (!title || !doc_type) {
         ctx.throw(400, 'title and doc_type are required');
       }
+      if (!collection_id) {
+        ctx.throw(400, 'collection_id is required');
+      }
 
-      const finalDepartmentId = department_id || await this.getUserDepartmentId(userId);
+      const canWriteCollection = await this.collectionAccessService.canWrite(collection_id, userId);
+      if (!canWriteCollection) ctx.throw(403, 'Only the owner can create document in this collection');
 
       const docId = Utils.newID();
       const document = await this.models.DocDocument.create({
         id: docId,
         doc_type,
-        source_system: 'doc_platform',
-        source_ref_id: docId,
+        source_system,
+        source_ref_id: source_ref_id || docId,
         title,
-        owner_id: userId,
-        department_id: finalDepartmentId,
-        visibility,
-        lifecycle_status: 'active',
+        collection_id,
+        processing_status: 'ready',
         metadata: metadata || null,
       });
 
@@ -238,18 +260,28 @@ class DocController {
     try {
       this.ensureModels();
       this.ensureDocAccessService();
+      this.ensureCollectionAccessService();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
 
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      const { title, visibility, metadata } = ctx.request.body;
+      const { title, collection_id, metadata } = ctx.request.body;
       const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
 
       if (title) document.title = title;
-      if (visibility) document.visibility = visibility;
+      if (collection_id && collection_id !== document.collection_id) {
+        const canWriteTarget = await this.collectionAccessService.canWrite(collection_id, userId);
+        if (!canWriteTarget) ctx.throw(403, 'Only the owner can move document to target collection');
+
+        if (document.collection_id) {
+          const canWriteSource = await this.collectionAccessService.canWrite(document.collection_id, userId);
+          if (!canWriteSource) ctx.throw(403, 'Only the source collection owner can move this document');
+        }
+        document.collection_id = collection_id;
+      }
       if (metadata) document.metadata = metadata;
       document.updated_at = new Date();
 
@@ -279,18 +311,18 @@ async createVersion(ctx) {
 
       const maxVersion = await this.models.DocVersion.findOne({
         where: { document_id: documentId },
-        order: [['version_no', 'DESC']],
+        order: [['revision_no', 'DESC']],
       });
-      const versionNo = maxVersion ? maxVersion.version_no + 1 : 1;
+      const revisionNo = maxVersion ? maxVersion.revision_no + 1 : 1;
       const versionId = Utils.newID();
 
       await this.db.sequelize.transaction(async (t) => {
         await this.models.DocVersion.create({
           id: versionId,
           document_id: documentId,
-          version_no: versionNo,
-          version_label: version_label || `v${versionNo}`,
-          version_status: 'draft',
+          revision_no: revisionNo,
+          revision_label: version_label || `v${revisionNo}`,
+          revision_status: 'draft',
           is_current: 0,
           change_summary: change_summary || null,
           created_by: userId,
@@ -301,15 +333,12 @@ async createVersion(ctx) {
             const chunk = chunks[i];
             await this.models.DocChunk.create({
               id: Utils.newID(),
-              version_id: versionId,
+              revision_id: versionId,
               chunk_type: chunk.chunk_type || 'paragraph',
               title: chunk.title || null,
               content: chunk.content || null,
               seq: chunk.seq ?? i,
-              chapter_title: chunk.chapter_title || null,
-              section_title: chunk.section_title || null,
               token_count: chunk.token_count || null,
-              is_knowledge_point: chunk.is_knowledge_point ? 1 : 0,
               metadata: chunk.metadata || null,
             }, { transaction: t });
           }
@@ -329,33 +358,34 @@ async createVersion(ctx) {
     try {
       this.ensureModels();
       this.ensureDocAccessService();
-      const { documentId, versionId } = ctx.params;
+      const { revisionId } = ctx.params;
       const userId = ctx.state.session.id;
 
+      const version = await this.models.DocVersion.findOne({
+        where: { id: revisionId },
+      });
+      if (!version) ctx.throw(404, 'Revision not found');
+
+      const documentId = version.document_id;
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
       const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
 
-      const version = await this.models.DocVersion.findOne({
-        where: { id: versionId, document_id: documentId },
-      });
-      if (!version) ctx.throw(404, 'Version not found');
-
-      this.validateTransition(version.version_status, 'effective');
+      this.validateTransition(version.revision_status, 'effective');
 
       await this.db.sequelize.transaction(async (t) => {
-        const [locked] = await this.db.sequelize.query(
-          'SELECT id, current_version_id FROM doc_documents WHERE id = ? FOR UPDATE',
+        const rows = await this.db.sequelize.query(
+          'SELECT id, current_revision_id FROM documents WHERE id = ? FOR UPDATE',
           { replacements: [documentId], type: this.db.sequelize.QueryTypes.SELECT, transaction: t }
         );
-        if (!locked || locked.length === 0) {
+        if (!rows || rows.length === 0) {
           throw new Error('Document not found');
         }
 
-        const currentVersionId = locked[0].current_version_id;
-        if (currentVersionId === versionId) {
+        const currentRevisionId = rows[0].current_revision_id;
+        if (currentRevisionId === revisionId) {
           return;
         }
 
@@ -365,19 +395,21 @@ async createVersion(ctx) {
         );
 
         version.is_current = 1;
-        version.version_status = 'effective';
-        version.published_at = new Date();
+        version.revision_status = 'effective';
         await version.save({ transaction: t });
 
         await this.models.DocDocument.update(
-          { current_version_id: versionId },
+          { current_revision_id: revisionId },
           { where: { id: documentId }, transaction: t }
         );
       });
 
       await document.reload();
-      ctx.success({ document, version });
-      logger.info(`[Doc] setCurrentVersion: ${versionId} for ${documentId}`);
+      ctx.success({
+        document_id: documentId,
+        current_revision_id: revisionId,
+      });
+      logger.info(`[Doc] setCurrentVersion: ${revisionId} for ${documentId}`);
     } catch (error) {
       logger.error('[Doc] setCurrentVersion error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -387,19 +419,19 @@ async createVersion(ctx) {
   async transitionVersionStatus(ctx) {
     try {
       this.ensureModels();
-      const { documentId, versionId } = ctx.params;
+      const { revisionId } = ctx.params;
       const { to_status } = ctx.request.body;
 
       if (!to_status) ctx.throw(400, 'to_status is required');
 
       const version = await this.models.DocVersion.findOne({
-        where: { id: versionId, document_id: documentId },
+        where: { id: revisionId },
       });
-      if (!version) ctx.throw(404, 'Version not found');
+      if (!version) ctx.throw(404, 'Revision not found');
 
-      this.validateTransition(version.version_status, to_status);
+      this.validateTransition(version.revision_status, to_status);
 
-      const updates = { version_status: to_status };
+      const updates = { revision_status: to_status };
       if (to_status === 'approved') {
         updates.approved_at = new Date();
         updates.approved_by = ctx.state.session.id;
@@ -410,7 +442,7 @@ async createVersion(ctx) {
 
       await version.update(updates);
       ctx.success(version);
-      logger.info(`[Doc] transitionVersionStatus: ${versionId} ${version.version_status} → ${to_status}`);
+      logger.info(`[Doc] transitionVersionStatus: ${revisionId} ${version.revision_status} → ${to_status}`);
     } catch (error) {
       logger.error('[Doc] transitionVersionStatus error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -528,6 +560,253 @@ async createVersion(ctx) {
       ctx.success(run);
     } catch (error) {
       logger.error('[Doc] getCompareRun error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 处理状态机重试映射（V1：统一从 pending_ocr 重新开始）
+   */
+  PROCESSING_RETRY_STAGE = {
+    'error': 'pending_ocr',
+  };
+
+  /**
+   * 查询文档处理状态
+   * GET /api/docs/documents/:documentId/processing
+   */
+  async getProcessingStatus(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canRead = await this.docAccessService.canRead(documentId, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const document = await this.models.DocDocument.findOne({
+        where: { id: documentId },
+        attributes: ['id', 'processing_status', 'processing_error_code', 'processing_error_message', 'processing_retry_count', 'processing_updated_at'],
+      });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      ctx.success({
+        document_id: document.id,
+        processing_status: document.processing_status,
+        processing_error_code: document.processing_error_code,
+        processing_error_message: document.processing_error_message,
+        processing_retry_count: document.processing_retry_count,
+        processing_updated_at: document.processing_updated_at,
+      });
+    } catch (error) {
+      logger.error('[Doc] getProcessingStatus error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 重试失败阶段
+   * POST /api/docs/documents/:documentId/retry
+   */
+  async retryProcessing(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      if (document.processing_status !== 'error') {
+        ctx.throw(400, 'Only documents in error state can be retried');
+      }
+
+      const retryStage = this.PROCESSING_RETRY_STAGE[document.processing_status] || 'pending_ocr';
+
+      await document.update({
+        processing_status: retryStage,
+        processing_error_code: null,
+        processing_error_message: null,
+        processing_retry_count: document.processing_retry_count + 1,
+        processing_updated_at: new Date(),
+      });
+
+      ctx.success({
+        document_id: document.id,
+        processing_status: retryStage,
+      });
+      logger.info(`[Doc] retryProcessing: ${documentId} → ${retryStage} (retry #${document.processing_retry_count + 1})`);
+    } catch (error) {
+      logger.error('[Doc] retryProcessing error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 查询版本差异状态
+   * GET /api/docs/revisions/:revisionId/diff-status
+   */
+  async getDiffStatus(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const revision = await this.models.DocVersion.findOne({
+        where: { id: revisionId },
+        attributes: ['id', 'document_id', 'revision_no', 'diff_status', 'updated_at'],
+      });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const canRead = await this.docAccessService.canRead(revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      ctx.success({
+        revision_id: revision.id,
+        document_id: revision.document_id,
+        revision_no: revision.revision_no,
+        diff_status: revision.diff_status,
+        updated_at: revision.updated_at,
+      });
+    } catch (error) {
+      logger.error('[Doc] getDiffStatus error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 查询文档权限
+   * GET /api/docs/documents/:documentId/permissions
+   */
+  async getDocumentPermissions(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canView = await this.docAccessService.canRead(documentId, userId);
+      if (!canView) ctx.throw(403, 'Access denied');
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+
+      const document = await this.models.DocDocument.findOne({
+        where: { id: documentId },
+        attributes: ['processing_status'],
+      });
+
+      ctx.success({
+        can_view: true,
+        can_retry_processing: canWrite && document && document.processing_status === 'error',
+        can_set_current_revision: canWrite,
+        can_relocate: canWrite,
+      });
+    } catch (error) {
+      logger.error('[Doc] getDocumentPermissions error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 迁移文档集合
+   * POST /api/docs/documents/:documentId/relocate
+   */
+  async relocateDocument(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+      const { target_collection_id } = ctx.request.body;
+
+      if (!target_collection_id) ctx.throw(400, 'target_collection_id is required');
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const DocumentCollection = this.db.getModel('document_collection');
+      const targetCollection = await DocumentCollection.findByPk(target_collection_id);
+      if (!targetCollection) ctx.throw(404, 'Target collection not found');
+
+      const collectionAccess = new CollectionAccessService(this.db);
+      const canAccessTarget = await collectionAccess.canWrite(target_collection_id, userId);
+      if (!canAccessTarget) ctx.throw(403, 'Only the target collection owner can accept relocated documents');
+
+      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      if (document.collection_id === target_collection_id) {
+        ctx.throw(400, 'Document already belongs to target collection');
+      }
+
+      await document.update({
+        collection_id: target_collection_id,
+        updated_at: new Date(),
+      });
+
+      ctx.success({
+        document_id: document.id,
+        collection_id: target_collection_id,
+      });
+      logger.info(`[Doc] relocateDocument: ${documentId} → collection ${target_collection_id}`);
+    } catch (error) {
+      logger.error('[Doc] relocateDocument error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 创建文档接入记录
+   * POST /api/docs/intakes
+   */
+  async createIntake(ctx) {
+    try {
+      this.ensureModels();
+      const userId = ctx.state.session.id;
+      const { app_id, collection_id, schema_id, attachments } = ctx.request.body;
+
+      if (!app_id) ctx.throw(400, 'app_id is required');
+      if (!collection_id) ctx.throw(400, 'collection_id is required');
+
+      const DocumentCollection = this.db.getModel('document_collection');
+      const collection = await DocumentCollection.findByPk(collection_id);
+      if (!collection) ctx.throw(404, 'Collection not found');
+
+      const collectionAccess = new CollectionAccessService(this.db);
+      const canWrite = await collectionAccess.canWrite(collection_id, userId);
+      if (!canWrite) ctx.throw(403, 'Only the collection owner can create intake documents');
+
+      const sourceRefId = Utils.newID();
+      const firstAttachment = attachments && attachments.length > 0 ? attachments[0] : null;
+
+      const document = await this.models.DocDocument.create({
+        id: Utils.newID(),
+        collection_id,
+        doc_type: app_id.startsWith('contract') ? 'contract' : 'knowledge',
+        source_system: app_id,
+        source_ref_id: sourceRefId,
+        title: firstAttachment ? `Intake ${sourceRefId}` : `Document ${sourceRefId}`,
+        processing_status: 'pending_ocr',
+        metadata: {
+          app_id,
+          schema_id: schema_id || null,
+          attachments: attachments || [],
+        },
+      });
+
+      ctx.success({
+        document_id: document.id,
+        processing_status: document.processing_status,
+      });
+      logger.info(`[Doc] createIntake: ${document.id} for app ${app_id}, collection ${collection_id}`);
+    } catch (error) {
+      logger.error('[Doc] createIntake error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

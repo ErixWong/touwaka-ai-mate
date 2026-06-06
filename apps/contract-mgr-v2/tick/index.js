@@ -34,7 +34,7 @@ export async function tick(context) {
   const pending = await services.query(`
     SELECT row_id, process_step, ocr_task_id, file_id, filter_carried_over, filter_chunk_index
     FROM ${CONTENT_TABLE}
-    WHERE process_step IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section')
+    WHERE process_step IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section', 'pending_classify')
     ORDER BY created_at ASC
     LIMIT 5
   `);
@@ -75,6 +75,9 @@ async function processRow(row, app, services) {
       break;
     case 'pending_section':
       await handleSection(row, app, services);
+      break;
+    case 'pending_classify':
+      await handleClassify(row, app, services);
       break;
   }
 }
@@ -188,10 +191,13 @@ ${JSON.stringify(result).substring(0, 1000)}`;
       SET process_step = 'ocr_submitted', ocr_task_id = ?
       WHERE row_id = ?
     `, [taskId, row.row_id]);
+
+    await advanceDocStatus(services, row.row_id, 'ocr_submitted');
     
     logger.info(`[tick] OCR submitted for ${row.row_id}, task_id=${taskId}`);
   } catch (e) {
     await updateProcessStep(services, row.row_id, 'ocr_failed');
+    await advanceDocStatus(services, row.row_id, 'ocr_failed', true);
     logger.error(`[tick] OCR submit failed for ${row.row_id}: ${e.message}`);
     logger.error(`[tick] OCR submit error stack: ${e.stack}`);
     logger.error(`[tick] OCR submit error details: ${JSON.stringify({ name: e.name, message: e.message, code: e.code, cause: e.cause })}`);
@@ -240,11 +246,13 @@ ${taskInfo}
         WHERE row_id = ?
       `, [ocrText, mcp.server, row.row_id]);
       
+      await advanceDocStatus(services, row.row_id, 'pending_filter');
       logger.info(`[tick] OCR completed for ${row.row_id}, text length=${ocrText.length}`);
     } else if (parsed.status === 'pending') {
       logger.info(`[tick] OCR pending for ${row.row_id}, progress=${parsed.progress}`);
     } else {
       await updateProcessStep(services, row.row_id, 'ocr_failed');
+      await advanceDocStatus(services, row.row_id, 'ocr_submitted_failed', true);
     }
   } catch (e) {
     logger.error(`[tick] OCR check failed for ${row.row_id}: ${e.message}`);
@@ -309,6 +317,7 @@ async function handleFilter(row, app, services) {
             filter_carried_over = NULL, filter_chunk_index = 0
         WHERE row_id = ?
       `, [result.filteredText, row.row_id]);
+      await advanceDocStatus(services, row.row_id, 'pending_extract');
       logger.info(`[tick] Filter completed for ${row.row_id}, length=${result.filteredText.length}`);
     } else {
       await services.execute(`
@@ -433,7 +442,18 @@ ${exampleJson}
       WHERE row_id = ?
     `, [JSON.stringify(cleanMetadata), extractConfig.model_id || null, 
         extractConfig.temperature || 0.3, row.row_id]);
-    
+
+    try {
+      const docId = await getDocumentId(services, row.row_id);
+      if (docId) {
+        await services.execute(
+          `UPDATE documents SET metadata = ?, updated_at = NOW() WHERE id = ?`,
+          [JSON.stringify({ contract_number: cleanMetadata.contract_number || null, contract_date: cleanMetadata.contract_date || null, party_a: cleanMetadata.party_a || null }), docId]
+        );
+      }
+    } catch (e) {}
+
+    await advanceDocStatus(services, row.row_id, 'pending_section');
     logger.info(`[tick] Extract completed for ${row.row_id}`);
   } catch (e) {
     await updateProcessStep(services, row.row_id, 'extract_failed');
@@ -476,10 +496,11 @@ async function handleSection(row, app, services) {
     
     await services.execute(`
       UPDATE ${CONTENT_TABLE} 
-      SET process_step = 'pending_review', sections = ?
+      SET process_step = 'pending_classify', sections = ?
       WHERE row_id = ?
     `, [JSON.stringify(sections), row.row_id]);
-    
+
+    await advanceDocStatus(services, row.row_id, 'pending_classify');
     logger.info(`[tick] Section completed for ${row.row_id}, found ${sections.length} sections`);
   } catch (e) {
     await updateProcessStep(services, row.row_id, 'section_failed');
@@ -487,8 +508,162 @@ async function handleSection(row, app, services) {
   }
 }
 
+async function handleClassify(row, app, services) {
+  logger.info(`[tick] Classifying for ${row.row_id}`);
+
+  try {
+    const content = await services.query(
+      `SELECT extract_json, filtered_text, classification_json FROM ${CONTENT_TABLE} WHERE row_id = ?`,
+      [row.row_id]
+    );
+    if (!content.length) {
+      await updateProcessStep(services, row.row_id, 'pending_review');
+      return;
+    }
+
+    let extract = {};
+    if (content[0].extract_json) {
+      try { extract = JSON.parse(content[0].extract_json); } catch (e) {}
+    }
+
+    const contractNumber = extract.contract_number || '';
+    const partyA = extract.party_a || '';
+    const contractDate = extract.contract_date || '';
+
+    if (!contractNumber && !partyA) {
+      await services.execute(
+        `UPDATE ${CONTENT_TABLE} SET process_step = 'pending_review', classification_json = ? WHERE row_id = ?`,
+        [JSON.stringify([]), row.row_id]
+      );
+      return;
+    }
+
+    const params = [];
+    const conditions = ["d.doc_type = 'contract'", 'd.id != (SELECT document_id FROM app_contract_mgr_v2_content WHERE row_id = ?)'];
+    params.push(row.row_id);
+
+    if (contractNumber) {
+      conditions.push("(JSON_EXTRACT(d.metadata, '$.contract_number') = ? OR d.title LIKE ?)");
+      params.push(contractNumber, `%${contractNumber}%`);
+    }
+    if (partyA) {
+      conditions.push("(d.title LIKE ? OR JSON_EXTRACT(d.metadata, '$.party_a') = ?)");
+      params.push(`%${partyA}%`, partyA);
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const matches = await services.query(
+      `SELECT d.id, d.title, d.created_at, d.metadata,
+              (SELECT MAX(r.effective_from) FROM document_revisions r WHERE r.document_id = d.id) as latest_effective
+       FROM documents d
+       WHERE ${whereClause}
+       ORDER BY latest_effective DESC
+       LIMIT 10`,
+      params
+    );
+
+    const suggestions = (matches || []).map(m => {
+      let matchMeta = {};
+      try { matchMeta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : (m.metadata || {}); } catch (e) {}
+
+      let score = 0.5;
+      let reasons = [];
+
+      if (contractNumber && matchMeta.contract_number === contractNumber) {
+        score += 0.3; reasons.push('合同编号完全匹配');
+      } else if (contractNumber && m.title && m.title.includes(contractNumber)) {
+        score += 0.15; reasons.push('合同编号标题匹配');
+      }
+      if (partyA && matchMeta.party_a === partyA) {
+        score += 0.2; reasons.push('甲方一致');
+      } else if (partyA && m.title && m.title.includes(partyA)) {
+        score += 0.1; reasons.push('甲方标题匹配');
+      }
+      if (contractDate && matchMeta.contract_date && matchMeta.contract_date !== contractDate) {
+        reasons.push(`合同日期差异: ${matchMeta.contract_date} vs ${contractDate}`);
+      }
+
+      return {
+        document_id: m.id,
+        title: m.title,
+        latest_effective: m.latest_effective,
+        confidence: Math.min(score, 1),
+        reasons,
+      };
+    }).filter(s => s.confidence >= 0.3)
+      .sort((a, b) => {
+        if (a.latest_effective && b.latest_effective) {
+          return a.latest_effective < b.latest_effective ? 1 : -1;
+        }
+        return b.confidence - a.confidence;
+      });
+
+    await services.execute(
+      `UPDATE ${CONTENT_TABLE} SET process_step = 'pending_review', classification_json = ? WHERE row_id = ?`,
+      [JSON.stringify(suggestions), row.row_id]
+    );
+
+    logger.info(`[tick] Classify completed for ${row.row_id}, found ${suggestions.length} version suggestions`);
+  } catch (e) {
+    await updateProcessStep(services, row.row_id, 'pending_review');
+    logger.error(`[tick] Classify failed for ${row.row_id}: ${e.message}`);
+  }
+}
+
 async function updateProcessStep(services, rowId, newStep) {
   await services.execute(`
     UPDATE ${CONTENT_TABLE} SET process_step = ? WHERE row_id = ?
   `, [newStep, rowId]);
+}
+
+async function getDocumentId(services, rowId) {
+  try {
+    const bindings = await services.query(
+      `SELECT document_id FROM app_doc_bindings WHERE app_id = 'contract-mgr-v2' AND row_id = ? AND binding_status = 'active' LIMIT 1`,
+      [rowId]
+    );
+    return bindings && bindings.length > 0 ? bindings[0].document_id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+const DOC_STATUS_MAP = {
+  'ocr_submitted': 'ocr_processing',
+  'pending_filter': 'pending_clean',
+  'pending_extract': 'pending_metadata',
+  'pending_section': 'pending_chunk',
+  'pending_review': 'pending_embedding',
+  'pending_classify': 'pending_embedding',
+  'confirmed': 'ready',
+};
+
+async function advanceDocStatus(services, rowId, appProcessStep, isError = false) {
+  try {
+    const bindings = await services.query(
+      `SELECT b.document_id FROM app_doc_bindings b
+       WHERE b.app_id = 'contract-mgr-v2' AND b.row_id = ? AND b.binding_status = 'active'
+       LIMIT 1`,
+      [rowId]
+    );
+    if (!bindings || bindings.length === 0) return;
+
+    const documentId = bindings[0].document_id;
+
+    if (isError) {
+      await services.execute(
+        `UPDATE documents SET processing_status = 'error', processing_error_code = ?, processing_updated_at = NOW() WHERE id = ?`,
+        [appProcessStep, documentId]
+      );
+    } else {
+      const targetStatus = DOC_STATUS_MAP[appProcessStep];
+      if (!targetStatus) return;
+      await services.execute(
+        `UPDATE documents SET processing_status = ?, processing_updated_at = NOW() WHERE id = ?`,
+        [targetStatus, documentId]
+      );
+    }
+  } catch (e) {
+    // Doc platform sync failure is non-blocking
+  }
 }
