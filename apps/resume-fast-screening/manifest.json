@@ -1,0 +1,41 @@
+{
+  "id": "resume-fast-screening",
+  "name": "简历快筛",
+  "version": "0.1.0",
+  "description": "AI 驱动简历智能筛选：双引擎（手动对照+自动召回）、可解释评分、人才库管理",
+  "icon": "🔍",
+  "type": "workflow",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "tags": ["简历", "筛选", "招聘", "AI", "匹配"],
+  "path": "apps/resume-fast-screening",
+  "compatibility": {
+    "min_platform_version": "2.0.0",
+    "requires": {
+      "mcp": [],
+      "skills": []
+    }
+  },
+  "custom_handlers": {},
+  "fields": [],
+  "extension_tables": [],
+  "migrations": {},
+  "config": {
+    "features": [
+      "dashboard",
+      "job_center",
+      "inbox",
+      "manual_compare",
+      "talent_pool",
+      "talent_detail",
+      "smart_recall",
+      "match_results",
+      "history",
+      "strategy",
+      "ai_assistant"
+    ]
+  },
+  "states": [],
+  "component": "ResumeScreeningView",
+  "visibility": "all"
+}

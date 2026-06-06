@@ -67,16 +67,30 @@
       "tags": ["OCR", "文字识别", "VLM", "图片"],
       "path": "apps/ocr-tool",
       "manifest_url": "apps/ocr-tool/manifest.json"
+    },
+    {
+      "id": "resume-fast-screening",
+      "name": "简历快筛",
+      "version": "0.1.0",
+      "icon": "🔍",
+      "type": "workflow",
+      "description": "AI 驱动简历智能筛选：双引擎（手动对照+自动召回）、可解释评分、人才库管理",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["简历", "筛选", "招聘", "AI", "匹配"],
+      "path": "apps/resume-fast-screening",
+      "manifest_url": "apps/resume-fast-screening/manifest.json"
     }
   ],
   "categories": [
     { "id": "document", "name": "文档管理", "icon": "📄", "description": "文档上传、OCR识别、数据提取" },
     { "id": "workflow", "name": "流程审批", "icon": "🔄", "description": "审批流程、状态流转" },
     { "id": "data", "name": "数据管理", "icon": "📊", "description": "结构化数据管理" },
-    { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" }
+    { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" },
+    { "id": "workflow", "name": "工作流", "icon": "🔄", "description": "流程审批、状态流转、智能匹配" }
   ],
   "metadata": {
-    "total_apps": 5
+    "total_apps": 6,
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }
