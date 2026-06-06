@@ -32,6 +32,8 @@ export interface CollectionDocumentListResult {
   page_size: number
 }
 
+export type CollectionDocumentItem = DocDocument
+
 export interface CreateCollectionRequest {
   name: string
   description?: string

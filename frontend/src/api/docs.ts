@@ -9,10 +9,19 @@ export interface DocDocument {
   owner_id: string
   department_id: string
   visibility: 'private' | 'department' | 'public'
-  current_version_id: string | null
   collection_id: string | null
+  current_version_id: string | null
+  current_revision_id: string | null
+  processing_status: string | null
+  processing_error_code: string | null
   lifecycle_status: string
-  metadata: any
+  metadata: Record<string, unknown>
+  classification_json?: Array<{
+    document_id: string
+    title: string
+    confidence: number
+    reasons: string[]
+  }>
   created_at: string
   updated_at: string
 }
@@ -31,9 +40,60 @@ export interface DocVersion {
   effective_from: string | null
   effective_to: string | null
   published_at: string | null
-  metadata: any
+  metadata: Record<string, unknown>
   created_at: string
   updated_at: string
+}
+
+export interface DocRevision {
+  id: string
+  revision_no: number
+  revision_label: string | null
+  revision_status: 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
+  is_current: boolean
+  effective_from: string | null
+  effective_to: string | null
+  diff_status: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DocRevisionsResponse {
+  document_id: string
+  current_revision_id: string | null
+  items: DocRevision[]
+}
+
+export interface DocProcessingStatus {
+  document_id: string
+  processing_status: string
+  processing_error_code: string | null
+  processing_error_message: string | null
+  processing_retry_count: number
+  processing_updated_at: string
+}
+
+export interface DocRetryResult {
+  document_id: string
+  processing_status: string
+}
+
+export interface DocPermissions {
+  can_view: boolean
+  can_retry_processing: boolean
+  can_set_current_revision: boolean
+  can_relocate: boolean
+}
+
+export interface DocDiffStatus {
+  revision_id: string
+  status: string
+}
+
+export interface DocIntakeResult {
+  document_id: string
+  processing_status: string
 }
 
 export interface DocChunk {
@@ -86,8 +146,8 @@ export interface DocCompareRun {
   base_version_id: string
   target_version_id: string
   status: string
-  summary_json: any
-  model_info: any
+  summary_json: Record<string, unknown>
+  model_info: Record<string, unknown>
   duration_ms: number
   created_by: string
   created_at: string
@@ -103,22 +163,51 @@ export interface DocListResult {
 export async function listDocuments(params?: {
   doc_type?: string
   collection_id?: string
+  processing_status?: string
+  keyword?: string
   page?: number
   size?: number
 }): Promise<DocListResult> {
-  return apiRequest<DocListResult>(apiClient.get('/docs', { params }))
+  return apiRequest<DocListResult>(apiClient.get('/docs/documents', { params }))
 }
 
 export async function getDocument(documentId: string): Promise<DocDocument> {
-  return apiRequest<DocDocument>(apiClient.get(`/docs/${documentId}`))
+  return apiRequest<DocDocument>(apiClient.get(`/docs/documents/${documentId}`))
 }
 
 export async function listVersions(documentId: string): Promise<DocVersion[]> {
-  return apiRequest<DocVersion[]>(apiClient.get(`/docs/${documentId}/versions`))
+  const result = await apiRequest<DocRevisionsResponse>(apiClient.get(`/docs/documents/${documentId}/revisions`))
+  return result.items as unknown as DocVersion[]
+}
+
+export async function getRevisions(documentId: string): Promise<DocRevisionsResponse> {
+  return apiRequest<DocRevisionsResponse>(apiClient.get(`/docs/documents/${documentId}/revisions`))
+}
+
+export async function getProcessingStatus(documentId: string): Promise<DocProcessingStatus> {
+  return apiRequest<DocProcessingStatus>(apiClient.get(`/docs/documents/${documentId}/processing`))
+}
+
+export async function retryProcessing(documentId: string, reason?: string): Promise<DocRetryResult> {
+  return apiRequest<DocRetryResult>(apiClient.post(`/docs/documents/${documentId}/retry`, { reason: reason || 'manual_retry' }))
+}
+
+export async function setCurrentRevision(revisionId: string, reason?: string): Promise<{ document_id: string; current_revision_id: string }> {
+  return apiRequest<{ document_id: string; current_revision_id: string }>(
+    apiClient.post(`/docs/revisions/${revisionId}/set-current`, { reason: reason || 'manual' })
+  )
+}
+
+export async function getDocumentPermissions(documentId: string): Promise<DocPermissions> {
+  return apiRequest<DocPermissions>(apiClient.get(`/docs/documents/${documentId}/permissions`))
+}
+
+export async function getDiffStatus(revisionId: string): Promise<DocDiffStatus> {
+  return apiRequest<DocDiffStatus>(apiClient.get(`/docs/revisions/${revisionId}/diff-status`))
 }
 
 export async function getContentTree(documentId: string, versionId: string): Promise<DocChunk[]> {
-  return apiRequest<DocChunk[]>(apiClient.get(`/docs/${documentId}/versions/${versionId}/content-tree`))
+  return apiRequest<DocChunk[]>(apiClient.get(`/docs/documents/${documentId}/revisions/${versionId}/content-tree`))
 }
 
 export async function recall(params: DocRecallParams): Promise<DocRecallItem[]> {
@@ -137,10 +226,10 @@ export async function getCompareRun(runId: string): Promise<DocCompareRun> {
   return apiRequest<DocCompareRun>(apiClient.get(`/docs/compare-runs/${runId}`))
 }
 
-export async function setCurrentVersion(documentId: string, versionId: string): Promise<void> {
-  return apiRequest<void>(apiClient.post(`/docs/${documentId}/versions/${versionId}/set-current`))
+export async function setCurrentVersion(_documentId: string, versionId: string): Promise<void> {
+  return apiRequest<void>(apiClient.post(`/docs/revisions/${versionId}/set-current`, { reason: 'manual' }))
 }
 
-export async function transitionVersion(documentId: string, versionId: string, to_status: string): Promise<void> {
-  return apiRequest<void>(apiClient.post(`/docs/${documentId}/versions/${versionId}/transition`, { to_status }))
+export async function transitionVersion(_documentId: string, versionId: string, to_status: string): Promise<void> {
+  return apiRequest<void>(apiClient.post(`/docs/revisions/${versionId}/transition`, { to_status }))
 }

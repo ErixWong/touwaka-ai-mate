@@ -24,6 +24,15 @@ export interface ContractMainRecord {
   status: 'draft' | 'active' | 'expired' | 'terminated'
   party_a?: string | null
   total_amount?: number | null
+  document_id?: string
+  processing_status?: string
+  processing_error_code?: string | null
+  classification_json?: Array<{
+    document_id: string
+    title: string
+    confidence: number
+    reasons: string[]
+  }>
   created_by: string
   created_at: string
   updated_at: string
@@ -145,7 +154,7 @@ export async function listVersions(contractId: string): Promise<ContractVersion[
   return apiRequest<ContractVersion[]>(apiClient.get(`/contract-v2/contracts/${contractId}/versions`))
 }
 
-export async function updateVersion(versionId: string, data: Record<string, any>): Promise<ContractVersion> {
+export async function updateVersion(versionId: string, data: Record<string, unknown>): Promise<ContractVersion> {
   return apiRequest<ContractVersion>(apiClient.put(`/contract-v2/versions/${versionId}`, data))
 }
 

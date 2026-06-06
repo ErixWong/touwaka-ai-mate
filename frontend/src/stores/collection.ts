@@ -153,7 +153,7 @@ export const useCollectionStore = defineStore('collection', () => {
     error.value = null
     try {
       await removeDocumentFromCollection(collectionId, documentId)
-      collectionDocuments.value = collectionDocuments.value.filter(d => d.document_id !== documentId)
+      collectionDocuments.value = collectionDocuments.value.filter(d => d.id !== documentId)
       docTotal.value--
       return true
     } catch (e: any) {

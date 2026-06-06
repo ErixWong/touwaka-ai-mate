@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useContractV2Store } from '@/stores/contract-v2'
 import { uploadAttachment } from '@/api/attachment'
 import { createRecord, newID } from '@/api/mini-apps'
+import type { OrgNode } from '@/api/contract-v2'
 import Pagination from '@/components/Pagination.vue'
 
 const APP_ID = 'contract-mgr-v2'
@@ -36,6 +37,18 @@ const statusLabels: Record<string, { label: string; type: string }> = {
   active: { label: '生效', type: 'success' },
   expired: { label: '过期', type: 'warning' },
   terminated: { label: '终止', type: 'danger' },
+}
+
+const processingStatusLabels: Record<string, { label: string; type: string }> = {
+  pending_ocr: { label: '待OCR', type: 'info' },
+  ocr_processing: { label: 'OCR中', type: 'warning' },
+  pending_clean: { label: '待清洗', type: 'info' },
+  pending_metadata: { label: '待提取', type: 'info' },
+  pending_chunk: { label: '待分段', type: 'info' },
+  pending_embedding: { label: '待向量化', type: 'info' },
+  pending_relocate: { label: '待归位', type: 'info' },
+  ready: { label: '已完成', type: 'success' },
+  error: { label: '处理失败', type: 'danger' },
 }
 
 const filterStatus = computed({
@@ -76,6 +89,14 @@ const filteredContracts = computed(() => {
   }
   return list
 })
+
+function getProcessingLabel(contract: typeof store.contracts[number]): { label: string; type: string } | null {
+  if (!contract.document_id) return null
+  const map = store.processingStatusMap
+  const entry = map[contract.document_id]
+  const status = entry?.status || contract.processing_status
+  return status ? (processingStatusLabels[status] || { label: status, type: 'info' }) : null
+}
 
 function handlePageChange(page: number) {
   store.loadContracts({
@@ -152,6 +173,10 @@ async function handleCreate() {
         version_name: file.name,
         version_type: 'draft',
       })
+
+      if (newContract.document_id) {
+        store.startPolling()
+      }
     }
 
     showCreateDialog.value = false
@@ -163,8 +188,8 @@ async function handleCreate() {
   }
 }
 
-function flatTreeNodes(nodes: any[]): any[] {
-  const result: any[] = []
+function flatTreeNodes(nodes: OrgNode[]): OrgNode[] {
+  const result: OrgNode[] = []
   for (const n of nodes) {
     result.push(n)
     if (n.children?.length) result.push(...flatTreeNodes(n.children))
@@ -173,6 +198,16 @@ function flatTreeNodes(nodes: any[]): any[] {
 }
 
 const allNodes = computed(() => flatTreeNodes(store.tree))
+
+onMounted(() => {
+  if (store.contracts.length > 0) {
+    store.startPolling()
+  }
+})
+
+onUnmounted(() => {
+  store.stopPolling()
+})
 </script>
 
 <template>
@@ -182,35 +217,35 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
         {{ nodeTypeLabels[store.selectedNode.node_type] || store.selectedNode.node_type }}
       </el-tag>
       <span class="contract-list-node-name">{{ store.selectedNode.name }}</span>
-      <span class="contract-list-node-count">共 {{ store.contractsTotal }} 份合同</span>
+      <span class="contract-list-node-count">{{ $t('contractV2.list.totalContracts', { count: store.contractsTotal }) }}</span>
     </div>
     <div v-else class="contract-list-node-header">
-      <span class="contract-list-node-name">全部合同</span>
-      <span class="contract-list-node-count">共 {{ store.contractsTotal }} 份</span>
+      <span class="contract-list-node-name">{{ $t('contractV2.allContracts') }}</span>
+      <span class="contract-list-node-count">{{ $t('contractV2.list.totalCount', { count: store.contractsTotal }) }}</span>
     </div>
 
     <div class="contract-list-filters">
       <el-input
         v-model="searchText"
-        placeholder="搜索合同名称"
+        :placeholder="$t('contractV2.list.searchPlaceholder')"
         prefix-icon="Search"
         clearable
         style="width: 220px;"
       />
-      <el-select v-model="filterStatus" placeholder="全部状态" clearable style="width: 120px;">
+      <el-select v-model="filterStatus"         :placeholder="$t('contractV2.list.allStatus')" clearable style="width: 120px;">
         <el-option v-for="(v, k) in statusLabels" :key="k" :label="v.label" :value="k" />
       </el-select>
-      <el-select v-model="filterType" placeholder="全部类型" clearable style="width: 130px;">
+      <el-select v-model="filterType"         :placeholder="$t('contractV2.list.allType')" clearable style="width: 130px;">
         <el-option v-for="(v, k) in contractTypeLabels" :key="k" :label="v" :value="k" />
       </el-select>
       <el-button type="primary" @click="openCreateDialog" style="margin-left: auto;">
-        + 新建合同
+        {{ $t('contractV2.newContract') }}
       </el-button>
     </div>
 
     <div class="contract-list-cards" v-loading="store.contractsLoading">
       <div v-if="filteredContracts.length === 0 && !store.contractsLoading" class="contract-list-empty">
-        <el-empty description="暂无合同" />
+        <el-empty :description="$t('contractV2.list.noContract')" />
       </div>
       <div
         v-for="contract in filteredContracts"
@@ -220,15 +255,26 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
       >
         <div class="contract-card-header">
           <span class="contract-card-name">{{ contract.contract_name }}</span>
-          <el-tag size="small" :type="(statusLabels[contract.status]?.type as any) || 'info'" disable-transitions>
-            {{ statusLabels[contract.status]?.label || contract.status }}
-          </el-tag>
+          <span class="contract-card-tags">
+            <el-tag
+              v-if="getProcessingLabel(contract)"
+              size="small"
+              :type="(getProcessingLabel(contract)!.type as any)"
+              disable-transitions
+              class="contract-card-processing"
+            >
+              {{ getProcessingLabel(contract)!.label }}
+            </el-tag>
+            <el-tag size="small" :type="(statusLabels[contract.status]?.type as any) || 'info'" disable-transitions>
+              {{ statusLabels[contract.status]?.label || contract.status }}
+            </el-tag>
+          </span>
         </div>
         <div class="contract-card-meta">
           <span class="contract-card-type">
             {{ contractTypeLabels[contract.contract_type ?? ''] || contract.contract_type || '-' }}
           </span>
-          <span class="contract-card-versions">{{ contract.version_count }} 个版本</span>
+          <span class="contract-card-versions">{{ $t('contractV2.list.versionsCount', { count: contract.version_count }) }}</span>
           <span class="contract-card-date">
             {{ contract.updated_at?.slice(0, 10) }}
           </span>
@@ -244,18 +290,19 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
         @change="handlePageChange"
       />
     </div>
-    <el-dialog v-model="showCreateDialog" title="新建合同" width="520px" destroy-on-close>
+
+    <el-dialog v-model="showCreateDialog" :title="$t('contractV2.newContract')" width="520px" destroy-on-close>
       <el-form label-width="90px">
-        <el-form-item label="合同名称" required>
-          <el-input v-model="createForm.contract_name" placeholder="请输入合同名称" />
+        <el-form-item :label="$t('contractV2.form.contractName')" required>
+          <el-input v-model="createForm.contract_name" :placeholder="$t('contractV2.form.contractNamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="合同类型">
-          <el-select v-model="createForm.contract_type" placeholder="请选择类型" clearable style="width: 100%;">
+        <el-form-item :label="$t('contractV2.form.contractType')">
+          <el-select v-model="createForm.contract_type" :placeholder="$t('contractV2.form.contractTypePlaceholder')" clearable style="width: 100%;">
             <el-option v-for="(v, k) in contractTypeLabels" :key="k" :label="v" :value="k" />
           </el-select>
         </el-form-item>
-        <el-form-item label="组织节点">
-          <el-select v-model="createForm.org_node_id" placeholder="选择组织节点" clearable style="width: 100%;">
+        <el-form-item :label="$t('contractV2.form.orgNode')">
+          <el-select v-model="createForm.org_node_id" :placeholder="$t('contractV2.form.orgNodePlaceholder')" clearable style="width: 100%;">
             <el-option
               v-for="node in allNodes"
               :key="node.id"
@@ -275,17 +322,17 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
             </div>
             <label v-else class="create-file-trigger">
               <el-icon><Upload /></el-icon>
-              <span>选择文件</span>
+              <span>{{ $t('contractV2.selectFile') }}</span>
               <input type="file" accept=".pdf,.docx,.doc,.jpg,.png" @change="handleFileSelect" class="hidden-input" />
             </label>
-            <div class="create-file-hint">支持 PDF、DOCX、DOC、JPG、PNG（可选，创建后也可上传）</div>
+            <div class="create-file-hint">{{ $t('contractV2.fileHint') }}</div>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
+        <el-button @click="showCreateDialog = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="handleCreate" :disabled="!createForm.contract_name.trim()" :loading="creating">
-          创建并上传
+          {{ $t('contractV2.uploadAndCreate') }}
         </el-button>
       </template>
     </el-dialog>
@@ -363,6 +410,12 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
 
 .contract-card:hover .contract-card-name {
   color: var(--el-color-primary);
+}
+
+.contract-card-tags {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .contract-card-meta {
