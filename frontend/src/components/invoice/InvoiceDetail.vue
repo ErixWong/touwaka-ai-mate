@@ -2,22 +2,25 @@
 import { ref, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { getInvoiceDetail, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
-import { ElMessage } from 'element-plus'
+import { deleteRecord, reExtractRecord } from '@/api/mini-apps'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps<{ rowId: string }>()
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ back: []; deleted: [] }>()
 
 const loading = ref(false)
 const detail = ref<InvoiceDetailType | null>(null)
+const deleting = ref(false)
+const reExtracting = ref(false)
+
+const APP_ID = 'invoice-mgr'
 
 const statusLabels: Record<string, { label: string; type: string }> = {
   pending_process: { label: '待处理', type: 'info' },
-  pending_vl: { label: 'VL识别中', type: 'warning' },
+  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
   pending_review: { label: '待确认', type: '' },
   confirmed: { label: '已确认', type: 'success' },
   extract_failed: { label: '识别失败', type: 'danger' },
-  not_invoice: { label: '非发票', type: 'danger' },
-  duplicate: { label: '已存在', type: 'warning' },
 }
 
 onMounted(async () => {
@@ -30,6 +33,67 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+function formatQuantity(v: any): string {
+  const n = Number(v)
+  if (isNaN(n)) return String(v ?? '')
+  return n.toFixed(2)
+}
+
+async function onDelete() {
+  try {
+    await ElMessageBox.confirm('删除后不可恢复，是否继续？', '删除发票记录', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  deleting.value = true
+  try {
+    await deleteRecord(APP_ID, props.rowId)
+    ElMessage.success('记录已删除')
+    emit('deleted')
+    emit('back')
+  } catch (e: any) {
+    ElMessage.error(e.message || '删除失败')
+  } finally {
+    deleting.value = false
+  }
+}
+
+async function onReExtract() {
+  const currentStatus = detail.value?.status
+  const statusLabel = currentStatus ? (statusLabels[currentStatus]?.label || currentStatus) : '未知'
+
+  try {
+    await ElMessageBox.confirm(
+      `当前状态为「${statusLabel}」，重新分析将重置为初始状态并重新提取数据，是否继续？`,
+      '重新分析发票',
+      {
+        confirmButtonText: '确认重置',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  reExtracting.value = true
+  try {
+    await reExtractRecord(APP_ID, props.rowId)
+    ElMessage.success('已重置为初始状态，系统将自动重新分析')
+    emit('deleted')
+    emit('back')
+  } catch (e: any) {
+    ElMessage.error(e.message || '重置失败')
+  } finally {
+    reExtracting.value = false
+  }
+}
 </script>
 
 <template>
@@ -39,6 +103,20 @@ onMounted(async () => {
         <el-icon><ArrowLeft /></el-icon>
         返回列表
       </el-button>
+      <div class="header-actions">
+        <el-button
+          v-if="detail && detail.status !== 'pending_process' && detail.status !== 'pending_vl_extract'"
+          type="warning"
+          plain
+          :loading="reExtracting"
+          @click="onReExtract"
+        >
+          重新分析
+        </el-button>
+        <el-button type="danger" plain :loading="deleting" @click="onDelete">
+          删除记录
+        </el-button>
+      </div>
     </div>
 
     <template v-if="detail">
@@ -56,6 +134,7 @@ onMounted(async () => {
           <el-descriptions-item label="发票类型">{{ detail.invoice_type || '-' }}</el-descriptions-item>
           <el-descriptions-item label="识别方法">{{ detail.ocr_method || '-' }}</el-descriptions-item>
           <el-descriptions-item label="备注" :span="2">{{ detail.remarks || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="开票人">{{ detail.issuer || '-' }}</el-descriptions-item>
         </el-descriptions>
 
         <el-descriptions :column="2" border style="margin-top:16px" title="交易方信息">
@@ -80,7 +159,9 @@ onMounted(async () => {
           <el-table-column prop="name" label="商品名称" min-width="160" show-overflow-tooltip />
           <el-table-column prop="model" label="规格型号" width="120" show-overflow-tooltip />
           <el-table-column prop="unit" label="单位" width="60" />
-          <el-table-column prop="quantity" label="数量" width="80" align="right" />
+          <el-table-column prop="quantity" label="数量" width="80" align="right">
+            <template #default="{ row: r }">{{ formatQuantity(r.quantity) }}</template>
+          </el-table-column>
           <el-table-column prop="price" label="单价" width="100" align="right">
             <template #default="{ row: r }">¥{{ r.price?.toLocaleString() }}</template>
           </el-table-column>
@@ -91,7 +172,6 @@ onMounted(async () => {
           <el-table-column prop="tax_amount" label="税额" width="100" align="right">
             <template #default="{ row: r }">¥{{ r.tax_amount?.toLocaleString() }}</template>
           </el-table-column>
-          <el-table-column prop="issuer" label="开票人" width="80" />
         </el-table>
       </div>
     </template>
@@ -105,6 +185,15 @@ onMounted(async () => {
 
 .detail-header {
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .detail-card {

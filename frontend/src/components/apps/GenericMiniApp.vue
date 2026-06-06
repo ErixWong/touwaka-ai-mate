@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
@@ -224,6 +224,7 @@ const showCompare = ref(false)
 const savedCompareResult = ref<SavedCompareResult | null>(null)
 const compareRecords = ref<MiniAppRecord[]>([])
 const compareSavedResult = ref<SavedCompareResult | null>(null)
+let pollTimer: number | null = null
 
 const pagination = ref({
   page: 1,
@@ -401,6 +402,22 @@ async function loadRecords() {
     console.error('Failed to load records:', error)
   } finally {
     isLoading.value = false
+  }
+}
+
+function startPolling() {
+  if (props.app.id !== 'invoice-mgr') return
+  stopPolling()
+  pollTimer = window.setInterval(() => {
+    if (isLoading.value || showDialog.value || showDetail.value || showConfirm.value) return
+    loadRecords()
+  }, 5000)
+}
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -626,7 +643,12 @@ function closeCompare() {
 // Watch
 watch(() => props.app.id, () => {
   loadRecords()
+  startPolling()
 }, { immediate: true })
+
+onUnmounted(() => {
+  stopPolling()
+})
 </script>
 
 <style scoped>

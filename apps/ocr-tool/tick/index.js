@@ -115,16 +115,32 @@ async function processTask(taskId, app, context) {
     ? JSON.parse(app.config || '{}')
     : (app?.config || {});
 
-  const modelId = config.vlm_model_id;
-  if (!modelId) {
-    failTask(taskId, 'vlm_model_id_not_configured');
-    return { taskId, skipped: true, reason: 'no_model' };
+  let modelId = config.vlm_model_id;
+  let modelConfig = null;
+
+  // 如果配置了模型 ID，尝试获取
+  if (modelId) {
+    modelConfig = await context.db.getModelConfig(modelId);
   }
 
-  const modelConfig = await context.db.getModelConfig(modelId);
+  // 如果未配置或模型不存在，自动选择第一个可用的 multimodal 模型
   if (!modelConfig) {
-    failTask(taskId, 'model_not_found');
-    return { taskId, skipped: true, reason: 'model_not_found' };
+    const { ai_model } = context.db.getModels();
+    const multimodalModel = await ai_model.findOne({
+      where: { model_type: 'multimodal', is_active: true },
+      attributes: ['id'],
+      order: [['created_at', 'ASC']],
+    });
+    if (multimodalModel) {
+      modelId = multimodalModel.id;
+      modelConfig = await context.db.getModelConfig(modelId);
+      logger.info(`[ocr-tool] Auto-selected multimodal model: ${modelId}`);
+    }
+  }
+
+  if (!modelConfig) {
+    failTask(taskId, 'no_multimodal_model_available');
+    return { taskId, skipped: true, reason: 'no_multimodal_model' };
   }
 
   const prompt = task.prompt || config.vlm_prompt || '请识别图片中的所有文字内容。';

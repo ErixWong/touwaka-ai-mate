@@ -1,5 +1,6 @@
-import logger from '../../../lib/logger.js';
+import logger from '../../../../lib/logger.js';
 import path from 'path';
+import { resolveAttachmentPath } from '../shared.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -7,7 +8,7 @@ const ITEMS_TABLE = 'app_invoice_mgr_items';
 function isValidInvoice(data) {
   const invNum = data.invoice_number;
   const total = data.total_with_tax || 0;
-  return invNum && /^\d{20}$/.test(invNum) && total > 0;
+  return invNum && /^\d{8,20}$/.test(invNum) && total > 0;
 }
 
 function parseDate(dateStr) {
@@ -43,24 +44,24 @@ async function upsertRows(services, recordId, data, ocrMethod) {
     item_count: data.item_count || 0,
     page_count: data.page_count || 0,
     remarks: data.remarks || '',
+    issuer: data.issuer || '',
     ocr_method: ocrMethod,
     ocr_raw: typeof data.content === 'string' ? data.content : JSON.stringify(data),
-    extraction_status: data.extraction_status || 'success',
-    text_items_count: data.text_items_count || 0,
-    keyword_count: data.keyword_count || 0,
+    extraction_status: 'success',
   });
 }
 
 async function insertItems(services, recordId, data) {
   const pages = data.pages || (data.invoice?.pages) || [];
   const items = data.items || [];
-  let sortOrder = 0;
+  const insertList = [];
 
   if (pages.length > 0) {
+    let sortOrder = 0;
     for (const page of pages) {
       for (const item of (page.items || [])) {
         sortOrder++;
-        await services.callExtension(ITEMS_TABLE, 'create', {
+        insertList.push({
           id: `${recordId}_${String(sortOrder).padStart(3, '0')}`,
           row_id: recordId,
           page_number: page.pageNumber || 1,
@@ -74,14 +75,14 @@ async function insertItems(services, recordId, data) {
           amount: item.amount || 0,
           tax_rate: item.taxRate || '',
           tax_amount: item.taxAmount || 0,
-          issuer: page.issuer || '',
         });
       }
     }
   } else if (items.length > 0) {
+    let sortOrder = 0;
     for (const item of items) {
       sortOrder++;
-      await services.callExtension(ITEMS_TABLE, 'create', {
+      insertList.push({
         id: `${recordId}_${String(sortOrder).padStart(3, '0')}`,
         row_id: recordId,
         page_number: 1,
@@ -98,7 +99,34 @@ async function insertItems(services, recordId, data) {
       });
     }
   }
-  return sortOrder;
+
+  if (insertList.length === 0) return 0;
+
+  const sql = `
+    INSERT INTO app_invoice_mgr_items
+    (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  for (const row of insertList) {
+    await services.execute(sql, [
+      row.id,
+      row.row_id,
+      row.page_number,
+      row.sort_order,
+      row.category,
+      row.name,
+      row.model,
+      row.unit,
+      row.quantity,
+      row.price,
+      row.amount,
+      row.tax_rate,
+      row.tax_amount,
+    ]);
+  }
+
+  return insertList.length;
 }
 
 export const availableOutputs = [
@@ -107,6 +135,7 @@ export const availableOutputs = [
   { key: 'seller_name', label: '销售方', type: 'string' },
   { key: 'buyer_name', label: '购买方', type: 'string' },
   { key: 'total_with_tax', label: '价税合计', type: 'number' },
+  { key: 'issuer', label: '开票人', type: 'string' },
 ];
 
 export default {
@@ -121,14 +150,14 @@ export default {
     }
 
     const fileName = file.attachment.file_name;
-    const filePath = file.attachment.file_path;
+    const filePath = file.attachment._resolvedPath || resolveAttachmentPath(file.attachment);
     const ext = path.extname(fileName).toLowerCase();
 
     logger.info(`[invoice-extract] Record ${record.id}: ${fileName} (${ext})`);
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-      logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到OCR`);
-      return { success: false, error: '图片文件需OCR识别' };
+      logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到VL视觉提取`);
+      return { success: false, target_state: 'pending_vl_extract', error: '图片文件路由到VL' };
     }
 
     if (ext !== '.pdf') {
@@ -138,46 +167,29 @@ export default {
 
     let result;
     try {
-      result = await services.callSkill('fapiao', 'extract', { file_path: filePath });
+      result = await services.callSkill('fapiao', 'extract', { path: filePath });
     } catch (e) {
       logger.warn(`[invoice-extract] Record ${record.id}: fapiao异常 → ${e.message}`);
-      return { success: false, error: `fapiao异常: ${e.message}` };
+      logger.info(`[invoice-extract] Record ${record.id}: PDF fapiao失败，路由到VL`);
+      return { success: false, target_state: 'pending_vl_extract', error: `fapiao异常: ${e.message}` };
     }
 
     if (!result) {
-      return { success: false, error: 'fapiao返回为空' };
+      logger.info(`[invoice-extract] Record ${record.id}: PDF fapiao返回空，路由到VL`);
+      return { success: false, target_state: 'pending_vl_extract', error: 'fapiao返回为空' };
     }
 
     const data = result.data || result;
-    const extractionStatus = data.extraction_status || (isValidInvoice(data) ? 'success' : 'failed');
-
-    if (extractionStatus === 'no_text_layer') {
-      logger.info(`[invoice-extract] Record ${record.id}: 无文本层(扫描版) → 路由到VL`);
-      return { success: false, error: 'no_text_layer' };
-    }
 
     if (!isValidInvoice(data)) {
-      logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax} status=${extractionStatus}）`);
+      logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax}）`);
       await services.callExtension(ROWS_TABLE, 'upsert', {
         row_id: record.id,
-        invoice_number: data.invoice_number || '',
-        invoice_date: parseDate(data.invoice_date),
-        invoice_type: data.invoice_type || '',
-        seller_name: data.seller?.name || '',
-        seller_tax_id: data.seller?.taxId || '',
-        buyer_name: data.buyer?.name || '',
-        buyer_tax_id: data.buyer?.taxId || '',
-        total_amount: data.total_amount || 0,
-        total_tax: data.total_tax || 0,
-        total_with_tax: data.total_with_tax || 0,
-        item_count: data.item_count || 0,
-        page_count: data.page_count || 0,
-        remarks: data.remarks || '',
         ocr_method: 'fapiao',
-        ocr_raw: JSON.stringify({ error: extractionStatus, reason: 'fapiao did not extract valid invoice data', extraction_status: extractionStatus }),
         extraction_status: 'failed',
+        ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'fapiao did not extract valid invoice data' }),
       });
-      return { success: false, error: 'not_invoice' };
+      return { success: false, target_state: 'pending_vl_extract', error: 'not_invoice' };
     }
 
     const existing = await checkDuplicate(services, data.invoice_number, record.id);
@@ -200,10 +212,16 @@ export default {
       };
     }
 
+    // 从 fapiao 数据中提取开票人（取第一页的 issuer）
+    if (!data.issuer) {
+      const pages = data.pages || (data.invoice?.pages) || [];
+      data.issuer = pages[0]?.issuer || '';
+    }
+
     await upsertRows(services, record.id, data, 'fapiao');
     const itemCount = await insertItems(services, record.id, data);
 
-    logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品 (status=${extractionStatus})`);
+    logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品`);
     return {
       success: true,
       data: {

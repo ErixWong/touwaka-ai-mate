@@ -139,7 +139,7 @@ async function handleOcrSubmit(record, app, services) {
   }
   
   try {
-    const result = await services.callMcp(mcp.server, mcp.tool, params);
+    const result = await services.callMcp(mcp.server, mcp.tool, params, config.timeout_ms ?? 1200000);
     
     logger.info(`[contract-mgr tick] OCR response: ${JSON.stringify(result).substring(0, 500)}`);
     
@@ -158,6 +158,7 @@ ${JSON.stringify(result).substring(0, 1000)}`;
       const parsed = await services.llm.extractJson(parsePrompt, '', {
         modelId: ocrSubmittedConfig.judge_model_id || null,
         temperature: 0.1,
+        timeout: ocrSubmittedConfig.timeout_ms ?? 600000,
         defaultValue: { task_id: '' },
       });
 
@@ -209,13 +210,14 @@ async function handleOcrCheck(record, app, services) {
   const mcp = config.mcp || { server: 'markitdown', tool: 'get_task' };
   
   try {
-    const result = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
+    const result = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId }, config.timeout_ms ?? 600000);
     
     const judgePrompt = `判断OCR任务是否完成。任务返回信息：${JSON.stringify(result).substring(0, 1000)}。返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
     
     const judgeResult = await services.llm.extractJson(judgePrompt, '', {
       modelId: config.judge_model_id || null,
       temperature: config.judge_temperature || 0.1,
+      timeout: config.timeout_ms ?? 600000,
       defaultValue: { status: 'pending', progress: 0 },
     });
 
@@ -263,6 +265,7 @@ async function handleFilter(record, app, services) {
     const filteredText = await services.llm.generateText(filterPrompt, ocrText, {
       modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
+      timeout: config.timeout_ms ?? 600000,
     }) || ocrText;
     
     await services.execute(
@@ -298,6 +301,7 @@ async function handleExtract(record, app, services) {
     const metadata = await services.llm.extractJson(extractPrompt, contentRows[0].filtered_text, {
       modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
+      timeout: config.timeout_ms ?? 600000,
     });
     
     if (metadata) {
@@ -342,6 +346,7 @@ async function handleSection(record, app, services) {
     const result = await services.llm.extractJson(sectionPrompt, contentRows[0].filtered_text, {
       modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
+      timeout: config.timeout_ms ?? 600000,
     });
     const sections = result?.sections || [];
     

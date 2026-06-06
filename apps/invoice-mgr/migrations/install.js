@@ -28,6 +28,7 @@ export default {
         item_count INT DEFAULT 0 COMMENT '商品明细总数',
         page_count INT DEFAULT 0 COMMENT 'PDF页数',
         remarks TEXT COMMENT '备注',
+        issuer VARCHAR(32) COMMENT '开票人',
         ocr_method VARCHAR(32) COMMENT '识别方法：fapiao/markitdown',
         ocr_raw LONGTEXT COMMENT 'OCR原始输出JSON',
         extraction_status VARCHAR(16) DEFAULT 'success' COMMENT '提取状态',
@@ -67,7 +68,6 @@ export default {
         amount DECIMAL(12,2) COMMENT '金额',
         tax_rate VARCHAR(8) COMMENT '税率',
         tax_amount DECIMAL(12,2) COMMENT '税额',
-        issuer VARCHAR(32) COMMENT '开票人',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_row_id (row_id),
         FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE

@@ -69,6 +69,16 @@ export default class topic extends Model {
       allowNull: true,
       defaultValue: 0
     },
+    start_time: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "话题起始时间"
+    },
+    end_time: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "话题结束时间（归档时写入）"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,

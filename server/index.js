@@ -64,6 +64,8 @@ import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
 import KbController from './controllers/kb.controller.js';
+import DocController from './controllers/doc.controller.js';
+import DocCollectionController from './controllers/doc-collection.controller.js';
 import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
@@ -89,7 +91,9 @@ import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
-import kbRoutes from './routes/kb.routes.js';
+import kbV2Routes from './routes/kb-v2.routes.js';
+import docRoutes from './routes/doc.routes.js';
+import docCollectionRoutes from './routes/doc-collection.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
 import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
@@ -263,6 +267,8 @@ class ApiServer {
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
       kb: new KbController(this.db),
+      doc: new DocController(this.db),
+      docCollection: new DocCollectionController(this.db),
       solution: new SolutionController(this.db),
       internal: new InternalController(this.db, {
         expertConnections: streamController.expertConnections, // 传递 SSE 连接池
@@ -398,9 +404,17 @@ class ApiServer {
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
 
-    // KB 知识库路由
-    this.app.use(kbRoutes(this.controllers.kb).routes());
-    this.app.use(kbRoutes(this.controllers.kb).allowedMethods());
+    // KB 知识库路由（/api/docs/kb/* 统一入口）
+    this.app.use(kbV2Routes(this.controllers.kb).routes());
+    this.app.use(kbV2Routes(this.controllers.kb).allowedMethods());
+
+    // Doc Collection 文档集合路由（/api/docs/collections/* 必须在 Doc 路由之前，防止 /collections 被 /:documentId 捕获）
+    this.app.use(docCollectionRoutes(this.controllers.docCollection).routes());
+    this.app.use(docCollectionRoutes(this.controllers.docCollection).allowedMethods());
+
+    // Doc 统一文档平台路由（主入口 /api/docs/*）
+    this.app.use(docRoutes(this.controllers.doc).routes());
+    this.app.use(docRoutes(this.controllers.doc).allowedMethods());
 
     // Solution 解决方案路由
     this.app.use(solutionRoutes(this.controllers.solution).routes());
@@ -635,11 +649,12 @@ class ApiServer {
         logger.info('  PUT  /api/roles/:id/permissions');
         logger.info('  GET  /api/roles/:id/experts');
         logger.info('  PUT  /api/roles/:id/experts');
-        logger.info('  GET  /api/kb/articles (知识库)');
-        logger.info('  POST /api/kb/articles');
-        logger.info('  GET  /api/kb/articles/:id');
-        logger.info('  GET  /api/kb/articles/:id/sections');
-        logger.info('  GET  /api/kb/sections/:id/paragraphs');
+        logger.info('  GET  /api/docs/kb (知识库列表)');
+        logger.info('  POST /api/docs/kb (创建知识库)');
+        logger.info('  GET  /api/docs/kb/:id/articles (文章列表)');
+        logger.info('  POST /api/docs/kb/:id/articles (创建文章)');
+        logger.info('  POST /api/docs/recall (统一召回)');
+        logger.info('  GET  /api/docs (文档列表)');
 
         // 异步处理未回复的消息（不阻塞服务器启动）
         this.chatService.processUnrepliedMessages().catch(err => {
@@ -653,7 +668,9 @@ class ApiServer {
 
         // 启动 AppClock（Issue #654）
         if (this.appClock) {
-          this.appClock.start();
+          this.appClock.start().catch(err => {
+            logger.error('[Startup] Failed to start AppClock:', err.message);
+          });
         }
 
         // 启动 Token 清理任务（Issue #140）

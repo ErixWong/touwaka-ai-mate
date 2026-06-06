@@ -77,13 +77,18 @@ export interface AppConfig {
     section?: string
   }
   extension_tables?: ExtensionTable[]
+  vlm_model_id?: string
+  vlm_temperature?: number
+  vlm_timeout_ms?: number
 }
 
 export interface StepResourceConfig {
   type: 'mcp' | 'internal_llm'
   mcp?: McpResourceTarget
   model_id?: string
+  model_type?: string | null
   temperature?: number
+  timeout_ms?: number
   enable_thinking?: boolean
   judge_model_id?: string
   judge_temperature?: number
@@ -128,6 +133,7 @@ export interface InternalLlmModel {
   id: string
   name: string
   model_name: string
+  model_type?: string
   provider_name: string
 }
 
@@ -138,6 +144,10 @@ export interface AvailableResources {
     models?: InternalLlmModel[]
   }
   handler_outputs: Record<string, HandlerOutput[]>
+  configurable_states?: Record<string, {
+    type: string
+    model_type: string | null
+  }>
 }
 
 export interface AppState {
@@ -300,6 +310,10 @@ export async function deleteRecord(appId: string, recordId: string): Promise<voi
   return apiRequest<void>(apiClient.delete(`/mini-apps/${appId}/data/${recordId}`))
 }
 
+export async function reExtractRecord(appId: string, recordId: string): Promise<MiniAppRecord> {
+  return apiRequest<MiniAppRecord>(apiClient.post(`/mini-apps/${appId}/data/${recordId}/re-extract`))
+}
+
 export async function confirmRecord(appId: string, recordId: string, data: Record<string, any>): Promise<MiniAppRecord> {
   return apiRequest<MiniAppRecord>(apiClient.put(`/mini-apps/${appId}/data/${recordId}/confirm`, { data }))
 }
@@ -423,7 +437,7 @@ export async function compareRecords(
   appId: string,
   rowIdA: string,
   rowIdB: string,
-  options?: { model_id?: string; temperature?: number; concurrency?: number },
+  options?: { model_id?: string; temperature?: number; concurrency?: number; timeout_ms?: number },
   signal?: AbortSignal
 ): Promise<CompareResult> {
   return apiRequest<CompareResult>(

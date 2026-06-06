@@ -204,7 +204,7 @@ class MiniAppController {
         return;
       }
       
-      const record = await this.miniAppService.updateRecord(appId, recordId, userId, {}, { status: 'pending_extract' });
+      const record = await this.miniAppService.updateRecord(appId, recordId, userId, {}, { status: 'pending_process' });
       ctx.success(record, 'Re-extract triggered');
     } catch (error) {
       logger.error('Re-extract error:', error);
@@ -388,7 +388,7 @@ class MiniAppController {
   async compareRecords(ctx) {
     try {
       const { appId } = ctx.params;
-      const { row_id_a, row_id_b, model_id, temperature, concurrency } = ctx.request.body;
+      const { row_id_a, row_id_b, model_id, temperature, concurrency, timeout_ms } = ctx.request.body;
 
       if (!row_id_a || !row_id_b) {
         ctx.error('row_id_a and row_id_b are required', 400);
@@ -403,6 +403,7 @@ class MiniAppController {
         model_id,
         temperature,
         concurrency,
+        timeout_ms,
       });
       ctx.success(result);
     } catch (error) {

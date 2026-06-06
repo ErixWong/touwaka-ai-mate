@@ -2,7 +2,7 @@
   "id": "invoice-mgr",
   "name": "发票管理",
   "version": "1.1.0",
-  "description": "上传发票文件，AI自动识别并结构化提取发票信息（fapiao技能 + VL模型），自动去重入库",
+  "description": "上传发票文件，AI自动识别并结构化提取发票信息。PDF使用fapiao技能，图片使用多模态VL模型直接识别。自动去重入库",
   "icon": "🧾",
   "type": "document",
   "author": "Touwaka Team",
@@ -10,10 +10,9 @@
   "keywords": [
     "发票",
     "invoice",
-    "OCR",
     "AI识别",
     "fapiao",
-    "VL"
+    "VLM"
   ],
   "compatibility": {
     "min_platform_version": "2.0.0",
@@ -116,6 +115,12 @@
           "source": "remarks"
         },
         {
+          "name": "issuer",
+          "type": "VARCHAR(32)",
+          "label": "开票人",
+          "source": "issuer"
+        },
+        {
           "name": "ocr_method",
           "type": "VARCHAR(32)",
           "label": "识别方法",
@@ -152,6 +157,12 @@
       "name": "app_invoice_mgr_items",
       "type": "detail",
       "fields": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "label": "ID",
+          "source": "id"
+        },
         {
           "name": "page_number",
           "type": "INT",
@@ -235,12 +246,22 @@
     "batch_enabled": true,
     "batch_limit": 20,
     "step_resources": {
-      "pending_vl": {
-        "type": "vl_extract",
-        "model_id": null,
-        "temperature": 0.1,
-        "min_image_width": 800,
-        "prompt": "你是一个中国发票识别专家。请从图片中提取发票结构化信息。\n\n发票类型：增值税专用发票、增值税普通发票、电子发票。\n\n严格返回JSON格式：\n{\n  \"invoice_number\": \"20位数字发票号码\",\n  \"invoice_date\": \"YYYY-MM-DD\",\n  \"invoice_type\": \"发票类型描述\",\n  \"seller\": { \"name\": \"销售方名称\", \"taxId\": \"纳税人识别号\" },\n  \"buyer\": { \"name\": \"购买方名称\", \"taxId\": \"纳税人识别号\" },\n  \"total_amount\": 合计金额(不含税),\n  \"total_tax\": 税额,\n  \"total_with_tax\": 价税合计,\n  \"remarks\": \"备注\",\n  \"items\": [\n    { \"category\": \"分类\", \"name\": \"商品名称\", \"model\": \"规格\", \"unit\": \"单位\",\n      \"quantity\": 数量, \"price\": 单价, \"amount\": 金额,\n      \"taxRate\": \"税率\", \"taxAmount\": 税额 }\n  ]\n}\n\n规则：\n- 金额为纯数字，不含逗号和符号\n- 日期严格YYYY-MM-DD\n- 发票号码20位数字\n- 无法识别的字段用空字符串或0\n- 无商品明细则items为空数组"
+      "pending_extract": {
+        "type": "internal_llm",
+        "model_type": "text",
+        "llm": {
+          "prompt_type": "extract_invoice_from_ocr",
+          "temperature": 0.1
+        }
+      },
+      "pending_vl_extract": {
+        "type": "internal_llm",
+        "model_type": "multimodal",
+        "llm": {
+          "model_id": null,
+          "temperature": 0.1,
+          "timeout_ms": 120000
+        }
       }
     }
   },
@@ -248,26 +269,20 @@
     {
       "name": "pending_process",
       "label": "待处理",
-      "description": "PDF走fapiao技能，失败跳转VL",
+      "description": "PDF走fapiao技能，图片直通多模态VL视觉提取",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
-      "is_error": false,
-      "handler": "invoice-extract",
-      "success_next": "pending_review",
-      "failure_next": "pending_vl"
+      "is_error": false
     },
     {
-      "name": "pending_vl",
-      "label": "VL识别中",
-      "description": "PDF渲染 + VL模型提取",
+      "name": "pending_vl_extract",
+      "label": "VL视觉提取",
+      "description": "调用多模态Vision-Language模型直接识别发票图片",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,
-      "is_error": false,
-      "handler": "invoice-vl-extract",
-      "success_next": "pending_review",
-      "failure_next": "extract_failed"
+      "is_error": false
     },
     {
       "name": "pending_review",
@@ -275,10 +290,7 @@
       "sort_order": 3,
       "is_initial": false,
       "is_terminal": false,
-      "is_error": false,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
+      "is_error": false
     },
     {
       "name": "confirmed",
@@ -286,10 +298,7 @@
       "sort_order": 4,
       "is_initial": false,
       "is_terminal": true,
-      "is_error": false,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
+      "is_error": false
     },
     {
       "name": "extract_failed",
@@ -297,10 +306,7 @@
       "sort_order": 98,
       "is_initial": false,
       "is_terminal": false,
-      "is_error": true,
-      "handler": null,
-      "success_next": null,
-      "failure_next": null
+      "is_error": true
     }
   ],
   "component": "InvoiceView",

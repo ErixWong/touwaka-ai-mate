@@ -7,14 +7,19 @@
   "type": "utility",
   "author": "Touwaka Team",
   "license": "MIT",
-  "keywords": ["OCR", "图片", "VLM", "文字识别"],
+  "keywords": [
+    "OCR",
+    "图片",
+    "VLM",
+    "文字识别"
+  ],
   "compatibility": {
     "min_platform_version": "2.0.0"
   },
   "config": {
     "max_concurrent_tasks": 2,
     "max_image_size_bytes": 5242880,
-    "vlm_model_id": "mpaypmqx4oh81qhbdcdc",
+    "vlm_model_id": null,
     "vlm_prompt": "请识别图片中的所有文字内容，保持原有的格式和排版。如果图片中没有文字，请回复\"图片中未检测到文字\"。",
     "vlm_temperature": 0.2,
     "vlm_timeout_ms": 120000,

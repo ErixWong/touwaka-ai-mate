@@ -176,6 +176,19 @@ class MiniAppService {
     return appJson;
   }
 
+  async getInitialStateFromManifest(appId) {
+    try {
+      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(content);
+      const states = Array.isArray(manifest.states) ? manifest.states : [];
+      const initial = states.find(s => s?.is_initial);
+      return initial?.name || null;
+    } catch {
+      return null;
+    }
+  }
+
   async createApp(data) {
     this.ensureModels();
     const app = await this.models.MiniApp.create({
@@ -310,6 +323,7 @@ class MiniAppService {
     });
 
     let handlerOutputs = {};
+    let configurableStates = {};
     if (appId) {
       const app = await this.models.MiniApp.findByPk(appId);
       if (app) {
@@ -339,6 +353,30 @@ class MiniAppService {
             handlerOutputs[hid] = [];
           }
         }
+
+        const stateHandlerMap = new Map(
+          states.filter(s => s.handler_id).map(s => [s.name, s.handler_id])
+        );
+
+        let appConfig = {};
+        if (app.config) {
+          try {
+            appConfig = typeof app.config === 'string' ? JSON.parse(app.config) : app.config;
+          } catch { appConfig = {}; }
+        }
+
+        const defaultStepResources = this.getDefaultStepResources(appId) || {};
+        const stepResources = { ...defaultStepResources, ...(appConfig.step_resources || {}) };
+
+        for (const stateName of stateHandlerMap.keys()) {
+          const resource = stepResources[stateName];
+          if (resource) {
+            configurableStates[stateName] = {
+              type: resource.type,
+              model_type: resource.model_type || null,
+            };
+          }
+        }
       }
     }
 
@@ -350,10 +388,12 @@ class MiniAppService {
           id: m.id,
           name: m.name,
           model_name: m.model_name,
+          model_type: m.model_type || null,
           provider_name: m.provider?.provider_name || '',
         })),
       },
       handler_outputs: handlerOutputs,
+      configurable_states: configurableStates,
     };
   }
 
@@ -482,7 +522,8 @@ class MiniAppService {
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
     // status 现在是实体字段，不放在 data 里
-    const status = initialState?.name || 'pending_ocr';
+    const manifestInitialState = initialState ? null : await this.getInitialStateFromManifest(appId);
+    const status = initialState?.name || manifestInitialState || 'pending_process';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);
@@ -911,11 +952,15 @@ async batchUpload(appId, userId, attachmentIds) {
     const modelId = options.model_id || null;
     const temperature = options.temperature ?? 0.3;
     const concurrency = Math.max(1, Math.min(options.concurrency || 3, 10));
+    const timeoutCandidate = Number(
+      options.timeout_ms ?? appConfig?.compare?.timeout_ms ?? appConfig?.compare_timeout_ms ?? 600000
+    );
+    const timeoutMs = Math.max(60000, Math.min(Number.isFinite(timeoutCandidate) ? timeoutCandidate : 600000, 1800000));
 
-    logger.info(`[compareRecords] Model: ${modelId || 'default'}, Temperature: ${temperature}, Concurrency: ${concurrency}`);
+    logger.info(`[compareRecords] Model: ${modelId || 'default'}, Temperature: ${temperature}, Concurrency: ${concurrency}, Timeout: ${timeoutMs}ms`);
 
     logger.info(`[compareRecords] Step 1: LLM section matching`);
-    const matchedSections = await this._matchSectionsWithLlm(contentA.sections, contentB.sections, modelId, temperature);
+    const matchedSections = await this._matchSectionsWithLlm(contentA.sections, contentB.sections, modelId, temperature, timeoutMs);
 
     const matchedItems = matchedSections.filter(m => m.type === 'matched');
     const linesA = contentA.filtered_text.split('\n');
@@ -937,7 +982,12 @@ async batchUpload(appId, userId, attachmentIds) {
             text_a: textA,
             text_b: textB,
           }),
-          { modelId, temperature, defaultValue: { change_type: 'error', summary: 'LLM call failed' } }
+          {
+            modelId,
+            temperature,
+            timeout: timeoutMs,
+            defaultValue: { change_type: 'error', summary: 'LLM call failed' },
+          }
         );
 
         logger.info(`[compareRecords] Section done: ${match.sectionA.title} -> ${result.change_type} (${Date.now() - sectionStart}ms)`);
@@ -1055,7 +1105,7 @@ async batchUpload(appId, userId, attachmentIds) {
     return { filtered_text: content.filtered_text, sections };
   }
 
-  async _matchSectionsWithLlm(sectionsA, sectionsB, modelId, temperature) {
+  async _matchSectionsWithLlm(sectionsA, sectionsB, modelId, temperature, timeoutMs = 600000) {
     const listA = sectionsA.map((s, i) => ({ id: s.id || `a-${i}`, title: s.title }));
     const listB = sectionsB.map((s, i) => ({ id: s.id || `b-${i}`, title: s.title }));
 
@@ -1092,7 +1142,12 @@ ${JSON.stringify(listB, null, 2)}
       result = await this.llmService.extractJson(
         matchPrompt,
         JSON.stringify({}),
-        { modelId, temperature: Math.min(temperature, 0.3), defaultValue: null }
+        {
+          modelId,
+          temperature: Math.min(temperature, 0.3),
+          timeout: timeoutMs,
+          defaultValue: null,
+        }
       );
 
       logger.info(`[matchSections] LLM matching done (${Date.now() - startTime}ms)`);

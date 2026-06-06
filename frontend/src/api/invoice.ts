@@ -13,7 +13,6 @@ export interface InvoiceItem {
   amount: number
   tax_rate: string
   tax_amount: number
-  issuer: string
 }
 
 export interface InvoiceRow {
@@ -33,6 +32,7 @@ export interface InvoiceRow {
   item_count: number
   page_count?: number
   remarks: string
+  issuer: string
   ocr_method: string
   extraction_status: string
 }
@@ -71,4 +71,58 @@ export function getInvoiceDetail(rowId: string) {
   return apiRequest<InvoiceDetail>(
     apiClient.get(`/invoice/${rowId}`)
   )
+}
+
+export interface InvoiceExportParams {
+  type?: 'full' | 'custom' | 'negative'
+  start_date?: string
+  end_date?: string
+  sort?: string
+  order?: string
+  fields?: string[]
+  include_items?: boolean
+  invoice_number?: string
+  seller_name?: string
+  buyer_name?: string
+  status?: string
+}
+
+export async function exportInvoices(params: InvoiceExportParams = {}) {
+  // 将 fields 数组序列化为逗号分隔字符串
+  const queryParams: any = { ...params }
+  if (Array.isArray(queryParams.fields)) {
+    queryParams.fields = queryParams.fields.join(',')
+  }
+
+  const response = await apiClient.get('/invoice/export', {
+    params: queryParams,
+    responseType: 'blob',
+  })
+
+  // 从 Content-Disposition 头提取文件名
+  const disposition = response.headers['content-disposition']
+  const now = new Date();
+  const ts = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  let filename = `发票信息全部导出-${ts}.xlsx`
+  if (disposition) {
+    let match = disposition.match(/filename\*=UTF-8''(.+)/)
+    if (match) {
+      filename = decodeURIComponent(match[1])
+    } else {
+      match = disposition.match(/filename="?([^";\s]+)"?/)
+      if (match) {
+        filename = decodeURIComponent(match[1])
+      }
+    }
+  }
+
+  // 触发浏览器下载
+  const url = window.URL.createObjectURL(new Blob([response.data]))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
 }

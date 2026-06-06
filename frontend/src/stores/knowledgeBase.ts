@@ -538,10 +538,11 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     }
   }
 
-  // ========== Actions - 搜索 ==========
+  // ========== Actions - 搜索 (兼容保留，底层已切流到统一文档平台) ==========
 
   /**
    * 语义搜索（单个知识库内）
+   * @deprecated 底层已切换 DocRecallService，前端推荐使用 /api/docs/recall
    */
   const search = async (kbId: string, query: string, topK = 5, threshold = 0.1) => {
     isSearching.value = true
@@ -565,6 +566,7 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
 
   /**
    * 全局语义搜索（跨所有知识库）
+   * @deprecated 底层已切换 DocRecallService，前端推荐使用 /api/docs/recall
    */
   const globalSearch = async (query: string, topK = 10, threshold = 0.1) => {
     isSearching.value = true
