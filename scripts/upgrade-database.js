@@ -1303,136 +1303,9 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== 统一文档平台核心表 ====================
-  // Task: KB与合同比对统一平台重构
+  // ==================== 文档平台辅助表（基于 document_*） ====================
 
-  // 1. doc_documents - 文档主表
-  {
-    name: 'doc_documents table create',
-    check: async (conn) => await hasTable(conn, 'doc_documents'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_documents (
-          id VARCHAR(32) NOT NULL COMMENT '文档ID',
-          doc_type ENUM('knowledge', 'contract', 'department_doc', 'standard') NOT NULL COMMENT '文档类型',
-          source_system VARCHAR(50) NOT NULL COMMENT '来源系统(kb/contract_mgr/contract_mgr_v2)',
-          source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键(回溯旧系统)',
-          title VARCHAR(500) NOT NULL COMMENT '文档标题',
-          owner_id VARCHAR(32) NOT NULL COMMENT '所有者ID',
-          org_id VARCHAR(32) NOT NULL COMMENT '组织ID',
-          visibility ENUM('private', 'org', 'public') NOT NULL DEFAULT 'private' COMMENT '可见范围',
-          current_version_id VARCHAR(32) NULL COMMENT '当前版本ID',
-          lifecycle_status ENUM('active', 'archived') NOT NULL DEFAULT 'active' COMMENT '文档级状态',
-          metadata JSON NULL COMMENT '场景扩展字段',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          INDEX idx_doc_type_org_status (doc_type, org_id, lifecycle_status),
-          INDEX idx_source_system_ref (source_system, source_ref_id),
-          INDEX idx_owner_updated (owner_id, updated_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档主表'
-      `);
-      console.log('  ✓ Created doc_documents table');
-    }
-  },
-
-  // 2. doc_versions - 文档版本表
-  {
-    name: 'doc_versions table create',
-    check: async (conn) => await hasTable(conn, 'doc_versions'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_versions (
-          id VARCHAR(32) NOT NULL COMMENT '版本ID',
-          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
-          version_no INT NOT NULL COMMENT '机器版号',
-          version_label VARCHAR(20) NULL COMMENT '展示版号(v1.0)',
-          version_status ENUM('draft', 'review', 'approved', 'effective', 'expired', 'archived') NOT NULL DEFAULT 'draft' COMMENT '版本状态',
-          is_current BIT(1) NOT NULL DEFAULT 0 COMMENT '是否当前版本',
-          change_summary TEXT NULL COMMENT '变更摘要',
-          created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
-          approved_by VARCHAR(32) NULL COMMENT '审批者ID',
-          approved_at DATETIME NULL COMMENT '审批时间',
-          effective_from DATE NULL COMMENT '生效起始日期',
-          effective_to DATE NULL COMMENT '生效截止日期',
-          published_at DATETIME NULL COMMENT '发布时间',
-          metadata JSON NULL COMMENT '扩展字段',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          UNIQUE INDEX idx_doc_version_no (document_id, version_no),
-          INDEX idx_doc_current (document_id, is_current),
-          INDEX idx_status_effective (version_status, effective_from, effective_to),
-          CONSTRAINT fk_version_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档版本表'
-      `);
-      console.log('  ✓ Created doc_versions table');
-    }
-  },
-
-  // 3. doc_content_units - 内容单元表
-  {
-    name: 'doc_content_units table create',
-    check: async (conn) => await hasTable(conn, 'doc_content_units'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_content_units (
-          id VARCHAR(32) NOT NULL COMMENT '内容单元ID',
-          version_id VARCHAR(32) NOT NULL COMMENT '版本ID',
-          parent_id VARCHAR(32) NULL COMMENT '父单元ID(树结构)',
-          unit_type ENUM('chapter', 'section', 'paragraph', 'chunk') NOT NULL COMMENT '单元类型',
-          title VARCHAR(500) NULL COMMENT '标题',
-          content LONGTEXT NULL COMMENT '内容',
-          position INT NOT NULL DEFAULT 0 COMMENT '位置序号',
-          level INT NOT NULL DEFAULT 0 COMMENT '层级深度',
-          path VARCHAR(500) NULL COMMENT '路径(如1.2.3)',
-          token_count INT NULL COMMENT 'Token数量',
-          is_knowledge_point BIT(1) NOT NULL DEFAULT 0 COMMENT '是否知识点',
-          metadata JSON NULL COMMENT '扩展字段',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          INDEX idx_version_type_pos (version_id, unit_type, position),
-          INDEX idx_version_parent_pos (version_id, parent_id, position),
-          CONSTRAINT fk_unit_version FOREIGN KEY (version_id) REFERENCES doc_versions(id) ON DELETE CASCADE,
-          CONSTRAINT fk_unit_parent FOREIGN KEY (parent_id) REFERENCES doc_content_units(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='内容单元表'
-      `);
-      console.log('  ✓ Created doc_content_units table');
-    }
-  },
-
-  // 4. doc_embeddings - 向量索引表
-  {
-    name: 'doc_embeddings table create',
-    check: async (conn) => await hasTable(conn, 'doc_embeddings'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_embeddings (
-          id VARCHAR(32) NOT NULL COMMENT '向量ID',
-          content_unit_id VARCHAR(32) NOT NULL COMMENT '内容单元ID',
-          version_id VARCHAR(32) NOT NULL COMMENT '版本ID',
-          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
-          embedding_model_id VARCHAR(32) NULL COMMENT 'Embedding模型ID',
-          embedding_dim INT NOT NULL COMMENT '向量维度',
-          embedding_vector VECTOR(1536) NULL COMMENT '向量数据',
-          embedding_status ENUM('pending', 'processing', 'ready', 'error') NOT NULL DEFAULT 'pending' COMMENT '向量状态',
-          embedded_at DATETIME NULL COMMENT '向量生成时间',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          INDEX idx_version_emb_status (version_id, embedding_status),
-          INDEX idx_doc_model (document_id, embedding_model_id),
-          CONSTRAINT fk_emb_unit FOREIGN KEY (content_unit_id) REFERENCES doc_content_units(id) ON DELETE CASCADE,
-          CONSTRAINT fk_emb_version FOREIGN KEY (version_id) REFERENCES doc_versions(id) ON DELETE CASCADE,
-          CONSTRAINT fk_emb_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='向量索引表'
-      `);
-      console.log('  ✓ Created doc_embeddings table');
-    }
-  },
-
-  // 5. doc_tags - 标签主表
+  // 1. doc_tags - 标签主表
   {
     name: 'doc_tags table create',
     check: async (conn) => await hasTable(conn, 'doc_tags'),
@@ -1454,7 +1327,7 @@ const MIGRATIONS = [
     }
   },
 
-  // 6. doc_document_tags - 文档标签关联表
+  // 2. doc_document_tags - 文档标签关联表
   {
     name: 'doc_document_tags table create',
     check: async (conn) => await hasTable(conn, 'doc_document_tags'),
@@ -1467,41 +1340,17 @@ const MIGRATIONS = [
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           UNIQUE INDEX idx_doc_tag (document_id, tag_id),
-          CONSTRAINT fk_doc_tag_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE,
-          CONSTRAINT fk_doc_tag_tag FOREIGN KEY (tag_id) REFERENCES doc_tags(id) ON DELETE CASCADE
+          INDEX idx_doc_document (document_id),
+          INDEX idx_doc_tag_id (tag_id),
+          CONSTRAINT fk_doctag_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+          CONSTRAINT fk_doctag_tag FOREIGN KEY (tag_id) REFERENCES doc_tags(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档标签关联表'
       `);
       console.log('  ✓ Created doc_document_tags table');
     }
   },
 
-  // 7. doc_permissions - 权限表
-  {
-    name: 'doc_permissions table create',
-    check: async (conn) => await hasTable(conn, 'doc_permissions'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_permissions (
-          id VARCHAR(32) NOT NULL COMMENT '权限ID',
-          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
-          subject_type ENUM('user', 'role', 'org_unit') NOT NULL COMMENT '主体类型',
-          subject_id VARCHAR(32) NOT NULL COMMENT '主体ID',
-          permission_type ENUM('read', 'write', 'approve', 'admin') NOT NULL COMMENT '权限类型',
-          granted_by VARCHAR(32) NOT NULL COMMENT '授权者ID',
-          granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '授权时间',
-          expires_at DATETIME NULL COMMENT '过期时间',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          UNIQUE INDEX idx_doc_subject_perm (document_id, subject_type, subject_id, permission_type),
-          CONSTRAINT fk_perm_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档权限表'
-      `);
-      console.log('  ✓ Created doc_permissions table');
-    }
-  },
-
-  // 8. doc_compare_runs - 比对任务表
+  // 3. doc_compare_runs - 比对任务表
   {
     name: 'doc_compare_runs table create',
     check: async (conn) => await hasTable(conn, 'doc_compare_runs'),
@@ -1522,16 +1371,16 @@ const MIGRATIONS = [
           PRIMARY KEY (id),
           INDEX idx_doc_status (document_id, status),
           INDEX idx_versions (base_version_id, target_version_id),
-          CONSTRAINT fk_compare_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE,
-          CONSTRAINT fk_compare_base FOREIGN KEY (base_version_id) REFERENCES doc_versions(id) ON DELETE CASCADE,
-          CONSTRAINT fk_compare_target FOREIGN KEY (target_version_id) REFERENCES doc_versions(id) ON DELETE CASCADE
+          CONSTRAINT fk_comp_runs_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+          CONSTRAINT fk_comp_runs_base_rev FOREIGN KEY (base_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE,
+          CONSTRAINT fk_comp_runs_target_rev FOREIGN KEY (target_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='比对任务表'
       `);
       console.log('  ✓ Created doc_compare_runs table');
     }
   },
 
-  // 9. doc_compare_items - 比对结果明细表
+  // 4. doc_compare_items - 比对结果明细表
   {
     name: 'doc_compare_items table create',
     check: async (conn) => await hasTable(conn, 'doc_compare_items'),
@@ -1551,34 +1400,49 @@ const MIGRATIONS = [
           PRIMARY KEY (id),
           INDEX idx_run (run_id),
           INDEX idx_change_type (run_id, change_type),
-          CONSTRAINT fk_item_run FOREIGN KEY (run_id) REFERENCES doc_compare_runs(id) ON DELETE CASCADE,
-          CONSTRAINT fk_item_base FOREIGN KEY (base_unit_id) REFERENCES doc_content_units(id) ON DELETE SET NULL,
-          CONSTRAINT fk_item_target FOREIGN KEY (target_unit_id) REFERENCES doc_content_units(id) ON DELETE SET NULL
+          INDEX idx_base_unit (base_unit_id),
+          INDEX idx_target_unit (target_unit_id),
+          CONSTRAINT fk_comp_items_run FOREIGN KEY (run_id) REFERENCES doc_compare_runs(id) ON DELETE CASCADE,
+          CONSTRAINT fk_comp_items_base_chunk FOREIGN KEY (base_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL,
+          CONSTRAINT fk_comp_items_target_chunk FOREIGN KEY (target_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='比对结果明细表'
       `);
       console.log('  ✓ Created doc_compare_items table');
     }
   },
-
-  // ==================== 文档集合 (Collection) 核心表 ====================
-  // Task: task-20260531-kb-contract-unification-analysis - 文档中心改造 PRD
-
-  // 10. doc_collections - 文档集合主表
+  // 5. topics 新增 start_time / end_time（Phase 2 WP-1）
   {
-    name: 'doc_collections table create',
-    check: async (conn) => await hasTable(conn, 'doc_collections'),
+    name: 'topics add start_time and end_time',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'topics')) return true;
+      return await hasColumn(conn, 'topics', 'end_time');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE topics ADD COLUMN start_time DATETIME NULL COMMENT '话题起始时间' AFTER message_count`);
+      await safeExecute(conn, `ALTER TABLE topics ADD COLUMN end_time DATETIME NULL COMMENT '话题结束时间（归档时写入）' AFTER start_time`);
+      console.log('  ✓ Added start_time, end_time to topics');
+    }
+  },
+
+  // ==================== 文档平台重构 V1: document_* 新表 ====================
+  // Task: task-20260605-document-platform-refactor - 统一文档平台
+
+  // 27. document_collections - 文档集合主表
+  {
+    name: 'document_collections table create',
+    check: async (conn) => await hasTable(conn, 'document_collections'),
     migrate: async (conn) => {
       await conn.execute(`
-        CREATE TABLE doc_collections (
+        CREATE TABLE document_collections (
           id VARCHAR(32) NOT NULL COMMENT '集合ID',
           name VARCHAR(100) NOT NULL COMMENT '集合名称',
           description TEXT NULL COMMENT '集合描述',
           owner_id VARCHAR(32) NOT NULL COMMENT '所有者ID',
           created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
           department_id VARCHAR(20) NOT NULL COMMENT '所属部门ID',
-          visibility ENUM('private', 'department', 'public') NOT NULL DEFAULT 'private' COMMENT '可见范围',
-          department_scope ENUM('self', 'self_and_descendants') NULL DEFAULT 'self' COMMENT '部门范围(仅department可见时生效)',
-          embedding_model_id VARCHAR(32) NOT NULL COMMENT '嵌入模型ID',
+          visibility ENUM('private','department','public') NOT NULL DEFAULT 'private' COMMENT '可见范围',
+          department_scope ENUM('self','self_and_descendants') NULL DEFAULT 'self' COMMENT '部门范围',
+          embedding_model_id VARCHAR(32) NOT NULL COMMENT '默认向量模型ID',
           metadata JSON NULL COMMENT '扩展字段',
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1586,233 +1450,224 @@ const MIGRATIONS = [
           INDEX idx_coll_owner (owner_id),
           INDEX idx_coll_dept_vis (department_id, visibility),
           INDEX idx_coll_created_by (created_by),
-          CONSTRAINT fk_coll_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT,
-          CONSTRAINT fk_coll_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-          CONSTRAINT fk_coll_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT,
-          CONSTRAINT fk_coll_emb_model FOREIGN KEY (embedding_model_id) REFERENCES ai_models(id) ON DELETE RESTRICT
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档集合主表'
+          INDEX idx_coll_emb_model (embedding_model_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档集合'
       `);
-      console.log('  ✓ Created doc_collections table');
+      console.log('  ✓ Created document_collections table');
     }
   },
 
-  // 11. doc_collection_documents - 集合文档关联表
+  // 28. documents - 文档主表 (承载 processing_status)
   {
-    name: 'doc_collection_documents table create',
-    check: async (conn) => await hasTable(conn, 'doc_collection_documents'),
+    name: 'documents table create',
+    check: async (conn) => await hasTable(conn, 'documents'),
     migrate: async (conn) => {
       await conn.execute(`
-        CREATE TABLE doc_collection_documents (
-          id VARCHAR(32) NOT NULL COMMENT '关联ID',
-          collection_id VARCHAR(32) NOT NULL COMMENT '集合ID',
-          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+        CREATE TABLE documents (
+          id VARCHAR(32) NOT NULL COMMENT '文档ID',
+          collection_id VARCHAR(32) NOT NULL COMMENT '所属文档集合ID',
+          current_revision_id VARCHAR(32) NULL COMMENT '当前版本ID',
+          doc_type ENUM('knowledge','contract','department_doc','standard') NOT NULL COMMENT '文档类型',
+          source_system VARCHAR(50) NOT NULL COMMENT '来源系统',
+          source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键',
+          title VARCHAR(500) NOT NULL COMMENT '文档标题',
+          processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_chunk','pending_embedding','pending_relocate','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
+          processing_error_code VARCHAR(64) NULL COMMENT '错误码',
+          processing_error_message TEXT NULL COMMENT '错误信息',
+          processing_retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
+          processing_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '处理状态更新时间',
+          metadata JSON NULL COMMENT '扩展字段',
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
-          UNIQUE INDEX idx_coll_doc (collection_id, document_id),
-          UNIQUE INDEX idx_doc_unique (document_id),
-          CONSTRAINT fk_coldoc_collection FOREIGN KEY (collection_id) REFERENCES doc_collections(id) ON DELETE CASCADE,
-          CONSTRAINT fk_coldoc_document FOREIGN KEY (document_id) REFERENCES doc_documents(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='集合文档关联表'
+          UNIQUE KEY uk_document_source (source_system, source_ref_id),
+          INDEX idx_document_collection (collection_id),
+          INDEX idx_document_current_revision (current_revision_id),
+          INDEX idx_document_processing (processing_status, processing_updated_at),
+          INDEX idx_document_type_status (doc_type, processing_status),
+          CONSTRAINT fk_document_collection FOREIGN KEY (collection_id) REFERENCES document_collections(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档主表'
       `);
-      console.log('  ✓ Created doc_collection_documents table');
+      console.log('  ✓ Created documents table');
     }
   },
 
-  // 12. doc_documents org_id → department_id 重命名
+  // 29. document_revisions - 文档历史版本表
   {
-    name: 'doc_documents org_id rename to department_id',
+    name: 'document_revisions table create',
+    check: async (conn) => await hasTable(conn, 'document_revisions'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE document_revisions (
+          id VARCHAR(32) NOT NULL COMMENT '版本ID',
+          document_id VARCHAR(32) NOT NULL COMMENT '所属文档ID',
+          revision_no INT NOT NULL COMMENT '机器版号',
+          revision_label VARCHAR(20) NULL COMMENT '展示版号(v1.0)',
+          revision_status ENUM('draft','review','approved','effective','expired','archived') NOT NULL DEFAULT 'draft' COMMENT '版本状态',
+          is_current TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否当前版本',
+          effective_from DATE NULL COMMENT '生效日期',
+          effective_to DATE NULL COMMENT '废止日期(NULL=长期有效)',
+          change_summary TEXT NULL COMMENT '变更摘要',
+          created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
+          approved_by VARCHAR(32) NULL COMMENT '审批者ID',
+          approved_at DATETIME NULL COMMENT '审批时间',
+          diff_status ENUM('pending','processing','ready','error') NOT NULL DEFAULT 'pending' COMMENT '版本差异状态(旁路)',
+          metadata JSON NULL COMMENT '扩展字段',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_revision_document_id (document_id, id),
+          UNIQUE KEY uk_document_revision_no (document_id, revision_no),
+          INDEX idx_revision_document_current (document_id, is_current),
+          INDEX idx_revision_status (revision_status),
+          INDEX idx_revision_diff_status (diff_status),
+          CONSTRAINT fk_revision_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+          CONSTRAINT ck_revision_effective_date CHECK (effective_to IS NULL OR effective_to >= effective_from)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档历史版本'
+      `);
+      console.log('  ✓ Created document_revisions table');
+    }
+  },
+
+  // 30. document_revisions 复合外键 → documents.current_revision_id
+  {
+    name: 'documents current_revision_id fk to document_revisions',
     check: async (conn) => {
-      if (!await hasTable(conn, 'doc_documents')) return true;
-      return await hasColumn(conn, 'doc_documents', 'department_id');
+      if (!await hasTable(conn, 'documents')) return true;
+      return await hasForeignKey(conn, 'documents', 'fk_document_current_revision');
     },
     migrate: async (conn) => {
-      await conn.execute(`ALTER TABLE doc_documents CHANGE COLUMN org_id department_id VARCHAR(32) NOT NULL COMMENT '部门ID'`);
-      await safeExecute(conn, `ALTER TABLE doc_documents DROP INDEX idx_doc_type_org_status`);
-      await safeExecute(conn, `ALTER TABLE doc_documents ADD INDEX idx_doc_type_dept_status (doc_type, department_id, lifecycle_status)`);
-      console.log('  ✓ Renamed doc_documents.org_id → department_id');
+      await safeExecute(conn, `ALTER TABLE documents ADD CONSTRAINT fk_document_current_revision FOREIGN KEY (id, current_revision_id) REFERENCES document_revisions(document_id, id) ON DELETE RESTRICT`);
+      console.log('  ✓ Added FK documents.(id, current_revision_id) → document_revisions(document_id, id)');
     }
   },
 
-  // 13. doc_documents visibility ENUM org → department
+  // 31. document_chunks - 文档分段表 (两层: paragraph / chunk)
   {
-    name: 'doc_documents visibility enum org to department',
+    name: 'document_chunks table create',
+    check: async (conn) => await hasTable(conn, 'document_chunks'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE document_chunks (
+          id VARCHAR(32) NOT NULL COMMENT '分段ID',
+          revision_id VARCHAR(32) NOT NULL COMMENT '所属版本ID',
+          chunk_type ENUM('paragraph','chunk') NOT NULL COMMENT '分段类型(两层结构)',
+          title VARCHAR(500) NULL COMMENT '标题',
+          content TEXT NULL COMMENT '内容',
+          seq INT NOT NULL DEFAULT 0 COMMENT '顺序号',
+          embedding_vector VECTOR(1536) NULL COMMENT '向量数据',
+          embedding_status ENUM('pending','processing','ready','error') NOT NULL DEFAULT 'pending' COMMENT '向量状态',
+          embedding_model_id VARCHAR(32) NULL COMMENT '向量模型ID',
+          embedded_at DATETIME NULL COMMENT '向量生成时间',
+          token_count INT NULL COMMENT 'Token数',
+          metadata JSON NULL COMMENT '扩展字段',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_revision_seq (revision_id, seq),
+          INDEX idx_chunk_revision (revision_id),
+          INDEX idx_chunk_emb_status (embedding_status),
+          CONSTRAINT fk_chunk_revision FOREIGN KEY (revision_id) REFERENCES document_revisions(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档分段'
+      `);
+      console.log('  ✓ Created document_chunks table');
+    }
+  },
+
+  // 31. app_doc_bindings - App 到 Doc 平台映射表
+  {
+    name: 'app_doc_bindings table create',
+    check: async (conn) => await hasTable(conn, 'app_doc_bindings'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_doc_bindings (
+          id VARCHAR(32) NOT NULL COMMENT '绑定ID',
+          app_id VARCHAR(32) NOT NULL COMMENT 'App ID',
+          row_id VARCHAR(32) NOT NULL COMMENT 'App行ID',
+          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+          current_revision_id VARCHAR(32) NULL COMMENT '当前版本ID',
+          binding_status ENUM('active','archived') NOT NULL DEFAULT 'active' COMMENT '绑定状态',
+          metadata JSON NULL COMMENT '扩展字段',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_app_row (app_id, row_id),
+          INDEX idx_document (document_id),
+          INDEX idx_revision (current_revision_id),
+          INDEX idx_status (binding_status),
+          CONSTRAINT fk_binding_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App文档绑定表'
+      `);
+      console.log('  ✓ Created app_doc_bindings table');
+    }
+  },
+
+  // 32. app_contract_mgr_v2_content 添加 document_id 列
+  {
+    name: 'app_contract_mgr_v2_content add document_id',
     check: async (conn) => {
-      if (!await hasTable(conn, 'doc_documents')) return true;
-      const colType = await getColumnType(conn, 'doc_documents', 'visibility');
-      return colType && !colType.includes("org");
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_v2_content', 'document_id');
     },
     migrate: async (conn) => {
-      await conn.execute(`ALTER TABLE doc_documents MODIFY COLUMN visibility ENUM('private', 'department', 'public') NOT NULL DEFAULT 'private' COMMENT '可见范围'`);
-      await conn.execute(`UPDATE doc_documents SET visibility = 'department' WHERE visibility = 'org'`);
-      console.log('  ✓ Changed doc_documents.visibility ENUM org → department');
+      await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_content ADD COLUMN document_id VARCHAR(32) NULL COMMENT 'Doc平台文档ID' AFTER process_step`);
+      await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_content ADD INDEX idx_document_id (document_id)`);
+      console.log('  ✓ Added document_id column to app_contract_mgr_v2_content');
     }
   },
 
-  // 14. doc_tags org_id → department_id 重命名
+  // 33. app_contract_mgr_v2_content 添加 classification_json 列
   {
-    name: 'doc_tags org_id rename to department_id',
+    name: 'app_contract_mgr_v2_content add classification_json',
     check: async (conn) => {
-      if (!await hasTable(conn, 'doc_tags')) return true;
-      return await hasColumn(conn, 'doc_tags', 'department_id');
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_v2_content', 'classification_json');
     },
     migrate: async (conn) => {
-      await conn.execute(`ALTER TABLE doc_tags CHANGE COLUMN org_id department_id VARCHAR(32) NOT NULL COMMENT '部门ID'`);
-      await safeExecute(conn, `ALTER TABLE doc_tags DROP INDEX idx_org_name`);
-      await safeExecute(conn, `ALTER TABLE doc_tags ADD UNIQUE INDEX idx_dept_name (department_id, name)`);
-      await safeExecute(conn, `ALTER TABLE doc_tags DROP INDEX idx_org`);
-      await safeExecute(conn, `ALTER TABLE doc_tags ADD INDEX idx_dept (department_id)`);
-      console.log('  ✓ Renamed doc_tags.org_id → department_id');
+      await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_content ADD COLUMN classification_json JSON NULL COMMENT '版本识别建议' AFTER sections`);
+      console.log('  ✓ Added classification_json column to app_contract_mgr_v2_content');
     }
   },
 
-  // 15. doc_documents FK to departments
+  // ==================== 清理旧 doc_* 表（彻底替换） ====================
+
+  // 34. 删除旧 doc_chunks 表
   {
-    name: 'doc_documents fk to departments on department_id',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_documents')) return true;
-      return await hasForeignKey(conn, 'doc_documents', 'fk_doc_document_dept');
-    },
+    name: 'doc_chunks table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_chunks')),
     migrate: async (conn) => {
-      await safeExecute(conn, `ALTER TABLE doc_documents ADD CONSTRAINT fk_doc_document_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT`);
-      console.log('  ✓ Added FK doc_documents.department_id → departments.id');
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_chunks`);
+      console.log('  ✓ Dropped doc_chunks table');
     }
   },
 
-  // 16. doc_tags FK to departments
+  // 35. 删除旧 doc_versions 表
   {
-    name: 'doc_tags fk to departments on department_id',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_tags')) return true;
-      return await hasForeignKey(conn, 'doc_tags', 'fk_doc_tag_dept');
-    },
+    name: 'doc_versions table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_versions')),
     migrate: async (conn) => {
-      await safeExecute(conn, `ALTER TABLE doc_tags ADD CONSTRAINT fk_doc_tag_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT`);
-      console.log('  ✓ Added FK doc_tags.department_id → departments.id');
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_versions`);
+      console.log('  ✓ Dropped doc_versions table');
     }
   },
 
-  // ==================== 文档平台重构 (task-20260601-doc-platform-refactor) ====================
-
-  // 17. 删除 doc_permissions 表
+  // 36. 删除旧 doc_documents 表
   {
-    name: 'doc_permissions table drop',
-    check: async (conn) => !(await hasTable(conn, 'doc_permissions')),
+    name: 'doc_documents table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_documents')),
     migrate: async (conn) => {
-      await safeExecute(conn, `DROP TABLE IF EXISTS doc_permissions`);
-      console.log('  ✓ Dropped doc_permissions table');
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_documents`);
+      console.log('  ✓ Dropped doc_documents table');
     }
   },
 
-  // 18. 删除 doc_collection_documents 表
+  // 37. 删除旧 doc_collections 表
   {
-    name: 'doc_collection_documents table drop',
-    check: async (conn) => !(await hasTable(conn, 'doc_collection_documents')),
+    name: 'doc_collections table drop',
+    check: async (conn) => !(await hasTable(conn, 'doc_collections')),
     migrate: async (conn) => {
-      await safeExecute(conn, `DROP TABLE IF EXISTS doc_collection_documents`);
-      console.log('  ✓ Dropped doc_collection_documents table');
-    }
-  },
-
-  // 19. 删除 doc_embeddings 表
-  {
-    name: 'doc_embeddings table drop',
-    check: async (conn) => !(await hasTable(conn, 'doc_embeddings')),
-    migrate: async (conn) => {
-      await safeExecute(conn, `DROP TABLE IF EXISTS doc_embeddings`);
-      console.log('  ✓ Dropped doc_embeddings table');
-    }
-  },
-
-  // 20. doc_documents 添加 collection_id
-  {
-    name: 'doc_documents add collection_id',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_documents')) return true;
-      return await hasColumn(conn, 'doc_documents', 'collection_id');
-    },
-    migrate: async (conn) => {
-      await conn.execute(`ALTER TABLE doc_documents ADD COLUMN collection_id VARCHAR(32) NULL COMMENT '所属集合ID' AFTER lifecycle_status`);
-      await safeExecute(conn, `ALTER TABLE doc_documents ADD INDEX idx_collection (collection_id)`);
-      await safeExecute(conn, `ALTER TABLE doc_documents ADD CONSTRAINT fk_doc_document_collection FOREIGN KEY (collection_id) REFERENCES doc_collections(id) ON DELETE SET NULL`);
-      console.log('  ✓ Added doc_documents.collection_id');
-    }
-  },
-
-  // 21. 重命名 doc_content_units → doc_chunks
-  {
-    name: 'doc_content_units rename to doc_chunks',
-    check: async (conn) => !(await hasTable(conn, 'doc_content_units')),
-    migrate: async (conn) => {
-      if (!await hasTable(conn, 'doc_content_units')) {
-        console.log('  ⏭️  doc_content_units table not found, skipping rename');
-        return;
-      }
-      await conn.execute(`RENAME TABLE doc_content_units TO doc_chunks`);
-      console.log('  ✓ Renamed doc_content_units → doc_chunks');
-    }
-  },
-
-  // 22. doc_chunks 列改名: unit_type → chunk_type, position → seq
-  {
-    name: 'doc_chunks rename unit_type to chunk_type and position to seq',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_chunks')) return true;
-      return await hasColumn(conn, 'doc_chunks', 'chunk_type');
-    },
-    migrate: async (conn) => {
-      await conn.execute(`ALTER TABLE doc_chunks CHANGE COLUMN unit_type chunk_type ENUM('chapter','section','paragraph','chunk') NOT NULL COMMENT '分块类型'`);
-      console.log('  ✓ Renamed unit_type → chunk_type');
-      await conn.execute(`ALTER TABLE doc_chunks CHANGE COLUMN position seq INT NOT NULL DEFAULT 0 COMMENT '全局序号'`);
-      console.log('  ✓ Renamed position → seq');
-    }
-  },
-
-  // 23. doc_chunks 删除列: parent_id, path, level
-  {
-    name: 'doc_chunks drop tree columns',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_chunks')) return true;
-      return !(await hasColumn(conn, 'doc_chunks', 'parent_id'));
-    },
-    migrate: async (conn) => {
-      await safeExecute(conn, `ALTER TABLE doc_chunks DROP FOREIGN KEY fk_unit_parent`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks DROP INDEX idx_version_parent_pos`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks DROP INDEX fk_unit_parent`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks DROP COLUMN parent_id`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks DROP COLUMN path`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks DROP COLUMN level`);
-      console.log('  ✓ Dropped tree columns (parent_id, path, level)');
-    }
-  },
-
-  // 24. doc_chunks 新增列: chapter_title, section_title
-  {
-    name: 'doc_chunks add chapter_title and section_title',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_chunks')) return true;
-      return await hasColumn(conn, 'doc_chunks', 'section_title');
-    },
-    migrate: async (conn) => {
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN chapter_title VARCHAR(500) NULL COMMENT '所属章节标题' AFTER seq`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN section_title VARCHAR(500) NULL COMMENT '所属节标题' AFTER chapter_title`);
-      console.log('  ✓ Added chapter_title, section_title');
-    }
-  },
-
-  // 25. doc_chunks 新增向量列 (从 doc_embeddings 合并)
-  {
-    name: 'doc_chunks add embedding columns',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'doc_chunks')) return true;
-      return await hasColumn(conn, 'doc_chunks', 'embedding_vector');
-    },
-    migrate: async (conn) => {
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedding_vector VECTOR(1536) NULL COMMENT '向量数据' AFTER section_title`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedding_status ENUM('pending','processing','ready','error') NOT NULL DEFAULT 'pending' COMMENT '向量状态' AFTER embedding_vector`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedding_model_id VARCHAR(32) NULL COMMENT 'Embedding模型ID' AFTER embedding_status`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD COLUMN embedded_at DATETIME NULL COMMENT '向量生成时间' AFTER embedding_model_id`);
-      await safeExecute(conn, `ALTER TABLE doc_chunks ADD INDEX idx_chunk_emb_status (embedding_status)`);
-      console.log('  ✓ Added embedding columns to doc_chunks');
+      await safeExecute(conn, `DROP TABLE IF EXISTS doc_collections`);
+      console.log('  ✓ Dropped doc_collections table');
     }
   },
 

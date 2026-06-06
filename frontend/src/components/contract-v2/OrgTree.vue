@@ -7,6 +7,8 @@ import type { OrgNode } from '@/api/contract-v2'
 const store = useContractV2Store()
 
 const showAddDialog = ref(false)
+const showRenameDialog = ref(false)
+const renameForm = ref<{ nodeId: string; name: string }>({ nodeId: '', name: '' })
 const addForm = ref<{ name: string; node_type: string; parent_id: string | null }>({
   name: '',
   node_type: 'group',
@@ -44,11 +46,24 @@ function openAddDialog(parentId: string | null) {
   showAddDialog.value = true
 }
 
+function openRenameDialog(nodeId: string, currentName: string) {
+  renameForm.value = { nodeId, name: currentName }
+  showRenameDialog.value = true
+}
+
 async function handleAddNode() {
   if (!addForm.value.name.trim()) return
   try {
     await store.addNode({ ...addForm.value, parent_id: addForm.value.parent_id || undefined })
     showAddDialog.value = false
+  } catch {}
+}
+
+async function handleRenameNode() {
+  if (!renameForm.value.name.trim()) return
+  try {
+    await store.editNode(renameForm.value.nodeId, { name: renameForm.value.name.trim() })
+    showRenameDialog.value = false
   } catch {}
 }
 
@@ -76,10 +91,10 @@ const defaultProps = {
 <template>
   <div class="org-tree-container">
     <div class="org-tree-header">
-      <span class="org-tree-title">组织结构</span>
+      <span class="org-tree-title">{{ $t('contractV2.orgStructure') }}</span>
       <el-button size="small" type="primary" @click="openAddDialog(null)">
         <el-icon><Plus /></el-icon>
-        新建
+        {{ $t('common.create') }}
       </el-button>
     </div>
 
@@ -89,7 +104,7 @@ const defaultProps = {
 
     <div v-else-if="store.tree.length === 0" class="org-tree-empty">
       <el-empty description="暂无组织节点" :image-size="48" />
-      <el-button type="primary" size="small" @click="openAddDialog(null)">创建集团节点</el-button>
+      <el-button type="primary" size="small" @click="openAddDialog(null)">{{ $t('contractV2.createGroupNode') }}</el-button>
     </div>
 
     <el-tree
@@ -102,7 +117,7 @@ const defaultProps = {
       @node-click="(data: any) => handleNodeClick(data.id)"
       :class="{ 'has-selection': store.selectedNodeId }"
     >
-      <template #default="{ node, data }">
+      <template #default="{ data }">
         <div class="tree-node" :class="{ selected: data.id === store.selectedNodeId }">
           <span class="tree-node-label">
             <el-tag size="small" :type="data.node_type === 'group' ? '' : data.node_type === 'party' ? 'success' : 'warning'" disable-transitions>
@@ -113,6 +128,9 @@ const defaultProps = {
           <span class="tree-node-actions" @click.stop>
             <el-button size="small" text @click="openAddDialog(data.id)" v-if="data.level < 3">
               <el-icon><Plus /></el-icon>
+            </el-button>
+            <el-button size="small" text @click="openRenameDialog(data.id, data.name)">
+              <el-icon><Edit /></el-icon>
             </el-button>
             <el-button size="small" text type="danger" @click="handleDeleteNode(data.id)">
               <el-icon><Delete /></el-icon>
@@ -129,8 +147,20 @@ const defaultProps = {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAddDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleAddNode" :disabled="!addForm.name.trim()">确定</el-button>
+        <el-button @click="showAddDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleAddNode" :disabled="!addForm.name.trim()">{{ $t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showRenameDialog" :title="$t('contractV2.rename.title')" width="400px">
+      <el-form label-width="60px">
+        <el-form-item :label="$t('contractV2.rename.label')">
+          <el-input v-model="renameForm.name" :placeholder="$t('contractV2.rename.placeholder')" @keyup.enter="handleRenameNode" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRenameDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleRenameNode" :disabled="!renameForm.name.trim()">{{ $t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
