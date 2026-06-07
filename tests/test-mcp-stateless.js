@@ -11,8 +11,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import StatelessHTTPTransport from '../lib/mcp-stateless-http.js';
 
-const MCP_URL = 'https://markitdown.g.erik.top/mcp/';
-const MCP_TOKEN = 'Bearer sk-a9Fbq0tS65VQhG0AA296F9E2F9Ab4975A41f5aEdF97d571a';
+const MCP_URL = process.env.MCP_TEST_URL || 'http://localhost:3000/mcp/';
+const MCP_TOKEN = process.env.MCP_TEST_TOKEN || 'test-token-placeholder';
 
 console.log('=== StatelessHTTP MCP Connection Test ===\n');
 console.log('URL:', MCP_URL);
@@ -20,7 +20,7 @@ console.log('URL:', MCP_URL);
 async function testConnection() {
   // 创建 Transport
   const headers = {
-    'Authorization': MCP_TOKEN,
+    'Authorization': `Bearer ${MCP_TOKEN}`,
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
   };
