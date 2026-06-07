@@ -1,9 +1,9 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
-const MCP_URL = 'https://ocr1.g.erik.top/mcp';
-const MCP_TOKEN = 'Bearer sk-a9Fbq0tS65VQhG0AA296F9E2F9Ab4975A41f5aEdF97d571a';
-const PDF_PATH = resolve('D:\\tmp\\奇瑞质量协议签章版.pdf');
+const MCP_URL = process.env.MCP_TEST_URL || 'http://localhost:3000/mcp';
+const MCP_TOKEN = process.env.MCP_TEST_TOKEN || 'test-token-placeholder';
+const PDF_PATH = process.env.MCP_TEST_PDF_PATH || resolve('test-assets/sample.pdf');
 
 console.log('=== markitdown MCP 诊断测试 ===\n');
 
@@ -11,7 +11,7 @@ async function postMCP(message) {
   const res = await fetch(MCP_URL, {
     method: 'POST',
     headers: {
-      'Authorization': MCP_TOKEN,
+      'Authorization': `Bearer ${MCP_TOKEN}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json, text/event-stream',
     },
@@ -67,7 +67,7 @@ async function run() {
   try {
     const getRes = await fetch(MCP_URL, {
       method: 'GET',
-      headers: { 'Authorization': MCP_TOKEN },
+      headers: { 'Authorization': `Bearer ${MCP_TOKEN}` },
     });
     console.log(`  HTTP ${getRes.status} ${getRes.statusText}`);
     const getBody = await getRes.text();

@@ -53,6 +53,26 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
   const requireAuth = authMiddleware.authenticate();
   const requireAdmin = authMiddleware.requireAdmin();
 
+  function validateTransportConfig(transportType, config = {}) {
+    const resolvedType = transportType || 'stdio';
+
+    if (resolvedType === 'stdio') {
+      if (!config.command) {
+        return 'STDIO 模式缺少必要字段：command';
+      }
+      return null;
+    }
+
+    if (['http', 'sse', 'statelessHttp', 'streamableHttp'].includes(resolvedType)) {
+      if (!config.url) {
+        return `${resolvedType} 模式缺少必要字段：url`;
+      }
+      return null;
+    }
+
+    return `不支持的 transport_type: ${resolvedType}`;
+  }
+
   // ============== MCP Server 管理 ==============
 
   /**
@@ -187,13 +207,9 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
-      // 先清除该 server 的旧工具缓存
-      await MCPToolsCache.destroy({
-        where: { mcp_server_id: id },
-      });
-
       // 尝试通过驻留进程刷新
       let refreshedTools = [];
+      let refreshSucceeded = false;
       try {
         const result = await residentSkillManager.invokeByName(
           'mcp-client',
@@ -209,20 +225,26 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
           30000
         );
         refreshedTools = result?.tools || [];
+        refreshSucceeded = true;
       } catch (err) {
-        logger.warn(`Refresh tools via resident process failed: ${err.message}, returning empty list`);
+        logger.warn(`Refresh tools via resident process failed: ${err.message}, keeping existing cache`);
       }
 
-      // 写入缓存
-      for (const tool of refreshedTools) {
-        await MCPToolsCache.create({
-          id: Utils.newID(16),
-          mcp_server_id: id,
-          tool_name: tool.name,
-          description: tool.description || '',
-          input_schema: tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
-          cached_at: new Date(),
+      // 只在刷新成功时替换缓存
+      if (refreshSucceeded) {
+        await MCPToolsCache.destroy({
+          where: { mcp_server_id: id },
         });
+        for (const tool of refreshedTools) {
+          await MCPToolsCache.create({
+            id: Utils.newID(16),
+            mcp_server_id: id,
+            tool_name: tool.name,
+            description: tool.description || '',
+            input_schema: tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
+            cached_at: new Date(),
+          });
+        }
       }
 
       const tools = await MCPToolsCache.findAll({
@@ -232,9 +254,10 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
 
       ctx.success({
         tools,
-        message: refreshedTools.length > 0
+        refresh_succeeded: refreshSucceeded,
+        message: refreshSucceeded
           ? `已刷新 ${refreshedTools.length} 个工具`
-          : '驻留进程未就绪，工具列表已清空。请启动 mcp-client 驻留进程后重试。',
+          : '刷新失败，保留已有工具缓存。请检查 mcp-client 驻留进程状态。',
       });
 
     } catch (error) {
@@ -273,17 +296,14 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
-      // 根据传输类型验证对应字段
-      if (transport_type === 'stdio') {
-        if (!command) {
-          ctx.error('STDIO 模式缺少必要字段：command');
-          return;
-        }
-      } else if (transport_type === 'http') {
-        if (!url) {
-          ctx.error('HTTP 模式缺少必要字段：url');
-          return;
-        }
+      const validationError = validateTransportConfig(transport_type, {
+        command,
+        url,
+      });
+      if (validationError) {
+        ctx.status = 400;
+        ctx.error(validationError);
+        return;
       }
 
       // 检查名称是否已存在
@@ -347,6 +367,21 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       if (!server) {
         ctx.status = 404;
         ctx.error('MCP Server 不存在');
+        return;
+      }
+
+      const nextTransportType = updateData.transport_type !== undefined
+        ? updateData.transport_type
+        : server.transport_type;
+      const nextCommand = updateData.command !== undefined ? updateData.command : server.command;
+      const nextUrl = updateData.url !== undefined ? updateData.url : server.url;
+      const validationError = validateTransportConfig(nextTransportType, {
+        command: nextCommand,
+        url: nextUrl,
+      });
+      if (validationError) {
+        ctx.status = 400;
+        ctx.error(validationError);
         return;
       }
 

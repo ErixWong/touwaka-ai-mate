@@ -5,10 +5,11 @@
  * 使用场景：验证 MCP Server 是否可正常连接
  */
 
+import http from 'http';
 import https from 'https';
 
-const MCP_URL = 'https://markitdown.g.erik.top/mcp/';
-const MCP_TOKEN = 'Bearer sk-a9Fbq0tS65VQhG0AA296F9E2F9Ab4975A41f5aEdF97d571a';
+const MCP_URL = process.env.MCP_TEST_URL || 'http://localhost:3000/mcp/';
+const MCP_TOKEN = process.env.MCP_TEST_TOKEN || 'test-token-placeholder';
 
 async function testMcpConnection() {
   console.log('=== MCP HTTP Direct Connection Test ===\n');
@@ -62,13 +63,15 @@ function sendRequest(body) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify(body);
     
+    const urlObj = new URL(MCP_URL);
+    const requestModule = urlObj.protocol === 'https:' ? https : http;
     const options = {
-      hostname: 'markitdown.g.erik.top',
-      port: 443,
-      path: '/mcp/',
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
       method: 'POST',
       headers: {
-        'Authorization': MCP_TOKEN,
+        'Authorization': `Bearer ${MCP_TOKEN}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
         'Content-Length': Buffer.byteLength(postData)
@@ -76,7 +79,7 @@ function sendRequest(body) {
       timeout: 10000
     };
     
-    const req = https.request(options, (res) => {
+    const req = requestModule.request(options, (res) => {
       console.log('Status:', res.statusCode);
       console.log('Content-Type:', res.headers['content-type']);
       console.log('mcp-session-id:', res.headers['mcp-session-id'] || 'none');

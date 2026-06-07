@@ -18,7 +18,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import path from 'path';
+import { pathToFileURL } from 'url';
 import StatelessHTTPTransport from '../../../lib/mcp-stateless-http.js';
+import { getDataBasePath } from '../../../lib/paths.js';
 
 // ============== 全局状态 ==============
 
@@ -27,11 +30,32 @@ import StatelessHTTPTransport from '../../../lib/mcp-stateless-http.js';
 // 用户 MCP: serverName:userId -> connection
 const connections = new Map();
 
-// 工具定义缓存: serverName -> tools[]
+// 进行中的连接请求: connectionKey -> Promise
+// 防止并发建连导致重复连接
+const pendingConnections = new Map();
+
+// 工具定义缓存: connectionKey -> tools[]
+// 与连接池隔离维度一致：公共连接用 serverName，用户连接用 serverName:userId
 const toolsCache = new Map();
 
 // API 基础 URL（从环境变量获取）
 const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+
+function defaultClientFactory() {
+  return new Client({
+    name: 'touwaka-mate-mcp-client',
+    version: '1.0.0',
+  }, {
+    capabilities: {
+      tools: {},
+      resources: {},
+      prompts: {},
+    },
+  });
+}
+
+let clientFactory = defaultClientFactory;
+let transportFactory = null;
 
 // ============== 日志函数 ==============
 
@@ -205,7 +229,7 @@ async function createTransport(serverConfig, credentials = null) {
     
     const headers = buildAuthHeaders(serverConfig.headers, credentials);
     const configuredTimeoutMs = Number(serverConfig.timeout_ms) || 600000;
-    const minTimeoutMs = Number(process.env.MCP_CLIENT_MIN_TIMEOUT_MS || 1200000);
+    const minTimeoutMs = Number(process.env.MCP_CLIENT_MIN_TIMEOUT_MS || 120000);
     const timeoutMs = Math.max(configuredTimeoutMs, minTimeoutMs);
     
     const isStateless = transportType === 'statelessHttp' || serverConfig.stateless === true;
@@ -266,6 +290,8 @@ async function createTransport(serverConfig, credentials = null) {
   });
 }
 
+transportFactory = createTransport;
+
 // ============== MCP Server 连接管理 ==============
 
 /**
@@ -283,46 +309,66 @@ async function connectServer(serverConfig, userId = null, credentials = null) {
     return connections.get(connectionKey).client;
   }
   
+  // 并发保护: 如果已有进行中的连接请求，等待该请求完成
+  if (pendingConnections.has(connectionKey)) {
+    log(`Connection in progress: ${connectionKey}, waiting...`);
+    return pendingConnections.get(connectionKey);
+  }
+  
   log(`Connecting to ${connectionKey} (transport: ${serverConfig.transport_type || 'stdio'})...`);
   log(`Server config: ${JSON.stringify({ name: serverConfig.name, transport_type: serverConfig.transport_type, url: serverConfig.url, command: serverConfig.command })}`);
   
-  try {
-    const client = new Client({
-      name: 'touwaka-mate-mcp-client',
-      version: '1.0.0',
-    }, {
-      capabilities: {
-        tools: {},
-        resources: {},
-        prompts: {},
-      },
-    });
-    
-    log(`Client created for ${connectionKey}, creating transport...`);
-    const transport = await createTransport(serverConfig, credentials);
-    log(`Transport created for ${connectionKey}, connecting...`);
-    
-    await client.connect(transport);
-    log(`Client connected for ${connectionKey}`);
-    
-    connections.set(connectionKey, {
-      client,
-      transport,
-      config: serverConfig,
-      userId,
-      startedAt: new Date().toISOString(),
-    });
-    
-    await cacheTools(serverConfig.name, client);
-    log(`Tools cached for ${connectionKey}`);
-    
-    log(`Connected: ${connectionKey}`);
-    return client;
-  } catch (err) {
-    log(`connectServer ERROR for ${connectionKey}: ${err.message}`);
-    log(`connectServer ERROR stack: ${err.stack}`);
-    throw err;
-  }
+  const connectPromise = (async () => {
+    let client = null;
+    let transport = null;
+    let clientConnected = false;
+
+    try {
+      client = clientFactory();
+      
+      log(`Client created for ${connectionKey}, creating transport...`);
+      transport = await transportFactory(serverConfig, credentials);
+      log(`Transport created for ${connectionKey}, connecting...`);
+      
+      await client.connect(transport);
+      clientConnected = true;
+      log(`Client connected for ${connectionKey}`);
+
+      await cacheTools(connectionKey, client);
+      log(`Tools cached for ${connectionKey}`);
+      
+      connections.set(connectionKey, {
+        client,
+        transport,
+        config: serverConfig,
+        userId,
+        startedAt: new Date().toISOString(),
+      });
+      
+      log(`Connected: ${connectionKey}`);
+      return client;
+    } catch (err) {
+      connections.delete(connectionKey);
+      toolsCache.delete(connectionKey);
+
+      if (clientConnected && client && typeof client.close === 'function') {
+        try {
+          await client.close();
+        } catch (closeErr) {
+          log(`Error closing failed connection ${connectionKey}: ${closeErr.message}`);
+        }
+      }
+
+      log(`connectServer ERROR for ${connectionKey}: ${err.message}`);
+      log(`connectServer ERROR stack: ${err.stack}`);
+      throw err;
+    } finally {
+      pendingConnections.delete(connectionKey);
+    }
+  })();
+  
+  pendingConnections.set(connectionKey, connectPromise);
+  return connectPromise;
 }
 
 /**
@@ -342,6 +388,7 @@ async function disconnectServer(connectionKey) {
   }
   
   connections.delete(connectionKey);
+  toolsCache.delete(connectionKey);
   log(`Disconnected: ${connectionKey}`);
   
   return { message: `Disconnected from ${connectionKey}` };
@@ -354,21 +401,61 @@ async function disconnectServer(connectionKey) {
  * @param {string} serverName - MCP Server 名称
  * @param {Client} client - MCP Client
  */
-async function cacheTools(serverName, client) {
+async function cacheTools(cacheKey, client) {
   try {
-    // 使用新版 SDK API
     const result = await client.listTools();
     const tools = result.tools || [];
-    toolsCache.set(serverName, tools);
+    toolsCache.set(cacheKey, tools);
     
-    log(`Cached ${tools.length} tools for ${serverName}`);
+    log(`Cached ${tools.length} tools for ${cacheKey}`);
     
-    // 返回工具列表
-    return tools;
+    return { tools, success: true };
   } catch (err) {
-    log(`Failed to get tools from ${serverName}: ${err.message}`);
-    return [];
+    log(`Failed to get tools from ${cacheKey}: ${err.message}`);
+    throw err;
   }
+}
+
+function resolveEffectiveWorkingDirectory(userContext = {}) {
+  const dataBasePath = getDataBasePath();
+  const workingDirectory = userContext.workingDirectory || '';
+
+  if (workingDirectory && String(workingDirectory).trim() !== '') {
+    return path.isAbsolute(workingDirectory)
+      ? path.resolve(workingDirectory)
+      : path.resolve(path.join(dataBasePath, workingDirectory));
+  }
+
+  if (userContext.userId) {
+    return path.resolve(path.join(dataBasePath, 'work', String(userContext.userId), 'temp'));
+  }
+
+  return path.resolve(dataBasePath);
+}
+
+function resolveFilePathWithinWorkingDirectory(filePath, userContext = {}) {
+  if (!filePath || String(filePath).trim() === '') {
+    throw new Error('file_path is empty');
+  }
+
+  const baseDir = resolveEffectiveWorkingDirectory(userContext);
+  const normalizedInput = String(filePath).trim();
+  const absolutePath = path.isAbsolute(normalizedInput)
+    ? path.resolve(normalizedInput)
+    : path.resolve(baseDir, normalizedInput);
+
+  const isAllowed = absolutePath === baseDir || absolutePath.startsWith(baseDir + path.sep);
+  if (!isAllowed) {
+    throw new Error(
+      `Path not allowed in MCP file_path: ${absolutePath}\n` +
+      `Allowed paths: ${baseDir}`
+    );
+  }
+
+  return {
+    absolutePath,
+    baseDir,
+  };
 }
 
 /**
@@ -386,8 +473,9 @@ async function getUserTools(userId, configData) {
     
     // 公共 MCP：所有用户可用
     if (server.is_public) {
+      const cacheKey = server.name;
       // 确保公共连接已建立
-      if (!connections.has(server.name)) {
+      if (!connections.has(cacheKey)) {
         try {
           await connectServer(server);
         } catch (err) {
@@ -396,7 +484,7 @@ async function getUserTools(userId, configData) {
         }
       }
       
-      const tools = toolsCache.get(server.name) || [];
+      const tools = toolsCache.get(cacheKey) || [];
       for (const tool of tools) {
         allTools.push({
           name: `mcp_${server.name}_${tool.name}`,
@@ -425,7 +513,7 @@ async function getUserTools(userId, configData) {
           }
         }
         
-        const tools = toolsCache.get(server.name) || [];
+        const tools = toolsCache.get(connectionKey) || [];
         for (const tool of tools) {
           allTools.push({
             name: `mcp_${server.name}_${tool.name}`,
@@ -456,7 +544,7 @@ async function getUserTools(userId, configData) {
  * @param {object} configData - 配置数据
  * @returns {Promise<object>} 工具结果
  */
-async function callTool(serverName, toolName, args, userId, configData) {
+async function callTool(serverName, toolName, args, userId, configData, workingDirectory = '') {
   log(`callTool start: server=${serverName}, tool=${toolName}, userId=${userId || 'none'}`);
   
   let connectionKey = serverName;
@@ -515,21 +603,25 @@ async function callTool(serverName, toolName, args, userId, configData) {
   let processedArgs = args || {};
   if (args?.file_path && !args?.content) {
     const fs = await import('fs/promises');
-    const path = await import('path');
     
     const filePath = args.file_path;
     log(`Reading file from path: ${filePath}`);
     
     try {
-      const buffer = await fs.readFile(filePath);
+      const { absolutePath, baseDir } = resolveFilePathWithinWorkingDirectory(filePath, {
+        userId,
+        workingDirectory,
+      });
+      log(`Resolved file_path within allowed dir: baseDir=${baseDir}, absolutePath=${absolutePath}`);
+
+      const buffer = await fs.readFile(absolutePath);
       const base64 = buffer.toString('base64');
-      const mimeType = args.mime_type || 'application/octet-stream';
       
       log(`File read: ${buffer.length} bytes, base64 length: ${base64.length}`);
       
       processedArgs = {
         content: base64,
-        filename: args.name || path.basename(filePath),
+        filename: args.name || path.basename(absolutePath),
       };
     } catch (err) {
       throw new Error(`Failed to read file: ${err.message}`);
@@ -593,12 +685,13 @@ async function callTool(serverName, toolName, args, userId, configData) {
 async function processCommand(command, params, user) {
   const userId = user.userId || null;
   const accessToken = user.accessToken || null;
+  const workingDirectory = user.workingDirectory || '';
   
   switch (command) {
     case 'invoke':
       // invoke 是各种操作的包装器
       const action = params.action || 'list_tools';
-      return await processAction(action, params, userId, accessToken);
+      return await processAction(action, params, userId, accessToken, workingDirectory);
     
     case 'ping':
       return { 
@@ -609,14 +702,14 @@ async function processCommand(command, params, user) {
       };
     
     default:
-      return await processAction(command, params, userId, accessToken);
+      return await processAction(command, params, userId, accessToken, workingDirectory);
   }
 }
 
 /**
  * 处理具体操作
  */
-async function processAction(action, params, userId, accessToken) {
+async function processAction(action, params, userId, accessToken, workingDirectory = '') {
   // 不需要 fetchConfig 的 action
   if (action === 'shutdown') {
     for (const [key] of connections) {
@@ -640,24 +733,31 @@ async function processAction(action, params, userId, accessToken) {
         params.tool_name,
         params.arguments,
         userId,
-        configData
+        configData,
+        workingDirectory
       );
     
     case 'list_servers': {
       const servers = configData.servers || [];
       return {
-        servers: servers.map(s => ({
-          id: s.id,
-          name: s.name,
-          display_name: s.display_name,
-          description: s.description,
-          transport_type: s.transport_type || 'stdio',
-          is_public: s.is_public,
-          requires_credentials: s.requires_credentials,
-          is_enabled: s.is_enabled,
-          connected: connections.has(s.name) || (userId && connections.has(`${s.name}:${userId}`)),
-          tools_count: (toolsCache.get(s.name) || []).length,
-        })),
+        servers: servers.map(s => {
+          const publicConnKey = s.name;
+          const userConnKey = userId ? `${s.name}:${userId}` : s.name;
+          const isConnected = connections.has(publicConnKey) || connections.has(userConnKey);
+          const toolsCount = (toolsCache.get(publicConnKey) || toolsCache.get(userConnKey) || []).length;
+          return {
+            id: s.id,
+            name: s.name,
+            display_name: s.display_name,
+            description: s.description,
+            transport_type: s.transport_type || 'stdio',
+            is_public: s.is_public,
+            requires_credentials: s.requires_credentials,
+            is_enabled: s.is_enabled,
+            connected: isConnected,
+            tools_count: toolsCount,
+          };
+        }),
       };
     }
     
@@ -680,12 +780,22 @@ async function processAction(action, params, userId, accessToken) {
       if (!params.server_name) {
         // 刷新所有已有连接
         const allTools = [];
+        const refreshErrors = [];
         for (const [key, conn] of connections) {
-          const serverName = key.split(':')[0];
-          const tools = await cacheTools(serverName, conn.client);
-          allTools.push(...tools);
+          try {
+            const result = await cacheTools(key, conn.client);
+            allTools.push(...result.tools);
+          } catch (err) {
+            refreshErrors.push({ key, error: err.message });
+            log(`Refresh failed for ${key}: ${err.message}`);
+          }
         }
-        return { message: 'Tools cache refreshed', servers_refreshed: connections.size, tools: allTools };
+        return {
+          message: `Refreshed ${connections.size - refreshErrors.length}/${connections.size} connections`,
+          servers_refreshed: connections.size - refreshErrors.length,
+          tools: allTools,
+          refresh_errors: refreshErrors.length > 0 ? refreshErrors : undefined,
+        };
       }
       
       // 刷新指定 server
@@ -708,8 +818,8 @@ async function processAction(action, params, userId, accessToken) {
         return { message: `No connection for ${params.server_name}`, servers_refreshed: 0, tools: [] };
       }
       
-      const tools = await cacheTools(params.server_name, conn.client);
-      return { message: `Tools refreshed for ${params.server_name}`, servers_refreshed: 1, tools };
+      const result = await cacheTools(connectionKey, conn.client);
+      return { message: `Tools refreshed for ${params.server_name}`, servers_refreshed: 1, tools: result.tools };
     }
     
     case 'init': {
@@ -868,8 +978,57 @@ async function main() {
   log('Ready, waiting for commands on stdin');
 }
 
+export const __testing = {
+  resetState() {
+    connections.clear();
+    pendingConnections.clear();
+    toolsCache.clear();
+    clientFactory = defaultClientFactory;
+    transportFactory = createTransport;
+  },
+  setClientFactory(factory) {
+    clientFactory = factory;
+  },
+  setTransportFactory(factory) {
+    transportFactory = factory;
+  },
+  setConnection(key, value) {
+    connections.set(key, value);
+  },
+  setToolsCache(key, value) {
+    toolsCache.set(key, value);
+  },
+  resolveEffectiveWorkingDirectory,
+  resolveFilePathWithinWorkingDirectory,
+  getConnectionKeys() {
+    return Array.from(connections.keys());
+  },
+  getToolsCacheKeys() {
+    return Array.from(toolsCache.keys());
+  },
+  connectServer,
+  disconnectServer,
+  getUserTools,
+  cacheTools,
+  processAction,
+};
+
+function isMainModule() {
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  try {
+    return pathToFileURL(process.argv[1]).href === import.meta.url;
+  } catch {
+    return false;
+  }
+}
+
 // 启动
-main().catch(err => {
-  process.stderr.write(`Fatal error: ${err.message}\n`);
-  process.exit(1);
-});
+if (isMainModule()) {
+  main().catch(err => {
+    process.stderr.write(`Fatal error: ${err.message}\n`);
+    process.exit(1);
+  });
+}
