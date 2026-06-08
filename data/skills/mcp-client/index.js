@@ -21,7 +21,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import path from 'path';
 import { pathToFileURL } from 'url';
 import StatelessHTTPTransport from '../../../lib/mcp-stateless-http.js';
-import { getDataBasePath } from '../../../lib/paths.js';
+import { getDataBasePath, getWorkspaceRoot } from '../../../lib/paths.js';
 
 // ============== 全局状态 ==============
 
@@ -427,7 +427,7 @@ function resolveEffectiveWorkingDirectory(userContext = {}) {
   }
 
   if (userContext.userId) {
-    return path.resolve(path.join(dataBasePath, 'work', String(userContext.userId), 'temp'));
+    return path.resolve(path.join(getWorkspaceRoot(), String(userContext.userId), 'temp'));
   }
 
   return path.resolve(dataBasePath);

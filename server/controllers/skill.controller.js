@@ -8,10 +8,10 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
-import { parseSkillMd, validateSkillPath } from '../../lib/skill-parser.js';
+import { parseSkillMd } from '../../lib/skill-parser.js';
 import fsOriginal from 'fs';
 import path from 'path';
-import { getDataBasePath } from '../../lib/paths.js';
+import { getSkillPath, getSkillsPath } from '../../lib/paths.js';
 
 class SkillController {
   constructor(db) {
@@ -428,9 +428,8 @@ class SkillController {
         return;
       }
 
-      // 安全验证：确保路径在允许的目录内
-      const PROJECT_ROOT = process.cwd();
-      const pathValidation = await validateSkillPath(source_path, PROJECT_ROOT, ['data', 'skills']);
+      // 安全验证：确保路径在当前技能目录根内
+      const pathValidation = this.#validateSkillSourcePath(source_path);
       
       if (!pathValidation.valid) {
         ctx.error(pathValidation.error || 'Invalid skill path', 400);
@@ -944,17 +943,43 @@ class SkillController {
     // 统一路径分隔符为正斜杠，便于判断（兼容 Windows 和 Unix）
     sourcePath = sourcePath.replace(/\\/g, '/');
     
-    // 规范化 source_path：skills/xxx → data/skills/xxx
-    if (sourcePath.startsWith('skills/')) {
-      sourcePath = 'data/' + sourcePath;  // skills/pdf → data/skills/pdf
-    } else if (!sourcePath.startsWith('data/') && !path.isAbsolute(sourcePath)) {
-      sourcePath = path.join('data/skills', sourcePath);
-    }
-    
     return {
-      path: path.isAbsolute(sourcePath) ? sourcePath : path.join(PROJECT_ROOT, sourcePath),
+      path: getSkillPath(sourcePath),
       error: null
     };
+  }
+
+  /**
+   * 校验技能源码路径是否位于技能目录根内
+   * 兼容 skills/foo、data/skills/foo、foo、绝对路径 四种输入
+   */
+  #validateSkillSourcePath(sourcePath) {
+    if (!sourcePath || sourcePath.trim() === '') {
+      return { valid: false, fullPath: '', error: 'source_path is required' };
+    }
+
+    const fullPath = getSkillPath(sourcePath);
+    const skillsBasePath = path.resolve(getSkillsPath());
+    const normalizedFullPath = path.resolve(fullPath);
+    const isAllowed = normalizedFullPath === skillsBasePath || normalizedFullPath.startsWith(skillsBasePath + path.sep);
+
+    if (!isAllowed) {
+      return {
+        valid: false,
+        fullPath: normalizedFullPath,
+        error: `Invalid path: skill must be inside ${skillsBasePath}`,
+      };
+    }
+
+    if (!fsOriginal.existsSync(normalizedFullPath)) {
+      return {
+        valid: false,
+        fullPath: normalizedFullPath,
+        error: `Directory not found: ${sourcePath}`,
+      };
+    }
+
+    return { valid: true, fullPath: normalizedFullPath };
   }
 
   /**
@@ -990,9 +1015,8 @@ class SkillController {
         }
         skillPath = result.path;
       } else {
-        // 未注册目录，直接使用 data/skills/:name
-        const dataBasePath = getDataBasePath();
-        skillPath = path.join(dataBasePath, 'skills', id);
+        // 未注册目录，直接使用 skills 目录下的同名目录
+        skillPath = path.join(getSkillsPath(), id);
       }
 
       logger.info('[listFiles] Computed skillPath:', { skillPath, exists: skillPath ? fsOriginal.existsSync(skillPath) : false });
@@ -1081,9 +1105,8 @@ class SkillController {
         }
         skillPath = result.path;
       } else {
-        // 未注册目录，直接使用 data/skills/:name
-        const dataBasePath = getDataBasePath();
-        skillPath = path.join(dataBasePath, 'skills', id);
+        // 未注册目录，直接使用 skills 目录下的同名目录
+        skillPath = path.join(getSkillsPath(), id);
       }
 
       if (!skillPath || !fsOriginal.existsSync(skillPath)) {
@@ -1140,8 +1163,7 @@ class SkillController {
    */
   async listDirectories(ctx) {
     try {
-      const dataBasePath = getDataBasePath();
-      const skillsDir = path.join(dataBasePath, 'skills');
+      const skillsDir = getSkillsPath();
 
       // 确保 data/skills 目录存在
       if (!fsOriginal.existsSync(skillsDir)) {
@@ -1158,7 +1180,7 @@ class SkillController {
 
         const dirName = item.name;
         const dirPath = path.join(skillsDir, dirName);
-        const relativePath = `data/skills/${dirName}`;
+          const relativePath = `skills/${dirName}`;
 
         // 尝试读取 SKILL.md 获取描述
         let description = '';
@@ -1210,8 +1232,7 @@ class SkillController {
         return;
       }
 
-      const dataBasePath = getDataBasePath();
-      const skillsDir = path.join(dataBasePath, 'skills');
+      const skillsDir = getSkillsPath();
       const newDirPath = path.join(skillsDir, name);
 
       // 检查目录是否已存在
@@ -1239,7 +1260,7 @@ ${description || '新技能描述'}
 
       ctx.success({
         name,
-        path: `data/skills/${name}`,
+        path: `skills/${name}`,
         message: '技能目录创建成功',
       });
     } catch (error) {
