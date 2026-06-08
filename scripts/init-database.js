@@ -203,8 +203,7 @@ const TABLES = [
     INDEX idx_email (email),
     INDEX idx_status (status),
     INDEX idx_department (department_id),
-    INDEX idx_position (position_id),
-    CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL
+    INDEX idx_position (position_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   // 7. User_Profiles 表（用户画像：专家对用户的认知）
@@ -392,7 +391,7 @@ const TABLES = [
     name VARCHAR(255) NOT NULL,
     description TEXT,
     owner_id VARCHAR(32) NOT NULL COMMENT '创建者 user_id',
-    embedding_model_id VARCHAR(50) COMMENT '关联 ai_models 表',
+    embedding_model_id VARCHAR(32) COMMENT '关联 ai_models 表',
     embedding_dim INT DEFAULT 1536,
     is_public BIT(1) DEFAULT b'0' COMMENT '预留，暂不使用',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -674,7 +673,7 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS user_skill_parameters (
     id VARCHAR(32) PRIMARY KEY,
     user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
-    skill_id VARCHAR(64) NOT NULL COMMENT '技能ID',
+    skill_id VARCHAR(32) NOT NULL COMMENT '技能ID',
     param_name VARCHAR(100) NOT NULL COMMENT '参数名',
     param_value TEXT COMMENT '参数值',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -689,6 +688,11 @@ const TABLES = [
 
 // 循环外键约束定义（需要在所有表创建后添加）
 const CIRCULAR_FOREIGN_KEYS = [
+  {
+    table: 'users',
+    constraintName: 'fk_user_position',
+    sql: `ALTER TABLE users ADD CONSTRAINT fk_user_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL`
+  },
   {
     table: 'tasks',
     constraintName: 'fk_tasks_topic',
