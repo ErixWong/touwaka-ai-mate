@@ -7,7 +7,13 @@
   "type": "workflow",
   "author": "Touwaka Team",
   "license": "MIT",
-  "tags": ["简历", "筛选", "招聘", "AI", "匹配"],
+  "tags": [
+    "简历",
+    "筛选",
+    "招聘",
+    "AI",
+    "匹配"
+  ],
   "path": "apps/resume-fast-screening",
   "compatibility": {
     "min_platform_version": "2.0.0",
