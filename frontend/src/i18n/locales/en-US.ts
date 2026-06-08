@@ -949,6 +949,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
   // Login page
   login: {
     subtitle: 'Sign in to your account',
+    kicker: 'Welcome back',
+    welcomeSubtitle: 'Enter your AI expert workspace and continue where you left off.',
     account: 'Username / Email',
     accountPlaceholder: 'Enter your username or email',
     accountRequired: 'Please enter your account',
@@ -959,6 +961,19 @@ thinkingFormatDeepseek: 'DeepSeek/GLM Format',
     error: 'Login failed, please check your username/email and password',
     noAccount: "Don't have an account?",
     register: 'Sign up now',
+    brand: {
+      badge: 'AI Expert Workspace',
+      eyebrow: 'Touwaka Mate',
+      title: 'Unify expert copies, skills, and conversation workflows in a single interface.',
+      description: 'Sign in to access the expert system, context memory, and skill panels for a more natural and consistent AI collaboration experience.',
+      metricValue1: 'Dual Minds',
+      metricLabel1: 'Expressive & reflective dual-mind architecture',
+      metricValue2: 'Experts + Skills',
+      metricLabel2: 'Unified orchestration of experts, copies, and skills',
+      point1: 'Manage experts, topics, skill directory, and debugging in one place',
+      point2: 'Preserve conversational context to reduce information loss across sessions',
+      point3: 'A persistent AI console for ongoing work — not just a one-off chat window',
+    },
   },
 
   // App info

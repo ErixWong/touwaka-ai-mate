@@ -884,6 +884,8 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
   // 登录页面
   login: {
     subtitle: '登录您的账号',
+    kicker: 'Welcome back',
+    welcomeSubtitle: '进入您的 AI 专家工作台，继续上一次的上下文与任务流。',
     account: '用户名 / 邮箱',
     accountPlaceholder: '请输入用户名或邮箱',
     accountRequired: '请输入账号',
@@ -894,6 +896,19 @@ thinkingFormatDeepseek: 'DeepSeek/GLM 格式',
     error: '登录失败，请检查用户名/邮箱和密码',
     noAccount: '还没有账号？',
     register: '立即注册',
+    brand: {
+      badge: 'AI Expert Workspace',
+      eyebrow: 'Touwaka Mate',
+      title: '让专家副本、技能和对话工作流在同一个界面里协同。',
+      description: '登录后即可进入专家系统、上下文记忆与技能调用面板，持续保持更自然、更稳定的 AI 协作体验。',
+      metricValue1: 'Dual Minds',
+      metricLabel1: '表达与反思双心智架构',
+      metricValue2: 'Experts + Skills',
+      metricLabel2: '专家、副本、技能统一编排',
+      point1: '统一管理专家、话题、技能目录与调试能力',
+      point2: '延续上下文记忆，降低多轮协作中的信息损耗',
+      point3: '更适合持续工作的 AI 控制台，而不是一次性聊天窗口',
+    },
   },
 
   // 应用信息
