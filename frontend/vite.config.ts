@@ -8,10 +8,10 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     vue(),
-    vueDevTools(),
+    ...(command === 'serve' ? [vueDevTools()] : []),
     AutoImport({
       resolvers: [ElementPlusResolver()],
     }),
@@ -64,7 +64,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -76,4 +76,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
