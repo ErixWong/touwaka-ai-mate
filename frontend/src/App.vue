@@ -7,16 +7,20 @@
 import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useI18n } from 'vue-i18n'
 import Toast from '@/components/common/Toast.vue'
 
 const userStore = useUserStore()
+const systemSettingsStore = useSystemSettingsStore()
 const { locale } = useI18n()
 
 onMounted(() => {
   // 初始化语言设置
   // 注意：用户状态由路由守卫处理，避免重复加载
   const init = async () => {
+    await systemSettingsStore.loadBranding()
+
     // 如果用户已登录且已加载偏好设置，应用语言设置
     if (userStore.isLoggedIn && userStore.preferences?.language) {
       locale.value = userStore.preferences.language
