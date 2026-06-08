@@ -173,6 +173,22 @@ const form = reactive({
   tool_parameters: '',
 })
 
+function resetForm() {
+  form.name = ''
+  form.description = ''
+  form.execution_mode = 'llm'
+  form.model_id = ''
+  form.max_tokens = 4096
+  form.temperature = 0.7
+  form.timeout = 120
+  form.prompt_template = ''
+  form.can_use_skills = false
+  form.is_active = true
+  form.tool_name = ''
+  form.tool_description = ''
+  form.tool_parameters = ''
+}
+
 // 监听 assistant 变化，初始化表单
 watch(
   () => props.assistant,
@@ -192,6 +208,8 @@ watch(
       form.tool_name = newAssistant.tool_name || ''
       form.tool_description = newAssistant.tool_description || ''
       form.tool_parameters = newAssistant.tool_parameters || ''
+    } else {
+      resetForm()
     }
   },
   { immediate: true }

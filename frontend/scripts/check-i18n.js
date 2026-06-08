@@ -91,6 +91,20 @@ function checkKeyExists(key, localeObj) {
 }
 
 /**
+ * 获取 locale 子模块文件名集合
+ */
+function getLocaleModuleFiles(localeName) {
+  const localeDir = path.join(LOCALES_DIR, localeName);
+  if (!fs.existsSync(localeDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(localeDir)
+    .filter(file => file.endsWith('.ts'))
+    .sort();
+}
+
+/**
  * 主函数
  */
 async function main() {
@@ -138,8 +152,27 @@ async function main() {
   
   const zhCN = zhCNModule.default || zhCNModule;
   const enUS = enUSModule.default || enUSModule;
-  
+
   console.log('  ✅ 已加载 zh-CN.ts 和 en-US.ts\n');
+
+  // 2.1 检查结构化 locale 子模块是否对齐
+  console.log('🧩 检查 locale 子模块结构...');
+  const zhModules = getLocaleModuleFiles('zh-CN');
+  const enModules = getLocaleModuleFiles('en-US');
+  const missingZhModules = enModules.filter(file => !zhModules.includes(file));
+  const missingEnModules = zhModules.filter(file => !enModules.includes(file));
+
+  if (missingZhModules.length === 0 && missingEnModules.length === 0) {
+    console.log('  ✅ zh-CN 与 en-US 子模块结构一致\n');
+  } else {
+    if (missingZhModules.length > 0) {
+      console.log(`  ❌ zh-CN 缺少子模块: ${missingZhModules.join(', ')}`);
+    }
+    if (missingEnModules.length > 0) {
+      console.log(`  ❌ en-US 缺少子模块: ${missingEnModules.join(', ')}`);
+    }
+    console.log('');
+  }
   
   // 3. 检查缺失的 key
   console.log('🔎 检查缺失的翻译键...\n');
@@ -158,6 +191,10 @@ async function main() {
   
   // 4. 输出结果
   let hasError = false;
+
+  if (missingZhModules.length > 0 || missingEnModules.length > 0) {
+    hasError = true;
+  }
   
   if (missingInZhCN.length > 0) {
     console.log(`❌ 在 zh-CN.ts 中缺失 ${missingInZhCN.length} 个键:`);

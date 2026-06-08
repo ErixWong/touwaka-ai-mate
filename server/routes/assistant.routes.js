@@ -15,6 +15,9 @@ export default function createAssistantRoutes(controller) {
   // GET /api/assistants - 列出可用助理
   router.get('/', controller.list.bind(controller));
 
+  // GET /api/assistants/manage - 管理态助理列表（管理员）
+  router.get('/manage', authenticate(), controller.listManage.bind(controller));
+
   // POST /api/assistants - 创建助理（管理员）
   router.post('/', authenticate(), controller.create.bind(controller));
 
