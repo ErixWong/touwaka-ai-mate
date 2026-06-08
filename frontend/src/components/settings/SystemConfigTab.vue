@@ -3,12 +3,16 @@
     <div v-if="systemSettingsStore.isLoading" class="loading-state">{{ $t('common.loading') }}</div>
 
     <template v-else>
+      <div v-if="hasChanges" class="unsaved-banner">
+        <span>{{ $t('settings.unsavedChangesNotice') }}</span>
+      </div>
+
       <div class="sub-tabs">
         <el-button :type="activeSubTab === 'general' ? 'primary' : ''" @click="activeSubTab = 'general'">🤖 {{ $t('settings.generalConfig') }}</el-button>
         <el-button :type="activeSubTab === 'registration' ? 'primary' : ''" @click="activeSubTab = 'registration'">🎫 {{ $t('settings.registrationConfig') }}</el-button>
         <el-button :type="activeSubTab === 'connection' ? 'primary' : ''" @click="activeSubTab = 'connection'">🔗 {{ $t('settings.connectionLimits') }}</el-button>
         <el-button :type="activeSubTab === 'token' ? 'primary' : ''" @click="activeSubTab = 'token'">🔑 {{ $t('settings.tokenConfig') }}</el-button>
-        <el-button :type="activeSubTab === 'timeout' ? 'primary' : ''" @click="activeSubTab = 'timeout'">⏱️ {{ $t('settings.timeoutConfig') }}</el-button>
+        <el-button :type="activeSubTab === 'timeout' ? 'primary' : ''" @click="activeSubTab = 'timeout'">⏱️ {{ $t('settings.toolConfig') }}</el-button>
         <el-button :type="activeSubTab === 'app' ? 'primary' : ''" @click="activeSubTab = 'app'">📱 {{ $t('settings.appConfig') }}</el-button>
         <el-button :type="activeSubTab === 'packages' ? 'primary' : ''" @click="activeSubTab = 'packages'">📦 {{ $t('settings.packageWhitelist') }}</el-button>
         <el-button :type="activeSubTab === 'branding' ? 'primary' : ''" @click="activeSubTab = 'branding'">🎨 {{ $t('settings.brandingConfig') }}</el-button>
@@ -43,13 +47,13 @@
             </div>
             <div class="config-item">
               <label class="config-label">{{ $t('settings.frequencyPenalty') }}</label>
-              <el-input-number v-model="form.llm.frequency_penalty" :min="0" :max="2" :step="0.1" :precision="1" />
-              <span class="config-hint">0-2</span>
+              <el-input-number v-model="form.llm.frequency_penalty" :min="-2" :max="2" :step="0.1" :precision="1" />
+              <span class="config-hint">-2-2</span>
             </div>
             <div class="config-item">
               <label class="config-label">{{ $t('settings.presencePenalty') }}</label>
-              <el-input-number v-model="form.llm.presence_penalty" :min="0" :max="2" :step="0.1" :precision="1" />
-              <span class="config-hint">0-2</span>
+              <el-input-number v-model="form.llm.presence_penalty" :min="-2" :max="2" :step="0.1" :precision="1" />
+              <span class="config-hint">-2-2</span>
             </div>
           </div>
           <div class="config-actions">
@@ -116,6 +120,12 @@
               <el-input-number v-model="form.connection.max_per_expert" :min="1" />
             </div>
           </div>
+          <div class="config-actions">
+            <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
+            <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
+              {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -137,13 +147,19 @@
               <span class="config-hint">e.g. 7d, 30d</span>
             </div>
           </div>
+          <div class="config-actions">
+            <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
+            <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
+              {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+            </el-button>
+          </div>
         </div>
       </div>
 
       <div v-if="activeSubTab === 'timeout'" class="tab-content">
         <div class="config-section">
           <div class="section-header">
-            <h3 class="section-title">⏱️ {{ $t('settings.timeoutConfig') }}</h3>
+            <h3 class="section-title">⏱️ {{ $t('settings.toolConfig') }}</h3>
             <el-button @click="resetSection('timeout')">{{ $t('common.reset') }}</el-button>
           </div>
           <div class="config-grid">
@@ -153,6 +169,7 @@
               <span class="config-hint">1-50</span>
             </div>
           </div>
+          <p class="config-description section-description">{{ $t('settings.toolConfigDescription') }}</p>
           <div class="config-actions">
             <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
             <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
@@ -236,6 +253,7 @@
                   <span class="preview-icon">{{ form.branding.logo_icon }}</span>
                   <span class="preview-name">{{ form.branding.app_name }}</span>
                 </div>
+                <span class="config-hint">{{ $t('settings.brandingPreviewHint') }}</span>
               </div>
             </div>
           </div>
@@ -252,7 +270,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
@@ -265,7 +283,7 @@ const toast = useToastStore()
 const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'app' | 'packages' | 'branding'>('general')
 const saving = ref(false)
 
-const form = reactive({
+const createDefaultForm = () => ({
   llm: { context_threshold: 0.7, temperature: 0.7, reflective_temperature: 0.3, top_p: 1, frequency_penalty: 0, presence_penalty: 0 },
   registration: { allow_self_registration: true, default_invitation_quota: 10, default_invitation_max_uses: 5, invitation_expiry_days: 30 },
   connection: { max_per_user: 5, max_per_expert: 100 },
@@ -275,15 +293,9 @@ const form = reactive({
   branding: { app_name: 'Touwaka Mate', logo_icon: '🤖' },
 })
 
-const defaults = {
-  llm: { context_threshold: 0.7, temperature: 0.7, reflective_temperature: 0.3, top_p: 1, frequency_penalty: 0, presence_penalty: 0 },
-  registration: { allow_self_registration: true, default_invitation_quota: 10, default_invitation_max_uses: 5, invitation_expiry_days: 30 },
-  connection: { max_per_user: 5, max_per_expert: 100 },
-  token: { access_expiry: '15m', refresh_expiry: '7d' },
-  tool: { max_rounds: 20 },
-  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
-  branding: { app_name: 'Touwaka Mate', logo_icon: '🤖' },
-}
+const form = reactive(createDefaultForm())
+
+const defaults = createDefaultForm()
 
 const hasChanges = computed(() => {
   const settings = systemSettingsStore.settings
@@ -300,11 +312,14 @@ const hasChanges = computed(() => {
 })
 
 const resetSection = (section: string) => {
-  Object.assign(form[section as keyof typeof form], defaults[section as keyof typeof defaults])
+  Object.assign(form[section as keyof typeof form], structuredClone(defaults[section as keyof typeof defaults]))
 }
 
 const resetAll = () => {
-  Object.assign(form, defaults)
+  const freshDefaults = createDefaultForm()
+  for (const key of Object.keys(freshDefaults) as Array<keyof typeof freshDefaults>) {
+    Object.assign(form[key], structuredClone(freshDefaults[key]))
+  }
 }
 
 const saveConfig = async () => {
@@ -320,7 +335,20 @@ const saveConfig = async () => {
   }
 }
 
+const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+  if (!hasChanges.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+const beforeLeaveHandler = (event: Event) => {
+  if (!hasChanges.value) return
+  event.preventDefault()
+}
+
 onMounted(async () => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('system-config-before-leave', beforeLeaveHandler)
   await systemSettingsStore.loadSettings()
   const settings = systemSettingsStore.settings
   if (settings) {
@@ -348,6 +376,11 @@ onMounted(async () => {
     form.branding.app_name = settings.branding?.app_name ?? 'Touwaka Mate'
     form.branding.logo_icon = settings.branding?.logo_icon ?? '🤖'
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('system-config-before-leave', beforeLeaveHandler)
 })
 
 watch(() => systemSettingsStore.settings, (settings) => {
@@ -382,11 +415,13 @@ watch(() => systemSettingsStore.settings, (settings) => {
 <style scoped>
 .system-config-tab { padding: 20px; }
 .loading-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+.unsaved-banner { display: flex; align-items: center; margin-bottom: 12px; padding: 10px 12px; background: var(--warning-bg, #fff7e6); border: 1px solid var(--warning-border, #ffd591); border-radius: 8px; color: var(--warning-text, #ad6800); }
 .sub-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; }
 .tab-content { min-height: 300px; }
 .config-section { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #e0e0e0); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .section-title { margin: 0; font-size: 16px; font-weight: 600; }
+.section-description { margin-top: 12px; }
 .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .config-item { display: flex; flex-direction: column; gap: 4px; }
 .config-item.full-width { grid-column: 1 / -1; }
