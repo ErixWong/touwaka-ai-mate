@@ -593,10 +593,11 @@ async function loadCJKFont(pdfDoc) {
   pdfDoc.registerFontkit(fontkitModule);
   
   const fontPaths = [
+    process.env.FONTS_BASE_PATH ? path.join(process.env.FONTS_BASE_PATH, 'simhei.ttf') : null,
     path.join(process.env.SKILL_PATH || '', '..', '..', 'fonts', 'simhei.ttf'),
     path.join(process.cwd(), '..', 'fonts', 'simhei.ttf'),
     'data/fonts/simhei.ttf',
-  ];
+  ].filter(Boolean);
   
   for (const fontPath of fontPaths) {
     try {
