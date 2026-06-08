@@ -99,8 +99,8 @@ class AssistantManager {
    * @param {string} assistantId - 助理ID
    * @returns {object|null}
    */
-  getAssistant(assistantId) {
-    return getAssistant(this.assistantsCache, assistantId);
+  getAssistant(assistantId, options = {}) {
+    return getAssistant(this.assistantsCache, assistantId, options);
   }
 
   /**
@@ -114,27 +114,10 @@ class AssistantManager {
    * 列出所有可用助理
    * @returns {Array}
    */
-  async roster() {
+  async roster(options = {}) {
     await this.refreshAssistantsCache();
 
-    return Array.from(this.assistantsCache.values()).map(a => ({
-      id: a.id,
-      name: a.name,
-      icon: a.icon,
-      description: a.description,
-      model_id: a.model_id,
-      prompt_template: a.prompt_template,
-      max_tokens: a.max_tokens,
-      temperature: a.temperature,
-      timeout: a.timeout,
-      estimated_time: a.estimated_time,
-      tool_name: a.tool_name,
-      tool_description: a.tool_description,
-      tool_parameters: a.tool_parameters,
-      can_use_skills: a.can_use_skills,
-      execution_mode: a.execution_mode,
-      is_active: a.is_active,
-    }));
+    return roster(this.assistantsCache, options);
   }
 
   /**
@@ -573,7 +556,7 @@ class AssistantManager {
       }
 
       // 获取助理配置
-      const assistant = this.getAssistant(request.assistant_id);
+      const assistant = this.getAssistant(request.assistant_id, { includeInactive: true });
       if (!assistant) {
         throw new Error(`Assistant not found: ${request.assistant_id}`);
       }

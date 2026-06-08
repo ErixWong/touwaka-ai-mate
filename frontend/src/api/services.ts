@@ -831,6 +831,10 @@ export const assistantApi = {
   getAssistants: () =>
     apiRequest<Assistant[]>(apiClient.get('/assistants')),
 
+  // 获取助理管理列表（包含停用助理和完整配置）
+  getManageAssistants: () =>
+    apiRequest<Assistant[]>(apiClient.get('/assistants/manage')),
+
   // 获取单个助理详情
   getAssistant: (id: string) =>
     apiRequest<Assistant>(apiClient.get(`/assistants/${id}`)),
