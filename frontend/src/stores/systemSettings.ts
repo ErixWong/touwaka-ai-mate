@@ -65,6 +65,8 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const settings = ref<SystemSettings | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const brandingLoaded = ref(false)
+  let brandingPromise: Promise<BrandingSettings> | null = null
 
   // 默认配置（用于初始化）
   const defaultSettings: SystemSettings = {
@@ -182,18 +184,40 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   }
 
   const loadBranding = async (): Promise<BrandingSettings> => {
-    try {
-      const response = await apiClient.get('/branding')
-      const data = response.data.data
-      if (settings.value) {
-        settings.value.branding = data
-      } else {
-        settings.value = { ...defaultSettings, branding: data } as SystemSettings
-      }
-      return data
-    } catch {
-      return { app_name: 'Touwaka Mate', logo_icon: '🤖' }
+    if (brandingLoaded.value && settings.value?.branding) {
+      return settings.value.branding
     }
+
+    if (brandingPromise) {
+      return brandingPromise
+    }
+
+    brandingPromise = (async () => {
+      try {
+        const response = await apiClient.get('/branding')
+        const data = response.data.data
+        if (settings.value) {
+          settings.value.branding = data
+        } else {
+          settings.value = { ...defaultSettings, branding: data } as SystemSettings
+        }
+        brandingLoaded.value = true
+        return data
+      } catch {
+        const fallback = { ...defaultSettings.branding }
+        if (settings.value) {
+          settings.value.branding = fallback
+        } else {
+          settings.value = { ...defaultSettings, branding: fallback }
+        }
+        brandingLoaded.value = true
+        return fallback
+      } finally {
+        brandingPromise = null
+      }
+    })()
+
+    return brandingPromise
   }
 
   return {
@@ -208,6 +232,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     toolSettings,
     registrationSettings,
     brandingSettings,
+    brandingLoaded,
     loadSettings,
     updateSettings,
     resetSettings,

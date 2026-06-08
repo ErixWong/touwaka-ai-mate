@@ -182,6 +182,10 @@ router.beforeEach(async (to, from) => {
   }
 
   const systemSettingsStore = useSystemSettingsStore()
+  if (!systemSettingsStore.brandingLoaded) {
+    await systemSettingsStore.loadBranding()
+  }
+
   const appName = systemSettingsStore.brandingSettings?.app_name || 'Touwaka Mate'
   document.title = to.meta.title ? `${to.meta.title} - ${appName}` : appName
   document.documentElement.setAttribute('lang', getLocale())
