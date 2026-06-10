@@ -689,7 +689,9 @@ class AppMarketService {
         );
 
         // 插入数据库记录
-        const handlerId = `${appId}-${handlerName}`;
+        // 不能直接使用 `${appId}-${handlerName}` 作为主键，app_row_handlers.id 仅有 VARCHAR(32)
+        // 某些 app / handler 组合名会超长，导致安装失败。
+        const handlerId = Utils.newID(32);
         await this.models.AppRowHandler.create({
           id: handlerId,
           name: handlerName,

@@ -31,6 +31,12 @@ export default (controller) => {
   // 查询处理状态 — 2.3
   router.get('/documents/:documentId/processing', authenticate(), controller.getProcessingStatus.bind(controller));
 
+  // 提交 OCR 任务
+  router.post('/documents/:documentId/ocr/submit', authenticate(), controller.submitOcr.bind(controller));
+
+  // 同步 OCR 任务状态
+  router.post('/documents/:documentId/ocr/sync', authenticate(), controller.syncOcr.bind(controller));
+
   // 重试失败处理 — 2.4
   router.post('/documents/:documentId/retry', authenticate(), controller.retryProcessing.bind(controller));
 
