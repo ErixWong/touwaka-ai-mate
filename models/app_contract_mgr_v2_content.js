@@ -22,6 +22,10 @@ export default class app_contract_mgr_v2_content extends Model {
       type: DataTypes.STRING(32),
       allowNull: true
     },
+    document_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true
+    },
     ocr_text: {
       type: DataTypes.TEXT,
       allowNull: true
@@ -55,6 +59,10 @@ export default class app_contract_mgr_v2_content extends Model {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    extract_prompt: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
     extract_json: {
       type: DataTypes.TEXT,
       allowNull: true
@@ -69,6 +77,10 @@ export default class app_contract_mgr_v2_content extends Model {
     },
     extract_at: {
       type: DataTypes.DATE,
+      allowNull: true
+    },
+    classification_json: {
+      type: DataTypes.TEXT,
       allowNull: true
     },
     created_at: {

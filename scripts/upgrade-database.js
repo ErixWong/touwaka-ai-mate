@@ -1752,6 +1752,199 @@ const MIGRATIONS = [
     }
   },
 
+  // 33.05 app_contract_mgr_v2_content 补齐 filter 中间态列（修复旧半安装/早期升级只补 process_step 的情况）
+  {
+    name: 'app_contract_mgr_v2_content ensure filter state columns',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
+      const hasCarry = await hasColumn(conn, 'app_contract_mgr_v2_content', 'filter_carried_over');
+      const hasChunkIndex = await hasColumn(conn, 'app_contract_mgr_v2_content', 'filter_chunk_index');
+      return hasCarry && hasChunkIndex;
+    },
+    migrate: async (conn) => {
+      if (!await hasColumn(conn, 'app_contract_mgr_v2_content', 'filter_carried_over')) {
+        await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_content ADD COLUMN filter_carried_over LONGTEXT NULL COMMENT '滑动窗口中间状态' AFTER filter_at`);
+      }
+      if (!await hasColumn(conn, 'app_contract_mgr_v2_content', 'filter_chunk_index')) {
+        await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_content ADD COLUMN filter_chunk_index INT DEFAULT 0 COMMENT '当前处理chunk索引' AFTER filter_carried_over`);
+      }
+      console.log('  ✓ Ensured filter_carried_over/filter_chunk_index on app_contract_mgr_v2_content');
+    }
+  },
+
+  // 33.1 contract-mgr-v2 补齐 app_contract_mgr_v2_rows 表（处理历史半安装状态）
+  {
+    name: 'contract-mgr-v2 ensure rows table',
+    check: async (conn) => {
+      const hasContent = await hasTable(conn, 'app_contract_mgr_v2_content');
+      if (!hasContent) return true;
+      return await hasTable(conn, 'app_contract_mgr_v2_rows');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `
+        CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_rows (
+          row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+          contract_number VARCHAR(64) NULL COMMENT '合同编号',
+          party_a VARCHAR(128) NULL COMMENT '甲方',
+          parent_company VARCHAR(128) NULL COMMENT '上级公司',
+          contract_amount DECIMAL(15,2) NULL COMMENT '合同金额',
+          contract_date DATE NULL COMMENT '签订日期',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_contract_number (contract_number),
+          INDEX idx_party_a (party_a),
+          INDEX idx_contract_amount (contract_amount),
+          INDEX idx_contract_date (contract_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同元数据扩展表'
+      `);
+      await safeExecute(conn, `
+        ALTER TABLE app_contract_mgr_v2_rows
+        ADD CONSTRAINT fk_app_contract_mgr_v2_rows_row_id
+        FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+      `);
+      console.log('  ✓ Ensured app_contract_mgr_v2_rows table');
+    }
+  },
+
+  // 33.15 contract-mgr-v2 rows 表补齐 party_b 字段（提取流程会写入乙方）
+  {
+    name: 'app_contract_mgr_v2_rows add party_b column',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_rows')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_v2_rows', 'party_b');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_rows ADD COLUMN party_b VARCHAR(128) NULL COMMENT '乙方' AFTER party_a`);
+      await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_rows ADD INDEX idx_party_b (party_b)`);
+      console.log('  ✓ Added party_b column to app_contract_mgr_v2_rows');
+    }
+  },
+
+  // 33.2 contract-mgr-v2 content 模型缺口：extract_prompt
+  {
+    name: 'app_contract_mgr_v2_content add extract_prompt',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_v2_content', 'extract_prompt');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE app_contract_mgr_v2_content ADD COLUMN extract_prompt TEXT NULL COMMENT '提取提示词' AFTER sections`);
+      console.log('  ✓ Added extract_prompt column to app_contract_mgr_v2_content');
+    }
+  },
+
+  // 33.3 contract-mgr-v2 半安装兜底：补 mini_apps/config 与状态注册
+  {
+    name: 'contract-mgr-v2 ensure installation metadata',
+    check: async (conn) => {
+      const [miniApps] = await conn.execute(`SELECT id, config FROM mini_apps WHERE id = 'contract-mgr-v2' LIMIT 1`);
+      if (!miniApps.length) return true;
+      const [states] = await conn.execute(`SELECT id FROM app_state WHERE app_id = 'contract-mgr-v2' LIMIT 1`);
+      return states.length > 0;
+    },
+    migrate: async (conn) => {
+      const [miniApps] = await conn.execute(`SELECT id, owner_id, creator_id FROM mini_apps WHERE id = 'contract-mgr-v2' LIMIT 1`);
+      if (!miniApps.length) return;
+
+      const configJson = JSON.stringify({
+        features: ['upload', 'list', 'detail', 'org_tree', 'versions', 'dashboard'],
+        supported_formats: ['.pdf', '.docx', '.doc', '.jpg', '.png'],
+        max_file_size: 52428800,
+        batch_enabled: true,
+        batch_limit: 50,
+        extension_tables: [
+          {
+            name: 'app_contract_mgr_v2_rows',
+            type: 'primary',
+            fields: [
+              { name: 'contract_number', type: 'VARCHAR(64)', label: '合同编号', source: 'contract_number' },
+              { name: 'party_a', type: 'VARCHAR(128)', label: '甲方', source: 'party_a' },
+              { name: 'parent_company', type: 'VARCHAR(128)', label: '上级公司', source: 'parent_company' },
+              { name: 'contract_amount', type: 'DECIMAL(15,2)', label: '合同金额', source: 'contract_amount' },
+              { name: 'contract_date', type: 'DATE', label: '签订日期', source: 'contract_date' }
+            ]
+          },
+          {
+            name: 'app_contract_mgr_v2_content',
+            type: 'content',
+            fields: [
+              { name: 'process_step', type: 'VARCHAR(32)' },
+              { name: 'document_id', type: 'VARCHAR(32)' },
+              { name: 'file_id', type: 'VARCHAR(32)' },
+              { name: 'ocr_task_id', type: 'VARCHAR(255)' },
+              { name: 'ocr_text', type: 'LONGTEXT' },
+              { name: 'ocr_service', type: 'VARCHAR(64)' },
+              { name: 'ocr_at', type: 'DATETIME' },
+              { name: 'filtered_text', type: 'LONGTEXT' },
+              { name: 'filter_at', type: 'DATETIME' },
+              { name: 'filter_carried_over', type: 'LONGTEXT' },
+              { name: 'filter_chunk_index', type: 'INT' },
+              { name: 'sections', type: 'JSON' },
+              { name: 'extract_prompt', type: 'TEXT' },
+              { name: 'extract_json', type: 'LONGTEXT' },
+              { name: 'extract_model', type: 'VARCHAR(64)' },
+              { name: 'extract_temperature', type: 'DECIMAL(3,2)' },
+              { name: 'extract_at', type: 'DATETIME' },
+              { name: 'classification_json', type: 'JSON' }
+            ]
+          }
+        ],
+        step_resources: {
+          pending_ocr: { type: 'mcp', mcp: { server: 'markitdown', tool: 'submit_conversion_task', params_mapping: { content: 'file.base64', filename: 'file.name' } } },
+          ocr_submitted: { type: 'mcp', mcp: { server: 'markitdown', tool: 'get_task', hide_params_mapping: true }, judge_model_id: null, judge_temperature: 0.1 },
+          pending_filter: { type: 'internal_llm', model_id: null, temperature: 0.3 },
+          pending_extract: { type: 'internal_llm', model_id: null, temperature: 0.3 },
+          pending_section: { type: 'internal_llm', model_id: null, temperature: 0.3 }
+        }
+      });
+
+      await conn.execute(
+        `UPDATE mini_apps
+         SET name = '销售合同管理 v2',
+             description = '支持组织层级、多版本管理、AI问答的销售合同管理系统',
+             icon = '📋',
+             type = 'document',
+             component = 'ContractV2View',
+             config = ?,
+             updated_at = NOW()
+         WHERE id = 'contract-mgr-v2'`,
+        [configJson]
+      );
+
+      const [clockRows] = await conn.execute(`SELECT id FROM app_clock_registry WHERE app_id = 'contract-mgr-v2' LIMIT 1`);
+      if (!clockRows.length) {
+        const clockId = crypto.randomBytes(10).toString('hex').slice(0, 20);
+        await conn.execute(`INSERT INTO app_clock_registry (id, app_id, tick_script, is_active) VALUES (?, 'contract-mgr-v2', NULL, 1)`, [clockId]);
+      }
+
+      await conn.execute(`DELETE FROM app_state WHERE app_id = 'contract-mgr-v2'`);
+      const states = [
+        ['pending_ocr', '等待OCR', '提交OCR任务', 1, 1, 0, 0, 'ocr_submitted', 'ocr_failed'],
+        ['ocr_submitted', 'OCR处理中', '检查OCR状态并持久化OCR文本到扩展表', 2, 0, 0, 0, 'pending_filter', 'ocr_failed'],
+        ['pending_filter', '等待过滤', 'LLM文本过滤并持久化到扩展表', 3, 0, 0, 0, 'pending_extract', 'filter_failed'],
+        ['pending_extract', '等待提取', 'LLM提取结构化字段', 4, 0, 0, 0, 'pending_section', 'extract_failed'],
+        ['pending_section', '等待分章', '分析章节结构', 5, 0, 0, 0, 'pending_classify', 'section_failed'],
+        ['pending_classify', '等待分类', '做版本归类建议', 6, 0, 0, 0, 'pending_review', 'classify_failed'],
+        ['pending_review', '待人工确认', '等待人工确认分类结果', 7, 0, 0, 0, null, null],
+        ['ocr_failed', 'OCR失败', 'OCR阶段失败', 90, 0, 1, 1, null, null],
+        ['filter_failed', '过滤失败', '文本过滤失败', 91, 0, 1, 1, null, null],
+        ['extract_failed', '提取失败', '结构化提取失败', 92, 0, 1, 1, null, null],
+        ['section_failed', '分章失败', '章节分析失败', 93, 0, 1, 1, null, null],
+        ['classify_failed', '分类失败', '版本建议失败', 94, 0, 1, 1, null, null]
+      ];
+
+      for (const [name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext] of states) {
+        await conn.execute(
+          `INSERT INTO app_state (id, app_id, name, label, description, sort_order, is_initial, is_terminal, is_error, handler_id, success_next_state, failure_next_state)
+           VALUES (?, 'contract-mgr-v2', ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+          [crypto.randomBytes(10).toString('hex').slice(0, 20), name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext]
+        );
+      }
+
+      console.log('  ✓ Ensured contract-mgr-v2 installation metadata/states');
+    }
+  },
+
   // ==================== 清理旧 doc_* 表（彻底替换） ====================
 
   // 34. 删除旧 doc_chunks 表
