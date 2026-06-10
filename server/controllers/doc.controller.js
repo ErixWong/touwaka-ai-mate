@@ -18,6 +18,7 @@ import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
+import DocumentOcrService from '../../lib/document-ocr-service.js';
 
 class DocController {
   constructor(db) {
@@ -80,6 +81,20 @@ class DocController {
   ensureCollectionAccessService() {
     if (!this.collectionAccessService) {
       this.collectionAccessService = new CollectionAccessService(this.db);
+    }
+  }
+
+  ensureDocumentOcrService(ctx) {
+    if (!this.documentOcrService) {
+      this.documentOcrService = new DocumentOcrService(this.db, {
+        callMcp: async (server, tool, params, timeoutMs) => {
+          const appClock = ctx?.app?.context?.appClock;
+          if (!appClock || typeof appClock.callMcp !== 'function') {
+            throw new Error('AppClock MCP caller not available');
+          }
+          return await appClock.callMcp(server, tool, params, timeoutMs);
+        },
+      });
     }
   }
 
@@ -591,6 +606,12 @@ async createVersion(ctx) {
       });
       if (!document) ctx.throw(404, 'Document not found');
 
+      const DocOcrResult = this.db.getModel('doc_ocr_result');
+      const latestOcrResult = await DocOcrResult.findOne({
+        where: { document_id: documentId },
+        order: [['created_at', 'DESC']],
+      });
+
       ctx.success({
         document_id: document.id,
         processing_status: document.processing_status,
@@ -598,6 +619,23 @@ async createVersion(ctx) {
         processing_error_message: document.processing_error_message,
         processing_retry_count: document.processing_retry_count,
         processing_updated_at: document.processing_updated_at,
+        ocr_result: latestOcrResult ? {
+          id: latestOcrResult.id,
+          revision_id: latestOcrResult.revision_id,
+          task_id: latestOcrResult.task_id,
+          status: latestOcrResult.status,
+          progress: latestOcrResult.progress,
+          image_count: latestOcrResult.image_count,
+          main_markdown_attachment_id: latestOcrResult.main_markdown_attachment_id,
+          raw_result_attachment_id: latestOcrResult.raw_result_attachment_id,
+          deliverables_manifest_attachment_id: latestOcrResult.deliverables_manifest_attachment_id,
+          image_manifest_attachment_id: latestOcrResult.image_manifest_attachment_id,
+          line_count: latestOcrResult.line_count,
+          error_code: latestOcrResult.error_code,
+          error_message: latestOcrResult.error_message,
+          started_at: latestOcrResult.started_at,
+          completed_at: latestOcrResult.completed_at,
+        } : null,
       });
     } catch (error) {
       logger.error('[Doc] getProcessingStatus error:', error);
@@ -643,6 +681,73 @@ async createVersion(ctx) {
       logger.info(`[Doc] retryProcessing: ${documentId} → ${retryStage} (retry #${document.processing_retry_count + 1})`);
     } catch (error) {
       logger.error('[Doc] retryProcessing error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 提交文档 OCR 任务
+   * POST /api/docs/documents/:documentId/ocr/submit
+   */
+  async submitOcr(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      this.ensureDocumentOcrService(ctx);
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const { attachment_id, backend, lang, image_analysis, formula_enable, table_enable } = ctx.request.body || {};
+      const ocrResult = await this.documentOcrService.submit(documentId, {
+        attachmentId: attachment_id || null,
+        backend,
+        lang,
+        imageAnalysis: image_analysis,
+        formulaEnable: formula_enable,
+        tableEnable: table_enable,
+      });
+
+      ctx.success({
+        document_id: documentId,
+        ocr_result_id: ocrResult.id,
+        task_id: ocrResult.task_id,
+        status: ocrResult.status,
+        progress: ocrResult.progress,
+      });
+    } catch (error) {
+      logger.error('[Doc] submitOcr error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 同步 OCR 任务状态
+   * POST /api/docs/documents/:documentId/ocr/sync
+   */
+  async syncOcr(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      this.ensureDocumentOcrService(ctx);
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const result = await this.documentOcrService.syncTaskStatus(documentId);
+      ctx.success({
+        document_id: documentId,
+        ocr_result_id: result.ocrResult.id,
+        status: result.ocrResult.status,
+        progress: result.ocrResult.progress,
+        completed: result.completed,
+      });
+    } catch (error) {
+      logger.error('[Doc] syncOcr error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -785,23 +890,56 @@ async createVersion(ctx) {
       const sourceRefId = Utils.newID();
       const firstAttachment = attachments && attachments.length > 0 ? attachments[0] : null;
 
-      const document = await this.models.DocDocument.create({
-        id: Utils.newID(),
-        collection_id,
-        doc_type: app_id.startsWith('contract') ? 'contract' : 'knowledge',
-        source_system: app_id,
-        source_ref_id: sourceRefId,
-        title: firstAttachment ? `Intake ${sourceRefId}` : `Document ${sourceRefId}`,
-        processing_status: 'pending_ocr',
-        metadata: {
-          app_id,
-          schema_id: schema_id || null,
-          attachments: attachments || [],
-        },
+      const documentId = Utils.newID();
+      const revisionId = Utils.newID();
+      const document = await this.db.sequelize.transaction(async (t) => {
+        const createdDocument = await this.models.DocDocument.create({
+          id: documentId,
+          collection_id,
+          doc_type: app_id.startsWith('contract') ? 'contract' : 'knowledge',
+          source_system: app_id,
+          source_ref_id: sourceRefId,
+          title: firstAttachment ? `Intake ${sourceRefId}` : `Document ${sourceRefId}`,
+          processing_status: 'pending_ocr',
+          current_revision_id: revisionId,
+          metadata: {
+            app_id,
+            schema_id: schema_id || null,
+            attachments: attachments || [],
+          },
+        }, { transaction: t });
+
+        await this.models.DocVersion.create({
+          id: revisionId,
+          document_id: documentId,
+          revision_no: 1,
+          revision_label: 'v1',
+          revision_status: 'draft',
+          is_current: 1,
+          change_summary: 'Initial intake revision',
+          created_by: userId,
+        }, { transaction: t });
+
+        if (Array.isArray(attachments) && attachments.length > 0) {
+          const Attachment = this.db.getModel('attachment');
+          for (const item of attachments) {
+            if (!item?.id) continue;
+            await Attachment.update({
+              source_tag: 'doc-platform',
+              source_id: revisionId,
+            }, {
+              where: { id: item.id },
+              transaction: t,
+            });
+          }
+        }
+
+        return createdDocument;
       });
 
       ctx.success({
         document_id: document.id,
+        revision_id: revisionId,
         processing_status: document.processing_status,
       });
       logger.info(`[Doc] createIntake: ${document.id} for app ${app_id}, collection ${collection_id}`);
