@@ -18,19 +18,9 @@
         <span class="nav-text">{{ $t('nav.skills') }}</span>
       </router-link>
 
-      <router-link to="/knowledge" class="nav-link" :class="{ active: isActive('/knowledge') }">
-        <span class="nav-icon">📚</span>
-        <span class="nav-text">{{ $t('knowledgeBase.title') }}</span>
-      </router-link>
-
       <router-link to="/docs" class="nav-link" :class="{ active: isActive('/docs') }">
         <span class="nav-icon">📄</span>
         <span class="nav-text">{{ $t('docs.navTitle') }}</span>
-      </router-link>
-
-      <router-link to="/solutions" class="nav-link" :class="{ active: isActive('/solutions') }">
-        <span class="nav-icon">🎯</span>
-        <span class="nav-text">{{ $t('solutions.title', '解决方案') }}</span>
       </router-link>
 
       <router-link to="/apps" class="nav-link" :class="{ active: isActive('/apps') }">

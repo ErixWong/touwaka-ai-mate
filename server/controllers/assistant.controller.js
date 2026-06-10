@@ -19,10 +19,37 @@ class AssistantController {
    */
   async list(ctx) {
     try {
-      const assistants = await this.assistantManager.roster();
+      const assistants = await this.assistantManager.roster({
+        activeOnly: true,
+        includeManagementFields: false,
+      });
       ctx.success(assistants);
     } catch (error) {
       logger.error('List assistants error:', error);
+      ctx.app.emit('error', error, ctx);
+    }
+  }
+
+  /**
+   * 列出助理管理视图所需的完整配置
+   * GET /api/assistants/manage
+   * 仅管理员可调用
+   */
+  async listManage(ctx) {
+    try {
+      const session = ctx.state.session;
+      if (!session || !session.roles?.includes('admin')) {
+        ctx.error('无权限查看助理配置', 403);
+        return;
+      }
+
+      const assistants = await this.assistantManager.roster({
+        activeOnly: false,
+        includeManagementFields: true,
+      });
+      ctx.success(assistants);
+    } catch (error) {
+      logger.error('List manage assistants error:', error);
       ctx.app.emit('error', error, ctx);
     }
   }

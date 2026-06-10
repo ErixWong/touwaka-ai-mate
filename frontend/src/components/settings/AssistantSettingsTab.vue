@@ -9,12 +9,12 @@
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="assistantStore.isLoading && assistantStore.assistants.length === 0" class="loading-state">
+    <div v-if="assistantStore.isLoading && assistantStore.manageAssistants.length === 0" class="loading-state">
       {{ $t('common.loading') }}
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="assistantStore.assistants.length === 0" class="empty-state">
+    <div v-else-if="assistantStore.manageAssistants.length === 0" class="empty-state">
       {{ $t('assistant.noAssistants') }}
     </div>
 
@@ -22,7 +22,7 @@
     <div v-else class="assistant-list-container">
       <div class="assistant-list">
         <div
-          v-for="assistant in assistantStore.assistants"
+          v-for="assistant in assistantStore.manageAssistants"
           :key="assistant.id"
           class="assistant-item"
           :class="{ inactive: !assistant.is_active }"
@@ -76,12 +76,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAssistantStore } from '@/stores/assistant'
 import { useModelStore } from '@/stores/model'
+import { useToastStore } from '@/stores/toast'
 import type { Assistant } from '@/types'
 import AssistantEditDialog from './AssistantEditDialog.vue'
 
 const { t } = useI18n()
 const assistantStore = useAssistantStore()
 const modelStore = useModelStore()
+const toast = useToastStore()
 
 // 编辑弹窗状态
 const showEditDialog = ref(false)
@@ -120,8 +122,11 @@ async function handleSave(data: Partial<Assistant>) {
 
   try {
     await assistantStore.updateAssistant(editingAssistant.value.id, data)
+    toast.success(t('assistant.saveSuccess'))
     closeEditDialog()
   } catch (error) {
+    const message = error instanceof Error ? error.message : t('assistant.saveFailed')
+    toast.error(message)
     console.error('Failed to save assistant:', error)
   }
 }
@@ -130,24 +135,32 @@ async function handleSave(data: Partial<Assistant>) {
 async function handleCreate(data: Partial<Assistant> & { name: string }) {
   try {
     await assistantStore.createAssistant(data)
+    toast.success(t('assistant.createSuccess'))
     closeEditDialog()
   } catch (error) {
+    const message = error instanceof Error ? error.message : t('assistant.createFailed')
+    toast.error(message)
     console.error('Failed to create assistant:', error)
   }
 }
 
 // 确认删除助理
-function confirmDeleteAssistant(assistant: Assistant) {
-  if (confirm(t('assistant.confirmDelete', { name: assistant.name }))) {
-    assistantStore.deleteAssistant(assistant.id)
+async function confirmDeleteAssistant(assistant: Assistant) {
+  if (confirm(t('assistant.confirmDeleteAssistant', { name: assistant.name }))) {
+    try {
+      await assistantStore.deleteAssistant(assistant.id)
+      toast.success(t('assistant.deleteSuccess'))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('assistant.deleteFailed')
+      toast.error(message)
+      console.error('Failed to delete assistant:', error)
+    }
   }
 }
 
 // 加载数据
 onMounted(async () => {
-  if (assistantStore.assistants.length === 0) {
-    await assistantStore.fetchAssistants()
-  }
+  await assistantStore.fetchManageAssistants()
   if (modelStore.models.length === 0) {
     await modelStore.loadModels()
   }

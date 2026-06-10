@@ -6,7 +6,6 @@
  * - 配置缓存管理
  */
 
-import { Sequelize } from 'sequelize';
 import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
 
@@ -17,10 +16,8 @@ import Utils from '../../../lib/utils.js';
  */
 export async function refreshAssistantsCache(db) {
   const Assistant = db.getModel('assistant');
-  
-  // 使用 Sequelize.literal 处理 BIT 类型字段
+
   const assistants = await Assistant.findAll({
-    where: Sequelize.literal('is_active = 1'),
     raw: true,
   });
 
@@ -43,8 +40,13 @@ export async function refreshAssistantsCache(db) {
  * @param {string} assistantId - 助理ID
  * @returns {object|null}
  */
-export function getAssistant(assistantsCache, assistantId) {
-  return assistantsCache?.get(assistantId) || null;
+export function getAssistant(assistantsCache, assistantId, options = {}) {
+  const { includeInactive = false } = options;
+  const assistant = assistantsCache?.get(assistantId) || null;
+  if (!assistant || (!includeInactive && !assistant.is_active)) {
+    return null;
+  }
+  return assistant;
 }
 
 /**
@@ -52,25 +54,39 @@ export function getAssistant(assistantsCache, assistantId) {
  * @param {Map} assistantsCache - 助理缓存
  * @returns {Array}
  */
-export function roster(assistantsCache) {
-  return Array.from(assistantsCache.values()).map(a => ({
-    id: a.id,
-    name: a.name,
-    icon: a.icon,
-    description: a.description,
-    model_id: a.model_id,
-    prompt_template: a.prompt_template,
-    max_tokens: a.max_tokens,
-    temperature: a.temperature,
-    timeout: a.timeout,
-    estimated_time: a.estimated_time,
-    tool_name: a.tool_name,
-    tool_description: a.tool_description,
-    tool_parameters: a.tool_parameters,
-    can_use_skills: a.can_use_skills,
-    execution_mode: a.execution_mode,
-    is_active: a.is_active,
-  }));
+export function roster(assistantsCache, options = {}) {
+  const { activeOnly = true, includeManagementFields = false } = options;
+
+  return Array.from(assistantsCache.values())
+    .filter(a => !activeOnly || a.is_active)
+    .map(a => {
+      const baseAssistant = {
+        id: a.id,
+        name: a.name,
+        icon: a.icon,
+        description: a.description,
+        model_id: a.model_id,
+        estimated_time: a.estimated_time,
+        execution_mode: a.execution_mode,
+        is_active: a.is_active,
+      };
+
+      if (!includeManagementFields) {
+        return baseAssistant;
+      }
+
+      return {
+        ...baseAssistant,
+        prompt_template: a.prompt_template,
+        max_tokens: a.max_tokens,
+        temperature: a.temperature,
+        timeout: a.timeout,
+        tool_name: a.tool_name,
+        tool_description: a.tool_description,
+        tool_parameters: a.tool_parameters,
+        can_use_skills: a.can_use_skills,
+      };
+    });
 }
 
 /**

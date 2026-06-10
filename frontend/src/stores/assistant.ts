@@ -6,6 +6,7 @@ import { assistantApi } from '@/api/services'
 export const useAssistantStore = defineStore('assistant', () => {
   // State
   const assistants = ref<Assistant[]>([])
+  const manageAssistants = ref<Assistant[]>([])
   const requests = ref<AssistantRequest[]>([])
   const activeRequest = ref<AssistantRequest | null>(null)
   const activeRequestMessages = ref<AssistantMessage[]>([])
@@ -42,6 +43,19 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
+  async function fetchManageAssistants() {
+    try {
+      isLoading.value = true
+      const data = await assistantApi.getManageAssistants()
+      manageAssistants.value = data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch assistant configs'
+      console.error('Failed to fetch assistant configs:', e)
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   async function getAssistant(id: string) {
     try {
       isLoading.value = true
@@ -60,10 +74,22 @@ export const useAssistantStore = defineStore('assistant', () => {
     try {
       isLoading.value = true
       const data = await assistantApi.updateAssistant(id, updates)
-      // 更新本地列表中的助理
-      const index = assistants.value.findIndex(a => a.id === id)
-      if (index !== -1) {
-        assistants.value[index] = data
+      // 更新公共列表中的可执行助理
+      const activeIndex = assistants.value.findIndex(a => a.id === id)
+      if (data.is_active) {
+        if (activeIndex !== -1) {
+          assistants.value[activeIndex] = data
+        } else {
+          assistants.value.push(data)
+        }
+      } else if (activeIndex !== -1) {
+        assistants.value = assistants.value.filter(a => a.id !== id)
+      }
+
+      // 更新管理列表中的助理
+      const manageIndex = manageAssistants.value.findIndex(a => a.id === id)
+      if (manageIndex !== -1) {
+        manageAssistants.value[manageIndex] = data
       }
       return data
     } catch (e) {
@@ -79,8 +105,12 @@ export const useAssistantStore = defineStore('assistant', () => {
     try {
       isLoading.value = true
       const newAssistant = await assistantApi.createAssistant(data)
-      // 添加到本地列表
-      assistants.value.push(newAssistant)
+      // 添加到公共列表（仅激活助理）
+      if (newAssistant.is_active) {
+        assistants.value.push(newAssistant)
+      }
+      // 添加到管理列表
+      manageAssistants.value.push(newAssistant)
       return newAssistant
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create assistant'
@@ -97,6 +127,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       await assistantApi.deleteAssistant(id)
       // 从本地列表中移除
       assistants.value = assistants.value.filter(a => a.id !== id)
+      manageAssistants.value = manageAssistants.value.filter(a => a.id !== id)
       return { success: true, id }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete assistant'
@@ -299,6 +330,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   return {
     // State
     assistants,
+    manageAssistants,
     requests,
     activeRequest,
     activeRequestMessages,
@@ -312,6 +344,7 @@ export const useAssistantStore = defineStore('assistant', () => {
 
     // Actions
     fetchAssistants,
+    fetchManageAssistants,
     getAssistant,
     createAssistant,
     deleteAssistant,
