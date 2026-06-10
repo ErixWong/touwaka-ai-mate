@@ -115,6 +115,13 @@ async function safeExecute(connection, sql, errorMessages = ['Duplicate', 'alrea
   }
 }
 
+async function getAnyExistingUserId(connection) {
+  const [rows] = await connection.execute(
+    `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`
+  );
+  return rows.length > 0 ? rows[0].id : null;
+}
+
 /**
  * 迁移定义
  * 每个迁移包含检查函数和执行函数
@@ -1180,6 +1187,38 @@ const MIGRATIONS = [
       }
     }
   },
+  {
+    name: 'register doc-ocr-pipeline to app_clock_registry',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT id FROM app_clock_registry WHERE app_id = 'doc-ocr-pipeline'`
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const [miniAppRows] = await conn.execute(
+        `SELECT id FROM mini_apps WHERE id = 'doc-ocr-pipeline'`
+      );
+      if (miniAppRows.length === 0) {
+        const ownerId = await getAnyExistingUserId(conn);
+        if (!ownerId) {
+          throw new Error('Cannot register doc-ocr-pipeline: no user found for mini_apps.owner_id/creator_id');
+        }
+        await conn.execute(
+          `INSERT INTO mini_apps (id, name, description, icon, type, component, fields, views, config, visibility, owner_id, creator_id, sort_order, is_active, revision, created_at, updated_at)
+           VALUES ('doc-ocr-pipeline', '文档 OCR 调度器', '统一调度文档平台 OCR submit/sync', '⚙️', 'utility', NULL, '[]', NULL, NULL, 'owner', ?, ?, 0, 1, 1, NOW(), NOW())`,
+          [ownerId, ownerId]
+        );
+      }
+      const id = crypto.randomBytes(10).toString('hex').slice(0, 20);
+      await conn.execute(
+        `INSERT INTO app_clock_registry (id, app_id, tick_script, is_active)
+         VALUES (?, 'doc-ocr-pipeline', NULL, 1)`,
+        [id]
+      );
+      console.log('  ✓ Registered doc-ocr-pipeline to app_clock_registry');
+    }
+  },
 
   // ==================== contract-mgr-v2 状态自主管理 ====================
   // Issue #693: content 表新增状态字段，移除 mini_app_rows 依赖
@@ -1526,6 +1565,90 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档历史版本'
       `);
       console.log('  ✓ Created document_revisions table');
+    }
+  },
+
+  // 31. doc_ocr_results - OCR阶段结果表
+  {
+    name: 'doc_ocr_results table create',
+    check: async (conn) => await hasTable(conn, 'doc_ocr_results'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_ocr_results (
+          id VARCHAR(32) NOT NULL COMMENT 'OCR结果ID',
+          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+          revision_id VARCHAR(32) NOT NULL COMMENT '文档版本ID',
+          provider VARCHAR(64) NOT NULL DEFAULT 'erix-mineru' COMMENT 'OCR供应方标识',
+          task_id VARCHAR(128) NULL COMMENT '上游任务ID',
+          status ENUM('pending','processing','completed','failed') NOT NULL DEFAULT 'pending' COMMENT 'OCR阶段归一化状态',
+          progress INT NOT NULL DEFAULT 0 COMMENT 'OCR进度百分比',
+          main_markdown_attachment_id VARCHAR(20) NULL COMMENT '平台主markdown附件ID',
+          raw_result_attachment_id VARCHAR(20) NULL COMMENT 'OCR原始结果附件ID',
+          deliverables_manifest_attachment_id VARCHAR(20) NULL COMMENT '交付物清单附件ID',
+          middle_json_attachment_id VARCHAR(20) NULL COMMENT 'middle_json附件ID',
+          content_list_attachment_id VARCHAR(20) NULL COMMENT 'content_list附件ID',
+          content_list_v2_attachment_id VARCHAR(20) NULL COMMENT 'content_list_v2附件ID',
+          model_json_attachment_id VARCHAR(20) NULL COMMENT 'model_json附件ID',
+          image_manifest_attachment_id VARCHAR(20) NULL COMMENT '图片清单附件ID',
+          image_count INT NOT NULL DEFAULT 0 COMMENT '图片数量',
+          line_count INT NOT NULL DEFAULT 0 COMMENT '主markdown行数',
+          error_code VARCHAR(64) NULL COMMENT '错误码',
+          error_message TEXT NULL COMMENT '错误信息',
+          started_at DATETIME NULL COMMENT '开始时间',
+          completed_at DATETIME NULL COMMENT '完成时间',
+          metadata JSON NULL COMMENT '轻量追溯信息',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          INDEX idx_doc_ocr_result_document (document_id, revision_id),
+          INDEX idx_doc_ocr_result_status (status, updated_at),
+          INDEX idx_doc_ocr_result_task (provider, task_id),
+          CONSTRAINT fk_doc_ocr_result_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+          CONSTRAINT fk_doc_ocr_result_revision FOREIGN KEY (revision_id) REFERENCES document_revisions(id) ON DELETE CASCADE,
+          CONSTRAINT fk_doc_ocr_result_main_markdown_attachment FOREIGN KEY (main_markdown_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_raw_result_attachment FOREIGN KEY (raw_result_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_deliverables_manifest_attachment FOREIGN KEY (deliverables_manifest_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_middle_json_attachment FOREIGN KEY (middle_json_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_content_list_attachment FOREIGN KEY (content_list_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_content_list_v2_attachment FOREIGN KEY (content_list_v2_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_model_json_attachment FOREIGN KEY (model_json_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+          CONSTRAINT fk_doc_ocr_result_image_manifest_attachment FOREIGN KEY (image_manifest_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OCR阶段结果表'
+      `);
+      console.log('  ✓ Created doc_ocr_results table');
+    }
+  },
+
+  // 32. doc_ocr_images - OCR图片关系表
+  {
+    name: 'doc_ocr_images table create',
+    check: async (conn) => await hasTable(conn, 'doc_ocr_images'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_ocr_images (
+          id VARCHAR(32) NOT NULL COMMENT 'OCR图片关系ID',
+          ocr_result_id VARCHAR(32) NOT NULL COMMENT 'OCR结果ID',
+          attachment_id VARCHAR(20) NOT NULL COMMENT '图片附件ID',
+          filename VARCHAR(255) NULL COMMENT '原始文件名',
+          media_type VARCHAR(100) NOT NULL COMMENT 'MIME类型',
+          sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+          referenced_in_markdown TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否在markdown中被引用',
+          markdown_path VARCHAR(500) NULL COMMENT 'markdown中的原始引用路径',
+          line_number INT NULL COMMENT '引用所在行号',
+          start_offset INT NULL COMMENT '起始偏移',
+          end_offset INT NULL COMMENT '结束偏移',
+          alt_text VARCHAR(500) NULL COMMENT 'alt文本',
+          description TEXT NULL COMMENT '图片描述',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          INDEX idx_doc_ocr_image_result (ocr_result_id, sort_order),
+          INDEX idx_doc_ocr_image_attachment (attachment_id),
+          CONSTRAINT fk_doc_ocr_image_result FOREIGN KEY (ocr_result_id) REFERENCES doc_ocr_results(id) ON DELETE CASCADE,
+          CONSTRAINT fk_doc_ocr_image_attachment FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OCR图片关系表'
+      `);
+      console.log('  ✓ Created doc_ocr_images table');
     }
   },
 

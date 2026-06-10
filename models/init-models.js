@@ -25,6 +25,8 @@ import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
 import _doc_compare_item from  "./doc_compare_item.js";
 import _doc_compare_run from  "./doc_compare_run.js";
+import _doc_ocr_image from  "./doc_ocr_image.js";
+import _doc_ocr_result from  "./doc_ocr_result.js";
 import _doc_document_tag from  "./doc_document_tag.js";
 import _doc_tag from  "./doc_tag.js";
 import _document_collection from  "./document_collection.js";
@@ -96,6 +98,8 @@ export default function initModels(sequelize) {
   const department = _department.init(sequelize, DataTypes);
   const doc_compare_item = _doc_compare_item.init(sequelize, DataTypes);
   const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
+  const doc_ocr_image = _doc_ocr_image.init(sequelize, DataTypes);
+  const doc_ocr_result = _doc_ocr_result.init(sequelize, DataTypes);
   const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
   const doc_tag = _doc_tag.init(sequelize, DataTypes);
   const document_collection = _document_collection.init(sequelize, DataTypes);
@@ -185,6 +189,30 @@ export default function initModels(sequelize) {
   document_chunk.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "base_unit_id"});
   doc_compare_item.belongsTo(document_chunk, { as: "target_unit", foreignKey: "target_unit_id"});
   document_chunk.hasMany(doc_compare_item, { as: "target_unit_doc_compare_items", foreignKey: "target_unit_id"});
+  doc_ocr_result.belongsTo(document, { as: "document", foreignKey: "document_id"});
+  document.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "document_id"});
+  doc_ocr_result.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
+  document_revision.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "revision_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "main_markdown_attachment", foreignKey: "main_markdown_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "main_markdown_doc_ocr_results", foreignKey: "main_markdown_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "raw_result_attachment", foreignKey: "raw_result_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "raw_result_doc_ocr_results", foreignKey: "raw_result_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "deliverables_manifest_attachment", foreignKey: "deliverables_manifest_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "deliverables_manifest_doc_ocr_results", foreignKey: "deliverables_manifest_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "middle_json_attachment", foreignKey: "middle_json_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "middle_json_doc_ocr_results", foreignKey: "middle_json_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "content_list_attachment", foreignKey: "content_list_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "content_list_doc_ocr_results", foreignKey: "content_list_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "content_list_v2_attachment", foreignKey: "content_list_v2_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "content_list_v2_doc_ocr_results", foreignKey: "content_list_v2_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "model_json_attachment", foreignKey: "model_json_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "model_json_doc_ocr_results", foreignKey: "model_json_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "image_manifest_attachment", foreignKey: "image_manifest_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "image_manifest_doc_ocr_results", foreignKey: "image_manifest_attachment_id"});
+  doc_ocr_image.belongsTo(doc_ocr_result, { as: "ocr_result", foreignKey: "ocr_result_id"});
+  doc_ocr_result.hasMany(doc_ocr_image, { as: "images", foreignKey: "ocr_result_id"});
+  doc_ocr_image.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
+  attachment.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "attachment_id"});
   doc_document_tag.belongsTo(document, { as: "document", foreignKey: "document_id"});
   document.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "document_id"});
   doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
@@ -356,6 +384,8 @@ export default function initModels(sequelize) {
     department,
     doc_compare_item,
     doc_compare_run,
+    doc_ocr_image,
+    doc_ocr_result,
     doc_document_tag,
     doc_tag,
     document_collection,
