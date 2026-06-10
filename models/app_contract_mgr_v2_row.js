@@ -24,6 +24,11 @@ export default class app_contract_mgr_v2_row extends Model {
       allowNull: true,
       comment: "甲方"
     },
+    party_b: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      comment: "乙方"
+    },
     parent_company: {
       type: DataTypes.STRING(128),
       allowNull: true,
@@ -75,6 +80,13 @@ export default class app_contract_mgr_v2_row extends Model {
         using: "BTREE",
         fields: [
           { name: "party_a" },
+        ]
+      },
+      {
+        name: "idx_party_b",
+        using: "BTREE",
+        fields: [
+          { name: "party_b" },
         ]
       },
       {
