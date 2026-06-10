@@ -106,6 +106,28 @@ async function testResolveSourceAttachment(service, db) {
   const byExplicit = await service.resolveSourceAttachment({ id: 'doc-1' }, { id: 'rev-1' }, 'att-doc');
   assert.equal(byExplicit.id, 'att-doc');
 
+  db.attachments.push({
+    id: 'att-user',
+    source_tag: 'mini_app_file',
+    source_id: 'row-1',
+    file_name: 'user.pdf',
+    created_by: 'user-1',
+    created_at: '2026-01-03 00:00:00',
+  });
+  const byUserOwnedExplicit = await service.resolveSourceAttachment({ id: 'doc-1' }, { id: 'rev-1' }, 'att-user', 'user-1');
+  assert.equal(byUserOwnedExplicit.id, 'att-user');
+
+  db.attachments.push({
+    id: 'att-foreign',
+    source_tag: 'mini_app_file',
+    source_id: 'row-2',
+    file_name: 'foreign.pdf',
+    created_by: 'user-2',
+    created_at: '2026-01-04 00:00:00',
+  });
+  const deniedExplicit = await service.resolveSourceAttachment({ id: 'doc-1' }, { id: 'rev-1' }, 'att-foreign', 'user-1');
+  assert.equal(deniedExplicit, null);
+
   const byRevision = await service.resolveSourceAttachment({ id: 'doc-1' }, { id: 'rev-1' });
   assert.equal(byRevision.id, 'att-rev');
 
@@ -117,7 +139,7 @@ async function testResolveSourceAttachment(service, db) {
 async function testFinalizeCompletedTask(service, db) {
   const ctx = {
     document: { id: 'doc-100' },
-    revision: { id: 'rev-100' },
+    revision: { id: 'rev-100', created_by: 'user-ocr-1' },
   };
 
   const ocrResult = {
@@ -143,6 +165,7 @@ async function testFinalizeCompletedTask(service, db) {
 
   const markdownAttachment = db.attachments.find(item => item.id === finalized.main_markdown_attachment_id);
   assert.ok(markdownAttachment, '应生成主 markdown 附件');
+  assert.equal(markdownAttachment.created_by, 'user-ocr-1', 'OCR 输出附件应继承 revision.created_by');
 
   const markdownPath = path.join(process.env.ATTACHMENT_BASE_PATH, markdownAttachment.file_path);
   const markdownContent = await fs.readFile(markdownPath, 'utf8');

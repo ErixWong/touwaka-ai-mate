@@ -142,7 +142,7 @@ class OcrToolController {
     if (!attachment) {
       throw new Error('attachment not found');
     }
-    if (attachment.created_by && attachment.created_by !== userId) {
+    if (attachment.created_by !== userId) {
       throw new Error('attachment access denied');
     }
 
@@ -173,7 +173,7 @@ class OcrToolController {
       };
     }
 
-    const collectionId = await this.ensureOcrToolCollection();
+    const collectionId = await this.ensureOcrToolCollection(userId);
     const rowId = Utils.newID(32);
     const documentId = Utils.newID(32);
     const revisionId = Utils.newID(32);
@@ -232,7 +232,7 @@ class OcrToolController {
       );
 
       await Attachment.update(
-        { source_tag: 'doc-platform', source_id: documentId.slice(0, 20) },
+        { source_tag: 'doc-platform', source_id: revisionId },
         { where: { id: attachmentId }, transaction: t }
       );
     });
@@ -254,25 +254,44 @@ class OcrToolController {
     };
   }
 
-  async ensureOcrToolCollection() {
+  async ensureOcrToolCollection(userId) {
     const rows = await this.db.sequelize.query(
-      `SELECT id FROM document_collections WHERE name = 'ocr_tool' LIMIT 1`,
-      { type: this.db.sequelize.QueryTypes.SELECT }
+      `SELECT id FROM document_collections WHERE name = 'ocr_tool' AND owner_id = ? LIMIT 1`,
+      { replacements: [userId], type: this.db.sequelize.QueryTypes.SELECT }
     );
     if (rows && rows.length > 0) return rows[0].id;
 
     const id = Utils.newID(20);
-    await this.db.sequelize.query(
-      `INSERT INTO document_collections (id, name, owner_id, created_by, department_id, visibility, embedding_model_id)
-       VALUES (?, 'ocr_tool', ?, ?, '', 'private', '')`,
-      { replacements: [id, userIdFallback(), userIdFallback()] }
-    );
-    return id;
+    const departmentId = await this.getUserDepartmentId(userId);
+    if (!departmentId) {
+      throw new Error('user department_id is required to create OCR document collection');
+    }
+    try {
+      await this.db.sequelize.query(
+        `INSERT INTO document_collections (id, name, owner_id, created_by, department_id, visibility, embedding_model_id)
+         VALUES (?, 'ocr_tool', ?, ?, ?, 'private', '')`,
+        { replacements: [id, userId, userId, departmentId] }
+      );
+      return id;
+    } catch (error) {
+      const retryRows = await this.db.sequelize.query(
+        `SELECT id FROM document_collections WHERE name = 'ocr_tool' AND owner_id = ? LIMIT 1`,
+        { replacements: [userId], type: this.db.sequelize.QueryTypes.SELECT }
+      );
+      if (retryRows && retryRows.length > 0) return retryRows[0].id;
+      throw error;
+    }
   }
-}
 
-function userIdFallback() {
-  return 'system:doc-platform';
+  async getUserDepartmentId(userId) {
+    const User = this.db.getModel('user');
+    const user = await User.findOne({
+      where: { id: userId },
+      attributes: ['department_id'],
+      raw: true,
+    });
+    return user?.department_id || null;
+  }
 }
 
 export default OcrToolController;

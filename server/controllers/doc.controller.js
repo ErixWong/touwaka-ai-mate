@@ -214,7 +214,12 @@ class DocController {
   async getContentTree(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { documentId, revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canRead = await this.docAccessService.canRead(documentId, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
 
       const version = await this.models.DocVersion.findOne({
         where: { id: revisionId, document_id: documentId },
@@ -703,6 +708,7 @@ async createVersion(ctx) {
       const { attachment_id, backend, lang, image_analysis, formula_enable, table_enable } = ctx.request.body || {};
       const ocrResult = await this.documentOcrService.submit(documentId, {
         attachmentId: attachment_id || null,
+        userId,
         backend,
         lang,
         imageAnalysis: image_analysis,
@@ -887,8 +893,33 @@ async createVersion(ctx) {
       const canWrite = await collectionAccess.canWrite(collection_id, userId);
       if (!canWrite) ctx.throw(403, 'Only the collection owner can create intake documents');
 
+      const attachmentList = Array.isArray(attachments) ? attachments : [];
+      const attachmentIds = attachmentList.map(item => item?.id).filter(Boolean);
+      const uniqueAttachmentIds = [...new Set(attachmentIds)];
+      if (attachmentList.length > 0 && attachmentIds.length !== attachmentList.length) {
+        ctx.throw(400, 'attachments must contain valid attachment ids');
+      }
+
+      if (uniqueAttachmentIds.length > 0) {
+        const Attachment = this.db.getModel('attachment');
+        const attachmentRows = await Attachment.findAll({
+          where: { id: uniqueAttachmentIds },
+          attributes: ['id', 'created_by'],
+          raw: true,
+        });
+
+        if (attachmentRows.length !== uniqueAttachmentIds.length) {
+          ctx.throw(404, 'One or more attachments not found');
+        }
+
+        const deniedAttachment = attachmentRows.find(item => item.created_by !== userId);
+        if (deniedAttachment) {
+          ctx.throw(403, 'Attachment access denied');
+        }
+      }
+
       const sourceRefId = Utils.newID();
-      const firstAttachment = attachments && attachments.length > 0 ? attachments[0] : null;
+      const firstAttachment = attachmentList.length > 0 ? attachmentList[0] : null;
 
       const documentId = Utils.newID();
       const revisionId = Utils.newID();
@@ -905,7 +936,7 @@ async createVersion(ctx) {
           metadata: {
             app_id,
             schema_id: schema_id || null,
-            attachments: attachments || [],
+            attachments: attachmentList,
           },
         }, { transaction: t });
 
@@ -920,9 +951,9 @@ async createVersion(ctx) {
           created_by: userId,
         }, { transaction: t });
 
-        if (Array.isArray(attachments) && attachments.length > 0) {
+        if (attachmentList.length > 0) {
           const Attachment = this.db.getModel('attachment');
-          for (const item of attachments) {
+          for (const item of attachmentList) {
             if (!item?.id) continue;
             await Attachment.update({
               source_tag: 'doc-platform',
