@@ -195,28 +195,59 @@ function parseHeaders(headersStr) {
   }
 }
 
+function resolveCredentialPlaceholder(value, credentials) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const envOverrides = credentials?.env_overrides || credentials || {};
+
+  return value.replace(/\$\{user\.(\w+)\}/g, (match, fieldName) => {
+    const replacement = envOverrides[fieldName];
+    if (replacement === undefined || replacement === null) {
+      log(`Missing credential field for header placeholder: ${fieldName}`);
+      return match;
+    }
+    return String(replacement);
+  });
+}
+
+function getHeaderKeyCaseInsensitive(headers, headerName) {
+  const target = String(headerName || '').toLowerCase();
+  return Object.keys(headers || {}).find(key => key.toLowerCase() === target) || null;
+}
+
+function hasUnresolvedCredentialPlaceholder(value) {
+  return typeof value === 'string' && /\$\{user\.\w+\}/.test(value);
+}
+
 function buildAuthHeaders(headersStr, credentials) {
-  const headers = parseHeaders(headersStr);
+  const headers = Object.fromEntries(
+    Object.entries(parseHeaders(headersStr)).map(([key, value]) => [
+      key,
+      resolveCredentialPlaceholder(value, credentials),
+    ])
+  );
   
   // 凭证可能存储在 credentials.env_overrides 中
   const envOverrides = credentials?.env_overrides || credentials || {};
-  
-  if (envOverrides.api_key) {
-    headers['Authorization'] = `Bearer ${envOverrides.api_key}`;
-  } else if (envOverrides.token) {
-    headers['Authorization'] = `Bearer ${envOverrides.token}`;
-  } else if (envOverrides.API_KEY) {
-    headers['X-API-Key'] = envOverrides.API_KEY;
+
+  const authorizationKey = getHeaderKeyCaseInsensitive(headers, 'Authorization');
+  const apiKeyHeaderKey = getHeaderKeyCaseInsensitive(headers, 'X-API-Key');
+
+  if (!authorizationKey || hasUnresolvedCredentialPlaceholder(headers[authorizationKey])) {
+    if (envOverrides.api_key) {
+      headers[authorizationKey || 'Authorization'] = `Bearer ${envOverrides.api_key}`;
+    } else if (envOverrides.token) {
+      headers[authorizationKey || 'Authorization'] = `Bearer ${envOverrides.token}`;
+    }
+  }
+
+  if ((!apiKeyHeaderKey || hasUnresolvedCredentialPlaceholder(headers[apiKeyHeaderKey])) && envOverrides.API_KEY) {
+    headers[apiKeyHeaderKey || 'X-API-Key'] = envOverrides.API_KEY;
   }
   
   return headers;
-}
-
-function sanitizeHeaders(headers) {
-  const sanitized = { ...headers };
-  if (sanitized.Authorization) sanitized.Authorization = 'Bearer ***';
-  if (sanitized['X-API-Key']) sanitized['X-API-Key'] = '***';
-  return sanitized;
 }
 
 async function createTransport(serverConfig, credentials = null) {
@@ -262,14 +293,14 @@ async function createTransport(serverConfig, credentials = null) {
     
     if (isStateless) {
       log(`Creating StatelessHTTP transport for ${serverConfig.name}: ${serverConfig.url}`);
-      log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}, timeout=${timeoutMs}ms`);
+      log(`Timeout=${timeoutMs}ms`);
       return new StatelessHTTPTransport(new URL(serverConfig.url), { requestInit: { headers }, timeout: timeoutMs });
     }
     
     const useSSE = transportType === 'sse' || serverConfig.url.endsWith('/sse') || serverConfig.use_sse;
     
     log(`Creating ${useSSE ? 'SSE' : 'StreamableHTTP'} transport for ${serverConfig.name}: ${serverConfig.url}`);
-    log(`Headers: ${JSON.stringify(sanitizeHeaders(headers))}, timeout=${timeoutMs}ms`);
+    log(`Timeout=${timeoutMs}ms`);
     
     const TransportClass = useSSE ? SSEClientTransport : StreamableHTTPClientTransport;
     return new TransportClass(new URL(serverConfig.url), { requestInit, fetch: customFetch });
