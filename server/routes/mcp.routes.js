@@ -289,6 +289,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         icon,
         category,
       } = ctx.request.body;
+      const normalizedHeaders = typeof headers === 'string' && headers.trim() === '' ? null : headers;
 
       // 验证必要字段
       if (!name) {
@@ -330,7 +331,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         args: args || null,
         env_template: env_template || null,
         url: url || null,
-        headers: headers || null,
+        headers: normalizedHeaders || null,
         is_public: is_public || false,
         is_enabled: true,
         requires_credentials: requires_credentials || false,
@@ -394,6 +395,10 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
 
       for (const field of allowedFields) {
         if (updateData[field] !== undefined) {
+          if (field === 'headers' && typeof updateData[field] === 'string' && updateData[field].trim() === '') {
+            server[field] = null;
+            continue;
+          }
           server[field] = updateData[field];
         }
       }

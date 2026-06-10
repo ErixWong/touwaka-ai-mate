@@ -640,6 +640,8 @@ const closeServerDialog = () => {
 // 保存 Server
 const saveServer = async () => {
   try {
+    const normalized_headers = serverForm.headers.trim() ? serverForm.headers : null
+
     // 构建请求数据 - 全量更新：表单里有什么就传什么
     const requestData: any = {
       name: serverForm.name,
@@ -648,7 +650,7 @@ const saveServer = async () => {
       is_enabled: serverForm.is_enabled,
       // HTTP/SSE 字段
       url: serverForm.url || undefined,
-      headers: serverForm.headers || undefined,
+      headers: normalized_headers,
       // STDIO 字段
       command: serverForm.command || undefined,
       args: serverForm.args || undefined,
