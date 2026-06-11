@@ -207,7 +207,7 @@
     </div>
 
     <!-- 专家设置 -->
-    <div v-if="activeTab === 'expert'" class="settings-section expert-section">
+    <div v-if="activeTab === 'expert' && isAdmin" class="settings-section expert-section">
       <div class="panel-header">
         <h3 class="panel-title">{{ $t('settings.expertManagement') }}</h3>
         <el-button @click="openExpertDialog()">
@@ -278,7 +278,7 @@
     </div>
 
     <!-- 用户管理 -->
-    <div v-if="activeTab === 'user'" class="settings-section user-section">
+    <div v-if="activeTab === 'user' && isAdmin" class="settings-section user-section">
       <div class="panel-header">
         <h3 class="panel-title">{{ $t('settings.userManagement') }}</h3>
         <el-button @click="openUserDialog()" :title="$t('settings.addUser')">
@@ -357,7 +357,7 @@
     </div>
 
     <!-- 角色管理 -->
-    <div v-if="activeTab === 'role'" class="settings-section role-section">
+    <div v-if="activeTab === 'role' && isAdmin" class="settings-section role-section">
       <div class="split-panel">
         <!-- 左侧：角色列表 -->
         <div class="panel role-list-panel">

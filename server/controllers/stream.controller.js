@@ -15,6 +15,7 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
+import { getPermissionService } from '../services/permission.service.js';
 
 class StreamController {
   constructor(db, chatService) {
@@ -22,9 +23,45 @@ class StreamController {
     this.chatService = chatService;
     this.Topic = db.getModel('topic');
     this.Message = db.getModel('message');
+    this.Expert = db.getModel('expert');
     this.systemSettingService = getSystemSettingService(db);
+    this.permissionService = getPermissionService(db);
     // 存储活跃的 SSE 连接：Map<expertId, Set<{userId, res}>>
     this.expertConnections = new Map();
+  }
+
+  /**
+   * 校验用户是否有权限访问指定专家
+   * @param {string} userId - 用户ID
+   * @param {string} expertId - 专家ID
+   * @returns {Promise<{ allowed: boolean, reason: string | null }>}
+   */
+  async checkExpertAccess(userId, expertId) {
+    try {
+      const expert = await this.Expert.findOne({
+        where: { id: expertId },
+        attributes: ['id', 'is_active'],
+        raw: true,
+      });
+
+      if (!expert) {
+        return { allowed: false, reason: 'EXPERT_NOT_FOUND' };
+      }
+
+      if (!expert.is_active) {
+        return { allowed: false, reason: 'EXPERT_INACTIVE' };
+      }
+
+      const hasAccess = await this.permissionService.canAccessExpert(userId, expertId);
+      if (!hasAccess) {
+        return { allowed: false, reason: 'NO_ACCESS' };
+      }
+
+      return { allowed: true, reason: null };
+    } catch (error) {
+      logger.error('[StreamController] checkExpertAccess error:', error.message);
+      return { allowed: false, reason: 'CHECK_FAILED' };
+    }
   }
 
   /**
@@ -46,6 +83,14 @@ class StreamController {
       }
 
       const user_id = ctx.state.session.id;
+
+      // 校验用户是否有权限访问该专家
+      const accessCheck = await this.checkExpertAccess(user_id, expert_id);
+      if (!accessCheck.allowed) {
+        // 统一返回 403，避免专家枚举侧信道
+        ctx.error('无权访问该专家', 403);
+        return;
+      }
 
       // 检查 SSE 连接是否存在
       const connections = this.expertConnections.get(expert_id);
@@ -270,6 +315,14 @@ class StreamController {
     }
 
     const user_id = ctx.state.session.id;
+
+    // 校验用户是否有权限访问该专家
+    const accessCheck = await this.checkExpertAccess(user_id, expert_id);
+    if (!accessCheck.allowed) {
+      // 统一返回 403，避免专家枚举侧信道
+      ctx.error('无权访问该专家', 403);
+      return;
+    }
 
     // 从系统配置获取连接数限制
     const connectionLimits = await this.systemSettingService.getConnectionLimits();
