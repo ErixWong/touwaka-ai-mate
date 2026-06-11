@@ -7,6 +7,7 @@
 import bcrypt from 'bcryptjs';
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
+import { Op } from 'sequelize';
 
 class UserController {
   constructor(db) {
@@ -511,6 +512,7 @@ class UserController {
    * 管理员专用
    */
   async updateUserRoles(ctx) {
+    let transaction = null;
     try {
       // 检查管理员权限
       if (!ctx.state.session.isAdmin) {
@@ -522,7 +524,7 @@ class UserController {
       const { roleIds } = ctx.request.body;
 
       if (!Array.isArray(roleIds)) {
-        ctx.error('roleIds 必须是数组');
+        ctx.error('roleIds 必须是数组', 400);
         return;
       }
 
@@ -533,22 +535,50 @@ class UserController {
         return;
       }
 
-      // 删除现有角色
-      await this.UserRole.destroy({ where: { user_id: id } });
+      // 校验所有 roleIds 是否存在
+      if (roleIds.length > 0) {
+        const existingRoles = await this.Role.findAll({
+          where: { id: { [Op.in]: roleIds } },
+          attributes: ['id'],
+          raw: true,
+        });
+        const existingRoleIds = existingRoles.map(r => r.id);
+        const invalidRoleIds = roleIds.filter(rid => !existingRoleIds.includes(rid));
+        
+        if (invalidRoleIds.length > 0) {
+          ctx.error(`角色不存在: ${invalidRoleIds.join(', ')}`, 400);
+          return;
+        }
+      }
 
-      // 添加新角色
+      transaction = await this.db.sequelize.transaction();
+
+      // 删除现有角色（事务内）
+      await this.UserRole.destroy({ where: { user_id: id }, transaction });
+
+      // 添加新角色（事务内）
       if (roleIds.length > 0) {
         const roleRecords = roleIds.map(roleId => ({
           user_id: id,
           role_id: roleId,
         }));
-        await this.UserRole.bulkCreate(roleRecords);
+        await this.UserRole.bulkCreate(roleRecords, { transaction });
       }
 
+      // 提交事务
+      await transaction.commit();
       ctx.success(null, '角色更新成功');
     } catch (error) {
+      // 回滚事务
+      if (transaction) {
+        try {
+          await transaction.rollback();
+        } catch (rollbackError) {
+          logger.error('Transaction rollback error:', rollbackError.message);
+        }
+      }
       logger.error('Update user roles error:', error);
-      ctx.error('更新角色失败', 500);
+      ctx.error('更新角色失败: ' + error.message, 500);
     }
   }
 

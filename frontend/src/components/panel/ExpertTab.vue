@@ -26,8 +26,9 @@
           <div v-else class="avatar-placeholder">
             <span class="placeholder-text">{{ getInitials(currentExpert.name) }}</span>
           </div>
-          <!-- 悬浮刷新按钮 -->
+          <!-- 悬浮刷新按钮（仅管理员可见） -->
           <button
+            v-if="isAdmin"
             class="refresh-btn-floating"
             :disabled="isRefreshing"
             :title="$t('expert.refreshCache')"
@@ -91,11 +92,15 @@ import { computed, watch, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useExpertStore } from '@/stores/expert'
+import { useUserStore } from '@/stores/user'
 import { expertApi } from '@/api/services'
 
 const { t } = useI18n()
 const route = useRoute()
 const expertStore = useExpertStore()
+const userStore = useUserStore()
+
+const isAdmin = computed(() => userStore.isAdmin)
 
 // 从路由获取当前 expertId
 const currentExpertId = computed(() => route.params.expertId as string)

@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { expertApi } from '@/api/services'
+import { useUserStore } from './user'
 import type { Expert } from '@/types'
 
 /**
@@ -31,7 +32,11 @@ export const useExpertStore = defineStore('expert', () => {
     isLoading.value = true
     error.value = null
     try {
-      const data = await expertApi.getExperts(options || {})
+      const userStore = useUserStore()
+      // 管理员使用管理接口，普通用户使用安全接口
+      const data = userStore.isAdmin 
+        ? await expertApi.getExperts(options || {})
+        : await expertApi.getAccessibleExperts()
       experts.value = data
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load experts'

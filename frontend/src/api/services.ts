@@ -171,6 +171,10 @@ export const expertApi = {
   getExperts: (params?: { is_active?: boolean }) =>
     apiRequest<Expert[]>(apiClient.get('/experts', { params })),
 
+  // 获取用户可访问的专家列表（聊天侧栏使用）
+  getAccessibleExperts: () =>
+    apiRequest<Expert[]>(apiClient.get('/chat/experts')),
+
   // 获取单个专家
   getExpert: (id: string) =>
     apiRequest<Expert>(apiClient.get(`/experts/${id}`)),

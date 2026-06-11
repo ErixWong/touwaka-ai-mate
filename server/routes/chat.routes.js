@@ -6,8 +6,22 @@ import Router from '@koa/router';
 import { authenticate } from '../middlewares/auth.js';
 import logger from '../../lib/logger.js';
 
-export default (controller) => {
+export default (controller, services = {}) => {
   const router = new Router({ prefix: '/api/chat' });
+
+  // 获取用户可访问的专家列表（用户侧安全接口）
+  router.get('/experts', authenticate(), async (ctx) => {
+    try {
+      const permissionService = services.permissionService;
+      const userId = ctx.state.session.id;
+      
+      const experts = await permissionService.getAccessibleExperts(userId);
+      ctx.success(experts);
+    } catch (error) {
+      logger.error('[ChatRoutes] Get user experts error:', error);
+      ctx.error('获取专家列表失败: ' + error.message, 500);
+    }
+  });
 
   // 发送消息（需要认证）- content 在 body 中，支持流式响应
   router.post('/', authenticate(), controller.sendMessage.bind(controller));

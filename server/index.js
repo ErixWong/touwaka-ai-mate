@@ -99,6 +99,7 @@ import departmentRoutes from './routes/department.routes.js';
 import positionRoutes from './routes/position.routes.js';
 import systemSettingRoutes, { createBrandingRoutes } from './routes/system-setting.routes.js';
 import { getSystemSettingService } from './services/system-setting.service.js';
+import { getPermissionService } from './services/permission.service.js';
 import packageRoutes from './routes/package.routes.js';
 import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
@@ -375,8 +376,9 @@ class ApiServer {
     this.app.use(streamRoutes(this.controllers.stream).allowedMethods());
     
     // Chat 路由（前端兼容）
-    this.app.use(chatRoutes(this.controllers.stream).routes());
-    this.app.use(chatRoutes(this.controllers.stream).allowedMethods());
+    const permissionService = getPermissionService(this.db);
+    this.app.use(chatRoutes(this.controllers.stream, { permissionService }).routes());
+    this.app.use(chatRoutes(this.controllers.stream, { permissionService }).allowedMethods());
     
     // Provider 路由（需要数据库实例）
     try {
