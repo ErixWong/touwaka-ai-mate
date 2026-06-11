@@ -16,7 +16,7 @@ export default class attachment extends Model {
       comment: "业务标识：kb_article_image, user_avatar, task_export 等"
     },
     source_id: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING(64),
       allowNull: false,
       comment: "关联资源ID"
     },

@@ -114,6 +114,60 @@ import invoiceRoutes from './routes/invoice.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
+function formatProcessError(error) {
+  if (!error) return '(empty error)';
+  if (error instanceof Error) {
+    return error.stack || `${error.name}: ${error.message}`;
+  }
+  if (typeof error === 'object') {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
+function registerProcessDiagnostics() {
+  process.on('uncaughtException', (error, origin) => {
+    logger.error(`[Process] uncaughtException origin=${origin || 'unknown'} ${formatProcessError(error)}`);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('[Process] unhandledRejection', formatProcessError(reason));
+    if (promise) {
+      logger.error('[Process] unhandledRejection promise', promise);
+    }
+  });
+
+  process.on('warning', (warning) => {
+    logger.warn(`[Process] warning ${formatProcessError(warning)}`);
+  });
+
+  process.on('beforeExit', (code) => {
+    logger.warn(`[Process] beforeExit code=${code}`);
+  });
+
+  process.on('exit', (code) => {
+    logger.warn(`[Process] exit code=${code}`);
+  });
+
+  ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'].forEach((signal) => {
+    process.on(signal, () => {
+      logger.warn(`[Process] received signal ${signal}`);
+    });
+  });
+}
+
+registerProcessDiagnostics();
+
+const isFeatureEnabled = (envName) => {
+  const value = process.env[envName];
+  if (value == null) return true;
+  return !['0', 'false', 'off', 'no'].includes(String(value).trim().toLowerCase());
+};
+
 class ApiServer {
   constructor() {
     this.app = new Koa();
@@ -241,6 +295,9 @@ class ApiServer {
       intervalMs: appConfig.clock_interval * 1000,
       batchSize: appConfig.batch_size,
       globalConcurrency: appConfig.max_concurrency,
+      tickTimeoutMs: parseInt(process.env.APP_CLOCK_TICK_TIMEOUT_MS, 10) || 30000,
+      maxConsecutiveFailures: parseInt(process.env.APP_CLOCK_MAX_FAILURES, 10) || 3,
+      failureCooldownMs: parseInt(process.env.APP_CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
       residentSkillManager: this.residentSkillManager,
       skillLoader: new SkillLoader(this.db),
     });
@@ -623,6 +680,8 @@ class ApiServer {
       this.setupMiddlewares();
       this.setupRoutes();
 
+      this.app.context.appClock = this.appClock;
+
       // 将 SSE 连接池共享给 AssistantManager（在 setupRoutes 之后，因为 StreamController 已创建）
       assistantManager.setExpertConnections(this.controllers.stream.expertConnections);
       logger.info('AssistantManager: expertConnections set');
@@ -663,19 +722,31 @@ class ApiServer {
 
         // 启动后台任务调度器
         if (this.scheduler) {
-          this.scheduler.startAll();
+          if (isFeatureEnabled('ENABLE_BACKGROUND_SCHEDULER')) {
+            this.scheduler.startAll();
+          } else {
+            logger.warn('[Startup] BackgroundTaskScheduler disabled by ENABLE_BACKGROUND_SCHEDULER');
+          }
         }
 
         // 启动 AppClock（Issue #654）
         if (this.appClock) {
-          this.appClock.start().catch(err => {
-            logger.error('[Startup] Failed to start AppClock:', err.message);
-          });
+          if (isFeatureEnabled('ENABLE_APP_CLOCK')) {
+            this.appClock.start().catch(err => {
+              logger.error('[Startup] Failed to start AppClock:', err.message);
+            });
+          } else {
+            logger.warn('[Startup] AppClock disabled by ENABLE_APP_CLOCK');
+          }
         }
 
         // 启动 Token 清理任务（Issue #140）
         if (this.tokenCleanupJob) {
-          this.tokenCleanupJob.start();
+          if (isFeatureEnabled('ENABLE_TOKEN_CLEANUP')) {
+            this.tokenCleanupJob.start();
+          } else {
+            logger.warn('[Startup] TokenCleanupJob disabled by ENABLE_TOKEN_CLEANUP');
+          }
         }
       });
     } catch (error) {

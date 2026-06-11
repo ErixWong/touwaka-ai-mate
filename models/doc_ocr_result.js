@@ -31,7 +31,7 @@ export default class doc_ocr_result extends Model {
       provider: {
         type: DataTypes.STRING(64),
         allowNull: false,
-        defaultValue: 'erix-mineru',
+        defaultValue: 'mineru',
         comment: 'OCR供应方标识'
       },
       task_id: {

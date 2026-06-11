@@ -3,6 +3,14 @@
     <div class="view-header">
       <el-button text @click="goBack">← 返回集合列表</el-button>
       <div class="header-right">
+        <el-upload
+          :show-file-list="false"
+          :auto-upload="false"
+          :on-change="handleFileChange"
+          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+        >
+          <el-button type="primary" :loading="store.isUploadingDocument">上传文档</el-button>
+        </el-upload>
         <el-button @click="goSettings">设置</el-button>
       </div>
     </div>
@@ -40,24 +48,36 @@
           <el-table :data="store.collectionDocuments" stripe>
             <el-table-column label="文档标题">
               <template #default="{ row }">
-                <span class="doc-title-link" @click="openDoc(row.document.id)">{{ row.document.title }}</span>
+                <span class="doc-title-link" @click="openDoc(row.id)">{{ row.title }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="类型" width="120">
+            <el-table-column label="上传时间" width="180">
               <template #default="{ row }">
-                <el-tag size="small">{{ row.document.doc_type }}</el-tag>
+                {{ formatTime(row.source_attachment?.created_at || row.created_at) }}
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="100">
+            <el-table-column label="当前版本" width="120">
               <template #default="{ row }">
-                <el-tag size="small" :type="row.document.lifecycle_status === 'active' ? 'success' : 'info'">
-                  {{ row.document.lifecycle_status === 'active' ? '活跃' : '已归档' }}
+                <span>{{ row.current_revision?.revision_label || row.current_revision?.revision_no || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="处理状态" width="140">
+              <template #default="{ row }">
+                <el-tag size="small" :type="processingTagType(row.processing_status)">
+                  {{ processingLabel(row.processing_status, row.ocr_status) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="更新时间" width="180">
+            <el-table-column label="OCR Task ID" min-width="260">
               <template #default="{ row }">
-                {{ formatTime(row.document.updated_at) }}
+                <span class="task-id-text">{{ row.ocr_task_id || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="可预览结果" width="120">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.has_preview_result ? 'success' : 'info'">
+                  {{ row.has_preview_result ? '已生成' : '暂无' }}
+                </el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -81,6 +101,8 @@
 import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectionStore } from '@/stores/collection'
+import { ElMessage } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,7 +122,23 @@ function visibilityTagType(v: string) {
 
 function formatTime(t: string) {
   if (!t) return ''
-  return new Date(t).toLocaleDateString('zh-CN')
+  return new Date(t).toLocaleString('zh-CN')
+}
+
+function processingLabel(status?: string, ocrStatus?: string) {
+  if (status === 'pending_ocr') return '待OCR'
+  if (status === 'ocr_processing') return ocrStatus === 'completed' ? 'OCR完成' : 'OCR处理中'
+  if (status === 'pending_clean') return '待预览'
+  if (status === 'ready') return '已就绪'
+  if (status === 'error') return '处理失败'
+  return status || '未知'
+}
+
+function processingTagType(status?: string) {
+  if (status === 'ready' || status === 'pending_clean') return 'success'
+  if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
+  if (status === 'error') return 'danger'
+  return 'info'
 }
 
 function goBack() {
@@ -113,6 +151,20 @@ function goSettings() {
 
 function openDoc(documentId: string) {
   router.push(`/docs/${documentId}`)
+}
+
+async function handleFileChange(uploadFile: UploadFile) {
+  const rawFile = uploadFile.raw
+  if (!rawFile) return
+
+  const result = await store.uploadDocumentToCollection(collectionId, rawFile)
+  if (!result) {
+    ElMessage.error(store.error || '上传文档失败')
+    return
+  }
+
+  ElMessage.success('文档已上传并提交识别')
+  router.push(`/docs/${result.intake.document_id}`)
 }
 
 function onDocPageChange(page: number) {
@@ -139,6 +191,7 @@ onMounted(async () => {
 .section-header h3 { margin: 0; font-size: 16px; }
 .doc-title-link { color: #409eff; cursor: pointer; }
 .doc-title-link:hover { text-decoration: underline; }
+.task-id-text { font-family: Consolas, 'Courier New', monospace; font-size: 12px; color: #606266; word-break: break-all; }
 .pagination-wrap { margin-top: 16px; display: flex; justify-content: center; }
 .loading-state, .empty-state { text-align: center; padding: 40px 0; color: #999; }
 </style>

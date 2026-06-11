@@ -121,14 +121,65 @@ class DocController {
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,
-        attributes: ['id', 'doc_type', 'title', 'collection_id', 'current_revision_id', 'processing_status', 'created_at', 'updated_at'],
+        attributes: [
+          'id',
+          'doc_type',
+          'title',
+          'collection_id',
+          'current_revision_id',
+          'processing_status',
+          'created_at',
+          'updated_at',
+          'metadata',
+        ],
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
         limit: size,
       });
 
-      ctx.success(buildPaginatedResponse({ count, rows }, { page: parseInt(page), pageSize: size }, startTime));
-      logger.info(`[Doc] listDocuments: ${rows.length} results, ${Date.now() - startTime}ms`);
+      const DocVersion = this.db.getModel('document_revision');
+      const DocOcrResult = this.db.getModel('doc_ocr_result');
+      const Attachment = this.db.getModel('attachment');
+
+      const enrichedRows = await Promise.all(rows.map(async (row) => {
+        const doc = row.toJSON ? row.toJSON() : row;
+        const currentRevision = doc.current_revision_id
+          ? await DocVersion.findByPk(doc.current_revision_id, {
+            attributes: ['id', 'revision_no', 'revision_label'],
+            raw: true,
+          })
+          : null;
+
+        const latestOcrResult = await DocOcrResult.findOne({
+          where: { document_id: doc.id },
+          attributes: ['id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'error_message', 'updated_at'],
+          order: [['created_at', 'DESC']],
+          raw: true,
+        });
+
+        const sourceAttachment = doc.current_revision_id
+          ? await Attachment.findOne({
+            where: { source_tag: 'doc-platform', source_id: doc.current_revision_id },
+            attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_at'],
+            order: [['created_at', 'ASC']],
+            raw: true,
+          })
+          : null;
+
+        return {
+          ...doc,
+          current_revision: currentRevision,
+          source_attachment: sourceAttachment,
+          ocr_task_id: latestOcrResult?.task_id || null,
+          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+          ocr_status: latestOcrResult?.status || null,
+          ocr_progress: typeof latestOcrResult?.progress === 'number' ? latestOcrResult.progress : null,
+          ocr_error_message: latestOcrResult?.error_message || null,
+        };
+      }));
+
+      ctx.success(buildPaginatedResponse({ count, rows: enrichedRows }, { page: parseInt(page), pageSize: size }, startTime));
+      logger.info(`[Doc] listDocuments: ${enrichedRows.length} results, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] listDocuments error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -168,6 +219,177 @@ class DocController {
       logger.info(`[Doc] getDocument: ${documentId}, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] getDocument error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 获取文档结果详情（阶段一：上传->OCR->预览）
+   * GET /api/docs/documents/:documentId/result
+   */
+  async getDocumentResult(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canRead = await this.docAccessService.canRead(documentId, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const DocumentRevision = this.db.getModel('document_revision');
+      const Attachment = this.db.getModel('attachment');
+      const DocOcrResult = this.db.getModel('doc_ocr_result');
+      const DocOcrImage = this.db.getModel('doc_ocr_image');
+      const User = this.db.getModel('user');
+
+      const document = await this.models.DocDocument.findOne({
+        where: { id: documentId },
+        attributes: [
+          'id',
+          'title',
+          'doc_type',
+          'source_system',
+          'source_ref_id',
+          'collection_id',
+          'current_revision_id',
+          'processing_status',
+          'processing_error_code',
+          'processing_error_message',
+          'created_at',
+          'updated_at',
+          'metadata',
+        ],
+        raw: true,
+      });
+
+      if (!document) ctx.throw(404, 'Document not found');
+
+      const revision = document.current_revision_id
+        ? await DocumentRevision.findByPk(document.current_revision_id, {
+          attributes: ['id', 'document_id', 'revision_no', 'revision_label', 'revision_status', 'created_by', 'created_at'],
+          raw: true,
+        })
+        : null;
+
+      const uploader = revision?.created_by
+        ? await User.findOne({
+          where: { id: revision.created_by },
+          attributes: ['id', 'username'],
+          raw: true,
+        })
+        : null;
+
+      const sourceAttachment = revision?.id
+        ? await Attachment.findOne({
+          where: { source_tag: 'doc-platform', source_id: revision.id },
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_by', 'created_at'],
+          order: [['created_at', 'ASC']],
+          raw: true,
+        })
+        : null;
+
+      const latestOcrResult = await DocOcrResult.findOne({
+        where: { document_id: documentId },
+        order: [['created_at', 'DESC']],
+        raw: true,
+      });
+
+      const attachmentIds = [
+        latestOcrResult?.main_markdown_attachment_id,
+        latestOcrResult?.raw_result_attachment_id,
+        latestOcrResult?.deliverables_manifest_attachment_id,
+        latestOcrResult?.image_manifest_attachment_id,
+      ].filter(Boolean);
+
+      const resultAttachments = attachmentIds.length > 0
+        ? await Attachment.findAll({
+          where: { id: { [Op.in]: attachmentIds } },
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_at'],
+          raw: true,
+        })
+        : [];
+
+      const resultAttachmentMap = new Map(resultAttachments.map(item => [item.id, item]));
+
+      const ocrImages = latestOcrResult?.id
+        ? await DocOcrImage.findAll({
+          where: { ocr_result_id: latestOcrResult.id },
+          attributes: ['id', 'attachment_id', 'filename', 'media_type', 'sort_order', 'alt_text', 'description'],
+          order: [['sort_order', 'ASC']],
+          raw: true,
+        })
+        : [];
+
+      const imageAttachmentIds = [...new Set(ocrImages.map(item => item.attachment_id).filter(Boolean))];
+      const imageAttachments = imageAttachmentIds.length > 0
+        ? await Attachment.findAll({
+          where: { id: { [Op.in]: imageAttachmentIds } },
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_at'],
+          raw: true,
+        })
+        : [];
+      const imageAttachmentMap = new Map(imageAttachments.map(item => [item.id, item]));
+
+      ctx.success({
+        document: {
+          ...document,
+          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+        },
+        revision: revision ? {
+          ...revision,
+          uploader: uploader ? {
+            id: uploader.id,
+            username: uploader.username,
+          } : null,
+        } : null,
+        source_attachment: sourceAttachment ? {
+          ...sourceAttachment,
+          download_url: `/api/attachments/${sourceAttachment.id}`,
+        } : null,
+        processing: {
+          status: document.processing_status,
+          error_code: document.processing_error_code,
+          error_message: document.processing_error_message,
+        },
+        ocr_result: latestOcrResult ? {
+          id: latestOcrResult.id,
+          task_id: latestOcrResult.task_id,
+          status: latestOcrResult.status,
+          progress: latestOcrResult.progress,
+          image_count: latestOcrResult.image_count,
+          line_count: latestOcrResult.line_count,
+          started_at: latestOcrResult.started_at,
+          completed_at: latestOcrResult.completed_at,
+          error_code: latestOcrResult.error_code,
+          error_message: latestOcrResult.error_message,
+          main_markdown_attachment: latestOcrResult.main_markdown_attachment_id ? {
+            ...resultAttachmentMap.get(latestOcrResult.main_markdown_attachment_id),
+            download_url: `/api/attachments/${latestOcrResult.main_markdown_attachment_id}`,
+          } : null,
+          raw_result_attachment: latestOcrResult.raw_result_attachment_id ? {
+            ...resultAttachmentMap.get(latestOcrResult.raw_result_attachment_id),
+            download_url: `/api/attachments/${latestOcrResult.raw_result_attachment_id}`,
+          } : null,
+          deliverables_manifest_attachment: latestOcrResult.deliverables_manifest_attachment_id ? {
+            ...resultAttachmentMap.get(latestOcrResult.deliverables_manifest_attachment_id),
+            download_url: `/api/attachments/${latestOcrResult.deliverables_manifest_attachment_id}`,
+          } : null,
+          image_manifest_attachment: latestOcrResult.image_manifest_attachment_id ? {
+            ...resultAttachmentMap.get(latestOcrResult.image_manifest_attachment_id),
+            download_url: `/api/attachments/${latestOcrResult.image_manifest_attachment_id}`,
+          } : null,
+        } : null,
+        image_attachments: ocrImages.map((item) => ({
+          ...item,
+          attachment: item.attachment_id ? {
+            ...imageAttachmentMap.get(item.attachment_id),
+            download_url: `/api/attachments/${item.attachment_id}`,
+          } : null,
+        })),
+      });
+    } catch (error) {
+      logger.error('[Doc] getDocumentResult error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -617,6 +839,8 @@ async createVersion(ctx) {
         order: [['created_at', 'DESC']],
       });
 
+      const hasPreviewResult = !!latestOcrResult?.main_markdown_attachment_id;
+
       ctx.success({
         document_id: document.id,
         processing_status: document.processing_status,
@@ -624,6 +848,7 @@ async createVersion(ctx) {
         processing_error_message: document.processing_error_message,
         processing_retry_count: document.processing_retry_count,
         processing_updated_at: document.processing_updated_at,
+        has_preview_result: hasPreviewResult,
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,
           revision_id: latestOcrResult.revision_id,
@@ -640,6 +865,7 @@ async createVersion(ctx) {
           error_message: latestOcrResult.error_message,
           started_at: latestOcrResult.started_at,
           completed_at: latestOcrResult.completed_at,
+          has_preview_result: hasPreviewResult,
         } : null,
       });
     } catch (error) {
@@ -932,7 +1158,7 @@ async createVersion(ctx) {
           source_ref_id: sourceRefId,
           title: firstAttachment ? `Intake ${sourceRefId}` : `Document ${sourceRefId}`,
           processing_status: 'pending_ocr',
-          current_revision_id: revisionId,
+            current_revision_id: null,
           metadata: {
             app_id,
             schema_id: schema_id || null,
@@ -950,6 +1176,10 @@ async createVersion(ctx) {
           change_summary: 'Initial intake revision',
           created_by: userId,
         }, { transaction: t });
+
+          await createdDocument.update({
+            current_revision_id: revisionId,
+          }, { transaction: t });
 
         if (attachmentList.length > 0) {
           const Attachment = this.db.getModel('attachment');
@@ -972,6 +1202,8 @@ async createVersion(ctx) {
         document_id: document.id,
         revision_id: revisionId,
         processing_status: document.processing_status,
+        source_ref_id: sourceRefId,
+        attachment_count: attachmentList.length,
       });
       logger.info(`[Doc] createIntake: ${document.id} for app ${app_id}, collection ${collection_id}`);
     } catch (error) {

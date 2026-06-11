@@ -1,104 +1,94 @@
 <template>
   <div class="doc-detail-view">
     <div class="back-row">
-      <el-button text @click="$router.push('/docs')">← {{ $t('docs.navTitle') }}</el-button>
+      <el-button text @click="goBack">← 返回上一页</el-button>
     </div>
 
-    <div v-if="docStore.isLoading && !docStore.currentDoc" class="loading-state">{{ $t('common.loading') }}</div>
+    <div v-if="docStore.isLoading && !docStore.currentResult" class="loading-state">{{ $t('common.loading') }}</div>
     <div v-else-if="docStore.error" class="error-state">{{ docStore.error }}</div>
 
-    <template v-else-if="docStore.currentDoc">
+    <template v-else-if="docStore.currentResult">
       <div class="doc-header">
-        <h1>{{ docStore.currentDoc.title }}</h1>
+        <h1>{{ docStore.currentResult.document.title }}</h1>
         <div class="doc-meta">
-          <el-tag :type="docTypeTag(docStore.currentDoc.doc_type)">{{ docTypeLabel(docStore.currentDoc.doc_type) }}</el-tag>
-          <span>{{ docStore.currentDoc.source_system }}</span>
-          <span class="vis-badge">{{ docStore.currentDoc.visibility }}</span>
-          <span>{{ $t('docs.updatedAt') }}: {{ fmt(docStore.currentDoc.updated_at) }}</span>
+          <el-tag :type="docTypeTag(docStore.currentResult.document.doc_type)">{{ docTypeLabel(docStore.currentResult.document.doc_type) }}</el-tag>
+          <span>{{ docStore.currentResult.document.source_system }}</span>
+          <span>{{ fmt(docStore.currentResult.document.updated_at) }}</span>
         </div>
       </div>
 
-      <div class="version-header">
-        <h3>{{ $t('docs.versions') }}</h3>
+      <div class="section-card">
+        <h3>基本信息</h3>
+        <div class="info-grid">
+          <div><span class="label">文档标题</span><span>{{ docStore.currentResult.document.title }}</span></div>
+          <div><span class="label">文件名</span><span>{{ docStore.currentResult.source_attachment?.file_name || '-' }}</span></div>
+          <div><span class="label">文件类型</span><span>{{ docStore.currentResult.source_attachment?.mime_type || '-' }}</span></div>
+          <div><span class="label">大小</span><span>{{ formatFileSize(docStore.currentResult.source_attachment?.file_size) }}</span></div>
+          <div><span class="label">上传人</span><span>{{ docStore.currentResult.revision?.uploader?.username || '-' }}</span></div>
+          <div><span class="label">创建时间</span><span>{{ fmt(docStore.currentResult.document.created_at) }}</span></div>
+          <div><span class="label">当前 revision</span><span>{{ revisionLabel }}</span></div>
+        </div>
       </div>
 
-      <div v-if="docStore.versions.length === 0" class="empty-state">
-        {{ $t('docs.noVersions') }}
+      <div class="section-card">
+        <div class="section-title-row">
+          <h3>处理状态</h3>
+          <el-tag v-if="docStore.isPolling" type="warning">轮询中</el-tag>
+        </div>
+        <div class="info-grid">
+          <div><span class="label">处理状态</span><span>{{ processingLabel }}</span></div>
+          <div><span class="label">OCR 状态</span><span>{{ docStore.currentResult.ocr_result?.status || '-' }}</span></div>
+          <div><span class="label">真实 OCR Task ID</span><span class="task-id-value">{{ docStore.currentResult.ocr_result?.task_id || '-' }}</span></div>
+          <div><span class="label">进度</span><span>{{ progressLabel }}</span></div>
+          <div><span class="label">可预览结果</span><span>{{ docStore.currentResult.document.has_preview_result ? '是' : '否' }}</span></div>
+        </div>
+        <div v-if="docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message" class="error-box">
+          {{ docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message }}
+        </div>
       </div>
 
-      <el-table v-else :data="docStore.versions" stripe>
-        <el-table-column prop="version_no" label="#" width="60" />
-        <el-table-column prop="version_label" :label="$t('docs.versionLabel')" width="120" />
-        <el-table-column :label="$t('docs.versionStatus')" width="100">
-          <template #default="{ row }">
-            <el-tag :type="statusTag(row.version_status)" size="small">{{ $t('docs.status.' + row.version_status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('docs.versionCurrent')" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_current" type="success" size="small" effect="dark">●</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="effective_from" :label="$t('docs.versionFrom')" width="120">
-          <template #default="{ row }">{{ row.effective_from || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="effective_to" :label="$t('docs.versionTo')" width="120">
-          <template #default="{ row }">{{ row.effective_to || '-' }}</template>
-        </el-table-column>
-        <el-table-column :label="$t('docs.versionActions')" min-width="280">
-          <template #default="{ row }">
-            <template v-for="t in getTransitions(row.version_status)" :key="t">
-              <el-button size="small" @click="doTransition(row.id, t)">
-                {{ $t('docs.actions.' + t) }}
-              </el-button>
-            </template>
-            <el-button size="small" type="primary" @click="doSetCurrent(row.id)" v-if="!row.is_current && row.version_status === 'approved'">
-              {{ $t('docs.actions.setCurrent') }}
-            </el-button>
-            <el-button size="small" text @click="viewContent(row.id)">{{ $t('docs.actions.viewContent') }}</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="section-card">
+        <h3>主结果预览</h3>
+        <div v-if="markdownLoading" class="loading-state small">加载 markdown 中...</div>
+        <div v-else-if="markdownPreview" class="markdown-preview">{{ markdownPreview }}</div>
+        <div v-else class="empty-state small">暂无预览结果，可能仍在处理中</div>
+      </div>
+
+      <div class="section-card">
+        <h3>下载结果</h3>
+        <div class="download-actions">
+          <el-button v-if="docStore.currentResult.source_attachment" @click="downloadAttachment(docStore.currentResult.source_attachment.download_url)">下载原始文件</el-button>
+          <el-button v-if="docStore.currentResult.ocr_result?.main_markdown_attachment" type="primary" @click="downloadAttachment(docStore.currentResult.ocr_result.main_markdown_attachment.download_url)">下载 Markdown</el-button>
+          <el-button v-if="docStore.currentResult.ocr_result?.raw_result_attachment" @click="downloadAttachment(docStore.currentResult.ocr_result.raw_result_attachment.download_url)">下载原始结果</el-button>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h3>图片附件列表</h3>
+        <div v-if="docStore.currentResult.image_attachments.length === 0" class="empty-state small">暂无图片附件</div>
+        <div v-else class="image-list">
+          <div v-for="item in docStore.currentResult.image_attachments" :key="item.id" class="image-item">
+            <div class="image-name">{{ item.attachment?.file_name || item.filename || '未命名图片' }}</div>
+            <div class="image-meta">{{ item.attachment?.mime_type || item.media_type || '-' }} · {{ formatFileSize(item.attachment?.file_size) }}</div>
+            <el-button size="small" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
+          </div>
+        </div>
+      </div>
     </template>
-
-    <el-dialog v-model="showContentDialog" :title="$t('docs.contentTree')" width="800px">
-      <div v-if="docStore.contentTree.length === 0">{{ $t('docs.noContent') }}</div>
-      <div v-else class="chunk-list">
-        <div v-for="chunk in docStore.contentTree" :key="chunk.id" class="chunk-item">
-          <el-tag size="small" :type="chunkTypeTag(chunk.chunk_type)" style="margin-right:8px">{{ chunk.chunk_type }}</el-tag>
-          <span v-if="chunk.chapter_title" style="color:#999;font-size:12px">{{ chunk.chapter_title }}</span>
-          <span v-if="chunk.section_title" style="color:#bbb;font-size:12px;margin-left:8px">{{ chunk.section_title }}</span>
-          <div class="chunk-title" v-if="chunk.title">{{ chunk.title }}</div>
-          <div class="chunk-content" v-if="chunk.content">{{ chunk.content }}</div>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
-import type { DocChunk } from '@/api/docs'
-import { ElMessage } from 'element-plus'
+import apiClient from '@/api/client'
 
 const route = useRoute()
+const router = useRouter()
 const docStore = useDocStore()
-const showContentDialog = ref(false)
-
-const TRANSITIONS: Record<string, string[]> = {
-  draft:    ['review', 'archived'],
-  review:   ['approved', 'draft', 'archived'],
-  approved: ['effective', 'draft', 'archived'],
-  effective:['expired', 'archived'],
-  expired:  ['draft', 'archived'],
-  archived: [],
-}
-
-function getTransitions(from: string): string[] {
-  return TRANSITIONS[from] || []
-}
+const markdownPreview = ref('')
+const markdownLoading = ref(false)
 
 function docTypeTag(type: string) {
   const m: Record<string, string> = { knowledge: '', contract: 'warning', department_doc: 'info', standard: 'success' }
@@ -110,44 +100,91 @@ function docTypeLabel(type: string) {
   return m[type] || type
 }
 
-function statusTag(s: string) {
-  const m: Record<string, string> = { draft: 'info', review: 'warning', approved: '', effective: 'success', expired: 'danger', archived: 'info' }
-  return m[s] || ''
-}
-
 function fmt(t: string) {
   return t ? new Date(t).toLocaleString() : ''
 }
 
-function chunkTypeTag(type: string) {
-  const m: Record<string, string> = { chapter: '', section: 'info', paragraph: '', chunk: 'warning' }
-  return m[type] || ''
+function formatFileSize(size?: number | null) {
+  if (!size) return '-'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-async function doSetCurrent(versionId: string) {
-  const docId = route.params.documentId as string
-  await docStore.setCurrent(docId, versionId)
-  if (!docStore.error) ElMessage.success('Current version set')
+function downloadAttachment(url?: string) {
+  if (!url) return
+  window.open(url, '_blank')
 }
 
-async function doTransition(versionId: string, toStatus: string) {
-  const docId = route.params.documentId as string
-  await docStore.transition(docId, versionId, toStatus)
-  if (!docStore.error) ElMessage.success(`Status changed to ${toStatus}`)
+function goBack() {
+  router.back()
 }
 
-async function viewContent(versionId: string) {
-  const docId = route.params.documentId as string
-  await docStore.fetchContentTree(docId, versionId)
-  showContentDialog.value = true
+const revisionLabel = computed(() => {
+  const revision = docStore.currentResult?.revision
+  if (!revision) return '-'
+  return revision.revision_label || `r${revision.revision_no}`
+})
+
+const processingLabel = computed(() => {
+  const status = docStore.currentResult?.processing.status
+  if (status === 'pending_ocr') return '待 OCR'
+  if (status === 'ocr_processing') return 'OCR 处理中'
+  if (status === 'pending_clean') return '结果已生成'
+  if (status === 'ready') return '已完成'
+  if (status === 'error') return '处理失败'
+  return status || '-'
+})
+
+const progressLabel = computed(() => {
+  const progress = docStore.currentResult?.ocr_result?.progress
+  return typeof progress === 'number' ? `${progress}%` : '-'
+})
+
+async function loadMarkdownPreview() {
+  const url = docStore.currentResult?.ocr_result?.main_markdown_attachment?.download_url
+  if (!url) {
+    markdownPreview.value = ''
+    return
+  }
+
+  markdownLoading.value = true
+  try {
+    const response = await apiClient.get(url.replace(/^\/api/, '' as string))
+    const dataUrl = response.data?.data?.data_url as string | undefined
+    if (!dataUrl || !dataUrl.startsWith('data:')) {
+      markdownPreview.value = ''
+      return
+    }
+    const base64 = dataUrl.split(',')[1] || ''
+    markdownPreview.value = atob(base64)
+  } catch {
+    markdownPreview.value = ''
+  } finally {
+    markdownLoading.value = false
+  }
 }
 
 onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
     await docStore.fetchDocument(documentId)
-    await docStore.fetchVersions(documentId)
+    await docStore.fetchDocumentResult(documentId)
+    await docStore.fetchProcessing(documentId)
+    await loadMarkdownPreview()
+
+    const completed = docStore.currentResult?.document.has_preview_result
+    const failed = docStore.currentResult?.processing.status === 'error'
+    if (!completed && !failed) {
+      await docStore.startPolling(documentId)
+      await docStore.fetchDocumentResult(documentId)
+      await loadMarkdownPreview()
+    }
   }
+})
+
+onBeforeUnmount(() => {
+  docStore.stopPolling()
 })
 </script>
 
@@ -157,12 +194,20 @@ onMounted(async () => {
 .doc-header { margin-bottom: 24px; }
 .doc-header h1 { margin: 0 0 8px; font-size: 22px; }
 .doc-meta { display: flex; gap: 16px; align-items: center; color: #999; font-size: 13px; }
-.vis-badge { background: #f0f0f0; padding: 1px 8px; border-radius: 4px; }
-.version-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.version-header h3 { margin: 0; }
+.section-card { background: #fff; border: 1px solid #ebeef5; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.section-card h3 { margin: 0 0 16px; font-size: 16px; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+.info-grid > div { display: flex; flex-direction: column; gap: 4px; }
+.label { color: #909399; font-size: 12px; }
+.task-id-value { font-family: Consolas, 'Courier New', monospace; word-break: break-all; }
 .loading-state, .error-state, .empty-state { padding: 60px 0; text-align: center; color: #999; }
-.chunk-list { max-height: 500px; overflow-y: auto; }
-.chunk-item { margin-bottom: 12px; border-left: 2px solid #e0e0e0; padding-left: 12px; }
-.chunk-title { font-weight: bold; margin-bottom: 4px; }
-.chunk-content { color: #666; font-size: 13px; line-height: 1.6; }
+.small { padding: 16px 0; }
+.error-box { margin-top: 12px; padding: 12px; border-radius: 8px; background: #fef0f0; color: #c45656; }
+.markdown-preview { white-space: pre-wrap; line-height: 1.7; color: #303133; background: #fafafa; border-radius: 8px; padding: 16px; max-height: 480px; overflow-y: auto; }
+.download-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.image-list { display: flex; flex-direction: column; gap: 12px; }
+.image-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #f0f0f0; border-radius: 8px; padding: 12px 16px; }
+.image-name { font-weight: 500; }
+.image-meta { color: #909399; font-size: 12px; margin-top: 4px; }
 </style>

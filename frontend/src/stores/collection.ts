@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { uploadAttachmentFormData } from '@/api/attachment'
+import { createDocIntake, submitOcr } from '@/api/docs'
 import {
   listCollections,
   getCollection,
@@ -21,6 +23,8 @@ import type {
   UpdateCollectionRequest,
   MoveDocumentRequest,
 } from '@/api/collections'
+import type { UploadAttachmentResponse } from '@/api/attachment'
+import type { DocIntakeResult, SubmitOcrResult } from '@/api/docs'
 
 export const useCollectionStore = defineStore('collection', () => {
   const collections = ref<DocCollection[]>([])
@@ -35,6 +39,7 @@ export const useCollectionStore = defineStore('collection', () => {
 
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const isUploadingDocument = ref(false)
 
   async function fetchCollections(params?: { page?: number; query?: string }) {
     isLoading.value = true
@@ -184,14 +189,59 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
+  async function uploadDocumentToCollection(collectionId: string, file: File, options?: {
+    app_id?: string
+    schema_id?: string | null
+    lang?: string
+  }): Promise<{
+    attachment: UploadAttachmentResponse
+    intake: DocIntakeResult
+    submit: SubmitOcrResult
+  } | null> {
+    isUploadingDocument.value = true
+    error.value = null
+    try {
+      const attachment = await uploadAttachmentFormData({
+        source_tag: 'doc-platform',
+        source_id: 'temp',
+        file,
+      })
+
+      const intake = await createDocIntake({
+        app_id: options?.app_id || 'contract-mgr-v2',
+        collection_id: collectionId,
+        schema_id: options?.schema_id ?? null,
+        attachments: [{ id: attachment.id }],
+      })
+
+      const submit = await submitOcr(intake.document_id, {
+        attachment_id: attachment.id,
+        lang: options?.lang || 'ch',
+        image_analysis: true,
+        formula_enable: true,
+        table_enable: true,
+      })
+
+      await fetchCollectionDocuments(collectionId)
+      await fetchCollection(collectionId)
+
+      return { attachment, intake, submit }
+    } catch (e: any) {
+      error.value = e.message || 'Failed to upload document'
+      return null
+    } finally {
+      isUploadingDocument.value = false
+    }
+  }
+
   return {
     collections, total, currentPage, pageSize,
     currentCollection,
     collectionDocuments, docTotal, docPage,
-    isLoading, error,
+    isLoading, error, isUploadingDocument,
     fetchCollections, fetchCollection,
     addCollection, editCollection, removeCollection,
     fetchCollectionDocuments, addDocument, removeDocument, moveDocument,
-    revectorize,
+    revectorize, uploadDocumentToCollection,
   }
 })
