@@ -1071,7 +1071,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
@@ -1166,6 +1166,26 @@ const activeTab = computed({
     }
   },
 })
+
+const confirmSystemConfigLeave = () => {
+  if (activeTab.value !== 'system') return true
+
+  let blocked = false
+  const leaveEvent = new Event('system-config-before-leave', { cancelable: true })
+  window.dispatchEvent(leaveEvent)
+  blocked = leaveEvent.defaultPrevented
+
+  if (!blocked) return true
+  return window.confirm(t('settings.unsavedChangesConfirm'))
+}
+
+onBeforeRouteLeave((to, from, next) => {
+  if (confirmSystemConfigLeave()) {
+    next()
+    return
+  }
+  next(false)
+})
 const profileSubTab = ref<'basic' | 'password'>('basic')
 const sidebarCollapsed = ref(false)
 
@@ -1173,6 +1193,7 @@ const handleMenuSelect = (index: string) => {
   const items = menuItemsByGroup[currentGroup.value]
   const item = items?.find(i => i.key === index)
   if (item) {
+    if (!confirmSystemConfigLeave()) return
     router.push(item.route)
   }
 }
