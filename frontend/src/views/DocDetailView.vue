@@ -1,7 +1,13 @@
 <template>
-  <div class="doc-detail-view">
-    <div class="back-row">
-      <el-button text @click="goBack">← 返回上一页</el-button>
+  <div class="document-workspace">
+    <div class="doc-breadcrumb">
+      <router-link to="/docs" class="breadcrumb-link">文档平台</router-link>
+      <span class="breadcrumb-sep">/</span>
+      <router-link v-if="collectionId" :to="`/docs/collections/${collectionId}`" class="breadcrumb-link">
+        集合详情
+      </router-link>
+      <span v-if="collectionId" class="breadcrumb-sep">/</span>
+      <span class="breadcrumb-current">{{ docStore.currentResult?.document.title || '文档' }}</span>
     </div>
 
     <div v-if="docStore.isLoading && !docStore.currentResult" class="loading-state">{{ $t('common.loading') }}</div>
@@ -10,72 +16,122 @@
     <template v-else-if="docStore.currentResult">
       <div class="doc-header">
         <div class="doc-header-main">
-          <div>
-            <h1>{{ docStore.currentResult.document.title }}</h1>
+          <div class="doc-header-info">
+            <h1 class="doc-title">{{ docStore.currentResult.document.title }}</h1>
             <div class="doc-meta">
-              <el-tag :type="docTypeTag(docStore.currentResult.document.doc_type)">{{ docTypeLabel(docStore.currentResult.document.doc_type) }}</el-tag>
-              <span>{{ docStore.currentResult.document.source_system }}</span>
-              <span>{{ fmt(docStore.currentResult.document.updated_at) }}</span>
+              <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
+                {{ processingLabel(docStore.currentResult.processing.status) }}
+              </el-tag>
+              <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
+                {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
+              </el-tag>
+              <span class="doc-updated">{{ fmt(docStore.currentResult.document.updated_at) }}</span>
             </div>
           </div>
-          <el-button type="danger" plain @click="onDeleteDocument">删除文档</el-button>
+          <el-button type="danger" plain size="small" @click="onDeleteDocument">删除文档</el-button>
         </div>
       </div>
 
-      <div class="section-card">
-        <h3>基本信息</h3>
-        <div class="info-grid">
-          <div><span class="label">文档标题</span><span>{{ docStore.currentResult.document.title }}</span></div>
-          <div><span class="label">文件名</span><span>{{ docStore.currentResult.source_attachment?.file_name || '-' }}</span></div>
-          <div><span class="label">文件类型</span><span>{{ docStore.currentResult.source_attachment?.mime_type || '-' }}</span></div>
-          <div><span class="label">大小</span><span>{{ formatFileSize(docStore.currentResult.source_attachment?.file_size) }}</span></div>
-          <div><span class="label">上传人</span><span>{{ docStore.currentResult.revision?.uploader?.username || '-' }}</span></div>
-          <div><span class="label">创建时间</span><span>{{ fmt(docStore.currentResult.document.created_at) }}</span></div>
-          <div><span class="label">当前 revision</span><span>{{ revisionLabel }}</span></div>
+      <div class="doc-content-layout">
+        <div class="doc-main-area">
+          <div class="section-card">
+            <h3>正文预览</h3>
+            <div v-if="markdownLoading" class="loading-state small">加载中...</div>
+            <div v-else-if="markdownPreview" class="markdown-preview">{{ markdownPreview }}</div>
+            <div v-else class="empty-state small">
+              暂无预览结果，文档可能仍在处理中
+              <el-tag v-if="docStore.isPolling" type="warning" size="small" class="polling-tag">轮询中</el-tag>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="section-card">
-        <div class="section-title-row">
-          <h3>处理状态</h3>
-          <el-tag v-if="docStore.isPolling" type="warning">轮询中</el-tag>
-        </div>
-        <div class="info-grid">
-          <div><span class="label">处理状态</span><span>{{ processingLabel }}</span></div>
-          <div><span class="label">OCR 状态</span><span>{{ docStore.currentResult.ocr_result?.status || '-' }}</span></div>
-          <div><span class="label">真实 OCR Task ID</span><span class="task-id-value">{{ docStore.currentResult.ocr_result?.task_id || '-' }}</span></div>
-          <div><span class="label">进度</span><span>{{ progressLabel }}</span></div>
-          <div><span class="label">可预览结果</span><span>{{ docStore.currentResult.document.has_preview_result ? '是' : '否' }}</span></div>
-        </div>
-        <div v-if="docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message" class="error-box">
-          {{ docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message }}
-        </div>
-      </div>
+        <div class="doc-sidebar">
+          <div class="sidebar-section">
+            <h4 class="sidebar-title">处理状态</h4>
+            <div class="sidebar-status">
+              <div class="status-row">
+                <span class="status-label">处理状态</span>
+                <span class="status-value">
+                  <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
+                    {{ processingLabel(docStore.currentResult.processing.status) }}
+                  </el-tag>
+                </span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">OCR 状态</span>
+                <span class="status-value">{{ docStore.currentResult.ocr_result?.status || '-' }}</span>
+              </div>
+              <div v-if="docStore.currentResult.ocr_result?.progress !== undefined" class="status-row">
+                <span class="status-label">进度</span>
+                <span class="status-value">
+                  <el-progress :percentage="docStore.currentResult.ocr_result.progress" :stroke-width="6" />
+                </span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">可预览</span>
+                <span class="status-value">{{ docStore.currentResult.document.has_preview_result ? '是' : '否' }}</span>
+              </div>
+            </div>
+            <div v-if="docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message" class="error-box">
+              {{ docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message }}
+            </div>
+          </div>
 
-      <div class="section-card">
-        <h3>主结果预览</h3>
-        <div v-if="markdownLoading" class="loading-state small">加载 markdown 中...</div>
-        <div v-else-if="markdownPreview" class="markdown-preview">{{ markdownPreview }}</div>
-        <div v-else class="empty-state small">暂无预览结果，可能仍在处理中</div>
-      </div>
+          <div class="sidebar-section">
+            <h4 class="sidebar-title">基本信息</h4>
+            <div class="sidebar-status">
+              <div class="status-row">
+                <span class="status-label">文件名</span>
+                <span class="status-value text-truncate">{{ docStore.currentResult.source_attachment?.file_name || '-' }}</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">文件类型</span>
+                <span class="status-value">{{ docStore.currentResult.source_attachment?.mime_type || '-' }}</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">大小</span>
+                <span class="status-value">{{ formatFileSize(docStore.currentResult.source_attachment?.file_size) }}</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">上传人</span>
+                <span class="status-value">{{ docStore.currentResult.revision?.uploader?.username || '-' }}</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">版本</span>
+                <span class="status-value">{{ revisionLabel }}</span>
+              </div>
+              <div class="status-row">
+                <span class="status-label">创建时间</span>
+                <span class="status-value">{{ fmt(docStore.currentResult.document.created_at) }}</span>
+              </div>
+            </div>
+          </div>
 
-      <div class="section-card">
-        <h3>下载结果</h3>
-        <div class="download-actions">
-          <el-button v-if="docStore.currentResult.source_attachment" @click="downloadAttachment(docStore.currentResult.source_attachment.download_url)">下载原始文件</el-button>
-          <el-button v-if="docStore.currentResult.ocr_result?.main_markdown_attachment" type="primary" @click="downloadAttachment(docStore.currentResult.ocr_result.main_markdown_attachment.download_url)">下载 Markdown</el-button>
-          <el-button v-if="docStore.currentResult.ocr_result?.raw_result_attachment" @click="downloadAttachment(docStore.currentResult.ocr_result.raw_result_attachment.download_url)">下载原始结果</el-button>
-        </div>
-      </div>
+          <div class="sidebar-section">
+            <h4 class="sidebar-title">下载</h4>
+            <div class="sidebar-actions">
+              <el-button v-if="docStore.currentResult.source_attachment" size="small" @click="downloadAttachment(docStore.currentResult.source_attachment.download_url)">
+                原始文件
+              </el-button>
+              <el-button v-if="docStore.currentResult.ocr_result?.main_markdown_attachment" size="small" type="primary" @click="downloadAttachment(docStore.currentResult.ocr_result.main_markdown_attachment.download_url)">
+                Markdown
+              </el-button>
+              <el-button v-if="docStore.currentResult.ocr_result?.raw_result_attachment" size="small" @click="downloadAttachment(docStore.currentResult.ocr_result.raw_result_attachment.download_url)">
+                原始结果
+              </el-button>
+            </div>
+          </div>
 
-      <div class="section-card">
-        <h3>图片附件列表</h3>
-        <div v-if="docStore.currentResult.image_attachments.length === 0" class="empty-state small">暂无图片附件</div>
-        <div v-else class="image-list">
-          <div v-for="item in docStore.currentResult.image_attachments" :key="item.id" class="image-item">
-            <div class="image-name">{{ item.attachment?.file_name || item.filename || '未命名图片' }}</div>
-            <div class="image-meta">{{ item.attachment?.mime_type || item.media_type || '-' }} · {{ formatFileSize(item.attachment?.file_size) }}</div>
-            <el-button size="small" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
+          <div class="sidebar-section">
+            <h4 class="sidebar-title">附件</h4>
+            <div v-if="docStore.currentResult.image_attachments.length === 0" class="empty-state tiny">暂无图片附件</div>
+            <div v-else class="attachment-list">
+              <div v-for="item in docStore.currentResult.image_attachments" :key="item.id" class="attachment-item">
+                <div class="attachment-name">{{ item.attachment?.file_name || item.filename || '未命名图片' }}</div>
+                <div class="attachment-meta">{{ item.attachment?.mime_type || item.media_type || '-' }} · {{ formatFileSize(item.attachment?.file_size) }}</div>
+                <el-button size="small" text type="primary" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -96,6 +152,12 @@ const docStore = useDocStore()
 const markdownPreview = ref('')
 const markdownLoading = ref(false)
 
+const collectionId = computed(() => {
+  const q = route.query.fromCollection as string
+  if (q) return q
+  return docStore.currentResult?.document?.collection_id || null
+})
+
 function docTypeTag(type: string) {
   const m: Record<string, string> = { knowledge: '', contract: 'warning', department_doc: 'info', standard: 'success' }
   return m[type] || ''
@@ -107,7 +169,7 @@ function docTypeLabel(type: string) {
 }
 
 function fmt(t: string) {
-  return t ? new Date(t).toLocaleString() : ''
+  return t ? new Date(t).toLocaleString('zh-CN') : ''
 }
 
 function formatFileSize(size?: number | null) {
@@ -122,9 +184,28 @@ function downloadAttachment(url?: string) {
   window.open(url, '_blank')
 }
 
-function goBack() {
-  router.back()
+function processingLabel(status?: string) {
+  if (status === 'pending_ocr') return '待OCR'
+  if (status === 'ocr_processing') return 'OCR处理中'
+  if (status === 'pending_clean') return '待文本清洗'
+  if (status === 'ready') return '已就绪'
+  if (status === 'error') return '处理失败'
+  return status || '-'
 }
+
+function processingTagType(status?: string) {
+  if (status === 'ready') return 'success'
+  if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
+  if (status === 'pending_clean') return 'info'
+  if (status === 'error') return 'danger'
+  return 'info'
+}
+
+const revisionLabel = computed(() => {
+  const r = docStore.currentResult?.revision
+  if (!r) return '-'
+  return r.revision_label || `r${r.revision_no}`
+})
 
 async function onDeleteDocument() {
   const current = docStore.currentResult?.document
@@ -144,33 +225,17 @@ async function onDeleteDocument() {
     }
 
     ElMessage.success('文档已删除')
-    router.push('/docs')
-  } catch (error: any) {
+    const cid = collectionId.value
+    if (cid) {
+      router.push(`/docs/collections/${cid}`)
+    } else {
+      router.push('/docs')
+    }
+  } catch (error: unknown) {
     if (error === 'cancel' || error === 'close') return
     ElMessage.error(docStore.error || '删除文档失败')
   }
 }
-
-const revisionLabel = computed(() => {
-  const revision = docStore.currentResult?.revision
-  if (!revision) return '-'
-  return revision.revision_label || `r${revision.revision_no}`
-})
-
-const processingLabel = computed(() => {
-  const status = docStore.currentResult?.processing.status
-  if (status === 'pending_ocr') return '待 OCR'
-  if (status === 'ocr_processing') return 'OCR 处理中'
-  if (status === 'pending_clean') return '待文本清洗'
-  if (status === 'ready') return '已完成'
-  if (status === 'error') return '处理失败'
-  return status || '-'
-})
-
-const progressLabel = computed(() => {
-  const progress = docStore.currentResult?.ocr_result?.progress
-  return typeof progress === 'number' ? `${progress}%` : '-'
-})
 
 async function loadMarkdownPreview() {
   const url = docStore.currentResult?.ocr_result?.main_markdown_attachment?.download_url
@@ -181,7 +246,7 @@ async function loadMarkdownPreview() {
 
   markdownLoading.value = true
   try {
-    const response = await apiClient.get(url.replace(/^\/api/, '' as string))
+    const response = await apiClient.get(url.replace(/^\/api/, ''))
     const dataUrl = response.data?.data?.data_url as string | undefined
     if (!dataUrl || !dataUrl.startsWith('data:')) {
       markdownPreview.value = ''
@@ -232,26 +297,55 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.doc-detail-view { padding: 20px; max-width: 1000px; margin: 0 auto; }
-.back-row { margin-bottom: 16px; }
+.document-workspace { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+.doc-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #909399; margin-bottom: 16px; }
+.breadcrumb-sep { color: #c0c4cc; }
+.breadcrumb-link { color: #909399; text-decoration: none; }
+.breadcrumb-link:hover { color: #409eff; }
+.breadcrumb-current { color: #303133; font-weight: 500; }
+
 .doc-header { margin-bottom: 24px; }
 .doc-header-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.doc-header h1 { margin: 0 0 8px; font-size: 22px; }
-.doc-meta { display: flex; gap: 16px; align-items: center; color: #999; font-size: 13px; }
-.section-card { background: #fff; border: 1px solid #ebeef5; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.doc-title { margin: 0; font-size: 22px; font-weight: 600; }
+.doc-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.doc-updated { font-size: 12px; color: #909399; }
+
+.doc-content-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+.doc-main-area { min-width: 0; }
+.doc-sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+.section-card { background: #fff; border: 1px solid #ebeef5; border-radius: 10px; padding: 20px; }
 .section-card h3 { margin: 0 0 16px; font-size: 16px; }
-.section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
-.info-grid > div { display: flex; flex-direction: column; gap: 4px; }
-.label { color: #909399; font-size: 12px; }
-.task-id-value { font-family: Consolas, 'Courier New', monospace; word-break: break-all; }
-.loading-state, .error-state, .empty-state { padding: 60px 0; text-align: center; color: #999; }
+
+.markdown-preview { white-space: pre-wrap; line-height: 1.8; color: #303133; background: #fafafa; border-radius: 8px; padding: 20px; min-height: 200px; max-height: 70vh; overflow-y: auto; font-size: 14px; }
+
+.sidebar-section { background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 16px; }
+.sidebar-title { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #303133; }
+.sidebar-status { display: flex; flex-direction: column; gap: 8px; }
+
+.status-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.status-label { font-size: 12px; color: #909399; flex-shrink: 0; }
+.status-value { font-size: 13px; color: #303133; text-align: right; }
+.text-truncate { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sidebar-actions { display: flex; flex-direction: column; gap: 6px; }
+.attachment-list { display: flex; flex-direction: column; gap: 8px; }
+.attachment-item { border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px; }
+.attachment-name { font-size: 13px; font-weight: 500; }
+.attachment-meta { font-size: 11px; color: #909399; margin: 2px 0; }
+
+.error-box { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: #fef0f0; color: #c45656; font-size: 12px; }
+
+.loading-state, .error-state, .empty-state { padding: 40px 0; text-align: center; color: #999; }
 .small { padding: 16px 0; }
-.error-box { margin-top: 12px; padding: 12px; border-radius: 8px; background: #fef0f0; color: #c45656; }
-.markdown-preview { white-space: pre-wrap; line-height: 1.7; color: #303133; background: #fafafa; border-radius: 8px; padding: 16px; max-height: 480px; overflow-y: auto; }
-.download-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-.image-list { display: flex; flex-direction: column; gap: 12px; }
-.image-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #f0f0f0; border-radius: 8px; padding: 12px 16px; }
-.image-name { font-weight: 500; }
-.image-meta { color: #909399; font-size: 12px; margin-top: 4px; }
+.tiny { padding: 8px 0; font-size: 12px; }
+.polling-tag { margin-left: 8px; }
+
+@media (max-width: 768px) {
+  .document-workspace { padding: 16px; max-width: none; }
+  .doc-content-layout { grid-template-columns: 1fr; }
+  .doc-sidebar { order: -1; }
+  .doc-header-main { flex-direction: column; }
+}
 </style>
