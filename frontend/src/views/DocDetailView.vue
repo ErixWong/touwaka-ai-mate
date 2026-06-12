@@ -9,11 +9,16 @@
 
     <template v-else-if="docStore.currentResult">
       <div class="doc-header">
-        <h1>{{ docStore.currentResult.document.title }}</h1>
-        <div class="doc-meta">
-          <el-tag :type="docTypeTag(docStore.currentResult.document.doc_type)">{{ docTypeLabel(docStore.currentResult.document.doc_type) }}</el-tag>
-          <span>{{ docStore.currentResult.document.source_system }}</span>
-          <span>{{ fmt(docStore.currentResult.document.updated_at) }}</span>
+        <div class="doc-header-main">
+          <div>
+            <h1>{{ docStore.currentResult.document.title }}</h1>
+            <div class="doc-meta">
+              <el-tag :type="docTypeTag(docStore.currentResult.document.doc_type)">{{ docTypeLabel(docStore.currentResult.document.doc_type) }}</el-tag>
+              <span>{{ docStore.currentResult.document.source_system }}</span>
+              <span>{{ fmt(docStore.currentResult.document.updated_at) }}</span>
+            </div>
+          </div>
+          <el-button type="danger" plain @click="onDeleteDocument">删除文档</el-button>
         </div>
       </div>
 
@@ -83,6 +88,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -118,6 +124,31 @@ function downloadAttachment(url?: string) {
 
 function goBack() {
   router.back()
+}
+
+async function onDeleteDocument() {
+  const current = docStore.currentResult?.document
+  if (!current) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确定删除文档「${current.title}」吗？此操作会同时删除文档记录、OCR结果和附件文件。`,
+      '删除文档',
+      { type: 'warning' },
+    )
+
+    const ok = await docStore.removeDocument(current.id)
+    if (!ok) {
+      ElMessage.error(docStore.error || '删除文档失败')
+      return
+    }
+
+    ElMessage.success('文档已删除')
+    router.push('/docs')
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(docStore.error || '删除文档失败')
+  }
 }
 
 const revisionLabel = computed(() => {
@@ -168,8 +199,18 @@ async function loadMarkdownPreview() {
 onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
-    await docStore.fetchDocument(documentId)
-    await docStore.fetchDocumentResult(documentId)
+    const document = await docStore.fetchDocument(documentId)
+    if (!document) {
+      docStore.stopPolling()
+      return
+    }
+
+    const result = await docStore.fetchDocumentResult(documentId)
+    if (!result) {
+      docStore.stopPolling()
+      return
+    }
+
     await docStore.fetchProcessing(documentId)
     await loadMarkdownPreview()
 
@@ -177,8 +218,10 @@ onMounted(async () => {
     const failed = docStore.currentResult?.processing.status === 'error'
     if (!completed && !failed) {
       await docStore.startPolling(documentId)
-      await docStore.fetchDocumentResult(documentId)
-      await loadMarkdownPreview()
+      if (docStore.currentResult?.document?.id === documentId) {
+        await docStore.fetchDocumentResult(documentId)
+        await loadMarkdownPreview()
+      }
     }
   }
 })
@@ -192,6 +235,7 @@ onBeforeUnmount(() => {
 .doc-detail-view { padding: 20px; max-width: 1000px; margin: 0 auto; }
 .back-row { margin-bottom: 16px; }
 .doc-header { margin-bottom: 24px; }
+.doc-header-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .doc-header h1 { margin: 0 0 8px; font-size: 22px; }
 .doc-meta { display: flex; gap: 16px; align-items: center; color: #999; font-size: 13px; }
 .section-card { background: #fff; border: 1px solid #ebeef5; border-radius: 10px; padding: 20px; margin-bottom: 16px; }

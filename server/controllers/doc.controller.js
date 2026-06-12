@@ -13,6 +13,8 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op, Sequelize } from 'sequelize';
+import fs from 'fs/promises';
+import path from 'path';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
@@ -536,6 +538,156 @@ class DocController {
     }
   }
 
+  async deleteDocument(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      this.ensureDocumentOcrService(ctx);
+      const { documentId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const DocumentRevision = this.db.getModel('document_revision');
+      const DocumentChunk = this.db.getModel('document_chunk');
+      const DocOcrResult = this.db.getModel('doc_ocr_result');
+      const DocOcrImage = this.db.getModel('doc_ocr_image');
+      const Attachment = this.db.getModel('attachment');
+      const DocCompareRun = this.db.getModel('doc_compare_run');
+      const DocCompareItem = this.db.getModel('doc_compare_item');
+      const DocDocumentTag = this.db.getModel('doc_document_tag');
+
+      const document = await this.models.DocDocument.findOne({
+        where: { id: documentId },
+        attributes: ['id', 'processing_status'],
+      });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      if (['pending_ocr', 'ocr_processing'].includes(document.processing_status)) {
+        await document.update({
+          processing_status: 'error',
+          processing_error_code: 'document_deleted',
+          processing_error_message: 'Document deleted by user',
+          processing_updated_at: new Date(),
+        });
+      }
+
+      try {
+        await this.documentOcrService.cancelTask(documentId);
+      } catch (error) {
+        logger.warn(`[Doc] deleteDocument cancelTask failed for ${documentId}: ${error.message}`);
+      }
+
+      const revisions = await DocumentRevision.findAll({
+        where: { document_id: documentId },
+        attributes: ['id'],
+        raw: true,
+      });
+      const revisionIds = revisions.map(item => item.id);
+
+      const ocrResults = await DocOcrResult.findAll({
+        where: { document_id: documentId },
+        attributes: ['id', 'main_markdown_attachment_id', 'raw_result_attachment_id', 'deliverables_manifest_attachment_id', 'image_manifest_attachment_id'],
+        raw: true,
+      });
+      const ocrResultIds = ocrResults.map(item => item.id);
+
+      const ocrImages = ocrResultIds.length > 0
+        ? await DocOcrImage.findAll({
+          where: { ocr_result_id: { [Op.in]: ocrResultIds } },
+          attributes: ['attachment_id'],
+          raw: true,
+        })
+        : [];
+
+      const attachmentIds = new Set();
+      for (const result of ocrResults) {
+        [result.main_markdown_attachment_id, result.raw_result_attachment_id, result.deliverables_manifest_attachment_id, result.image_manifest_attachment_id]
+          .filter(Boolean)
+          .forEach(id => attachmentIds.add(id));
+      }
+      ocrImages.forEach(item => {
+        if (item.attachment_id) attachmentIds.add(item.attachment_id);
+      });
+
+      if (revisionIds.length > 0) {
+        const sourceAttachments = await Attachment.findAll({
+          where: {
+            source_tag: 'doc-platform',
+            source_id: { [Op.in]: revisionIds },
+          },
+          attributes: ['id'],
+          raw: true,
+        });
+        sourceAttachments.forEach(item => attachmentIds.add(item.id));
+      }
+
+      const attachmentRows = attachmentIds.size > 0
+        ? await Attachment.findAll({
+          where: { id: { [Op.in]: [...attachmentIds] } },
+          attributes: ['id', 'file_path'],
+          raw: true,
+        })
+        : [];
+
+      const compareRuns = await DocCompareRun.findAll({
+        where: { document_id: documentId },
+        attributes: ['id'],
+        raw: true,
+      });
+      const compareRunIds = compareRuns.map(item => item.id);
+
+      await this.db.sequelize.transaction(async (t) => {
+        await this.models.DocDocument.update(
+          { current_revision_id: null },
+          { where: { id: documentId }, transaction: t }
+        );
+
+        if (compareRunIds.length > 0) {
+          await DocCompareItem.destroy({ where: { compare_run_id: { [Op.in]: compareRunIds } }, transaction: t });
+          await DocCompareRun.destroy({ where: { id: { [Op.in]: compareRunIds } }, transaction: t });
+        }
+
+        if (ocrResultIds.length > 0) {
+          await DocOcrImage.destroy({ where: { ocr_result_id: { [Op.in]: ocrResultIds } }, transaction: t });
+          await DocOcrResult.destroy({ where: { id: { [Op.in]: ocrResultIds } }, transaction: t });
+        }
+
+        if (revisionIds.length > 0) {
+          await DocumentChunk.destroy({ where: { revision_id: { [Op.in]: revisionIds } }, transaction: t });
+          await DocumentRevision.destroy({ where: { id: { [Op.in]: revisionIds } }, transaction: t });
+        }
+
+        await DocDocumentTag.destroy({ where: { document_id: documentId }, transaction: t });
+
+        if (attachmentIds.size > 0) {
+          await Attachment.destroy({ where: { id: { [Op.in]: [...attachmentIds] } }, transaction: t });
+        }
+
+        await this.models.DocDocument.destroy({ where: { id: documentId }, transaction: t });
+      });
+
+      for (const attachment of attachmentRows) {
+        const fullPath = attachment.file_path ? path.resolve(attachment.file_path) : null;
+        if (!fullPath) continue;
+        try {
+          await fs.unlink(fullPath);
+        } catch (error) {
+          if (error?.code !== 'ENOENT') {
+            logger.warn(`[Doc] deleteDocument unlink failed: ${fullPath}`, error.message);
+          }
+        }
+      }
+
+      ctx.success({ deleted: true, document_id: documentId });
+      logger.info(`[Doc] deleteDocument: ${documentId}`);
+    } catch (error) {
+      logger.error('[Doc] deleteDocument error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
 async createVersion(ctx) {
     try {
       this.ensureModels();
@@ -979,8 +1131,11 @@ async createVersion(ctx) {
         completed: result.completed,
       });
     } catch (error) {
-      logger.error('[Doc] syncOcr error:', error);
-      ctx.throw(error.status || 500, error.message);
+      const normalized = this.documentOcrService?.normalizeError
+        ? this.documentOcrService.normalizeError(error)
+        : { status: error?.status || 500, message: error?.message || String(error), summary: null };
+      logger.error('[Doc] syncOcr error:', normalized.summary || normalized.message);
+      ctx.throw(normalized.status || 500, normalized.message);
     }
   }
 

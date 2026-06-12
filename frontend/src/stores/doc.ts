@@ -9,6 +9,7 @@ import {
   getDocumentResult,
   getProcessingStatus,
   syncOcr,
+  deleteDocument,
   setCurrentVersion,
   transitionVersion
 } from '@/api/docs'
@@ -39,6 +40,16 @@ export const useDocStore = defineStore('doc', () => {
 
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+
+  function shouldStopPollingForError(err: any) {
+    const status = err?.response?.status
+    const message = String(err?.response?.data?.message || err?.message || '').toLowerCase()
+    return status === 403
+      || status === 404
+      || message.includes('write access denied')
+      || message.includes('document not found')
+      || message.includes('access denied')
+  }
 
   async function fetchDocuments(params?: { doc_type?: string; page?: number }) {
     isLoading.value = true
@@ -105,6 +116,9 @@ export const useDocStore = defineStore('doc', () => {
       return await fetchProcessing(documentId)
     } catch (e: any) {
       error.value = e.message || 'Failed to sync OCR status'
+      if (shouldStopPollingForError(e)) {
+        stopPolling()
+      }
       return null
     }
   }
@@ -124,7 +138,15 @@ export const useDocStore = defineStore('doc', () => {
     const tick = async () => {
       if (!isPolling.value) return
       const result = await syncProcessing(documentId)
+      if (!isPolling.value) return
       await fetchDocumentResult(documentId)
+
+      if (!isPolling.value) return
+
+      if (!result && error.value) {
+        stopPolling()
+        return
+      }
 
       const completed = result?.has_preview_result || result?.ocr_result?.status === 'completed'
       const failed = result?.processing_status === 'error' || result?.ocr_result?.status === 'failed'
@@ -198,6 +220,23 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
+  async function removeDocument(documentId: string) {
+    error.value = null
+    try {
+      stopPolling()
+      await deleteDocument(documentId)
+      documents.value = documents.value.filter(item => item.id !== documentId)
+      total.value = Math.max(0, total.value - 1)
+      if (currentDoc.value?.id === documentId) currentDoc.value = null
+      if (currentResult.value?.document?.id === documentId) currentResult.value = null
+      if (processingStatus.value?.document_id === documentId) processingStatus.value = null
+      return true
+    } catch (e: any) {
+      error.value = e.message || 'Failed to delete document'
+      return false
+    }
+  }
+
   return {
     documents,
     total,
@@ -224,5 +263,6 @@ export const useDocStore = defineStore('doc', () => {
     docRecall,
     setCurrent,
     transition,
+    removeDocument,
   }
 })

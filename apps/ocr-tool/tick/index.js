@@ -266,7 +266,18 @@ export async function tick(context) {
   }
 
   const results = await Promise.all(taskIds.map(taskId => processTask(taskId, app, context)));
-  return { success: true, processed: results.length, results };
+  const successCount = results.filter(result => result?.success).length;
+  const failCount = results.filter(result => result?.success === false).length;
+  const skippedCount = results.filter(result => result?.skipped).length;
+
+  return {
+    success: true,
+    processed: results.length,
+    successCount,
+    failCount,
+    skippedCount,
+    taskIds: results.map(result => result?.taskId).filter(Boolean),
+  };
 }
 
 export default { tick };

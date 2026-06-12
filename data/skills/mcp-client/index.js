@@ -62,12 +62,25 @@ let transportFactory = null;
 /**
  * 日志到 stderr（不干扰 stdout 通信）
  */
-function log(message, ...args) {
+function isVerboseLogEnabled() {
+  return process.env.MCP_CLIENT_VERBOSE === 'true';
+}
+
+function writeLogLine(message, ...args) {
   process.stderr.write(`[mcp-client] ${new Date().toISOString()} ${message}`);
   if (args.length > 0) {
     process.stderr.write(' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
   }
   process.stderr.write('\n');
+}
+
+function log(message, ...args) {
+  if (!isVerboseLogEnabled()) return;
+  writeLogLine(message, ...args);
+}
+
+function logError(message, ...args) {
+  writeLogLine(message, ...args);
 }
 
 // ============== 响应函数 ==============
@@ -112,7 +125,7 @@ async function fetchConfig(userContext = {}) {
     // 后端返回格式: { code, message, data: { servers, ... } }
     return result.data || {};
   } catch (err) {
-    log(`Failed to fetch config: ${err.message}`);
+    logError(`Failed to fetch config: ${err.message}`);
     throw err;
   }
 }
@@ -618,8 +631,8 @@ async function callTool(serverName, toolName, args, userId, configData, workingD
         throw new Error(`No credentials available for ${serverName}. Please configure credentials in MCP management panel.`);
       }
     } catch (connectErr) {
-      log(`callTool: auto-connect FAILED: ${connectErr.message}`);
-      log(`callTool: auto-connect error stack: ${connectErr.stack}`);
+      logError(`callTool: auto-connect FAILED: ${connectErr.message}`);
+      logError(`callTool: auto-connect error stack: ${connectErr.stack}`);
       throw connectErr;
     }
     
@@ -698,9 +711,9 @@ async function callTool(serverName, toolName, args, userId, configData, workingD
     
     return response;
   } catch (err) {
-    log(`callTool ERROR: ${serverName}/${toolName} - ${err.message}`);
-    log(`callTool ERROR stack: ${err.stack}`);
-    log(`callTool ERROR details: ${JSON.stringify({ name: err.name, message: err.message, code: err.code })}`);
+    logError(`callTool ERROR: ${serverName}/${toolName} - ${err.message}`);
+    logError(`callTool ERROR stack: ${err.stack}`);
+    logError(`callTool ERROR details: ${JSON.stringify({ name: err.name, message: err.message, code: err.code })}`);
     throw new Error(`Tool call failed (${serverName}/${toolName}): ${err.message}`);
   }
 }
