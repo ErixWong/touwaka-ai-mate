@@ -674,6 +674,7 @@ class InternalController {
           display_name: s.display_name,
           description: s.description,
           transport_type: s.transport_type || 'stdio',  // 新增
+          timeout_ms: s.timeout_ms || null,
           command: s.command,
           args: s.args,
           env_template: s.env_template,

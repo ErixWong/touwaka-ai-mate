@@ -52,6 +52,13 @@
             {{ formatTime(row.updated_at) }}
           </template>
         </el-table-column>
+        <el-table-column :label="$t('docs.operations')" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button type="danger" link size="small" @click.stop="onDeleteDocument(row)">
+              {{ $t('docs.delete') }}
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pagination-wrap" v-if="docStore.total > docStore.pageSize">
@@ -93,10 +100,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDocStore } from '@/stores/doc'
 
 const router = useRouter()
 const docStore = useDocStore()
+const { t } = useI18n()
 
 const filterDocType = ref('')
 const recallQuery = ref('')
@@ -138,6 +148,31 @@ async function doRecall() {
     top_k: 10,
   })
   showRecallDialog.value = true
+}
+
+async function onDeleteDocument(row: any) {
+  try {
+    await ElMessageBox.confirm(
+      t('docs.deleteConfirmMessage', { name: row.title }),
+      t('docs.deleteConfirmTitle'),
+      { type: 'warning' },
+    )
+
+    const ok = await docStore.removeDocument(row.id)
+    if (!ok) {
+      ElMessage.error(docStore.error || t('docs.deleteFailed'))
+      return
+    }
+
+    ElMessage.success(t('docs.deleteSuccess'))
+    if (docStore.documents.length === 0 && docStore.currentPage > 1) {
+      docStore.currentPage -= 1
+    }
+    await loadDocuments()
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(docStore.error || t('docs.deleteFailed'))
+  }
 }
 
 onMounted(() => {

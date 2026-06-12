@@ -80,6 +80,11 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" type="danger" link @click.stop="onDeleteDocument(row)">删除</el-button>
+              </template>
+            </el-table-column>
           </el-table>
 
           <div class="pagination-wrap" v-if="store.docTotal > store.pageSize">
@@ -101,12 +106,15 @@
 import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectionStore } from '@/stores/collection'
+import { useDocStore } from '@/stores/doc'
 import { ElMessage } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const store = useCollectionStore()
+const docStore = useDocStore()
 
 const collectionId = route.params.id as string
 
@@ -166,6 +174,29 @@ async function handleFileChange(uploadFile: UploadFile) {
 
   ElMessage.success('文档已上传并提交识别')
   router.push(`/docs/${result.intake.document_id}`)
+}
+
+async function onDeleteDocument(row: { id: string; title: string }) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除文档「${row.title}」吗？此操作会同时删除文档记录、OCR结果和附件文件。`,
+      '删除文档',
+      { type: 'warning' },
+    )
+
+    const ok = await docStore.removeDocument(row.id)
+    if (!ok) {
+      ElMessage.error(docStore.error || '删除文档失败')
+      return
+    }
+
+    ElMessage.success('文档已删除')
+    await store.fetchCollection(collectionId)
+    await store.fetchCollectionDocuments(collectionId, { page: store.docPage })
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(docStore.error || '删除文档失败')
+  }
 }
 
 function onDocPageChange(page: number) {

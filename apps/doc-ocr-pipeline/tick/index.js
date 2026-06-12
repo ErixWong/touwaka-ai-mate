@@ -43,7 +43,11 @@ export async function tick(context) {
       }
     } catch (error) {
       failed += 1;
-      logger.error(`[doc-ocr-pipeline] document ${doc.id} failed: ${error.message}`);
+      if (error?.code === 'DOCUMENT_DELETED') {
+        logger.warn(`[doc-ocr-pipeline] document ${doc.id} skipped after deletion: ${error.message}`);
+      } else {
+        logger.error(`[doc-ocr-pipeline] document ${doc.id} failed: ${error.message}`);
+      }
     }
   }
 

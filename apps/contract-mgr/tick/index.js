@@ -2,6 +2,89 @@ import logger from '../../../lib/logger.js';
 import path from 'path';
 import fs from 'fs/promises';
 
+const MAX_LOG_STRING_LENGTH = parseInt(process.env.CONTRACT_MGR_LOG_MAX_LENGTH || '1000', 10);
+const MAX_EXTRACT_TEXT_LENGTH = parseInt(process.env.CONTRACT_MGR_EXTRACT_TEXT_MAX_LENGTH || '200000', 10);
+
+function truncateString(value, maxLength = MAX_LOG_STRING_LENGTH) {
+  if (typeof value !== 'string') return value;
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}...[truncated ${value.length - maxLength} chars]`;
+}
+
+function looksLikeDataUrl(value) {
+  return typeof value === 'string' && /^data:[^;]+;base64,/i.test(value);
+}
+
+function looksLikeLargeBase64(value) {
+  return typeof value === 'string' && value.length > 1024 && /^[A-Za-z0-9+/=\r\n]+$/.test(value);
+}
+
+function sanitizeString(value, maxLength = MAX_LOG_STRING_LENGTH) {
+  if (looksLikeDataUrl(value)) return `[data-url omitted length=${value.length}]`;
+  if (looksLikeLargeBase64(value)) return `[base64 omitted length=${value.length}]`;
+  return truncateString(value, maxLength);
+}
+
+function summarizeForLog(value, depth = 0, seen = new WeakSet()) {
+  if (value == null) return value;
+  if (typeof value === 'string') return sanitizeString(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'function') return `[function ${value.name || 'anonymous'}]`;
+
+  if (depth >= 3) {
+    if (Array.isArray(value)) return `[array(${value.length}) truncated]`;
+    return '[object truncated]';
+  }
+
+  if (typeof value === 'object') {
+    if (seen.has(value)) return '[circular]';
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      const items = value.slice(0, 8).map(item => summarizeForLog(item, depth + 1, seen));
+      if (value.length > 8) items.push(`[+${value.length - 8} more items]`);
+      return items;
+    }
+
+    const keys = Object.keys(value);
+    const result = {};
+    for (const key of keys.slice(0, 16)) {
+      result[key] = summarizeForLog(value[key], depth + 1, seen);
+    }
+    if (keys.length > 16) result.__truncated_keys__ = keys.length - 16;
+    return result;
+  }
+
+  return truncateString(String(value));
+}
+
+function stringifyForLog(value, maxLength = MAX_LOG_STRING_LENGTH) {
+  try {
+    return truncateString(JSON.stringify(summarizeForLog(value)), maxLength);
+  } catch (error) {
+    return `[unserializable: ${error.message}]`;
+  }
+}
+
+function extractTextValue(value, maxLength = MAX_EXTRACT_TEXT_LENGTH) {
+  if (value == null) return '';
+  if (typeof value === 'string') return sanitizeString(value, maxLength);
+  if (Array.isArray(value)) {
+    return truncateString(value.map(item => extractTextValue(item, maxLength)).filter(Boolean).join('\n'), maxLength);
+  }
+  if (typeof value === 'object') {
+    const preferredKeys = ['text', 'content', 'markdown', 'md', 'result', 'output', 'message'];
+    for (const key of preferredKeys) {
+      if (value[key]) {
+        const extracted = extractTextValue(value[key], maxLength);
+        if (extracted) return extracted;
+      }
+    }
+    return truncateString(JSON.stringify(summarizeForLog(value)), maxLength);
+  }
+  return truncateString(String(value), maxLength);
+}
+
 const CONTENT_TABLE = 'app_contract_mgr_content';
 const ROWS_TABLE = 'app_contract_mgr_rows';
 
@@ -347,7 +430,7 @@ async function handleOcr(record, app, services) {
   try {
     const result = await services.callMcp(mcp.server, mcp.tool, params, config.timeout_ms ?? 1200000);
     
-    logger.info(`[contract-mgr tick] OCR submit response: ${JSON.stringify(result).substring(0, 500)}`);
+    logger.info(`[contract-mgr tick] OCR response: ${stringifyForLog(result, 500)}`);
     
     let taskId = '';
     
@@ -357,7 +440,7 @@ async function handleOcr(record, app, services) {
 如果完全无法提取，返回：{"task_id": ""}
 
 MCP返回结果：
-${JSON.stringify(result).substring(0, 1000)}`;
+${stringifyForLog(result, 1000)}`;
 
     try {
       const ocrProcessingConfig = getConfig(app, 'ocr_processing');
@@ -431,7 +514,7 @@ async function checkOcrAndComplete(recordId, app, services, taskId, ocrService) 
   try {
     const result = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId }, config.timeout_ms ?? 600000);
     
-    const judgePrompt = `判断OCR任务是否完成。任务返回信息：${JSON.stringify(result).substring(0, 1000)}。返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
+    const judgePrompt = `判断OCR任务是否完成。任务返回信息：${stringifyForLog(result, 1000)}。返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
     
     const judgeResult = await services.llm.extractJson(judgePrompt, '', {
       modelId: config.judge_model_id || null,
@@ -444,7 +527,7 @@ async function checkOcrAndComplete(recordId, app, services, taskId, ocrService) 
     if (!parsed.status) parsed.status = 'pending';
     
     if (parsed.status === 'completed') {
-      const ocrText = result.content || result.text || result.output || JSON.stringify(result);
+      const ocrText = extractTextValue(result.content || result.text || result.output || result);
       
       await services.execute(
         `INSERT INTO ${CONTENT_TABLE} (row_id, ocr_text, ocr_service, ocr_at, created_at, updated_at)

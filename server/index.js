@@ -117,19 +117,63 @@ import elsRoutes from './routes/els.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
+const PROCESS_ERROR_STRING_LIMIT = 4000;
+const PROCESS_ERROR_OBJECT_KEYS_LIMIT = 20;
+const PROCESS_ERROR_ARRAY_LIMIT = 20;
+
+function truncateProcessText(value, limit = PROCESS_ERROR_STRING_LIMIT) {
+  if (typeof value !== 'string') return value;
+  return value.length > limit ? `${value.slice(0, limit)}… [truncated ${value.length - limit} chars]` : value;
+}
+
+function summarizeProcessValue(value, depth = 0) {
+  if (value == null) return value;
+  if (typeof value === 'string') return truncateProcessText(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return String(value);
+  if (typeof value === 'function') return `[Function ${value.name || 'anonymous'}]`;
+
+  if (depth >= 3) {
+    if (Array.isArray(value)) return `[Array(${value.length})]`;
+    return `[Object keys=${Object.keys(value).length}]`;
+  }
+
+  if (Array.isArray(value)) {
+    const items = value.slice(0, PROCESS_ERROR_ARRAY_LIMIT).map(item => summarizeProcessValue(item, depth + 1));
+    if (value.length > PROCESS_ERROR_ARRAY_LIMIT) {
+      items.push(`… ${value.length - PROCESS_ERROR_ARRAY_LIMIT} more items`);
+    }
+    return items;
+  }
+
+  if (typeof value === 'object') {
+    const output = {};
+    const entries = Object.entries(value).slice(0, PROCESS_ERROR_OBJECT_KEYS_LIMIT);
+    for (const [key, item] of entries) {
+      output[key] = summarizeProcessValue(item, depth + 1);
+    }
+    if (Object.keys(value).length > PROCESS_ERROR_OBJECT_KEYS_LIMIT) {
+      output.__truncated_keys__ = Object.keys(value).length - PROCESS_ERROR_OBJECT_KEYS_LIMIT;
+    }
+    return output;
+  }
+
+  return truncateProcessText(String(value));
+}
+
 function formatProcessError(error) {
   if (!error) return '(empty error)';
   if (error instanceof Error) {
-    return error.stack || `${error.name}: ${error.message}`;
+    return truncateProcessText(error.stack || `${error.name}: ${error.message}`);
   }
   if (typeof error === 'object') {
     try {
-      return JSON.stringify(error);
+      return JSON.stringify(summarizeProcessValue(error));
     } catch {
       return String(error);
     }
   }
-  return String(error);
+  return truncateProcessText(String(error));
 }
 
 function registerProcessDiagnostics() {
@@ -140,7 +184,7 @@ function registerProcessDiagnostics() {
   process.on('unhandledRejection', (reason, promise) => {
     logger.error('[Process] unhandledRejection', formatProcessError(reason));
     if (promise) {
-      logger.error('[Process] unhandledRejection promise', promise);
+      logger.error('[Process] unhandledRejection promise', summarizeProcessValue(promise));
     }
   });
 

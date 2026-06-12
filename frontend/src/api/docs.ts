@@ -292,6 +292,10 @@ export async function getDocument(documentId: string): Promise<DocDocument> {
   return apiRequest<DocDocument>(apiClient.get(`/docs/documents/${documentId}`))
 }
 
+export async function deleteDocument(documentId: string): Promise<{ deleted: boolean; document_id: string }> {
+  return apiRequest<{ deleted: boolean; document_id: string }>(apiClient.delete(`/docs/documents/${documentId}`))
+}
+
 export async function listVersions(documentId: string): Promise<DocVersion[]> {
   const result = await apiRequest<DocRevisionsResponse>(apiClient.get(`/docs/documents/${documentId}/revisions`))
   return result.items as unknown as DocVersion[]

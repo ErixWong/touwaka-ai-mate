@@ -31,6 +31,9 @@ export default (controller) => {
   // 更新文档
   router.patch('/documents/:documentId', authenticate(), controller.updateDocument.bind(controller));
 
+  // 删除文档
+  router.delete('/documents/:documentId', authenticate(), controller.deleteDocument.bind(controller));
+
   // 查询处理状态 — 2.3
   router.get('/documents/:documentId/processing', authenticate(), controller.getProcessingStatus.bind(controller));
 
