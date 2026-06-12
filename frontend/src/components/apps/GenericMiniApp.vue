@@ -69,7 +69,28 @@
               {{ formatFieldValue(col._isExtension ? record[col.name] : record.data?.[col.name], col) }}
             </td>
             <td>
-              <StateBadge :status="record.status" :states="app.states || []" />
+              <StateBadge 
+                :status="record.status" 
+                :states="app.states || []"
+                :processing-started-at="getProcessingStartedAt(record)"
+              />
+              <el-popover
+                v-if="isRecordStuck(record)"
+                placement="top"
+                :width="320"
+                trigger="click"
+                :teleported="false"
+              >
+                <template #reference>
+                  <el-button size="small" type="danger" plain class="stuck-action-btn">⚠ {{ $t('apps.manualHandle') }}</el-button>
+                </template>
+                <div class="stuck-handle-panel">
+                  <p><strong>{{ $t('apps.processingStuckTitle') }}</strong></p>
+                  <p>{{ $t('apps.processingStuckDesc', { status: getStateLabel(record.status) }) }}</p>
+                  <el-divider />
+                  <p class="stuck-hint-text">{{ $t('apps.processingStuckHint') }}</p>
+                </div>
+              </el-popover>
             </td>
             <td class="actions-cell">
               <el-button size="small" @click="viewRecord(record)">{{ $t('apps.view') }}</el-button>
@@ -373,6 +394,35 @@ function formatFieldValue(value: unknown, field: AppField): string {
   if (field.type === 'number') return typeof value === 'number' ? value.toLocaleString() : String(value)
   if (field.type === 'boolean') return value ? t('apps.yes') : t('apps.no')
   return String(value)
+}
+
+function getProcessingStartedAt(record: MiniAppRecord): string | undefined {
+  if (!record.data) return undefined
+  try {
+    const data = typeof record.data === 'string' ? JSON.parse(record.data) : record.data
+    return data._processing_started_at
+  } catch {
+    return undefined
+  }
+}
+
+const PROCESSING_TIMEOUT_MINUTES = 15
+const PROCESSING_STATE_NAMES = ['ocr_processing', 'cleaning', 'extract_processing', 'section_processing']
+
+function isRecordStuck(record: MiniAppRecord): boolean {
+  if (!record.status || !PROCESSING_STATE_NAMES.includes(record.status)) return false
+  const startedAt = getProcessingStartedAt(record)
+  if (!startedAt) return false
+  const elapsedMinutes = (Date.now() - new Date(startedAt).getTime()) / 60000
+  return elapsedMinutes > PROCESSING_TIMEOUT_MINUTES
+}
+
+function getStateLabel(status?: string): string {
+  if (!status) return '-'
+  const states = props.app.states
+  if (typeof states === 'string') return status
+  const found = (Array.isArray(states) ? states : []).find(s => s.name === status)
+  return found?.label || status
 }
 
 async function loadRecords() {
@@ -845,5 +895,23 @@ onUnmounted(() => {
   font-size: var(--el-font-size-base);
   color: var(--el-text-color-regular);
   min-height: 36px;
+}
+
+.stuck-action-btn {
+  margin-left: 8px;
+}
+
+.stuck-handle-panel {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.stuck-handle-panel p {
+  margin: 0 0 8px 0;
+}
+
+.stuck-hint-text {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 </style>
