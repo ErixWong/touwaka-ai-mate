@@ -201,14 +201,15 @@ class TopicController {
   async get(ctx) {
     try {
       const { id } = ctx.params;
+      const userId = ctx.state.session.id;
 
       const topic = await this.Topic.findOne({
-        where: { id },
+        where: { id, user_id: userId },
         raw: true,
       });
 
       if (!topic) {
-        ctx.error('话题不存在', 404);
+        ctx.error('话题不存在或无权限', 404);
         return;
       }
 
@@ -263,7 +264,7 @@ class TopicController {
       const { id } = ctx.params;
 
       // 先删除关联的消息
-      await this.Message.destroy({ where: { topic_id: id } });
+      await this.Message.destroy({ where: { topic_id: id, user_id: ctx.state.session.id } });
 
       // 删除话题
       const result = await this.Topic.destroy({

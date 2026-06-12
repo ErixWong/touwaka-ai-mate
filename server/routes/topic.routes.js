@@ -3,7 +3,7 @@
  */
 
 import Router from '@koa/router';
-import { authenticate, optionalAuth } from '../middlewares/auth.js';
+import { authenticate } from '../middlewares/auth.js';
 
 export default (controller, messageController) => {
   const router = new Router({ prefix: '/api/topics' });
@@ -21,7 +21,7 @@ export default (controller, messageController) => {
   router.post('/', authenticate(), controller.create.bind(controller));
 
   // 获取话题详情（公开访问）
-  router.get('/:id', optionalAuth(), controller.get.bind(controller));
+  router.get('/:id', authenticate(), controller.get.bind(controller));
 
   // 更新话题（需要认证）
   router.put('/:id', authenticate(), controller.update.bind(controller));

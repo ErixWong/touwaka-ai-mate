@@ -20,6 +20,33 @@ class MessageController {
     this.Message = db.getModel('message');
   }
 
+  safeParseJSON(value) {
+    if (!value) return null;
+    try {
+      return typeof value === 'string' ? JSON.parse(value) : value;
+    } catch (e) {
+      logger.warn('JSON parse failed:', value);
+      return null;
+    }
+  }
+
+  formatMessage(m) {
+    return {
+      ...m,
+      inner_voice: this.safeParseJSON(m.inner_voice),
+      tool_calls: this.safeParseJSON(m.tool_calls),
+      error_info: this.safeParseJSON(m.error_info),
+      metadata: {
+        tokens: (m.prompt_tokens || m.completion_tokens) ? {
+          total_tokens: (m.prompt_tokens || 0) + (m.completion_tokens || 0),
+          prompt_tokens: m.prompt_tokens || 0,
+          completion_tokens: m.completion_tokens || 0,
+        } : null,
+        latency: m.latency_ms || null,
+      },
+    };
+  }
+
   /**
    * 按 expert + user 获取消息列表（主要入口）
    * 这是新的核心 API，用于加载某个 expert 与当前用户的对话历史
@@ -63,39 +90,13 @@ class MessageController {
         raw: true,
       });
 
-      // 安全解析 JSON
-      const safeParseJSON = (value) => {
-        if (!value) return null;
-        try {
-          const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-          return parsed;
-        } catch (e) {
-          logger.warn('JSON parse failed:', value);
-          return null;
-        }
-      };
-
       // 反转数组，使消息按时间正序返回（最早的在前，便于聊天界面显示）
       const sortedRows = rows.reverse();
 
       const pages = Math.ceil(count / size);
 
       ctx.success({
-        items: sortedRows.map(m => ({
-          ...m,
-          inner_voice: safeParseJSON(m.inner_voice),
-          tool_calls: safeParseJSON(m.tool_calls),
-          error_info: safeParseJSON(m.error_info),
-          // 将数据库字段转换为前端期望的 metadata 格式
-          metadata: {
-            tokens: (m.prompt_tokens || m.completion_tokens) ? {
-              total_tokens: (m.prompt_tokens || 0) + (m.completion_tokens || 0),
-              prompt_tokens: m.prompt_tokens || 0,
-              completion_tokens: m.completion_tokens || 0,
-            } : null,
-            latency: m.latency_ms || null,
-          },
-        })),
+        items: sortedRows.map(m => this.formatMessage(m)),
         pagination: {
           page,
           size,
@@ -123,13 +124,19 @@ class MessageController {
         return;
       }
 
+      const userId = ctx.state.session.id;
+
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
+
       const page = parseInt(pageNumber);
       const size = parseInt(pageSize);
       const offset = (page - 1) * size;
 
-      // 获取消息
       const { count, rows } = await this.Message.findAndCountAll({
-        where: { topic_id },
+        where: { topic_id, user_id: userId },
         attributes: [
           'id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
           'error_info', 'created_at', 'latency_ms'
@@ -177,13 +184,19 @@ class MessageController {
         return;
       }
 
+      const userId = ctx.state.session.id;
+
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
+
       const page = parseInt(pageNumber);
       const size = parseInt(pageSize);
       const offset = (page - 1) * size;
 
-      // 获取消息
       const { count, rows } = await this.Message.findAndCountAll({
-        where: { topic_id: topicId },
+        where: { topic_id: topicId, user_id: userId },
         attributes: [
           'id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
           'error_info', 'created_at', 'latency_ms'
@@ -224,9 +237,15 @@ class MessageController {
   async get(ctx) {
     try {
       const { id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
 
       const message = await this.Message.findOne({
-        where: { id },
+        where: { id, user_id: userId },
         attributes: [
           'id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
           'error_info', 'created_at', 'latency_ms'
@@ -309,38 +328,93 @@ class MessageController {
 
       logger.info('[listWithBefore] Found messages:', messages.length);
 
-      // 安全解析 JSON
-      const safeParseJSON = (value) => {
-        if (!value) return null;
-        try {
-          const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-          return parsed;
-        } catch (e) {
-          logger.warn('JSON parse failed:', value);
-          return null;
-        }
-      };
-
       // 反转为正序（最早的在前）
       const sortedMessages = messages.reverse();
 
-      ctx.success(sortedMessages.map(m => ({
-        ...m,
-        inner_voice: safeParseJSON(m.inner_voice),
-        tool_calls: safeParseJSON(m.tool_calls),
-        error_info: safeParseJSON(m.error_info),
-        metadata: {
-          tokens: (m.prompt_tokens || m.completion_tokens) ? {
-            total_tokens: (m.prompt_tokens || 0) + (m.completion_tokens || 0),
-            prompt_tokens: m.prompt_tokens || 0,
-            completion_tokens: m.completion_tokens || 0,
-          } : null,
-          latency: m.latency_ms || null,
-        },
-      })));
+      ctx.success(sortedMessages.map(m => this.formatMessage(m)));
     } catch (error) {
       console.error('Get messages with before error:', error.stack || error);
       ctx.error('获取消息失败', 500);
+    }
+  }
+
+  /**
+   * 按最新消息游标增量获取消息
+   */
+  async listSince(ctx) {
+    try {
+      const { expertId } = ctx.params;
+      const { after_message_id, limit: limitValue = 50 } = ctx.query;
+      const userId = ctx.state.session.id;
+
+      if (!expertId) {
+        ctx.error('缺少 expertId 参数');
+        return;
+      }
+
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
+
+      const limit = Math.min(parseInt(limitValue, 10) || 50, 100);
+      let anchorCreatedAt = null;
+      let anchorId = null;
+
+      if (after_message_id) {
+        const anchor = await this.Message.findOne({
+          where: {
+            id: after_message_id,
+            expert_id: expertId,
+            user_id: userId,
+          },
+          attributes: ['id', 'created_at'],
+          raw: true,
+        });
+
+        if (anchor) {
+          anchorCreatedAt = anchor.created_at;
+          anchorId = anchor.id;
+        }
+      }
+
+      const where = {
+        expert_id: expertId,
+        user_id: userId,
+      };
+
+      if (anchorCreatedAt && anchorId) {
+        where[Op.or] = [
+          { created_at: { [Op.gt]: anchorCreatedAt } },
+          {
+            created_at: anchorCreatedAt,
+            id: { [Op.gt]: anchorId },
+          },
+        ];
+      }
+
+      const rows = await this.Message.findAll({
+        where,
+        attributes: [
+          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
+          'prompt_tokens', 'completion_tokens',
+          'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
+        ],
+        order: [['created_at', 'ASC'], ['id', 'ASC']],
+        limit,
+        raw: true,
+      });
+
+      const latestMessageId = rows.length > 0 ? rows[rows.length - 1]?.id || null : after_message_id || null;
+
+      ctx.success({
+        items: rows.map(m => this.formatMessage(m)),
+        latest_message_id: latestMessageId,
+        has_more: rows.length === limit,
+      });
+    } catch (error) {
+      logger.error('Get messages since error:', error);
+      ctx.error('获取增量消息失败', 500);
     }
   }
 

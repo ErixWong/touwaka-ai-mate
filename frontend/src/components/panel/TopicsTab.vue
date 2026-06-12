@@ -21,6 +21,10 @@
         <span class="btn-text">{{ $t('topics.compress') }}</span>
       </button>
     </div>
+
+    <div class="topics-hint">
+      {{ $t('topics.title') }}{{ ' · 阶段摘要，仅用于辅助定位，不切换主会话入口' }}
+    </div>
     
     <!-- 搜索框 -->
     <div class="search-box">
@@ -236,6 +240,16 @@ const emit = defineEmits<{
   gap: 8px;
   margin-bottom: 8px;
   flex-shrink: 0;
+}
+
+.topics-hint {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--secondary-bg, #f5f7fa);
+  color: var(--text-secondary, #666);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .action-btn {

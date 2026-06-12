@@ -189,6 +189,8 @@ const sseHandler = useSSEHandler({
   get expertId() { return currentExpertId.value },
   currentAssistantMessage: () => messageSending.currentAssistantMessage.value,
   currentUserMessageId: () => messageSending.currentUserMessageId.value,
+  activeRequestId: () => messageSending.activeRequestId.value,
+  setActiveRequestId: messageSending.setActiveRequestId,
   getStreamingContent: messageSending.getStreamingContent,
   getReasoningContent: messageSending.getReasoningContent,
   setStreamingContent: messageSending.setStreamingContent,
@@ -264,8 +266,8 @@ const handlePanelResize = (panes: { size: number }[]) => {
 
 // 处理 Topic 选择
 const handleTopicSelect = (topic: Topic) => {
-  console.log('Selected topic:', topic)
-  // TODO: 加载该 topic 的消息
+  console.log('Selected topic summary:', topic)
+  chatStore.setCurrentTopic(topic.id)
 }
 
 // 处理 Doc 选择
@@ -375,7 +377,9 @@ const handleStopGenerate = async () => {
 
   // 调用后端停止 API
   try {
-    await messageApi.stopGeneration(currentExpertId.value!)
+    const requestId = messageSending.activeRequestId.value
+    if (!requestId) return
+    await messageApi.stopGeneration(requestId)
   } catch (error) {
     console.warn('Stop generation API not available:', error)
   }

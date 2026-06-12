@@ -53,6 +53,7 @@ export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'c
 // 核心设计：消息按 expert + user 组织，topic_id 只是对话历史的阶段性总结标记
 export interface Message {
   id: string
+  request_id?: string
   expert_id: string      // 所属专家
   user_id?: string       // 所属用户
   topic_id?: string      // 可选，阶段总结标记
@@ -85,6 +86,7 @@ export interface MessageMetadata {
 export interface ToolCallData {
   [key: string]: unknown
   tool_call_id?: string
+  tool_message_id?: string
   name?: string
   tool_name?: string
   content?: string
@@ -93,6 +95,7 @@ export interface ToolCallData {
   timestamp?: string
   arguments?: Record<string, unknown>
   result?: unknown
+  result_preview?: string
 }
 
 // Token 使用情况

@@ -31,17 +31,43 @@ export default (controller, services = {}) => {
 
   // 停止生成（需要认证）
   router.post('/stop', authenticate(), async (ctx) => {
-    const { expert_id } = ctx.request.body || {};
+    const { request_id } = ctx.request.body || {};
     const user_id = ctx.state.session.id;
 
     try {
-      // 真正中止 LLM 请求
-      const aborted = await controller.chatService.abortUserRequest(user_id, expert_id);
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数');
+        return;
+      }
+
+      const result = await controller.stopRequest(request_id, user_id);
+
+      if (!result.success) {
+        ctx.status = 409;
+        ctx.body = {
+          code: 409,
+          message: 'stop failed',
+          data: {
+            success: false,
+            aborted: false,
+            request_id,
+            expert_id: result.expert_id,
+            user_id,
+          },
+        };
+        return;
+      }
       
       ctx.body = {
         code: 0,
         message: 'success',
-        data: { success: true, aborted, expert_id, user_id },
+        data: {
+          success: result.success,
+          aborted: result.aborted,
+          request_id,
+          expert_id: result.expert_id,
+          user_id,
+        },
       };
     } catch (error) {
       logger.error('[ChatRoutes] Stop generation error:', error);

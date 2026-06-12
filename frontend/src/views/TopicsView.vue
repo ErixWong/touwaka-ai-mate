@@ -33,9 +33,6 @@
           <span v-if="topic.message_count">{{ topic.message_count }} {{ $t('topics.messages') }}</span>
         </div>
         <div class="topic-actions">
-          <el-button type="primary" size="small" @click="openTopic(topic.id)">
-            {{ $t('topics.continue') }}
-          </el-button>
           <el-button
             v-if="topic.status === 'active'"
             size="small"
@@ -75,11 +72,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 
-const router = useRouter()
 const { t } = useI18n()
 const chatStore = useChatStore()
 
@@ -100,10 +95,6 @@ const filteredTopics = computed(() => {
 
   return topics
 })
-
-const openTopic = (topicId: string) => {
-  router.push({ name: 'chat', params: { topicId } })
-}
 
 const archiveTopic = async (topicId: string) => {
   await chatStore.updateTopic(topicId, { status: 'archived' })

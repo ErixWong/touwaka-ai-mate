@@ -13,6 +13,8 @@ export interface UseSSEHandlerOptions {
   expertId: string | (() => string)
   currentAssistantMessage: () => Message | null
   currentUserMessageId: () => string | null
+  activeRequestId: () => string | null
+  setActiveRequestId: (requestId: string | null) => void
   getStreamingContent: () => string
   getReasoningContent: () => string
   setStreamingContent: (content: string) => void
@@ -24,11 +26,8 @@ export interface UseSSEHandlerOptions {
 }
 
 export interface CompleteEventData {
-  message_id?: string
-  content?: string
-  reasoning_content?: string
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
-  model?: string
+  request_id?: string
+  message?: Message
 }
 
 /**
@@ -51,6 +50,35 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
   // 记录上一次收到的最新消息 ID，用于避免重复拉取
   const lastKnownMessageId = ref<string | null>(null)
+  const lastKnownSequence = ref<number>(0)
+
+  const getAssistantByRequestId = (requestId?: string | null): Message | null => {
+    if (!requestId) {
+      return options.currentAssistantMessage()
+    }
+    return chatStore.findStreamingAssistantByRequestId(requestId) || null
+  }
+
+  const bindPendingAssistantToRequest = (requestId?: string | null) => {
+    if (!requestId) return null
+
+    const matched = chatStore.findStreamingAssistantByRequestId(requestId)
+    if (matched) return matched
+
+    const pendingAssistant = chatStore.messages.find(
+      m => m.role === 'assistant' && m.status === 'streaming' && !m.request_id
+    )
+
+    if (pendingAssistant) {
+      chatStore.updateMessageRequestId(pendingAssistant.id, requestId)
+      if (!options.activeRequestId()) {
+        options.setActiveRequestId(requestId)
+      }
+      return chatStore.findStreamingAssistantByRequestId(requestId)
+    }
+
+    return null
+  }
 
   // 批量缓冲相关
   let contentBuffer = ''
@@ -71,7 +99,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
   // 强制刷新缓冲区到UI
   const flushBuffers = () => {
-    const assistant = options.currentAssistantMessage()
+    const assistant = getAssistantByRequestId(options.activeRequestId())
     if (!assistant) {
       flushTimer = null
       return
@@ -121,36 +149,25 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
    * 使用服务端返回的内容更新临时消息（fallback 方案）
    */
   const updateTempMessageWithServerData = (data: CompleteEventData) => {
-    const assistant = options.currentAssistantMessage()
+    const assistant = getAssistantByRequestId(data.request_id)
     if (!assistant) return
 
-    const finalContent = data.content || options.getStreamingContent()
-    chatStore.updateMessageContent(assistant.id, finalContent, 'completed')
+    const message = data.message
+    if (!message) return
 
-    if (data.reasoning_content || options.getReasoningContent()) {
-      chatStore.updateMessageReasoningContent(
-        assistant.id,
-        data.reasoning_content || options.getReasoningContent()
-      )
-    }
-
-    if (data.usage && data.usage.prompt_tokens !== undefined && data.usage.completion_tokens !== undefined && data.usage.total_tokens !== undefined) {
-      chatStore.updateMessageMetadata(assistant.id, {
-        tokens: {
-          prompt_tokens: data.usage.prompt_tokens,
-          completion_tokens: data.usage.completion_tokens,
-          total_tokens: data.usage.total_tokens,
-        },
-        model: data.model,
-      })
-    }
+    chatStore.replaceMessage(assistant.id, {
+      ...message,
+      request_id: data.request_id || message.request_id,
+      status: 'completed',
+      updated_at: message.updated_at || message.created_at,
+    })
   }
 
   /**
    * 从数据库获取消息并替换临时消息
    */
-  const replaceTempMessagesWithDb = async (messageId: string): Promise<boolean> => {
-    const assistant = options.currentAssistantMessage()
+  const replaceTempMessagesWithDb = async (messageId: string, requestId?: string): Promise<boolean> => {
+    const assistant = getAssistantByRequestId(requestId)
     const expertId = getExpertId()
     if (!expertId || !assistant) return false
 
@@ -256,38 +273,36 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
    * 处理 SSE complete 事件
    */
   const handleCompleteEvent = async (data: CompleteEventData) => {
-    const assistant = options.currentAssistantMessage()
+    const assistant = getAssistantByRequestId(data.request_id)
     if (!assistant) {
       console.log('[useSSEHandler] Setting isSending to false on complete event (no current message)')
       clearSendingTimeout()
+      options.setActiveRequestId(null)
       return
     }
 
     // 更新已知的消息 ID，避免心跳检测误判导致刷新
-    if (data.message_id) {
-      lastKnownMessageId.value = data.message_id
+    if (data.message?.id) {
+      lastKnownMessageId.value = data.message.id
     }
 
-    // 尝试从数据库获取消息
-    if (data.message_id && options.expertId) {
-      const success = await replaceTempMessagesWithDb(data.message_id)
-      if (!success) {
-        // 数据库获取失败，使用服务端返回的内容
-        console.log('[useSSEHandler] Failed to get DB messages, using server data')
-        updateTempMessageWithServerData(data)
-      }
-    } else {
-      // 没有 message_id，使用服务端返回的内容
+    if (data.message) {
       updateTempMessageWithServerData(data)
+    } else if (data.request_id && assistant.request_id === data.request_id) {
+      const success = await replaceTempMessagesWithDb(assistant.id, data.request_id)
+      if (!success) {
+        console.log('[useSSEHandler] Failed to get DB messages, using server data')
+      }
     }
 
     // 检测技能相关操作
-    const finalContent = data.content || options.getStreamingContent()
+    const finalContent = data.message?.content || options.getStreamingContent()
     detectAndEmitSkillEvents(finalContent)
     options.onSkillEvent?.(finalContent)
 
     console.log('[useSSEHandler] Setting isSending to false on complete event')
     clearSendingTimeout()
+    options.setActiveRequestId(null)
     options.onComplete?.()
   }
 
@@ -300,6 +315,11 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
       try {
         const data = JSON.parse(event.data)
         const serverLatestMessageId = data.latest_message_id
+        const serverLatestSequence = Number(data.latest_sequence || 0)
+
+        if (serverLatestSequence > lastKnownSequence.value) {
+          lastKnownSequence.value = serverLatestSequence
+        }
 
         // 如果正在发送消息，跳过心跳检测触发的刷新
         const isSending = chatStore.messages.some(m => m.status === 'streaming')
@@ -311,28 +331,38 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           return
         }
 
-        // 如果服务端有消息 ID，且与本地已知的不同
+        // 如果服务端有消息 ID，且与本地已知的不同，只更新游标
+        // 不再通过 heartbeat 触发第一页整页重载，避免聊天视图被打断
         if (serverLatestMessageId && serverLatestMessageId !== lastKnownMessageId.value) {
-          // 获取本地最新消息 ID
-          const localMessages = chatStore.sortedMessages
-          const lastMessage = localMessages.length > 0 ? localMessages[localMessages.length - 1] : undefined
-          const localLatestId = lastMessage?.id ?? null
+          console.log('[useSSEHandler] heartbeat detected newer server message id, cursor updated only:', {
+            serverLatest: serverLatestMessageId,
+            localKnown: lastKnownMessageId.value,
+          })
 
-          // 如果服务端消息 ID 与本地最新消息 ID 不同，说明有新消息
-          if (serverLatestMessageId !== localLatestId) {
-            console.log('[useSSEHandler] 检测到新消息，主动拉取:', {
-              serverLatest: serverLatestMessageId,
-              localLatest: localLatestId,
-            })
+          const expertId = getExpertId()
+          if (expertId) {
+            try {
+              const result = await messageApi.getMessagesSince(expertId, {
+                after_message_id: lastKnownMessageId.value || undefined,
+                limit: 50,
+              })
 
-            // 刷新消息列表（只拉取第一页最新消息）
-            const expertId = getExpertId()
-            if (expertId) {
-              await chatStore.loadMessagesByExpert(expertId, 1)
+              if (result.items?.length) {
+                chatStore.mergeMessages(result.items.map(message => ({
+                  ...message,
+                  status: 'completed',
+                })))
+              }
+
+              if (result.latest_message_id) {
+                lastKnownMessageId.value = result.latest_message_id
+                return
+              }
+            } catch (error) {
+              console.warn('[useSSEHandler] incremental sync failed:', error)
             }
           }
 
-          // 更新已知的消息 ID
           lastKnownMessageId.value = serverLatestMessageId
         }
       } catch (e) {
@@ -343,6 +373,13 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
     try {
       const data = JSON.parse(event.data)
+      const eventSequence = Number(data.sequence || event.id || 0)
+      if (eventSequence && eventSequence <= lastKnownSequence.value && event.event !== 'connected') {
+        return
+      }
+      if (eventSequence > lastKnownSequence.value) {
+        lastKnownSequence.value = eventSequence
+      }
 
       switch (event.event) {
         case 'connected':
@@ -351,6 +388,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
         case 'start':
           console.log('[useSSEHandler] SSE start:', data)
+          bindPendingAssistantToRequest(data.request_id)
           // 如果检测到新话题，刷新话题列表
           if (data.is_new_topic) {
             console.log('[useSSEHandler] 检测到新话题，刷新话题列表')
@@ -360,7 +398,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           break
 
         case 'delta':
-          if (options.currentAssistantMessage()) {
+          if (getAssistantByRequestId(data.request_id)) {
             // 使用批量缓冲机制，减少UI更新频率
             contentBuffer += data.content
             
@@ -379,7 +417,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
         case 'reasoning_delta':
           // 处理思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
-          if (options.currentAssistantMessage()) {
+          if (getAssistantByRequestId(data.request_id)) {
             // 使用批量缓冲机制
             reasoningBuffer += data.content
             
@@ -399,7 +437,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
         case 'tool_call':
           // 工具调用开始 - 只显示简单的进度提示
           console.log('[useSSEHandler] Tool call:', data)
-          if (options.currentAssistantMessage() && data.toolCalls) {
+          if (getAssistantByRequestId(data.request_id) && data.toolCalls) {
             const toolNames = data.toolCalls.map((tc: { displayName?: string; function?: { name?: string }; name?: string }) => {
               return tc.displayName || tc.function?.name || tc.name || 'unknown'
             }).join(', ')
@@ -410,7 +448,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
             options.setStreamingContent(newContent)
             // 更新 store 中的消息内容
             chatStore.updateMessageContent(
-              options.currentAssistantMessage()!.id,
+              getAssistantByRequestId(data.request_id)!.id,
               newContent
             )
           }
@@ -442,7 +480,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           // 工具调用即将达到上限（80%阈值），显示警告提示
           console.log('[useSSEHandler] Tool limit warning:', data)
           if (data.message) {
-            const assistant = options.currentAssistantMessage()
+            const assistant = getAssistantByRequestId(data.request_id)
             if (assistant) {
               const currentContent = options.getStreamingContent() || ''
               const warningText = `\n\n⚠️ ${data.message}\n`
@@ -456,7 +494,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           // 工具调用已达到上限（100%），显示总结
           console.log('[useSSEHandler] Tool limit reached:', data)
           if (data.summary) {
-            const assistant = options.currentAssistantMessage()
+            const assistant = getAssistantByRequestId(data.request_id)
             if (assistant) {
               const currentContent = options.getStreamingContent() || ''
               const summaryText = `\n\n📊 ${data.summary}\n\n${data.message || ''}`
@@ -464,6 +502,27 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
               chatStore.updateMessageContent(assistant.id, currentContent + summaryText)
             }
           }
+          break
+
+        case 'stopped':
+          console.log('[useSSEHandler] SSE stopped event received:', data)
+          if (flushTimer) {
+            clearTimeout(flushTimer)
+            flushTimer = null
+          }
+          flushBuffers()
+          {
+            const assistant = getAssistantByRequestId(data.request_id)
+            if (assistant) {
+              chatStore.updateMessageContent(
+                assistant.id,
+                options.getStreamingContent() || assistant.content || '',
+                'stopped'
+              )
+            }
+          }
+          clearSendingTimeout()
+          options.setActiveRequestId(null)
           break
 
         case 'error':
@@ -475,7 +534,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           }
           flushBuffers()
           
-          const assistant = options.currentAssistantMessage()
+          const assistant = getAssistantByRequestId(data.request_id)
           if (assistant) {
             chatStore.updateMessageContent(
               assistant.id,
@@ -485,6 +544,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           }
           console.log('[useSSEHandler] Setting isSending to false on error event')
           clearSendingTimeout()
+          options.setActiveRequestId(null)
           options.onError?.(new Error(data.message || t('error.unknownError')))
           break
 

@@ -37,11 +37,15 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const streamingContent = ref('')
   // 流式思考内容累积器 - 用于 reasoning_delta 事件
   const streamingReasoningContent = ref('')
+  const activeRequestId = ref<string | null>(null)
 
   // 当前正在流式输出的助手消息 - 从 store 自动推导
-  const currentAssistantMessage = computed<Message | null>(() =>
-    chatStore.messages.find(m => m.role === 'assistant' && m.status === 'streaming') || null
-  )
+  const currentAssistantMessage = computed<Message | null>(() => {
+    if (activeRequestId.value) {
+      return chatStore.findStreamingAssistantByRequestId(activeRequestId.value) || null
+    }
+    return chatStore.messages.find(m => m.role === 'assistant' && m.status === 'streaming') || null
+  })
 
   // 当前用户消息ID - 从当前助手消息自动推导
   const currentUserMessageId = computed<string | null>(() => {
@@ -67,6 +71,11 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const resetStreamingContent = () => {
     streamingContent.value = ''
     streamingReasoningContent.value = ''
+    activeRequestId.value = null
+  }
+
+  const setActiveRequestId = (requestId: string | null) => {
+    activeRequestId.value = requestId
   }
 
   // 追加流式内容
@@ -116,7 +125,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
     }
 
     // 添加用户消息到本地
-    chatStore.addLocalMessage({
+    const userPlaceholder = chatStore.addLocalMessage({
       expert_id,
       role: 'user',
       content,
@@ -124,7 +133,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
     })
 
     // 添加助手消息占位（流式）
-    chatStore.addLocalMessage({
+    const assistantPlaceholder = chatStore.addLocalMessage({
       expert_id,
       role: 'assistant',
       content: '',
@@ -136,8 +145,6 @@ export function useMessageSending(options: UseMessageSendingOptions) {
 
     try {
       // 获取最后一条用户消息（刚添加的）
-      const lastUserMessage = chatStore.messages[chatStore.messages.length - 1]
-
       // 构建消息参数
       const messageParams: {
         content: string
@@ -146,7 +153,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
         task_id?: string
         working_path?: string
       } = {
-        content: lastUserMessage?.content || content,
+        content: userPlaceholder?.content || content,
         expert_id,
         model_id: getModelId(),
       }
@@ -168,11 +175,16 @@ export function useMessageSending(options: UseMessageSendingOptions) {
 
       // 发送消息
       const result = await messageApi.sendMessage(messageParams)
+      if (result.request_id) {
+        activeRequestId.value = result.request_id
+        chatStore.updateMessageRequestId(assistantPlaceholder.id, result.request_id)
+      }
       console.log('[useMessageSending] Message sent:', result)
       return true
 
     } catch (error) {
       console.error('[useMessageSending] Send message error:', error)
+      activeRequestId.value = null
       
       // 更新助手消息为错误状态
       const assistant = currentAssistantMessage.value
@@ -232,11 +244,13 @@ export function useMessageSending(options: UseMessageSendingOptions) {
     currentUserMessageId,
     streamingContent,
     streamingReasoningContent,
+    activeRequestId,
     
     // 方法
     sendMessage,
     retryMessage,
     resetStreamingContent,
+    setActiveRequestId,
     appendStreamingContent,
     appendReasoningContent,
     getStreamingContent,
