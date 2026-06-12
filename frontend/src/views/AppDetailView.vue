@@ -18,6 +18,7 @@ import GenericMiniApp from '@/components/apps/GenericMiniApp.vue'
 const AppComponentMap: Record<string, Component> = {
   'ContractV2View': defineAsyncComponent(() => import('@/views/contract-v2/ContractV2View.vue')),
   'DowntimeAnalyzer': defineAsyncComponent(() => import('@/views/downtime-analyzer/DowntimeAnalyzer.vue')),
+  'ELSStudyView': defineAsyncComponent(() => import('@/views/els/ELSStudyView.vue')),
   'InvoiceView': defineAsyncComponent(() => import('@/views/invoice/InvoiceView.vue')),
   'OcrToolView': defineAsyncComponent(() => import('@/views/ocr-tool/OcrToolView.vue')),
   'ResumeScreeningView': defineAsyncComponent(() => import('@/views/resume-fast-screening/ResumeScreeningView.vue')),
