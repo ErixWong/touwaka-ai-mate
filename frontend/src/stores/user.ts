@@ -31,6 +31,17 @@ export const useUserStore = defineStore('user', () => {
     return user.value.roles.includes('creator')
   })
 
+  const hasPermission = (code: string) => {
+    if (isAdmin.value) return true
+    return user.value?.permission_codes?.includes(code) ?? false
+  }
+
+  const canManageRoles = computed(() => hasPermission('menu:admin:roles'))
+
+  const canAccessOrganization = computed(() => {
+    return isAdmin.value || canManageRoles.value
+  })
+
   // 是否可以管理技能（admin 或 creator）
   const canManageSkills = computed(() => {
     return isAdmin.value || isCreator.value
@@ -217,7 +228,10 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     isAdmin,
     isCreator,
+    canManageRoles,
+    canAccessOrganization,
     canManageSkills,
+    hasPermission,
     theme,
     language,
 

@@ -357,7 +357,7 @@
     </div>
 
     <!-- 角色管理 -->
-    <div v-if="activeTab === 'role' && isAdmin" class="settings-section role-section">
+    <div v-if="activeTab === 'role' && canManageRoles" class="settings-section role-section">
       <div class="split-panel">
         <!-- 左侧：角色列表 -->
         <div class="panel role-list-panel">
@@ -436,11 +436,10 @@
                 <div class="role-tab-footer">
                   <span class="permissions-count">
                     {{ $t('settings.selectedPermissionsCount', { count: rolePermissionIds.length }) }}
-                    <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
                   </span>
                   <el-button
                     type="primary"
-                    :disabled="!rolePermissionsChanged || isAdminRole"
+                    :disabled="!rolePermissionsChanged"
                     @click="saveRolePermissions"
                   >
                     {{ $t('common.save') }}
@@ -478,11 +477,10 @@
                 <div class="role-tab-footer">
                   <span class="experts-count">
                     {{ $t('settings.selectedExpertsCount', { count: roleExpertIds.length }) }}
-                    <span v-if="isAdminRole" class="admin-hint">({{ $t('settings.adminRoleNoEdit') }})</span>
                   </span>
                   <el-button
                     type="primary"
-                    :disabled="!roleExpertsChanged || isAdminRole"
+                    :disabled="!roleExpertsChanged"
                     @click="saveRoleExperts"
                   >
                     {{ $t('common.save') }}
@@ -1119,51 +1117,75 @@ const currentGroup = computed(() => {
 })
 
 // 菜单项配置（按分组）
+const organizationMenuItems = [
+  { key: 'user', label: t('settings.userManagement'), route: '/organization/users' },
+  { key: 'role', label: t('settings.roleManagement'), route: '/organization/roles' },
+  { key: 'organization', label: t('settings.organizationManagement'), route: '/organization/departments' },
+]
+
+const personalMenuItems = [
+  { key: 'profile', label: t('settings.profile'), route: '/personal/profile' },
+  { key: 'invitation', label: t('settings.invitation'), route: '/personal/invitation' },
+  { key: 'about', label: t('settings.about'), route: '/personal/about' },
+]
+
+const systemMenuItems = [
+  { key: 'model', label: t('settings.modelAndProvider'), route: '/system/models' },
+  { key: 'expert', label: t('settings.expertSettings'), route: '/system/experts' },
+  { key: 'assistant', label: t('settings.assistantSettings'), route: '/system/assistants' },
+  { key: 'resident', label: t('settings.residentProcesses'), route: '/system/resident' },
+  { key: 'attachment', label: t('settings.attachmentManagement'), route: '/system/attachments' },
+  { key: 'mcp', label: t('settings.mcp.management'), route: '/system/mcp' },
+  { key: 'apps', label: t('settings.appManagement.management'), route: '/system/apps' },
+  { key: 'handlers', label: t('settings.handlerManagement.management'), route: '/system/handlers' },
+  { key: 'system', label: t('settings.systemConfig'), route: '/system/config' },
+]
+
 const menuItemsByGroup: Record<string, { key: string; label: string; route: string }[]> = {
-  organization: [
-    { key: 'user', label: t('settings.userManagement'), route: '/organization/users' },
-    { key: 'role', label: t('settings.roleManagement'), route: '/organization/roles' },
-    { key: 'organization', label: t('settings.organizationManagement'), route: '/organization/departments' },
-  ],
-  personal: [
-    { key: 'profile', label: t('settings.profile'), route: '/personal/profile' },
-    { key: 'invitation', label: t('settings.invitation'), route: '/personal/invitation' },
-    { key: 'about', label: t('settings.about'), route: '/personal/about' },
-  ],
-  system: [
-    { key: 'model', label: t('settings.modelAndProvider'), route: '/system/models' },
-    { key: 'expert', label: t('settings.expertSettings'), route: '/system/experts' },
-    { key: 'assistant', label: t('settings.assistantSettings'), route: '/system/assistants' },
-    { key: 'resident', label: t('settings.residentProcesses'), route: '/system/resident' },
-    { key: 'attachment', label: t('settings.attachmentManagement'), route: '/system/attachments' },
-    { key: 'mcp', label: t('settings.mcp.management'), route: '/system/mcp' },
-    { key: 'apps', label: t('settings.appManagement.management'), route: '/system/apps' },
-    { key: 'handlers', label: t('settings.handlerManagement.management'), route: '/system/handlers' },
-    { key: 'system', label: t('settings.systemConfig'), route: '/system/config' },
-  ],
+  organization: organizationMenuItems,
+  personal: personalMenuItems,
+  system: systemMenuItems,
 }
 
 // 当前分组的菜单项
 const currentMenuItems = computed(() => {
-  return menuItemsByGroup[currentGroup.value] || menuItemsByGroup.personal
+  let items: { key: string; label: string; route: string }[]
+
+  if (currentGroup.value === 'organization') {
+    items = organizationMenuItems
+  } else if (currentGroup.value === 'system') {
+    items = systemMenuItems
+  } else {
+    items = personalMenuItems
+  }
+
+  if (currentGroup.value === 'organization') {
+    return items.filter(item => {
+      if (item.key === 'role') return userStore.canManageRoles
+      if (item.key === 'user' || item.key === 'organization') return userStore.isAdmin
+      return true
+    })
+  }
+
+  return items
 })
 
 // 从路由 meta 读取 activeTab
 const getTabFromRoute = (): string => {
   const tab = route.meta?.settingsTab as string | undefined
   if (tab) return tab
-  const items = menuItemsByGroup[currentGroup.value]
+  const items = currentMenuItems.value
   return items?.[0]?.key ?? 'profile'
 }
 
 const activeTab = computed({
   get: () => getTabFromRoute(),
   set: (key: string) => {
-    const items = menuItemsByGroup[currentGroup.value]
-    const item = items?.find(i => i.key === key)
-    if (item) {
-      router.push(item.route)
-    }
+      const items = currentMenuItems.value
+      const item = items?.find(i => i.key === key)
+      if (item) {
+        router.push(item.route)
+      }
   },
 })
 
@@ -1190,7 +1212,7 @@ const profileSubTab = ref<'basic' | 'password'>('basic')
 const sidebarCollapsed = ref(false)
 
 const handleMenuSelect = (index: string) => {
-  const items = menuItemsByGroup[currentGroup.value]
+  const items = currentMenuItems.value
   const item = items?.find(i => i.key === index)
   if (item) {
     if (!confirmSystemConfigLeave()) return
@@ -1243,6 +1265,7 @@ const expertAvailableModels = computed(() => {
 
 // 是否为管理员
 const isAdmin = computed(() => userStore.isAdmin)
+const canManageRoles = computed(() => userStore.canManageRoles)
 
 // Provider 选择
 const selectedProvider = ref<ModelProvider | null>(null)
@@ -1724,7 +1747,13 @@ watch(activeTab, (newTab) => {
   if (newTab === 'role' && rolesList.value.length === 0) {
     loadRolesForManagement()
   }
-})
+  if (newTab === 'role' && allPermissions.value.length === 0) {
+    loadAllPermissions()
+  }
+  if (newTab === 'role' && allExperts.value.length === 0) {
+    loadAllExperts()
+  }
+}, { immediate: true })
 
 // 监听设置组切换（路由已处理 redirect，此处仅保留数据加载逻辑）
 
@@ -1820,36 +1849,25 @@ const saveRole = async () => {
       name: roleForm.name,
       description: roleForm.description,
     }
-    await roleApi.updateRole(editingRole.value.id, updateData)
+    const updatedRole = await roleApi.updateRole(editingRole.value.id, updateData)
     
     // 更新本地列表
     const index = rolesList.value.findIndex(r => r.id === editingRole.value!.id)
     if (index !== -1) {
-      const existingRole = rolesList.value[index]
-      if (existingRole) {
-        rolesList.value[index] = {
-          id: existingRole.id,
-          mark: existingRole.mark,
-          name: roleForm.name,
-          description: roleForm.description,
-          is_system: existingRole.is_system,
-        }
-      }
+      rolesList.value[index] = updatedRole
     }
     
     // 更新选中角色
     if (selectedRole.value?.id === editingRole.value.id) {
-      selectedRole.value = {
-        ...selectedRole.value,
-        name: roleForm.name,
-        description: roleForm.description,
-      }
+      selectedRole.value = updatedRole
     }
     
     closeRoleDialog()
+    toast.success(t('settings.updateRoleSuccess'))
   } catch (err) {
     console.error('保存角色失败:', err)
-    toast.error(t('settings.saveRoleFailed'))
+    const errorMsg = err instanceof Error ? err.message : t('settings.saveRoleFailed')
+    toast.error(errorMsg)
   }
 }
 
@@ -2326,8 +2344,8 @@ onMounted(() => {
   providerStore.loadProviders()
   // 加载所有专家列表（包括非活跃的）
   expertStore.loadExperts({})
-  // 加载权限列表和专家列表（用于角色管理）- 仅管理员需要
-  if (isAdmin.value) {
+  // 加载权限列表和专家列表（用于角色管理）
+  if (canManageRoles.value) {
     loadAllPermissions()
     loadAllExperts()
   }

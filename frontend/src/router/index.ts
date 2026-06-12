@@ -64,11 +64,11 @@ const router = createRouter({
           path: 'organization',
           name: 'organization',
           component: () => import('@/views/SettingsView.vue'),
-          meta: { settingsGroup: 'organization', adminOnly: true },
+          meta: { settingsGroup: 'organization' },
           children: [
-            { path: '', redirect: { name: 'org-users' } },
+            { path: '', redirect: { name: 'org-roles' } },
             { path: 'users', name: 'org-users', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'user', adminOnly: true } },
-            { path: 'roles', name: 'org-roles', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'role', adminOnly: true } },
+            { path: 'roles', name: 'org-roles', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'role', permissionAny: ['menu:admin:roles'] } },
             { path: 'departments', name: 'org-departments', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'organization', settingsTab: 'organization', adminOnly: true } },
           ],
         },
@@ -179,6 +179,18 @@ router.beforeEach(async (to, from) => {
 
   if (to.name === 'chat' && !to.params.expertId) {
     return { name: 'experts' }
+  }
+
+  if (to.meta.adminOnly && !userStore.isAdmin) {
+    return userStore.canAccessOrganization ? { name: 'org-roles' } : { name: 'experts' }
+  }
+
+  const permissionAny = to.meta.permissionAny as string[] | undefined
+  if (permissionAny?.length) {
+    const hasPermission = permissionAny.some(code => userStore.hasPermission(code))
+    if (!hasPermission) {
+      return { name: 'experts' }
+    }
   }
 
   const systemSettingsStore = useSystemSettingsStore()

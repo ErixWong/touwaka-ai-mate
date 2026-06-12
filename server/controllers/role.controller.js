@@ -121,12 +121,6 @@ async function updatePermissions(ctx) {
       return;
     }
 
-    // 管理员角色拥有所有权限，不允许修改（通过 mark 字段判断）
-    if (roleData.mark === 'admin') {
-      ctx.error('管理员角色权限不可修改', 403);
-      return;
-    }
-
     // 验证所有权限是否存在
     const permissions = await permission.findAll({
       where: { id: permission_ids },
@@ -156,32 +150,24 @@ async function getExperts(ctx) {
   try {
     const role = ctx.db.getModel('role');
     const expert = ctx.db.getModel('expert');
+    const roleExpert = ctx.db.getModel('role_expert');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
       return;
     }
 
-    // 管理员角色可以访问所有专家（通过 mark 字段判断）
-    if (roleData.mark === 'admin') {
-      const allExperts = await expert.findAll({
-        attributes: ['id', 'name'],
-        where: { is_active: true },
-      });
-      ctx.success({
-        expert_ids: allExperts.map(e => e.id),
-        is_admin: true,
-      });
-      return;
-    }
-
-    const experts = await roleData.getExpert_id_experts({
-      attributes: ['id', 'name'],
+    const roleExperts = await roleExpert.findAll({
+      where: { role_id: id },
+      attributes: ['expert_id'],
+      raw: true,
     });
 
+    const expertIds = roleExperts.map(item => item.expert_id).filter(Boolean);
+
     ctx.success({
-      expert_ids: experts.map(e => e.id),
-      is_admin: false,
+      expert_ids: expertIds,
+      is_admin: roleData.mark === 'admin',
     });
   } catch (error) {
     console.error('[RoleController] getExperts error:', error);
@@ -204,15 +190,10 @@ async function updateExperts(ctx) {
   try {
     const role = ctx.db.getModel('role');
     const expert = ctx.db.getModel('expert');
+    const roleExpert = ctx.db.getModel('role_expert');
     const roleData = await role.findByPk(id);
     if (!roleData) {
       ctx.error('角色不存在', 404);
-      return;
-    }
-
-    // 管理员角色可以访问所有专家，不允许修改（通过 mark 字段判断）
-    if (roleData.mark === 'admin') {
-      ctx.error('管理员角色专家访问权限不可修改', 403);
       return;
     }
 
@@ -226,8 +207,24 @@ async function updateExperts(ctx) {
       return;
     }
 
-    // 设置角色专家
-    await roleData.setExpert_id_experts(expert_ids);
+    await ctx.db.sequelize.transaction(async (transaction) => {
+      await roleExpert.destroy({
+        where: { role_id: id },
+        transaction,
+      });
+
+      const uniqueExpertIds = [...new Set(expert_ids)];
+      if (uniqueExpertIds.length > 0) {
+        await roleExpert.bulkCreate(
+          uniqueExpertIds.map(expertId => ({
+            role_id: id,
+            expert_id: expertId,
+            created_at: new Date(),
+          })),
+          { transaction }
+        );
+      }
+    });
 
     ctx.success(null, '角色专家访问权限更新成功');
   } catch (error) {
