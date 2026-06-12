@@ -12,7 +12,8 @@
         <el-button :type="activeSubTab === 'registration' ? 'primary' : ''" @click="activeSubTab = 'registration'">🎫 {{ $t('settings.registrationConfig') }}</el-button>
         <el-button :type="activeSubTab === 'connection' ? 'primary' : ''" @click="activeSubTab = 'connection'">🔗 {{ $t('settings.connectionLimits') }}</el-button>
         <el-button :type="activeSubTab === 'token' ? 'primary' : ''" @click="activeSubTab = 'token'">🔑 {{ $t('settings.tokenConfig') }}</el-button>
-        <el-button :type="activeSubTab === 'timeout' ? 'primary' : ''" @click="activeSubTab = 'timeout'">⏱️ {{ $t('settings.toolConfig') }}</el-button>
+        <el-button :type="activeSubTab === 'timeout' ? 'primary' : ''" @click="activeSubTab = 'timeout'">⏱️ {{ $t('settings.timeoutConfig') }}</el-button>
+        <el-button :type="activeSubTab === 'tool' ? 'primary' : ''" @click="activeSubTab = 'tool'">🛠️ {{ $t('settings.toolConfig') }}</el-button>
         <el-button :type="activeSubTab === 'app' ? 'primary' : ''" @click="activeSubTab = 'app'">📱 {{ $t('settings.appConfig') }}</el-button>
         <el-button :type="activeSubTab === 'packages' ? 'primary' : ''" @click="activeSubTab = 'packages'">📦 {{ $t('settings.packageWhitelist') }}</el-button>
         <el-button :type="activeSubTab === 'branding' ? 'primary' : ''" @click="activeSubTab = 'branding'">🎨 {{ $t('settings.brandingConfig') }}</el-button>
@@ -159,17 +160,83 @@
       <div v-if="activeSubTab === 'timeout'" class="tab-content">
         <div class="config-section">
           <div class="section-header">
-            <h3 class="section-title">⏱️ {{ $t('settings.toolConfig') }}</h3>
+            <h3 class="section-title">⏱️ {{ $t('settings.timeoutConfig') }}</h3>
             <el-button @click="resetSection('timeout')">{{ $t('common.reset') }}</el-button>
+          </div>
+          <div class="config-grid">
+            <div class="config-item full-width subsection-header">
+              <h4 class="subsection-title">💬 {{ $t('settings.chatTimeoutGroup') }}</h4>
+              <p class="subsection-description">{{ $t('settings.chatIdleTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.chatIdleTimeout') }}</label>
+              <el-input-number v-model="form.timeout.chat_idle" :min="30" :max="1800" />
+              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
+            </div>
+
+            <div class="config-item full-width subsection-header">
+              <h4 class="subsection-title">⚙️ {{ $t('settings.backendTimeoutGroup') }}</h4>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.remoteLlmTimeout') }}</label>
+              <el-input-number v-model="form.timeout.remote_llm" :min="30" :max="600" />
+              <span class="config-hint">30-600 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.remoteLlmTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.skillCallTimeout') }}</label>
+              <el-input-number v-model="form.timeout.skill_call" :min="10" :max="600" />
+              <span class="config-hint">10-600 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.skillCallTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.vmExecutionTimeout') }}</label>
+              <el-input-number v-model="form.timeout.vm_execution" :min="5" :max="300" />
+              <span class="config-hint">5-300 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.vmExecutionTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.pythonExecutionTimeout') }}</label>
+              <el-input-number v-model="form.timeout.python_execution" :min="10" :max="1800" />
+              <span class="config-hint">10-1800 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.pythonExecutionTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.skillHttpTimeout') }}</label>
+              <el-input-number v-model="form.timeout.skill_http" :min="10" :max="1800" />
+              <span class="config-hint">10-1800 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.skillHttpTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.residentSkillTimeout') }}</label>
+              <el-input-number v-model="form.timeout.resident_skill" :min="30" :max="7200" />
+              <span class="config-hint">30-7200 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.residentSkillTimeoutHint') }}</p>
+            </div>
+          </div>
+          <div class="config-actions">
+            <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
+            <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
+              {{ saving ? $t('common.saving') : $t('settings.saveChanges') }}
+            </el-button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="activeSubTab === 'tool'" class="tab-content">
+        <div class="config-section">
+          <div class="section-header">
+            <h3 class="section-title">🛠️ {{ $t('settings.toolConfig') }}</h3>
+            <el-button @click="resetSection('tool')">{{ $t('common.reset') }}</el-button>
           </div>
           <div class="config-grid">
             <div class="config-item">
               <label class="config-label">{{ $t('settings.maxToolRounds') }}</label>
               <el-input-number v-model="form.tool.max_rounds" :min="1" :max="50" />
               <span class="config-hint">1-50</span>
+              <p class="config-description">{{ $t('settings.maxToolRoundsHint') }}</p>
             </div>
           </div>
-          <p class="config-description section-description">{{ $t('settings.toolConfigDescription') }}</p>
           <div class="config-actions">
             <el-button @click="resetAll">{{ $t('settings.resetAll') }}</el-button>
             <el-button type="primary" @click="saveConfig" :disabled="!hasChanges || saving">
@@ -280,7 +347,7 @@ const { t } = useI18n()
 const systemSettingsStore = useSystemSettingsStore()
 const toast = useToastStore()
 
-const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'app' | 'packages' | 'branding'>('general')
+const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'tool' | 'app' | 'packages' | 'branding'>('general')
 const saving = ref(false)
 
 const createDefaultForm = () => ({
@@ -288,6 +355,7 @@ const createDefaultForm = () => ({
   registration: { allow_self_registration: true, default_invitation_quota: 10, default_invitation_max_uses: 5, invitation_expiry_days: 30 },
   connection: { max_per_user: 5, max_per_expert: 100 },
   token: { access_expiry: '15m', refresh_expiry: '7d' },
+  timeout: { vm_execution: 30, python_execution: 300, skill_call: 60, skill_http: 180, resident_skill: 300, remote_llm: 120, chat_idle: 300 },
   tool: { max_rounds: 20 },
   app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
   branding: { app_name: 'Touwaka Mate', logo_icon: '🤖' },
@@ -305,6 +373,7 @@ const hasChanges = computed(() => {
     registration: { allow_self_registration: settings.registration?.allow_self_registration ?? true, default_invitation_quota: settings.registration?.default_invitation_quota ?? 10, default_invitation_max_uses: settings.registration?.default_invitation_max_uses ?? 5, invitation_expiry_days: settings.registration?.invitation_expiry_days ?? 30 },
     connection: { max_per_user: settings.connection?.max_per_user ?? 5, max_per_expert: settings.connection?.max_per_expert ?? 100 },
     token: { access_expiry: settings.token?.access_expiry ?? '15m', refresh_expiry: settings.token?.refresh_expiry ?? '7d' },
+    timeout: { vm_execution: settings.timeout?.vm_execution ?? 30, python_execution: settings.timeout?.python_execution ?? 300, skill_call: settings.timeout?.skill_call ?? 60, skill_http: settings.timeout?.skill_http ?? 180, resident_skill: settings.timeout?.resident_skill ?? 300, remote_llm: settings.timeout?.remote_llm ?? 120, chat_idle: settings.timeout?.chat_idle ?? 300 },
     tool: { max_rounds: settings.tool?.max_rounds ?? 20 },
     app: { clock_interval: settings.app?.clock_interval ?? 30, batch_size: settings.app?.batch_size ?? 10, max_concurrency: settings.app?.max_concurrency ?? 5, text_filter_max_length: settings.app?.text_filter_max_length ?? 50000, attachment_base_path: settings.app?.attachment_base_path ?? './data/attachments', max_upload_size: settings.app?.max_upload_size ?? 50 },
     branding: { app_name: settings.branding?.app_name ?? 'Touwaka Mate', logo_icon: settings.branding?.logo_icon ?? '🤖' },
@@ -366,6 +435,13 @@ onMounted(async () => {
     form.connection.max_per_expert = settings.connection?.max_per_expert ?? 100
     form.token.access_expiry = settings.token?.access_expiry ?? '15m'
     form.token.refresh_expiry = settings.token?.refresh_expiry ?? '7d'
+    form.timeout.vm_execution = settings.timeout?.vm_execution ?? 30
+    form.timeout.python_execution = settings.timeout?.python_execution ?? 300
+    form.timeout.skill_call = settings.timeout?.skill_call ?? 60
+    form.timeout.skill_http = settings.timeout?.skill_http ?? 180
+    form.timeout.resident_skill = settings.timeout?.resident_skill ?? 300
+    form.timeout.remote_llm = settings.timeout?.remote_llm ?? 120
+    form.timeout.chat_idle = settings.timeout?.chat_idle ?? 300
     form.tool.max_rounds = settings.tool?.max_rounds ?? 20
     form.app.clock_interval = settings.app?.clock_interval ?? 30
     form.app.batch_size = settings.app?.batch_size ?? 10
@@ -399,6 +475,13 @@ watch(() => systemSettingsStore.settings, (settings) => {
     form.connection.max_per_expert = settings.connection?.max_per_expert ?? 100
     form.token.access_expiry = settings.token?.access_expiry ?? '15m'
     form.token.refresh_expiry = settings.token?.refresh_expiry ?? '7d'
+    form.timeout.vm_execution = settings.timeout?.vm_execution ?? 30
+    form.timeout.python_execution = settings.timeout?.python_execution ?? 300
+    form.timeout.skill_call = settings.timeout?.skill_call ?? 60
+    form.timeout.skill_http = settings.timeout?.skill_http ?? 180
+    form.timeout.resident_skill = settings.timeout?.resident_skill ?? 300
+    form.timeout.remote_llm = settings.timeout?.remote_llm ?? 120
+    form.timeout.chat_idle = settings.timeout?.chat_idle ?? 300
     form.tool.max_rounds = settings.tool?.max_rounds ?? 20
     form.app.clock_interval = settings.app?.clock_interval ?? 30
     form.app.batch_size = settings.app?.batch_size ?? 10
@@ -429,6 +512,9 @@ watch(() => systemSettingsStore.settings, (settings) => {
 .config-label.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .config-hint { font-size: 11px; color: var(--text-tertiary, #999); }
 .config-description { font-size: 11px; color: var(--text-tertiary, #999); margin: 4px 0 0 0; }
+.subsection-header { padding-top: 12px; border-top: 1px solid var(--border-light, #eee); }
+.subsection-title { margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: var(--text-primary, #333); }
+.subsection-description { margin: 0; font-size: 12px; color: var(--text-tertiary, #999); }
 .config-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-light, #eee); }
 .branding-preview { display: flex; flex-direction: column; gap: 8px; }
 .branding-preview-label { font-size: 12px; color: var(--text-tertiary, #999); }

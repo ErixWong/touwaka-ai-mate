@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { RouterView } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
@@ -19,6 +19,9 @@ onMounted(() => {
   // 初始化语言设置
   // 注意：用户状态由路由守卫处理，避免重复加载
   const init = async () => {
+    if (userStore.isLoggedIn) {
+      await systemSettingsStore.loadRuntimeSettings()
+    }
     await systemSettingsStore.loadBranding()
 
     // 如果用户已登录且已加载偏好设置，应用语言设置
@@ -28,6 +31,16 @@ onMounted(() => {
   }
   init()
 })
+
+// 监听登录状态变化：同一 SPA 会话内登录后重新拉取运行时配置
+watch(
+  () => userStore.isLoggedIn,
+  async (isLoggedIn) => {
+    if (isLoggedIn) {
+      await systemSettingsStore.loadRuntimeSettings()
+    }
+  }
+)
 </script>
 
 <style>

@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
     skill_http: { value: 180, type: 'number', description: '技能 HTTP 调用超时（秒）' },
     resident_skill: { value: 300, type: 'number', description: '驻留技能超时（秒）' },
     remote_llm: { value: 120, type: 'number', description: '远程 LLM 调用超时（秒）' },
+    chat_idle: { value: 300, type: 'number', description: '聊天空闲超时（秒）' },
   },
   tool: {
     max_rounds: { value: 20, type: 'number', description: '最大工具调用轮数' },
@@ -72,6 +73,7 @@ const VALIDATION_RULES = {
   'timeout.skill_http': { min: 10, max: 1800 },
   'timeout.resident_skill': { min: 30, max: 7200 },
   'timeout.remote_llm': { min: 30, max: 600 },
+  'timeout.chat_idle': { min: 30, max: 1800 },
   'tool.max_rounds': { min: 1, max: 50 },
   'registration.default_invitation_quota': { min: 0, max: 100 },
   'registration.default_invitation_max_uses': { min: 1, max: 1000 },

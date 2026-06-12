@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
     skill_http: 180,        // 技能 HTTP 调用超时（秒）
     resident_skill: 300,    // 驻留技能超时（秒）
     remote_llm: 120,        // 远程 LLM 调用超时（秒）
+    chat_idle: 300,         // 聊天空闲超时（秒）
   },
   tool: {
     max_rounds: 20,         // 最大工具调用轮数
@@ -117,6 +118,20 @@ class SystemSettingController {
     } catch (error) {
       logger.error('Get system settings error:', error);
       ctx.app.emit('error', error, ctx);
+    }
+  }
+
+  async getRuntime(ctx) {
+    try {
+      const chatIdle = await this.systemSettingService.get('timeout.chat_idle');
+      ctx.success({
+        timeout: {
+          chat_idle: chatIdle ?? DEFAULT_SETTINGS.timeout.chat_idle,
+        },
+      });
+    } catch (error) {
+      logger.error('Get runtime system settings error:', error);
+      ctx.error('获取运行时配置失败', 500);
     }
   }
 

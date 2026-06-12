@@ -11,6 +11,7 @@ export default (db) => {
   const router = new Router({ prefix: '/api/system-settings' });
   const controller = new SystemSettingController(db);
 
+  router.get('/runtime', authenticate(), (ctx) => controller.getRuntime(ctx));
   router.get('/', authenticate(), (ctx) => controller.getAll(ctx));
   router.put('/', authenticate(), (ctx) => controller.update(ctx));
   router.post('/reset', authenticate(), (ctx) => controller.reset(ctx));
