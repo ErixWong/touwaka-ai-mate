@@ -69,6 +69,19 @@
       "manifest_url": "apps/ocr-tool/manifest.json"
     },
     {
+      "id": "els",
+      "name": "ELS 学习工作台",
+      "version": "0.1.0",
+      "icon": "📘",
+      "type": "utility",
+      "description": "短阅读、加词与快速复习的一体化学习工作台",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["学习", "阅读", "生词", "复习", "AI学习"],
+      "path": "apps/els",
+      "manifest_url": "apps/els/manifest.json"
+    },
+    {
       "id": "resume-fast-screening",
       "name": "简历快筛",
       "version": "0.1.0",
@@ -90,7 +103,7 @@
     { "id": "workflow", "name": "工作流", "icon": "🔄", "description": "流程审批、状态流转、智能匹配" }
   ],
   "metadata": {
-    "total_apps": 6,
+    "total_apps": 7,
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }

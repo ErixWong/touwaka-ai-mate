@@ -74,6 +74,7 @@ import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
 import ContractV2Controller from './controllers/contract-v2.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
+import ELSController from './controllers/els.controller.js';
 import OcrToolController from './controllers/ocr-tool.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
@@ -112,6 +113,7 @@ import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
 import contractV2Routes from './routes/contract-v2.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
+import elsRoutes from './routes/els.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
@@ -338,6 +340,7 @@ class ApiServer {
       appMarket: new AppMarketController(this.db),
       contractV2: new ContractV2Controller(this.db),
       invoice: new InvoiceController(this.db),
+      els: new ELSController(this.db),
       ocrTool: new OcrToolController(this.db),
     };
   }
@@ -584,6 +587,11 @@ class ApiServer {
     this.app.use(invoiceRouter.routes());
     this.app.use(invoiceRouter.allowedMethods());
     logger.info('Invoice routes registered (/api/invoice/*)');
+
+    const elsRouter = elsRoutes(this.controllers.els);
+    this.app.use(elsRouter.routes());
+    this.app.use(elsRouter.allowedMethods());
+    logger.info('ELS routes registered (/api/els/*)');
 
     const ocrToolRouter = ocrToolRoutes;
     this.app.use(ocrToolRouter.routes());

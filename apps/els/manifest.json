@@ -1,0 +1,47 @@
+{
+  "id": "els",
+  "name": "ELS 学习工作台",
+  "version": "0.1.0",
+  "description": "短阅读、知识点记录、快速复习的轻量学习工作台 — 适用于语言、术语、概念等任何领域的学习与巩固",
+  "icon": "📘",
+  "type": "utility",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "tags": [
+    "学习",
+    "阅读",
+    "生词",
+    "知识点",
+    "TTS",
+    "AI学习",
+    "复习"
+  ],
+  "path": "apps/els",
+  "compatibility": {
+    "min_platform_version": "2.0.0",
+    "requires": {
+      "mcp": [],
+      "skills": []
+    }
+  },
+  "custom_handlers": {},
+  "fields": [],
+  "extension_tables": [],
+  "migrations": {},
+  "config": {
+    "features": [
+      "study_dashboard",
+      "reading_session",
+      "word_collect",
+      "quick_review",
+      "daily_checkin",
+      "tts_playback",
+      "library_select",
+      "vocab_notebook_select",
+      "user_material_upload"
+    ]
+  },
+  "states": [],
+  "component": "ELSStudyView",
+  "visibility": "all"
+}
