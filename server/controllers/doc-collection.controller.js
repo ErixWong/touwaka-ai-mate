@@ -216,25 +216,90 @@ class DocCollectionController {
   // ==================== 文档关联 ====================
 
   async listCollectionDocuments(ctx) {
+    const startTime = Date.now();
     try {
       this.ensureModels();
       this.ensureAccessService();
       const { id } = ctx.params;
       const userId = ctx.state.session.id;
-      const { page = 1, size = 20 } = ctx.query;
+      const { page = 1, size = 20, keyword, processing_status } = ctx.query;
 
       const access = await this.accessService.checkAccess(id, userId);
       if (!access) ctx.throw(403, 'Access denied');
 
+      const where = { collection_id: id };
+      if (keyword) where.title = { [Op.like]: `%${keyword}%` };
+      if (processing_status) where.processing_status = processing_status;
+
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
-        where: { collection_id: id },
+        where,
         attributes: ['id', 'title', 'doc_type', 'processing_status', 'current_revision_id', 'created_at', 'updated_at'],
         order: [['updated_at', 'DESC']],
         offset: (page - 1) * size,
         limit: parseInt(size),
       });
 
-      ctx.success(buildPaginatedResponse({ count, rows }, { page: parseInt(page), pageSize: parseInt(size) }));
+      const DocVersion = this.db.getModel('document_revision');
+      const DocOcrResult = this.db.getModel('doc_ocr_result');
+      const Attachment = this.db.getModel('attachment');
+
+      const revisionIds = rows.map(r => r.current_revision_id).filter(Boolean);
+      const docIds = rows.map(r => r.id);
+
+      const [revisionRows, ocrRows, attachmentRows] = await Promise.all([
+        revisionIds.length > 0
+          ? DocVersion.findAll({
+            where: { id: { [Op.in]: revisionIds } },
+            attributes: ['id', 'revision_no', 'revision_label'],
+            raw: true,
+          })
+          : [],
+        DocOcrResult.findAll({
+          where: { document_id: { [Op.in]: docIds } },
+          attributes: ['id', 'document_id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'updated_at', 'created_at'],
+          order: [['created_at', 'DESC']],
+          raw: true,
+        }),
+        revisionIds.length > 0
+          ? Attachment.findAll({
+            where: { source_tag: 'doc-platform', source_id: { [Op.in]: revisionIds } },
+            attributes: ['id', 'file_name', 'mime_type', 'file_size', 'source_id', 'created_at'],
+            order: [['created_at', 'ASC']],
+            raw: true,
+          })
+          : [],
+      ]);
+
+      const revisionMap = new Map();
+      for (const r of revisionRows) revisionMap.set(r.id, r);
+
+      const ocrMap = new Map();
+      for (const r of ocrRows) {
+        if (!ocrMap.has(r.document_id)) ocrMap.set(r.document_id, r);
+      }
+
+      const attachmentMap = new Map();
+      for (const a of attachmentRows) {
+        if (!attachmentMap.has(a.source_id)) attachmentMap.set(a.source_id, a);
+      }
+
+      const enrichedRows = rows.map((row) => {
+        const doc = row.toJSON ? row.toJSON() : row;
+        const currentRevision = doc.current_revision_id ? revisionMap.get(doc.current_revision_id) || null : null;
+        const latestOcrResult = ocrMap.get(doc.id) || null;
+        const sourceAttachment = doc.current_revision_id ? attachmentMap.get(doc.current_revision_id) || null : null;
+
+        return {
+          ...doc,
+          current_revision: currentRevision,
+          source_attachment: sourceAttachment,
+          ocr_status: latestOcrResult?.status || null,
+          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+        };
+      });
+
+      ctx.success(buildPaginatedResponse({ count, rows: enrichedRows }, { page: parseInt(page), pageSize: parseInt(size) }, startTime));
+      logger.info(`[Collection] listCollectionDocuments: ${enrichedRows.length} results, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Collection] listCollectionDocuments error:', error);
       ctx.throw(error.status || 500, error.message);

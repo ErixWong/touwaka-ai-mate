@@ -25,14 +25,50 @@ export interface CollectionListResult {
   page_size: number
 }
 
+export interface CollectionDocumentItem {
+  id: string
+  title: string
+  doc_type: string
+  processing_status: string | null
+  current_revision_id: string | null
+  created_at: string
+  updated_at: string
+  current_revision: {
+    id: string
+    revision_no: number
+    revision_label: string | null
+  } | null
+  source_attachment: {
+    id: string
+    file_name: string | null
+    mime_type: string
+    file_size: number
+    created_at: string
+  } | null
+  ocr_status: string | null
+  has_preview_result: boolean
+  source_system?: string
+  source_ref_id?: string
+  owner_id?: string
+  department_id?: string
+  visibility?: string
+  collection_id?: string | null
+  current_version_id?: string | null
+  ocr_task_id?: string | null
+  processing_error_code?: string | null
+  lifecycle_status?: string
+  metadata?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export interface CollectionDocumentListResult {
-  items: DocDocument[]
+  items: CollectionDocumentItem[]
   total: number
   page: number
   page_size: number
 }
 
-export type CollectionDocumentItem = DocDocument
+export { type DocDocument }
 
 export interface CreateCollectionRequest {
   name: string
@@ -91,6 +127,8 @@ export async function revealectorizeCollection(id: string): Promise<any> {
 export async function listCollectionDocuments(id: string, params?: {
   page?: number
   size?: number
+  keyword?: string
+  processing_status?: string
 }): Promise<CollectionDocumentListResult> {
   return apiRequest<CollectionDocumentListResult>(apiClient.get(`/docs/collections/${id}/documents`, { params }))
 }

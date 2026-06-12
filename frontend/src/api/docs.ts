@@ -247,6 +247,7 @@ export interface DocRecallItem {
     id: string
     title: string
     doc_type: string
+    collection_id?: string | null
   }
 }
 

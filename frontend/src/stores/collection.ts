@@ -121,13 +121,15 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
-  async function fetchCollectionDocuments(collectionId: string, params?: { page?: number }) {
+  async function fetchCollectionDocuments(collectionId: string, params?: { page?: number; keyword?: string; processing_status?: string }) {
     isLoading.value = true
     error.value = null
     try {
       const result: CollectionDocumentListResult = await listCollectionDocuments(collectionId, {
         page: params?.page ?? docPage.value,
         size: pageSize.value,
+        keyword: params?.keyword,
+        processing_status: params?.processing_status,
       })
       collectionDocuments.value = result.items
       docTotal.value = result.total
