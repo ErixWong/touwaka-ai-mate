@@ -6,6 +6,9 @@ import {
   listVersions,
   getContentTree,
   recall,
+  getDocumentResult,
+  getProcessingStatus,
+  syncOcr,
   setCurrentVersion,
   transitionVersion
 } from '@/api/docs'
@@ -14,7 +17,9 @@ import type {
   DocVersion,
   DocChunk,
   DocRecallItem,
-  DocListResult
+  DocListResult,
+  DocResultDetail,
+  DocProcessingStatus,
 } from '@/api/docs'
 
 export const useDocStore = defineStore('doc', () => {
@@ -24,9 +29,13 @@ export const useDocStore = defineStore('doc', () => {
   const pageSize = ref(20)
 
   const currentDoc = ref<DocDocument | null>(null)
+  const currentResult = ref<DocResultDetail | null>(null)
+  const processingStatus = ref<DocProcessingStatus | null>(null)
   const versions = ref<DocVersion[]>([])
   const contentTree = ref<DocChunk[]>([])
   const recallResults = ref<DocRecallItem[]>([])
+  const isPolling = ref(false)
+  let pollingTimer: number | null = null
 
   const isLoading = ref(false)
   const error = ref<string | null>(null)
@@ -62,6 +71,72 @@ export const useDocStore = defineStore('doc', () => {
     } finally {
       isLoading.value = false
     }
+  }
+
+  async function fetchDocumentResult(documentId: string) {
+    isLoading.value = true
+    error.value = null
+    try {
+      currentResult.value = await getDocumentResult(documentId)
+      return currentResult.value
+    } catch (e: any) {
+      error.value = e.message || 'Failed to load document result'
+      return null
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function fetchProcessing(documentId: string) {
+    error.value = null
+    try {
+      processingStatus.value = await getProcessingStatus(documentId)
+      return processingStatus.value
+    } catch (e: any) {
+      error.value = e.message || 'Failed to load processing status'
+      return null
+    }
+  }
+
+  async function syncProcessing(documentId: string) {
+    error.value = null
+    try {
+      await syncOcr(documentId)
+      return await fetchProcessing(documentId)
+    } catch (e: any) {
+      error.value = e.message || 'Failed to sync OCR status'
+      return null
+    }
+  }
+
+  function stopPolling() {
+    isPolling.value = false
+    if (pollingTimer) {
+      window.clearTimeout(pollingTimer)
+      pollingTimer = null
+    }
+  }
+
+  async function startPolling(documentId: string, intervalMs = 5000) {
+    stopPolling()
+    isPolling.value = true
+
+    const tick = async () => {
+      if (!isPolling.value) return
+      const result = await syncProcessing(documentId)
+      await fetchDocumentResult(documentId)
+
+      const completed = result?.has_preview_result || result?.ocr_result?.status === 'completed'
+      const failed = result?.processing_status === 'error' || result?.ocr_result?.status === 'failed'
+      if (completed || failed) {
+        stopPolling()
+        return
+      }
+
+      pollingTimer = window.setTimeout(tick, intervalMs)
+    }
+
+    await tick()
   }
 
   async function fetchVersions(documentId: string) {
@@ -129,13 +204,21 @@ export const useDocStore = defineStore('doc', () => {
     currentPage,
     pageSize,
     currentDoc,
+    currentResult,
+    processingStatus,
     versions,
     contentTree,
     recallResults,
     isLoading,
+    isPolling,
     error,
     fetchDocuments,
     fetchDocument,
+    fetchDocumentResult,
+    fetchProcessing,
+    syncProcessing,
+    startPolling,
+    stopPolling,
     fetchVersions,
     fetchContentTree,
     docRecall,

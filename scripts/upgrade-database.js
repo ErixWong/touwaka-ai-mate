@@ -578,6 +578,40 @@ const MIGRATIONS = [
     }
   },
 
+  {
+    name: 'attachments source_id length upgrade',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'attachments' AND COLUMN_NAME = 'source_id'`,
+        [DB_CONFIG.database]
+      );
+      return rows.length > 0 && Number(rows[0].len) >= 64;
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE attachments MODIFY COLUMN source_id VARCHAR(64) NOT NULL COMMENT '关联资源ID'`);
+      console.log('  ✓ Upgraded attachments.source_id to VARCHAR(64)');
+    }
+  },
+
+  {
+    name: 'attachment_token source_id length upgrade',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'attachment_token' AND COLUMN_NAME = 'source_id'`,
+        [DB_CONFIG.database]
+      );
+      return rows.length > 0 && Number(rows[0].len) >= 64;
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE attachment_token MODIFY COLUMN source_id VARCHAR(64) NOT NULL COMMENT '资源ID：article_id, task_id 等'`);
+      console.log('  ✓ Upgraded attachment_token.source_id to VARCHAR(64)');
+    }
+  },
+
   // ==================== App 平台表 ====================
   // Issue #603: App 平台基础架构与合同管理小程序
   // 参见 docs/design/parse3/database-schema.md
@@ -1578,7 +1612,7 @@ const MIGRATIONS = [
           id VARCHAR(32) NOT NULL COMMENT 'OCR结果ID',
           document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
           revision_id VARCHAR(32) NOT NULL COMMENT '文档版本ID',
-          provider VARCHAR(64) NOT NULL DEFAULT 'erix-mineru' COMMENT 'OCR供应方标识',
+          provider VARCHAR(64) NOT NULL DEFAULT 'mineru' COMMENT 'OCR供应方标识',
           task_id VARCHAR(128) NULL COMMENT '上游任务ID',
           status ENUM('pending','processing','completed','failed') NOT NULL DEFAULT 'pending' COMMENT 'OCR阶段归一化状态',
           progress INT NOT NULL DEFAULT 0 COMMENT 'OCR进度百分比',

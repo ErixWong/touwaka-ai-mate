@@ -75,7 +75,7 @@ async function syncBoundAppRowOnSync(services, documentId, syncResult) {
 }
 
 async function updateBoundAppOnSubmit(services, binding, submittedResult) {
-  const provider = submittedResult.provider || 'erix-mineru';
+  const provider = submittedResult.provider || 'mineru';
   const taskId = submittedResult.task_id || '';
 
   if (binding.app_id === 'contract-mgr-v2') {
@@ -102,7 +102,7 @@ async function updateBoundAppOnSubmit(services, binding, submittedResult) {
 }
 
 async function updateBoundAppOnCompletedSync(services, binding, syncResult, markdownText) {
-  const provider = syncResult.ocrResult?.provider || 'erix-mineru';
+  const provider = syncResult.ocrResult?.provider || 'mineru';
 
   if (binding.app_id === 'contract-mgr-v2') {
     await services.execute(

@@ -12,6 +12,7 @@ export interface DocDocument {
   collection_id: string | null
   current_version_id: string | null
   current_revision_id: string | null
+  ocr_task_id?: string | null
   processing_status: string | null
   processing_error_code: string | null
   lifecycle_status: string
@@ -72,6 +73,25 @@ export interface DocProcessingStatus {
   processing_error_message: string | null
   processing_retry_count: number
   processing_updated_at: string
+  has_preview_result?: boolean
+  ocr_result?: {
+    id: string
+    revision_id: string
+    task_id: string | null
+    status: string
+    progress: number
+    image_count: number | null
+    main_markdown_attachment_id: string | null
+    raw_result_attachment_id: string | null
+    deliverables_manifest_attachment_id: string | null
+    image_manifest_attachment_id: string | null
+    line_count: number | null
+    error_code: string | null
+    error_message: string | null
+    started_at: string | null
+    completed_at: string | null
+    has_preview_result?: boolean
+  } | null
 }
 
 export interface DocRetryResult {
@@ -93,7 +113,97 @@ export interface DocDiffStatus {
 
 export interface DocIntakeResult {
   document_id: string
+  revision_id: string
   processing_status: string
+  source_ref_id?: string
+  attachment_count?: number
+}
+
+export interface DocAttachmentInfo {
+  id: string
+  file_name: string | null
+  mime_type: string
+  file_size: number
+  created_at: string
+  download_url: string
+}
+
+export interface DocResultImageAttachment {
+  id: string
+  attachment_id: string
+  filename: string | null
+  media_type: string | null
+  sort_order: number
+  alt_text: string | null
+  description: string | null
+  attachment: DocAttachmentInfo | null
+}
+
+export interface DocResultDetail {
+  document: DocDocument & {
+    has_preview_result: boolean
+  }
+  revision: {
+    id: string
+    document_id: string
+    revision_no: number
+    revision_label: string | null
+    revision_status: string
+    created_by: string
+    created_at: string
+    uploader: {
+      id: string
+      username: string
+    } | null
+  } | null
+  source_attachment: DocAttachmentInfo | null
+  processing: {
+    status: string
+    error_code: string | null
+    error_message: string | null
+  }
+  ocr_result: {
+    id: string
+    task_id: string | null
+    status: string
+    progress: number
+    image_count: number | null
+    line_count: number | null
+    started_at: string | null
+    completed_at: string | null
+    error_code: string | null
+    error_message: string | null
+    main_markdown_attachment: DocAttachmentInfo | null
+    raw_result_attachment: DocAttachmentInfo | null
+    deliverables_manifest_attachment: DocAttachmentInfo | null
+    image_manifest_attachment: DocAttachmentInfo | null
+  } | null
+  image_attachments: DocResultImageAttachment[]
+}
+
+export interface SubmitOcrRequest {
+  attachment_id?: string
+  backend?: string
+  lang?: string
+  image_analysis?: boolean
+  formula_enable?: boolean
+  table_enable?: boolean
+}
+
+export interface SubmitOcrResult {
+  document_id: string
+  ocr_result_id: string
+  task_id: string | null
+  status: string
+  progress: number
+}
+
+export interface SyncOcrResult {
+  document_id: string
+  ocr_result_id: string
+  status: string
+  progress: number
+  completed: boolean
 }
 
 export interface DocChunk {
@@ -160,6 +270,13 @@ export interface DocListResult {
   page_size: number
 }
 
+export interface CreateDocIntakeRequest {
+  app_id: string
+  collection_id: string
+  schema_id?: string | null
+  attachments: Array<{ id: string }>
+}
+
 export async function listDocuments(params?: {
   doc_type?: string
   collection_id?: string
@@ -186,6 +303,22 @@ export async function getRevisions(documentId: string): Promise<DocRevisionsResp
 
 export async function getProcessingStatus(documentId: string): Promise<DocProcessingStatus> {
   return apiRequest<DocProcessingStatus>(apiClient.get(`/docs/documents/${documentId}/processing`))
+}
+
+export async function createDocIntake(data: CreateDocIntakeRequest): Promise<DocIntakeResult> {
+  return apiRequest<DocIntakeResult>(apiClient.post('/docs/intakes', data))
+}
+
+export async function submitOcr(documentId: string, data: SubmitOcrRequest = {}): Promise<SubmitOcrResult> {
+  return apiRequest<SubmitOcrResult>(apiClient.post(`/docs/documents/${documentId}/ocr/submit`, data))
+}
+
+export async function syncOcr(documentId: string): Promise<SyncOcrResult> {
+  return apiRequest<SyncOcrResult>(apiClient.post(`/docs/documents/${documentId}/ocr/sync`))
+}
+
+export async function getDocumentResult(documentId: string): Promise<DocResultDetail> {
+  return apiRequest<DocResultDetail>(apiClient.get(`/docs/documents/${documentId}/result`))
 }
 
 export async function retryProcessing(documentId: string, reason?: string): Promise<DocRetryResult> {

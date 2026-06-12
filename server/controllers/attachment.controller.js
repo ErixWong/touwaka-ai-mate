@@ -295,6 +295,26 @@ class AttachmentController {
         
         return false;
       }
+
+              case 'doc-platform': {
+                // 文档平台第一阶段上传入口。
+                // 创建 intake 前先以 temp 附件落库，后续由 intake 绑定到真实 document/revision。
+                if (sourceId === 'temp') {
+                  return true;
+                }
+
+                // 对于后续已绑定资源的场景，先允许上传者本人访问自己创建的资源附件。
+                const attachment = await this.Attachment?.findOne({
+                  where: {
+                    source_tag: sourceTag,
+                    source_id: sourceId,
+                    created_by: userId,
+                  },
+                  attributes: ['id'],
+                });
+
+                return !!attachment;
+              }
       
       default:
         // 未知类型默认拒绝

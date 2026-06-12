@@ -25,6 +25,9 @@ export default (controller) => {
   // 获取文档详情
   router.get('/documents/:documentId', authenticate(), controller.getDocument.bind(controller));
 
+  // 获取文档结果详情（阶段一：上传->OCR->预览）
+  router.get('/documents/:documentId/result', authenticate(), controller.getDocumentResult.bind(controller));
+
   // 更新文档
   router.patch('/documents/:documentId', authenticate(), controller.updateDocument.bind(controller));
 
