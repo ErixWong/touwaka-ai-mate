@@ -3,8 +3,9 @@ import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useTaskStore } from '@/stores/task'
 import { useSkillDirectoryStore } from '@/stores/skillDirectory'
+import { useToastStore } from '@/stores/toast'
 import { messageApi } from '@/api/services'
-import type { Message } from '@/types'
+import type { ChatRequestStatus, Message } from '@/types'
 
 export interface UseMessageSendingOptions {
   expertId: string | (() => string)
@@ -32,6 +33,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const chatStore = useChatStore()
   const taskStore = useTaskStore()
   const skillDirectoryStore = useSkillDirectoryStore()
+  const toast = useToastStore()
 
   // 流式内容累积器 - 用于 SSE delta 事件
   const streamingContent = ref('')
@@ -113,6 +115,59 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const getModelId = (): string | undefined => {
     if (!options.modelId) return undefined
     return typeof options.modelId === 'function' ? options.modelId() : options.modelId
+  }
+
+  const syncCompletedRequest = async (request: ChatRequestStatus, fallbackMessageId?: string): Promise<boolean> => {
+    const expert_id = getExpertId()
+    const assistantMessageId = request.assistant_message_id || fallbackMessageId
+
+    if (!expert_id || !assistantMessageId) {
+      return false
+    }
+
+    try {
+      const messagesFromDb = await messageApi.getMessagesWithBefore(
+        expert_id,
+        assistantMessageId,
+        { limit: 10 }
+      )
+
+      if (!messagesFromDb?.length) {
+        return false
+      }
+
+      const tempAssistantId = fallbackMessageId
+      const tempAssistantIndex = tempAssistantId
+        ? chatStore.messages.findIndex(message => message.id === tempAssistantId)
+        : -1
+
+      if (tempAssistantIndex !== -1 && tempAssistantId) {
+        chatStore.removeMessage(tempAssistantId)
+
+        let tempUserIndex = -1
+        for (let index = tempAssistantIndex - 1; index >= 0; index--) {
+          if (chatStore.messages[index]?.role === 'user') {
+            tempUserIndex = index
+            break
+          }
+        }
+
+        const dbUserMessage = messagesFromDb.find(message => message.role === 'user')
+        const tempUser = tempUserIndex !== -1 ? chatStore.messages[tempUserIndex] : null
+        if (dbUserMessage && tempUser && tempUser.id !== dbUserMessage.id) {
+          chatStore.removeMessage(tempUser.id)
+        }
+      }
+
+      chatStore.mergeMessages(messagesFromDb.map(message => ({
+        ...message,
+        status: 'completed' as const,
+      })))
+      return true
+    } catch (error) {
+      console.error('[useMessageSending] Failed to sync completed request:', error)
+      return false
+    }
   }
 
   // 发送消息
@@ -204,6 +259,40 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   // 重试消息
   const retryMessage = async (messageId: string, messageRole: string, messageContent: string): Promise<boolean> => {
     if (messageRole === 'assistant') {
+      const targetMessage = chatStore.messages.find(m => m.id === messageId) || null
+      const requestId = targetMessage?.request_id || null
+
+      if (requestId) {
+        try {
+          const requestStatus = await messageApi.getChatRequestStatus(requestId)
+
+          if (requestStatus.status === 'completed') {
+            await syncCompletedRequest(requestStatus, messageId)
+            activeRequestId.value = null
+            return true
+          }
+
+          if (requestStatus.status === 'running' || requestStatus.status === 'accepted') {
+            activeRequestId.value = requestId
+            chatStore.updateMessageContent(messageId, targetMessage?.content || '', 'streaming')
+            return true
+          }
+
+          if (requestStatus.can_retry) {
+            const retried = await messageApi.retryChatRequest(requestId)
+            resetStreamingContent()
+            chatStore.updateMessageRequestId(messageId, retried.request_id)
+            chatStore.updateMessageContent(messageId, '', 'streaming')
+            activeRequestId.value = retried.request_id
+            return true
+          }
+        } catch (error) {
+          console.warn('[useMessageSending] Request recovery failed:', error)
+          toast.error('无法确认原请求状态，请手动重新发送')
+          return false
+        }
+      }
+
       // 找到消息索引
       const messageIndex = chatStore.messages.findIndex(m => m.id === messageId)
       if (messageIndex === -1) {

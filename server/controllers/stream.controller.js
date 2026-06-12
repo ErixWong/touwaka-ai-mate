@@ -30,10 +30,103 @@ class StreamController {
     this.expertConnections = new Map();
     // 存储活跃请求：Map<requestId, {expertId, userId, stopped}>
     this.activeRequests = new Map();
+    // 存储聊天请求状态：Map<requestId, requestRecord>
+    this.requestStore = new Map();
+    this.REQUEST_STORE_MAX = 1000;
+    this.REQUEST_STORE_TTL_MS = 30 * 60 * 1000;
     // 事件序号：Map<expertId:userId, number>
     this.eventSequences = new Map();
     // 最新游标：Map<expertId:userId, { latest_message_id: string | null }>
     this.latestCursors = new Map();
+  }
+
+  _createRequestRecord(data) {
+    const now = new Date().toISOString();
+    const record = {
+      request_id: data.request_id,
+      original_request_id: data.original_request_id || null,
+      topic_id: data.topic_id || null,
+      user_id: data.user_id,
+      expert_id: data.expert_id,
+      content: data.content,
+      model_id: data.model_id || null,
+      task_id: data.task_id || null,
+      working_path: data.working_path || null,
+      status: data.status || 'accepted',
+      user_message_id: data.user_message_id || null,
+      assistant_message_id: data.assistant_message_id || null,
+      error_message: data.error_message || null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    this.requestStore.set(record.request_id, record);
+    this._cleanupRequestStore();
+    return record;
+  }
+
+  _getRequestRecord(request_id) {
+    return this.requestStore.get(request_id) || null;
+  }
+
+  _updateRequestRecord(request_id, patch) {
+    const existing = this.requestStore.get(request_id);
+    if (!existing) return null;
+
+    const next = {
+      ...existing,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+
+    this.requestStore.set(request_id, next);
+    this._cleanupRequestStore();
+    return next;
+  }
+
+  _cleanupRequestStore() {
+    const now = Date.now();
+    const terminalStatuses = new Set(['completed', 'failed', 'stopped']);
+
+    for (const [requestId, record] of this.requestStore.entries()) {
+      if (!terminalStatuses.has(record.status)) continue;
+
+      const updatedAt = Date.parse(record.updated_at || record.created_at || 0);
+      if (Number.isNaN(updatedAt)) continue;
+      if (now - updatedAt > this.REQUEST_STORE_TTL_MS) {
+        this.requestStore.delete(requestId);
+      }
+    }
+
+    if (this.requestStore.size <= this.REQUEST_STORE_MAX) {
+      return;
+    }
+
+    const removable = [...this.requestStore.entries()]
+      .filter(([, record]) => terminalStatuses.has(record.status))
+      .sort((a, b) => Date.parse(a[1].updated_at || a[1].created_at || 0) - Date.parse(b[1].updated_at || b[1].created_at || 0));
+
+    for (const [requestId] of removable) {
+      if (this.requestStore.size <= this.REQUEST_STORE_MAX) break;
+      this.requestStore.delete(requestId);
+    }
+  }
+
+  _serializeRequestRecord(record) {
+    if (!record) return null;
+
+    return {
+      request_id: record.request_id,
+      original_request_id: record.original_request_id,
+      topic_id: record.topic_id,
+      user_message_id: record.user_message_id,
+      assistant_message_id: record.assistant_message_id,
+      status: record.status,
+      error_message: record.error_message,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+      can_retry: ['failed', 'stopped'].includes(record.status),
+    };
   }
 
   _getSequenceKey(expert_id, user_id) {
@@ -140,6 +233,18 @@ class StreamController {
       // 创建 request_id（一次流式生成请求的唯一标识）
       const request_id = `req_${Utils.newID(16)}`;
 
+      this._createRequestRecord({
+        request_id,
+        topic_id,
+        user_id,
+        expert_id,
+        content,
+        model_id,
+        task_id,
+        working_path,
+        status: 'accepted',
+      });
+
       // 异步处理消息，不等待完成
       this.processMessageAsync({
         request_id,
@@ -162,6 +267,112 @@ class StreamController {
     } catch (error) {
       logger.error('Send message error:', error);
       ctx.error(error.message || '发送消息失败');
+    }
+  }
+
+  /**
+   * 查询聊天请求状态
+   * GET /api/chat/requests/:request_id
+   */
+  async getRequestStatus(ctx) {
+    const { request_id } = ctx.params;
+    const user_id = ctx.state.session.id;
+
+    if (!request_id) {
+      ctx.error('缺少 request_id 参数', 400);
+      return;
+    }
+
+    const record = this._getRequestRecord(request_id);
+    if (!record || record.user_id !== user_id) {
+      ctx.error('请求不存在', 404);
+      return;
+    }
+
+    const accessCheck = await this.checkExpertAccess(user_id, record.expert_id);
+    if (!accessCheck.allowed) {
+      ctx.error('无权访问该专家', 403);
+      return;
+    }
+
+    ctx.success(this._serializeRequestRecord(record));
+  }
+
+  /**
+   * 重试聊天请求
+   * POST /api/chat/requests/:request_id/retry
+   */
+  async retryRequest(ctx) {
+    try {
+      const { request_id } = ctx.params;
+      const user_id = ctx.state.session.id;
+
+      if (!request_id) {
+        ctx.error('缺少 request_id 参数', 400);
+        return;
+      }
+
+      const originalRequest = this._getRequestRecord(request_id);
+      if (!originalRequest || originalRequest.user_id !== user_id) {
+        ctx.error('请求不存在', 404);
+        return;
+      }
+
+      const accessCheck = await this.checkExpertAccess(user_id, originalRequest.expert_id);
+      if (!accessCheck.allowed) {
+        ctx.error('无权访问该专家', 403);
+        return;
+      }
+
+      if (originalRequest.status === 'completed') {
+        ctx.success({
+          ...this._serializeRequestRecord(originalRequest),
+          message: '请求已完成，无需重试',
+        });
+        return;
+      }
+
+      if (['accepted', 'running'].includes(originalRequest.status)) {
+        ctx.error('请求仍在执行中，暂不允许重试', 409);
+        return;
+      }
+
+      const newRequestId = `req_${Utils.newID(16)}`;
+      const retryRecord = this._createRequestRecord({
+        request_id: newRequestId,
+        original_request_id: originalRequest.request_id,
+        topic_id: originalRequest.topic_id,
+        user_id: originalRequest.user_id,
+        expert_id: originalRequest.expert_id,
+        content: originalRequest.content,
+        model_id: originalRequest.model_id,
+        task_id: originalRequest.task_id,
+        working_path: originalRequest.working_path,
+        status: 'accepted',
+        user_message_id: originalRequest.user_message_id,
+      });
+
+      this.processMessageAsync({
+        request_id: newRequestId,
+        topic_id: originalRequest.topic_id,
+        user_id: originalRequest.user_id,
+        expert_id: originalRequest.expert_id,
+        content: originalRequest.content,
+        model_id: originalRequest.model_id,
+        task_id: originalRequest.task_id,
+        working_path: originalRequest.working_path,
+        session: ctx.state.session,
+        skip_user_message_persist: !!originalRequest.user_message_id,
+        existing_user_message_id: originalRequest.user_message_id,
+      });
+
+      ctx.success({
+        ...this._serializeRequestRecord(retryRecord),
+        message: '请求已重新提交',
+      });
+    } catch (error) {
+      logger.error('[StreamController] retryRequest error:', error);
+      ctx.error(error.message || '重试请求失败');
     }
   }
 
@@ -212,17 +423,26 @@ class StreamController {
    * 异步处理消息并通过 SSE 推送响应
    * 支持多标签页：向该用户的所有连接广播消息
    */
-  async processMessageAsync({ request_id, topic_id, user_id, expert_id, content, model_id, task_id, working_path, session }) {
+  async processMessageAsync({ request_id, topic_id, user_id, expert_id, content, model_id, task_id, working_path, session, skip_user_message_persist = false, existing_user_message_id = null }) {
     // 获取该用户在该 Expert 下的所有活跃连接
     const userConnections = this._getUserConnections(expert_id, user_id);
 
     if (userConnections.length === 0) {
       logger.warn(`No active SSE connections for user: ${user_id}, expert: ${expert_id}`);
+      this._updateRequestRecord(request_id, {
+        status: 'failed',
+        error_message: 'SSE 连接不存在，无法处理请求',
+      });
       return;
     }
 
     logger.info(`Broadcasting to ${userConnections.length} connection(s) for user: ${user_id}`);
     this.activeRequests.set(request_id, { expert_id, user_id, stopped: false });
+    this._updateRequestRecord(request_id, {
+      status: 'running',
+      topic_id,
+      error_message: null,
+    });
 
     try {
       // 使用 ChatService 处理流式对话
@@ -237,6 +457,8 @@ class StreamController {
           task_id,
           working_path,  // 传递当前工作目录路径
           session,  // 直接传递 session 对象，chatService 只透传
+          skip_user_message_persist,
+          existing_user_message_id,
         },
         // onDelta - 流式数据回调（广播到所有连接）
         (delta) => {
@@ -245,6 +467,14 @@ class StreamController {
               request_id,
               topic_id: delta.topic_id,
               is_new_topic: delta.is_new_topic || false
+            });
+            this._updateRequestRecord(request_id, {
+              status: 'running',
+              topic_id: delta.topic_id || topic_id,
+            });
+          } else if (delta.type === 'user_message_saved') {
+            this._updateRequestRecord(request_id, {
+              user_message_id: delta.message_id || existing_user_message_id || null,
             });
           } else if (delta.type === 'delta') {
             this._broadcastToConnections(expert_id, user_id, userConnections, 'delta', {
@@ -292,6 +522,13 @@ class StreamController {
           if (result.message?.id) {
             this._updateLatestCursor(expert_id, user_id, result.message.id);
           }
+          this._updateRequestRecord(request_id, {
+            status: 'completed',
+            topic_id: result.message?.topic_id || topic_id,
+            user_message_id: result.user_message_id || existing_user_message_id || null,
+            assistant_message_id: result.message?.id || null,
+            error_message: null,
+          });
           this._broadcastToConnections(expert_id, user_id, userConnections, 'complete', {
             request_id,
             ...result,
@@ -303,9 +540,17 @@ class StreamController {
           logger.error('Stream chat error:', error);
           const activeRequest = this.activeRequests.get(request_id);
           if (activeRequest?.stopped || error.message === 'Request aborted by user') {
+            this._updateRequestRecord(request_id, {
+              status: 'stopped',
+              error_message: '请求已停止',
+            });
             this.activeRequests.delete(request_id);
             return;
           }
+          this._updateRequestRecord(request_id, {
+            status: 'failed',
+            error_message: error.message || '流式处理失败',
+          });
           this._broadcastToConnections(expert_id, user_id, userConnections, 'error', {
             request_id,
             message: error.message || '流式处理失败'
@@ -315,6 +560,10 @@ class StreamController {
       );
     } catch (error) {
       logger.error('Process message error:', error);
+      this._updateRequestRecord(request_id, {
+        status: 'failed',
+        error_message: error.message || '处理失败',
+      });
       this._broadcastToConnections(expert_id, user_id, userConnections, 'error', {
         request_id,
         message: error.message || '处理失败'
@@ -343,6 +592,11 @@ class StreamController {
 
     const userConnections = this._getUserConnections(activeRequest.expert_id, user_id);
     this._broadcastToConnections(activeRequest.expert_id, user_id, userConnections, 'stopped', { request_id });
+
+    this._updateRequestRecord(request_id, {
+      status: 'stopped',
+      error_message: '请求已停止',
+    });
 
     this.activeRequests.delete(request_id);
 

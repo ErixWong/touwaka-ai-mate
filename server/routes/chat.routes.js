@@ -26,6 +26,12 @@ export default (controller, services = {}) => {
   // 发送消息（需要认证）- content 在 body 中，支持流式响应
   router.post('/', authenticate(), controller.sendMessage.bind(controller));
 
+  // 查询聊天请求状态（需要认证）
+  router.get('/requests/:request_id', authenticate(), controller.getRequestStatus.bind(controller));
+
+  // 重试聊天请求（需要认证）
+  router.post('/requests/:request_id/retry', authenticate(), controller.retryRequest.bind(controller));
+
   // SSE 订阅话题流式响应（需要认证）- 只需要 topicId
   router.get('/stream', authenticate(), controller.subscribe.bind(controller));
 

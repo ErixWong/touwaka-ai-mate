@@ -69,6 +69,20 @@ export interface Message {
   updated_at: string
 }
 
+export interface ChatRequestStatus {
+  request_id: string
+  original_request_id?: string | null
+  topic_id?: string | null
+  user_message_id?: string | null
+  assistant_message_id?: string | null
+  status: 'accepted' | 'running' | 'completed' | 'failed' | 'stopped'
+  error_message?: string | null
+  created_at: string
+  updated_at: string
+  can_retry: boolean
+  message?: string
+}
+
 // 消息元数据
 export interface MessageMetadata {
   [key: string]: unknown  // 索引签名，支持动态属性

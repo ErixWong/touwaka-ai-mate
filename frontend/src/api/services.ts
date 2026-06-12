@@ -66,6 +66,7 @@ import type {
   AssistantSummonRequest,
   AssistantSummonResponse,
   AssistantMessage,
+  ChatRequestStatus,
 } from '@/types'
 
 /**
@@ -136,6 +137,14 @@ export const messageApi = {
   // 停止生成
   stopGeneration: (request_id: string) =>
     apiRequest<{ success: boolean; aborted: boolean; request_id: string }>(apiClient.post('/chat/stop', { request_id })),
+
+  // 查询聊天请求状态
+  getChatRequestStatus: (request_id: string) =>
+    apiRequest<ChatRequestStatus>(apiClient.get(`/chat/requests/${request_id}`)),
+
+  // 重试聊天请求
+  retryChatRequest: (request_id: string) =>
+    apiRequest<ChatRequestStatus>(apiClient.post(`/chat/requests/${request_id}/retry`)),
 
   // 获取指定消息及其之前的 N 条消息（用于 SSE 完成后获取真实消息，包括 tool 消息）
   getMessagesWithBefore: (expert_id: string, message_id: string, params?: { limit?: number }) =>

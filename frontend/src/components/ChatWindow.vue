@@ -170,7 +170,7 @@
               <span class="dot"></span>
               <span class="dot"></span>
             </div>
-            <div v-if="message.status === 'error'" class="error-text">
+            <div v-if="message.status === 'error' || message.status === 'timeout'" class="error-text">
               {{ $t('chat.sendError') }}
               <button class="retry-btn" @click="$emit('retry', message)">
                 {{ $t('chat.retrySend') }}
@@ -269,7 +269,7 @@ import DOMPurify from 'dompurify'
 import type { Message } from '@/types'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
-export type ChatMessage = Pick<Message, 'id' | 'role' | 'content' | 'status' | 'reasoning_content' | 'tool_calls'> & {
+export type ChatMessage = Pick<Message, 'id' | 'request_id' | 'role' | 'content' | 'status' | 'reasoning_content' | 'tool_calls'> & {
   created_at?: string
   metadata?: {
     [key: string]: unknown
