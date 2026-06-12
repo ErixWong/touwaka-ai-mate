@@ -26,7 +26,10 @@ export interface SystemSettings {
     vm_execution: number
     python_execution: number
     skill_call: number
+    skill_http: number
+    resident_skill: number
     remote_llm: number
+    chat_idle: number
   }
   tool: {
     max_rounds: number
@@ -90,7 +93,10 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       vm_execution: 30,
       python_execution: 300,
       skill_call: 60,
+      skill_http: 180,
+      resident_skill: 300,
       remote_llm: 120,
+      chat_idle: 300,
     },
     tool: {
       max_rounds: 20,
@@ -130,6 +136,27 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       settings.value = defaultSettings
     } finally {
       isLoading.value = false
+    }
+  }
+
+  const loadRuntimeSettings = async () => {
+    try {
+      const response = await apiClient.get('/system-settings/runtime')
+      const runtimeSettings = response.data.data as Partial<SystemSettings>
+      settings.value = {
+        ...defaultSettings,
+        ...(settings.value || {}),
+        timeout: {
+          ...defaultSettings.timeout,
+          ...(settings.value?.timeout || {}),
+          ...(runtimeSettings.timeout || {}),
+        },
+      }
+    } catch {
+      console.warn('[systemSettings] 运行时配置加载失败，使用默认值')
+      if (!settings.value) {
+        settings.value = defaultSettings
+      }
     }
   }
 
@@ -234,6 +261,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     brandingSettings,
     brandingLoaded,
     loadSettings,
+    loadRuntimeSettings,
     updateSettings,
     resetSettings,
     getSetting,

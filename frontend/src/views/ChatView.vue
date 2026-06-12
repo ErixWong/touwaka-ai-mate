@@ -335,25 +335,27 @@ const handleSendMessage = async (content: string) => {
     connectToExpert(expert_id)
   }
 
-  // 设置超时保护
+  // 设置超时保护（作为 SSE start 事件前的安全网）
   sseHandler.setSendingTimeoutProtection()
 
   // 使用 composable 发送消息
   const success = await messageSending.sendMessage(content)
   if (!success) {
     console.error('[ChatView] Failed to send message')
+    sseHandler.clearSendingTimeout()
   }
 }
 
 // 处理重试
 const handleRetry = async (message: ChatMessage) => {
-  // 设置超时保护
+  // 设置超时保护（作为 SSE start 事件前的安全网）
   sseHandler.setSendingTimeoutProtection()
   
   // 使用 composable 重试消息
   const success = await messageSending.retryMessage(message.id, message.role, message.content)
   if (!success) {
     console.error('[ChatView] Failed to retry message')
+    sseHandler.clearSendingTimeout()
   }
 }
 

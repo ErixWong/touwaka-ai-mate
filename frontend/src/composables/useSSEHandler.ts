@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
+import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { messageApi } from '@/api/services'
 import type { Message } from '@/types'
 import type { SSEEvent } from '@/composables/useConnection'
@@ -42,6 +43,7 @@ export interface CompleteEventData {
 export function useSSEHandler(options: UseSSEHandlerOptions) {
   const { t } = useI18n()
   const chatStore = useChatStore()
+  const systemSettingsStore = useSystemSettingsStore()
 
   // 获取 expertId（支持 getter 函数）
   const getExpertId = (): string => {
@@ -85,9 +87,12 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
   let reasoningBuffer = ''
   let flushTimer: ReturnType<typeof setTimeout> | null = null
 
-  // 安全超时：防止 isSending 永久为 true（SSE 流异常终止时）
+  // 安全超时：基于最近一次流式活动的空闲超时，避免长时推理被误判
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null
-  const SENDING_TIMEOUT_MS = 5 * 60 * 1000  // 5 分钟超时
+  const getSendingTimeoutMs = () => {
+    const timeoutSeconds = systemSettingsStore.timeoutSettings.chat_idle ?? 300
+    return timeoutSeconds * 1000
+  }
 
   // 清除发送超时
   const clearSendingTimeout = () => {
@@ -130,11 +135,11 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
     flushTimer = setTimeout(flushBuffers, BATCH_INTERVAL)
   }
 
-  // 设置发送超时保护
-  const setSendingTimeoutProtection = () => {
+  // 任意流式活动都应续命，只有长时间无反馈才算超时
+  const bumpSendingTimeoutProtection = () => {
     clearSendingTimeout()
     sendingTimeout = setTimeout(() => {
-      const assistant = options.currentAssistantMessage()
+      const assistant = getAssistantByRequestId(options.activeRequestId()) || options.currentAssistantMessage()
       if (assistant) {
         chatStore.updateMessageContent(
           assistant.id,
@@ -142,7 +147,13 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           'timeout'
         )
       }
-    }, SENDING_TIMEOUT_MS)
+      options.setActiveRequestId(null)
+    }, getSendingTimeoutMs())
+  }
+
+  // 设置发送超时保护
+  const setSendingTimeoutProtection = () => {
+    bumpSendingTimeoutProtection()
   }
 
   /**
@@ -389,6 +400,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
         case 'start':
           console.log('[useSSEHandler] SSE start:', data)
           bindPendingAssistantToRequest(data.request_id)
+          bumpSendingTimeoutProtection()
           // 如果检测到新话题，刷新话题列表
           if (data.is_new_topic) {
             console.log('[useSSEHandler] 检测到新话题，刷新话题列表')
@@ -399,6 +411,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
         case 'delta':
           if (getAssistantByRequestId(data.request_id)) {
+            bumpSendingTimeoutProtection()
             // 使用批量缓冲机制，减少UI更新频率
             contentBuffer += data.content
             
@@ -418,6 +431,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
         case 'reasoning_delta':
           // 处理思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
           if (getAssistantByRequestId(data.request_id)) {
+            bumpSendingTimeoutProtection()
             // 使用批量缓冲机制
             reasoningBuffer += data.content
             
@@ -438,6 +452,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           // 工具调用开始 - 只显示简单的进度提示
           console.log('[useSSEHandler] Tool call:', data)
           if (getAssistantByRequestId(data.request_id) && data.toolCalls) {
+            bumpSendingTimeoutProtection()
             const toolNames = data.toolCalls.map((tc: { displayName?: string; function?: { name?: string }; name?: string }) => {
               return tc.displayName || tc.function?.name || tc.name || 'unknown'
             }).join(', ')
@@ -457,12 +472,18 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
         case 'tool_result':
           // 单个工具执行完成 - 只显示简单的状态提示
           console.log('[useSSEHandler] Tool result:', data)
+          if (getAssistantByRequestId(data.request_id)) {
+            bumpSendingTimeoutProtection()
+          }
           // 不再显示详细结果，等 SSE 完成后从数据库获取
           break
 
         case 'tool_results':
           // 所有工具执行完成（批量结果）
           console.log('[useSSEHandler] Tool results:', data)
+          if (getAssistantByRequestId(data.request_id)) {
+            bumpSendingTimeoutProtection()
+          }
           // 不再显示详细结果，等 SSE 完成后从数据库获取
           break
 
@@ -482,6 +503,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           if (data.message) {
             const assistant = getAssistantByRequestId(data.request_id)
             if (assistant) {
+              bumpSendingTimeoutProtection()
               const currentContent = options.getStreamingContent() || ''
               const warningText = `\n\n⚠️ ${data.message}\n`
               options.setStreamingContent(currentContent + warningText)
@@ -496,6 +518,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           if (data.summary) {
             const assistant = getAssistantByRequestId(data.request_id)
             if (assistant) {
+              bumpSendingTimeoutProtection()
               const currentContent = options.getStreamingContent() || ''
               const summaryText = `\n\n📊 ${data.summary}\n\n${data.message || ''}`
               options.setStreamingContent(currentContent + summaryText)
