@@ -7,6 +7,31 @@ const ROWS_TABLE = 'app_contract_mgr_rows';
 
 const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
 
+const PENDING_STATES = ['pending_ocr', 'pending_clean', 'pending_extract', 'pending_section'];
+const SYNC_PROCESSING_STATES = ['cleaning', 'extract_processing', 'section_processing'];
+const OCR_PROCESSING_STATE = 'ocr_processing';
+const ALL_ACTIVE_STATES = [...PENDING_STATES, OCR_PROCESSING_STATE, ...SYNC_PROCESSING_STATES];
+
+const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
+
+function backfillStartedAt(record, data, status) {
+  const fallback = record.updated_at || record.created_at;
+  const now = new Date().toISOString();
+  const startedAt = fallback ? new Date(fallback).toISOString() : now;
+  
+  data._processing_started_at = startedAt;
+  data._processing_step = status;
+  
+  if (fallback) {
+    const elapsed = Math.round((Date.now() - new Date(fallback).getTime()) / 60000);
+    logger.info(`[contract-mgr tick] Backfilled _processing_started_at for ${record.id} from record timestamp, elapsed ~${elapsed}min`);
+  } else {
+    logger.info(`[contract-mgr tick] Backfilled _processing_started_at for ${record.id} with current time (no record timestamp available)`);
+  }
+  
+  return startedAt;
+}
+
 export async function tick(context) {
   const { app, services } = context;
   
@@ -15,14 +40,14 @@ export async function tick(context) {
     return { skipped: true, reason: 'no_app' };
   }
   
-  logger.info(`[contract-mgr tick] App loaded: id=${app.id}, name=${app.name}, config type=${typeof app.config}`);
+  logger.info(`[contract-mgr tick] App loaded: id=${app.id}, name=${app.name}`);
   
   const MiniAppRow = services.getModel('mini_app_row');
   
   const pendingRecords = await MiniAppRow.findAll({
     where: {
       app_id: 'contract-mgr',
-      status: ['pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section']
+      status: ALL_ACTIVE_STATES
     },
     limit: 5,
     order: [['created_at', 'ASC']]
@@ -34,8 +59,51 @@ export async function tick(context) {
   }
   
   let processed = 0;
+  let skipped = 0;
   
   for (const record of pendingRecords) {
+    const status = record.status;
+    
+    if (SYNC_PROCESSING_STATES.includes(status)) {
+      const data = record.data ? JSON.parse(record.data) : {};
+      let startedAt = data._processing_started_at;
+      
+      if (!startedAt) {
+        startedAt = backfillStartedAt(record, data, status);
+        await MiniAppRow.update(
+          { data: JSON.stringify(data) },
+          { where: { id: record.id } }
+        );
+      }
+      
+      const elapsed = Date.now() - new Date(startedAt).getTime();
+      if (elapsed > PROCESSING_TIMEOUT_MS) {
+        logger.warn(`[contract-mgr tick] Record ${record.id} in ${status} for ${Math.round(elapsed/60000)} minutes - may be stuck`);
+      }
+      
+      logger.info(`[contract-mgr tick] Skipping ${record.id}: sync processing ${status} already in progress`);
+      skipped++;
+      continue;
+    }
+    
+    if (status === OCR_PROCESSING_STATE) {
+      const data = record.data ? JSON.parse(record.data) : {};
+      let startedAt = data._processing_started_at;
+      
+      if (!startedAt) {
+        startedAt = backfillStartedAt(record, data, status);
+        await MiniAppRow.update(
+          { data: JSON.stringify(data) },
+          { where: { id: record.id } }
+        );
+      }
+      
+      const elapsed = Date.now() - new Date(startedAt).getTime();
+      if (elapsed > PROCESSING_TIMEOUT_MS) {
+        logger.warn(`[contract-mgr tick] Record ${record.id} in ocr_processing for ${Math.round(elapsed/60000)} minutes - OCR may be stuck`);
+      }
+    }
+    
     try {
       await processRecord(record, app, services);
       processed++;
@@ -44,8 +112,8 @@ export async function tick(context) {
     }
   }
   
-  logger.info(`[contract-mgr tick] Processed ${processed} records`);
-  return { success: true, processed };
+  logger.info(`[contract-mgr tick] Processed ${processed}, skipped ${skipped} records`);
+  return { success: true, processed, skipped };
 }
 
 async function processRecord(record, app, services) {
@@ -53,32 +121,40 @@ async function processRecord(record, app, services) {
   
   switch (status) {
     case 'pending_ocr':
-      await handleOcrSubmit(record, app, services);
+      await handleOcr(record, app, services);
       break;
-    case 'ocr_submitted':
-      await handleOcrCheck(record, app, services);
+    case 'ocr_processing':
+      await handleOcrProcessing(record, app, services);
       break;
-    case 'pending_filter':
-      await handleFilter(record, app, services);
+    case 'pending_clean':
+      await handleClean(record, app, services);
+      break;
+    case 'cleaning':
+      logger.info(`[contract-mgr tick] Skipping ${record.id}: cleaning already in progress`);
       break;
     case 'pending_extract':
       await handleExtract(record, app, services);
       break;
+    case 'extract_processing':
+      logger.info(`[contract-mgr tick] Skipping ${record.id}: extraction already in progress`);
+      break;
     case 'pending_section':
       await handleSection(record, app, services);
       break;
+    case 'section_processing':
+      logger.info(`[contract-mgr tick] Skipping ${record.id}: section analysis already in progress`);
+      break;
+    default:
+      logger.warn(`[contract-mgr tick] Unknown status ${status} for ${record.id}`);
   }
 }
 
 function getConfig(app, stepName) {
   let config = app?.config;
-  logger.info(`[contract-mgr tick] getConfig: app.config type=${typeof config}, preview=${typeof config === 'string' ? config.substring(0, 200) : 'object'}`);
   if (typeof config === 'string') {
     try { config = JSON.parse(config); } catch { config = {}; }
   }
-  const stepConfig = config?.step_resources?.[stepName] || {};
-  logger.info(`[contract-mgr tick] getConfig stepConfig for ${stepName}: ${JSON.stringify(stepConfig).substring(0, 200)}`);
-  return stepConfig;
+  return config?.step_resources?.[stepName] || {};
 }
 
 function parseLlmResponse(response) {
@@ -132,7 +208,7 @@ function splitTextIntoChunks(text, maxLength) {
 async function filterTextByChunks(recordId, services, prompt, text, options) {
   const maxLength = options.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
   const chunks = splitTextIntoChunks(text, maxLength);
-  logger.info(`[contract-mgr tick] Filter input length=${text.length}, chunk_max_length=${maxLength}, chunks=${chunks.length}`);
+  logger.info(`[contract-mgr tick] Filter input length=${text.length}, chunks=${chunks.length}`);
 
   const results = [];
   for (let index = 0; index < chunks.length; index++) {
@@ -141,7 +217,7 @@ async function filterTextByChunks(recordId, services, prompt, text, options) {
       ? `${prompt}\n\n这是第 ${index + 1}/${chunks.length} 段，请只返回清洗后的正文，不要解释，不要补充原文中不存在的内容。`
       : prompt;
 
-    logger.info(`[contract-mgr tick] Filtering chunk ${index + 1}/${chunks.length} for ${recordId}, length=${chunk.length}`);
+    logger.info(`[contract-mgr tick] Filtering chunk ${index + 1}/${chunks.length} for ${recordId}`);
     const filteredChunk = await services.llm.generateText(chunkPrompt, chunk, options);
     results.push(filteredChunk || chunk);
   }
@@ -161,14 +237,84 @@ async function getFiles(services, recordId) {
   return files.map(f => f.toJSON());
 }
 
-async function handleOcrSubmit(record, app, services) {
-  logger.info(`[contract-mgr tick] Submitting OCR for ${record.id}`);
+async function transitionToProcessing(services, recordId, processingState, expectedCurrentState) {
+  const MiniAppRow = services.getModel('mini_app_row');
+  const record = await MiniAppRow.findByPk(recordId);
+  const data = record.data ? JSON.parse(record.data) : {};
+  data._processing_started_at = new Date().toISOString();
+  data._processing_step = processingState;
+  
+  const [affectedRows] = await MiniAppRow.update(
+    { status: processingState, data: JSON.stringify(data) },
+    { where: { id: recordId, status: expectedCurrentState } }
+  );
+  
+  if (affectedRows === 0) {
+    logger.warn(`[contract-mgr tick] Record ${recordId} transition to ${processingState} failed - status may have changed`);
+    return { success: false, data: null };
+  }
+  
+  logger.info(`[contract-mgr tick] Record ${recordId} atomically transitioned from ${expectedCurrentState} to ${processingState}`);
+  return { success: true, data };
+}
+
+async function transitionToNext(services, recordId, nextState, clearProcessing = true) {
+  const MiniAppRow = services.getModel('mini_app_row');
+  const record = await MiniAppRow.findByPk(recordId);
+  const data = record.data ? JSON.parse(record.data) : {};
+  
+  if (clearProcessing) {
+    delete data._processing_started_at;
+    delete data._processing_step;
+  }
+  
+  await MiniAppRow.update(
+    { status: nextState, data: JSON.stringify(data) },
+    { where: { id: recordId } }
+  );
+  
+  logger.info(`[contract-mgr tick] Record ${recordId} transitioned to ${nextState}`);
+}
+
+async function transitionToFailed(services, recordId, failedState) {
+  const MiniAppRow = services.getModel('mini_app_row');
+  const record = await MiniAppRow.findByPk(recordId);
+  const data = record.data ? JSON.parse(record.data) : {};
+  data._failed_at = new Date().toISOString();
+  data._failed_step = failedState;
+  delete data._processing_started_at;
+  delete data._processing_step;
+  
+  await MiniAppRow.update(
+    { status: failedState, data: JSON.stringify(data) },
+    { where: { id: recordId } }
+  );
+  
+  logger.info(`[contract-mgr tick] Record ${recordId} transitioned to ${failedState}`);
+}
+
+async function handleOcr(record, app, services) {
+  logger.info(`[contract-mgr tick] Starting OCR for ${record.id}`);
+  
+  const result = await transitionToProcessing(services, record.id, 'ocr_processing', 'pending_ocr');
+  if (!result.success) {
+    logger.warn(`[contract-mgr tick] Skip ${record.id}: failed to acquire ocr_processing lock`);
+    return;
+  }
+  
+  const existingData = result.data || {};
+  const existingTaskId = existingData._ocr_task_id;
+  
+  if (existingTaskId) {
+    logger.info(`[contract-mgr tick] OCR task already submitted for ${record.id}, taskId=${existingTaskId}`);
+    return;
+  }
   
   const files = await getFiles(services, record.id);
   const file = files[0]?.attachment;
   
   if (!file) {
-    await updateStatus(services, record.id, 'ocr_failed');
+    await transitionToFailed(services, record.id, 'ocr_failed');
     return;
   }
   
@@ -180,7 +326,7 @@ async function handleOcrSubmit(record, app, services) {
     buffer = await fs.readFile(fullPath);
   } catch (e) {
     logger.error(`[contract-mgr tick] Failed to read file: ${e.message}`);
-    await updateStatus(services, record.id, 'ocr_failed');
+    await transitionToFailed(services, record.id, 'ocr_failed');
     return;
   }
   
@@ -201,7 +347,7 @@ async function handleOcrSubmit(record, app, services) {
   try {
     const result = await services.callMcp(mcp.server, mcp.tool, params, config.timeout_ms ?? 1200000);
     
-    logger.info(`[contract-mgr tick] OCR response: ${JSON.stringify(result).substring(0, 500)}`);
+    logger.info(`[contract-mgr tick] OCR submit response: ${JSON.stringify(result).substring(0, 500)}`);
     
     let taskId = '';
     
@@ -214,11 +360,11 @@ MCP返回结果：
 ${JSON.stringify(result).substring(0, 1000)}`;
 
     try {
-      const ocrSubmittedConfig = getConfig(app, 'ocr_submitted');
+      const ocrProcessingConfig = getConfig(app, 'ocr_processing');
       const parsed = await services.llm.extractJson(parsePrompt, '', {
-        modelId: ocrSubmittedConfig.judge_model_id || null,
+        modelId: ocrProcessingConfig.judge_model_id || null,
         temperature: 0.1,
-        timeout: ocrSubmittedConfig.timeout_ms ?? 600000,
+        timeout: ocrProcessingConfig.timeout_ms ?? 600000,
         defaultValue: { task_id: '' },
       });
 
@@ -239,34 +385,47 @@ ${JSON.stringify(result).substring(0, 1000)}`;
     
     if (!taskId) {
       logger.error(`[contract-mgr tick] No task_id returned after all parsing attempts`);
-      await updateStatus(services, record.id, 'ocr_failed');
+      await transitionToFailed(services, record.id, 'ocr_failed');
       return;
     }
     
-    const data = record.data ? JSON.parse(record.data) : {};
+    const MiniAppRow = services.getModel('mini_app_row');
+    const currentRecord = await MiniAppRow.findByPk(record.id);
+    const data = currentRecord.data ? JSON.parse(currentRecord.data) : {};
     data._ocr_task_id = taskId;
     data._ocr_service = mcp.server;
     
-    await updateRecordData(services, record.id, data, 'ocr_submitted');
-    logger.info(`[contract-mgr tick] OCR submitted, task_id=${taskId}`);
+    await MiniAppRow.update(
+      { data: JSON.stringify(data) },
+      { where: { id: record.id } }
+    );
+    
+    logger.info(`[contract-mgr tick] OCR task submitted for ${record.id}, taskId=${taskId}`);
   } catch (e) {
     logger.error(`[contract-mgr tick] OCR submit failed: ${e.message}`);
-    await updateStatus(services, record.id, 'ocr_failed');
+    await transitionToFailed(services, record.id, 'ocr_failed');
   }
 }
 
-async function handleOcrCheck(record, app, services) {
-  logger.info(`[contract-mgr tick] Checking OCR for ${record.id}`);
+async function handleOcrProcessing(record, app, services) {
+  logger.info(`[contract-mgr tick] Checking OCR status for ${record.id}`);
   
   const data = record.data ? JSON.parse(record.data) : {};
   const taskId = data._ocr_task_id;
   
   if (!taskId) {
-    await updateStatus(services, record.id, 'ocr_failed');
+    logger.warn(`[contract-mgr tick] No task_id found for ${record.id} in ocr_processing, reverting to pending_ocr`);
+    await transitionToNext(services, record.id, 'pending_ocr', false);
     return;
   }
   
-  const config = getConfig(app, 'ocr_submitted');
+  await checkOcrAndComplete(record.id, app, services, taskId, data._ocr_service || 'markitdown');
+}
+
+async function checkOcrAndComplete(recordId, app, services, taskId, ocrService) {
+  logger.info(`[contract-mgr tick] Checking OCR status for ${recordId}, taskId=${taskId}`);
+  
+  const config = getConfig(app, 'ocr_processing');
   const mcp = config.mcp || { server: 'markitdown', tool: 'get_task' };
   
   try {
@@ -291,21 +450,29 @@ async function handleOcrCheck(record, app, services) {
         `INSERT INTO ${CONTENT_TABLE} (row_id, ocr_text, ocr_service, ocr_at, created_at, updated_at)
          VALUES (?, ?, ?, NOW(), NOW(), NOW())
          ON DUPLICATE KEY UPDATE ocr_text = VALUES(ocr_text), ocr_service = VALUES(ocr_service), ocr_at = VALUES(ocr_at)`,
-        [record.id, ocrText, mcp.server]
+        [recordId, ocrText, ocrService]
       );
       
-      await updateStatus(services, record.id, 'pending_filter');
-      logger.info(`[contract-mgr tick] OCR completed, text length=${ocrText.length}`);
+      await transitionToNext(services, recordId, 'pending_clean');
+      logger.info(`[contract-mgr tick] OCR completed for ${recordId}, text length=${ocrText.length}`);
     } else if (parsed.status === 'failed') {
-      await updateStatus(services, record.id, 'ocr_failed');
+      await transitionToFailed(services, recordId, 'ocr_failed');
+    } else {
+      logger.info(`[contract-mgr tick] OCR still pending for ${recordId}, progress=${parsed.progress}`);
     }
   } catch (e) {
-    logger.error(`[contract-mgr tick] OCR check failed: ${e.message}`);
+    logger.error(`[contract-mgr tick] OCR check failed for ${recordId}: ${e.message}`);
   }
 }
 
-async function handleFilter(record, app, services) {
-  logger.info(`[contract-mgr tick] Filtering text for ${record.id}`);
+async function handleClean(record, app, services) {
+  logger.info(`[contract-mgr tick] Starting text cleaning for ${record.id}`);
+  
+  const result = await transitionToProcessing(services, record.id, 'cleaning', 'pending_clean');
+  if (!result.success) {
+    logger.warn(`[contract-mgr tick] Skip ${record.id}: failed to acquire cleaning lock`);
+    return;
+  }
   
   const contentRows = await services.query(
     `SELECT ocr_text FROM ${CONTENT_TABLE} WHERE row_id = ?`,
@@ -313,16 +480,16 @@ async function handleFilter(record, app, services) {
   );
   
   if (!contentRows.length || !contentRows[0].ocr_text) {
-    await updateStatus(services, record.id, 'filter_failed');
+    await transitionToFailed(services, record.id, 'clean_failed');
     return;
   }
   
   const ocrText = contentRows[0].ocr_text;
-  const config = getConfig(app, 'pending_filter');
+  const config = getConfig(app, 'cleaning');
   const filterPrompt = '去除页码、水印、乱码，保留正文';
   const timeout = config.timeout_ms ?? 600000;
   const chunkMaxLength = config.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
-  
+
   try {
     const filteredText = await filterTextByChunks(record.id, services, filterPrompt, ocrText, {
       modelId: config.model_id || null,
@@ -336,16 +503,22 @@ async function handleFilter(record, app, services) {
       [filteredText, record.id]
     );
     
-    await updateStatus(services, record.id, 'pending_extract');
-    logger.info(`[contract-mgr tick] Filter completed, timeout=${timeout}, length=${filteredText.length}`);
+    await transitionToNext(services, record.id, 'pending_extract');
+    logger.info(`[contract-mgr tick] Cleaning completed for ${record.id}, length=${filteredText.length}`);
   } catch (e) {
-    logger.error(`[contract-mgr tick] Filter failed: ${e.message}`);
-    await updateStatus(services, record.id, 'filter_failed');
+    logger.error(`[contract-mgr tick] Cleaning failed for ${record.id}: ${e.message}`);
+    await transitionToFailed(services, record.id, 'clean_failed');
   }
 }
 
 async function handleExtract(record, app, services) {
-  logger.info(`[contract-mgr tick] Extracting metadata for ${record.id}`);
+  logger.info(`[contract-mgr tick] Starting metadata extraction for ${record.id}`);
+  
+  const result = await transitionToProcessing(services, record.id, 'extract_processing', 'pending_extract');
+  if (!result.success) {
+    logger.warn(`[contract-mgr tick] Skip ${record.id}: failed to acquire extract_processing lock`);
+    return;
+  }
   
   const contentRows = await services.query(
     `SELECT filtered_text FROM ${CONTENT_TABLE} WHERE row_id = ?`,
@@ -353,18 +526,19 @@ async function handleExtract(record, app, services) {
   );
   
   if (!contentRows.length || !contentRows[0].filtered_text) {
-    await updateStatus(services, record.id, 'extract_failed');
+    await transitionToFailed(services, record.id, 'extract_failed');
     return;
   }
   
-  const config = getConfig(app, 'pending_extract');
+  const config = getConfig(app, 'extract_processing');
   const extractPrompt = `从文本中提取元数据：合同编号、甲方、乙方、上级公司、合同金额、签订日期。返回JSON格式：{"contract_number": "...", "party_a": "...", "party_b": "...", "parent_company": "...", "contract_amount": 0, "contract_date": "YYYY-MM-DD"}`;
-  
+  const timeout = config.timeout_ms ?? 600000;
+
   try {
     const metadata = await services.llm.extractJson(extractPrompt, contentRows[0].filtered_text, {
       modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
-      timeout: config.timeout_ms ?? 600000,
+      timeout,
     });
     
     if (metadata) {
@@ -381,16 +555,22 @@ async function handleExtract(record, app, services) {
       );
     }
     
-    await updateStatus(services, record.id, 'pending_section');
-    logger.info(`[contract-mgr tick] Extract completed`);
+    await transitionToNext(services, record.id, 'pending_section');
+    logger.info(`[contract-mgr tick] Extraction completed for ${record.id}`);
   } catch (e) {
-    logger.error(`[contract-mgr tick] Extract failed: ${e.message}`);
-    await updateStatus(services, record.id, 'extract_failed');
+    logger.error(`[contract-mgr tick] Extraction failed for ${record.id}: ${e.message}`);
+    await transitionToFailed(services, record.id, 'extract_failed');
   }
 }
 
 async function handleSection(record, app, services) {
-  logger.info(`[contract-mgr tick] Analyzing sections for ${record.id}`);
+  logger.info(`[contract-mgr tick] Starting section analysis for ${record.id}`);
+  
+  const result = await transitionToProcessing(services, record.id, 'section_processing', 'pending_section');
+  if (!result.success) {
+    logger.warn(`[contract-mgr tick] Skip ${record.id}: failed to acquire section_processing lock`);
+    return;
+  }
   
   const contentRows = await services.query(
     `SELECT filtered_text FROM ${CONTENT_TABLE} WHERE row_id = ?`,
@@ -398,18 +578,19 @@ async function handleSection(record, app, services) {
   );
   
   if (!contentRows.length || !contentRows[0].filtered_text) {
-    await updateStatus(services, record.id, 'section_failed');
+    await transitionToFailed(services, record.id, 'section_failed');
     return;
   }
   
-  const config = getConfig(app, 'pending_section');
+  const config = getConfig(app, 'section_processing');
   const sectionPrompt = '分析章节结构，返回JSON：{"sections": [{"title": "章节标题", "level": 1}]}';
-  
+  const timeout = config.timeout_ms ?? 600000;
+
   try {
     const result = await services.llm.extractJson(sectionPrompt, contentRows[0].filtered_text, {
       modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
-      timeout: config.timeout_ms ?? 600000,
+      timeout,
     });
     const sections = result?.sections || [];
     
@@ -418,23 +599,10 @@ async function handleSection(record, app, services) {
       [JSON.stringify(sections), record.id]
     );
     
-    await updateStatus(services, record.id, 'pending_review');
-    logger.info(`[contract-mgr tick] Section completed, found ${sections.length} sections`);
+    await transitionToNext(services, record.id, 'pending_review');
+    logger.info(`[contract-mgr tick] Section analysis completed for ${record.id}, found ${sections.length} sections`);
   } catch (e) {
-    logger.error(`[contract-mgr tick] Section failed: ${e.message}`);
-    await updateStatus(services, record.id, 'section_failed');
+    logger.error(`[contract-mgr tick] Section analysis failed for ${record.id}: ${e.message}`);
+    await transitionToFailed(services, record.id, 'section_failed');
   }
-}
-
-async function updateStatus(services, recordId, newStatus) {
-  const MiniAppRow = services.getModel('mini_app_row');
-  await MiniAppRow.update({ status: newStatus }, { where: { id: recordId } });
-}
-
-async function updateRecordData(services, recordId, data, newStatus) {
-  const MiniAppRow = services.getModel('mini_app_row');
-  await MiniAppRow.update(
-    { data: JSON.stringify(data), status: newStatus },
-    { where: { id: recordId } }
-  );
 }

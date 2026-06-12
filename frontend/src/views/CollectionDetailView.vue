@@ -128,14 +128,15 @@ function formatTime(t: string) {
 function processingLabel(status?: string, ocrStatus?: string) {
   if (status === 'pending_ocr') return '待OCR'
   if (status === 'ocr_processing') return ocrStatus === 'completed' ? 'OCR完成' : 'OCR处理中'
-  if (status === 'pending_clean') return '待预览'
+  if (status === 'pending_clean') return '待文本清洗'
   if (status === 'ready') return '已就绪'
   if (status === 'error') return '处理失败'
   return status || '未知'
 }
 
 function processingTagType(status?: string) {
-  if (status === 'ready' || status === 'pending_clean') return 'success'
+  if (status === 'ready') return 'success'
+  if (status === 'pending_clean') return 'info'
   if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
   if (status === 'error') return 'danger'
   return 'info'

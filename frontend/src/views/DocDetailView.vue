@@ -130,7 +130,7 @@ const processingLabel = computed(() => {
   const status = docStore.currentResult?.processing.status
   if (status === 'pending_ocr') return '待 OCR'
   if (status === 'ocr_processing') return 'OCR 处理中'
-  if (status === 'pending_clean') return '结果已生成'
+  if (status === 'pending_clean') return '待文本清洗'
   if (status === 'ready') return '已完成'
   if (status === 'error') return '处理失败'
   return status || '-'
