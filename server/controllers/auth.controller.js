@@ -16,9 +16,37 @@ class AuthController {
     this.User = db.getModel('user');
     this.UserRole = db.getModel('user_role');
     this.Role = db.getModel('role');
+    this.RolePermission = db.getModel('role_permission');
+    this.Permission = db.getModel('permission');
     this.Invitation = db.getModel('invitation');
     this.InvitationUsage = db.getModel('invitation_usage');
     this.systemSettingService = getSystemSettingService(db);
+  }
+
+  async getUserPermissionCodes(userId) {
+    const userRoles = await this.UserRole.findAll({
+      where: { user_id: userId },
+      attributes: ['role_id'],
+      raw: true,
+    });
+
+    const roleIds = [...new Set(userRoles.map(item => item.role_id).filter(Boolean))];
+    if (roleIds.length === 0) {
+      return [];
+    }
+
+    const rolePermissions = await this.RolePermission.findAll({
+      where: { role_id: roleIds },
+      include: [{
+        model: this.Permission,
+        as: 'permission',
+        attributes: ['code'],
+      }],
+      raw: true,
+      nest: true,
+    });
+
+    return [...new Set(rolePermissions.map(item => item.permission?.code).filter(Boolean))];
   }
 
   /**
@@ -185,10 +213,13 @@ class AuthController {
         nest: true,
       });
 
+      const permissionCodes = await this.getUserPermissionCodes(ctx.state.session.id);
+
       ctx.success({
         ...user,
         roles: roles.map(r => r.role?.mark).filter(Boolean),  // 返回角色标识列表
         roleNames: roles.map(r => ({ mark: r.role?.mark, name: r.role?.name })),  // 返回完整角色信息
+        permission_codes: permissionCodes,
         preferences: user.preferences ? JSON.parse(user.preferences) : {},
       });
     } catch (error) {

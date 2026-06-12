@@ -4,6 +4,38 @@
 
 import jwt from 'jsonwebtoken';
 
+const getUserPermissionCodes = async (ctx, userId) => {
+  if (!ctx.db) return [];
+
+  const UserRole = ctx.db.getModel('user_role');
+  const RolePermission = ctx.db.getModel('role_permission');
+  const Permission = ctx.db.getModel('permission');
+
+  const userRoles = await UserRole.findAll({
+    where: { user_id: userId },
+    attributes: ['role_id'],
+    raw: true,
+  });
+
+  const roleIds = [...new Set(userRoles.map(item => item.role_id).filter(Boolean))];
+  if (roleIds.length === 0) {
+    return [];
+  }
+
+  const rolePermissions = await RolePermission.findAll({
+    where: { role_id: roleIds },
+    include: [{
+      model: Permission,
+      as: 'permission',
+      attributes: ['code'],
+    }],
+    raw: true,
+    nest: true,
+  });
+
+  return [...new Set(rolePermissions.map(item => item.permission?.code).filter(Boolean))];
+};
+
 // 延迟读取环境变量（因为 ES Modules 的 import 会在 dotenv.config() 之前执行）
 const getJwtSecret = () => process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
@@ -91,11 +123,11 @@ const authenticate = () => {
     const isAdmin = roles.includes('admin');
 
     // JWT 验证成功，设置 session 对象
-    ctx.state.session = {
-      id: decoded.userId,
-      roles: roles,
-      isAdmin: isAdmin,
-      accessToken: token,
+      ctx.state.session = {
+        id: decoded.userId,
+        roles: roles,
+        isAdmin: isAdmin,
+        accessToken: token,
     };
     
     console.log('[Auth] Token decoded:', { userId: decoded.userId, roles, isAdmin });
@@ -166,6 +198,47 @@ const requireAdmin = () => {
 };
 
 /**
+ * 权限校验中间件
+ * - 管理员默认放行
+ * - 非管理员需命中指定权限之一
+ */
+const requirePermission = (...permissionCodes) => {
+  return async (ctx, next) => {
+    const session = ctx.state.session;
+    if (!session) {
+      ctx.error('未登录', 401);
+      return;
+    }
+
+    if (session.isAdmin) {
+      await next();
+      return;
+    }
+
+    const requiredCodes = permissionCodes.flat().filter(Boolean);
+    if (requiredCodes.length === 0) {
+      await next();
+      return;
+    }
+
+    try {
+      const permissionCodesForUser = await getUserPermissionCodes(ctx, session.id);
+      const hasPermission = requiredCodes.some(code => permissionCodesForUser.includes(code));
+      if (!hasPermission) {
+        ctx.error('权限不足', 403);
+        return;
+      }
+
+      session.permission_codes = permissionCodesForUser;
+      await next();
+    } catch (error) {
+      console.error('[RequirePermission] Error checking permissions:', error.message);
+      ctx.error('权限校验失败', 500);
+    }
+  };
+};
+
+/**
  * 生成 Token
  * 字段名规则：全栈统一使用 snake_case
  * @param {string|number} userId - 用户ID
@@ -196,6 +269,7 @@ export {
   authenticate,
   optionalAuth,
   requireAdmin,
+  requirePermission,
   generateTokens,
   verifyRefreshToken,
 };

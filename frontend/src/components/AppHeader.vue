@@ -28,7 +28,7 @@
         <span class="nav-text">{{ $t('apps.title', 'App') }}</span>
       </router-link>
 
-      <router-link to="/organization" class="nav-link" :class="{ active: isActive('/organization') }" v-if="isAdmin">
+      <router-link to="/organization" class="nav-link" :class="{ active: isActive('/organization') }" v-if="canAccessOrganization">
         <span class="nav-icon">🏢</span>
         <span class="nav-text">{{ $t('nav.organization') }}</span>
       </router-link>
@@ -101,6 +101,7 @@ const menuRef = ref<HTMLElement | null>(null)
 
 // 是否为管理员
 const isAdmin = computed(() => userStore.isAdmin)
+const canAccessOrganization = computed(() => userStore.canAccessOrganization)
 
 // 当前语言
 const currentLocale = computed({

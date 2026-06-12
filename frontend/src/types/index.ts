@@ -14,6 +14,7 @@ export interface User {
   department_id?: string
   position_id?: string
   roles?: string[]
+  permission_codes?: string[]
   is_active: boolean
   created_at: string
   updated_at: string
