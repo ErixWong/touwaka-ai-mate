@@ -151,6 +151,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const newMessage: Message = {
       id: messageId,
+      request_id: message.request_id,
       expert_id: message.expert_id || currentExpertId.value || '',
       user_id: message.user_id || '',
       topic_id: message.topic_id,
@@ -192,6 +193,72 @@ export const useChatStore = defineStore('chat', () => {
     const message = messages.value.find(m => m.id === messageId)
     if (message) {
       message.metadata = { ...message.metadata, ...metadata }
+    }
+  }
+
+  /**
+   * 绑定服务端 request_id 到本地占位消息
+   */
+  const updateMessageRequestId = (messageId: string, requestId: string) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      const message = messages.value[index]
+      if (message) {
+        messages.value.splice(index, 1, {
+          ...message,
+          request_id: requestId,
+          updated_at: new Date().toISOString(),
+        })
+      }
+    }
+  }
+
+  /**
+   * 根据 request_id 查找正在流式中的助手占位消息
+   */
+  const findStreamingAssistantByRequestId = (requestId: string) => {
+    return messages.value.find(
+      m => m.role === 'assistant' && m.status === 'streaming' && m.request_id === requestId
+    ) || null
+  }
+
+  /**
+   * 使用服务端最终快照替换本地占位消息
+   */
+  const replaceMessage = (messageId: string, nextMessage: Message) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index === -1) return
+
+    const duplicateIndex = messages.value.findIndex((m, i) => i !== index && m.id === nextMessage.id)
+    if (duplicateIndex !== -1) {
+      messages.value.splice(duplicateIndex, 1)
+    }
+
+    messages.value.splice(index, 1, nextMessage)
+  }
+
+  /**
+   * 增量合并消息到尾部，按 id 去重
+   */
+  const mergeMessages = (incomingMessages: Message[]) => {
+    for (const incoming of incomingMessages) {
+      const index = messages.value.findIndex(m => m.id === incoming.id)
+      if (index !== -1) {
+        const current = messages.value[index]
+        if (current) {
+          messages.value.splice(index, 1, {
+            ...current,
+            ...incoming,
+            updated_at: incoming.updated_at || current.updated_at,
+          })
+        }
+        continue
+      }
+
+      messages.value.push({
+        ...incoming,
+        status: incoming.status || 'completed',
+      })
     }
   }
 
@@ -358,7 +425,11 @@ export const useChatStore = defineStore('chat', () => {
     addLocalMessage,
     updateMessageContent,
     updateMessageMetadata,
+    updateMessageRequestId,
     updateMessageReasoningContent,
+    findStreamingAssistantByRequestId,
+    replaceMessage,
+    mergeMessages,
     removeMessage,
     clearChat,
     clearError,

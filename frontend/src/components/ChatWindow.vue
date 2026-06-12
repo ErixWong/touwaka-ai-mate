@@ -24,8 +24,9 @@
       <div
         v-for="message in messages"
         :key="message.id"
+        :data-message-id="message.id"
         class="message"
-        :class="message.role"
+        :class="[message.role, { 'message-highlighted': highlightedMessageId === message.id }]"
       >
         <!-- tool 消息的特殊渲染 - 简洁内敛风格 -->
         <template v-if="message.role === 'tool'">
@@ -121,10 +122,21 @@
                     <div class="tool-section-title">{{ $t('chat.toolArguments') || '参数' }}</div>
                     <pre class="tool-section-content">{{ formatToolCallArguments(toolCall) }}</pre>
                   </div>
+                  <div v-if="toolCall.result_preview && !toolCall.result" class="tool-section">
+                    <div class="tool-section-title">{{ $t('chat.toolResult') || '结果摘要' }}</div>
+                    <pre class="tool-section-content">{{ addLineNumbers(String(toolCall.result_preview)) }}</pre>
+                  </div>
                   <div v-if="toolCall.result" class="tool-section">
                     <div class="tool-section-title">{{ $t('chat.toolResult') || '结果' }}</div>
                     <pre class="tool-section-content">{{ formatToolCallResult(toolCall) }}</pre>
                   </div>
+                  <button
+                    v-if="toolCall.tool_message_id"
+                    class="tool-message-link"
+                    @click.stop="jumpToMessage(String(toolCall.tool_message_id))"
+                  >
+                    定位 tool message: {{ toolCall.tool_message_id }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -184,6 +196,14 @@
         </div>
       </div>
     </div>
+
+    <button
+      v-if="showNewMessagesHint"
+      class="new-messages-hint"
+      @click="handleScrollToBottom"
+    >
+      {{ newMessagesHintText }}
+    </button>
 
     <!-- 滚动到底部按钮 -->
     <button
@@ -280,8 +300,36 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const isComposing = ref(false) // 中文输入法组合状态
 const showScrollToBottom = ref(false) // 是否显示滚动到底部按钮
+const showNewMessagesHint = ref(false)
+const pendingNewMessageCount = ref(0)
 const expandedTools = ref<Set<string>>(new Set()) // 展开的工具消息ID
 const expandedReasoning = ref<Set<string>>(new Set()) // 展开的思考内容消息ID
+
+const newMessagesHintText = computed(() => {
+  return pendingNewMessageCount.value > 1 ? `有 ${pendingNewMessageCount.value} 条新消息` : '有新消息'
+})
+
+const highlightedMessageId = ref<string | null>(null)
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
+
+const jumpToMessage = (messageId: string) => {
+  if (!messagesContainer.value) return
+
+  const target = messagesContainer.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+  if (!target) return
+
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  highlightedMessageId.value = messageId
+
+  if (highlightTimer) {
+    clearTimeout(highlightTimer)
+  }
+
+  highlightTimer = setTimeout(() => {
+    highlightedMessageId.value = null
+    highlightTimer = null
+  }, 2000)
+}
 
 // 切换工具展开状态
 const toggleToolExpand = (messageId: string) => {
@@ -380,6 +428,11 @@ const handleScroll = () => {
   
   // 更新滚动到底部按钮状态
   showScrollToBottom.value = !isUserAtBottom.value
+
+  if (isUserAtBottom.value) {
+    showNewMessagesHint.value = false
+    pendingNewMessageCount.value = 0
+  }
   
   // 检测是否需要加载更多
   if (!props.hasMoreMessages || props.isLoadingMore) return
@@ -399,6 +452,8 @@ const handleScrollToBottom = () => {
   isUserAtBottom.value = true
   scrollToBottom()
   showScrollToBottom.value = false
+  showNewMessagesHint.value = false
+  pendingNewMessageCount.value = 0
 }
 
 // 手动点击加载更多
@@ -432,10 +487,17 @@ watch(
         if (oldLength === 0 || oldLength === undefined) {
           scrollToBottom()
           isUserAtBottom.value = true
+          showNewMessagesHint.value = false
+          pendingNewMessageCount.value = 0
         } else {
           // 非初始加载：只有用户在底部时才滚动
           if (isUserAtBottom.value) {
             scrollToBottom()
+            showNewMessagesHint.value = false
+            pendingNewMessageCount.value = 0
+          } else {
+            pendingNewMessageCount.value += Math.max(newLength - (oldLength || 0), 1)
+            showNewMessagesHint.value = true
           }
         }
         showScrollToBottom.value = !checkIsAtBottom()
@@ -719,6 +781,7 @@ onUnmounted(() => {
 
 interface ToolCallData {
   tool_call_id?: string
+  tool_message_id?: string
   name?: string
   tool_name?: string
   content?: string
@@ -727,6 +790,7 @@ interface ToolCallData {
   timestamp?: string
   arguments?: Record<string, unknown>
   result?: unknown
+  result_preview?: string
   context?: string  // 工具调用前的状态文本上下文
 }
 
@@ -1629,6 +1693,26 @@ defineExpose({
   z-index: 10;
 }
 
+.new-messages-hint {
+  position: absolute;
+  bottom: 144px;
+  right: 24px;
+  z-index: 10;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, #dbe4ee);
+  border-radius: 999px;
+  background: var(--bg-primary, #fff);
+  color: var(--primary-color, #2196f3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.new-messages-hint:hover {
+  background: var(--hover-bg, #f5faff);
+}
+
 .scroll-to-bottom-btn:hover {
   background: var(--primary-color, #2196f3);
   border-color: var(--primary-color, #2196f3);
@@ -1834,6 +1918,36 @@ defineExpose({
 /* ==================== 嵌入式工具调用卡片样式 ==================== */
 .tool-calls-section {
   margin-bottom: 12px;
+}
+
+.tool-message-link {
+  margin-top: 8px;
+  color: var(--text-secondary, #666);
+  font-size: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tool-message-link:hover {
+  color: var(--primary-color, #2196f3);
+  text-decoration: underline;
+}
+
+.message-highlighted {
+  animation: message-highlight-fade 2s ease;
+}
+
+@keyframes message-highlight-fade {
+  0% {
+    background: rgba(37, 99, 235, 0.16);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .tool-message-card.embedded {

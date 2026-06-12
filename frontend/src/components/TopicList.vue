@@ -82,7 +82,6 @@ const filteredTopics = computed(() => {
 
 const selectTopic = (id: string) => {
   chatStore.setCurrentTopic(id)
-  router.push({ name: 'chat', params: { topicId: id } })
 }
 
 const logout = async () => {
@@ -176,6 +175,17 @@ onMounted(() => {
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
+}
+
+.topic-item::after {
+  content: '阶段摘要';
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--secondary-bg, #eef3f8);
+  color: var(--text-secondary, #666);
+  font-size: 11px;
 }
 
 .topic-item:hover {

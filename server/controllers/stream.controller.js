@@ -28,6 +28,37 @@ class StreamController {
     this.permissionService = getPermissionService(db);
     // 存储活跃的 SSE 连接：Map<expertId, Set<{userId, res}>>
     this.expertConnections = new Map();
+    // 存储活跃请求：Map<requestId, {expertId, userId, stopped}>
+    this.activeRequests = new Map();
+    // 事件序号：Map<expertId:userId, number>
+    this.eventSequences = new Map();
+    // 最新游标：Map<expertId:userId, { latest_message_id: string | null }>
+    this.latestCursors = new Map();
+  }
+
+  _getSequenceKey(expert_id, user_id) {
+    return `${expert_id}:${user_id}`;
+  }
+
+  _nextSequence(expert_id, user_id) {
+    const key = this._getSequenceKey(expert_id, user_id);
+    const next = (this.eventSequences.get(key) || 0) + 1;
+    this.eventSequences.set(key, next);
+    return next;
+  }
+
+  _getCurrentSequence(expert_id, user_id) {
+    return this.eventSequences.get(this._getSequenceKey(expert_id, user_id)) || 0;
+  }
+
+  _updateLatestCursor(expert_id, user_id, latest_message_id) {
+    this.latestCursors.set(this._getSequenceKey(expert_id, user_id), {
+      latest_message_id: latest_message_id || null,
+    });
+  }
+
+  _getLatestCursor(expert_id, user_id) {
+    return this.latestCursors.get(this._getSequenceKey(expert_id, user_id)) || { latest_message_id: null };
   }
 
   /**
@@ -106,21 +137,25 @@ class StreamController {
       // 获取或创建该用户与 Expert 的活跃 Topic（支持 task_id 关联）
       const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id, task_id);
 
+      // 创建 request_id（一次流式生成请求的唯一标识）
+      const request_id = `req_${Utils.newID(16)}`;
+
       // 异步处理消息，不等待完成
       this.processMessageAsync({
+        request_id,
         topic_id,
         user_id,
         expert_id,
         content,
         model_id,
         task_id,
-        working_path,  // 传递当前工作目录路径
-        session: ctx.state.session,  // 直接传递 session 对象
+        working_path,
+        session: ctx.state.session,
       });
 
       // 立即返回成功，消息将通过 SSE 推送
       ctx.success({
-        message: '消息已发送',
+        request_id,
         topic_id,
       });
 
@@ -158,8 +193,10 @@ class StreamController {
    * @param {string} event - 事件名称
    * @param {object} data - 事件数据
    */
-  _broadcastToConnections(connections, event, data) {
-    const eventData = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  _broadcastToConnections(expert_id, user_id, connections, event, data) {
+    const sequence = this._nextSequence(expert_id, user_id);
+    const payload = { sequence, ...data };
+    const eventData = `id: ${sequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const conn of connections) {
       if (!conn.res.writableEnded) {
         try {
@@ -175,7 +212,7 @@ class StreamController {
    * 异步处理消息并通过 SSE 推送响应
    * 支持多标签页：向该用户的所有连接广播消息
    */
-  async processMessageAsync({ topic_id, user_id, expert_id, content, model_id, task_id, working_path, session }) {
+  async processMessageAsync({ request_id, topic_id, user_id, expert_id, content, model_id, task_id, working_path, session }) {
     // 获取该用户在该 Expert 下的所有活跃连接
     const userConnections = this._getUserConnections(expert_id, user_id);
 
@@ -185,11 +222,13 @@ class StreamController {
     }
 
     logger.info(`Broadcasting to ${userConnections.length} connection(s) for user: ${user_id}`);
+    this.activeRequests.set(request_id, { expert_id, user_id, stopped: false });
 
     try {
       // 使用 ChatService 处理流式对话
       await this.chatService.streamChat(
         {
+          request_id,
           topic_id,
           user_id,
           expert_id,
@@ -202,58 +241,116 @@ class StreamController {
         // onDelta - 流式数据回调（广播到所有连接）
         (delta) => {
           if (delta.type === 'start') {
-            this._broadcastToConnections(userConnections, 'start', {
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'start', {
+              request_id,
               topic_id: delta.topic_id,
               is_new_topic: delta.is_new_topic || false
             });
           } else if (delta.type === 'delta') {
-            this._broadcastToConnections(userConnections, 'delta', {
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'delta', {
+              request_id,
               content: delta.content
             });
           } else if (delta.type === 'reasoning_delta') {
             // 思考内容增量事件（DeepSeek R1、GLM-Z1、Qwen3 等支持）
-            this._broadcastToConnections(userConnections, 'reasoning_delta', {
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'reasoning_delta', {
+              request_id,
               content: delta.content
             });
           } else if (delta.type === 'tool_call') {
-            this._broadcastToConnections(userConnections, 'tool_call', delta);
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'tool_call', {
+              request_id,
+              ...delta,
+            });
           } else if (delta.type === 'tool_result') {
             // 单个工具执行完成，实时推送结果
-            this._broadcastToConnections(userConnections, 'tool_result', {
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'tool_result', {
+              request_id,
               result: delta.result
             });
           } else if (delta.type === 'topic_updated') {
             // 上下文压缩创建了新 Topic，通知前端刷新
-            this._broadcastToConnections(userConnections, 'topic_updated', {
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'topic_updated', {
+              request_id,
               topicsCreated: delta.topicsCreated
+            });
+          } else if (delta.type === 'tool_limit_warning' || delta.type === 'tool_limit_reached') {
+            this._broadcastToConnections(expert_id, user_id, userConnections, delta.type, {
+              request_id,
+              ...delta,
             });
           }
         },
         // onComplete - 完成回调（广播到所有连接）
         (result) => {
-          this._broadcastToConnections(userConnections, 'complete', {
-            message_id: result.message_id,  // 传递真实消息 ID，避免心跳检测误判
-            content: result.content,
-            reasoning_content: result.reasoning_content,  // 传递思考内容
-            // 注意：不再传递 tool_calls，工具调用信息已通过 tool_result 事件传递
-            usage: result.usage,
-            model: result.model,
+          const activeRequest = this.activeRequests.get(request_id);
+          if (activeRequest?.stopped) {
+            this.activeRequests.delete(request_id);
+            return;
+          }
+
+          if (result.message?.id) {
+            this._updateLatestCursor(expert_id, user_id, result.message.id);
+          }
+          this._broadcastToConnections(expert_id, user_id, userConnections, 'complete', {
+            request_id,
+            ...result,
           });
+          this.activeRequests.delete(request_id);
         },
         // onError - 错误回调（广播到所有连接）
         (error) => {
           logger.error('Stream chat error:', error);
-          this._broadcastToConnections(userConnections, 'error', {
+          const activeRequest = this.activeRequests.get(request_id);
+          if (activeRequest?.stopped || error.message === 'Request aborted by user') {
+            this.activeRequests.delete(request_id);
+            return;
+          }
+          this._broadcastToConnections(expert_id, user_id, userConnections, 'error', {
+            request_id,
             message: error.message || '流式处理失败'
           });
+          this.activeRequests.delete(request_id);
         }
       );
     } catch (error) {
       logger.error('Process message error:', error);
-      this._broadcastToConnections(userConnections, 'error', {
+      this._broadcastToConnections(expert_id, user_id, userConnections, 'error', {
+        request_id,
         message: error.message || '处理失败'
       });
+      this.activeRequests.delete(request_id);
     }
+  }
+
+  async stopRequest(request_id, user_id) {
+    const activeRequest = this.activeRequests.get(request_id);
+    if (!activeRequest || activeRequest.user_id !== user_id) {
+      return { success: false, aborted: false, expert_id: null };
+    }
+
+    activeRequest.stopped = true;
+    const aborted = await this.chatService.abortRequest(activeRequest.expert_id, request_id);
+
+    if (!aborted) {
+      activeRequest.stopped = false;
+      return {
+        success: false,
+        aborted: false,
+        expert_id: activeRequest.expert_id,
+      };
+    }
+
+    const userConnections = this._getUserConnections(activeRequest.expert_id, user_id);
+    this._broadcastToConnections(activeRequest.expert_id, user_id, userConnections, 'stopped', { request_id });
+
+    this.activeRequests.delete(request_id);
+
+    return {
+      success: true,
+      aborted: true,
+      expert_id: activeRequest.expert_id,
+    };
   }
 
   /**
@@ -363,8 +460,9 @@ class StreamController {
     ctx.status = 200;
 
     // 发送连接成功事件
-    ctx.res.write(`event: connected\n`);
-    ctx.res.write(`data: ${JSON.stringify({ status: 'connected', expert_id })}\n\n`);
+    const connectedSequence = this._nextSequence(expert_id, user_id);
+    ctx.res.write(`id: ${connectedSequence}\nevent: connected\n`);
+    ctx.res.write(`data: ${JSON.stringify({ status: 'connected', expert_id, sequence: connectedSequence })}\n\n`);
 
     // 存储连接到 Expert 的连接池
     if (!this.expertConnections.has(expert_id)) {
@@ -385,26 +483,34 @@ class StreamController {
       }
       
       try {
-        // 查询当前专家与当前用户的最新一条消息ID
-        const latestMessage = await this.Message.findOne({
-          where: {
-            expert_id,
-            user_id,
-          },
-          order: [['created_at', 'DESC']],
-          attributes: ['id'],
-          raw: true,
-        });
+        let latestMessageId = this._getLatestCursor(expert_id, user_id).latest_message_id;
+
+        if (!latestMessageId) {
+          const latestMessage = await this.Message.findOne({
+            where: {
+              expert_id,
+              user_id,
+            },
+            order: [['created_at', 'DESC']],
+            attributes: ['id'],
+            raw: true,
+          });
+          latestMessageId = latestMessage?.id || null;
+          this._updateLatestCursor(expert_id, user_id, latestMessageId);
+        }
         
         const heartbeatData = {
-          latest_message_id: latestMessage?.id || null,
+          latest_message_id: latestMessageId,
+          latest_sequence: this._getCurrentSequence(expert_id, user_id),
         };
         
-        ctx.res.write(`event: heartbeat\ndata: ${JSON.stringify(heartbeatData)}\n\n`);
+        const heartbeatSequence = this._nextSequence(expert_id, user_id);
+        ctx.res.write(`id: ${heartbeatSequence}\nevent: heartbeat\ndata: ${JSON.stringify({ sequence: heartbeatSequence, ...heartbeatData })}\n\n`);
       } catch (err) {
         logger.error('Heartbeat error:', err);
         // 即使查询失败也发送心跳，保持连接
-        ctx.res.write(`event: heartbeat\ndata: ${JSON.stringify({ latest_message_id: null })}\n\n`);
+        const heartbeatSequence = this._nextSequence(expert_id, user_id);
+        ctx.res.write(`id: ${heartbeatSequence}\nevent: heartbeat\ndata: ${JSON.stringify({ sequence: heartbeatSequence, latest_message_id: null, latest_sequence: this._getCurrentSequence(expert_id, user_id) })}\n\n`);
       }
     };
     

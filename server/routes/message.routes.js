@@ -7,7 +7,7 @@
  */
 
 import Router from '@koa/router';
-import { authenticate, optionalAuth, requireAdmin } from '../middlewares/auth.js';
+import { authenticate, requireAdmin } from '../middlewares/auth.js';
 
 export default (controller) => {
   const router = new Router({ prefix: '/api/messages' });
@@ -18,8 +18,11 @@ export default (controller) => {
   // 获取指定消息及其之前的 N 条消息（需要认证）- 用于 SSE 完成后获取真实消息
   router.get('/expert/:expertId/with-before/:messageId', authenticate(), controller.listWithBefore.bind(controller));
 
+  // 按游标增量获取消息（需要认证）
+  router.get('/expert/:expertId/since', authenticate(), controller.listSince.bind(controller));
+
   // 获取消息列表（旧 API，按 topic，保留兼容）
-  router.get('/', optionalAuth(), controller.list.bind(controller));
+  router.get('/', authenticate(), controller.list.bind(controller));
 
   // 获取单条消息详情（需要认证）
   router.get('/:id', authenticate(), controller.get.bind(controller));

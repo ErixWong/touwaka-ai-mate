@@ -123,7 +123,7 @@ export const messageApi = {
     task_id?: string;
     working_path?: string;  // 当前工作目录路径（任务模式下的浏览路径或技能目录路径）
   }) =>
-    apiRequest<{ message: string; topic_id: string }>(apiClient.post('/chat', data)),
+    apiRequest<{ request_id: string; topic_id: string }>(apiClient.post('/chat', data)),
 
   // 删除消息
   deleteMessage: (topic_id: string, message_id: string) =>
@@ -134,12 +134,18 @@ export const messageApi = {
     apiRequest<{ message: string; deleted_messages_count: number; deleted_topics_count: number }>(apiClient.delete(`/messages/expert/${expert_id}`)),
 
   // 停止生成
-  stopGeneration: (expert_id: string) =>
-    apiRequest<{ success: boolean }>(apiClient.post('/chat/stop', { expert_id })),
+  stopGeneration: (request_id: string) =>
+    apiRequest<{ success: boolean; aborted: boolean; request_id: string }>(apiClient.post('/chat/stop', { request_id })),
 
   // 获取指定消息及其之前的 N 条消息（用于 SSE 完成后获取真实消息，包括 tool 消息）
   getMessagesWithBefore: (expert_id: string, message_id: string, params?: { limit?: number }) =>
     apiRequest<Message[]>(apiClient.get(`/messages/expert/${expert_id}/with-before/${message_id}`, { params })),
+
+  // 增量获取指定游标之后的消息
+  getMessagesSince: (expert_id: string, params?: { after_message_id?: string; limit?: number }) =>
+    apiRequest<{ items: Message[]; latest_message_id: string | null; has_more: boolean }>(
+      apiClient.get(`/messages/expert/${expert_id}/since`, { params })
+    ),
 }
 
 // 模型相关 API
