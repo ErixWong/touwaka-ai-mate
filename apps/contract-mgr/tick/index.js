@@ -89,6 +89,66 @@ function parseLlmResponse(response) {
   try { return JSON.parse(match[0]); } catch { return null; }
 }
 
+function splitTextIntoChunks(text, maxLength) {
+  if (!text || text.length <= maxLength) {
+    return [text];
+  }
+
+  const paragraphs = text.split('\n\n');
+  const chunks = [];
+  let current = '';
+
+  for (const paragraph of paragraphs) {
+    if (current.length + paragraph.length + 2 <= maxLength) {
+      current += `${current ? '\n\n' : ''}${paragraph}`;
+      continue;
+    }
+
+    if (current) {
+      chunks.push(current);
+    }
+
+    if (paragraph.length <= maxLength) {
+      current = paragraph;
+      continue;
+    }
+
+    let remaining = paragraph;
+    while (remaining.length > maxLength) {
+      chunks.push(remaining.slice(0, maxLength));
+      remaining = remaining.slice(maxLength);
+    }
+
+    current = remaining;
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks.length ? chunks : [text];
+}
+
+async function filterTextByChunks(recordId, services, prompt, text, options) {
+  const maxLength = options.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
+  const chunks = splitTextIntoChunks(text, maxLength);
+  logger.info(`[contract-mgr tick] Filter input length=${text.length}, chunk_max_length=${maxLength}, chunks=${chunks.length}`);
+
+  const results = [];
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index];
+    const chunkPrompt = chunks.length > 1
+      ? `${prompt}\n\n这是第 ${index + 1}/${chunks.length} 段，请只返回清洗后的正文，不要解释，不要补充原文中不存在的内容。`
+      : prompt;
+
+    logger.info(`[contract-mgr tick] Filtering chunk ${index + 1}/${chunks.length} for ${recordId}, length=${chunk.length}`);
+    const filteredChunk = await services.llm.generateText(chunkPrompt, chunk, options);
+    results.push(filteredChunk || chunk);
+  }
+
+  return results.join('\n\n');
+}
+
 async function getFiles(services, recordId) {
   const MiniAppFile = services.getModel('mini_app_file');
   const Attachment = services.getModel('attachment');
@@ -260,12 +320,15 @@ async function handleFilter(record, app, services) {
   const ocrText = contentRows[0].ocr_text;
   const config = getConfig(app, 'pending_filter');
   const filterPrompt = '去除页码、水印、乱码，保留正文';
+  const timeout = config.timeout_ms ?? 600000;
+  const chunkMaxLength = config.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
   
   try {
-    const filteredText = await services.llm.generateText(filterPrompt, ocrText, {
+    const filteredText = await filterTextByChunks(record.id, services, filterPrompt, ocrText, {
       modelId: config.model_id || null,
       temperature: config.temperature || 0.3,
-      timeout: config.timeout_ms ?? 600000,
+      timeout,
+      chunk_max_length: chunkMaxLength,
     }) || ocrText;
     
     await services.execute(
@@ -274,7 +337,7 @@ async function handleFilter(record, app, services) {
     );
     
     await updateStatus(services, record.id, 'pending_extract');
-    logger.info(`[contract-mgr tick] Filter completed, length=${filteredText.length}`);
+    logger.info(`[contract-mgr tick] Filter completed, timeout=${timeout}, length=${filteredText.length}`);
   } catch (e) {
     logger.error(`[contract-mgr tick] Filter failed: ${e.message}`);
     await updateStatus(services, record.id, 'filter_failed');
