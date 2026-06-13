@@ -111,7 +111,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
-import { getDisplayableLogoIcon, getBrandingAppName } from '@/utils/branding'
+import { getDisplayableLogoIcon, getBrandingAppName, DEFAULT_BRANDING_APP_NAME } from '@/utils/branding'
 import LangSelector from '@/components/common/LangSelector.vue'
 import { getRegistrationConfig, verifyInvitationCode, register, type VerifyResult } from '@/api/invitation'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -123,7 +123,7 @@ const userStore = useUserStore()
 const systemSettingsStore = useSystemSettingsStore()
 const formRef = ref<FormInstance>()
 
-const brandingAppName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, t('app.title')))
+const brandingAppName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, DEFAULT_BRANDING_APP_NAME))
 const brandingLogoIcon = computed(() => getDisplayableLogoIcon(systemSettingsStore.brandingSettings?.logo_icon))
 
 const form = reactive({
@@ -175,12 +175,10 @@ const isSubmitDisabled = computed(() => {
 
 // 加载注册配置
 onMounted(async () => {
-  systemSettingsStore.loadBranding()
   try {
     const config = await getRegistrationConfig()
     allowSelfRegistration.value = config.allowSelfRegistration
 
-    // 从 URL 参数获取邀请码
     const codeFromUrl = route.query.code as string
     if (codeFromUrl) {
       form.invitation_code = codeFromUrl

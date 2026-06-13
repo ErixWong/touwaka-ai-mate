@@ -3,6 +3,7 @@ import { useUserStore } from '@/stores/user'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { getLocale, i18n } from '@/i18n'
 import { ElMessageBox } from 'element-plus'
+import { getBrandingAppName, DEFAULT_BRANDING_APP_NAME } from '@/utils/branding'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -216,7 +217,7 @@ router.beforeEach(async (to, from) => {
     await systemSettingsStore.loadBranding()
   }
 
-  const appName = systemSettingsStore.brandingSettings?.app_name || 'Touwaka Mate'
+  const appName = getBrandingAppName(systemSettingsStore.brandingSettings, DEFAULT_BRANDING_APP_NAME)
   document.title = to.meta.title ? `${to.meta.title} - ${appName}` : appName
   document.documentElement.setAttribute('lang', getLocale())
 })

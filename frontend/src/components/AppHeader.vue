@@ -86,6 +86,7 @@ import { useUserStore } from '@/stores/user'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
 import { useI18n } from 'vue-i18n'
 import type { Locale } from '@/i18n'
+import { getDisplayableLogoIcon, getBrandingAppName, DEFAULT_BRANDING_APP_NAME, DEFAULT_BRANDING_LOGO_ICON } from '@/utils/branding'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,8 +94,8 @@ const userStore = useUserStore()
 const systemSettingsStore = useSystemSettingsStore()
 const { locale } = useI18n()
 
-const appName = computed(() => systemSettingsStore.brandingSettings?.app_name || 'Touwaka Mate')
-const appIcon = computed(() => systemSettingsStore.brandingSettings?.logo_icon || '🤖')
+const appName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, DEFAULT_BRANDING_APP_NAME))
+const appIcon = computed(() => getDisplayableLogoIcon(systemSettingsStore.brandingSettings?.logo_icon, DEFAULT_BRANDING_LOGO_ICON))
 
 const showUserMenu = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
