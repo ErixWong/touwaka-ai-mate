@@ -2,10 +2,13 @@
   <div class="login-view">
     <div class="login-shell">
       <section class="login-brand-panel">
-        <div class="brand-badge">{{ $t('login.brand.badge') }}</div>
+        <div class="brand-badge">
+          <span v-if="brandingLogoIcon" class="brand-badge-icon">{{ brandingLogoIcon }}</span>
+          {{ $t('login.brand.badge') }}
+        </div>
         <div class="brand-copy">
-          <p class="brand-eyebrow">{{ $t('login.brand.eyebrow') }}</p>
-          <h1 class="brand-title">{{ $t('login.brand.title') }}</h1>
+          <h1 class="brand-title">{{ brandingAppName }}</h1>
+          <p class="brand-slogan">{{ $t('login.brand.title') }}</p>
           <p class="brand-description">
             {{ $t('login.brand.description') }}
           </p>
@@ -106,17 +109,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
+import { useSystemSettingsStore } from '@/stores/systemSettings'
+import { getDisplayableLogoIcon, getBrandingAppName } from '@/utils/branding'
 import LangSelector from '@/components/common/LangSelector.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
 const { t } = useI18n()
 const userStore = useUserStore()
+const systemSettingsStore = useSystemSettingsStore()
 const formRef = ref<FormInstance>()
+
+const brandingAppName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, t('login.brand.eyebrow')))
+const brandingLogoIcon = computed(() => getDisplayableLogoIcon(systemSettingsStore.brandingSettings?.logo_icon))
 
 const form = reactive({
   account: '',
@@ -130,6 +139,10 @@ const rules = reactive<FormRules>({
 
 const loading = ref(false)
 const error = ref('')
+
+onMounted(() => {
+  systemSettingsStore.loadBranding()
+})
 
 const handleLogin = async () => {
   if (!formRef.value) return
@@ -205,18 +218,18 @@ const handleLogin = async () => {
   color: #c4b5fd;
   background: rgba(76, 29, 149, 0.28);
   border: 1px solid rgba(196, 181, 253, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand-badge-icon {
+  font-size: 16px;
+  line-height: 1;
 }
 
 .brand-copy {
   margin-top: 32px;
-}
-
-.brand-eyebrow {
-  margin: 0 0 12px;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #93c5fd;
 }
 
 .brand-title {
@@ -225,6 +238,14 @@ const handleLogin = async () => {
   line-height: 1.08;
   font-weight: 700;
   max-width: 10ch;
+}
+
+.brand-slogan {
+  margin: 12px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.9);
+  letter-spacing: 0.02em;
 }
 
 .brand-description {

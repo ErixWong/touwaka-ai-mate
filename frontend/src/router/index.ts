@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
-import { getLocale } from '@/i18n'
+import { getLocale, i18n } from '@/i18n'
+import { ElMessageBox } from 'element-plus'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -194,6 +195,23 @@ router.beforeEach(async (to, from) => {
   }
 
   const systemSettingsStore = useSystemSettingsStore()
+
+  if (from.meta.settingsTab === 'system' && to.name !== 'sys-config' && systemSettingsStore.unsavedConfigChanges) {
+    try {
+      await ElMessageBox.confirm(
+        i18n.global.t('settings.unsavedChangesConfirm'),
+        i18n.global.t('common.confirm'),
+        {
+          confirmButtonText: i18n.global.t('common.confirm'),
+          cancelButtonText: i18n.global.t('common.cancel'),
+          type: 'warning',
+        }
+      )
+    } catch {
+      return false
+    }
+  }
+
   if (!systemSettingsStore.brandingLoaded) {
     await systemSettingsStore.loadBranding()
   }

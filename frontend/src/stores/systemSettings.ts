@@ -69,6 +69,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   const brandingLoaded = ref(false)
+  const unsavedConfigChanges = ref(false)
   let brandingPromise: Promise<BrandingSettings> | null = null
 
   // 默认配置（用于初始化）
@@ -260,6 +261,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     registrationSettings,
     brandingSettings,
     brandingLoaded,
+    unsavedConfigChanges,
     loadSettings,
     loadRuntimeSettings,
     updateSettings,
