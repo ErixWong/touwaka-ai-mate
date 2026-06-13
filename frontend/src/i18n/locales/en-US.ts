@@ -213,6 +213,7 @@ export default {
     apiKey: 'API Key',
     notifications: 'Notifications',
     saveSuccess: 'Settings saved',
+    cannotSaveNotLoaded: 'Cannot save: settings not loaded from server',
     save: 'Save',
     modelAndProvider: 'Models & Providers',
     modelSettings: 'Model Settings',

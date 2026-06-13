@@ -324,23 +324,22 @@ class SystemSettingService {
    */
   async getRegistrationConfig() {
     const settings = await this.getAllSettings();
-    return settings.registration || {
-      allow_self_registration: false,
-      default_invitation_quota: 1,
-      default_invitation_max_uses: 5,
-      invitation_expiry_days: 0,
-    };
+    // 统一从 DEFAULT_SETTINGS 派生默认值，避免内联漂移
+    const defaults = {};
+    for (const [key, config] of Object.entries(DEFAULT_SETTINGS.registration)) {
+      defaults[key] = config.value;
+    }
+    return settings.registration || defaults;
   }
 
   async getAppConfig() {
     const settings = await this.getAllSettings();
-    return settings.app || {
-      clock_interval: 30,
-      batch_size: 10,
-      max_concurrency: 5,
-      text_filter_max_length: 50000,
-      attachment_base_path: './data/attachments',
-    };
+    // 统一从 DEFAULT_SETTINGS 派生默认值，避免内联漂移
+    const defaults = {};
+    for (const [key, config] of Object.entries(DEFAULT_SETTINGS.app)) {
+      defaults[key] = config.value;
+    }
+    return settings.app || defaults;
   }
 
   clearCache() {

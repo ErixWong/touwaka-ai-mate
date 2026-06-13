@@ -213,6 +213,7 @@ export default {
     apiKey: 'API 密钥',
     notifications: '通知设置',
     saveSuccess: '设置已保存',
+    cannotSaveNotLoaded: '无法保存：配置未从服务器加载',
     save: '保存',
     modelAndProvider: '模型与提供商',
     modelSettings: '模型设置',
