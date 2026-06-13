@@ -350,51 +350,75 @@ const toast = useToastStore()
 const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | 'timeout' | 'tool' | 'app' | 'packages' | 'branding'>('general')
 const saving = ref(false)
 
-const createDefaultForm = () => ({
-  llm: { context_threshold: 0.7, temperature: 0.7, reflective_temperature: 0.3, top_p: 1, frequency_penalty: 0, presence_penalty: 0 },
-  registration: { allow_self_registration: true, default_invitation_quota: 10, default_invitation_max_uses: 5, invitation_expiry_days: 30 },
-  connection: { max_per_user: 5, max_per_expert: 100 },
-  token: { access_expiry: '15m', refresh_expiry: '7d' },
-  timeout: { vm_execution: 30, python_execution: 300, skill_call: 60, skill_http: 180, resident_skill: 300, remote_llm: 120, chat_idle: 300 },
-  tool: { max_rounds: 20 },
-  app: { clock_interval: 30, batch_size: 10, max_concurrency: 5, text_filter_max_length: 50000, attachment_base_path: './data/attachments', max_upload_size: 50 },
-  branding: { app_name: 'Touwaka Mate', logo_icon: '🤖' },
+// 表单基线：记录最近一次成功加载/保存后的状态，用于判断是否有改动
+const baselineSettings = ref<any>(null)
+
+// 空结构占位（仅用于表单初始化，不定义业务默认值）
+// 默认值权威来源在后端 /system-settings 接口
+const createEmptyForm = () => ({
+  llm: { context_threshold: 0, temperature: 0, reflective_temperature: 0, top_p: 0, frequency_penalty: 0, presence_penalty: 0 },
+  registration: { allow_self_registration: false, default_invitation_quota: 0, default_invitation_max_uses: 0, invitation_expiry_days: 0 },
+  connection: { max_per_user: 0, max_per_expert: 0 },
+  token: { access_expiry: '', refresh_expiry: '' },
+  timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, remote_llm: 0, chat_idle: 0 },
+  tool: { max_rounds: 0 },
+  app: { clock_interval: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
+  branding: { app_name: '', logo_icon: '' },
 })
 
-const form = reactive(createDefaultForm())
-
-const defaults = createDefaultForm()
+const form = reactive(createEmptyForm())
 
 const hasChanges = computed(() => {
-  const settings = systemSettingsStore.settings
-  if (!settings) return false
-  return JSON.stringify(form) !== JSON.stringify({
-    llm: { context_threshold: settings.llm?.context_threshold ?? 0.7, temperature: settings.llm?.temperature ?? 0.7, reflective_temperature: settings.llm?.reflective_temperature ?? 0.3, top_p: settings.llm?.top_p ?? 1, frequency_penalty: settings.llm?.frequency_penalty ?? 0, presence_penalty: settings.llm?.presence_penalty ?? 0 },
-    registration: { allow_self_registration: settings.registration?.allow_self_registration ?? true, default_invitation_quota: settings.registration?.default_invitation_quota ?? 10, default_invitation_max_uses: settings.registration?.default_invitation_max_uses ?? 5, invitation_expiry_days: settings.registration?.invitation_expiry_days ?? 30 },
-    connection: { max_per_user: settings.connection?.max_per_user ?? 5, max_per_expert: settings.connection?.max_per_expert ?? 100 },
-    token: { access_expiry: settings.token?.access_expiry ?? '15m', refresh_expiry: settings.token?.refresh_expiry ?? '7d' },
-    timeout: { vm_execution: settings.timeout?.vm_execution ?? 30, python_execution: settings.timeout?.python_execution ?? 300, skill_call: settings.timeout?.skill_call ?? 60, skill_http: settings.timeout?.skill_http ?? 180, resident_skill: settings.timeout?.resident_skill ?? 300, remote_llm: settings.timeout?.remote_llm ?? 120, chat_idle: settings.timeout?.chat_idle ?? 300 },
-    tool: { max_rounds: settings.tool?.max_rounds ?? 20 },
-    app: { clock_interval: settings.app?.clock_interval ?? 30, batch_size: settings.app?.batch_size ?? 10, max_concurrency: settings.app?.max_concurrency ?? 5, text_filter_max_length: settings.app?.text_filter_max_length ?? 50000, attachment_base_path: settings.app?.attachment_base_path ?? './data/attachments', max_upload_size: settings.app?.max_upload_size ?? 50 },
-    branding: { app_name: settings.branding?.app_name ?? 'Touwaka Mate', logo_icon: settings.branding?.logo_icon ?? '🤖' },
-  })
+  if (!baselineSettings.value) return false
+  return JSON.stringify(form) !== JSON.stringify(baselineSettings.value)
 })
 
-const resetSection = (section: string) => {
-  Object.assign(form[section as keyof typeof form], structuredClone(defaults[section as keyof typeof defaults]))
+const resetSection = async (section: string) => {
+  // 重置需要后端权威默认值，调用 reset 接口
+  try {
+    await systemSettingsStore.resetSettings([section])
+    await systemSettingsStore.loadSettings()
+    const settings = systemSettingsStore.settings
+    if (settings) {
+      Object.assign(form[section as keyof typeof form], settings[section as keyof typeof settings] || {})
+      baselineSettings.value = JSON.parse(JSON.stringify(form))
+    }
+    toast.success(t('settings.resetSuccess'))
+  } catch (error) {
+    console.error('Failed to reset section:', error)
+    toast.error(t('settings.resetFailed'))
+  }
 }
 
-const resetAll = () => {
-  const freshDefaults = createDefaultForm()
-  for (const key of Object.keys(freshDefaults) as Array<keyof typeof freshDefaults>) {
-    Object.assign(form[key], structuredClone(freshDefaults[key]))
+const resetAll = async () => {
+  try {
+    await systemSettingsStore.resetSettings()
+    await systemSettingsStore.loadSettings()
+    const settings = systemSettingsStore.settings
+    if (settings) {
+      for (const key of Object.keys(form) as Array<keyof typeof form>) {
+        Object.assign(form[key], settings[key] || {})
+      }
+      baselineSettings.value = JSON.parse(JSON.stringify(form))
+    }
+    toast.success(t('settings.resetSuccess'))
+  } catch (error) {
+    console.error('Failed to reset all:', error)
+    toast.error(t('settings.resetFailed'))
   }
 }
 
 const saveConfig = async () => {
+  // 检查是否已成功从后端加载，禁止保存占位结构
+  if (!systemSettingsStore.loadedFromBackend) {
+    toast.error(t('settings.cannotSaveNotLoaded'))
+    return
+  }
   saving.value = true
   try {
     await systemSettingsStore.updateSettings(form)
+    // 保存成功后更新基线，用于后续变更判断
+    baselineSettings.value = JSON.parse(JSON.stringify(form))
     toast.success(t('settings.saveSuccess'))
   } catch (error) {
     console.error('Failed to save settings:', error)
@@ -413,38 +437,23 @@ const handleBeforeUnload = (event: BeforeUnloadEvent) => {
 onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   await systemSettingsStore.loadSettings()
+  // 检查是否成功从后端加载，只有成功加载才填充表单和基线
+  if (!systemSettingsStore.loadedFromBackend) {
+    console.error('[SystemConfigTab] Failed to load settings from backend, cannot initialize form')
+    return
+  }
   const settings = systemSettingsStore.settings
   if (settings) {
-    form.llm.context_threshold = settings.llm?.context_threshold ?? 0.7
-    form.llm.temperature = settings.llm?.temperature ?? 0.7
-    form.llm.reflective_temperature = settings.llm?.reflective_temperature ?? 0.3
-    form.llm.top_p = settings.llm?.top_p ?? 1
-    form.llm.frequency_penalty = settings.llm?.frequency_penalty ?? 0
-    form.llm.presence_penalty = settings.llm?.presence_penalty ?? 0
-    form.registration.allow_self_registration = settings.registration?.allow_self_registration ?? true
-    form.registration.default_invitation_quota = settings.registration?.default_invitation_quota ?? 10
-    form.registration.default_invitation_max_uses = settings.registration?.default_invitation_max_uses ?? 5
-    form.registration.invitation_expiry_days = settings.registration?.invitation_expiry_days ?? 30
-    form.connection.max_per_user = settings.connection?.max_per_user ?? 5
-    form.connection.max_per_expert = settings.connection?.max_per_expert ?? 100
-    form.token.access_expiry = settings.token?.access_expiry ?? '15m'
-    form.token.refresh_expiry = settings.token?.refresh_expiry ?? '7d'
-    form.timeout.vm_execution = settings.timeout?.vm_execution ?? 30
-    form.timeout.python_execution = settings.timeout?.python_execution ?? 300
-    form.timeout.skill_call = settings.timeout?.skill_call ?? 60
-    form.timeout.skill_http = settings.timeout?.skill_http ?? 180
-    form.timeout.resident_skill = settings.timeout?.resident_skill ?? 300
-    form.timeout.remote_llm = settings.timeout?.remote_llm ?? 120
-    form.timeout.chat_idle = settings.timeout?.chat_idle ?? 300
-    form.tool.max_rounds = settings.tool?.max_rounds ?? 20
-    form.app.clock_interval = settings.app?.clock_interval ?? 30
-    form.app.batch_size = settings.app?.batch_size ?? 10
-    form.app.max_concurrency = settings.app?.max_concurrency ?? 5
-    form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
-    form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
-    form.app.max_upload_size = settings.app?.max_upload_size ?? 50
-    form.branding.app_name = settings.branding?.app_name ?? 'Touwaka Mate'
-    form.branding.logo_icon = settings.branding?.logo_icon ?? '🤖'
+    // 直接使用接口返回值填充表单，不再使用硬编码默认值
+    Object.assign(form.llm, settings.llm || {})
+    Object.assign(form.registration, settings.registration || {})
+    Object.assign(form.connection, settings.connection || {})
+    Object.assign(form.token, settings.token || {})
+    Object.assign(form.timeout, settings.timeout || {})
+    Object.assign(form.tool, settings.tool || {})
+    Object.assign(form.app, settings.app || {})
+    Object.assign(form.branding, settings.branding || {})
+    baselineSettings.value = JSON.parse(JSON.stringify(form))
   }
 })
 
@@ -458,37 +467,19 @@ watch(hasChanges, (val) => {
 })
 
 watch(() => systemSettingsStore.settings, (settings) => {
+  // 只有成功从后端加载才更新表单和基线
+  if (!systemSettingsStore.loadedFromBackend) return
   if (settings) {
-    form.llm.context_threshold = settings.llm?.context_threshold ?? 0.7
-    form.llm.temperature = settings.llm?.temperature ?? 0.7
-    form.llm.reflective_temperature = settings.llm?.reflective_temperature ?? 0.3
-    form.llm.top_p = settings.llm?.top_p ?? 1
-    form.llm.frequency_penalty = settings.llm?.frequency_penalty ?? 0
-    form.llm.presence_penalty = settings.llm?.presence_penalty ?? 0
-    form.registration.allow_self_registration = settings.registration?.allow_self_registration ?? true
-    form.registration.default_invitation_quota = settings.registration?.default_invitation_quota ?? 10
-    form.registration.default_invitation_max_uses = settings.registration?.default_invitation_max_uses ?? 5
-    form.registration.invitation_expiry_days = settings.registration?.invitation_expiry_days ?? 30
-    form.connection.max_per_user = settings.connection?.max_per_user ?? 5
-    form.connection.max_per_expert = settings.connection?.max_per_expert ?? 100
-    form.token.access_expiry = settings.token?.access_expiry ?? '15m'
-    form.token.refresh_expiry = settings.token?.refresh_expiry ?? '7d'
-    form.timeout.vm_execution = settings.timeout?.vm_execution ?? 30
-    form.timeout.python_execution = settings.timeout?.python_execution ?? 300
-    form.timeout.skill_call = settings.timeout?.skill_call ?? 60
-    form.timeout.skill_http = settings.timeout?.skill_http ?? 180
-    form.timeout.resident_skill = settings.timeout?.resident_skill ?? 300
-    form.timeout.remote_llm = settings.timeout?.remote_llm ?? 120
-    form.timeout.chat_idle = settings.timeout?.chat_idle ?? 300
-    form.tool.max_rounds = settings.tool?.max_rounds ?? 20
-    form.app.clock_interval = settings.app?.clock_interval ?? 30
-    form.app.batch_size = settings.app?.batch_size ?? 10
-    form.app.max_concurrency = settings.app?.max_concurrency ?? 5
-    form.app.text_filter_max_length = settings.app?.text_filter_max_length ?? 50000
-    form.app.attachment_base_path = settings.app?.attachment_base_path ?? './data/attachments'
-    form.app.max_upload_size = settings.app?.max_upload_size ?? 50
-    form.branding.app_name = settings.branding?.app_name ?? 'Touwaka Mate'
-    form.branding.logo_icon = settings.branding?.logo_icon ?? '🤖'
+    // 直接使用接口返回值更新表单，不再使用硬编码默认值
+    Object.assign(form.llm, settings.llm || {})
+    Object.assign(form.registration, settings.registration || {})
+    Object.assign(form.connection, settings.connection || {})
+    Object.assign(form.token, settings.token || {})
+    Object.assign(form.timeout, settings.timeout || {})
+    Object.assign(form.tool, settings.tool || {})
+    Object.assign(form.app, settings.app || {})
+    Object.assign(form.branding, settings.branding || {})
+    baselineSettings.value = JSON.parse(JSON.stringify(form))
   }
 }, { deep: true })
 </script>

@@ -5,7 +5,7 @@
  */
 
 import logger from '../../lib/logger.js';
-import { getSystemSettingService } from '../services/system-setting.service.js';
+import { getSystemSettingService, DEFAULT_SETTINGS as SERVICE_DEFAULTS } from '../services/system-setting.service.js';
 import {
   DOC_PIPELINE_KEYS,
   getStageDefault,
@@ -13,55 +13,15 @@ import {
   isOcrStage,
 } from '../../lib/doc-pipeline-defaults.js';
 
-const DEFAULT_SETTINGS = {
-  llm: {
-    context_threshold: 0.70,
-    temperature: 0.70,
-    reflective_temperature: 0.30,
-    top_p: 1.0,
-    frequency_penalty: 0.0,
-    presence_penalty: 0.0,
-    // Note: max_tokens 不在系统设置中管理，由模型表和专家配置决定
-  },
-  connection: {
-    max_per_user: 5,
-    max_per_expert: 100,
-  },
-  token: {
-    access_expiry: '15m',
-    refresh_expiry: '7d',
-  },
-  timeout: {
-    vm_execution: 30,       // VM 执行超时（秒）
-    python_execution: 300,  // Python 执行超时（秒）
-    skill_call: 60,         // 技能调用超时（秒）
-    skill_http: 180,        // 技能 HTTP 调用超时（秒）
-    resident_skill: 300,    // 驻留技能超时（秒）
-    remote_llm: 120,        // 远程 LLM 调用超时（秒）
-    chat_idle: 300,         // 聊天空闲超时（秒）
-  },
-  tool: {
-    max_rounds: 20,         // 最大工具调用轮数
-  },
-  registration: {
-    allow_self_registration: false,    // 是否允许自主注册
-    default_invitation_quota: 1,       // 默认邀请配额
-    default_invitation_max_uses: 5,    // 默认邀请码最大使用次数
-    invitation_expiry_days: 0,         // 邀请码有效期（天）
-  },
-  app: {
-    clock_interval: 30,                // AppClock 轮询间隔（秒）
-    batch_size: 10,                    // 每批处理记录数量
-    max_concurrency: 5,                // 最大并发处理数
-    text_filter_max_length: 50000,     // 文本过滤最大长度（字符）
-    attachment_base_path: './data/attachments', // 附件存储路径
-    max_upload_size: 50,               // 附件上传大小限制（MB）
-  },
-  branding: {
-    app_name: 'Touwaka Mate',
-    logo_icon: '🤖',
-  },
-};
+// 从服务层导出的 DEFAULT_SETTINGS 提取扁平默认值（用于控制器 reset 等场景）
+// 服务层是权威来源，控制器不独立维护默认值定义
+const DEFAULT_SETTINGS = {};
+for (const [section, keys] of Object.entries(SERVICE_DEFAULTS)) {
+  DEFAULT_SETTINGS[section] = {};
+  for (const [key, config] of Object.entries(keys)) {
+    DEFAULT_SETTINGS[section][key] = config.value;
+  }
+}
 
 class SystemSettingController {
   constructor(db) {
