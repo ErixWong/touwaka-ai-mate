@@ -85,7 +85,13 @@ class SystemSettingController {
       if (parts.length === 2) {
         const [section, key] = parts;
         if (result[section] && key in result[section]) {
-          result[section][key] = this._parseValue(record.setting_value, record.value_type);
+          const defaultType = typeof DEFAULT_SETTINGS[section][key];
+          let effectiveType = record.value_type;
+          if (defaultType === 'boolean' && record.value_type === 'string' &&
+              (record.setting_value === 'true' || record.setting_value === 'false')) {
+            effectiveType = 'boolean';
+          }
+          result[section][key] = this._parseValue(record.setting_value, effectiveType);
         }
       }
     }
@@ -96,6 +102,12 @@ class SystemSettingController {
     if (type === 'number') return parseFloat(value);
     if (type === 'boolean') return value === 'true';
     return value;
+  }
+
+  _getValueType(value) {
+    if (typeof value === 'number') return 'number';
+    if (typeof value === 'boolean') return 'boolean';
+    return 'string';
   }
 
   _flattenSettings(obj, prefix = '') {
@@ -147,7 +159,7 @@ class SystemSettingController {
       const updates = ctx.request.body;
       const flatUpdates = this._flattenSettings(updates);
       for (const [key, value] of Object.entries(flatUpdates)) {
-        const valueType = typeof value === 'number' ? 'number' : 'string';
+        const valueType = this._getValueType(value);
         await this.SystemSetting.upsert({
           setting_key: key,
           setting_value: String(value),
@@ -288,7 +300,7 @@ class SystemSettingController {
       const { keys, all } = ctx.request.body;
       if (all) {
         for (const [key, value] of Object.entries(this._flattenSettings(DEFAULT_SETTINGS))) {
-          const valueType = typeof value === 'number' ? 'number' : 'string';
+          const valueType = this._getValueType(value);
           await this.SystemSetting.upsert({
             setting_key: key,
             setting_value: String(value),
@@ -300,7 +312,7 @@ class SystemSettingController {
         for (const key of keys) {
           const defaultValue = this._getNestedValue(DEFAULT_SETTINGS, key);
           if (defaultValue !== undefined) {
-            const valueType = typeof defaultValue === 'number' ? 'number' : 'string';
+            const valueType = this._getValueType(defaultValue);
             await this.SystemSetting.upsert({
               setting_key: key,
               setting_value: String(defaultValue),
