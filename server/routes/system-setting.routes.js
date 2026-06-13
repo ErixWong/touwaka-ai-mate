@@ -16,6 +16,10 @@ export default (db) => {
   router.put('/', authenticate(), (ctx) => controller.update(ctx));
   router.post('/reset', authenticate(), (ctx) => controller.reset(ctx));
 
+  router.get('/doc-pipeline', authenticate(), (ctx) => controller.getDocPipeline(ctx));
+  router.put('/doc-pipeline', authenticate(), (ctx) => controller.updateDocPipeline(ctx));
+  router.post('/doc-pipeline/reset', authenticate(), (ctx) => controller.resetDocPipeline(ctx));
+
   return router;
 };
 

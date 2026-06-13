@@ -6,6 +6,12 @@
 
 import logger from '../../lib/logger.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
+import {
+  DOC_PIPELINE_KEYS,
+  getStageDefault,
+  mergeWithDefaults,
+  isOcrStage,
+} from '../../lib/doc-pipeline-defaults.js';
 
 const DEFAULT_SETTINGS = {
   llm: {
@@ -158,6 +164,121 @@ class SystemSettingController {
     } catch (error) {
       logger.error('Update system settings error:', error);
       ctx.app.emit('error', error, ctx);
+    }
+  }
+
+  async getDocPipeline(ctx) {
+    if (!this._checkAdmin(ctx)) return;
+    try {
+      const records = await this.SystemSetting.findAll({
+        where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+        raw: true,
+      });
+      const stored = {};
+      for (const record of records) {
+        const stageKey = record.setting_key.replace('doc_pipeline.', '');
+        try {
+          stored[stageKey] = JSON.parse(record.setting_value);
+        } catch {
+          stored[stageKey] = null;
+        }
+      }
+      const result = mergeWithDefaults(stored);
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Get doc pipeline config error:', error);
+      ctx.error('获取文档预处理配置失败', 500);
+    }
+  }
+
+  async updateDocPipeline(ctx) {
+    if (!this._checkAdmin(ctx)) return;
+    try {
+      const body = ctx.request.body || {};
+      const config = mergeWithDefaults(body);
+
+      for (const key of DOC_PIPELINE_KEYS) {
+        if (isOcrStage(key)) {
+          const stage = config[key];
+          if (stage.type && stage.type !== 'mcp') {
+            ctx.error(`阶段 ${key} 执行方式必须为 mcp`, 400);
+            return;
+          }
+          if (stage.enabled === false) {
+            ctx.error(`阶段 ${key} 必须启用`, 400);
+            return;
+          }
+        }
+      }
+
+      for (const key of DOC_PIPELINE_KEYS) {
+        const settingKey = `doc_pipeline.${key}`;
+        const value = config[key] || getStageDefault(key);
+        await this.SystemSetting.upsert({
+          setting_key: settingKey,
+          setting_value: JSON.stringify(value),
+          value_type: 'json',
+          description: `文档预处理流水线配置 - ${key}`,
+          updated_at: new Date(),
+        });
+      }
+
+      if (this.systemSettingService) {
+        this.systemSettingService.clearCache();
+      }
+
+      ctx.success(config);
+    } catch (error) {
+      logger.error('Update doc pipeline config error:', error);
+      ctx.error('保存文档预处理配置失败', 500);
+    }
+  }
+
+  async resetDocPipeline(ctx) {
+    if (!this._checkAdmin(ctx)) return;
+    try {
+      const { keys } = ctx.request.body || {};
+      const stageKeys = (keys && Array.isArray(keys) && keys.length > 0)
+        ? keys.filter(k => DOC_PIPELINE_KEYS.includes(k))
+        : DOC_PIPELINE_KEYS;
+
+      const config = {};
+      for (const key of stageKeys) {
+        const settingKey = `doc_pipeline.${key}`;
+        const defaultValue = getStageDefault(key);
+        if (defaultValue !== null) {
+          await this.SystemSetting.upsert({
+            setting_key: settingKey,
+            setting_value: JSON.stringify(defaultValue),
+            value_type: 'json',
+            description: `文档预处理流水线配置 - ${key}`,
+            updated_at: new Date(),
+          });
+        }
+        config[key] = defaultValue;
+      }
+
+      if (this.systemSettingService) {
+        this.systemSettingService.clearCache();
+      }
+
+      const records = await this.SystemSetting.findAll({
+        where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+        raw: true,
+      });
+      const stored = {};
+      for (const record of records) {
+        const stageKey = record.setting_key.replace('doc_pipeline.', '');
+        try {
+          stored[stageKey] = JSON.parse(record.setting_value);
+        } catch {
+          stored[stageKey] = null;
+        }
+      }
+      ctx.success(mergeWithDefaults(stored));
+    } catch (error) {
+      logger.error('Reset doc pipeline config error:', error);
+      ctx.error('重置文档预处理配置失败', 500);
     }
   }
 

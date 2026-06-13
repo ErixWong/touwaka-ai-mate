@@ -14,6 +14,9 @@
         </el-button>
       </template>
       <template #actions>
+        <el-button v-if="isAdmin" size="small" @click="showConfigDialog = true">
+          <el-icon style="margin-right:4px"><Setting /></el-icon>配置
+        </el-button>
         <el-button v-if="activeView === 'collections'" type="primary" @click="showCreateDialog = true">
           新建集合
         </el-button>
@@ -153,28 +156,37 @@
       v-model:visible="showCreateDialog"
       @created="onCreated"
     />
+
+    <DocPipelineConfigDialog v-model="showConfigDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import { useCollectionStore } from '@/stores/collection'
 import { useDocStore } from '@/stores/doc'
+import { useUserStore } from '@/stores/user'
 import ContextHeader from '@/components/docs/ContextHeader.vue'
 import DocSearchBar from '@/components/docs/DocSearchBar.vue'
 import DocStatusBadge from '@/components/docs/DocStatusBadge.vue'
 import CollectionCard from '@/components/docs/CollectionCard.vue'
 import CreateCollectionModal from '@/components/doc-collections/CreateCollectionModal.vue'
+import DocPipelineConfigDialog from '@/components/docs/DocPipelineConfigDialog.vue'
 
 const router = useRouter()
 const collStore = useCollectionStore()
 const docStore = useDocStore()
+const userStore = useUserStore()
+
+const isAdmin = computed(() => userStore.isAdmin)
 
 const activeView = ref<'documents' | 'collections'>('documents')
 const collectionSearch = ref('')
 const showCreateDialog = ref(false)
+const showConfigDialog = ref(false)
 
 const filterDocType = ref('')
 const recallQuery = ref('')
