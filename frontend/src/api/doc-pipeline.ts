@@ -10,13 +10,13 @@ export interface DocPipelineJudge {
 export interface DocPipelineMcpStage {
   enabled: boolean
   type: string
-  mcp?: {
+  mcp: {
     server: string
     tool: string
     params_mapping: Record<string, string>
     params: Record<string, unknown>
   }
-  judge?: DocPipelineJudge
+  judge: DocPipelineJudge
   provider_name?: string
   timeout_ms?: number
   poll_interval_ms?: number

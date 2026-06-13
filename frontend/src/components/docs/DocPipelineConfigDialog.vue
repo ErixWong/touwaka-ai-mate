@@ -34,7 +34,36 @@
               </el-select>
             </el-form-item>
             <el-form-item label="提交工具名">
-              <el-input v-model="form.pending_ocr.mcp.tool" placeholder="create_task_from_file" />
+              <!-- 工具下拉未启用 clearable：OCR 流水线工具为关键配置项，误清空后缺少有效提醒手段，与 McpTargetConfig 参考实现保持一致 -->
+              <el-select
+                v-model="form.pending_ocr.mcp.tool"
+                placeholder="选择工具"
+                filterable
+                :loading="toolCache[form.pending_ocr.mcp.server]?.loading"
+                :disabled="!form.pending_ocr.mcp.server"
+              >
+                <el-option
+                  v-if="form.pending_ocr.mcp.tool && isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)"
+                  :label="`历史值：${form.pending_ocr.mcp.tool}（当前缓存未命中）`"
+                  :value="form.pending_ocr.mcp.tool"
+                  disabled
+                />
+                <el-option
+                  v-for="t in getToolOptions(form.pending_ocr.mcp.server)"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
+              </el-select>
+              <div v-if="form.pending_ocr.mcp.server && toolCache[form.pending_ocr.mcp.server]?.loaded && getToolOptions(form.pending_ocr.mcp.server).length === 0 && !isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint">
+                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+              </div>
+              <div v-if="form.pending_ocr.mcp.tool && isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint tool-stale">
+                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+              </div>
+              <div v-if="form.pending_ocr.mcp.server && toolCache[form.pending_ocr.mcp.server]?.error" class="tool-hint tool-error">
+                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+              </div>
             </el-form-item>
             <el-form-item label="Provider 标识">
               <el-input v-model="form.pending_ocr.provider_name" placeholder="mineru" />
@@ -95,7 +124,35 @@
               </el-select>
             </el-form-item>
             <el-form-item label="查询工具名">
-              <el-input v-model="form.ocr_processing.mcp.tool" placeholder="get_task_status" />
+              <el-select
+                v-model="form.ocr_processing.mcp.tool"
+                placeholder="选择工具"
+                filterable
+                :loading="toolCache[form.ocr_processing.mcp.server]?.loading"
+                :disabled="!form.ocr_processing.mcp.server"
+              >
+                <el-option
+                  v-if="form.ocr_processing.mcp.tool && isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)"
+                  :label="`历史值：${form.ocr_processing.mcp.tool}（当前缓存未命中）`"
+                  :value="form.ocr_processing.mcp.tool"
+                  disabled
+                />
+                <el-option
+                  v-for="t in getToolOptions(form.ocr_processing.mcp.server)"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
+              </el-select>
+              <div v-if="form.ocr_processing.mcp.server && toolCache[form.ocr_processing.mcp.server]?.loaded && getToolOptions(form.ocr_processing.mcp.server).length === 0 && !isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint">
+                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+              </div>
+              <div v-if="form.ocr_processing.mcp.tool && isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint tool-stale">
+                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+              </div>
+              <div v-if="form.ocr_processing.mcp.server && toolCache[form.ocr_processing.mcp.server]?.error" class="tool-hint tool-error">
+                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+              </div>
             </el-form-item>
             <el-form-item label="轮询间隔(ms)">
               <el-input-number v-model="form.ocr_processing.poll_interval_ms" :min="1000" :step="1000" />
@@ -137,13 +194,97 @@
             </el-form-item>
             <el-divider content-position="left">产物工具</el-divider>
             <el-form-item label="默认主产物工具">
-              <el-input v-model="form.ocr_finalize.default_deliverable_tool" placeholder="get_default_deliverable" />
+              <el-select
+                v-model="form.ocr_finalize.default_deliverable_tool"
+                placeholder="选择工具"
+                filterable
+                :loading="toolCache[form.ocr_finalize.mcp.server]?.loading"
+                :disabled="!form.ocr_finalize.mcp.server"
+              >
+                <el-option
+                  v-if="form.ocr_finalize.default_deliverable_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)"
+                  :label="`历史值：${form.ocr_finalize.default_deliverable_tool}（当前缓存未命中）`"
+                  :value="form.ocr_finalize.default_deliverable_tool"
+                  disabled
+                />
+                <el-option
+                  v-for="t in getToolOptions(form.ocr_finalize.mcp.server)"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
+              </el-select>
+              <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint">
+                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+              </div>
+              <div v-if="form.ocr_finalize.default_deliverable_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint tool-stale">
+                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+              </div>
+              <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.error" class="tool-hint tool-error">
+                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+              </div>
             </el-form-item>
             <el-form-item label="交付物列表工具">
-              <el-input v-model="form.ocr_finalize.list_deliverables_tool" placeholder="list_deliverables" />
+              <el-select
+                v-model="form.ocr_finalize.list_deliverables_tool"
+                placeholder="选择工具"
+                filterable
+                :loading="toolCache[form.ocr_finalize.mcp.server]?.loading"
+                :disabled="!form.ocr_finalize.mcp.server"
+              >
+                <el-option
+                  v-if="form.ocr_finalize.list_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)"
+                  :label="`历史值：${form.ocr_finalize.list_deliverables_tool}（当前缓存未命中）`"
+                  :value="form.ocr_finalize.list_deliverables_tool"
+                  disabled
+                />
+                <el-option
+                  v-for="t in getToolOptions(form.ocr_finalize.mcp.server)"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
+              </el-select>
+              <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint">
+                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+              </div>
+              <div v-if="form.ocr_finalize.list_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint tool-stale">
+                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+              </div>
+              <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.error" class="tool-hint tool-error">
+                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+              </div>
             </el-form-item>
             <el-form-item label="图片产物工具">
-              <el-input v-model="form.ocr_finalize.image_deliverables_tool" placeholder="get_image_deliverables" />
+              <el-select
+                v-model="form.ocr_finalize.image_deliverables_tool"
+                placeholder="选择工具"
+                filterable
+                :loading="toolCache[form.ocr_finalize.mcp.server]?.loading"
+                :disabled="!form.ocr_finalize.mcp.server"
+              >
+                <el-option
+                  v-if="form.ocr_finalize.image_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)"
+                  :label="`历史值：${form.ocr_finalize.image_deliverables_tool}（当前缓存未命中）`"
+                  :value="form.ocr_finalize.image_deliverables_tool"
+                  disabled
+                />
+                <el-option
+                  v-for="t in getToolOptions(form.ocr_finalize.mcp.server)"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
+              </el-select>
+              <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint">
+                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+              </div>
+              <div v-if="form.ocr_finalize.image_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint tool-stale">
+                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+              </div>
+              <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.error" class="tool-hint tool-error">
+                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+              </div>
             </el-form-item>
             <el-form-item label="超时(ms)">
               <el-input-number v-model="form.ocr_finalize.timeout_ms" :min="5000" :step="10000" />
@@ -315,6 +456,7 @@
 import { ref, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { docPipelineApi, type DocPipelineConfig } from '@/api/doc-pipeline'
+import { mcpApi, type McpToolCache } from '@/api/services'
 
 const props = defineProps<{
   modelValue: boolean
@@ -377,6 +519,67 @@ const form = reactive<DocPipelineConfig>(JSON.parse(JSON.stringify(defaultForm))
 const mcpServers = ref<{ id: string; name: string; is_enabled: boolean }[]>([])
 const models = ref<{ id: string; model_name: string }[]>([])
 
+interface ToolCacheEntry {
+  tools: McpToolCache[]
+  loading: boolean
+  loaded: boolean
+  error: boolean
+}
+const toolCache = ref<Record<string, ToolCacheEntry>>({})
+
+function getToolOptions(serverName: string): { label: string; value: string; description?: string }[] {
+  const entry = toolCache.value[serverName]
+  if (!entry || !entry.tools.length) return []
+  return entry.tools.map(t => ({
+    label: t.description ? `${t.tool_name} — ${t.description}` : t.tool_name,
+    value: t.tool_name,
+    description: t.description,
+  }))
+}
+
+function isToolValueStale(serverName: string, toolValue: string): boolean {
+  if (!toolValue || !serverName) return false
+  const entry = toolCache.value[serverName]
+  if (!entry || !entry.loaded || entry.error) return false
+  return !entry.tools.some(t => t.tool_name === toolValue)
+}
+
+async function loadToolsForServer(serverName: string) {
+  if (!serverName || !mcpServers.value.length) return
+  if (toolCache.value[serverName]?.loaded) return
+
+  if (!toolCache.value[serverName]) {
+    toolCache.value[serverName] = { tools: [], loading: false, loaded: false, error: false }
+  }
+  toolCache.value[serverName].loading = true
+  toolCache.value[serverName].error = false
+
+  try {
+    const server = mcpServers.value.find(s => s.name === serverName)
+    if (!server) {
+      toolCache.value[serverName].tools = []
+      toolCache.value[serverName].loaded = true
+      return
+    }
+    const res = await mcpApi.getServerTools(server.id)
+    toolCache.value[serverName].tools = res.tools || []
+    toolCache.value[serverName].loaded = true
+    toolCache.value[serverName].error = false
+  } catch {
+    toolCache.value[serverName].error = true
+  } finally {
+    toolCache.value[serverName].loading = false
+  }
+}
+
+async function loadToolsForConfiguredServers() {
+  const servers = new Set<string>()
+  if (form.pending_ocr.mcp?.server) servers.add(form.pending_ocr.mcp.server)
+  if (form.ocr_processing.mcp?.server) servers.add(form.ocr_processing.mcp.server)
+  if (form.ocr_finalize.mcp?.server) servers.add(form.ocr_finalize.mcp.server)
+  await Promise.all([...servers].map(s => loadToolsForServer(s)))
+}
+
 let initialForm = ''
 
 function schemaJson(obj: Record<string, unknown>) {
@@ -389,6 +592,31 @@ function onSchemaInput(val: string, stage: 'pending_ocr' | 'ocr_processing' | 'o
     delete schemaError.value[stage]
   } catch {
     schemaError.value[stage] = 'JSON 格式错误，已保留原值'
+  }
+}
+
+
+async function loadMcpServers() {
+  try {
+    const res = await docPipelineApi.getMcpServers()
+    mcpServers.value = res.servers || []
+  } catch { /* ignore */ }
+}
+
+async function loadModels() {
+  try {
+    models.value = await docPipelineApi.getModels()
+  } catch { /* ignore */ }
+}
+
+async function onOpen() {
+  schemaError.value = {}
+  toolCache.value = {}
+  await loadConfig()
+  await loadMcpServers()
+  await loadModels()
+  if (mcpServers.value.length > 0) {
+    await loadToolsForConfiguredServers()
   }
 }
 
@@ -405,31 +633,37 @@ async function loadConfig() {
   }
 }
 
-async function loadMcpServers() {
-  try {
-    const res = await docPipelineApi.getMcpServers()
-    mcpServers.value = res.servers || []
-  } catch { /* ignore */ }
-}
-
-async function loadModels() {
-  try {
-    models.value = await docPipelineApi.getModels()
-  } catch { /* ignore */ }
-}
-
-function onOpen() {
-  schemaError.value = {}
-  loadConfig()
-  loadMcpServers()
-  loadModels()
-}
+watch(() => form.pending_ocr.mcp?.server, (s) => { if (s) loadToolsForServer(s) })
+watch(() => form.ocr_processing.mcp?.server, (s) => { if (s) loadToolsForServer(s) })
+watch(() => form.ocr_finalize.mcp?.server, (s) => { if (s) loadToolsForServer(s) })
 
 async function save() {
   if (Object.keys(schemaError.value).length > 0) {
     ElMessage.warning('请先修正所有阶段中格式错误的输出 Schema')
     return
   }
+
+  const staleFields: string[] = []
+  const ps = form.pending_ocr.mcp?.server
+  const pt = form.pending_ocr.mcp?.tool
+  if (ps && pt && isToolValueStale(ps, pt)) staleFields.push('OCR提交 - 提交工具名')
+
+  const os = form.ocr_processing.mcp?.server
+  const ot = form.ocr_processing.mcp?.tool
+  if (os && ot && isToolValueStale(os, ot)) staleFields.push('OCR轮询 - 查询工具名')
+
+  const fs = form.ocr_finalize.mcp?.server
+  if (fs) {
+    if (form.ocr_finalize.default_deliverable_tool && isToolValueStale(fs, form.ocr_finalize.default_deliverable_tool)) staleFields.push('OCR产物提取 - 默认主产物工具')
+    if (form.ocr_finalize.list_deliverables_tool && isToolValueStale(fs, form.ocr_finalize.list_deliverables_tool)) staleFields.push('OCR产物提取 - 交付物列表工具')
+    if (form.ocr_finalize.image_deliverables_tool && isToolValueStale(fs, form.ocr_finalize.image_deliverables_tool)) staleFields.push('OCR产物提取 - 图片产物工具')
+  }
+
+  if (staleFields.length > 0) {
+    ElMessage.warning(`以下工具值已失效，请重新选择或先到 MCP 设置中刷新工具缓存：${staleFields.join('、')}`)
+    return
+  }
+
   saving.value = true
   try {
     const result = await docPipelineApi.saveConfig(JSON.parse(JSON.stringify(form)))
@@ -496,5 +730,17 @@ function onClose() {
   font-size: 12px;
   line-height: 1.4;
   margin-top: 4px;
+}
+.tool-hint {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+.tool-hint.tool-stale {
+  color: #e6a23c;
+}
+.tool-hint.tool-error {
+  color: #f56c6c;
 }
 </style>
