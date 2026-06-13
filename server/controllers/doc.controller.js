@@ -21,6 +21,8 @@ import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocumentOcrService from '../../lib/document-ocr-service.js';
+import { getSystemSettingService } from '../services/system-setting.service.js';
+import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
 
 class DocController {
   constructor(db) {
@@ -88,6 +90,7 @@ class DocController {
 
   ensureDocumentOcrService(ctx) {
     if (!this.documentOcrService) {
+      const systemSettingService = getSystemSettingService(this.db);
       this.documentOcrService = new DocumentOcrService(this.db, {
         callMcp: async (server, tool, params, timeoutMs) => {
           const appClock = ctx?.app?.context?.appClock;
@@ -96,6 +99,23 @@ class DocController {
           }
           return await appClock.callMcp(server, tool, params, timeoutMs);
         },
+        getDocPipelineConfig: async () => {
+          const records = await systemSettingService.SystemSetting.findAll({
+            where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+            raw: true,
+          });
+          const stored = {};
+          for (const record of records) {
+            const stageKey = record.setting_key.replace('doc_pipeline.', '');
+            try {
+              stored[stageKey] = JSON.parse(record.setting_value);
+            } catch {
+              stored[stageKey] = null;
+            }
+          }
+          return mergeWithDefaults(stored);
+        },
+        callLlm: createCallLlmFn(this.db),
       });
     }
   }
