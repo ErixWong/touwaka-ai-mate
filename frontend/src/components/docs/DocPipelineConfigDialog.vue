@@ -74,24 +74,56 @@
             <el-form-item label="超时(ms)">
               <el-input-number v-model="form.pending_ocr.timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
-            <el-divider content-position="left">参数映射</el-divider>
+            <el-divider content-position="left">附件提取参数</el-divider>
             <el-form-item label="file_base64">
-              <el-input v-model="form.pending_ocr.mcp.params_mapping.file_base64" placeholder="file_base64" />
+              <div class="param-row">
+                <el-tag size="small" type="info">附件 Base64</el-tag>
+                <span class="param-arrow">→</span>
+                <el-input v-model="form.pending_ocr.mcp.params_mapping.file_base64" placeholder="file_base64" class="param-mapping-input" />
+              </div>
             </el-form-item>
             <el-form-item label="file_name">
-              <el-input v-model="form.pending_ocr.mcp.params_mapping.file_name" placeholder="file_name" />
+              <div class="param-row">
+                <el-tag size="small" type="info">附件文件名</el-tag>
+                <span class="param-arrow">→</span>
+                <el-input v-model="form.pending_ocr.mcp.params_mapping.file_name" placeholder="file_name" class="param-mapping-input" />
+              </div>
             </el-form-item>
-            <el-form-item label="lang">
-              <el-input v-model="form.pending_ocr.mcp.params_mapping.lang" placeholder="lang" />
+            <el-divider content-position="left">设定值参数</el-divider>
+            <el-form-item label="公式识别">
+              <div class="param-row">
+                <el-switch v-model="getParamSource('formula_enable').value" />
+                <span class="param-arrow">→</span>
+                <el-input v-model="form.pending_ocr.mcp.params_mapping.formula_enable" placeholder="formula_enable" class="param-mapping-input" />
+              </div>
             </el-form-item>
-            <el-form-item label="formula_enable">
-              <el-input v-model="form.pending_ocr.mcp.params_mapping.formula_enable" placeholder="formula_enable" />
+            <el-form-item label="表格识别">
+              <div class="param-row">
+                <el-switch v-model="getParamSource('table_enable').value" />
+                <span class="param-arrow">→</span>
+                <el-input v-model="form.pending_ocr.mcp.params_mapping.table_enable" placeholder="table_enable" class="param-mapping-input" />
+              </div>
             </el-form-item>
-            <el-form-item label="table_enable">
-              <el-input v-model="form.pending_ocr.mcp.params_mapping.table_enable" placeholder="table_enable" />
+            <el-form-item label="图片分析">
+              <div class="param-row">
+                <el-switch v-model="getParamSource('image_analysis').value" />
+                <span class="param-arrow">→</span>
+                <el-input v-model="form.pending_ocr.mcp.params_mapping.image_analysis" placeholder="image_analysis" class="param-mapping-input" />
+              </div>
             </el-form-item>
-            <el-form-item label="image_analysis">
-              <el-input v-model="form.pending_ocr.mcp.params_mapping.image_analysis" placeholder="image_analysis" />
+            <el-form-item label="语言">
+              <div class="param-row lang-param-row">
+                <el-switch v-model="getParamSource('lang').enabled" />
+                <el-input
+                  v-if="getParamSource('lang').enabled"
+                  v-model="getParamSource('lang').value"
+                  placeholder="如: ch, en"
+                  class="lang-value-input"
+                />
+                <span class="param-arrow">→</span>
+                <el-input v-model="form.pending_ocr.mcp.params_mapping.lang" placeholder="lang" class="param-mapping-input" />
+              </div>
+              <div v-if="!getParamSource('lang').enabled" class="param-hint">未启用时不传递 lang 参数</div>
             </el-form-item>
             <el-divider content-position="left">LLM 归一化</el-divider>
             <el-form-item label="归一化模型">
@@ -505,7 +537,19 @@ const defaultForm: DocPipelineConfig = {
   meta: { version: 1, enabled: true },
   pending_ocr: {
     enabled: true, type: 'mcp', provider_name: 'mineru', timeout_ms: 120000,
-    mcp: { server: 'mineru', tool: 'create_task_from_file', params_mapping: { file_base64: 'file_base64', file_name: 'file_name', lang: 'lang', formula_enable: 'formula_enable', table_enable: 'table_enable', image_analysis: 'image_analysis' }, params: {} },
+    mcp: {
+      server: 'mineru',
+      tool: 'create_task_from_file',
+      params_mapping: { file_base64: 'file_base64', file_name: 'file_name', formula_enable: 'formula_enable', table_enable: 'table_enable', image_analysis: 'image_analysis', lang: 'lang' },
+      param_sources: {
+        file_base64: { group: 'attachment', field: 'file_base64' },
+        file_name: { group: 'attachment', field: 'file_name' },
+        formula_enable: { group: 'setting', value: true },
+        table_enable: { group: 'setting', value: true },
+        image_analysis: { group: 'setting', value: true },
+        lang: { group: 'setting', value: null, enabled: false },
+      },
+    },
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_processing: {
@@ -616,6 +660,34 @@ function onSchemaInput(val: string, stage: 'pending_ocr' | 'ocr_processing' | 'o
   } catch {
     schemaError.value[stage] = 'JSON 格式错误，已保留原值'
   }
+}
+
+function ensureParamSources() {
+  if (!form.pending_ocr.mcp.param_sources) {
+    form.pending_ocr.mcp.param_sources = {
+      file_base64: { group: 'attachment', field: 'file_base64' },
+      file_name: { group: 'attachment', field: 'file_name' },
+      formula_enable: { group: 'setting', value: true },
+      table_enable: { group: 'setting', value: true },
+      image_analysis: { group: 'setting', value: true },
+      lang: { group: 'setting', value: null, enabled: false },
+    }
+  }
+}
+
+function getParamSource(key: string): { group: string; value: boolean | string | null; enabled?: boolean } {
+  ensureParamSources()
+  const sources = form.pending_ocr.mcp.param_sources!
+  if (!sources[key]) {
+    if (key === 'file_base64' || key === 'file_name') {
+      sources[key] = { group: 'attachment', field: key }
+    } else if (key === 'lang') {
+      sources[key] = { group: 'setting', value: null, enabled: false }
+    } else {
+      sources[key] = { group: 'setting', value: true }
+    }
+  }
+  return sources[key] as { group: string; value: boolean | string | null; enabled?: boolean }
 }
 
 
@@ -768,5 +840,29 @@ function onClose() {
 }
 .tool-hint.tool-error {
   color: #f56c6c;
+}
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.param-arrow {
+  color: #909399;
+  font-size: 14px;
+}
+.param-mapping-input {
+  width: 180px;
+}
+.lang-param-row {
+  flex-wrap: wrap;
+}
+.lang-value-input {
+  width: 120px;
+}
+.param-hint {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 4px;
 }
 </style>

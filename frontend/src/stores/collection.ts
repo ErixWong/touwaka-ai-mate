@@ -195,6 +195,9 @@ export const useCollectionStore = defineStore('collection', () => {
     app_id?: string
     schema_id?: string | null
     lang?: string
+    image_analysis?: boolean
+    formula_enable?: boolean
+    table_enable?: boolean
   }): Promise<{
     attachment: UploadAttachmentResponse
     intake: DocIntakeResult
@@ -218,10 +221,10 @@ export const useCollectionStore = defineStore('collection', () => {
 
       const submit = await submitOcr(intake.document_id, {
         attachment_id: attachment.id,
-        lang: options?.lang || 'ch',
-        image_analysis: true,
-        formula_enable: true,
-        table_enable: true,
+        ...options?.lang !== undefined && { lang: options.lang },
+        ...options?.image_analysis !== undefined && { image_analysis: options.image_analysis },
+        ...options?.formula_enable !== undefined && { formula_enable: options.formula_enable },
+        ...options?.table_enable !== undefined && { table_enable: options.table_enable },
       })
 
       await fetchCollectionDocuments(collectionId)

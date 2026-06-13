@@ -1,5 +1,18 @@
 import apiClient, { apiRequest } from './client'
 
+export interface ParamSourceAttachment {
+  group: 'attachment'
+  field: string
+}
+
+export interface ParamSourceSetting {
+  group: 'setting'
+  value: boolean | string | null
+  enabled?: boolean
+}
+
+export type ParamSource = ParamSourceAttachment | ParamSourceSetting
+
 export interface DocPipelineJudge {
   model_id: string | null
   temperature: number
@@ -14,7 +27,8 @@ export interface DocPipelineMcpStage {
     server: string
     tool: string
     params_mapping: Record<string, string>
-    params: Record<string, unknown>
+    param_sources?: Record<string, ParamSource>
+    params?: Record<string, unknown>
   }
   judge: DocPipelineJudge
   provider_name?: string
