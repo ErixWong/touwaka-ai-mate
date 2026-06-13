@@ -1,8 +1,7 @@
 import apiClient from './client'
 
-/**
- * 附件信息
- */
+export type AccessLevel = 'public' | 'private'
+
 export interface Attachment {
   id: string
   filename: string
@@ -12,13 +11,13 @@ export interface Attachment {
   source_id: string
   uploader_id: string
   uploader_name?: string
+  access_level: AccessLevel
+  preview_url: string | null
+  download_url: string | null
+  expires_at?: string | null
   created_at: string
-  token_expires_at?: string
 }
 
-/**
- * 附件列表响应
- */
 export interface AttachmentListResponse {
   items: Attachment[]
   total: number
@@ -27,9 +26,6 @@ export interface AttachmentListResponse {
   pages: number
 }
 
-/**
- * 附件列表查询参数
- */
 export interface AttachmentListParams {
   page?: number
   size?: number
@@ -41,33 +37,25 @@ export interface AttachmentListParams {
   end_date?: string
 }
 
-/**
- * 获取附件列表（管理员）
- */
 export const getAttachments = async (params: AttachmentListParams = {}): Promise<AttachmentListResponse> => {
   const response = await apiClient.get('/attachments/admin', { params })
   return response.data.data
 }
 
-/**
- * 获取附件元数据
- */
 export const getAttachmentMeta = async (id: string): Promise<Attachment> => {
-  const response = await apiClient.get(`/attachments/${id}/meta`)
+  const response = await apiClient.get(`/attachments/${id}`)
   return response.data.data
 }
 
-/**
- * 删除附件（管理员）
- */
+export const getAttachmentContentUrl = (id: string): string => {
+  return `/api/attachments/${id}/content`
+}
+
 export const deleteAttachment = async (id: string): Promise<void> => {
   await apiClient.delete(`/attachments/${id}`)
 }
 
-/**
- * 生成附件访问 Token
- */
-export const generateAttachmentToken = async (sourceTag: string, sourceId: string): Promise<{ token: string; expires_at: string }> => {
+export const generateAttachmentToken = async (sourceTag: string, sourceId: string): Promise<{ token: string; url: string; expires_at: string }> => {
   const response = await apiClient.post('/attachments/token', {
     source_tag: sourceTag,
     source_id: sourceId,
@@ -75,28 +63,22 @@ export const generateAttachmentToken = async (sourceTag: string, sourceId: strin
   return response.data.data
 }
 
-/**
- * 获取附件访问 URL
- */
 export const getAttachmentUrl = (id: string, token: string): string => {
   return `/attach/t/${token}/${id}`
 }
 
-/**
- * 上传附件参数
- */
-export interface UploadAttachmentParams {
-  source_tag: string
-  source_id: string
-  file_name: string
-  mime_type: string
-  base64_data: string
-  alt_text?: string
+export const getPublicAttachmentUrl = (id: string): string => {
+  return `/attach/public/${id}`
 }
 
-/**
- * 上传附件响应
- */
+export interface UploadAttachmentFormDataParams {
+  source_tag: string
+  source_id: string
+  file: File
+  alt_text?: string
+  access_level?: AccessLevel
+}
+
 export interface UploadAttachmentResponse {
   id: string
   source_tag: string
@@ -106,28 +88,12 @@ export interface UploadAttachmentResponse {
   file_size: number
   width: number | null
   height: number | null
-  file_path: string
-  data_url: string
+  access_level: AccessLevel
+  preview_url: string | null
+  download_url: string | null
+  expires_at?: string | null
   ref: string
   created_at: string
-}
-
-/**
- * 上传附件
- */
-export const uploadAttachment = async (params: UploadAttachmentParams): Promise<UploadAttachmentResponse> => {
-  const response = await apiClient.post('/attachments', params)
-  return response.data.data
-}
-
-/**
- * 上传附件 (FormData)
- */
-export interface UploadAttachmentFormDataParams {
-  source_tag: string
-  source_id: string
-  file: File
-  alt_text?: string
 }
 
 export const uploadAttachmentFormData = async (params: UploadAttachmentFormDataParams): Promise<UploadAttachmentResponse> => {
@@ -138,10 +104,27 @@ export const uploadAttachmentFormData = async (params: UploadAttachmentFormDataP
   if (params.alt_text) {
     formData.append('alt_text', params.alt_text)
   }
+  if (params.access_level) {
+    formData.append('access_level', params.access_level)
+  }
   const response = await apiClient.post('/attachments/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   })
   return response.data.data
+}
+
+export const getAttachmentContent = async (id: string): Promise<Blob> => {
+  const response = await apiClient.get(`/attachments/${id}/content`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
+
+export const resolveAttachmentDisplayUrl = (attachment: Attachment): string | null => {
+  if (attachment.access_level === 'public') {
+    return `/attach/public/${attachment.id}`
+  }
+  return attachment.preview_url || attachment.download_url || null
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
-import { uploadAttachment } from '@/api/attachment'
+import { uploadAttachmentFormData } from '@/api/attachment'
 import { createRecord, newID } from '@/api/mini-apps'
 import { ElMessage } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
@@ -159,19 +159,6 @@ function clearFile() {
   selectedFile.value = null
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.split(',')[1]!
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
 async function handleCreate() {
   if (!selectedFile.value) {
     ElMessage.warning('请先选择发票文件')
@@ -180,13 +167,10 @@ async function handleCreate() {
   creating.value = true
   try {
     const file = selectedFile.value
-    const base64Data = await fileToBase64(file)
-    const att = await uploadAttachment({
+    const att = await uploadAttachmentFormData({
       source_tag: 'mini_app_file',
       source_id: APP_ID,
-      file_name: file.name,
-      mime_type: file.type,
-      base64_data: base64Data,
+      file,
     })
 
     const clientId = await newID(20)

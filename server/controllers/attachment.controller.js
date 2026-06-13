@@ -13,9 +13,27 @@ import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import crypto from 'crypto';
 import SystemSettingService from '../services/system-setting.service.js';
+import AttachmentService from '../services/attachment.service.js';
 import multer from '@koa/multer';
+
+const CONTENT_TYPES = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.zip': 'application/zip',
+};
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 // Token 配置
 const TOKEN_CONFIG = {
@@ -82,12 +100,14 @@ class AttachmentController {
     this.Attachment = null;
     this.AttachmentToken = null;
     this.systemSettingService = new SystemSettingService(db);
+    this.attachmentService = new AttachmentService(db);
   }
 
   ensureModels() {
     if (!this.Attachment) {
       this.Attachment = this.db.getModel('attachment');
       this.AttachmentToken = this.db.getModel('attachment_token');
+      this.attachmentService.ensureModels();
     }
   }
 
@@ -332,7 +352,6 @@ class AttachmentController {
       const data = ctx.request.body;
       const userId = ctx.state.session.id;
 
-      // 参数验证
       if (!data.source_tag || !data.source_id) {
         ctx.throw(400, 'source_tag and source_id are required');
       }
@@ -340,66 +359,37 @@ class AttachmentController {
         ctx.throw(400, 'mime_type and base64_data are required');
       }
 
-      // 验证 MIME 类型白名单
       this.validateMimeTypeWhitelist(data.mime_type);
-
-      // 验证文件魔数
       await this.validateMimeType(data.base64_data, data.mime_type);
 
-      // 检查文件大小
       const maxFileSize = await this.getMaxFileSize();
       const fileSize = Buffer.from(data.base64_data, 'base64').length;
       if (fileSize > maxFileSize) {
         ctx.throw(413, `File size exceeds limit of ${maxFileSize} bytes`);
       }
 
-      // 权限检查
       const hasPermission = await this.checkAttachmentPermission(ctx, data.source_tag, data.source_id);
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
 
-      // 生成附件 ID
-      const id = Utils.newID(20);
-      
-      // 提取扩展名
-      const extName = data.file_name 
-        ? path.extname(data.file_name).slice(1) 
-        : data.mime_type.split('/')[1];
-
-      // 生成文件路径
-      const filePath = this.generateFilePath(id, extName);
-      const fullPath = path.join(this.getAttachmentBasePath(), filePath);
-
-      // 确保目录存在
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-
-      // 写入文件
       const buffer = Buffer.from(data.base64_data, 'base64');
-      await fs.writeFile(fullPath, buffer);
-
-      // 获取图片尺寸
       const { width, height } = await this.getImageDimensions(data.base64_data, data.mime_type);
 
-      // 创建数据库记录
-      const attachment = await this.Attachment.create({
-        id,
-        source_tag: data.source_tag,
-        source_id: data.source_id,
-        file_name: data.file_name || null,
-        ext_name: extName,
-        mime_type: data.mime_type,
-        file_size: fileSize,
-        file_path: filePath,
+      const attachment = await this.attachmentService.createFromBuffer({
+        sourceTag: data.source_tag,
+        sourceId: data.source_id,
+        createdBy: userId,
+        fileName: data.file_name || null,
+        mimeType: data.mime_type,
+        buffer,
+        altText: data.alt_text || null,
+        accessLevel: data.access_level || null,
         width,
         height,
-        alt_text: data.alt_text || null,
-        description: null,
-        created_by: userId,
       });
 
-      // 生成 data_url
-      const dataUrl = `data:${data.mime_type};base64,${data.base64_data}`;
+      const accessDescriptor = await this.attachmentService.buildAccessDescriptor(attachment, { userId });
 
       ctx.success({
         id: attachment.id,
@@ -410,14 +400,16 @@ class AttachmentController {
         file_size: attachment.file_size,
         width: attachment.width,
         height: attachment.height,
-        file_path: attachment.file_path,
-        data_url: dataUrl,
+        access_level: attachment.access_level,
+        preview_url: accessDescriptor.preview_url,
+        download_url: accessDescriptor.download_url,
+        expires_at: accessDescriptor.expires_at || null,
         ref: `attach:${attachment.id}`,
         created_at: attachment.created_at,
       });
       ctx.status = 201;
-      
-      logger.info(`[Attachment] upload: ${id} - ${data.file_name || 'unnamed'}`);
+
+      logger.info(`[Attachment] upload: ${attachment.id} - ${data.file_name || 'unnamed'} (${attachment.access_level})`);
     } catch (error) {
       logger.error('[Attachment] upload error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -435,7 +427,6 @@ class AttachmentController {
       const file = ctx.file;
       const body = ctx.request.body;
 
-      // 参数验证
       if (!file) {
         ctx.throw(400, 'file is required');
       }
@@ -443,68 +434,38 @@ class AttachmentController {
         ctx.throw(400, 'source_tag and source_id are required');
       }
 
-      // 验证文件大小
       const maxFileSize = await this.getMaxFileSize();
       if (file.size > maxFileSize) {
         ctx.throw(413, `File size exceeds limit of ${maxFileSize} bytes`);
       }
 
-      // 权限检查
       const hasPermission = await this.checkAttachmentPermission(ctx, body.source_tag, body.source_id);
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
 
-      // 读取文件内容并转为 base64（用于统一存储逻辑）
       const buffer = file.buffer;
       const base64Data = buffer.toString('base64');
 
-      // 验证 MIME 类型白名单
       this.validateMimeTypeWhitelist(file.mimetype);
-
-      // 验证文件魔数（防止客户端伪造 mimetype）
       await this.validateMimeTypeFromBuffer(buffer, file.mimetype);
 
-      // 生成附件 ID
-      const id = Utils.newID(20);
-
-      // 提取扩展名
-      const extName = file.originalname
-        ? path.extname(file.originalname).slice(1)
-        : file.mimetype.split('/')[1];
-
-      // 生成文件路径
-      const filePath = this.generateFilePath(id, extName);
-      const fullPath = path.join(this.getAttachmentBasePath(), filePath);
-
-      // 确保目录存在
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-
-      // 写入文件
-      await fs.writeFile(fullPath, buffer);
-
-      // 获取图片尺寸
       const { width, height } = await this.getImageDimensions(base64Data, file.mimetype);
 
-      // 创建数据库记录
-      const attachment = await this.Attachment.create({
-        id,
-        source_tag: body.source_tag,
-        source_id: body.source_id,
-        file_name: file.originalname || null,
-        ext_name: extName,
-        mime_type: file.mimetype,
-        file_size: file.size,
-        file_path: filePath,
+      const attachment = await this.attachmentService.createFromBuffer({
+        sourceTag: body.source_tag,
+        sourceId: body.source_id,
+        createdBy: userId,
+        fileName: file.originalname || null,
+        mimeType: file.mimetype,
+        buffer,
+        altText: body.alt_text || null,
+        accessLevel: body.access_level || null,
         width,
         height,
-        alt_text: body.alt_text || null,
-        description: null,
-        created_by: userId,
       });
 
-      // 生成 data_url
-      const dataUrl = `data:${file.mimetype};base64,${base64Data}`;
+      const accessDescriptor = await this.attachmentService.buildAccessDescriptor(attachment, { userId });
 
       ctx.success({
         id: attachment.id,
@@ -515,14 +476,16 @@ class AttachmentController {
         file_size: attachment.file_size,
         width: attachment.width,
         height: attachment.height,
-        file_path: attachment.file_path,
-        data_url: dataUrl,
+        access_level: attachment.access_level,
+        preview_url: accessDescriptor.preview_url,
+        download_url: accessDescriptor.download_url,
+        expires_at: accessDescriptor.expires_at || null,
         ref: `attach:${attachment.id}`,
         created_at: attachment.created_at,
       });
       ctx.status = 201;
 
-      logger.info(`[Attachment] uploadFormData: ${id} - ${file.originalname || 'unnamed'}`);
+      logger.info(`[Attachment] uploadFormData: ${attachment.id} - ${file.originalname || 'unnamed'} (${attachment.access_level})`);
     } catch (error) {
       logger.error('[Attachment] uploadFormData error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -539,7 +502,6 @@ class AttachmentController {
       const data = ctx.request.body;
       const userId = ctx.state.session.id;
 
-      // 参数验证
       if (!data.source_tag || !data.source_id) {
         ctx.throw(400, 'source_tag and source_id are required');
       }
@@ -550,7 +512,6 @@ class AttachmentController {
         ctx.throw(400, `Maximum ${MAX_BATCH_SIZE} files allowed per batch`);
       }
 
-      // 权限检查
       const hasPermission = await this.checkAttachmentPermission(ctx, data.source_tag, data.source_id);
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
@@ -562,65 +523,39 @@ class AttachmentController {
 
       for (const file of data.files) {
         try {
-          // 验证 MIME 类型白名单
           this.validateMimeTypeWhitelist(file.mime_type);
-
-          // 验证文件魔数
           await this.validateMimeType(file.base64_data, file.mime_type);
 
-          // 检查文件大小
           const fileSize = Buffer.from(file.base64_data, 'base64').length;
           if (fileSize > maxFileSize) {
             throw new Error(`File size exceeds limit of ${maxFileSize} bytes`);
           }
 
-          // 生成附件 ID
-          const id = Utils.newID(20);
-          
-          // 提取扩展名
-          const extName = file.file_name 
-            ? path.extname(file.file_name).slice(1) 
-            : file.mime_type.split('/')[1];
-
-          // 生成文件路径
-          const filePath = this.generateFilePath(id, extName);
-          const fullPath = path.join(this.getAttachmentBasePath(), filePath);
-
-          // 确保目录存在
-          await fs.mkdir(path.dirname(fullPath), { recursive: true });
-
-          // 写入文件
           const buffer = Buffer.from(file.base64_data, 'base64');
-          await fs.writeFile(fullPath, buffer);
-
-          // 获取图片尺寸
           const { width, height } = await this.getImageDimensions(file.base64_data, file.mime_type);
 
-          // 创建数据库记录
-          const attachment = await this.Attachment.create({
-            id,
-            source_tag: data.source_tag,
-            source_id: data.source_id,
-            file_name: file.file_name || null,
-            ext_name: extName,
-            mime_type: file.mime_type,
-            file_size: fileSize,
-            file_path: filePath,
+          const attachment = await this.attachmentService.createFromBuffer({
+            sourceTag: data.source_tag,
+            sourceId: data.source_id,
+            createdBy: userId,
+            fileName: file.file_name || null,
+            mimeType: file.mime_type,
+            buffer,
+            altText: file.alt_text || null,
+            accessLevel: data.access_level || null,
             width,
             height,
-            alt_text: file.alt_text || null,
-            description: null,
-            created_by: userId,
           });
 
-          // 生成 data_url
-          const dataUrl = `data:${file.mime_type};base64,${file.base64_data}`;
+          const accessDescriptor = await this.attachmentService.buildAccessDescriptor(attachment, { userId });
 
           results.push({
             id: attachment.id,
             file_name: attachment.file_name,
             file_size: attachment.file_size,
-            data_url: dataUrl,
+            access_level: attachment.access_level,
+            preview_url: accessDescriptor.preview_url,
+            download_url: accessDescriptor.download_url,
             ref: `attach:${attachment.id}`,
           });
         } catch (error) {
@@ -637,7 +572,7 @@ class AttachmentController {
         errors: errors.length > 0 ? errors : undefined,
       });
       ctx.status = 201;
-      
+
       logger.info(`[Attachment] uploadBatch: ${results.length} success, ${errors.length} failed`);
     } catch (error) {
       logger.error('[Attachment] uploadBatch error:', error);
@@ -660,22 +595,12 @@ class AttachmentController {
         ctx.throw(404, 'Attachment not found');
       }
 
-      // 权限检查
       const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id);
       if (!hasPermission) {
         ctx.throw(403, '无权访问此附件');
       }
 
-      // 读取文件并生成 data_url
-      const fullPath = path.join(this.getAttachmentBasePath(), attachment.file_path);
-      let dataUrl = null;
-      try {
-        const buffer = await fs.readFile(fullPath);
-        dataUrl = `data:${attachment.mime_type};base64,${buffer.toString('base64')}`;
-      } catch (fileError) {
-        logger.error(`[Attachment] Failed to read file: ${fullPath}`, fileError.message);
-        ctx.throw(500, 'Failed to read attachment file');
-      }
+      const accessDescriptor = await this.attachmentService.buildAccessDescriptor(attachment, { userId });
 
       ctx.success({
         id: attachment.id,
@@ -688,11 +613,62 @@ class AttachmentController {
         height: attachment.height,
         alt_text: attachment.alt_text,
         description: attachment.description,
-        data_url: dataUrl,
+        access_level: attachment.access_level,
+        preview_url: accessDescriptor.preview_url,
+        download_url: accessDescriptor.download_url,
+        expires_at: accessDescriptor.expires_at || null,
         created_at: attachment.created_at,
       });
     } catch (error) {
       logger.error('[Attachment] get error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async getContent(ctx) {
+    try {
+      this.ensureModels();
+      const { id } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const attachment = await this.Attachment.findByPk(id);
+      if (!attachment) {
+        ctx.throw(404, 'Attachment not found');
+      }
+
+      const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id);
+      if (!hasPermission) {
+        ctx.throw(403, '无权访问此附件');
+      }
+
+      const fullPath = path.join(this.getAttachmentBasePath(), attachment.file_path);
+      try {
+        const stats = await fs.stat(fullPath);
+        if (!stats.isFile()) {
+          ctx.throw(404, 'Not a file');
+        }
+        if (stats.size > MAX_FILE_SIZE) {
+          ctx.throw(413, 'File too large (max 50MB)');
+        }
+      } catch (fileError) {
+        ctx.throw(404, 'File not found');
+      }
+
+      const ext = path.extname(fullPath).toLowerCase();
+      ctx.type = CONTENT_TYPES[ext] || attachment.mime_type || 'application/octet-stream';
+      ctx.set('Cache-Control', 'private, max-age=3600');
+
+      const stream = createReadStream(fullPath);
+      stream.on('error', (err) => {
+        logger.error('[Attachment] stream read error:', err);
+        if (!ctx.headersSent) {
+          ctx.status = 500;
+          ctx.body = 'File read error';
+        }
+      });
+      ctx.body = stream;
+    } catch (error) {
+      logger.error('[Attachment] getContent error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
@@ -757,7 +733,6 @@ class AttachmentController {
         ctx.throw(400, 'source_tag and source_id query parameters are required');
       }
 
-      // 权限检查
       const hasPermission = await this.checkAttachmentPermission(ctx, source_tag, source_id);
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
@@ -768,18 +743,26 @@ class AttachmentController {
         order: [['created_at', 'DESC']],
       });
 
-      ctx.success({
-        items: attachments.map(a => ({
+      const items = await Promise.all(attachments.map(async (a) => {
+        const accessDescriptor = await this.attachmentService.buildAccessDescriptor(a, { userId });
+        return {
           id: a.id,
           file_name: a.file_name,
           mime_type: a.mime_type,
           file_size: a.file_size,
           width: a.width,
           height: a.height,
-          alt_text: a.alt_text,
+          access_level: a.access_level,
+          preview_url: accessDescriptor.preview_url,
+          download_url: accessDescriptor.download_url,
+          expires_at: accessDescriptor.expires_at || null,
           ref: `attach:${a.id}`,
           created_at: a.created_at,
-        })),
+        };
+      }));
+
+      ctx.success({
+        items,
         total: attachments.length,
       });
     } catch (error) {
@@ -944,50 +927,16 @@ class AttachmentController {
         ctx.throw(400, 'source_tag and source_id are required');
       }
 
-      // 权限检查
       const hasPermission = await this.checkAttachmentPermission(ctx, source_tag, source_id);
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
 
-      // 查找现有未过期的 Token
-      const existingToken = await this.AttachmentToken.findOne({
-        where: {
-          source_tag,
-          source_id,
-          user_id: userId,
-          expires_at: { [Op.gt]: new Date() },
-        },
-      });
+      const tokenResult = await this.attachmentService.generateToken(source_tag, source_id, userId);
 
-      if (existingToken) {
-        ctx.success({
-          token: existingToken.token,
-          url: `/attach/t/${existingToken.token}`,
-          expires_at: existingToken.expires_at,
-        });
-        return;
-      }
-
-      // 生成新 Token
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + TOKEN_CONFIG.EXPIRES_IN * 1000);
-
-      const attachmentToken = await this.AttachmentToken.create({
-        token,
-        source_tag,
-        source_id,
-        user_id: userId,
-        expires_at: expiresAt,
-      });
-
-      ctx.success({
-        token: attachmentToken.token,
-        url: `/attach/t/${attachmentToken.token}`,
-        expires_at: attachmentToken.expires_at,
-      });
+      ctx.success(tokenResult);
       
-      logger.info(`[Attachment] generateToken: ${token} for ${source_tag}:${source_id}`);
+      logger.info(`[Attachment] generateToken: ${tokenResult.token} for ${source_tag}:${source_id}`);
     } catch (error) {
       logger.error('[Attachment] generateToken error:', error);
       ctx.throw(error.status || 500, error.message);

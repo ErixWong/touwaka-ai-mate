@@ -2035,6 +2035,65 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== attachments 表添加 access_level 字段 ====================
+  // Issue #001: Attachment 访问级别与统一接入改造
+  // NOTE: For production with large tables, consider using online schema migration tools
+  // like pt-online-schema-change or gh-ost to avoid blocking reads/writes.
+  {
+    name: 'attachments.access_level column add',
+    check: async (conn) => await hasColumn(conn, 'attachments', 'access_level'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE attachments
+        ADD COLUMN access_level ENUM('public', 'private') NOT NULL DEFAULT 'private'
+          COMMENT '访问级别：public=公开访问，private=私有受控访问'
+          AFTER description
+      `);
+      console.log('  ✓ Added access_level column to attachments table');
+
+      await safeExecute(conn, `
+        CREATE INDEX idx_access_level ON attachments(access_level)
+      `);
+      console.log('  ✓ Added idx_access_level index');
+    }
+  },
+
+  // ==================== attachments 表 access_level 老数据回填 ====================
+  // Issue #001: 根据 source_tag 回填历史数据的 access_level
+  // NOTE: Batches by source_tag to limit lock scope. For very large tables,
+  // consider further batching by id ranges: WHERE source_tag=? AND id BETWEEN ? AND ?
+  {
+    name: 'attachments.access_level backfill by source_tag',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COUNT(*) AS cnt FROM attachments WHERE access_level = 'public'
+      `);
+      return rows[0].cnt > 0;
+    },
+    migrate: async (conn) => {
+      const publicTags = ['user_avatar', 'expert_avatar', 'site_logo', 'site_background'];
+      for (const tag of publicTags) {
+        await conn.execute(`
+          UPDATE attachments SET access_level = 'public' WHERE source_tag = ?
+        `, [tag]);
+        console.log(`  ✓ Backfilled public for ${tag}`);
+      }
+      
+      const privateTags = ['doc-platform', 'task_export', 'admin_upload', 'mini_app', 'mini_app_file'];
+      for (const tag of privateTags) {
+        await conn.execute(`
+          UPDATE attachments SET access_level = 'private' WHERE source_tag = ? AND access_level = 'public'
+        `, [tag]);
+        console.log(`  ✓ Ensured private for ${tag}`);
+      }
+      
+      const [result] = await conn.execute(`
+        SELECT COUNT(*) AS cnt FROM attachments WHERE access_level = 'public'
+      `);
+      console.log(`  ✓ Total ${result[0].cnt} attachments now marked as public`);
+    }
+  },
+
 ];
 
 /**
