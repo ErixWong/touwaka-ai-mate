@@ -109,12 +109,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useSystemSettingsStore } from '@/stores/systemSettings'
-import { getDisplayableLogoIcon, getBrandingAppName } from '@/utils/branding'
+import { getDisplayableLogoIcon, getBrandingAppName, DEFAULT_BRANDING_APP_NAME } from '@/utils/branding'
 import LangSelector from '@/components/common/LangSelector.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -124,7 +124,7 @@ const userStore = useUserStore()
 const systemSettingsStore = useSystemSettingsStore()
 const formRef = ref<FormInstance>()
 
-const brandingAppName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, t('login.brand.eyebrow')))
+const brandingAppName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, DEFAULT_BRANDING_APP_NAME))
 const brandingLogoIcon = computed(() => getDisplayableLogoIcon(systemSettingsStore.brandingSettings?.logo_icon))
 
 const form = reactive({
@@ -139,10 +139,6 @@ const rules = reactive<FormRules>({
 
 const loading = ref(false)
 const error = ref('')
-
-onMounted(() => {
-  systemSettingsStore.loadBranding()
-})
 
 const handleLogin = async () => {
   if (!formRef.value) return
