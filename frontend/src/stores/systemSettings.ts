@@ -146,11 +146,11 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       const runtimeSettings = response.data.data as Partial<SystemSettings>
       settings.value = {
         ...defaultSettings,
-        ...(settings.value || {}),
+        ...settings.value,
         timeout: {
           ...defaultSettings.timeout,
-          ...(settings.value?.timeout || {}),
-          ...(runtimeSettings.timeout || {}),
+          ...settings.value?.timeout,
+          ...runtimeSettings.timeout,
         },
       }
     } catch {

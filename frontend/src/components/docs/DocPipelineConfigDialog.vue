@@ -55,6 +55,9 @@
                   :value="t.value"
                 />
               </el-select>
+              <div v-if="form.pending_ocr.mcp.tool && !isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool) && getToolDescription(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint tool-desc">
+                说明：{{ getToolDescription(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool) }}
+              </div>
               <div v-if="form.pending_ocr.mcp.server && toolCache[form.pending_ocr.mcp.server]?.loaded && getToolOptions(form.pending_ocr.mcp.server).length === 0 && !isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint">
                 当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
               </div>
@@ -144,6 +147,9 @@
                   :value="t.value"
                 />
               </el-select>
+              <div v-if="form.ocr_processing.mcp.tool && !isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool) && getToolDescription(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint tool-desc">
+                说明：{{ getToolDescription(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool) }}
+              </div>
               <div v-if="form.ocr_processing.mcp.server && toolCache[form.ocr_processing.mcp.server]?.loaded && getToolOptions(form.ocr_processing.mcp.server).length === 0 && !isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint">
                 当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
               </div>
@@ -214,6 +220,9 @@
                   :value="t.value"
                 />
               </el-select>
+              <div v-if="form.ocr_finalize.default_deliverable_tool && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool) && getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint tool-desc">
+                说明：{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool) }}
+              </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint">
                 当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
               </div>
@@ -245,6 +254,9 @@
                   :value="t.value"
                 />
               </el-select>
+              <div v-if="form.ocr_finalize.list_deliverables_tool && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool) && getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint tool-desc">
+                说明：{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool) }}
+              </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint">
                 当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
               </div>
@@ -276,6 +288,9 @@
                   :value="t.value"
                 />
               </el-select>
+              <div v-if="form.ocr_finalize.image_deliverables_tool && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool) && getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint tool-desc">
+                说明：{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool) }}
+              </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint">
                 当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
               </div>
@@ -531,10 +546,18 @@ function getToolOptions(serverName: string): { label: string; value: string; des
   const entry = toolCache.value[serverName]
   if (!entry || !entry.tools.length) return []
   return entry.tools.map(t => ({
-    label: t.description ? `${t.tool_name} — ${t.description}` : t.tool_name,
+    label: t.tool_name,
     value: t.tool_name,
     description: t.description,
   }))
+}
+
+function getToolDescription(serverName: string, toolValue: string): string | null {
+  if (!serverName || !toolValue) return null
+  const entry = toolCache.value[serverName]
+  if (!entry || !entry.tools) return null
+  const tool = entry.tools.find(t => t.tool_name === toolValue)
+  return tool?.description || null
 }
 
 function isToolValueStale(serverName: string, toolValue: string): boolean {
@@ -736,6 +759,9 @@ function onClose() {
   font-size: 12px;
   line-height: 1.4;
   margin-top: 4px;
+}
+.tool-hint.tool-desc {
+  color: #606266;
 }
 .tool-hint.tool-stale {
   color: #e6a23c;
