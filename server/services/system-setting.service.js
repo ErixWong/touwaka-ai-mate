@@ -144,7 +144,14 @@ class SystemSettingService {
           
           if (record) {
             // 数据库有记录，使用数据库的值
-            const parsedValue = this._parseValue(record.setting_value, record.value_type);
+            // 兼容历史脏数据：如果元数据表明是布尔类型，但存储为 string 且值为 'true'/'false'，则强制使用布尔解析
+            let effectiveType = record.value_type;
+            if (config.type === 'boolean' && record.value_type === 'string' && 
+                (record.setting_value === 'true' || record.setting_value === 'false')) {
+              effectiveType = 'boolean';
+              logger.warn(`[SystemSettingService] 检测到脏数据: ${settingKey} 应为 boolean 类型但存储为 string，已自动修正解析`);
+            }
+            const parsedValue = this._parseValue(record.setting_value, effectiveType);
             result[section][key] = this._validateValue(settingKey, parsedValue);
           } else {
             // 数据库没有记录，准备创建默认值
