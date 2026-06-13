@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { MiniApp } from '@/api/mini-apps'
-import { uploadAttachment } from '@/api/attachment'
+import { uploadAttachmentFormData } from '@/api/attachment'
 
 const props = defineProps<{
   app: MiniApp
@@ -29,7 +29,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   uploaded: [attachmentIds: string[]]
-}>()
+}>>()
 
 const dragging = ref(false)
 const uploadingFiles = ref<{ name: string; status: string; error?: string }[]>([])
@@ -58,13 +58,10 @@ async function processFiles(files: File[]) {
   for (let i = 0; i < files.length; i++) {
     try {
       const file = files[i]!
-      const base64Data = await fileToBase64(file)
-      const att = await uploadAttachment({
+      const att = await uploadAttachmentFormData({
         source_tag: 'mini_app_file',
         source_id: props.app.id,
-        file_name: file.name,
-        mime_type: file.type,
-        base64_data: base64Data,
+        file,
       })
       attachmentIds.push(att.id)
       items[i]!.status = 'done'
@@ -77,19 +74,6 @@ async function processFiles(files: File[]) {
   if (attachmentIds.length > 0) {
     emit('uploaded', attachmentIds)
   }
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.split(',')[1]!
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
 }
 </script>
 

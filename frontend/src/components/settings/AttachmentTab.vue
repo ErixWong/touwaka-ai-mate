@@ -293,7 +293,8 @@ import {
   deleteAttachment,
   generateAttachmentToken,
   getAttachmentUrl,
-  uploadAttachment,
+  uploadAttachmentFormData,
+  getPublicAttachmentUrl,
   type Attachment,
   type AttachmentListParams,
 } from '@/api/attachment'
@@ -371,12 +372,12 @@ const loadAttachments = async () => {
 
 // 批量加载附件 Tokens
 const loadAttachmentTokensBatch = async (items: Attachment[]) => {
-  // 只获取图片类型的附件 token
-  const imageAttachments = items.filter(item => isImage(item.mime_type))
+  const privateImageAttachments = items.filter(
+    item => isImage(item.mime_type) && item.access_level !== 'public'
+  )
   
-  // 按 source_tag + source_id 分组，避免重复请求相同资源的 token
   const groupedBySource = new Map<string, Attachment[]>()
-  imageAttachments.forEach(attachment => {
+  privateImageAttachments.forEach(attachment => {
     const key = `${attachment.source_tag}:${attachment.source_id}`
     if (!groupedBySource.has(key)) {
       groupedBySource.set(key, [])
@@ -384,14 +385,12 @@ const loadAttachmentTokensBatch = async (items: Attachment[]) => {
     groupedBySource.get(key)!.push(attachment)
   })
   
-  // 并发获取每个资源组的 token
   const promises = Array.from(groupedBySource.entries()).map(async ([key, attachmentsGroup]) => {
     const firstAttachment = attachmentsGroup[0]
     if (!firstAttachment) return
     
     try {
       const result = await generateAttachmentToken(firstAttachment.source_tag, firstAttachment.source_id)
-      // 为同一资源组的所有附件设置相同的 token
       attachmentsGroup.forEach(attachment => {
         attachmentTokens.value[attachment.id] = result.token
       })
@@ -495,11 +494,16 @@ const formatDate = (dateStr: string): string => {
 // 获取预览 URL
 const getPreviewUrl = (attachment?: Attachment | null): string => {
   if (!attachment) return ''
+  
+  if (attachment.access_level === 'public') {
+    return getPublicAttachmentUrl(attachment.id)
+  }
+  
   const token = attachmentTokens.value[attachment.id]
   if (token) {
     return getAttachmentUrl(attachment.id, token)
   }
-  return ''  // 没有 token 时返回空，显示占位符
+  return ''
 }
 
 // 单个附件 Token 加载（用于预览弹窗）
@@ -605,39 +609,18 @@ const confirmUpload = async () => {
 
   uploading.value = true
   try {
-    // 读取文件并转换为 Base64
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      const base64Data = e.target?.result as string
-      // 移除 data URL 前缀
-      const base64Content = base64Data.split(',')[1] || ''
-
-      try {
-        await uploadAttachment({
-          source_tag: 'admin_upload',
-          source_id: 'admin_upload', // 管理员上传使用固定 source_id
-          file_name: selectedFile.value!.name,
-          mime_type: selectedFile.value!.type || 'application/octet-stream',
-          base64_data: base64Content,
-        })
-        toast.success(t('attachment.uploadSuccess'))
-        closeUploadModal()
-        loadAttachments()
-      } catch (uploadErr) {
-        console.error('Failed to upload attachment:', uploadErr)
-        toast.error(t('attachment.uploadError'))
-      } finally {
-        uploading.value = false
-      }
-    }
-    reader.onerror = () => {
-      toast.error(t('attachment.readFileError'))
-      uploading.value = false
-    }
-    reader.readAsDataURL(selectedFile.value)
-  } catch (err) {
-    console.error('Failed to read file:', err)
-    toast.error(t('attachment.readFileError'))
+    await uploadAttachmentFormData({
+      source_tag: 'admin_upload',
+      source_id: 'admin_upload',
+      file: selectedFile.value,
+    })
+    toast.success(t('attachment.uploadSuccess'))
+    closeUploadModal()
+    loadAttachments()
+  } catch (uploadErr) {
+    console.error('Failed to upload attachment:', uploadErr)
+    toast.error(t('attachment.uploadError'))
+  } finally {
     uploading.value = false
   }
 }

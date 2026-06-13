@@ -110,13 +110,13 @@
           <div class="sidebar-section">
             <h4 class="sidebar-title">下载</h4>
             <div class="sidebar-actions">
-              <el-button v-if="docStore.currentResult.source_attachment" size="small" @click="downloadAttachment(docStore.currentResult.source_attachment.download_url)">
+              <el-button v-if="docStore.currentResult.source_attachment?.download_url" size="small" @click="downloadAttachment(docStore.currentResult.source_attachment?.download_url)">
                 原始文件
               </el-button>
-              <el-button v-if="docStore.currentResult.ocr_result?.main_markdown_attachment" size="small" type="primary" @click="downloadAttachment(docStore.currentResult.ocr_result.main_markdown_attachment.download_url)">
+              <el-button v-if="docStore.currentResult.ocr_result?.main_markdown_attachment?.download_url" size="small" type="primary" @click="downloadAttachment(docStore.currentResult.ocr_result?.main_markdown_attachment?.download_url)">
                 Markdown
               </el-button>
-              <el-button v-if="docStore.currentResult.ocr_result?.raw_result_attachment" size="small" @click="downloadAttachment(docStore.currentResult.ocr_result.raw_result_attachment.download_url)">
+              <el-button v-if="docStore.currentResult.ocr_result?.raw_result_attachment?.download_url" size="small" @click="downloadAttachment(docStore.currentResult.ocr_result?.raw_result_attachment?.download_url)">
                 原始结果
               </el-button>
             </div>
@@ -129,7 +129,7 @@
               <div v-for="item in docStore.currentResult.image_attachments" :key="item.id" class="attachment-item">
                 <div class="attachment-name">{{ item.attachment?.file_name || item.filename || '未命名图片' }}</div>
                 <div class="attachment-meta">{{ item.attachment?.mime_type || item.media_type || '-' }} · {{ formatFileSize(item.attachment?.file_size) }}</div>
-                <el-button size="small" text type="primary" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
+                <el-button v-if="item.attachment?.download_url" size="small" text type="primary" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
               </div>
             </div>
           </div>
@@ -238,22 +238,18 @@ async function onDeleteDocument() {
 }
 
 async function loadMarkdownPreview() {
-  const url = docStore.currentResult?.ocr_result?.main_markdown_attachment?.download_url
-  if (!url) {
+  const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
+  if (!attachment?.id) {
     markdownPreview.value = ''
     return
   }
 
   markdownLoading.value = true
   try {
-    const response = await apiClient.get(url.replace(/^\/api/, ''))
-    const dataUrl = response.data?.data?.data_url as string | undefined
-    if (!dataUrl || !dataUrl.startsWith('data:')) {
-      markdownPreview.value = ''
-      return
-    }
-    const base64 = dataUrl.split(',')[1] || ''
-    markdownPreview.value = atob(base64)
+    const response = await apiClient.get(`/attachments/${attachment.id}/content`, {
+      responseType: 'text',
+    })
+    markdownPreview.value = response.data || ''
   } catch {
     markdownPreview.value = ''
   } finally {

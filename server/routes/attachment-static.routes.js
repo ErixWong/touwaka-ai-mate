@@ -1,9 +1,12 @@
 /**
- * Attachment Static Routes - 附件 Token 访问路由
+ * Attachment Static Routes - 附件静态访问路由
  *
  * Issue #557: 实现通用附件服务
+ * Issue #001: Attachment 访问级别与统一接入改造
  * 通过 Token 认证提供附件访问，支持 <img> / <video> 等媒体元素
- * URL 格式: /attach/t/:token/:attachment_id
+ * URL 格式:
+ *   - /attach/public/:attachment_id - 公开附件直接访问
+ *   - /attach/t/:token/:attachment_id - 私有附件 Token 访问
  *
  * 参考：task-static.routes.js (Issue #140)
  */
@@ -14,7 +17,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import logger from '../../lib/logger.js';
 
-// Content-Type 映射
 const CONTENT_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -29,55 +31,21 @@ const CONTENT_TYPES = {
   '.zip': 'application/zip',
 };
 
-// 最大文件大小：50MB
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
-/**
- * 创建附件静态文件服务路由
- * @param {Object} db - 数据库实例
- */
 export default (db) => {
   const router = new Router({ prefix: '/attach' });
 
-  /**
-   * 附件 Token 访问路由
-   * 匹配: /attach/t/:token/:attachment_id
-   */
-  router.get('/t/:token/:attachment_id', async (ctx) => {
-    const { token, attachment_id } = ctx.params;
-    const ipAddress = ctx.ip;
-    const userAgent = ctx.get('User-Agent') || '';
+  router.get('/public/:attachment_id', async (ctx) => {
+    const { attachment_id } = ctx.params;
 
-    // 1. 验证参数存在
-    if (!token || !attachment_id) {
+    if (!attachment_id) {
       ctx.status = 400;
-      ctx.body = 'Bad Request: Missing token or attachment_id';
+      ctx.body = 'Bad Request: Missing attachment_id';
       return;
     }
 
     try {
-      // 2. 查询数据库验证 token
-      const tokenRows = await db.query(
-        `SELECT * FROM attachment_token WHERE token = ?`,
-        [token]
-      );
-
-      if (!tokenRows || tokenRows.length === 0) {
-        ctx.status = 401;
-        ctx.body = 'Unauthorized: Invalid token';
-        return;
-      }
-
-      const tokenRecord = tokenRows[0];
-
-      // 3. 检查 token 是否过期
-      if (new Date() > new Date(tokenRecord.expires_at)) {
-        ctx.status = 401;
-        ctx.body = 'Unauthorized: Token expired';
-        return;
-      }
-
-      // 4. 查询附件信息
       const attachmentRows = await db.query(
         `SELECT * FROM attachments WHERE id = ?`,
         [attachment_id]
@@ -91,19 +59,15 @@ export default (db) => {
 
       const attachment = attachmentRows[0];
 
-      // 5. 验证 source_tag 和 source_id 匹配
-      if (attachment.source_tag !== tokenRecord.source_tag ||
-          attachment.source_id !== tokenRecord.source_id) {
+      if (attachment.access_level !== 'public') {
         ctx.status = 403;
-        ctx.body = 'Forbidden: Token does not match attachment resource';
+        ctx.body = 'Forbidden: Attachment is not public';
         return;
       }
 
-      // 6. 获取附件基础路径
       const attachmentBasePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
       const fullPath = path.join(attachmentBasePath, attachment.file_path);
 
-      // 7. 检查文件是否存在及大小限制
       let stats;
       try {
         stats = await fs.stat(fullPath);
@@ -123,21 +87,124 @@ export default (db) => {
         return;
       }
 
-      // 8. 更新最后访问时间（异步，不阻塞响应）
+      const ext = path.extname(fullPath).toLowerCase();
+      ctx.type = CONTENT_TYPES[ext] || attachment.mime_type || 'application/octet-stream';
+      ctx.set('Cache-Control', 'public, max-age=86400');
+
+      const stream = createReadStream(fullPath);
+      stream.on('error', (err) => {
+        logger.error('[AttachmentStatic] public stream error:', err);
+        if (!ctx.headersSent) {
+          ctx.status = 500;
+          ctx.body = 'File read error';
+        }
+      });
+      ctx.body = stream;
+
+    } catch (error) {
+      logger.error('[AttachmentStatic] public access error:', error);
+      ctx.status = 500;
+      ctx.body = 'Internal server error';
+    }
+  });
+
+  router.get('/t/:token/:attachment_id', async (ctx) => {
+    const { token, attachment_id } = ctx.params;
+    const ipAddress = ctx.ip;
+    const userAgent = ctx.get('User-Agent') || '';
+
+    if (!token || !attachment_id) {
+      ctx.status = 400;
+      ctx.body = 'Bad Request: Missing token or attachment_id';
+      return;
+    }
+
+    try {
+      const tokenRows = await db.query(
+        `SELECT * FROM attachment_token WHERE token = ?`,
+        [token]
+      );
+
+      if (!tokenRows || tokenRows.length === 0) {
+        ctx.status = 401;
+        ctx.body = 'Unauthorized: Invalid token';
+        return;
+      }
+
+      const tokenRecord = tokenRows[0];
+
+      if (new Date() > new Date(tokenRecord.expires_at)) {
+        ctx.status = 401;
+        ctx.body = 'Unauthorized: Token expired';
+        return;
+      }
+
+      const attachmentRows = await db.query(
+        `SELECT * FROM attachments WHERE id = ?`,
+        [attachment_id]
+      );
+
+      if (!attachmentRows || attachmentRows.length === 0) {
+        ctx.status = 404;
+        ctx.body = 'Attachment not found';
+        return;
+      }
+
+      const attachment = attachmentRows[0];
+
+      if (attachment.access_level === 'public') {
+        ctx.status = 400;
+        ctx.body = 'Bad Request: Public attachment should use /attach/public/:id';
+        return;
+      }
+
+      if (attachment.source_tag !== tokenRecord.source_tag ||
+          attachment.source_id !== tokenRecord.source_id) {
+        ctx.status = 403;
+        ctx.body = 'Forbidden: Token does not match attachment resource';
+        return;
+      }
+
+      const attachmentBasePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
+      const fullPath = path.join(attachmentBasePath, attachment.file_path);
+
+      let stats;
+      try {
+        stats = await fs.stat(fullPath);
+        if (!stats.isFile()) {
+          ctx.status = 404;
+          ctx.body = 'Not a file';
+          return;
+        }
+        if (stats.size > MAX_FILE_SIZE) {
+          ctx.status = 413;
+          ctx.body = 'File too large (max 50MB)';
+          return;
+        }
+      } catch (fileError) {
+        ctx.status = 404;
+        ctx.body = 'File not found';
+        return;
+      }
+
       db.query(
         `UPDATE attachment_token SET last_access_at = NOW() WHERE id = ?`,
         [tokenRecord.id]
       ).catch(err => logger.error('Failed to update last_access_at:', err.message));
 
-      // 9. 设置 Content-Type
       const ext = path.extname(fullPath).toLowerCase();
       ctx.type = CONTENT_TYPES[ext] || attachment.mime_type || 'application/octet-stream';
+      ctx.set('Cache-Control', 'private, max-age=3600');
 
-      // 10. 设置缓存控制（附件可以缓存，因为 Token 有过期时间）
-      ctx.set('Cache-Control', 'public, max-age=3600');
-
-      // 11. 返回文件内容
-      ctx.body = createReadStream(fullPath);
+      const stream = createReadStream(fullPath);
+      stream.on('error', (err) => {
+        logger.error('[AttachmentStatic] token stream error:', err);
+        if (!ctx.headersSent) {
+          ctx.status = 500;
+          ctx.body = 'File read error';
+        }
+      });
+      ctx.body = stream;
 
     } catch (error) {
       console.error('Attachment static file error:', error);
@@ -146,9 +213,6 @@ export default (db) => {
     }
   });
 
-  /**
-   * 健康检查端点
-   */
   router.get('/health', async (ctx) => {
     ctx.body = { status: 'ok', service: 'attachment-static' };
   });

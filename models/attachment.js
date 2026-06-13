@@ -66,6 +66,12 @@ export default class attachment extends Model {
       allowNull: true,
       comment: "文件描述（VL模型生成）"
     },
+    access_level: {
+      type: DataTypes.ENUM('public', 'private'),
+      allowNull: false,
+      defaultValue: 'private',
+      comment: "访问级别：public=公开访问，private=私有受控访问"
+    },
     created_by: {
       type: DataTypes.STRING(20),
       allowNull: true,
@@ -119,6 +125,13 @@ export default class attachment extends Model {
         using: "BTREE",
         fields: [
           { name: "created_by" },
+        ]
+      },
+      {
+        name: "idx_access_level",
+        using: "BTREE",
+        fields: [
+          { name: "access_level" },
         ]
       },
     ]

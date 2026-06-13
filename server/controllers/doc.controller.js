@@ -21,6 +21,7 @@ import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocumentOcrService from '../../lib/document-ocr-service.js';
+import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
 
@@ -32,6 +33,7 @@ class DocController {
     this.compareExecutor = null;
     this.docAccessService = null;
     this.collectionAccessService = null;
+    this.attachmentService = new AttachmentService(db);
   }
 
   // ==================== 版本状态机 ====================
@@ -305,7 +307,7 @@ class DocController {
       const sourceAttachment = revision?.id
         ? await Attachment.findOne({
           where: { source_tag: 'doc-platform', source_id: revision.id },
-          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_by', 'created_at'],
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_by', 'created_at'],
           order: [['created_at', 'ASC']],
           raw: true,
         })
@@ -327,12 +329,10 @@ class DocController {
       const resultAttachments = attachmentIds.length > 0
         ? await Attachment.findAll({
           where: { id: { [Op.in]: attachmentIds } },
-          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_at'],
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
           raw: true,
         })
         : [];
-
-      const resultAttachmentMap = new Map(resultAttachments.map(item => [item.id, item]));
 
       const ocrImages = latestOcrResult?.id
         ? await DocOcrImage.findAll({
@@ -347,11 +347,76 @@ class DocController {
       const imageAttachments = imageAttachmentIds.length > 0
         ? await Attachment.findAll({
           where: { id: { [Op.in]: imageAttachmentIds } },
-          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_at'],
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
           raw: true,
         })
         : [];
+
+      const resultAttachmentMap = new Map(resultAttachments.map(item => [item.id, item]));
       const imageAttachmentMap = new Map(imageAttachments.map(item => [item.id, item]));
+      const allAttachmentMap = new Map([
+        ...(sourceAttachment ? [[sourceAttachment.id, sourceAttachment]] : []),
+        ...resultAttachments.map(item => [item.id, item]),
+        ...imageAttachments.map(item => [item.id, item]),
+      ]);
+
+      const userId = ctx.state.session.id;
+
+      const allAttachments = [
+        sourceAttachment,
+        ...(attachmentIds.map(id => resultAttachmentMap.get(id)).filter(Boolean)),
+        ...(imageAttachments),
+      ].filter(Boolean);
+
+      const sourceGroups = new Map();
+      for (const att of allAttachments) {
+        if (att.access_level !== 'public') {
+          const key = `${att.source_tag}:${att.source_id}`;
+          if (!sourceGroups.has(key)) {
+            sourceGroups.set(key, { sourceTag: att.source_tag, sourceId: att.source_id, attachments: [] });
+          }
+          sourceGroups.get(key).attachments.push(att);
+        }
+      }
+
+      const tokenCache = new Map();
+      for (const [key, group] of sourceGroups) {
+        try {
+          const tokenResult = await this.attachmentService.generateToken(group.sourceTag, group.sourceId, userId);
+          tokenCache.set(key, tokenResult);
+        } catch (err) {
+          logger.warn(`[Doc] Failed to generate token for ${key}:`, err.message);
+        }
+      }
+
+      const buildAttachmentResponse = (attachmentId) => {
+        const attachment = attachmentId ? allAttachmentMap.get(attachmentId) : null;
+        if (!attachment) return null;
+
+        const accessLevel = attachment.access_level || 'private';
+        let previewUrl = null;
+        let downloadUrl = null;
+
+        if (accessLevel === 'public') {
+          previewUrl = `/attach/public/${attachment.id}`;
+          downloadUrl = `/attach/public/${attachment.id}`;
+        } else {
+          const key = `${attachment.source_tag}:${attachment.source_id}`;
+          const tokenResult = tokenCache.get(key);
+          if (tokenResult) {
+            previewUrl = `/attach/t/${tokenResult.token}/${attachment.id}`;
+            downloadUrl = `/attach/t/${tokenResult.token}/${attachment.id}`;
+          }
+        }
+
+        return {
+          ...attachment,
+          access_level: accessLevel,
+          preview_url: previewUrl,
+          download_url: downloadUrl,
+          requires_auth: !previewUrl,
+        };
+      };
 
       ctx.success({
         document: {
@@ -365,10 +430,7 @@ class DocController {
             username: uploader.username,
           } : null,
         } : null,
-        source_attachment: sourceAttachment ? {
-          ...sourceAttachment,
-          download_url: `/api/attachments/${sourceAttachment.id}`,
-        } : null,
+        source_attachment: buildAttachmentResponse(sourceAttachment?.id),
         processing: {
           status: document.processing_status,
           error_code: document.processing_error_code,
@@ -385,29 +447,14 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
-          main_markdown_attachment: latestOcrResult.main_markdown_attachment_id ? {
-            ...resultAttachmentMap.get(latestOcrResult.main_markdown_attachment_id),
-            download_url: `/api/attachments/${latestOcrResult.main_markdown_attachment_id}`,
-          } : null,
-          raw_result_attachment: latestOcrResult.raw_result_attachment_id ? {
-            ...resultAttachmentMap.get(latestOcrResult.raw_result_attachment_id),
-            download_url: `/api/attachments/${latestOcrResult.raw_result_attachment_id}`,
-          } : null,
-          deliverables_manifest_attachment: latestOcrResult.deliverables_manifest_attachment_id ? {
-            ...resultAttachmentMap.get(latestOcrResult.deliverables_manifest_attachment_id),
-            download_url: `/api/attachments/${latestOcrResult.deliverables_manifest_attachment_id}`,
-          } : null,
-          image_manifest_attachment: latestOcrResult.image_manifest_attachment_id ? {
-            ...resultAttachmentMap.get(latestOcrResult.image_manifest_attachment_id),
-            download_url: `/api/attachments/${latestOcrResult.image_manifest_attachment_id}`,
-          } : null,
+          main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
+          raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
+          deliverables_manifest_attachment: buildAttachmentResponse(latestOcrResult.deliverables_manifest_attachment_id),
+          image_manifest_attachment: buildAttachmentResponse(latestOcrResult.image_manifest_attachment_id),
         } : null,
         image_attachments: ocrImages.map((item) => ({
           ...item,
-          attachment: item.attachment_id ? {
-            ...imageAttachmentMap.get(item.attachment_id),
-            download_url: `/api/attachments/${item.attachment_id}`,
-          } : null,
+          attachment: buildAttachmentResponse(item.attachment_id),
         })),
       });
     } catch (error) {
@@ -689,7 +736,9 @@ class DocController {
       });
 
       for (const attachment of attachmentRows) {
-        const fullPath = attachment.file_path ? path.resolve(attachment.file_path) : null;
+        const fullPath = attachment.file_path
+          ? path.join(this.attachmentService.getAttachmentBasePath(), attachment.file_path)
+          : null;
         if (!fullPath) continue;
         try {
           await fs.unlink(fullPath);

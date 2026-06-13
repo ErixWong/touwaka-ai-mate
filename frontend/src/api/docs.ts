@@ -124,8 +124,11 @@ export interface DocAttachmentInfo {
   file_name: string | null
   mime_type: string
   file_size: number
+  access_level: string
   created_at: string
-  download_url: string
+  download_url: string | null
+  preview_url: string | null
+  requires_auth?: boolean
 }
 
 export interface DocResultImageAttachment {

@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { useContractV2Store } from '@/stores/contract-v2'
 import type { ContractVersion } from '@/api/contract-v2'
-import { uploadAttachment } from '@/api/attachment'
+import { uploadAttachmentFormData } from '@/api/attachment'
 import { createRecord, newID, getDocumentContent, type DocumentContent } from '@/api/mini-apps'
 import { getRevisions, getDocumentPermissions, type DocRevision, type DocPermissions } from '@/api/docs'
 import DocumentContentViewer from '@/components/apps/DocumentContentViewer.vue'
@@ -203,13 +203,10 @@ async function handleFileUpload(event: Event) {
 
   uploading.value = true
   try {
-    const base64Data = await fileToBase64(file)
-    const att = await uploadAttachment({
+    const att = await uploadAttachmentFormData({
       source_tag: 'mini_app_file',
       source_id: APP_ID,
-      file_name: file.name,
-      mime_type: file.type,
-      base64_data: base64Data,
+      file,
     })
 
     const clientId = await newID(20)
@@ -232,18 +229,6 @@ async function handleFileUpload(event: Event) {
   }
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.split(',')[1]!
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
 </script>
 
 <template>

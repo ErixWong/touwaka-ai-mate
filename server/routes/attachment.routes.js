@@ -2,15 +2,17 @@
  * Attachment Routes - 附件服务路由
  *
  * Issue #557: 实现通用附件服务
+ * Issue #001: Attachment 访问级别与统一接入改造
  * API 设计：
  * POST   /api/attachments           - 上传附件 (base64)
  * POST   /api/attachments/upload    - 上传附件 (FormData)
  * POST   /api/attachments/batch     - 批量上传
- * GET    /api/attachments/:id      - 获取附件（返回 data_url）
+ * GET    /api/attachments/:id       - 获取附件元数据（不再返回 data_url）
+ * GET    /api/attachments/:id/content - 获取附件文件流（需认证）
  * POST   /api/attachments/meta      - 批量获取元信息
- * GET    /api/attachments            - 列出资源附件（query: source_tag, source_id）
+ * GET    /api/attachments           - 列出资源附件（query: source_tag, source_id）
  * GET    /api/attachments/admin     - 管理员列表（支持分页和筛选）
- * DELETE /api/attachments/:id        - 删除附件
+ * DELETE /api/attachments/:id       - 删除附件
  * POST   /api/attachments/token     - 生成资源级 Token
  */
 
@@ -22,7 +24,7 @@ const createUploadMiddleware = () => {
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB
+      fileSize: 50 * 1024 * 1024,
     },
   });
   return upload.single('file');
@@ -31,31 +33,24 @@ const createUploadMiddleware = () => {
 export default (controller) => {
   const router = new Router({ prefix: '/api/attachments' });
 
-  // 上传附件 (base64)
   router.post('/', authenticate(), (ctx) => controller.upload(ctx));
 
-  // 上传附件 (FormData)
   router.post('/upload', authenticate(), createUploadMiddleware(), (ctx) => controller.uploadFormData(ctx));
 
-  // 批量上传
   router.post('/batch', authenticate(), (ctx) => controller.uploadBatch(ctx));
 
-  // 批量获取元信息（轻量级）
   router.post('/meta', authenticate(), (ctx) => controller.getMeta(ctx));
 
-  // 生成资源级 Token
   router.post('/token', authenticate(), (ctx) => controller.generateToken(ctx));
 
-  // 管理员列表（支持分页和筛选）- 静态路由，必须在 /:id 之前
   router.get('/admin', authenticate(), (ctx) => controller.listAdmin(ctx));
 
-  // 列出资源附件（query: source_tag, source_id）
   router.get('/', authenticate(), (ctx) => controller.list(ctx));
 
-  // 获取附件详情（返回 data_url）
   router.get('/:id', authenticate(), (ctx) => controller.get(ctx));
 
-  // 删除附件
+  router.get('/:id/content', authenticate(), (ctx) => controller.getContent(ctx));
+
   router.delete('/:id', authenticate(), (ctx) => controller.delete(ctx));
 
   return router;
