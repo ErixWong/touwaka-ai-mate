@@ -410,14 +410,8 @@ const handleBeforeUnload = (event: BeforeUnloadEvent) => {
   event.returnValue = ''
 }
 
-const beforeLeaveHandler = (event: Event) => {
-  if (!hasChanges.value) return
-  event.preventDefault()
-}
-
 onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
-  window.addEventListener('system-config-before-leave', beforeLeaveHandler)
   await systemSettingsStore.loadSettings()
   const settings = systemSettingsStore.settings
   if (settings) {
@@ -456,7 +450,11 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
-  window.removeEventListener('system-config-before-leave', beforeLeaveHandler)
+  systemSettingsStore.unsavedConfigChanges = false
+})
+
+watch(hasChanges, (val) => {
+  systemSettingsStore.unsavedConfigChanges = val
 })
 
 watch(() => systemSettingsStore.settings, (settings) => {

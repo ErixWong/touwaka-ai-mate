@@ -3,7 +3,8 @@
     <div class="register-card">
       <div class="card-header">
         <div class="header-content">
-          <h1 class="register-title">{{ $t('app.title') }}</h1>
+          <span v-if="brandingLogoIcon" class="register-icon">{{ brandingLogoIcon }}</span>
+          <h1 class="register-title">{{ brandingAppName }}</h1>
           <p class="register-subtitle">{{ $t('register.subtitle') }}</p>
         </div>
         <LangSelector />
@@ -109,6 +110,8 @@ import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
+import { useSystemSettingsStore } from '@/stores/systemSettings'
+import { getDisplayableLogoIcon, getBrandingAppName } from '@/utils/branding'
 import LangSelector from '@/components/common/LangSelector.vue'
 import { getRegistrationConfig, verifyInvitationCode, register, type VerifyResult } from '@/api/invitation'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -117,7 +120,11 @@ const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
 const userStore = useUserStore()
+const systemSettingsStore = useSystemSettingsStore()
 const formRef = ref<FormInstance>()
+
+const brandingAppName = computed(() => getBrandingAppName(systemSettingsStore.brandingSettings, t('app.title')))
+const brandingLogoIcon = computed(() => getDisplayableLogoIcon(systemSettingsStore.brandingSettings?.logo_icon))
 
 const form = reactive({
   invitation_code: '',
@@ -168,6 +175,7 @@ const isSubmitDisabled = computed(() => {
 
 // 加载注册配置
 onMounted(async () => {
+  systemSettingsStore.loadBranding()
   try {
     const config = await getRegistrationConfig()
     allowSelfRegistration.value = config.allowSelfRegistration
@@ -314,6 +322,14 @@ const handleRegister = async () => {
   text-align: center;
   margin: 0 0 8px 0;
   color: #333;
+}
+
+.register-icon {
+  display: block;
+  text-align: center;
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 12px;
 }
 
 .register-subtitle {
