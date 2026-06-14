@@ -115,6 +115,7 @@ import contractV2Routes from './routes/contract-v2.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import elsRoutes from './routes/els.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
+import appClockRoutes from './routes/app-clock.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
 const PROCESS_ERROR_STRING_LIMIT = 4000;
@@ -668,6 +669,11 @@ class ApiServer {
     this.app.use(ocrToolRouter.routes());
     this.app.use(ocrToolRouter.allowedMethods());
     logger.info('OCR Tool routes registered (/api/ocr/*)');
+
+    const appClockRouter = appClockRoutes(this.db);
+    this.app.use(appClockRouter.routes());
+    this.app.use(appClockRouter.allowedMethods());
+    logger.info('AppClock status routes registered (GET /api/app-clock/status, POST /api/app-clock/clear/:appId, POST /api/app-clock/force-tick/:appId)');
 
     // 前端静态文件服务（生产环境）
     // 检查前端构建目录是否存在
