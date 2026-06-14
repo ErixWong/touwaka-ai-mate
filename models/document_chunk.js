@@ -19,10 +19,14 @@ export default class document_chunk extends Model {
         key: 'id'
       }
     },
-    chunk_type: {
-      type: DataTypes.ENUM('paragraph','chunk'),
-      allowNull: false,
-      comment: "分段类型(两层结构)"
+    outline_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "所属章节提取结果ID",
+      references: {
+        model: 'document_outlines',
+        key: 'id'
+      }
     },
     title: {
       type: DataTypes.STRING(500),
@@ -39,6 +43,26 @@ export default class document_chunk extends Model {
       allowNull: false,
       defaultValue: 0,
       comment: "顺序号"
+    },
+    from_line: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "起始行号"
+    },
+    to_line: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "结束行号"
+    },
+    text_hash: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      comment: "文本哈希"
+    },
+    byte_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "字节数"
     },
     embedding_vector: {
       type: "VECTOR(1536)",
@@ -65,11 +89,6 @@ export default class document_chunk extends Model {
       type: DataTypes.INTEGER,
       allowNull: true,
       comment: "Token数"
-    },
-    metadata: {
-      type: DataTypes.JSON,
-      allowNull: true,
-      comment: "扩展字段"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -109,6 +128,13 @@ export default class document_chunk extends Model {
         using: "BTREE",
         fields: [
           { name: "revision_id" },
+        ]
+      },
+      {
+        name: "idx_chunk_outline",
+        using: "BTREE",
+        fields: [
+          { name: "outline_id" },
         ]
       },
       {

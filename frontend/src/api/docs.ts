@@ -212,14 +212,16 @@ export interface SyncOcrResult {
 export interface DocChunk {
   id: string
   version_id: string
-  chunk_type: 'chapter' | 'section' | 'paragraph' | 'chunk'
+  outline_id: string | null
   title: string | null
   content: string | null
   seq: number
-  chapter_title: string | null
-  section_title: string | null
+  from_line: number | null
+  to_line: number | null
+  text_hash: string | null
+  byte_count: number | null
   token_count: number | null
-  is_knowledge_point: boolean
+  embedding_status?: string | null
 }
 
 export interface DocRecallParams {
@@ -237,7 +239,6 @@ export interface DocRecallItem {
     id: string
     title: string
     content: string
-    chunk_type: string
     seq: number
   }
   version: {

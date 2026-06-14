@@ -25,7 +25,6 @@
         <el-form :model="form" label-width="130px" size="small">
           <!-- pending_ocr -->
           <template v-if="activeStage === 'pending_ocr'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_ocr.enabled" disabled /></el-form-item>
             <el-form-item label="执行方式"><el-tag size="small" type="info">mcp（固定）</el-tag></el-form-item>
             <el-divider content-position="left">MCP 配置</el-divider>
             <el-form-item label="MCP 服务">
@@ -150,7 +149,6 @@
 
           <!-- ocr_processing -->
           <template v-if="activeStage === 'ocr_processing'">
-            <el-form-item label="启用"><el-switch v-model="form.ocr_processing.enabled" disabled /></el-form-item>
             <el-form-item label="执行方式"><el-tag size="small" type="info">mcp（固定）</el-tag></el-form-item>
             <el-divider content-position="left">MCP 配置</el-divider>
             <el-form-item label="MCP 服务">
@@ -223,7 +221,6 @@
 
           <!-- ocr_finalize -->
           <template v-if="activeStage === 'ocr_finalize'">
-            <el-form-item label="启用"><el-switch v-model="form.ocr_finalize.enabled" disabled /></el-form-item>
             <el-divider content-position="left">MCP 配置</el-divider>
             <el-form-item label="MCP 服务">
               <el-select v-model="form.ocr_finalize.mcp.server" placeholder="选择 MCP 服务" clearable filterable>

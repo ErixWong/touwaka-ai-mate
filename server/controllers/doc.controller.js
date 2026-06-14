@@ -21,6 +21,7 @@ import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocumentOcrService from '../../lib/document-ocr-service.js';
+import DocumentOutlineService from '../../lib/document-outline-service.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
@@ -101,6 +102,31 @@ class DocController {
           }
           return await appClock.callMcp(server, tool, params, timeoutMs);
         },
+        getDocPipelineConfig: async () => {
+          const records = await systemSettingService.SystemSetting.findAll({
+            where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+            raw: true,
+          });
+          const stored = {};
+          for (const record of records) {
+            const stageKey = record.setting_key.replace('doc_pipeline.', '');
+            try {
+              stored[stageKey] = JSON.parse(record.setting_value);
+            } catch {
+              stored[stageKey] = null;
+            }
+          }
+          return mergeWithDefaults(stored);
+        },
+        callLlm: createCallLlmFn(this.db),
+      });
+    }
+  }
+
+  ensureDocumentOutlineService(ctx) {
+    if (!this.documentOutlineService) {
+      const systemSettingService = getSystemSettingService(this.db);
+      this.documentOutlineService = new DocumentOutlineService(this.db, {
         getDocPipelineConfig: async () => {
           const records = await systemSettingService.SystemSetting.findAll({
             where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
@@ -360,8 +386,6 @@ class DocController {
         ...imageAttachments.map(item => [item.id, item]),
       ]);
 
-      const userId = ctx.state.session.id;
-
       const allAttachments = [
         sourceAttachment,
         ...(attachmentIds.map(id => resultAttachmentMap.get(id)).filter(Boolean)),
@@ -520,7 +544,7 @@ class DocController {
       const chunks = await this.models.DocChunk.findAll({
         where: { revision_id: revisionId },
         order: [['seq', 'ASC']],
-        attributes: ['id', 'chunk_type', 'title', 'content', 'seq', 'token_count', 'embedding_status'],
+        attributes: ['id', 'outline_id', 'title', 'content', 'seq', 'from_line', 'to_line', 'text_hash', 'byte_count', 'token_count', 'embedding_status'],
       });
 
       ctx.success(chunks);
@@ -797,12 +821,15 @@ async createVersion(ctx) {
             await this.models.DocChunk.create({
               id: Utils.newID(),
               revision_id: versionId,
-              chunk_type: chunk.chunk_type || 'paragraph',
+              outline_id: chunk.outline_id || null,
               title: chunk.title || null,
               content: chunk.content || null,
               seq: chunk.seq ?? i,
+              from_line: chunk.from_line ?? null,
+              to_line: chunk.to_line ?? null,
+              text_hash: chunk.text_hash || null,
+              byte_count: chunk.byte_count ?? null,
               token_count: chunk.token_count || null,
-              metadata: chunk.metadata || null,
             }, { transaction: t });
           }
         }
@@ -1205,6 +1232,57 @@ async createVersion(ctx) {
         : { status: error?.status || 500, message: error?.message || String(error), summary: null };
       logger.error('[Doc] syncOcr error:', normalized.summary || normalized.message);
       ctx.throw(normalized.status || 500, normalized.message);
+    }
+  }
+
+  /**
+   * 提取章节大纲
+   * POST /api/docs/revisions/:revisionId/outline/extract
+   */
+  async extractOutline(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      this.ensureDocumentOutlineService(ctx);
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const revision = await this.models.DocVersion.findOne({
+        where: { id: revisionId },
+        attributes: ['id', 'document_id'],
+      });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const document = await this.models.DocDocument.findOne({
+        where: { id: revision.document_id },
+        attributes: ['id', 'processing_status'],
+      });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      const validStates = ['pending_outline', 'error'];
+      if (!validStates.includes(document.processing_status)) {
+        ctx.throw(400, `Document must be in pending_outline or error state (current: ${document.processing_status})`);
+      }
+
+      const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const result = await this.documentOutlineService.extract(revisionId, {
+        initiatedByType: 'user',
+        initiatedById: userId,
+      });
+      ctx.success({
+        revision_id: revisionId,
+        document_id: revision.document_id,
+        outline_count: result.outline_count,
+        processing_status: 'pending_chunk',
+        partial: result.partial || false,
+        failed_chunks: result.failed_chunks || 0,
+        total_chunks: result.total_chunks || 1,
+      });
+    } catch (error) {
+      logger.error('[Doc] extractOutline error:', error);
+      ctx.throw(error.status || 500, error.message);
     }
   }
 

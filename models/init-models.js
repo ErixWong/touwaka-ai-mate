@@ -27,10 +27,12 @@ import _doc_compare_item from  "./doc_compare_item.js";
 import _doc_compare_run from  "./doc_compare_run.js";
 import _doc_ocr_image from  "./doc_ocr_image.js";
 import _doc_ocr_result from  "./doc_ocr_result.js";
+import _doc_process_run from  "./doc_process_run.js";
 import _doc_document_tag from  "./doc_document_tag.js";
 import _doc_tag from  "./doc_tag.js";
 import _document_collection from  "./document_collection.js";
 import _document from  "./document.js";
+import _document_outline from  "./document_outline.js";
 import _document_revision from  "./document_revision.js";
 import _document_chunk from  "./document_chunk.js";
 import _expert_skill from  "./expert_skill.js";
@@ -100,10 +102,12 @@ export default function initModels(sequelize) {
   const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
   const doc_ocr_image = _doc_ocr_image.init(sequelize, DataTypes);
   const doc_ocr_result = _doc_ocr_result.init(sequelize, DataTypes);
+  const doc_process_run = _doc_process_run.init(sequelize, DataTypes);
   const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
   const doc_tag = _doc_tag.init(sequelize, DataTypes);
   const document_collection = _document_collection.init(sequelize, DataTypes);
   const document = _document.init(sequelize, DataTypes);
+  const document_outline = _document_outline.init(sequelize, DataTypes);
   const document_revision = _document_revision.init(sequelize, DataTypes);
   const document_chunk = _document_chunk.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
@@ -217,6 +221,8 @@ export default function initModels(sequelize) {
   document.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "document_id"});
   doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
   doc_tag.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "tag_id"});
+  doc_process_run.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
+  document_revision.hasMany(doc_process_run, { as: "doc_process_runs", foreignKey: "revision_id"});
   document_collection.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
   ai_model.hasMany(document_collection, { as: "document_collections", foreignKey: "embedding_model_id"});
   document_collection.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
@@ -229,6 +235,10 @@ export default function initModels(sequelize) {
   document_collection.hasMany(document, { as: "documents", foreignKey: "collection_id"});
   document_revision.belongsTo(document, { as: "document", foreignKey: "document_id"});
   document.hasMany(document_revision, { as: "document_revisions", foreignKey: "document_id"});
+  document_outline.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
+  document_revision.hasMany(document_outline, { as: "document_outlines", foreignKey: "revision_id"});
+  document_chunk.belongsTo(document_outline, { as: "outline", foreignKey: "outline_id"});
+  document_outline.hasMany(document_chunk, { as: "document_chunks", foreignKey: "outline_id"});
   document_chunk.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
   document_revision.hasMany(document_chunk, { as: "document_chunks", foreignKey: "revision_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -386,10 +396,12 @@ export default function initModels(sequelize) {
     doc_compare_run,
     doc_ocr_image,
     doc_ocr_result,
+    doc_process_run,
     doc_document_tag,
     doc_tag,
     document_collection,
     document,
+    document_outline,
     document_revision,
     document_chunk,
     expert_skill,

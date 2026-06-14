@@ -2094,6 +2094,263 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== 文档平台核心链路 V2 重建 ====================
+  {
+    name: 'doc platform core tables rebuild v2',
+    check: async (conn) => {
+      const hasOutlineTable = await hasTable(conn, 'document_outlines');
+      const hasRunTable = await hasTable(conn, 'doc_process_runs');
+      const hasOutlineId = await hasColumn(conn, 'document_chunks', 'outline_id');
+      const hasFromLine = await hasColumn(conn, 'document_chunks', 'from_line');
+      return hasOutlineTable && hasRunTable && hasOutlineId && hasFromLine;
+    },
+    migrate: async (conn) => {
+      await conn.execute('SET FOREIGN_KEY_CHECKS = 0');
+      try {
+        await safeExecute(conn, `ALTER TABLE doc_compare_items DROP FOREIGN KEY fk_comp_items_base_chunk`);
+        await safeExecute(conn, `ALTER TABLE doc_compare_items DROP FOREIGN KEY fk_comp_items_target_chunk`);
+        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_document`);
+        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_base_rev`);
+        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_target_rev`);
+        await safeExecute(conn, `ALTER TABLE doc_document_tags DROP FOREIGN KEY fk_doctag_document`);
+        await safeExecute(conn, `ALTER TABLE app_doc_bindings DROP FOREIGN KEY fk_binding_document`);
+        await safeExecute(conn, `ALTER TABLE app_doc_bindings DROP FOREIGN KEY fk_binding_revision`);
+
+        await safeExecute(conn, `DROP TABLE IF EXISTS doc_process_runs`);
+        await safeExecute(conn, `DROP TABLE IF EXISTS document_outlines`);
+        await safeExecute(conn, `DROP TABLE IF EXISTS doc_ocr_images`);
+        await safeExecute(conn, `DROP TABLE IF EXISTS doc_ocr_results`);
+        await safeExecute(conn, `DROP TABLE IF EXISTS document_chunks`);
+        await safeExecute(conn, `DROP TABLE IF EXISTS document_revisions`);
+        await safeExecute(conn, `DROP TABLE IF EXISTS documents`);
+
+        await conn.execute(`
+          CREATE TABLE documents (
+            id VARCHAR(32) NOT NULL COMMENT '文档ID',
+            collection_id VARCHAR(32) NOT NULL COMMENT '所属文档集合ID',
+            current_revision_id VARCHAR(32) NULL COMMENT '当前版本ID',
+            doc_type ENUM('knowledge','contract','department_doc','standard') NOT NULL COMMENT '文档类型',
+            source_system VARCHAR(50) NOT NULL COMMENT '来源系统',
+            source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键',
+            title VARCHAR(500) NOT NULL COMMENT '文档标题',
+            processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_outline','pending_chunk','pending_embedding','pending_relocate','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
+            processing_error_code VARCHAR(64) NULL COMMENT '错误码',
+            processing_error_message TEXT NULL COMMENT '错误信息',
+            processing_retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
+            processing_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '处理状态更新时间',
+            metadata JSON NULL COMMENT '扩展字段',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_document_source (source_system, source_ref_id),
+            INDEX idx_document_collection (collection_id),
+            INDEX idx_document_current_revision (current_revision_id),
+            INDEX idx_document_processing (processing_status, processing_updated_at),
+            INDEX idx_document_type_status (doc_type, processing_status),
+            CONSTRAINT fk_document_collection FOREIGN KEY (collection_id) REFERENCES document_collections(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档主表'
+        `);
+
+        await conn.execute(`
+          CREATE TABLE document_revisions (
+            id VARCHAR(32) NOT NULL COMMENT '版本ID',
+            document_id VARCHAR(32) NOT NULL COMMENT '所属文档ID',
+            revision_no INT NOT NULL COMMENT '机器版号',
+            revision_label VARCHAR(20) NULL COMMENT '展示版号(v1.0)',
+            revision_status ENUM('draft','review','approved','effective','expired','archived') NOT NULL DEFAULT 'draft' COMMENT '版本状态',
+            is_current TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否当前版本',
+            effective_from DATE NULL COMMENT '生效日期',
+            effective_to DATE NULL COMMENT '废止日期(NULL=长期有效)',
+            change_summary TEXT NULL COMMENT '变更摘要',
+            created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
+            approved_by VARCHAR(32) NULL COMMENT '审批者ID',
+            approved_at DATETIME NULL COMMENT '审批时间',
+            diff_status ENUM('pending','processing','ready','error') NOT NULL DEFAULT 'pending' COMMENT '版本差异状态(旁路)',
+            metadata JSON NULL COMMENT '扩展字段',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_revision_document_id (document_id, id),
+            UNIQUE KEY uk_document_revision_no (document_id, revision_no),
+            INDEX idx_revision_document_current (document_id, is_current),
+            INDEX idx_revision_status (revision_status),
+            INDEX idx_revision_diff_status (diff_status),
+            CONSTRAINT fk_revision_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            CONSTRAINT ck_revision_effective_date CHECK (effective_to IS NULL OR effective_to >= effective_from)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档历史版本'
+        `);
+
+        await safeExecute(conn, `ALTER TABLE documents ADD CONSTRAINT fk_document_current_revision FOREIGN KEY (id, current_revision_id) REFERENCES document_revisions(document_id, id) ON DELETE RESTRICT`);
+
+        await conn.execute(`
+          CREATE TABLE document_outlines (
+            id VARCHAR(32) NOT NULL COMMENT '章节提取结果ID',
+            revision_id VARCHAR(32) NOT NULL COMMENT '所属版本ID',
+            title VARCHAR(500) NOT NULL COMMENT '章节标题',
+            description TEXT NULL COMMENT '章节摘要说明',
+            seq INT NOT NULL DEFAULT 0 COMMENT '顺序号',
+            from_line INT NOT NULL COMMENT '起始行号',
+            to_line INT NOT NULL COMMENT '结束行号',
+            original_text LONGTEXT NULL COMMENT '对应原文片段',
+            text_hash VARCHAR(128) NULL COMMENT '文本哈希',
+            byte_count INT NULL COMMENT '字节数',
+            token_count INT NULL COMMENT 'Token数',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_outline_revision_seq (revision_id, seq),
+            INDEX idx_outline_revision (revision_id),
+            CONSTRAINT fk_outline_revision FOREIGN KEY (revision_id) REFERENCES document_revisions(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='章节提取结果表'
+        `);
+
+        await conn.execute(`
+          CREATE TABLE document_chunks (
+            id VARCHAR(32) NOT NULL COMMENT '分块ID',
+            revision_id VARCHAR(32) NOT NULL COMMENT '所属版本ID',
+            outline_id VARCHAR(32) NULL COMMENT '所属章节提取结果ID',
+            title VARCHAR(500) NULL COMMENT '分块标题',
+            content LONGTEXT NULL COMMENT '分块内容',
+            seq INT NOT NULL DEFAULT 0 COMMENT '顺序号',
+            from_line INT NULL COMMENT '起始行号',
+            to_line INT NULL COMMENT '结束行号',
+            text_hash VARCHAR(128) NULL COMMENT '文本哈希',
+            byte_count INT NULL COMMENT '字节数',
+            token_count INT NULL COMMENT 'Token数',
+            embedding_vector VECTOR(1536) NULL COMMENT '向量数据',
+            embedding_status ENUM('pending','processing','ready','error') NOT NULL DEFAULT 'pending' COMMENT '向量状态',
+            embedding_model_id VARCHAR(32) NULL COMMENT '向量模型ID',
+            embedded_at DATETIME NULL COMMENT '向量生成时间',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uk_revision_seq (revision_id, seq),
+            INDEX idx_chunk_revision (revision_id),
+            INDEX idx_chunk_outline (outline_id),
+            INDEX idx_chunk_emb_status (embedding_status),
+            CONSTRAINT fk_chunk_revision FOREIGN KEY (revision_id) REFERENCES document_revisions(id) ON DELETE CASCADE,
+            CONSTRAINT fk_chunk_outline FOREIGN KEY (outline_id) REFERENCES document_outlines(id) ON DELETE SET NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档最终召回分块表'
+        `);
+
+        await conn.execute(`
+          CREATE TABLE doc_process_runs (
+            id VARCHAR(32) NOT NULL COMMENT '处理运行记录ID',
+            revision_id VARCHAR(32) NOT NULL COMMENT '所属版本ID',
+            subject_type VARCHAR(64) NOT NULL COMMENT '处理对象表名',
+            subject_id VARCHAR(32) NOT NULL COMMENT '处理对象ID',
+            pipeline_step VARCHAR(32) NOT NULL COMMENT '处理步骤',
+            operation VARCHAR(32) NOT NULL COMMENT '执行动作',
+            initiated_by_type VARCHAR(32) NOT NULL COMMENT '触发来源类型',
+            initiated_by_id VARCHAR(32) NULL COMMENT '触发主体ID',
+            result_status VARCHAR(16) NOT NULL COMMENT '运行结果状态',
+            attempt_no INT NOT NULL DEFAULT 1 COMMENT '第几次尝试',
+            message TEXT NULL COMMENT '结果说明',
+            started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开始处理时间',
+            finished_at DATETIME NULL COMMENT '结束处理时间',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_revision_started (revision_id, started_at),
+            INDEX idx_step_result (pipeline_step, result_status, started_at),
+            INDEX idx_subject_started (subject_type, subject_id, started_at),
+            CONSTRAINT fk_doc_process_run_revision FOREIGN KEY (revision_id) REFERENCES document_revisions(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档处理运行记录表'
+        `);
+
+        await conn.execute(`
+          CREATE TABLE doc_ocr_results (
+            id VARCHAR(32) NOT NULL COMMENT 'OCR结果ID',
+            document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+            revision_id VARCHAR(32) NOT NULL COMMENT '文档版本ID',
+            provider VARCHAR(64) NOT NULL DEFAULT 'mineru' COMMENT 'OCR供应方标识',
+            task_id VARCHAR(128) NULL COMMENT '上游任务ID',
+            status ENUM('pending','processing','completed','failed') NOT NULL DEFAULT 'pending' COMMENT 'OCR阶段归一化状态',
+            progress INT NOT NULL DEFAULT 0 COMMENT 'OCR进度百分比',
+            main_markdown_attachment_id VARCHAR(20) NULL COMMENT '平台主markdown附件ID',
+            raw_result_attachment_id VARCHAR(20) NULL COMMENT 'OCR原始结果附件ID',
+            deliverables_manifest_attachment_id VARCHAR(20) NULL COMMENT '交付物清单附件ID',
+            middle_json_attachment_id VARCHAR(20) NULL COMMENT 'middle_json附件ID',
+            content_list_attachment_id VARCHAR(20) NULL COMMENT 'content_list附件ID',
+            content_list_v2_attachment_id VARCHAR(20) NULL COMMENT 'content_list_v2附件ID',
+            model_json_attachment_id VARCHAR(20) NULL COMMENT 'model_json附件ID',
+            image_manifest_attachment_id VARCHAR(20) NULL COMMENT '图片清单附件ID',
+            image_count INT NOT NULL DEFAULT 0 COMMENT '图片数量',
+            line_count INT NOT NULL DEFAULT 0 COMMENT '主markdown行数',
+            error_code VARCHAR(64) NULL COMMENT '错误码',
+            error_message TEXT NULL COMMENT '错误信息',
+            started_at DATETIME NULL COMMENT '开始时间',
+            completed_at DATETIME NULL COMMENT '完成时间',
+            metadata JSON NULL COMMENT '轻量追溯信息',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_doc_ocr_result_document (document_id, revision_id),
+            INDEX idx_doc_ocr_result_status (status, updated_at),
+            INDEX idx_doc_ocr_result_task (provider, task_id),
+            CONSTRAINT fk_doc_ocr_result_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            CONSTRAINT fk_doc_ocr_result_revision FOREIGN KEY (revision_id) REFERENCES document_revisions(id) ON DELETE CASCADE,
+            CONSTRAINT fk_doc_ocr_result_main_markdown_attachment FOREIGN KEY (main_markdown_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_raw_result_attachment FOREIGN KEY (raw_result_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_deliverables_manifest_attachment FOREIGN KEY (deliverables_manifest_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_middle_json_attachment FOREIGN KEY (middle_json_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_content_list_attachment FOREIGN KEY (content_list_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_content_list_v2_attachment FOREIGN KEY (content_list_v2_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_model_json_attachment FOREIGN KEY (model_json_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL,
+            CONSTRAINT fk_doc_ocr_result_image_manifest_attachment FOREIGN KEY (image_manifest_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OCR阶段结果表'
+        `);
+
+        await conn.execute(`
+          CREATE TABLE doc_ocr_images (
+            id VARCHAR(32) NOT NULL COMMENT 'OCR图片关系ID',
+            ocr_result_id VARCHAR(32) NOT NULL COMMENT 'OCR结果ID',
+            attachment_id VARCHAR(20) NOT NULL COMMENT '图片附件ID',
+            filename VARCHAR(255) NULL COMMENT '原始文件名',
+            media_type VARCHAR(100) NOT NULL COMMENT 'MIME类型',
+            sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+            referenced_in_markdown TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否在markdown中被引用',
+            markdown_path VARCHAR(500) NULL COMMENT 'markdown中的原始引用路径',
+            line_number INT NULL COMMENT '引用所在行号',
+            start_offset INT NULL COMMENT '起始偏移',
+            end_offset INT NULL COMMENT '结束偏移',
+            alt_text VARCHAR(500) NULL COMMENT 'alt文本',
+            description TEXT NULL COMMENT '图片描述',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_doc_ocr_image_result (ocr_result_id, sort_order),
+            INDEX idx_doc_ocr_image_attachment (attachment_id),
+            CONSTRAINT fk_doc_ocr_image_result FOREIGN KEY (ocr_result_id) REFERENCES doc_ocr_results(id) ON DELETE CASCADE,
+            CONSTRAINT fk_doc_ocr_image_attachment FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OCR图片关系表'
+        `);
+
+        if (await hasTable(conn, 'app_doc_bindings')) {
+          await safeExecute(conn, `ALTER TABLE app_doc_bindings ADD CONSTRAINT fk_binding_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE`);
+          await safeExecute(conn, `ALTER TABLE app_doc_bindings ADD CONSTRAINT fk_binding_revision FOREIGN KEY (current_revision_id) REFERENCES document_revisions(id) ON DELETE SET NULL`);
+        }
+
+        if (await hasTable(conn, 'doc_document_tags')) {
+          await safeExecute(conn, `ALTER TABLE doc_document_tags ADD CONSTRAINT fk_doctag_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE`);
+        }
+
+        if (await hasTable(conn, 'doc_compare_runs')) {
+          await safeExecute(conn, `ALTER TABLE doc_compare_runs ADD CONSTRAINT fk_comp_runs_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE`);
+          await safeExecute(conn, `ALTER TABLE doc_compare_runs ADD CONSTRAINT fk_comp_runs_base_rev FOREIGN KEY (base_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE`);
+          await safeExecute(conn, `ALTER TABLE doc_compare_runs ADD CONSTRAINT fk_comp_runs_target_rev FOREIGN KEY (target_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE`);
+        }
+
+        if (await hasTable(conn, 'doc_compare_items')) {
+          await safeExecute(conn, `ALTER TABLE doc_compare_items ADD CONSTRAINT fk_comp_items_base_chunk FOREIGN KEY (base_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL`);
+          await safeExecute(conn, `ALTER TABLE doc_compare_items ADD CONSTRAINT fk_comp_items_target_chunk FOREIGN KEY (target_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL`);
+        }
+      } finally {
+        await conn.execute('SET FOREIGN_KEY_CHECKS = 1');
+      }
+      console.log('  ✓ Rebuilt doc platform core tables to V2 design');
+    }
+  },
+
 ];
 
 /**
