@@ -11,7 +11,9 @@ import {
   syncOcr,
   deleteDocument,
   setCurrentVersion,
-  transitionVersion
+  transitionVersion,
+  extractOutline,
+  generateChunks,
 } from '@/api/docs'
 import type {
   DocDocument,
@@ -21,6 +23,8 @@ import type {
   DocListResult,
   DocResultDetail,
   DocProcessingStatus,
+  ExtractOutlineResult,
+  GenerateChunksResult,
 } from '@/api/docs'
 
 export const useDocStore = defineStore('doc', () => {
@@ -111,11 +115,25 @@ export const useDocStore = defineStore('doc', () => {
 
   async function syncProcessing(documentId: string) {
     error.value = null
+    const status = processingStatus.value?.processing_status
+    const isOcrStage = status === 'pending_ocr' || status === 'ocr_processing'
+    if (isOcrStage || !processingStatus.value) {
+      try {
+        await syncOcr(documentId)
+      } catch (e: any) {
+        if (isOcrStage) {
+          error.value = e.message || 'Failed to sync OCR status'
+          if (shouldStopPollingForError(e)) {
+            stopPolling()
+          }
+          return null
+        }
+      }
+    }
     try {
-      await syncOcr(documentId)
       return await fetchProcessing(documentId)
     } catch (e: any) {
-      error.value = e.message || 'Failed to sync OCR status'
+      error.value = e.message || 'Failed to load processing status'
       if (shouldStopPollingForError(e)) {
         stopPolling()
       }
@@ -148,10 +166,13 @@ export const useDocStore = defineStore('doc', () => {
         return
       }
 
-      const completed = result?.has_preview_result || result?.ocr_result?.status === 'completed'
-      const failed = result?.processing_status === 'error' || result?.ocr_result?.status === 'failed'
-      if (completed || failed) {
+      const status = result?.processing_status
+      const terminal = !status || status === 'ready' || status === 'error' || status === 'pending_embedding'
+      if (terminal) {
         stopPolling()
+        if (currentResult.value?.revision?.id && currentDoc.value?.id) {
+          await fetchContentTree(currentDoc.value.id, currentResult.value.revision.id)
+        }
         return
       }
 
@@ -220,6 +241,39 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
+  async function extractOutlineAction(revisionId: string): Promise<ExtractOutlineResult | null> {
+    error.value = null
+    try {
+      const result = await extractOutline(revisionId)
+      if (currentDoc.value) {
+        await fetchProcessing(currentDoc.value.id)
+        await fetchDocumentResult(currentDoc.value.id)
+      }
+      return result
+    } catch (e: any) {
+      error.value = e.message || 'Failed to extract outline'
+      return null
+    }
+  }
+
+  async function generateChunksAction(revisionId: string): Promise<GenerateChunksResult | null> {
+    error.value = null
+    try {
+      const result = await generateChunks(revisionId)
+      if (currentDoc.value) {
+        await fetchProcessing(currentDoc.value.id)
+        await fetchDocumentResult(currentDoc.value.id)
+        if (currentResult.value) {
+          await fetchContentTree(currentDoc.value.id, revisionId)
+        }
+      }
+      return result
+    } catch (e: any) {
+      error.value = e.message || 'Failed to generate chunks'
+      return null
+    }
+  }
+
   async function removeDocument(documentId: string) {
     error.value = null
     try {
@@ -264,5 +318,7 @@ export const useDocStore = defineStore('doc', () => {
     setCurrent,
     transition,
     removeDocument,
+    extractOutlineAction,
+    generateChunksAction,
   }
 })

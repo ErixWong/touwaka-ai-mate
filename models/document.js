@@ -45,7 +45,7 @@ export default class document extends Model {
       comment: "文档标题"
     },
     processing_status: {
-      type: DataTypes.ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_chunk','pending_embedding','pending_relocate','ready','error'),
+      type: DataTypes.ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_outline','pending_chunk','pending_embedding','pending_relocate','ready','error'),
       allowNull: false,
       defaultValue: "pending_ocr",
       comment: "处理状态"

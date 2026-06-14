@@ -212,14 +212,16 @@ export interface SyncOcrResult {
 export interface DocChunk {
   id: string
   version_id: string
-  chunk_type: 'chapter' | 'section' | 'paragraph' | 'chunk'
+  outline_id: string | null
   title: string | null
   content: string | null
   seq: number
-  chapter_title: string | null
-  section_title: string | null
+  from_line: number | null
+  to_line: number | null
+  text_hash: string | null
+  byte_count: number | null
   token_count: number | null
-  is_knowledge_point: boolean
+  embedding_status?: string | null
 }
 
 export interface DocRecallParams {
@@ -237,7 +239,6 @@ export interface DocRecallItem {
     id: string
     title: string
     content: string
-    chunk_type: string
     seq: number
   }
   version: {
@@ -265,6 +266,24 @@ export interface DocCompareRun {
   duration_ms: number
   created_by: string
   created_at: string
+}
+
+export interface ExtractOutlineResult {
+  revision_id: string
+  document_id: string
+  outline_count: number
+  processing_status: string
+  partial: boolean
+  failed_chunks: number
+  total_chunks: number
+}
+
+export interface GenerateChunksResult {
+  revision_id: string
+  document_id: string
+  chunk_count: number
+  outline_count: number
+  processing_status: string
 }
 
 export interface DocListResult {
@@ -373,4 +392,12 @@ export async function setCurrentVersion(_documentId: string, versionId: string):
 
 export async function transitionVersion(_documentId: string, versionId: string, to_status: string): Promise<void> {
   return apiRequest<void>(apiClient.post(`/docs/revisions/${versionId}/transition`, { to_status }))
+}
+
+export async function extractOutline(revisionId: string): Promise<ExtractOutlineResult> {
+  return apiRequest<ExtractOutlineResult>(apiClient.post(`/docs/revisions/${revisionId}/outline/extract`))
+}
+
+export async function generateChunks(revisionId: string): Promise<GenerateChunksResult> {
+  return apiRequest<GenerateChunksResult>(apiClient.post(`/docs/revisions/${revisionId}/chunks/generate`))
 }

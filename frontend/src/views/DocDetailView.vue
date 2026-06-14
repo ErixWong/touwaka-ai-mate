@@ -43,6 +43,23 @@
               <el-tag v-if="docStore.isPolling" type="warning" size="small" class="polling-tag">轮询中</el-tag>
             </div>
           </div>
+
+          <div v-if="docStore.contentTree.length > 0" class="section-card">
+            <h3>分块列表 ({{ docStore.contentTree.length }})</h3>
+            <div class="chunk-list">
+              <div v-for="(chunk, idx) in docStore.contentTree" :key="chunk.id" class="chunk-item">
+                <div class="chunk-header">
+                  <span class="chunk-seq">#{{ idx + 1 }}</span>
+                  <span v-if="chunk.title" class="chunk-title">{{ chunk.title }}</span>
+                  <span class="chunk-meta">
+                    行 {{ chunk.from_line ?? '-' }}-{{ chunk.to_line ?? '-' }}
+                    · {{ chunk.token_count ?? '-' }} tokens
+                  </span>
+                </div>
+                <div class="chunk-content">{{ chunk.content }}</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="doc-sidebar">
@@ -108,6 +125,30 @@
           </div>
 
           <div class="sidebar-section">
+            <h4 class="sidebar-title">处理操作</h4>
+            <div class="sidebar-actions">
+              <el-button
+                v-if="docStore.currentResult.processing.status === 'pending_outline' || docStore.currentResult.processing.status === 'error'"
+                type="primary"
+                size="small"
+                :loading="outlineLoading"
+                @click="onExtractOutline"
+              >
+                提取章节大纲
+              </el-button>
+              <el-button
+                v-if="docStore.currentResult.processing.status === 'pending_chunk' || docStore.currentResult.processing.status === 'error'"
+                type="primary"
+                size="small"
+                :loading="chunkLoading"
+                @click="onGenerateChunks"
+              >
+                生成文本分块
+              </el-button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
             <h4 class="sidebar-title">下载</h4>
             <div class="sidebar-actions">
               <el-button v-if="docStore.currentResult.source_attachment?.download_url" size="small" @click="downloadAttachment(docStore.currentResult.source_attachment?.download_url)">
@@ -151,6 +192,8 @@ const router = useRouter()
 const docStore = useDocStore()
 const markdownPreview = ref('')
 const markdownLoading = ref(false)
+const outlineLoading = ref(false)
+const chunkLoading = ref(false)
 
 const collectionId = computed(() => {
   const q = route.query.fromCollection as string
@@ -188,6 +231,11 @@ function processingLabel(status?: string) {
   if (status === 'pending_ocr') return '待OCR'
   if (status === 'ocr_processing') return 'OCR处理中'
   if (status === 'pending_clean') return '待文本清洗'
+  if (status === 'pending_metadata') return '待元数据'
+  if (status === 'pending_outline') return '待章节提取'
+  if (status === 'pending_chunk') return '待文本分块'
+  if (status === 'pending_embedding') return '待向量化'
+  if (status === 'pending_relocate') return '待迁移'
   if (status === 'ready') return '已就绪'
   if (status === 'error') return '处理失败'
   return status || '-'
@@ -196,7 +244,7 @@ function processingLabel(status?: string) {
 function processingTagType(status?: string) {
   if (status === 'ready') return 'success'
   if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
-  if (status === 'pending_clean') return 'info'
+  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_metadata') return 'info'
   if (status === 'error') return 'danger'
   return 'info'
 }
@@ -238,26 +286,60 @@ async function onDeleteDocument() {
 }
 
 async function loadMarkdownPreview() {
-  const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
-  if (!attachment?.id) {
-    markdownPreview.value = ''
-    return
+    const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
+    if (!attachment?.id) {
+      markdownPreview.value = ''
+      return
+    }
+
+    markdownLoading.value = true
+    try {
+      const response = await apiClient.get(`/attachments/${attachment.id}/content`, {
+        responseType: 'text',
+      })
+      markdownPreview.value = response.data || ''
+    } catch {
+      markdownPreview.value = ''
+    } finally {
+      markdownLoading.value = false
+    }
   }
 
-  markdownLoading.value = true
-  try {
-    const response = await apiClient.get(`/attachments/${attachment.id}/content`, {
-      responseType: 'text',
-    })
-    markdownPreview.value = response.data || ''
-  } catch {
-    markdownPreview.value = ''
-  } finally {
-    markdownLoading.value = false
+  async function onExtractOutline() {
+    const revId = docStore.currentResult?.revision?.id
+    if (!revId) return
+    outlineLoading.value = true
+    try {
+      const result = await docStore.extractOutlineAction(revId)
+      if (result) {
+        ElMessage.success(`成功提取 ${result.outline_count} 个章节${result.partial ? '（部分成功）' : ''}`)
+        await loadMarkdownPreview()
+      } else {
+        ElMessage.error(docStore.error || '章节提取失败')
+      }
+    } finally {
+      outlineLoading.value = false
+    }
   }
-}
 
-onMounted(async () => {
+  async function onGenerateChunks() {
+    const revId = docStore.currentResult?.revision?.id
+    if (!revId) return
+    chunkLoading.value = true
+    try {
+      const result = await docStore.generateChunksAction(revId)
+      if (result) {
+        ElMessage.success(`成功生成 ${result.chunk_count} 个分块`)
+        await loadMarkdownPreview()
+      } else {
+        ElMessage.error(docStore.error || '分块生成失败')
+      }
+    } finally {
+      chunkLoading.value = false
+    }
+  }
+
+  onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
     const document = await docStore.fetchDocument(documentId)
@@ -275,8 +357,13 @@ onMounted(async () => {
     await docStore.fetchProcessing(documentId)
     await loadMarkdownPreview()
 
-    const completed = docStore.currentResult?.document.has_preview_result
-    const failed = docStore.currentResult?.processing.status === 'error'
+    const revId = docStore.currentResult?.revision?.id
+    if (revId) {
+      await docStore.fetchContentTree(documentId, revId)
+    }
+
+    const completed = docStore.currentResult?.processing?.status === 'ready'
+    const failed = docStore.currentResult?.processing?.status === 'error'
     if (!completed && !failed) {
       await docStore.startPolling(documentId)
       if (docStore.currentResult?.document?.id === documentId) {
@@ -332,6 +419,14 @@ onBeforeUnmount(() => {
 .attachment-meta { font-size: 11px; color: #909399; margin: 2px 0; }
 
 .error-box { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: #fef0f0; color: #c45656; font-size: 12px; }
+
+.chunk-list { display: flex; flex-direction: column; gap: 12px; }
+.chunk-item { border: 1px solid #f0f0f0; border-radius: 8px; overflow: hidden; }
+.chunk-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f5f7fa; border-bottom: 1px solid #f0f0f0; }
+.chunk-seq { font-size: 13px; font-weight: 600; color: #409eff; }
+.chunk-title { font-size: 13px; font-weight: 500; color: #303133; }
+.chunk-meta { font-size: 11px; color: #909399; margin-left: auto; }
+.chunk-content { padding: 14px; font-size: 13px; color: #606266; white-space: pre-wrap; line-height: 1.7; max-height: 300px; overflow-y: auto; }
 
 .loading-state, .error-state, .empty-state { padding: 40px 0; text-align: center; color: #999; }
 .small { padding: 16px 0; }
