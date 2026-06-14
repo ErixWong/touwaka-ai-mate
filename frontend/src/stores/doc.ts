@@ -115,10 +115,20 @@ export const useDocStore = defineStore('doc', () => {
 
   async function syncProcessing(documentId: string) {
     error.value = null
-    try {
-      await syncOcr(documentId)
-    } catch (e: any) {
-      // syncOcr may fail for non-OCR stages, that's expected
+    const status = processingStatus.value?.processing_status
+    const isOcrStage = status === 'pending_ocr' || status === 'ocr_processing'
+    if (isOcrStage || !processingStatus.value) {
+      try {
+        await syncOcr(documentId)
+      } catch (e: any) {
+        if (isOcrStage) {
+          error.value = e.message || 'Failed to sync OCR status'
+          if (shouldStopPollingForError(e)) {
+            stopPolling()
+          }
+          return null
+        }
+      }
     }
     try {
       return await fetchProcessing(documentId)
@@ -157,7 +167,7 @@ export const useDocStore = defineStore('doc', () => {
       }
 
       const status = result?.processing_status
-      const terminal = !status || status === 'ready' || status === 'error'
+      const terminal = !status || status === 'ready' || status === 'error' || status === 'pending_embedding'
       if (terminal) {
         stopPolling()
         if (currentResult.value?.revision?.id && currentDoc.value?.id) {

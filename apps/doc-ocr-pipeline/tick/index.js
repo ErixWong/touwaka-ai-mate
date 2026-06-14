@@ -50,6 +50,7 @@ export async function tick(context) {
       }
 
       if (doc.processing_status === 'pending_clean' || doc.processing_status === 'pending_metadata') {
+        await recordPassThroughRun(services, doc);
         await advancer.advanceToNext(doc.id);
         skipped += 1;
         continue;
@@ -179,6 +180,27 @@ async function loadMiniAppRowData(services, rowId) {
   } catch {
     return {};
   }
+}
+
+async function recordPassThroughRun(services, doc) {
+  const DocProcessRun = services.getModel('doc_process_run');
+  if (!DocProcessRun) return;
+  const Utils = await import('../../../lib/utils.js');
+  await DocProcessRun.create({
+    id: Utils.default.newID(),
+    revision_id: doc.current_revision_id,
+    subject_type: 'documents',
+    subject_id: doc.id,
+    pipeline_step: doc.processing_status,
+    operation: 'start',
+    initiated_by_type: 'scheduler',
+    initiated_by_id: null,
+    result_status: 'ok',
+    attempt_no: 1,
+    message: `Auto-skipped to next stage`,
+    started_at: new Date(),
+    finished_at: new Date(),
+  });
 }
 
 async function getActiveBinding(services, documentId) {
