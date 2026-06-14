@@ -4,7 +4,7 @@
       <div>
         <p class="hero-kicker">ELS STUDY WORKBENCH</p>
         <h1>ELS 学习工作台</h1>
-        <p class="hero-summary">第一轮骨架聚焦学习工作台、阅读页、复习页、学习库抽屉与 Mock 联调基线。</p>
+        <p class="hero-summary">短阅读、加词、快速复习的一体化学习工作台。</p>
       </div>
       <div class="hero-metrics">
         <div class="metric-chip">
@@ -85,7 +85,7 @@
     <section v-if="currentPanel === 'reading'" class="reading-layout surface-card">
       <header class="card-header reading-header">
         <div>
-          <h2>{{ currentMaterial?.title ?? '阅读页骨架' }}</h2>
+          <h2>{{ currentMaterial?.title ?? '阅读页' }}</h2>
           <p class="muted-text">{{ currentMaterial?.library_name ?? dashboard?.selected_library.name }} · {{ currentMaterial?.difficulty_level ?? '--' }}</p>
         </div>
         <div class="header-actions">
@@ -96,14 +96,19 @@
 
       <div v-if="currentMaterial" class="reading-body">
         <article class="article-panel">
-          <p class="article-summary">{{ currentMaterial.summary }}</p>
-          <p class="article-content">{{ currentMaterial.content }}</p>
+          <p v-if="currentMaterial.processing_status !== 'ready'" class="status-warning">
+            {{ materialStatusLabel }}
+          </p>
+          <template v-else>
+            <p class="article-summary">{{ currentMaterial.summary }}</p>
+            <p class="article-content">{{ currentMaterial.content }}</p>
+          </template>
         </article>
 
         <aside class="reading-side-panel">
           <section class="side-box">
-            <h3>划词浮层 Mock</h3>
-            <p class="muted-text">第一轮用按钮模拟划词与加词，不做真实选区系统。</p>
+            <h3>划词浮层</h3>
+            <p class="muted-text">选中单词后点击下方按钮即可加入词本。</p>
             <div class="word-actions">
               <button v-for="word in quickCollectWords" :key="word.word" class="tag-btn" @click="collectWord(word.word, word.sentence)">
                 {{ word.word }}
@@ -113,14 +118,19 @@
           </section>
 
           <section class="side-box">
-            <h3>TTS 状态</h3>
+            <h3>材料状态</h3>
+            <p class="muted-text">{{ materialStatusLabel }}</p>
+          </section>
+
+          <section class="side-box">
+            <h3>TTS 实时朗读</h3>
             <p>{{ ttsStatusLabel }}</p>
           </section>
 
           <section class="side-box">
             <h3>阅读后小测</h3>
-            <button class="primary-btn full-width" :disabled="currentMaterial.quiz_status !== 'ready'" @click="loadQuiz">
-              {{ currentMaterial.quiz_status === 'ready' ? '开始小测' : '小测生成中' }}
+            <button class="primary-btn full-width" :disabled="!canStartQuiz" @click="loadQuiz">
+              {{ quizButtonLabel }}
             </button>
             <div v-if="quiz" class="quiz-block">
               <div v-for="question in quiz.questions" :key="question.id" class="quiz-question">
@@ -136,14 +146,14 @@
           </section>
         </aside>
       </div>
-      <p v-else class="empty-tip">点击首页的“开始阅读”后，这里展示阅读骨架与联调数据。</p>
+      <p v-else class="empty-tip">点击首页的“开始阅读”选择一篇材料开始学习。</p>
     </section>
 
     <section v-if="currentPanel === 'review'" class="review-layout surface-card">
       <header class="card-header review-header">
         <div>
           <h2>复习页</h2>
-          <p class="muted-text">按词本切换复习范围，单轮 5 题，当前使用 Mock 数据联调。</p>
+          <p class="muted-text">按词本切换复习范围，每轮可配题数。</p>
         </div>
       </header>
 
@@ -204,7 +214,8 @@
                 <div>
                   <strong>{{ item.title }}</strong>
                   <p>{{ item.summary || '暂无摘要' }}</p>
-                  <small>{{ item.language }} · {{ item.processing_status }} · {{ formatDate(item.updated_at) }}</small>
+                  <small>{{ item.language }} · {{ getProcessingStatusLabel(item.processing_status) }} · {{ formatDate(item.updated_at) }}</small>
+                  <p v-if="item.status_reason && item.processing_status !== 'ready'" class="status-reason">{{ item.status_reason }}</p>
                 </div>
                 <div class="item-actions">
                   <button class="secondary-btn" :disabled="!item.can_read" @click="openReading(item.id)">阅读</button>
@@ -240,7 +251,7 @@
             </div>
             <div class="form-actions">
               <button class="secondary-btn" @click="resetMaterialForm">清空</button>
-              <button class="primary-btn" @click="submitMaterialForm">{{ editingMaterialId ? '保存并重新进入审核' : '上传并返回处理中状态' }}</button>
+              <button class="primary-btn" @click="submitMaterialForm">{{ editingMaterialId ? '保存并重新处理' : '上传' }}</button>
             </div>
             <p v-if="materialFormFeedback" class="success-tip">{{ materialFormFeedback }}</p>
           </section>
@@ -334,13 +345,50 @@ const todayStatusLabel = computed(() => {
 
 const ttsStatusLabel = computed(() => {
   if (!currentMaterial.value) return '等待选择材料'
-  if (currentMaterial.value.tts_status === 'ready') return '音频已就绪，可直接播放'
-  if (currentMaterial.value.tts_status === 'pending') return '音频生成中'
-  return '音频暂不可用'
+  if (currentMaterial.value.tts.available) return '实时朗读已就绪（支持男声/女声切换）'
+  return '当前不支持朗读'
+})
+
+const materialStatusLabel = computed(() => {
+  if (!currentMaterial.value) return '等待选择材料'
+  const status = currentMaterial.value.processing_status
+  if (status === 'processing') return '内容处理中，暂不可学习'
+  if (status === 'rejected') {
+    const reason = currentMaterial.value.status_reason || '内容不适合学习'
+    return `内容被驳回：${reason}`
+  }
+  if (status === 'failed') {
+    const reason = currentMaterial.value.status_reason || '处理失败'
+    return `处理失败：${reason}`
+  }
+  return '内容已就绪，可以学习'
+})
+
+const canStartQuiz = computed(() => {
+  if (!currentMaterial.value) return false
+  return currentMaterial.value.processing_status === 'ready' && currentMaterial.value.quiz_status === 'ready'
+})
+
+const quizButtonLabel = computed(() => {
+  if (!currentMaterial.value) return '等待选择材料'
+  if (currentMaterial.value.processing_status !== 'ready') return '内容暂不可学习'
+  if (currentMaterial.value.quiz_status === 'pending') return '小测生成中'
+  if (currentMaterial.value.quiz_status === 'failed') return '小测生成失败'
+  return '开始小测'
 })
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
+
+function getProcessingStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    processing: '处理中',
+    ready: '已就绪',
+    rejected: '已驳回',
+    failed: '处理失败',
+  }
+  return labels[status] || status
 }
 
 function toggleLibraryDrawer() {
@@ -498,7 +546,7 @@ async function submitMaterialForm() {
       summary: materialForm.summary,
       content: materialForm.content,
     })
-    materialFormFeedback.value = '已重新进入审核'
+    materialFormFeedback.value = '已重新进入处理'
   } else {
     await createELSMaterial({
       library_id: selectedLibraryId.value,
@@ -508,7 +556,7 @@ async function submitMaterialForm() {
       language: materialForm.language,
       tags: [],
     })
-    materialFormFeedback.value = '上传成功，当前状态为审核中'
+    materialFormFeedback.value = '上传成功，内容处理中'
   }
 
   await loadLibraryMaterials(selectedLibraryId.value)
@@ -798,6 +846,20 @@ onMounted(() => {
   white-space: pre-line;
   line-height: 1.9;
   color: #1e293b;
+}
+
+.status-warning {
+  padding: 16px;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.status-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #dc2626;
 }
 
 .reading-side-panel {
