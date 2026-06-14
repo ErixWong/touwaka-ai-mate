@@ -1,5 +1,6 @@
 import logger from '../../../lib/logger.js';
 import { callLLMWithRetry } from '../../../lib/simple-llm-client.js';
+import modelRegistry from '../../../lib/model-registry.js';
 import sharp from 'sharp';
 import {
   getProcessingCount,
@@ -191,18 +192,16 @@ async function processTask(taskId, app, context) {
     modelConfig = await context.db.getModelConfig(modelId);
   }
 
-  // 如果未配置或模型不存在，自动选择第一个可用的 multimodal 模型
+  // 如果未配置或模型不存在，通过 modelRegistry 统一选择默认 multimodal 模型
   if (!modelConfig) {
-    const { ai_model } = context.db.getModels();
-    const multimodalModel = await ai_model.findOne({
-      where: { model_type: 'multimodal', is_active: true },
-      attributes: ['id'],
-      order: [['created_at', 'ASC']],
-    });
-    if (multimodalModel) {
-      modelId = multimodalModel.id;
-      modelConfig = await context.db.getModelConfig(modelId);
-      logger.info(`[ocr-tool] Auto-selected multimodal model: ${modelId}`);
+    try {
+      modelRegistry.init(context.db);
+      modelConfig = await modelRegistry.getDefaultVLModel();
+      if (modelConfig) {
+        logger.info(`[ocr-tool] Auto-selected multimodal model via modelRegistry: ${modelConfig.model_name}`);
+      }
+    } catch (err) {
+      logger.warn(`[ocr-tool] Failed to auto-select multimodal model: ${err.message}`);
     }
   }
 
