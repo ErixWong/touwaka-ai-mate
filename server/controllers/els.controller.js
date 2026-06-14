@@ -1,520 +1,304 @@
-const LIBRARIES = [
-  {
-    id: 'lib_public_default',
-    name: '公共推荐库',
-    type: 'public',
-    material_count: 128,
-    is_selected: true,
-  },
-  {
-    id: 'lib_personal_001',
-    name: '我的生物短文库',
-    type: 'personal',
-    material_count: 12,
-    is_selected: false,
-  },
-  {
-    id: 'lib_fr_001',
-    name: '法语阅读练习库',
-    type: 'shared',
-    material_count: 18,
-    is_selected: false,
-  },
-];
+import logger from '../../lib/logger.js';
+import ELSService from '../services/els/index.js';
 
-const NOTEBOOKS = [
-  {
-    id: 'nb_en_default',
-    language: 'en',
-    name: '英语词本',
-    word_count: 128,
-    is_selected: true,
-  },
-  {
-    id: 'nb_fr_default',
-    language: 'fr',
-    name: '法语词本',
-    word_count: 42,
-    is_selected: false,
-  },
-];
-
-const MATERIALS = {
-  lib_public_default: [
-    {
-      id: 'mat_001',
-      title: 'Why sleep matters',
-      summary: 'A short article about sleep and memory.',
-      language: 'en',
-      processing_status: 'ready',
-      safety_status: 'passed',
-      quiz_status: 'ready',
-      tts_status: 'ready',
-      can_read: true,
-      can_edit: false,
-      updated_at: '2026-06-12T09:00:00+08:00',
-      difficulty_level: 'B1',
-      library_id: 'lib_public_default',
-      library_name: '公共推荐库',
-      estimated_minutes: 4,
-      content: 'Sleep helps the brain store memories. Good sleep also improves attention, mood, and long-term learning performance. A short walk, less screen time at night, and a stable routine can all improve sleep quality.',
-    },
-    {
-      id: 'mat_002',
-      title: 'Small daily habits',
-      summary: 'Tiny habits can shape long-term learning results.',
-      language: 'en',
-      processing_status: 'ready',
-      safety_status: 'passed',
-      quiz_status: 'ready',
-      tts_status: 'pending',
-      can_read: true,
-      can_edit: false,
-      updated_at: '2026-06-11T14:30:00+08:00',
-      difficulty_level: 'A2',
-      library_id: 'lib_public_default',
-      library_name: '公共推荐库',
-      estimated_minutes: 3,
-      content: 'Daily learning does not need to be long. Reading for five minutes, repeating one sentence, and reviewing one mistake can already build a strong habit over time.',
-    },
-  ],
-  lib_personal_001: [
-    {
-      id: 'mat_user_001',
-      title: 'My Biology Note',
-      summary: 'Short note about cell division.',
-      language: 'en',
-      processing_status: 'pending_safety_review',
-      safety_status: 'pending',
-      quiz_status: 'pending',
-      tts_status: 'pending',
-      can_read: false,
-      can_edit: true,
-      updated_at: '2026-06-12T10:20:00+08:00',
-      difficulty_level: 'B1',
-      library_id: 'lib_personal_001',
-      library_name: '我的生物短文库',
-      estimated_minutes: 2,
-      content: 'Cell division is the process by which a parent cell divides into two or more daughter cells.',
-    },
-    {
-      id: 'mat_user_002',
-      title: 'Microscope Basics',
-      summary: 'Simple notes about using a microscope safely.',
-      language: 'en',
-      processing_status: 'ready',
-      safety_status: 'passed',
-      quiz_status: 'ready',
-      tts_status: 'ready',
-      can_read: true,
-      can_edit: true,
-      updated_at: '2026-06-10T16:45:00+08:00',
-      difficulty_level: 'A2',
-      library_id: 'lib_personal_001',
-      library_name: '我的生物短文库',
-      estimated_minutes: 3,
-      content: 'Always start with the lowest magnification. Focus slowly and keep the lens clean after each use.',
-    },
-  ],
-  lib_fr_001: [
-    {
-      id: 'mat_fr_001',
-      title: 'Bonjour Paris',
-      summary: 'A tiny French city guide for beginners.',
-      language: 'fr',
-      processing_status: 'ready',
-      safety_status: 'passed',
-      quiz_status: 'ready',
-      tts_status: 'failed',
-      can_read: true,
-      can_edit: false,
-      updated_at: '2026-06-09T12:00:00+08:00',
-      difficulty_level: 'A1',
-      library_id: 'lib_fr_001',
-      library_name: '法语阅读练习库',
-      estimated_minutes: 2,
-      content: 'Paris est une ville tres connue. Beaucoup de visiteurs aiment marcher pres de la Seine et visiter les musees.',
-    },
-  ],
+const ERROR_HTTP_STATUS = {
+  ELS_NOT_FOUND: 404,
+  ELS_FORBIDDEN: 403,
+  ELS_INVALID_STATUS: 409,
+  ELS_MATERIAL_BLOCKED: 422,
+  ELS_UPLOAD_REJECTED: 422,
+  ELS_NOTEBOOK_EMPTY: 400,
 };
 
-const WORDS = {
-  w_001: {
-    id: 'w_001',
-    word_text: 'develop',
-    meaning: '发展；形成',
-    phonetic: '/dɪˈveləp/',
-    pronunciation_audio: '/api/files/tts/words/develop.mp3',
-    notebook_id: 'nb_en_default',
-    language: 'en',
-    example_sentence: 'Children develop language quickly.',
-    review_stage: 'D3',
-    next_review_at: '2026-06-10T09:00:00+08:00',
-    wrong_count: 1,
-  },
-};
-
-function findLibrary(libraryId) {
-  return LIBRARIES.find((item) => item.id === libraryId) || LIBRARIES[0];
-}
-
-function getMaterialById(materialId) {
-  return Object.values(MATERIALS)
-    .flat()
-    .find((item) => item.id === materialId);
-}
-
-function getSelectedLibrary() {
-  return LIBRARIES[0];
-}
-
-function getSelectedNotebook() {
-  return NOTEBOOKS[0];
-}
-
-function buildDashboard() {
-  const selectedLibrary = getSelectedLibrary();
-  return {
-    today_status: {
-      is_checked_in: false,
-      completed_reading: false,
-      completed_review: false,
-      streak_days: 6,
-    },
-    selected_library: {
-      id: selectedLibrary.id,
-      name: selectedLibrary.name,
-      material_count: selectedLibrary.material_count,
-    },
-    recommended_material: {
-      id: 'mat_001',
-      title: 'Why sleep matters',
-      difficulty_level: 'B1',
-      summary: 'A short article about sleep and memory.',
-    },
-    review_stats: {
-      today_due: 8,
-      new_words: 5,
-      wrong_words: 3,
-    },
-    recent_materials: [
-      {
-        id: 'mat_002',
-        title: 'Small daily habits',
-        last_opened_at: '2026-06-09T08:20:00+08:00',
-      },
-      {
-        id: 'mat_user_002',
-        title: 'Microscope Basics',
-        last_opened_at: '2026-06-08T20:00:00+08:00',
-      },
-    ],
-  };
-}
-
-function buildQuiz(materialId) {
-  return {
-    material_id: materialId,
-    questions: [
-      {
-        id: 'q1',
-        type: 'single_choice',
-        prompt: 'What is the main idea of the article?',
-        options: ['Build stronger sleep habits', 'Travel to a new city', 'Learn advanced biology', 'Study with long sessions'],
-      },
-      {
-        id: 'q2',
-        type: 'single_choice',
-        prompt: 'Which action helps improve learning quality?',
-        options: ['Stable routine', 'Skip all breaks', 'Read only at midnight', 'Avoid all review'],
-      },
-      {
-        id: 'q3',
-        type: 'single_choice',
-        prompt: 'What does the text connect with memory?',
-        options: ['Sleep', 'Noise', 'Competition', 'Luck'],
-      },
-    ],
-  };
-}
-
-function buildReviewQuestions(notebookId, bucket) {
-  const prompts = {
-    today: {
-      word_id: 'w_001',
-      review_type: 'listen_pick',
-      audio_url: '/api/files/tts/words/develop.mp3',
-      prompt: '你听到的是哪个词？',
-      options: ['develop', 'device', 'detail'],
-    },
-    new: {
-      word_id: 'w_010',
-      review_type: 'meaning_choice',
-      audio_url: null,
-      prompt: 'tiny habit 的意思是？',
-      options: ['微小习惯', '长期目标', '复杂系统'],
-    },
-    wrong: {
-      word_id: 'w_020',
-      review_type: 'sentence_fill',
-      audio_url: null,
-      prompt: 'Sleep helps the brain ____ memories.',
-      options: ['store', 'break', 'cancel'],
-    },
-  };
-
-  return {
-    bucket,
-    notebook_id: notebookId,
-    session_id: `rv_${bucket}_${notebookId}`,
-    questions: [prompts[bucket] || prompts.today],
-    total: 5,
-  };
-}
+const DEFAULT_ERROR_STATUS = 500;
 
 export default class ELSController {
   constructor(db) {
     this.db = db;
+    this.els = new ELSService(db);
+  }
+
+  _getUserId(ctx) {
+    return ctx.state?.session?.id;
+  }
+
+  async _safeCall(ctx, fn) {
+    try {
+      await fn();
+    } catch (error) {
+      logger.error(`[ELSController] ${ctx.method} ${ctx.path} — ${error.message}`);
+
+      const code = error.code || 'ELS_INTERNAL_ERROR';
+      const status = ERROR_HTTP_STATUS[code] || error.status || DEFAULT_ERROR_STATUS;
+
+      ctx.error(code, status, error.message);
+    }
   }
 
   async getDashboard(ctx) {
-    ctx.success(buildDashboard());
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const result = await this.els.getDashboard(userId);
+      ctx.success(result);
+    });
   }
 
   async getRecommendedMaterials(ctx) {
-    const libraryId = ctx.query.library_id || getSelectedLibrary().id;
-    const items = (MATERIALS[libraryId] || MATERIALS.lib_public_default)
-      .filter((item) => item.processing_status === 'ready' && item.can_read)
-      .map((item) => ({
-        id: item.id,
-        library_id: item.library_id,
-        library_name: item.library_name,
-        title: item.title,
-        difficulty_level: item.difficulty_level,
-        summary: item.summary,
-        estimated_minutes: item.estimated_minutes,
-      }));
-    ctx.success({ items });
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      let libraryId = ctx.query.library_id || null;
+      if (!libraryId) {
+        libraryId = await this.els.resolveSelectedLibraryId(userId);
+      }
+      const result = await this.els.material.getRecommended(libraryId, userId);
+      ctx.success({ items: result });
+    });
   }
 
   async getMaterial(ctx) {
-    const material = getMaterialById(ctx.params.materialId);
-    if (!material) {
-      ctx.error('ELS_NOT_FOUND', 404);
-      return;
-    }
-
-    ctx.success({
-      id: material.id,
-      library_id: material.library_id,
-      library_name: material.library_name,
-      title: material.title,
-      difficulty_level: material.difficulty_level,
-      content: material.content,
-      summary: material.summary,
-      language: material.language,
-      processing_status: material.processing_status,
-      quiz_status: material.quiz_status,
-      tts_status: material.tts_status,
-      tts: {
-        available: material.tts_status === 'ready',
-        audio_url: material.tts_status === 'ready' ? `/api/files/tts/${material.id}.mp3` : null,
-        speeds: [0.8, 1.0, 1.2],
-      },
-      progress: {
-        is_read: false,
-        collected_word_count: 0,
-      },
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const result = await this.els.material.getDetail(ctx.params.materialId, userId);
+      if (result.tts) {
+        result.tts.available = await this.els.config.isTTSEnabled();
+        result.tts.voices = await this.els.config.getTTSVoiceOptions();
+        result.tts.default_voice = await this.els.config.getTTSDefaultVoice();
+      }
+      ctx.success(result);
     });
   }
 
   async getMaterialQuiz(ctx) {
-    const material = getMaterialById(ctx.params.materialId);
-    if (!material) {
-      ctx.error('ELS_NOT_FOUND', 404);
-      return;
-    }
-    ctx.success(buildQuiz(material.id));
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const materialId = ctx.params.materialId;
+      if (!materialId) {
+        ctx.error('ELS_NOT_FOUND', 404);
+        return;
+      }
+      const material = await this.els.material.getDetail(materialId, userId);
+      if (material.processing_status !== 'ready') {
+        ctx.error('ELS_INVALID_STATUS', 409, '当前材料暂不可学习');
+        return;
+      }
+      if (material.quiz_status !== 'ready') {
+        ctx.error('ELS_INVALID_STATUS', 409, material.quiz_status === 'pending' ? '小测生成中' : '小测暂不可用');
+        return;
+      }
+      const questionCount = await this.els.config.getQuizQuestionCount();
+      const quiz = await this.els.quiz.getQuestions(materialId, questionCount);
+      ctx.success(quiz);
+    });
   }
 
   async submitMaterialQuiz(ctx) {
-    const answers = Array.isArray(ctx.request.body?.answers) ? ctx.request.body.answers : [];
-    const correctCount = Math.min(answers.length, 2);
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const materialId = ctx.params.materialId;
+      const answers = Array.isArray(ctx.request.body?.answers) ? ctx.request.body.answers : [];
 
-    ctx.success({
-      correct_count: correctCount,
-      total: 3,
-      explanations: answers.map((item, index) => ({
-        question_id: item.question_id || `q${index + 1}`,
-        is_correct: index < correctCount,
-        explanation: 'Mock 反馈：第一轮仅用于联调小测结果展示。',
-      })),
-      reading_completed: true,
-      next_action: 'review_words',
+      const material = await this.els.material.getDetail(materialId, userId);
+      if (material.processing_status !== 'ready') {
+        ctx.error('ELS_INVALID_STATUS', 409, '当前材料暂不可学习');
+        return;
+      }
+      if (material.quiz_status !== 'ready') {
+        ctx.error('ELS_INVALID_STATUS', 409, '小测尚未就绪');
+        return;
+      }
+
+      await this.els.checkin.markReadingCompleted(userId);
+      ctx.success({
+        correct_count: answers.length,
+        total: 3,
+        explanations: [],
+        reading_completed: true,
+        next_action: 'review_words',
+      });
     });
   }
 
   async getLibraries(ctx) {
-    ctx.success({
-      selected_library_id: getSelectedLibrary().id,
-      items: LIBRARIES,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const selectedLibraryId = await this.els.resolveSelectedLibraryId(userId);
+      const items = await this.els.library.list(userId);
+
+      const result = items.map((item) => ({
+        ...item,
+        is_selected: item.id === selectedLibraryId,
+      }));
+
+      ctx.success({
+        selected_library_id: selectedLibraryId,
+        items: result.filter((item) => item.type !== 'shared'),
+      });
     });
   }
 
   async selectLibrary(ctx) {
-    const selectedLibrary = findLibrary(ctx.request.body?.library_id);
-    ctx.success({
-      selected_library_id: selectedLibrary.id,
-      selected_library_name: selectedLibrary.name,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const { library_id } = ctx.request.body || {};
+      if (!library_id) {
+        ctx.error('ELS_NOT_FOUND', 404, '学习库 ID 为空');
+        return;
+      }
+      const library = await this.els.library.getById(library_id);
+      if (!library) {
+        ctx.error('ELS_NOT_FOUND', 404);
+        return;
+      }
+      if (library.library_type === 'personal' && library.owner_user_id !== userId) {
+        ctx.error('ELS_FORBIDDEN', 403);
+        return;
+      }
+      await this.els.preference.setSelectedLibrary(userId, library_id);
+      ctx.success({
+        selected_library_id: library_id,
+        selected_library_name: library.name,
+      });
     });
   }
 
   async getLibraryMaterials(ctx) {
-    const library = findLibrary(ctx.params.libraryId);
-    const items = (MATERIALS[library.id] || []).map((item) => ({
-      id: item.id,
-      title: item.title,
-      summary: item.summary,
-      language: item.language,
-      processing_status: item.processing_status,
-      safety_status: item.safety_status,
-      quiz_status: item.quiz_status,
-      tts_status: item.tts_status,
-      can_read: item.can_read,
-      can_edit: item.can_edit,
-      updated_at: item.updated_at,
-    }));
-
-    ctx.success({
-      library: {
-        id: library.id,
-        name: library.name,
-        type: library.type,
-      },
-      items,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const result = await this.els.library.getMaterials(ctx.params.libraryId, userId);
+      ctx.success(result);
     });
   }
 
   async createMaterial(ctx) {
-    const payload = ctx.request.body || {};
-    ctx.success({
-      id: 'mat_user_new_001',
-      library_id: payload.library_id || 'lib_personal_001',
-      title: payload.title || 'Untitled Material',
-      source_type: 'user_upload',
-      processing_status: 'pending_safety_review',
-      safety_status: 'pending',
-      quiz_status: 'pending',
-      tts_status: 'pending',
-      can_read: false,
-    }, 'Created');
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const payload = ctx.request.body || {};
+      if (!payload.title || !payload.content) {
+        ctx.error('ELS_INVALID_STATUS', 409, '标题和正文不能为空');
+        return;
+      }
+      const result = await this.els.material.create(userId, payload.library_id, payload);
+      this.els.processor.processMaterial(result.id).catch((err) => {
+        logger.error(`[ELSController] Background processing failed for ${result.id}:`, err.message);
+      });
+      ctx.success(result, 'Created');
+    });
   }
 
   async updateMaterial(ctx) {
-    const material = getMaterialById(ctx.params.materialId);
-    if (!material) {
-      ctx.error('ELS_NOT_FOUND', 404);
-      return;
-    }
-
-    ctx.success({
-      id: material.id,
-      title: ctx.request.body?.title || material.title,
-      summary: ctx.request.body?.summary || material.summary,
-      processing_status: 'pending_safety_review',
-      safety_status: 'pending',
-      quiz_status: 'pending',
-      tts_status: 'pending',
-      can_read: false,
-    }, 'Updated');
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const result = await this.els.material.update(ctx.params.materialId, userId, ctx.request.body || {});
+      ctx.success(result, 'Updated');
+    });
   }
 
   async getNotebooks(ctx) {
-    ctx.success({
-      selected_notebook_id: getSelectedNotebook().id,
-      items: NOTEBOOKS,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const selectedNotebookId = await this.els.resolveSelectedNotebookId(userId);
+      const items = await this.els.notebook.list(userId);
+
+      const result = items.map((item) => ({
+        ...item,
+        is_selected: item.id === selectedNotebookId,
+      }));
+
+      ctx.success({
+        selected_notebook_id: selectedNotebookId,
+        items: result,
+      });
     });
   }
 
   async selectNotebook(ctx) {
-    const notebook = NOTEBOOKS.find((item) => item.id === ctx.request.body?.notebook_id) || getSelectedNotebook();
-    ctx.success({
-      selected_notebook_id: notebook.id,
-      selected_notebook_name: notebook.name,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const { notebook_id } = ctx.request.body || {};
+      if (!notebook_id) {
+        ctx.error('ELS_INVALID_STATUS', 409);
+        return;
+      }
+      const notebook = await this.els.notebook.getById(notebook_id);
+      if (!notebook) {
+        ctx.error('ELS_NOT_FOUND', 404);
+        return;
+      }
+      if (notebook.user_id !== userId) {
+        ctx.error('ELS_FORBIDDEN', 403);
+        return;
+      }
+      await this.els.preference.setSelectedNotebook(userId, notebook_id);
+      ctx.success({
+        selected_notebook_id: notebook_id,
+        selected_notebook_name: notebook.name,
+      });
     });
   }
 
   async collectWord(ctx) {
-    const material = getMaterialById(ctx.request.body?.material_id);
-    if (!material) {
-      ctx.error('ELS_NOT_FOUND', 404);
-      return;
-    }
-
-    const notebook = NOTEBOOKS.find((item) => item.language === material.language) || getSelectedNotebook();
-
-    ctx.success({
-      word: {
-        id: 'w_collect_001',
-        word_text: ctx.request.body?.word_text || 'develop',
-        meaning: material.language === 'fr' ? '发展；形成（法语词本示例）' : '发展；形成',
-        phonetic: '/dɪˈveləp/',
-        pronunciation_audio: '/api/files/tts/words/develop.mp3',
-        sentence: ctx.request.body?.sentence || 'Children develop language quickly.',
-        notebook_id: notebook.id,
-        language: material.language,
-        review_stage: 'D0',
-      },
-      already_exists: false,
-    }, 'Created');
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const payload = ctx.request.body || {};
+      if (!payload.material_id || !payload.word_text) {
+        ctx.error('ELS_INVALID_STATUS', 409, '材料 ID 和单词文本不能为空');
+        return;
+      }
+      const result = await this.els.word.collect(userId, payload);
+      ctx.success(result, 'Created');
+    });
   }
 
   async getWord(ctx) {
-    const word = WORDS[ctx.params.wordId];
-    if (!word) {
-      ctx.error('ELS_NOT_FOUND', 404);
-      return;
-    }
-    ctx.success(word);
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const word = await this.els.word.getDetail(ctx.params.wordId, userId);
+      if (!word) {
+        ctx.error('ELS_NOT_FOUND', 404);
+        return;
+      }
+      ctx.success(word);
+    });
   }
 
   async getReviews(ctx) {
-    const { bucket = 'today', notebook_id: notebookId, size = 5 } = ctx.query;
-    if (!notebookId) {
-      ctx.error('ELS_NOTEBOOK_EMPTY', 400);
-      return;
-    }
-
-    ctx.success({
-      ...buildReviewQuestions(notebookId, bucket),
-      total: Number(size) || 5,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const { bucket = 'today', notebook_id: notebookId, size } = ctx.query;
+      if (!notebookId) {
+        ctx.error('ELS_INVALID_STATUS', 409);
+        return;
+      }
+      const notebook = await this.els.notebook.getById(notebookId);
+      if (!notebook) {
+        ctx.error('ELS_NOT_FOUND', 404);
+        return;
+      }
+      if (notebook.user_id !== userId) {
+        ctx.error('ELS_FORBIDDEN', 403);
+        return;
+      }
+      const defaultSize = await this.els.config.getDailyReviewSize();
+      const result = await this.els.review.getQuestions(userId, notebookId, bucket, Number(size) || defaultSize);
+      ctx.success(result);
     });
   }
 
   async submitReviews(ctx) {
-    const results = Array.isArray(ctx.request.body?.results) ? ctx.request.body.results : [];
-    const correctCount = results.filter((item) => item.is_correct).length;
-    ctx.success({
-      session_summary: {
-        correct_count: correctCount,
-        total: results.length || 1,
-        needs_repeat: Math.max((results.length || 1) - correctCount, 0),
-      },
-      review_stats: {
-        today_due_remaining: 3,
-        wrong_words: 2,
-      },
-      today_review_completed: true,
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const payload = ctx.request.body || {};
+      const result = await this.els.review.submit(userId, payload);
+      await this.els.checkin.markReviewCompleted(userId);
+      ctx.success(result);
     });
   }
 
   async getCheckin(ctx) {
-    ctx.success({
-      is_checked_in: true,
-      completed_reading: true,
-      completed_review: false,
-      streak_days: 7,
-      day_type: 'reading_day',
+    await this._safeCall(ctx, async () => {
+      const userId = this._getUserId(ctx);
+      const result = await this.els.checkin.getToday(userId);
+      ctx.success(result);
     });
   }
 }

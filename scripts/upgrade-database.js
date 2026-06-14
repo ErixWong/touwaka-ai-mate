@@ -2094,6 +2094,7 @@ const MIGRATIONS = [
     }
   },
 
+<<<<<<< Updated upstream
   // ==================== 文档平台核心链路 V2 重建 ====================
   {
     name: 'doc platform core tables rebuild v2',
@@ -2348,7 +2349,52 @@ const MIGRATIONS = [
         await conn.execute('SET FOREIGN_KEY_CHECKS = 1');
       }
       console.log('  ✓ Rebuilt doc platform core tables to V2 design');
-    }
+    },
+  },
+  // 26. providers 表新增 provider_type 字段 + ai_models 表扩展 model_type 枚举
+  {
+    name: 'providers.ai_models.add_provider_type_and_tts_model_type',
+    async check(conn) {
+      const [cols1] = await conn.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'providers' AND COLUMN_NAME = 'provider_type'
+      `);
+      const [cols2] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_models' AND COLUMN_NAME = 'model_type'
+      `);
+      const hasProviderType = cols1.length > 0;
+      const hasTTSType = cols2.length > 0 && cols2[0].COLUMN_TYPE.includes("'tts'");
+      return hasProviderType && hasTTSType;
+    },
+    async migrate(conn) {
+      const [cols1] = await conn.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'providers' AND COLUMN_NAME = 'provider_type'
+      `);
+      if (cols1.length === 0) {
+        await conn.execute(`
+          ALTER TABLE providers
+          ADD COLUMN provider_type ENUM('llm', 'tts', 'embedding') DEFAULT 'llm'
+          AFTER user_agent
+        `);
+        console.log('  ✓ Added provider_type column to providers');
+      }
+      const [cols2] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_models' AND COLUMN_NAME = 'model_type'
+      `);
+      if (cols2.length > 0 && !cols2[0].COLUMN_TYPE.includes("'tts'")) {
+        await conn.execute(`
+          ALTER TABLE ai_models
+          MODIFY COLUMN model_type ENUM('text','multimodal','embedding','tts') DEFAULT 'text'
+        `);
+        console.log('  ✓ Extended ai_models.model_type to include tts');
+      }
+      await conn.execute(`
+        UPDATE providers SET provider_type = 'llm' WHERE provider_type IS NULL
+      `);
+    },
   },
 
 ];
