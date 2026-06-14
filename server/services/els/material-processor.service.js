@@ -1,5 +1,5 @@
-import logger from '../../lib/logger.js';
-import Utils from '../../lib/utils.js';
+import logger from '../../../lib/logger.js';
+import Utils from '../../../lib/utils.js';
 
 const REJECT_KEYWORDS = ['inappropriate', 'violence', 'illegal', 'adult content'];
 

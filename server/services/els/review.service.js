@@ -1,5 +1,5 @@
-import logger from '../../lib/logger.js';
-import Utils from '../../lib/utils.js';
+import logger from '../../../lib/logger.js';
+import Utils from '../../../lib/utils.js';
 
 const REVIEW_STAGES = ['D0', 'D1', 'D3', 'D7', 'D15', 'D30', 'D60', 'mastered'];
 const STAGE_DAYS = { D0: 1, D1: 1, D3: 3, D7: 7, D15: 15, D30: 30, D60: 60 };

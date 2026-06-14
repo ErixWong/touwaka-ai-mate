@@ -2094,7 +2094,6 @@ const MIGRATIONS = [
     }
   },
 
-<<<<<<< Updated upstream
   // ==================== 文档平台核心链路 V2 重建 ====================
   {
     name: 'doc platform core tables rebuild v2',
