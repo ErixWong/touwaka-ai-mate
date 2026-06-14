@@ -133,9 +133,23 @@ function summarizeProcessValue(value, depth = 0) {
   if (typeof value === 'bigint') return String(value);
   if (typeof value === 'function') return `[Function ${value.name || 'anonymous'}]`;
 
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: truncateProcessText(value.message || String(value)),
+      stack: truncateProcessText(value.stack || ''),
+      code: value.code || null,
+      status: value.status || null,
+    };
+  }
+
   if (depth >= 3) {
     if (Array.isArray(value)) return `[Array(${value.length})]`;
-    return `[Object keys=${Object.keys(value).length}]`;
+    try {
+      return `[Object keys=${Object.keys(value).length}]`;
+    } catch (error) {
+      return `[Object enumeration failed: ${truncateProcessText(error.message || String(error), 500)}]`;
+    }
   }
 
   if (Array.isArray(value)) {
@@ -148,12 +162,25 @@ function summarizeProcessValue(value, depth = 0) {
 
   if (typeof value === 'object') {
     const output = {};
-    const entries = Object.entries(value).slice(0, PROCESS_ERROR_OBJECT_KEYS_LIMIT);
+    let entries = [];
+    let totalKeys = 0;
+
+    try {
+      const allEntries = Object.entries(value);
+      totalKeys = allEntries.length;
+      entries = allEntries.slice(0, PROCESS_ERROR_OBJECT_KEYS_LIMIT);
+    } catch (error) {
+      return {
+        __enumeration_failed__: true,
+        message: truncateProcessText(error.message || String(error), 500),
+      };
+    }
+
     for (const [key, item] of entries) {
       output[key] = summarizeProcessValue(item, depth + 1);
     }
-    if (Object.keys(value).length > PROCESS_ERROR_OBJECT_KEYS_LIMIT) {
-      output.__truncated_keys__ = Object.keys(value).length - PROCESS_ERROR_OBJECT_KEYS_LIMIT;
+    if (totalKeys > PROCESS_ERROR_OBJECT_KEYS_LIMIT) {
+      output.__truncated_keys__ = totalKeys - PROCESS_ERROR_OBJECT_KEYS_LIMIT;
     }
     return output;
   }
