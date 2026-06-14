@@ -523,6 +523,11 @@
       <HandlerManagementTab />
     </div>
 
+    <!-- AppClock 运行状态（仅管理员） -->
+    <div v-if="activeTab === 'appClock' && isAdmin" class="settings-section appclock-section">
+      <AppClockStatusTab />
+    </div>
+
     <!-- 关于 -->
     <div v-if="activeTab === 'about'" class="settings-section">
       <div class="about-content">
@@ -1088,6 +1093,7 @@ import AttachmentTab from '@/components/settings/AttachmentTab.vue'
 import McpTab from '@/components/settings/McpTab.vue'
 import AppManagementTab from '@/components/settings/AppManagementTab.vue'
 import HandlerManagementTab from '@/components/settings/HandlerManagementTab.vue'
+import AppClockStatusTab from '@/components/settings/AppClockStatusTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import PsycheConfigPanel from '@/components/PsycheConfigPanel.vue'
 import packageInfo from '../../package.json'
@@ -1138,6 +1144,7 @@ const systemMenuItems = [
   { key: 'mcp', label: t('settings.mcp.management'), route: '/system/mcp' },
   { key: 'apps', label: t('settings.appManagement.management'), route: '/system/apps' },
   { key: 'handlers', label: t('settings.handlerManagement.management'), route: '/system/handlers' },
+  { key: 'appClock', label: t('appClock.statusPanel'), route: '/system/app-clock' },
   { key: 'system', label: t('settings.systemConfig'), route: '/system/config' },
 ]
 

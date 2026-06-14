@@ -259,6 +259,11 @@
               <span class="config-hint">5-300 {{ $t('settings.seconds') }}</span>
             </div>
             <div class="config-item">
+              <label class="config-label">{{ $t('settings.tickTimeoutMs') }}</label>
+              <el-input-number v-model="form.app.tick_timeout_ms" :min="1000" :max="1800000" :step="1000" />
+              <span class="config-hint">1000-1800000 ms</span>
+            </div>
+            <div class="config-item">
               <label class="config-label">{{ $t('settings.batchSize') }}</label>
               <el-input-number v-model="form.app.batch_size" :min="1" :max="100" />
               <span class="config-hint">1-100</span>
@@ -362,7 +367,7 @@ const createEmptyForm = () => ({
   token: { access_expiry: '', refresh_expiry: '' },
   timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, remote_llm: 0, chat_idle: 0 },
   tool: { max_rounds: 0 },
-  app: { clock_interval: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
+  app: { clock_interval: 0, tick_timeout_ms: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
   branding: { app_name: '', logo_icon: '' },
 })
 

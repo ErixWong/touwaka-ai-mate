@@ -1,4 +1,4 @@
-import logger from '../../lib/logger.js';
+import logger from '../../../lib/logger.js';
 
 const DEFAULT_CONFIG = {
   learning: { enabled: true, default_tab: 'reading', daily_checkin_enabled: true, show_recent_history: true },

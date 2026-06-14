@@ -264,6 +264,59 @@ async function testFinalizeCompletedTaskWithNonEnumerableImageMap(service, db) {
   assert.ok(finalized.image_manifest_attachment_id);
 }
 
+async function testRunJudgeWithNonEnumerableMcpResult(service) {
+  const explosiveResult = new Proxy({
+    status: 'completed',
+    progress: 100,
+  }, {
+    ownKeys() {
+      throw new Error('Too many properties to enumerate');
+    },
+    get(target, prop) {
+      return target[prop];
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      if (prop in target) {
+        return {
+          configurable: true,
+          enumerable: true,
+          value: target[prop],
+          writable: true,
+        };
+      }
+      return undefined;
+    },
+  });
+
+  service.callLlm = async () => ({
+    status: 'completed',
+    progress: 100,
+    is_completed: true,
+    error_message: '',
+  });
+
+  const judged = await service._runJudge({
+    judge: {
+      prompt_template: 'normalize',
+      output_schema: {
+        status: 'string',
+        progress: 0,
+        is_completed: true,
+        error_message: 'string',
+      },
+    },
+  }, explosiveResult, { stage: 'ocr_processing' });
+
+  assert.deepEqual(judged, {
+    _normalized: {
+      status: 'completed',
+      progress: 100,
+      is_completed: true,
+      error_message: '',
+    },
+  });
+}
+
 async function main() {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'document-ocr-service-test-'));
   const db = createDbMock();
@@ -313,6 +366,7 @@ async function main() {
   await testResolveSourceAttachment(service, db);
   await testFinalizeCompletedTask(service, db);
   await testFinalizeCompletedTaskWithNonEnumerableImageMap(service, db);
+  await testRunJudgeWithNonEnumerableMcpResult(service);
 
   console.log('document-ocr-service offline tests passed');
 }
