@@ -12,7 +12,7 @@ export async function tick(context) {
   const documents = await services.query(
     `SELECT id, processing_status, current_revision_id
      FROM documents
-     WHERE processing_status IN ('pending_ocr', 'ocr_processing')
+     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_outline', 'pending_chunk')
        AND current_revision_id IS NOT NULL
      ORDER BY processing_updated_at ASC
      LIMIT ?`,
@@ -25,6 +25,8 @@ export async function tick(context) {
 
   let submitted = 0;
   let synced = 0;
+  let outlineExtracted = 0;
+  let chunksGenerated = 0;
   let failed = 0;
 
   for (const doc of documents) {
@@ -40,6 +42,32 @@ export async function tick(context) {
         const syncResult = await services.documentOcr.syncTaskStatus(doc.id);
         await syncBoundAppRowOnSync(services, doc.id, syncResult);
         synced += 1;
+        continue;
+      }
+
+      if (doc.processing_status === 'pending_outline') {
+        if (!services.documentOutline) {
+          failed += 1;
+          continue;
+        }
+        await services.documentOutline.extract(doc.current_revision_id, {
+          initiatedByType: 'scheduler',
+          initiatedById: null,
+        });
+        outlineExtracted += 1;
+        continue;
+      }
+
+      if (doc.processing_status === 'pending_chunk') {
+        if (!services.documentChunk) {
+          failed += 1;
+          continue;
+        }
+        await services.documentChunk.generate(doc.current_revision_id, {
+          initiatedByType: 'scheduler',
+          initiatedById: null,
+        });
+        chunksGenerated += 1;
       }
     } catch (error) {
       failed += 1;
@@ -56,6 +84,8 @@ export async function tick(context) {
     processed: documents.length,
     submitted,
     synced,
+    outlineExtracted,
+    chunksGenerated,
     failed,
   };
 }
