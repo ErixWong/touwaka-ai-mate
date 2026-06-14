@@ -9,6 +9,7 @@
 
 import Utils from '../../lib/utils.js';
 import logger from '../../lib/logger.js';
+import { normalizeBaseUrl } from '../../lib/llm-url-utils.js';
 
 class ProviderController {
   constructor(db) {
@@ -87,7 +88,7 @@ class ProviderController {
     try {
       const body = ctx.request.body;
       const name = body.name;
-      const base_url = body.base_url;
+      const base_url = normalizeBaseUrl(body.base_url);
       const api_key = body.api_key;
       // 前端传入的是秒，需要转换为毫秒存储
       const timeout = (body.timeout ?? 30) * 1000;
@@ -144,7 +145,7 @@ class ProviderController {
       const { id } = ctx.params;
       const body = ctx.request.body;
       const name = body.name;
-      const base_url = body.base_url;
+      const base_url = body.base_url !== undefined ? normalizeBaseUrl(body.base_url) : undefined;
       const api_key = body.api_key;
       const timeout = body.timeout;
       const user_agent = body.user_agent;

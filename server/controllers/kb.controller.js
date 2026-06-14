@@ -13,6 +13,7 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op, Sequelize, ForeignKeyConstraintError } from 'sequelize';
 import { DB_VECTOR_DIM, adjustVectorDimension, vectorToJson } from '../../lib/vector-utils.js';
+import EmbeddingClient from '../../lib/embedding-client.js';
 import {
   buildQueryOptions,
   buildPaginatedResponse,
@@ -1569,45 +1570,12 @@ class KbController {
    */
   async _generateEmbedding(text, modelId) {
     try {
-      // 获取 API 配置
-      const AiModel = this.db.getModel('ai_model');
-      const Provider = this.db.getModel('provider');
-
-      const model = await AiModel.findOne({
-        where: { id: modelId },
-        include: [{
-          model: Provider,
-          as: 'provider',
-          attributes: ['base_url', 'api_key'],
-        }],
-        raw: true,
-        nest: true,
-      });
-
-      if (!model?.provider) {
-        logger.warn('[KB] No embedding API configured for model:', modelId);
+      const client = await EmbeddingClient.fromModelId(this.db, modelId);
+      if (!client) {
+        logger.warn('[KB] Failed to create EmbeddingClient for model:', modelId);
         return null;
       }
-
-      const response = await fetch(model.provider.base_url + '/embeddings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${model.provider.api_key}`,
-        },
-        body: JSON.stringify({
-          input: text,
-          model: model.model_name || 'text-embedding-3-small',
-        }),
-      });
-
-      if (!response.ok) {
-        logger.error('[KB] Embedding API error:', response.status);
-        return null;
-      }
-
-      const data = await response.json();
-      return data.data?.[0]?.embedding || data.embeddings?.[0] || null;
+      return await client.embed(text);
     } catch (error) {
       logger.error('[KB] _generateEmbedding error:', error);
       return null;

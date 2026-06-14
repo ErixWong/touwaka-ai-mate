@@ -1026,6 +1026,53 @@ git diff server/models/
 
 ---
 
+## 第八步：AI Provider 调用检查
+
+> **自 2026-06-14 第二阶段收敛起生效**
+
+### 检查项
+
+- [ ] 无业务代码直接拼 provider URL（禁止 `base_url + '/embeddings'` 等模式）
+- [ ] LLM 调用走 `LLMClient` 或 `InternalLLMService`
+- [ ] Embedding 调用走 `EmbeddingClient`（禁止自建 `fetch`）
+- [ ] URL 归一化复用 `lib/llm-url-utils.js` 的 `normalizeBaseUrl()`
+- [ ] 模型配置通过 `db.getModelConfig()` 或 `modelRegistry` 获取（禁止直接读 `ai_model` 裸数据）
+- [ ] 默认模型选择走 `modelRegistry`（禁止业务模块自行查表排序）
+- [ ] 新增 AI Provider 能力客户端需在本清单中注册
+
+### 典型违规示例
+
+```javascript
+// ❌ 违规 — 直接拼 provider embeddings URL
+const model = await AiModel.findOne({ where: { id }, include: [Provider] });
+const resp = await fetch(model.provider.base_url + '/embeddings', { ... });
+
+// ❌ 违规 — 直接读 ai_model 裸数据
+const row = await AiModel.findByPk(id);
+callLlm({ model_name: row.model_name, base_url: row.base_url });
+
+// ❌ 违规 — 自写 URL 归一化
+const url = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+```
+
+### 合规示例
+
+```javascript
+// ✅ 合规 — Embedding 走统一客户端
+const client = await EmbeddingClient.fromModelId(db, modelId);
+const vector = await client.embed(text);
+
+// ✅ 合规 — 配置来源统一
+const modelConfig = await db.getModelConfig(modelId);
+
+// ✅ 合规 — URL 归一化复用统一工具
+import { normalizeBaseUrl } from '../lib/llm-url-utils.js';
+```
+
+详见: `docs/development/llm-call-standards.md`
+
+---
+
 ## 相关文档
 
 - [编码规范](./coding-standards.md)

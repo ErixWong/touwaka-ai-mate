@@ -163,6 +163,35 @@ router.get('/', controller.list);
 
 ---
 
+## 🔴 铁律：AI Provider 调用统一
+
+### 能力客户端
+
+所有 AI Provider 调用必须走统一能力客户端，禁止业务层直接拼 provider URL：
+
+| 能力 | 统一入口 |
+|------|----------|
+| LLM Chat | `LLMClient` / `InternalLLMService` |
+| Embedding | `EmbeddingClient` |
+| ASR | `ASRClient`（接口骨架已定义） |
+| TTS | `TTSClient`（接口骨架已定义） |
+
+### URL 归一化
+
+所有 provider `base_url` 必须通过 `lib/llm-url-utils.js` 的 `normalizeBaseUrl()` 处理，禁止自写协议补全。
+
+### 配置来源
+
+模型配置必须通过 `db.getModelConfig()` 或 `modelRegistry` 获取完整配置（含 provider JOIN），禁止直接读 `ai_model` 裸数据用于 LLM 调用。
+
+### 默认模型选择
+
+默认模型选择统一走 `modelRegistry`，禁止业务模块自行查表排序。
+
+详见: `docs/development/llm-call-standards.md`
+
+---
+
 ## 相关文档
 
 - [代码审计清单](./code-review-checklist.md) - 提交 PR 前的检查清单

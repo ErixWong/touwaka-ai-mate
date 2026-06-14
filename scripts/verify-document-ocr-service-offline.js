@@ -8,6 +8,10 @@ import DocumentOcrService from '../lib/document-ocr-service.js';
 function createDbMock() {
   const attachments = [];
   const docOcrImages = [];
+  const documents = [
+    { id: 'doc-100', processing_error_code: null },
+    { id: 'doc-101', processing_error_code: null },
+  ];
 
   class AttachmentModel {
     static async create(data) {
@@ -35,12 +39,23 @@ function createDbMock() {
     }
   }
 
+  class DocumentModel {
+    static async findByPk(id) {
+      return documents.find(item => item.id === id) || null;
+    }
+  }
+
+  class AttachmentTokenModel {}
+
   return {
     attachments,
     docOcrImages,
+    documents,
     getModel(name) {
       if (name === 'attachment') return AttachmentModel;
+      if (name === 'attachment_token') return AttachmentTokenModel;
       if (name === 'doc_ocr_image') return DocOcrImageModel;
+      if (name === 'document') return DocumentModel;
       throw new Error(`Unsupported model: ${name}`);
     },
   };
@@ -175,6 +190,80 @@ async function testFinalizeCompletedTask(service, db) {
   assert.equal(db.docOcrImages[0].ocr_result_id, 'ocr-1');
 }
 
+async function testFinalizeCompletedTaskWithNonEnumerableImageMap(service, db) {
+  const ctx = {
+    document: { id: 'doc-101' },
+    revision: { id: 'rev-101', created_by: 'user-ocr-2' },
+  };
+
+  const ocrResult = {
+    id: 'ocr-2',
+    task_id: 'task-2',
+    metadata: null,
+    async update(payload) {
+      Object.assign(this, payload);
+      return this;
+    },
+  };
+
+  const explosiveImages = new Proxy({
+    'explosive.png': 'data:image/png;base64,aGVsbG8=',
+    'images/explosive.png': 'data:image/png;base64,aGVsbG8=',
+  }, {
+    ownKeys() {
+      throw new Error('Too many properties to enumerate');
+    },
+    get(target, prop) {
+      return target[prop];
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      if (prop in target) {
+        return {
+          configurable: true,
+          enumerable: true,
+          value: target[prop],
+          writable: true,
+        };
+      }
+      return undefined;
+    },
+  });
+
+  service.callMcp = async (_server, tool) => {
+    if (tool === 'get_default_deliverable') {
+      return {
+        format: 'markdown',
+        filename: 'result-2.md',
+        result: '# OCR Result\n![img](images/explosive.png)',
+      };
+    }
+    if (tool === 'list_deliverables') {
+      return {
+        items: [{ filename: 'result-2.md', format: 'markdown' }],
+      };
+    }
+    if (tool === 'get_image_deliverables') {
+      return {
+        items: [
+          {
+            filename: 'explosive.png',
+            relative_path: 'images/explosive.png',
+            media_type: 'image/png',
+            referenced_in_markdown: true,
+          },
+        ],
+        images: explosiveImages,
+      };
+    }
+    throw new Error(`Unexpected MCP tool: ${tool}`);
+  };
+
+  const finalized = await service.finalizeCompletedTask(ctx, ocrResult, {});
+  assert.equal(finalized.status, 'completed');
+  assert.equal(finalized.image_count, 1);
+  assert.ok(finalized.image_manifest_attachment_id);
+}
+
 async function main() {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'document-ocr-service-test-'));
   const db = createDbMock();
@@ -223,6 +312,7 @@ async function main() {
   await testHelpers(service);
   await testResolveSourceAttachment(service, db);
   await testFinalizeCompletedTask(service, db);
+  await testFinalizeCompletedTaskWithNonEnumerableImageMap(service, db);
 
   console.log('document-ocr-service offline tests passed');
 }
