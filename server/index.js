@@ -369,7 +369,7 @@ class ApiServer {
       intervalMs: appConfig.clock_interval * 1000,
       batchSize: appConfig.batch_size,
       globalConcurrency: appConfig.max_concurrency,
-      tickTimeoutMs: parseInt(process.env.APP_CLOCK_TICK_TIMEOUT_MS, 10) || 30000,
+      tickTimeoutMs: appConfig.tick_timeout_ms || parseInt(process.env.APP_CLOCK_TICK_TIMEOUT_MS, 10) || 30000,
       maxConsecutiveFailures: parseInt(process.env.APP_CLOCK_MAX_FAILURES, 10) || 3,
       failureCooldownMs: parseInt(process.env.APP_CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
       residentSkillManager: this.residentSkillManager,

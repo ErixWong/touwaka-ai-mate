@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS = {
   },
   app: {
     clock_interval: { value: 30, type: 'number', description: 'AppClock 轮询间隔（秒）' },
+    tick_timeout_ms: { value: 120000, type: 'number', description: 'AppClock 单次 tick 超时（毫秒）' },
     batch_size: { value: 10, type: 'number', description: '每批处理记录数量' },
     max_concurrency: { value: 5, type: 'number', description: '最大并发处理数' },
     text_filter_max_length: { value: 50000, type: 'number', description: '文本过滤最大长度（字符）' },
@@ -79,6 +80,7 @@ const VALIDATION_RULES = {
   'registration.default_invitation_max_uses': { min: 1, max: 1000 },
   'registration.invitation_expiry_days': { min: 0, max: 365 },
   'app.clock_interval': { min: 5, max: 300 },
+  'app.tick_timeout_ms': { min: 1000, max: 1800000 },
   'app.batch_size': { min: 1, max: 100 },
   'app.max_concurrency': { min: 1, max: 50 },
   'app.text_filter_max_length': { min: 1000, max: 500000 },
