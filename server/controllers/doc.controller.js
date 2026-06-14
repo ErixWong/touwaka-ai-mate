@@ -22,6 +22,7 @@ import DocAccessService from '../../lib/doc-access-service.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
+import DocumentChunkService from '../../lib/document-chunk-service.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
@@ -144,6 +145,30 @@ class DocController {
           return mergeWithDefaults(stored);
         },
         callLlm: createCallLlmFn(this.db),
+      });
+    }
+  }
+
+  ensureDocumentChunkService(ctx) {
+    if (!this.documentChunkService) {
+      const systemSettingService = getSystemSettingService(this.db);
+      this.documentChunkService = new DocumentChunkService(this.db, {
+        getDocPipelineConfig: async () => {
+          const records = await systemSettingService.SystemSetting.findAll({
+            where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+            raw: true,
+          });
+          const stored = {};
+          for (const record of records) {
+            const stageKey = record.setting_key.replace('doc_pipeline.', '');
+            try {
+              stored[stageKey] = JSON.parse(record.setting_value);
+            } catch {
+              stored[stageKey] = null;
+            }
+          }
+          return mergeWithDefaults(stored);
+        },
       });
     }
   }
@@ -1282,6 +1307,55 @@ async createVersion(ctx) {
       });
     } catch (error) {
       logger.error('[Doc] extractOutline error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 生成文本分块
+   * POST /api/docs/revisions/:revisionId/chunks/generate
+   */
+  async generateChunks(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      this.ensureDocumentChunkService(ctx);
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const revision = await this.models.DocVersion.findOne({
+        where: { id: revisionId },
+        attributes: ['id', 'document_id'],
+      });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const document = await this.models.DocDocument.findOne({
+        where: { id: revision.document_id },
+        attributes: ['id', 'processing_status'],
+      });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      const validStates = ['pending_chunk', 'error'];
+      if (!validStates.includes(document.processing_status)) {
+        ctx.throw(400, `Document must be in pending_chunk or error state (current: ${document.processing_status})`);
+      }
+
+      const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const result = await this.documentChunkService.generate(revisionId, {
+        initiatedByType: 'user',
+        initiatedById: userId,
+      });
+      ctx.success({
+        revision_id: revisionId,
+        document_id: revision.document_id,
+        chunk_count: result.chunk_count,
+        outline_count: result.outline_count,
+        processing_status: 'pending_embedding',
+      });
+    } catch (error) {
+      logger.error('[Doc] generateChunks error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

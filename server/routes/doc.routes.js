@@ -75,6 +75,9 @@ export default (controller) => {
   // 提取章节大纲
   router.post('/revisions/:revisionId/outline/extract', authenticate(), controller.extractOutline.bind(controller));
 
+  // 生成文本分块
+  router.post('/revisions/:revisionId/chunks/generate', authenticate(), controller.generateChunks.bind(controller));
+
   // ==================== 检索路由 ====================
 
   // 统一召回入口
