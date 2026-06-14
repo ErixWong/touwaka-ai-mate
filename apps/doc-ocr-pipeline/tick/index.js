@@ -1,4 +1,5 @@
 import logger from '../../../lib/logger.js';
+import DocPipelineAdvancer from '../../../lib/doc-pipeline-advancer.js';
 
 const MAX_BATCH_SIZE = 5;
 
@@ -12,7 +13,7 @@ export async function tick(context) {
   const documents = await services.query(
     `SELECT id, processing_status, current_revision_id
      FROM documents
-     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_outline', 'pending_chunk')
+     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk')
        AND current_revision_id IS NOT NULL
      ORDER BY processing_updated_at ASC
      LIMIT ?`,
@@ -25,9 +26,12 @@ export async function tick(context) {
 
   let submitted = 0;
   let synced = 0;
+  let skipped = 0;
   let outlineExtracted = 0;
   let chunksGenerated = 0;
   let failed = 0;
+
+  const advancer = new DocPipelineAdvancer(context.db);
 
   for (const doc of documents) {
     try {
@@ -42,6 +46,12 @@ export async function tick(context) {
         const syncResult = await services.documentOcr.syncTaskStatus(doc.id);
         await syncBoundAppRowOnSync(services, doc.id, syncResult);
         synced += 1;
+        continue;
+      }
+
+      if (doc.processing_status === 'pending_clean' || doc.processing_status === 'pending_metadata') {
+        await advancer.advanceToNext(doc.id);
+        skipped += 1;
         continue;
       }
 
@@ -84,6 +94,7 @@ export async function tick(context) {
     processed: documents.length,
     submitted,
     synced,
+    skipped,
     outlineExtracted,
     chunksGenerated,
     failed,

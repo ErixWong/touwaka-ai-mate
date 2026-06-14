@@ -362,8 +362,8 @@ async function loadMarkdownPreview() {
       await docStore.fetchContentTree(documentId, revId)
     }
 
-    const completed = docStore.currentResult?.document.has_preview_result
-    const failed = docStore.currentResult?.processing.status === 'error'
+    const completed = docStore.currentResult?.processing?.status === 'ready'
+    const failed = docStore.currentResult?.processing?.status === 'error'
     if (!completed && !failed) {
       await docStore.startPolling(documentId)
       if (docStore.currentResult?.document?.id === documentId) {

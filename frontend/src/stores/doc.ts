@@ -117,9 +117,13 @@ export const useDocStore = defineStore('doc', () => {
     error.value = null
     try {
       await syncOcr(documentId)
+    } catch (e: any) {
+      // syncOcr may fail for non-OCR stages, that's expected
+    }
+    try {
       return await fetchProcessing(documentId)
     } catch (e: any) {
-      error.value = e.message || 'Failed to sync OCR status'
+      error.value = e.message || 'Failed to load processing status'
       if (shouldStopPollingForError(e)) {
         stopPolling()
       }
@@ -152,10 +156,13 @@ export const useDocStore = defineStore('doc', () => {
         return
       }
 
-      const completed = result?.has_preview_result || result?.ocr_result?.status === 'completed'
-      const failed = result?.processing_status === 'error' || result?.ocr_result?.status === 'failed'
-      if (completed || failed) {
+      const status = result?.processing_status
+      const terminal = !status || status === 'ready' || status === 'error'
+      if (terminal) {
         stopPolling()
+        if (currentResult.value?.revision?.id && currentDoc.value?.id) {
+          await fetchContentTree(currentDoc.value.id, currentResult.value.revision.id)
+        }
         return
       }
 
