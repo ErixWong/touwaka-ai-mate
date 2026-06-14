@@ -186,6 +186,11 @@ async function recordPassThroughRun(services, doc) {
   const DocProcessRun = services.getModel('doc_process_run');
   if (!DocProcessRun) return;
   const Utils = await import('../../../lib/utils.js');
+  const { STATUS_SEQUENCE } = await import('../../../lib/doc-pipeline-advancer.js');
+  const currentIdx = STATUS_SEQUENCE.indexOf(doc.processing_status);
+  const nextStage = currentIdx >= 0 && currentIdx < STATUS_SEQUENCE.length - 1
+    ? STATUS_SEQUENCE[currentIdx + 1]
+    : 'next';
   await DocProcessRun.create({
     id: Utils.default.newID(),
     revision_id: doc.current_revision_id,
@@ -197,7 +202,7 @@ async function recordPassThroughRun(services, doc) {
     initiated_by_id: null,
     result_status: 'ok',
     attempt_no: 1,
-    message: `Auto-skipped to next stage`,
+    message: `Auto-passed ${doc.processing_status} → ${nextStage} (no handler)`,
     started_at: new Date(),
     finished_at: new Date(),
   });
