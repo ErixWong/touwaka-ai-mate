@@ -11,7 +11,9 @@ import {
   syncOcr,
   deleteDocument,
   setCurrentVersion,
-  transitionVersion
+  transitionVersion,
+  extractOutline,
+  generateChunks,
 } from '@/api/docs'
 import type {
   DocDocument,
@@ -21,6 +23,8 @@ import type {
   DocListResult,
   DocResultDetail,
   DocProcessingStatus,
+  ExtractOutlineResult,
+  GenerateChunksResult,
 } from '@/api/docs'
 
 export const useDocStore = defineStore('doc', () => {
@@ -220,6 +224,39 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
+  async function extractOutlineAction(revisionId: string): Promise<ExtractOutlineResult | null> {
+    error.value = null
+    try {
+      const result = await extractOutline(revisionId)
+      if (currentDoc.value) {
+        await fetchProcessing(currentDoc.value.id)
+        await fetchDocumentResult(currentDoc.value.id)
+      }
+      return result
+    } catch (e: any) {
+      error.value = e.message || 'Failed to extract outline'
+      return null
+    }
+  }
+
+  async function generateChunksAction(revisionId: string): Promise<GenerateChunksResult | null> {
+    error.value = null
+    try {
+      const result = await generateChunks(revisionId)
+      if (currentDoc.value) {
+        await fetchProcessing(currentDoc.value.id)
+        await fetchDocumentResult(currentDoc.value.id)
+        if (currentResult.value) {
+          await fetchContentTree(currentDoc.value.id, revisionId)
+        }
+      }
+      return result
+    } catch (e: any) {
+      error.value = e.message || 'Failed to generate chunks'
+      return null
+    }
+  }
+
   async function removeDocument(documentId: string) {
     error.value = null
     try {
@@ -264,5 +301,7 @@ export const useDocStore = defineStore('doc', () => {
     setCurrent,
     transition,
     removeDocument,
+    extractOutlineAction,
+    generateChunksAction,
   }
 })

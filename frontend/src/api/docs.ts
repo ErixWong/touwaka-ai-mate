@@ -268,6 +268,24 @@ export interface DocCompareRun {
   created_at: string
 }
 
+export interface ExtractOutlineResult {
+  revision_id: string
+  document_id: string
+  outline_count: number
+  processing_status: string
+  partial: boolean
+  failed_chunks: number
+  total_chunks: number
+}
+
+export interface GenerateChunksResult {
+  revision_id: string
+  document_id: string
+  chunk_count: number
+  outline_count: number
+  processing_status: string
+}
+
 export interface DocListResult {
   items: DocDocument[]
   total: number
@@ -374,4 +392,12 @@ export async function setCurrentVersion(_documentId: string, versionId: string):
 
 export async function transitionVersion(_documentId: string, versionId: string, to_status: string): Promise<void> {
   return apiRequest<void>(apiClient.post(`/docs/revisions/${versionId}/transition`, { to_status }))
+}
+
+export async function extractOutline(revisionId: string): Promise<ExtractOutlineResult> {
+  return apiRequest<ExtractOutlineResult>(apiClient.post(`/docs/revisions/${revisionId}/outline/extract`))
+}
+
+export async function generateChunks(revisionId: string): Promise<GenerateChunksResult> {
+  return apiRequest<GenerateChunksResult>(apiClient.post(`/docs/revisions/${revisionId}/chunks/generate`))
 }
