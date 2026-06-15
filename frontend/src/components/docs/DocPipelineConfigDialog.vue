@@ -421,6 +421,44 @@
             </el-form-item>
           </template>
 
+          <!-- pending_outline -->
+          <template v-if="activeStage === 'pending_outline'">
+            <el-form-item label="启用"><el-switch v-model="form.pending_outline.enabled" /></el-form-item>
+            <el-form-item label="执行方式">
+              <el-select v-model="form.pending_outline.type">
+                <el-option label="内置 LLM" value="internal_llm" />
+                <el-option label="禁用" value="disabled" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="提取策略">
+              <el-select v-model="form.pending_outline.strategy">
+                <el-option label="LLM 章节提取" value="llm" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="模型">
+              <el-select v-model="form.pending_outline.model_id" placeholder="默认模型" clearable filterable>
+                <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="温度">
+              <el-input-number v-model="form.pending_outline.temperature" :min="0" :max="2" :step="0.1" />
+            </el-form-item>
+            <el-form-item label="窗口大小">
+              <el-input-number v-model="form.pending_outline.window_size" :min="1000" :step="1000" />
+            </el-form-item>
+            <el-form-item label="步长">
+              <el-input-number v-model="form.pending_outline.step_size" :min="1000" :step="1000" />
+            </el-form-item>
+            <el-form-item label="最大标题层级">
+              <el-input-number v-model="form.pending_outline.max_heading_level" :min="1" :max="10" :step="1" />
+            </el-form-item>
+            <el-form-item label="保留行号信息"><el-switch v-model="form.pending_outline.preserve_line_info" /></el-form-item>
+            <el-form-item label="标题去重"><el-switch v-model="form.pending_outline.deduplicate_titles" /></el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_outline.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
+          </template>
+
           <!-- pending_chunk -->
           <template v-if="activeStage === 'pending_chunk'">
             <el-form-item label="启用"><el-switch v-model="form.pending_chunk.enabled" /></el-form-item>
@@ -520,6 +558,7 @@ const stages = [
   { key: 'ocr_finalize', label: 'OCR产物提取' },
   { key: 'pending_clean', label: '文本清洗' },
   { key: 'pending_metadata', label: '元数据提取' },
+  { key: 'pending_outline', label: '章节提取' },
   { key: 'pending_chunk', label: '文本分块' },
   { key: 'pending_embedding', label: '向量化' },
   { key: 'pending_relocate', label: '入库收尾' },
@@ -565,6 +604,19 @@ const defaultForm: DocPipelineConfig = {
     rules: { remove_page_number: true, remove_watermark: true, remove_garbled_text: true, remove_header_footer: true },
   },
   pending_metadata: { enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, schema_json: {}, prompt_template: '', timeout_ms: 120000 },
+  pending_outline: {
+    enabled: true,
+    type: 'internal_llm',
+    strategy: 'llm',
+    model_id: null,
+    temperature: 0.3,
+    window_size: 60000,
+    step_size: 40000,
+    max_heading_level: 3,
+    preserve_line_info: true,
+    deduplicate_titles: true,
+    timeout_ms: 120000,
+  },
   pending_chunk: { enabled: true, type: 'builtin', chunk_mode: 'heading', max_length: 1000, overlap_length: 100, keep_heading: true, merge_small_chunks: false },
   pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, timeout_ms: 120000 },
   pending_relocate: { enabled: true, target_strategy: 'current_collection', tag_strategy: 'none', metadata_writeback: false, auto_publish: false },

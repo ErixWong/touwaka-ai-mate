@@ -501,7 +501,7 @@ async function submitReview() {
     review_type: question.review_type,
     answer: reviewAnswers[question.word_id] || '',
     is_correct: Boolean(reviewAnswers[question.word_id]),
-    self_rating: 'easy',
+    self_rating: 'easy' as const,
   }))
   const result = await submitELSReviews({
     session_id: reviewData.value.session_id,
