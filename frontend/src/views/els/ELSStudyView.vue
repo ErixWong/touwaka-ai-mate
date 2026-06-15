@@ -496,7 +496,7 @@ async function switchReviewBucket(bucket: 'today' | 'new' | 'wrong') {
 
 async function submitReview() {
   if (!reviewData.value) return
-  const results = reviewData.value.questions.map((question) => ({
+  const results: Parameters<typeof submitELSReviews>[0]['results'] = reviewData.value.questions.map((question) => ({
     word_id: question.word_id,
     review_type: question.review_type,
     answer: reviewAnswers[question.word_id] || '',
