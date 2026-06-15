@@ -178,10 +178,10 @@
               <h4 class="subsection-title">⚙️ {{ $t('settings.backendTimeoutGroup') }}</h4>
             </div>
             <div class="config-item">
-              <label class="config-label">{{ $t('settings.remoteLlmTimeout') }}</label>
-              <el-input-number v-model="form.timeout.remote_llm" :min="30" :max="600" />
-              <span class="config-hint">30-600 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.remoteLlmTimeoutHint') }}</p>
+              <label class="config-label">{{ $t('settings.internalLlmTimeout') }}</label>
+              <el-input-number v-model="form.timeout.internal_llm" :min="30" :max="7200" />
+              <span class="config-hint">30-7200 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.internalLlmTimeoutHint') }}</p>
             </div>
             <div class="config-item">
               <label class="config-label">{{ $t('settings.skillCallTimeout') }}</label>
@@ -365,7 +365,7 @@ const createEmptyForm = () => ({
   registration: { allow_self_registration: false, default_invitation_quota: 0, default_invitation_max_uses: 0, invitation_expiry_days: 0 },
   connection: { max_per_user: 0, max_per_expert: 0 },
   token: { access_expiry: '', refresh_expiry: '' },
-  timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, remote_llm: 0, chat_idle: 0 },
+  timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, internal_llm: 0, chat_idle: 0 },
   tool: { max_rounds: 0 },
   app: { clock_interval: 0, tick_timeout_ms: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
   branding: { app_name: '', logo_icon: '' },

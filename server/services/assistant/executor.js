@@ -12,6 +12,7 @@ import { getSystemSettingService } from '../system-setting.service.js';
 import { executeWithToolLoop } from '../../../lib/tool-calling-executor.js';
 import { getInheritedToolDefinitions, executeInheritedTool } from './tool-integration.js';
 import { extractImageInput, executeVisionWithInput } from './vision-processor.js';
+import { getInternalLlmTimeoutMs } from '../../../lib/internal-llm-timeout.js';
 
 // 动态导入缓存
 let ToolManagerClass = null;
@@ -298,6 +299,7 @@ export async function executeLLM(db, assistant, input, context, messageService) 
  */
 export async function executeLLMWithTools(db, modelConfig, messages, tools, toolContext, options = {}, messageService) {
   const { maxToolRounds = 5 } = options;
+  const timeoutMs = await getInternalLlmTimeoutMs(db);
 
   // 使用 ToolCallingExecutor 执行多轮工具调用
   return await executeWithToolLoop(modelConfig, messages, tools, {
@@ -306,7 +308,7 @@ export async function executeLLMWithTools(db, modelConfig, messages, tools, tool
     llmOptions: {
       temperature: options.temperature,
       max_tokens: options.max_output_tokens,
-      timeout: options.timeout,
+      timeoutMs,
     },
     // 工具执行函数
     executeTool: async (toolId, params, context) => {
