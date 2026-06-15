@@ -1,9 +1,10 @@
 # Branch Mapping
 
 - Task: `task-20260615-appclock-timeout-governance`
-- Current branch: `fix/20260615-appclock-timeout-governance`
+- Current branch: `fix/852-appclock-timeout-governance`
 - Scope: AppClock tick timeout 治理、人工介入机制、前端运行态管理
-- Status: active (implementation done, pending manual test)
+- Status: merged
+- PR: #855
 
 ## 修改文件
 
