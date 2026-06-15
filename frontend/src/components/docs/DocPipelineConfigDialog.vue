@@ -423,18 +423,6 @@
 
           <!-- pending_outline -->
           <template v-if="activeStage === 'pending_outline'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_outline.enabled" /></el-form-item>
-            <el-form-item label="执行方式">
-              <el-select v-model="form.pending_outline.type">
-                <el-option label="内置 LLM" value="internal_llm" />
-                <el-option label="禁用" value="disabled" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="提取策略">
-              <el-select v-model="form.pending_outline.strategy">
-                <el-option label="LLM 章节提取" value="llm" />
-              </el-select>
-            </el-form-item>
             <el-form-item label="模型">
               <el-select v-model="form.pending_outline.model_id" placeholder="默认模型" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
@@ -452,7 +440,6 @@
             <el-form-item label="最大标题层级">
               <el-input-number v-model="form.pending_outline.max_heading_level" :min="1" :max="10" :step="1" />
             </el-form-item>
-            <el-form-item label="保留行号信息"><el-switch v-model="form.pending_outline.preserve_line_info" /></el-form-item>
             <el-form-item label="标题去重"><el-switch v-model="form.pending_outline.deduplicate_titles" /></el-form-item>
             <el-form-item label="超时(ms)">
               <el-input-number v-model="form.pending_outline.timeout_ms" :min="5000" :step="10000" />

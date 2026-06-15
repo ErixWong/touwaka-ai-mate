@@ -1342,10 +1342,7 @@ const MIGRATIONS = [
       return rows.length === 0;
     },
     migrate: async (conn) => {
-      await conn.execute(`
-        ALTER TABLE app_contract_mgr_v2_content
-        DROP FOREIGN KEY fk_app_contract_mgr_v2_content_row_id
-      `);
+      await dropForeignKeyIfExists(conn, 'app_contract_mgr_v2_content', 'fk_app_contract_mgr_v2_content_row_id');
       console.log('  ✓ Removed foreign key from app_contract_mgr_v2_content');
     }
   },
