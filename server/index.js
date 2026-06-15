@@ -362,15 +362,15 @@ class ApiServer {
 
     const systemSettingService = getSystemSettingService(this.db);
     const appConfig = await systemSettingService.getAppConfig();
+
+    const { setBaseLlmDb } = await import('../lib/chat/base-llm.js');
+    setBaseLlmDb(this.db);
     
     process.env.ATTACHMENT_BASE_PATH = appConfig.attachment_base_path || './data/attachments';
     process.env.TEXT_FILTER_MAX_LENGTH = String(appConfig.text_filter_max_length || 50000);
 
     this.appClock = new AppClock(this.db, {
       intervalMs: appConfig.clock_interval * 1000,
-      batchSize: appConfig.batch_size,
-      globalConcurrency: appConfig.max_concurrency,
-      tickTimeoutMs: appConfig.tick_timeout_ms || parseInt(process.env.APP_CLOCK_TICK_TIMEOUT_MS, 10) || 30000,
       maxConsecutiveFailures: parseInt(process.env.APP_CLOCK_MAX_FAILURES, 10) || 3,
       failureCooldownMs: parseInt(process.env.APP_CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
       residentSkillManager: this.residentSkillManager,
