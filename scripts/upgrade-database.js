@@ -133,6 +133,18 @@ async function safeExecute(connection, sql, errorMessages = ['Duplicate', 'alrea
   }
 }
 
+/**
+ * 仅在外键存在时删除，避免不同历史库状态下直接 DROP FOREIGN KEY 失败
+ */
+async function dropForeignKeyIfExists(connection, tableName, constraintName) {
+  const exists = await hasForeignKey(connection, tableName, constraintName);
+  if (!exists) {
+    return false;
+  }
+  await connection.execute(`ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName}`);
+  return true;
+}
+
 async function getAnyExistingUserId(connection) {
   const [rows] = await connection.execute(
     `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`

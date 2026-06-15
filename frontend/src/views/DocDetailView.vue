@@ -78,6 +78,10 @@
                 <span class="status-label">OCR 状态</span>
                 <span class="status-value">{{ docStore.currentResult.ocr_result?.status || '-' }}</span>
               </div>
+              <div v-if="docStore.currentResult.ocr_result?.task_id" class="status-row">
+                <span class="status-label">Task ID</span>
+                <span class="status-value task-id-value">{{ docStore.currentResult.ocr_result.task_id }}</span>
+              </div>
               <div v-if="docStore.currentResult.ocr_result?.progress !== undefined" class="status-row">
                 <span class="status-label">进度</span>
                 <span class="status-value">
@@ -410,6 +414,7 @@ onBeforeUnmount(() => {
 .status-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .status-label { font-size: 12px; color: #909399; flex-shrink: 0; }
 .status-value { font-size: 13px; color: #303133; text-align: right; }
+.task-id-value { word-break: break-all; font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
 .text-truncate { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .sidebar-actions { display: flex; flex-direction: column; gap: 6px; }

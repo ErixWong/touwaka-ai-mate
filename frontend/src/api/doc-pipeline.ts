@@ -77,6 +77,20 @@ export interface DocPipelineMetadataStage {
   timeout_ms: number
 }
 
+export interface DocPipelineOutlineStage {
+  enabled: boolean
+  type: string
+  strategy: string
+  model_id: string | null
+  temperature: number
+  window_size: number
+  step_size: number
+  max_heading_level: number
+  preserve_line_info: boolean
+  deduplicate_titles: boolean
+  timeout_ms: number
+}
+
 export interface DocPipelineChunkStage {
   enabled: boolean
   type: string
@@ -116,6 +130,7 @@ export interface DocPipelineConfig {
   ocr_finalize: DocPipelineOcrFinalize
   pending_clean: DocPipelineCleanStage
   pending_metadata: DocPipelineMetadataStage
+  pending_outline: DocPipelineOutlineStage
   pending_chunk: DocPipelineChunkStage
   pending_embedding: DocPipelineEmbeddingStage
   pending_relocate: DocPipelineRelocateStage
