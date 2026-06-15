@@ -86,6 +86,24 @@ async function hasForeignKey(connection, tableName, constraintName) {
 }
 
 /**
+ * 仅在外键存在时删除，兼容历史库中约束缺失的情况
+ */
+async function dropForeignKeyIfExists(connection, tableName, constraintName) {
+  if (!await hasTable(connection, tableName)) {
+    return false;
+  }
+
+  if (!await hasForeignKey(connection, tableName, constraintName)) {
+    return false;
+  }
+
+  await connection.execute(
+    `ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName}`
+  );
+  return true;
+}
+
+/**
  * 检查索引是否存在
  */
 async function hasIndex(connection, tableName, indexName) {
@@ -2107,14 +2125,14 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute('SET FOREIGN_KEY_CHECKS = 0');
       try {
-        await safeExecute(conn, `ALTER TABLE doc_compare_items DROP FOREIGN KEY fk_comp_items_base_chunk`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_items DROP FOREIGN KEY fk_comp_items_target_chunk`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_document`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_base_rev`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_target_rev`);
-        await safeExecute(conn, `ALTER TABLE doc_document_tags DROP FOREIGN KEY fk_doctag_document`);
-        await safeExecute(conn, `ALTER TABLE app_doc_bindings DROP FOREIGN KEY fk_binding_document`);
-        await safeExecute(conn, `ALTER TABLE app_doc_bindings DROP FOREIGN KEY fk_binding_revision`);
+        await dropForeignKeyIfExists(conn, 'doc_compare_items', 'fk_comp_items_base_chunk');
+        await dropForeignKeyIfExists(conn, 'doc_compare_items', 'fk_comp_items_target_chunk');
+        await dropForeignKeyIfExists(conn, 'doc_compare_runs', 'fk_comp_runs_document');
+        await dropForeignKeyIfExists(conn, 'doc_compare_runs', 'fk_comp_runs_base_rev');
+        await dropForeignKeyIfExists(conn, 'doc_compare_runs', 'fk_comp_runs_target_rev');
+        await dropForeignKeyIfExists(conn, 'doc_document_tags', 'fk_doctag_document');
+        await dropForeignKeyIfExists(conn, 'app_doc_bindings', 'fk_binding_document');
+        await dropForeignKeyIfExists(conn, 'app_doc_bindings', 'fk_binding_revision');
 
         await safeExecute(conn, `DROP TABLE IF EXISTS doc_process_runs`);
         await safeExecute(conn, `DROP TABLE IF EXISTS document_outlines`);

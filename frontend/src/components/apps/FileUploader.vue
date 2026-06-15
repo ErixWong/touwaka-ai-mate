@@ -29,7 +29,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   uploaded: [attachmentIds: string[]]
-}>>()
+}>()
 
 const dragging = ref(false)
 const uploadingFiles = ref<{ name: string; status: string; error?: string }[]>([])
