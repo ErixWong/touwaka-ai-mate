@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import SystemSettingService from '../services/system-setting.service.js';
 import AttachmentService from '../services/attachment.service.js';
 import multer from '@koa/multer';
+import DocAccessService from '../../lib/doc-access-service.js';
 
 const CONTENT_TYPES = {
   '.png': 'image/png',
@@ -101,6 +102,7 @@ class AttachmentController {
     this.AttachmentToken = null;
     this.systemSettingService = new SystemSettingService(db);
     this.attachmentService = new AttachmentService(db);
+    this.docAccessService = null;
   }
 
   ensureModels() {
@@ -108,6 +110,12 @@ class AttachmentController {
       this.Attachment = this.db.getModel('attachment');
       this.AttachmentToken = this.db.getModel('attachment_token');
       this.attachmentService.ensureModels();
+    }
+  }
+
+  ensureDocAccessService() {
+    if (!this.docAccessService) {
+      this.docAccessService = new DocAccessService(this.db);
     }
   }
 
@@ -250,7 +258,31 @@ class AttachmentController {
    * 检查附件权限
    * 通过 source_tag 分发到各业务模块
    */
-  async checkAttachmentPermission(ctx, sourceTag, sourceId) {
+  async resolveDocPlatformDocumentId(sourceId) {
+    if (!sourceId || sourceId === 'temp') {
+      return null;
+    }
+
+    const Document = this.db.getModel('document');
+    const DocumentRevision = this.db.getModel('document_revision');
+
+    const document = await Document.findByPk(sourceId, {
+      attributes: ['id'],
+      raw: true,
+    });
+    if (document?.id) {
+      return document.id;
+    }
+
+    const revision = await DocumentRevision.findByPk(sourceId, {
+      attributes: ['document_id'],
+      raw: true,
+    });
+
+    return revision?.document_id || null;
+  }
+
+  async checkAttachmentPermission(ctx, sourceTag, sourceId, accessMode = 'read') {
     const userId = ctx.state.session.id;
     
     switch (sourceTag) {
@@ -316,25 +348,24 @@ class AttachmentController {
         return false;
       }
 
-              case 'doc-platform': {
-                // 文档平台第一阶段上传入口。
-                // 创建 intake 前先以 temp 附件落库，后续由 intake 绑定到真实 document/revision。
-                if (sourceId === 'temp') {
-                  return true;
-                }
+      case 'doc-platform': {
+        // 文档平台第一阶段上传入口。
+        // 创建 intake 前先以 temp 附件落库，后续由 intake 绑定到真实 document/revision。
+        if (sourceId === 'temp') {
+          return accessMode === 'write';
+        }
 
-                // 对于后续已绑定资源的场景，先允许上传者本人访问自己创建的资源附件。
-                const attachment = await this.Attachment?.findOne({
-                  where: {
-                    source_tag: sourceTag,
-                    source_id: sourceId,
-                    created_by: userId,
-                  },
-                  attributes: ['id'],
-                });
+        this.ensureDocAccessService();
 
-                return !!attachment;
-              }
+        const documentId = await this.resolveDocPlatformDocumentId(sourceId);
+        if (!documentId) {
+          return false;
+        }
+
+        return accessMode === 'write'
+          ? await this.docAccessService.canWrite(documentId, userId)
+          : await this.docAccessService.canRead(documentId, userId);
+      }
       
       default:
         // 未知类型默认拒绝
@@ -368,7 +399,7 @@ class AttachmentController {
         ctx.throw(413, `File size exceeds limit of ${maxFileSize} bytes`);
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, data.source_tag, data.source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, data.source_tag, data.source_id, 'write');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
@@ -439,7 +470,7 @@ class AttachmentController {
         ctx.throw(413, `File size exceeds limit of ${maxFileSize} bytes`);
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, body.source_tag, body.source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, body.source_tag, body.source_id, 'write');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
@@ -512,7 +543,7 @@ class AttachmentController {
         ctx.throw(400, `Maximum ${MAX_BATCH_SIZE} files allowed per batch`);
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, data.source_tag, data.source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, data.source_tag, data.source_id, 'write');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
@@ -595,7 +626,7 @@ class AttachmentController {
         ctx.throw(404, 'Attachment not found');
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id, 'read');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此附件');
       }
@@ -636,7 +667,7 @@ class AttachmentController {
         ctx.throw(404, 'Attachment not found');
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id, 'read');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此附件');
       }
@@ -695,7 +726,7 @@ class AttachmentController {
       // 权限检查：过滤出用户有权访问的附件
       const accessibleAttachments = [];
       for (const attachment of attachments) {
-        const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id);
+        const hasPermission = await this.checkAttachmentPermission(ctx, attachment.source_tag, attachment.source_id, 'read');
         if (hasPermission) {
           accessibleAttachments.push({
             id: attachment.id,
@@ -733,7 +764,7 @@ class AttachmentController {
         ctx.throw(400, 'source_tag and source_id query parameters are required');
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, source_tag, source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, source_tag, source_id, 'read');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
@@ -927,7 +958,7 @@ class AttachmentController {
         ctx.throw(400, 'source_tag and source_id are required');
       }
 
-      const hasPermission = await this.checkAttachmentPermission(ctx, source_tag, source_id);
+      const hasPermission = await this.checkAttachmentPermission(ctx, source_tag, source_id, 'read');
       if (!hasPermission) {
         ctx.throw(403, '无权访问此资源');
       }
