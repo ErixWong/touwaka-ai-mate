@@ -1,5 +1,13 @@
 import apiClient, { apiRequest } from './client'
 
+export interface ELSTTSInfo {
+  available: boolean
+  mode: 'realtime'
+  voices: string[]
+  default_voice: string
+  speeds: number[]
+}
+
 export interface ELSTodayStatus {
   is_checked_in: boolean
   completed_reading: boolean
@@ -39,7 +47,7 @@ export interface ELSDashboard {
 export interface ELSLibraryItem {
   id: string
   name: string
-  type: 'public' | 'personal' | 'shared'
+  type: 'public' | 'personal'
   material_count: number
   is_selected: boolean
 }
@@ -54,10 +62,10 @@ export interface ELSLibraryMaterial {
   title: string
   summary?: string
   language: string
-  processing_status: string
-  safety_status: string
-  quiz_status: string
-  tts_status: string
+  processing_status: 'processing' | 'ready' | 'rejected' | 'failed'
+  status_reason: string | null
+  quiz_status: 'pending' | 'ready' | 'failed'
+  tts_enabled: boolean
   can_read: boolean
   can_edit: boolean
   updated_at: string
@@ -67,7 +75,7 @@ export interface ELSLibraryMaterialsResponse {
   library: {
     id: string
     name: string
-    type: 'public' | 'personal' | 'shared'
+    type: 'public' | 'personal'
   }
   items: ELSLibraryMaterial[]
 }
@@ -81,14 +89,10 @@ export interface ELSMaterialDetail {
   content: string
   summary?: string
   language: string
-  processing_status: string
-  quiz_status: string
-  tts_status: string
-  tts: {
-    available: boolean
-    audio_url: string | null
-    speeds: number[]
-  }
+  processing_status: 'processing' | 'ready' | 'rejected' | 'failed'
+  status_reason: string | null
+  quiz_status?: 'pending' | 'ready' | 'failed'
+  tts: ELSTTSInfo
   progress: {
     is_read: boolean
     collected_word_count: number
@@ -114,7 +118,7 @@ export interface ELSWordCollectResponse {
     word_text: string
     meaning: string
     phonetic?: string
-    pronunciation_audio?: string
+    tts: ELSTTSInfo
     sentence: string
     notebook_id: string
     language: string
@@ -149,15 +153,15 @@ export interface ELSQuizSubmitResponse {
 
 export interface ELSReviewQuestion {
   word_id: string
-  review_type: string
-  audio_url: string | null
+  review_type: 'meaning_choice' | 'listen_pick' | 'sentence_fill'
+  tts: ELSTTSInfo
+  tts_text: string
   prompt: string
   options: string[]
 }
 
 export interface ELSReviewResponse {
-  bucket: string
-  notebook_id: string
+  bucket: 'today' | 'new' | 'wrong'
   session_id: string
   questions: ELSReviewQuestion[]
   total: number
@@ -181,7 +185,7 @@ export interface ELSCheckinResponse {
   completed_reading: boolean
   completed_review: boolean
   streak_days: number
-  day_type: string
+  day_type: 'reading_day' | 'review_day' | 'full_day'
 }
 
 export function getELSDashboard() {
@@ -260,19 +264,19 @@ export function submitELSMaterialQuiz(materialId: string, answers: Array<{ quest
   return apiRequest<ELSQuizSubmitResponse>(apiClient.post(`/els/materials/${materialId}/quiz/submit`, { answers }))
 }
 
-export function getELSReviews(params: { bucket: string; notebook_id: string; size?: number }) {
+export function getELSReviews(params: { bucket: 'today' | 'new' | 'wrong'; notebook_id: string; size?: number }) {
   return apiRequest<ELSReviewResponse>(apiClient.get('/els/reviews', { params }))
 }
 
 export function submitELSReviews(payload: {
   session_id: string
-  bucket: string
+  bucket: 'today' | 'new' | 'wrong'
   results: Array<{
     word_id: string
     review_type: string
     answer: string
     is_correct: boolean
-    self_rating: string
+    self_rating: 'easy' | 'normal' | 'hard' | 'forgot'
   }>
 }) {
   return apiRequest<ELSReviewSubmitResponse>(apiClient.post('/els/reviews/submit', payload))

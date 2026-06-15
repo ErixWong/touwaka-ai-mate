@@ -27,7 +27,10 @@
   "custom_handlers": {},
   "fields": [],
   "extension_tables": [],
-  "migrations": {},
+  "migrations": {
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
+  },
   "config": {
     "features": [
       "study_dashboard",

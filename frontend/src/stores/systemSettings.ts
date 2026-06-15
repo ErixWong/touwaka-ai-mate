@@ -42,6 +42,7 @@ export interface SystemSettings {
   }
   app?: {
     clock_interval?: number
+    tick_timeout_ms?: number
     batch_size?: number
     max_concurrency?: number
     text_filter_max_length?: number
@@ -114,6 +115,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     },
     app: {
       clock_interval: 0,
+      tick_timeout_ms: 0,
       batch_size: 0,
       max_concurrency: 0,
       text_filter_max_length: 0,

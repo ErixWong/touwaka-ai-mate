@@ -86,6 +86,24 @@ async function hasForeignKey(connection, tableName, constraintName) {
 }
 
 /**
+ * 仅在外键存在时删除，兼容历史库中约束缺失的情况
+ */
+async function dropForeignKeyIfExists(connection, tableName, constraintName) {
+  if (!await hasTable(connection, tableName)) {
+    return false;
+  }
+
+  if (!await hasForeignKey(connection, tableName, constraintName)) {
+    return false;
+  }
+
+  await connection.execute(
+    `ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName}`
+  );
+  return true;
+}
+
+/**
  * 检查索引是否存在
  */
 async function hasIndex(connection, tableName, indexName) {
@@ -2107,14 +2125,14 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute('SET FOREIGN_KEY_CHECKS = 0');
       try {
-        await safeExecute(conn, `ALTER TABLE doc_compare_items DROP FOREIGN KEY fk_comp_items_base_chunk`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_items DROP FOREIGN KEY fk_comp_items_target_chunk`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_document`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_base_rev`);
-        await safeExecute(conn, `ALTER TABLE doc_compare_runs DROP FOREIGN KEY fk_comp_runs_target_rev`);
-        await safeExecute(conn, `ALTER TABLE doc_document_tags DROP FOREIGN KEY fk_doctag_document`);
-        await safeExecute(conn, `ALTER TABLE app_doc_bindings DROP FOREIGN KEY fk_binding_document`);
-        await safeExecute(conn, `ALTER TABLE app_doc_bindings DROP FOREIGN KEY fk_binding_revision`);
+        await dropForeignKeyIfExists(conn, 'doc_compare_items', 'fk_comp_items_base_chunk');
+        await dropForeignKeyIfExists(conn, 'doc_compare_items', 'fk_comp_items_target_chunk');
+        await dropForeignKeyIfExists(conn, 'doc_compare_runs', 'fk_comp_runs_document');
+        await dropForeignKeyIfExists(conn, 'doc_compare_runs', 'fk_comp_runs_base_rev');
+        await dropForeignKeyIfExists(conn, 'doc_compare_runs', 'fk_comp_runs_target_rev');
+        await dropForeignKeyIfExists(conn, 'doc_document_tags', 'fk_doctag_document');
+        await dropForeignKeyIfExists(conn, 'app_doc_bindings', 'fk_binding_document');
+        await dropForeignKeyIfExists(conn, 'app_doc_bindings', 'fk_binding_revision');
 
         await safeExecute(conn, `DROP TABLE IF EXISTS doc_process_runs`);
         await safeExecute(conn, `DROP TABLE IF EXISTS document_outlines`);
@@ -2348,7 +2366,52 @@ const MIGRATIONS = [
         await conn.execute('SET FOREIGN_KEY_CHECKS = 1');
       }
       console.log('  ✓ Rebuilt doc platform core tables to V2 design');
-    }
+    },
+  },
+  // 26. providers 表新增 provider_type 字段 + ai_models 表扩展 model_type 枚举
+  {
+    name: 'providers.ai_models.add_provider_type_and_tts_model_type',
+    async check(conn) {
+      const [cols1] = await conn.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'providers' AND COLUMN_NAME = 'provider_type'
+      `);
+      const [cols2] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_models' AND COLUMN_NAME = 'model_type'
+      `);
+      const hasProviderType = cols1.length > 0;
+      const hasTTSType = cols2.length > 0 && cols2[0].COLUMN_TYPE.includes("'tts'");
+      return hasProviderType && hasTTSType;
+    },
+    async migrate(conn) {
+      const [cols1] = await conn.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'providers' AND COLUMN_NAME = 'provider_type'
+      `);
+      if (cols1.length === 0) {
+        await conn.execute(`
+          ALTER TABLE providers
+          ADD COLUMN provider_type ENUM('llm', 'tts', 'embedding') DEFAULT 'llm'
+          AFTER user_agent
+        `);
+        console.log('  ✓ Added provider_type column to providers');
+      }
+      const [cols2] = await conn.execute(`
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_models' AND COLUMN_NAME = 'model_type'
+      `);
+      if (cols2.length > 0 && !cols2[0].COLUMN_TYPE.includes("'tts'")) {
+        await conn.execute(`
+          ALTER TABLE ai_models
+          MODIFY COLUMN model_type ENUM('text','multimodal','embedding','tts') DEFAULT 'text'
+        `);
+        console.log('  ✓ Extended ai_models.model_type to include tts');
+      }
+      await conn.execute(`
+        UPDATE providers SET provider_type = 'llm' WHERE provider_type IS NULL
+      `);
+    },
   },
 
 ];
