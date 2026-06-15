@@ -28,7 +28,7 @@ export interface SystemSettings {
     skill_call: number
     skill_http: number
     resident_skill: number
-    remote_llm: number
+    internal_llm: number
     chat_idle: number
   }
   tool: {
@@ -101,7 +101,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       skill_call: 0,
       skill_http: 0,
       resident_skill: 0,
-      remote_llm: 0,
+      internal_llm: 0,
       chat_idle: 0,
     },
     tool: {

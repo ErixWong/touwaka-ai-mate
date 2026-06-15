@@ -58,14 +58,22 @@ export async function tick(context) {
 
       if (doc.processing_status === 'pending_outline') {
         if (!services.documentOutline) {
+          logger.warn(`[doc-ocr-pipeline] document ${doc.id} pending_outline skipped: documentOutline service unavailable`);
           failed += 1;
           continue;
         }
-        await services.documentOutline.extract(doc.current_revision_id, {
+        const startResult = await services.documentOutline.startExtraction(doc.current_revision_id, {
           initiatedByType: 'scheduler',
           initiatedById: null,
         });
-        outlineExtracted += 1;
+        logger.info(
+          `[doc-ocr-pipeline] document ${doc.id} pending_outline startExtraction result: ` +
+          `queued=${Boolean(startResult?.queued)}, already_running=${Boolean(startResult?.already_running)}, ` +
+          `run_id=${startResult?.run_id || 'null'}`
+        );
+        if (startResult.queued || startResult.already_running) {
+          outlineExtracted += 1;
+        }
         continue;
       }
 

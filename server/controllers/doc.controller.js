@@ -27,6 +27,28 @@ import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
 
+const RETRYABLE_PROCESSING_STAGES = [
+  'pending_ocr',
+  'ocr_processing',
+  'pending_clean',
+  'pending_metadata',
+  'pending_outline',
+  'pending_chunk',
+  'pending_embedding',
+  'pending_relocate',
+];
+
+const PROCESSING_STAGE_LABELS = {
+  pending_ocr: 'OCR提交',
+  ocr_processing: 'OCR处理',
+  pending_clean: '文本清洗',
+  pending_metadata: '元数据提取',
+  pending_outline: '章节提取',
+  pending_chunk: '文本分块',
+  pending_embedding: '向量化',
+  pending_relocate: '迁移',
+};
+
 class DocController {
   constructor(db) {
     this.db = db;
@@ -484,6 +506,8 @@ class DocController {
           status: document.processing_status,
           error_code: document.processing_error_code,
           error_message: document.processing_error_message,
+          retry_stage: await this.resolveRetryStageForDocument(document),
+          ...(await this.getOutlineRunSnapshot(revision?.id || null)),
         },
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,
@@ -1086,6 +1110,210 @@ async createVersion(ctx) {
     'error': 'pending_ocr',
   };
 
+  PROCESSING_ERROR_STAGE_MAP = {
+    ocr_submit_failed: 'pending_ocr',
+    ocr_sync_failed: 'ocr_processing',
+    ocr_task_failed: 'ocr_processing',
+    ocr_finalize_failed: 'ocr_processing',
+    judge_normalization_failed: 'pending_clean',
+    outline_extraction_failed: 'pending_outline',
+    chunk_generation_failed: 'pending_chunk',
+    embedding_generation_failed: 'pending_embedding',
+    relocate_failed: 'pending_relocate',
+  };
+
+  getProcessingStageLabel(stage) {
+    return PROCESSING_STAGE_LABELS[stage] || stage || '处理';
+  }
+
+  isRetryableProcessingStage(stage) {
+    return RETRYABLE_PROCESSING_STAGES.includes(stage);
+  }
+
+  async getOutlineRunSnapshot(revisionId) {
+    if (!revisionId) {
+      return { outline_run_id: null, outline_run_status: null };
+    }
+
+    const DocProcessRun = this.db.getModel('doc_process_run');
+    const activeRun = await DocProcessRun.findOne({
+      where: {
+        revision_id: revisionId,
+        pipeline_step: 'pending_outline',
+        result_status: 'running',
+      },
+      attributes: ['id', 'result_status'],
+      order: [['started_at', 'DESC']],
+      raw: true,
+    });
+
+    return {
+      outline_run_id: activeRun?.id || null,
+      outline_run_status: activeRun?.result_status || null,
+    };
+  }
+
+  async resetProcessingStageArtifacts({ documentId, revisionId, retryStage, transaction }) {
+    const DocumentOutline = this.db.getModel('document_outline');
+    const DocumentChunk = this.db.getModel('document_chunk');
+    const DocOcrResult = this.db.getModel('doc_ocr_result');
+    const DocOcrImage = this.db.getModel('doc_ocr_image');
+
+    if (retryStage === 'pending_outline') {
+      await DocumentChunk.destroy({ where: { revision_id: revisionId }, transaction });
+      await DocumentOutline.destroy({ where: { revision_id: revisionId }, transaction });
+      return;
+    }
+
+    if (retryStage === 'pending_chunk') {
+      await DocumentChunk.destroy({ where: { revision_id: revisionId }, transaction });
+      return;
+    }
+
+    if (retryStage === 'pending_clean' || retryStage === 'pending_metadata') {
+      await DocumentChunk.destroy({ where: { revision_id: revisionId }, transaction });
+      await DocumentOutline.destroy({ where: { revision_id: revisionId }, transaction });
+      return;
+    }
+
+    if (retryStage === 'pending_ocr' || retryStage === 'ocr_processing') {
+      const latestOcrResult = await DocOcrResult.findOne({
+        where: { document_id: documentId, revision_id: revisionId },
+        order: [['created_at', 'DESC']],
+        transaction,
+      });
+
+      await DocumentChunk.destroy({ where: { revision_id: revisionId }, transaction });
+      await DocumentOutline.destroy({ where: { revision_id: revisionId }, transaction });
+
+      if (latestOcrResult) {
+        await DocOcrImage.destroy({ where: { ocr_result_id: latestOcrResult.id }, transaction });
+        await latestOcrResult.update({
+          status: 'pending',
+          progress: 0,
+          main_markdown_attachment_id: null,
+          raw_result_attachment_id: null,
+          deliverables_manifest_attachment_id: null,
+          image_manifest_attachment_id: null,
+          image_count: 0,
+          line_count: 0,
+          completed_at: null,
+          error_code: null,
+          error_message: null,
+        }, { transaction });
+      }
+    }
+  }
+
+  async retryStageProcessing({ document, revision, retryStage, userId, ctx = null }) {
+    if (!document || !revision) {
+      throw new Error('Document or revision not found');
+    }
+
+    if (!this.isRetryableProcessingStage(retryStage)) {
+      throw new Error(`Unsupported retry stage: ${retryStage}`);
+    }
+
+    const transaction = await this.db.sequelize.transaction();
+    try {
+      await this.resetProcessingStageArtifacts({
+        documentId: document.id,
+        revisionId: revision.id,
+        retryStage,
+        transaction,
+      });
+
+      await document.update({
+        processing_status: retryStage,
+        processing_error_code: null,
+        processing_error_message: null,
+        processing_retry_count: document.processing_retry_count + 1,
+        processing_updated_at: new Date(),
+      }, { transaction });
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+
+    if (retryStage === 'pending_outline') {
+      this.ensureDocumentOutlineService(ctx);
+      const result = await this.documentOutlineService.startExtraction(revision.id, {
+        initiatedByType: 'user',
+        initiatedById: userId,
+      });
+
+      return {
+        document_id: document.id,
+        revision_id: revision.id,
+        processing_status: retryStage,
+        retry_stage: retryStage,
+        stage_label: this.getProcessingStageLabel(retryStage),
+        queued: result.queued,
+        already_running: result.already_running,
+        run_id: result.run_id,
+      };
+    }
+
+    if (retryStage === 'pending_chunk') {
+      this.ensureDocumentChunkService(ctx);
+      const result = await this.documentChunkService.generate(revision.id, {
+        initiatedByType: 'user',
+        initiatedById: userId,
+      });
+
+      return {
+        document_id: document.id,
+        revision_id: revision.id,
+        processing_status: 'pending_embedding',
+        retry_stage: retryStage,
+        stage_label: this.getProcessingStageLabel(retryStage),
+        chunk_count: result.chunk_count,
+        outline_count: result.outline_count,
+      };
+    }
+
+    return {
+      document_id: document.id,
+      revision_id: revision.id,
+      processing_status: retryStage,
+      retry_stage: retryStage,
+      stage_label: this.getProcessingStageLabel(retryStage),
+      queued: false,
+      already_running: false,
+    };
+  }
+
+  async resolveRetryStageForDocument(document) {
+    if (!document || document.processing_status !== 'error') {
+      return null;
+    }
+
+    if (document.processing_error_code && this.PROCESSING_ERROR_STAGE_MAP[document.processing_error_code]) {
+      return this.PROCESSING_ERROR_STAGE_MAP[document.processing_error_code];
+    }
+
+    const currentRevisionId = document.current_revision_id || null;
+    if (!currentRevisionId) {
+      return this.PROCESSING_RETRY_STAGE[document.processing_status] || 'pending_ocr';
+    }
+
+    const DocProcessRun = this.db.getModel('doc_process_run');
+    const latestRun = await DocProcessRun.findOne({
+      where: { revision_id: currentRevisionId },
+      attributes: ['pipeline_step', 'result_status', 'started_at'],
+      order: [['started_at', 'DESC']],
+      raw: true,
+    });
+
+    if (latestRun?.pipeline_step) {
+      return latestRun.pipeline_step;
+    }
+
+    return this.PROCESSING_RETRY_STAGE[document.processing_status] || 'pending_ocr';
+  }
+
   /**
    * 查询文档处理状态
    * GET /api/docs/documents/:documentId/processing
@@ -1114,6 +1342,9 @@ async createVersion(ctx) {
 
       const hasPreviewResult = !!latestOcrResult?.main_markdown_attachment_id;
 
+      const retry_stage = await this.resolveRetryStageForDocument(document);
+      const outlineRun = await this.getOutlineRunSnapshot(latestOcrResult?.revision_id || null);
+
       ctx.success({
         document_id: document.id,
         processing_status: document.processing_status,
@@ -1121,6 +1352,9 @@ async createVersion(ctx) {
         processing_error_message: document.processing_error_message,
         processing_retry_count: document.processing_retry_count,
         processing_updated_at: document.processing_updated_at,
+        retry_stage,
+        outline_run_id: outlineRun.outline_run_id,
+        outline_run_status: outlineRun.outline_run_status,
         has_preview_result: hasPreviewResult,
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,
@@ -1168,21 +1402,23 @@ async createVersion(ctx) {
         ctx.throw(400, 'Only documents in error state can be retried');
       }
 
-      const retryStage = this.PROCESSING_RETRY_STAGE[document.processing_status] || 'pending_ocr';
+      const retryStage = await this.resolveRetryStageForDocument(document) || 'pending_ocr';
+      const revision = await this.models.DocVersion.findOne({
+        where: { id: document.current_revision_id },
+        attributes: ['id', 'document_id'],
+      });
+      if (!revision) ctx.throw(404, 'Current revision not found');
 
-      await document.update({
-        processing_status: retryStage,
-        processing_error_code: null,
-        processing_error_message: null,
-        processing_retry_count: document.processing_retry_count + 1,
-        processing_updated_at: new Date(),
+      const result = await this.retryStageProcessing({
+        document,
+        revision,
+        retryStage,
+        userId,
+        ctx,
       });
 
-      ctx.success({
-        document_id: document.id,
-        processing_status: retryStage,
-      });
-      logger.info(`[Doc] retryProcessing: ${documentId} → ${retryStage} (retry #${document.processing_retry_count + 1})`);
+      ctx.success(result);
+      logger.info(`[Doc] retryProcessing: ${documentId} → ${retryStage} (${this.getProcessingStageLabel(retryStage)})`);
     } catch (error) {
       logger.error('[Doc] retryProcessing error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -1292,20 +1528,41 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      const result = await this.documentOutlineService.extract(revisionId, {
+      if (document.processing_status === 'error') {
+        const retryStage = await this.resolveRetryStageForDocument(document);
+        if (retryStage !== 'pending_outline') {
+          ctx.throw(400, `Document current retry stage is ${retryStage || 'unknown'}, cannot retry outline extraction directly`);
+        }
+
+        const retryResult = await this.retryStageProcessing({
+          document,
+          revision,
+          retryStage: 'pending_outline',
+          userId,
+          ctx,
+        });
+        ctx.success(retryResult);
+        return;
+      }
+
+      const result = await this.documentOutlineService.startExtraction(revisionId, {
         initiatedByType: 'user',
         initiatedById: userId,
       });
       ctx.success({
         revision_id: revisionId,
         document_id: revision.document_id,
-        outline_count: result.outline_count,
-        processing_status: 'pending_chunk',
-        partial: result.partial || false,
-        failed_chunks: result.failed_chunks || 0,
-        total_chunks: result.total_chunks || 1,
+        processing_status: 'pending_outline',
+        retry_stage: 'pending_outline',
+        stage_label: this.getProcessingStageLabel('pending_outline'),
+        queued: result.queued,
+        already_running: result.already_running,
+        run_id: result.run_id,
       });
     } catch (error) {
+      if (error.code === 'OUTLINE_EXTRACTION_ALREADY_RUNNING') {
+        ctx.throw(409, error.message);
+      }
       logger.error('[Doc] extractOutline error:', error);
       ctx.throw(error.status || 500, error.message);
     }
@@ -1343,6 +1600,23 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
+      if (document.processing_status === 'error') {
+        const retryStage = await this.resolveRetryStageForDocument(document);
+        if (retryStage !== 'pending_chunk') {
+          ctx.throw(400, `Document current retry stage is ${retryStage || 'unknown'}, cannot retry chunk generation directly`);
+        }
+
+        const retryResult = await this.retryStageProcessing({
+          document,
+          revision,
+          retryStage: 'pending_chunk',
+          userId,
+          ctx,
+        });
+        ctx.success(retryResult);
+        return;
+      }
+
       const result = await this.documentChunkService.generate(revisionId, {
         initiatedByType: 'user',
         initiatedById: userId,
@@ -1353,6 +1627,8 @@ async createVersion(ctx) {
         chunk_count: result.chunk_count,
         outline_count: result.outline_count,
         processing_status: 'pending_embedding',
+        retry_stage: 'pending_chunk',
+        stage_label: this.getProcessingStageLabel('pending_chunk'),
       });
     } catch (error) {
       logger.error('[Doc] generateChunks error:', error);
@@ -1411,12 +1687,18 @@ async createVersion(ctx) {
 
       const document = await this.models.DocDocument.findOne({
         where: { id: documentId },
-        attributes: ['processing_status'],
+        attributes: ['id', 'current_revision_id', 'processing_status', 'processing_error_code'],
+        raw: true,
       });
+
+      const retry_stage = canWrite && document && document.processing_status === 'error'
+        ? await this.resolveRetryStageForDocument(document)
+        : null;
 
       ctx.success({
         can_view: true,
         can_retry_processing: canWrite && document && document.processing_status === 'error',
+        retry_stage,
         can_set_current_revision: canWrite,
         can_relocate: canWrite,
       });

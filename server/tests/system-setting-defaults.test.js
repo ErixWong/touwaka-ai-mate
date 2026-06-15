@@ -45,7 +45,7 @@ describe('System Setting Defaults Consistency', () => {
   })
 
   it('should have complete timeout defaults', () => {
-    const timeoutKeys = ['vm_execution', 'python_execution', 'skill_call', 'skill_http', 'resident_skill', 'remote_llm', 'chat_idle']
+    const timeoutKeys = ['vm_execution', 'python_execution', 'skill_call', 'skill_http', 'resident_skill', 'internal_llm', 'chat_idle']
     for (const key of timeoutKeys) {
       expect(DEFAULT_SETTINGS.timeout).to.have.property(key)
       expect(DEFAULT_SETTINGS.timeout[key]).to.have.property('value')
