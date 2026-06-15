@@ -72,11 +72,8 @@
                   <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
                     {{ processingLabel(docStore.currentResult.processing.status) }}
                   </el-tag>
+                  <span v-if="isLongRunning" class="duration-warn">{{ processingDuration }}</span>
                 </span>
-              </div>
-              <div v-if="isOutlineProcessing" class="status-row">
-                <span class="status-label">章节提取</span>
-                <span class="status-value outline-running-value">{{ outlineProcessingLabel }}</span>
               </div>
               <div class="status-row">
                 <span class="status-label">OCR 状态</span>
@@ -136,23 +133,22 @@
             <h4 class="sidebar-title">处理操作</h4>
             <div class="sidebar-actions">
               <el-button
-                v-if="primaryRetryAction"
+                v-if="docStore.currentResult.processing.status === 'pending_outline' || docStore.currentResult.processing.status === 'error'"
                 type="primary"
                 size="small"
-                :loading="primaryActionLoading"
-                :disabled="primaryActionDisabled"
-                @click="onPrimaryRetryAction"
+                :loading="outlineLoading"
+                @click="onExtractOutline"
               >
-                {{ primaryRetryAction.label }}
+                提取章节大纲
               </el-button>
               <el-button
-                v-if="showChunkRetryButton"
+                v-if="docStore.currentResult.processing.status === 'pending_chunk' || docStore.currentResult.processing.status === 'error'"
                 type="primary"
                 size="small"
                 :loading="chunkLoading"
                 @click="onGenerateChunks"
               >
-                {{ chunkRetryButtonText }}
+                生成文本分块
               </el-button>
             </div>
           </div>
@@ -194,7 +190,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
-import { retryProcessing } from '@/api/docs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const route = useRoute()
@@ -204,6 +199,25 @@ const markdownPreview = ref('')
 const markdownLoading = ref(false)
 const outlineLoading = ref(false)
 const chunkLoading = ref(false)
+
+const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
+const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk', 'pending_embedding', 'pending_relocate']
+
+const isLongRunning = computed(() => {
+  const status = docStore.currentResult?.processing?.status
+  const updatedAt = docStore.currentResult?.processing?.updated_at
+  if (!status || !updatedAt) return false
+  if (!NON_TERMINAL_STATUSES.includes(status)) return false
+  return Date.now() - new Date(updatedAt).getTime() > LONG_RUNNING_THRESHOLD_MS
+})
+
+const processingDuration = computed(() => {
+  const updatedAt = docStore.currentResult?.processing?.updated_at
+  if (!updatedAt) return ''
+  const ms = Date.now() - new Date(updatedAt).getTime()
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  return `${Math.round(ms / 60000)}min`
+})
 
 const collectionId = computed(() => {
   const q = route.query.fromCollection as string
@@ -265,88 +279,6 @@ const revisionLabel = computed(() => {
   return r.revision_label || `r${r.revision_no}`
 })
 
-const retryStage = computed(() => {
-  return docStore.currentResult?.processing?.retry_stage || docStore.processingStatus?.retry_stage || null
-})
-
-const outlineRunId = computed(() => {
-  return docStore.currentResult?.processing?.outline_run_id || docStore.processingStatus?.outline_run_id || null
-})
-
-const outlineRunStatus = computed(() => {
-  return docStore.currentResult?.processing?.outline_run_status || docStore.processingStatus?.outline_run_status || null
-})
-
-const isOutlineProcessing = computed(() => {
-  return docStore.currentResult?.processing?.status === 'pending_outline' && outlineRunStatus.value === 'running'
-})
-
-const outlineProcessingLabel = computed(() => {
-  if (!isOutlineProcessing.value) return '-'
-  const runId = outlineRunId.value ? `（run_id: ${outlineRunId.value}）` : ''
-  return `章节提取已排队/处理中${runId}`
-})
-
-const showOutlineRetryButton = computed(() => {
-  const status = docStore.currentResult?.processing?.status
-  return status === 'pending_outline' || (status === 'error' && retryStage.value === 'pending_outline')
-})
-
-const showChunkRetryButton = computed(() => {
-  const status = docStore.currentResult?.processing?.status
-  return status === 'pending_chunk' || (status === 'error' && retryStage.value === 'pending_chunk')
-})
-
-const outlineRetryButtonText = computed(() => {
-  return docStore.currentResult?.processing?.status === 'error' ? '重试章节提取' : '提取章节大纲'
-})
-
-const chunkRetryButtonText = computed(() => {
-  return docStore.currentResult?.processing?.status === 'error' ? '重试文本分块' : '生成文本分块'
-})
-
-function stageActionLabel(stage?: string | null) {
-  if (stage === 'pending_ocr' || stage === 'ocr_processing') return '重试OCR'
-  if (stage === 'pending_clean') return '重试文本清洗'
-  if (stage === 'pending_metadata') return '重试元数据提取'
-  if (stage === 'pending_outline') return '重试章节提取'
-  if (stage === 'pending_chunk') return '重试文本分块'
-  if (stage === 'pending_embedding') return '重试向量化'
-  if (stage === 'pending_relocate') return '重试迁移'
-  return '重试处理'
-}
-
-const primaryRetryAction = computed(() => {
-  const status = docStore.currentResult?.processing?.status
-  const stage = retryStage.value
-  if (status === 'error' && stage) {
-    return { stage, label: stageActionLabel(stage), kind: 'retry' as const }
-  }
-  if (status === 'pending_outline') {
-    return { stage: 'pending_outline', label: '提取章节大纲', kind: 'outline' as const }
-  }
-  return null
-})
-
-const primaryActionLoading = computed(() => {
-  if (!primaryRetryAction.value) return false
-  if (primaryRetryAction.value.stage === 'pending_outline') {
-    return outlineLoading.value || isOutlineProcessing.value
-  }
-  if (primaryRetryAction.value.stage === 'pending_chunk') {
-    return chunkLoading.value
-  }
-  return false
-})
-
-const primaryActionDisabled = computed(() => {
-  if (!primaryRetryAction.value) return false
-  if (primaryRetryAction.value.stage === 'pending_outline') {
-    return isOutlineProcessing.value
-  }
-  return false
-})
-
 async function onDeleteDocument() {
   const current = docStore.currentResult?.document
   if (!current) return
@@ -404,18 +336,7 @@ async function loadMarkdownPreview() {
     try {
       const result = await docStore.extractOutlineAction(revId)
       if (result) {
-        const currentDocumentId = docStore.currentResult?.document?.id || docStore.currentDoc?.id
-        if (result.queued || result.already_running) {
-          ElMessage.success(result.already_running ? '章节提取已在后台进行中' : '章节提取已排队，后台处理中')
-        } else if (typeof result.outline_count === 'number') {
-          ElMessage.success(`成功提取 ${result.outline_count} 个章节${result.partial ? '（部分成功）' : ''}`)
-        } else {
-          ElMessage.success('章节提取已提交')
-        }
-        if (currentDocumentId) {
-          await docStore.fetchProcessing(currentDocumentId)
-          await docStore.fetchDocumentResult(currentDocumentId)
-        }
+        ElMessage.success(`成功提取 ${result.outline_count} 个章节${result.partial ? '（部分成功）' : ''}`)
         await loadMarkdownPreview()
       } else {
         ElMessage.error(docStore.error || '章节提取失败')
@@ -440,50 +361,6 @@ async function loadMarkdownPreview() {
     } finally {
       chunkLoading.value = false
     }
-  }
-
-  async function onRetryProcessing() {
-    const docId = docStore.currentResult?.document?.id
-    if (!docId) return
-
-    try {
-      const result = await retryProcessing(docId)
-      const actionLabel = stageActionLabel(result.retry_stage || retryStage.value)
-
-      if (result.retry_stage === 'pending_outline') {
-        if (result.already_running) {
-          ElMessage.success('章节提取已在后台进行中')
-        } else if (result.queued) {
-          ElMessage.success('章节提取已排队，后台处理中')
-        } else {
-          ElMessage.success(`${actionLabel}已提交`)
-        }
-      } else if (result.retry_stage === 'pending_chunk') {
-        ElMessage.success(result.chunk_count ? `已重新生成 ${result.chunk_count} 个文本分块` : `${actionLabel}已完成`)
-      } else {
-        ElMessage.success(`${actionLabel}已重置到对应阶段`)
-      }
-
-      await docStore.fetchProcessing(docId)
-      await docStore.fetchDocumentResult(docId)
-      if (docStore.currentResult?.revision?.id) {
-        await docStore.fetchContentTree(docId, docStore.currentResult.revision.id)
-      }
-      await loadMarkdownPreview()
-    } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : '重试处理失败'
-      ElMessage.error(errorMsg)
-    }
-  }
-
-  async function onPrimaryRetryAction() {
-    const action = primaryRetryAction.value
-    if (!action) return
-    if (action.kind === 'retry') {
-      await onRetryProcessing()
-      return
-    }
-    await onExtractOutline()
   }
 
   onMounted(async () => {
@@ -557,7 +434,6 @@ onBeforeUnmount(() => {
 .status-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .status-label { font-size: 12px; color: #909399; flex-shrink: 0; }
 .status-value { font-size: 13px; color: #303133; text-align: right; }
-.outline-running-value { color: #409eff; font-weight: 500; word-break: break-all; }
 .task-id-value { word-break: break-all; font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
 .text-truncate { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -568,6 +444,8 @@ onBeforeUnmount(() => {
 .attachment-meta { font-size: 11px; color: #909399; margin: 2px 0; }
 
 .error-box { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: #fef0f0; color: #c45656; font-size: 12px; }
+
+.duration-warn { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; background: #f56c6c; color: #fff; font-size: 11px; font-weight: 600; vertical-align: middle; }
 
 .chunk-list { display: flex; flex-direction: column; gap: 12px; }
 .chunk-item { border: 1px solid #f0f0f0; border-radius: 8px; overflow: hidden; }

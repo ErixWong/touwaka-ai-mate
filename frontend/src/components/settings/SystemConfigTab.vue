@@ -179,9 +179,27 @@
             </div>
             <div class="config-item">
               <label class="config-label">{{ $t('settings.internalLlmTimeout') }}</label>
-              <el-input-number v-model="form.timeout.internal_llm" :min="30" :max="7200" />
-              <span class="config-hint">30-7200 {{ $t('settings.seconds') }}</span>
+              <el-input-number v-model="form.timeout.internal_llm" :min="30" :max="1800" />
+              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
               <p class="config-description">{{ $t('settings.internalLlmTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.externalHttpTimeout') }}</label>
+              <el-input-number v-model="form.timeout.external_http" :min="30" :max="600" />
+              <span class="config-hint">30-600 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.externalHttpTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.mcpRequestTimeout') }}</label>
+              <el-input-number v-model="form.timeout.mcp_request" :min="30" :max="1800" />
+              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.mcpRequestTimeoutHint') }}</p>
+            </div>
+            <div class="config-item">
+              <label class="config-label">{{ $t('settings.embeddingTimeout') }}</label>
+              <el-input-number v-model="form.timeout.embedding" :min="30" :max="1800" />
+              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.embeddingTimeoutHint') }}</p>
             </div>
             <div class="config-item">
               <label class="config-label">{{ $t('settings.skillCallTimeout') }}</label>
@@ -259,9 +277,9 @@
               <span class="config-hint">5-300 {{ $t('settings.seconds') }}</span>
             </div>
             <div class="config-item">
-              <label class="config-label">{{ $t('settings.tickTimeoutMs') }}</label>
-              <el-input-number v-model="form.app.tick_timeout_ms" :min="1000" :max="1800000" :step="1000" />
-              <span class="config-hint">1000-1800000 ms</span>
+              <label class="config-label">{{ $t('settings.tickWarnAfterMs') }}</label>
+              <el-input-number v-model="form.app.tick_warn_after_ms" :min="60000" :max="3600000" :step="60000" />
+              <span class="config-hint">60000-3600000 ms</span>
             </div>
             <div class="config-item">
               <label class="config-label">{{ $t('settings.batchSize') }}</label>
@@ -365,9 +383,9 @@ const createEmptyForm = () => ({
   registration: { allow_self_registration: false, default_invitation_quota: 0, default_invitation_max_uses: 0, invitation_expiry_days: 0 },
   connection: { max_per_user: 0, max_per_expert: 0 },
   token: { access_expiry: '', refresh_expiry: '' },
-  timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, internal_llm: 0, chat_idle: 0 },
+  timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, internal_llm: 0, external_http: 0, mcp_request: 0, embedding: 0, chat_idle: 0 },
   tool: { max_rounds: 0 },
-  app: { clock_interval: 0, tick_timeout_ms: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
+  app: { clock_interval: 0, tick_warn_after_ms: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
   branding: { app_name: '', logo_icon: '' },
 })
 

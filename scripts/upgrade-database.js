@@ -1342,10 +1342,7 @@ const MIGRATIONS = [
       return rows.length === 0;
     },
     migrate: async (conn) => {
-      await conn.execute(`
-        ALTER TABLE app_contract_mgr_v2_content
-        DROP FOREIGN KEY fk_app_contract_mgr_v2_content_row_id
-      `);
+      await dropForeignKeyIfExists(conn, 'app_contract_mgr_v2_content', 'fk_app_contract_mgr_v2_content_row_id');
       console.log('  ✓ Removed foreign key from app_contract_mgr_v2_content');
     }
   },
@@ -2380,6 +2377,39 @@ const MIGRATIONS = [
       console.log('  ✓ Rebuilt doc platform core tables to V2 design');
     },
   },
+  // 38. app_tick_run 表 — Tick 运行实例表
+  // PR #860 复盘: 统一运行态事实源，替代内存 runningApps/timedOutApps/runStatus
+  {
+    name: 'app_tick_run table create',
+    check: async (conn) => await hasTable(conn, 'app_tick_run'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_tick_run (
+          id CHAR(20) NOT NULL COMMENT '运行记录ID，使用 Utils.newID()',
+          app_id VARCHAR(100) NOT NULL COMMENT 'app标识，如 doc-ocr-pipeline',
+          started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '本轮tick开始时间',
+          finished_at DATETIME NULL DEFAULT NULL COMMENT '本轮tick结束时间，NULL表示仍未闭合',
+          status ENUM(
+            'running',
+            'success',
+            'failed',
+            'interrupted_by_restart',
+            'terminated_by_admin'
+          ) NOT NULL DEFAULT 'running' COMMENT '运行状态',
+          final_message TEXT NULL COMMENT '最终说明/遗言：成功摘要、失败错误、重启中断说明等',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_app_tick_run_app_id_started_at (app_id, started_at DESC),
+          KEY idx_app_tick_run_finished_at (finished_at),
+          KEY idx_app_tick_run_status (status),
+          KEY idx_app_tick_run_open (app_id, finished_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AppClock tick运行实例表'
+      `);
+      console.log('  ✓ Created app_tick_run table');
+    }
+  },
+
   // 26. providers 表新增 provider_type 字段 + ai_models 表扩展 model_type 枚举
   {
     name: 'providers.ai_models.add_provider_type_and_tts_model_type',
@@ -2423,6 +2453,43 @@ const MIGRATIONS = [
       await conn.execute(`
         UPDATE providers SET provider_type = 'llm' WHERE provider_type IS NULL
       `);
+    },
+  },
+
+  // 39. 迁移旧 timeout.remote_llm → timeout.internal_llm
+  // PR #860 复盘: 系统级 timeout 分类收口，存量数据需搬迁
+  {
+    name: 'timeout.remote_llm migrate to timeout.internal_llm',
+    check: async (conn) => {
+      const [newRows] = await conn.execute(
+        `SELECT setting_value FROM system_settings WHERE setting_key = 'timeout.internal_llm'`
+      );
+      if (newRows.length === 0) return false;
+      const [oldRows] = await conn.execute(
+        `SELECT setting_value FROM system_settings WHERE setting_key = 'timeout.remote_llm'`
+      );
+      return oldRows.length === 0;
+    },
+    migrate: async (conn) => {
+      const [oldRows] = await conn.execute(
+        `SELECT setting_value FROM system_settings WHERE setting_key = 'timeout.remote_llm'`
+      );
+      if (oldRows.length > 0) {
+        const oldValue = oldRows[0].setting_value;
+        await conn.execute(
+          `INSERT INTO system_settings (setting_key, setting_value, value_type, description)
+           VALUES ('timeout.internal_llm', ?, 'number', 'Internal LLM 请求超时（秒）')
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+          [oldValue]
+        );
+        console.log(`  ✓ Migrated timeout.remote_llm (${oldValue}s) → timeout.internal_llm`);
+        await conn.execute(
+          `DELETE FROM system_settings WHERE setting_key = 'timeout.remote_llm'`
+        );
+        console.log(`  ✓ Cleaned up deprecated timeout.remote_llm key`);
+      } else {
+        console.log('  ⏭️  No timeout.remote_llm to migrate');
+      }
     },
   },
 

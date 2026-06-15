@@ -9,7 +9,7 @@
       </div>
 
       <div v-if="statusList.length === 0" class="empty-state">
-        {{ $t('appClock.noApps') }}
+        {{ $t('appClock.noRunningApps') }}
       </div>
 
       <div v-else class="status-table-wrapper">
@@ -17,17 +17,8 @@
           <el-table-column prop="app_id" :label="$t('appClock.appId')" width="200" />
           <el-table-column :label="$t('appClock.runStatus')" width="140">
             <template #default="{ row }">
-              <el-tag v-if="row.run_status === 'running'" type="warning">
-                {{ $t('appClock.statusRunning') }}
-              </el-tag>
-              <el-tag v-else-if="row.run_status === 'timed_out'" type="danger">
-                {{ $t('appClock.statusTimedOut') }}
-              </el-tag>
-              <el-tag v-else-if="row.run_status === 'recovering'" type="info">
-                {{ $t('appClock.statusRecovering') }}
-              </el-tag>
-              <el-tag v-else type="success">
-                {{ $t('appClock.statusIdle') }}
+              <el-tag :type="row.run_status === 'running' ? 'warning' : 'info'">
+                {{ row.run_status === 'running' ? $t('appClock.statusRunning') : row.run_status }}
               </el-tag>
             </template>
           </el-table-column>
@@ -41,56 +32,68 @@
               {{ row.duration_ms != null ? formatDuration(row.duration_ms) : '-' }}
             </template>
           </el-table-column>
-          <el-table-column :label="$t('appClock.lastTimeoutAt')" width="180">
+          <el-table-column prop="final_message" :label="$t('appClock.message')" min-width="200">
             <template #default="{ row }">
-              {{ row.last_timeout_at ? formatTime(row.last_timeout_at) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="$t('appClock.lastSuccessAt')" width="180">
-            <template #default="{ row }">
-              {{ row.last_success_at ? formatTime(row.last_success_at) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="last_error" :label="$t('appClock.lastError')" min-width="200">
-            <template #default="{ row }">
-              <span v-if="row.last_error" class="error-text">{{ row.last_error }}</span>
+              <span v-if="row.final_message" class="error-text">{{ row.final_message }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('appClock.actions')" width="280" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                v-if="row.run_status === 'timed_out'"
-                size="small"
-                type="primary"
-                :loading="actionLoading[row.app_id]"
-                @click="handleClear(row.app_id)"
-              >
-                {{ $t('appClock.clearAndResume') }}
-              </el-button>
-              <el-button
-                size="small"
-                type="success"
-                :loading="actionLoading[row.app_id]"
-                :disabled="row.run_status === 'running' || row.run_status === 'recovering'"
-                @click="handleForceTick(row.app_id)"
-              >
-                {{ $t('appClock.forceTick') }}
-              </el-button>
+          <el-table-column :label="$t('appClock.actions')" width="120" fixed="right">
+            <template>
+              <span class="status-hint">{{ $t('appClock.observeOnly') }}</span>
             </template>
           </el-table-column>
         </el-table>
       </div>
 
-      <div v-if="timedOutCount > 0" class="warning-banner">
-        <span>{{ $t('appClock.timedOutWarning', { count: timedOutCount }) }}</span>
+      <div class="section-header" style="margin-top: 24px">
+        <h3 class="section-title">{{ $t('appClock.historyPanel') }}</h3>
+        <el-button size="small" @click="loadHistory">{{ $t('common.refresh') }}</el-button>
+      </div>
+
+      <div v-if="historyList.length === 0" class="empty-state small">
+        {{ $t('appClock.noHistory') }}
+      </div>
+
+      <div v-else class="status-table-wrapper">
+        <el-table :data="historyList" border stripe style="width: 100%" size="small">
+          <el-table-column prop="app_id" :label="$t('appClock.appId')" width="200" />
+          <el-table-column :label="$t('appClock.runStatus')" width="140">
+            <template #default="{ row }">
+              <el-tag :type="historyTagType(row.status)" size="small">
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('appClock.startedAt')" width="180">
+            <template #default="{ row }">
+              {{ row.started_at ? formatTime(row.started_at) : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('appClock.finishedAt')" width="180">
+            <template #default="{ row }">
+              {{ row.finished_at ? formatTime(row.finished_at) : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('appClock.duration')" width="120">
+            <template #default="{ row }">
+              {{ row.duration_ms != null ? formatDuration(row.duration_ms) : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="final_message" :label="$t('appClock.message')" min-width="200">
+            <template #default="{ row }">
+              <span v-if="row.final_message" class="message-text">{{ row.final_message }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
 import apiClient from '@/api/client'
@@ -99,23 +102,27 @@ const { t } = useI18n()
 const toast = useToastStore()
 
 interface AppClockStatus {
+  id: string
   app_id: string
-  run_status: 'idle' | 'running' | 'timed_out' | 'recovering'
+  run_status: string
   started_at: string | null
-  last_error: string | null
-  last_timeout_at: string | null
-  last_success_at: string | null
   duration_ms: number | null
-  manual_clear_required: boolean
+  final_message: string | null
+}
+
+interface AppClockHistory {
+  id: string
+  app_id: string
+  started_at: string | null
+  finished_at: string | null
+  status: string
+  duration_ms: number | null
+  final_message: string | null
 }
 
 const statusList = ref<AppClockStatus[]>([])
+const historyList = ref<AppClockHistory[]>([])
 const loading = ref(false)
-const actionLoading = ref<Record<string, boolean>>({})
-
-const timedOutCount = computed(() =>
-  statusList.value.filter(s => s.run_status === 'timed_out').length
-)
 
 function formatTime(iso: string): string {
   try {
@@ -135,6 +142,14 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`
 }
 
+function historyTagType(status: string): string {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'interrupted_by_restart') return 'warning'
+  if (status === 'terminated_by_admin') return 'info'
+  return 'info'
+}
+
 async function refresh() {
   loading.value = true
   try {
@@ -145,36 +160,15 @@ async function refresh() {
   } finally {
     loading.value = false
   }
+  loadHistory()
 }
 
-async function handleClear(appId: string) {
-  actionLoading.value[appId] = true
+async function loadHistory() {
   try {
-    const response = await apiClient.post(`/app-clock/clear/${appId}`)
-    const targetStatus = response.data.data?.target_status
-    if (targetStatus === 'idle') {
-      toast.success(t('appClock.clearSuccessIdle'))
-    } else {
-      toast.success(t('appClock.clearSuccessRecovering'))
-    }
-    await refresh()
-  } catch (err: any) {
-    toast.error(err?.response?.data?.message || t('appClock.clearFailed'))
-  } finally {
-    actionLoading.value[appId] = false
-  }
-}
-
-async function handleForceTick(appId: string) {
-  actionLoading.value[appId] = true
-  try {
-    await apiClient.post(`/app-clock/force-tick/${appId}`)
-    toast.success(t('appClock.forceTickSuccess'))
-    await refresh()
-  } catch (err: any) {
-    toast.error(err?.response?.data?.message || t('appClock.forceTickFailed'))
-  } finally {
-    actionLoading.value[appId] = false
+    const response = await apiClient.get('/app-clock/status/history', { params: { limit: 10 } })
+    historyList.value = response.data.data || []
+  } catch {
+    // silently fail for history
   }
 }
 
@@ -187,9 +181,11 @@ onMounted(() => {
 .app-clock-status-tab { padding: 20px; }
 .loading-state { text-align: center; padding: 40px; color: var(--text-secondary); }
 .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+.small { padding: 16px 0; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .section-title { margin: 0; font-size: 16px; font-weight: 600; }
 .status-table-wrapper { margin-bottom: 16px; }
 .error-text { color: var(--danger-color, #f56c6c); word-break: break-all; }
-.warning-banner { display: flex; align-items: center; padding: 12px 16px; background: var(--warning-bg, #fdf6ec); border: 1px solid var(--warning-border, #e6a23c); border-radius: 8px; color: var(--warning-text, #b88230); margin-top: 16px; }
+.message-text { color: var(--text-secondary); word-break: break-all; font-size: 12px; }
+.status-hint { color: var(--text-secondary); font-size: 12px; }
 </style>

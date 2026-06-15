@@ -14,6 +14,7 @@ export async function tick(context) {
     `SELECT id, processing_status, current_revision_id
      FROM documents
      WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk')
+     -- NOTE: pending_embedding / pending_relocate 暂不在此调度器范围内，等待对应 handler 实现
        AND current_revision_id IS NOT NULL
      ORDER BY processing_updated_at ASC
      LIMIT ?`,
@@ -58,22 +59,14 @@ export async function tick(context) {
 
       if (doc.processing_status === 'pending_outline') {
         if (!services.documentOutline) {
-          logger.warn(`[doc-ocr-pipeline] document ${doc.id} pending_outline skipped: documentOutline service unavailable`);
           failed += 1;
           continue;
         }
-        const startResult = await services.documentOutline.startExtraction(doc.current_revision_id, {
+        await services.documentOutline.extract(doc.current_revision_id, {
           initiatedByType: 'scheduler',
           initiatedById: null,
         });
-        logger.info(
-          `[doc-ocr-pipeline] document ${doc.id} pending_outline startExtraction result: ` +
-          `queued=${Boolean(startResult?.queued)}, already_running=${Boolean(startResult?.already_running)}, ` +
-          `run_id=${startResult?.run_id || 'null'}`
-        );
-        if (startResult.queued || startResult.already_running) {
-          outlineExtracted += 1;
-        }
+        outlineExtracted += 1;
         continue;
       }
 

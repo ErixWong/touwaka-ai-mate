@@ -32,6 +32,7 @@ export interface DocPipelineMcpStage {
   }
   judge: DocPipelineJudge
   provider_name?: string
+  timeout_ms?: number
   poll_interval_ms?: number
 }
 
@@ -46,6 +47,7 @@ export interface DocPipelineOcrFinalize {
   download_deliverable_tool: string | null
   persist_raw_result: boolean
   persist_image_attachments: boolean
+  timeout_ms: number
   judge: DocPipelineJudge
 }
 
@@ -62,6 +64,7 @@ export interface DocPipelineCleanStage {
     remove_garbled_text: boolean
     remove_header_footer: boolean
   }
+  timeout_ms: number
 }
 
 export interface DocPipelineMetadataStage {
@@ -71,6 +74,7 @@ export interface DocPipelineMetadataStage {
   temperature: number
   schema_json: Record<string, unknown>
   prompt_template: string
+  timeout_ms: number
 }
 
 export interface DocPipelineOutlineStage {
@@ -84,6 +88,7 @@ export interface DocPipelineOutlineStage {
   max_heading_level: number
   preserve_line_info: boolean
   deduplicate_titles: boolean
+  timeout_ms: number
 }
 
 export interface DocPipelineChunkStage {
@@ -101,6 +106,8 @@ export interface DocPipelineEmbeddingStage {
   embedding_model_id: string | null
   batch_size: number
   skip_empty_chunks: boolean
+  retry_times: number
+  timeout_ms: number
 }
 
 export interface DocPipelineRelocateStage {

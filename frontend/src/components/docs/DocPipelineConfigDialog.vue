@@ -70,6 +70,9 @@
             <el-form-item label="Provider 标识">
               <el-input v-model="form.pending_ocr.provider_name" placeholder="mineru" />
             </el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_ocr.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
             <el-divider content-position="left">附件提取参数</el-divider>
             <el-form-item label="file_base64">
               <div class="param-row">
@@ -189,6 +192,9 @@
             </el-form-item>
             <el-form-item label="轮询间隔(ms)">
               <el-input-number v-model="form.ocr_processing.poll_interval_ms" :min="1000" :step="1000" />
+            </el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.ocr_processing.timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
             <el-divider content-position="left">LLM 归一化</el-divider>
             <el-form-item label="归一化模型">
@@ -324,6 +330,9 @@
                 工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
               </div>
             </el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.ocr_finalize.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
             <el-form-item label="持久化原始结果">
               <el-switch v-model="form.ocr_finalize.persist_raw_result" />
             </el-form-item>
@@ -382,6 +391,9 @@
             <el-form-item label="移水印"><el-switch v-model="form.pending_clean.rules.remove_watermark" /></el-form-item>
             <el-form-item label="移除乱码"><el-switch v-model="form.pending_clean.rules.remove_garbled_text" /></el-form-item>
             <el-form-item label="移除页眉页脚"><el-switch v-model="form.pending_clean.rules.remove_header_footer" /></el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_clean.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
           </template>
 
           <!-- pending_metadata -->
@@ -404,22 +416,13 @@
             <el-form-item label="元数据提示词">
               <el-input v-model="form.pending_metadata.prompt_template" type="textarea" :rows="4" />
             </el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_metadata.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
           </template>
 
           <!-- pending_outline -->
           <template v-if="activeStage === 'pending_outline'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_outline.enabled" /></el-form-item>
-            <el-form-item label="执行方式">
-              <el-select v-model="form.pending_outline.type">
-                <el-option label="内置 LLM" value="internal_llm" />
-                <el-option label="禁用" value="disabled" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="提取策略">
-              <el-select v-model="form.pending_outline.strategy">
-                <el-option label="LLM 章节提取" value="llm" />
-              </el-select>
-            </el-form-item>
             <el-form-item label="模型">
               <el-select v-model="form.pending_outline.model_id" placeholder="默认模型" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
@@ -437,8 +440,10 @@
             <el-form-item label="最大标题层级">
               <el-input-number v-model="form.pending_outline.max_heading_level" :min="1" :max="10" :step="1" />
             </el-form-item>
-            <el-form-item label="保留行号信息"><el-switch v-model="form.pending_outline.preserve_line_info" /></el-form-item>
             <el-form-item label="标题去重"><el-switch v-model="form.pending_outline.deduplicate_titles" /></el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_outline.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
           </template>
 
           <!-- pending_chunk -->
@@ -474,6 +479,12 @@
               <el-input-number v-model="form.pending_embedding.batch_size" :min="1" :step="5" />
             </el-form-item>
             <el-form-item label="跳过空块"><el-switch v-model="form.pending_embedding.skip_empty_chunks" /></el-form-item>
+            <el-form-item label="重试次数">
+              <el-input-number v-model="form.pending_embedding.retry_times" :min="0" :max="10" :step="1" />
+            </el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_embedding.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
           </template>
 
           <!-- pending_relocate -->
@@ -548,7 +559,7 @@ const schemaError = ref<Record<string, string>>({})
 const defaultForm: DocPipelineConfig = {
   meta: { version: 1, enabled: true },
   pending_ocr: {
-    enabled: true, type: 'mcp', provider_name: 'mineru',
+    enabled: true, type: 'mcp', provider_name: 'mineru', timeout_ms: 120000,
     mcp: {
       server: 'mineru',
       tool: 'create_task_from_file',
@@ -565,21 +576,21 @@ const defaultForm: DocPipelineConfig = {
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_processing: {
-    enabled: true, type: 'mcp', poll_interval_ms: 5000,
+    enabled: true, type: 'mcp', timeout_ms: 120000, poll_interval_ms: 5000,
     mcp: { server: 'mineru', tool: 'get_task_status', params_mapping: { task_id: 'task_id' }, params: {} },
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_finalize: {
     enabled: true, mcp: { server: 'mineru' },
     default_deliverable_tool: 'get_default_deliverable', list_deliverables_tool: 'list_deliverables', image_deliverables_tool: 'get_image_deliverables',
-    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true,
+    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true, timeout_ms: 120000,
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   pending_clean: {
-    enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, prompt_template: '',
+    enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, prompt_template: '', timeout_ms: 120000,
     rules: { remove_page_number: true, remove_watermark: true, remove_garbled_text: true, remove_header_footer: true },
   },
-  pending_metadata: { enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, schema_json: {}, prompt_template: '' },
+  pending_metadata: { enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, schema_json: {}, prompt_template: '', timeout_ms: 120000 },
   pending_outline: {
     enabled: true,
     type: 'internal_llm',
@@ -591,9 +602,10 @@ const defaultForm: DocPipelineConfig = {
     max_heading_level: 3,
     preserve_line_info: true,
     deduplicate_titles: true,
+    timeout_ms: 120000,
   },
   pending_chunk: { enabled: true, type: 'builtin', chunk_mode: 'heading', max_length: 1000, overlap_length: 100, keep_heading: true, merge_small_chunks: false },
-  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true },
+  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, timeout_ms: 120000 },
   pending_relocate: { enabled: true, target_strategy: 'current_collection', tag_strategy: 'none', metadata_writeback: false, auto_publish: false },
 }
 
