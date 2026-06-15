@@ -63,6 +63,7 @@
 - 编码规范：`docs/development/coding-standards.md`
 - 审查清单：`docs/development/code-review-checklist.md`
 - AI 调用规范：`docs/development/llm-call-standards.md`
+- AI / LLM 架构方针：`docs/development/ai-architecture-guidelines.md`
 - 任务记录：`docs/tasks/active/`
 
 ## 调试提示

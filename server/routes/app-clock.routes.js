@@ -21,35 +21,32 @@ export default (db) => {
     return appClock;
   }
 
-  router.get('/status', authenticate(), (ctx) => {
+  router.get('/status', authenticate(), async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const appClock = getAppClockOrReject(ctx);
     if (!appClock) return;
-    ctx.success(appClock.getRunStatus());
+    ctx.success(await appClock.getRunStatus());
   });
 
-  router.get('/status/:appId', authenticate(), (ctx) => {
+  router.get('/status/history', authenticate(), async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const appClock = getAppClockOrReject(ctx);
     if (!appClock) return;
-    const status = appClock.getRunStatusForApp(ctx.params.appId);
+    const appId = ctx.query.app_id || null;
+    const limit = Math.min(parseInt(ctx.query.limit) || 10, 50);
+    ctx.success(await appClock.getRunHistory(appId, limit));
+  });
+
+  router.get('/status/:appId', authenticate(), async (ctx) => {
+    if (!checkAdmin(ctx)) return;
+    const appClock = getAppClockOrReject(ctx);
+    if (!appClock) return;
+    const status = await appClock.getRunStatusForApp(ctx.params.appId);
     if (!status) {
       ctx.error('App not found in run status', 404);
       return;
     }
     ctx.success(status);
-  });
-
-  router.post('/clear/:appId', authenticate(), async (ctx) => {
-    if (!checkAdmin(ctx)) return;
-    const appClock = getAppClockOrReject(ctx);
-    if (!appClock) return;
-    try {
-      const targetStatus = appClock.clearTimedOut(ctx.params.appId);
-      ctx.success({ target_status: targetStatus });
-    } catch (err) {
-      ctx.error(err.message, 500);
-    }
   });
 
   router.post('/force-tick/:appId', authenticate(), async (ctx) => {

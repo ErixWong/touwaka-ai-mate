@@ -29,6 +29,9 @@ export interface SystemSettings {
     skill_http: number
     resident_skill: number
     internal_llm: number
+    external_http: number
+    mcp_request: number
+    embedding: number
     chat_idle: number
   }
   tool: {
@@ -42,7 +45,7 @@ export interface SystemSettings {
   }
   app?: {
     clock_interval?: number
-    tick_timeout_ms?: number
+    tick_warn_after_ms?: number
     batch_size?: number
     max_concurrency?: number
     text_filter_max_length?: number
@@ -102,6 +105,9 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       skill_http: 0,
       resident_skill: 0,
       internal_llm: 0,
+      external_http: 0,
+      mcp_request: 0,
+      embedding: 0,
       chat_idle: 0,
     },
     tool: {
@@ -115,7 +121,7 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
     },
     app: {
       clock_interval: 0,
-      tick_timeout_ms: 0,
+      tick_warn_after_ms: 0,
       batch_size: 0,
       max_concurrency: 0,
       text_filter_max_length: 0,

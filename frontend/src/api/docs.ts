@@ -73,9 +73,6 @@ export interface DocProcessingStatus {
   processing_error_message: string | null
   processing_retry_count: number
   processing_updated_at: string
-  retry_stage?: string | null
-  outline_run_id?: string | null
-  outline_run_status?: string | null
   has_preview_result?: boolean
   ocr_result?: {
     id: string
@@ -100,21 +97,11 @@ export interface DocProcessingStatus {
 export interface DocRetryResult {
   document_id: string
   processing_status: string
-  retry_stage?: string | null
-  stage_label?: string | null
-  queued?: boolean
-  already_running?: boolean
-  run_id?: string | null
-  chunk_count?: number
-  outline_count?: number
 }
 
 export interface DocPermissions {
   can_view: boolean
   can_retry_processing: boolean
-  retry_stage?: string | null
-  outline_run_id?: string | null
-  outline_run_status?: string | null
   can_set_current_revision: boolean
   can_relocate: boolean
 }
@@ -177,9 +164,7 @@ export interface DocResultDetail {
     status: string
     error_code: string | null
     error_message: string | null
-    retry_stage?: string | null
-    outline_run_id?: string | null
-    outline_run_status?: string | null
+    updated_at: string | null
   }
   ocr_result: {
     id: string
@@ -287,12 +272,11 @@ export interface DocCompareRun {
 export interface ExtractOutlineResult {
   revision_id: string
   document_id: string
+  outline_count: number
   processing_status: string
-  queued?: boolean
-  already_running?: boolean
-  run_id?: string | null
-  outline_count?: number
-  partial?: boolean
+  partial: boolean
+  failed_chunks: number
+  total_chunks: number
 }
 
 export interface GenerateChunksResult {

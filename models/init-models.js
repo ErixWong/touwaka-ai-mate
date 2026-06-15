@@ -14,6 +14,7 @@ import _app_doc_binding from  "./app_doc_binding.js";
 import _app_row_handler from  "./app_row_handler.js";
 import _app_state from  "./app_state.js";
 import _app_tick_log from  "./app_tick_log.js";
+import _app_tick_run from  "./app_tick_run.js";
 import _assistant_message from  "./assistant_message.js";
 import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
@@ -89,6 +90,7 @@ export default function initModels(sequelize) {
   const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
   const app_state = _app_state.init(sequelize, DataTypes);
   const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
+  const app_tick_run = _app_tick_run.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
   const assistant_request = _assistant_request.init(sequelize, DataTypes);
   const assistant = _assistant.init(sequelize, DataTypes);
@@ -383,6 +385,7 @@ export default function initModels(sequelize) {
     app_row_handler,
     app_state,
     app_tick_log,
+    app_tick_run,
     assistant_message,
     assistant_request,
     assistant,
