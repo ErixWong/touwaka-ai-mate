@@ -164,6 +164,7 @@ export interface DocResultDetail {
     status: string
     error_code: string | null
     error_message: string | null
+    updated_at: string | null
   }
   ocr_result: {
     id: string

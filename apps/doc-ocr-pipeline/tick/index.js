@@ -14,6 +14,7 @@ export async function tick(context) {
     `SELECT id, processing_status, current_revision_id
      FROM documents
      WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk')
+     -- NOTE: pending_embedding / pending_relocate 暂不在此调度器范围内，等待对应 handler 实现
        AND current_revision_id IS NOT NULL
      ORDER BY processing_updated_at ASC
      LIMIT ?`,

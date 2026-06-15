@@ -484,6 +484,7 @@ class DocController {
           status: document.processing_status,
           error_code: document.processing_error_code,
           error_message: document.processing_error_message,
+          updated_at: document.processing_updated_at,
         },
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,

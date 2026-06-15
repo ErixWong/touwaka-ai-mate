@@ -72,6 +72,7 @@
                   <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
                     {{ processingLabel(docStore.currentResult.processing.status) }}
                   </el-tag>
+                  <span v-if="isLongRunning" class="duration-warn">{{ processingDuration }}</span>
                 </span>
               </div>
               <div class="status-row">
@@ -198,6 +199,25 @@ const markdownPreview = ref('')
 const markdownLoading = ref(false)
 const outlineLoading = ref(false)
 const chunkLoading = ref(false)
+
+const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
+const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk', 'pending_embedding', 'pending_relocate']
+
+const isLongRunning = computed(() => {
+  const status = docStore.currentResult?.processing?.status
+  const updatedAt = docStore.currentResult?.processing?.updated_at
+  if (!status || !updatedAt) return false
+  if (!NON_TERMINAL_STATUSES.includes(status)) return false
+  return Date.now() - new Date(updatedAt).getTime() > LONG_RUNNING_THRESHOLD_MS
+})
+
+const processingDuration = computed(() => {
+  const updatedAt = docStore.currentResult?.processing?.updated_at
+  if (!updatedAt) return ''
+  const ms = Date.now() - new Date(updatedAt).getTime()
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  return `${Math.round(ms / 60000)}min`
+})
 
 const collectionId = computed(() => {
   const q = route.query.fromCollection as string
@@ -424,6 +444,8 @@ onBeforeUnmount(() => {
 .attachment-meta { font-size: 11px; color: #909399; margin: 2px 0; }
 
 .error-box { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: #fef0f0; color: #c45656; font-size: 12px; }
+
+.duration-warn { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px; background: #f56c6c; color: #fff; font-size: 11px; font-weight: 600; vertical-align: middle; }
 
 .chunk-list { display: flex; flex-direction: column; gap: 12px; }
 .chunk-item { border: 1px solid #f0f0f0; border-radius: 8px; overflow: hidden; }
