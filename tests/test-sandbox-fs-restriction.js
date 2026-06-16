@@ -6,6 +6,7 @@
 
 import vm from 'vm';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -26,41 +27,79 @@ const FS_PATH_METHODS = new Set([
   'createReadStream', 'createWriteStream',
 ]);
 
-function createRestrictedFs(allowedPaths) {
-  const checkPath = (filePath) => {
-    const pathStr = Buffer.isBuffer(filePath) ? filePath.toString('utf8') : String(filePath);
-    let resolvedPath = pathStr;
-    
-    const absolutePath = path.resolve(resolvedPath);
-    
-    const isAllowed = allowedPaths.some(allowedPath => {
-      const normalizedAllowed = path.resolve(allowedPath);
-      return absolutePath.startsWith(normalizedAllowed + path.sep) || 
-             absolutePath === normalizedAllowed;
-    });
-    
-    if (!isAllowed) {
-      throw new Error(
-        `Path not allowed in sandbox: ${absolutePath}\n` +
-        `Allowed paths: ${allowedPaths.map(p => path.resolve(p)).join(', ')}`
-      );
+const FS_PROMISES_PATH_METHODS = new Set([
+  'readFile', 'writeFile', 'appendFile', 'readdir', 'mkdir', 'rmdir', 'rm',
+  'stat', 'lstat', 'access', 'open', 'rename', 'copyFile', 'link', 'unlink',
+  'symlink', 'readlink', 'truncate', 'mkdtemp', 'watch',
+]);
+
+function createRestrictedFsPromises(allowedPaths, originalPromises, baseCwd) {
+  const checkPath = (filePath) => resolveSandboxPath(filePath, allowedPaths, baseCwd);
+
+  return new Proxy(originalPromises, {
+    get(target, prop) {
+      const originalValue = target[prop];
+
+      if (FS_PROMISES_PATH_METHODS.has(prop) && typeof originalValue === 'function') {
+        return function(...args) {
+          if (args.length > 0 && args[0] !== undefined && args[0] !== null) {
+            args[0] = checkPath(args[0]);
+          }
+
+          if (['rename', 'copyFile', 'link'].includes(prop) && args.length > 1) {
+            args[1] = checkPath(args[1]);
+          }
+
+          return originalValue.apply(target, args);
+        };
+      }
+
+      return originalValue;
     }
-    
-    return absolutePath;
-  };
+  });
+}
+
+function resolveSandboxPath(filePath, allowedPaths, baseCwd) {
+  const pathStr = Buffer.isBuffer(filePath) ? filePath.toString('utf8') : String(filePath);
+  const absolutePath = path.isAbsolute(pathStr)
+    ? path.resolve(pathStr)
+    : path.resolve(baseCwd, pathStr);
+
+  const isAllowed = allowedPaths.some(allowedPath => {
+    const normalizedAllowed = path.resolve(allowedPath);
+    return absolutePath.startsWith(normalizedAllowed + path.sep) ||
+           absolutePath === normalizedAllowed;
+  });
+
+  if (!isAllowed) {
+    throw new Error(
+      `Path not allowed in sandbox: ${absolutePath}\n` +
+      `Allowed paths: ${allowedPaths.map(p => path.resolve(p)).join(', ')}`
+    );
+  }
+
+  return absolutePath;
+}
+
+function createRestrictedFs(allowedPaths, baseCwd) {
+  const checkPath = (filePath) => resolveSandboxPath(filePath, allowedPaths, baseCwd);
 
   return new Proxy(fs, {
     get(target, prop) {
+      if (prop === 'promises') {
+        return createRestrictedFsPromises(allowedPaths, target.promises, baseCwd);
+      }
+
       const originalValue = target[prop];
       
       if (FS_PATH_METHODS.has(prop) && typeof originalValue === 'function') {
         return function(...args) {
           if (args.length > 0 && args[0] !== undefined && args[0] !== null) {
-            checkPath(args[0]);
+            args[0] = checkPath(args[0]);
           }
           
           if (['rename', 'renameSync', 'copyFile', 'copyFileSync', 'link', 'linkSync'].includes(prop) && args.length > 1) {
-            checkPath(args[1]);
+            args[1] = checkPath(args[1]);
           }
           
           return originalValue.apply(target, args);
@@ -93,7 +132,7 @@ async function runTests() {
   fs.writeFileSync(disallowedFile, 'This file is outside allowed path', 'utf-8');
   
   // 创建受限 fs
-  const restrictedFs = createRestrictedFs([testDataDir]);
+  const restrictedFs = createRestrictedFs([testDataDir], testDataDir);
   
   console.log('='.repeat(60));
   console.log('沙箱 fs 路径限制测试');
@@ -174,7 +213,7 @@ async function runTests() {
   }
   
   // 测试 6: 管理员权限测试（多个允许路径）
-  const adminFs = createRestrictedFs([testDataDir, outsideDir]);
+  const adminFs = createRestrictedFs([testDataDir, outsideDir], testDataDir);
   try {
     adminFs.readFileSync(disallowedFile, 'utf-8');
     console.log(`✅ 测试 6 通过: 管理员可以访问多个路径`);
@@ -191,6 +230,56 @@ async function runTests() {
     passed++;
   } catch (error) {
     console.log(`❌ 测试 7 失败: ${error.message}`);
+    failed++;
+  }
+
+  // 测试 8: 相对路径应按 baseCwd 解析到允许目录
+  try {
+    const relativeFile = 'relative-write.txt';
+    restrictedFs.writeFileSync(relativeFile, 'relative content', 'utf-8');
+    const expectedPath = path.join(testDataDir, relativeFile);
+    const content = fs.readFileSync(expectedPath, 'utf-8');
+    if (content !== 'relative content') {
+      throw new Error('写入内容不匹配');
+    }
+    console.log('✅ 测试 8 通过: 相对路径正确解析到工作目录');
+    passed++;
+    fs.unlinkSync(expectedPath);
+  } catch (error) {
+    console.log(`❌ 测试 8 失败: ${error.message}`);
+    failed++;
+  }
+
+  // 测试 9: 相对路径越权应被阻止
+  try {
+    restrictedFs.writeFileSync('../escape.txt', 'escape', 'utf-8');
+    console.log('❌ 测试 9 失败: 应该阻止通过相对路径越权');
+    failed++;
+  } catch (error) {
+    if (error.message.includes('Path not allowed')) {
+      console.log('✅ 测试 9 通过: 正确阻止了相对路径越权');
+      passed++;
+    } else {
+      console.log(`❌ 测试 9 失败: 错误类型不正确 - ${error.message}`);
+      failed++;
+    }
+  }
+
+  // 测试 10: fs.promises 相对路径应按 baseCwd 解析
+  try {
+    const restrictedPromises = restrictedFs.promises;
+    const relativeFile = 'promises-write.txt';
+    await restrictedPromises.writeFile(relativeFile, 'promises content', 'utf-8');
+    const expectedPath = path.join(testDataDir, relativeFile);
+    const content = await fsPromises.readFile(expectedPath, 'utf-8');
+    if (content !== 'promises content') {
+      throw new Error('写入内容不匹配');
+    }
+    console.log('✅ 测试 10 通过: fs.promises 相对路径正确解析到工作目录');
+    passed++;
+    fs.unlinkSync(expectedPath);
+  } catch (error) {
+    console.log(`❌ 测试 10 失败: ${error.message}`);
     failed++;
   }
   

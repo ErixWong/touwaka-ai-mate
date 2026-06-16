@@ -2,7 +2,7 @@
  * FS Skill - Node.js Implementation
  * 
  * File system operations including read, write, search, and manage files.
- * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
+ * 注意：相对路径由 skill-runner 的沙箱层按工作目录统一解析，技能代码无需自行拼接绝对路径。
  * 
  * @module fs-skill
  */
@@ -20,7 +20,7 @@ console.error(`  USER_ID: ${process.env.USER_ID || 'default'}`);
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 /**
- * Resolve path - VM 已设置 cwd，直接使用相对路径即可
+ * Resolve path - 相对路径由沙箱层解析到工作目录
  */
 function resolvePath(relativePath) {
   if (path.isAbsolute(relativePath)) {
