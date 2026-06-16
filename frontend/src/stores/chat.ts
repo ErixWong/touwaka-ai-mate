@@ -1,21 +1,9 @@
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { messageApi, topicApi } from '@/api/services'
 import type { Message, MessageStatus, Topic } from '@/types'
 
-/**
- * Chat Store
- *
- * 核心设计：
- * - 消息按 expert + user 组织，不是按 topic 组织
- * - topic 只是对对话历史的阶段性总结，不是消息的容器
- * - 一个 expert 对一个 user 只有一个连续的对话 session
- *
- * 字段名规则：全栈统一使用数据库字段名（snake_case），不做任何转换
- */
-
 export const useChatStore = defineStore('chat', () => {
-  // State
   const currentExpertId = ref<string | null>(null)
   const messages = ref<Message[]>([])
   const topics = ref<Topic[]>([])
@@ -27,98 +15,205 @@ export const useChatStore = defineStore('chat', () => {
   const currentPage = ref(1)
   const error = ref<string | null>(null)
 
-  // Getters
-  const sortedMessages = computed(() => {
-    return [...messages.value].sort((a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    )
-  })
+  const messageById = reactive<Map<string, Message>>(new Map())
+  const requestToAssistantMessageId = reactive<Map<string, string>>(new Map())
+  const requestToUserMessageId = reactive<Map<string, string>>(new Map())
+  const userMessageForAssistant = reactive<Map<string, string>>(new Map())
+  const currentStreamingMessageId = ref<string | null>(null)
 
-  // Actions
+  const sortedMessages = computed(() => messages.value)
 
-  /**
-   * 加载指定 expert 与当前用户的对话历史
-   * 这是主要的加载方法，替代原来的 loadMessages(topic_id)
-   *
-   * 重要：如果当前有流式消息正在输出，不会清空消息列表，避免竞态条件
-   */
-   const loadMessagesByExpert = async (expert_id: string, page: number = 1, size: number = 30) => {
-   if (page === 1) {
-     // 检查是否有正在流式输出的消息，避免竞态条件
-     const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
-     if (hasStreamingMessage) {
-       return
-     }
-     
-     isLoading.value = true
-     messages.value = []
-     currentExpertId.value = expert_id
-   } else {
-     isLoadingMore.value = true
-   }
-   error.value = null
+  const compareMessages = (a: Pick<Message, 'created_at' | 'id'>, b: Pick<Message, 'created_at' | 'id'>) => {
+    const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    if (timeDiff !== 0) return timeDiff
+    return a.id.localeCompare(b.id)
+  }
 
-   try {
-     // 使用符合规范的分页参数
-     const response = await messageApi.getMessagesByExpert(expert_id, { page, size })
-     const items = response.items || []
-     
-     if (page === 1) {
-       messages.value = items
-     } else {
-       // 加载更多历史消息，插入到前面
-       messages.value = [...items, ...messages.value]
-     }
-     
-     hasMoreMessages.value = items.length === size
-     currentPage.value = page
-   } catch (err) {
-     error.value = err instanceof Error ? err.message : 'Failed to load messages'
-     throw err
-   } finally {
-     isLoading.value = false
-     isLoadingMore.value = false
-   }
- }
+  const indexMessage = (message: Message) => {
+    messageById.set(message.id, message)
+    if (message.request_id) {
+      if (message.role === 'assistant') {
+        requestToAssistantMessageId.set(message.request_id, message.id)
+      } else if (message.role === 'user') {
+        requestToUserMessageId.set(message.request_id, message.id)
+      }
+    }
+  }
 
-  /**
-   * 加载更多历史消息
-   */
+  const unindexMessage = (messageId: string) => {
+    const msg = messageById.get(messageId)
+    messageById.delete(messageId)
+    if (msg?.request_id) {
+      if (msg.role === 'assistant') {
+        const mappedId = requestToAssistantMessageId.get(msg.request_id)
+        if (mappedId === messageId) {
+          requestToAssistantMessageId.delete(msg.request_id)
+        }
+      } else if (msg.role === 'user') {
+        const mappedId = requestToUserMessageId.get(msg.request_id)
+        if (mappedId === messageId) {
+          requestToUserMessageId.delete(msg.request_id)
+        }
+      }
+    }
+  }
+
+  const rebuildIndexes = () => {
+    messageById.clear()
+    requestToAssistantMessageId.clear()
+    requestToUserMessageId.clear()
+    userMessageForAssistant.clear()
+    for (let i = 0; i < messages.value.length; i++) {
+      const msg = messages.value[i]
+      if (!msg) continue
+      indexMessage(msg)
+      if (msg.role === 'user' && i + 1 < messages.value.length) {
+        const next = messages.value[i + 1]
+        if (next?.role === 'assistant') {
+          userMessageForAssistant.set(next.id, msg.id)
+        }
+      }
+    }
+  }
+
+  const getMessageById = (id: string): Message | undefined => {
+    return messageById.get(id)
+  }
+
+  const getAssistantMessageByRequestId = (requestId: string): Message | undefined => {
+    const msgId = requestToAssistantMessageId.get(requestId)
+    if (msgId) return messageById.get(msgId)
+    return undefined
+  }
+
+  const getUserMessageByRequestId = (requestId: string): Message | undefined => {
+    const msgId = requestToUserMessageId.get(requestId)
+    if (msgId) return messageById.get(msgId)
+    return undefined
+  }
+
+  const getStreamingAssistant = (): Message | undefined => {
+    if (currentStreamingMessageId.value) {
+      const msg = messageById.get(currentStreamingMessageId.value)
+      if (msg && msg.status === 'streaming') return msg
+      currentStreamingMessageId.value = null
+    }
+    return messages.value.find(m => m.role === 'assistant' && m.status === 'streaming')
+  }
+
+  const setCurrentStreaming = (messageId: string | null) => {
+    currentStreamingMessageId.value = messageId
+  }
+
+  const insertMessageSorted = (message: Message) => {
+    let finalIndex: number
+
+    if (messages.value.length === 0) {
+      messages.value.push(message)
+      finalIndex = 0
+      indexMessage(message)
+    } else {
+      const lastMessage = messages.value[messages.value.length - 1]
+      if (lastMessage && compareMessages(lastMessage, message) <= 0) {
+        messages.value.push(message)
+        finalIndex = messages.value.length - 1
+        indexMessage(message)
+      } else {
+        const insertIndex = messages.value.findIndex(existing => compareMessages(message, existing) < 0)
+        if (insertIndex === -1) {
+          messages.value.push(message)
+          finalIndex = messages.value.length - 1
+        } else {
+          messages.value.splice(insertIndex, 0, message)
+          finalIndex = insertIndex
+        }
+        indexMessage(message)
+      }
+    }
+
+    if (message.role === 'assistant' && finalIndex > 0) {
+      const prev = messages.value[finalIndex - 1]
+      if (prev?.role === 'user') {
+        userMessageForAssistant.set(message.id, prev.id)
+      }
+    }
+    if (message.role === 'user' && finalIndex + 1 < messages.value.length) {
+      const next = messages.value[finalIndex + 1]
+      if (next?.role === 'assistant') {
+        userMessageForAssistant.set(next.id, message.id)
+      }
+    }
+  }
+
+  const loadMessagesByExpert = async (expert_id: string, page: number = 1, size: number = 30) => {
+    if (page === 1) {
+      const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
+      if (hasStreamingMessage) {
+        return
+      }
+
+      isLoading.value = true
+      messages.value = []
+      messageById.clear()
+      requestToAssistantMessageId.clear()
+      requestToUserMessageId.clear()
+      currentExpertId.value = expert_id
+    } else {
+      isLoadingMore.value = true
+    }
+    error.value = null
+
+    try {
+      const response = await messageApi.getMessagesByExpert(expert_id, { page, size })
+      const items = response.items || []
+
+      if (page === 1) {
+        messages.value = [...items].sort(compareMessages)
+      } else {
+        messages.value = [...items, ...messages.value].sort(compareMessages)
+      }
+      rebuildIndexes()
+
+      hasMoreMessages.value = items.length === size
+      currentPage.value = page
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load messages'
+      throw err
+    } finally {
+      isLoading.value = false
+      isLoadingMore.value = false
+    }
+  }
+
   const loadMoreMessages = async () => {
     if (!currentExpertId.value || isLoadingMore.value || !hasMoreMessages.value) return
     await loadMessagesByExpert(currentExpertId.value, currentPage.value + 1)
   }
 
-  /**
-   * 设置当前 expert 并加载消息
-   */
   const setCurrentExpert = async (expert_id: string | null) => {
     if (currentExpertId.value === expert_id) return
-    
+
     currentExpertId.value = expert_id
     messages.value = []
+    messageById.clear()
+    requestToAssistantMessageId.clear()
+    requestToUserMessageId.clear()
+    userMessageForAssistant.clear()
     currentPage.value = 1
     hasMoreMessages.value = true
-    
+
     if (expert_id) {
       await loadMessagesByExpert(expert_id, 1)
     }
   }
 
-  /**
-   * 添加本地消息（用于 SSE 流式显示）
-   * 支持多模态消息格式
-   */
   let messageCounter = 0
   const addLocalMessage = (message: Partial<Message> & { images?: Array<{ url: string; name: string; base64?: string }> }) => {
-    // 检查是否已存在相同 ID 的消息，避免重复添加
     const messageId = message.id || `temp-${Date.now()}-${++messageCounter}`
     const existingIndex = messages.value.findIndex(m => m.id === messageId)
 
-    // 处理多模态内容
     let content = message.content || ''
     if (message.images && message.images.length > 0) {
-      // 将图片转换为 OpenAI 多模态格式并序列化为 JSON
       const multimodalContent = []
 
       if (content) {
@@ -126,7 +221,6 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       for (const img of message.images) {
-        // 使用 base64 或 URL
         const imageUrl = img.base64 || img.url
         multimodalContent.push({
           type: 'image_url',
@@ -134,17 +228,17 @@ export const useChatStore = defineStore('chat', () => {
         })
       }
 
-      // 序列化为 JSON 字符串存储
       content = JSON.stringify({ type: 'multimodal', content: multimodalContent })
     }
 
     if (existingIndex >= 0) {
-      // 如果已存在，更新而不是添加新的
       const existing = messages.value[existingIndex]
       if (existing) {
+        unindexMessage(existing.id)
         existing.content = content || existing.content
         existing.status = message.status || existing.status
         existing.updated_at = new Date().toISOString()
+        indexMessage(existing)
         return existing
       }
     }
@@ -162,14 +256,10 @@ export const useChatStore = defineStore('chat', () => {
       created_at: message.created_at || new Date().toISOString(),
       updated_at: message.updated_at || new Date().toISOString(),
     }
-    messages.value.push(newMessage)
+    insertMessageSorted(newMessage)
     return newMessage
   }
 
-  /**
-   * 更新消息内容（用于 SSE）
-   * 使用 splice 替换整个数组元素，确保 Vue 响应式系统能正确检测变化
-   */
   const updateMessageContent = (messageId: string, content: string, status?: MessageStatus) => {
     const index = messages.value.findIndex(m => m.id === messageId)
     if (index !== -1) {
@@ -182,89 +272,14 @@ export const useChatStore = defineStore('chat', () => {
           updated_at: new Date().toISOString()
         }
         messages.value.splice(index, 1, newMessage)
-      }
-    }
-  }
-
-  /**
-   * 更新消息元数据
-   */
-  const updateMessageMetadata = (messageId: string, metadata: Message['metadata']) => {
-    const message = messages.value.find(m => m.id === messageId)
-    if (message) {
-      message.metadata = { ...message.metadata, ...metadata }
-    }
-  }
-
-  /**
-   * 绑定服务端 request_id 到本地占位消息
-   */
-  const updateMessageRequestId = (messageId: string, requestId: string) => {
-    const index = messages.value.findIndex(m => m.id === messageId)
-    if (index !== -1) {
-      const message = messages.value[index]
-      if (message) {
-        messages.value.splice(index, 1, {
-          ...message,
-          request_id: requestId,
-          updated_at: new Date().toISOString(),
-        })
-      }
-    }
-  }
-
-  /**
-   * 根据 request_id 查找正在流式中的助手占位消息
-   */
-  const findStreamingAssistantByRequestId = (requestId: string) => {
-    return messages.value.find(
-      m => m.role === 'assistant' && m.status === 'streaming' && m.request_id === requestId
-    ) || null
-  }
-
-  /**
-   * 使用服务端最终快照替换本地占位消息
-   */
-  const replaceMessage = (messageId: string, nextMessage: Message) => {
-    const index = messages.value.findIndex(m => m.id === messageId)
-    if (index === -1) return
-
-    const duplicateIndex = messages.value.findIndex((m, i) => i !== index && m.id === nextMessage.id)
-    if (duplicateIndex !== -1) {
-      messages.value.splice(duplicateIndex, 1)
-    }
-
-    messages.value.splice(index, 1, nextMessage)
-  }
-
-  /**
-   * 增量合并消息到尾部，按 id 去重
-   */
-  const mergeMessages = (incomingMessages: Message[]) => {
-    for (const incoming of incomingMessages) {
-      const index = messages.value.findIndex(m => m.id === incoming.id)
-      if (index !== -1) {
-        const current = messages.value[index]
-        if (current) {
-          messages.value.splice(index, 1, {
-            ...current,
-            ...incoming,
-            updated_at: incoming.updated_at || current.updated_at,
-          })
+        indexMessage(newMessage)
+        if (newMessage.status !== 'streaming' && currentStreamingMessageId.value === messageId) {
+          currentStreamingMessageId.value = null
         }
-        continue
       }
-
-      messages.value.push({
-        ...incoming,
-        status: incoming.status || 'completed',
-      })
     }
   }
 
-  /**
-   * 更新消息思考内容（用于 reasoning_delta SSE 事件）
-   */
   const updateMessageReasoningContent = (messageId: string, reasoningContent: string) => {
     const index = messages.value.findIndex(m => m.id === messageId)
     if (index !== -1) {
@@ -276,63 +291,147 @@ export const useChatStore = defineStore('chat', () => {
           updated_at: new Date().toISOString()
         }
         messages.value.splice(index, 1, newMessage)
+        indexMessage(newMessage)
       }
     }
   }
 
-  /**
-   * 删除消息（用于重试）
-   */
-  const removeMessage = (messageId: string) => {
-    const index = messages.value.findIndex(m => m.id === messageId)
-    if (index >= 0) {
-      messages.value.splice(index, 1)
+  const updateMessageMetadata = (messageId: string, metadata: Message['metadata']) => {
+    const message = messageById.get(messageId)
+    if (message) {
+      message.metadata = { ...message.metadata, ...metadata }
     }
   }
 
-  /**
-   * 清除当前对话
-   */
+  const updateMessageRequestId = (messageId: string, requestId: string) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      const message = messages.value[index]
+      if (message) {
+        unindexMessage(message.id)
+        const newMessage: Message = {
+          ...message,
+          request_id: requestId,
+          updated_at: new Date().toISOString(),
+        }
+        messages.value.splice(index, 1, newMessage)
+        indexMessage(newMessage)
+      }
+    }
+  }
+
+  const findStreamingAssistantByRequestId = (requestId: string) => {
+    const msgId = requestToAssistantMessageId.get(requestId)
+    if (msgId) {
+      const msg = messageById.get(msgId)
+      if (msg && msg.role === 'assistant' && msg.status === 'streaming') return msg
+    }
+    return messages.value.find(
+      m => m.role === 'assistant' && m.status === 'streaming' && m.request_id === requestId
+    ) || null
+  }
+
+  const getPreviousUserMessage = (messageId: string): Message | undefined => {
+    const assistant = messageById.get(messageId)
+    if (assistant?.request_id) {
+      const requestUser = getUserMessageByRequestId(assistant.request_id)
+      if (requestUser) return requestUser
+    }
+
+    const userId = userMessageForAssistant.get(messageId)
+    if (userId) return messageById.get(userId)
+    const idx = messages.value.findIndex(m => m.id === messageId)
+    if (idx === -1) return undefined
+    for (let i = idx - 1; i >= 0; i--) {
+      const msg = messages.value[i]
+      if (msg?.role === 'user') return msg
+    }
+    return undefined
+  }
+
+  const replaceMessage = (messageId: string, nextMessage: Message) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index === -1) return
+
+    const duplicateIndex = messages.value.findIndex((m, i) => i !== index && m.id === nextMessage.id)
+    if (duplicateIndex !== -1) {
+      unindexMessage(messages.value[duplicateIndex]!.id)
+      messages.value.splice(duplicateIndex, 1)
+    }
+
+    unindexMessage(messageId)
+    messages.value.splice(index, 1, nextMessage)
+    indexMessage(nextMessage)
+  }
+
+  const mergeMessages = (incomingMessages: Message[]) => {
+    for (const incoming of incomingMessages) {
+      const index = messages.value.findIndex(m => m.id === incoming.id)
+      if (index !== -1) {
+        const current = messages.value[index]
+        if (current) {
+          unindexMessage(current.id)
+          const merged: Message = {
+            ...current,
+            ...incoming,
+            updated_at: incoming.updated_at || current.updated_at,
+          }
+          messages.value.splice(index, 1, merged)
+          indexMessage(merged)
+        }
+        continue
+      }
+
+      const newMsg: Message = {
+        ...incoming,
+        status: incoming.status || 'completed',
+      }
+      insertMessageSorted(newMsg)
+    }
+  }
+
+  const removeMessage = (messageId: string) => {
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index >= 0) {
+      unindexMessage(messageId)
+      messages.value.splice(index, 1)
+    }
+    if (currentStreamingMessageId.value === messageId) {
+      currentStreamingMessageId.value = null
+    }
+  }
+
   const clearChat = () => {
     currentExpertId.value = null
     messages.value = []
+    messageById.clear()
+    requestToAssistantMessageId.clear()
+    requestToUserMessageId.clear()
+    userMessageForAssistant.clear()
+    currentStreamingMessageId.value = null
     currentPage.value = 1
     hasMoreMessages.value = true
     error.value = null
   }
 
-  /**
-   * 清除错误
-   */
   const clearError = () => {
     error.value = null
   }
 
-  // ==================== Topics 相关 ====================
-
-  /**
-   * Topics 分页状态
-   */
   const topicsTotal = ref(0)
   const topicsPage = ref(1)
   const topicsPages = ref(1)
   const topicsPageSize = ref(10)
 
-  /**
-   * 加载话题列表（按当前 expert 过滤）
-   */
   const loadTopics = async (params?: { page?: number; size?: number; search?: string; status?: string; expert_id?: string }) => {
     isLoadingTopics.value = true
     error.value = null
     try {
-      // 如果没有传入 expert_id，使用当前的 expertId
       const filterExpertId = params?.expert_id || currentExpertId.value || undefined
       const page = params?.page || 1
       const size = params?.size || topicsPageSize.value
-      // 使用符合规范的分页参数
       const response = await topicApi.getTopics({ ...params, page, size, expert_id: filterExpertId })
       topics.value = response.items || []
-      // 更新分页状态
       const pagination = response.pagination
       topicsTotal.value = pagination?.total || 0
       topicsPage.value = pagination.page || 1
@@ -346,16 +445,10 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  /**
-   * 设置当前话题
-   */
   const setCurrentTopic = (topicId: string | null) => {
     currentTopicId.value = topicId
   }
 
-  /**
-   * 更新话题
-   */
   const updateTopic = async (topicId: string, data: Partial<Topic>) => {
     const updated = await topicApi.updateTopic(topicId, data)
     const index = topics.value.findIndex(t => t.id === topicId)
@@ -365,23 +458,14 @@ export const useChatStore = defineStore('chat', () => {
     return updated
   }
 
-  /**
-   * 删除话题
-   */
   const deleteTopic = async (topicId: string) => {
     await topicApi.deleteTopic(topicId)
     topics.value = topics.value.filter(t => t.id !== topicId)
   }
 
-  /**
-   * 话题分页状态
-   */
   const topicPage = ref(1)
   const hasMoreTopics = ref(true)
 
-  /**
-   * 加载下一页话题
-   */
   const loadNextPage = async () => {
     if (!hasMoreTopics.value || isLoadingTopics.value) return
     topicPage.value += 1
@@ -389,15 +473,11 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreTopics.value = (response?.items?.length || 0) > 0
   }
 
-  /**
-   * 获取当前话题
-   */
   const currentTopic = computed(() =>
     topics.value.find(t => t.id === currentTopicId.value) || null
   )
 
   return {
-    // State
     currentExpertId,
     messages,
     topics,
@@ -408,26 +488,35 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreMessages,
     hasMoreTopics,
     error,
-    // Topics 分页状态
     topicsTotal,
     topicsPage,
     topicsPages,
     topicsPageSize,
 
-    // Getters
+    messageById,
+    requestToAssistantMessageId,
+    requestToUserMessageId,
+    currentStreamingMessageId,
+
     sortedMessages,
     currentTopic,
 
-    // Actions
+    getMessageById,
+    getAssistantMessageByRequestId,
+    getUserMessageByRequestId,
+    getStreamingAssistant,
+    setCurrentStreaming,
+
     loadMessagesByExpert,
     loadMoreMessages,
     setCurrentExpert,
     addLocalMessage,
     updateMessageContent,
+    updateMessageReasoningContent,
     updateMessageMetadata,
     updateMessageRequestId,
-    updateMessageReasoningContent,
     findStreamingAssistantByRequestId,
+    getPreviousUserMessage,
     replaceMessage,
     mergeMessages,
     removeMessage,

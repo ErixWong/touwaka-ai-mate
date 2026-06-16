@@ -136,6 +136,8 @@ const emit = defineEmits<{
 <style scoped>
 .right-panel {
   height: 100%;
+  width: 100%;
+  min-width: 0;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 12px;
   background: var(--sidebar-bg, #fff);
@@ -228,8 +230,17 @@ const emit = defineEmits<{
 
 .panel-content {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.panel-content > * {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 </style>

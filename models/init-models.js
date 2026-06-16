@@ -8,9 +8,9 @@ import _app_contract_mgr_content from  "./app_contract_mgr_content.js";
 import _app_contract_mgr_row from  "./app_contract_mgr_row.js";
 import _app_contract_mgr_v2_content from  "./app_contract_mgr_v2_content.js";
 import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
+import _app_doc_binding from  "./app_doc_binding.js";
 import _app_invoice_mgr_item from  "./app_invoice_mgr_item.js";
 import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
-import _app_doc_binding from  "./app_doc_binding.js";
 import _app_row_handler from  "./app_row_handler.js";
 import _app_state from  "./app_state.js";
 import _app_tick_log from  "./app_tick_log.js";
@@ -20,22 +20,24 @@ import _assistant_request from  "./assistant_request.js";
 import _assistant from  "./assistant.js";
 import _attachment_token from  "./attachment_token.js";
 import _attachment from  "./attachment.js";
+import _chat_request from  "./chat_request.js";
 import _contract_v2_main_record from  "./contract_v2_main_record.js";
 import _contract_v2_org_node from  "./contract_v2_org_node.js";
 import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
 import _doc_compare_item from  "./doc_compare_item.js";
 import _doc_compare_run from  "./doc_compare_run.js";
+import _doc_content_unit from  "./doc_content_unit.js";
+import _doc_document_tag from  "./doc_document_tag.js";
 import _doc_ocr_image from  "./doc_ocr_image.js";
 import _doc_ocr_result from  "./doc_ocr_result.js";
 import _doc_process_run from  "./doc_process_run.js";
-import _doc_document_tag from  "./doc_document_tag.js";
 import _doc_tag from  "./doc_tag.js";
+import _document_chunk from  "./document_chunk.js";
 import _document_collection from  "./document_collection.js";
-import _document from  "./document.js";
 import _document_outline from  "./document_outline.js";
 import _document_revision from  "./document_revision.js";
-import _document_chunk from  "./document_chunk.js";
+import _document from  "./document.js";
 import _expert_skill from  "./expert_skill.js";
 import _expert from  "./expert.js";
 import _invitation_usage from  "./invitation_usage.js";
@@ -84,9 +86,9 @@ export default function initModels(sequelize) {
   const app_contract_mgr_row = _app_contract_mgr_row.init(sequelize, DataTypes);
   const app_contract_mgr_v2_content = _app_contract_mgr_v2_content.init(sequelize, DataTypes);
   const app_contract_mgr_v2_row = _app_contract_mgr_v2_row.init(sequelize, DataTypes);
+  const app_doc_binding = _app_doc_binding.init(sequelize, DataTypes);
   const app_invoice_mgr_item = _app_invoice_mgr_item.init(sequelize, DataTypes);
   const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
-  const app_doc_binding = _app_doc_binding.init(sequelize, DataTypes);
   const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
   const app_state = _app_state.init(sequelize, DataTypes);
   const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
@@ -96,22 +98,24 @@ export default function initModels(sequelize) {
   const assistant = _assistant.init(sequelize, DataTypes);
   const attachment_token = _attachment_token.init(sequelize, DataTypes);
   const attachment = _attachment.init(sequelize, DataTypes);
+  const chat_request = _chat_request.init(sequelize, DataTypes);
   const contract_v2_main_record = _contract_v2_main_record.init(sequelize, DataTypes);
   const contract_v2_org_node = _contract_v2_org_node.init(sequelize, DataTypes);
   const contract_v2_version = _contract_v2_version.init(sequelize, DataTypes);
   const department = _department.init(sequelize, DataTypes);
   const doc_compare_item = _doc_compare_item.init(sequelize, DataTypes);
   const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
+  const doc_content_unit = _doc_content_unit.init(sequelize, DataTypes);
+  const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
   const doc_ocr_image = _doc_ocr_image.init(sequelize, DataTypes);
   const doc_ocr_result = _doc_ocr_result.init(sequelize, DataTypes);
   const doc_process_run = _doc_process_run.init(sequelize, DataTypes);
-  const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
   const doc_tag = _doc_tag.init(sequelize, DataTypes);
+  const document_chunk = _document_chunk.init(sequelize, DataTypes);
   const document_collection = _document_collection.init(sequelize, DataTypes);
-  const document = _document.init(sequelize, DataTypes);
   const document_outline = _document_outline.init(sequelize, DataTypes);
   const document_revision = _document_revision.init(sequelize, DataTypes);
-  const document_chunk = _document_chunk.init(sequelize, DataTypes);
+  const document = _document.init(sequelize, DataTypes);
   const expert_skill = _expert_skill.init(sequelize, DataTypes);
   const expert = _expert.init(sequelize, DataTypes);
   const invitation_usage = _invitation_usage.init(sequelize, DataTypes);
@@ -173,6 +177,24 @@ export default function initModels(sequelize) {
   app_row_handler.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "handler_id"});
   app_state.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
   app_row_handler.hasMany(app_state, { as: "app_states", foreignKey: "handler_id"});
+  doc_ocr_image.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
+  attachment.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "main_markdown_attachment", foreignKey: "main_markdown_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "main_markdown_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "raw_result_attachment", foreignKey: "raw_result_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "raw_result_attachment_doc_ocr_results", foreignKey: "raw_result_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "deliverables_manifest_attachment", foreignKey: "deliverables_manifest_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "deliverables_manifest_attachment_doc_ocr_results", foreignKey: "deliverables_manifest_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "middle_json_attachment", foreignKey: "middle_json_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "middle_json_attachment_doc_ocr_results", foreignKey: "middle_json_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "content_list_attachment", foreignKey: "content_list_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "content_list_attachment_doc_ocr_results", foreignKey: "content_list_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "content_list_v2_attachment", foreignKey: "content_list_v2_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "content_list_v2_attachment_doc_ocr_results", foreignKey: "content_list_v2_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "model_json_attachment", foreignKey: "model_json_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "model_json_attachment_doc_ocr_results", foreignKey: "model_json_attachment_id"});
+  doc_ocr_result.belongsTo(attachment, { as: "image_manifest_attachment", foreignKey: "image_manifest_attachment_id"});
+  attachment.hasMany(doc_ocr_result, { as: "image_manifest_attachment_doc_ocr_results", foreignKey: "image_manifest_attachment_id"});
   mini_app_file.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
   attachment.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "attachment_id"});
   contract_v2_version.belongsTo(contract_v2_main_record, { as: "contract", foreignKey: "contract_id"});
@@ -185,64 +207,50 @@ export default function initModels(sequelize) {
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
   doc_compare_item.belongsTo(doc_compare_run, { as: "run", foreignKey: "run_id"});
   doc_compare_run.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "run_id"});
-  doc_compare_run.belongsTo(document, { as: "document", foreignKey: "document_id"});
-  document.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "document_id"});
-  doc_compare_run.belongsTo(document_revision, { as: "base_version", foreignKey: "base_version_id"});
-  document_revision.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "base_version_id"});
-  doc_compare_run.belongsTo(document_revision, { as: "target_version", foreignKey: "target_version_id"});
-  document_revision.hasMany(doc_compare_run, { as: "target_version_doc_compare_runs", foreignKey: "target_version_id"});
+  doc_content_unit.belongsTo(doc_content_unit, { as: "parent", foreignKey: "parent_id"});
+  doc_content_unit.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "parent_id"});
+  doc_ocr_image.belongsTo(doc_ocr_result, { as: "ocr_result", foreignKey: "ocr_result_id"});
+  doc_ocr_result.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "ocr_result_id"});
+  doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
+  doc_tag.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "tag_id"});
+  doc_content_unit.belongsTo(document_revision, { as: "version", foreignKey: "version_id"});
+  document_revision.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "version_id"});
   doc_compare_item.belongsTo(document_chunk, { as: "base_unit", foreignKey: "base_unit_id"});
   document_chunk.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "base_unit_id"});
   doc_compare_item.belongsTo(document_chunk, { as: "target_unit", foreignKey: "target_unit_id"});
   document_chunk.hasMany(doc_compare_item, { as: "target_unit_doc_compare_items", foreignKey: "target_unit_id"});
-  doc_ocr_result.belongsTo(document, { as: "document", foreignKey: "document_id"});
-  document.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "document_id"});
-  doc_ocr_result.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
-  document_revision.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "revision_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "main_markdown_attachment", foreignKey: "main_markdown_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "main_markdown_doc_ocr_results", foreignKey: "main_markdown_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "raw_result_attachment", foreignKey: "raw_result_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "raw_result_doc_ocr_results", foreignKey: "raw_result_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "deliverables_manifest_attachment", foreignKey: "deliverables_manifest_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "deliverables_manifest_doc_ocr_results", foreignKey: "deliverables_manifest_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "middle_json_attachment", foreignKey: "middle_json_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "middle_json_doc_ocr_results", foreignKey: "middle_json_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "content_list_attachment", foreignKey: "content_list_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "content_list_doc_ocr_results", foreignKey: "content_list_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "content_list_v2_attachment", foreignKey: "content_list_v2_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "content_list_v2_doc_ocr_results", foreignKey: "content_list_v2_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "model_json_attachment", foreignKey: "model_json_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "model_json_doc_ocr_results", foreignKey: "model_json_attachment_id"});
-  doc_ocr_result.belongsTo(attachment, { as: "image_manifest_attachment", foreignKey: "image_manifest_attachment_id"});
-  attachment.hasMany(doc_ocr_result, { as: "image_manifest_doc_ocr_results", foreignKey: "image_manifest_attachment_id"});
-  doc_ocr_image.belongsTo(doc_ocr_result, { as: "ocr_result", foreignKey: "ocr_result_id"});
-  doc_ocr_result.hasMany(doc_ocr_image, { as: "images", foreignKey: "ocr_result_id"});
-  doc_ocr_image.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
-  attachment.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "attachment_id"});
-  doc_document_tag.belongsTo(document, { as: "document", foreignKey: "document_id"});
-  document.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "document_id"});
-  doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
-  doc_tag.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "tag_id"});
-  doc_process_run.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
-  document_revision.hasMany(doc_process_run, { as: "doc_process_runs", foreignKey: "revision_id"});
-  document_collection.belongsTo(ai_model, { as: "embedding_model", foreignKey: "embedding_model_id"});
-  ai_model.hasMany(document_collection, { as: "document_collections", foreignKey: "embedding_model_id"});
-  document_collection.belongsTo(user, { as: "owner", foreignKey: "owner_id"});
-  user.hasMany(document_collection, { as: "document_collections", foreignKey: "owner_id"});
-  document_collection.belongsTo(user, { as: "created_by_user", foreignKey: "created_by"});
-  user.hasMany(document_collection, { as: "created_by_document_collections", foreignKey: "created_by"});
-  document_collection.belongsTo(department, { as: "department", foreignKey: "department_id"});
-  department.hasMany(document_collection, { as: "document_collections", foreignKey: "department_id"});
   document.belongsTo(document_collection, { as: "collection", foreignKey: "collection_id"});
   document_collection.hasMany(document, { as: "documents", foreignKey: "collection_id"});
-  document_revision.belongsTo(document, { as: "document", foreignKey: "document_id"});
-  document.hasMany(document_revision, { as: "document_revisions", foreignKey: "document_id"});
-  document_outline.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
-  document_revision.hasMany(document_outline, { as: "document_outlines", foreignKey: "revision_id"});
   document_chunk.belongsTo(document_outline, { as: "outline", foreignKey: "outline_id"});
   document_outline.hasMany(document_chunk, { as: "document_chunks", foreignKey: "outline_id"});
+  app_doc_binding.belongsTo(document_revision, { as: "current_revision", foreignKey: "current_revision_id"});
+  document_revision.hasMany(app_doc_binding, { as: "app_doc_bindings", foreignKey: "current_revision_id"});
+  doc_compare_run.belongsTo(document_revision, { as: "base_version", foreignKey: "base_version_id"});
+  document_revision.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "base_version_id"});
+  doc_compare_run.belongsTo(document_revision, { as: "target_version", foreignKey: "target_version_id"});
+  document_revision.hasMany(doc_compare_run, { as: "target_version_doc_compare_runs", foreignKey: "target_version_id"});
+  doc_ocr_result.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
+  document_revision.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "revision_id"});
+  doc_process_run.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
+  document_revision.hasMany(doc_process_run, { as: "doc_process_runs", foreignKey: "revision_id"});
   document_chunk.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
   document_revision.hasMany(document_chunk, { as: "document_chunks", foreignKey: "revision_id"});
+  document_outline.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
+  document_revision.hasMany(document_outline, { as: "document_outlines", foreignKey: "revision_id"});
+  document.belongsTo(document_revision, { as: "id_document_revision", foreignKey: "id"});
+  document_revision.hasOne(document, { as: "id_document", foreignKey: "id"});
+  document.belongsTo(document_revision, { as: "current_revision", foreignKey: "current_revision_id"});
+  document_revision.hasMany(document, { as: "current_revision_documents", foreignKey: "current_revision_id"});
+  app_doc_binding.belongsTo(document, { as: "document", foreignKey: "document_id"});
+  document.hasMany(app_doc_binding, { as: "app_doc_bindings", foreignKey: "document_id"});
+  doc_compare_run.belongsTo(document, { as: "document", foreignKey: "document_id"});
+  document.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "document_id"});
+  doc_document_tag.belongsTo(document, { as: "document", foreignKey: "document_id"});
+  document.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "document_id"});
+  doc_ocr_result.belongsTo(document, { as: "document", foreignKey: "document_id"});
+  document.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "document_id"});
+  document_revision.belongsTo(document, { as: "document", foreignKey: "document_id"});
+  document.hasMany(document_revision, { as: "document_revisions", foreignKey: "document_id"});
   expert_skill.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
   expert.hasMany(expert_skill, { as: "expert_skills", foreignKey: "expert_id"});
   message.belongsTo(expert, { as: "expert", foreignKey: "expert_id"});
@@ -379,9 +387,9 @@ export default function initModels(sequelize) {
     app_contract_mgr_row,
     app_contract_mgr_v2_content,
     app_contract_mgr_v2_row,
+    app_doc_binding,
     app_invoice_mgr_item,
     app_invoice_mgr_row,
-    app_doc_binding,
     app_row_handler,
     app_state,
     app_tick_log,
@@ -391,22 +399,24 @@ export default function initModels(sequelize) {
     assistant,
     attachment_token,
     attachment,
+    chat_request,
     contract_v2_main_record,
     contract_v2_org_node,
     contract_v2_version,
     department,
     doc_compare_item,
     doc_compare_run,
+    doc_content_unit,
+    doc_document_tag,
     doc_ocr_image,
     doc_ocr_result,
     doc_process_run,
-    doc_document_tag,
     doc_tag,
+    document_chunk,
     document_collection,
-    document,
     document_outline,
     document_revision,
-    document_chunk,
+    document,
     expert_skill,
     expert,
     invitation_usage,

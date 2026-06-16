@@ -9,6 +9,11 @@ export default class message extends Model {
       allowNull: false,
       primaryKey: true
     },
+    request_id: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      comment: "所属聊天请求ID"
+    },
     topic_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
@@ -156,6 +161,13 @@ export default class message extends Model {
         using: "BTREE",
         fields: [
           { name: "created_at" },
+        ]
+      },
+      {
+        name: "idx_request",
+        using: "BTREE",
+        fields: [
+          { name: "request_id" },
         ]
       },
     ]

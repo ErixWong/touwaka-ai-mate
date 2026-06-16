@@ -33,10 +33,9 @@ export default class provider extends Model {
       comment: "HTTP 请求 User-Agent 头（NULL 则使用默认值）"
     },
     provider_type: {
-      type: DataTypes.ENUM('llm', 'tts', 'embedding'),
+      type: DataTypes.ENUM('llm','tts','embedding'),
       allowNull: true,
-      defaultValue: 'llm',
-      comment: "提供商类型: llm=大语言模型, tts=语音合成, embedding=向量化"
+      defaultValue: "llm"
     },
     is_active: {
       type: DataTypes.BOOLEAN,
