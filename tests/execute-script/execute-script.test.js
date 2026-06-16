@@ -48,7 +48,7 @@ const content = fs.readFileSync('test-read.txt', 'utf8');
 console.log(content);
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executeNodeScript.call(
         { skillLoader: {} },
         'read-test.js',
@@ -69,7 +69,7 @@ fs.writeFileSync('output.txt', 'written from script');
 console.log('write success');
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executeNodeScript.call(
         { skillLoader: {} },
         'write-test.js',
@@ -98,7 +98,7 @@ try {
 }
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executeNodeScript.call(
         { skillLoader: {} },
         'escape-test.js',
@@ -125,7 +125,7 @@ try {
 }
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executeNodeScript.call(
         { skillLoader: {} },
         'absolute-test.js',
@@ -147,7 +147,7 @@ fs.writeFileSync('cjs-output.txt', 'from cjs script');
 console.log('cjs works');
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executeNodeScript.call(
         { skillLoader: {} },
         'cjs-test.cjs',
@@ -175,7 +175,7 @@ with open('test-read.txt', 'r') as f:
     print(content)
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'read-test.py',
@@ -196,7 +196,7 @@ with open('py-output.txt', 'w') as f:
 print('write success')
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'write-test.py',
@@ -225,7 +225,7 @@ except Exception as e:
     print('BLOCKED:', str(e))
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'escape-test.py',
@@ -251,7 +251,7 @@ except Exception as e:
     print('BLOCKED:', str(e))
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'absolute-test.py',
@@ -275,7 +275,7 @@ except ImportError as e:
     print('BLOCKED:', str(e))
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'module-test.py',
@@ -301,7 +301,7 @@ except PermissionError as e:
     print('BLOCKED:', str(e))
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'os-test.py',
@@ -325,7 +325,7 @@ print('sys.path:', sys.path)
 print('sys.version:', sys.version.split()[0])
 `);
       
-      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
       const result = await ToolManager.prototype.executePythonScript.call(
         { skillLoader: {} },
         'sys-test.py',
@@ -338,6 +338,56 @@ print('sys.version:', sys.version.split()[0])
       assert.ok(result.stdout.includes('sys.argv'));
       assert.ok(result.stdout.includes('sys.path'));
       assert.ok(result.stdout.includes('sys.version'));
+    });
+
+    it('should block os.remove outside sandbox', async () => {
+      const scriptPath = path.join(TEST_WORKSPACE, 'os-remove-test.py');
+      fs.writeFileSync(scriptPath, `
+import os
+try:
+    os.remove('../../../outside.should.not.exist')
+    print('ESCAPED: os.remove worked')
+except Exception as e:
+    print('BLOCKED:', type(e).__name__, str(e)[:80])
+`);
+      
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
+      const result = await ToolManager.prototype.executePythonScript.call(
+        { skillLoader: {} },
+        'os-remove-test.py',
+        [],
+        TEST_WORKSPACE,
+        {}
+      );
+      
+      assert.strictEqual(result.success, true);
+      assert.ok(result.stdout.includes('BLOCKED'));
+      assert.ok(!result.stdout.includes('ESCAPED'));
+    });
+
+    it('should block os.listdir outside sandbox', async () => {
+      const scriptPath = path.join(TEST_WORKSPACE, 'os-listdir-test.py');
+      fs.writeFileSync(scriptPath, `
+import os
+try:
+    files = os.listdir('../../')
+    print('ESCAPED: listdir returned', len(files), 'files')
+except Exception as e:
+    print('BLOCKED:', type(e).__name__, str(e)[:80])
+`);
+      
+      const { default: ToolManager } = await import('../../lib/tool-manager.js');
+      const result = await ToolManager.prototype.executePythonScript.call(
+        { skillLoader: {} },
+        'os-listdir-test.py',
+        [],
+        TEST_WORKSPACE,
+        {}
+      );
+      
+      assert.strictEqual(result.success, true);
+      assert.ok(result.stdout.includes('BLOCKED'));
+      assert.ok(!result.stdout.includes('ESCAPED'));
     });
   });
 });

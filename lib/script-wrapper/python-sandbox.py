@@ -301,32 +301,116 @@ if ext != '.py':
 _real_os = _original_import('os')
 _real_sys = _original_import('sys')
 
-_os_dangerous = {
-    'system', 'popen', 'spawnl', 'spawnle', 'spawnlp', 'spawnlpe',
-    'spawnv', 'spawnve', 'spawnvp', 'spawnvpe',
-    'execv', 'execve', 'execvp', 'execvpe',
-    'execl', 'execle', 'execlp', 'execlpe',
-    'fork', 'kill',
-}
+class _RestrictedEnviron:
+    _ALLOWED_KEYS = ['SANDBOX_ROOT', 'DATA_BASE_PATH', 'USER_ID', 'EXPERT_ID']
+    
+    def __getitem__(self, key):
+        if key in self._ALLOWED_KEYS:
+            return _real_os.environ.get(key, '')
+        raise PermissionError(f"environ['{key}'] not allowed in sandbox")
+    
+    def get(self, key, default=None):
+        if key in self._ALLOWED_KEYS:
+            return _real_os.environ.get(key, default)
+        if default is not None:
+            return default
+        raise PermissionError(f"environ['{key}'] not allowed in sandbox")
+    
+    def __contains__(self, key):
+        return key in self._ALLOWED_KEYS and key in _real_os.environ
+    
+    def __iter__(self):
+        return iter([k for k in self._ALLOWED_KEYS if k in _real_os.environ])
+    
+    def __len__(self):
+        return sum(1 for k in self._ALLOWED_KEYS if k in _real_os.environ)
+    
+    def keys(self):
+        return [k for k in self._ALLOWED_KEYS if k in _real_os.environ]
 
-def _make_denied_func(name):
-    def _denied(*args, **kwargs):
+class _RestrictedOS:
+    _SAFE_ATTRS = {
+        'name', 'sep', 'extsep', 'pathsep', 'linesep',
+        'curdir', 'pardir', 'getcwd', 'path',
+        'O_RDONLY', 'O_WRONLY', 'O_RDWR', 'O_CREAT', 'O_EXCL',
+        'R_OK', 'W_OK', 'X_OK', 'F_OK',
+    }
+    
+    _PATH_ATTRS = {
+        'listdir', 'scandir', 'walk', 'mkdir', 'makedirs',
+        'remove', 'unlink', 'rename', 'replace', 'rmdir',
+        'open', 'stat', 'lstat', 'chdir', 'chmod', 'access',
+        'utime', 'link', 'symlink', 'readlink',
+    }
+    
+    _DUAL_PATH_ATTRS = {'rename', 'replace', 'link', 'symlink', 'utime'}
+    
+    def __init__(self):
+        self.environ = _RestrictedEnviron()
+        self.path = _PathWrapper()
+    
+    def __getattr__(self, name):
+        if name.startswith('__'):
+            return getattr(_real_os, name)
+        
+        if name in self._SAFE_ATTRS:
+            attr = getattr(_real_os, name)
+            if name == 'getcwd':
+                return lambda: SANDBOX_ROOT_RESOLVED
+            return attr
+        
+        if name in self._PATH_ATTRS:
+            return self._make_path_checked(name)
+        
         raise PermissionError(f"os.{name} is not allowed in sandbox")
-    _denied.__name__ = name
-    return _denied
+    
+    def _make_path_checked(self, name):
+        original = getattr(_real_os, name)
+        
+        def checked(*args, **kwargs):
+            if name in self._DUAL_PATH_ATTRS and len(args) >= 2:
+                _check_path(str(args[0]))
+                _check_path(str(args[1]))
+                return original(*args, **kwargs)
+            if args:
+                _check_path(str(args[0]))
+            return original(*args, **kwargs)
+        
+        checked.__name__ = name
+        return checked
 
-for _func in _os_dangerous:
-    if hasattr(_real_os, _func):
-        setattr(_real_os, _func, _make_denied_func(_func))
+class _PathWrapper:
+    def __getattr__(self, name):
+        original = getattr(_real_os.path, name)
+        
+        _path_methods = {
+            'exists', 'isfile', 'isdir', 'islink', 'ismount',
+            'getsize', 'getatime', 'getmtime', 'getctime',
+            'abspath', 'realpath', 'relpath', 'normpath',
+            'dirname', 'basename', 'split', 'splitext',
+            'join', 'expanduser', 'expandvars',
+        }
+        
+        _check_methods = {
+            'listdir', 'scandir', 'walk',
+        }
+        
+        if name in _path_methods:
+            return original
+        if name in _check_methods:
+            def checked(p, *a, **kw):
+                _check_path(p)
+                return original(p, *a, **kw)
+            checked.__name__ = name
+            return checked
+        return original
 
-_real_os.environ = {
-    'SANDBOX_ROOT': SANDBOX_ROOT_RESOLVED,
-    'DATA_BASE_PATH': os.environ.get('DATA_BASE_PATH', ''),
-    'USER_ID': os.environ.get('USER_ID', ''),
-    'EXPERT_ID': os.environ.get('EXPERT_ID', ''),
-}
+_restricted_os = _RestrictedOS()
 
 _real_sys.path = [SANDBOX_ROOT_RESOLVED]
+
+sys.modules['os'] = _restricted_os
+sys.modules['sys'] = _real_sys
 
 restricted_globals = {
     '__name__': '__main__',
@@ -372,6 +456,29 @@ restricted_globals = {
         'False': False,
         'Ellipsis': Ellipsis,
         'NotImplemented': NotImplemented,
+        'Exception': Exception,
+        'BaseException': BaseException,
+        'ImportError': ImportError,
+        'PermissionError': PermissionError,
+        'ValueError': ValueError,
+        'TypeError': TypeError,
+        'KeyError': KeyError,
+        'IndexError': IndexError,
+        'AttributeError': AttributeError,
+        'RuntimeError': RuntimeError,
+        'OSError': OSError,
+        'FileNotFoundError': FileNotFoundError,
+        'FileExistsError': FileExistsError,
+        'IsADirectoryError': IsADirectoryError,
+        'NotADirectoryError': NotADirectoryError,
+        'SyntaxError': SyntaxError,
+        'IndentationError': IndentationError,
+        'NameError': NameError,
+        'UnboundLocalError': UnboundLocalError,
+        'StopIteration': StopIteration,
+        'GeneratorExit': GeneratorExit,
+        'SystemExit': SystemExit,
+        'KeyboardInterrupt': KeyboardInterrupt,
         'abs': abs,
         'all': all,
         'any': any,
@@ -413,7 +520,7 @@ restricted_globals = {
         'exit': exit,
         'quit': quit,
     },
-    'os': _real_os,
+    'os': _restricted_os,
     'sys': _real_sys,
     'pathlib': type('pathlib', (), {
         'Path': RestrictedPath,
