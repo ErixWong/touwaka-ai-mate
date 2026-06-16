@@ -194,6 +194,7 @@ const markdownPreview = ref('')
 const markdownLoading = ref(false)
 const outlineLoading = ref(false)
 const chunkLoading = ref(false)
+const retryProcessingLoading = ref(false)
 
 const processingErrorCode = computed(() => docStore.currentResult?.processing?.error_code || null)
 const processingErrorMessage = computed(() => docStore.currentResult?.processing?.error_message || '')
@@ -233,6 +234,7 @@ const isProcessingActionComplete = computed(() => {
 const retryLoading = computed(() => {
   if (retryAction.value?.type === 'outline') return outlineLoading.value
   if (retryAction.value?.type === 'chunk') return chunkLoading.value
+  if (retryAction.value?.type === 'clean' || retryAction.value?.type === 'metadata' || retryAction.value?.type === 'embedding' || retryAction.value?.type === 'ocr') return retryProcessingLoading.value
   return false
 })
 
@@ -354,7 +356,8 @@ async function onDeleteDocument() {
 }
 
 async function loadMarkdownPreview() {
-    const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
+    const attachment = docStore.currentResult?.ocr_result?.cleaned_markdown_attachment
+      || docStore.currentResult?.ocr_result?.main_markdown_attachment
     if (!attachment?.id) {
       markdownPreview.value = ''
       return
@@ -416,7 +419,20 @@ async function loadMarkdownPreview() {
       await onGenerateChunks()
       return
     }
-    ElMessage.warning(`${retryAction.value?.label || '当前步骤'} 暂未实现`)
+    const documentId = docStore.currentResult?.document?.id
+    if (!documentId) return
+    retryProcessingLoading.value = true
+    try {
+      const result = await docStore.retryProcessingAction(documentId)
+      if (result) {
+        ElMessage.success(`${retryAction.value?.label || '重试处理'} 已提交`)
+        await loadMarkdownPreview()
+      } else {
+        ElMessage.error(docStore.error || `${retryAction.value?.label || '重试处理'}失败`)
+      }
+    } finally {
+      retryProcessingLoading.value = false
+    }
   }
 
   onMounted(async () => {

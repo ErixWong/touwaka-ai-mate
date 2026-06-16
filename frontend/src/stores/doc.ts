@@ -10,6 +10,7 @@ import {
   getProcessingStatus,
   syncOcr,
   deleteDocument,
+  retryProcessing,
   setCurrentVersion,
   transitionVersion,
   extractOutline,
@@ -274,6 +275,19 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
+  async function retryProcessingAction(documentId: string) {
+    error.value = null
+    try {
+      const result = await retryProcessing(documentId)
+      await fetchProcessing(documentId)
+      await fetchDocumentResult(documentId)
+      return result
+    } catch (e: any) {
+      error.value = e.message || 'Failed to retry processing'
+      return null
+    }
+  }
+
   async function removeDocument(documentId: string) {
     error.value = null
     try {
@@ -320,5 +334,6 @@ export const useDocStore = defineStore('doc', () => {
     removeDocument,
     extractOutlineAction,
     generateChunksAction,
+    retryProcessingAction,
   }
 })

@@ -370,7 +370,23 @@ class DocController {
         raw: true,
       });
 
+      const parseOcrMetadata = (value) => {
+        if (!value) return {};
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+          } catch {
+            return {};
+          }
+        }
+        return typeof value === 'object' ? value : {};
+      };
+
+      const latestOcrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
+
       const attachmentIds = [
+        latestOcrMetadata.cleaned_markdown_attachment_id,
         latestOcrResult?.main_markdown_attachment_id,
         latestOcrResult?.raw_result_attachment_id,
         latestOcrResult?.deliverables_manifest_attachment_id,
@@ -467,10 +483,12 @@ class DocController {
         };
       };
 
+      const previewAttachmentId = latestOcrMetadata.cleaned_markdown_attachment_id || latestOcrResult?.main_markdown_attachment_id || null;
+
       ctx.success({
         document: {
           ...document,
-          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+          has_preview_result: !!previewAttachmentId,
         },
         revision: revision ? {
           ...revision,
@@ -497,6 +515,7 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
+          cleaned_markdown_attachment: buildAttachmentResponse(latestOcrMetadata.cleaned_markdown_attachment_id),
           main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
           raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
           deliverables_manifest_attachment: buildAttachmentResponse(latestOcrResult.deliverables_manifest_attachment_id),
@@ -1081,10 +1100,17 @@ async createVersion(ctx) {
   }
 
   /**
-   * 处理状态机重试映射（V1：统一从 pending_ocr 重新开始）
+   * 处理失败重试映射
+   * 优先按 error_code 精确回到失败阶段；未知错误再回退到 pending_ocr。
    */
-  PROCESSING_RETRY_STAGE = {
-    'error': 'pending_ocr',
+  PROCESSING_RETRY_ERROR_STAGE = {
+    ocr_failed: 'pending_ocr',
+    clean_failed: 'pending_clean',
+    metadata_failed: 'pending_metadata',
+    outline_extraction_failed: 'pending_outline',
+    chunk_generation_failed: 'pending_chunk',
+    embedding_failed: 'pending_embedding',
+    relocate_failed: 'pending_relocate',
   };
 
   /**
@@ -1169,7 +1195,7 @@ async createVersion(ctx) {
         ctx.throw(400, 'Only documents in error state can be retried');
       }
 
-      const retryStage = this.PROCESSING_RETRY_STAGE[document.processing_status] || 'pending_ocr';
+      const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
       await document.update({
         processing_status: retryStage,
