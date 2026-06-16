@@ -229,23 +229,29 @@ class RestrictedPath:
         _check_path(str(result))
         return RestrictedPath(str(result))
     
+    @property
     def parent(self):
         result = self._path.parent
         _check_path(str(result))
         return RestrictedPath(str(result))
     
+    @property
     def parents(self):
-        return [RestrictedPath(str(p)) for p in self._path.parents]
+        return tuple(RestrictedPath(str(p)) for p in self._path.parents)
     
+    @property
     def name(self):
         return self._path.name
     
+    @property
     def stem(self):
         return self._path.stem
     
+    @property
     def suffix(self):
         return self._path.suffix
     
+    @property
     def suffixes(self):
         return self._path.suffixes
     
