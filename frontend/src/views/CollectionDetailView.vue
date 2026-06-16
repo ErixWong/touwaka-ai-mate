@@ -71,7 +71,7 @@
           <el-table :data="store.collectionDocuments" stripe>
             <el-table-column label="文档标题" min-width="200">
               <template #default="{ row }">
-                <span class="doc-title-link" @click="openDoc(row.id)">{{ row.title }}</span>
+                <span class="doc-title-link" @click="openDoc(row.id)">{{ row.source_attachment?.file_name || row.title }}</span>
               </template>
             </el-table-column>
             <el-table-column label="上传时间" width="170">

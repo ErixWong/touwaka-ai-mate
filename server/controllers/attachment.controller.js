@@ -95,6 +95,46 @@ const MAGIC_NUMBERS = {
 
 const DEFAULT_MAX_UPLOAD_SIZE_MB = 50;
 
+function looksLikeMojibake(value) {
+  if (!value || typeof value !== 'string') {
+    return false;
+  }
+
+  return /[ÃÂÅÄÖØæçéèêëîïôöûüñ]/.test(value);
+}
+
+function normalizeUploadedFileName(fileName) {
+  if (!fileName || typeof fileName !== 'string') {
+    return fileName || null;
+  }
+
+  let normalized = fileName.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // ignore malformed URI content and keep original string
+  }
+
+  if (!looksLikeMojibake(normalized)) {
+    return normalized;
+  }
+
+  try {
+    const repaired = Buffer.from(normalized, 'latin1').toString('utf8').trim();
+    if (repaired) {
+      return repaired;
+    }
+  } catch {
+    // fallback to normalized original name
+  }
+
+  return normalized;
+}
+
 class AttachmentController {
   constructor(db) {
     this.db = db;
@@ -477,6 +517,7 @@ class AttachmentController {
 
       const buffer = file.buffer;
       const base64Data = buffer.toString('base64');
+      const normalizedFileName = normalizeUploadedFileName(file.originalname || null);
 
       this.validateMimeTypeWhitelist(file.mimetype);
       await this.validateMimeTypeFromBuffer(buffer, file.mimetype);
@@ -487,7 +528,7 @@ class AttachmentController {
         sourceTag: body.source_tag,
         sourceId: body.source_id,
         createdBy: userId,
-        fileName: file.originalname || null,
+        fileName: normalizedFileName,
         mimeType: file.mimetype,
         buffer,
         altText: body.alt_text || null,
@@ -516,7 +557,7 @@ class AttachmentController {
       });
       ctx.status = 201;
 
-      logger.info(`[Attachment] uploadFormData: ${attachment.id} - ${file.originalname || 'unnamed'} (${attachment.access_level})`);
+      logger.info(`[Attachment] uploadFormData: ${attachment.id} - ${normalizedFileName || 'unnamed'} (${attachment.access_level})`);
     } catch (error) {
       logger.error('[Attachment] uploadFormData error:', error);
       ctx.throw(error.status || 500, error.message);

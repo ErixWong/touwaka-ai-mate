@@ -7,7 +7,7 @@
         集合详情
       </router-link>
       <span v-if="collectionId" class="breadcrumb-sep">/</span>
-      <span class="breadcrumb-current">{{ docStore.currentResult?.document.title || '文档' }}</span>
+      <span class="breadcrumb-current">{{ displayDocumentTitle }}</span>
     </div>
 
     <div v-if="docStore.isLoading && !docStore.currentResult" class="loading-state">{{ $t('common.loading') }}</div>
@@ -17,7 +17,7 @@
       <div class="doc-header">
         <div class="doc-header-main">
           <div class="doc-header-info">
-            <h1 class="doc-title">{{ docStore.currentResult.document.title }}</h1>
+            <h1 class="doc-title">{{ displayDocumentTitle }}</h1>
             <div class="doc-meta">
               <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
                 {{ processingLabel(docStore.currentResult.processing.status) }}
@@ -94,8 +94,8 @@
                 <span class="status-value">{{ docStore.currentResult.document.has_preview_result ? '是' : '否' }}</span>
               </div>
             </div>
-            <div v-if="docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message" class="error-box">
-              {{ docStore.currentResult.processing.error_message || docStore.currentResult.ocr_result?.error_message }}
+            <div v-if="displayErrorMessage" class="error-box">
+              {{ displayErrorMessage }}
             </div>
           </div>
 
@@ -103,8 +103,8 @@
             <h4 class="sidebar-title">基本信息</h4>
             <div class="sidebar-status">
               <div class="status-row">
-                <span class="status-label">文件名</span>
-                <span class="status-value text-truncate">{{ docStore.currentResult.source_attachment?.file_name || '-' }}</span>
+                <span class="status-label">文档编号</span>
+                <span class="status-value task-id-value">{{ docStore.currentResult.document.title || '-' }}</span>
               </div>
               <div class="status-row">
                 <span class="status-label">文件类型</span>
@@ -133,23 +133,18 @@
             <h4 class="sidebar-title">处理操作</h4>
             <div class="sidebar-actions">
               <el-button
-                v-if="docStore.currentResult.processing.status === 'pending_outline' || docStore.currentResult.processing.status === 'error'"
+                v-if="retryAction"
                 type="primary"
                 size="small"
-                :loading="outlineLoading"
-                @click="onExtractOutline"
+                :loading="retryLoading"
+                @click="onRetryAction"
               >
-                提取章节大纲
+                {{ retryAction.label }}
               </el-button>
-              <el-button
-                v-if="docStore.currentResult.processing.status === 'pending_chunk' || docStore.currentResult.processing.status === 'error'"
-                type="primary"
-                size="small"
-                :loading="chunkLoading"
-                @click="onGenerateChunks"
-              >
-                生成文本分块
-              </el-button>
+              <el-tag v-else-if="isProcessingActionComplete" type="success" size="small">
+                已完成
+              </el-tag>
+              <span v-else class="empty-state tiny">当前步骤无需手动操作</span>
             </div>
           </div>
 
@@ -172,8 +167,8 @@
             <h4 class="sidebar-title">附件</h4>
             <div v-if="docStore.currentResult.image_attachments.length === 0" class="empty-state tiny">暂无图片附件</div>
             <div v-else class="attachment-list">
-              <div v-for="item in docStore.currentResult.image_attachments" :key="item.id" class="attachment-item">
-                <div class="attachment-name">{{ item.attachment?.file_name || item.filename || '未命名图片' }}</div>
+              <div v-for="(item, index) in docStore.currentResult.image_attachments" :key="item.id" class="attachment-item">
+                <div class="attachment-name">附件 {{ index + 1 }}</div>
                 <div class="attachment-meta">{{ item.attachment?.mime_type || item.media_type || '-' }} · {{ formatFileSize(item.attachment?.file_size) }}</div>
                 <el-button v-if="item.attachment?.download_url" size="small" text type="primary" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
               </div>
@@ -199,6 +194,55 @@ const markdownPreview = ref('')
 const markdownLoading = ref(false)
 const outlineLoading = ref(false)
 const chunkLoading = ref(false)
+
+const processingErrorCode = computed(() => docStore.currentResult?.processing?.error_code || null)
+const processingErrorMessage = computed(() => docStore.currentResult?.processing?.error_message || '')
+const displayDocumentTitle = computed(() => docStore.currentResult?.source_attachment?.file_name || docStore.currentResult?.document.title || '文档')
+
+const retryAction = computed(() => {
+  const status = docStore.currentResult?.processing?.status
+  const errorCode = processingErrorCode.value
+
+  if (errorCode === 'outline_extraction_failed') {
+    return { type: 'outline', label: '重试章节提取' }
+  }
+
+  if (errorCode === 'chunk_generation_failed') {
+    return { type: 'chunk', label: '重试文本分块' }
+  }
+
+  if (status === 'error') {
+    if (errorCode === 'clean_failed') return { type: 'clean', label: '重试数据清洗' }
+    if (errorCode === 'metadata_failed') return { type: 'metadata', label: '重试元数据提取' }
+    if (errorCode === 'embedding_failed') return { type: 'embedding', label: '重试向量化' }
+    if (errorCode === 'ocr_failed') return { type: 'ocr', label: '重试OCR' }
+  }
+
+  return null
+})
+
+const isProcessingActionComplete = computed(() => {
+  const status = docStore.currentResult?.processing?.status
+  return status === 'ready'
+    || status === 'pending_embedding'
+    || status === 'pending_relocate'
+    || status === 'pending_chunk'
+    || status === 'pending_outline'
+})
+
+const retryLoading = computed(() => {
+  if (retryAction.value?.type === 'outline') return outlineLoading.value
+  if (retryAction.value?.type === 'chunk') return chunkLoading.value
+  return false
+})
+
+const displayErrorMessage = computed(() => {
+  const status = docStore.currentResult?.processing?.status
+  if (status === 'error' && processingErrorMessage.value) {
+    return processingErrorMessage.value
+  }
+  return docStore.currentResult?.ocr_result?.error_message || ''
+})
 
 const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
 const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk', 'pending_embedding', 'pending_relocate']
@@ -268,7 +312,7 @@ function processingLabel(status?: string) {
 function processingTagType(status?: string) {
   if (status === 'ready') return 'success'
   if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
-  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_metadata') return 'info'
+  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_metadata' || status === 'pending_embedding' || status === 'pending_relocate') return 'info'
   if (status === 'error') return 'danger'
   return 'info'
 }
@@ -363,6 +407,18 @@ async function loadMarkdownPreview() {
     }
   }
 
+  async function onRetryAction() {
+    if (retryAction.value?.type === 'outline') {
+      await onExtractOutline()
+      return
+    }
+    if (retryAction.value?.type === 'chunk') {
+      await onGenerateChunks()
+      return
+    }
+    ElMessage.warning(`${retryAction.value?.label || '当前步骤'} 暂未实现`)
+  }
+
   onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
@@ -439,7 +495,7 @@ onBeforeUnmount(() => {
 
 .sidebar-actions { display: flex; flex-direction: column; gap: 6px; }
 .attachment-list { display: flex; flex-direction: column; gap: 8px; }
-.attachment-item { border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px; }
+.attachment-item { border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
 .attachment-name { font-size: 13px; font-weight: 500; }
 .attachment-meta { font-size: 11px; color: #909399; margin: 2px 0; }
 

@@ -13,8 +13,8 @@ export async function tick(context) {
   const documents = await services.query(
     `SELECT id, processing_status, current_revision_id
      FROM documents
-     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk')
-     -- NOTE: pending_embedding / pending_relocate 暂不在此调度器范围内，等待对应 handler 实现
+     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk', 'pending_embedding', 'pending_relocate')
+     -- NOTE: pending_clean / pending_metadata / pending_embedding / pending_relocate 当前先走自动透传，等待对应 handler 实现
        AND current_revision_id IS NOT NULL
      ORDER BY processing_updated_at ASC
      LIMIT ?`,
@@ -50,7 +50,12 @@ export async function tick(context) {
         continue;
       }
 
-      if (doc.processing_status === 'pending_clean' || doc.processing_status === 'pending_metadata') {
+      if (
+        doc.processing_status === 'pending_clean'
+        || doc.processing_status === 'pending_metadata'
+        || doc.processing_status === 'pending_embedding'
+        || doc.processing_status === 'pending_relocate'
+      ) {
         await recordPassThroughRun(services, doc);
         await advancer.advanceToNext(doc.id);
         skipped += 1;
