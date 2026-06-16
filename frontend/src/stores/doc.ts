@@ -167,18 +167,12 @@ export const useDocStore = defineStore('doc', () => {
       }
 
       const status = result?.processing_status
-      const outlineRunning = status === 'pending_outline' && !!result?.outline_run_id && result?.outline_run_status === 'running'
-      const terminal = !status || status === 'ready' || status === 'error' || status === 'pending_embedding'
+      const terminal = !status || status === 'ready' || status === 'error'
       if (terminal) {
         stopPolling()
         if (currentResult.value?.revision?.id && currentDoc.value?.id) {
           await fetchContentTree(currentDoc.value.id, currentResult.value.revision.id)
         }
-        return
-      }
-
-      if (outlineRunning) {
-        pollingTimer = window.setTimeout(tick, intervalMs)
         return
       }
 
