@@ -24,17 +24,17 @@ import traceback
 
 SANDBOX_ROOT = os.environ.get('SANDBOX_ROOT', '')
 
-if len(sys.argv) < 3:
-    sys.stderr.write('Usage: python python-sandbox.py <sandbox_root> <script_path> [args...]\n')
+if len(sys.argv) < 2:
+    sys.stderr.write('Usage: python python-sandbox.py <script_path> [args...]\n')
+    sys.stderr.write('SANDBOX_ROOT must be set via environment variable\n')
     sys.exit(1)
 
 if not SANDBOX_ROOT:
-    SANDBOX_ROOT = sys.argv[1]
-    script_path = sys.argv[2]
-    script_args = sys.argv[3:]
-else:
-    script_path = sys.argv[1]
-    script_args = sys.argv[2:]
+    sys.stderr.write('SANDBOX_ROOT environment variable must be set\n')
+    sys.exit(1)
+
+script_path = sys.argv[1]
+script_args = sys.argv[2:]
 
 SANDBOX_ROOT_RESOLVED = os.path.abspath(os.path.normpath(SANDBOX_ROOT))
 
@@ -46,7 +46,7 @@ _original_open = open
 _original_import = __builtins__.__import__ if isinstance(__builtins__, dict) else __builtins__.__import__
 
 _allowed_modules = {
-    'os', 'sys', 'json', 'math', 're', 'datetime', 'time', 'collections',
+    'json', 'math', 're', 'datetime', 'time', 'collections',
     'itertools', 'functools', 'typing', 'string', 'random', 'copy',
     'pathlib', 'io', 'csv', 'xml', 'html', 'urllib', 'http',
     'hashlib', 'hmac', 'base64', 'binascii', 'struct',
