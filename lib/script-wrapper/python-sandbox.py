@@ -46,7 +46,7 @@ _original_open = open
 _original_import = __builtins__.__import__ if isinstance(__builtins__, dict) else __builtins__.__import__
 
 _allowed_modules = {
-    'json', 'math', 're', 'datetime', 'time', 'collections',
+    'os', 'sys', 'json', 'math', 're', 'datetime', 'time', 'collections',
     'itertools', 'functools', 'typing', 'string', 'random', 'copy',
     'pathlib', 'io', 'csv', 'xml', 'html', 'urllib', 'http',
     'hashlib', 'hmac', 'base64', 'binascii', 'struct',
@@ -298,6 +298,36 @@ if ext != '.py':
     sys.stderr.write(f'Script must be .py: {script_path}\n')
     sys.exit(1)
 
+_real_os = _original_import('os')
+_real_sys = _original_import('sys')
+
+_os_dangerous = {
+    'system', 'popen', 'spawnl', 'spawnle', 'spawnlp', 'spawnlpe',
+    'spawnv', 'spawnve', 'spawnvp', 'spawnvpe',
+    'execv', 'execve', 'execvp', 'execvpe',
+    'execl', 'execle', 'execlp', 'execlpe',
+    'fork', 'kill',
+}
+
+def _make_denied_func(name):
+    def _denied(*args, **kwargs):
+        raise PermissionError(f"os.{name} is not allowed in sandbox")
+    _denied.__name__ = name
+    return _denied
+
+for _func in _os_dangerous:
+    if hasattr(_real_os, _func):
+        setattr(_real_os, _func, _make_denied_func(_func))
+
+_real_os.environ = {
+    'SANDBOX_ROOT': SANDBOX_ROOT_RESOLVED,
+    'DATA_BASE_PATH': os.environ.get('DATA_BASE_PATH', ''),
+    'USER_ID': os.environ.get('USER_ID', ''),
+    'EXPERT_ID': os.environ.get('EXPERT_ID', ''),
+}
+
+_real_sys.path = [SANDBOX_ROOT_RESOLVED]
+
 restricted_globals = {
     '__name__': '__main__',
     '__file__': script_full_path,
@@ -383,34 +413,8 @@ restricted_globals = {
         'exit': exit,
         'quit': quit,
     },
-    'os': type('os', (), {
-        'path': __import__('os').path,
-        'environ': {
-            'SANDBOX_ROOT': SANDBOX_ROOT_RESOLVED,
-            'DATA_BASE_PATH': os.environ.get('DATA_BASE_PATH', ''),
-            'USER_ID': os.environ.get('USER_ID', ''),
-            'EXPERT_ID': os.environ.get('EXPERT_ID', ''),
-        },
-        'getcwd': lambda: SANDBOX_ROOT_RESOLVED,
-        'curdir': __import__('os').curdir,
-        'pardir': __import__('os').pardir,
-        'sep': __import__('os').sep,
-        'extsep': __import__('os').extsep,
-        'pathsep': __import__('os').pathsep,
-        'linesep': __import__('os').linesep,
-        'name': __import__('os').name,
-    }),
-    'sys': type('sys', (), {
-        'argv': ['python', script_full_path] + script_args,
-        'version': sys.version,
-        'version_info': sys.version_info,
-        'platform': sys.platform,
-        'path': [SANDBOX_ROOT_RESOLVED],
-        'exit': sys.exit,
-        'stdin': sys.stdin,
-        'stdout': sys.stdout,
-        'stderr': sys.stderr,
-    }),
+    'os': _real_os,
+    'sys': _real_sys,
     'pathlib': type('pathlib', (), {
         'Path': RestrictedPath,
     }),

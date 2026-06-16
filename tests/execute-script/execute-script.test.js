@@ -288,5 +288,56 @@ except ImportError as e:
       assert.ok(result.stdout.includes('BLOCKED'));
       assert.ok(!result.stdout.includes('DANGER'));
     });
+
+    it('should allow import os but block os.system', async () => {
+      const scriptPath = path.join(TEST_WORKSPACE, 'os-test.py');
+      fs.writeFileSync(scriptPath, `
+import os
+print('os imported:', os.name)
+try:
+    os.system('echo hello')
+    print('DANGER: os.system worked')
+except PermissionError as e:
+    print('BLOCKED:', str(e))
+`);
+      
+      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const result = await ToolManager.prototype.executePythonScript.call(
+        { skillLoader: {} },
+        'os-test.py',
+        [],
+        TEST_WORKSPACE,
+        {}
+      );
+      
+      assert.strictEqual(result.success, true);
+      assert.ok(result.stdout.includes('os imported'));
+      assert.ok(result.stdout.includes('BLOCKED'));
+      assert.ok(!result.stdout.includes('DANGER'));
+    });
+
+    it('should allow import sys with restricted path', async () => {
+      const scriptPath = path.join(TEST_WORKSPACE, 'sys-test.py');
+      fs.writeFileSync(scriptPath, `
+import sys
+print('sys.argv:', sys.argv)
+print('sys.path:', sys.path)
+print('sys.version:', sys.version.split()[0])
+`);
+      
+      const { ToolManager } = await import('../../lib/tool-manager.js');
+      const result = await ToolManager.prototype.executePythonScript.call(
+        { skillLoader: {} },
+        'sys-test.py',
+        [],
+        TEST_WORKSPACE,
+        {}
+      );
+      
+      assert.strictEqual(result.success, true);
+      assert.ok(result.stdout.includes('sys.argv'));
+      assert.ok(result.stdout.includes('sys.path'));
+      assert.ok(result.stdout.includes('sys.version'));
+    });
   });
 });
