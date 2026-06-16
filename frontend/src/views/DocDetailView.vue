@@ -37,7 +37,7 @@
           <div class="section-card">
             <h3>正文预览</h3>
             <div v-if="markdownLoading" class="loading-state small">加载中...</div>
-            <div v-else-if="markdownPreview" class="markdown-preview">{{ markdownPreview }}</div>
+            <div v-else-if="markdownPreview" class="markdown-preview markdown-body" v-html="renderedMarkdownPreview"></div>
             <div v-else class="empty-state small">
               暂无预览结果，文档可能仍在处理中
               <el-tag v-if="docStore.isPolling" type="warning" size="small" class="polling-tag">轮询中</el-tag>
@@ -186,6 +186,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const route = useRoute()
 const router = useRouter()
@@ -196,9 +198,33 @@ const outlineLoading = ref(false)
 const chunkLoading = ref(false)
 const retryProcessingLoading = ref(false)
 
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
+
 const processingErrorCode = computed(() => docStore.currentResult?.processing?.error_code || null)
 const processingErrorMessage = computed(() => docStore.currentResult?.processing?.error_message || '')
 const displayDocumentTitle = computed(() => docStore.currentResult?.source_attachment?.file_name || docStore.currentResult?.document.title || '文档')
+
+const renderedMarkdownPreview = computed(() => {
+  if (!markdownPreview.value) return ''
+  const rawHtml = marked.parse(markdownPreview.value) as string
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li',
+      'blockquote', 'pre', 'code',
+      'a', 'img',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'hr', 'div', 'span',
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'id',
+    ],
+  })
+})
 
 const retryAction = computed(() => {
   const status = docStore.currentResult?.processing?.status
@@ -497,7 +523,25 @@ onBeforeUnmount(() => {
 .section-card { background: #fff; border: 1px solid #ebeef5; border-radius: 10px; padding: 20px; }
 .section-card h3 { margin: 0 0 16px; font-size: 16px; }
 
-.markdown-preview { white-space: pre-wrap; line-height: 1.8; color: #303133; background: #fafafa; border-radius: 8px; padding: 20px; min-height: 200px; max-height: 70vh; overflow-y: auto; font-size: 14px; }
+.markdown-preview { line-height: 1.8; color: #303133; background: #fafafa; border-radius: 8px; padding: 20px; min-height: 200px; max-height: 70vh; overflow-y: auto; font-size: 14px; }
+
+.markdown-body :deep(h1) { font-size: 24px; font-weight: 700; margin: 16px 0 8px; }
+.markdown-body :deep(h2) { font-size: 20px; font-weight: 600; margin: 14px 0 6px; }
+.markdown-body :deep(h3) { font-size: 16px; font-weight: 600; margin: 12px 0 4px; }
+.markdown-body :deep(h4) { font-size: 14px; font-weight: 600; margin: 10px 0 4px; }
+.markdown-body :deep(p) { margin: 8px 0; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { margin: 8px 0; padding-left: 24px; }
+.markdown-body :deep(li) { margin: 4px 0; }
+.markdown-body :deep(blockquote) { border-left: 4px solid var(--el-border-color); padding-left: 12px; margin: 12px 0; color: var(--el-text-color-secondary); }
+.markdown-body :deep(pre) { background: var(--el-fill-color-lighter); padding: 12px; border-radius: var(--el-border-radius-base); overflow-x: auto; }
+.markdown-body :deep(code) { background: var(--el-fill-color-lighter); padding: 2px 6px; border-radius: var(--el-border-radius-base); font-family: monospace; }
+.markdown-body :deep(pre code) { background: none; padding: 0; }
+.markdown-body :deep(img) { display: block; max-width: 100%; height: auto; margin: 12px auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+.markdown-body :deep(table) { border-collapse: collapse; width: 100%; margin: 12px 0; background: #fff; }
+.markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--el-border-color-lighter); padding: 8px 10px; vertical-align: top; }
+.markdown-body :deep(th) { background: var(--el-fill-color-lighter); font-weight: 600; }
+.markdown-body :deep(a) { color: var(--el-color-primary); text-decoration: none; }
+.markdown-body :deep(a:hover) { text-decoration: underline; }
 
 .sidebar-section { background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 16px; }
 .sidebar-title { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #303133; }
