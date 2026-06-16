@@ -22,7 +22,7 @@ export default class attachment_token extends Model {
       comment: "资源类型：kb_article_image, task_export 等"
     },
     source_id: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING(64),
       allowNull: false,
       comment: "资源ID：article_id, task_id 等"
     },

@@ -53,7 +53,7 @@ export default class document_collection extends Model {
       comment: "默认向量模型ID"
     },
     metadata: {
-      type: DataTypes.JSON,
+      type: DataTypes.TEXT,
       allowNull: true,
       comment: "扩展字段"
     },

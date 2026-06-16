@@ -104,7 +104,7 @@ export default class doc_compare_run extends Model {
         ]
       },
       {
-        name: "fk_compare_target",
+        name: "fk_comp_runs_target_rev",
         using: "BTREE",
         fields: [
           { name: "target_version_id" },

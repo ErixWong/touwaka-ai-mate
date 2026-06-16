@@ -76,7 +76,7 @@ export interface ChatRequestStatus {
   topic_id?: string | null
   user_message_id?: string | null
   assistant_message_id?: string | null
-  status: 'accepted' | 'running' | 'completed' | 'failed' | 'stopped'
+  status: 'accepted' | 'running' | 'completed' | 'failed' | 'stopped' | 'timeout'
   error_message?: string | null
   created_at: string
   updated_at: string

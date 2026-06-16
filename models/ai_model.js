@@ -21,8 +21,7 @@ export default class ai_model extends Model {
     model_type: {
       type: DataTypes.ENUM('text','multimodal','embedding','tts'),
       allowNull: true,
-      defaultValue: "text",
-      comment: "模型类型: text=文本, multimodal=多模态, embedding=向量化, tts=语音合成"
+      defaultValue: "text"
     },
     provider_id: {
       type: DataTypes.STRING(32),

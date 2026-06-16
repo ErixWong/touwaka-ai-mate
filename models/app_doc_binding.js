@@ -13,11 +13,7 @@ export default class app_doc_binding extends Model {
     app_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "App ID",
-      references: {
-        model: 'mini_apps',
-        key: 'id'
-      }
+      comment: "App ID"
     },
     row_id: {
       type: DataTypes.STRING(32),
@@ -36,7 +32,11 @@ export default class app_doc_binding extends Model {
     current_revision_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "当前版本ID"
+      comment: "当前版本ID",
+      references: {
+        model: 'document_revisions',
+        key: 'id'
+      }
     },
     binding_status: {
       type: DataTypes.ENUM('active','archived'),
@@ -45,7 +45,7 @@ export default class app_doc_binding extends Model {
       comment: "绑定状态"
     },
     metadata: {
-      type: DataTypes.JSON,
+      type: DataTypes.TEXT,
       allowNull: true,
       comment: "扩展字段"
     },
@@ -69,18 +69,39 @@ export default class app_doc_binding extends Model {
         name: "PRIMARY",
         unique: true,
         using: "BTREE",
-        fields: [{ name: "id" }]
+        fields: [
+          { name: "id" },
+        ]
       },
       {
         name: "uk_app_row",
         unique: true,
         using: "BTREE",
-        fields: [{ name: "app_id" }, { name: "row_id" }]
+        fields: [
+          { name: "app_id" },
+          { name: "row_id" },
+        ]
       },
       {
         name: "idx_document",
         using: "BTREE",
-        fields: [{ name: "document_id" }]
+        fields: [
+          { name: "document_id" },
+        ]
+      },
+      {
+        name: "idx_revision",
+        using: "BTREE",
+        fields: [
+          { name: "current_revision_id" },
+        ]
+      },
+      {
+        name: "idx_status",
+        using: "BTREE",
+        fields: [
+          { name: "binding_status" },
+        ]
       },
     ]
   });
