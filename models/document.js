@@ -8,7 +8,11 @@ export default class document extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "文档ID"
+      comment: "文档ID",
+      references: {
+        model: 'document_revisions',
+        key: 'document_id'
+      }
     },
     collection_id: {
       type: DataTypes.STRING(32),
@@ -22,7 +26,11 @@ export default class document extends Model {
     current_revision_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "当前版本ID"
+      comment: "当前版本ID",
+      references: {
+        model: 'document_revisions',
+        key: 'id'
+      }
     },
     doc_type: {
       type: DataTypes.ENUM('knowledge','contract','department_doc','standard'),
@@ -73,7 +81,7 @@ export default class document extends Model {
       comment: "处理状态更新时间"
     },
     metadata: {
-      type: DataTypes.JSON,
+      type: DataTypes.TEXT,
       allowNull: true,
       comment: "扩展字段"
     },
@@ -138,6 +146,14 @@ export default class document extends Model {
         fields: [
           { name: "doc_type" },
           { name: "processing_status" },
+        ]
+      },
+      {
+        name: "fk_document_current_revision",
+        using: "BTREE",
+        fields: [
+          { name: "id" },
+          { name: "current_revision_id" },
         ]
       },
     ]

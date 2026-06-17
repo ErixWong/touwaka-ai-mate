@@ -23,6 +23,7 @@ class StreamController {
     this.chatService = chatService;
     this.Topic = db.getModel('topic');
     this.Message = db.getModel('message');
+    this.ChatRequest = db.getModel('chat_request');
     this.Expert = db.getModel('expert');
     this.systemSettingService = getSystemSettingService(db);
     this.permissionService = getPermissionService(db);
@@ -34,13 +35,16 @@ class StreamController {
     this.requestStore = new Map();
     this.REQUEST_STORE_MAX = 1000;
     this.REQUEST_STORE_TTL_MS = 30 * 60 * 1000;
+    this.REQUEST_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;
+    this.requestMaintenanceReady = false;
+    this.requestMaintenancePromise = null;
     // 事件序号：Map<expertId:userId, number>
     this.eventSequences = new Map();
     // 最新游标：Map<expertId:userId, { latest_message_id: string | null }>
     this.latestCursors = new Map();
   }
 
-  _createRequestRecord(data) {
+  async _createRequestRecord(data) {
     const now = new Date().toISOString();
     const record = {
       request_id: data.request_id,
@@ -58,19 +62,117 @@ class StreamController {
       error_message: data.error_message || null,
       created_at: now,
       updated_at: now,
+      started_at: data.started_at || null,
+      completed_at: data.completed_at || null,
     };
 
+    await this.ChatRequest.create(record);
     this.requestStore.set(record.request_id, record);
     this._cleanupRequestStore();
     return record;
   }
 
-  _getRequestRecord(request_id) {
-    return this.requestStore.get(request_id) || null;
+  async _getRequestRecord(request_id) {
+    const cached = this.requestStore.get(request_id) || null;
+    if (cached) return cached;
+
+    const record = await this.ChatRequest.findOne({
+      where: { request_id },
+      raw: true,
+    });
+    if (record) {
+      this.requestStore.set(request_id, record);
+      this._cleanupRequestStore();
+    }
+    return record || null;
   }
 
-  _updateRequestRecord(request_id, patch) {
-    const existing = this.requestStore.get(request_id);
+  async _reconcileRequestRecord(request_id) {
+    const record = await this._getRequestRecord(request_id);
+    if (!record) return null;
+
+    if (record.user_message_id && record.assistant_message_id) {
+      return record;
+    }
+
+    const messages = await this.Message.findAll({
+      where: {
+        request_id,
+        user_id: record.user_id,
+        expert_id: record.expert_id,
+      },
+      attributes: ['id', 'role', 'created_at'],
+      order: [['created_at', 'ASC']],
+      raw: true,
+    });
+
+    let userMessageId = record.user_message_id || null;
+    let assistantMessageId = record.assistant_message_id || null;
+
+    for (const message of messages) {
+      if (!userMessageId && message.role === 'user') {
+        userMessageId = message.id;
+      }
+      if (!assistantMessageId && message.role === 'assistant') {
+        assistantMessageId = message.id;
+      }
+      if (userMessageId && assistantMessageId) break;
+    }
+
+    if (userMessageId === record.user_message_id && assistantMessageId === record.assistant_message_id) {
+      return record;
+    }
+
+    return await this._updateRequestRecord(request_id, {
+      user_message_id: userMessageId,
+      assistant_message_id: assistantMessageId,
+    });
+  }
+
+  async _settleStaleAcceptedRequests() {
+    const cutoff = new Date(Date.now() - this.REQUEST_RUNNING_TIMEOUT_MS);
+
+    const [updatedCount] = await this.ChatRequest.update({
+      status: 'timeout',
+      error_message: '请求未能开始执行，已在系统恢复时自动收口',
+      completed_at: new Date(),
+      updated_at: new Date(),
+    }, {
+      where: {
+        status: 'accepted',
+        started_at: null,
+        updated_at: {
+          [this.db.Op.lte]: cutoff,
+        },
+      },
+    });
+
+    if (updatedCount > 0) {
+      logger.warn(`[StreamController] 自动收口 ${updatedCount} 个陈旧未开始请求`);
+    }
+  }
+
+  async _ensureRequestMaintenanceReady() {
+    if (this.requestMaintenanceReady) return;
+    if (this.requestMaintenancePromise) {
+      await this.requestMaintenancePromise;
+      return;
+    }
+
+    this.requestMaintenancePromise = (async () => {
+      await this._settleStaleAcceptedRequests();
+      this.requestMaintenanceReady = true;
+    })();
+
+    try {
+      await this.requestMaintenancePromise;
+    } finally {
+      this.requestMaintenancePromise = null;
+    }
+  }
+
+  async _updateRequestRecord(request_id, patch) {
+    const existing = await this._getRequestRecord(request_id);
     if (!existing) return null;
 
     const next = {
@@ -79,6 +181,26 @@ class StreamController {
       updated_at: new Date().toISOString(),
     };
 
+    await this.ChatRequest.update({
+      original_request_id: next.original_request_id,
+      topic_id: next.topic_id,
+      user_id: next.user_id,
+      expert_id: next.expert_id,
+      model_id: next.model_id,
+      task_id: next.task_id,
+      user_message_id: next.user_message_id,
+      assistant_message_id: next.assistant_message_id,
+      status: next.status,
+      content: next.content,
+      working_path: next.working_path,
+      error_message: next.error_message,
+      started_at: next.started_at,
+      completed_at: next.completed_at,
+      updated_at: next.updated_at,
+    }, {
+      where: { request_id },
+    });
+
     this.requestStore.set(request_id, next);
     this._cleanupRequestStore();
     return next;
@@ -86,7 +208,7 @@ class StreamController {
 
   _cleanupRequestStore() {
     const now = Date.now();
-    const terminalStatuses = new Set(['completed', 'failed', 'stopped']);
+    const terminalStatuses = new Set(['completed', 'failed', 'stopped', 'timeout']);
 
     for (const [requestId, record] of this.requestStore.entries()) {
       if (!terminalStatuses.has(record.status)) continue;
@@ -125,6 +247,8 @@ class StreamController {
       error_message: record.error_message,
       created_at: record.created_at,
       updated_at: record.updated_at,
+      started_at: record.started_at || null,
+      completed_at: record.completed_at || null,
       can_retry: ['failed', 'stopped'].includes(record.status),
     };
   }
@@ -194,6 +318,8 @@ class StreamController {
    */
   async sendMessage(ctx) {
     try {
+      await this._ensureRequestMaintenanceReady();
+
       const { content, expert_id, model_id, task_id, working_path } = ctx.request.body;
 
       if (!content) {
@@ -233,7 +359,7 @@ class StreamController {
       // 创建 request_id（一次流式生成请求的唯一标识）
       const request_id = `req_${Utils.newID(16)}`;
 
-      this._createRequestRecord({
+      await this._createRequestRecord({
         request_id,
         topic_id,
         user_id,
@@ -275,6 +401,8 @@ class StreamController {
    * GET /api/chat/requests/:request_id
    */
   async getRequestStatus(ctx) {
+    await this._ensureRequestMaintenanceReady();
+
     const { request_id } = ctx.params;
     const user_id = ctx.state.session.id;
 
@@ -283,7 +411,7 @@ class StreamController {
       return;
     }
 
-    const record = this._getRequestRecord(request_id);
+    const record = await this._reconcileRequestRecord(request_id);
     if (!record || record.user_id !== user_id) {
       ctx.error('请求不存在', 404);
       return;
@@ -304,6 +432,8 @@ class StreamController {
    */
   async retryRequest(ctx) {
     try {
+      await this._ensureRequestMaintenanceReady();
+
       const { request_id } = ctx.params;
       const user_id = ctx.state.session.id;
 
@@ -312,7 +442,7 @@ class StreamController {
         return;
       }
 
-      const originalRequest = this._getRequestRecord(request_id);
+      const originalRequest = await this._getRequestRecord(request_id);
       if (!originalRequest || originalRequest.user_id !== user_id) {
         ctx.error('请求不存在', 404);
         return;
@@ -338,7 +468,7 @@ class StreamController {
       }
 
       const newRequestId = `req_${Utils.newID(16)}`;
-      const retryRecord = this._createRequestRecord({
+      const retryRecord = await this._createRequestRecord({
         request_id: newRequestId,
         original_request_id: originalRequest.request_id,
         topic_id: originalRequest.topic_id,
@@ -429,7 +559,7 @@ class StreamController {
 
     if (userConnections.length === 0) {
       logger.warn(`No active SSE connections for user: ${user_id}, expert: ${expert_id}`);
-      this._updateRequestRecord(request_id, {
+      await this._updateRequestRecord(request_id, {
         status: 'failed',
         error_message: 'SSE 连接不存在，无法处理请求',
       });
@@ -438,10 +568,11 @@ class StreamController {
 
     logger.info(`Broadcasting to ${userConnections.length} connection(s) for user: ${user_id}`);
     this.activeRequests.set(request_id, { expert_id, user_id, stopped: false });
-    this._updateRequestRecord(request_id, {
+    await this._updateRequestRecord(request_id, {
       status: 'running',
       topic_id,
       error_message: null,
+      started_at: new Date().toISOString(),
     });
 
     try {
@@ -528,6 +659,7 @@ class StreamController {
             user_message_id: result.user_message_id || existing_user_message_id || null,
             assistant_message_id: result.message?.id || null,
             error_message: null,
+            completed_at: new Date().toISOString(),
           });
           this._broadcastToConnections(expert_id, user_id, userConnections, 'complete', {
             request_id,
@@ -543,6 +675,7 @@ class StreamController {
             this._updateRequestRecord(request_id, {
               status: 'stopped',
               error_message: '请求已停止',
+              completed_at: new Date().toISOString(),
             });
             this.activeRequests.delete(request_id);
             return;
@@ -550,6 +683,7 @@ class StreamController {
           this._updateRequestRecord(request_id, {
             status: 'failed',
             error_message: error.message || '流式处理失败',
+            completed_at: new Date().toISOString(),
           });
           this._broadcastToConnections(expert_id, user_id, userConnections, 'error', {
             request_id,
@@ -563,6 +697,7 @@ class StreamController {
       this._updateRequestRecord(request_id, {
         status: 'failed',
         error_message: error.message || '处理失败',
+        completed_at: new Date().toISOString(),
       });
       this._broadcastToConnections(expert_id, user_id, userConnections, 'error', {
         request_id,
@@ -593,9 +728,10 @@ class StreamController {
     const userConnections = this._getUserConnections(activeRequest.expert_id, user_id);
     this._broadcastToConnections(activeRequest.expert_id, user_id, userConnections, 'stopped', { request_id });
 
-    this._updateRequestRecord(request_id, {
+    await this._updateRequestRecord(request_id, {
       status: 'stopped',
       error_message: '请求已停止',
+      completed_at: new Date().toISOString(),
     });
 
     this.activeRequests.delete(request_id);
@@ -658,6 +794,8 @@ class StreamController {
    * 订阅 Expert 的消息流
    */
   async subscribe(ctx) {
+    await this._ensureRequestMaintenanceReady();
+
     const { expert_id } = ctx.query;
 
     if (!expert_id) {

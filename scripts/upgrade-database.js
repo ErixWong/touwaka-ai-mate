@@ -153,6 +153,66 @@ async function getAnyExistingUserId(connection) {
  *    - migrate: 迁移函数，执行实际的数据库变更
  */
 const MIGRATIONS = [
+  // ==================== 专家聊天请求持久化 ====================
+  {
+    name: 'create chat_requests table',
+    check: async (conn) => await hasTable(conn, 'chat_requests'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE chat_requests (
+          request_id VARCHAR(64) NOT NULL,
+          original_request_id VARCHAR(64) NULL,
+          topic_id VARCHAR(32) NULL,
+          user_id VARCHAR(32) NOT NULL,
+          expert_id VARCHAR(32) NOT NULL,
+          model_id VARCHAR(32) NULL,
+          task_id VARCHAR(32) NULL,
+          user_message_id VARCHAR(32) NULL,
+          assistant_message_id VARCHAR(32) NULL,
+          status ENUM('accepted','running','completed','failed','stopped','timeout') NOT NULL DEFAULT 'accepted',
+          content TEXT NOT NULL,
+          working_path TEXT NULL,
+          error_message TEXT NULL,
+          created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          started_at DATETIME NULL,
+          completed_at DATETIME NULL,
+          PRIMARY KEY (request_id),
+          KEY idx_chat_request_user (user_id),
+          KEY idx_chat_request_expert (expert_id),
+          KEY idx_chat_request_topic (topic_id),
+          KEY idx_chat_request_status (status),
+          KEY idx_chat_request_created (created_at),
+          KEY idx_chat_request_original (original_request_id),
+          KEY idx_chat_request_user_message (user_message_id),
+          KEY idx_chat_request_assistant_message (assistant_message_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created chat_requests table');
+    }
+  },
+  {
+    name: 'messages.request_id add request mapping',
+    check: async (conn) => await hasColumn(conn, 'messages', 'request_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN request_id VARCHAR(64) NULL COMMENT '所属聊天请求ID' AFTER id
+      `);
+      console.log('  ✓ Added messages.request_id column');
+    }
+  },
+  {
+    name: 'messages.request_id add index',
+    check: async (conn) => await hasIndex(conn, 'messages', 'idx_request'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD INDEX idx_request (request_id)
+      `);
+      console.log('  ✓ Added messages.idx_request index');
+    }
+  },
   // ==================== 助理表 ID 字段重命名 ====================
   // 将 assistant_type 重命名为 id
   {

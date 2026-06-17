@@ -67,9 +67,9 @@ export default class attachment extends Model {
       comment: "文件描述（VL模型生成）"
     },
     access_level: {
-      type: DataTypes.ENUM('public', 'private'),
+      type: DataTypes.ENUM('public','private'),
       allowNull: false,
-      defaultValue: 'private',
+      defaultValue: "private",
       comment: "访问级别：public=公开访问，private=私有受控访问"
     },
     created_by: {

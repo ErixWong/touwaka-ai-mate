@@ -97,14 +97,14 @@ export default class doc_compare_item extends Model {
         ]
       },
       {
-        name: "fk_item_base",
+        name: "idx_base_unit",
         using: "BTREE",
         fields: [
           { name: "base_unit_id" },
         ]
       },
       {
-        name: "fk_item_target",
+        name: "idx_target_unit",
         using: "BTREE",
         fields: [
           { name: "target_unit_id" },

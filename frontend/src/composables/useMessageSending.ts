@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useTaskStore } from '@/stores/task'
@@ -13,21 +13,6 @@ export interface UseMessageSendingOptions {
   onError?: (error: Error) => void
 }
 
-export interface SendMessageParams {
-  content: string
-  expertId: string
-  modelId?: string
-}
-
-/**
- * 消息发送管理 composable
- * 
- * 职责：
- * - 管理消息发送流程
- * - 处理用户消息和助手消息的创建
- * - 管理流式内容累积器
- * - 处理发送错误
- */
 export function useMessageSending(options: UseMessageSendingOptions) {
   const { t } = useI18n()
   const chatStore = useChatStore()
@@ -35,83 +20,44 @@ export function useMessageSending(options: UseMessageSendingOptions) {
   const skillDirectoryStore = useSkillDirectoryStore()
   const toast = useToastStore()
 
-  // 流式内容累积器 - 用于 SSE delta 事件
-  const streamingContent = ref('')
-  // 流式思考内容累积器 - 用于 reasoning_delta 事件
-  const streamingReasoningContent = ref('')
-  const activeRequestId = ref<string | null>(null)
-
-  // 当前正在流式输出的助手消息 - 从 store 自动推导
-  const currentAssistantMessage = computed<Message | null>(() => {
-    if (activeRequestId.value) {
-      return chatStore.findStreamingAssistantByRequestId(activeRequestId.value) || null
-    }
-    return chatStore.messages.find(m => m.role === 'assistant' && m.status === 'streaming') || null
+  const activeRequestId = computed<string | null>(() => {
+    const streaming = chatStore.getStreamingAssistant()
+    return streaming?.request_id || null
   })
 
-  // 当前用户消息ID - 从当前助手消息自动推导
+  const currentAssistantMessage = computed<Message | null>(() => {
+    return chatStore.getStreamingAssistant() || null
+  })
+
   const currentUserMessageId = computed<string | null>(() => {
     const assistant = currentAssistantMessage.value
     if (!assistant) return null
-
-    const idx = chatStore.messages.findIndex(m => m.id === assistant.id)
-    for (let i = idx - 1; i >= 0; i--) {
-      const msg = chatStore.messages[i]
-      if (msg && msg.role === 'user') {
-        return msg.id
-      }
+    if (assistant.request_id) {
+      const requestUser = chatStore.getUserMessageByRequestId(assistant.request_id)
+      if (requestUser) return requestUser.id
     }
-    return null
+    const prevUser = chatStore.getPreviousUserMessage(assistant.id)
+    return prevUser?.id || null
   })
 
-  // 是否正在发送消息 - 从 store 自动推导
   const isSending = computed<boolean>(() =>
     chatStore.messages.some(m => m.status === 'streaming')
   )
 
-  // 重置流式内容累积器
-  const resetStreamingContent = () => {
-    streamingContent.value = ''
-    streamingReasoningContent.value = ''
-    activeRequestId.value = null
-  }
+  const streamingContent = computed<string>(() => {
+    const assistant = currentAssistantMessage.value
+    return assistant?.content || ''
+  })
 
-  const setActiveRequestId = (requestId: string | null) => {
-    activeRequestId.value = requestId
-  }
+  const streamingReasoningContent = computed<string>(() => {
+    const assistant = currentAssistantMessage.value
+    return assistant?.reasoning_content || ''
+  })
 
-  // 追加流式内容
-  const appendStreamingContent = (content: string) => {
-    streamingContent.value += content
-    return streamingContent.value
-  }
-
-  // 追加思考内容
-  const appendReasoningContent = (content: string) => {
-    streamingReasoningContent.value += content
-    return streamingReasoningContent.value
-  }
-
-  // 获取流式内容
-  const getStreamingContent = () => streamingContent.value
-  const getReasoningContent = () => streamingReasoningContent.value
-
-  // 设置流式内容（用于 SSE 更新后同步）
-  const setStreamingContent = (content: string) => {
-    streamingContent.value = content
-  }
-
-  // 设置思考内容
-  const setReasoningContent = (content: string) => {
-    streamingReasoningContent.value = content
-  }
-
-  // 获取 expertId（支持 getter 函数）
   const getExpertId = (): string => {
     return typeof options.expertId === 'function' ? options.expertId() : options.expertId
   }
 
-  // 获取 modelId（支持 getter 函数）
   const getModelId = (): string | undefined => {
     if (!options.modelId) return undefined
     return typeof options.modelId === 'function' ? options.modelId() : options.modelId
@@ -137,25 +83,15 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       }
 
       const tempAssistantId = fallbackMessageId
-      const tempAssistantIndex = tempAssistantId
-        ? chatStore.messages.findIndex(message => message.id === tempAssistantId)
-        : -1
+      const tempAssistant = tempAssistantId ? chatStore.getMessageById(tempAssistantId) : undefined
+      const requestUser = request.request_id ? chatStore.getUserMessageByRequestId(request.request_id) : undefined
 
-      if (tempAssistantIndex !== -1 && tempAssistantId) {
+      if (tempAssistant && tempAssistantId) {
         chatStore.removeMessage(tempAssistantId)
-
-        let tempUserIndex = -1
-        for (let index = tempAssistantIndex - 1; index >= 0; index--) {
-          if (chatStore.messages[index]?.role === 'user') {
-            tempUserIndex = index
-            break
-          }
-        }
-
+        const prevUser = requestUser || chatStore.getPreviousUserMessage(tempAssistantId)
         const dbUserMessage = messagesFromDb.find(message => message.role === 'user')
-        const tempUser = tempUserIndex !== -1 ? chatStore.messages[tempUserIndex] : null
-        if (dbUserMessage && tempUser && tempUser.id !== dbUserMessage.id) {
-          chatStore.removeMessage(tempUser.id)
+        if (dbUserMessage && prevUser && prevUser.id !== dbUserMessage.id) {
+          chatStore.removeMessage(prevUser.id)
         }
       }
 
@@ -170,7 +106,6 @@ export function useMessageSending(options: UseMessageSendingOptions) {
     }
   }
 
-  // 发送消息
   const sendMessage = async (content: string): Promise<boolean> => {
     const expert_id = getExpertId()
 
@@ -179,7 +114,6 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       return false
     }
 
-    // 添加用户消息到本地
     const userPlaceholder = chatStore.addLocalMessage({
       expert_id,
       role: 'user',
@@ -187,7 +121,6 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       status: 'completed',
     })
 
-    // 添加助手消息占位（流式）
     const assistantPlaceholder = chatStore.addLocalMessage({
       expert_id,
       role: 'assistant',
@@ -195,12 +128,9 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       status: 'streaming',
     })
 
-    // 重置流式内容累积器
-    resetStreamingContent()
+    chatStore.setCurrentStreaming(assistantPlaceholder.id)
 
     try {
-      // 获取最后一条用户消息（刚添加的）
-      // 构建消息参数
       const messageParams: {
         content: string
         expert_id: string
@@ -213,12 +143,10 @@ export function useMessageSending(options: UseMessageSendingOptions) {
         model_id: getModelId(),
       }
 
-      // 任务模式：只传 task_id
       if (taskStore.currentTask) {
         messageParams.task_id = taskStore.currentTask.id
       }
 
-      // 技能模式：传技能目录路径作为 working_path
       const activeSkill = skillDirectoryStore.currentWorkingSkill || skillDirectoryStore.browsingSkill
       if (!taskStore.currentTask && activeSkill) {
         let skillPath = activeSkill.path
@@ -228,10 +156,8 @@ export function useMessageSending(options: UseMessageSendingOptions) {
         messageParams.working_path = skillPath
       }
 
-      // 发送消息
       const result = await messageApi.sendMessage(messageParams)
       if (result.request_id) {
-        activeRequestId.value = result.request_id
         chatStore.updateMessageRequestId(assistantPlaceholder.id, result.request_id)
       }
       console.log('[useMessageSending] Message sent:', result)
@@ -239,9 +165,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
 
     } catch (error) {
       console.error('[useMessageSending] Send message error:', error)
-      activeRequestId.value = null
-      
-      // 更新助手消息为错误状态
+
       const assistant = currentAssistantMessage.value
       if (assistant) {
         chatStore.updateMessageContent(
@@ -250,40 +174,42 @@ export function useMessageSending(options: UseMessageSendingOptions) {
           'error'
         )
       }
-      
+
       options.onError?.(error instanceof Error ? error : new Error(String(error)))
       return false
     }
   }
 
-  // 重试消息
   const retryMessage = async (messageId: string, messageRole: string, messageContent: string): Promise<boolean> => {
     if (messageRole === 'assistant') {
-      const targetMessage = chatStore.messages.find(m => m.id === messageId) || null
+      const targetMessage = chatStore.getMessageById(messageId) || null
       const requestId = targetMessage?.request_id || null
 
       if (requestId) {
         try {
           const requestStatus = await messageApi.getChatRequestStatus(requestId)
 
+          const requestAssistant = requestStatus.assistant_message_id
+            ? chatStore.getMessageById(requestStatus.assistant_message_id)
+            : null
+
           if (requestStatus.status === 'completed') {
-            await syncCompletedRequest(requestStatus, messageId)
-            activeRequestId.value = null
+            await syncCompletedRequest(requestStatus, requestAssistant?.id || messageId)
             return true
           }
 
           if (requestStatus.status === 'running' || requestStatus.status === 'accepted') {
-            activeRequestId.value = requestId
-            chatStore.updateMessageContent(messageId, targetMessage?.content || '', 'streaming')
+            const targetAssistantId = requestAssistant?.id || messageId
+            chatStore.updateMessageContent(targetAssistantId, requestAssistant?.content || targetMessage?.content || '', 'streaming')
+            chatStore.setCurrentStreaming(targetAssistantId)
             return true
           }
 
           if (requestStatus.can_retry) {
             const retried = await messageApi.retryChatRequest(requestId)
-            resetStreamingContent()
             chatStore.updateMessageRequestId(messageId, retried.request_id)
             chatStore.updateMessageContent(messageId, '', 'streaming')
-            activeRequestId.value = retried.request_id
+            chatStore.setCurrentStreaming(messageId)
             return true
           }
         } catch (error) {
@@ -293,14 +219,12 @@ export function useMessageSending(options: UseMessageSendingOptions) {
         }
       }
 
-      // 找到消息索引
       const messageIndex = chatStore.messages.findIndex(m => m.id === messageId)
       if (messageIndex === -1) {
         console.warn('[useMessageSending] Retry failed: message not found', messageId)
         return false
       }
 
-      // 从当前消息往前找，找到最近的一条用户消息
       let userMessage: Message | null = null
       for (let i = messageIndex - 1; i >= 0; i--) {
         const msg = chatStore.messages[i]
@@ -311,40 +235,27 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       }
 
       if (userMessage) {
-        // 删除失败的助手消息
         chatStore.removeMessage(messageId)
-        // 重发对应的用户消息
         return await sendMessage(userMessage.content)
       } else {
         console.warn('[useMessageSending] Retry failed: no user message found', messageId)
         return false
       }
     } else {
-      // 用户消息失败：直接重发
       chatStore.removeMessage(messageId)
       return await sendMessage(messageContent)
     }
   }
 
   return {
-    // 状态
     isSending,
     currentAssistantMessage,
     currentUserMessageId,
     streamingContent,
     streamingReasoningContent,
     activeRequestId,
-    
-    // 方法
+
     sendMessage,
     retryMessage,
-    resetStreamingContent,
-    setActiveRequestId,
-    appendStreamingContent,
-    appendReasoningContent,
-    getStreamingContent,
-    getReasoningContent,
-    setStreamingContent,
-    setReasoningContent,
   }
 }

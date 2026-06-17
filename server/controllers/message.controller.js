@@ -80,7 +80,7 @@ class MessageController {
           user_id: userId,
         },
         attributes: [
-          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
+          'id', 'request_id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
           'prompt_tokens', 'completion_tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
@@ -138,7 +138,7 @@ class MessageController {
       const { count, rows } = await this.Message.findAndCountAll({
         where: { topic_id, user_id: userId },
         attributes: [
-          'id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
+          'id', 'request_id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
           'error_info', 'created_at', 'latency_ms'
         ],
         order: [['created_at', 'DESC']],
@@ -198,7 +198,7 @@ class MessageController {
       const { count, rows } = await this.Message.findAndCountAll({
         where: { topic_id: topicId, user_id: userId },
         attributes: [
-          'id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
+          'id', 'request_id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
           'error_info', 'created_at', 'latency_ms'
         ],
         order: [['created_at', 'ASC']],
@@ -247,7 +247,7 @@ class MessageController {
       const message = await this.Message.findOne({
         where: { id, user_id: userId },
         attributes: [
-          'id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
+          'id', 'request_id', 'topic_id', 'role', 'content', 'tokens', 'inner_voice', 'tool_calls',
           'error_info', 'created_at', 'latency_ms'
         ],
         raw: true,
@@ -295,7 +295,7 @@ class MessageController {
       // 先获取指定消息的 created_at 和其他字段（用于调试）
       const targetMessage = await this.Message.findOne({
         where: { id: messageId },
-        attributes: ['id', 'expert_id', 'user_id', 'created_at'],
+        attributes: ['id', 'request_id', 'expert_id', 'user_id', 'created_at'],
         raw: true,
       });
 
@@ -317,7 +317,7 @@ class MessageController {
           created_at: { [Op.lte]: targetMessage.created_at },
         },
         attributes: [
-          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
+          'id', 'request_id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
           'prompt_tokens', 'completion_tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],

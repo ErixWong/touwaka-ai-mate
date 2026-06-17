@@ -168,7 +168,7 @@ export const useDocStore = defineStore('doc', () => {
       }
 
       const status = result?.processing_status
-      const terminal = !status || status === 'ready' || status === 'error'
+        const terminal = !status || status === 'ready' || status === 'error' || status === 'pending_embedding'
       if (terminal) {
         stopPolling()
         if (currentResult.value?.revision?.id && currentDoc.value?.id) {

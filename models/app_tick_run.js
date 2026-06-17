@@ -1,5 +1,5 @@
 import _sequelize from 'sequelize';
-const { Model } = _sequelize;
+const { Model, Sequelize } = _sequelize;
 
 export default class app_tick_run extends Model {
   static init(sequelize, DataTypes) {
@@ -18,7 +18,7 @@ export default class app_tick_run extends Model {
     started_at: {
       type: DataTypes.DATE,
       allowNull: false,
-      defaultValue: DataTypes.NOW,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
       comment: "本轮tick开始时间"
     },
     finished_at: {
@@ -29,30 +29,28 @@ export default class app_tick_run extends Model {
     status: {
       type: DataTypes.ENUM('running','success','failed','interrupted_by_restart','terminated_by_admin'),
       allowNull: false,
-      defaultValue: 'running',
+      defaultValue: "running",
       comment: "运行状态"
     },
     final_message: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "最终说明/遗言：成功摘要、失败错误、重启中断说明等"
+      comment: "最终说明\/遗言：成功摘要、失败错误、重启中断说明等"
     },
     created_at: {
       type: DataTypes.DATE,
       allowNull: false,
-      defaultValue: DataTypes.NOW
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     },
     updated_at: {
       type: DataTypes.DATE,
       allowNull: false,
-      defaultValue: DataTypes.NOW
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
     }
   }, {
     sequelize,
     tableName: 'app_tick_run',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
+    timestamps: false,
     freezeTableName: true,
     indexes: [
       {
@@ -68,7 +66,7 @@ export default class app_tick_run extends Model {
         using: "BTREE",
         fields: [
           { name: "app_id" },
-          { name: "started_at", order: "DESC" },
+          { name: "started_at" },
         ]
       },
       {
