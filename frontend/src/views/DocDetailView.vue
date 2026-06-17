@@ -186,8 +186,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
 const route = useRoute()
 const router = useRouter()
@@ -197,11 +196,7 @@ const markdownLoading = ref(false)
 const outlineLoading = ref(false)
 const chunkLoading = ref(false)
 const retryProcessingLoading = ref(false)
-
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
+const markdownFormatter = useMarkdownFormatter()
 
 const processingErrorCode = computed(() => docStore.currentResult?.processing?.error_code || null)
 const processingErrorMessage = computed(() => docStore.currentResult?.processing?.error_message || '')
@@ -209,21 +204,7 @@ const displayDocumentTitle = computed(() => docStore.currentResult?.source_attac
 
 const renderedMarkdownPreview = computed(() => {
   if (!markdownPreview.value) return ''
-  const rawHtml = marked.parse(markdownPreview.value) as string
-  return DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li',
-      'blockquote', 'pre', 'code',
-      'a', 'img',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'hr', 'div', 'span',
-    ],
-    ALLOWED_ATTR: [
-      'href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'id',
-    ],
-  })
+  return markdownFormatter.formatMessage(markdownPreview.value)
 })
 
 const retryAction = computed(() => {
@@ -382,6 +363,12 @@ async function onDeleteDocument() {
 }
 
 async function loadMarkdownPreview() {
+    const previewContent = docStore.currentResult?.ocr_result?.preview_markdown_content
+    if (previewContent) {
+      markdownPreview.value = previewContent
+      return
+    }
+
     const attachment = docStore.currentResult?.ocr_result?.cleaned_markdown_attachment
       || docStore.currentResult?.ocr_result?.main_markdown_attachment
     if (!attachment?.id) {
@@ -409,7 +396,7 @@ async function loadMarkdownPreview() {
     try {
       const result = await docStore.extractOutlineAction(revId)
       if (result) {
-        ElMessage.success(`成功提取 ${result.outline_count} 个章节${result.partial ? '（部分成功）' : ''}`)
+        ElMessage.success('已提交章节提取任务')
         await loadMarkdownPreview()
       } else {
         ElMessage.error(docStore.error || '章节提取失败')
@@ -542,6 +529,9 @@ onBeforeUnmount(() => {
 .markdown-body :deep(th) { background: var(--el-fill-color-lighter); font-weight: 600; }
 .markdown-body :deep(a) { color: var(--el-color-primary); text-decoration: none; }
 .markdown-body :deep(a:hover) { text-decoration: underline; }
+.markdown-body :deep(.katex-display) { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }
+.markdown-body :deep(.katex) { font-size: 1.05em; }
+.markdown-body :deep(.katex-error code) { color: var(--el-color-danger); background: var(--el-fill-color-light); }
 
 .sidebar-section { background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 16px; }
 .sidebar-title { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #303133; }

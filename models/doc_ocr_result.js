@@ -156,7 +156,7 @@ export default class doc_ocr_result extends Model {
       comment: "完成时间"
     },
     metadata: {
-      type: DataTypes.TEXT,
+      type: DataTypes.JSON,
       allowNull: true,
       comment: "轻量追溯信息"
     },

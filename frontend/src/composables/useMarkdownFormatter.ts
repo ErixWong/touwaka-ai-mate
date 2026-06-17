@@ -1,6 +1,8 @@
 import { ref } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import type { ChatMessage } from '@/components/ChatWindow.vue'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
@@ -11,11 +13,96 @@ marked.setOptions({
 
 const MERMAID_CACHE_MAX_SIZE = 50
 const MESSAGE_HTML_CACHE_MAX_SIZE = 200
+const FORMULA_TOKEN_PREFIX = 'COPILOT_FORMULA_TOKEN_'
 
 const formattedCache = new Map<string, string>()
 const messageHtmlCache = new Map<string, { cacheKey: string; html: string }>()
 const mermaidRenderedHtml = ref<Map<string, string>>(new Map())
 const renderingMermaid = ref<Set<string>>(new Set())
+
+const sanitizeOptions = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'ul', 'ol', 'li',
+    'blockquote', 'pre', 'code',
+    'a', 'img',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'hr', 'div', 'span',
+    'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan', 'foreignObject',
+    'math', 'semantics', 'annotation', 'mrow', 'mi', 'mn', 'mo', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mspace', 'mtext', 'mtable', 'mtr', 'mtd', 'munderover', 'munder', 'mover', 'mpadded', 'mstyle', 'mphantom', 'menclose'
+  ],
+  ALLOWED_ATTR: [
+    'href', 'src', 'alt', 'title', 'class',
+    'target', 'rel',
+    'width', 'height',
+    'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+    'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+    'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
+    'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
+    'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
+    'markerWidth', 'markerHeight', 'orient', 'overflow', 'style', 'data-*',
+    'aria-hidden', 'encoding'
+  ],
+  ALLOW_DATA_ATTR: true,
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|ftp|tel|file|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+}
+
+function sanitizeHtml(html: string): string {
+  return String(DOMPurify.sanitize(html, sanitizeOptions))
+}
+
+interface FormulaToken {
+  token: string
+  html: string
+}
+
+function extractFormulaTokens(content: string): { text: string; tokens: FormulaToken[] } {
+  let working = content
+  const tokens: FormulaToken[] = []
+
+  working = working.replace(/\$\$([\s\S]*?)\$\$/g, (_match, formulaContent) => {
+    const token = `${FORMULA_TOKEN_PREFIX}${tokens.length}__`
+    const html = renderFormula(String(formulaContent || '').trim(), true)
+    tokens.push({ token, html })
+    return `\n\n${token}\n\n`
+  })
+
+  working = working.replace(/(^|[^$])\$([^\n$]+?)\$(?!\$)/g, (_match, prefix, formulaContent) => {
+    const token = `${FORMULA_TOKEN_PREFIX}${tokens.length}__`
+    const html = renderFormula(String(formulaContent || '').trim(), false)
+    tokens.push({ token, html })
+    return `${prefix}${token}`
+  })
+
+  return { text: working, tokens }
+}
+
+function restoreFormulaTokens(html: string, tokens: FormulaToken[]): string {
+  let restored = html
+  for (const item of tokens) {
+    restored = restored.split(item.token).join(item.html)
+  }
+  return restored
+}
+
+function renderFormula(content: string, displayMode: boolean): string {
+  if (!content) return ''
+  try {
+    return katex.renderToString(content, {
+      displayMode,
+      throwOnError: false,
+      strict: 'ignore',
+      output: 'htmlAndMathml',
+    })
+  } catch (error) {
+    console.error('KaTeX rendering error:', error)
+    const escaped = escapeHtml(content)
+    return displayMode
+      ? `<div class="katex-error katex-display"><code>${escaped}</code></div>`
+      : `<span class="katex-error"><code>${escaped}</code></span>`
+  }
+}
 
 const escapeHtml = (text: string): string => {
   if (!text) return ''
@@ -35,32 +122,10 @@ const formatMessage = (content: string) => {
   }
 
   try {
-    const rawHtml = marked.parse(content) as string
-
-    const cleanHtml = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code',
-        'a', 'img',
-        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span',
-        'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan', 'foreignObject'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'class',
-        'target', 'rel',
-        'width', 'height',
-        'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
-        'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
-        'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
-        'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
-        'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
-        'markerWidth', 'markerHeight', 'orient', 'overflow', 'style', 'data-*'
-      ],
-      ALLOW_DATA_ATTR: true,
-    })
+    const { text, tokens } = extractFormulaTokens(content)
+    const rawHtml = marked.parse(text) as string
+    const htmlWithFormula = restoreFormulaTokens(rawHtml, tokens)
+    const cleanHtml = sanitizeHtml(htmlWithFormula)
 
     if (formattedCache.size > 100) {
       const firstKey = formattedCache.keys().next().value

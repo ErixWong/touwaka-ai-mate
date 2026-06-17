@@ -177,6 +177,8 @@ export interface DocResultDetail {
     completed_at: string | null
     error_code: string | null
     error_message: string | null
+    preview_markdown_content?: string | null
+    cleaned_markdown_attachment: DocAttachmentInfo | null
     main_markdown_attachment: DocAttachmentInfo | null
     raw_result_attachment: DocAttachmentInfo | null
     deliverables_manifest_attachment: DocAttachmentInfo | null
@@ -272,11 +274,8 @@ export interface DocCompareRun {
 export interface ExtractOutlineResult {
   revision_id: string
   document_id: string
-  outline_count: number
   processing_status: string
-  partial: boolean
-  failed_chunks: number
-  total_chunks: number
+  queued: boolean
 }
 
 export interface GenerateChunksResult {

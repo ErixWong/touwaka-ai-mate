@@ -22,6 +22,7 @@
     "dompurify": "^3.3.2",
     "echarts": "^6.1.0",
     "exceljs": "^4.4.0",
+    "katex": "^0.16.22",
     "marked": "^17.0.4",
     "mermaid": "^11.14.0",
     "pinia": "^3.0.4",

@@ -89,6 +89,7 @@ export interface DocPipelineOutlineStage {
   preserve_line_info: boolean
   deduplicate_titles: boolean
   timeout_ms: number
+  llm_timeout_ms?: number
 }
 
 export interface DocPipelineChunkStage {

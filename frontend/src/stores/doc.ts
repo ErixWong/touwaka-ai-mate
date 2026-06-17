@@ -249,6 +249,7 @@ export const useDocStore = defineStore('doc', () => {
       if (currentDoc.value) {
         await fetchProcessing(currentDoc.value.id)
         await fetchDocumentResult(currentDoc.value.id)
+        await startPolling(currentDoc.value.id)
       }
       return result
     } catch (e: any) {
