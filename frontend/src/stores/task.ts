@@ -302,7 +302,7 @@ export const useTaskStore = defineStore('task', () => {
     if (!currentTask.value) throw new Error('Not in task mode')
 
     try {
-      const response = await taskApi.refreshPreviewToken(currentTask.value.id)
+      const response = await taskApi.refreshPreviewToken(currentTask.value.id, previewTokenCache.value?.token || '')
       const expiresAt = new Date(response.expires_at).getTime()
 
       previewTokenCache.value = {
