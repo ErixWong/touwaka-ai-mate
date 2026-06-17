@@ -29,7 +29,7 @@ const sanitizeOptions = {
     'a', 'img',
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
     'hr', 'div', 'span',
-    'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan', 'foreignObject',
+    'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan',
     'math', 'semantics', 'annotation', 'mrow', 'mi', 'mn', 'mo', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mspace', 'mtext', 'mtable', 'mtr', 'mtd', 'munderover', 'munder', 'mover', 'mpadded', 'mstyle', 'mphantom', 'menclose'
   ],
   ALLOWED_ATTR: [
@@ -41,7 +41,7 @@ const sanitizeOptions = {
     'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
     'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
     'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
-    'markerWidth', 'markerHeight', 'orient', 'overflow', 'style', 'data-*',
+    'markerWidth', 'markerHeight', 'orient', 'overflow', 'data-*',
     'aria-hidden', 'encoding'
   ],
   ALLOW_DATA_ATTR: true,
