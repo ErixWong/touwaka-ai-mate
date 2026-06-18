@@ -83,6 +83,9 @@ function restoreFormulaTokens(html: string, tokens: FormulaToken[]): string {
   for (const item of tokens) {
     restored = restored.split(item.token).join(item.html)
   }
+  restored = restored
+    .replace(/<p>\s*(<span class="katex-display[\s\S]*?<\/span>)\s*<\/p>/g, '<div class="formula-display-block">$1</div>')
+    .replace(/<p>\s*(<span class="katex[\s\S]*?<\/span>)\s*<\/p>/g, '<p class="formula-inline-paragraph">$1</p>')
   return restored
 }
 

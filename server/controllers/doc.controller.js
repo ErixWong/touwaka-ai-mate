@@ -358,7 +358,7 @@ class DocController {
       const sourceAttachment = revision?.id
         ? await Attachment.findOne({
           where: { source_tag: 'doc-platform', source_id: revision.id },
-          attributes: ['id', 'file_name', 'file_path', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_by', 'created_at'],
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_by', 'created_at'],
           order: [['created_at', 'ASC']],
           raw: true,
         })
@@ -396,7 +396,7 @@ class DocController {
       const resultAttachments = attachmentIds.length > 0
         ? await Attachment.findAll({
           where: { id: { [Op.in]: attachmentIds } },
-          attributes: ['id', 'file_name', 'file_path', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
           raw: true,
         })
         : [];
@@ -414,7 +414,7 @@ class DocController {
       const imageAttachments = imageAttachmentIds.length > 0
         ? await Attachment.findAll({
           where: { id: { [Op.in]: imageAttachmentIds } },
-          attributes: ['id', 'file_name', 'file_path', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
           raw: true,
         })
         : [];
@@ -483,69 +483,7 @@ class DocController {
         };
       };
 
-      const rewritePreviewMarkdownImageLinks = (markdown, imageUrlMap = {}) => {
-        if (!markdown) return '';
-
-        const filenameToUrlMap = new Map();
-        for (const item of ocrImages) {
-          const url = imageUrlMap[item.attachment_id];
-          if (url && item.filename) {
-            filenameToUrlMap.set(item.filename, url);
-          }
-        }
-
-        let rewritten = markdown;
-
-        for (const [filename, url] of filenameToUrlMap.entries()) {
-          const escapedFilename = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          rewritten = rewritten.replace(new RegExp(`\\((?:\\./)?${escapedFilename}\\)`, 'g'), `(${url})`);
-        }
-
-        rewritten = rewritten.replace(/\(\/attach\/t\/[^/)]+\/([^)/?#]+)(?:\?[^)]*)?\)/g, (match, attachmentId) => {
-          const url = imageUrlMap[attachmentId];
-          return url ? `(${url})` : match;
-        });
-
-        rewritten = rewritten.replace(/\(\/attach\/public\/([^)/?#]+)(?:\?[^)]*)?\)/g, (match, attachmentId) => {
-          const url = imageUrlMap[attachmentId];
-          return url ? `(${url})` : match;
-        });
-
-        return rewritten;
-      };
-
-      const imageAttachmentResponseMap = new Map();
-      for (const item of ocrImages) {
-        imageAttachmentResponseMap.set(item.attachment_id, buildAttachmentResponse(item.attachment_id));
-      }
-
       const previewAttachmentId = latestOcrMetadata.cleaned_markdown_attachment_id || latestOcrResult?.main_markdown_attachment_id || null;
-      let previewMarkdownContent = null;
-
-      if (previewAttachmentId) {
-        const previewAttachment = allAttachmentMap.get(previewAttachmentId);
-        if (previewAttachment?.mime_type === 'text/markdown' && previewAttachment?.file_path) {
-          try {
-            const contentBuffer = await this.attachmentService.readFileContent(previewAttachment);
-            const rawMarkdown = contentBuffer.toString('utf-8');
-            const imageUrlMap = {};
-
-            for (const item of ocrImages) {
-              const attachmentResponse = imageAttachmentResponseMap.get(item.attachment_id);
-              const url = attachmentResponse?.preview_url || attachmentResponse?.download_url || null;
-              if (url) {
-                imageUrlMap[item.attachment_id] = url;
-              }
-            }
-
-            previewMarkdownContent = rewritePreviewMarkdownImageLinks(rawMarkdown, imageUrlMap);
-          } catch (err) {
-            logger.warn('[Doc] Failed to build preview markdown content:', err.message);
-          }
-        } else if (previewAttachment?.mime_type === 'text/markdown' && !previewAttachment?.file_path) {
-          logger.warn(`[Doc] Skip preview markdown content build: attachment ${previewAttachment.id} missing file_path`);
-        }
-      }
 
       ctx.success({
         document: {
@@ -577,7 +515,6 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
-          preview_markdown_content: previewMarkdownContent,
           cleaned_markdown_attachment: buildAttachmentResponse(latestOcrMetadata.cleaned_markdown_attachment_id),
           main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
           raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
@@ -586,7 +523,7 @@ class DocController {
         } : null,
         image_attachments: ocrImages.map((item) => ({
           ...item,
-          attachment: imageAttachmentResponseMap.get(item.attachment_id) || null,
+          attachment: buildAttachmentResponse(item.attachment_id),
         })),
       });
     } catch (error) {
@@ -1169,11 +1106,9 @@ async createVersion(ctx) {
   PROCESSING_RETRY_ERROR_STAGE = {
     ocr_failed: 'pending_ocr',
     clean_failed: 'pending_clean',
-    metadata_failed: 'pending_metadata',
     outline_extraction_failed: 'pending_outline',
     chunk_generation_failed: 'pending_chunk',
     embedding_failed: 'pending_embedding',
-    relocate_failed: 'pending_relocate',
   };
 
   /**
@@ -1358,6 +1293,7 @@ async createVersion(ctx) {
     try {
       this.ensureModels();
       this.ensureDocAccessService();
+      this.ensureDocumentOutlineService(ctx);
       const { revisionId } = ctx.params;
       const userId = ctx.state.session.id;
 
@@ -1381,22 +1317,19 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      await this.models.DocDocument.update({
-        processing_status: 'pending_outline',
-        processing_error_code: null,
-        processing_error_message: null,
-        processing_updated_at: new Date(),
-      }, {
-        where: { id: revision.document_id },
+      const result = await this.documentOutlineService.extract(revisionId, {
+        initiatedByType: 'user',
+        initiatedById: userId,
       });
-
       ctx.success({
         revision_id: revisionId,
         document_id: revision.document_id,
-        processing_status: 'pending_outline',
-        queued: true,
+        outline_count: result.outline_count,
+        processing_status: 'pending_chunk',
+        partial: result.partial || false,
+        failed_chunks: result.failed_chunks || 0,
+        total_chunks: result.total_chunks || 1,
       });
-      logger.info(`[Doc] extractOutline queued: ${revision.document_id} -> pending_outline`);
     } catch (error) {
       logger.error('[Doc] extractOutline error:', error);
       ctx.throw(error.status || 500, error.message);

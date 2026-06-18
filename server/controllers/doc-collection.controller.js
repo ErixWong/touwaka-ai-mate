@@ -421,7 +421,7 @@ class DocCollectionController {
 
       const currentVersions = await DocVersion.findAll({
         where: { document_id: { [Op.in]: docIds }, is_current: 1 },
-        attributes: ['id'],
+        attributes: ['id', 'document_id'],
         raw: true,
       });
       const versionIds = currentVersions.map(v => v.id);
@@ -439,6 +439,21 @@ class DocCollectionController {
         },
         { where: { revision_id: { [Op.in]: versionIds } } }
       );
+
+      // 同步将相关文档状态回退到 pending_embedding，确保文档状态与 chunk 状态一致
+      const affectedDocIds = [...new Set(currentVersions.map(v => v.document_id))];
+      if (affectedDocIds.length > 0) {
+        await this.models.DocDocument.update(
+          {
+            processing_status: 'pending_embedding',
+            processing_error_code: null,
+            processing_error_message: null,
+            processing_updated_at: new Date(),
+          },
+          { where: { id: { [Op.in]: affectedDocIds } } }
+        );
+        logger.info(`[Collection] revectorize: ${affectedDocIds.length} document(s) reset to pending_embedding`);
+      }
 
       ctx.success({
         message: 'Revectorization triggered',

@@ -37,6 +37,7 @@ import Database from '../lib/db.js';
 import ChatService from '../lib/chat-service.js';
 import BackgroundTaskScheduler from '../lib/background-scheduler.js';
 import { createEmbeddingTask } from '../lib/embedding-worker.js';
+import { createDocumentEmbeddingTask } from '../lib/document-embedding-worker.js';
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
@@ -326,6 +327,13 @@ class ApiServer {
       handler: createEmbeddingTask({ batchSize: 10 }),
     });
 
+    // 注册文档平台向量化任务
+    this.scheduler.register({
+      name: 'document-embedding-worker',
+      interval: 30000, // 30秒
+      handler: createDocumentEmbeddingTask({ batchSize: 3 }),
+    });
+
     // 注册 Topic 归档任务（Issue #174）
     // 策略：每个用户保留最新 2 个 Topic，其余归档
     this.scheduler.register({
@@ -351,7 +359,7 @@ class ApiServer {
       preventOverlap: true,  // 如果上一轮还没处理完，本轮顺延
     });
 
-    logger.info('BackgroundTaskScheduler initialized with embedding-worker, topic-archiver, and autonomous-task-executor tasks');
+    logger.info('BackgroundTaskScheduler initialized with embedding-worker, document-embedding-worker, topic-archiver, and autonomous-task-executor tasks');
 
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);

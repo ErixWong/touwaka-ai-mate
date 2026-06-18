@@ -221,7 +221,6 @@ const retryAction = computed(() => {
 
   if (status === 'error') {
     if (errorCode === 'clean_failed') return { type: 'clean', label: '重试数据清洗' }
-    if (errorCode === 'metadata_failed') return { type: 'metadata', label: '重试元数据提取' }
     if (errorCode === 'embedding_failed') return { type: 'embedding', label: '重试向量化' }
     if (errorCode === 'ocr_failed') return { type: 'ocr', label: '重试OCR' }
   }
@@ -233,7 +232,6 @@ const isProcessingActionComplete = computed(() => {
   const status = docStore.currentResult?.processing?.status
   return status === 'ready'
     || status === 'pending_embedding'
-    || status === 'pending_relocate'
     || status === 'pending_chunk'
     || status === 'pending_outline'
 })
@@ -254,7 +252,7 @@ const displayErrorMessage = computed(() => {
 })
 
 const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
-const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk', 'pending_embedding', 'pending_relocate']
+const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding']
 
 const isLongRunning = computed(() => {
   const status = docStore.currentResult?.processing?.status
@@ -308,11 +306,9 @@ function processingLabel(status?: string) {
   if (status === 'pending_ocr') return '待OCR'
   if (status === 'ocr_processing') return 'OCR处理中'
   if (status === 'pending_clean') return '待文本清洗'
-  if (status === 'pending_metadata') return '待元数据'
   if (status === 'pending_outline') return '待章节提取'
   if (status === 'pending_chunk') return '待文本分块'
   if (status === 'pending_embedding') return '待向量化'
-  if (status === 'pending_relocate') return '待迁移'
   if (status === 'ready') return '已就绪'
   if (status === 'error') return '处理失败'
   return status || '-'
@@ -321,7 +317,7 @@ function processingLabel(status?: string) {
 function processingTagType(status?: string) {
   if (status === 'ready') return 'success'
   if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
-  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_metadata' || status === 'pending_embedding' || status === 'pending_relocate') return 'info'
+  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_embedding') return 'info'
   if (status === 'error') return 'danger'
   return 'info'
 }
@@ -369,8 +365,8 @@ async function loadMarkdownPreview() {
       return
     }
 
-    const attachment = docStore.currentResult?.ocr_result?.cleaned_markdown_attachment
-      || docStore.currentResult?.ocr_result?.main_markdown_attachment
+    const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
+      || docStore.currentResult?.ocr_result?.cleaned_markdown_attachment
     if (!attachment?.id) {
       markdownPreview.value = ''
       return
@@ -529,8 +525,13 @@ onBeforeUnmount(() => {
 .markdown-body :deep(th) { background: var(--el-fill-color-lighter); font-weight: 600; }
 .markdown-body :deep(a) { color: var(--el-color-primary); text-decoration: none; }
 .markdown-body :deep(a:hover) { text-decoration: underline; }
-.markdown-body :deep(.katex-display) { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }
+.markdown-body :deep(.formula-display-block) { display: block; width: 100%; overflow-x: auto; overflow-y: visible; margin: 12px 0; padding: 6px 0; }
+.markdown-body :deep(.formula-display-block .katex-display) { display: block; margin: 0; padding: 0; overflow: visible; }
+.markdown-body :deep(.formula-inline-paragraph) { margin: 8px 0; }
+.markdown-body :deep(.katex-display) { display: block; overflow-x: auto; overflow-y: visible; padding: 10px 0; }
 .markdown-body :deep(.katex) { font-size: 1.05em; }
+.markdown-body :deep(.katex .base) { white-space: nowrap; }
+.markdown-body :deep(.katex-html) { overflow: visible; }
 .markdown-body :deep(.katex-error code) { color: var(--el-color-danger); background: var(--el-fill-color-light); }
 
 .sidebar-section { background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 16px; }
