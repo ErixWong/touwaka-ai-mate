@@ -623,7 +623,7 @@ async function handleClassify(row, app, services) {
 
     const params = [];
     const conditions = ["d.doc_type = 'contract'", 'd.id != (SELECT document_id FROM app_contract_mgr_v2_content WHERE content_id = ?)'];
-    params.push(row.row_id);
+    params.push(row.content_id);
 
     if (contractNumber) {
       conditions.push("(JSON_EXTRACT(d.metadata, '$.contract_number') = ? OR d.title LIKE ?)");
