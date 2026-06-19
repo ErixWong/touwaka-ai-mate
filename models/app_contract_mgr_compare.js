@@ -10,18 +10,14 @@ export default class app_contract_mgr_compare extends Model {
       primaryKey: true,
       comment: "A合同 mini_app_rows.id",
       references: {
-        model: 'mini_app_rows',
+        model: 'app_contract_mgr_records',
         key: 'id'
       }
     },
     target_row_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "B合同 mini_app_rows.id",
-      references: {
-        model: 'mini_app_rows',
-        key: 'id'
-      }
+      comment: "B合同 mini_app_rows.id"
     },
     compare_result: {
       type: DataTypes.TEXT,

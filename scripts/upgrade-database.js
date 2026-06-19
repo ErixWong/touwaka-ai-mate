@@ -2181,21 +2181,27 @@ const MIGRATIONS = [
         { table: 'app_contract_mgr_compares', col: 'target_row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
       ];
       for (const u of updates) {
-        const fkName = `fk_${u.table}_${u.col}`;
         try {
-          await conn.execute(`ALTER TABLE \`${u.table}\` DROP FOREIGN KEY \`${fkName}\``);
-        } catch (e) {
-          const [rows] = await conn.execute(`SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = 'mini_app_rows'`, [u.table, u.col]);
-          if (rows.length > 0) {
-            await conn.execute(`ALTER TABLE \`${u.table}\` DROP FOREIGN KEY \`${rows[0].CONSTRAINT_NAME}\``);
+          const [fkRows] = await conn.execute(
+            `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = 'mini_app_rows'`,
+            [process.env.DB_NAME || 'touwaka_mate', u.table, u.col]
+          );
+          for (const fk of fkRows) {
+            try { await conn.execute(`ALTER TABLE \`${u.table}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``); }
+            catch {}
           }
+          try {
+            const fkName = `fk_${u.table}_${u.col}`;
+            await conn.execute(`ALTER TABLE \`${u.table}\` ADD CONSTRAINT \`${fkName}\` FOREIGN KEY (\`${u.col}\`) REFERENCES \`${u.ref}\`(\`${u.refCol}\`) ON DELETE CASCADE`);
+          } catch (e) {
+            console.log(`  ⚠ Skipped FK on ${u.table}.${u.col}: ${e.message}`);
+          }
+        } catch (e) {
+          console.log(`  ⚠ Skipped table ${u.table}: ${e.message}`);
         }
       }
-      for (const u of updates) {
-        const fkName = `fk_${u.table}_${u.col}`;
-        await conn.execute(`ALTER TABLE \`${u.table}\` ADD CONSTRAINT \`${fkName}\` FOREIGN KEY (\`${u.col}\`) REFERENCES \`${u.ref}\`(\`${u.refCol}\`) ON DELETE CASCADE`);
-      }
-      console.log('  ✓ Migrated extension table FKs from mini_app_rows to autonomous tables');
+      console.log('  ✓ Migrated extension table FKs from mini_app_rows to autonomous tables (best effort)');
     },
   },
 

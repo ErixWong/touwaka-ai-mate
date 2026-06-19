@@ -10,7 +10,7 @@ export default class app_contract_mgr_row extends Model {
       primaryKey: true,
       comment: "关联 mini_app_rows.id",
       references: {
-        model: 'mini_app_rows',
+        model: 'app_contract_mgr_records',
         key: 'id'
       }
     },
