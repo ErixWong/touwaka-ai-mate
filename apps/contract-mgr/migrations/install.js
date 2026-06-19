@@ -65,8 +65,8 @@ export default {
 
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_compares (
-        row_id VARCHAR(32) PRIMARY KEY COMMENT 'A合同 mini_app_rows.id',
-        target_row_id VARCHAR(32) NOT NULL COMMENT 'B合同 mini_app_rows.id',
+        row_id VARCHAR(32) PRIMARY KEY COMMENT 'A合同 app_contract_mgr_records.id',
+        target_row_id VARCHAR(32) NOT NULL COMMENT 'B合同 app_contract_mgr_records.id',
         compare_result JSON COMMENT '完整比对结果（results数组）',
         summary_identical INT DEFAULT 0 COMMENT '一致章节数',
         summary_modified INT DEFAULT 0 COMMENT '修改章节数',
