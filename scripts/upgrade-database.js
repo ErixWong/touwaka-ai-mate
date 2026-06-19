@@ -1619,7 +1619,7 @@ const MIGRATIONS = [
           source_system VARCHAR(50) NOT NULL COMMENT '来源系统',
           source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键',
           title VARCHAR(500) NOT NULL COMMENT '文档标题',
-          processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_chunk','pending_embedding','pending_relocate','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
+          processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
           processing_error_code VARCHAR(64) NULL COMMENT '错误码',
           processing_error_message TEXT NULL COMMENT '错误信息',
           processing_retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
@@ -2208,7 +2208,7 @@ const MIGRATIONS = [
             source_system VARCHAR(50) NOT NULL COMMENT '来源系统',
             source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键',
             title VARCHAR(500) NOT NULL COMMENT '文档标题',
-            processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_outline','pending_chunk','pending_embedding','pending_relocate','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
+            processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
             processing_error_code VARCHAR(64) NULL COMMENT '错误码',
             processing_error_message TEXT NULL COMMENT '错误信息',
             processing_retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
@@ -2538,6 +2538,32 @@ const MIGRATIONS = [
       } else {
         console.log('  ⏭️  No timeout.remote_llm to migrate');
       }
+    },
+  },
+  {
+    name: 'documents.processing_status enum simplify',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'documents', 'processing_status');
+      if (!columnType) return false;
+      return columnType === "enum('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error')";
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `UPDATE documents
+         SET processing_status = CASE
+           WHEN processing_status = 'pending_metadata' THEN 'pending_outline'
+           WHEN processing_status = 'pending_relocate' THEN 'ready'
+           ELSE processing_status
+         END
+         WHERE processing_status IN ('pending_metadata', 'pending_relocate')`
+      );
+
+      await conn.execute(
+        `ALTER TABLE documents
+         MODIFY COLUMN processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error')
+         NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态'`
+      );
+      console.log('  ✓ Simplified documents.processing_status enum and migrated legacy states');
     },
   },
 

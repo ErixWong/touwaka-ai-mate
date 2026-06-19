@@ -714,7 +714,7 @@ async function getDocumentId(services, rowId) {
 const DOC_STATUS_MAP = {
   'ocr_submitted': 'ocr_processing',
   'pending_filter': 'pending_clean',
-  'pending_extract': 'pending_metadata',
+  'pending_extract': 'pending_outline',
   'pending_section': 'pending_chunk',
   'pending_review': 'pending_embedding',
   'pending_classify': 'pending_embedding',
