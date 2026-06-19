@@ -483,7 +483,7 @@
               <el-input-number v-model="form.pending_embedding.retry_times" :min="0" :max="10" :step="1" />
             </el-form-item>
             <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_embedding.timeout_ms" :min="5000" :step="10000" />
+              <el-input-number v-model="form.pending_embedding.embedding_timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
           </template>
 
@@ -605,7 +605,7 @@ const defaultForm: DocPipelineConfig = {
     timeout_ms: 120000,
   },
   pending_chunk: { enabled: true, type: 'builtin', chunk_mode: 'heading', max_length: 1000, overlap_length: 100, keep_heading: true, merge_small_chunks: false },
-  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, timeout_ms: 120000 },
+  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, embedding_timeout_ms: 120000 },
   pending_relocate: { enabled: true, target_strategy: 'current_collection', tag_strategy: 'none', metadata_writeback: false, auto_publish: false },
 }
 

@@ -11,6 +11,7 @@ marked.setOptions({
 
 const MERMAID_CACHE_MAX_SIZE = 50
 const MESSAGE_HTML_CACHE_MAX_SIZE = 200
+const FORMATTED_CACHE_MAX_SIZE = 256
 
 const formattedCache = new Map<string, string>()
 const messageHtmlCache = new Map<string, { cacheKey: string; html: string }>()
@@ -26,6 +27,64 @@ const escapeHtml = (text: string): string => {
     .replace(/\n/g, '<br>')
 }
 
+const escapeAttribute = (value: string): string => {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+const INLINE_MATH_HINT_RE = /(?:\\[a-zA-Z]+|[=^_{}]|\d\s*[+\-*/]\s*\d|[A-Za-z]\s*[+\-*/=^_]\s*[A-Za-z\d])/
+
+const looksLikeInlineMath = (formula: string): boolean => {
+  const normalized = formula.trim()
+  if (!normalized) return false
+
+  // Treat plain money/percentage/unit snippets as normal text, not math.
+  if (/^\d+(?:[.,]\d+)?(?:\s*(?:%|[A-Za-z]{1,5}|[\u4e00-\u9fa5]{1,3}))?$/.test(normalized)) {
+    return false
+  }
+
+  return INLINE_MATH_HINT_RE.test(normalized)
+}
+
+const normalizeInlineMath = (content: string): string => {
+  return content.replace(/(^|[^\\\w])\$([^\n$]+)\$(?!\$)/g, (_, prefix: string, formula: string) => {
+    if (!looksLikeInlineMath(formula)) {
+      return `${prefix}$${formula}$`
+    }
+    return `${prefix}<code class="inline-math" data-inline-math="${escapeAttribute(formula.trim())}"></code>`
+  })
+}
+
+const sanitizeMarkdownHtml = (rawHtml: string): string => {
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li',
+      'blockquote', 'pre', 'code',
+      'a', 'img',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'hr', 'div', 'span',
+      'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan'
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'class',
+      'target', 'rel',
+      'width', 'height',
+      'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+      'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+      'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
+      'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
+      'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
+      'markerWidth', 'markerHeight', 'orient', 'overflow', 'data-*'
+    ],
+    ALLOW_DATA_ATTR: true,
+  })
+}
+
 const formatMessage = (content: string) => {
   if (!content) return ''
 
@@ -35,36 +94,14 @@ const formatMessage = (content: string) => {
   }
 
   try {
-    const rawHtml = marked.parse(content) as string
+    const normalizedContent = normalizeInlineMath(content)
+    const rawHtml = marked.parse(normalizedContent) as string
+    const cleanHtml = sanitizeMarkdownHtml(rawHtml)
 
-    const cleanHtml = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code',
-        'a', 'img',
-        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span',
-        'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan', 'foreignObject'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'class',
-        'target', 'rel',
-        'width', 'height',
-        'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
-        'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
-        'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
-        'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
-        'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
-        'markerWidth', 'markerHeight', 'orient', 'overflow', 'style', 'data-*'
-      ],
-      ALLOW_DATA_ATTR: true,
-    })
-
-    if (formattedCache.size > 100) {
-      const firstKey = formattedCache.keys().next().value
-      if (firstKey) formattedCache.delete(firstKey)
+    if (formattedCache.size > FORMATTED_CACHE_MAX_SIZE) {
+      const keysToDelete = formattedCache.size - FORMATTED_CACHE_MAX_SIZE
+      const keys = Array.from(formattedCache.keys()).slice(0, keysToDelete)
+      keys.forEach(key => formattedCache.delete(key))
     }
     formattedCache.set(content, cleanHtml)
 
@@ -175,6 +212,7 @@ function createInstance() {
   return {
     escapeHtml,
     formatMessage,
+    sanitizeMarkdownHtml,
     containsMermaid,
     formatStreamingMessage,
     mermaidRenderedHtml,

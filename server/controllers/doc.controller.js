@@ -331,6 +331,7 @@ class DocController {
           'processing_status',
           'processing_error_code',
           'processing_error_message',
+          'processing_updated_at',
           'created_at',
           'updated_at',
           'metadata',
@@ -1081,10 +1082,18 @@ async createVersion(ctx) {
   }
 
   /**
-   * 处理状态机重试映射（V1：统一从 pending_ocr 重新开始）
+   * 处理失败重试映射
    */
-  PROCESSING_RETRY_STAGE = {
-    'error': 'pending_ocr',
+  PROCESSING_RETRY_ERROR_STAGE = {
+    ocr_failed: 'pending_ocr',
+    submit_failed: 'pending_ocr',
+    submit_missing_task_id: 'pending_ocr',
+    clean_failed: 'pending_clean',
+    outline_extraction_failed: 'pending_outline',
+    chunk_generation_failed: 'pending_chunk',
+    embedding_failed: 'pending_embedding',
+    embedding_client_init_failed: 'pending_embedding',
+    no_chunks_for_embedding: 'pending_chunk',
   };
 
   /**
@@ -1169,7 +1178,15 @@ async createVersion(ctx) {
         ctx.throw(400, 'Only documents in error state can be retried');
       }
 
-      const retryStage = this.PROCESSING_RETRY_STAGE[document.processing_status] || 'pending_ocr';
+      if (document.processing_error_code === 'embedding_model_missing') {
+        ctx.throw(400, 'Embedding model is missing. Configure the collection embedding model before retrying');
+      }
+
+      if (document.processing_error_code === 'embedding_revision_missing') {
+        ctx.throw(400, 'Current revision is missing. Repair document revision linkage before retrying');
+      }
+
+      const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
       await document.update({
         processing_status: retryStage,

@@ -498,19 +498,20 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { useTaskStore } from '@/stores/task'
 import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 import CodePreview from '@/components/CodePreview.vue'
 import type { Task, TaskFile, TaskStatus } from '@/types'
 import { renderMermaidInHtml } from '@/utils/mermaid'
+import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
 const toast = useToastStore()
+const markdownFormatter = useMarkdownFormatter()
 
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'active' | 'archived'>('all')
@@ -1119,6 +1120,61 @@ const previewFileLanguage = computed(() => {
   return ext
 })
 
+// CSV 解析相关
+const CSV_MAX_ROWS = 500
+
+const csvRows = computed(() => {
+  if (previewType.value !== 'csv' || !previewContent.value) return []
+  return parseCSV(previewContent.value)
+})
+
+const csvVisibleRows = computed(() => {
+  return csvRows.value.slice(1, 1 + CSV_MAX_ROWS)
+})
+
+const csvTruncated = computed(() => {
+  return csvRows.value.length - 1 > CSV_MAX_ROWS
+})
+
+const parseCSV = (content: string): string[][] => {
+  const rows: string[][] = []
+  const lines = content.split(/\r?\n/)
+  for (const line of lines) {
+    if (!line.trim()) continue
+    const cells: string[] = []
+    let current = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (inQuotes) {
+        if (ch === '"') {
+          if (i + 1 < line.length && line[i + 1] === '"') {
+            current += '"'
+            i++
+          } else {
+            inQuotes = false
+          }
+        } else {
+          current += ch
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true
+        } else if (ch === ',') {
+          cells.push(current.trim())
+          current = ''
+        } else {
+          current += ch
+        }
+      }
+    }
+    cells.push(current.trim())
+    if (cells.some(c => c !== '')) {
+      rows.push(cells)
+    }
+  }
+  return rows
+}
 // 判断文件是否可编辑（在 input 目录下的文本文件，或 HTML 源码模式）
 const canEditFile = computed(() => {
   if (!previewFile.value) return false
@@ -1148,24 +1204,7 @@ marked.setOptions({
 const renderMarkdown = (content: string): string => {
   if (!content) return ''
   try {
-    const rawHtml = marked.parse(content) as string
-    return DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code',
-        'a', 'img',
-        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'class',
-        'target', 'rel',
-        'width', 'height'
-      ],
-      ALLOW_DATA_ATTR: true,
-    })
+    return markdownFormatter.formatMessage(content)
   } catch (error) {
     console.error('Markdown parsing error:', error)
     return content
@@ -1189,35 +1228,8 @@ const renderMarkdownWithMermaid = async (content: string): Promise<void> => {
   }
   
   try {
-    // 先进行基础 Markdown 渲染
-    const rawHtml = marked.parse(content) as string
+    let cleanHtml = markdownFormatter.formatMessage(content)
     
-    // 使用 DOMPurify 进行 XSS 清理（允许更多标签用于 Mermaid）
-    let cleanHtml = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code',
-        'a', 'img',
-        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span',
-        'svg', 'path', 'g', 'rect', 'circle', 'text', 'tspan', 'polygon', 'line', 'polyline', 'ellipse', 'foreignObject', 'tbody'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'class',
-        'target', 'rel',
-        'width', 'height',
-        'd', 'transform', 'fill', 'stroke', 'stroke-width', 'viewBox',
-        'x', 'y', 'x1', 'y1', 'x2', 'y2',
-        'cx', 'cy', 'r', 'rx', 'ry',
-        'points', 'id', 'style', 'text-anchor', 'font-size', 'font-family', 'font-weight',
-        'xmlns', 'version'
-      ],
-      ALLOW_DATA_ATTR: true,
-    })
-    
-    // 如果包含 Mermaid 代码块，进行异步渲染
     if (containsMermaid(content)) {
       cleanHtml = await renderMermaidInHtml(cleanHtml)
     }
