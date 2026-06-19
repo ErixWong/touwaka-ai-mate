@@ -2040,8 +2040,35 @@ const MIGRATIONS = [
         ['extract_failed', '提取失败', '结构化提取失败', 92, 0, 1, 1, null, null],
         ['section_failed', '分章失败', '章节分析失败', 93, 0, 1, 1, null, null],
         ['classify_failed', '分类失败', '版本建议失败', 94, 0, 1, 1, null, null]
-      ];
+  // 41. contract-mgr-v2 解除 row_id 绑定：content 表加 content_id
+  {
+    name: 'app_contract_mgr_v2_content add content_id',
+    check: async (conn) =>
+      await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id'),
+    migrate: async (conn) => {
+      await conn.execute(
+        `ALTER TABLE app_contract_mgr_v2_content
+         ADD COLUMN content_id VARCHAR(32) NOT NULL DEFAULT '' AFTER row_id`
+      );
+      const [rows] = await conn.execute(
+        `SELECT row_id FROM app_contract_mgr_v2_content WHERE content_id = ''`
+      );
+      for (const row of rows) {
+        const newId = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
+        await conn.execute(
+          `UPDATE app_contract_mgr_v2_content SET content_id = ? WHERE row_id = ?`,
+          [newId, row.row_id]
+        );
+      }
+      await conn.execute(
+        `ALTER TABLE app_contract_mgr_v2_content
+         ADD UNIQUE KEY uk_content_id (content_id)`
+      );
+      console.log('  ✓ Added content_id to app_contract_mgr_v2_content and populated existing rows');
+    },
+  },
 
+];
       for (const [name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext] of states) {
         await conn.execute(
           `INSERT INTO app_state (id, app_id, name, label, description, sort_order, is_initial, is_terminal, is_error, handler_id, success_next_state, failure_next_state)

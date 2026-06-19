@@ -64,6 +64,7 @@ export async function execute(context, params) {
       if (attachment.created_by !== userId) continue;
 
       const rowId = Utils.newID(20);
+      const contentId = Utils.newID(20);
       const documentId = Utils.newID(20);
       const revisionId = Utils.newID(20);
 
@@ -85,9 +86,9 @@ export async function execute(context, params) {
         );
         await db.sequelize.query(
           `INSERT INTO app_contract_mgr_v2_content
-          (row_id, process_step, file_id, document_id, created_at, updated_at)
-          VALUES (?, 'pending_ocr', ?, ?, NOW(), NOW())`,
-          { replacements: [rowId, attId, documentId], transaction: t }
+          (row_id, content_id, process_step, file_id, document_id, created_at, updated_at)
+          VALUES (?, ?, 'pending_ocr', ?, ?, NOW(), NOW())`,
+          { replacements: [rowId, contentId, attId, documentId], transaction: t }
         );
         await db.getModel('attachment').update(
           { source_tag: 'doc-platform', source_id: revisionId },
@@ -97,6 +98,7 @@ export async function execute(context, params) {
 
       records.push({
         id: rowId,
+        content_id: contentId,
         process_step: 'pending_ocr',
         file_id: attId,
         title: attachment.file_name || 'Unknown',

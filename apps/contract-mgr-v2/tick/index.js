@@ -115,7 +115,7 @@ export async function tick(context) {
   }
   
   const pending = await services.query(`
-    SELECT row_id, process_step, ocr_task_id, file_id, filter_carried_over, filter_chunk_index
+    SELECT row_id, content_id, process_step, ocr_task_id, file_id, filter_carried_over, filter_chunk_index
     FROM ${CONTENT_TABLE}
     WHERE process_step IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section', 'pending_classify')
     ORDER BY created_at ASC
