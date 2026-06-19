@@ -30,7 +30,7 @@
                 </el-button>
               </template>
               <!-- 自动刷新控制 -->
-              <template v-if="previewType === 'html' || previewType === 'pdf' || previewType === 'markdown'">
+              <template v-if="previewType === 'html' || previewType === 'pdf' || previewType === 'markdown' || previewType === 'csv'">
                 <el-button
                   class="btn-action"
                   :class="{ active: autoRefreshEnabled }"
@@ -130,6 +130,35 @@
                   class="embed-editor markdown-editor"
                 ></textarea>
                 <div v-else class="embed-markdown" v-html="previewRenderedHtml"></div>
+              </template>
+              
+              <!-- CSV 预览（表格视图） -->
+              <template v-else-if="previewType === 'csv'">
+                <textarea
+                  v-if="isEditing"
+                  v-model="previewContent"
+                  class="embed-editor"
+                ></textarea>
+                <div v-else class="csv-table-wrapper">
+                  <table class="csv-table" v-if="csvRows.length > 0">
+                    <thead>
+                      <tr>
+                        <th v-for="(col, ci) in csvRows[0]" :key="ci">{{ col }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, ri) in csvVisibleRows" :key="ri">
+                        <td v-for="(col, ci) in row" :key="ci">{{ col }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div v-if="csvTruncated" class="csv-truncated-hint">
+                    {{ $t('tasks.csvTruncated', { shown: CSV_MAX_ROWS, total: csvRows.length - 1 }) || `仅显示前 ${CSV_MAX_ROWS} 行，共 ${csvRows.length - 1} 行数据` }}
+                  </div>
+                  <div v-else-if="csvRows.length === 0" class="preview-unsupported">
+                    <p>{{ $t('tasks.csvEmpty') || 'CSV 文件为空或无法解析' }}</p>
+                  </div>
+                </div>
               </template>
               
               <!-- 文本/代码预览 -->
@@ -537,7 +566,7 @@ const taskForm = ref({
 // 文件预览相关
 const showEmbedPreview = ref(false)  // 嵌入式预览模式
 const previewFile = ref<TaskFile | null>(null)
-const previewType = ref<'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'unsupported'>('text')
+const previewType = ref<'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'csv' | 'unsupported'>('text')
 const previewContent = ref('')
 const previewOriginalContent = ref('')  // 保存原始内容，用于取消编辑
 const previewRenderedHtml = ref('')  // 渲染后的 HTML（包含 Mermaid 图表）
@@ -686,7 +715,7 @@ const handleToggleAutonomousFromList = async (task: Task, event: Event) => {
 }
 
 // 允许的文件类型
-const allowedFileTypes = '.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.json'
+const allowedFileTypes = '.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.json,.html,.htm,.js,.mjs,.cjs,.ts,.mts,.cts,.jsx,.tsx,.vue,.css,.scss,.less,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.php,.rb,.sh,.bash,.zsh,.sql,.xml,.yaml,.yml'
 
 // 根据状态和搜索过滤任务
 const filteredTasks = computed(() => {
@@ -914,15 +943,16 @@ const handleFileClick = async (file: TaskFile) => {
 }
 
 // 判断文件预览类型
-const getPreviewType = (filename: string): 'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'unsupported' => {
+const getPreviewType = (filename: string): 'text' | 'code' | 'markdown' | 'image' | 'pdf' | 'html' | 'csv' | 'unsupported' => {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
 
-  const textExts = ['txt', 'csv', 'log']
+  const textExts = ['txt', 'log']
   const codeExts = ['js', 'ts', 'vue', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'css', 'scss', 'json', 'xml', 'yaml', 'yml', 'sh', 'sql']
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg']
 
   if (ext === 'md') return 'markdown'
   if (ext === 'html' || ext === 'htm') return 'html'
+  if (ext === 'csv') return 'csv'
   if (textExts.includes(ext)) return 'text'
   if (codeExts.includes(ext)) return 'code'
   if (imageExts.includes(ext)) return 'image'
@@ -970,9 +1000,9 @@ const openPreview = async (file: TaskFile) => {
       return
     }
 
-    // 文本/代码/Markdown 文件也使用静态文件服务
+    // 文本/代码/Markdown/CSV 文件也使用静态文件服务
     // Token 在 URL 中，可以直接 fetch
-    if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown') {
+    if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown' || previewType.value === 'csv') {
       const contentUrl = await taskStore.getEmbedPreviewUrl(file.path)
       const response = await fetch(contentUrl)
       if (!response.ok) {
@@ -1175,14 +1205,15 @@ const parseCSV = (content: string): string[][] => {
   }
   return rows
 }
+
 // 判断文件是否可编辑（在 input 目录下的文本文件，或 HTML 源码模式）
 const canEditFile = computed(() => {
   if (!previewFile.value) return false
   const path = previewFile.value.path
   const isInInputDir = path.startsWith('input/') || path === previewFile.value.name || currentPath.value.startsWith('input')
 
-  // 文本、代码、Markdown 文件在 input 目录下可编辑
-  if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown') {
+  // 文本、代码、Markdown、CSV 文件在 input 目录下可编辑
+  if (previewType.value === 'text' || previewType.value === 'code' || previewType.value === 'markdown' || previewType.value === 'csv') {
     return isInInputDir
   }
 
@@ -1229,7 +1260,7 @@ const renderMarkdownWithMermaid = async (content: string): Promise<void> => {
   
   try {
     let cleanHtml = markdownFormatter.formatMessage(content)
-    
+
     if (containsMermaid(content)) {
       cleanHtml = await renderMermaidInHtml(cleanHtml)
     }
@@ -1342,6 +1373,38 @@ const getFileIcon = (filename: string): string => {
     gif: '🖼️',
     zip: '📦',
     json: '📋',
+    html: '🌐',
+    htm: '🌐',
+    js: '📜',
+    mjs: '📜',
+    cjs: '📜',
+    ts: '📘',
+    mts: '📘',
+    cts: '📘',
+    jsx: '⚛️',
+    tsx: '⚛️',
+    vue: '💚',
+    css: '🎨',
+    scss: '🎨',
+    less: '🎨',
+    py: '🐍',
+    java: '☕',
+    c: '⚙️',
+    cpp: '⚙️',
+    h: '⚙️',
+    hpp: '⚙️',
+    cs: '🔷',
+    go: '🔵',
+    rs: '🦀',
+    php: '🐘',
+    rb: '💎',
+    sh: '💻',
+    bash: '💻',
+    zsh: '💻',
+    sql: '🗄️',
+    xml: '📋',
+    yaml: '📋',
+    yml: '📋',
   }
   return iconMap[ext] || '📄'
 }
@@ -2541,6 +2604,62 @@ onUnmounted(() => {
   object-fit: contain;
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.csv-table-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.csv-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.csv-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px;
+  background: var(--primary-color, #2563eb);
+  color: #fff;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.csv-table td {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.csv-table tbody tr:nth-child(even) {
+  background: var(--table-stripe-bg, #f9fafb);
+}
+
+.csv-table tbody tr:hover {
+  background: var(--primary-bg, #eff6ff);
+}
+
+.csv-truncated-hint {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--warning-bg, #fffbeb);
+  color: var(--warning-color, #92400e);
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
 }
 
 .embed-editor {
