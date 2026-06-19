@@ -76,6 +76,7 @@ import ContractV2Controller from './controllers/contract-v2.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
 import ELSController from './controllers/els.controller.js';
 import OcrToolController from './controllers/ocr-tool.controller.js';
+import CurrentFeatureAnalyzerController from './controllers/current-feature-analyzer.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 
 // 路由
@@ -115,6 +116,7 @@ import contractV2Routes from './routes/contract-v2.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import elsRoutes from './routes/els.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
+import currentFeatureAnalyzerRoutes from './routes/current-feature-analyzer.routes.js';
 import appClockRoutes from './routes/app-clock.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
@@ -414,6 +416,7 @@ class ApiServer {
       invoice: new InvoiceController(this.db),
       els: new ELSController(this.db),
       ocrTool: new OcrToolController(this.db),
+      currentFeatureAnalyzer: new CurrentFeatureAnalyzerController(this.db),
     };
   }
 
@@ -669,6 +672,11 @@ class ApiServer {
     this.app.use(ocrToolRouter.routes());
     this.app.use(ocrToolRouter.allowedMethods());
     logger.info('OCR Tool routes registered (/api/ocr/*)');
+
+    const currentFeatureAnalyzerRouter = currentFeatureAnalyzerRoutes(this.controllers.currentFeatureAnalyzer);
+    this.app.use(currentFeatureAnalyzerRouter.routes());
+    this.app.use(currentFeatureAnalyzerRouter.allowedMethods());
+    logger.info('Current Feature Analyzer routes registered (/api/apps/current-feature-analyzer/*)');
 
     const appClockRouter = appClockRoutes(this.db);
     this.app.use(appClockRouter.routes());
