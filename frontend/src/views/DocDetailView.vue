@@ -37,7 +37,7 @@
           <div class="section-card">
             <h3>正文预览</h3>
             <div v-if="markdownLoading" class="loading-state small">加载中...</div>
-            <div v-else-if="markdownPreview" class="markdown-preview">{{ markdownPreview }}</div>
+            <div v-else-if="markdownPreview" class="markdown-preview" v-html="markdownPreview"></div>
             <div v-else class="empty-state small">
               暂无预览结果，文档可能仍在处理中
               <el-tag v-if="docStore.isPolling" type="warning" size="small" class="polling-tag">轮询中</el-tag>
@@ -186,22 +186,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
+import { ErrorCode } from '@/types'
+import { getErrorMessage as getUiErrorMessage } from '@/utils/errorMessages'
 
 const route = useRoute()
 const router = useRouter()
 const docStore = useDocStore()
+const markdownFormatter = useMarkdownFormatter()
 const markdownPreview = ref('')
 const markdownLoading = ref(false)
 const outlineLoading = ref(false)
 const chunkLoading = ref(false)
+let markdownPreviewRequestId = 0
 
 const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
-const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk', 'pending_embedding', 'pending_relocate']
+const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding']
 
 const isLongRunning = computed(() => {
   const status = docStore.currentResult?.processing?.status
@@ -251,15 +256,17 @@ function downloadAttachment(url?: string) {
   window.open(url, '_blank')
 }
 
+function showDocError(message: string | null | undefined, fallback: string) {
+  ElMessage.error(message || fallback || getUiErrorMessage(ErrorCode.UNKNOWN_ERROR))
+}
+
 function processingLabel(status?: string) {
   if (status === 'pending_ocr') return '待OCR'
   if (status === 'ocr_processing') return 'OCR处理中'
   if (status === 'pending_clean') return '待文本清洗'
-  if (status === 'pending_metadata') return '待元数据'
   if (status === 'pending_outline') return '待章节提取'
   if (status === 'pending_chunk') return '待文本分块'
   if (status === 'pending_embedding') return '待向量化'
-  if (status === 'pending_relocate') return '待迁移'
   if (status === 'ready') return '已就绪'
   if (status === 'error') return '处理失败'
   return status || '-'
@@ -268,7 +275,7 @@ function processingLabel(status?: string) {
 function processingTagType(status?: string) {
   if (status === 'ready') return 'success'
   if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
-  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_metadata') return 'info'
+  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_embedding') return 'info'
   if (status === 'error') return 'danger'
   return 'info'
 }
@@ -292,7 +299,7 @@ async function onDeleteDocument() {
 
     const ok = await docStore.removeDocument(current.id)
     if (!ok) {
-      ElMessage.error(docStore.error || '删除文档失败')
+      showDocError(docStore.error, '删除文档失败')
       return
     }
 
@@ -305,29 +312,56 @@ async function onDeleteDocument() {
     }
   } catch (error: unknown) {
     if (error === 'cancel' || error === 'close') return
-    ElMessage.error(docStore.error || '删除文档失败')
+    showDocError(docStore.error, '删除文档失败')
   }
 }
 
 async function loadMarkdownPreview() {
-    const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
-    if (!attachment?.id) {
+  const requestId = ++markdownPreviewRequestId
+  const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
+  if (!attachment?.id) {
+    if (requestId === markdownPreviewRequestId) {
+      markdownPreview.value = ''
+      markdownLoading.value = false
+    }
+    return
+  }
+
+  markdownLoading.value = true
+  try {
+    const response = await apiClient.get(`/attachments/${attachment.id}/content`, {
+      responseType: 'text',
+    })
+    const rawMarkdown = typeof response.data === 'string' ? response.data : ''
+    if (requestId === markdownPreviewRequestId) {
+      markdownPreview.value = rawMarkdown ? markdownFormatter.formatMessage(rawMarkdown) : ''
+    }
+  } catch {
+    if (requestId === markdownPreviewRequestId) {
+      markdownPreview.value = ''
+    }
+  } finally {
+    if (requestId === markdownPreviewRequestId) {
+      markdownLoading.value = false
+    }
+  }
+}
+
+watch(
+  () => docStore.currentResult?.ocr_result?.main_markdown_attachment?.id,
+  async (attachmentId, previousAttachmentId) => {
+    if (!attachmentId) {
       markdownPreview.value = ''
       return
     }
 
-    markdownLoading.value = true
-    try {
-      const response = await apiClient.get(`/attachments/${attachment.id}/content`, {
-        responseType: 'text',
-      })
-      markdownPreview.value = response.data || ''
-    } catch {
-      markdownPreview.value = ''
-    } finally {
-      markdownLoading.value = false
+    if (attachmentId === previousAttachmentId && markdownPreview.value) {
+      return
     }
-  }
+
+    await loadMarkdownPreview()
+  },
+)
 
   async function onExtractOutline() {
     const revId = docStore.currentResult?.revision?.id
@@ -339,7 +373,7 @@ async function loadMarkdownPreview() {
         ElMessage.success(`成功提取 ${result.outline_count} 个章节${result.partial ? '（部分成功）' : ''}`)
         await loadMarkdownPreview()
       } else {
-        ElMessage.error(docStore.error || '章节提取失败')
+        showDocError(docStore.error, '章节提取失败')
       }
     } finally {
       outlineLoading.value = false
@@ -356,7 +390,7 @@ async function loadMarkdownPreview() {
         ElMessage.success(`成功生成 ${result.chunk_count} 个分块`)
         await loadMarkdownPreview()
       } else {
-        ElMessage.error(docStore.error || '分块生成失败')
+        showDocError(docStore.error, '分块生成失败')
       }
     } finally {
       chunkLoading.value = false

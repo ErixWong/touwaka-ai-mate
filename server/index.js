@@ -43,6 +43,7 @@ import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
+import AppRouterLoader from '../lib/app-router-loader.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
 import Router from '@koa/router';
@@ -72,6 +73,8 @@ import AssistantController from './controllers/assistant.controller.js';
 import AttachmentController from './controllers/attachment.controller.js';
 import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
+import AppRegistryController from './controllers/app-registry.controller.js';
+import AppBackupController from './controllers/app-backup.controller.js';
 import ContractV2Controller from './controllers/contract-v2.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
 import ELSController from './controllers/els.controller.js';
@@ -110,6 +113,8 @@ import attachmentRoutes from './routes/attachment.routes.js';
 import attachmentStaticRoutes from './routes/attachment-static.routes.js';
 import miniAppRoutes from './routes/mini-app.routes.js';
 import appMarketRoutes from './routes/app-market.routes.js';
+import appRegistryRoutes from './routes/app-registry.routes.js';
+import appBackupRoutes from './routes/app-backup.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
 import contractV2Routes from './routes/contract-v2.routes.js';
@@ -254,6 +259,7 @@ class ApiServer {
     this.residentSkillManager = null;
     this.tokenCleanupJob = null;
     this.appClock = null;
+    this.appRouterLoader = null;
     this.controllers = {};
   }
 
@@ -412,6 +418,8 @@ class ApiServer {
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
       appMarket: new AppMarketController(this.db),
+      appRegistry: new AppRegistryController(this.db),
+      appBackup: new AppBackupController(this.db),
       contractV2: new ContractV2Controller(this.db),
       invoice: new InvoiceController(this.db),
       els: new ELSController(this.db),
@@ -478,7 +486,7 @@ class ApiServer {
   /**
    * 设置路由
    */
-  setupRoutes() {
+  async setupRoutes() {
     // 健康检查
     this.app.use(async (ctx, next) => {
       if (ctx.path === '/api/health') {
@@ -627,6 +635,24 @@ class ApiServer {
     this.app.use(utilityRouter.routes());
     this.app.use(utilityRouter.allowedMethods());
     logger.info('Utility routes registered (GET /api/newid)');
+
+    // App Registry 路由（新架构）
+    const appRegistryRouter = appRegistryRoutes(this.controllers.appRegistry);
+    this.app.use(appRegistryRouter.routes());
+    this.app.use(appRegistryRouter.allowedMethods());
+    logger.info('App Registry routes registered (/api/apps/*)');
+
+    // App Backup 路由（新架构）
+    this.appRouterLoader = new AppRouterLoader(this.db, this.app);
+    this.appRouterLoader.setAuthMiddleware(authMiddleware.authenticate);
+    
+    const mountedCount = await this.appRouterLoader.mountAllApps();
+    logger.info(`[Startup] AppRouterLoader mounted ${mountedCount} app routes`);
+
+    const appBackupRouter = appBackupRoutes(this.controllers.appBackup);
+    this.app.use(appBackupRouter.routes());
+    this.app.use(appBackupRouter.allowedMethods());
+    logger.info('App Backup routes registered (/api/app-backup/*)');
 
     // Mini App 平台路由（Issue #603）
     const miniAppRouter = miniAppRoutes(this.controllers.miniApp);

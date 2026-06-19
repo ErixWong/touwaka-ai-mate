@@ -280,6 +280,34 @@ onMounted(async () => {
   min-height: 0;
 }
 
+.chat-body-wrapper :deep(.splitpanes__splitter) {
+  position: relative;
+  flex: 0 0 16px;
+  width: 16px;
+  margin: 0 -6px;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.chat-body-wrapper :deep(.splitpanes__splitter::before) {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: calc(100% - 32px);
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--border-color, #d1d5db);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-body-wrapper :deep(.splitpanes__splitter:hover::before),
+.chat-body-wrapper :deep(.splitpanes__splitter:active::before) {
+  background: var(--primary-color, #2563eb);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
 .chat-body-wrapper :deep(.splitpanes__pane) {
   min-height: 0;
   display: flex;

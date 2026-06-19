@@ -1,12 +1,21 @@
 {
   "id": "contract-mgr-v2",
   "name": "销售合同管理 v2",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "支持组织层级、多版本管理、AI问答的销售合同管理系统",
   "icon": "📋",
   "type": "document",
   "author": "Touwaka Team",
   "license": "MIT",
+  "runtime": {
+    "tick": "tick/index.js",
+    "server": {
+      "routes": "server/routes.js"
+    },
+    "backup": {
+      "export": "backup/export.js"
+    }
+  },
   "keywords": [
     "合同",
     "文档",
