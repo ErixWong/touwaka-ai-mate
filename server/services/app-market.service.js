@@ -414,8 +414,12 @@ class AppMarketService {
         'utf-8'
       );
       
-      // 9. 安装 handlers（用于状态流转执行）
-      const { handlerIdMap } = await this.installHandlers(appId, manifest);
+      // 9. 安装 handlers（仅传统的状态机 app，runtime app 跳过）
+      let handlerIdMap = new Map();
+      if (!manifest.runtime) {
+        const result = await this.installHandlers(appId, manifest);
+        handlerIdMap = result.handlerIdMap;
+      }
 
       // 10. 插入数据库（extension_tables 存入 config）
       const config = {
@@ -424,8 +428,10 @@ class AppMarketService {
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
 
-      // 11. 安装状态定义（用于 createRecord 初始状态与配置界面）
-      await this.installStates(appId, manifest, handlerIdMap);
+      // 11. 安装状态定义（仅传统的状态机 app，runtime app 跳过）
+      if (!manifest.runtime) {
+        await this.installStates(appId, manifest, handlerIdMap);
+      }
       
       // 12. 注册到 app_clock_registry
       await this.registerToClockRegistry(appId);
