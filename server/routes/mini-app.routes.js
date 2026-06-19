@@ -18,37 +18,97 @@ export default (controller) => {
   router.put('/api/mini-apps/:appId/config', authenticate(), requireAdmin(), (ctx) => controller.updateAppConfig(ctx));
   router.get('/api/mini-apps/:appId/available-resources', authenticate(), requireAdmin(), (ctx) => controller.getAvailableResources(ctx));
 
-  // ==================== Record CRUD ====================
+  // ==================== Record CRUD (COMPATIBILITY - 旧 app 过渡兼容，新 app 使用自己的 API) ====================
 
-  router.get('/api/mini-apps/:appId/data', authenticate(), (ctx) => controller.listRecords(ctx));
-  router.get('/api/mini-apps/:appId/data/:recordId', authenticate(), (ctx) => controller.getRecord(ctx));
-  router.post('/api/mini-apps/:appId/data', authenticate(), (ctx) => controller.createRecord(ctx));
-  router.put('/api/mini-apps/:appId/data/:recordId', authenticate(), (ctx) => controller.updateRecord(ctx));
-  router.delete('/api/mini-apps/:appId/data/:recordId', authenticate(), (ctx) => controller.deleteRecord(ctx));
+  router.get('/api/mini-apps/:appId/data', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy mini_app_rows model, new apps should use own API via /api/apps/:appId/*');
+    return controller.listRecords(ctx);
+  });
+  router.get('/api/mini-apps/:appId/data/:recordId', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy mini_app_rows model');
+    return controller.getRecord(ctx);
+  });
+  router.post('/api/mini-apps/:appId/data', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy mini_app_rows model');
+    return controller.createRecord(ctx);
+  });
+  router.put('/api/mini-apps/:appId/data/:recordId', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy mini_app_rows model');
+    return controller.updateRecord(ctx);
+  });
+  router.delete('/api/mini-apps/:appId/data/:recordId', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy mini_app_rows model');
+    return controller.deleteRecord(ctx);
+  });
 
-  // ==================== Batch & Status ====================
+  // ==================== Batch & Status (COMPATIBILITY - 旧 app 过渡兼容) ====================
 
-  router.post('/api/mini-apps/:appId/data/batch', authenticate(), (ctx) => controller.batchUpload(ctx));
-  router.put('/api/mini-apps/:appId/data/:recordId/confirm', authenticate(), (ctx) => controller.confirmRecord(ctx));
-  router.post('/api/mini-apps/:appId/data/:recordId/re-extract', authenticate(), requireAdmin(), (ctx) => controller.reExtractRecord(ctx));
-  router.get('/api/mini-apps/:appId/status-summary', authenticate(), (ctx) => controller.getStatusSummary(ctx));
+  router.post('/api/mini-apps/:appId/data/batch', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy batch upload, new apps should use own API');
+    return controller.batchUpload(ctx);
+  });
+  router.put('/api/mini-apps/:appId/data/:recordId/confirm', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy confirm record, state managed by app tick');
+    return controller.confirmRecord(ctx);
+  });
+  router.post('/api/mini-apps/:appId/data/:recordId/re-extract', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy re-extract, state managed by app tick');
+    return controller.reExtractRecord(ctx);
+  });
+  router.get('/api/mini-apps/:appId/status-summary', authenticate(), (ctx) => {
+    ctx.set('X-Compatibility', 'legacy status summary, apps manage their own status');
+    return controller.getStatusSummary(ctx);
+  });
 
-  // ==================== State CRUD ====================
+  // ==================== State CRUD (DEPRECATED - 新 app 不要使用) ====================
 
-  router.get('/api/mini-apps/:appId/states', authenticate(), (ctx) => controller.listStates(ctx));
-  router.post('/api/mini-apps/:appId/states', authenticate(), requireAdmin(), (ctx) => controller.createState(ctx));
-  router.put('/api/mini-apps/:appId/states/:stateId', authenticate(), requireAdmin(), (ctx) => controller.updateState(ctx));
-  router.delete('/api/mini-apps/:appId/states/:stateId', authenticate(), requireAdmin(), (ctx) => controller.deleteState(ctx));
+  router.get('/api/mini-apps/:appId/states', authenticate(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
+    return controller.listStates(ctx);
+  });
+  router.post('/api/mini-apps/:appId/states', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
+    return controller.createState(ctx);
+  });
+  router.put('/api/mini-apps/:appId/states/:stateId', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
+    return controller.updateState(ctx);
+  });
+  router.delete('/api/mini-apps/:appId/states/:stateId', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
+    return controller.deleteState(ctx);
+  });
 
-  // ==================== Handler CRUD ====================
+  // ==================== Handler CRUD (DEPRECATED - 新 app 不要使用) ====================
 
-  router.get('/api/handlers', authenticate(), requireAdmin(), (ctx) => controller.listHandlers(ctx));
-  router.get('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => controller.getHandler(ctx));
-  router.post('/api/handlers', authenticate(), requireAdmin(), (ctx) => controller.createHandler(ctx));
-  router.put('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => controller.updateHandler(ctx));
-  router.delete('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => controller.deleteHandler(ctx));
-  router.get('/api/handlers/:handlerId/logs', authenticate(), requireAdmin(), (ctx) => controller.getHandlerLogs(ctx));
-  router.post('/api/handlers/:handlerId/test', authenticate(), requireAdmin(), (ctx) => controller.testHandler(ctx));
+  router.get('/api/handlers', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler is legacy, handlers are now app-internal');
+    return controller.listHandlers(ctx);
+  });
+  router.get('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler is legacy');
+    return controller.getHandler(ctx);
+  });
+  router.post('/api/handlers', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler is legacy');
+    return controller.createHandler(ctx);
+  });
+  router.put('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler is legacy');
+    return controller.updateHandler(ctx);
+  });
+  router.delete('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler is legacy');
+    return controller.deleteHandler(ctx);
+  });
+  router.get('/api/handlers/:handlerId/logs', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler logs are legacy, use app_tick_log');
+    return controller.getHandlerLogs(ctx);
+  });
+  router.post('/api/handlers/:handlerId/test', authenticate(), requireAdmin(), (ctx) => {
+    ctx.set('X-Deprecated', 'app_row_handler is legacy');
+    return controller.testHandler(ctx);
+  });
 
   // ==================== Extension Tables ====================
 
