@@ -527,19 +527,20 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { useTaskStore } from '@/stores/task'
 import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 import CodePreview from '@/components/CodePreview.vue'
 import type { Task, TaskFile, TaskStatus } from '@/types'
 import { renderMermaidInHtml } from '@/utils/mermaid'
+import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
 const toast = useToastStore()
+const markdownFormatter = useMarkdownFormatter()
 
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'active' | 'archived'>('all')
@@ -1198,7 +1199,7 @@ const parseCSV = (content: string): string[][] => {
       }
     }
     cells.push(current.trim())
-    if (cells.length > 0 && cells.some(c => c !== '')) {
+    if (cells.some(c => c !== '')) {
       rows.push(cells)
     }
   }
@@ -1234,24 +1235,7 @@ marked.setOptions({
 const renderMarkdown = (content: string): string => {
   if (!content) return ''
   try {
-    const rawHtml = marked.parse(content) as string
-    return DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code',
-        'a', 'img',
-        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'class',
-        'target', 'rel',
-        'width', 'height'
-      ],
-      ALLOW_DATA_ATTR: true,
-    })
+    return markdownFormatter.formatMessage(content)
   } catch (error) {
     console.error('Markdown parsing error:', error)
     return content
@@ -1275,35 +1259,8 @@ const renderMarkdownWithMermaid = async (content: string): Promise<void> => {
   }
   
   try {
-    // 先进行基础 Markdown 渲染
-    const rawHtml = marked.parse(content) as string
-    
-    // 使用 DOMPurify 进行 XSS 清理（允许更多标签用于 Mermaid）
-    let cleanHtml = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code',
-        'a', 'img',
-        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'div', 'span',
-        'svg', 'path', 'g', 'rect', 'circle', 'text', 'tspan', 'polygon', 'line', 'polyline', 'ellipse', 'foreignObject', 'tbody'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'class',
-        'target', 'rel',
-        'width', 'height',
-        'd', 'transform', 'fill', 'stroke', 'stroke-width', 'viewBox',
-        'x', 'y', 'x1', 'y1', 'x2', 'y2',
-        'cx', 'cy', 'r', 'rx', 'ry',
-        'points', 'id', 'style', 'text-anchor', 'font-size', 'font-family', 'font-weight',
-        'xmlns', 'version'
-      ],
-      ALLOW_DATA_ATTR: true,
-    })
-    
-    // 如果包含 Mermaid 代码块，进行异步渲染
+    let cleanHtml = markdownFormatter.formatMessage(content)
+
     if (containsMermaid(content)) {
       cleanHtml = await renderMermaidInHtml(cleanHtml)
     }
