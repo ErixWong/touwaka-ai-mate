@@ -2054,7 +2054,47 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== 清理旧 doc_* 表（彻底替换） ====================
+  // 41. contract-mgr-v2 content_id 迁移铺路
+  {
+    name: 'app_contract_mgr_v2_content add content_id',
+    check: async (conn) => {
+      const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
+      if (!hasCol) return false;
+      const [rows] = await conn.execute(
+        `SELECT COUNT(*) AS cnt FROM app_contract_mgr_v2_content WHERE content_id = ''`
+      );
+      if (rows[0].cnt > 0) return false;
+      return await hasIndex(conn, 'app_contract_mgr_v2_content', 'uk_content_id');
+    },
+    migrate: async (conn) => {
+      const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
+      if (!hasCol) {
+        await conn.execute(
+          `ALTER TABLE app_contract_mgr_v2_content
+           ADD COLUMN content_id VARCHAR(32) NOT NULL DEFAULT '' AFTER row_id`
+        );
+      }
+      const [emptyRows] = await conn.execute(
+        `SELECT row_id FROM app_contract_mgr_v2_content WHERE content_id = ''`
+      );
+      for (const row of emptyRows) {
+        const newId = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
+        await conn.execute(
+          `UPDATE app_contract_mgr_v2_content SET content_id = ? WHERE row_id = ?`,
+          [newId, row.row_id]
+        );
+      }
+      if (!(await hasIndex(conn, 'app_contract_mgr_v2_content', 'uk_content_id'))) {
+        await conn.execute(
+          `ALTER TABLE app_contract_mgr_v2_content
+           ADD UNIQUE KEY uk_content_id (content_id)`
+        );
+      }
+      console.log('  ✓ Added content_id to app_contract_mgr_v2_content and populated existing rows');
+    },
+  },
+
+// ==================== 清理旧 doc_* 表（彻底替换） ====================
 
   // 34. 删除旧 doc_chunks 表
   {
