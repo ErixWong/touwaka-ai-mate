@@ -11,8 +11,6 @@ import {
   updateContract,
   deleteContract,
   createVersion,
-  listVersions,
-  updateVersion,
   approveVersion,
   setCurrentVersion,
   deleteVersion,

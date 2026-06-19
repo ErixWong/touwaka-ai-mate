@@ -13,8 +13,7 @@ export async function tick(context) {
   const documents = await services.query(
     `SELECT id, processing_status, current_revision_id
      FROM documents
-     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_metadata', 'pending_outline', 'pending_chunk')
-     -- NOTE: pending_embedding / pending_relocate 暂不在此调度器范围内，等待对应 handler 实现
+     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding')
        AND current_revision_id IS NOT NULL
      ORDER BY processing_updated_at ASC
      LIMIT ?`,
@@ -27,9 +26,10 @@ export async function tick(context) {
 
   let submitted = 0;
   let synced = 0;
-  let skipped = 0;
+  let autoAdvanced = 0;
   let outlineExtracted = 0;
   let chunksGenerated = 0;
+  let embeddingsGenerated = 0;
   let failed = 0;
 
   const advancer = new DocPipelineAdvancer(context.db);
@@ -50,10 +50,10 @@ export async function tick(context) {
         continue;
       }
 
-      if (doc.processing_status === 'pending_clean' || doc.processing_status === 'pending_metadata') {
+      if (doc.processing_status === 'pending_clean') {
         await recordPassThroughRun(services, doc);
         await advancer.advanceToNext(doc.id);
-        skipped += 1;
+        autoAdvanced += 1;
         continue;
       }
 
@@ -80,6 +80,20 @@ export async function tick(context) {
           initiatedById: null,
         });
         chunksGenerated += 1;
+        continue;
+      }
+
+      if (doc.processing_status === 'pending_embedding') {
+        if (!services.documentEmbedding) {
+          failed += 1;
+          continue;
+        }
+        const embeddingResult = await services.documentEmbedding.processDocument(doc.id);
+        if (embeddingResult?.success) {
+          embeddingsGenerated += 1;
+        } else if (!embeddingResult?.skipped) {
+          failed += 1;
+        }
       }
     } catch (error) {
       failed += 1;
@@ -96,9 +110,10 @@ export async function tick(context) {
     processed: documents.length,
     submitted,
     synced,
-    skipped,
+    autoAdvanced,
     outlineExtracted,
     chunksGenerated,
+    embeddingsGenerated,
     failed,
   };
 }

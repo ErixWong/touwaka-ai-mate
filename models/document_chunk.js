@@ -8,7 +8,7 @@ export default class document_chunk extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "分段ID"
+      comment: "分块ID"
     },
     revision_id: {
       type: DataTypes.STRING(32),
@@ -31,12 +31,12 @@ export default class document_chunk extends Model {
     title: {
       type: DataTypes.STRING(500),
       allowNull: true,
-      comment: "标题"
+      comment: "分块标题"
     },
     content: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "内容"
+      comment: "分块内容"
     },
     seq: {
       type: DataTypes.INTEGER,
@@ -64,6 +64,11 @@ export default class document_chunk extends Model {
       allowNull: true,
       comment: "字节数"
     },
+    token_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "Token数"
+    },
     embedding_vector: {
       type: "VECTOR(1536)",
       allowNull: true,
@@ -84,11 +89,6 @@ export default class document_chunk extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       comment: "向量生成时间"
-    },
-    token_count: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: "Token数"
     },
     created_at: {
       type: DataTypes.DATE,

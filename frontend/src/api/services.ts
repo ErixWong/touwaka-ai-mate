@@ -602,8 +602,8 @@ export const taskApi = {
     apiRequest<{ token: string; expires_at: string }>(apiClient.get(`/tasks/${id}/preview-token`)),
 
   // 刷新预览 Token
-  refreshPreviewToken: (id: string) =>
-    apiRequest<{ token: string; expires_at: string }>(apiClient.post(`/tasks/${id}/preview-token/refresh`)),
+  refreshPreviewToken: (id: string, oldToken: string) =>
+    apiRequest<{ token: string; expires_at: string }>(apiClient.post(`/tasks/${id}/preview-token/refresh`, { oldToken })),
 }
 
 // ============================================

@@ -435,9 +435,13 @@ onUnmounted(() => {
 <style scoped>
 .assistant-tab {
   position: relative;
+  width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
+  box-sizing: border-box;
 }
 
 .loading-state {
@@ -467,6 +471,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Section 样式 */

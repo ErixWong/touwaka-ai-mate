@@ -83,13 +83,6 @@ export default class app_contract_mgr_v2_row extends Model {
         ]
       },
       {
-        name: "idx_party_b",
-        using: "BTREE",
-        fields: [
-          { name: "party_b" },
-        ]
-      },
-      {
         name: "idx_contract_amount",
         using: "BTREE",
         fields: [
@@ -101,6 +94,13 @@ export default class app_contract_mgr_v2_row extends Model {
         using: "BTREE",
         fields: [
           { name: "contract_date" },
+        ]
+      },
+      {
+        name: "idx_party_b",
+        using: "BTREE",
+        fields: [
+          { name: "party_b" },
         ]
       },
     ]

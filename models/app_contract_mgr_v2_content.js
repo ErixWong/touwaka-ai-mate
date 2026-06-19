@@ -14,15 +14,16 @@ export default class app_contract_mgr_v2_content extends Model {
       allowNull: true,
       defaultValue: "pending_ocr"
     },
+    document_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "Doc平台文档ID"
+    },
     ocr_task_id: {
       type: DataTypes.TEXT,
       allowNull: true
     },
     file_id: {
-      type: DataTypes.STRING(32),
-      allowNull: true
-    },
-    document_id: {
       type: DataTypes.STRING(32),
       allowNull: true
     },
@@ -61,7 +62,13 @@ export default class app_contract_mgr_v2_content extends Model {
     },
     extract_prompt: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "提取提示词"
+    },
+    classification_json: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "版本识别建议"
     },
     extract_json: {
       type: DataTypes.TEXT,
@@ -77,10 +84,6 @@ export default class app_contract_mgr_v2_content extends Model {
     },
     extract_at: {
       type: DataTypes.DATE,
-      allowNull: true
-    },
-    classification_json: {
-      type: DataTypes.TEXT,
       allowNull: true
     },
     created_at: {
@@ -112,6 +115,13 @@ export default class app_contract_mgr_v2_content extends Model {
         using: "BTREE",
         fields: [
           { name: "process_step" },
+        ]
+      },
+      {
+        name: "idx_document_id",
+        using: "BTREE",
+        fields: [
+          { name: "document_id" },
         ]
       },
     ]

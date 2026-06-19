@@ -36,7 +36,7 @@ export default class document_revision extends Model {
       comment: "版本状态"
     },
     is_current: {
-      type: DataTypes.TINYINT,
+      type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: 0,
       comment: "是否当前版本"
@@ -78,7 +78,7 @@ export default class document_revision extends Model {
       comment: "版本差异状态(旁路)"
     },
     metadata: {
-      type: DataTypes.JSON,
+      type: DataTypes.TEXT,
       allowNull: true,
       comment: "扩展字段"
     },

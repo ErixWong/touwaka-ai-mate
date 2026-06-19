@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "updated_at": "2026-04-17T17:20:00Z",
+  "updated_at": "2026-06-19T05:01:00Z",
   "registry_url": "https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps",
   "apps": [
     {
@@ -93,6 +93,19 @@
       "tags": ["简历", "筛选", "招聘", "AI", "匹配"],
       "path": "apps/resume-fast-screening",
       "manifest_url": "apps/resume-fast-screening/manifest.json"
+    },
+    {
+      "id": "current-feature-analyzer",
+      "name": "电流采样特征分析",
+      "version": "0.1.0",
+      "icon": "📈",
+      "type": "utility",
+      "description": "批量上传 CSV，执行快速矢量化、规则驱动阶段识别与统计报告输出的分析工具",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["电流", "CSV", "阶段识别", "信号分析", "LLM", "报告"],
+      "path": "apps/current-feature-analyzer",
+      "manifest_url": "apps/current-feature-analyzer/manifest.json"
     }
   ],
   "categories": [
@@ -103,7 +116,7 @@
     { "id": "workflow", "name": "工作流", "icon": "🔄", "description": "流程审批、状态流转、智能匹配" }
   ],
   "metadata": {
-    "total_apps": 7,
+    "total_apps": 8,
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }

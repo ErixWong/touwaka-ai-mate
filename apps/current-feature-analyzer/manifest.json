@@ -1,0 +1,71 @@
+{
+  "id": "current-feature-analyzer",
+  "name": "电流采样特征分析",
+  "version": "0.1.0",
+  "description": "批量上传 CSV，执行快速矢量化、规则驱动阶段识别与统计报告输出的分析工具",
+  "icon": "📈",
+  "type": "utility",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "tags": [
+    "电流",
+    "CSV",
+    "阶段识别",
+    "信号分析",
+    "LLM",
+    "报告"
+  ],
+  "path": "apps/current-feature-analyzer",
+  "compatibility": {
+    "min_platform_version": "2.0.0",
+    "requires": {
+      "mcp": [],
+      "skills": []
+    }
+  },
+  "custom_handlers": {},
+  "fields": [],
+  "extension_tables": [],
+  "migrations": {},
+  "config": {
+    "enabled": true,
+    "features": [
+      "csv_upload",
+      "rule_set_select",
+      "rule_set_admin",
+      "single_file_analysis",
+      "batch_analysis",
+      "vector_compression",
+      "llm_stage_recognition",
+      "stage_metrics",
+      "excel_export",
+      "admin_config_modal"
+    ],
+    "llm_model_id": null,
+    "temperature": 0.2,
+    "max_tokens": 8000,
+    "timeout_ms": 120000,
+    "retry_times": 2,
+    "enable_json_repair": true,
+    "default_rule_set_id": null,
+    "absolute_resolution": 0.03,
+    "relative_resolution": 0.02,
+    "merge_gap_ratio": 0.6,
+    "min_transition_points": 3,
+    "analysis_prompt_template": "",
+    "json_output_schema": "",
+    "ui": {
+      "show_ripple_rate": true,
+      "show_llm_reason": true,
+      "auto_select_first_file": true
+    },
+    "export": {
+      "format": "xlsx",
+      "sheet_stage_detail_name": "stage_detail",
+      "sheet_summary_name": "summary"
+    }
+  },
+  "states": [],
+  "component": "CurrentFeatureAnalyzerView",
+  "visibility": "all"
+}

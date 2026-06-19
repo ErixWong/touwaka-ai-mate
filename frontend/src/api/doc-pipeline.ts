@@ -107,7 +107,8 @@ export interface DocPipelineEmbeddingStage {
   batch_size: number
   skip_empty_chunks: boolean
   retry_times: number
-  timeout_ms: number
+  embedding_timeout_ms: number
+  timeout_ms?: number
 }
 
 export interface DocPipelineRelocateStage {

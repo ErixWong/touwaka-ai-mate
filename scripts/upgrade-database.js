@@ -133,18 +133,6 @@ async function safeExecute(connection, sql, errorMessages = ['Duplicate', 'alrea
   }
 }
 
-/**
- * 仅在外键存在时删除，避免不同历史库状态下直接 DROP FOREIGN KEY 失败
- */
-async function dropForeignKeyIfExists(connection, tableName, constraintName) {
-  const exists = await hasForeignKey(connection, tableName, constraintName);
-  if (!exists) {
-    return false;
-  }
-  await connection.execute(`ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName}`);
-  return true;
-}
-
 async function getAnyExistingUserId(connection) {
   const [rows] = await connection.execute(
     `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`
@@ -165,6 +153,66 @@ async function getAnyExistingUserId(connection) {
  *    - migrate: 迁移函数，执行实际的数据库变更
  */
 const MIGRATIONS = [
+  // ==================== 专家聊天请求持久化 ====================
+  {
+    name: 'create chat_requests table',
+    check: async (conn) => await hasTable(conn, 'chat_requests'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE chat_requests (
+          request_id VARCHAR(64) NOT NULL,
+          original_request_id VARCHAR(64) NULL,
+          topic_id VARCHAR(32) NULL,
+          user_id VARCHAR(32) NOT NULL,
+          expert_id VARCHAR(32) NOT NULL,
+          model_id VARCHAR(32) NULL,
+          task_id VARCHAR(32) NULL,
+          user_message_id VARCHAR(32) NULL,
+          assistant_message_id VARCHAR(32) NULL,
+          status ENUM('accepted','running','completed','failed','stopped','timeout') NOT NULL DEFAULT 'accepted',
+          content TEXT NOT NULL,
+          working_path TEXT NULL,
+          error_message TEXT NULL,
+          created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          started_at DATETIME NULL,
+          completed_at DATETIME NULL,
+          PRIMARY KEY (request_id),
+          KEY idx_chat_request_user (user_id),
+          KEY idx_chat_request_expert (expert_id),
+          KEY idx_chat_request_topic (topic_id),
+          KEY idx_chat_request_status (status),
+          KEY idx_chat_request_created (created_at),
+          KEY idx_chat_request_original (original_request_id),
+          KEY idx_chat_request_user_message (user_message_id),
+          KEY idx_chat_request_assistant_message (assistant_message_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created chat_requests table');
+    }
+  },
+  {
+    name: 'messages.request_id add request mapping',
+    check: async (conn) => await hasColumn(conn, 'messages', 'request_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN request_id VARCHAR(64) NULL COMMENT '所属聊天请求ID' AFTER id
+      `);
+      console.log('  ✓ Added messages.request_id column');
+    }
+  },
+  {
+    name: 'messages.request_id add index',
+    check: async (conn) => await hasIndex(conn, 'messages', 'idx_request'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD INDEX idx_request (request_id)
+      `);
+      console.log('  ✓ Added messages.idx_request index');
+    }
+  },
   // ==================== 助理表 ID 字段重命名 ====================
   // 将 assistant_type 重命名为 id
   {
@@ -1571,7 +1619,7 @@ const MIGRATIONS = [
           source_system VARCHAR(50) NOT NULL COMMENT '来源系统',
           source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键',
           title VARCHAR(500) NOT NULL COMMENT '文档标题',
-          processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_chunk','pending_embedding','pending_relocate','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
+          processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
           processing_error_code VARCHAR(64) NULL COMMENT '错误码',
           processing_error_message TEXT NULL COMMENT '错误信息',
           processing_retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
@@ -2160,7 +2208,7 @@ const MIGRATIONS = [
             source_system VARCHAR(50) NOT NULL COMMENT '来源系统',
             source_ref_id VARCHAR(32) NOT NULL COMMENT '来源主键',
             title VARCHAR(500) NOT NULL COMMENT '文档标题',
-            processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_metadata','pending_outline','pending_chunk','pending_embedding','pending_relocate','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
+            processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error') NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态',
             processing_error_code VARCHAR(64) NULL COMMENT '错误码',
             processing_error_message TEXT NULL COMMENT '错误信息',
             processing_retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
@@ -2491,6 +2539,87 @@ const MIGRATIONS = [
         console.log('  ⏭️  No timeout.remote_llm to migrate');
       }
     },
+  },
+  {
+    name: 'documents.processing_status enum simplify',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'documents', 'processing_status');
+      if (!columnType) return false;
+      return columnType === "enum('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error')";
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `UPDATE documents
+         SET processing_status = CASE
+           WHEN processing_status = 'pending_metadata' THEN 'pending_outline'
+           WHEN processing_status = 'pending_relocate' THEN 'ready'
+           ELSE processing_status
+         END
+         WHERE processing_status IN ('pending_metadata', 'pending_relocate')`
+      );
+
+      await conn.execute(
+        `ALTER TABLE documents
+         MODIFY COLUMN processing_status ENUM('pending_ocr','ocr_processing','pending_clean','pending_outline','pending_chunk','pending_embedding','ready','error')
+         NOT NULL DEFAULT 'pending_ocr' COMMENT '处理状态'`
+      );
+      console.log('  ✓ Simplified documents.processing_status enum and migrated legacy states');
+    },
+  },
+
+  // 40. current-feature-analyzer 规则集持久化表
+  {
+    name: 'app_current_feature_rule_sets & app_current_feature_rule_stages tables',
+    check: async (conn) =>
+      await hasTable(conn, 'app_current_feature_rule_sets') &&
+      await hasTable(conn, 'app_current_feature_rule_stages'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_current_feature_rule_sets (
+          id VARCHAR(32) NOT NULL COMMENT '主键ID，使用 Utils.newID()',
+          rule_set_name VARCHAR(128) NOT NULL COMMENT '规则集名称',
+          description TEXT NULL COMMENT '规则集描述',
+          business_context TEXT NULL COMMENT '业务背景说明',
+          prompt_template LONGTEXT NOT NULL COMMENT '阶段识别 Prompt 模板',
+          output_json_schema LONGTEXT NULL COMMENT '期望输出 JSON Schema 文本',
+          llm_instructions LONGTEXT NULL COMMENT '对 LLM 的额外约束说明',
+          is_default BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否默认规则集',
+          is_enabled BIT(1) NOT NULL DEFAULT b'1' COMMENT '是否启用',
+          created_by VARCHAR(32) NULL COMMENT '创建人ID',
+          updated_by VARCHAR(32) NULL COMMENT '更新人ID',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+          PRIMARY KEY (id),
+          KEY idx_app_current_feature_rule_sets_default (is_default),
+          KEY idx_app_current_feature_rule_sets_enabled (is_enabled)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='电流采样特征分析-规则集主表'
+      `);
+      console.log('  ✓ Created app_current_feature_rule_sets table');
+
+      await conn.execute(`
+        CREATE TABLE app_current_feature_rule_stages (
+          id VARCHAR(32) NOT NULL COMMENT '主键ID，使用 Utils.newID()',
+          rule_set_id VARCHAR(32) NOT NULL COMMENT '所属规则集ID',
+          stage_code VARCHAR(64) NOT NULL COMMENT '阶段编码',
+          stage_name VARCHAR(128) NOT NULL COMMENT '阶段名称',
+          stage_order INT NOT NULL COMMENT '阶段顺序',
+          semantic_definition TEXT NOT NULL COMMENT '语义定义',
+          expected_signal_features LONGTEXT NULL COMMENT '期望信号特征，可为 JSON 文本',
+          required BIT(1) NOT NULL DEFAULT b'1' COMMENT '是否必选阶段',
+          allow_repeat BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否允许重复',
+          allow_overlap BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否允许与其他阶段重叠',
+          min_duration_ms INT NULL COMMENT '最小时长毫秒',
+          max_duration_ms INT NULL COMMENT '最大时长毫秒',
+          notes TEXT NULL COMMENT '备注',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+          PRIMARY KEY (id),
+          KEY idx_app_current_feature_rule_stages_rule_set_id (rule_set_id),
+          KEY idx_app_current_feature_rule_stages_stage_order (rule_set_id, stage_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='电流采样特征分析-规则集阶段定义表'
+      `);
+      console.log('  ✓ Created app_current_feature_rule_stages table');
+    }
   },
 
 ];
