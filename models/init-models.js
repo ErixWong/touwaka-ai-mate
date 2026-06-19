@@ -8,6 +8,8 @@ import _app_contract_mgr_content from  "./app_contract_mgr_content.js";
 import _app_contract_mgr_row from  "./app_contract_mgr_row.js";
 import _app_contract_mgr_v2_content from  "./app_contract_mgr_v2_content.js";
 import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
+import _app_current_feature_rule_set from  "./app_current_feature_rule_set.js";
+import _app_current_feature_rule_stage from  "./app_current_feature_rule_stage.js";
 import _app_doc_binding from  "./app_doc_binding.js";
 import _app_invoice_mgr_item from  "./app_invoice_mgr_item.js";
 import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
@@ -86,6 +88,8 @@ export default function initModels(sequelize) {
   const app_contract_mgr_row = _app_contract_mgr_row.init(sequelize, DataTypes);
   const app_contract_mgr_v2_content = _app_contract_mgr_v2_content.init(sequelize, DataTypes);
   const app_contract_mgr_v2_row = _app_contract_mgr_v2_row.init(sequelize, DataTypes);
+  const app_current_feature_rule_set = _app_current_feature_rule_set.init(sequelize, DataTypes);
+  const app_current_feature_rule_stage = _app_current_feature_rule_stage.init(sequelize, DataTypes);
   const app_doc_binding = _app_doc_binding.init(sequelize, DataTypes);
   const app_invoice_mgr_item = _app_invoice_mgr_item.init(sequelize, DataTypes);
   const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
@@ -387,6 +391,8 @@ export default function initModels(sequelize) {
     app_contract_mgr_row,
     app_contract_mgr_v2_content,
     app_contract_mgr_v2_row,
+    app_current_feature_rule_set,
+    app_current_feature_rule_stage,
     app_doc_binding,
     app_invoice_mgr_item,
     app_invoice_mgr_row,
