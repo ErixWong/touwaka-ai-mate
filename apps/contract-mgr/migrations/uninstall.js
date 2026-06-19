@@ -19,7 +19,7 @@ export default {
   async down(sequelize) {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_rows (
-        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_contract_mgr_records.id',
         contract_number VARCHAR(64) NULL COMMENT '合同编号',
         party_a VARCHAR(128) NULL COMMENT '甲方',
         parent_company VARCHAR(128) NULL COMMENT '上级公司',
@@ -39,7 +39,7 @@ export default {
 
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_content (
-        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_contract_mgr_records.id',
         ocr_text LONGTEXT NULL COMMENT 'OCR 原文',
         ocr_service VARCHAR(64) NULL COMMENT 'OCR 服务名称',
         ocr_at DATETIME NULL COMMENT 'OCR 时间',

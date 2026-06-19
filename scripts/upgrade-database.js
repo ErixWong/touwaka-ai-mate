@@ -2147,6 +2147,58 @@ const MIGRATIONS = [
     },
   },
 
+  // 44. invoice-mgr + contract-mgr extension 表 FK 迁移到自治表
+  {
+    name: 'app_invoice/contract extension tables FK migrate to autonomous tables',
+    check: async (conn) => {
+      const fks = [
+        { table: 'app_invoice_mgr_rows', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_invoice_mgr_items', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_content', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_rows', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_compares', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_compares', col: 'target_row_id', expectDb: 'touwaka_mate' },
+      ];
+      for (const fk of fks) {
+        const [rows] = await conn.execute(`
+          SELECT REFERENCED_TABLE_NAME
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
+        `, [fk.expectDb, fk.table, fk.col]);
+        if (rows.length > 0 && rows[0].REFERENCED_TABLE_NAME === 'mini_app_rows') {
+          return false;
+        }
+      }
+      return true;
+    },
+    migrate: async (conn) => {
+      const updates = [
+        { table: 'app_invoice_mgr_rows', col: 'row_id', ref: 'app_invoice_mgr_records', refCol: 'id' },
+        { table: 'app_invoice_mgr_items', col: 'row_id', ref: 'app_invoice_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_content', col: 'row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_rows', col: 'row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_compares', col: 'row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_compares', col: 'target_row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+      ];
+      for (const u of updates) {
+        const fkName = `fk_${u.table}_${u.col}`;
+        try {
+          await conn.execute(`ALTER TABLE \`${u.table}\` DROP FOREIGN KEY \`${fkName}\``);
+        } catch (e) {
+          const [rows] = await conn.execute(`SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = 'mini_app_rows'`, [u.table, u.col]);
+          if (rows.length > 0) {
+            await conn.execute(`ALTER TABLE \`${u.table}\` DROP FOREIGN KEY \`${rows[0].CONSTRAINT_NAME}\``);
+          }
+        }
+      }
+      for (const u of updates) {
+        const fkName = `fk_${u.table}_${u.col}`;
+        await conn.execute(`ALTER TABLE \`${u.table}\` ADD CONSTRAINT \`${fkName}\` FOREIGN KEY (\`${u.col}\`) REFERENCES \`${u.ref}\`(\`${u.refCol}\`) ON DELETE CASCADE`);
+      }
+      console.log('  ✓ Migrated extension table FKs from mini_app_rows to autonomous tables');
+    },
+  },
+
 // ==================== 清理旧 doc_* 表（彻底替换） ====================
 
   // 34. 删除旧 doc_chunks 表

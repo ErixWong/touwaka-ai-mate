@@ -57,7 +57,7 @@ export default {
     await sequelize.query(`
       ALTER TABLE app_invoice_mgr_rows
       ADD CONSTRAINT fk_app_invoice_mgr_rows_row_id
-      FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+      FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
     `);
     console.log('  ✓ Added FK for app_invoice_mgr_rows');
 
@@ -78,7 +78,7 @@ export default {
         tax_amount DECIMAL(12,2) COMMENT '税额',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_row_id (row_id),
-        FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+        FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         COMMENT='发票商品明细表'
     `);
