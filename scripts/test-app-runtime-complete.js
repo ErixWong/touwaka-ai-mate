@@ -119,9 +119,9 @@ async function runTests() {
     if (apps.some(a => a.id === appId)) {
       console.log(`\n测试 app: ${appId}`);
       await testInterface(`获取 ${appId} 详情`, 'GET', `/api/apps/${appId}`, token, 200);
-      await testInterface(`获取 ${appId} manifest`, 'GET', `/api/apps/${appId}/manifest`, token, appId === 'doc-ocr-pipeline' ? 422 : 200);
-      await testInterface(`验证 ${appId} runtime`, 'GET', `/api/apps/${appId}/validate-runtime`, token, appId === 'doc-ocr-pipeline' ? 422 : 200);
-      await testInterface(`获取 ${appId} runtime`, 'GET', `/api/apps/${appId}/runtime`, token, appId === 'doc-ocr-pipeline' ? 422 : 200);
+      await testInterface(`获取 ${appId} manifest`, 'GET', `/api/apps/${appId}/manifest`, token, 200);
+      await testInterface(`验证 ${appId} runtime`, 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
+      await testInterface(`获取 ${appId} runtime`, 'GET', `/api/apps/${appId}/runtime`, token, 200);
       await testClockInterface(`获取 ${appId} 时钟状态`, 'GET', `/api/app-clock/status/${appId}`, token, [200, 404]);
     } else {
       console.log(`⚠️ app ${appId} 未安装，跳过`);
