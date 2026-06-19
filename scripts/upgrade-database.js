@@ -2120,6 +2120,33 @@ const MIGRATIONS = [
     },
   },
 
+  // 43. contract-mgr 自治主表
+  {
+    name: 'app_contract_mgr_records table',
+    check: async (conn) => await hasTable(conn, 'app_contract_mgr_records'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS app_contract_mgr_records (
+          id VARCHAR(32) NOT NULL,
+          app_id VARCHAR(32) NOT NULL DEFAULT 'contract-mgr',
+          status VARCHAR(32) NOT NULL DEFAULT 'ocr_pending',
+          data LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_app_id_status (app_id, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      await conn.execute(`
+        INSERT IGNORE INTO app_contract_mgr_records (id, app_id, status, data, created_at, updated_at)
+        SELECT id, app_id, status, data, created_at, updated_at
+        FROM mini_app_rows
+        WHERE app_id = 'contract-mgr'
+      `);
+      console.log('  ✓ Created app_contract_mgr_records and seeded from mini_app_rows');
+    },
+  },
+
 // ==================== 清理旧 doc_* 表（彻底替换） ====================
 
   // 34. 删除旧 doc_chunks 表
