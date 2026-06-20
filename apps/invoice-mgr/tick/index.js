@@ -74,7 +74,22 @@ export async function tick(context) {
       const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
       const record = { id: row.id, status: row.status, data: recordData };
 
-      const files = await services.getFiles(row.id);
+      const [fileRows] = await services.execute(
+        `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
+         FROM attachments a
+         JOIN app_invoice_mgr_records r ON r.attachment_id = a.id
+         WHERE r.id = ?`,
+        [row.id]
+      );
+      const files = fileRows.map(r => ({
+        attachment: {
+          id: r.id,
+          file_name: r.file_name,
+          file_path: r.file_path,
+          mime_type: r.mime_type,
+          ext_name: r.ext_name,
+        },
+      }));
 
       for (const file of files) {
         if (file.attachment) {

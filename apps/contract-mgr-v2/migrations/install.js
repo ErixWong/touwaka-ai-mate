@@ -60,7 +60,7 @@ export default {
       CREATE TABLE IF NOT EXISTS contract_v2_versions (
         id VARCHAR(32) PRIMARY KEY,
         contract_id VARCHAR(32) NOT NULL COMMENT '合同主记录ID',
-        row_id VARCHAR(32) NOT NULL COMMENT 'mini_app_rows ID',
+        row_id VARCHAR(32) NOT NULL COMMENT '兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）',
         file_id VARCHAR(32) COMMENT '文件ID',
         version_number VARCHAR(16) NOT NULL COMMENT '版本号',
         version_name VARCHAR(64) COMMENT '版本名称',
@@ -82,15 +82,17 @@ export default {
         INDEX idx_row (row_id),
         INDEX idx_current (is_current),
         INDEX idx_status (version_status),
-        FOREIGN KEY (contract_id) REFERENCES contract_v2_main_records(id) ON DELETE CASCADE,
-        FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+        FOREIGN KEY (contract_id) REFERENCES contract_v2_main_records(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同版本表'
     `);
     console.log('  ✓ Created contract_v2_versions table');
 
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_content (
-        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+        row_id VARCHAR(32) NOT NULL COMMENT '兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）',
+        content_id VARCHAR(32) NOT NULL COMMENT 'app 自治内容主键',
+        PRIMARY KEY (row_id),
+        UNIQUE KEY uk_content_id (content_id),
         ocr_text LONGTEXT NULL COMMENT 'OCR 原文',
         ocr_service VARCHAR(64) NULL COMMENT 'OCR 服务',
         ocr_at DATETIME NULL COMMENT 'OCR 时间',
@@ -109,15 +111,8 @@ export default {
     console.log('  ✓ Created app_contract_mgr_v2_content table');
 
     await sequelize.query(`
-      ALTER TABLE app_contract_mgr_v2_content
-      ADD CONSTRAINT fk_app_contract_mgr_v2_content_row_id
-      FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
-    `);
-    console.log('  ✓ Added FK for app_contract_mgr_v2_content');
-
-    await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_rows (
-        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+        row_id VARCHAR(32) PRIMARY KEY COMMENT '兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）',
         contract_number VARCHAR(64) NULL COMMENT '合同编号',
         party_a VARCHAR(128) NULL COMMENT '甲方',
         parent_company VARCHAR(128) NULL COMMENT '上级公司',
@@ -132,13 +127,6 @@ export default {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同元数据扩展表'
     `);
     console.log('  ✓ Created app_contract_mgr_v2_rows table');
-
-    await sequelize.query(`
-      ALTER TABLE app_contract_mgr_v2_rows
-      ADD CONSTRAINT fk_app_contract_mgr_v2_rows_row_id
-      FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
-    `);
-    console.log('  ✓ Added FK for app_contract_mgr_v2_rows');
   },
 
   async down(sequelize) {

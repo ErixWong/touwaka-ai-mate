@@ -27,8 +27,10 @@ class MiniAppService {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.MiniAppRow = this.db.getModel('mini_app_row');
       this.models.MiniAppFile = this.db.getModel('mini_app_file');
-      this.models.AppRowHandler = this.db.getModel('app_row_handler');
-      this.models.AppState = this.db.getModel('app_state');
+      this.models.AppRowHandler = null;
+      try { this.models.AppRowHandler = this.db.getModel('app_row_handler'); } catch {}
+      this.models.AppState = null;
+      try { this.models.AppState = this.db.getModel('app_state'); } catch {}
       this.models.AppActionLog = this.db.getModel('app_action_log');
       this.models.MiniAppRoleAccess = this.db.getModel('mini_app_role_access');
       this.models.User = this.db.getModel('user');
@@ -156,12 +158,12 @@ class MiniAppService {
     const app = await this.models.MiniApp.findByPk(appId);
     if (!app) return null;
 
-    const states = await this.models.AppState.findAll({
+    const appJson = app.toJSON();
+    let states = [];
+    try { states = await this.models.AppState.findAll({
       where: { app_id: appId },
       order: [['sort_order', 'ASC']],
-    });
-
-    const appJson = app.toJSON();
+    }); } catch { /* table dropped */ }
     appJson.states = states;
 
     // 解析 config 字段（JSON 字符串 -> 对象）
@@ -327,11 +329,14 @@ class MiniAppService {
     if (appId) {
       const app = await this.models.MiniApp.findByPk(appId);
       if (app) {
-        const AppState = this.db.getModel('app_state');
-        const states = await AppState.findAll({
-          where: { app_id: appId },
-          raw: true,
-        });
+        let states = [];
+        try {
+          const AppState = this.db.getModel('app_state');
+          states = await AppState.findAll({
+            where: { app_id: appId },
+            raw: true,
+          });
+        } catch { /* table dropped by migration #45 */ }
 
         const handlerIds = states.filter(s => s.handler_id).map(s => s.handler_id);
         const uniqueHandlerIds = [...new Set(handlerIds)];
@@ -516,9 +521,10 @@ class MiniAppService {
     this.validateData(app.fields, data);
     logger.info(`[MiniAppService] Data validated`);
 
-    const initialState = await this.models.AppState.findOne({
+    let initialState = null;
+    try { initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
-    });
+    }); } catch { /* table dropped */ }
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
     // status 现在是实体字段，不放在 data 里
@@ -548,6 +554,15 @@ class MiniAppService {
         status: status,
       }, { transaction });
       logger.info(`[MiniAppService] Row created: ${record.id}`);
+
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `INSERT INTO \`${autonomousTable}\` (id, status, data) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE status = VALUES(status), data = VALUES(data)`,
+          { replacements: [rowId, status, dataStr], transaction }
+        );
+      }
 
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
       logger.info(`[MiniAppService] Extension configs: ${extConfigs?.length || 0}`);
@@ -579,6 +594,13 @@ class MiniAppService {
           }, { transaction });
         }
         logger.info(`[MiniAppService] File associations created`);
+
+        if (autonomousTable) {
+          await this.db.sequelize.query(
+            `UPDATE \`${autonomousTable}\` SET attachment_id = ? WHERE id = ?`,
+            { replacements: [attachmentIds[0], rowId], transaction }
+          );
+        }
       }
 
       await transaction.commit();
@@ -627,6 +649,14 @@ class MiniAppService {
       
       await record.update(updateFields, { transaction });
 
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `UPDATE \`${autonomousTable}\` SET status = ?, data = ? WHERE id = ?`,
+          { replacements: [options.status || record.status, JSON.stringify(mergedData), recordId], transaction }
+        );
+      }
+
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
       if (extConfigs && extConfigs.length > 0) {
         const primaryConfig = extConfigs.find(c => c.type === 'primary');
@@ -661,7 +691,25 @@ class MiniAppService {
     if (!isAdmin && record.user_id !== userId) {
       throw new Error('Permission denied');
     }
-    await record.destroy();
+
+    const transaction = await this.db.sequelize.transaction();
+    try {
+      await record.destroy({ transaction });
+
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `DELETE FROM \`${autonomousTable}\` WHERE id = ?`,
+          { replacements: [recordId], transaction }
+        );
+      }
+
+      await transaction.commit();
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+
     return true;
   }
 
@@ -683,9 +731,10 @@ class MiniAppService {
     const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
     const mergedData = { ...existingData, ...data };
 
-    const confirmedState = await this.models.AppState.findOne({
+    let confirmedState = null;
+    try { confirmedState = await this.models.AppState.findOne({
       where: { app_id: appId, is_terminal: true },
-    });
+    }); } catch { /* table dropped */ }
 
     const title = this.computeTitle(app.fields, mergedData);
 
@@ -698,6 +747,14 @@ class MiniAppService {
       },
       { where: { id: record.id } }
     );
+
+    const autonomousTable = await this.getAutonomousTableName(appId);
+    if (autonomousTable) {
+      await this.db.sequelize.query(
+        `UPDATE \`${autonomousTable}\` SET status = ?, data = ? WHERE id = ?`,
+        { replacements: [confirmedState?.name || 'confirmed', JSON.stringify(mergedData), record.id] }
+      );
+    }
 
     return await this.models.MiniAppRow.findByPk(record.id);
   }
@@ -717,9 +774,10 @@ async batchUpload(appId, userId, attachmentIds) {
     }
 
     // 默认逻辑
-    const initialState = await this.models.AppState.findOne({
+    let initialState = null;
+    try { initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
-    });
+    }); } catch { /* table dropped */ }
     const initialStatus = initialState ? initialState.name : 'pending';
 
     const records = [];
@@ -745,6 +803,15 @@ async batchUpload(appId, userId, attachmentIds) {
         app_id: appId,
         attachment_id: attId,
       });
+
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `INSERT INTO \`${autonomousTable}\` (id, status, data, attachment_id) VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE status = VALUES(status), data = VALUES(data), attachment_id = VALUES(attachment_id)`,
+          { replacements: [record.id, initialStatus, '{}', attId] }
+        );
+      }
 
       records.push(record);
     }
@@ -1421,6 +1488,20 @@ ${JSON.stringify(listB, null, 2)}
     }
 
     return '';
+  }
+
+  async getAutonomousTableName(appId) {
+    const tableName = `app_${appId.replace(/-/g, '_')}_records`;
+    try {
+      const rows = await this.db.sequelize.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+        { replacements: [tableName], type: this.db.sequelize.QueryTypes.SELECT }
+      );
+      return rows.length > 0 ? tableName : null;
+    } catch {
+      return null;
+    }
   }
 }
 

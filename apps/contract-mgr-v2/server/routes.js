@@ -1,5 +1,6 @@
 import Router from '@koa/router';
 import ContractV2Service from '../../../server/services/contract-v2.service.js';
+import { requireAdmin } from '../../../server/middlewares/auth.js';
 
 export default function createRoutes(context) {
   const router = new Router();
@@ -14,7 +15,7 @@ export default function createRoutes(context) {
     }
   });
 
-  router.post('/org-nodes', async (ctx) => {
+  router.post('/org-nodes', requireAdmin(), async (ctx) => {
     try {
       const data = ctx.request.body;
       if (!data.name || !data.node_type) {
@@ -37,7 +38,7 @@ export default function createRoutes(context) {
     }
   });
 
-  router.post('/contracts', async (ctx) => {
+  router.post('/contracts', requireAdmin(), async (ctx) => {
     try {
       const contract = await contractV2Service.createContract(ctx.request.body);
       ctx.success(contract);
@@ -55,7 +56,7 @@ export default function createRoutes(context) {
     }
   });
 
-  router.put('/contracts/:contractId', async (ctx) => {
+  router.put('/contracts/:contractId', requireAdmin(), async (ctx) => {
     try {
       const contract = await contractV2Service.updateContract(ctx.params.contractId, ctx.request.body);
       ctx.success(contract);
@@ -64,7 +65,7 @@ export default function createRoutes(context) {
     }
   });
 
-  router.delete('/contracts/:contractId', async (ctx) => {
+  router.delete('/contracts/:contractId', requireAdmin(), async (ctx) => {
     try {
       await contractV2Service.deleteContract(ctx.params.contractId);
       ctx.success(null, '删除成功');

@@ -2120,6 +2120,20 @@ const MIGRATIONS = [
     },
   },
 
+  // 42b. invoice-mgr 自治表添加 attachment_id（Phase 6 R10 去 mini_app_file 依赖）
+  {
+    name: 'app_invoice_mgr_records add attachment_id',
+    check: async (conn) => await hasColumn(conn, 'app_invoice_mgr_records', 'attachment_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_invoice_mgr_records
+        ADD COLUMN attachment_id VARCHAR(20) NULL COMMENT '附件ID' AFTER data,
+        ADD INDEX idx_attachment_id (attachment_id)
+      `);
+      console.log('  ✓ Added attachment_id to app_invoice_mgr_records');
+    },
+  },
+
   // 43. contract-mgr 自治主表
   {
     name: 'app_contract_mgr_records table',
@@ -2202,6 +2216,40 @@ const MIGRATIONS = [
         }
       }
       console.log('  ✓ Migrated extension table FKs from mini_app_rows to autonomous tables (best effort)');
+    },
+  },
+
+  // 45. 退役 app_state 和 app_row_handlers 表
+  // Phase 6 Round 7: 按表+列动态查出真实 FK 约束名，替代硬编码猜测
+  // DROP 顺序：先删 app_state（解除其 FK→app_row_handlers），
+  // 再动态查出并删除 app_action_logs→app_row_handlers 的 FK，最后删 app_row_handlers
+  {
+    name: 'drop app_state and app_row_handlers tables',
+    check: async (conn) => {
+      const hasAppState = await hasTable(conn, 'app_state');
+      const hasAppRowHandler = await hasTable(conn, 'app_row_handlers');
+      return !hasAppState && !hasAppRowHandler;
+    },
+    migrate: async (conn) => {
+      if (await hasTable(conn, 'app_state')) {
+        await conn.execute('DROP TABLE IF EXISTS app_state');
+        console.log('  ✓ Dropped app_state table');
+      }
+      if (await hasTable(conn, 'app_row_handlers')) {
+        const [fkRows] = await conn.execute(
+          `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'app_action_logs' AND COLUMN_NAME = 'handler_id' AND REFERENCED_TABLE_NAME = 'app_row_handlers'`,
+          [DB_CONFIG.database]
+        );
+        for (const fk of fkRows) {
+          try {
+            await conn.execute(`ALTER TABLE app_action_logs DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``);
+            console.log(`  ✓ Dropped FK ${fk.CONSTRAINT_NAME} from app_action_logs`);
+          } catch { /* FK may have been dropped by prior run */ }
+        }
+        await conn.execute('DROP TABLE IF EXISTS app_row_handlers');
+        console.log('  ✓ Dropped app_row_handlers table');
+      }
     },
   },
 

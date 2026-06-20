@@ -60,57 +60,7 @@ export default (controller) => {
     return controller.getStatusSummary(ctx);
   });
 
-  // ==================== State CRUD (DEPRECATED - 新 app 不要使用) ====================
-
-  router.get('/api/mini-apps/:appId/states', authenticate(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
-    return controller.listStates(ctx);
-  });
-  router.post('/api/mini-apps/:appId/states', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
-    return controller.createState(ctx);
-  });
-  router.put('/api/mini-apps/:appId/states/:stateId', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
-    return controller.updateState(ctx);
-  });
-  router.delete('/api/mini-apps/:appId/states/:stateId', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_state is legacy, use app-managed state machines');
-    return controller.deleteState(ctx);
-  });
-
-  // ==================== Handler CRUD (DEPRECATED - 新 app 不要使用) ====================
-
-  router.get('/api/handlers', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler is legacy, handlers are now app-internal');
-    return controller.listHandlers(ctx);
-  });
-  router.get('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler is legacy');
-    return controller.getHandler(ctx);
-  });
-  router.post('/api/handlers', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler is legacy');
-    return controller.createHandler(ctx);
-  });
-  router.put('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler is legacy');
-    return controller.updateHandler(ctx);
-  });
-  router.delete('/api/handlers/:handlerId', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler is legacy');
-    return controller.deleteHandler(ctx);
-  });
-  router.get('/api/handlers/:handlerId/logs', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler logs are legacy, use app_tick_log');
-    return controller.getHandlerLogs(ctx);
-  });
-  router.post('/api/handlers/:handlerId/test', authenticate(), requireAdmin(), (ctx) => {
-    ctx.set('X-Deprecated', 'app_row_handler is legacy');
-    return controller.testHandler(ctx);
-  });
-
-  // ==================== Extension Tables ====================
+// ==================== Extension Tables ====================
 
   router.get('/api/mini-apps/:appId/extension/distinct', authenticate(), (ctx) => controller.getDistinctValues(ctx));
   router.get('/api/mini-apps/:appId/extension/distinct/:field', authenticate(), (ctx) => controller.getDistinctField(ctx));

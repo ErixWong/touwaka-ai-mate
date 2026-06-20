@@ -20,8 +20,8 @@ class AppMarketService {
     if (!this.models.MiniApp) {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.AppClockRegistry = this.db.getModel('app_clock_registry');
-      this.models.AppState = this.db.getModel('app_state');
-      this.models.AppRowHandler = this.db.getModel('app_row_handler');
+      try { this.models.AppState = this.db.getModel('app_state'); } catch { this.models.AppState = null; }
+      try { this.models.AppRowHandler = this.db.getModel('app_row_handler'); } catch { this.models.AppRowHandler = null; }
       this.models.SystemSetting = this.db.getModel('system_setting');
       this.models.McpServer = this.db.getModel('mcp_server');
     }
@@ -469,8 +469,8 @@ class AppMarketService {
     try {
       await this.models.MiniApp.destroy({ where: { id: appId } });
       await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
-      await this.models.AppState.destroy({ where: { app_id: appId } });
-      await this.models.AppRowHandler.destroy({ 
+      if (this.models.AppState) await this.models.AppState.destroy({ where: { app_id: appId } });
+      if (this.models.AppRowHandler) await this.models.AppRowHandler.destroy({ 
         where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
       });
       logger.info(`Rolled back DB records for ${appId}`);
@@ -569,6 +569,10 @@ class AppMarketService {
   // ==================== 废弃方法（保留以兼容旧数据） ====================
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
+    if (!this.models.AppState) {
+      logger.warn(`[AppMarket] installStates skipped for ${appId}: app_state table retired (Phase 6). States from manifest will not be persisted.`);
+      return;
+    }
     
     let stateHandlerMap = new Map();
     const hasHandlers = manifest.states.some(s => s.handler);
@@ -622,6 +626,10 @@ class AppMarketService {
    * 安装处理脚本
    */
   async installHandlers(appId, manifest) {
+    if (!this.models.AppRowHandler) {
+      logger.warn(`[AppMarket] installHandlers skipped for ${appId}: app_row_handler table retired (Phase 6). Handlers from manifest will not be persisted.`);
+      return { installed: [], failed: [], handlerIdMap: new Map() };
+    }
     const installed = [];
     const failed = [];
     const handlerIdMap = new Map(); // handlerName → app_row_handlers.id
@@ -765,8 +773,8 @@ class AppMarketService {
     
     // 4. 删除数据库记录
     await this.models.MiniApp.destroy({ where: { id: appId } });
-    await this.models.AppState.destroy({ where: { app_id: appId } });
-    await this.models.AppRowHandler.destroy({ 
+    if (this.models.AppState) await this.models.AppState.destroy({ where: { app_id: appId } });
+    if (this.models.AppRowHandler) await this.models.AppRowHandler.destroy({ 
       where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
     });
     await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
