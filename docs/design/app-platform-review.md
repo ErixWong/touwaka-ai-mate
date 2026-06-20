@@ -1,6 +1,6 @@
 # App 平台设计 - 自洽性审查报告
 
-> 审查对象：[`app-platform-design.md`](app-platform-design.md)
+> 审查对象：[`../apps/historical/app-platform-design.md`](../apps/historical/app-platform-design.md)
 > 审查日期：2026-04-14
 > 审查目标：检查文档内部逻辑是否自洽、数据模型是否一致、方案是否可行
 > 状态：✅ 已修复

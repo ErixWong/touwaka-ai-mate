@@ -57,6 +57,15 @@ design/
 | [attachment-service-design.md](./attachment-service-design.md) | 通用附件服务设计 | 已采纳 |
 | [kb-recall-design.md](./kb-recall-design.md) | 知识库召回设计（含图片处理） | 已采纳 |
 
+### App 平台（当前实现）
+
+| 文档 | 说明 | 状态 |
+|------|------|------|
+| [../apps/README.md](../apps/README.md) | ⭐ App 模块统一入口（当前架构 + 历史文档索引） | 当前规范 |
+| [../apps/current-architecture.md](../apps/current-architecture.md) | 当前 app 架构总纲 | 当前规范 |
+| [../apps/app-generation-guide.md](../apps/app-generation-guide.md) | 当前实现的详细开发手册 | 当前规范 |
+| [../apps/historical/app-platform-design.md](../apps/historical/app-platform-design.md) | 旧版 App 平台设计稿（含 `app_state` 统一状态机方案） | 已退役 |
+
 ### 评审报告
 
 | 文档 | 说明 |

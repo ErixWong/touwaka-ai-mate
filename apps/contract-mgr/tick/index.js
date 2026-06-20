@@ -305,19 +305,27 @@ async function filterTextByChunks(recordId, services, prompt, text, options) {
 }
 
 async function getFiles(services, recordId) {
-  const MiniAppFile = services.getModel('mini_app_file');
-  const Attachment = services.getModel('attachment');
-  
-  const files = await MiniAppFile.findAll({
-    where: { record_id: recordId },
-    include: Attachment ? [{ model: Attachment, as: 'attachment' }] : []
-  });
-  
-  return files.map(f => f.toJSON());
+  const [rows] = await services.execute(
+    `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
+     FROM app_contract_mgr_content c
+     JOIN attachments a ON a.id = c.file_id
+     WHERE c.row_id = ? AND c.file_id IS NOT NULL`,
+    [recordId]
+  );
+
+  return rows.map((file) => ({
+    attachment: {
+      id: file.id,
+      file_name: file.file_name,
+      file_path: file.file_path,
+      mime_type: file.mime_type,
+      ext_name: file.ext_name,
+    },
+  }));
 }
 
 async function transitionToProcessing(services, recordId, processingState, expectedCurrentState) {
-  const [records] = await services.query(
+  const records = await services.query(
     `SELECT id, status, data FROM app_contract_mgr_records WHERE id = ?`,
     [recordId]
   );
@@ -342,7 +350,7 @@ async function transitionToProcessing(services, recordId, processingState, expec
 }
 
 async function transitionToNext(services, recordId, nextState, clearProcessing = true) {
-  const [records] = await services.query(
+  const records = await services.query(
     `SELECT id, status, data FROM app_contract_mgr_records WHERE id = ?`,
     [recordId]
   );
@@ -364,7 +372,7 @@ async function transitionToNext(services, recordId, nextState, clearProcessing =
 }
 
 async function transitionToFailed(services, recordId, failedState) {
-  const [records] = await services.query(
+  const records = await services.query(
     `SELECT id, status, data FROM app_contract_mgr_records WHERE id = ?`,
     [recordId]
   );

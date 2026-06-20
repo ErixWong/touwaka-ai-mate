@@ -1,4 +1,8 @@
-# App 平台设计 - 多维表格 + AI 增强架构
+# [已退役] App 平台设计 - 多维表格 + AI 增强架构
+
+> 注意：本文是早期平台设计稿，包含 `app_state`、平台统一状态机等历史方案。
+> 当前代码演进方向已经调整为：平台负责 tick 与宿主能力，app 自己管理状态机。
+> 若 app 需要集中定义状态，`apps/{appId}/states.js` 是推荐实现，但不是平台强制标准。
 
 ## 概述
 
@@ -166,7 +170,7 @@ nav 结构（现有）：
 
 ### 数据库设计
 
-> **完整的数据库表定义已提取到独立文件**：[`database-schema.md`](database-schema.md)
+> **完整的数据库表定义已提取到独立文件**：[`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md)
 >
 > 包含：核心表（`mini_apps`、`mini_app_rows`、`mini_app_files`）、状态机表（`app_row_handlers`、`app_state`、`app_action_logs`）、权限表（`mini_app_role_access`）、知识库扩展字段、虚拟列索引、ER 关系图。
 >
@@ -529,7 +533,7 @@ function computeSummaries(data, fields) {
 
 ### 虚拟列索引（按需优化）
 
-> 完整的虚拟列 SQL 示例见 [`database-schema.md`](database-schema.md) 的"虚拟列索引"章节。
+> 完整的虚拟列 SQL 示例见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"虚拟列索引"章节。
 
 **策略**：初期不建虚拟列，纯 JSON 查询。当某个小程序数据量超过 1000 条且查询变慢时，再按需添加。
 
@@ -675,7 +679,7 @@ ADD INDEX idx_app_status (app_id, _status);
 
 #### 新增表：处理脚本、状态定义、执行日志
 
-> 完整的 CREATE TABLE 语句见 [`database-schema.md`](database-schema.md) 的"状态机表"章节。
+> 完整的 CREATE TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"状态机表"章节。
 
 | 表名 | 用途 |
 |------|------|
@@ -2409,7 +2413,7 @@ App 级权限控制的是"用户能否看到和使用某个小程序"。参考�
 
 #### 数据模型扩展
 
-> 完整的 SQL 语句见 [`database-schema.md`](database-schema.md) 的"权限表"章节。
+> 完整的 SQL 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"权限表"章节。
 
 `mini_apps` 表增加权限字段：`visibility`、`owner_id`、`creator_id`（已在核心表 CREATE TABLE 中包含）。
 新增 `mini_app_role_access` 表用于 `visibility = 'role'` 时的角色访问控制。
@@ -2594,7 +2598,7 @@ const parseResult = await mcpClient.callTool('mineru', 'parse', {
 
 场景 C（质量文档管理）需要扩展知识库：
 
-> 完整的 ALTER TABLE 语句见 [`database-schema.md`](database-schema.md) 的"知识库扩展"章节。
+> 完整的 ALTER TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"知识库扩展"章节。
 
 RAG 检索时增加过滤条件：`WHERE document_status = 'effective' AND (expiry_date IS NULL OR expiry_date > NOW())`
 
@@ -3459,7 +3463,7 @@ temperature: 0.1
 
 ### 数据模型
 
-> 完整的 ALTER TABLE 语句见 [`database-schema.md`](database-schema.md) 的"知识库扩展"章节。
+> 完整的 ALTER TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"知识库扩展"章节。
 
 `mini_apps.config` 中增加 `kb_sync` 配置项：
 
@@ -4152,7 +4156,7 @@ async function processExtractResult(record, llmResult) {
 
 ### 数据模型：app_event_handlers 表
 
-> **完整的 CREATE TABLE 语句见 [`database-schema.md`](database-schema.md) 的"事件处理器表"章节。
+> **完整的 CREATE TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"事件处理器表"章节。
 
 ```sql
 CREATE TABLE app_event_handlers (

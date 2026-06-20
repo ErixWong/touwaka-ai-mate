@@ -14,6 +14,11 @@ export default class app_contract_mgr_content extends Model {
         key: 'id'
       }
     },
+    file_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "关联文件ID"
+    },
     ocr_text: {
       type: DataTypes.TEXT,
       allowNull: true,

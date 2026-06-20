@@ -783,7 +783,8 @@ const MIGRATIONS = [
 
   {
     name: 'app_row_handlers table',
-    check: async (conn) => await hasTable(conn, 'app_row_handlers'),
+    // Phase 6: table retired. If missing, do not recreate it.
+    check: async () => true,
     migrate: async (conn) => {
       await conn.execute(`
         CREATE TABLE app_row_handlers (
@@ -806,7 +807,8 @@ const MIGRATIONS = [
 
   {
     name: 'app_state table',
-    check: async (conn) => await hasTable(conn, 'app_state'),
+    // Phase 6: table retired. If missing, do not recreate it.
+    check: async () => true,
     migrate: async (conn) => {
       await conn.execute(`
         CREATE TABLE app_state (
@@ -853,7 +855,6 @@ const MIGRATIONS = [
           INDEX idx_handler (handler_id),
           INDEX idx_record (record_id),
           INDEX idx_app_created (app_id, created_at),
-          FOREIGN KEY (handler_id) REFERENCES app_row_handlers(id) ON DELETE CASCADE,
           FOREIGN KEY (record_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE,
           FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App 动作日志'
@@ -1100,10 +1101,11 @@ const MIGRATIONS = [
   // ==================== app_state 表添加 description 字段 ====================
   {
     name: 'app_state.add_description',
-    check: async (conn) => await hasColumn(conn, 'app_state', 'description'),
+    // Phase 6: table retired. If missing, do not recreate/alter it.
+    check: async () => true,
     migrate: async (conn) => {
       await conn.execute(`
-        ALTER TABLE app_state 
+        ALTER TABLE app_state
         ADD COLUMN description VARCHAR(255) NULL COMMENT '状态描述'
       `);
       console.log('  ✓ Added description column to app_state');
@@ -1175,6 +1177,22 @@ const MIGRATIONS = [
         ADD COLUMN sections JSON COMMENT '章节结构数组'
       `);
       console.log('  ✓ Added sections JSON column to app_contract_mgr_content');
+    }
+  },
+
+  // ==================== app_contract_mgr_content 添加 file_id 字段 ====================
+  {
+    name: 'app_contract_mgr_content add file_id column',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_content', 'file_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_content
+        ADD COLUMN file_id VARCHAR(32) NULL COMMENT '关联文件ID' AFTER row_id
+      `);
+      console.log('  ✓ Added file_id column to app_contract_mgr_content');
     }
   },
 
@@ -1948,8 +1966,8 @@ const MIGRATIONS = [
     check: async (conn) => {
       const [miniApps] = await conn.execute(`SELECT id, config FROM mini_apps WHERE id = 'contract-mgr-v2' LIMIT 1`);
       if (!miniApps.length) return true;
-      const [states] = await conn.execute(`SELECT id FROM app_state WHERE app_id = 'contract-mgr-v2' LIMIT 1`);
-      return states.length > 0;
+      const [clockRows] = await conn.execute(`SELECT id FROM app_clock_registry WHERE app_id = 'contract-mgr-v2' LIMIT 1`);
+      return clockRows.length > 0 && !!miniApps[0].config;
     },
     migrate: async (conn) => {
       const [miniApps] = await conn.execute(`SELECT id, owner_id, creator_id FROM mini_apps WHERE id = 'contract-mgr-v2' LIMIT 1`);
@@ -2026,31 +2044,7 @@ const MIGRATIONS = [
         await conn.execute(`INSERT INTO app_clock_registry (id, app_id, tick_script, is_active) VALUES (?, 'contract-mgr-v2', NULL, 1)`, [clockId]);
       }
 
-      await conn.execute(`DELETE FROM app_state WHERE app_id = 'contract-mgr-v2'`);
-      const states = [
-        ['pending_ocr', '等待OCR', '提交OCR任务', 1, 1, 0, 0, 'ocr_submitted', 'ocr_failed'],
-        ['ocr_submitted', 'OCR处理中', '检查OCR状态并持久化OCR文本到扩展表', 2, 0, 0, 0, 'pending_filter', 'ocr_failed'],
-        ['pending_filter', '等待过滤', 'LLM文本过滤并持久化到扩展表', 3, 0, 0, 0, 'pending_extract', 'filter_failed'],
-        ['pending_extract', '等待提取', 'LLM提取结构化字段', 4, 0, 0, 0, 'pending_section', 'extract_failed'],
-        ['pending_section', '等待分章', '分析章节结构', 5, 0, 0, 0, 'pending_classify', 'section_failed'],
-        ['pending_classify', '等待分类', '做版本归类建议', 6, 0, 0, 0, 'pending_review', 'classify_failed'],
-        ['pending_review', '待人工确认', '等待人工确认分类结果', 7, 0, 0, 0, null, null],
-        ['ocr_failed', 'OCR失败', 'OCR阶段失败', 90, 0, 1, 1, null, null],
-        ['filter_failed', '过滤失败', '文本过滤失败', 91, 0, 1, 1, null, null],
-        ['extract_failed', '提取失败', '结构化提取失败', 92, 0, 1, 1, null, null],
-        ['section_failed', '分章失败', '章节分析失败', 93, 0, 1, 1, null, null],
-        ['classify_failed', '分类失败', '版本建议失败', 94, 0, 1, 1, null, null]
-      ];
-
-      for (const [name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext] of states) {
-        await conn.execute(
-          `INSERT INTO app_state (id, app_id, name, label, description, sort_order, is_initial, is_terminal, is_error, handler_id, success_next_state, failure_next_state)
-           VALUES (?, 'contract-mgr-v2', ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
-          [crypto.randomBytes(10).toString('hex').slice(0, 20), name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext]
-        );
-      }
-
-      console.log('  ✓ Ensured contract-mgr-v2 installation metadata/states');
+      console.log('  ✓ Ensured contract-mgr-v2 installation metadata/clock registry');
     }
   },
 
@@ -2102,21 +2096,47 @@ const MIGRATIONS = [
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS app_invoice_mgr_records (
           id VARCHAR(32) NOT NULL,
+          user_id VARCHAR(32) NULL,
           status VARCHAR(32) NOT NULL DEFAULT 'pending_process',
           data LONGTEXT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
-          KEY idx_status (status)
+          KEY idx_status (status),
+          KEY idx_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
       await conn.execute(`
-        INSERT IGNORE INTO app_invoice_mgr_records (id, status, data, created_at, updated_at)
-        SELECT id, status, data, created_at, updated_at
+        INSERT IGNORE INTO app_invoice_mgr_records (id, user_id, status, data, created_at, updated_at)
+        SELECT id, user_id, status, data, created_at, updated_at
         FROM mini_app_rows
         WHERE app_id = 'invoice-mgr'
       `);
       console.log('  ✓ Created app_invoice_mgr_records and seeded from mini_app_rows');
+    },
+  },
+
+  {
+    name: 'app_invoice_mgr_records add user_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_invoice_mgr_records')) return true;
+      return await hasColumn(conn, 'app_invoice_mgr_records', 'user_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_invoice_mgr_records
+        ADD COLUMN user_id VARCHAR(32) NULL AFTER id
+      `);
+      try {
+        await conn.execute(`ALTER TABLE app_invoice_mgr_records ADD INDEX idx_user_id (user_id)`);
+      } catch {}
+      await conn.execute(`
+        UPDATE app_invoice_mgr_records r
+        JOIN mini_app_rows m ON m.id = r.id
+        SET r.user_id = m.user_id
+        WHERE r.user_id IS NULL
+      `);
+      console.log('  ✓ Added user_id to app_invoice_mgr_records and backfilled from mini_app_rows');
     },
   },
 
@@ -2143,21 +2163,47 @@ const MIGRATIONS = [
         CREATE TABLE IF NOT EXISTS app_contract_mgr_records (
           id VARCHAR(32) NOT NULL,
           app_id VARCHAR(32) NOT NULL DEFAULT 'contract-mgr',
+          user_id VARCHAR(32) NULL,
           status VARCHAR(32) NOT NULL DEFAULT 'ocr_pending',
           data LONGTEXT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
-          KEY idx_app_id_status (app_id, status)
+          KEY idx_app_id_status (app_id, status),
+          KEY idx_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
       await conn.execute(`
-        INSERT IGNORE INTO app_contract_mgr_records (id, app_id, status, data, created_at, updated_at)
-        SELECT id, app_id, status, data, created_at, updated_at
+        INSERT IGNORE INTO app_contract_mgr_records (id, app_id, user_id, status, data, created_at, updated_at)
+        SELECT id, app_id, user_id, status, data, created_at, updated_at
         FROM mini_app_rows
         WHERE app_id = 'contract-mgr'
       `);
       console.log('  ✓ Created app_contract_mgr_records and seeded from mini_app_rows');
+    },
+  },
+
+  {
+    name: 'app_contract_mgr_records add user_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_records')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_records', 'user_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_records
+        ADD COLUMN user_id VARCHAR(32) NULL AFTER app_id
+      `);
+      try {
+        await conn.execute(`ALTER TABLE app_contract_mgr_records ADD INDEX idx_user_id (user_id)`);
+      } catch {}
+      await conn.execute(`
+        UPDATE app_contract_mgr_records r
+        JOIN mini_app_rows m ON m.id = r.id
+        SET r.user_id = m.user_id
+        WHERE r.user_id IS NULL
+      `);
+      console.log('  ✓ Added user_id to app_contract_mgr_records and backfilled from mini_app_rows');
     },
   },
 
@@ -2339,10 +2385,15 @@ const MIGRATIONS = [
   {
     name: 'attachments.access_level backfill by source_tag',
     check: async (conn) => {
+      const publicTags = ['user_avatar', 'expert_avatar', 'site_logo', 'site_background'];
+      const privateTags = ['doc-platform', 'task_export', 'admin_upload', 'mini_app', 'mini_app_file'];
       const [rows] = await conn.execute(`
-        SELECT COUNT(*) AS cnt FROM attachments WHERE access_level = 'public'
-      `);
-      return rows[0].cnt > 0;
+        SELECT COUNT(*) AS cnt
+        FROM attachments
+        WHERE (source_tag IN (${publicTags.map(() => '?').join(',')}) AND access_level <> 'public')
+           OR (source_tag IN (${privateTags.map(() => '?').join(',')}) AND access_level <> 'private')
+      `, [...publicTags, ...privateTags]);
+      return rows[0].cnt === 0;
     },
     migrate: async (conn) => {
       const publicTags = ['user_avatar', 'expert_avatar', 'site_logo', 'site_background'];

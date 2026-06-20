@@ -40,6 +40,7 @@ export default {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_content (
         row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_contract_mgr_records.id',
+        file_id VARCHAR(32) NULL COMMENT '关联文件ID',
         ocr_text LONGTEXT NULL COMMENT 'OCR 原文',
         ocr_service VARCHAR(64) NULL COMMENT 'OCR 服务名称',
         ocr_at DATETIME NULL COMMENT 'OCR 时间',
