@@ -22,7 +22,7 @@ export default {
   async down(sequelize) {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_invoice_mgr_rows (
-        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+        row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_invoice_mgr_records.id',
         invoice_number VARCHAR(20) COMMENT '发票号码（20位）',
         invoice_date DATE COMMENT '开票日期',
         invoice_type VARCHAR(64) COMMENT '发票类型',
@@ -57,14 +57,14 @@ export default {
     await sequelize.query(`
       ALTER TABLE app_invoice_mgr_rows
       ADD CONSTRAINT fk_app_invoice_mgr_rows_row_id
-      FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+      FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
     `);
     console.log('  ✓ Added FK for app_invoice_mgr_rows');
 
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_invoice_mgr_items (
         id VARCHAR(32) PRIMARY KEY,
-        row_id VARCHAR(32) NOT NULL COMMENT '关联 mini_app_rows.id',
+        row_id VARCHAR(32) NOT NULL COMMENT '关联 app_invoice_mgr_records.id',
         page_number INT DEFAULT 1 COMMENT '所在页码',
         sort_order INT DEFAULT 0 COMMENT '行内排序',
         category VARCHAR(64) COMMENT '商品分类',
@@ -78,7 +78,7 @@ export default {
         tax_amount DECIMAL(12,2) COMMENT '税额',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_row_id (row_id),
-        FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
+        FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         COMMENT='发票商品明细表'
     `);

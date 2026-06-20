@@ -58,6 +58,8 @@ docs/
 ### Development
 - [Quick Start](development/quick-start.md) - Environment setup and first steps
 - [Coding Standards](development/coding-standards.md) - Naming conventions, code style
+- [Apps Module Docs](apps/README.md) - Current app architecture, current guide, and historical references
+- [App Generation Guide](apps/app-generation-guide.md) - Detailed current app platform implementation guide
 - [Core Modules](development/core-modules.md) - ChatService, LLMClient, MemorySystem
 - [Frontend Components](development/frontend-components.md) - UI components guide
 - [API Reference](development/api-reference.md) - Endpoints and error codes
@@ -75,7 +77,7 @@ docs/
 - [Design Index](design/README.md) - Architecture documentation index
 - [Parse 1 Design](design/parse1/README.md) - Parse 1 architecture and design
 - [Parse 2 Design](design/parse2/README.md) - Parse 2 architecture (Task Layer, Right Panel, etc.)
-- [Parse 3 - App Platform](design/parse3/app-platform-design.md) - App platform design (Bitable + AI)
+- [Parse 3 - App Platform (Retired)](apps/historical/app-platform-design.md) - Historical app platform design with platform-owned state machine
 
 ## 🤝 Contributing
 

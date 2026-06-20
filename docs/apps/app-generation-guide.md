@@ -1,5 +1,8 @@
 # App 生成指导手册
 
+> 当前推荐入口：这份文档是 app 平台**现行实现**的主要说明文档。
+> 若需要理解旧版 `app_state` / 平台统一状态机方案，请只把 `docs/apps/historical/app-platform-design.md` 当作历史参考，不要当作当前实现规范。
+
 ## 文档目的
 
 本文不是面向理想设计，而是面向当前仓库已经落地的 app 平台实现。目标是回答四个实际问题：
@@ -16,8 +19,8 @@
 先不要把 app 理解为“一个页面”或“一个脚本”。在当前项目里，一个可运行的 app 至少包含四类约束：
 
 1. 注册约束：平台必须知道这个 app 存在，也就是 `mini_apps` 中必须有记录。
-2. 数据约束：app 要有自己的记录数据、状态数据和可选扩展表。
-3. 行为约束：app 要么通过 handler，要么通过 tick，把状态从一个节点推进到下一个节点。
+2. 数据约束：app 要有自己的记录数据和可选扩展表；如果存在状态机，则状态语义属于 app 自己。
+3. 行为约束：app 可以通过 tick、handler、routes 或其它 app 内部机制推进业务流程，平台不要求统一状态机实现。
 4. 展示约束：前端必须能根据 app 元数据把它渲染为一个可访问、可操作的界面。
 
 所以，app 的生成本质上是“把一个声明式包安装成一个平台内可运行实例”的过程，而不是简单地新增几份前后端文件。
@@ -40,10 +43,14 @@
 
 - `mini_apps`：已安装 app 的元数据注册表。
 - `mini_app_rows`：app 的业务记录。
-- `app_state`：app 状态图定义。
-- `app_row_handler`：行处理器注册。
 - `app_clock_registry`：加入时钟调度的 app 列表。
 - `app_tick_log` / `app_tick_run`：tick 历史和运行状态。
+
+说明：
+
+- `app_state` / `app_row_handlers` 属于旧平台表，当前已退役。
+- 现阶段平台不再把状态机定义视为平台统一元数据。
+- 若 app 有状态机，状态定义应由 app 自己代码维护。
 
 ## 一、`mini_app` 表的注册
 
@@ -247,10 +254,9 @@ await this.models.AppClockRegistry.create({
 6. 下载并写入 migration 脚本。
 7. 执行 install migration。
 8. 保存本地 `manifest.json`。
-9. 安装 handlers。
+9. 安装 handlers（如该 app 仍使用 handler 机制）。
 10. 注册 `mini_apps` 元数据。
-11. 注册 `app_state` 状态图。
-12. 注册 `app_clock_registry`。
+11. 注册 `app_clock_registry`。
 
 ### 开发一个 app 至少要准备什么
 
@@ -260,7 +266,8 @@ await this.models.AppClockRegistry.create({
 2. `apps/{appId}/migrations/install.js`
 3. `apps/{appId}/migrations/uninstall.js`
 4. `apps/{appId}/tick/index.js`，如果这个 app 需要后台轮询
-5. `apps/{appId}/handlers/*`，如果状态图依赖 handler
+5. `apps/{appId}/handlers/*`，如果该 app 自己需要 handler 机制
+6. `apps/{appId}/states.js`，如果该 app 想把状态定义集中到单独模块（推荐，但非强制）
 
 ### manifest 里最重要的内容
 
@@ -271,21 +278,47 @@ await this.models.AppClockRegistry.create({
 - `migrations`：定义安装/卸载迁移脚本
 - `views`：定义列表展示
 - `config`：定义运行时能力，例如 `step_resources`
-- `states`：定义状态机
+- `states`：可选的状态声明。当前不再要求它一定作为平台统一事实源。
 - `custom_handlers`：定义额外控制器或扩展动作
 
-### handler 安装机制
+### 关于状态机定义的当前规则
 
-`installHandlers()` 会收集需要安装的 handler，来源有两种：
+当前架构规则已经变化：
+
+1. 平台只负责 tick 调度、路由挂载、附件/数据库/LLM/MCP 等宿主能力。
+2. 平台不再负责维护各个 app 的状态机元数据。
+3. `app_state` / `app_row_handlers` 已退役，不再作为新 app 的标准依赖。
+
+如果 app 有状态机，推荐实现是：
+
+- 在 `apps/{appId}/states.js` 中集中导出状态相关方法，例如：
+- `getInitialState()`
+- `getConfirmedState()`
+- `classifyStatus()`
+- `getStatusSummaryCategories()`
+
+但这只是**推荐实现**，不是平台强制标准。只要状态语义由 app 自己代码负责，而不是由平台通用层负责，也可以放在：
+
+1. tick 模块常量中
+2. app 自己的 service 模块中
+3. app 自己的 routes / runtime 模块中
+
+关键约束只有一条：
+
+- **状态机必须由 app 自己管理，平台不要再猜状态名或兜底业务状态语义。**
+
+### handler 安装机制（历史机制）
+
+`installHandlers()` 是旧平台机制的一部分，会收集需要安装的 handler，来源有两种：
 
 1. 优先从 tick 模块导出的 `getStateGraph()` 中收集
 2. 回退到 `manifest.states[].handler`
 
 然后把 handler 文件保存到本地，并在数据库中注册 `app_row_handler` 记录。
 
-这说明平台希望 app 的“状态推进逻辑”成为可管理资源，而不是散落在某个脚本里的隐式行为。
+这说明旧平台曾经希望把 app 的“状态推进逻辑”注册成平台可管理资源。但在当前架构下，这不再是强制方向。
 
-### state 安装机制
+### state 安装机制（历史机制）
 
 `installStates()` 会把 manifest 中的状态定义写入 `app_state` 表，核心字段包括：
 
@@ -298,7 +331,7 @@ await this.models.AppClockRegistry.create({
 - `success_next_state`
 - `failure_next_state`
 
-这一步的意义是把运行时状态图持久化，让前端展示、记录初始化和后台推进都能基于统一事实工作。
+这一步属于旧平台机制。当前推荐的新 app 不应再依赖它作为主路径。
 
 ### 回滚为什么重要
 
@@ -307,7 +340,7 @@ await this.models.AppClockRegistry.create({
 - 文件系统
 - 数据库元数据
 - 扩展表
-- 状态定义
+- （历史）状态定义
 - handler 注册
 - 时钟注册
 
@@ -324,7 +357,7 @@ await this.models.AppClockRegistry.create({
 优化点：
 
 - 当前安装成功后只形成“本地目录 + 数据库注册”，但对前端自定义组件的自动接入还不完整。
-- 依赖校验、表名校验、状态安装、handler 安装之间的契约仍然偏隐式，应继续文档化。
+- 历史的状态安装、handler 安装机制与当前“状态机由 app 自己管理”的方向并不完全一致，需要继续收口。
 
 ## 四、app 的前端如何处理
 
@@ -435,7 +468,7 @@ apps/{appId}/
 4. `fields`
 5. `views`
 6. `config`
-7. `states`
+7. `states`（如果你选择 manifest 里保留状态声明）
 8. `migrations`
 
 如果 app 需要扩展表，则补充 `extension_tables`。
@@ -452,18 +485,19 @@ apps/{appId}/
 - 涉及数据库字段变更必须先满足项目红线要求。
 - 不要手改 `models/`，这些是生成产物。
 
-### 步骤 4：实现状态推进逻辑
+### 步骤 4：实现 app 自己的运行逻辑
 
-有两种常见组合：
+有几种常见组合：
 
-1. `states + handlers`
-2. `states + tick`
+1. `states.js + tick`
+2. `states.js + routes/service`
+3. `tick/service` 内部常量直管
 
-当前主流实现通常两者一起存在：
+当前推荐方向是：
 
-- 用 `states` 描述状态图
-- 用 tick 驱动后台扫描与推进
-- 用 handler 承载状态节点动作
+- 用 app 自己代码管理状态语义
+- 用 tick 驱动后台扫描与推进（如果该 app 需要 tick）
+- 平台不直接决定 `pending_*` / `confirmed` / `*_failed` 这类状态名
 
 ### 步骤 5：决定是否走通用前端
 
@@ -487,9 +521,7 @@ apps/{appId}/
 
 - 本地目录生成
 - migration 执行
-- handler 注册
 - `mini_apps` 注册
-- `app_state` 注册
 - `app_clock_registry` 注册
 
 ### 步骤 7：验证 app 是否真正可运行

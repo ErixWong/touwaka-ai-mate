@@ -13,7 +13,8 @@
       "routes": "server/routes.js"
     },
     "backup": {
-      "export": "backup/export.js"
+      "export": "backup/export.js",
+      "import": "backup/import.js"
     }
   },
   "keywords": [

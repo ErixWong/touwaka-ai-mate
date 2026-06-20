@@ -9,6 +9,12 @@ export default class app_contract_mgr_v2_content extends Model {
       allowNull: false,
       primaryKey: true
     },
+    content_id: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: "",
+      unique: "uk_content_id"
+    },
     process_step: {
       type: DataTypes.STRING(32),
       allowNull: true,
@@ -108,6 +114,14 @@ export default class app_contract_mgr_v2_content extends Model {
         using: "BTREE",
         fields: [
           { name: "row_id" },
+        ]
+      },
+      {
+        name: "uk_content_id",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "content_id" },
         ]
       },
       {

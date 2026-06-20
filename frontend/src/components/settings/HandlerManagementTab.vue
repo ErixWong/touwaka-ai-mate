@@ -1,8 +1,22 @@
 <template>
   <div class="handler-management-tab">
+    <el-alert
+      type="warning"
+      :closable="false"
+      show-icon
+      class="mb-3"
+    >
+      <template #title>
+        {{ $t('settings.handlerManagement.deprecatedTitle', '处理脚本管理已冻结') }}
+      </template>
+      {{ $t('settings.handlerManagement.deprecatedDesc', 'app_row_handler 表已退役（Phase 6）。此页面已冻结，不再提供历史配置在线查看。') }}
+    </el-alert>
+
     <div class="panel-header">
       <h3 class="panel-title">{{ $t('settings.handlerManagement', '处理脚本管理') }}</h3>
-      <el-button size="small" @click="openHandlerDialog()">+ {{ $t('settings.handlerManagement.addHandler', '添加脚本') }}</el-button>
+      <el-tooltip :content="$t('settings.handlerManagement.frozen', '处理脚本管理已冻结，不可新增')" placement="top">
+        <el-button size="small" disabled>+ {{ $t('settings.handlerManagement.addHandler', '添加脚本') }}</el-button>
+      </el-tooltip>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -37,9 +51,9 @@
             </div>
           </div>
           <div class="handler-actions">
-            <el-button size="small" @click="openHandlerDialog(handler)">{{ $t('common.edit') }}</el-button>
-            <el-button size="small" @click="viewLogs(handler)">{{ $t('settings.handlerManagement.logs', '日志') }}</el-button>
-            <el-button size="small" type="danger" @click="confirmDeleteHandler(handler)">{{ $t('common.delete') }}</el-button>
+            <el-button size="small" disabled>{{ $t('common.edit') }}</el-button>
+            <el-button size="small" disabled>{{ $t('settings.handlerManagement.logs', '日志') }}</el-button>
+            <el-button size="small" type="danger" disabled>{{ $t('common.delete') }}</el-button>
           </div>
         </div>
       </div>
@@ -212,7 +226,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
-import { getHandlers, getHandlerLogs, createHandler, updateHandler, deleteHandler as deleteHandlerApi } from '@/api/mini-apps'
 import type { AppRowHandler, AppActionLog } from '@/api/mini-apps'
 
 const { t } = useI18n()
@@ -288,18 +301,8 @@ function confirmDeleteFromDialog() {
   }
 }
 
-async function viewLogs(handler: AppRowHandler) {
-  logsHandler.value = handler
-  showLogsDialog.value = true
-  logsLoading.value = true
-  try {
-    logs.value = await getHandlerLogs(handler.id, 50)
-  } catch (error: any) {
-    toast.error(t('settings.handlerManagement.loadLogsFailed', '加载日志失败') + ': ' + error.message)
-    logs.value = []
-  } finally {
-    logsLoading.value = false
-  }
+function viewLogs(_handler: AppRowHandler) {
+  toast.warning(t('settings.handlerManagement.frozen', '处理脚本管理已冻结'))
 }
 
 function viewLogDetail(log: AppActionLog) {
@@ -314,44 +317,16 @@ function formatTime(dateStr: string): string {
 }
 
 async function loadHandlers() {
-  loading.value = true
-  try {
-    handlers.value = await getHandlers()
-  } catch (error: any) {
-    toast.error(t('settings.handlerManagement.loadFailed', '加载脚本失败') + ': ' + error.message)
-  } finally {
-    loading.value = false
-  }
+  handlers.value = []
+  loading.value = false
 }
 
-async function saveHandler() {
-  try {
-    const data = { ...handlerForm }
-    if (editingHandler.value) {
-      await updateHandler(editingHandler.value.id, data)
-      toast.success(t('settings.handlerManagement.updateSuccess', '脚本更新成功'))
-    } else {
-      await createHandler(data)
-      toast.success(t('settings.handlerManagement.createSuccess', '脚本创建成功'))
-    }
-    closeHandlerDialog()
-    await loadHandlers()
-  } catch (error: any) {
-    toast.error(t('settings.handlerManagement.saveFailed', '保存失败') + ': ' + error.message)
-  }
+function saveHandler() {
+  toast.warning(t('settings.handlerManagement.frozen', '处理脚本管理已冻结，不可新增'))
 }
 
-async function deleteHandler() {
-  if (!deletingHandler.value) return
-  try {
-    await deleteHandlerApi(deletingHandler.value.id)
-    toast.success(t('settings.handlerManagement.deleteSuccess', '脚本已删除'))
-    showDeleteDialog.value = false
-    deletingHandler.value = null
-    await loadHandlers()
-  } catch (error: any) {
-    toast.error(t('settings.handlerManagement.deleteFailed', '删除失败') + ': ' + error.message)
-  }
+function deleteHandler() {
+  toast.warning(t('settings.handlerManagement.frozen', '处理脚本管理已冻结，不可新增'))
 }
 
 onMounted(() => {

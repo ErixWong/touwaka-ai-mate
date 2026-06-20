@@ -16,6 +16,7 @@ import { getApp, type MiniApp } from '@/api/mini-apps'
 import GenericMiniApp from '@/components/apps/GenericMiniApp.vue'
 
 const AppComponentMap: Record<string, Component> = {
+  'ContractMgrView': defineAsyncComponent(() => import('@/views/contract-mgr/ContractMgrView.vue')),
   'ContractV2View': defineAsyncComponent(() => import('@/views/contract-v2/ContractV2View.vue')),
   'DowntimeAnalyzer': defineAsyncComponent(() => import('@/views/downtime-analyzer/DowntimeAnalyzer.vue')),
   'ELSStudyView': defineAsyncComponent(() => import('@/views/els/ELSStudyView.vue')),

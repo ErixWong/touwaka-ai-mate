@@ -2,7 +2,7 @@
 
 > 基于现有知识库系统，扩展支持合同验证、版本对比、文档生命周期管理、元数据提取、发票入库等场景
 
-> ⚠️ **架构升级**：本文档中的场景已整合到 **App 平台** 架构中，详见 [`app-platform-design.md`](app-platform-design.md)。
+> ⚠️ **架构升级**：本文档中的场景已整合到 **App 平台** 架构中，详见 [`../apps/historical/app-platform-design.md`](../apps/historical/app-platform-design.md)。
 > 新方案采用"App-first"理念，在顶部导航新增"App"菜单，通过小程序容器托管各场景，共享 AI/MCP 能力。
 > 本文档保留作为各场景的详细业务流程和技术细节参考。
 

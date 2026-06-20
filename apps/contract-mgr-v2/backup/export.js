@@ -12,7 +12,7 @@ export async function exportBackup(context, options = {}) {
   }
 
   try {
-    const content = await query('SELECT * FROM app_contract_mgr_v2_content');
+    const content = await query('SELECT row_id, content_id, process_step, document_id, ocr_text, filtered_text, sections, extract_json, extract_model, extract_at, classification_json FROM app_contract_mgr_v2_content');
     tables.push({ name: 'app_contract_mgr_v2_content', rows: content });
   } catch {
     tables.push({ name: 'app_contract_mgr_v2_content', rows: [], error: 'table not found' });

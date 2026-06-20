@@ -9,6 +9,8 @@
 |------|------|
 | [快速开始](./quick-start.md) | 环境配置、启动命令、目录结构 |
 | [编码规范](./coding-standards.md) | snake_case 铁律、命名规范、响应格式 |
+| [App 模块文档](../apps/README.md) | ⭐ App 模块统一入口（当前架构 + 历史文档索引） |
+| [App 生成指导手册](../apps/app-generation-guide.md) | App 平台当前实现、tick 宿主能力、状态机边界 |
 | [核心模块](./core-modules.md) | ChatService、LLMClient、MemorySystem、认证中间件 |
 | [前端组件](./frontend-components.md) | 右侧面板、通用分页 |
 | [API 参考](./api-reference.md) | 端点列表、环境变量、错误码 |
@@ -40,7 +42,7 @@
 | [right-panel-design.md](../../design/parse2/right-panel-design.md) | 右侧面板容器设计 |
 | [task-layer-design.md](../../design/parse2/task-layer-design.md) | 任务层设计 |
 | [sandbox-architecture.md](../../design/parse2/sandbox-architecture.md) | 沙箱架构设计 |
-| [app-platform-design.md](../../design/parse3/app-platform-design.md) | ⭐ App 平台设计（多维表格 + AI） |
+| [app-platform-design.md](../apps/historical/app-platform-design.md) | ⭐ App 平台历史设计（已退役） |
 
 ---
 

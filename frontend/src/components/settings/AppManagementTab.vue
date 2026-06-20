@@ -238,7 +238,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
 import { useUserStore } from '@/stores/user'
-import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getHandlers, getAppConfig, updateAppConfig } from '@/api/mini-apps'
+import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import type { MiniApp, AppField, AppState, AppRowHandler } from '@/api/mini-apps'
 import StateDesigner from '@/components/settings/StateDesigner.vue'
 
@@ -442,11 +442,7 @@ async function loadApps() {
 }
 
 async function loadHandlers() {
-  try {
-    handlers.value = await getHandlers()
-  } catch {
-    handlers.value = []
-  }
+  handlers.value = []
 }
 
 async function saveApp() {

@@ -1,6 +1,6 @@
 # App 平台页面设计
 
-> 本文件从 [`app-platform-design.md`](app-platform-design.md) 中提取，集中管理所有页面设计。
+> 本文件从 [`../../apps/historical/app-platform-design.md`](../../apps/historical/app-platform-design.md) 中提取，集中管理所有页面设计。
 > 主文档中的页面章节引用本文件。
 
 ## 页面总览

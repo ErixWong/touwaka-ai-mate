@@ -1,5 +1,17 @@
 <template>
   <div class="state-designer">
+    <el-alert
+      type="warning"
+      :closable="false"
+      show-icon
+      class="mb-3"
+    >
+      <template #title>
+        {{ $t('settings.appManagement.stateDesigner.deprecatedTitle', '状态机设计器已冻结') }}
+      </template>
+      {{ $t('settings.appManagement.stateDesigner.deprecatedDesc', 'app_state 表已退役（Phase 6）。此页面已冻结，不再提供历史配置在线查看。') }}
+    </el-alert>
+
     <div v-if="states.length === 0" class="state-empty">
       <p>{{ $t('settings.appManagement.stateDesigner.noStates', '暂无状态定义') }}</p>
     </div>
@@ -39,7 +51,7 @@
             ✗ {{ state.failure_next_state }}
           </span>
         </div>
-        <div class="state-card-actions">
+        <div class="state-card-actions" v-if="false">
           <el-button v-if="index > 0" size="small" @click.stop="moveState(index, -1)">↑</el-button>
           <el-button v-if="index < states.length - 1" size="small" @click.stop="moveState(index, 1)">↓</el-button>
           <el-button size="small" type="danger" @click.stop="removeState(index)">×</el-button>
@@ -47,9 +59,11 @@
       </div>
     </div>
 
-    <el-button @click="addState">
-      + {{ $t('settings.appManagement.stateDesigner.addState', '添加状态') }}
-    </el-button>
+    <el-tooltip :content="$t('settings.appManagement.stateDesigner.frozen', '状态机设计器已冻结，不可新增状态')" placement="top">
+      <el-button disabled>
+        + {{ $t('settings.appManagement.stateDesigner.addState', '添加状态') }}
+      </el-button>
+    </el-tooltip>
 
     <!-- 流转可视化 -->
     <div v-if="states.length > 1" class="state-flow">

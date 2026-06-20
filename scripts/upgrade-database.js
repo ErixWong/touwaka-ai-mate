@@ -783,7 +783,8 @@ const MIGRATIONS = [
 
   {
     name: 'app_row_handlers table',
-    check: async (conn) => await hasTable(conn, 'app_row_handlers'),
+    // Phase 6: table retired. If missing, do not recreate it.
+    check: async () => true,
     migrate: async (conn) => {
       await conn.execute(`
         CREATE TABLE app_row_handlers (
@@ -806,7 +807,8 @@ const MIGRATIONS = [
 
   {
     name: 'app_state table',
-    check: async (conn) => await hasTable(conn, 'app_state'),
+    // Phase 6: table retired. If missing, do not recreate it.
+    check: async () => true,
     migrate: async (conn) => {
       await conn.execute(`
         CREATE TABLE app_state (
@@ -853,7 +855,6 @@ const MIGRATIONS = [
           INDEX idx_handler (handler_id),
           INDEX idx_record (record_id),
           INDEX idx_app_created (app_id, created_at),
-          FOREIGN KEY (handler_id) REFERENCES app_row_handlers(id) ON DELETE CASCADE,
           FOREIGN KEY (record_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE,
           FOREIGN KEY (app_id) REFERENCES mini_apps(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App 动作日志'
@@ -1100,10 +1101,11 @@ const MIGRATIONS = [
   // ==================== app_state 表添加 description 字段 ====================
   {
     name: 'app_state.add_description',
-    check: async (conn) => await hasColumn(conn, 'app_state', 'description'),
+    // Phase 6: table retired. If missing, do not recreate/alter it.
+    check: async () => true,
     migrate: async (conn) => {
       await conn.execute(`
-        ALTER TABLE app_state 
+        ALTER TABLE app_state
         ADD COLUMN description VARCHAR(255) NULL COMMENT '状态描述'
       `);
       console.log('  ✓ Added description column to app_state');
@@ -1175,6 +1177,22 @@ const MIGRATIONS = [
         ADD COLUMN sections JSON COMMENT '章节结构数组'
       `);
       console.log('  ✓ Added sections JSON column to app_contract_mgr_content');
+    }
+  },
+
+  // ==================== app_contract_mgr_content 添加 file_id 字段 ====================
+  {
+    name: 'app_contract_mgr_content add file_id column',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_content')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_content', 'file_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_content
+        ADD COLUMN file_id VARCHAR(32) NULL COMMENT '关联文件ID' AFTER row_id
+      `);
+      console.log('  ✓ Added file_id column to app_contract_mgr_content');
     }
   },
 
@@ -1948,8 +1966,8 @@ const MIGRATIONS = [
     check: async (conn) => {
       const [miniApps] = await conn.execute(`SELECT id, config FROM mini_apps WHERE id = 'contract-mgr-v2' LIMIT 1`);
       if (!miniApps.length) return true;
-      const [states] = await conn.execute(`SELECT id FROM app_state WHERE app_id = 'contract-mgr-v2' LIMIT 1`);
-      return states.length > 0;
+      const [clockRows] = await conn.execute(`SELECT id FROM app_clock_registry WHERE app_id = 'contract-mgr-v2' LIMIT 1`);
+      return clockRows.length > 0 && !!miniApps[0].config;
     },
     migrate: async (conn) => {
       const [miniApps] = await conn.execute(`SELECT id, owner_id, creator_id FROM mini_apps WHERE id = 'contract-mgr-v2' LIMIT 1`);
@@ -2026,35 +2044,262 @@ const MIGRATIONS = [
         await conn.execute(`INSERT INTO app_clock_registry (id, app_id, tick_script, is_active) VALUES (?, 'contract-mgr-v2', NULL, 1)`, [clockId]);
       }
 
-      await conn.execute(`DELETE FROM app_state WHERE app_id = 'contract-mgr-v2'`);
-      const states = [
-        ['pending_ocr', '等待OCR', '提交OCR任务', 1, 1, 0, 0, 'ocr_submitted', 'ocr_failed'],
-        ['ocr_submitted', 'OCR处理中', '检查OCR状态并持久化OCR文本到扩展表', 2, 0, 0, 0, 'pending_filter', 'ocr_failed'],
-        ['pending_filter', '等待过滤', 'LLM文本过滤并持久化到扩展表', 3, 0, 0, 0, 'pending_extract', 'filter_failed'],
-        ['pending_extract', '等待提取', 'LLM提取结构化字段', 4, 0, 0, 0, 'pending_section', 'extract_failed'],
-        ['pending_section', '等待分章', '分析章节结构', 5, 0, 0, 0, 'pending_classify', 'section_failed'],
-        ['pending_classify', '等待分类', '做版本归类建议', 6, 0, 0, 0, 'pending_review', 'classify_failed'],
-        ['pending_review', '待人工确认', '等待人工确认分类结果', 7, 0, 0, 0, null, null],
-        ['ocr_failed', 'OCR失败', 'OCR阶段失败', 90, 0, 1, 1, null, null],
-        ['filter_failed', '过滤失败', '文本过滤失败', 91, 0, 1, 1, null, null],
-        ['extract_failed', '提取失败', '结构化提取失败', 92, 0, 1, 1, null, null],
-        ['section_failed', '分章失败', '章节分析失败', 93, 0, 1, 1, null, null],
-        ['classify_failed', '分类失败', '版本建议失败', 94, 0, 1, 1, null, null]
-      ];
-
-      for (const [name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext] of states) {
-        await conn.execute(
-          `INSERT INTO app_state (id, app_id, name, label, description, sort_order, is_initial, is_terminal, is_error, handler_id, success_next_state, failure_next_state)
-           VALUES (?, 'contract-mgr-v2', ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
-          [crypto.randomBytes(10).toString('hex').slice(0, 20), name, label, description, sortOrder, isInitial, isTerminal, isError, successNext, failureNext]
-        );
-      }
-
-      console.log('  ✓ Ensured contract-mgr-v2 installation metadata/states');
+      console.log('  ✓ Ensured contract-mgr-v2 installation metadata/clock registry');
     }
   },
 
-  // ==================== 清理旧 doc_* 表（彻底替换） ====================
+  // 41. contract-mgr-v2 content_id 迁移铺路
+  {
+    name: 'app_contract_mgr_v2_content add content_id',
+    check: async (conn) => {
+      const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
+      if (!hasCol) return false;
+      const [rows] = await conn.execute(
+        `SELECT COUNT(*) AS cnt FROM app_contract_mgr_v2_content WHERE content_id = ''`
+      );
+      if (rows[0].cnt > 0) return false;
+      return await hasIndex(conn, 'app_contract_mgr_v2_content', 'uk_content_id');
+    },
+    migrate: async (conn) => {
+      const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
+      if (!hasCol) {
+        await conn.execute(
+          `ALTER TABLE app_contract_mgr_v2_content
+           ADD COLUMN content_id VARCHAR(32) NOT NULL DEFAULT '' AFTER row_id`
+        );
+      }
+      const [emptyRows] = await conn.execute(
+        `SELECT row_id FROM app_contract_mgr_v2_content WHERE content_id = ''`
+      );
+      for (const row of emptyRows) {
+        const newId = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
+        await conn.execute(
+          `UPDATE app_contract_mgr_v2_content SET content_id = ? WHERE row_id = ?`,
+          [newId, row.row_id]
+        );
+      }
+      if (!(await hasIndex(conn, 'app_contract_mgr_v2_content', 'uk_content_id'))) {
+        await conn.execute(
+          `ALTER TABLE app_contract_mgr_v2_content
+           ADD UNIQUE KEY uk_content_id (content_id)`
+        );
+      }
+      console.log('  ✓ Added content_id to app_contract_mgr_v2_content and populated existing rows');
+    },
+  },
+
+  // 42. invoice-mgr 自治主表
+  {
+    name: 'app_invoice_mgr_records table',
+    check: async (conn) => await hasTable(conn, 'app_invoice_mgr_records'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS app_invoice_mgr_records (
+          id VARCHAR(32) NOT NULL,
+          user_id VARCHAR(32) NULL,
+          status VARCHAR(32) NOT NULL DEFAULT 'pending_process',
+          data LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_status (status),
+          KEY idx_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      await conn.execute(`
+        INSERT IGNORE INTO app_invoice_mgr_records (id, user_id, status, data, created_at, updated_at)
+        SELECT id, user_id, status, data, created_at, updated_at
+        FROM mini_app_rows
+        WHERE app_id = 'invoice-mgr'
+      `);
+      console.log('  ✓ Created app_invoice_mgr_records and seeded from mini_app_rows');
+    },
+  },
+
+  {
+    name: 'app_invoice_mgr_records add user_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_invoice_mgr_records')) return true;
+      return await hasColumn(conn, 'app_invoice_mgr_records', 'user_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_invoice_mgr_records
+        ADD COLUMN user_id VARCHAR(32) NULL AFTER id
+      `);
+      try {
+        await conn.execute(`ALTER TABLE app_invoice_mgr_records ADD INDEX idx_user_id (user_id)`);
+      } catch {}
+      await conn.execute(`
+        UPDATE app_invoice_mgr_records r
+        JOIN mini_app_rows m ON m.id = r.id
+        SET r.user_id = m.user_id
+        WHERE r.user_id IS NULL
+      `);
+      console.log('  ✓ Added user_id to app_invoice_mgr_records and backfilled from mini_app_rows');
+    },
+  },
+
+  // 42b. invoice-mgr 自治表添加 attachment_id（Phase 6 R10 去 mini_app_file 依赖）
+  {
+    name: 'app_invoice_mgr_records add attachment_id',
+    check: async (conn) => await hasColumn(conn, 'app_invoice_mgr_records', 'attachment_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_invoice_mgr_records
+        ADD COLUMN attachment_id VARCHAR(20) NULL COMMENT '附件ID' AFTER data,
+        ADD INDEX idx_attachment_id (attachment_id)
+      `);
+      console.log('  ✓ Added attachment_id to app_invoice_mgr_records');
+    },
+  },
+
+  // 43. contract-mgr 自治主表
+  {
+    name: 'app_contract_mgr_records table',
+    check: async (conn) => await hasTable(conn, 'app_contract_mgr_records'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS app_contract_mgr_records (
+          id VARCHAR(32) NOT NULL,
+          app_id VARCHAR(32) NOT NULL DEFAULT 'contract-mgr',
+          user_id VARCHAR(32) NULL,
+          status VARCHAR(32) NOT NULL DEFAULT 'ocr_pending',
+          data LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_app_id_status (app_id, status),
+          KEY idx_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      await conn.execute(`
+        INSERT IGNORE INTO app_contract_mgr_records (id, app_id, user_id, status, data, created_at, updated_at)
+        SELECT id, app_id, user_id, status, data, created_at, updated_at
+        FROM mini_app_rows
+        WHERE app_id = 'contract-mgr'
+      `);
+      console.log('  ✓ Created app_contract_mgr_records and seeded from mini_app_rows');
+    },
+  },
+
+  {
+    name: 'app_contract_mgr_records add user_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_records')) return true;
+      return await hasColumn(conn, 'app_contract_mgr_records', 'user_id');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_contract_mgr_records
+        ADD COLUMN user_id VARCHAR(32) NULL AFTER app_id
+      `);
+      try {
+        await conn.execute(`ALTER TABLE app_contract_mgr_records ADD INDEX idx_user_id (user_id)`);
+      } catch {}
+      await conn.execute(`
+        UPDATE app_contract_mgr_records r
+        JOIN mini_app_rows m ON m.id = r.id
+        SET r.user_id = m.user_id
+        WHERE r.user_id IS NULL
+      `);
+      console.log('  ✓ Added user_id to app_contract_mgr_records and backfilled from mini_app_rows');
+    },
+  },
+
+  // 44. invoice-mgr + contract-mgr extension 表 FK 迁移到自治表
+  {
+    name: 'app_invoice/contract extension tables FK migrate to autonomous tables',
+    check: async (conn) => {
+      const fks = [
+        { table: 'app_invoice_mgr_rows', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_invoice_mgr_items', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_content', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_rows', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_compares', col: 'row_id', expectDb: 'touwaka_mate' },
+        { table: 'app_contract_mgr_compares', col: 'target_row_id', expectDb: 'touwaka_mate' },
+      ];
+      for (const fk of fks) {
+        const [rows] = await conn.execute(`
+          SELECT REFERENCED_TABLE_NAME
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
+        `, [fk.expectDb, fk.table, fk.col]);
+        if (rows.length > 0 && rows[0].REFERENCED_TABLE_NAME === 'mini_app_rows') {
+          return false;
+        }
+      }
+      return true;
+    },
+    migrate: async (conn) => {
+      const updates = [
+        { table: 'app_invoice_mgr_rows', col: 'row_id', ref: 'app_invoice_mgr_records', refCol: 'id' },
+        { table: 'app_invoice_mgr_items', col: 'row_id', ref: 'app_invoice_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_content', col: 'row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_rows', col: 'row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_compares', col: 'row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+        { table: 'app_contract_mgr_compares', col: 'target_row_id', ref: 'app_contract_mgr_records', refCol: 'id' },
+      ];
+      for (const u of updates) {
+        try {
+          const [fkRows] = await conn.execute(
+            `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = 'mini_app_rows'`,
+            [process.env.DB_NAME || 'touwaka_mate', u.table, u.col]
+          );
+          for (const fk of fkRows) {
+            try { await conn.execute(`ALTER TABLE \`${u.table}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``); }
+            catch {}
+          }
+          try {
+            const fkName = `fk_${u.table}_${u.col}`;
+            await conn.execute(`ALTER TABLE \`${u.table}\` ADD CONSTRAINT \`${fkName}\` FOREIGN KEY (\`${u.col}\`) REFERENCES \`${u.ref}\`(\`${u.refCol}\`) ON DELETE CASCADE`);
+          } catch (e) {
+            console.log(`  ⚠ Skipped FK on ${u.table}.${u.col}: ${e.message}`);
+          }
+        } catch (e) {
+          console.log(`  ⚠ Skipped table ${u.table}: ${e.message}`);
+        }
+      }
+      console.log('  ✓ Migrated extension table FKs from mini_app_rows to autonomous tables (best effort)');
+    },
+  },
+
+  // 45. 退役 app_state 和 app_row_handlers 表
+  // Phase 6 Round 7: 按表+列动态查出真实 FK 约束名，替代硬编码猜测
+  // DROP 顺序：先删 app_state（解除其 FK→app_row_handlers），
+  // 再动态查出并删除 app_action_logs→app_row_handlers 的 FK，最后删 app_row_handlers
+  {
+    name: 'drop app_state and app_row_handlers tables',
+    check: async (conn) => {
+      const hasAppState = await hasTable(conn, 'app_state');
+      const hasAppRowHandler = await hasTable(conn, 'app_row_handlers');
+      return !hasAppState && !hasAppRowHandler;
+    },
+    migrate: async (conn) => {
+      if (await hasTable(conn, 'app_state')) {
+        await conn.execute('DROP TABLE IF EXISTS app_state');
+        console.log('  ✓ Dropped app_state table');
+      }
+      if (await hasTable(conn, 'app_row_handlers')) {
+        const [fkRows] = await conn.execute(
+          `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'app_action_logs' AND COLUMN_NAME = 'handler_id' AND REFERENCED_TABLE_NAME = 'app_row_handlers'`,
+          [DB_CONFIG.database]
+        );
+        for (const fk of fkRows) {
+          try {
+            await conn.execute(`ALTER TABLE app_action_logs DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``);
+            console.log(`  ✓ Dropped FK ${fk.CONSTRAINT_NAME} from app_action_logs`);
+          } catch { /* FK may have been dropped by prior run */ }
+        }
+        await conn.execute('DROP TABLE IF EXISTS app_row_handlers');
+        console.log('  ✓ Dropped app_row_handlers table');
+      }
+    },
+  },
+
+// ==================== 清理旧 doc_* 表（彻底替换） ====================
 
   // 34. 删除旧 doc_chunks 表
   {
@@ -2140,10 +2385,15 @@ const MIGRATIONS = [
   {
     name: 'attachments.access_level backfill by source_tag',
     check: async (conn) => {
+      const publicTags = ['user_avatar', 'expert_avatar', 'site_logo', 'site_background'];
+      const privateTags = ['doc-platform', 'task_export', 'admin_upload', 'mini_app', 'mini_app_file'];
       const [rows] = await conn.execute(`
-        SELECT COUNT(*) AS cnt FROM attachments WHERE access_level = 'public'
-      `);
-      return rows[0].cnt > 0;
+        SELECT COUNT(*) AS cnt
+        FROM attachments
+        WHERE (source_tag IN (${publicTags.map(() => '?').join(',')}) AND access_level <> 'public')
+           OR (source_tag IN (${privateTags.map(() => '?').join(',')}) AND access_level <> 'private')
+      `, [...publicTags, ...privateTags]);
+      return rows[0].cnt === 0;
     },
     migrate: async (conn) => {
       const publicTags = ['user_avatar', 'expert_avatar', 'site_logo', 'site_background'];

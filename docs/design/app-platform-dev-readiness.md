@@ -1,7 +1,7 @@
 # App 平台开发就绪评估报告
 
 > **评估日期**：2026-04-14
-> **评估对象**：[`app-platform-design.md`](app-platform-design.md)
+> **评估对象**：[`../apps/historical/app-platform-design.md`](../apps/historical/app-platform-design.md)
 > **评估目标**：判断设计文档是否具备开发条件，识别前置依赖和风险
 
 ---
