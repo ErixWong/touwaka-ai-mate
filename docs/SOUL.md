@@ -68,7 +68,7 @@
 
 ## 调试提示
 
-- 可按需使用 `tests/run-skill.js`、`tests/skill-admin.js`、`tests/db-query.js` 辅助验证。
+- 可按需使用 `tests/run-skill.js`、`tests/skill-admin.js`、`tools/db-query.js` 辅助验证。
 - 具体命令、数据库迁移、发布流程、提交/PR 规范统一以 `AGENTS.md` 和 `docs/development/*.md` 为准。
 
 ---

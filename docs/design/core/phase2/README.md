@@ -1,7 +1,9 @@
-## Touwaka Mate v2 设计总览
+## Phase 2 设计总览
 
-**版本：** v2  
-**目标：** 在 v1 能力的基础上，引入任务层（Task Layer）与右侧多功能面板，使系统更适合「复杂任务拆解 + 长周期协作」。
+> 目录治理说明：`core/phase2/` 是当前认可的 Phase 2 主线设计目录；旧的 `v2/` 已不再作为本阶段的目录别名使用。统一规则见 `../../information-architecture.md`。
+
+**阶段：** Phase 2
+**目标：** 在 Phase 1 能力的基础上，引入任务层（Task Layer）与右侧多功能面板，使系统更适合「复杂任务拆解 + 长周期协作」。
 
 ---
 
@@ -44,7 +46,7 @@
   - `context-compression-design.md`：上下文压缩设计。
   - `background-task-scheduler-design.md`：后台任务调度设计。
 
-> 约定：后续如新增 v2 设计，都优先放在本目录，并在本 README 中补充索引和状态说明。
+> 约定：后续如新增 Phase 2 主线设计，都优先放在本目录，并在本 README 中补充索引和状态说明。
 
 ---
 
@@ -56,9 +58,9 @@
 - **已废弃：** 仅保留历史参考，不再作为实现依据
 
 当前状态（人工维护）：
-- `task-layer-design.md`：**已采纳，部分内容待实现**
-- `right-panel-design.md`：**已采纳，按 TODO 推进中**
-- `sandbox-architecture.md`：**已采纳，本地开发环境已实现**
+- `task-layer-design.md`：**历史主线设计，核心组件未实现；当前代码仅落地简化版 workspace CRUD**
+- `right-panel-design.md`：**主要能力已实现，仍可作为历史设计参考**
+- `sandbox-architecture.md`：**已采纳，但 SandboxPool 池化管理未实现；当前主要落地执行器能力**
 - `expert-orchestration.md`：**草稿，核心架构重大变更**
 - `org-architecture.md`：**已实现（Phase 1），公司组织架构**
 
@@ -71,5 +73,5 @@
 - 讨论「沙箱架构、用户隔离、专家权限」时，优先阅读 `sandbox-architecture.md`。
 - 讨论「主循环调度、专家分身、状态问询」时，优先阅读 `expert-orchestration.md`。
 - 讨论「组织架构、职位定义、专家配置」时，优先阅读 `org-architecture.md`。
-- 如设计有变更，请务必同步更新本 README 的「文档索引」与「当前状态」，保持 v2 设计的单一总入口。
-
+- 涉及实现判断时，以当前代码为准；本目录中的多份文档仍包含未落地的架构设计成分。
+- 如设计有变更，请务必同步更新本 README 的「文档索引」与「当前状态」，保持 Phase 2 设计的单一总入口。

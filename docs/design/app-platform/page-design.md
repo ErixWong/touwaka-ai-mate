@@ -2,6 +2,7 @@
 
 > 本文件从 [`../../apps/historical/app-platform-design.md`](../../apps/historical/app-platform-design.md) 中提取，集中管理所有页面设计。
 > 主文档中的页面章节引用本文件。
+> **实现同步说明**：当前页面主路径与整体结构基本仍有参考价值，但文中的部分组件命名和 UI 落点已与现代码不同，应优先以 `frontend/src/views/AppsView.vue`、`AppDetailView.vue`、`AppMarketPanel.vue`、`SettingsView.vue` 为准。
 
 ## 页面总览
 

@@ -190,7 +190,7 @@ getToolDefinitions() {
 }
 ```
 
-**文档建议**（`docs/v1/skill-loading-design.md`）：
+**文档建议**（`docs/design/core/phase1/skill-loading-design.md`）：
 - V2 目标：使用向量检索动态加载相关技能（Top 5）
 - V1 过渡方案：关键词匹配过滤
 
@@ -242,7 +242,7 @@ expertService.performReflection(user_id, content, fullContent).catch(err => {
 });
 ```
 
-**文档建议**（`docs/v1/code-review-report.md`）：
+**文档建议**（`docs/design/core/phase1/code-review-report.md`）：
 - 触发条件：
   - 对话长度超过阈值（如 5 轮以上）
   - 用户表达负面情绪
@@ -292,7 +292,7 @@ async buildTopicContext(memorySystem, userId, currentMessage) {
 }
 ```
 
-**文档说明**（`docs/v1/code-review-report.md`）：
+**文档说明**（`docs/design/core/phase1/code-review-report.md`）：
 - 当前为临时实现，需要等向量搜索功能完成后才能实现基于语义的智能匹配
 
 **优先级**: 🟡 P2（可以延后，V2 可以 workaround）

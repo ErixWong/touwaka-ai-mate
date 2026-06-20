@@ -50,7 +50,7 @@ getToolDefinitions() {
 ## V2 Task Orchestrator - 设计目标 (RAG + 动态加载)
 
 ### 设计文档
-`docs/v2/task-layer-design.md` 第 4.2 节 "技能加载策略"
+`docs/design/core/phase2/task-layer-design.md` 第 4.2 节 "技能加载策略"
 
 ### 核心设计
 

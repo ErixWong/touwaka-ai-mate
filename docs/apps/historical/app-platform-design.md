@@ -2367,9 +2367,9 @@ server/
 
 | 组件       | 来源                                                       | 说明                                                                                |
 | ---------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| RBAC       | [`tool-permission-design.md`](../parse2/tool-permission-design.md) | `users` → `user_roles` → `roles` → `role_permissions` → `permissions` |
-| 组织架构   | [`org-architecture.md`](../parse2/org-architecture.md)             | `departments`（树形）+ `positions`（含 `is_manager` 标识）                    |
-| 知识库权限 | [`kb-permission-design.md`](../parse2/kb-permission-design.md)     | `visibility` ENUM('owner', 'department', 'all') + `owner_id` + `creator_id`   |
+| RBAC       | [`tool-permission-design.md`](../../design/phase2/tool-permission-design.md) | `users` → `user_roles` → `roles` → `role_permissions` → `permissions` |
+| 组织架构   | [`org-architecture.md`](../../design/phase2/org-architecture.md)             | `departments`（树形）+ `positions`（含 `is_manager` 标识）                    |
+| 知识库权限 | [`kb-permission-design.md`](../../design/phase2/kb-permission-design.md)     | `visibility` ENUM('owner', 'department', 'all') + `owner_id` + `creator_id`   |
 | 角色等级   | `roles.level`                                            | ENUM('user', 'power_user', 'admin')                                                 |
 
 ### 第一层：App 级权限（谁能用哪个 App）
@@ -2553,7 +2553,7 @@ config:
 
 ### 与表单系统的关系
 
-App 平台复用 [`form-system-design.md`](../parse2/form-system-design.md) 中的表单系统：
+App 平台复用 [`form-system-design.md`](../../design/phase2/form-system-design.md) 中的表单系统：
 
 | 表单系统功能        | App 平台使用方式                   |
 | ------------------- | ---------------------------------- |

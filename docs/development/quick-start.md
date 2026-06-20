@@ -150,14 +150,17 @@ touwaka-mate-v2/
 │   │   └── pptx/          # PPT 处理
 │   └── work/              # 工作文件
 └── docs/                  # 文档
+    ├── README.md          # docs 总入口
+    ├── SOUL.md            # 项目协作风格与常用入口
+    ├── development/       # 开发规范与手册
+    ├── database/          # 数据库与查询规范
     ├── design/            # 设计文档
-    │   ├── v1/            # V1 架构
-    │   └── v2/            # V2 设计
-    ├── guides/            # 开发指南
-    ├── core/              # 核心文档
-    │   ├── SOUL.md        # 开发助手人设
-    │   └── TODO.md        # 待办事项
-    └── archive/           # 已完成任务归档
+    │   ├── phase1/        # Mind Core 阶段设计
+    │   ├── phase2/        # Task Layer / Right Panel 阶段设计
+    │   └── phase3/        # App 平台阶段设计
+    ├── apps/              # App 当前实现文档入口
+    ├── tasks/             # 任务留痕
+    └── tracking/          # 跟踪记录
 ```
 
 ---
