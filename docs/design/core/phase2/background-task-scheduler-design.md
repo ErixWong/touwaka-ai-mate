@@ -288,5 +288,5 @@ backgroundScheduler.register(
 
 ## 相关文档
 
-- [LLM 调用场景汇总](../v1/llm-call-scenarios.md)
-- [双心智架构](../v1/architecture-analysis-report.md)
+- [LLM 调用场景汇总](../phase1/llm-call-scenarios.md)
+- [双心智架构](../phase1/architecture-analysis-report.md)

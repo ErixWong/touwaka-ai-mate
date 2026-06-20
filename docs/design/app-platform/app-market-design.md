@@ -1316,8 +1316,8 @@ class AppMarketService {
 | 1 | 创建 `apps/` 目录结构 + `index.json` | 1h | P0 | Registry 索引文件 |
 | 2 | 迁移 contract-manager 到 `apps/` 目录 | 1h | P0 | 作为示例 App |
 | 3 | 后端 `AppMarketService` + 基础 routes | 3h | P0 | 安装、卸载、检查依赖 |
-| 4 | 前端 `AppMarketTab.vue` + API 模块 | 4h | P0 | 市场浏览界面 |
-| 5 | `SettingsView` 添加"App 市场" Tab | 0.5h | P0 | 集成到系统管理 |
+| 4 | 前端 `AppMarketPanel.vue` + API 模块 | 4h | P0 | 市场浏览与侧面板界面 |
+| 5 | 将市场入口接入现有页面结构 | 0.5h | P0 | 与 `AppsView` / 管理页联动 |
 | 6 | 依赖检查逻辑 | 2h | P0 | MCP/Skills/平台版本检查 |
 | 7 | 数据导出功能（bundle/csv/json） | 3h | P1 | 数据备份 |
 | 8 | 数据导入功能 | 2h | P1 | 数据恢复 |
@@ -1345,7 +1345,7 @@ class AppMarketService {
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  1. 浏览市场                                                                 │
-│     Settings → 系统管理 → App 市场                                            │
+│     Apps 页面 / AppMarketPanel                                                │
 │     └── 查看分类列表、搜索、查看详情                                          │
 │                                                                             │
 │  2. 安装 App                                                                │

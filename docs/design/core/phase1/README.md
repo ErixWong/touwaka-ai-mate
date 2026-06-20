@@ -208,8 +208,8 @@ POST /admin/reload-skills
 │           ├── index.js
 │           └── SKILL.md
 ├── docs/                      # 文档目录
-│   ├── v1/                    # V1 架构文档
-│   └── v2/                    # V2 设计文档
+│   ├── design/core/phase1/    # Phase 1 / Mind Core
+│   └── design/core/phase2/    # Phase 2 / Task Layer
 ├── package.json
 ├── .env.example               # 环境变量示例
 └── .gitignore

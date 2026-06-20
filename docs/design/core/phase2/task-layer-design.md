@@ -1,5 +1,8 @@
 # Touwaka Mate V2 - Task Layer 设计文档
 
+> **内容状态说明**：本文档仍主要描述 Task Layer 的完整目标架构。
+> **与当前实现的差异**：代码中已落地的是简化版 task/workspace CRUD 与基础目录管理，文档中的五阶段生命周期、`TaskOrchestrator`、`ReflectiveMind` 偏离度控制、`SandboxPool` 池化管理等核心组件目前未完整实现。
+
 ## 文档说明
 
 本文档定义V2版本中Task层的设计，基于V1多用户对话能力的扩展，增加任务编排、约束管理和多专家协作能力。

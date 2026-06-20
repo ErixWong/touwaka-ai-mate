@@ -377,6 +377,8 @@ CREATE TABLE mini_app_role_access (
 
 ## 事件处理器表
 
+> **实现状态说明**：本节描述的是事件驱动扩展方案。当前代码中 `app_event_handlers` 表及对应执行链路尚未落地，不应视为现行数据库事实。
+
 ### app_event_handlers — CRUD 事件处理器表
 
 > 用于事件驱动模式：固定的 CRUD 事件（create/update/delete）触发脚本执行。

@@ -1,96 +1,95 @@
-# Touwaka Mate v2 Documentation
+# Touwaka Mate v2 文档总览
 
-Welcome to the Touwaka Mate v2 documentation. This is an AI Expert System with dual-mind architecture (Expression Mind + Reflective Mind).
+本目录存放项目开发、设计、数据库和任务留痕文档。当前整理原则是：优先以仓库现有实现为准，再用索引文档提供稳定入口。
 
-## 📚 Documentation Structure
+## 文档结构
 
-```
+```text
 docs/
-├── README.md                    # This file - documentation index
-├── SOUL.md                      # Project guide with coding standards and conventions
-├── CONTRIBUTING.md              # Contribution guidelines
-├── function-calling-best-practices.md  # LLM function calling best practices
-├── development/                 # Development guides
-│   ├── quick-start.md          # Quick start guide
-│   ├── coding-standards.md     # Coding standards and conventions
-│   ├── core-modules.md         # Core module documentation
-│   ├── frontend-components.md  # Frontend component guide
-│   ├── api-reference.md        # API reference
-│   ├── code-review-checklist.md # Code review checklist
-│   └── skill-development-guide.md # Skill development guide
-├── database/                    # Database documentation
-│   ├── README.md               # Database overview
-│   ├── api-query-design.md     # API query design patterns
-│   └── orm-analysis.md         # ORM analysis
-└── design/                     # Architecture and design documents
-    ├── README.md               # Design documentation index
-    ├── parse1/                 # Parse 1 architecture documents (formerly v1)
-    ├── parse2/                 # Parse 2 architecture documents (formerly v2)
-    └── parse3/                 # Parse 3 - App platform design
+├── README.md                           # 本文件，docs 总入口
+├── SOUL.md                             # 项目协作风格与常用入口
+├── CONTRIBUTING.md                     # 协作说明
+├── function-calling-best-practices.md  # Function calling 经验总结
+├── images/                             # 文档图片资源
+├── apps/                               # App 模块当前架构与历史文档入口
+├── database/                           # 数据库与查询规范
+├── development/                        # 开发规范、API、模块手册
+├── design/                             # 架构与设计文档
+├── tasks/                              # 任务留痕与审查归档
+└── tracking/                           # 跟踪记录
 ```
 
-## 🚀 Quick Start
+## 推荐阅读顺序
 
-- **[Quick Start Guide](development/quick-start.md)** - Get started with development
-- **[Coding Standards](development/coding-standards.md)** - Code conventions and standards
-- **[API Reference](development/api-reference.md)** - API endpoints and usage
+1. [SOUL.md](./SOUL.md)
+2. [development/README.md](./development/README.md)
+3. [development/coding-standards.md](./development/coding-standards.md)
+4. [development/code-review-checklist.md](./development/code-review-checklist.md)
+5. 当前任务对应的 `docs/tasks/active/...`
 
-## 🏗️ Architecture
+## 开发入口
 
-**Touwaka Mate v2** - AI Expert System
+| 文档 | 说明 |
+|------|------|
+| [development/README.md](./development/README.md) | 开发手册总入口 |
+| [development/quick-start.md](./development/quick-start.md) | 环境配置、启动方式、基础目录 |
+| [development/coding-standards.md](./development/coding-standards.md) | snake_case、统一响应、数据库与 AI 调用红线 |
+| [development/code-review-checklist.md](./development/code-review-checklist.md) | 提交前最少检查项 |
+| [development/llm-call-standards.md](./development/llm-call-standards.md) | AI Provider 调用统一规范 |
+| [development/ai-architecture-guidelines.md](./development/ai-architecture-guidelines.md) | AI / LLM 架构约束与设计建议 |
+| [development/core-modules.md](./development/core-modules.md) | 核心模块说明 |
+| [development/api-reference.md](./development/api-reference.md) | API 概览与约定 |
+| [development/skill-development-guide.md](./development/skill-development-guide.md) | Skill 开发说明 |
+| [development/xlsx-skill-formula-handling.md](./development/xlsx-skill-formula-handling.md) | Excel 公式处理专项说明 |
 
-- **Expert**: AI characters with unique personas
-- **Topic**: Phased summaries of conversation history
-- **Skill**: Tool capabilities that experts can invoke
-- **Dual-Mind Architecture**: Expression Mind + Reflective Mind
+## App 与平台入口
 
-### Tech Stack
+| 文档 | 说明 |
+|------|------|
+| [apps/README.md](./apps/README.md) | App 文档统一入口 |
+| [apps/current-architecture.md](./apps/current-architecture.md) | 当前 app 平台实现边界 |
+| [apps/app-generation-guide.md](./apps/app-generation-guide.md) | app 安装、运行、tick、前端装配说明 |
+| [apps/historical/README.md](./apps/historical/README.md) | 历史方案入口，仅作背景参考 |
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Vue 3 + TypeScript + Vite + Pinia |
-| Backend | Node.js + Koa + MySQL |
-| ORM | Sequelize |
-| AI | LLM Application Development, Prompt Engineering |
+## 设计入口
 
-## 📖 Key Documentation
+| 文档 | 说明 |
+|------|------|
+| [design/README.md](./design/README.md) | 设计文档总索引 |
+| [design/information-architecture.md](./design/information-architecture.md) | 文档信息架构与目录放置规则 |
+| [design/core/phase1/README.md](./design/core/phase1/README.md) | Phase 1 / Mind Core |
+| [design/core/phase2/README.md](./design/core/phase2/README.md) | Phase 2 / Task Layer 与右侧面板 |
+| [design/app-platform/README.md](./design/app-platform/README.md) | App 平台设计 |
+| [design/doc-platform/README.md](./design/doc-platform/README.md) | 文档平台当前实现 |
 
-### Development
-- [Quick Start](development/quick-start.md) - Environment setup and first steps
-- [Coding Standards](development/coding-standards.md) - Naming conventions, code style
-- [Apps Module Docs](apps/README.md) - Current app architecture, current guide, and historical references
-- [App Generation Guide](apps/app-generation-guide.md) - Detailed current app platform implementation guide
-- [Core Modules](development/core-modules.md) - ChatService, LLMClient, MemorySystem
-- [Frontend Components](development/frontend-components.md) - UI components guide
-- [API Reference](development/api-reference.md) - Endpoints and error codes
-- [Skill Development Guide](development/skill-development-guide.md) - How to create skills
+## 数据库与任务入口
 
-### Project Guide
-- [SOUL.md](SOUL.md) - Project conventions, coding standards, and development guidelines
+| 文档 | 说明 |
+|------|------|
+| [database/README.md](./database/README.md) | 数据库文档入口 |
+| [database/api-query-design.md](./database/api-query-design.md) | 查询 API 设计规范 |
+| [tasks/README.md](./tasks/README.md) | 任务体系入口 |
+| [tasks/active/](./tasks/active/) | 进行中的任务留痕 |
+| [tasks/archived/](./tasks/archived/) | 已归档任务 |
+| [tracking/README.md](./tracking/README.md) | 历史跟踪目录说明 |
 
-### Database
-- [Database Overview](database/README.md) - Database design and setup
-- [API Query Design](database/api-query-design.md) - Query patterns and best practices
-- [ORM Analysis](database/orm-analysis.md) - ORM usage and patterns
+## 当前事实摘要
 
-### Design
-- [Design Index](design/README.md) - Architecture documentation index
-- [Parse 1 Design](design/parse1/README.md) - Parse 1 architecture and design
-- [Parse 2 Design](design/parse2/README.md) - Parse 2 architecture (Task Layer, Right Panel, etc.)
-- [Parse 3 - App Platform (Retired)](apps/historical/app-platform-design.md) - Historical app platform design with platform-owned state machine
+| 维度 | 当前实现 |
+|------|----------|
+| 前端 | Vue 3 + TypeScript + Vite + Pinia |
+| 后端 | Node.js + Koa + Sequelize |
+| 数据库 | MariaDB / MySQL 协议 |
+| AI 能力层 | `LLMClient` / `InternalLLMService` / `EmbeddingClient` / `ASRClient` / `TTSClient` |
+| App 平台 | manifest 安装 + runtime 装配 + `AppClock` tick 调度 |
 
-## 🤝 Contributing
+## 说明
 
-Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
-- Code of conduct
-- Development workflow
-- Pull request process
-- Coding standards
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
+- `docs/design/` 现已收敛为 `core/`、`app-platform/`、`doc-platform/`、`topics/`、`drafts/`、`archive/` 六层结构。
+- `docs/design/information-architecture.md` 定义了 `docs/design/` 的放置规则与目录边界。
+- `docs/tasks/` 是当前主要使用中的任务留痕体系；`docs/tracking/` 当前仅保留为低活跃历史结构。
+- 若文档描述与代码冲突，以可验证仓库事实为准，并在对应任务中补充修正记录。
 
 ---
 
-*Last updated: 2026-03-30*
+*最后更新: 2026-06-20*

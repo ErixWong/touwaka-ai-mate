@@ -164,8 +164,8 @@ MCP Server 配置中的 `env_template` 支持占位符：
 
 ## 相关文档
 
-- [MCP Client 驻留技能设计方案](../../docs/design/mcp-client-resident-design.md)
-- [驻留技能设计](../../docs/design/resident-skill-design.md)
+- [MCP Client 驻留技能设计方案](../../docs/design/topics/resident-processes/mcp-client-resident-design.md)
+- [驻留技能设计](../../docs/design/topics/resident-processes/resident-skill-design.md)
 - [MCP Streamable HTTP Transport](https://github.com/modelcontextprotocol/typescript-sdk)
 
 ---

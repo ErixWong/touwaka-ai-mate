@@ -374,4 +374,4 @@ async getUnarchivedMessages(expertId, userId, limit = 50) {
 ## 相关文档
 
 - [后台任务调度器设计](./background-task-scheduler-design.md)
-- [LLM 调用场景汇总](../v1/llm-call-scenarios.md)
+- [LLM 调用场景汇总](../phase1/llm-call-scenarios.md)

@@ -3,6 +3,7 @@
 > **评估日期**：2026-04-14
 > **评估对象**：[`../apps/historical/app-platform-design.md`](../apps/historical/app-platform-design.md)
 > **评估目标**：判断设计文档是否具备开发条件，识别前置依赖和风险
+> **历史快照说明**：本文档保留的是当时针对旧整合设计稿的就绪度评估。由于目录重构与实现演进，部分内部路径、组件命名和执行结论已不再直接对应当前代码。
 
 ---
 
@@ -54,7 +55,7 @@
 
 | 基础设施 | 设计文档引用 | 影响范围 | 替代方案 |
 |----------|-------------|----------|----------|
-| DynamicForm.vue | [`docs/design/parse2/form-system-design.md`](parse2/form-system-design.md) | 前端表单渲染 | **需新建 GenericMiniApp 的字段渲染组件** |
+| DynamicForm.vue | [`docs/design/core/phase2/form-system-design.md`](../core/phase2/form-system-design.md) | 前端表单渲染 | **需新建 GenericMiniApp 的字段渲染组件** |
 | LLM 直接调用服务 | 脚本 context.services.callLlm | 后端脚本执行 | 需封装 LLM 调用为独立 Service，供脚本调用 |
 | 脚本加载器 | app_row_handlers.handler 字段 | 时钟调度 | 需实现动态 require/import 脚本模块 |
 
