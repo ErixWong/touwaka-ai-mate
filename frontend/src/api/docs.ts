@@ -138,6 +138,9 @@ export interface DocResultImageAttachment {
   sort_order: number
   alt_text: string | null
   description: string | null
+  markdown_path?: string | null
+  referenced_in_markdown?: number | boolean | null
+  line_number?: number | null
   attachment: DocAttachmentInfo | null
 }
 
@@ -177,6 +180,7 @@ export interface DocResultDetail {
     error_code: string | null
     error_message: string | null
     preview_markdown_content?: string | null
+    cleaned_markdown_attachment?: DocAttachmentInfo | null
     main_markdown_attachment: DocAttachmentInfo | null
     raw_result_attachment: DocAttachmentInfo | null
     deliverables_manifest_attachment: DocAttachmentInfo | null

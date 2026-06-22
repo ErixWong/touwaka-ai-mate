@@ -404,7 +404,7 @@ class DocController {
       const ocrImages = latestOcrResult?.id
         ? await DocOcrImage.findAll({
           where: { ocr_result_id: latestOcrResult.id },
-          attributes: ['id', 'attachment_id', 'filename', 'media_type', 'sort_order', 'alt_text', 'description'],
+          attributes: ['id', 'attachment_id', 'filename', 'media_type', 'sort_order', 'alt_text', 'description', 'markdown_path', 'referenced_in_markdown', 'line_number'],
           order: [['sort_order', 'ASC']],
           raw: true,
         })

@@ -165,9 +165,9 @@
 
           <div class="sidebar-section">
             <h4 class="sidebar-title">附件</h4>
-            <div v-if="docStore.currentResult.image_attachments.length === 0" class="empty-state tiny">暂无图片附件</div>
+            <div v-if="displayedImageAttachments.length === 0" class="empty-state tiny">暂无图片附件</div>
             <div v-else class="attachment-list">
-              <div v-for="(item, index) in docStore.currentResult.image_attachments" :key="item.id" class="attachment-item">
+              <div v-for="(item, index) in displayedImageAttachments" :key="item.id" class="attachment-item">
                 <div class="attachment-name">附件 {{ index + 1 }}</div>
                 <div class="attachment-meta">{{ item.attachment?.mime_type || item.media_type || '-' }} · {{ formatFileSize(item.attachment?.file_size) }}</div>
                 <el-button v-if="item.attachment?.download_url" size="small" text type="primary" @click="downloadAttachment(item.attachment?.download_url)">下载</el-button>
@@ -202,9 +202,100 @@ const processingErrorCode = computed(() => docStore.currentResult?.processing?.e
 const processingErrorMessage = computed(() => docStore.currentResult?.processing?.error_message || '')
 const displayDocumentTitle = computed(() => docStore.currentResult?.source_attachment?.file_name || docStore.currentResult?.document.title || '文档')
 
+const markdownReferencedImagePaths = computed(() => {
+  const content = markdownPreview.value || docStore.currentResult?.ocr_result?.preview_markdown_content || ''
+  const pathSet = new Set<string>()
+  if (!content) return pathSet
+
+  const imageRegex = /!\[[^\]]*\]\(([^)]+)\)/g
+  let match: RegExpExecArray | null
+  while ((match = imageRegex.exec(content)) !== null) {
+    const rawPath = match[1]?.trim().replace(/^<|>$/g, '')
+    if (!rawPath) continue
+    const normalized = rawPath.replace(/^\.\//, '').trim()
+    if (!normalized) continue
+    pathSet.add(normalized)
+    pathSet.add(`./${normalized}`)
+  }
+
+  return pathSet
+})
+
+const displayedImageAttachments = computed(() => {
+  const items = docStore.currentResult?.image_attachments || []
+  const referencedPathSet = markdownReferencedImagePaths.value
+  const referencedItems = items.filter((item) => {
+    if (!item.referenced_in_markdown) return false
+    const candidates = [item.markdown_path, item.filename]
+      .filter(Boolean)
+      .map(value => String(value).replace(/^\.\//, '').trim())
+
+    if (referencedPathSet.size === 0) return true
+    return candidates.some(candidate => referencedPathSet.has(candidate) || referencedPathSet.has(`./${candidate}`))
+  })
+  const sourceItems = referencedItems.length > 0 ? referencedItems : items
+  const deduped = new Map<string, typeof sourceItems[number]>()
+
+  for (const item of sourceItems) {
+    const normalizedMarkdownPath = item.markdown_path?.replace(/^\.\//, '').trim() || ''
+    const normalizedFilename = item.filename?.replace(/^\.\//, '').trim() || ''
+    const key = normalizedMarkdownPath || normalizedFilename || item.attachment_id || item.id
+
+    if (!deduped.has(key)) {
+      deduped.set(key, item)
+    }
+  }
+
+  return Array.from(deduped.values()).sort((a, b) => {
+    const sortA = typeof a.sort_order === 'number' ? a.sort_order : Number.MAX_SAFE_INTEGER
+    const sortB = typeof b.sort_order === 'number' ? b.sort_order : Number.MAX_SAFE_INTEGER
+    if (sortA !== sortB) return sortA - sortB
+    return (a.line_number || 0) - (b.line_number || 0)
+  })
+})
+
 const renderedMarkdownPreview = computed(() => {
   if (!markdownPreview.value) return ''
-  return markdownFormatter.formatMessage(markdownPreview.value)
+
+  const imageItems = displayedImageAttachments.value
+  const imageUrlMap = new Map<string, string>()
+
+  for (const item of imageItems) {
+    const resolvedUrl = item.attachment?.preview_url || item.attachment?.download_url || ''
+    if (!resolvedUrl) continue
+
+    const candidates = [
+      item.markdown_path,
+      item.filename,
+    ].filter(Boolean) as string[]
+
+    for (const candidate of candidates) {
+      const normalized = candidate.replace(/^\.\//, '').trim()
+      if (!normalized) continue
+      imageUrlMap.set(normalized, resolvedUrl)
+      imageUrlMap.set(`./${normalized}`, resolvedUrl)
+      const fileNameOnly = normalized.split('/').pop()?.trim()
+      if (fileNameOnly) {
+        imageUrlMap.set(fileNameOnly, resolvedUrl)
+        imageUrlMap.set(`./${fileNameOnly}`, resolvedUrl)
+        imageUrlMap.set(`images/${fileNameOnly}`, resolvedUrl)
+        imageUrlMap.set(`./images/${fileNameOnly}`, resolvedUrl)
+      }
+    }
+  }
+
+  const resolvedMarkdown = markdownPreview.value.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt: string, rawPath: string) => {
+    const cleanPath = rawPath.trim().replace(/^<|>$/g, '')
+    if (/^(?:https?:|data:|blob:|\/attach\/|\/api\/attachments\/)/i.test(cleanPath)) {
+      return match
+    }
+    const normalizedPath = cleanPath.replace(/^\.\//, '')
+    const resolvedUrl = imageUrlMap.get(cleanPath) || imageUrlMap.get(normalizedPath)
+    if (!resolvedUrl) return match
+    return `![${alt}](${resolvedUrl})`
+  })
+
+  return markdownFormatter.formatMessage(resolvedMarkdown)
 })
 
 const retryAction = computed(() => {
@@ -529,8 +620,15 @@ onBeforeUnmount(() => {
 .markdown-body :deep(.formula-display-block .katex-display) { display: block; margin: 0; padding: 0; overflow: visible; }
 .markdown-body :deep(.formula-inline-paragraph) { margin: 8px 0; }
 .markdown-body :deep(.katex-display) { display: block; overflow-x: auto; overflow-y: visible; padding: 10px 0; }
-.markdown-body :deep(.katex) { font-size: 1.05em; }
-.markdown-body :deep(.katex .base) { white-space: nowrap; }
+.markdown-body :deep(.katex) { font-size: 1em; line-height: 1; text-indent: 0; }
+.markdown-body :deep(.katex .base) { white-space: nowrap; line-height: 1; }
+.markdown-body :deep(.katex .msupsub) { line-height: 1; }
+.markdown-body :deep(.katex .mord),
+.markdown-body :deep(.katex .mbin),
+.markdown-body :deep(.katex .mrel),
+.markdown-body :deep(.katex .mopen),
+.markdown-body :deep(.katex .mclose),
+.markdown-body :deep(.katex .mpunct) { letter-spacing: 0; word-spacing: 0; }
 .markdown-body :deep(.katex-html) { overflow: visible; }
 .markdown-body :deep(.katex-error code) { color: var(--el-color-danger); background: var(--el-fill-color-light); }
 

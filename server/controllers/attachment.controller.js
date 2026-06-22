@@ -851,7 +851,7 @@ class AttachmentController {
     const startTime = Date.now();
     try {
       this.ensureModels();
-      const { page = 1, size = 20, source_tag, mime_type, uploader_id, start_date, end_date } = ctx.query;
+      const { page = 1, size = 20, source_tag, source_id, mime_type, uploader_id, start_date, end_date } = ctx.query;
       const userId = ctx.state.session.id;
 
       // 检查管理员权限
@@ -865,6 +865,9 @@ class AttachmentController {
       const where = {};
       if (source_tag) {
         where.source_tag = source_tag;
+      }
+      if (source_id) {
+        where.source_id = source_id;
       }
       if (mime_type) {
         // 支持 mime_type 前缀筛选（如 'image' 匹配所有 image/* 类型）
