@@ -10,7 +10,7 @@ export default class app_invoice_mgr_row extends Model {
       primaryKey: true,
       comment: "关联 mini_app_rows.id",
       references: {
-        model: 'mini_app_rows',
+        model: 'app_invoice_mgr_records',
         key: 'id'
       }
     },

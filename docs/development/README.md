@@ -1,128 +1,92 @@
 # 开发手册
 
-本手册涵盖 Touwaka Mate v2 的开发规范、核心模块和 API 参考。
+本手册是 `docs/development/` 的统一入口，聚焦当前仓库已经落地的开发规范、核心模块、接口约定与专项说明。
+
+## 优先阅读
+
+1. [编码规范](./coding-standards.md)
+2. [代码审查清单](./code-review-checklist.md)
+3. [AI Provider 调用规范](./llm-call-standards.md)
+4. 当前任务对应的 `docs/tasks/active/...`
 
 ## 文档索引
 
-### 开发指南
+### 基础开发
+
 | 文档 | 说明 |
 |------|------|
 | [快速开始](./quick-start.md) | 环境配置、启动命令、目录结构 |
-| [编码规范](./coding-standards.md) | snake_case 铁律、命名规范、响应格式 |
-| [核心模块](./core-modules.md) | ChatService、LLMClient、MemorySystem、认证中间件 |
-| [前端组件](./frontend-components.md) | 右侧面板、通用分页 |
-| [API 参考](./api-reference.md) | 端点列表、环境变量、错误码 |
+| [编码规范](./coding-standards.md) | snake_case、统一响应、数据库与 AI 调用约束 |
+| [代码审查清单](./code-review-checklist.md) | 提交前自查项与常见风险检查 |
+| [API 参考](./api-reference.md) | API 概览、约定、错误码 |
+| [核心模块](./core-modules.md) | 核心库、服务层、能力分层说明 |
+| [前端组件](./frontend-components.md) | 前端公共组件与界面约定 |
 
-### 任务详情
+### AI / Skill 专项
+
 | 文档 | 说明 |
 |------|------|
-| [expert-avatar.md](../../core/tasks/expert-avatar.md) | 专家头像功能（Base64 存储） |
-| [expert-llm-params.md](../../core/tasks/expert-llm-params.md) | 专家 LLM 参数配置化 |
-| [skill-management.md](../../core/tasks/skill-management.md) | Skill 管理系统 |
-| [right-panel.md](../../core/tasks/right-panel.md) | 右侧面板 |
-| [tool-visualization.md](../../core/tasks/tool-visualization.md) | 工具调用可视化面板 |
-| [context-compression.md](../../core/tasks/context-compression.md) | 上下文压缩重构 |
-| [reflective-mind-template.md](../../core/tasks/reflective-mind-template.md) | 反思心智模板配置化 |
+| [AI 调用规范](./llm-call-standards.md) | `LLMClient` / `InternalLLMService` / `EmbeddingClient` 等统一入口规则 |
+| [AI 架构方针](./ai-architecture-guidelines.md) | AI / LLM 架构原则与演进建议 |
+| [Skill 开发指南](./skill-development-guide.md) | Skill 结构、实现方式、接入流程 |
+| [XLSX 公式处理](./xlsx-skill-formula-handling.md) | Excel 公式读取与计算处理说明 |
 
-### 数据库手册
-| 文档 | 描述 |
+### App 平台
+
+| 文档 | 说明 |
 |------|------|
-| [README.md](../database/README.md) | 数据库概览与快速开始 |
-| [api-query-design.md](../database/api-query-design.md) | 复杂查询 API 规范 |
-| [orm-analysis.md](../database/orm-analysis.md) | ORM 选型分析 |
+| [App 模块文档](../apps/README.md) | App 文档统一入口 |
+| [App 当前架构](../apps/current-architecture.md) | 平台边界、app 边界、状态机职责 |
+| [App 生成指导手册](../apps/app-generation-guide.md) | manifest、安装链路、tick、前端装配 |
+| [历史 App 设计](../apps/historical/app-platform-design.md) | 历史平台统一状态机方案，仅供参考 |
 
-### 设计文档
-| 文档 | 描述 |
+### 数据库与设计
+
+| 文档 | 说明 |
 |------|------|
-| [context-compression-design.md](../../design/parse2/context-compression-design.md) | ⭐ 上下文压缩设计 |
-| [llm-call-scenarios.md](../../design/parse1/llm-call-scenarios.md) | LLM 调用场景分析 |
-| [background-task-scheduler-design.md](../../design/parse2/background-task-scheduler-design.md) | 后台任务调度器设计 |
-| [right-panel-design.md](../../design/parse2/right-panel-design.md) | 右侧面板容器设计 |
-| [task-layer-design.md](../../design/parse2/task-layer-design.md) | 任务层设计 |
-| [sandbox-architecture.md](../../design/parse2/sandbox-architecture.md) | 沙箱架构设计 |
-| [app-platform-design.md](../../design/parse3/app-platform-design.md) | ⭐ App 平台设计（多维表格 + AI） |
+| [数据库手册](../database/README.md) | 数据库概览与脚本入口 |
+| [查询 API 设计](../database/api-query-design.md) | 复杂查询参数与分页约定 |
+| [设计文档索引](../design/README.md) | 所有设计文档总入口 |
+| [Phase 1](../design/phase1/README.md) | Mind Core |
+| [Phase 2](../design/phase2/README.md) | Task Layer / Right Panel |
+| [Phase 3](../design/phase3/README.md) | App 平台设计 |
 
----
+## 当前实现摘要
 
-## 技术栈
+| 层级 | 当前实现 |
+|------|----------|
+| 前端 | Vue 3 + TypeScript + Vite + Pinia |
+| 后端 | Node.js + Koa + `@koa/router` |
+| 数据层 | Sequelize + `mysql2` |
+| 流式能力 | SSE |
+| AI 能力层 | `LLMClient`、`InternalLLMService`、`EmbeddingClient`、`ASRClient`、`TTSClient` |
+| App Runtime | `app-market.service.js` + `app-runtime-loader.js` + `app-router-loader.js` + `app-clock.js` |
 
-| 层级 | 技术 |
-|------|------|
-| 前端 | Vue 3 + TypeScript + Pinia + Vite |
-| 后端 | Node.js + Koa + @koa/router |
-| 数据库 | MySQL 8.0+ |
-| 认证 | JWT 双 Token |
-| 流式 | SSE |
-
----
-
-## 架构
-
-```
-Frontend (Vue 3) ←→ API Server (Koa) ←→ Service Layer ←→ MySQL
-```
-
-核心服务：`ChatService` → `ExpertChatService` → `LLMClient`/`MemorySystem`/`ReflectiveMind`
-
----
-
-## 核心模块概览
-
-### 后端核心模块
+## 关键模块速查
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| ChatService | `lib/chat-service.js` | 对话流程控制 |
-| ExpertChatService | `lib/expert-chat-service.js` | 专家对话服务 |
-| LLMClient | `lib/llm-client.js` | LLM API 调用封装 |
-| MemorySystem | `lib/memory-system.js` | 记忆管理、上下文压缩 |
+| ChatService | `lib/chat-service.js` | 对话入口与主流程控制 |
+| LLMClient | `lib/llm-client.js` | 统一 LLM chat 调用 |
+| InternalLLMService | `lib/internal-llm-service.js` | 内部服务层调用封装 |
+| EmbeddingClient | `lib/embedding-client.js` | 向量嵌入能力统一入口 |
+| ASRClient | `lib/asr-client.js` | 语音识别能力入口 |
+| TTSClient | `lib/tts-client.js` | 语音合成能力入口 |
+| MemorySystem | `lib/memory-system.js` | 记忆、召回、上下文拼装 |
 | ReflectiveMind | `lib/reflective-mind.js` | 反思心智实现 |
-| SkillLoader | `lib/skill-loader.js` | 技能加载、解析 SKILL.md |
-| SkillRunner | `lib/skill-runner.js` | 技能执行（JS/Python） |
-| ToolManager | `lib/tool-manager.js` | 工具调用管理 |
+| SkillLoader | `lib/skill-loader.js` | Skill 加载与解析 |
+| SkillRunner | `lib/skill-runner.js` | Skill 执行 |
+| ToolManager | `lib/tool-manager.js` | 工具调用调度 |
+| AppClock | `lib/app-clock.js` | app tick 调度 |
+| AppRuntimeLoader | `lib/app-runtime-loader.js` | app runtime 动态装载 |
+| AppRouterLoader | `lib/app-router-loader.js` | app 路由动态挂载 |
 
-### 前端核心组件
+## 相关入口
 
-| 组件 | 文件 | 职责 |
-|------|------|------|
-| RightPanel | `components/panel/RightPanel.vue` | 右侧面板容器 |
-| TopicsTab | `components/panel/TopicsTab.vue` | 话题列表 |
-| DebugTab | `components/panel/DebugTab.vue` | 调试信息 |
-| Pagination | `components/Pagination.vue` | 通用分页组件 |
-
----
-
-## Git 工作流
-
-详见 [SOUL.md - Git 工作流](../../core/SOUL.md#git-工作流-)
-
-### 快速参考
-
-| 操作 | 命令 |
-|------|------|
-| 创建分支 | `git checkout -b {type}/{描述}` |
-| 提交 | `git commit -m "{type}: 描述"` |
-| 推送 | `git push -u origin {分支名}` |
-| 创建 PR | 访问 GitHub，关联 Issue |
-
-### 分支类型
-
-- `feature` - 新功能
-- `fix` - Bug 修复
-- `refactor` - 代码重构
-- `docs` - 文档更新
+- [项目 README](../../README.md)
+- [项目协作入口](../SOUL.md)
+- [任务留痕目录](../tasks/active/)
 
 ---
 
-## 相关资源
-
-- [项目 README](../../../README.md) - 项目概览与快速开始
-- [Parse 2 设计总览](../../design/parse2/README.md) - Parse 2 架构设计索引
-- [项目待办事项](../../core/TODO.md) - 当前任务状态
-- [已完成任务归档](../../archive/todo-archive-2026-03.md) - 历史完成记录
-- [经验教训](../../design/lessons-learned.md) - 常见问题和解决方案
-- [Git 工作流](../../core/SOUL.md#git-工作流-) - 分支策略和 PR 规范
-
----
-
-*最后更新: 2026-03-07*
+*最后更新: 2026-06-20*

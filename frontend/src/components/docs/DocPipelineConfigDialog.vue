@@ -396,6 +396,31 @@
             </el-form-item>
           </template>
 
+          <!-- pending_metadata -->
+          <template v-if="activeStage === 'pending_metadata'">
+            <el-form-item label="启用"><el-switch v-model="form.pending_metadata.enabled" /></el-form-item>
+            <el-form-item label="执行方式">
+              <el-select v-model="form.pending_metadata.type">
+                <el-option label="内置 LLM" value="internal_llm" />
+                <el-option label="禁用" value="disabled" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="模型">
+              <el-select v-model="form.pending_metadata.model_id" placeholder="默认模型" clearable filterable>
+                <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="温度">
+              <el-input-number v-model="form.pending_metadata.temperature" :min="0" :max="2" :step="0.1" />
+            </el-form-item>
+            <el-form-item label="元数据提示词">
+              <el-input v-model="form.pending_metadata.prompt_template" type="textarea" :rows="4" />
+            </el-form-item>
+            <el-form-item label="超时(ms)">
+              <el-input-number v-model="form.pending_metadata.timeout_ms" :min="5000" :step="10000" />
+            </el-form-item>
+          </template>
+
           <!-- pending_outline -->
           <template v-if="activeStage === 'pending_outline'">
             <el-form-item label="模型">
@@ -458,8 +483,29 @@
               <el-input-number v-model="form.pending_embedding.retry_times" :min="0" :max="10" :step="1" />
             </el-form-item>
             <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_embedding.timeout_ms" :min="5000" :step="10000" />
+              <el-input-number v-model="form.pending_embedding.embedding_timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
+          </template>
+
+          <!-- pending_relocate -->
+          <template v-if="activeStage === 'pending_relocate'">
+            <el-form-item label="启用"><el-switch v-model="form.pending_relocate.enabled" /></el-form-item>
+            <el-form-item label="入库策略">
+              <el-select v-model="form.pending_relocate.target_strategy">
+                <el-option label="当前集合" value="current_collection" />
+                <el-option label="指定集合" value="specified_collection" />
+                <el-option label="自动路由" value="auto_route" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="标签策略">
+              <el-select v-model="form.pending_relocate.tag_strategy">
+                <el-option label="不写入" value="none" />
+                <el-option label="自动标签" value="auto" />
+                <el-option label="手动标签" value="manual" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="元数据回写"><el-switch v-model="form.pending_relocate.metadata_writeback" /></el-form-item>
+            <el-form-item label="自动发布"><el-switch v-model="form.pending_relocate.auto_publish" /></el-form-item>
           </template>
         </el-form>
       </div>
@@ -498,9 +544,11 @@ const stages = [
   { key: 'ocr_processing', label: 'OCR轮询' },
   { key: 'ocr_finalize', label: 'OCR产物提取' },
   { key: 'pending_clean', label: '文本清洗' },
+  { key: 'pending_metadata', label: '元数据提取' },
   { key: 'pending_outline', label: '章节提取' },
   { key: 'pending_chunk', label: '文本分块' },
   { key: 'pending_embedding', label: '向量化' },
+  { key: 'pending_relocate', label: '入库收尾' },
 ]
 
 const activeStage = ref('pending_ocr')
@@ -542,6 +590,7 @@ const defaultForm: DocPipelineConfig = {
     enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, prompt_template: '', timeout_ms: 120000,
     rules: { remove_page_number: true, remove_watermark: true, remove_garbled_text: true, remove_header_footer: true },
   },
+  pending_metadata: { enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, schema_json: {}, prompt_template: '', timeout_ms: 120000 },
   pending_outline: {
     enabled: true,
     type: 'internal_llm',
@@ -556,7 +605,8 @@ const defaultForm: DocPipelineConfig = {
     timeout_ms: 120000,
   },
   pending_chunk: { enabled: true, type: 'builtin', chunk_mode: 'heading', max_length: 1000, overlap_length: 100, keep_heading: true, merge_small_chunks: false },
-  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, timeout_ms: 120000 },
+  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, embedding_timeout_ms: 120000 },
+  pending_relocate: { enabled: true, target_strategy: 'current_collection', tag_strategy: 'none', metadata_writeback: false, auto_publish: false },
 }
 
 const form = reactive<DocPipelineConfig>(JSON.parse(JSON.stringify(defaultForm)))

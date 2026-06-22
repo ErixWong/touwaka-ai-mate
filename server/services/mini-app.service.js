@@ -27,8 +27,10 @@ class MiniAppService {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.MiniAppRow = this.db.getModel('mini_app_row');
       this.models.MiniAppFile = this.db.getModel('mini_app_file');
-      this.models.AppRowHandler = this.db.getModel('app_row_handler');
-      this.models.AppState = this.db.getModel('app_state');
+      this.models.AppRowHandler = null;
+      try { this.models.AppRowHandler = this.db.getModel('app_row_handler'); } catch {}
+      this.models.AppState = null;
+      try { this.models.AppState = this.db.getModel('app_state'); } catch {}
       this.models.AppActionLog = this.db.getModel('app_action_log');
       this.models.MiniAppRoleAccess = this.db.getModel('mini_app_role_access');
       this.models.User = this.db.getModel('user');
@@ -156,12 +158,12 @@ class MiniAppService {
     const app = await this.models.MiniApp.findByPk(appId);
     if (!app) return null;
 
-    const states = await this.models.AppState.findAll({
+    const appJson = app.toJSON();
+    let states = [];
+    try { states = await this.models.AppState.findAll({
       where: { app_id: appId },
       order: [['sort_order', 'ASC']],
-    });
-
-    const appJson = app.toJSON();
+    }); } catch { /* table dropped */ }
     appJson.states = states;
 
     // 解析 config 字段（JSON 字符串 -> 对象）
@@ -187,6 +189,40 @@ class MiniAppService {
     } catch {
       return null;
     }
+  }
+
+  STRICT_STATE_APP_IDS = ['invoice-mgr', 'contract-mgr'];
+
+  async getAppStateModule(appId) {
+    try {
+      const statesPath = path.join(this.appsDir, appId, 'states.js');
+      const module = await import(pathToFileURL(statesPath).href);
+      return module.default || module;
+    } catch {
+      return null;
+    }
+  }
+
+  async getAppInitialState(appId) {
+    const stateModule = await this.getAppStateModule(appId);
+    if (stateModule && stateModule.getInitialState) {
+      return stateModule.getInitialState();
+    }
+    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
+      throw new Error(`App ${appId} 状态模块缺失或未导出 getInitialState，请检查 apps/${appId}/states.js`);
+    }
+    return await this.getInitialStateFromManifest(appId);
+  }
+
+  async getAppConfirmedState(appId) {
+    const stateModule = await this.getAppStateModule(appId);
+    if (stateModule && stateModule.getConfirmedState) {
+      return stateModule.getConfirmedState();
+    }
+    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
+      throw new Error(`App ${appId} 状态模块缺失或未导出 getConfirmedState，请检查 apps/${appId}/states.js`);
+    }
+    return 'confirmed';
   }
 
   async createApp(data) {
@@ -327,11 +363,14 @@ class MiniAppService {
     if (appId) {
       const app = await this.models.MiniApp.findByPk(appId);
       if (app) {
-        const AppState = this.db.getModel('app_state');
-        const states = await AppState.findAll({
-          where: { app_id: appId },
-          raw: true,
-        });
+        let states = [];
+        try {
+          const AppState = this.db.getModel('app_state');
+          states = await AppState.findAll({
+            where: { app_id: appId },
+            raw: true,
+          });
+        } catch { /* table dropped by migration #45 */ }
 
         const handlerIds = states.filter(s => s.handler_id).map(s => s.handler_id);
         const uniqueHandlerIds = [...new Set(handlerIds)];
@@ -427,6 +466,10 @@ class MiniAppService {
 
   async getRecords(appId, userId, queryParams) {
     this.ensureModels();
+
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.getAutonomousRecords(appId, userId, queryParams);
+    }
     
     const extRecords = await this.extensionService.getRecordsWithExtension(appId, userId, queryParams);
     if (extRecords) {
@@ -475,6 +518,10 @@ class MiniAppService {
 
   async getRecord(appId, recordId, userId) {
     this.ensureModels();
+
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.getAutonomousRecord(appId, recordId, userId);
+    }
     
     const extRecord = await this.extensionService.getRecordWithExtension(appId, recordId);
     if (extRecord) {
@@ -507,6 +554,9 @@ class MiniAppService {
 
   async createRecord(appId, userId, data, attachmentIds = [], clientRecordId = null) {
     this.ensureModels();
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.createAutonomousRecord(appId, userId, data, attachmentIds, clientRecordId);
+    }
     logger.info(`[MiniAppService] createRecord start: appId=${appId}, userId=${userId}, clientRecordId=${clientRecordId}`);
 
     const app = await this.models.MiniApp.findByPk(appId);
@@ -516,9 +566,10 @@ class MiniAppService {
     this.validateData(app.fields, data);
     logger.info(`[MiniAppService] Data validated`);
 
-    const initialState = await this.models.AppState.findOne({
+    let initialState = null;
+    try { initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
-    });
+    }); } catch { /* table dropped */ }
     logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
 
     // status 现在是实体字段，不放在 data 里
@@ -548,6 +599,15 @@ class MiniAppService {
         status: status,
       }, { transaction });
       logger.info(`[MiniAppService] Row created: ${record.id}`);
+
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `INSERT INTO \`${autonomousTable}\` (id, status, data) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE status = VALUES(status), data = VALUES(data)`,
+          { replacements: [rowId, status, dataStr], transaction }
+        );
+      }
 
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
       logger.info(`[MiniAppService] Extension configs: ${extConfigs?.length || 0}`);
@@ -579,6 +639,13 @@ class MiniAppService {
           }, { transaction });
         }
         logger.info(`[MiniAppService] File associations created`);
+
+        if (autonomousTable) {
+          await this.db.sequelize.query(
+            `UPDATE \`${autonomousTable}\` SET attachment_id = ? WHERE id = ?`,
+            { replacements: [attachmentIds[0], rowId], transaction }
+          );
+        }
       }
 
       await transaction.commit();
@@ -593,6 +660,9 @@ class MiniAppService {
 
   async updateRecord(appId, recordId, userId, data, options = {}) {
     this.ensureModels();
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.updateAutonomousRecord(appId, recordId, userId, data, options);
+    }
     const record = await this.models.MiniAppRow.findOne({
       where: { id: recordId, app_id: appId },
     });
@@ -627,6 +697,14 @@ class MiniAppService {
       
       await record.update(updateFields, { transaction });
 
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `UPDATE \`${autonomousTable}\` SET status = ?, data = ? WHERE id = ?`,
+          { replacements: [options.status || record.status, JSON.stringify(mergedData), recordId], transaction }
+        );
+      }
+
       const extConfigs = await this.extensionService.getExtensionConfigs(appId);
       if (extConfigs && extConfigs.length > 0) {
         const primaryConfig = extConfigs.find(c => c.type === 'primary');
@@ -652,6 +730,9 @@ class MiniAppService {
 
   async deleteRecord(appId, recordId, userId) {
     this.ensureModels();
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.deleteAutonomousRecord(appId, recordId, userId);
+    }
     const record = await this.models.MiniAppRow.findOne({
       where: { id: recordId, app_id: appId },
     });
@@ -661,12 +742,33 @@ class MiniAppService {
     if (!isAdmin && record.user_id !== userId) {
       throw new Error('Permission denied');
     }
-    await record.destroy();
+
+    const transaction = await this.db.sequelize.transaction();
+    try {
+      await record.destroy({ transaction });
+
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `DELETE FROM \`${autonomousTable}\` WHERE id = ?`,
+          { replacements: [recordId], transaction }
+        );
+      }
+
+      await transaction.commit();
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+
     return true;
   }
 
   async confirmRecord(appId, recordId, userId, data) {
     this.ensureModels();
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.confirmAutonomousRecord(appId, recordId, userId, data);
+    }
     const record = await this.models.MiniAppRow.findOne({
       where: { id: recordId, app_id: appId },
     });
@@ -683,9 +785,10 @@ class MiniAppService {
     const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
     const mergedData = { ...existingData, ...data };
 
-    const confirmedState = await this.models.AppState.findOne({
+    let confirmedState = null;
+    try { confirmedState = await this.models.AppState.findOne({
       where: { app_id: appId, is_terminal: true },
-    });
+    }); } catch { /* table dropped */ }
 
     const title = this.computeTitle(app.fields, mergedData);
 
@@ -699,11 +802,23 @@ class MiniAppService {
       { where: { id: record.id } }
     );
 
+    const autonomousTable = await this.getAutonomousTableName(appId);
+    if (autonomousTable) {
+      await this.db.sequelize.query(
+        `UPDATE \`${autonomousTable}\` SET status = ?, data = ? WHERE id = ?`,
+        { replacements: [confirmedState?.name || 'confirmed', JSON.stringify(mergedData), record.id] }
+      );
+    }
+
     return await this.models.MiniAppRow.findByPk(record.id);
   }
 
 async batchUpload(appId, userId, attachmentIds) {
     this.ensureModels();
+
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.batchUploadAutonomous(appId, userId, attachmentIds);
+    }
 
     const app = await this.models.MiniApp.findByPk(appId);
     if (!app) throw new Error('App not found');
@@ -717,9 +832,10 @@ async batchUpload(appId, userId, attachmentIds) {
     }
 
     // 默认逻辑
-    const initialState = await this.models.AppState.findOne({
+    let initialState = null;
+    try { initialState = await this.models.AppState.findOne({
       where: { app_id: appId, is_initial: true },
-    });
+    }); } catch { /* table dropped */ }
     const initialStatus = initialState ? initialState.name : 'pending';
 
     const records = [];
@@ -746,6 +862,15 @@ async batchUpload(appId, userId, attachmentIds) {
         attachment_id: attId,
       });
 
+      const autonomousTable = await this.getAutonomousTableName(appId);
+      if (autonomousTable) {
+        await this.db.sequelize.query(
+          `INSERT INTO \`${autonomousTable}\` (id, status, data, attachment_id) VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE status = VALUES(status), data = VALUES(data), attachment_id = VALUES(attachment_id)`,
+          { replacements: [record.id, initialStatus, '{}', attId] }
+        );
+      }
+
       records.push(record);
     }
 
@@ -758,6 +883,9 @@ async batchUpload(appId, userId, attachmentIds) {
 
   async getStatusSummary(appId, userId, createdAfter) {
     this.ensureModels();
+    if (this.isFullyAutonomousApp(appId)) {
+      return await this.getAutonomousStatusSummary(appId, userId, createdAfter);
+    }
     const isAdmin = await this.isAdmin(userId);
 
     const where = { app_id: appId };
@@ -1421,6 +1549,471 @@ ${JSON.stringify(listB, null, 2)}
     }
 
     return '';
+  }
+
+  async getAutonomousTableName(appId) {
+    const tableName = `app_${appId.replace(/-/g, '_')}_records`;
+    try {
+      const rows = await this.db.sequelize.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+        { replacements: [tableName], type: this.db.sequelize.QueryTypes.SELECT }
+      );
+      return rows.length > 0 ? tableName : null;
+    } catch {
+      return null;
+    }
+  }
+
+  isFullyAutonomousApp(appId) {
+    return appId === 'invoice-mgr' || appId === 'contract-mgr';
+  }
+
+  getAutonomousAppConfig(appId) {
+    if (appId === 'invoice-mgr') {
+      return {
+        table: 'app_invoice_mgr_records',
+        appIdExpr: `'invoice-mgr'`,
+        primaryTable: 'app_invoice_mgr_rows',
+        attachmentJoin: 'LEFT JOIN attachments a ON a.id = m.attachment_id',
+        userIdExpr: 'm.user_id',
+        titleExpr: 'COALESCE(e.invoice_number, a.file_name, \'\')',
+        fileSelect: `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
+                     FROM app_invoice_mgr_records m
+                     JOIN attachments a ON a.id = m.attachment_id
+                     WHERE m.id = ?`,
+        insertSql: `INSERT INTO app_invoice_mgr_records (id, user_id, status, data, attachment_id)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), status = VALUES(status), data = VALUES(data), attachment_id = VALUES(attachment_id)`,
+        updateSql: 'UPDATE app_invoice_mgr_records SET status = ?, data = ? WHERE id = ?',
+        deleteSql: 'DELETE FROM app_invoice_mgr_records WHERE id = ?',
+      };
+    }
+
+    if (appId === 'contract-mgr') {
+      return {
+        table: 'app_contract_mgr_records',
+        appIdExpr: 'm.app_id',
+        primaryTable: 'app_contract_mgr_rows',
+        contentTable: 'app_contract_mgr_content',
+        attachmentJoin: '',
+        userIdExpr: 'm.user_id',
+        titleExpr: 'COALESCE(e.contract_number, \'\')',
+        fileSelect: `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
+                     FROM app_contract_mgr_content c
+                     JOIN attachments a ON a.id = c.file_id
+                     WHERE c.row_id = ? AND c.file_id IS NOT NULL`,
+        insertSql: `INSERT INTO app_contract_mgr_records (id, app_id, user_id, status, data)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), status = VALUES(status), data = VALUES(data)`,
+        updateSql: 'UPDATE app_contract_mgr_records SET status = ?, data = ? WHERE id = ?',
+        deleteSql: 'DELETE FROM app_contract_mgr_records WHERE id = ?',
+      };
+    }
+
+    return null;
+  }
+
+  async getAutonomousPrimaryConfig(appId) {
+    const extConfigs = await this.extensionService.getExtensionConfigs(appId);
+    return extConfigs?.find(c => c.type === 'primary') || null;
+  }
+
+  async getAutonomousFiles(appId, recordId) {
+    const config = this.getAutonomousAppConfig(appId);
+    if (!config?.fileSelect) return [];
+
+    const rows = await this.db.sequelize.query(config.fileSelect, {
+      replacements: [recordId],
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    return rows.map((row) => ({
+      attachment: {
+        id: row.id,
+        file_name: row.file_name,
+        file_path: row.file_path,
+        mime_type: row.mime_type,
+        ext_name: row.ext_name,
+      },
+    }));
+  }
+
+  async getAutonomousRecords(appId, userId, queryParams) {
+    const config = this.getAutonomousAppConfig(appId);
+    if (!config) throw new Error(`Autonomous config not found for ${appId}`);
+
+    const primaryConfig = await this.getAutonomousPrimaryConfig(appId);
+    if (!primaryConfig) throw new Error(`Primary extension table not found for ${appId}`);
+
+    const { page = 1, size = 10, filter, sort } = queryParams || {};
+    const limit = Math.min(Math.max(parseInt(size) || 10, 1), 100);
+    const offset = (parseInt(page) - 1) * limit;
+
+    const isAdmin = await this.isAdmin(userId);
+    const replacements = { userId, limit, offset };
+    const conditions = [];
+
+    if (appId === 'contract-mgr') {
+      conditions.push(`m.app_id = '${appId}'`);
+    }
+    if (!isAdmin) {
+      conditions.push(`${config.userIdExpr} = :userId`);
+    }
+
+    if (filter) {
+      try {
+        const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
+        for (const [key, value] of Object.entries(filterObj)) {
+          const paramName = `filter_${key}`;
+          if (key === 'status') {
+            conditions.push(`m.status = :${paramName}`);
+            replacements[paramName] = value;
+          } else if (primaryConfig.fields.some((f) => f.name === key)) {
+            conditions.push(`e.${key} = :${paramName}`);
+            replacements[paramName] = value;
+          }
+        }
+      } catch {
+        // ignore invalid filter
+      }
+    }
+
+    const sortFieldMap = { created_at: 'm.created_at', status: 'm.status' };
+    for (const field of primaryConfig.fields) {
+      sortFieldMap[field.name] = `e.${field.name}`;
+    }
+    const sortField = sortFieldMap[sort?.field || sort] || 'm.created_at';
+    const sortOrder = sort?.order === 'asc' ? 'ASC' : 'DESC';
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const selectFields = primaryConfig.fields.map((f) => `e.${f.name}`).join(', ');
+
+    const listSql = `
+      SELECT
+        m.id,
+        ${config.appIdExpr} AS app_id,
+        ${config.userIdExpr} AS user_id,
+        ${config.titleExpr} AS title,
+        m.status,
+        m.data,
+        m.created_at,
+        m.updated_at,
+        ${selectFields}
+      FROM ${config.table} m
+      LEFT JOIN ${config.primaryTable} e ON e.row_id = m.id
+      ${config.attachmentJoin}
+      ${whereSql}
+      ORDER BY ${sortField} ${sortOrder}
+      LIMIT :limit OFFSET :offset
+    `;
+
+    const countSql = `
+      SELECT COUNT(*) as total
+      FROM ${config.table} m
+      LEFT JOIN ${config.primaryTable} e ON e.row_id = m.id
+      ${config.attachmentJoin}
+      ${whereSql}
+    `;
+
+    const [rows, countResult] = await Promise.all([
+      this.db.sequelize.query(listSql, { replacements, type: Sequelize.QueryTypes.SELECT }),
+      this.db.sequelize.query(countSql, { replacements, type: Sequelize.QueryTypes.SELECT }),
+    ]);
+
+    for (const row of rows) {
+      if (typeof row.data === 'string') {
+        try { row.data = JSON.parse(row.data); } catch {}
+      }
+    }
+
+    const pagination = { page: parseInt(page), size: limit };
+    return buildPaginatedResponse({ rows, count: countResult[0]?.total || 0 }, pagination, Date.now());
+  }
+
+  async getAutonomousRecord(appId, recordId, userId) {
+    const config = this.getAutonomousAppConfig(appId);
+    if (!config) throw new Error(`Autonomous config not found for ${appId}`);
+
+    const primaryConfig = await this.getAutonomousPrimaryConfig(appId);
+    if (!primaryConfig) throw new Error(`Primary extension table not found for ${appId}`);
+
+    const isAdmin = await this.isAdmin(userId);
+    const conditions = ['m.id = :recordId'];
+    if (appId === 'contract-mgr') {
+      conditions.push(`m.app_id = '${appId}'`);
+    }
+    if (!isAdmin) {
+      conditions.push(`${config.userIdExpr} = :userId`);
+    }
+
+    const selectFields = primaryConfig.fields.map((f) => `e.${f.name}`).join(', ');
+    const sql = `
+      SELECT
+        m.id,
+        ${config.appIdExpr} AS app_id,
+        ${config.userIdExpr} AS user_id,
+        ${config.titleExpr} AS title,
+        m.status,
+        m.data,
+        m.created_at,
+        m.updated_at,
+        ${selectFields}
+      FROM ${config.table} m
+      LEFT JOIN ${config.primaryTable} e ON e.row_id = m.id
+      ${config.attachmentJoin}
+      WHERE ${conditions.join(' AND ')}
+    `;
+
+    const rows = await this.db.sequelize.query(sql, {
+      replacements: { recordId, userId },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const record = rows[0];
+    if (!record) throw new Error('Record not found');
+
+    if (typeof record.data === 'string') {
+      try { record.data = JSON.parse(record.data); } catch {}
+    }
+    record.files = await this.getAutonomousFiles(appId, recordId);
+    return record;
+  }
+
+  async createAutonomousRecord(appId, userId, data, attachmentIds = [], clientRecordId = null) {
+    const app = await this.models.MiniApp.findByPk(appId);
+    if (!app) throw new Error('App not found');
+
+    this.validateData(app.fields, data);
+
+    const status = await this.getAppInitialState(appId);
+    const dataStr = typeof data === 'object' ? JSON.stringify(data) : data;
+    const rowId = clientRecordId || Utils.newID(20);
+    const config = this.getAutonomousAppConfig(appId);
+
+    if ((appId === 'invoice-mgr' || appId === 'contract-mgr') && attachmentIds.length === 0) {
+      throw new Error('附件必填');
+    }
+
+    const transaction = await this.db.sequelize.transaction();
+
+    try {
+      if (appId === 'invoice-mgr') {
+        await this.db.sequelize.query(config.insertSql, {
+          replacements: [rowId, userId, status, dataStr, attachmentIds[0] || null],
+          transaction,
+        });
+      } else if (appId === 'contract-mgr') {
+        await this.db.sequelize.query(config.insertSql, {
+          replacements: [rowId, appId, userId, status, dataStr],
+          transaction,
+        });
+      }
+
+      const primaryConfig = await this.getAutonomousPrimaryConfig(appId);
+      if (primaryConfig) {
+        const extData = { row_id: rowId };
+        for (const f of primaryConfig.fields) {
+          const key = f.source || f.name;
+          if (data[key] !== undefined) {
+            extData[f.name] = data[key];
+          }
+        }
+        await this.extensionService.upsertExtensionRow(appId, primaryConfig.name, rowId, extData, transaction);
+      }
+
+      if (appId === 'contract-mgr' && attachmentIds[0]) {
+        await this.extensionService.upsertExtensionRow(appId, config.contentTable, rowId, {
+          row_id: rowId,
+          file_id: attachmentIds[0],
+        }, transaction);
+      }
+
+      await transaction.commit();
+      return await this.getAutonomousRecord(appId, rowId, userId);
+    } catch (err) {
+      await transaction.rollback();
+      throw new Error(`创建失败: ${err.message}`);
+    }
+  }
+
+  async updateAutonomousRecord(appId, recordId, userId, data, options = {}) {
+    const record = await this.getAutonomousRecord(appId, recordId, userId);
+    const app = await this.models.MiniApp.findByPk(appId);
+    if (!app) throw new Error('App not found');
+
+    this.validateData(app.fields, data);
+
+    const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
+    const mergedData = { ...existingData, ...data };
+    const config = this.getAutonomousAppConfig(appId);
+    const transaction = await this.db.sequelize.transaction();
+
+    try {
+      await this.db.sequelize.query(config.updateSql, {
+        replacements: [options.status || record.status, JSON.stringify(mergedData), recordId],
+        transaction,
+      });
+
+      const primaryConfig = await this.getAutonomousPrimaryConfig(appId);
+      if (primaryConfig) {
+        const extData = { row_id: recordId };
+        for (const f of primaryConfig.fields) {
+          const key = f.source || f.name;
+          if (data[key] !== undefined) {
+            extData[f.name] = data[key];
+          }
+        }
+        await this.extensionService.upsertExtensionRow(appId, primaryConfig.name, recordId, extData, transaction);
+      }
+
+      await transaction.commit();
+      return await this.getAutonomousRecord(appId, recordId, userId);
+    } catch (err) {
+      await transaction.rollback();
+      throw new Error(`更新失败: ${err.message}`);
+    }
+  }
+
+  async deleteAutonomousRecord(appId, recordId, userId) {
+    await this.getAutonomousRecord(appId, recordId, userId);
+    const config = this.getAutonomousAppConfig(appId);
+    await this.db.sequelize.query(config.deleteSql, { replacements: [recordId] });
+    return true;
+  }
+
+  async confirmAutonomousRecord(appId, recordId, userId, data) {
+    const record = await this.getAutonomousRecord(appId, recordId, userId);
+
+    const confirmedStateName = await this.getAppConfirmedState(appId);
+
+    const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
+    const mergedData = { ...existingData, ...data };
+    const config = this.getAutonomousAppConfig(appId);
+
+    await this.db.sequelize.query(config.updateSql, {
+      replacements: [confirmedStateName, JSON.stringify(mergedData), recordId],
+    });
+
+    return await this.getAutonomousRecord(appId, recordId, userId);
+  }
+
+  async batchUploadAutonomous(appId, userId, attachmentIds) {
+    const app = await this.models.MiniApp.findByPk(appId);
+    if (!app) throw new Error('App not found');
+    if (!app.is_active) throw new Error('App is not active');
+
+    const initialStatus = await this.getAppInitialState(appId) || 'pending';
+    const config = this.getAutonomousAppConfig(appId);
+    const transaction = await this.db.sequelize.transaction();
+    const records = [];
+
+    try {
+      for (const attId of attachmentIds) {
+        const attachment = await this.models.Attachment.findByPk(attId);
+        if (!attachment) continue;
+        if (attachment.created_by && attachment.created_by !== userId) continue;
+
+        const recordId = Utils.newID(20);
+
+        if (appId === 'invoice-mgr') {
+          await this.db.sequelize.query(config.insertSql, {
+            replacements: [recordId, userId, initialStatus, '{}', attId],
+            transaction,
+          });
+        } else if (appId === 'contract-mgr') {
+          await this.db.sequelize.query(config.insertSql, {
+            replacements: [recordId, appId, userId, initialStatus, '{}'],
+            transaction,
+          });
+          await this.extensionService.upsertExtensionRow(appId, config.contentTable, recordId, {
+            row_id: recordId,
+            file_id: attId,
+          }, transaction);
+        }
+
+        records.push({
+          id: recordId,
+          app_id: appId,
+          user_id: userId,
+          status: initialStatus,
+          title: attachment.file_name || 'Unknown',
+          data: {},
+        });
+      }
+
+      await transaction.commit();
+      return {
+        upload_time: new Date().toISOString(),
+        count: records.length,
+        records,
+      };
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+  }
+
+  async getAutonomousStatusSummary(appId, userId, createdAfter) {
+    const isAdmin = await this.isAdmin(userId);
+    const config = this.getAutonomousAppConfig(appId);
+    const replacements = { userId, createdAfter };
+    const conditions = [];
+
+    if (appId === 'contract-mgr') {
+      conditions.push(`m.app_id = '${appId}'`);
+    }
+    if (!isAdmin) {
+      conditions.push(`${config.userIdExpr} = :userId`);
+    }
+    if (createdAfter) {
+      conditions.push('m.created_at >= :createdAfter');
+    }
+
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `
+      SELECT m.status, COUNT(*) as count
+      FROM ${config.table} m
+      ${config.attachmentJoin}
+      ${whereSql}
+      GROUP BY m.status
+    `;
+
+    const results = await this.db.sequelize.query(sql, {
+      replacements,
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const stateModule = await this.getAppStateModule(appId);
+    if (stateModule && stateModule.getStatusSummaryCategories) {
+      return stateModule.getStatusSummaryCategories(results);
+    }
+
+    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
+      throw new Error(`App ${appId} 状态模块缺失或未导出 getStatusSummaryCategories，请检查 apps/${appId}/states.js`);
+    }
+
+    const byStatus = {};
+    let total = 0;
+    let completed = 0;
+    let processing = 0;
+    let failed = 0;
+
+    for (const row of results) {
+      const status = row.status || 'unknown';
+      const count = row.count;
+      byStatus[status] = count;
+      total += count;
+
+      if (status === 'confirmed' || status === 'pending_review') {
+        completed += count;
+      } else if (status && status.endsWith('_failed')) {
+        failed += count;
+      } else {
+        processing += count;
+      }
+    }
+
+    return { total, by_status: byStatus, completed, processing, failed };
   }
 }
 

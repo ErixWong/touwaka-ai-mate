@@ -1,14 +1,22 @@
 # 数据库手册
 
-本手册涵盖 Touwaka Mate v2 的数据库设计、ORM 使用和查询 API。
+本手册覆盖当前仓库中的数据库初始化、模型生成、查询规范与主要业务表概览。
 
 ## 文档索引
 
 | 文档 | 说明 |
 |------|------|
-| [API 查询设计](./api-query-design.md) | 基于 Sequelize 的查询 API 规范 |
-| [ORM 分析](./orm-analysis.md) | ORM 选型分析和决策 |
-| [数据库初始化脚本](../../scripts/init-database.js) | 表结构定义和初始数据 |
+| [API 查询设计](./api-query-design.md) | 查询参数、过滤器、分页与排序约定 |
+| [数据库初始化脚本](../../scripts/init-database.js) | 初始建表与基础数据脚本 |
+| [数据库升级脚本](../../scripts/upgrade-database.js) | 增量迁移入口 |
+| [模型生成脚本](../../scripts/generate-models.js) | `models/` 再生入口 |
+
+## 重要约束
+
+- 数据库字段禁止未经确认擅改。
+- 布尔字段统一使用 `BIT(1)`。
+- `models/` 为生成产物，禁止手改。
+- 结构变更后必须同步更新 `scripts/upgrade-database.js` 并重新生成模型。
 
 ## 快速开始
 
@@ -32,7 +40,13 @@ npm run init-db
 node scripts/init-database.js
 ```
 
-### 3. 生成 Sequelize 模型
+### 3. 执行数据库升级
+
+```bash
+node scripts/upgrade-database.js
+```
+
+### 4. 重新生成 Sequelize 模型
 
 ```bash
 node scripts/generate-models.js
@@ -40,74 +54,46 @@ node scripts/generate-models.js
 
 模型文件会生成到 `models/` 目录。
 
-### 4. 使用模型
+## 主要表分类
 
-```javascript
-import { models, initDatabase } from './models/index.js';
-
-// 初始化连接
-await initDatabase();
-
-// 查询示例
-const topics = await models.topic.findAll({
-  include: [{ model: models.user, as: 'user' }]
-});
-```
-
-## 数据库表结构
-
-### 核心表
+### 核心业务表
 
 | 表名 | 说明 |
 |------|------|
 | `users` | 用户表 |
-| `experts` | 专家/助手表 |
-| `topics` | 话题/会话表 |
+| `experts` | 专家 / 助手表 |
+| `topics` | 话题 / 会话表 |
 | `messages` | 消息表 |
 | `skills` | 技能表 |
 
-### 配置表
+### AI 与配置表
 
 | 表名 | 说明 |
 |------|------|
 | `providers` | AI 服务提供商表 |
 | `ai_models` | AI 模型配置表 |
+| `system_settings` | 系统级配置 |
 
-### 关联表
+### 关联与权限表
 
 | 表名 | 说明 |
 |------|------|
-| `user_profiles` | 用户档案（用户-专家关联） |
+| `user_profiles` | 用户档案 / 用户与专家关系 |
 | `expert_skills` | 专家技能关联 |
 | `user_roles` | 用户角色关联 |
 | `role_permissions` | 角色权限关联 |
-
-### 权限表
-
-| 表名 | 说明 |
-|------|------|
 | `roles` | 角色表 |
 | `permissions` | 权限表 |
 
-## ER 图
+### App 平台相关表
 
-```
-┌─────────────┐     ┌─────────────┐
-│  providers  │────<│  ai_models  │
-└─────────────┘     └─────────────┘
-                          │
-                          │ expressive_model_id / reflective_model_id
-                          ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│    users    │────<│   experts   │>────│   skills    │
-└─────────────┘     └─────────────┘     └─────────────┘
-      │                   │                   │
-      │                   │                   │
-      ▼                   ▼                   ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   topics    │────<│  messages   │     │expert_skills│
-└─────────────┘     └─────────────┘     └─────────────┘
-```
+| 表名 | 说明 |
+|------|------|
+| `mini_apps` | 已安装 app 注册表 |
+| `mini_app_rows` | app 通用业务记录 |
+| `app_clock_registry` | tick 调度注册表 |
+| `app_tick_log` | tick 执行历史 |
+| `app_tick_run` | tick 运行状态 |
 
 ## 查询 API 使用
 
@@ -135,7 +121,7 @@ Content-Type: application/json
 }
 ```
 
-### 操作符后缀
+### 常见操作符后缀
 
 | 后缀 | 说明 | 示例 |
 |------|------|------|
@@ -152,13 +138,13 @@ Content-Type: application/json
 # 初始化数据库
 npm run init-db
 
+# 执行数据库升级
+node scripts/upgrade-database.js
+
 # 重新生成模型（数据库变更后）
 node scripts/generate-models.js
-
-# 测试查询构建器
-node tests/test-query-builder.js
 ```
 
 ---
 
-*最后更新: 2026-02-20*
+*最后更新: 2026-06-20*

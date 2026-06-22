@@ -1,5 +1,9 @@
 import apiClient, { apiRequest } from './client'
 
+export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error'
+export type DocRevisionStatus = 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
+export type DocOcrStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown' | string
+
 export interface DocDocument {
   id: string
   doc_type: 'knowledge' | 'contract' | 'department_doc' | 'standard'
@@ -13,7 +17,7 @@ export interface DocDocument {
   current_version_id: string | null
   current_revision_id: string | null
   ocr_task_id?: string | null
-  processing_status: string | null
+  processing_status: DocProcessingStage | null
   processing_error_code: string | null
   lifecycle_status: string
   metadata: Record<string, unknown>
@@ -29,19 +33,14 @@ export interface DocDocument {
 
 export interface DocVersion {
   id: string
-  document_id: string
-  version_no: number
-  version_label: string | null
-  version_status: 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
-  is_current: number | boolean
-  change_summary: string | null
+  revision_no: number
+  revision_label: string | null
+  revision_status: DocRevisionStatus
+  is_current: boolean
+  diff_status: string | null
   created_by: string
-  approved_by: string | null
-  approved_at: string | null
   effective_from: string | null
   effective_to: string | null
-  published_at: string | null
-  metadata: Record<string, unknown>
   created_at: string
   updated_at: string
 }
@@ -50,7 +49,7 @@ export interface DocRevision {
   id: string
   revision_no: number
   revision_label: string | null
-  revision_status: 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
+  revision_status: DocRevisionStatus
   is_current: boolean
   effective_from: string | null
   effective_to: string | null
@@ -68,7 +67,7 @@ export interface DocRevisionsResponse {
 
 export interface DocProcessingStatus {
   document_id: string
-  processing_status: string
+  processing_status: DocProcessingStage
   processing_error_code: string | null
   processing_error_message: string | null
   processing_retry_count: number
@@ -78,7 +77,7 @@ export interface DocProcessingStatus {
     id: string
     revision_id: string
     task_id: string | null
-    status: string
+    status: DocOcrStatus
     progress: number
     image_count: number | null
     main_markdown_attachment_id: string | null
@@ -96,7 +95,7 @@ export interface DocProcessingStatus {
 
 export interface DocRetryResult {
   document_id: string
-  processing_status: string
+  processing_status: DocProcessingStage
 }
 
 export interface DocPermissions {
@@ -114,7 +113,7 @@ export interface DocDiffStatus {
 export interface DocIntakeResult {
   document_id: string
   revision_id: string
-  processing_status: string
+  processing_status: DocProcessingStage
   source_ref_id?: string
   attachment_count?: number
 }
@@ -151,7 +150,7 @@ export interface DocResultDetail {
     document_id: string
     revision_no: number
     revision_label: string | null
-    revision_status: string
+    revision_status: DocRevisionStatus
     created_by: string
     created_at: string
     uploader: {
@@ -161,7 +160,7 @@ export interface DocResultDetail {
   } | null
   source_attachment: DocAttachmentInfo | null
   processing: {
-    status: string
+    status: DocProcessingStage
     error_code: string | null
     error_message: string | null
     updated_at: string | null
@@ -169,7 +168,7 @@ export interface DocResultDetail {
   ocr_result: {
     id: string
     task_id: string | null
-    status: string
+    status: DocOcrStatus
     progress: number
     image_count: number | null
     line_count: number | null
@@ -178,7 +177,6 @@ export interface DocResultDetail {
     error_code: string | null
     error_message: string | null
     preview_markdown_content?: string | null
-    cleaned_markdown_attachment: DocAttachmentInfo | null
     main_markdown_attachment: DocAttachmentInfo | null
     raw_result_attachment: DocAttachmentInfo | null
     deliverables_manifest_attachment: DocAttachmentInfo | null
@@ -200,14 +198,14 @@ export interface SubmitOcrResult {
   document_id: string
   ocr_result_id: string
   task_id: string | null
-  status: string
+  status: DocOcrStatus
   progress: number
 }
 
 export interface SyncOcrResult {
   document_id: string
   ocr_result_id: string
-  status: string
+  status: DocOcrStatus
   progress: number
   completed: boolean
 }
@@ -274,8 +272,11 @@ export interface DocCompareRun {
 export interface ExtractOutlineResult {
   revision_id: string
   document_id: string
+  outline_count: number
   processing_status: string
-  queued: boolean
+  partial: boolean
+  failed_chunks: number
+  total_chunks: number
 }
 
 export interface GenerateChunksResult {
@@ -321,7 +322,7 @@ export async function deleteDocument(documentId: string): Promise<{ deleted: boo
 
 export async function listVersions(documentId: string): Promise<DocVersion[]> {
   const result = await apiRequest<DocRevisionsResponse>(apiClient.get(`/docs/documents/${documentId}/revisions`))
-  return result.items as unknown as DocVersion[]
+  return result.items
 }
 
 export async function getRevisions(documentId: string): Promise<DocRevisionsResponse> {

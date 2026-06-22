@@ -20,7 +20,11 @@ const WORKSPACE_ROOT = getWorkspaceRoot();
 // 允许的文件类型
 const ALLOWED_FILE_TYPES = [
   '.pdf', '.doc', '.docx', '.txt', '.md', '.csv', '.xlsx', '.xls',
-  '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.json'
+  '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.json',
+  '.html', '.htm', '.js', '.mjs', '.cjs', '.ts', '.mts', '.cts',
+  '.jsx', '.tsx', '.vue', '.css', '.scss', '.less', '.py', '.java',
+  '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.php', '.rb',
+  '.sh', '.bash', '.zsh', '.sql', '.xml', '.yaml', '.yml'
 ];
 
 // 创建上传中间件工厂函数

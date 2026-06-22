@@ -16,12 +16,14 @@ import { getApp, type MiniApp } from '@/api/mini-apps'
 import GenericMiniApp from '@/components/apps/GenericMiniApp.vue'
 
 const AppComponentMap: Record<string, Component> = {
+  'ContractMgrView': defineAsyncComponent(() => import('@/views/contract-mgr/ContractMgrView.vue')),
   'ContractV2View': defineAsyncComponent(() => import('@/views/contract-v2/ContractV2View.vue')),
   'DowntimeAnalyzer': defineAsyncComponent(() => import('@/views/downtime-analyzer/DowntimeAnalyzer.vue')),
   'ELSStudyView': defineAsyncComponent(() => import('@/views/els/ELSStudyView.vue')),
   'InvoiceView': defineAsyncComponent(() => import('@/views/invoice/InvoiceView.vue')),
   'OcrToolView': defineAsyncComponent(() => import('@/views/ocr-tool/OcrToolView.vue')),
   'ResumeScreeningView': defineAsyncComponent(() => import('@/views/resume-fast-screening/ResumeScreeningView.vue')),
+  'CurrentFeatureAnalyzerView': defineAsyncComponent(() => import('@/views/current-feature-analyzer/CurrentFeatureAnalyzerView.vue')),
 }
 
 const route = useRoute()

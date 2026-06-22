@@ -361,6 +361,11 @@
       "failure_next": null
     }
   ],
-  "component": null,
+  "component": "ContractMgrView",
+  "runtime": {
+    "server": {
+      "routes": "server/routes.js"
+    }
+  },
   "visibility": "all"
 }

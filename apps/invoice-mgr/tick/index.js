@@ -52,11 +52,10 @@ export async function tick(context) {
 
   const placeholders = stateNames.map(() => '?').join(',');
   const rows = await services.query(
-    `SELECT id, status, data FROM mini_app_rows
-     WHERE app_id = ? AND status IN (${placeholders})
+    `SELECT id, status, data FROM app_invoice_mgr_records
+     WHERE status IN (${placeholders})
      ORDER BY created_at ASC
      LIMIT 5`,
-    [APP_ID, ...stateNames]
   );
 
   if (rows.length === 0) {
@@ -75,7 +74,22 @@ export async function tick(context) {
       const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
       const record = { id: row.id, status: row.status, data: recordData };
 
-      const files = await services.getFiles(row.id);
+      const [fileRows] = await services.execute(
+        `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
+         FROM attachments a
+         JOIN app_invoice_mgr_records r ON r.attachment_id = a.id
+         WHERE r.id = ?`,
+        [row.id]
+      );
+      const files = fileRows.map(r => ({
+        attachment: {
+          id: r.id,
+          file_name: r.file_name,
+          file_path: r.file_path,
+          mime_type: r.mime_type,
+          ext_name: r.ext_name,
+        },
+      }));
 
       for (const file of files) {
         if (file.attachment) {
@@ -93,7 +107,7 @@ export async function tick(context) {
       if (result.pending) {
         const newData = mergeRecordData(recordData, result.data);
         await services.execute(
-          'UPDATE mini_app_rows SET data = ? WHERE id = ?',
+          'UPDATE app_invoice_mgr_records SET data = ? WHERE id = ?',
           [JSON.stringify(newData), row.id]
         );
         logger.info(`[invoice-mgr tick] Row ${row.id}: pending, keep status=${row.status}`);
@@ -103,13 +117,13 @@ export async function tick(context) {
 
         if (nextState) {
           await services.execute(
-            'UPDATE mini_app_rows SET status = ?, data = ? WHERE id = ?',
+            'UPDATE app_invoice_mgr_records SET status = ?, data = ? WHERE id = ?',
             [nextState, JSON.stringify(newData), row.id]
           );
           logger.info(`[invoice-mgr tick] Row ${row.id}: ${row.status} → ${nextState}`);
         } else {
           await services.execute(
-            'UPDATE mini_app_rows SET data = ? WHERE id = ?',
+            'UPDATE app_invoice_mgr_records SET data = ? WHERE id = ?',
             [JSON.stringify(newData), row.id]
           );
           logger.warn(`[invoice-mgr tick] Row ${row.id} success but no success_next defined for ${row.status}`);
@@ -120,13 +134,13 @@ export async function tick(context) {
 
         if (nextState) {
           await services.execute(
-            'UPDATE mini_app_rows SET status = ?, data = ? WHERE id = ?',
+            'UPDATE app_invoice_mgr_records SET status = ?, data = ? WHERE id = ?',
             [nextState, JSON.stringify(newData), row.id]
           );
           logger.warn(`[invoice-mgr tick] Row ${row.id}: ${row.status} → ${nextState} (error: ${result.error || 'unknown'})`);
         } else {
           await services.execute(
-            'UPDATE mini_app_rows SET data = ? WHERE id = ?',
+            'UPDATE app_invoice_mgr_records SET data = ? WHERE id = ?',
             [JSON.stringify(newData), row.id]
           );
           logger.warn(`[invoice-mgr tick] Row ${row.id} failed but no failure_next defined for ${row.status}`);

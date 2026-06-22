@@ -2,7 +2,7 @@
 
 > ⚠️ **此文档已过时**  
 > 本文档描述的是旧的"单专家副本系统"架构，项目已重构为前后端分离的多用户 Web 应用。  
-> 请查看 [development-guide.md](../development-guide.md) 或 [v1/README.md](../v1/README.md) 获取最新文档。
+> 请查看 [docs 总入口](../README.md) 或 [Phase 1 设计总览](../core/phase1/README.md) 获取当前文档入口。
 
 ---
 

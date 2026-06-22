@@ -20,8 +20,8 @@ class AppMarketService {
     if (!this.models.MiniApp) {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.AppClockRegistry = this.db.getModel('app_clock_registry');
-      this.models.AppState = this.db.getModel('app_state');
-      this.models.AppRowHandler = this.db.getModel('app_row_handler');
+      try { this.models.AppState = this.db.getModel('app_state'); } catch { this.models.AppState = null; }
+      try { this.models.AppRowHandler = this.db.getModel('app_row_handler'); } catch { this.models.AppRowHandler = null; }
       this.models.SystemSetting = this.db.getModel('system_setting');
       this.models.McpServer = this.db.getModel('mcp_server');
     }
@@ -414,8 +414,12 @@ class AppMarketService {
         'utf-8'
       );
       
-      // 9. 安装 handlers（用于状态流转执行）
-      const { handlerIdMap } = await this.installHandlers(appId, manifest);
+      // 9. 安装 handlers（仅传统的状态机 app，runtime app 跳过）
+      let handlerIdMap = new Map();
+      if (!manifest.runtime) {
+        const result = await this.installHandlers(appId, manifest);
+        handlerIdMap = result.handlerIdMap;
+      }
 
       // 10. 插入数据库（extension_tables 存入 config）
       const config = {
@@ -424,8 +428,10 @@ class AppMarketService {
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
 
-      // 11. 安装状态定义（用于 createRecord 初始状态与配置界面）
-      await this.installStates(appId, manifest, handlerIdMap);
+      // 11. 安装状态定义（仅传统的状态机 app，runtime app 跳过）
+      if (!manifest.runtime) {
+        await this.installStates(appId, manifest, handlerIdMap);
+      }
       
       // 12. 注册到 app_clock_registry
       await this.registerToClockRegistry(appId);
@@ -463,8 +469,8 @@ class AppMarketService {
     try {
       await this.models.MiniApp.destroy({ where: { id: appId } });
       await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
-      await this.models.AppState.destroy({ where: { app_id: appId } });
-      await this.models.AppRowHandler.destroy({ 
+      if (this.models.AppState) await this.models.AppState.destroy({ where: { app_id: appId } });
+      if (this.models.AppRowHandler) await this.models.AppRowHandler.destroy({ 
         where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
       });
       logger.info(`Rolled back DB records for ${appId}`);
@@ -563,6 +569,10 @@ class AppMarketService {
   // ==================== 废弃方法（保留以兼容旧数据） ====================
   async installStates(appId, manifest, handlerIdMap = new Map()) {
     if (!manifest.states || manifest.states.length === 0) return;
+    if (!this.models.AppState) {
+      logger.warn(`[AppMarket] installStates skipped for ${appId}: app_state table retired (Phase 6). States from manifest will not be persisted.`);
+      return;
+    }
     
     let stateHandlerMap = new Map();
     const hasHandlers = manifest.states.some(s => s.handler);
@@ -616,6 +626,10 @@ class AppMarketService {
    * 安装处理脚本
    */
   async installHandlers(appId, manifest) {
+    if (!this.models.AppRowHandler) {
+      logger.warn(`[AppMarket] installHandlers skipped for ${appId}: app_row_handler table retired (Phase 6). Handlers from manifest will not be persisted.`);
+      return { installed: [], failed: [], handlerIdMap: new Map() };
+    }
     const installed = [];
     const failed = [];
     const handlerIdMap = new Map(); // handlerName → app_row_handlers.id
@@ -759,8 +773,8 @@ class AppMarketService {
     
     // 4. 删除数据库记录
     await this.models.MiniApp.destroy({ where: { id: appId } });
-    await this.models.AppState.destroy({ where: { app_id: appId } });
-    await this.models.AppRowHandler.destroy({ 
+    if (this.models.AppState) await this.models.AppState.destroy({ where: { app_id: appId } });
+    if (this.models.AppRowHandler) await this.models.AppRowHandler.destroy({ 
       where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
     });
     await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });

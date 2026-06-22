@@ -1,8 +1,6 @@
 import { ref } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
 import type { ChatMessage } from '@/components/ChatWindow.vue'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
@@ -13,99 +11,12 @@ marked.setOptions({
 
 const MERMAID_CACHE_MAX_SIZE = 50
 const MESSAGE_HTML_CACHE_MAX_SIZE = 200
-const FORMULA_TOKEN_PREFIX = 'COPILOT_FORMULA_TOKEN_'
+const FORMATTED_CACHE_MAX_SIZE = 256
 
 const formattedCache = new Map<string, string>()
 const messageHtmlCache = new Map<string, { cacheKey: string; html: string }>()
 const mermaidRenderedHtml = ref<Map<string, string>>(new Map())
 const renderingMermaid = ref<Set<string>>(new Set())
-
-const sanitizeOptions = {
-  ALLOWED_TAGS: [
-    'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'ul', 'ol', 'li',
-    'blockquote', 'pre', 'code',
-    'a', 'img',
-    'table', 'thead', 'tbody', 'tr', 'th', 'td',
-    'hr', 'div', 'span',
-    'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan',
-    'math', 'semantics', 'annotation', 'mrow', 'mi', 'mn', 'mo', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mspace', 'mtext', 'mtable', 'mtr', 'mtd', 'munderover', 'munder', 'mover', 'mpadded', 'mstyle', 'mphantom', 'menclose'
-  ],
-  ALLOWED_ATTR: [
-    'href', 'src', 'alt', 'title', 'class',
-    'target', 'rel',
-    'width', 'height',
-    'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
-    'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
-    'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
-    'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
-    'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
-    'markerWidth', 'markerHeight', 'orient', 'overflow', 'data-*',
-    'aria-hidden', 'encoding'
-  ],
-  ALLOW_DATA_ATTR: true,
-  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|ftp|tel|file|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-}
-
-function sanitizeHtml(html: string): string {
-  return String(DOMPurify.sanitize(html, sanitizeOptions))
-}
-
-interface FormulaToken {
-  token: string
-  html: string
-}
-
-function extractFormulaTokens(content: string): { text: string; tokens: FormulaToken[] } {
-  let working = content
-  const tokens: FormulaToken[] = []
-
-  working = working.replace(/\$\$([\s\S]*?)\$\$/g, (_match, formulaContent) => {
-    const token = `${FORMULA_TOKEN_PREFIX}${tokens.length}__`
-    const html = renderFormula(String(formulaContent || '').trim(), true)
-    tokens.push({ token, html })
-    return `\n\n${token}\n\n`
-  })
-
-  working = working.replace(/(^|[^$])\$([^\n$]+?)\$(?!\$)/g, (_match, prefix, formulaContent) => {
-    const token = `${FORMULA_TOKEN_PREFIX}${tokens.length}__`
-    const html = renderFormula(String(formulaContent || '').trim(), false)
-    tokens.push({ token, html })
-    return `${prefix}${token}`
-  })
-
-  return { text: working, tokens }
-}
-
-function restoreFormulaTokens(html: string, tokens: FormulaToken[]): string {
-  let restored = html
-  for (const item of tokens) {
-    restored = restored.split(item.token).join(item.html)
-  }
-  restored = restored
-    .replace(/<p>\s*(<span class="katex-display[\s\S]*?<\/span>)\s*<\/p>/g, '<div class="formula-display-block">$1</div>')
-    .replace(/<p>\s*(<span class="katex[\s\S]*?<\/span>)\s*<\/p>/g, '<p class="formula-inline-paragraph">$1</p>')
-  return restored
-}
-
-function renderFormula(content: string, displayMode: boolean): string {
-  if (!content) return ''
-  try {
-    return katex.renderToString(content, {
-      displayMode,
-      throwOnError: false,
-      strict: 'ignore',
-      output: 'htmlAndMathml',
-    })
-  } catch (error) {
-    console.error('KaTeX rendering error:', error)
-    const escaped = escapeHtml(content)
-    return displayMode
-      ? `<div class="katex-error katex-display"><code>${escaped}</code></div>`
-      : `<span class="katex-error"><code>${escaped}</code></span>`
-  }
-}
 
 const escapeHtml = (text: string): string => {
   if (!text) return ''
@@ -114,6 +25,64 @@ const escapeHtml = (text: string): string => {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>')
+}
+
+const escapeAttribute = (value: string): string => {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+const INLINE_MATH_HINT_RE = /(?:\\[a-zA-Z]+|[=^_{}]|\d\s*[+\-*/]\s*\d|[A-Za-z]\s*[+\-*/=^_]\s*[A-Za-z\d])/
+
+const looksLikeInlineMath = (formula: string): boolean => {
+  const normalized = formula.trim()
+  if (!normalized) return false
+
+  // Treat plain money/percentage/unit snippets as normal text, not math.
+  if (/^\d+(?:[.,]\d+)?(?:\s*(?:%|[A-Za-z]{1,5}|[\u4e00-\u9fa5]{1,3}))?$/.test(normalized)) {
+    return false
+  }
+
+  return INLINE_MATH_HINT_RE.test(normalized)
+}
+
+const normalizeInlineMath = (content: string): string => {
+  return content.replace(/(^|[^\\\w])\$([^\n$]+)\$(?!\$)/g, (_, prefix: string, formula: string) => {
+    if (!looksLikeInlineMath(formula)) {
+      return `${prefix}$${formula}$`
+    }
+    return `${prefix}<code class="inline-math" data-inline-math="${escapeAttribute(formula.trim())}"></code>`
+  })
+}
+
+const sanitizeMarkdownHtml = (rawHtml: string): string => {
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li',
+      'blockquote', 'pre', 'code',
+      'a', 'img',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'hr', 'div', 'span',
+      'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'ellipse', 'text', 'g', 'title', 'desc', 'defs', 'marker', 'use', 'tspan'
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'class',
+      'target', 'rel',
+      'width', 'height',
+      'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+      'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+      'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
+      'dominant-baseline', 'font-size', 'font-family', 'font-weight', 'font-style',
+      'opacity', 'marker-end', 'marker-start', 'marker-mid', 'refX', 'refY',
+      'markerWidth', 'markerHeight', 'orient', 'overflow', 'data-*'
+    ],
+    ALLOW_DATA_ATTR: true,
+  })
 }
 
 const formatMessage = (content: string) => {
@@ -125,14 +94,14 @@ const formatMessage = (content: string) => {
   }
 
   try {
-    const { text, tokens } = extractFormulaTokens(content)
-    const rawHtml = marked.parse(text) as string
-    const htmlWithFormula = restoreFormulaTokens(rawHtml, tokens)
-    const cleanHtml = sanitizeHtml(htmlWithFormula)
+    const normalizedContent = normalizeInlineMath(content)
+    const rawHtml = marked.parse(normalizedContent) as string
+    const cleanHtml = sanitizeMarkdownHtml(rawHtml)
 
-    if (formattedCache.size > 100) {
-      const firstKey = formattedCache.keys().next().value
-      if (firstKey) formattedCache.delete(firstKey)
+    if (formattedCache.size > FORMATTED_CACHE_MAX_SIZE) {
+      const keysToDelete = formattedCache.size - FORMATTED_CACHE_MAX_SIZE
+      const keys = Array.from(formattedCache.keys()).slice(0, keysToDelete)
+      keys.forEach(key => formattedCache.delete(key))
     }
     formattedCache.set(content, cleanHtml)
 
@@ -243,6 +212,7 @@ function createInstance() {
   return {
     escapeHtml,
     formatMessage,
+    sanitizeMarkdownHtml,
     containsMermaid,
     formatStreamingMessage,
     mermaidRenderedHtml,

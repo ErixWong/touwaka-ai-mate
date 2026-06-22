@@ -1,135 +1,138 @@
 # 设计文档索引
 
-本目录包含 Touwaka Mate v2 的所有设计文档，按版本和类型组织。
+本目录汇总项目的架构设计、平台设计、专题设计、草稿与归档材料。当前结构不再以 `phase1/phase2/phase3` 作为最外层目录，而是收敛为更稳定的语义化模块：`core/`、`app-platform/`、`doc-platform/`、`topics/`、`drafts/`、`archive/`。
 
-## 目录结构
+## 信息架构
 
-```
+| 文档 | 说明 |
+|------|------|
+| [information-architecture.md](./information-architecture.md) | `docs/design/` 的放置规则、目录边界与治理原则 |
+| [core/README.md](./core/README.md) | 核心架构与基础设施设计入口 |
+| [app-platform/README.md](./app-platform/README.md) | App 平台设计入口 |
+| [doc-platform/README.md](./doc-platform/README.md) | 当前文档平台实现入口 |
+| [topics/README.md](./topics/README.md) | 专题设计入口 |
+
+## 当前目录分层
+
+```text
 design/
-├── README.md                   # 本文件
-├── v1/                         # v1 设计文档（Mind Core）
-├── v2/                         # v2 设计文档（Task Layer）
-├── archive/                    # 已废弃的设计文档
-├── improvement-suggestions.md  # 功能改进建议
-├── architecture-improvements.md # 架构改进建议
-└── references-analysis-report.md # 外部项目分析
+├── README.md                         # 本文件
+├── information-architecture.md       # 目录治理规则
+├── core/                             # 核心架构与基础设施设计
+├── app-platform/                     # App 平台主线与平台治理设计
+├── doc-platform/                     # 当前文档平台实现说明
+├── topics/                           # 跨阶段专题设计
+├── drafts/                           # 草稿与工作文档
+├── archive/                          # 已归档设计
+└── references-analysis-report.md     # 外部项目分析背景资料
 ```
 
-## 快速导航
+## 主线设计入口
 
-### v1 设计文档 - Mind Core
-
-[v1/README.md](./v1/README.md) - v1 架构总览
-
-| 文档 | 说明 |
-|------|------|
-| [foundation-requirements.md](./v1/foundation-requirements.md) | 基础需求定义 |
-| [api-design.md](./v1/api-design.md) | API 设计 |
-| [ui-design-draft.md](./v1/ui-design-draft.md) | UI 设计草案 |
-| [error-state-design.md](./v1/error-state-design.md) | 错误状态设计 |
-| [i18n-design.md](./v1/i18n-design.md) | 多语言设计 |
-| [skill-loading-design.md](./v1/skill-loading-design.md) | 技能加载设计 |
-| [llm-call-scenarios.md](./v1/llm-call-scenarios.md) | LLM 调用场景 |
-| [chat-component-comparison.md](./v1/chat-component-comparison.md) | 聊天组件对比 |
-
-### v2 设计文档 - Task Layer
-
-[v2/README.md](./v2/README.md) - v2 设计总览
+### Core
 
 | 文档 | 说明 | 状态 |
 |------|------|------|
-| [task-layer-design.md](./v2/task-layer-design.md) | Task Layer 核心设计 | 已采纳 |
-| [right-panel-design.md](./v2/right-panel-design.md) | 右侧多功能面板设计 | 已采纳 |
-| [context-compression-design.md](./v2/context-compression-design.md) | 上下文压缩设计 | 已采纳 |
-| [skill-management-tools-design.md](./v2/skill-management-tools-design.md) | 技能管理工具设计 | 已采纳 |
-| [skill-import-dialog-design.md](./v2/skill-import-dialog-design.md) | Skills Studio 专家设计 | 进行中 |
-| [skill-configuration-design.md](./v2/skill-configuration-design.md) | 技能配置化设计 | 进行中 |
-| [tool-permission-design.md](./v2/tool-permission-design.md) | 内置工具权限分级设计 | 进行中 |
-| [kb-permission-design.md](./v2/kb-permission-design.md) | 知识库权限控制设计 | 草稿 |
-| [background-task-scheduler-design.md](./v2/background-task-scheduler-design.md) | 后台任务调度器 | 草稿 |
-| [assistant-system-design.md](./v2/assistant-system-design.md) | 助理系统设计 | 已实现 |
-| [code-review-2026-02-21.md](./v2/code-review-2026-02-21.md) | 代码审查记录 | - |
+| [core/README.md](./core/README.md) | Core 目录入口 | 总览 |
+| [core/phase1/README.md](./core/phase1/README.md) | Phase 1 / Mind Core 总览 | 主线入口 |
+| [core/phase2/README.md](./core/phase2/README.md) | Phase 2 / Task Layer 总览 | 主线入口 |
+| [core/context-organization-architecture.md](./core/context-organization-architecture.md) | 上下文组织架构 | 横切核心设计 |
+| [core/message-flow-analysis.md](./core/message-flow-analysis.md) | 消息流转分析 | 核心架构分析 |
+| [core/resident-process-management-redesign.md](./core/resident-process-management-redesign.md) | 驻留进程管理重设计 | 核心基础设施 |
+| [core/architecture-improvements.md](./core/architecture-improvements.md) | 架构改进建议 | 历史核心建议 |
+| [core/improvement-suggestions.md](./core/improvement-suggestions.md) | 功能与架构改进建议 | 历史核心建议 |
 
-### 知识库与附件设计
+### App Platform
 
 | 文档 | 说明 | 状态 |
 |------|------|------|
-| [attachment-service-design.md](./attachment-service-design.md) | 通用附件服务设计 | 已采纳 |
-| [kb-recall-design.md](./kb-recall-design.md) | 知识库召回设计（含图片处理） | 已采纳 |
+| [app-platform/README.md](./app-platform/README.md) | App Platform 目录入口 | 总览 |
+| [app-platform/dev-readiness.md](./app-platform/dev-readiness.md) | App 平台开发就绪度审查 | 评估文档 |
+| [app-platform/review.md](./app-platform/review.md) | App 平台设计审查 | 评审文档 |
+| [app-platform/ADR-mini-app-retirement.md](./app-platform/ADR-mini-app-retirement.md) | Mini-app 退役 ADR | 架构决策 |
 
-### 评审报告
-
-| 文档 | 说明 |
-|------|------|
-| [architecture-analysis-report.md](./v1/architecture-analysis-report.md) | 架构分析报告 |
-| [code-review-report.md](./v1/code-review-report.md) | v1 代码审查 |
-| [design-review-report.md](./v1/design-review-report.md) | v1 设计评审 |
-| [vulnerability-fixes-summary.md](./v1/vulnerability-fixes-summary.md) | 安全修复总结 |
-
-### 参考资料
-
-| 文档 | 说明 |
-|------|------|
-| [improvement-suggestions.md](./improvement-suggestions.md) | 功能改进建议（基于外部项目分析） |
-| [architecture-improvements.md](./architecture-improvements.md) | 架构改进建议（安全、高可用、监控） |
-| [references-analysis-report.md](./references-analysis-report.md) | 外部项目（Claw 系列）分析 |
-
-### Parse4 设计文档 — 合同管理 App 增强
-
-[parse4/](./parse4/) - 合同管理 App 功能增强设计
+### Doc Platform
 
 | 文档 | 说明 | 状态 |
 |------|------|------|
-| [contract-mgr-metadata-design.md](./parse4/contract-mgr-metadata-design.md) | 合同管理元数据结构优化设计 | 已采纳 |
-| [resident-api-design.md](./parse4/resident-api-design.md) | 驻留进程实现小程序自定义 API 设计 | 草稿 |
-| [contract-mgr-frontend-design.md](./parse4/contract-mgr-frontend-design.md) | 合同管理前端详情页和筛选组件设计 | 进行中 |
+| [doc-platform/README.md](./doc-platform/README.md) | `/api/docs` 与文档处理流水线实现入口 | 已实现 |
+| [doc-platform/data-model.md](./doc-platform/data-model.md) | 当前数据模型 | 已实现 |
+| [doc-platform/api.md](./doc-platform/api.md) | 当前接口摘要 | 已实现 |
+| [doc-platform/processing-pipeline.md](./doc-platform/processing-pipeline.md) | 当前处理流水线 | 已实现 |
 
-### 草稿文档
+## 专题设计
 
-[drafts/](./drafts/) - 设计草案和工作文档
+专题总入口：[topics/README.md](./topics/README.md)
 
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [mcp-system-design.md](./drafts/mcp-system-design.md) | MCP 系统设计方案 | 草稿 |
-| [chatview-message-flow-complete.md](./drafts/chatview-message-flow-complete.md) | ChatView 消息处理流程图 | 参考 |
-| [chatview-optimization-plan.md](./drafts/chatview-optimization-plan.md) | ChatView 优化计划 | 进行中 |
-
-### 归档文档
-
-[archive/](./archive/) - 已废弃/已处理的历史文档
+### Knowledge Base
 
 | 文档 | 说明 |
 |------|------|
-| [readme-old.md](./archive/readme-old.md) | 旧版文档结构说明 |
-| [documentation-audit-report.md](./archive/documentation-audit-report.md) | 文档审查报告（已完成） |
-| [issue-226-toast-analysis.md](./archive/issue-226-toast-analysis.md) | Toast 组件设计分析（已实现） |
-| [message-retry-flow-diagram.md](./archive/message-retry-flow-diagram.md) | 消息重发流程图（已修复） |
-| [v2-obsolete/](./archive/v2-obsolete/) | 2026-02-26 归档的旧 Skill 设计 |
+| [topics/knowledge-base/kb-refactor-design.md](./topics/knowledge-base/kb-refactor-design.md) | 知识库结构重构设计 |
+| [topics/knowledge-base/kb-recall-design.md](./topics/knowledge-base/kb-recall-design.md) | 知识库召回设计 |
+| [topics/knowledge-base/knowledge-point-extraction-guide.md](./topics/knowledge-base/knowledge-point-extraction-guide.md) | 知识点提取指南 |
 
-#### v2-obsolete 归档（2026-02-26）
-
-这些文档基于旧的"LLM 分析导入"设计方案，已被新的"对话式导入"设计取代：
+### Resident Processes
 
 | 文档 | 说明 |
 |------|------|
-| skill-market-design.md | 技能市场设计（复杂导入流程） |
-| skill-parameters-code-review.md | 参数配置代码审查 |
-| skill-fields-analysis.md | skills 表字段分析 |
-| skill-llm-analysis.md | LLM 异步分析方案 |
+| [topics/resident-processes/resident-skill-design.md](./topics/resident-processes/resident-skill-design.md) | 驻留 Skill 设计 |
+| [topics/resident-processes/remote-llm-redesign.md](./topics/resident-processes/remote-llm-redesign.md) | 远程 LLM 重构 |
+| [topics/resident-processes/remote-llm-skill-design.md](./topics/resident-processes/remote-llm-skill-design.md) | 远程 LLM Skill 设计 |
+| [topics/resident-processes/mcp-client-resident-design.md](./topics/resident-processes/mcp-client-resident-design.md) | MCP Client 驻留设计 |
+| [topics/resident-processes/ssh-skill-tools-design.md](./topics/resident-processes/ssh-skill-tools-design.md) | SSH Skill / Tools 设计 |
 
-新方案参见：
-- [skill-management-tools-design.md](./v2/skill-management-tools-design.md) - 技能管理工具设计
-- [skill-import-dialog-design.md](./v2/skill-import-dialog-design.md) - 对话式导入界面设计
+### Chat / Context
+
+| 文档 | 说明 |
+|------|------|
+| [topics/chat/chatwindow-comparison.md](./topics/chat/chatwindow-comparison.md) | ChatWindow 对比分析 |
+| [topics/chat/issue-141-tool-context-design.md](./topics/chat/issue-141-tool-context-design.md) | 工具上下文更新设计 |
+| [topics/chat/tool-context-optimization.md](./topics/chat/tool-context-optimization.md) | 工具上下文优化 |
+| [topics/chat/file-preview-panel-design.md](./topics/chat/file-preview-panel-design.md) | 文件预览面板设计 |
+
+### Skills / Execution
+
+| 文档 | 说明 |
+|------|------|
+| [topics/skills/skill-directory-panel-analysis.md](./topics/skills/skill-directory-panel-analysis.md) | 技能目录面板分析 |
+| [topics/skills/package-whitelist.md](./topics/skills/package-whitelist.md) | 包白名单策略 |
+| [topics/skills/user-code-execution.md](./topics/skills/user-code-execution.md) | 用户代码执行设计 |
+
+### Attachment / Contract
+
+| 文档 | 说明 |
+|------|------|
+| [topics/attachment/attachment-service-design.md](./topics/attachment/attachment-service-design.md) | 通用附件服务设计 |
+| [topics/contract-mgr/contract-v2-final-spec.md](./topics/contract-mgr/contract-v2-final-spec.md) | 合同管理 v2 最终规格 |
+| [topics/contract-mgr/README.md](./topics/contract-mgr/README.md) | 合同管理专题总览 |
+
+## 当前实现相关设计
+
+| 文档 | 说明 |
+|------|------|
+| [../apps/README.md](../apps/README.md) | App 文档统一入口 |
+| [../apps/current-architecture.md](../apps/current-architecture.md) | 当前 app 平台实现边界 |
+| [../apps/app-generation-guide.md](../apps/app-generation-guide.md) | 当前 app 平台开发手册 |
+| [../apps/historical/app-platform-design.md](../apps/historical/app-platform-design.md) | 历史方案，仅作背景参考 |
+
+## 草稿与归档
+
+| 文档/目录 | 说明 |
+|-----------|------|
+| [drafts/README.md](./drafts/README.md) | 草稿入口与后续治理建议 |
+| [archive/README.md](./archive/README.md) | 归档入口与历史材料使用规则 |
+| [references-analysis-report.md](./references-analysis-report.md) | 外部项目分析背景资料 |
+
+## 状态说明
+
+- 主线入口：当前阶段主线设计的总入口。
+- 核心基础设施：仍与当前实现讨论强相关的横切设计。
+- 专题设计：不属于单一阶段主线，但具有独立主题边界的设计文档。
+- 草稿：设计仍在探索，不能直接视为当前实现。
+- 历史参考：仅用于理解上下文或追溯演进，不代表现行规范。
+- 目录放置规则：以 [information-architecture.md](./information-architecture.md) 为准。
 
 ---
 
-## 状态标记约定
-
-- **草稿**：方案探索中，可能随时推翻重写
-- **已采纳**：设计已通过评审，允许按文档实现
-- **已实现**：主要功能已按设计落地
-- **已废弃**：仅保留历史参考
-
----
-
-*最后更新: 2026-04-06*
+*最后更新: 2026-06-20*

@@ -97,7 +97,7 @@ T0 + 1h: 用户再次访问，Token 续期，expires_at = T0 + 2h
 ### 🟠 1.3 权限检查实现不完整
 
 **问题描述**：
-[`checkAttachmentPermission`](docs/design/attachment-service-design.md:398) 函数使用 switch-case 分发权限检查，但缺少默认拒绝策略的详细定义。
+[`checkAttachmentPermission`](docs/design/topics/attachment/attachment-service-design.md:398) 函数使用 switch-case 分发权限检查，但缺少默认拒绝策略的详细定义。
 
 **代码问题**：
 ```javascript
@@ -194,7 +194,7 @@ Token 生成 API 和附件访问 API 缺少速率限制，可能被滥用。
 ### 🔴 2.1 Token 访问路由存在 N+1 查询问题
 
 **问题描述**：
-[`GET /attach/t/:token/:attachment_id`](docs/design/attachment-service-design.md:347) 每次访问需要执行多次数据库查询。
+[`GET /attach/t/:token/:attachment_id`](docs/design/topics/attachment/attachment-service-design.md:347) 每次访问需要执行多次数据库查询。
 
 **当前流程**：
 ```sql
@@ -248,7 +248,7 @@ UPDATE attachment_token SET expires_at = ?, last_access_at = ? WHERE id = ?;
 ### 🟠 2.2 附件列表查询缺少分页
 
 **问题描述**：
-[`GET /api/attachments?source_tag=xxx&source_id=xxx`](docs/design/attachment-service-design.md:219) 返回某资源的所有附件，缺少分页机制。
+[`GET /api/attachments?source_tag=xxx&source_id=xxx`](docs/design/topics/attachment/attachment-service-design.md:219) 返回某资源的所有附件，缺少分页机制。
 
 **风险场景**：
 ```

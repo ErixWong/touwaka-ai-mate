@@ -222,6 +222,13 @@ async function getProcessingStatus(baseUrl, token, documentId) {
   return result?.data || result;
 }
 
+async function getDocumentResult(baseUrl, token, documentId) {
+  const result = await requestJson(`${baseUrl}/docs/documents/${documentId}/result`, {
+    headers: authHeaders(token, null),
+  });
+  return result?.data || result;
+}
+
 async function waitForCompletion(baseUrl, token, documentId, timeoutMs, pollMs) {
   const startedAt = Date.now();
   let lastStatus = null;
@@ -244,6 +251,30 @@ async function waitForCompletion(baseUrl, token, documentId, timeoutMs, pollMs) 
   }
 
   throw new Error(`Timed out waiting for OCR completion. lastStatus=${JSON.stringify(lastStatus)}`);
+}
+
+async function waitForReady(baseUrl, token, documentId, timeoutMs, pollMs) {
+  const startedAt = Date.now();
+  let lastResult = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await getDocumentResult(baseUrl, token, documentId);
+    lastResult = result;
+    const status = result?.processing?.status || result?.document?.processing_status || 'unknown';
+    console.log(`[ready-poll] doc=${documentId} status=${status} revision=${result?.revision?.id || 'n/a'}`);
+
+    if (status === 'ready') {
+      return lastResult;
+    }
+
+    if (status === 'error') {
+      throw new Error(`Document did not reach ready state: ${JSON.stringify(lastResult)}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+
+  throw new Error(`Timed out waiting for document ready state. lastResult=${JSON.stringify(lastResult)}`);
 }
 
 async function verifyDatabase(documentId) {
@@ -325,6 +356,9 @@ async function main() {
   const completed = await waitForCompletion(options.baseUrl, accessToken, intake.document_id, options.timeoutMs, options.pollMs);
   console.log(`[completed] processing_status=${completed.status.processing_status} ocr_status=${completed.status.ocr_result?.status}`);
 
+  const readyResult = await waitForReady(options.baseUrl, accessToken, intake.document_id, options.timeoutMs, options.pollMs);
+  console.log(`[ready] processing_status=${readyResult.processing?.status} revision=${readyResult.revision?.id || 'n/a'}`);
+
   const summary = await verifyDatabase(intake.document_id);
   assert(summary.document?.id, 'Document not found in database');
   assert(summary.ocrResult?.id, 'doc_ocr_results record missing');
@@ -333,6 +367,7 @@ async function main() {
   assert(summary.ocrResult?.main_markdown_attachment_id, 'main_markdown_attachment_id missing');
   assert(summary.markdownAttachment?.id, 'Markdown attachment missing');
   assert((summary.ocrResult?.line_count || 0) > 0, 'line_count should be > 0');
+  assert(summary.document?.processing_status === 'ready', `Document not ready after pipeline: ${summary.document?.processing_status}`);
 
   printSummary(summary);
   console.log('\nDocument-platform MinerU integration verification passed.');

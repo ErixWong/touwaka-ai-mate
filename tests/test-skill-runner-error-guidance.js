@@ -106,6 +106,90 @@ async function main() {
     }
 
     console.log('✅ 白名单指导测试通过: 依赖受限时会提示向管理员申请开通');
+
+    // === Python 测试场景 ===
+    const pythonSkillPath = path.join(tempRoot, 'bad-python-skill');
+    const pythonEnv = {
+      DATA_BASE_PATH: dataBasePath,
+      SCRIPT_PATH: 'index.py',
+      ALLOWED_PYTHON_PACKAGES: JSON.stringify(['json']),
+      PYTHON_TIMEOUT: '15000',
+    };
+
+    // 场景1: Python 入口文件未定义 execute()
+    fs.mkdirSync(pythonSkillPath, { recursive: true });
+    fs.writeFileSync(path.join(pythonSkillPath, 'index.py'), 'import json\n\ndef helper():\n    pass\n', 'utf-8');
+    const noExecuteResult = await runSkill('bad-python-skill', pythonSkillPath, 'test', pythonEnv);
+    if (noExecuteResult.code === 0) {
+      throw new Error('Python no-execute: expected non-zero exit code');
+    }
+    if (noExecuteResult.stdout?.success !== false) {
+      throw new Error(`Python no-execute: expected success=false, got ${JSON.stringify(noExecuteResult.stdout)}`);
+    }
+    const noExecuteError = noExecuteResult.stdout?.error || '';
+    if (!noExecuteError.includes('脚本修复建议:')) {
+      throw new Error(`Python no-execute: missing 脚本修复建议:\nactual=${noExecuteError}`);
+    }
+    if (!noExecuteError.includes('请在 Python 入口文件中定义 execute(tool, params, context) 函数。')) {
+      throw new Error(`Python no-execute: missing execute function guidance\nactual=${noExecuteError}`);
+    }
+    console.log('✅ Python 缺少 execute 测试通过');
+
+    // 场景2: Python import 非白名单包（沙箱 ImportError 拦截）
+    fs.writeFileSync(path.join(pythonSkillPath, 'index.py'), 'import requests\n\ndef execute(tool, params, context):\n    return {"ok": True}\n', 'utf-8');
+    const importResult = await runSkill('bad-python-skill', pythonSkillPath, 'test', pythonEnv);
+    if (importResult.code === 0) {
+      throw new Error('Python import: expected non-zero exit code');
+    }
+    if (importResult.stdout?.success !== false) {
+      throw new Error(`Python import: expected success=false, got ${JSON.stringify(importResult.stdout)}`);
+    }
+    const importError = importResult.stdout?.error || '';
+    if (!importError.includes('脚本修复建议:')) {
+      throw new Error(`Python import: missing 脚本修复建议:\nactual=${importError}`);
+    }
+    if (!importError.includes('allowed_python_packages')) {
+      throw new Error(`Python import: missing allowed_python_packages guidance\nactual=${importError}`);
+    }
+    console.log('✅ Python 导入非白名单包测试通过（沙箱白名单拦截）');
+
+    // 场景3: Python SyntaxError
+    fs.writeFileSync(path.join(pythonSkillPath, 'index.py'), 'def execute(tool, params, context):\n    return {"ok": True  # missing }\n', 'utf-8');
+    const syntaxResult = await runSkill('bad-python-skill', pythonSkillPath, 'test', pythonEnv);
+    if (syntaxResult.code === 0) {
+      throw new Error('Python SyntaxError: expected non-zero exit code');
+    }
+    if (syntaxResult.stdout?.success !== false) {
+      throw new Error(`Python SyntaxError: expected success=false, got ${JSON.stringify(syntaxResult.stdout)}`);
+    }
+    const syntaxError = syntaxResult.stdout?.error || '';
+    if (!syntaxError.includes('脚本修复建议:')) {
+      throw new Error(`Python SyntaxError: missing 脚本修复建议:\nactual=${syntaxError}`);
+    }
+    if (!syntaxError.includes('请检查 Python 脚本语法、缩进和字符串引号是否完整。')) {
+      throw new Error(`Python SyntaxError: missing syntax guidance\nactual=${syntaxError}`);
+    }
+    console.log('✅ Python SyntaxError 测试通过');
+
+    // 场景4: Python IndentationError
+    fs.writeFileSync(path.join(pythonSkillPath, 'index.py'), 'def execute(tool, params, context):\n  return {"ok": True}\n    bad = 1\n', 'utf-8');
+    const indentResult = await runSkill('bad-python-skill', pythonSkillPath, 'test', pythonEnv);
+    if (indentResult.code === 0) {
+      throw new Error('Python IndentationError: expected non-zero exit code');
+    }
+    if (indentResult.stdout?.success !== false) {
+      throw new Error(`Python IndentationError: expected success=false, got ${JSON.stringify(indentResult.stdout)}`);
+    }
+    const indentError = indentResult.stdout?.error || '';
+    if (!indentError.includes('脚本修复建议:')) {
+      throw new Error(`Python IndentationError: missing 脚本修复建议:\nactual=${indentError}`);
+    }
+    if (!indentError.includes('请检查 Python 脚本语法、缩进和字符串引号是否完整。')) {
+      throw new Error(`Python IndentationError: missing indentation guidance\nactual=${indentError}`);
+    }
+    console.log('✅ Python IndentationError 测试通过');
+
+    console.log('\n🎉 全部错误指导测试通过 (Node.js + Python)');
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

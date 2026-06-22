@@ -97,7 +97,7 @@ class InvoiceService {
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
                 r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status
-         FROM mini_app_rows m
+         FROM app_invoice_mgr_records m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
          ${where}
          ORDER BY ${sortField} ${sortOrder}
@@ -106,7 +106,7 @@ class InvoiceService {
       ),
       this.sequelize.query(
         `SELECT COUNT(*) as total
-         FROM mini_app_rows m
+         FROM app_invoice_mgr_records m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
          ${where}`,
         { replacements, type: Sequelize.QueryTypes.SELECT }
@@ -139,7 +139,7 @@ class InvoiceService {
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
                 r.item_count, r.page_count, r.remarks, r.issuer, r.ocr_method, r.ocr_raw, r.extraction_status
-         FROM mini_app_rows m
+         FROM app_invoice_mgr_records m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
          ${where}`,
         { replacements, type: Sequelize.QueryTypes.SELECT }
@@ -177,7 +177,7 @@ class InvoiceService {
               r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
               r.total_amount, r.total_tax, r.total_with_tax,
               r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status
-       FROM mini_app_rows m
+       FROM app_invoice_mgr_records m
        LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        ${where}
        ORDER BY ${sortField} ${sortOrder}`,
@@ -309,7 +309,7 @@ class InvoiceService {
               r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
               r.total_amount, r.total_tax, r.total_with_tax,
               r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status
-       FROM mini_app_rows m
+       FROM app_invoice_mgr_records m
        LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        ${where}
        ORDER BY ${sortField} ${sortOrder}`,
@@ -400,7 +400,7 @@ class InvoiceService {
     const rows = await this.sequelize.query(
       `SELECT r.invoice_number, r.invoice_date, r.buyer_name, r.seller_name,
               r.remarks, i.amount, i.tax_amount, i.name AS item_name, i.sort_order
-       FROM mini_app_rows m
+       FROM app_invoice_mgr_records m
        JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        JOIN app_invoice_mgr_items i ON i.row_id = m.id
        ${where}

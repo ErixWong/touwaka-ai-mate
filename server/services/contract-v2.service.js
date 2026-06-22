@@ -256,6 +256,7 @@ class ContractV2Service {
       if (existing) throw new Error(`版本号 ${versionNumber} 已存在`);
 
       const rowId = Utils.newID(20);
+      const contentId = Utils.newID(20);
       const isFirst = existingCount === 0;
       
       const version = await this.models.Version.create({
@@ -274,10 +275,10 @@ class ContractV2Service {
       // 创建 content 记录，启动处理流程
       await this.db.sequelize.query(`
         INSERT INTO app_contract_mgr_v2_content 
-        (row_id, process_step, file_id, created_at, updated_at)
-        VALUES (?, 'pending_ocr', ?, NOW(), NOW())
+        (row_id, content_id, process_step, file_id, created_at, updated_at)
+        VALUES (?, ?, 'pending_ocr', ?, NOW(), NOW())
       `, {
-        replacements: [rowId, data.file_id || null],
+        replacements: [rowId, contentId, data.file_id || null],
         transaction: t
       });
 

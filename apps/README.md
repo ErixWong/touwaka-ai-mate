@@ -1,18 +1,21 @@
 # Touwaka Mate App Registry
 
-这是 Touwaka Mate 的 App Market（小程序市场）Registry，托管在 GitHub 仓库中。
+这是仓库根目录 `apps/` 的说明文档，对应项目中的 App Registry 与 app 包目录。
 
 ## 目录结构
 
-```
+```text
 apps/
-├── index.json              # Registry 索引（本目录下所有 App 的清单）
-├── README.md               # 本说明文档
-├── contract-manager/     # 合同管理 App
-│   ├── manifest.json       # App 元数据
-│   ├── handlers/           # 处理脚本
-│   └── frontend/           # 自定义组件（可选）
-└── ...其他 App
+├── README.md                 # 本说明文档
+├── {appId}/                  # 单个 app 目录
+│   ├── manifest.json         # app 元数据入口
+│   ├── migrations/           # 安装/卸载数据库脚本
+│   ├── tick/                 # 后台 tick 入口（可选）
+│   ├── server/               # 自定义 routes / service（可选）
+│   ├── frontend/             # 自定义前端组件（可选）
+│   ├── handlers/             # 历史或专题处理脚本（按 app 实现决定）
+│   └── states.js             # 推荐：状态语义集中定义（可选）
+└── ...其他 app
 ```
 
 ## 如何使用
@@ -27,19 +30,29 @@ apps/
 ### 作为开发者
 
 要创建新的 App：
-1. 复制 `_template/document-app/` 模板
-2. 修改 `manifest.json` 定义字段和状态
-3. 实现 `handlers/` 目录下的处理脚本
-4. 提交 PR 到本仓库
+1. 参考 `docs/apps/current-architecture.md` 理解平台边界
+2. 参考 `docs/apps/app-generation-guide.md` 按当前实现创建 app 目录
+3. 编写 `manifest.json`，按需补充 `migrations/`、`tick/`、`server/`、`frontend/`
+4. 在仓库中完成开发和验证
 
 ## App 规范
 
-每个 App 必须包含：
-- `manifest.json`：元数据、字段定义、状态流转
-- `handlers/`：至少一个处理脚本（可选）
-- `frontend/`：自定义组件（可选）
+当前最小要求：
+- `manifest.json`：元数据、字段、视图、配置入口
 
-详见 [App Market 设计文档](../docs/design/parse3/app-market-design.md)
+按需扩展：
+- `migrations/`：安装 / 卸载数据库脚本
+- `tick/`：后台轮询逻辑
+- `server/`：自定义 API
+- `frontend/`：自定义前端能力
+- `states.js`：推荐的状态语义集中定义
+
+推荐阅读：
+- [App 模块文档入口](../docs/apps/README.md)
+- [当前架构总纲](../docs/apps/current-architecture.md)
+- [App 生成指导手册](../docs/apps/app-generation-guide.md)
+- [App 平台设计](../docs/design/app-platform/README.md)
+- [历史 App 设计](../docs/apps/historical/README.md)
 
 ## 仓库地址
 

@@ -125,16 +125,12 @@ export async function tick(context) {
   
   logger.info(`[contract-mgr tick] App loaded: id=${app.id}, name=${app.name}`);
   
-  const MiniAppRow = services.getModel('mini_app_row');
-  
-  const pendingRecords = await MiniAppRow.findAll({
-    where: {
-      app_id: 'contract-mgr',
-      status: ALL_ACTIVE_STATES
-    },
-    limit: 5,
-    order: [['created_at', 'ASC']]
-  });
+  const pendingRecords = await services.query(
+    `SELECT id, app_id, status, data, created_at, updated_at FROM app_contract_mgr_records
+     WHERE status IN (${ALL_ACTIVE_STATES.map(s => `'${s}'`).join(',')})
+     ORDER BY created_at ASC
+     LIMIT 5`
+  );
   
   if (pendingRecords.length === 0) {
     logger.info('[contract-mgr tick] No pending records');
@@ -153,9 +149,9 @@ export async function tick(context) {
       
       if (!startedAt) {
         startedAt = backfillStartedAt(record, data, status);
-        await MiniAppRow.update(
-          { data: JSON.stringify(data) },
-          { where: { id: record.id } }
+        await services.execute(
+          'UPDATE app_contract_mgr_records SET data = ? WHERE id = ?',
+          [JSON.stringify(data), record.id]
         );
       }
       
@@ -175,9 +171,9 @@ export async function tick(context) {
       
       if (!startedAt) {
         startedAt = backfillStartedAt(record, data, status);
-        await MiniAppRow.update(
-          { data: JSON.stringify(data) },
-          { where: { id: record.id } }
+        await services.execute(
+          'UPDATE app_contract_mgr_records SET data = ? WHERE id = ?',
+          [JSON.stringify(data), record.id]
         );
       }
       
@@ -309,30 +305,42 @@ async function filterTextByChunks(recordId, services, prompt, text, options) {
 }
 
 async function getFiles(services, recordId) {
-  const MiniAppFile = services.getModel('mini_app_file');
-  const Attachment = services.getModel('attachment');
-  
-  const files = await MiniAppFile.findAll({
-    where: { record_id: recordId },
-    include: Attachment ? [{ model: Attachment, as: 'attachment' }] : []
-  });
-  
-  return files.map(f => f.toJSON());
+  const [rows] = await services.execute(
+    `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
+     FROM app_contract_mgr_content c
+     JOIN attachments a ON a.id = c.file_id
+     WHERE c.row_id = ? AND c.file_id IS NOT NULL`,
+    [recordId]
+  );
+
+  return rows.map((file) => ({
+    attachment: {
+      id: file.id,
+      file_name: file.file_name,
+      file_path: file.file_path,
+      mime_type: file.mime_type,
+      ext_name: file.ext_name,
+    },
+  }));
 }
 
 async function transitionToProcessing(services, recordId, processingState, expectedCurrentState) {
-  const MiniAppRow = services.getModel('mini_app_row');
-  const record = await MiniAppRow.findByPk(recordId);
-  const data = record.data ? JSON.parse(record.data) : {};
+  const records = await services.query(
+    `SELECT id, status, data FROM app_contract_mgr_records WHERE id = ?`,
+    [recordId]
+  );
+  const record = records[0];
+  if (!record) return { success: false, data: null };
+  const data = record.data ? (typeof record.data === 'string' ? JSON.parse(record.data) : record.data) : {};
   data._processing_started_at = new Date().toISOString();
   data._processing_step = processingState;
   
-  const [affectedRows] = await MiniAppRow.update(
-    { status: processingState, data: JSON.stringify(data) },
-    { where: { id: recordId, status: expectedCurrentState } }
+  const result = await services.execute(
+    `UPDATE app_contract_mgr_records SET status = ?, data = ? WHERE id = ? AND status = ?`,
+    [processingState, JSON.stringify(data), recordId, expectedCurrentState]
   );
   
-  if (affectedRows === 0) {
+  if (!result || result[0]?.affectedRows === 0) {
     logger.warn(`[contract-mgr tick] Record ${recordId} transition to ${processingState} failed - status may have changed`);
     return { success: false, data: null };
   }
@@ -342,35 +350,43 @@ async function transitionToProcessing(services, recordId, processingState, expec
 }
 
 async function transitionToNext(services, recordId, nextState, clearProcessing = true) {
-  const MiniAppRow = services.getModel('mini_app_row');
-  const record = await MiniAppRow.findByPk(recordId);
-  const data = record.data ? JSON.parse(record.data) : {};
+  const records = await services.query(
+    `SELECT id, status, data FROM app_contract_mgr_records WHERE id = ?`,
+    [recordId]
+  );
+  const record = records[0];
+  if (!record) return;
+  const data = record.data ? (typeof record.data === 'string' ? JSON.parse(record.data) : record.data) : {};
   
   if (clearProcessing) {
     delete data._processing_started_at;
     delete data._processing_step;
   }
   
-  await MiniAppRow.update(
-    { status: nextState, data: JSON.stringify(data) },
-    { where: { id: recordId } }
+  await services.execute(
+    `UPDATE app_contract_mgr_records SET status = ?, data = ? WHERE id = ?`,
+    [nextState, JSON.stringify(data), recordId]
   );
   
   logger.info(`[contract-mgr tick] Record ${recordId} transitioned to ${nextState}`);
 }
 
 async function transitionToFailed(services, recordId, failedState) {
-  const MiniAppRow = services.getModel('mini_app_row');
-  const record = await MiniAppRow.findByPk(recordId);
-  const data = record.data ? JSON.parse(record.data) : {};
+  const records = await services.query(
+    `SELECT id, status, data FROM app_contract_mgr_records WHERE id = ?`,
+    [recordId]
+  );
+  const record = records[0];
+  if (!record) return;
+  const data = record.data ? (typeof record.data === 'string' ? JSON.parse(record.data) : record.data) : {};
   data._failed_at = new Date().toISOString();
   data._failed_step = failedState;
   delete data._processing_started_at;
   delete data._processing_step;
   
-  await MiniAppRow.update(
-    { status: failedState, data: JSON.stringify(data) },
-    { where: { id: recordId } }
+  await services.execute(
+    `UPDATE app_contract_mgr_records SET status = ?, data = ? WHERE id = ?`,
+    [failedState, JSON.stringify(data), recordId]
   );
   
   logger.info(`[contract-mgr tick] Record ${recordId} transitioned to ${failedState}`);
@@ -472,16 +488,20 @@ ${stringifyForLog(result, 1000)}`;
       return;
     }
     
-    const MiniAppRow = services.getModel('mini_app_row');
-    const currentRecord = await MiniAppRow.findByPk(record.id);
+    const [currentRecords] = await services.query(
+      `SELECT id, data FROM app_contract_mgr_records WHERE id = ?`,
+      [record.id]
+    );
+    const currentRecord = currentRecords[0];
+    if (!currentRecord) return;
     const data = currentRecord.data ? JSON.parse(currentRecord.data) : {};
     data._ocr_task_id = taskId;
     data._ocr_service = mcp.server;
     
-    await MiniAppRow.update(
-      { data: JSON.stringify(data) },
-      { where: { id: record.id } }
-    );
+await services.execute(
+          `UPDATE app_contract_mgr_records SET data = ? WHERE id = ?`,
+          [JSON.stringify(data), record.id]
+        );
     
     logger.info(`[contract-mgr tick] OCR task submitted for ${record.id}, taskId=${taskId}`);
   } catch (e) {

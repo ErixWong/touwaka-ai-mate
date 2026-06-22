@@ -1,6 +1,34 @@
 import { Sequelize, Op } from 'sequelize';
 import logger from '../../lib/logger.js';
 
+/**
+ * ============================================================
+ * Phase 6 LEGACY BOUNDARY AUDIT
+ * ============================================================
+ * 
+ * 当前状态：本服务的 getRecordsWithExtension / getRecordWithExtension
+ * 以 `mini_app_rows r` 作为查询主表，LEFT JOIN 扩展表。
+ * 
+ * 问题：
+ *   - 将 mini_app_rows 视为唯一不可替代的中心记录模型
+ *   - 自治 app（如 contract-mgr-v2）已有自己的主记录表（contract_v2_main_records），
+ *     但扩展表查询仍绕回 mini_app_rows 做 JOIN 锚点
+ * 
+ * 扩展路线（Phase 6+）：
+ *   Step 1 (当前 Round 1): 添加本审计块，标记中心表依赖
+ *   Step 2: 新增 getRecordsAutonomous() 方法，接受 autonomousTable + pkColumn 参数
+ *           替代 FROM mini_app_rows r 硬编码
+ *   Step 3: 在 mini-app.service.js 的 getRecords() 中判断 app 是否为自治 app，
+ *           自治 app 走 autonomous 路径，legacy app 保留原路径
+ *   Step 4: contract-mgr + invoice-mgr 完成迁移后，移除原路径
+ * 
+ * 当前调用方：
+ *   - mini-app.service.js: getRecords() / getRecord() — 优先调 extension 路径
+ *   - mini-app.service.js: createRecord() / updateRecord() — 调用 createExtensionRow / updateExtensionRow
+ *   - mini-app.service.js: compareRecords() — 调用 upsertExtensionRow / readExtensionRow
+ * ============================================================
+ */
+
 class ExtensionTableService {
   constructor(db) {
     this.db = db;
@@ -38,6 +66,8 @@ class ExtensionTableService {
     }
   }
 
+  // LEGACY (Phase 6): 以 mini_app_rows 为中心查询主表
+  // 扩展路线：Step 2 新增 getRecordsAutonomous(appId, userId, params, autonomousTable, pkColumn)
   async getRecordsWithExtension(appId, userId, params) {
     this.ensureModels();
     const extConfigs = await this.getExtensionConfigs(appId);
@@ -89,6 +119,8 @@ class ExtensionTableService {
     return { rows, count: countResult[0]?.total || 0 };
   }
 
+  // LEGACY (Phase 6): 以 mini_app_rows 为中心查询单条记录
+  // 扩展路线：Step 2 新增 getRecordAutonomous(appId, rowId, autonomousTable, pkColumn)
   async getRecordWithExtension(appId, rowId) {
     this.ensureModels();
     const extConfigs = await this.getExtensionConfigs(appId);

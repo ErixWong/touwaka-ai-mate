@@ -357,9 +357,12 @@ touwaka-mate-v2/
 │   ├── kb-images/        # 知识库图片
 │   └── work/             # 工作文件
 └── docs/                  # 文档
-    ├── design/           # 设计文档
-    ├── guides/           # 开发指南
-    └── core/             # 核心文档
+    ├── README.md         # docs 总入口
+    ├── development/      # 开发规范与手册
+    ├── database/         # 数据库与查询规范
+    ├── design/           # 架构与设计文档
+    ├── apps/             # App 平台文档入口
+    └── tasks/            # 任务留痕
 ```
 
 ---
@@ -411,22 +414,25 @@ touwaka-mate-v2/
 ### 设计文档
 | 文档 | 说明 |
 |------|------|
-| [V2 设计总览](docs/design/v2/README.md) | Task Layer + 右侧面板设计索引 |
-| [Psyche 上下文管理](docs/core/design/mind-context-management.md) | 心神工作记忆机制、Notes 手抄系统、上下文压缩策略 |
-| [任务层设计](docs/design/v2/task-layer-design.md) | Task 生命周期、约束机制、目录结构 |
-| [沙箱架构设计](docs/design/v2/sandbox-architecture.md) | 两层角色模型、SandboxPool、平台实现 |
-| [上下文压缩设计](docs/design/v2/context-compression-design.md) | 话题识别、渐进式压缩、分层上下文 |
-| [专家编排设计](docs/design/v2/expert-orchestration.md) | TaskOrchestrator、专家分身机制 |
-| [知识库重构设计](docs/design/kb-refactor-design.md) | 新知识库结构：文章/节/段/标签 |
-| [组织架构设计](docs/design/v2/org-architecture.md) | 部门树、职位管理、用户关联 |
+| [设计文档总览](docs/design/README.md) | 设计文档总入口 |
+| [Psyche 上下文管理](docs/design/core/mind-context-management.md) | 心神工作记忆机制、Notes 手抄系统、上下文压缩策略 |
+| [Core 设计总览](docs/design/core/phase2/README.md) | Task Layer + 右侧面板设计索引 |
+| [任务层设计](docs/design/core/phase2/task-layer-design.md) | Task 生命周期、约束机制、目录结构 |
+| [沙箱架构设计](docs/design/core/phase2/sandbox-architecture.md) | 两层角色模型、SandboxPool、平台实现 |
+| [上下文压缩设计](docs/design/core/phase2/context-compression-design.md) | 话题识别、渐进式压缩、分层上下文 |
+| [专家编排设计](docs/design/core/phase2/expert-orchestration.md) | TaskOrchestrator、专家分身机制 |
+| [知识库重构设计](docs/design/topics/knowledge-base/kb-refactor-design.md) | 新知识库结构：文章/节/段/标签 |
+| [组织架构设计](docs/design/core/phase2/org-architecture.md) | 部门树、职位管理、用户关联 |
+| [App Platform 设计](docs/design/app-platform/README.md) | App 市场、平台能力与页面/数据库设计 |
 
 ### 开发指南
 | 文档 | 说明 |
 |------|------|
-| [开发手册](docs/guides/development/README.md) | 核心模块、API 参考、编码规范 |
-| [快速开始](docs/guides/development/quick-start.md) | 环境配置、启动命令 |
-| [数据库指南](docs/guides/database/README.md) | 表结构、迁移脚本 |
-| [技能开发标准](docs/guides/skill-md-standard.md) | SKILL.md 编写规范 |
+| [docs 总览](docs/README.md) | 文档总入口 |
+| [开发手册](docs/development/README.md) | 核心模块、API 参考、编码规范 |
+| [快速开始](docs/development/quick-start.md) | 环境配置、启动命令 |
+| [数据库指南](docs/database/README.md) | 表结构、迁移脚本 |
+| [Skill 开发指南](docs/development/skill-development-guide.md) | Skill 目录结构、实现方式与接入流程 |
 
 ---
 
@@ -435,21 +441,24 @@ touwaka-mate-v2/
 ### Design Documents
 | Document | Description |
 |----------|-------------|
-| [V2 Design Overview](docs/design/v2/README.md) | Task Layer + Right Panel design index |
-| [Task Layer Design](docs/design/v2/task-layer-design.md) | Task lifecycle, constraints, directory structure |
-| [Sandbox Architecture](docs/design/v2/sandbox-architecture.md) | Two-layer role model, SandboxPool, platform implementations |
-| [Context Compression](docs/design/v2/context-compression-design.md) | Topic detection, progressive compression |
-| [Expert Orchestration](docs/design/v2/expert-orchestration.md) | TaskOrchestrator, expert clone mechanism |
-| [KB Refactor Design](docs/design/kb-refactor-design.md) | New KB structure: Article/Section/Paragraph/Tags |
-| [Organization Architecture](docs/design/v2/org-architecture.md) | Department tree, position management |
+| [Design Index](docs/design/README.md) | Top-level design document index |
+| [Core Overview](docs/design/core/phase2/README.md) | Task Layer + Right Panel design index |
+| [Task Layer Design](docs/design/core/phase2/task-layer-design.md) | Task lifecycle, constraints, directory structure |
+| [Sandbox Architecture](docs/design/core/phase2/sandbox-architecture.md) | Two-layer role model, SandboxPool, platform implementations |
+| [Context Compression](docs/design/core/phase2/context-compression-design.md) | Topic detection, progressive compression |
+| [Expert Orchestration](docs/design/core/phase2/expert-orchestration.md) | TaskOrchestrator, expert clone mechanism |
+| [KB Refactor Design](docs/design/topics/knowledge-base/kb-refactor-design.md) | New KB structure: Article/Section/Paragraph/Tags |
+| [Organization Architecture](docs/design/core/phase2/org-architecture.md) | Department tree, position management |
+| [App Platform Design](docs/design/app-platform/README.md) | App market, platform capability and schema/page design |
 
 ### Development Guides
 | Document | Description |
 |----------|-------------|
-| [Development Manual](docs/guides/development/README.md) | Core modules, API reference, coding standards |
-| [Quick Start](docs/guides/development/quick-start.md) | Environment setup, startup commands |
-| [Database Guide](docs/guides/database/README.md) | Table structure, migration scripts |
-| [Skill Development Standard](docs/guides/skill-md-standard.md) | SKILL.md writing specification |
+| [Docs Index](docs/README.md) | Top-level documentation entry |
+| [Development Manual](docs/development/README.md) | Core modules, API reference, coding standards |
+| [Quick Start](docs/development/quick-start.md) | Environment setup, startup commands |
+| [Database Guide](docs/database/README.md) | Table structure, migration scripts |
+| [Skill Development Guide](docs/development/skill-development-guide.md) | Skill directory structure and implementation guide |
 
 ---
 
