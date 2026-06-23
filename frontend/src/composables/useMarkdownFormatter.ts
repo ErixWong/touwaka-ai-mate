@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
 import type { ChatMessage } from '@/components/ChatWindow.vue'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
@@ -58,6 +59,62 @@ const normalizeInlineMath = (content: string): string => {
   })
 }
 
+const renderInlineMathPlaceholders = (html: string): string => {
+  if (!html || !html.includes('data-inline-math=')) return html
+
+  return html.replace(/<code class="inline-math" data-inline-math="([^"]*)"><\/code>/g, (_, encodedFormula: string) => {
+    const formula = encodedFormula
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+
+    try {
+      return katex.renderToString(formula, {
+        throwOnError: false,
+        displayMode: false,
+        output: 'html',
+        strict: 'ignore',
+      })
+    } catch (error) {
+      console.error('Inline math render error:', error)
+      return `<code class="katex-error">${escapeHtml(formula)}</code>`
+    }
+  })
+}
+
+const renderBlockMath = (html: string): string => {
+  if (!html) return html
+
+  return html.replace(/<p>\s*\$\$([\s\S]*?)\$\$\s*<\/p>/g, (_, formula: string) => {
+    const normalized = formula
+      .replace(/<br\s*\/?>/gi, '\n')
+      .trim()
+
+    try {
+      const rendered = katex.renderToString(normalized, {
+        throwOnError: false,
+        displayMode: true,
+        output: 'html',
+        strict: 'ignore',
+      })
+      return `<div class="formula-display-block">${rendered}</div>`
+    } catch (error) {
+      console.error('Block math render error:', error)
+      return `<pre class="katex-error"><code>${escapeHtml(normalized)}</code></pre>`
+    }
+  })
+}
+
+const normalizeRelativeImageSources = (html: string): string => {
+  if (!html) return html
+
+  return html.replace(/<img([^>]*?)src="(?!https?:|data:|blob:|\/)([^"]+)"([^>]*?)>/gi, (_match, before: string, src: string, after: string) => {
+    const normalizedSrc = src.replace(/^\.\//, '').trim()
+    return `<img${before}src="${normalizedSrc}"${after}>`
+  })
+}
+
 const sanitizeMarkdownHtml = (rawHtml: string): string => {
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: [
@@ -96,7 +153,10 @@ const formatMessage = (content: string) => {
   try {
     const normalizedContent = normalizeInlineMath(content)
     const rawHtml = marked.parse(normalizedContent) as string
-    const cleanHtml = sanitizeMarkdownHtml(rawHtml)
+    const htmlWithBlockMath = renderBlockMath(rawHtml)
+    const htmlWithMath = renderInlineMathPlaceholders(htmlWithBlockMath)
+    const htmlWithNormalizedImages = normalizeRelativeImageSources(htmlWithMath)
+    const cleanHtml = sanitizeMarkdownHtml(htmlWithNormalizedImages)
 
     if (formattedCache.size > FORMATTED_CACHE_MAX_SIZE) {
       const keysToDelete = formattedCache.size - FORMATTED_CACHE_MAX_SIZE

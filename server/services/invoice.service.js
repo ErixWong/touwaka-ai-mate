@@ -85,7 +85,7 @@ class InvoiceService {
       invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
     });
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
     const sortField = this._getSortField(sort);
     const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
     const offset = (page - 1) * size;
@@ -131,7 +131,7 @@ class InvoiceService {
       replacements.push(userId);
     }
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
 
     const [rows, items] = await Promise.all([
       this.sequelize.query(
@@ -168,7 +168,7 @@ class InvoiceService {
       startDate, endDate, userId, isAdmin,
     });
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
     const sortField = this._getSortField(sort);
     const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -301,7 +301,7 @@ class InvoiceService {
       startDate, endDate, userId, isAdmin,
     });
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
     const sortField = this._getSortField(sort);
     const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -396,11 +396,12 @@ class InvoiceService {
       startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
     });
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
     const sortField = this._getSortField(sort);
     const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
 
     // 直接 JOIN 查出所有负值明细，一条 SQL 搞定
+    // 同时检查 amount < 0 和 tax_amount < 0（防止负值金额混入名称导致 amount=0）
     const rows = await this.sequelize.query(
       `SELECT r.invoice_number, r.invoice_date, r.buyer_name, r.seller_name,
               r.remarks, i.amount, i.tax_amount, i.name AS item_name, i.sort_order
@@ -408,7 +409,7 @@ class InvoiceService {
        JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        JOIN app_invoice_mgr_items i ON i.row_id = m.id
        ${where}
-         AND i.amount < 0
+         AND (i.amount < 0 OR i.tax_amount < 0)
        ORDER BY r.invoice_date ASC, i.row_id, i.sort_order`,
       { replacements, type: Sequelize.QueryTypes.SELECT }
     );

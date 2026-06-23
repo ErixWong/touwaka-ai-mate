@@ -122,6 +122,7 @@
           </div>
           <div class="col-source">
             <span class="source-tag">{{ getSourceLabel(attachment.source_tag) }}</span>
+            <span class="source-id" :title="attachment.source_id">{{ attachment.source_id }}</span>
           </div>
           <div class="col-uploader">
             <span class="uploader-text">{{ attachment.uploader_name || '—' }}</span>
@@ -466,6 +467,8 @@ const getSourceLabel = (source_tag: string): string => {
     'kb_article_image': t('attachment.sourceKbArticle'),
     'task_export': t('attachment.sourceTaskExport'),
     'chat_attachment': t('attachment.sourceChatAttachment'),
+    'doc-platform': t('attachment.sourceDocPlatform'),
+    'admin_upload': t('attachment.sourceAdminUpload'),
   }
   return labels[source_tag] || source_tag
 }
@@ -902,7 +905,9 @@ onMounted(() => {
 
 .col-source {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .source-tag {
@@ -911,6 +916,15 @@ onMounted(() => {
   border-radius: 4px;
   font-size: 11px;
   color: var(--primary-color, #2196f3);
+}
+
+.source-id {
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .col-uploader {

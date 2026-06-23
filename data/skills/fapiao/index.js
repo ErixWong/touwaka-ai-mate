@@ -672,6 +672,18 @@ function parseItems(items) {
       if (colName && currentRow[colName] !== undefined) {
         currentRow[colName] += item.str;
       } else if (colName === 'projectName' || !colName) {
+        // 跳过看起来像金额的 token（负数或纯数字，避免负值金额混入商品名称）
+        const txt = (item.str || '').trim();
+        if (/^-?\d+(?:\.\d+)?$/.test(txt)) {
+          // 可能是被错位的金额列文本，尝试放入 amount 或 taxAmount
+          if (item.x >= columns.find(c => c.name === 'amount').minX - 20) {
+            currentRow.amount += item.str;
+          } else if (item.x >= columns.find(c => c.name === 'taxAmount').minX - 20) {
+            currentRow.taxAmount += item.str;
+          }
+          // 如果 x 坐标也不在金额区域，则丢弃（不混入名称）
+          continue;
+        }
         currentRow.rawName += item.str;
       }
     }

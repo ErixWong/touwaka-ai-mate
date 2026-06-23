@@ -67,16 +67,6 @@ export interface DocPipelineCleanStage {
   timeout_ms: number
 }
 
-export interface DocPipelineMetadataStage {
-  enabled: boolean
-  type: string
-  model_id: string | null
-  temperature: number
-  schema_json: Record<string, unknown>
-  prompt_template: string
-  timeout_ms: number
-}
-
 export interface DocPipelineOutlineStage {
   enabled: boolean
   type: string
@@ -89,6 +79,7 @@ export interface DocPipelineOutlineStage {
   preserve_line_info: boolean
   deduplicate_titles: boolean
   timeout_ms: number
+  llm_timeout_ms?: number
 }
 
 export interface DocPipelineChunkStage {
@@ -111,17 +102,27 @@ export interface DocPipelineEmbeddingStage {
   timeout_ms?: number
 }
 
+export interface DocPipelineMeta {
+  version: number
+  enabled: boolean
+}
+
+export interface DocPipelineMetadataStage {
+  enabled: boolean
+  type: string
+  model_id: string | null
+  temperature: number
+  schema_json: Record<string, unknown>
+  prompt_template: string
+  timeout_ms: number
+}
+
 export interface DocPipelineRelocateStage {
   enabled: boolean
   target_strategy: string
   tag_strategy: string
   metadata_writeback: boolean
   auto_publish: boolean
-}
-
-export interface DocPipelineMeta {
-  version: number
-  enabled: boolean
 }
 
 export interface DocPipelineConfig {

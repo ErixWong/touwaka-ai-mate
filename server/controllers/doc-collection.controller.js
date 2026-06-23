@@ -8,6 +8,7 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
+import { hasPreviewResult } from '../../lib/doc-ocr-utils.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 
 class DocCollectionController {
@@ -256,7 +257,7 @@ class DocCollectionController {
           : [],
         DocOcrResult.findAll({
           where: { document_id: { [Op.in]: docIds } },
-          attributes: ['id', 'document_id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'updated_at', 'created_at'],
+          attributes: ['id', 'document_id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'metadata', 'updated_at', 'created_at'],
           order: [['created_at', 'DESC']],
           raw: true,
         }),
@@ -289,12 +290,14 @@ class DocCollectionController {
         const latestOcrResult = ocrMap.get(doc.id) || null;
         const sourceAttachment = doc.current_revision_id ? attachmentMap.get(doc.current_revision_id) || null : null;
 
+        const hasPreview = hasPreviewResult(latestOcrResult);
+
         return {
           ...doc,
           current_revision: currentRevision,
           source_attachment: sourceAttachment,
           ocr_status: latestOcrResult?.status || null,
-          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+          has_preview_result: hasPreview,
         };
       });
 
@@ -440,7 +443,9 @@ class DocCollectionController {
         { where: { revision_id: { [Op.in]: versionIds } } }
       );
 
-      const affectedDocIds = [...new Set(currentVersions.map(v => v.document_id).filter(Boolean))];
+      // 同步将相关文档状态回退到 pending_embedding，确保文档状态与 chunk 状态一致
+      // 仅对已完成或出错状态的文档进行回退，避免覆盖正在处理中的文档
+      const affectedDocIds = [...new Set(currentVersions.map(v => v.document_id))];
       if (affectedDocIds.length > 0) {
         await this.models.DocDocument.update(
           {
@@ -449,8 +454,14 @@ class DocCollectionController {
             processing_error_message: null,
             processing_updated_at: new Date(),
           },
-          { where: { id: { [Op.in]: affectedDocIds }, processing_status: { [Op.in]: ['pending_embedding', 'ready', 'error'] } } }
+          {
+            where: {
+              id: { [Op.in]: affectedDocIds },
+              processing_status: { [Op.in]: ['pending_embedding', 'ready', 'error'] },
+            },
+          }
         );
+        logger.info(`[Collection] revectorize: ${affectedDocIds.length} document(s) in collection reset to pending_embedding (only those with status ready/error/pending_embedding)`);
       }
 
       ctx.success({

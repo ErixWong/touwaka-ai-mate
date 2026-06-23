@@ -107,6 +107,7 @@ export function handleApiError(error: AxiosError<ApiError>): APIError {
   }
 
   const { status, data } = error.response
+  const backendMessage = data?.message
 
   // 根据状态码处理
   switch (status) {
@@ -139,7 +140,7 @@ export function handleApiError(error: AxiosError<ApiError>): APIError {
     case 503:
       return new APIError(
         data?.code || ErrorCode.UNKNOWN_ERROR,
-        getErrorMessage(data?.code || ErrorCode.UNKNOWN_ERROR),
+        backendMessage || getErrorMessage(data?.code || ErrorCode.UNKNOWN_ERROR),
         status,
         data?.details
       )

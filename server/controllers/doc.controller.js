@@ -16,6 +16,7 @@ import { Op, Sequelize } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
+import { parseOcrMetadata, getPreviewAttachmentId, hasPreviewResult } from '../../lib/doc-ocr-utils.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
@@ -227,10 +228,12 @@ class DocController {
 
         const latestOcrResult = await DocOcrResult.findOne({
           where: { document_id: doc.id },
-          attributes: ['id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'error_message', 'updated_at'],
+          attributes: ['id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'error_message', 'updated_at', 'metadata', 'created_at'],
           order: [['created_at', 'DESC']],
           raw: true,
         });
+
+        const hasPreview = hasPreviewResult(latestOcrResult);
 
         const sourceAttachment = doc.current_revision_id
           ? await Attachment.findOne({
@@ -246,7 +249,7 @@ class DocController {
           current_revision: currentRevision,
           source_attachment: sourceAttachment,
           ocr_task_id: latestOcrResult?.task_id || null,
-          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+          has_preview_result: hasPreview,
           ocr_status: latestOcrResult?.status || null,
           ocr_progress: typeof latestOcrResult?.progress === 'number' ? latestOcrResult.progress : null,
           ocr_error_message: latestOcrResult?.error_message || null,
@@ -331,7 +334,6 @@ class DocController {
           'processing_status',
           'processing_error_code',
           'processing_error_message',
-          'processing_updated_at',
           'created_at',
           'updated_at',
           'metadata',
@@ -371,11 +373,14 @@ class DocController {
         raw: true,
       });
 
+      const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
+      const ocrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
       const attachmentIds = [
-        latestOcrResult?.main_markdown_attachment_id,
+        previewAttachmentId,
         latestOcrResult?.raw_result_attachment_id,
         latestOcrResult?.deliverables_manifest_attachment_id,
         latestOcrResult?.image_manifest_attachment_id,
+        ocrMetadata?.cleaned_markdown_attachment_id,
       ].filter(Boolean);
 
       const resultAttachments = attachmentIds.length > 0
@@ -389,7 +394,7 @@ class DocController {
       const ocrImages = latestOcrResult?.id
         ? await DocOcrImage.findAll({
           where: { ocr_result_id: latestOcrResult.id },
-          attributes: ['id', 'attachment_id', 'filename', 'media_type', 'sort_order', 'alt_text', 'description'],
+          attributes: ['id', 'attachment_id', 'filename', 'media_type', 'sort_order', 'alt_text', 'description', 'markdown_path', 'referenced_in_markdown', 'line_number'],
           order: [['sort_order', 'ASC']],
           raw: true,
         })
@@ -468,10 +473,12 @@ class DocController {
         };
       };
 
+      const hasPreview = hasPreviewResult(latestOcrResult);
+
       ctx.success({
         document: {
           ...document,
-          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+          has_preview_result: hasPreview,
         },
         revision: revision ? {
           ...revision,
@@ -498,6 +505,7 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
+          cleaned_markdown_attachment: buildAttachmentResponse(ocrMetadata?.cleaned_markdown_attachment_id),
           main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
           raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
           deliverables_manifest_attachment: buildAttachmentResponse(latestOcrResult.deliverables_manifest_attachment_id),
@@ -1083,17 +1091,14 @@ async createVersion(ctx) {
 
   /**
    * 处理失败重试映射
+   * 优先按 error_code 精确回到失败阶段；未知错误再回退到 pending_ocr。
    */
   PROCESSING_RETRY_ERROR_STAGE = {
     ocr_failed: 'pending_ocr',
-    submit_failed: 'pending_ocr',
-    submit_missing_task_id: 'pending_ocr',
     clean_failed: 'pending_clean',
     outline_extraction_failed: 'pending_outline',
     chunk_generation_failed: 'pending_chunk',
     embedding_failed: 'pending_embedding',
-    embedding_client_init_failed: 'pending_embedding',
-    no_chunks_for_embedding: 'pending_chunk',
   };
 
   /**
@@ -1120,9 +1125,10 @@ async createVersion(ctx) {
       const latestOcrResult = await DocOcrResult.findOne({
         where: { document_id: documentId },
         order: [['created_at', 'DESC']],
+        raw: true,
       });
 
-      const hasPreviewResult = !!latestOcrResult?.main_markdown_attachment_id;
+      const hasPreview = hasPreviewResult(latestOcrResult);
 
       ctx.success({
         document_id: document.id,
@@ -1131,7 +1137,6 @@ async createVersion(ctx) {
         processing_error_message: document.processing_error_message,
         processing_retry_count: document.processing_retry_count,
         processing_updated_at: document.processing_updated_at,
-        has_preview_result: hasPreviewResult,
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,
           revision_id: latestOcrResult.revision_id,
@@ -1148,7 +1153,7 @@ async createVersion(ctx) {
           error_message: latestOcrResult.error_message,
           started_at: latestOcrResult.started_at,
           completed_at: latestOcrResult.completed_at,
-          has_preview_result: hasPreviewResult,
+          has_preview_result: hasPreview,
         } : null,
       });
     } catch (error) {
@@ -1176,14 +1181,6 @@ async createVersion(ctx) {
 
       if (document.processing_status !== 'error') {
         ctx.throw(400, 'Only documents in error state can be retried');
-      }
-
-      if (document.processing_error_code === 'embedding_model_missing') {
-        ctx.throw(400, 'Embedding model is missing. Configure the collection embedding model before retrying');
-      }
-
-      if (document.processing_error_code === 'embedding_revision_missing') {
-        ctx.throw(400, 'Current revision is missing. Repair document revision linkage before retrying');
       }
 
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
@@ -1540,6 +1537,11 @@ async createVersion(ctx) {
 
       const sourceRefId = Utils.newID();
       const firstAttachment = attachmentList.length > 0 ? attachmentList[0] : null;
+      const intakeMetadata = JSON.stringify({
+        app_id,
+        schema_id: schema_id || null,
+        attachments: attachmentList,
+      });
 
       const documentId = Utils.newID();
       const revisionId = Utils.newID();
@@ -1553,11 +1555,7 @@ async createVersion(ctx) {
           title: firstAttachment ? `Intake ${sourceRefId}` : `Document ${sourceRefId}`,
           processing_status: 'pending_ocr',
             current_revision_id: null,
-          metadata: {
-            app_id,
-            schema_id: schema_id || null,
-            attachments: attachmentList,
-          },
+          metadata: intakeMetadata,
         }, { transaction: t });
 
         await this.models.DocVersion.create({

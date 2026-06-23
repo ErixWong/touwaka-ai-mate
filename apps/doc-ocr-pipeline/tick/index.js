@@ -26,10 +26,9 @@ export async function tick(context) {
 
   let submitted = 0;
   let synced = 0;
-  let autoAdvanced = 0;
+  let skipped = 0;
   let outlineExtracted = 0;
   let chunksGenerated = 0;
-  let embeddingsGenerated = 0;
   let failed = 0;
 
   const advancer = new DocPipelineAdvancer(context.db);
@@ -51,9 +50,22 @@ export async function tick(context) {
       }
 
       if (doc.processing_status === 'pending_clean') {
-        await recordPassThroughRun(services, doc);
-        await advancer.advanceToNext(doc.id);
-        autoAdvanced += 1;
+        if (!services.documentClean) {
+          failed += 1;
+          continue;
+        }
+        await services.documentClean.clean(doc.id, {
+          initiatedByType: 'scheduler',
+          initiatedById: null,
+        });
+        skipped += 1;
+        continue;
+      }
+
+      // pending_embedding 由独立后台 worker (document-embedding-worker) 异步处理，
+      // 不做同步透传，避免阻塞 OCR tick 循环
+      if (doc.processing_status === 'pending_embedding') {
+        skipped += 1;
         continue;
       }
 
@@ -80,20 +92,6 @@ export async function tick(context) {
           initiatedById: null,
         });
         chunksGenerated += 1;
-        continue;
-      }
-
-      if (doc.processing_status === 'pending_embedding') {
-        if (!services.documentEmbedding) {
-          failed += 1;
-          continue;
-        }
-        const embeddingResult = await services.documentEmbedding.processDocument(doc.id);
-        if (embeddingResult?.success) {
-          embeddingsGenerated += 1;
-        } else if (!embeddingResult?.skipped) {
-          failed += 1;
-        }
       }
     } catch (error) {
       failed += 1;
@@ -110,10 +108,9 @@ export async function tick(context) {
     processed: documents.length,
     submitted,
     synced,
-    autoAdvanced,
+    skipped,
     outlineExtracted,
     chunksGenerated,
-    embeddingsGenerated,
     failed,
   };
 }

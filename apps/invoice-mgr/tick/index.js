@@ -56,6 +56,7 @@ export async function tick(context) {
      WHERE status IN (${placeholders})
      ORDER BY created_at ASC
      LIMIT 5`,
+    stateNames
   );
 
   if (rows.length === 0) {

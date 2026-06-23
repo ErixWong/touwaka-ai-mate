@@ -45,7 +45,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
 interface Section {
   id?: string
@@ -74,6 +74,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const { t } = useI18n()
+const markdownFormatter = useMarkdownFormatter()
 const isNavCollapsed = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
 const treeRef = ref()
@@ -115,21 +116,7 @@ const sectionsWithContent = computed(() => {
 
 const renderedContent = computed(() => {
   if (!props.contentText) return ''
-  const rawHtml = marked.parse(props.contentText) as string
-  return DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'em', 'u', 's', 'del', 'ins',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li',
-      'blockquote', 'pre', 'code',
-      'a', 'img',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'hr', 'div', 'span',
-    ],
-    ALLOWED_ATTR: [
-      'href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'id',
-    ],
-  })
+  return markdownFormatter.formatMessage(props.contentText)
 })
 
 const renderedSections = computed(() => {
@@ -330,6 +317,21 @@ function highlightKeywords() {
 .full-text {
   font-size: var(--el-font-size-base);
   line-height: 1.6;
+}
+
+.markdown-body :deep(.katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 0;
+}
+
+.markdown-body :deep(.katex) {
+  font-size: 1.05em;
+}
+
+.markdown-body :deep(.katex-error code) {
+  color: var(--el-color-danger);
+  background: var(--el-fill-color-light);
 }
 
 .text-section {

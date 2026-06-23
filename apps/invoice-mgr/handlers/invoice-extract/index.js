@@ -102,6 +102,22 @@ async function insertItems(services, recordId, data) {
 
   if (insertList.length === 0) return 0;
 
+  // 规范化：从商品名称中提取被混入的负值金额
+  for (const row of insertList) {
+    const negMatches = [...row.name.matchAll(/(-?\d+(?:\.\d+)?)/g)];
+    if (negMatches.length > 0) {
+      const lastNeg = negMatches[negMatches.length - 1];
+      const negVal = parseFloat(lastNeg[0]);
+      if (negVal < 0 && (row.amount === 0 || row.amount === null || row.amount === undefined)) {
+        // 名称中混入了负数金额，提取出来放到 amount 字段
+        const prefix = row.name.substring(0, lastNeg.index);
+        const suffix = row.name.substring(lastNeg.index + lastNeg[0].length);
+        row.name = (prefix + suffix).replace(/\s+/g, '').trim();
+        row.amount = negVal;
+      }
+    }
+  }
+
   const sql = `
     INSERT INTO app_invoice_mgr_items
     (id, row_id, page_number, sort_order, category, name, model, unit, quantity, price, amount, tax_rate, tax_amount)
