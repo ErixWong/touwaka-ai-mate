@@ -2,7 +2,9 @@ const BASE_URL = 'http://localhost:3000';
 const RESULTS = {
   interface: [],
   clock: [],
-  compatibility: []
+  compatibility: [],
+  newPrefix: [],
+  legacyPrefix: []
 };
 
 async function getAuthToken() {
@@ -16,25 +18,7 @@ async function getAuthToken() {
   return data.data.access_token;
 }
 
-async function testInterface(name, method, path, token, expectStatus) {
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  };
-  
-  const url = `${BASE_URL}${path}`;
-  const resp = await fetch(url, { method, headers });
-  const status = resp.status;
-  const data = await resp.json().catch(() => ({}));
-  
-  const passed = status === expectStatus;
-  RESULTS.interface.push({ name, method, path, expected: expectStatus, actual: status, passed, data });
-  
-  console.log(`${passed ? '✅' : '❌'} ${name}: ${status} (expected ${expectStatus})`);
-  return { passed, data, status };
-}
-
-async function testClockInterface(name, method, path, token, expectStatus) {
+async function testEndpoint(category, name, method, path, token, expectStatus) {
   const headers = {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
@@ -47,7 +31,7 @@ async function testClockInterface(name, method, path, token, expectStatus) {
   
   const allowed = Array.isArray(expectStatus) ? expectStatus : [expectStatus];
   const passed = allowed.includes(status);
-  RESULTS.clock.push({ name, method, path, expected: expectStatus, actual: status, passed, data });
+  RESULTS[category].push({ name, method, path, expected: expectStatus, actual: status, passed, data });
   
   console.log(`${passed ? '✅' : '❌'} ${name}: ${status} (expected ${allowed.join(' or ')})`);
   return { passed, data, status };
@@ -98,41 +82,58 @@ async function runTests() {
     return;
   }
 
-  console.log('--- Part 1: 基础接口测试 ---');
-  await testInterface('列出可访问 app', 'GET', '/api/apps', token, 200);
-  await testInterface('列出已安装 app', 'GET', '/api/apps/installed', token, 200);
-  await testInterface('列出时钟注册', 'GET', '/api/apps/clock-registry', token, 200);
+  console.log('--- Part 0: 新前缀 /api/app-registry/* 验证 (Phase 1 主目标) ---');
+  await testEndpoint('newPrefix', '新前缀：列出可访问 app', 'GET', '/api/app-registry', token, 200);
+  await testEndpoint('newPrefix', '新前缀：列出已安装 app', 'GET', '/api/app-registry/installed', token, 200);
+  await testEndpoint('newPrefix', '新前缀：列出时钟注册', 'GET', '/api/app-registry/clock-registry', token, 200);
 
-  console.log('\n--- Part 2: AppClock 接口测试 ---');
-  await testClockInterface('获取时钟状态', 'GET', '/api/app-clock/status', token, 200);
-
-  console.log('\n--- Part 3: 动态路由接口（真实 appId）---');
-  const appsResp = await fetch(`${BASE_URL}/api/apps`, {
+  const appsRespNew = await fetch(`${BASE_URL}/api/app-registry`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
-  const appsData = await appsResp.json();
-  const apps = appsData.data || [];
-  
+  const appsDataNew = await appsRespNew.json();
+  const appsNew = appsDataNew.data || [];
+
   const testApps = ['contract-mgr-v2', 'contract-mgr', 'invoice-mgr', 'ocr-tool', 'doc-ocr-pipeline'];
   
   for (const appId of testApps) {
-    if (apps.some(a => a.id === appId)) {
-      console.log(`\n测试 app: ${appId}`);
-      await testInterface(`获取 ${appId} 详情`, 'GET', `/api/apps/${appId}`, token, 200);
-      await testInterface(`获取 ${appId} manifest`, 'GET', `/api/apps/${appId}/manifest`, token, 200);
-      await testInterface(`验证 ${appId} runtime`, 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
-      await testInterface(`获取 ${appId} runtime`, 'GET', `/api/apps/${appId}/runtime`, token, 200);
-      await testClockInterface(`获取 ${appId} 时钟状态`, 'GET', `/api/app-clock/status/${appId}`, token, [200, 404]);
-    } else {
-      console.log(`⚠️ app ${appId} 未安装，跳过`);
+    if (appsNew.some(a => a.id === appId)) {
+      await testEndpoint('newPrefix', `新前缀：获取 ${appId} 详情`, 'GET', `/api/app-registry/${appId}`, token, 200);
+      await testEndpoint('newPrefix', `新前缀：获取 ${appId} manifest`, 'GET', `/api/app-registry/${appId}/manifest`, token, 200);
+      await testEndpoint('newPrefix', `新前缀：验证 ${appId} runtime`, 'GET', `/api/app-registry/${appId}/validate-runtime`, token, 200);
+      await testEndpoint('newPrefix', `新前缀：获取 ${appId} runtime`, 'GET', `/api/app-registry/${appId}/runtime`, token, 200);
     }
   }
 
-  console.log('\n--- Part 4: 错误状态码验证 ---');
-  await testInterface('不存在的 app', 'GET', '/api/apps/non-existent-app-id', token, 404);
-  await testInterface('不存在 app manifest', 'GET', '/api/apps/non-existent-app-id/manifest', token, 422);
+  await testEndpoint('newPrefix', '新前缀：不存在的 app', 'GET', '/api/app-registry/non-existent-app-id', token, 404);
 
-  console.log('\n--- Part 5: legacy 兼容性验证 ---');
+  console.log('\n--- Part 1: Legacy 兼容层 /api/apps/* 验证 ---');
+  await testEndpoint('legacyPrefix', 'Legacy：列出可访问 app', 'GET', '/api/apps', token, 200);
+  await testEndpoint('legacyPrefix', 'Legacy：列出已安装 app', 'GET', '/api/apps/installed', token, 200);
+  await testEndpoint('legacyPrefix', 'Legacy：列出时钟注册', 'GET', '/api/apps/clock-registry', token, 200);
+
+  const appsRespLegacy = await fetch(`${BASE_URL}/api/apps`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const appsDataLegacy = await appsRespLegacy.json();
+  const appsLegacy = appsDataLegacy.data || [];
+  
+  for (const appId of testApps) {
+    if (appsLegacy.some(a => a.id === appId)) {
+      await testEndpoint('legacyPrefix', `Legacy：获取 ${appId} 详情`, 'GET', `/api/apps/${appId}`, token, 200);
+      await testEndpoint('legacyPrefix', `Legacy：获取 ${appId} manifest`, 'GET', `/api/apps/${appId}/manifest`, token, 200);
+      await testEndpoint('legacyPrefix', `Legacy：验证 ${appId} runtime`, 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
+      await testEndpoint('legacyPrefix', `Legacy：获取 ${appId} runtime`, 'GET', `/api/apps/${appId}/runtime`, token, 200);
+    }
+  }
+
+  console.log('\n--- Part 2: AppClock 接口测试 ---');
+  await testEndpoint('clock', '获取时钟状态', 'GET', '/api/app-clock/status', token, 200);
+
+  console.log('\n--- Part 3: 错误状态码验证 ---');
+  await testEndpoint('interface', 'Legacy：不存在的 app', 'GET', '/api/apps/non-existent-app-id', token, 404);
+  await testEndpoint('interface', 'Legacy：不存在 app manifest', 'GET', '/api/apps/non-existent-app-id/manifest', token, 422);
+
+  console.log('\n--- Part 4: legacy 兼容性验证 ---');
   for (const appId of testApps) {
     const status = await getAppManifestStatus(appId);
     console.log(`\n${appId}:`);
@@ -151,20 +152,27 @@ async function runTests() {
 
   console.log('\n=== 测试结果汇总 ===');
   
+  const newPrefixPassed = RESULTS.newPrefix.filter(r => r.passed).length;
+  const newPrefixFailed = RESULTS.newPrefix.filter(r => !r.passed).length;
+  const legacyPassed = RESULTS.legacyPrefix.filter(r => r.passed).length;
+  const legacyFailed = RESULTS.legacyPrefix.filter(r => !r.passed).length;
   const interfacePassed = RESULTS.interface.filter(r => r.passed).length;
   const interfaceFailed = RESULTS.interface.filter(r => !r.passed).length;
   const clockPassed = RESULTS.clock.filter(r => r.passed).length;
   const clockFailed = RESULTS.clock.filter(r => !r.passed).length;
   
-  console.log(`\nPart 1-4 接口测试: 通过 ${interfacePassed}, 失败 ${interfaceFailed}`);
-  console.log(`Part 5 AppClock 测试: 通过 ${clockPassed}, 失败 ${clockFailed}`);
+  console.log(`\nPart 0 新前缀测试: 通过 ${newPrefixPassed}, 失败 ${newPrefixFailed}`);
+  console.log(`Part 1 Legacy 兼容层: 通过 ${legacyPassed}, 失败 ${legacyFailed}`);
+  console.log(`Part 2-3 接口测试: 通过 ${interfacePassed}, 失败 ${interfaceFailed}`);
+  console.log(`Part 4 AppClock 测试: 通过 ${clockPassed}, 失败 ${clockFailed}`);
   
   console.log('\n--- Legacy 兼容性矩阵 ---');
   for (const item of RESULTS.compatibility) {
     console.log(`${item.appId}: manifest=${item.manifest}, runtimeTick=${item.runtimeTick}, legacyTick=${item.legacyTick}, forceTick=${item.forceTickPassed}`);
   }
   
-  if (interfaceFailed > 0 || clockFailed > 0) {
+  const totalFailed = newPrefixFailed + legacyFailed + interfaceFailed + clockFailed;
+  if (totalFailed > 0) {
     console.log('\n❌ 存在失败项，详见上方输出');
   } else {
     console.log('\n✅ 所有测试通过');

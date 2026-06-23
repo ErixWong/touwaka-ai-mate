@@ -9,9 +9,6 @@
   "license": "MIT",
   "runtime": {
     "tick": "tick/index.js",
-    "server": {
-      "routes": "server/routes.js"
-    },
     "backup": {
       "export": "backup/export.js",
       "import": "backup/import.js"
@@ -367,5 +364,15 @@
     }
   ],
   "component": "ContractV2View",
+  "apis": [
+    { "path": "/org-nodes/tree", "methods": ["GET"], "handler": "server/controllers/org-nodes.js" },
+    { "path": "/org-nodes", "methods": ["POST"], "handler": "server/controllers/org-nodes.js" },
+    { "path": "/contracts", "methods": ["GET"], "handler": "server/controllers/contracts.js" },
+    { "path": "/contracts", "methods": ["POST"], "handler": "server/controllers/contracts.js" },
+    { "path": "/contracts/:contractId", "methods": ["GET"], "handler": "server/controllers/contracts.js" },
+    { "path": "/contracts/:contractId", "methods": ["PUT"], "handler": "server/controllers/contracts.js" },
+    { "path": "/contracts/:contractId", "methods": ["DELETE"], "handler": "server/controllers/contracts.js" },
+    { "path": "/dashboard", "methods": ["GET"], "handler": "server/controllers/dashboard.js" }
+  ],
   "visibility": "all"
 }

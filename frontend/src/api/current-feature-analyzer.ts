@@ -69,23 +69,23 @@ export const currentFeatureAnalyzerApi = {
     files.forEach(f => formData.append('files', f))
     if (ruleSetId) formData.append('rule_set_id', ruleSetId)
     return apiRequest<BatchSession>(
-      apiClient.post('/api/apps/current-feature-analyzer/uploads', formData, {
+      apiClient.post('/current-feature-analyzer/uploads', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
     )
   },
 
   getBatch: (batchId: string) =>
-    apiRequest<BatchSession>(apiClient.get(`/api/apps/current-feature-analyzer/batches/${batchId}`)),
+    apiRequest<BatchSession>(apiClient.get(`/current-feature-analyzer/batches/${batchId}`)),
 
   getFileDetail: (batchId: string, fileId: string) =>
     apiRequest<SessionFileItem>(
-      apiClient.get(`/api/apps/current-feature-analyzer/batches/${batchId}/files/${fileId}`)
+      apiClient.get(`/current-feature-analyzer/batches/${batchId}/files/${fileId}`)
     ),
 
   runAnalysis: (batchId: string, ruleSetId: string, options?: Record<string, number>) =>
     apiRequest<BatchSession>(
-      apiClient.post('/api/apps/current-feature-analyzer/analysis/run', {
+      apiClient.post('/current-feature-analyzer/analysis/run', {
         batch_id: batchId,
         rule_set_id: ruleSetId,
         analysis_options: options,
@@ -93,34 +93,34 @@ export const currentFeatureAnalyzerApi = {
     ),
 
   getReport: (batchId: string) =>
-    apiRequest<BatchSession>(apiClient.get(`/api/apps/current-feature-analyzer/reports/${batchId}`)),
+    apiRequest<BatchSession>(apiClient.get(`/current-feature-analyzer/reports/${batchId}`)),
 
   exportReport: (batchId: string) =>
-    apiClient.post(`/api/apps/current-feature-analyzer/reports/${batchId}/export`, {}, {
+    apiClient.post(`/current-feature-analyzer/reports/${batchId}/export`, {}, {
       responseType: 'blob',
     }),
 
   listRuleSets: () =>
-    apiRequest<{ items: RuleSetItem[] }>(apiClient.get('/api/apps/current-feature-analyzer/rule-sets')),
+    apiRequest<{ items: RuleSetItem[] }>(apiClient.get('/current-feature-analyzer/rule-sets')),
 
   getRuleSet: (id: string) =>
-    apiRequest<RuleSetDetail>(apiClient.get(`/api/apps/current-feature-analyzer/rule-sets/${id}`)),
+    apiRequest<RuleSetDetail>(apiClient.get(`/current-feature-analyzer/rule-sets/${id}`)),
 
   createRuleSet: (data: any) =>
-    apiRequest<RuleSetDetail>(apiClient.post('/api/apps/current-feature-analyzer/rule-sets', data)),
+    apiRequest<RuleSetDetail>(apiClient.post('/current-feature-analyzer/rule-sets', data)),
 
   updateRuleSet: (id: string, data: any) =>
-    apiRequest<RuleSetDetail>(apiClient.put(`/api/apps/current-feature-analyzer/rule-sets/${id}`, data)),
+    apiRequest<RuleSetDetail>(apiClient.put(`/current-feature-analyzer/rule-sets/${id}`, data)),
 
   deleteRuleSet: (id: string) =>
-    apiRequest<{ deleted: boolean }>(apiClient.delete(`/api/apps/current-feature-analyzer/rule-sets/${id}`)),
+    apiRequest<{ deleted: boolean }>(apiClient.delete(`/current-feature-analyzer/rule-sets/${id}`)),
 
   copyRuleSet: (id: string) =>
-    apiRequest<RuleSetDetail>(apiClient.post(`/api/apps/current-feature-analyzer/rule-sets/${id}/copy`)),
+    apiRequest<RuleSetDetail>(apiClient.post(`/current-feature-analyzer/rule-sets/${id}/copy`)),
 
   getConfig: () =>
-    apiRequest<any>(apiClient.get('/api/apps/current-feature-analyzer/config')),
+    apiRequest<any>(apiClient.get('/current-feature-analyzer/config')),
 
   saveConfig: (data: any) =>
-    apiRequest<any>(apiClient.put('/api/apps/current-feature-analyzer/config', data)),
+    apiRequest<any>(apiClient.put('/current-feature-analyzer/config', data)),
 }
