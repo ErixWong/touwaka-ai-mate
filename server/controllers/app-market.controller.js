@@ -7,9 +7,24 @@ import path from 'path';
  * App Market 控制器
  */
 class AppMarketController {
-  constructor(db) {
+  constructor(db, registryService = null) {
     this.db = db;
     this.appMarketService = new AppMarketService(db);
+    this.registryService = registryService;
+    this.wildcardCacheManager = null;
+  }
+
+  setWildcardCacheManager(cacheManager) {
+    this.wildcardCacheManager = cacheManager;
+    if (this.registryService) {
+      this.registryService.setWildcardCacheManager(cacheManager);
+    }
+  }
+
+  clearAppCache(appId) {
+    if (this.registryService) {
+      this.registryService.clearAppCache(appId);
+    }
   }
 
   // ==================== Registry 配置 ====================

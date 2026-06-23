@@ -362,10 +362,12 @@
     }
   ],
   "component": "ContractMgrView",
-  "runtime": {
-    "server": {
-      "routes": "server/routes.js"
-    }
-  },
+  "apis": [
+    { "path": "/records", "methods": ["GET"], "handler": "server/controllers/records.js" },
+    { "path": "/records/:recordId", "methods": ["GET"], "handler": "server/controllers/records.js" },
+    { "path": "/status-summary", "methods": ["GET"], "handler": "server/controllers/records.js" },
+    { "path": "/records/:recordId/confirm", "methods": ["POST"], "handler": "server/controllers/records.js" },
+    { "path": "/records/:recordId/retry", "methods": ["POST"], "handler": "server/controllers/records.js" }
+  ],
   "visibility": "all"
 }

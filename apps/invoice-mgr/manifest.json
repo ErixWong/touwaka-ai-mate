@@ -217,11 +217,6 @@
           "name": "tax_amount",
           "type": "DECIMAL(12,2)",
           "label": "税额"
-        },
-        {
-          "name": "issuer",
-          "type": "VARCHAR(32)",
-          "label": "开票人"
         }
       ]
     }

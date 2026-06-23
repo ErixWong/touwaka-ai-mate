@@ -32,8 +32,8 @@ class InvoiceService {
   }
 
   _buildConditions({ invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin }) {
-    const conditions = ['m.app_id = ?'];
-    const replacements = ['invoice-mgr'];
+    const conditions = ['m.status IS NOT NULL'];
+    const replacements = [];
 
     if (!isAdmin) {
       conditions.push('m.user_id = ?');
@@ -96,7 +96,8 @@ class InvoiceService {
                 r.invoice_number, r.invoice_date, r.invoice_type,
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
-                r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status
+                r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status,
+                r.page_count, r.text_items_count, r.keyword_count
          FROM app_invoice_mgr_records m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
          ${where}
@@ -122,8 +123,8 @@ class InvoiceService {
   }
 
   async detail(rowId, userId, isAdmin) {
-    const conditions = ['m.id = ?', 'm.app_id = ?'];
-    const replacements = [rowId, 'invoice-mgr'];
+    const conditions = ['m.id = ?'];
+    const replacements = [rowId];
 
     if (!isAdmin) {
       conditions.push('m.user_id = ?');
@@ -138,7 +139,8 @@ class InvoiceService {
                 r.invoice_number, r.invoice_date, r.invoice_type,
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
-                r.item_count, r.page_count, r.remarks, r.issuer, r.ocr_method, r.ocr_raw, r.extraction_status
+                r.item_count, r.page_count, r.remarks, r.issuer, r.ocr_method, r.ocr_raw, r.extraction_status,
+                r.text_items_count, r.keyword_count
          FROM app_invoice_mgr_records m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
          ${where}`,
@@ -176,7 +178,8 @@ class InvoiceService {
               r.invoice_number, r.invoice_date, r.invoice_type,
               r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
               r.total_amount, r.total_tax, r.total_with_tax,
-              r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status
+              r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status,
+              r.page_count, r.text_items_count, r.keyword_count
        FROM app_invoice_mgr_records m
        LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        ${where}
@@ -308,7 +311,8 @@ class InvoiceService {
               r.invoice_number, r.invoice_date, r.invoice_type,
               r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
               r.total_amount, r.total_tax, r.total_with_tax,
-              r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status
+              r.item_count, r.remarks, r.issuer, r.ocr_method, r.extraction_status,
+              r.page_count, r.text_items_count, r.keyword_count
        FROM app_invoice_mgr_records m
        LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        ${where}

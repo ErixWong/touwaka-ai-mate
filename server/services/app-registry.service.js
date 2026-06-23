@@ -12,6 +12,18 @@ class AppRegistryService {
     this.appsDir = appsDir;
     this.models = {};
     this.runtimeLoader = new AppRuntimeLoader(db, appsDir);
+    this.wildcardCacheManager = null;
+  }
+
+  setWildcardCacheManager(cacheManager) {
+    this.wildcardCacheManager = cacheManager;
+  }
+
+  clearAppCache(appId) {
+    this.runtimeLoader.clearCache(appId);
+    if (this.wildcardCacheManager) {
+      this.wildcardCacheManager.clearAppCache(appId);
+    }
   }
 
   ensureModels() {

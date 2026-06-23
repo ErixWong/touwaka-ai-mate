@@ -2154,6 +2154,194 @@ const MIGRATIONS = [
     },
   },
 
+  // 42c. invoice-mgr 扩展表 rows（增量升级：新建 + 逐列补齐 + 补索引 + 补 FK）
+  {
+    name: 'app_invoice_mgr_rows table (incremental)',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_invoice_mgr_rows')) return false;
+      return await hasColumn(conn, 'app_invoice_mgr_rows', 'issuer');
+    },
+    migrate: async (conn) => {
+      if (!await hasTable(conn, 'app_invoice_mgr_rows')) {
+        await conn.execute(`
+          CREATE TABLE app_invoice_mgr_rows (
+            row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_invoice_mgr_records.id',
+            invoice_number VARCHAR(20) COMMENT '发票号码（20位），用于去重',
+            invoice_date DATE COMMENT '开票日期',
+            invoice_type VARCHAR(64) COMMENT '发票类型',
+            seller_name VARCHAR(128) COMMENT '销售方名称',
+            seller_tax_id VARCHAR(20) COMMENT '销售方税号',
+            buyer_name VARCHAR(128) COMMENT '购买方名称',
+            buyer_tax_id VARCHAR(20) COMMENT '购买方税号',
+            total_amount DECIMAL(12,2) DEFAULT 0 COMMENT '合计金额',
+            total_tax DECIMAL(12,2) DEFAULT 0 COMMENT '税额',
+            total_with_tax DECIMAL(12,2) DEFAULT 0 COMMENT '价税合计',
+            item_count INT DEFAULT 0 COMMENT '商品明细总数',
+            page_count INT DEFAULT 0 COMMENT 'PDF页数',
+            remarks TEXT COMMENT '备注',
+            issuer VARCHAR(32) COMMENT '开票人',
+            ocr_method VARCHAR(32) COMMENT '识别方法：fapiao/markitdown',
+            ocr_raw LONGTEXT COMMENT 'OCR原始输出JSON',
+            extraction_status VARCHAR(16) DEFAULT 'success' COMMENT '提取状态',
+            text_items_count INT DEFAULT 0 COMMENT 'PDF文本项总数',
+            keyword_count INT DEFAULT 0 COMMENT '发票关键词匹配数',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_invoice_number (invoice_number),
+            INDEX idx_seller (seller_name),
+            INDEX idx_buyer (buyer_name),
+            INDEX idx_date (invoice_date),
+            INDEX idx_amount (total_with_tax)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            COMMENT='发票元数据扩展表'
+        `);
+        if (!await hasForeignKey(conn, 'app_invoice_mgr_rows', 'fk_app_invoice_mgr_rows_row_id')) {
+          await conn.execute(`
+            ALTER TABLE app_invoice_mgr_rows
+            ADD CONSTRAINT fk_app_invoice_mgr_rows_row_id
+            FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
+          `);
+        }
+        console.log('  ✓ Created app_invoice_mgr_rows table with full schema');
+        return;
+      }
+
+      const missingCols = [
+        { col: 'issuer', def: "VARCHAR(32) COMMENT '开票人'", after: 'remarks' },
+        { col: 'ocr_method', def: "VARCHAR(32) COMMENT '识别方法：fapiao/markitdown'", after: 'issuer' },
+        { col: 'ocr_raw', def: "LONGTEXT COMMENT 'OCR原始输出JSON'", after: 'ocr_method' },
+        { col: 'extraction_status', def: "VARCHAR(16) DEFAULT 'success' COMMENT '提取状态'", after: 'ocr_raw' },
+        { col: 'text_items_count', def: "INT DEFAULT 0 COMMENT 'PDF文本项总数'", after: 'extraction_status' },
+        { col: 'keyword_count', def: "INT DEFAULT 0 COMMENT '发票关键词匹配数'", after: 'text_items_count' },
+      ];
+      for (const c of missingCols) {
+        if (!await hasColumn(conn, 'app_invoice_mgr_rows', c.col)) {
+          await conn.execute(`ALTER TABLE app_invoice_mgr_rows ADD COLUMN ${c.col} ${c.def} AFTER ${c.after}`);
+          console.log(`  ✓ Added column ${c.col} to app_invoice_mgr_rows`);
+        }
+      }
+
+      const missingIndexes = [
+        { name: 'uk_invoice_number', def: 'UNIQUE KEY uk_invoice_number (invoice_number)' },
+        { name: 'idx_seller', def: 'INDEX idx_seller (seller_name)' },
+        { name: 'idx_buyer', def: 'INDEX idx_buyer (buyer_name)' },
+        { name: 'idx_date', def: 'INDEX idx_date (invoice_date)' },
+        { name: 'idx_amount', def: 'INDEX idx_amount (total_with_tax)' },
+      ];
+      for (const idx of missingIndexes) {
+        if (!await hasIndex(conn, 'app_invoice_mgr_rows', idx.name)) {
+          try {
+            await conn.execute(`ALTER TABLE app_invoice_mgr_rows ADD ${idx.def}`);
+            console.log(`  ✓ Added index ${idx.name} to app_invoice_mgr_rows`);
+          } catch (e) {
+            console.log(`  ⚠ Skipped index ${idx.name}: ${e.message}`);
+          }
+        }
+      }
+
+      if (!await hasForeignKey(conn, 'app_invoice_mgr_rows', 'fk_app_invoice_mgr_rows_row_id')) {
+        try {
+          await conn.execute(`
+            ALTER TABLE app_invoice_mgr_rows
+            ADD CONSTRAINT fk_app_invoice_mgr_rows_row_id
+            FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
+          `);
+          console.log('  ✓ Added FK fk_app_invoice_mgr_rows_row_id');
+        } catch (e) {
+          console.log(`  ⚠ Skipped FK: ${e.message}`);
+        }
+      }
+
+      console.log('  ✓ Incrementally upgraded app_invoice_mgr_rows');
+    },
+  },
+
+  // 42d. invoice-mgr 商品明细表 items（增量升级：新建 + 逐列补齐 + 补索引 + 补 FK）
+  {
+    name: 'app_invoice_mgr_items table (incremental)',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'app_invoice_mgr_items')) return false;
+      return await hasColumn(conn, 'app_invoice_mgr_items', 'sort_order');
+    },
+    migrate: async (conn) => {
+      if (!await hasTable(conn, 'app_invoice_mgr_items')) {
+        await conn.execute(`
+          CREATE TABLE app_invoice_mgr_items (
+            id VARCHAR(32) PRIMARY KEY,
+            row_id VARCHAR(32) NOT NULL COMMENT '关联 app_invoice_mgr_records.id',
+            page_number INT DEFAULT 1 COMMENT '所在页码',
+            sort_order INT DEFAULT 0 COMMENT '行内排序',
+            category VARCHAR(64) COMMENT '商品分类',
+            name VARCHAR(128) COMMENT '商品名称',
+            model VARCHAR(64) COMMENT '规格型号',
+            unit VARCHAR(16) COMMENT '单位',
+            quantity DECIMAL(12,4) COMMENT '数量',
+            price DECIMAL(12,4) COMMENT '单价',
+            amount DECIMAL(12,2) COMMENT '金额',
+            tax_rate VARCHAR(8) COMMENT '税率',
+            tax_amount DECIMAL(12,2) COMMENT '税额',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_row_id (row_id),
+            FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            COMMENT='发票商品明细表'
+        `);
+        console.log('  ✓ Created app_invoice_mgr_items table');
+        return;
+      }
+
+      const missingCols = [
+        { col: 'page_number', def: "INT DEFAULT 1 COMMENT '所在页码'", after: 'row_id' },
+        { col: 'sort_order', def: "INT DEFAULT 0 COMMENT '行内排序'", after: 'page_number' },
+        { col: 'category', def: "VARCHAR(64) COMMENT '商品分类'", after: 'sort_order' },
+        { col: 'name', def: "VARCHAR(128) COMMENT '商品名称'", after: 'category' },
+        { col: 'model', def: "VARCHAR(64) COMMENT '规格型号'", after: 'name' },
+        { col: 'unit', def: "VARCHAR(16) COMMENT '单位'", after: 'model' },
+        { col: 'quantity', def: "DECIMAL(12,4) COMMENT '数量'", after: 'unit' },
+        { col: 'price', def: "DECIMAL(12,4) COMMENT '单价'", after: 'quantity' },
+        { col: 'amount', def: "DECIMAL(12,2) COMMENT '金额'", after: 'price' },
+        { col: 'tax_rate', def: "VARCHAR(8) COMMENT '税率'", after: 'amount' },
+        { col: 'tax_amount', def: "DECIMAL(12,2) COMMENT '税额'", after: 'tax_rate' },
+        { col: 'created_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP", after: 'tax_amount' },
+      ];
+      for (const c of missingCols) {
+        if (!await hasColumn(conn, 'app_invoice_mgr_items', c.col)) {
+          await conn.execute(`ALTER TABLE app_invoice_mgr_items ADD COLUMN ${c.col} ${c.def} AFTER ${c.after}`);
+          console.log(`  ✓ Added column ${c.col} to app_invoice_mgr_items`);
+        }
+      }
+
+      if (!await hasIndex(conn, 'app_invoice_mgr_items', 'idx_row_id')) {
+        try {
+          await conn.execute(`ALTER TABLE app_invoice_mgr_items ADD INDEX idx_row_id (row_id)`);
+          console.log('  ✓ Added index idx_row_id to app_invoice_mgr_items');
+        } catch (e) {
+          console.log(`  ⚠ Skipped index idx_row_id: ${e.message}`);
+        }
+      }
+
+      const [fkRows] = await conn.execute(
+        `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'app_invoice_mgr_items' AND COLUMN_NAME = 'row_id' AND REFERENCED_TABLE_NAME IS NOT NULL`,
+        [DB_CONFIG.database]
+      );
+      if (fkRows.length === 0) {
+        try {
+          await conn.execute(`
+            ALTER TABLE app_invoice_mgr_items
+            ADD CONSTRAINT fk_app_invoice_mgr_items_row_id
+            FOREIGN KEY (row_id) REFERENCES app_invoice_mgr_records(id) ON DELETE CASCADE
+          `);
+          console.log('  ✓ Added FK fk_app_invoice_mgr_items_row_id');
+        } catch (e) {
+          console.log(`  ⚠ Skipped FK: ${e.message}`);
+        }
+      }
+
+      console.log('  ✓ Incrementally upgraded app_invoice_mgr_items');
+    },
+  },
+
   // 43. contract-mgr 自治主表
   {
     name: 'app_contract_mgr_records table',

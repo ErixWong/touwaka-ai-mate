@@ -81,6 +81,7 @@ import ELSController from './controllers/els.controller.js';
 import OcrToolController from './controllers/ocr-tool.controller.js';
 import CurrentFeatureAnalyzerController from './controllers/current-feature-analyzer.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
+import AppRegistryService from './services/app-registry.service.js';
 
 // 路由
 import authRoutes from './routes/auth.routes.js';
@@ -260,6 +261,8 @@ class ApiServer {
     this.tokenCleanupJob = null;
     this.appClock = null;
     this.appRouterLoader = null;
+    this.wildcardCacheManager = null;
+    this.sharedRegistryService = null;
     this.controllers = {};
   }
 
@@ -395,6 +398,8 @@ class ApiServer {
     // 先创建 StreamController，获取 SSE 连接池
     const streamController = new StreamController(this.db, this.chatService);
 
+    this.sharedRegistryService = new AppRegistryService(this.db);
+
     this.controllers = {
       auth: new AuthController(this.db),
       user: new UserController(this.db),
@@ -417,8 +422,8 @@ class ApiServer {
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
-      appMarket: new AppMarketController(this.db),
-      appRegistry: new AppRegistryController(this.db),
+      appMarket: new AppMarketController(this.db, this.sharedRegistryService),
+      appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
       contractV2: new ContractV2Controller(this.db),
       invoice: new InvoiceController(this.db),
