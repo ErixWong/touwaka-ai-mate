@@ -16,7 +16,7 @@ import { Op, Sequelize } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
-import { parseOcrMetadata, hasPreviewResult } from '../../lib/doc-ocr-utils.js';
+import { parseOcrMetadata, getPreviewAttachmentId, hasPreviewResult } from '../../lib/doc-ocr-utils.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
@@ -373,27 +373,14 @@ class DocController {
         raw: true,
       });
 
-      const parseOcrMetadata = (value) => {
-        if (!value) return {};
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            return parsed && typeof parsed === 'object' ? parsed : {};
-          } catch {
-            return {};
-          }
-        }
-        return typeof value === 'object' ? value : {};
-      };
-
-      const latestOcrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
-
+      const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
+      const ocrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
       const attachmentIds = [
-        latestOcrMetadata.cleaned_markdown_attachment_id,
-        latestOcrResult?.main_markdown_attachment_id,
+        previewAttachmentId,
         latestOcrResult?.raw_result_attachment_id,
         latestOcrResult?.deliverables_manifest_attachment_id,
         latestOcrResult?.image_manifest_attachment_id,
+        ocrMetadata?.cleaned_markdown_attachment_id,
       ].filter(Boolean);
 
       const resultAttachments = attachmentIds.length > 0
@@ -486,7 +473,7 @@ class DocController {
         };
       };
 
-      const previewAttachmentId = latestOcrMetadata.cleaned_markdown_attachment_id || latestOcrResult?.main_markdown_attachment_id || null;
+      const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
 
       ctx.success({
         document: {
@@ -518,7 +505,7 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
-          cleaned_markdown_attachment: buildAttachmentResponse(latestOcrMetadata.cleaned_markdown_attachment_id),
+          cleaned_markdown_attachment: buildAttachmentResponse(ocrMetadata?.cleaned_markdown_attachment_id),
           main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
           raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
           deliverables_manifest_attachment: buildAttachmentResponse(latestOcrResult.deliverables_manifest_attachment_id),
@@ -1167,7 +1154,7 @@ async createVersion(ctx) {
           error_message: latestOcrResult.error_message,
           started_at: latestOcrResult.started_at,
           completed_at: latestOcrResult.completed_at,
-          has_preview_result: hasPreviewResult,
+          has_preview_result: hasPreview,
         } : null,
       });
     } catch (error) {
