@@ -154,8 +154,11 @@
               <el-button v-if="docStore.currentResult.source_attachment?.download_url" size="small" @click="downloadAttachment(docStore.currentResult.source_attachment?.download_url)">
                 原始文件
               </el-button>
-              <el-button v-if="docStore.currentResult.ocr_result?.main_markdown_attachment?.download_url" size="small" type="primary" @click="downloadAttachment(docStore.currentResult.ocr_result?.main_markdown_attachment?.download_url)">
+              <el-button v-if="markdownAttachment?.download_url" size="small" type="primary" @click="downloadAttachment(markdownAttachment?.download_url)">
                 Markdown
+              </el-button>
+              <el-button v-if="rawMarkdownAttachment?.download_url && rawMarkdownAttachment.id !== markdownAttachment?.id" size="small" @click="downloadAttachment(rawMarkdownAttachment?.download_url)">
+                原始 Markdown
               </el-button>
               <el-button v-if="docStore.currentResult.ocr_result?.raw_result_attachment?.download_url" size="small" @click="downloadAttachment(docStore.currentResult.ocr_result?.raw_result_attachment?.download_url)">
                 原始结果
@@ -201,6 +204,15 @@ const markdownFormatter = useMarkdownFormatter()
 const processingErrorCode = computed(() => docStore.currentResult?.processing?.error_code || null)
 const processingErrorMessage = computed(() => docStore.currentResult?.processing?.error_message || '')
 const displayDocumentTitle = computed(() => docStore.currentResult?.source_attachment?.file_name || docStore.currentResult?.document.title || '文档')
+
+const markdownAttachment = computed(() => {
+  const ocr = docStore.currentResult?.ocr_result
+  return ocr?.cleaned_markdown_attachment || ocr?.main_markdown_attachment || null
+})
+
+const rawMarkdownAttachment = computed(() => {
+  return docStore.currentResult?.ocr_result?.main_markdown_attachment || null
+})
 
 const markdownReferencedImagePaths = computed(() => {
   const content = markdownPreview.value || docStore.currentResult?.ocr_result?.preview_markdown_content || ''
@@ -302,6 +314,14 @@ const retryAction = computed(() => {
   const status = docStore.currentResult?.processing?.status
   const errorCode = processingErrorCode.value
 
+  if (status === 'pending_outline') {
+    return { type: 'outline', label: '开始章节提取' }
+  }
+
+  if (status === 'pending_chunk') {
+    return { type: 'chunk', label: '开始文本分块' }
+  }
+
   if (errorCode === 'outline_extraction_failed') {
     return { type: 'outline', label: '重试章节提取' }
   }
@@ -321,10 +341,7 @@ const retryAction = computed(() => {
 
 const isProcessingActionComplete = computed(() => {
   const status = docStore.currentResult?.processing?.status
-  return status === 'ready'
-    || status === 'pending_embedding'
-    || status === 'pending_chunk'
-    || status === 'pending_outline'
+  return status === 'ready' || status === 'pending_embedding'
 })
 
 const retryLoading = computed(() => {
@@ -456,8 +473,7 @@ async function loadMarkdownPreview() {
       return
     }
 
-    const attachment = docStore.currentResult?.ocr_result?.main_markdown_attachment
-      || docStore.currentResult?.ocr_result?.cleaned_markdown_attachment
+    const attachment = markdownAttachment.value
     if (!attachment?.id) {
       markdownPreview.value = ''
       return

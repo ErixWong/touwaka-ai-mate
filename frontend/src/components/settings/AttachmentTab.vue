@@ -467,8 +467,8 @@ const getSourceLabel = (source_tag: string): string => {
     'kb_article_image': t('attachment.sourceKbArticle'),
     'task_export': t('attachment.sourceTaskExport'),
     'chat_attachment': t('attachment.sourceChatAttachment'),
-    'doc-platform': 'doc-platform',
-    'admin_upload': 'admin_upload',
+    'doc-platform': t('attachment.sourceDocPlatform'),
+    'admin_upload': t('attachment.sourceAdminUpload'),
   }
   return labels[source_tag] || source_tag
 }
