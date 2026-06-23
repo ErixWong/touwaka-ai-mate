@@ -473,12 +473,12 @@ class DocController {
         };
       };
 
-      const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
+      const hasPreview = hasPreviewResult(latestOcrResult);
 
       ctx.success({
         document: {
           ...document,
-          has_preview_result: !!previewAttachmentId,
+          has_preview_result: hasPreview,
         },
         revision: revision ? {
           ...revision,
@@ -1137,7 +1137,6 @@ async createVersion(ctx) {
         processing_error_message: document.processing_error_message,
         processing_retry_count: document.processing_retry_count,
         processing_updated_at: document.processing_updated_at,
-        has_preview_result: hasPreview,
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,
           revision_id: latestOcrResult.revision_id,
