@@ -3,6 +3,7 @@ import apiClient, { apiRequest } from './client'
 export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error'] as const
 export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding'] as const
 export const DOC_PROCESSING_ACTION_COMPLETE_STATUSES = ['ready', 'pending_embedding'] as const
+export const DOC_PROCESSING_OCR_ACTIVE_STATUSES = ['pending_ocr', 'ocr_processing'] as const
 
 export const DOC_PROCESSING_STATUS_LABELS: Record<string, string> = {
   pending_ocr: '待OCR',
@@ -44,6 +45,10 @@ export function isFailedDocProcessingStatus(status?: string | null): boolean {
 
 export function isActionCompleteDocProcessingStatus(status?: string | null): boolean {
   return !!status && DOC_PROCESSING_ACTION_COMPLETE_STATUSES.includes(status as typeof DOC_PROCESSING_ACTION_COMPLETE_STATUSES[number])
+}
+
+export function isOcrActiveDocProcessingStatus(status?: string | null): boolean {
+  return !!status && DOC_PROCESSING_OCR_ACTIVE_STATUSES.includes(status as typeof DOC_PROCESSING_OCR_ACTIVE_STATUSES[number])
 }
 
 export function getDocProcessingStatusLabel(status?: string | null): string {

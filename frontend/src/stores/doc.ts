@@ -15,6 +15,7 @@ import {
   transitionVersion,
   extractOutline,
   generateChunks,
+  isOcrActiveDocProcessingStatus,
   isTerminalDocProcessingStatus,
 } from '@/api/docs'
 import type {
@@ -118,7 +119,7 @@ export const useDocStore = defineStore('doc', () => {
   async function syncProcessing(documentId: string) {
     error.value = null
     const status = processingStatus.value?.processing_status
-    const isOcrStage = status === 'pending_ocr' || status === 'ocr_processing'
+    const isOcrStage = isOcrActiveDocProcessingStatus(status)
     if (isOcrStage || !processingStatus.value) {
       try {
         await syncOcr(documentId)
