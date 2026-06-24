@@ -71,7 +71,7 @@
               <el-input v-model="form.pending_ocr.provider_name" placeholder="mineru" />
             </el-form-item>
             <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_ocr.timeout_ms" :min="5000" :step="10000" />
+              <el-input-number v-model="form.pending_ocr.mcp_timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
             <el-divider content-position="left">附件提取参数</el-divider>
             <el-form-item label="file_base64">
@@ -194,7 +194,7 @@
               <el-input-number v-model="form.ocr_processing.poll_interval_ms" :min="1000" :step="1000" />
             </el-form-item>
             <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.ocr_processing.timeout_ms" :min="5000" :step="10000" />
+              <el-input-number v-model="form.ocr_processing.poll_request_timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
             <el-divider content-position="left">LLM 归一化</el-divider>
             <el-form-item label="归一化模型">
@@ -331,7 +331,7 @@
               </div>
             </el-form-item>
             <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.ocr_finalize.timeout_ms" :min="5000" :step="10000" />
+              <el-input-number v-model="form.ocr_finalize.mcp_timeout_ms" :min="5000" :step="10000" />
             </el-form-item>
             <el-form-item label="持久化原始结果">
               <el-switch v-model="form.ocr_finalize.persist_raw_result" />
@@ -462,26 +462,6 @@
             </el-form-item>
           </template>
 
-          <!-- pending_relocate -->
-          <template v-if="activeStage === 'pending_relocate'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_relocate.enabled" /></el-form-item>
-            <el-form-item label="入库策略">
-              <el-select v-model="form.pending_relocate.target_strategy">
-                <el-option label="当前集合" value="current_collection" />
-                <el-option label="指定集合" value="specified_collection" />
-                <el-option label="自动路由" value="auto_route" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="标签策略">
-              <el-select v-model="form.pending_relocate.tag_strategy">
-                <el-option label="不写入" value="none" />
-                <el-option label="自动标签" value="auto" />
-                <el-option label="手动标签" value="manual" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="元数据回写"><el-switch v-model="form.pending_relocate.metadata_writeback" /></el-form-item>
-            <el-form-item label="自动发布"><el-switch v-model="form.pending_relocate.auto_publish" /></el-form-item>
-          </template>
         </el-form>
       </div>
     </div>
@@ -532,7 +512,7 @@ const schemaError = ref<Record<string, string>>({})
 const defaultForm: DocPipelineConfig = {
   meta: { version: 1, enabled: true },
   pending_ocr: {
-    enabled: true, type: 'mcp', provider_name: 'mineru', timeout_ms: 120000,
+    enabled: true, type: 'mcp', provider_name: 'mineru', mcp_timeout_ms: 120000,
     mcp: {
       server: 'mineru',
       tool: 'create_task_from_file',
@@ -549,14 +529,14 @@ const defaultForm: DocPipelineConfig = {
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_processing: {
-    enabled: true, type: 'mcp', timeout_ms: 120000, poll_interval_ms: 5000,
+    enabled: true, type: 'mcp', poll_request_timeout_ms: 120000, poll_interval_ms: 5000,
     mcp: { server: 'mineru', tool: 'get_task_status', params_mapping: { task_id: 'task_id' }, params: {} },
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_finalize: {
     enabled: true, mcp: { server: 'mineru' },
     default_deliverable_tool: 'get_default_deliverable', list_deliverables_tool: 'list_deliverables', image_deliverables_tool: 'get_image_deliverables',
-    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true, timeout_ms: 120000,
+    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true, mcp_timeout_ms: 120000,
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   pending_clean: {

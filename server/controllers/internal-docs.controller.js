@@ -66,12 +66,12 @@ class InternalDocsController {
   async createIntake(ctx) {
     try {
       if (!this.validateInternalAccess(ctx)) {
-        ctx.status = 403;
-        ctx.body = { success: false, message: 'Forbidden', code: 'FORBIDDEN' };
+        ctx.error('Forbidden', 403);
         return;
       }
 
       this.ensureIntakeService();
+      this.ensureCollectionAccessService();
       const userId = ctx.state.session?.id || ctx.request.body?.user_id;
       const { app_id, collection_id, schema_id, attachments } = ctx.request.body;
 
@@ -91,20 +91,18 @@ class InternalDocsController {
         userId,
       });
 
-      ctx.body = { success: true, data: result };
+      ctx.success(result);
       logger.info(`[InternalDocs] createIntake: ${result.document_id}`);
     } catch (error) {
       logger.error('[InternalDocs] createIntake error:', error);
-      ctx.status = error.status || 500;
-      ctx.body = { success: false, message: error.message, code: error.code || 'INTERNAL_ERROR' };
+      ctx.error(error.message, error.status || 500);
     }
   }
 
   async getProcessingStatus(ctx) {
     try {
       if (!this.validateInternalAccess(ctx)) {
-        ctx.status = 403;
-        ctx.body = { success: false, message: 'Forbidden', code: 'FORBIDDEN' };
+        ctx.error('Forbidden', 403);
         return;
       }
 
@@ -114,8 +112,7 @@ class InternalDocsController {
       this.ensureDocAccessService();
       const canRead = await this.docAccessService.canRead(document_id, userId);
       if (!canRead) {
-        ctx.status = 403;
-        ctx.body = { success: false, message: 'Access denied', code: 'FORBIDDEN' };
+        ctx.error('Access denied', 403);
         return;
       }
 
@@ -126,24 +123,21 @@ class InternalDocsController {
       });
 
       if (!document) {
-        ctx.status = 404;
-        ctx.body = { success: false, message: 'Document not found', code: 'NOT_FOUND' };
+        ctx.error('Document not found', 404);
         return;
       }
 
-      ctx.body = { success: true, data: document };
+      ctx.success(document);
     } catch (error) {
       logger.error('[InternalDocs] getProcessingStatus error:', error);
-      ctx.status = error.status || 500;
-      ctx.body = { success: false, message: error.message, code: error.code || 'INTERNAL_ERROR' };
+      ctx.error(error.message, error.status || 500);
     }
   }
 
   async recall(ctx) {
     try {
       if (!this.validateInternalAccess(ctx)) {
-        ctx.status = 403;
-        ctx.body = { success: false, message: 'Forbidden', code: 'FORBIDDEN' };
+        ctx.error('Forbidden', 403);
         return;
       }
 
@@ -159,20 +153,18 @@ class InternalDocsController {
         userId,
       });
 
-      ctx.body = { success: true, data: items, total: items.length };
+      ctx.success({ items, total: items.length });
       logger.info(`[InternalDocs] recall: ${items.length} results`);
     } catch (error) {
       logger.error('[InternalDocs] recall error:', error);
-      ctx.status = error.status || 500;
-      ctx.body = { success: false, message: error.message, code: error.code || 'INTERNAL_ERROR' };
+      ctx.error(error.message, error.status || 500);
     }
   }
 
   async listRevisions(ctx) {
     try {
       if (!this.validateInternalAccess(ctx)) {
-        ctx.status = 403;
-        ctx.body = { success: false, message: 'Forbidden', code: 'FORBIDDEN' };
+        ctx.error('Forbidden', 403);
         return;
       }
 
@@ -182,19 +174,17 @@ class InternalDocsController {
       this.ensureDocAccessService();
       const canRead = await this.docAccessService.canRead(document_id, userId);
       if (!canRead) {
-        ctx.status = 403;
-        ctx.body = { success: false, message: 'Access denied', code: 'FORBIDDEN' };
+        ctx.error('Access denied', 403);
         return;
       }
 
       this.ensureRevisionService();
       const revisions = await this.revisionService.getRevisionList(document_id);
 
-      ctx.body = { success: true, data: revisions };
+      ctx.success(revisions);
     } catch (error) {
       logger.error('[InternalDocs] listRevisions error:', error);
-      ctx.status = error.status || 500;
-      ctx.body = { success: false, message: error.message, code: error.code || 'INTERNAL_ERROR' };
+      ctx.error(error.message, error.status || 500);
     }
   }
 }

@@ -32,7 +32,8 @@ export interface DocPipelineMcpStage {
   }
   judge: DocPipelineJudge
   provider_name?: string
-  timeout_ms?: number
+  mcp_timeout_ms?: number
+  poll_request_timeout_ms?: number
   poll_interval_ms?: number
 }
 
@@ -47,7 +48,7 @@ export interface DocPipelineOcrFinalize {
   download_deliverable_tool: string | null
   persist_raw_result: boolean
   persist_image_attachments: boolean
-  timeout_ms: number
+  mcp_timeout_ms: number
   judge: DocPipelineJudge
 }
 
@@ -105,6 +106,17 @@ export interface DocPipelineEmbeddingStage {
 export interface DocPipelineMeta {
   version: number
   enabled: boolean
+}
+
+export interface DocPipelineConfig {
+  meta: DocPipelineMeta
+  pending_ocr: DocPipelineMcpStage
+  ocr_processing: DocPipelineMcpStage
+  ocr_finalize: DocPipelineOcrFinalize
+  pending_clean: DocPipelineCleanStage
+  pending_outline: DocPipelineOutlineStage
+  pending_chunk: DocPipelineChunkStage
+  pending_embedding: DocPipelineEmbeddingStage
 }
 
 export interface McpServerItem {
