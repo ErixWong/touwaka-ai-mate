@@ -248,8 +248,8 @@ export interface DocRecallItem {
   }
   version: {
     id: string
-    version_no: number
-    version_label: string
+    revision_no: number
+    revision_label: string
     status: string
   }
   document: {
