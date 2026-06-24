@@ -47,8 +47,8 @@ export const useDocStore = defineStore('doc', () => {
   const error = ref<string | null>(null)
 
   function shouldStopPollingForError(err: any) {
-    const status = err?.response?.status
-    const message = String(err?.response?.data?.message || err?.message || '').toLowerCase()
+    const status = err?.status
+    const message = String(err?.message || '').toLowerCase()
     return status === 403
       || status === 404
       || message.includes('write access denied')

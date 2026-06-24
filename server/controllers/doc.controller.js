@@ -16,6 +16,7 @@ import { Op, Sequelize } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
+import { parseOcrMetadata, getPreviewAttachmentId, hasPreviewResult } from '../../lib/doc-ocr-utils.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
@@ -227,10 +228,12 @@ class DocController {
 
         const latestOcrResult = await DocOcrResult.findOne({
           where: { document_id: doc.id },
-          attributes: ['id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'error_message', 'updated_at'],
+          attributes: ['id', 'task_id', 'status', 'progress', 'main_markdown_attachment_id', 'error_message', 'updated_at', 'metadata', 'created_at'],
           order: [['created_at', 'DESC']],
           raw: true,
         });
+
+        const hasPreview = hasPreviewResult(latestOcrResult);
 
         const sourceAttachment = doc.current_revision_id
           ? await Attachment.findOne({
@@ -246,7 +249,7 @@ class DocController {
           current_revision: currentRevision,
           source_attachment: sourceAttachment,
           ocr_task_id: latestOcrResult?.task_id || null,
-          has_preview_result: !!latestOcrResult?.main_markdown_attachment_id,
+          has_preview_result: hasPreview,
           ocr_status: latestOcrResult?.status || null,
           ocr_progress: typeof latestOcrResult?.progress === 'number' ? latestOcrResult.progress : null,
           ocr_error_message: latestOcrResult?.error_message || null,
@@ -370,27 +373,14 @@ class DocController {
         raw: true,
       });
 
-      const parseOcrMetadata = (value) => {
-        if (!value) return {};
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            return parsed && typeof parsed === 'object' ? parsed : {};
-          } catch {
-            return {};
-          }
-        }
-        return typeof value === 'object' ? value : {};
-      };
-
-      const latestOcrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
-
+      const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
+      const ocrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
       const attachmentIds = [
-        latestOcrMetadata.cleaned_markdown_attachment_id,
-        latestOcrResult?.main_markdown_attachment_id,
+        previewAttachmentId,
         latestOcrResult?.raw_result_attachment_id,
         latestOcrResult?.deliverables_manifest_attachment_id,
         latestOcrResult?.image_manifest_attachment_id,
+        ocrMetadata?.cleaned_markdown_attachment_id,
       ].filter(Boolean);
 
       const resultAttachments = attachmentIds.length > 0
@@ -483,12 +473,12 @@ class DocController {
         };
       };
 
-      const previewAttachmentId = latestOcrMetadata.cleaned_markdown_attachment_id || latestOcrResult?.main_markdown_attachment_id || null;
+      const hasPreview = hasPreviewResult(latestOcrResult);
 
       ctx.success({
         document: {
           ...document,
-          has_preview_result: !!previewAttachmentId,
+          has_preview_result: hasPreview,
         },
         revision: revision ? {
           ...revision,
@@ -515,7 +505,7 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
-          cleaned_markdown_attachment: buildAttachmentResponse(latestOcrMetadata.cleaned_markdown_attachment_id),
+          cleaned_markdown_attachment: buildAttachmentResponse(ocrMetadata?.cleaned_markdown_attachment_id),
           main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
           raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
           deliverables_manifest_attachment: buildAttachmentResponse(latestOcrResult.deliverables_manifest_attachment_id),
@@ -1135,9 +1125,10 @@ async createVersion(ctx) {
       const latestOcrResult = await DocOcrResult.findOne({
         where: { document_id: documentId },
         order: [['created_at', 'DESC']],
+        raw: true,
       });
 
-      const hasPreviewResult = !!latestOcrResult?.main_markdown_attachment_id;
+      const hasPreview = hasPreviewResult(latestOcrResult);
 
       ctx.success({
         document_id: document.id,
@@ -1146,7 +1137,6 @@ async createVersion(ctx) {
         processing_error_message: document.processing_error_message,
         processing_retry_count: document.processing_retry_count,
         processing_updated_at: document.processing_updated_at,
-        has_preview_result: hasPreviewResult,
         ocr_result: latestOcrResult ? {
           id: latestOcrResult.id,
           revision_id: latestOcrResult.revision_id,
@@ -1163,7 +1153,7 @@ async createVersion(ctx) {
           error_message: latestOcrResult.error_message,
           started_at: latestOcrResult.started_at,
           completed_at: latestOcrResult.completed_at,
-          has_preview_result: hasPreviewResult,
+          has_preview_result: hasPreview,
         } : null,
       });
     } catch (error) {

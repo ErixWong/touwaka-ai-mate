@@ -2,9 +2,13 @@ import logger from '../../lib/logger.js';
 import AppRegistryService from '../services/app-registry.service.js';
 
 class AppRegistryController {
-  constructor(db) {
+  constructor(db, registryService = null) {
     this.db = db;
-    this.registryService = new AppRegistryService(db);
+    this.registryService = registryService || new AppRegistryService(db);
+  }
+
+  setWildcardCacheManager(cacheManager) {
+    this.registryService.setWildcardCacheManager(cacheManager);
   }
 
   async listApps(ctx) {

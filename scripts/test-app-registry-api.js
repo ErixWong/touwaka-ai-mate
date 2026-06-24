@@ -44,35 +44,59 @@ async function runTests() {
     return;
   }
 
-  console.log('--- 基础接口 ---');
-  await testEndpoint('列出可访问 app', 'GET', '/api/apps', token, 200);
-  await testEndpoint('列出已安装 app', 'GET', '/api/apps/installed', token, 200);
-  await testEndpoint('列出时钟注册', 'GET', '/api/apps/clock-registry', token, 200);
+  console.log('--- 新前缀 /api/app-registry/* (Phase 1 主目标) ---');
+  await testEndpoint('新前缀：列出可访问 app', 'GET', '/api/app-registry', token, 200);
+  await testEndpoint('新前缀：列出已安装 app', 'GET', '/api/app-registry/installed', token, 200);
+  await testEndpoint('新前缀：列出时钟注册', 'GET', '/api/app-registry/clock-registry', token, 200);
 
-  console.log('\n--- 动态路由（需真实 appId）---');
-  const appsResp = await fetch(`${BASE_URL}/api/apps`, {
+  const appsRespNew = await fetch(`${BASE_URL}/api/app-registry`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
-  const appsData = await appsResp.json();
-  const apps = appsData.data || [];
-  
-  if (apps.length > 0) {
-    const appId = apps[0].id;
-    console.log(`使用 appId: ${appId}\n`);
+  const appsDataNew = await appsRespNew.json();
+  const appsNew = appsDataNew.data || [];
+
+  if (appsNew.length > 0) {
+    const appId = appsNew[0].id;
+    console.log(`新前缀使用 appId: ${appId}\n`);
     
-    await testEndpoint('获取 app 详情', 'GET', `/api/apps/${appId}`, token, 200);
-    await testEndpoint('获取 runtime 信息', 'GET', `/api/apps/${appId}/runtime`, token, 200);
-    await testEndpoint('获取 manifest', 'GET', `/api/apps/${appId}/manifest`, token, 200);
-    await testEndpoint('验证 runtime', 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
-    await testEndpoint('获取配置', 'GET', `/api/apps/${appId}/config`, token, 200);
-    await testEndpoint('获取时钟注册', 'GET', `/api/apps/${appId}/clock-registry`, token, 200);
+    await testEndpoint('新前缀：获取 app 详情', 'GET', `/api/app-registry/${appId}`, token, 200);
+    await testEndpoint('新前缀：获取 runtime 信息', 'GET', `/api/app-registry/${appId}/runtime`, token, 200);
+    await testEndpoint('新前缀：获取 manifest', 'GET', `/api/app-registry/${appId}/manifest`, token, 200);
+    await testEndpoint('新前缀：验证 runtime', 'GET', `/api/app-registry/${appId}/validate-runtime`, token, 200);
+    await testEndpoint('新前缀：获取配置', 'GET', `/api/app-registry/${appId}/config`, token, 200);
+    await testEndpoint('新前缀：获取时钟注册', 'GET', `/api/app-registry/${appId}/clock-registry`, token, 200);
   } else {
-    console.log('⚠️ 无已安装 app，跳过动态路由测试');
+    console.log('⚠️ 无已安装 app，跳过新前缀动态路由测试');
+  }
+
+  console.log('\n--- Legacy 兼容层 /api/apps/* (向后兼容验证) ---');
+  await testEndpoint('Legacy：列出可访问 app', 'GET', '/api/apps', token, 200);
+  await testEndpoint('Legacy：列出已安装 app', 'GET', '/api/apps/installed', token, 200);
+  await testEndpoint('Legacy：列出时钟注册', 'GET', '/api/apps/clock-registry', token, 200);
+  
+  const appsRespLegacy = await fetch(`${BASE_URL}/api/apps`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const appsDataLegacy = await appsRespLegacy.json();
+  const appsLegacy = appsDataLegacy.data || [];
+  
+  if (appsLegacy.length > 0) {
+    const appId = appsLegacy[0].id;
+    console.log(`Legacy 使用 appId: ${appId}\n`);
+    
+    await testEndpoint('Legacy：获取 app 详情', 'GET', `/api/apps/${appId}`, token, 200);
+    await testEndpoint('Legacy：获取 runtime 信息', 'GET', `/api/apps/${appId}/runtime`, token, 200);
+    await testEndpoint('Legacy：获取 manifest', 'GET', `/api/apps/${appId}/manifest`, token, 200);
+    await testEndpoint('Legacy：验证 runtime', 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
+    await testEndpoint('Legacy：获取配置', 'GET', `/api/apps/${appId}/config`, token, 200);
+    await testEndpoint('Legacy：获取时钟注册', 'GET', `/api/apps/${appId}/clock-registry`, token, 200);
+  } else {
+    console.log('⚠️ 无已安装 app，跳过 Legacy 动态路由测试');
   }
 
   console.log('\n--- 错误状态码验证 ---');
-  await testEndpoint('不存在的 app', 'GET', '/api/apps/non-existent-app-id', token, 404);
-  await testEndpoint('不存在的 manifest', 'GET', '/api/apps/non-existent-app-id/manifest', token, 422);
+  await testEndpoint('新前缀：不存在的 app', 'GET', '/api/app-registry/non-existent-app-id', token, 404);
+  await testEndpoint('新前缀：不存在的 manifest', 'GET', '/api/app-registry/non-existent-app-id/manifest', token, 422);
 
   console.log('\n=== 测试结果汇总 ===');
   const passed = RESULTS.filter(r => r.passed).length;
