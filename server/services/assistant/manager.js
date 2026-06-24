@@ -722,7 +722,7 @@ class AssistantManager {
           workspace: {
             expert_id: context.expertId,
             topic_id: context.topicId,
-            workdir: context.taskContext?.absolute_workspace_path || context.taskContext?.fullWorkspacePath || context.taskContext?.workspacePath,
+            workdir: context.taskContext?.absolute_workspace_path,
           },
         });
 

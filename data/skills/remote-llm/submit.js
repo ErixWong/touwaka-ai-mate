@@ -144,15 +144,16 @@ async function invokeResidentTool(params) {
 
 /**
  * 读取本地文件并转换为 base64
- * @param {string} filePath - 文件路径（相对 DATA_BASE_PATH 或绝对路径）
+ * @param {string} filePath - 文件路径（相对于工作目录或绝对路径）
  * @returns {{ base64: string, mimeType: string, filename: string, dataUrl: string }}
  */
 function fileToBase64(filePath) {
   // 解析路径
   let fullPath = filePath;
   if (!path.isAbsolute(filePath)) {
-    // 相对路径：相对于 DATA_BASE_PATH
-    fullPath = path.join(CONFIG.dataBasePath, filePath);
+    // 相对路径：相对于工作目录
+    const workingDir = process.env.WORKING_DIRECTORY || path.join(process.cwd(), 'data', 'work', process.env.USER_ID || 'default');
+    fullPath = path.join(workingDir, filePath);
   }
   
   // 检查文件是否存在

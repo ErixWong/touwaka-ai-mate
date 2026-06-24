@@ -58,8 +58,8 @@ const ERROR_CODES = {
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 const USER_ID = process.env.USER_ID || 'default';
 const USER_WORK_DIR = process.env.WORKING_DIRECTORY
-  ? path.join(DATA_BASE_PATH, process.env.WORKING_DIRECTORY)
-  : path.join(DATA_BASE_PATH, 'work', USER_ID);
+  ? process.env.WORKING_DIRECTORY
+  : path.join(process.cwd(), 'data', 'work', USER_ID);
 
 const IS_ADMIN = process.env.IS_ADMIN === 'true';
 
