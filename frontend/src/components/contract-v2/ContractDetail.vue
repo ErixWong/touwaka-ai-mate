@@ -64,10 +64,9 @@ const processingStatusLabels: Record<string, { label: string; type: string }> = 
   pending_ocr: { label: '待OCR识别', type: 'info' },
   ocr_processing: { label: 'OCR识别中', type: 'warning' },
   pending_clean: { label: '待文本清洗', type: 'info' },
-  pending_metadata: { label: '待元数据提取', type: 'info' },
+  pending_outline: { label: '待提取大纲', type: 'info' },
   pending_chunk: { label: '待段落分段', type: 'info' },
   pending_embedding: { label: '待向量化', type: 'info' },
-  pending_relocate: { label: '待版本归位', type: 'info' },
   ready: { label: '已完成', type: 'success' },
   error: { label: '处理失败', type: 'danger' },
 }

@@ -1,8 +1,49 @@
 import apiClient, { apiRequest } from './client'
 
+export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error'] as const
+export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding'] as const
+export const DOC_PROCESSING_ACTION_COMPLETE_STATUSES = ['ready', 'pending_embedding'] as const
+export const DOC_PROCESSING_OCR_ACTIVE_STATUSES = ['pending_ocr', 'ocr_processing'] as const
+
+export const DOC_PROCESSING_STATUS_TAG_TYPES: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
+  pending_ocr: 'warning',
+  ocr_processing: 'warning',
+  pending_clean: 'info',
+  pending_outline: 'info',
+  pending_chunk: 'info',
+  pending_embedding: 'info',
+  ready: 'success',
+  error: 'danger',
+}
+
 export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error'
 export type DocRevisionStatus = 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
-export type DocOcrStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown' | string
+export type DocOcrStatus = 'pending' | 'processing' | 'completed' | 'failed' | string
+
+export function isTerminalDocProcessingStatus(status?: string | null): boolean {
+  return !status || DOC_PROCESSING_TERMINAL_STATUSES.includes(status as typeof DOC_PROCESSING_TERMINAL_STATUSES[number])
+}
+
+export function isNonTerminalDocProcessingStatus(status?: string | null): boolean {
+  return !!status && DOC_PROCESSING_NON_TERMINAL_STATUSES.includes(status as typeof DOC_PROCESSING_NON_TERMINAL_STATUSES[number])
+}
+
+export function isFailedDocProcessingStatus(status?: string | null): boolean {
+  return status === 'error'
+}
+
+export function isActionCompleteDocProcessingStatus(status?: string | null): boolean {
+  return !!status && DOC_PROCESSING_ACTION_COMPLETE_STATUSES.includes(status as typeof DOC_PROCESSING_ACTION_COMPLETE_STATUSES[number])
+}
+
+export function isOcrActiveDocProcessingStatus(status?: string | null): boolean {
+  return !!status && DOC_PROCESSING_OCR_ACTIVE_STATUSES.includes(status as typeof DOC_PROCESSING_OCR_ACTIVE_STATUSES[number])
+}
+
+export function getDocProcessingStatusTagType(status?: string | null): 'success' | 'warning' | 'info' | 'danger' {
+  if (!status) return 'info'
+  return DOC_PROCESSING_STATUS_TAG_TYPES[status] || 'info'
+}
 
 export interface DocDocument {
   id: string
@@ -242,14 +283,15 @@ export interface DocRecallItem {
   score: number
   chunk: {
     id: string
+    outline_id?: string | null
     title: string
     content: string
     seq: number
   }
-  version: {
+  revision: {
     id: string
-    version_no: number
-    version_label: string
+    revision_no: number
+    revision_label: string
     status: string
   }
   document: {
