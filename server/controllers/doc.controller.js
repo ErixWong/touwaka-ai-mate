@@ -826,7 +826,7 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-       const { version_label, change_summary, chunks: chunksInput, content_units } = ctx.request.body;
+       const { revision_label, change_summary, chunks: chunksInput, content_units } = ctx.request.body;
        const chunks = chunksInput || content_units;
       const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
@@ -843,7 +843,7 @@ async createVersion(ctx) {
           id: versionId,
           document_id: documentId,
           revision_no: revisionNo,
-          revision_label: version_label || `v${revisionNo}`,
+          revision_label: revision_label || `v${revisionNo}`,
           revision_status: 'draft',
           is_current: 0,
           change_summary: change_summary || null,
