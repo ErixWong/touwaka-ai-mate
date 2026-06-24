@@ -7,6 +7,12 @@
   "type": "utility",
   "author": "Touwaka Team",
   "license": "MIT",
+  "runtime": {
+    "tick": "tick/index.js",
+    "server": {
+      "routes": "server/routes.js"
+    }
+  },
   "tags": [
     "电流",
     "CSV",
