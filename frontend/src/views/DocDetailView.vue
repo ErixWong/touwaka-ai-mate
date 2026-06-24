@@ -188,6 +188,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
+import { isNonTerminalDocProcessingStatus } from '@/api/docs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
@@ -360,13 +361,12 @@ const displayErrorMessage = computed(() => {
 })
 
 const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
-const NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding']
 
 const isLongRunning = computed(() => {
   const status = docStore.currentResult?.processing?.status
   const updatedAt = docStore.currentResult?.processing?.updated_at
   if (!status || !updatedAt) return false
-  if (!NON_TERMINAL_STATUSES.includes(status)) return false
+  if (!isNonTerminalDocProcessingStatus(status)) return false
   return Date.now() - new Date(updatedAt).getTime() > LONG_RUNNING_THRESHOLD_MS
 })
 

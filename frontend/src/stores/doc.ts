@@ -15,6 +15,7 @@ import {
   transitionVersion,
   extractOutline,
   generateChunks,
+  isTerminalDocProcessingStatus,
 } from '@/api/docs'
 import type {
   DocDocument,
@@ -168,8 +169,7 @@ export const useDocStore = defineStore('doc', () => {
       }
 
       const status = result?.processing_status
-        // ready 和 error 是终点；pending_embedding 由后台 worker 异步推进到 ready，不应在此停轮询
-        const terminal = !status || status === 'ready' || status === 'error'
+      const terminal = isTerminalDocProcessingStatus(status)
       if (terminal) {
         stopPolling()
         if (currentResult.value?.revision?.id && currentDoc.value?.id) {

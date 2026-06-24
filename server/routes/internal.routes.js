@@ -15,7 +15,7 @@
  *
  * 安全策略：
  * - 必须提供有效的用户 JWT Token
- * - 只允许本地 IP 访问
+ * - 注：当前实现为"JWT 认证即可"，未强制本地 IP 访问
  */
 
 import Router from '@koa/router';

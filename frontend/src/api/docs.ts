@@ -1,8 +1,19 @@
 import apiClient, { apiRequest } from './client'
 
+export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error'] as const
+export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding'] as const
+
 export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error'
 export type DocRevisionStatus = 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
-export type DocOcrStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown' | string
+export type DocOcrStatus = 'pending' | 'processing' | 'completed' | 'failed' | string
+
+export function isTerminalDocProcessingStatus(status?: string | null): boolean {
+  return !status || DOC_PROCESSING_TERMINAL_STATUSES.includes(status as typeof DOC_PROCESSING_TERMINAL_STATUSES[number])
+}
+
+export function isNonTerminalDocProcessingStatus(status?: string | null): boolean {
+  return !!status && DOC_PROCESSING_NON_TERMINAL_STATUSES.includes(status as typeof DOC_PROCESSING_NON_TERMINAL_STATUSES[number])
+}
 
 export interface DocDocument {
   id: string
@@ -242,11 +253,12 @@ export interface DocRecallItem {
   score: number
   chunk: {
     id: string
+    outline_id?: string | null
     title: string
     content: string
     seq: number
   }
-  version: {
+  revision: {
     id: string
     revision_no: number
     revision_label: string
