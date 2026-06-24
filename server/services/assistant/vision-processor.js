@@ -334,26 +334,6 @@ export function getAllowedImagePaths(context) {
   return paths;
 }
 
-  // 临时目录
-  paths.push(path.resolve('/tmp'));
-
-  // 从 context 获取工作目录
-  // workdir 格式：work/userId/taskId（相对于 data 目录）
-  if (context?.workdir) {
-    const workdir = context.workdir;
-    // 统一处理：workdir 始终相对于 data 目录解析
-    // 无论是 work/xxx 还是其他格式，都解析到 data 下
-    paths.push(path.resolve(resolvedDataPath, workdir));
-  }
-
-  // topicId 对应的工作目录
-  if (context?.topicId) {
-    paths.push(path.resolve(resolvedDataPath, 'work', context.topicId));
-  }
-
-  return paths;
-}
-
 /**
  * 验证图片路径是否在白名单内
  * @param {string} filePath - 文件路径
