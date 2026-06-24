@@ -5,17 +5,6 @@ export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_process
 export const DOC_PROCESSING_ACTION_COMPLETE_STATUSES = ['ready', 'pending_embedding'] as const
 export const DOC_PROCESSING_OCR_ACTIVE_STATUSES = ['pending_ocr', 'ocr_processing'] as const
 
-export const DOC_PROCESSING_STATUS_LABELS: Record<string, string> = {
-  pending_ocr: '待OCR',
-  ocr_processing: 'OCR处理中',
-  pending_clean: '待文本清洗',
-  pending_outline: '待章节提取',
-  pending_chunk: '待文本分块',
-  pending_embedding: '待向量化',
-  ready: '已就绪',
-  error: '处理失败',
-}
-
 export const DOC_PROCESSING_STATUS_TAG_TYPES: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
   pending_ocr: 'warning',
   ocr_processing: 'warning',
@@ -49,11 +38,6 @@ export function isActionCompleteDocProcessingStatus(status?: string | null): boo
 
 export function isOcrActiveDocProcessingStatus(status?: string | null): boolean {
   return !!status && DOC_PROCESSING_OCR_ACTIVE_STATUSES.includes(status as typeof DOC_PROCESSING_OCR_ACTIVE_STATUSES[number])
-}
-
-export function getDocProcessingStatusLabel(status?: string | null): string {
-  if (!status) return '-'
-  return DOC_PROCESSING_STATUS_LABELS[status] || status
 }
 
 export function getDocProcessingStatusTagType(status?: string | null): 'success' | 'warning' | 'info' | 'danger' {

@@ -186,10 +186,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
 import {
-  getDocProcessingStatusLabel,
   getDocProcessingStatusTagType,
   isActionCompleteDocProcessingStatus,
   isFailedDocProcessingStatus,
@@ -201,6 +201,7 @@ import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const docStore = useDocStore()
 const markdownPreview = ref('')
 const markdownLoading = ref(false)
@@ -418,7 +419,8 @@ function downloadAttachment(url?: string) {
 }
 
 function processingLabel(status?: string) {
-  return getDocProcessingStatusLabel(status)
+  if (!status) return '-'
+  return t(`contractV2.processingStatus.${status}`)
 }
 
 function processingTagType(status?: string) {
