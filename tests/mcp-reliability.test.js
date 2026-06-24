@@ -77,7 +77,7 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
     const result = await toolManager.executeMcpTool(
       'mcp_alpha_echo',
       { text: 'hello' },
-      { userId: 'user-1', taskContext: { fullWorkspacePath: 'work/user-1/task-1' } },
+      { userId: 'user-1', taskContext: { absolute_workspace_path: '/data/work/user-1/task-1' } },
       'MCP/alpha/echo'
     );
 
@@ -93,7 +93,7 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
       },
       userContext: {
         userId: 'user-1',
-        workingDirectory: 'work/user-1/task-1',
+        workingDirectory: '/data/work/user-1/task-1',
       },
     });
   } finally {
