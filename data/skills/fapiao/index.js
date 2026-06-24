@@ -57,9 +57,13 @@ const ERROR_CODES = {
 
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
 const USER_ID = process.env.USER_ID || 'default';
-const USER_WORK_DIR = process.env.WORKING_DIRECTORY
-  ? process.env.WORKING_DIRECTORY
-  : path.join(process.cwd(), 'data', 'work', USER_ID);
+const USER_WORK_DIR = process.env.WORKING_DIRECTORY;
+if (!USER_WORK_DIR) {
+  throw new Error('WORKING_DIRECTORY environment variable is not set');
+}
+if (!path.isAbsolute(USER_WORK_DIR)) {
+  throw new Error(`WORKING_DIRECTORY 必须是绝对路径，收到: ${USER_WORK_DIR}`);
+}
 
 const IS_ADMIN = process.env.IS_ADMIN === 'true';
 

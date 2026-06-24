@@ -152,7 +152,13 @@ function fileToBase64(filePath) {
   let fullPath = filePath;
   if (!path.isAbsolute(filePath)) {
     // 相对路径：相对于工作目录
-    const workingDir = process.env.WORKING_DIRECTORY || path.join(process.cwd(), 'data', 'work', process.env.USER_ID || 'default');
+    const workingDir = process.env.WORKING_DIRECTORY;
+    if (!workingDir) {
+      throw new Error('WORKING_DIRECTORY environment variable is not set');
+    }
+    if (!path.isAbsolute(workingDir)) {
+      throw new Error(`WORKING_DIRECTORY 必须是绝对路径，收到: ${workingDir}`);
+    }
     fullPath = path.join(workingDir, filePath);
   }
   
