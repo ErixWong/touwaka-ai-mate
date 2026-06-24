@@ -2,6 +2,29 @@ import apiClient, { apiRequest } from './client'
 
 export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error'] as const
 export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding'] as const
+export const DOC_PROCESSING_ACTION_COMPLETE_STATUSES = ['ready', 'pending_embedding'] as const
+
+export const DOC_PROCESSING_STATUS_LABELS: Record<string, string> = {
+  pending_ocr: '待OCR',
+  ocr_processing: 'OCR处理中',
+  pending_clean: '待文本清洗',
+  pending_outline: '待章节提取',
+  pending_chunk: '待文本分块',
+  pending_embedding: '待向量化',
+  ready: '已就绪',
+  error: '处理失败',
+}
+
+export const DOC_PROCESSING_STATUS_TAG_TYPES: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
+  pending_ocr: 'warning',
+  ocr_processing: 'warning',
+  pending_clean: 'info',
+  pending_outline: 'info',
+  pending_chunk: 'info',
+  pending_embedding: 'info',
+  ready: 'success',
+  error: 'danger',
+}
 
 export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error'
 export type DocRevisionStatus = 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
@@ -13,6 +36,24 @@ export function isTerminalDocProcessingStatus(status?: string | null): boolean {
 
 export function isNonTerminalDocProcessingStatus(status?: string | null): boolean {
   return !!status && DOC_PROCESSING_NON_TERMINAL_STATUSES.includes(status as typeof DOC_PROCESSING_NON_TERMINAL_STATUSES[number])
+}
+
+export function isFailedDocProcessingStatus(status?: string | null): boolean {
+  return status === 'error'
+}
+
+export function isActionCompleteDocProcessingStatus(status?: string | null): boolean {
+  return !!status && DOC_PROCESSING_ACTION_COMPLETE_STATUSES.includes(status as typeof DOC_PROCESSING_ACTION_COMPLETE_STATUSES[number])
+}
+
+export function getDocProcessingStatusLabel(status?: string | null): string {
+  if (!status) return '-'
+  return DOC_PROCESSING_STATUS_LABELS[status] || status
+}
+
+export function getDocProcessingStatusTagType(status?: string | null): 'success' | 'warning' | 'info' | 'danger' {
+  if (!status) return 'info'
+  return DOC_PROCESSING_STATUS_TAG_TYPES[status] || 'info'
 }
 
 export interface DocDocument {

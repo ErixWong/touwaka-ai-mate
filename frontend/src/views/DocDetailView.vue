@@ -188,7 +188,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocStore } from '@/stores/doc'
 import apiClient from '@/api/client'
-import { isNonTerminalDocProcessingStatus } from '@/api/docs'
+import {
+  getDocProcessingStatusLabel,
+  getDocProcessingStatusTagType,
+  isActionCompleteDocProcessingStatus,
+  isFailedDocProcessingStatus,
+  isNonTerminalDocProcessingStatus,
+  isTerminalDocProcessingStatus,
+} from '@/api/docs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
@@ -331,7 +338,7 @@ const retryAction = computed(() => {
     return { type: 'chunk', label: '重试文本分块' }
   }
 
-  if (status === 'error') {
+  if (isFailedDocProcessingStatus(status)) {
     if (errorCode === 'clean_failed') return { type: 'clean', label: '重试数据清洗' }
     if (errorCode === 'embedding_failed') return { type: 'embedding', label: '重试向量化' }
     if (errorCode === 'ocr_failed') return { type: 'ocr', label: '重试OCR' }
@@ -342,7 +349,7 @@ const retryAction = computed(() => {
 
 const isProcessingActionComplete = computed(() => {
   const status = docStore.currentResult?.processing?.status
-  return status === 'ready' || status === 'pending_embedding'
+  return isActionCompleteDocProcessingStatus(status)
 })
 
 const retryLoading = computed(() => {
@@ -354,7 +361,7 @@ const retryLoading = computed(() => {
 
 const displayErrorMessage = computed(() => {
   const status = docStore.currentResult?.processing?.status
-  if (status === 'error' && processingErrorMessage.value) {
+  if (isFailedDocProcessingStatus(status) && processingErrorMessage.value) {
     return processingErrorMessage.value
   }
   return docStore.currentResult?.ocr_result?.error_message || ''
@@ -411,23 +418,11 @@ function downloadAttachment(url?: string) {
 }
 
 function processingLabel(status?: string) {
-  if (status === 'pending_ocr') return '待OCR'
-  if (status === 'ocr_processing') return 'OCR处理中'
-  if (status === 'pending_clean') return '待文本清洗'
-  if (status === 'pending_outline') return '待章节提取'
-  if (status === 'pending_chunk') return '待文本分块'
-  if (status === 'pending_embedding') return '待向量化'
-  if (status === 'ready') return '已就绪'
-  if (status === 'error') return '处理失败'
-  return status || '-'
+  return getDocProcessingStatusLabel(status)
 }
 
 function processingTagType(status?: string) {
-  if (status === 'ready') return 'success'
-  if (status === 'ocr_processing' || status === 'pending_ocr') return 'warning'
-  if (status === 'pending_outline' || status === 'pending_chunk' || status === 'pending_clean' || status === 'pending_embedding') return 'info'
-  if (status === 'error') return 'danger'
-  return 'info'
+  return getDocProcessingStatusTagType(status)
 }
 
 const revisionLabel = computed(() => {
@@ -574,9 +569,8 @@ async function loadMarkdownPreview() {
       await docStore.fetchContentTree(documentId, revId)
     }
 
-    const completed = docStore.currentResult?.processing?.status === 'ready'
-    const failed = docStore.currentResult?.processing?.status === 'error'
-    if (!completed && !failed) {
+    const currentStatus = docStore.currentResult?.processing?.status
+    if (!isTerminalDocProcessingStatus(currentStatus)) {
       await docStore.startPolling(documentId)
       if (docStore.currentResult?.document?.id === documentId) {
         await docStore.fetchDocumentResult(documentId)

@@ -6,8 +6,20 @@
     "src/api/client.ts",
     "src/api/services.ts",
     "src/stores/doc.ts",
+    "src/views/DocDetailView.vue",
+    "src/composables/useMarkdownFormatter.ts",
+    "src/components/ChatWindow.vue",
+    "src/components/MessageList.vue",
+    "src/components/MessageItem.vue",
+    "src/components/AssistantMessage.vue",
+    "src/components/ToolMessageCard.vue",
+    "src/components/ChatInputArea.vue",
+    "src/composables/useToolDataParser.ts",
+    "src/composables/useTimeFormatter.ts",
+    "src/composables/useScrollManager.ts",
     "src/i18n/**/*.ts",
     "src/types/**/*.ts",
-    "src/utils/errorMessages.ts"
+    "src/utils/errorMessages.ts",
+    "src/utils/mermaid.ts"
   ]
 }
