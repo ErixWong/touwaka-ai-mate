@@ -306,13 +306,11 @@ export function getAllowedImagePaths(context) {
   const paths = [];
 
   // 数据目录（主要路径，优先级最高）
-  // DATA_BASE_PATH 可以是相对路径（./data）或绝对路径（/var/data）
-  const dataPath = process.env.DATA_BASE_PATH || '/app/data';
+  const dataPath = process.env.DATA_BASE_PATH || path.join(process.cwd(), 'data');
   const resolvedDataPath = path.resolve(dataPath);
   paths.push(resolvedDataPath);
 
-  // work 目录（AI 工作空间）- 始终在 data/work 下
-  // 基于 DATA_BASE_PATH 派生，保持与技能系统一致
+  // work 目录（AI 工作空间）
   const workspaceRoot = path.join(resolvedDataPath, 'work');
   paths.push(path.resolve(workspaceRoot));
 
@@ -320,6 +318,21 @@ export function getAllowedImagePaths(context) {
   if (process.env.UPLOAD_DIR) {
     paths.push(path.resolve(process.env.UPLOAD_DIR));
   }
+
+  // 临时目录
+  paths.push(path.resolve(process.cwd(), 'tmp'));
+
+  // 从 context 获取工作目录（新：必须是绝对路径）
+  if (context?.workdir) {
+    if (!path.isAbsolute(context.workdir)) {
+      logger.error(`[VisionProcessor] workdir 必须是绝对路径，收到: ${context.workdir}`);
+      throw new Error(`工作目录(workdir)必须是绝对路径，请使用 absolute_workspace_path 字段`);
+    }
+    paths.push(path.resolve(context.workdir));
+  }
+
+  return paths;
+}
 
   // 临时目录
   paths.push(path.resolve('/tmp'));
@@ -348,22 +361,54 @@ export function getAllowedImagePaths(context) {
  * @returns {string} 解析后的绝对路径
  */
 export function validateImagePath(filePath, allowedPaths) {
-  // 统一路径分隔符（处理 Windows 和 Unix 风格混用）
+  // 统一路径分隔符
   const normalizedFilePath = filePath.replace(/\\/g, '/');
 
   logger.info(`[VisionProcessor] validateImagePath 输入: filePath=${filePath}`);
   logger.info(`[VisionProcessor] normalizedFilePath=${normalizedFilePath}`);
 
-  // 尝试多种路径解析方式（按优先级排序）
-  const candidatePaths = [];
-
-  // 1. 直接解析（最高优先级 - 可能已经是正确的绝对路径或相对于项目根目录）
-  candidatePaths.push(path.resolve(filePath));
-
-  // 2. 相对于项目根目录解析（work/xxx -> 项目根/work/xxx）
-  if (normalizedFilePath.startsWith('work/')) {
-    candidatePaths.push(path.resolve(normalizedFilePath));
+  // 新逻辑：只接受绝对路径，直接解析
+  let resolvedPath;
+  if (path.isAbsolute(filePath)) {
+    resolvedPath = path.resolve(filePath);
+  } else {
+    throw new Error(`图片路径必须是绝对路径，收到: ${filePath}。请传递绝对路径。`);
   }
+
+  logger.info(`[VisionProcessor] 解析后的绝对路径: ${resolvedPath}`);
+  logger.info(`[VisionProcessor] 白名单目录 (${allowedPaths.length}个): ${allowedPaths.join(', ')}`);
+
+  // 检查是否在白名单内
+  const normalizedResolved = resolvedPath.replace(/\\/g, '/');
+  const isAllowed = allowedPaths.some(allowedPath => {
+    const normalizedAllowed = allowedPath.replace(/\\/g, '/');
+    return normalizedResolved.startsWith(normalizedAllowed + '/') ||
+           normalizedResolved === normalizedAllowed;
+  });
+
+  logger.info(`[VisionProcessor] 检查路径: ${resolvedPath}, 是否在白名单: ${isAllowed}`);
+
+  if (!isAllowed) {
+    logger.error(`[VisionProcessor] 路径不在白名单内: ${resolvedPath}`);
+    throw new Error(`路径不在允许的目录范围内: ${filePath}`);
+  }
+
+  // 检查文件是否存在
+  try {
+    const exists = fsSync.existsSync(resolvedPath);
+    logger.info(`[VisionProcessor] 文件存在: ${exists}`);
+    if (!exists) {
+      throw new Error(`文件不存在: ${resolvedPath} (原始路径: ${filePath})`);
+    }
+    logger.info(`[VisionProcessor] 找到有效图片路径: ${resolvedPath}`);
+    return resolvedPath;
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      throw new Error(`文件不存在: ${resolvedPath} (原始路径: ${filePath})`);
+    }
+    throw new Error(`无法访问文件: ${e.message}`);
+  }
+}
 
   // 3. 如果路径包含 work/ 子路径，尝试提取并解析
   const workIndex = normalizedFilePath.indexOf('work/');
