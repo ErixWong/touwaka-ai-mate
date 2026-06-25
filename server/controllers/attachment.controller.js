@@ -328,6 +328,9 @@ class AttachmentController {
     switch (sourceTag) {
       case 'kb_article_image':
       case 'kb_article_cover': {
+        // 旧 KB 模块已废弃，kb_article_* 附件不再开放访问
+        // 详见: docs/tasks/active/task-20260624-kb-retirement-doc-platform-convergence/kb-article-attachment-retirement-evidence.md
+        // 数据库盘点结论: 生产环境无 kb_article_* 附件记录，拒绝访问无实际影响
         logger.warn(`[Attachment] kb_article_* source_tag is deprecated (tag=${sourceTag}, sourceId=${sourceId}). Access denied.`);
         return false;
       }

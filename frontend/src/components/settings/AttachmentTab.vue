@@ -468,9 +468,8 @@ const getSourceLabel = (source_tag: string): string => {
     'chat_attachment': t('attachment.sourceChatAttachment'),
     'doc-platform': t('attachment.sourceDocPlatform'),
     'admin_upload': t('attachment.sourceAdminUpload'),
-  }
-  if (source_tag.startsWith('kb_')) {
-    return '知识库文章(已废弃)';
+    'kb_article_image': t('attachment.sourceKbArticleDeprecated'),
+    'kb_article_cover': t('attachment.sourceKbArticleDeprecated'),
   }
   return labels[source_tag] || source_tag
 }
