@@ -1,7 +1,7 @@
 import { onBeforeUnmount, getCurrentInstance, type Ref } from 'vue'
 import { currentFeatureAnalyzerApi } from '../api/current-feature-analyzer'
 import { APIError } from '@/api/client'
-import type { BatchStatus, SessionFileItem, BatchSummary } from '../api/current-feature-analyzer'
+import type { BatchStatus, BatchSession, SessionFileItem, BatchSummary } from '../api/current-feature-analyzer'
 
 export function useCurrentFeatureAnalyzerPolling(
   batchId: Ref<string | null>,
@@ -10,6 +10,8 @@ export function useCurrentFeatureAnalyzerPolling(
   summary: Ref<BatchSummary | null>,
   loading: Ref<boolean>,
   handlers?: {
+    onBatchLoaded?: (batch: BatchSession) => void
+    mergeFiles?: (incomingFiles: SessionFileItem[]) => void
     onSessionExpired?: () => void
     onError?: (message: string) => void
   },
@@ -40,9 +42,14 @@ export function useCurrentFeatureAnalyzerPolling(
       const batch = await currentFeatureAnalyzerApi.getBatch(batchId.value)
       if (myGen !== generation) return
 
-      files.value = batch.files || []
+      if (handlers?.mergeFiles) {
+        handlers.mergeFiles(batch.files || [])
+      } else {
+        files.value = batch.files || []
+      }
       batchStatus.value = batch.batch_status || 'analyzing'
       summary.value = batch.summary
+      handlers?.onBatchLoaded?.(batch)
 
       if (batchStatus.value !== 'analyzing') {
         stopPolling()

@@ -34,6 +34,21 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
   const fileDetailCache = ref<Map<string, FileDetailData>>(new Map())
   const fileDetailLoading = ref(false)
 
+  function mergeFiles(incomingFiles: SessionFileItem[]) {
+    const existingById = new Map(files.value.map(file => [file.file_id, file]))
+    const mergedFiles = incomingFiles.map((incomingFile) => {
+      const existingFile = existingById.get(incomingFile.file_id)
+      if (!existingFile) {
+        return incomingFile
+      }
+
+      Object.assign(existingFile, incomingFile)
+      return existingFile
+    })
+
+    files.value.splice(0, files.value.length, ...mergedFiles)
+  }
+
   const { startPolling, stopPolling } = useCurrentFeatureAnalyzerPolling(
     batchId,
     batchStatus,
@@ -48,15 +63,12 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       onError: (message) => {
         setError(message)
       },
+      mergeFiles,
     }
   )
 
   const currentFile = computed(() => {
-    const base = files.value.find(f => f.file_id === selectedFileId.value) || null
-    if (!base) return null
-    const detail = fileDetailCache.value.get(base.file_id)
-    if (!detail) return base
-    return { ...base, ...detail }
+    return files.value.find(f => f.file_id === selectedFileId.value) || null
   })
 
   const fileStats = computed(() => {
@@ -100,7 +112,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       const batch = await currentFeatureAnalyzerApi.upload(fileList, ruleSetId)
       batchId.value = batch.batch_id
       batchStatus.value = batch.batch_status || 'ready'
-      files.value = batch.files || []
+      mergeFiles(batch.files || [])
       selectedRuleSetId.value = batch.selected_rule_set_id || ruleSetId || null
       if (files.value.length > 0) {
         const firstOk = files.value.find(f => f.analysis_status !== 'failed')
@@ -173,11 +185,19 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     pendingFileDetailId = null
     try {
       const detail = await currentFeatureAnalyzerApi.getFileDetail(bid, fid)
+      const targetFile = files.value.find(file => file.file_id === fid)
       fileDetailCache.value.set(fid, {
         raw_data: detail.raw_data,
         result: detail.result,
         _duplicate_diagnosis: detail._duplicate_diagnosis,
       })
+      if (targetFile) {
+        Object.assign(targetFile, {
+          raw_data: detail.raw_data,
+          result: detail.result,
+          _duplicate_diagnosis: detail._duplicate_diagnosis,
+        })
+      }
     } catch {
     } finally {
       fileDetailLoading.value = false
@@ -197,6 +217,12 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     (newStatus, oldStatus) => {
       if (newStatus && newStatus !== oldStatus && batchId.value && selectedFileId.value) {
         fileDetailCache.value.delete(selectedFileId.value)
+        const targetFile = files.value.find(file => file.file_id === selectedFileId.value)
+        if (targetFile) {
+          delete targetFile.raw_data
+          targetFile.result = null
+          targetFile._duplicate_diagnosis = null
+        }
         loadFileDetail(batchId.value, selectedFileId.value, true)
       }
     }
@@ -223,7 +249,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     sessionExpired.value = false
     try {
       const batch = await currentFeatureAnalyzerApi.runAnalysis(batchId.value, selectedRuleSetId.value)
-      files.value = batch.files || []
+      mergeFiles(batch.files || [])
       batchStatus.value = batch.batch_status || 'analyzing'
       summary.value = batch.summary
 

@@ -39,10 +39,10 @@
         导出 Excel
       </el-button>
       <el-tooltip v-if="isAdmin" content="系统配置" placement="bottom">
-        <el-button icon="Setting" @click="$emit('openConfig')">配置</el-button>
+        <el-button :icon="Setting" @click="$emit('openConfig')">配置</el-button>
       </el-tooltip>
       <el-tooltip v-if="isAdmin" content="规则集管理" placement="bottom">
-        <el-button icon="Edit" @click="$emit('openRulesetEditor')">规则</el-button>
+        <el-button :icon="Edit" @click="$emit('openRulesetEditor')">规则</el-button>
       </el-tooltip>
       <input
         ref="fileInputRef"
@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { Edit, Setting } from '@element-plus/icons-vue'
 import type { RuleSetItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
