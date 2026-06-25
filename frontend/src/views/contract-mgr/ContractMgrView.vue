@@ -168,7 +168,7 @@ async function loadSummary() {
 
 async function openDetail(row: ContractRecord) {
   try {
-    detail.value = await apiRequest<Record>(apiClient.get(`${BASE}/records/${row.id}`))
+    detail.value = await apiRequest<ContractRecord>(apiClient.get(`${BASE}/records/${row.id}`))
     drawer.value = true
   } catch {}
 }

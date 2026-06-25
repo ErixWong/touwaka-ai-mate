@@ -49,8 +49,9 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       batchStatus.value = batch.batch_status
       files.value = batch.files || []
       selectedRuleSetId.value = batch.selected_rule_set_id || ruleSetId || null
-      if (files.value.length > 0) {
-        selectedFileId.value = files.value[0].file_id
+      const first_file = files.value[0]
+      if (first_file) {
+        selectedFileId.value = first_file.file_id
       }
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || '上传失败'
@@ -116,8 +117,9 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       batchStatus.value = batch.batch_status
       files.value = batch.files || []
       summary.value = batch.summary
-      if (files.value.length > 0 && !selectedFileId.value) {
-        selectedFileId.value = files.value[0].file_id
+      const first_file = files.value[0]
+      if (first_file && !selectedFileId.value) {
+        selectedFileId.value = first_file.file_id
       }
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || '分析失败'
