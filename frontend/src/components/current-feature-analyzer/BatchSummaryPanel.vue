@@ -48,7 +48,7 @@
 
 <script setup lang="ts">
 defineProps<{
-  summary: any
+  summary: import('@/api/current-feature-analyzer').BatchSummary | null
   fileStats: { total: number; completed: number; failed: number; warning_count: number; analyzing: number; pending: number }
 }>()
 

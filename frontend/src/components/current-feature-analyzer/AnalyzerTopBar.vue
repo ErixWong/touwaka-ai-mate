@@ -85,7 +85,8 @@ const selectedRuleSet = computed({
 })
 
 const canAnalyze = computed(() => {
-  return props.batchStatus === 'ready' && props.selectedRuleSetId && !props.loading
+  const hasFiles = props.batchStatus === 'ready' || props.batchStatus === 'completed' || props.batchStatus === 'partial_failed'
+  return hasFiles && props.selectedRuleSetId && !props.loading
 })
 
 const canExport = computed(() => {

@@ -101,9 +101,20 @@ import { currentFeatureAnalyzerApi, type RuleSetItem } from '@/api/current-featu
 const props = defineProps<{ ruleSets: RuleSetItem[] }>()
 const emit = defineEmits<{ close: []; reload: [] }>()
 
+interface RuleSetEditForm {
+  rule_set_name: string
+  description: string
+  business_context: string
+  prompt_template: string
+  output_json_schema: string
+  is_enabled: boolean
+  is_default: boolean
+  stages: Record<string, unknown>[]
+}
+
 const showEditDialog = ref(false)
 const editId = ref<string | null>(null)
-const editForm = reactive<any>({
+const editForm = reactive<RuleSetEditForm>({
   rule_set_name: '',
   description: '',
   business_context: '',
@@ -150,9 +161,9 @@ async function saveRuleSet() {
     showEditDialog.value = false
     emit('reload')
     ElMessage.success(editId.value ? '规则集已更新' : '规则集已创建')
-  } catch (err: any) {
-    const msg = err?.response?.data?.message || '保存失败'
-    ElMessage.error(msg)
+  } catch (err: unknown) {
+    const msg = (err as Record<string, unknown>)?.response?.data?.message || '保存失败'
+    ElMessage.error(msg as string)
   }
 }
 
@@ -161,9 +172,9 @@ async function copyRuleSet(id: string) {
     await currentFeatureAnalyzerApi.copyRuleSet(id)
     emit('reload')
     ElMessage.success('规则集已复制')
-  } catch (err: any) {
-    const msg = err?.response?.data?.message || '复制失败'
-    ElMessage.error(msg)
+  } catch (err: unknown) {
+    const msg = (err as Record<string, unknown>)?.response?.data?.message || '复制失败'
+    ElMessage.error(msg as string)
   }
 }
 
@@ -177,10 +188,10 @@ async function deleteRuleSet(id: string) {
     await currentFeatureAnalyzerApi.deleteRuleSet(id)
     emit('reload')
     ElMessage.success('规则集已删除')
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err !== 'cancel' && err !== 'close') {
-      const msg = err?.response?.data?.message || '删除失败'
-      ElMessage.error(msg)
+      const msg = (err as Record<string, unknown>)?.response?.data?.message || '删除失败'
+      ElMessage.error(msg as string)
     }
   }
 }

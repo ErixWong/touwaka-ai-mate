@@ -1,38 +1,53 @@
 <template>
   <el-card v-if="hasData" shadow="never">
-    <template #header><span class="card-title">原始电流曲线</span></template>
+    <template #header>
+      <span class="card-title">电流曲线（原始数据）</span>
+      <el-tag v-if="isSampled" size="small" type="info" style="margin-left: 8px">已采样 {{ sampledCount }} / {{ totalCount }} 点</el-tag>
+    </template>
     <div ref="chartRef" class="cfa-chart"></div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 
-const props = defineProps<{ fileName: string; result: any }>()
+import type { FileAnalysisResult } from '@/api/current-feature-analyzer'
+
+const props = defineProps<{ fileName: string; result: FileAnalysisResult | null; rawData?: number[][] | null }>()
 
 const chartRef = ref<HTMLElement | null>(null)
 const hasData = ref(false)
+const isSampled = ref(false)
+const sampledCount = ref(0)
+const totalCount = ref(0)
 let chartInstance: any = null
+let resizeHandler: (() => void) | null = null
 
-function getPoints() {
-  const raw = props.result?.file_metrics
-  if (raw && raw._points) return raw._points
-  return null
-}
+const MAX_POINTS = 3000
 
-onMounted(() => {
-  hasData.value = !!props.result?.segments?.length
-  if (hasData.value) {
-    nextTick(() => renderRaw())
+function getPoints(): number[][] {
+  // 优先使用 rawData（原始 CSV 数据点）
+  if (props.rawData && Array.isArray(props.rawData) && props.rawData.length > 0) {
+    totalCount.value = props.rawData.length
+    if (props.rawData.length <= MAX_POINTS) {
+      isSampled.value = false
+      return props.rawData
+    }
+    // 均匀采样
+    const step = props.rawData.length / MAX_POINTS
+    const sampled: number[][] = []
+    for (let i = 0; i < MAX_POINTS; i++) {
+      sampled.push(props.rawData[Math.floor(i * step)])
+    }
+    isSampled.value = true
+    sampledCount.value = sampled.length
+    return sampled
   }
-})
 
-function renderRaw() {
-  if (!chartRef.value) return
-  chartInstance = echarts.init(chartRef.value)
-  const segs = props.result.segments || []
-  const allPoints: any[] = []
+  // 回退：使用压缩段的 polyline_points 拼接
+  const segs = props.result?.segments || []
+  const allPoints: [number, number][] = []
   for (const seg of segs) {
     if (seg.polyline_points) {
       for (const [t, c] of seg.polyline_points) {
@@ -40,6 +55,34 @@ function renderRaw() {
       }
     }
   }
+  if (allPoints.length > 0) {
+    totalCount.value = allPoints.length
+    isSampled.value = false
+  }
+  return allPoints
+}
+
+function disposeChart() {
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
+  }
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
+}
+
+function renderRaw() {
+  if (!chartRef.value) return
+  disposeChart()
+  const allPoints = getPoints()
+  hasData.value = allPoints.length > 0
+  if (!hasData.value) return
+
+  chartInstance = echarts.init(chartRef.value)
+  resizeHandler = () => chartInstance?.resize()
+  window.addEventListener('resize', resizeHandler)
 
   chartInstance.setOption({
     tooltip: { trigger: 'axis' },
@@ -48,13 +91,27 @@ function renderRaw() {
     yAxis: { type: 'value', name: '电流 (A)' },
     series: [{
       type: 'line',
-      data: allPoints.length > 0 ? allPoints : [[0, 0]],
-      smooth: true,
+      data: allPoints,
+      smooth: false,
       symbol: 'none',
-      lineStyle: { color: '#409eff', width: 1 },
+      lineStyle: { color: 'rgba(45, 156, 219, 1)', width: 1.4 },
+      areaStyle: { color: 'rgba(45, 156, 219, 0.12)' },
     }],
   })
 }
+
+onMounted(() => {
+  nextTick(() => renderRaw())
+})
+
+onBeforeUnmount(() => {
+  disposeChart()
+})
+
+// 同时监听 rawData 和 result，两者任一变化都重绘
+watch([() => props.rawData, () => props.result], () => {
+  nextTick(() => renderRaw())
+})
 </script>
 
 <style scoped>
