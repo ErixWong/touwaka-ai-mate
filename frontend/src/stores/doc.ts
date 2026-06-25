@@ -15,6 +15,8 @@ import {
   transitionVersion,
   extractOutline,
   generateChunks,
+  isOcrActiveDocProcessingStatus,
+  isTerminalDocProcessingStatus,
 } from '@/api/docs'
 import type {
   DocDocument,
@@ -117,7 +119,7 @@ export const useDocStore = defineStore('doc', () => {
   async function syncProcessing(documentId: string) {
     error.value = null
     const status = processingStatus.value?.processing_status
-    const isOcrStage = status === 'pending_ocr' || status === 'ocr_processing'
+    const isOcrStage = isOcrActiveDocProcessingStatus(status)
     if (isOcrStage || !processingStatus.value) {
       try {
         await syncOcr(documentId)
@@ -168,8 +170,7 @@ export const useDocStore = defineStore('doc', () => {
       }
 
       const status = result?.processing_status
-        // ready 和 error 是终点；pending_embedding 由后台 worker 异步推进到 ready，不应在此停轮询
-        const terminal = !status || status === 'ready' || status === 'error'
+      const terminal = isTerminalDocProcessingStatus(status)
       if (terminal) {
         stopPolling()
         if (currentResult.value?.revision?.id && currentDoc.value?.id) {

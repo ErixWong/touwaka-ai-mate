@@ -73,7 +73,7 @@
               <el-input-number v-model="stage.stage_order" :min="0" size="small" controls-position="right" />
             </el-col>
             <el-col :span="4">
-              <el-button size="small" type="danger" @click="removeStage(i)">删除</el-button>
+              <el-button size="small" type="danger" @click="removeStage(Number(i))">删除</el-button>
             </el-col>
           </el-row>
           <el-input v-model="stage.semantic_definition" placeholder="语义定义" size="small" style="margin-top: 4px" />

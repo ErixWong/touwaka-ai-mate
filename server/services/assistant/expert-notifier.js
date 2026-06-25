@@ -352,13 +352,10 @@ export async function notifyExpertResult(db, request, services) {
       const topic = await Topic.findByPk(finalTopicId, { raw: true });
 
       if (topic?.task_id) {
-        // 从 task 获取工作目录
+        // 从 task 获取工作目录（workspace_path 已经是逻辑路径，不需要再加前缀）
         const task = await Task.findByPk(topic.task_id, { raw: true });
         if (task?.workspace_path) {
-          // 确保路径以 work/ 开头
-          workspacePath = task.workspace_path.startsWith('work/')
-            ? task.workspace_path
-            : `work/${task.workspace_path}`;
+          workspacePath = task.workspace_path;
         }
       }
 

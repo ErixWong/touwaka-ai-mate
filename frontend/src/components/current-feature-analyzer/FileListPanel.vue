@@ -22,14 +22,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SessionFileItem } from '@/api/current-feature-analyzer'
 import FileListItem from './FileListItem.vue'
 
-defineProps<{
+const props = defineProps<{
   files: SessionFileItem[]
   selectedFileId: string | null
   batchStatus: string
 }>()
+
+const total = computed(() => props.files.length)
+const completed = computed(() => props.files.filter(file => file.analysis_status === 'completed').length)
 
 defineEmits<{
   select: [id: string]

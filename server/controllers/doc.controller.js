@@ -24,6 +24,7 @@ import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
+import DocumentRevisionService from '../../lib/document-revision.service.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
@@ -90,6 +91,12 @@ class DocController {
   ensureCollectionAccessService() {
     if (!this.collectionAccessService) {
       this.collectionAccessService = new CollectionAccessService(this.db);
+    }
+  }
+
+  ensureRevisionService() {
+    if (!this.revisionService) {
+      this.revisionService = new DocumentRevisionService(this.db);
     }
   }
 
@@ -818,61 +825,28 @@ class DocController {
 
 async createVersion(ctx) {
     try {
-      this.ensureModels();
       this.ensureDocAccessService();
+      this.ensureRevisionService();
       const { documentId } = ctx.params;
       const userId = ctx.state.session.id;
 
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-       const { version_label, change_summary, chunks: chunksInput, content_units } = ctx.request.body;
-       const chunks = chunksInput || content_units;
-      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
+      const { revision_label, change_summary, chunks: chunksInput, content_units } = ctx.request.body;
+      const chunks = chunksInput || content_units;
+
+      const document = await this.db.getModel('document').findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
 
-      const maxVersion = await this.models.DocVersion.findOne({
-        where: { document_id: documentId },
-        order: [['revision_no', 'DESC']],
-      });
-      const revisionNo = maxVersion ? maxVersion.revision_no + 1 : 1;
-      const versionId = Utils.newID();
-
-      await this.db.sequelize.transaction(async (t) => {
-        await this.models.DocVersion.create({
-          id: versionId,
-          document_id: documentId,
-          revision_no: revisionNo,
-          revision_label: version_label || `v${revisionNo}`,
-          revision_status: 'draft',
-          is_current: 0,
-          change_summary: change_summary || null,
-          created_by: userId,
-        }, { transaction: t });
-
-        if (chunks && Array.isArray(chunks) && chunks.length > 0) {
-          for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            await this.models.DocChunk.create({
-              id: Utils.newID(),
-              revision_id: versionId,
-              outline_id: chunk.outline_id || null,
-              title: chunk.title || null,
-              content: chunk.content || null,
-              seq: chunk.seq ?? i,
-              from_line: chunk.from_line ?? null,
-              to_line: chunk.to_line ?? null,
-              text_hash: chunk.text_hash || null,
-              byte_count: chunk.byte_count ?? null,
-              token_count: chunk.token_count || null,
-            }, { transaction: t });
-          }
-        }
+      const version = await this.revisionService.createRevision(documentId, userId, {
+        revision_label,
+        change_summary,
+        chunks,
       });
 
-      const version = await this.models.DocVersion.findByPk(versionId);
       ctx.success(version);
-      logger.info(`[Doc] createVersion: ${versionId} for ${documentId}, ${chunks?.length || 0} chunks`);
+      logger.info(`[Doc] createVersion: ${version.id} for ${documentId}, ${chunks?.length || 0} chunks`);
     } catch (error) {
       logger.error('[Doc] createVersion error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -881,12 +855,12 @@ async createVersion(ctx) {
 
   async setCurrentVersion(ctx) {
     try {
-      this.ensureModels();
       this.ensureDocAccessService();
+      this.ensureRevisionService();
       const { revisionId } = ctx.params;
       const userId = ctx.state.session.id;
 
-      const version = await this.models.DocVersion.findOne({
+      const version = await this.db.getModel('document_revision').findOne({
         where: { id: revisionId },
       });
       if (!version) ctx.throw(404, 'Revision not found');
@@ -895,44 +869,14 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      const document = await this.models.DocDocument.findOne({ where: { id: documentId } });
+      const document = await this.db.getModel('document').findOne({ where: { id: documentId } });
       if (!document) ctx.throw(404, 'Document not found');
 
-      this.validateTransition(version.revision_status, 'effective');
+      const result = await this.revisionService.setCurrentRevision(documentId, revisionId, userId);
 
-      await this.db.sequelize.transaction(async (t) => {
-        const rows = await this.db.sequelize.query(
-          'SELECT id, current_revision_id FROM documents WHERE id = ? FOR UPDATE',
-          { replacements: [documentId], type: this.db.sequelize.QueryTypes.SELECT, transaction: t }
-        );
-        if (!rows || rows.length === 0) {
-          throw new Error('Document not found');
-        }
-
-        const currentRevisionId = rows[0].current_revision_id;
-        if (currentRevisionId === revisionId) {
-          return;
-        }
-
-        await this.models.DocVersion.update(
-          { is_current: 0 },
-          { where: { document_id: documentId }, transaction: t }
-        );
-
-        version.is_current = 1;
-        version.revision_status = 'effective';
-        await version.save({ transaction: t });
-
-        await this.models.DocDocument.update(
-          { current_revision_id: revisionId },
-          { where: { id: documentId }, transaction: t }
-        );
-      });
-
-      await document.reload();
       ctx.success({
-        document_id: documentId,
-        current_revision_id: revisionId,
+        document_id: result.document_id,
+        current_revision_id: result.current_revision_id,
       });
       logger.info(`[Doc] setCurrentVersion: ${revisionId} for ${documentId}`);
     } catch (error) {

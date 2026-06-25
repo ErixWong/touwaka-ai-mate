@@ -70,6 +70,7 @@ import DocController from './controllers/doc.controller.js';
 import DocCollectionController from './controllers/doc-collection.controller.js';
 import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
+import InternalDocsController from './controllers/internal-docs.controller.js';
 import AssistantController from './controllers/assistant.controller.js';
 import AttachmentController from './controllers/attachment.controller.js';
 import MiniAppController from './controllers/mini-app.controller.js';
@@ -427,6 +428,7 @@ class ApiServer {
         expertConnections: streamController.expertConnections, // 传递 SSE 连接池
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
+      internalDocs: new InternalDocsController(this.db),
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
@@ -617,9 +619,9 @@ class ApiServer {
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
     // 将 Scheduler 共享给 DebugController
     this.controllers.debug.setScheduler(this.scheduler);
-    this.app.use(internalRoutes(this.controllers.internal, authMiddleware).routes());
-    this.app.use(internalRoutes(this.controllers.internal, authMiddleware).allowedMethods());
-    logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke)');
+    this.app.use(internalRoutes(this.controllers.internal, this.controllers.internalDocs, authMiddleware).routes());
+    this.app.use(internalRoutes(this.controllers.internal, this.controllers.internalDocs, authMiddleware).allowedMethods());
+    logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke, /internal/docs/*)');
 
     // Task Static 静态文件服务路由（Issue #140）
     const taskStaticRouter = taskStaticRoutes(this.db);

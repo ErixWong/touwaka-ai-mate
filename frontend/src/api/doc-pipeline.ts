@@ -32,7 +32,8 @@ export interface DocPipelineMcpStage {
   }
   judge: DocPipelineJudge
   provider_name?: string
-  timeout_ms?: number
+  mcp_timeout_ms?: number
+  poll_request_timeout_ms?: number
   poll_interval_ms?: number
 }
 
@@ -47,7 +48,7 @@ export interface DocPipelineOcrFinalize {
   download_deliverable_tool: string | null
   persist_raw_result: boolean
   persist_image_attachments: boolean
-  timeout_ms: number
+  mcp_timeout_ms: number
   judge: DocPipelineJudge
 }
 
@@ -107,35 +108,15 @@ export interface DocPipelineMeta {
   enabled: boolean
 }
 
-export interface DocPipelineMetadataStage {
-  enabled: boolean
-  type: string
-  model_id: string | null
-  temperature: number
-  schema_json: Record<string, unknown>
-  prompt_template: string
-  timeout_ms: number
-}
-
-export interface DocPipelineRelocateStage {
-  enabled: boolean
-  target_strategy: string
-  tag_strategy: string
-  metadata_writeback: boolean
-  auto_publish: boolean
-}
-
 export interface DocPipelineConfig {
   meta: DocPipelineMeta
   pending_ocr: DocPipelineMcpStage
   ocr_processing: DocPipelineMcpStage
   ocr_finalize: DocPipelineOcrFinalize
   pending_clean: DocPipelineCleanStage
-  pending_metadata: DocPipelineMetadataStage
   pending_outline: DocPipelineOutlineStage
   pending_chunk: DocPipelineChunkStage
   pending_embedding: DocPipelineEmbeddingStage
-  pending_relocate: DocPipelineRelocateStage
 }
 
 export interface McpServerItem {

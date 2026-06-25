@@ -9,6 +9,12 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 
+interface CompressedSegment {
+  kind: string
+  segment_index: number
+  polyline_points?: [number, number][]
+}
+
 const props = defineProps<{ fileName: string; result: any }>()
 
 const chartRef = ref<HTMLElement | null>(null)

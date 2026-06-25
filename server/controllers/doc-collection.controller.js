@@ -354,7 +354,12 @@ class DocCollectionController {
 
       const document = await this.models.DocDocument.findOne({ where: { id: docId, collection_id: id } });
       if (!document) ctx.throw(404, 'Document not found in this collection');
-      ctx.throw(409, 'Document must belong to a collection. Use moveDocument to move it to another collection.');
+
+      document.collection_id = null;
+      await document.save();
+
+      ctx.success({ document_id: docId, collection_id: null });
+      logger.info(`[Collection] removeDocument: ${docId} from collection ${id}`);
     } catch (error) {
       logger.error('[Collection] removeDocument error:', error);
       ctx.throw(error.status || 500, error.message);

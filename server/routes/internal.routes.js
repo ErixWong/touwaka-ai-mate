@@ -8,10 +8,14 @@
  * - GET /internal/models/:model_id - 获取模型配置（含 Provider 信息）
  * - GET /internal/models/resolve?name=xxx - 通过名称解析模型 ID
  * - POST /internal/resident/invoke - 调用驻留式技能工具
+ * - POST /internal/docs/intakes - 文档接入
+ * - GET /internal/docs/:document_id/processing - 查询处理状态
+ * - POST /internal/docs/recall - 文档召回
+ * - GET /internal/docs/:document_id/revisions - 版本列表
  *
  * 安全策略：
  * - 必须提供有效的用户 JWT Token
- * - 只允许本地 IP 访问
+ * - 注：当前实现为"JWT 认证即可"，未强制本地 IP 访问
  */
 
 import Router from '@koa/router';
@@ -19,10 +23,11 @@ import Router from '@koa/router';
 /**
  * 创建内部路由
  * @param {Object} controller - InternalController 实例
+ * @param {Object} docsController - InternalDocsController 实例
  * @param {Object} authMiddleware - 认证中间件
  * @returns {Router}
  */
-export default function createInternalRoutes(controller, authMiddleware) {
+export default function createInternalRoutes(controller, docsController, authMiddleware) {
   const router = new Router({
     prefix: '/internal'
   });
@@ -44,6 +49,20 @@ export default function createInternalRoutes(controller, authMiddleware) {
 
   // 获取 MCP 配置 API（供驻留进程调用）
   router.post('/mcp/config', requireAuth, controller.getMcpConfig.bind(controller));
+
+  // ==================== 文档内部 API (P27) ====================
+
+  // 文档接入
+  router.post('/docs/intakes', requireAuth, docsController.createIntake.bind(docsController));
+
+  // 查询处理状态
+  router.get('/docs/:document_id/processing', requireAuth, docsController.getProcessingStatus.bind(docsController));
+
+  // 文档召回
+  router.post('/docs/recall', requireAuth, docsController.recall.bind(docsController));
+
+  // 版本列表
+  router.get('/docs/:document_id/revisions', requireAuth, docsController.listRevisions.bind(docsController));
 
   return router;
 }
