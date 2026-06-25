@@ -98,15 +98,16 @@ class LlmStageRecognitionService {
               [stage.start_time, stage.end_time] = [stage.end_time, stage.start_time];
             }
           }
-          // 将 LLM 原始返回写入 _debug，便于前端直观查看模型输出
+          // 始终保留 LLM 原始返回，便于前端和调试查看
+          parsed._debug = {
+            content: content || '',
+            reasoning_content: reasoningContent || '',
+            content_length: typeof content === 'string' ? content.length : 0,
+            reasoning_length: typeof reasoningContent === 'string' ? reasoningContent.length : 0,
+            parsed_from: this.detectParsedSource(content, reasoningContent),
+          };
           if (parsed._error) {
-            parsed._debug = {
-              content: content || '',
-              reasoning_content: reasoningContent || '',
-              content_length: typeof content === 'string' ? content.length : 0,
-              reasoning_length: typeof reasoningContent === 'string' ? reasoningContent.length : 0,
-              parsed_from: this.detectParsedSource(content, reasoningContent),
-            };
+            // _error 已在 extract/fallback 中设置，_debug 已在上面统一写入
           }
           return parsed;
         }
