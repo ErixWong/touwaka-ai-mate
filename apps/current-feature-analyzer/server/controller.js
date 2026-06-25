@@ -219,6 +219,7 @@ class CurrentFeatureAnalyzerController {
 
       this.uploadSessionService.buildSummary(batch_id);
       const updated = this.uploadSessionService.getBatch(batch_id);
+      if (!updated) return;
       const hasCompleted = updated.files.some(f => f.analysis_status === 'completed');
       const hasFailed = updated.files.some(f => f.analysis_status === 'failed');
       if (hasCompleted && hasFailed) {

@@ -264,6 +264,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     jumpToFirstFailed,
     jumpToFirstWarning,
     runAnalysis,
+    stopPolling,
     exportReport,
     loadConfig,
     reset,

@@ -100,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { useCurrentFeatureAnalyzerStore } from '@/stores/currentFeatureAnalyzer'
 import { useUserStore } from '@/stores/user'
@@ -121,6 +121,10 @@ const isAdmin = (userStore as any).user?.role === 'admin' || (userStore as any).
 onMounted(async () => {
   await store.loadRuleSets()
   await store.loadConfig()
+})
+
+onBeforeUnmount(() => {
+  store.stopPolling()
 })
 
 function onUpload(files: File[]) {
