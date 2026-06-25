@@ -77,7 +77,7 @@
 import { ref, reactive, watch, onMounted } from 'vue'
 import { modelApi } from '@/api/services'
 import type { AIModel } from '@/types'
-import type { AppConfig } from '@/api/current-feature-analyzer'
+import type { AppConfig } from '../api/current-feature-analyzer'
 
 const props = defineProps<{ config: AppConfig | null }>()
 const emit = defineEmits<{ close: []; save: [config: AppConfig] }>()
@@ -91,7 +91,6 @@ onMounted(async () => {
     const all = await modelApi.getModels()
     models.value = (all || []).filter(m => m.is_active !== false && m.model_type === 'text')
   } catch {
-    // noop
   }
 })
 
@@ -106,6 +105,6 @@ watch(
 )
 
 function onSave() {
-  emit('save', { ...form })
+  emit('save', { ...(form as unknown as AppConfig) })
 }
 </script>

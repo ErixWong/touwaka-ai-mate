@@ -67,13 +67,12 @@
       </div>
     </template>
 
-    <!-- 分析中：先画可用的图，LLM 结果区域显示等待 -->
     <template v-else-if="file.analysis_status === 'analyzing'">
       <RawCurrentChart
         v-if="file.raw_data?.length"
         :file-name="file.file_name"
         :raw-data="file.raw_data"
-        :result="file.result || {}"
+        :result="file.result"
       />
 
       <CompressedCurrentChart
@@ -114,7 +113,7 @@
 
 <script setup lang="ts">
 import { Loading } from '@element-plus/icons-vue'
-import type { SessionFileItem, RuleSetDetail, AppConfig } from '@/api/current-feature-analyzer'
+import type { SessionFileItem, RuleSetDetail, AppConfig } from '../api/current-feature-analyzer'
 import FileSummaryCard from './FileSummaryCard.vue'
 import StageSummaryCard from './StageSummaryCard.vue'
 import RawCurrentChart from './RawCurrentChart.vue'

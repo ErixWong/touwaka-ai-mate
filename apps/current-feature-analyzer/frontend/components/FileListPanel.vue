@@ -23,7 +23,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SessionFileItem } from '@/api/current-feature-analyzer'
+import type { SessionFileItem } from '../api/current-feature-analyzer'
 import FileListItem from './FileListItem.vue'
 
 const props = defineProps<{
@@ -39,35 +39,3 @@ defineEmits<{
   select: [id: string]
 }>()
 </script>
-
-<style scoped>
-.cfa-file-list {
-  width: 260px;
-  min-width: 260px;
-  border-right: 1px solid var(--el-border-color-light);
-  display: flex;
-  flex-direction: column;
-  background: var(--el-bg-color);
-}
-.cfa-file-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.cfa-file-stats {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.cfa-file-list-body {
-  flex: 1;
-  overflow-y: auto;
-}
-.cfa-file-list-empty {
-  padding: 20px;
-  text-align: center;
-  color: var(--el-text-color-placeholder);
-}
-</style>

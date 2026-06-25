@@ -83,7 +83,7 @@
             <el-checkbox v-model="stage.allow_overlap" size="small">允许重叠</el-checkbox>
           </div>
         </div>
-        <el-button size="small" @click="addStage" style="margin-top: 8px">+ 添加阶段</el-button>
+        <el-button size="small" style="margin-top: 8px" @click="addStage">+ 添加阶段</el-button>
       </el-form>
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
@@ -96,7 +96,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { currentFeatureAnalyzerApi, type RuleSetItem } from '@/api/current-feature-analyzer'
+import { currentFeatureAnalyzerApi, type RuleSetItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{ ruleSets: RuleSetItem[] }>()
 const emit = defineEmits<{ close: []; reload: [] }>()
@@ -124,6 +124,11 @@ const editForm = reactive<RuleSetEditForm>({
   is_default: false,
   stages: [],
 })
+
+function getErrorMessage(err: unknown, fallback: string) {
+  const response = (err as { response?: { data?: { message?: string } } }).response
+  return response?.data?.message || fallback
+}
 
 function createNew() {
   editId.value = null
@@ -162,8 +167,7 @@ async function saveRuleSet() {
     emit('reload')
     ElMessage.success(editId.value ? '规则集已更新' : '规则集已创建')
   } catch (err: unknown) {
-    const msg = (err as Record<string, unknown>)?.response?.data?.message || '保存失败'
-    ElMessage.error(msg as string)
+    ElMessage.error(getErrorMessage(err, '保存失败'))
   }
 }
 
@@ -173,8 +177,7 @@ async function copyRuleSet(id: string) {
     emit('reload')
     ElMessage.success('规则集已复制')
   } catch (err: unknown) {
-    const msg = (err as Record<string, unknown>)?.response?.data?.message || '复制失败'
-    ElMessage.error(msg as string)
+    ElMessage.error(getErrorMessage(err, '复制失败'))
   }
 }
 
@@ -190,15 +193,14 @@ async function deleteRuleSet(id: string) {
     ElMessage.success('规则集已删除')
   } catch (err: unknown) {
     if (err !== 'cancel' && err !== 'close') {
-      const msg = (err as Record<string, unknown>)?.response?.data?.message || '删除失败'
-      ElMessage.error(msg as string)
+      ElMessage.error(getErrorMessage(err, '删除失败'))
     }
   }
 }
 
 function addStage() {
   editForm.stages.push({
-    stage_code: '', stage_name: '', stage_order: (editForm.stages.length),
+    stage_code: '', stage_name: '', stage_order: editForm.stages.length,
     semantic_definition: '', expected_signal_features: '',
     required: true, allow_repeat: false, allow_overlap: false,
     min_duration_ms: null, max_duration_ms: null, notes: '',

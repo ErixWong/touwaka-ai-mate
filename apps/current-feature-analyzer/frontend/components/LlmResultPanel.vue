@@ -15,7 +15,6 @@
         {{ w.message || w }}
       </el-tag>
     </div>
-    <!-- LLM 原始返回内容（无论成功/失败都展示） -->
     <div v-if="llmResult._debug?.content || llmResult._debug?.reasoning_content" class="llm-raw-block">
       <el-collapse>
         <el-collapse-item title="📄 查看 LLM 原始返回" name="raw">
@@ -71,10 +70,10 @@
 </template>
 
 <script setup lang="ts">
-import type { LlmResult } from '@/api/current-feature-analyzer'
+import type { LlmResult } from '../api/current-feature-analyzer'
 
 defineProps<{
-  llmResult: LlmResult | null
+  llmResult: LlmResult
   showReason?: boolean
 }>()
 </script>

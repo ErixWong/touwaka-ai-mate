@@ -11,8 +11,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
-
-import type { FileAnalysisResult } from '@/api/current-feature-analyzer'
+import type { FileAnalysisResult } from '../api/current-feature-analyzer'
 
 const props = defineProps<{ fileName: string; result: FileAnalysisResult | null; rawData?: number[][] | null }>()
 
@@ -27,31 +26,35 @@ let resizeHandler: (() => void) | null = null
 const MAX_POINTS = 3000
 
 function getPoints(): number[][] {
-  // 优先使用 rawData（原始 CSV 数据点）
   if (props.rawData && Array.isArray(props.rawData) && props.rawData.length > 0) {
     totalCount.value = props.rawData.length
     if (props.rawData.length <= MAX_POINTS) {
       isSampled.value = false
       return props.rawData
     }
-    // 均匀采样
     const step = props.rawData.length / MAX_POINTS
     const sampled: number[][] = []
     for (let i = 0; i < MAX_POINTS; i++) {
-      sampled.push(props.rawData[Math.floor(i * step)])
+      const point = props.rawData[Math.floor(i * step)]
+      if (point) {
+        sampled.push(point)
+      }
     }
     isSampled.value = true
     sampledCount.value = sampled.length
     return sampled
   }
 
-  // 回退：使用压缩段的 polyline_points 拼接
   const segs = props.result?.segments || []
   const allPoints: [number, number][] = []
   for (const seg of segs) {
     if (seg.polyline_points) {
-      for (const [t, c] of seg.polyline_points) {
-        allPoints.push([t, c])
+      for (const point of seg.polyline_points) {
+        const time = point?.[0]
+        const current = point?.[1]
+        if (typeof time === 'number' && typeof current === 'number') {
+          allPoints.push([time, current])
+        }
       }
     }
   }
@@ -108,7 +111,6 @@ onBeforeUnmount(() => {
   disposeChart()
 })
 
-// 同时监听 rawData 和 result，两者任一变化都重绘
 watch([() => props.rawData, () => props.result], () => {
   nextTick(() => renderRaw())
 })

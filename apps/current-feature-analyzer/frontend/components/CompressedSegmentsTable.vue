@@ -15,43 +15,33 @@
           {{ scope.row.segment_index ?? scope.$index }}
         </template>
       </el-table-column>
-
       <el-table-column label="类型" min-width="120">
         <template #default="scope">
           <el-tag size="small" effect="plain">{{ scope.row.kind || '-' }}</el-tag>
         </template>
       </el-table-column>
-
       <el-table-column label="开始时间" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.start_time) }}</template>
       </el-table-column>
-
       <el-table-column label="结束时间" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.end_time) }}</template>
       </el-table-column>
-
       <el-table-column label="持续时长" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.duration) }}</template>
       </el-table-column>
-
       <el-table-column prop="point_count" label="点数" min-width="90" />
-
       <el-table-column label="代表电流" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.representative_current) }}</template>
       </el-table-column>
-
       <el-table-column label="带宽" min-width="100">
         <template #default="scope">{{ formatNumber(scope.row.bandwidth) }}</template>
       </el-table-column>
-
       <el-table-column label="斜率" min-width="100">
         <template #default="scope">{{ formatNumber(scope.row.slope) }}</template>
       </el-table-column>
-
       <el-table-column label="折点数" min-width="100">
         <template #default="scope">{{ scope.row.polyline_points?.length ?? 0 }}</template>
       </el-table-column>
-
       <el-table-column label="拟合误差" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.line_fit_error) }}</template>
       </el-table-column>
@@ -60,16 +50,12 @@
 </template>
 
 <script setup lang="ts">
-import type { SegmentItem } from '@/api/current-feature-analyzer'
+import type { SegmentItem } from '../api/current-feature-analyzer'
 
-defineProps<{
-  segments: SegmentItem[]
-}>()
+defineProps<{ segments: SegmentItem[] }>()
 
 function formatNumber(value?: number | null) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return '-'
-  }
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
   return value.toFixed(4)
 }
 </script>
@@ -81,13 +67,11 @@ function formatNumber(value?: number | null) {
   justify-content: space-between;
   gap: 12px;
 }
-
 .table-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
-
 .table-note {
   margin-top: 4px;
   font-size: 12px;

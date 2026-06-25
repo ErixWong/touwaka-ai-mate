@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
-import type { SessionFileItem } from '@/api/current-feature-analyzer'
+import type { SessionFileItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
   file: SessionFileItem

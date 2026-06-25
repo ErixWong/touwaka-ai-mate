@@ -1,13 +1,18 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
-  "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
+  "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "../apps/**/*.ts", "../apps/**/*.vue"],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@apps/*": ["../apps/*"],
+      "vue": ["./node_modules/vue"],
+      "pinia": ["./node_modules/pinia"],
+      "element-plus": ["./node_modules/element-plus"],
+      "@element-plus/icons-vue": ["./node_modules/@element-plus/icons-vue"]
     }
   }
 }
