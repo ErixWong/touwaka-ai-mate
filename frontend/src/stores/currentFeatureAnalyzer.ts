@@ -46,15 +46,31 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     try {
       const batch = await currentFeatureAnalyzerApi.upload(fileList, ruleSetId)
       batchId.value = batch.batch_id
-      batchStatus.value = batch.batch_status
+      batchStatus.value = batch.batch_status || 'ready'
       files.value = batch.files || []
       selectedRuleSetId.value = batch.selected_rule_set_id || ruleSetId || null
       if (files.value.length > 0) {
-        selectedFileId.value = files.value[0].file_id
+        // 自动选中第一个未失败的文件
+        const firstOk = files.value.find(f => f.analysis_status !== 'failed')
+        selectedFileId.value = firstOk ? firstOk.file_id : files.value[0].file_id
+      }
+      // 检查是否有解析失败的文件
+      const failedCount = files.value.filter(f => f.analysis_status === 'failed').length
+      if (failedCount > 0) {
+        const successCount = files.value.length - failedCount
+        if (successCount === 0) {
+          setError(`所有文件解析失败，共 ${failedCount} 个`)
+        } else {
+          setError(`${failedCount} 个文件解析失败，${successCount} 个成功`)
+        }
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || '上传失败'
-      setError(msg)
+      const msg = err?.response?.data?.message || err?.response?.data?.data?.message || err?.message || '上传失败'
+      if (err?.response?.status === 413) {
+        setError('文件过大，请确保单个文件不超过 50MB')
+      } else {
+        setError(msg)
+      }
       batchStatus.value = 'idle'
     } finally {
       loading.value = false
@@ -105,46 +121,104 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     if (first) selectedFileId.value = first.file_id
   }
 
+  let pollingTimer: ReturnType<typeof setInterval> | null = null
+
+  function stopPolling() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer)
+      pollingTimer = null
+    }
+  }
+
+  function startPolling() {
+    stopPolling()
+    pollingTimer = setInterval(async () => {
+      if (!batchId.value) { stopPolling(); return }
+      if (batchStatus.value !== 'analyzing') { stopPolling(); return }
+      try {
+        const batch = await currentFeatureAnalyzerApi.getBatch(batchId.value)
+        files.value = batch.files || []
+        batchStatus.value = batch.batch_status || 'analyzing'
+        summary.value = batch.summary
+        if (batchStatus.value !== 'analyzing') {
+          stopPolling()
+          loading.value = false
+        }
+      } catch {
+        // 轮询失败不报错，下次重试
+      }
+    }, 2000)
+  }
+
   async function runAnalysis() {
-    if (!batchId.value || !selectedRuleSetId.value) return
+    if (!batchId.value || !selectedRuleSetId.value) {
+      setError('请先选择规则集')
+      return
+    }
     loading.value = true
     batchStatus.value = 'analyzing'
     error.value = null
     sessionExpired.value = false
     try {
       const batch = await currentFeatureAnalyzerApi.runAnalysis(batchId.value, selectedRuleSetId.value)
-      batchStatus.value = batch.batch_status
+      // 后端现在立即返回，不等待 LLM
       files.value = batch.files || []
+      batchStatus.value = batch.batch_status || 'analyzing'
       summary.value = batch.summary
+
+      // 自动选中第一个文件
       if (files.value.length > 0 && !selectedFileId.value) {
-        selectedFileId.value = files.value[0].file_id
+        const first = files.value.find(f => f.analysis_status !== 'failed')
+        selectedFileId.value = first?.file_id || files.value[0].file_id
+      }
+
+      // 开始轮询获取中间结果
+      if (batchStatus.value === 'analyzing') {
+        startPolling()
+      } else {
+        loading.value = false
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || '分析失败'
+      stopPolling()
+      let msg = err?.response?.data?.message || err?.response?.data?.data?.message || err?.message || '分析失败'
       if (err?.response?.status === 404 && batchId.value) {
+        msg = '分析会话已过期，请重新上传文件'
         sessionExpired.value = true
         reset()
       }
+      if (err?.response?.status === 400) {
+        msg = `分析请求参数错误: ${msg}`
+      }
       setError(msg)
       batchStatus.value = 'failed'
-    } finally {
       loading.value = false
     }
   }
 
   async function exportReport() {
-    if (!batchId.value) return
+    if (!batchId.value) {
+      setError('没有可导出的批次')
+      return
+    }
+    const completedCount = files.value.filter(f => f.analysis_status === 'completed').length
+    if (completedCount === 0) {
+      setError('没有成功分析的文件，无法导出')
+      return
+    }
     try {
       const response = await currentFeatureAnalyzerApi.exportReport(batchId.value)
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data])
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `current-feature-analysis-${new Date().toISOString().slice(0, 19).replace(/[:]/g, '-')}.xlsx`
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (err: any) {
-      setError('导出失败')
+      const msg = err?.response?.data?.message || err?.message || '导出失败'
+      setError(`导出失败: ${msg}`)
     }
   }
 
@@ -158,6 +232,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
   }
 
   function reset() {
+    stopPolling()
     batchId.value = null
     batchStatus.value = 'idle'
     selectedFileId.value = null

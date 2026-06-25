@@ -73,7 +73,13 @@
       />
 
       <div v-if="store.error" class="cfa-error-banner">
-        {{ store.error }}
+        <el-alert
+          :title="store.error"
+          type="error"
+          :closable="true"
+          show-icon
+          @close="store.error = null"
+        />
       </div>
 
       <AdminConfigModal

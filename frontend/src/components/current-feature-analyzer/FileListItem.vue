@@ -10,12 +10,19 @@
     <div class="cfa-file-item-meta">
       <el-tag :type="statusTagType" size="small">{{ statusLabel }}</el-tag>
       <span v-if="file.warning_count > 0" class="cfa-file-warn">⚠{{ file.warning_count }}</span>
+      <el-tooltip v-if="file._duplicate_diagnosis" :content="file._duplicate_diagnosis.message" placement="top">
+        <el-icon class="cfa-file-warn-icon"><WarningFilled /></el-icon>
+      </el-tooltip>
+      <el-tooltip v-if="file.error_message && file.analysis_status === 'failed'" :content="file.error_message" placement="top">
+        <el-icon class="cfa-file-err-icon"><WarningFilled /></el-icon>
+      </el-tooltip>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { WarningFilled } from '@element-plus/icons-vue'
 import type { SessionFileItem } from '@/api/current-feature-analyzer'
 
 const props = defineProps<{
@@ -77,5 +84,15 @@ const statusTagType = computed(() => {
 .cfa-file-warn {
   color: var(--el-color-warning);
   font-size: 11px;
+}
+.cfa-file-warn-icon {
+  color: var(--el-color-warning);
+  font-size: 14px;
+  cursor: help;
+}
+.cfa-file-err-icon {
+  color: var(--el-color-danger);
+  font-size: 14px;
+  cursor: help;
 }
 </style>

@@ -77,12 +77,19 @@ class UploadSessionService {
     if (!file) return null;
     file.result = result;
     const hasError = !!result.llm_result?._error;
-    file.analysis_status = hasError ? 'failed' : 'completed';
+    file.analysis_status = hasError ? 'failed' : file.analysis_status === 'analyzing' ? 'analyzing' : 'completed';
     file.warning_count = (result.llm_result?.warnings || []).length;
     if (hasError && !file.error_message) {
       file.error_message = result.llm_result._error;
     }
     return file;
+  }
+
+  setFileStatus(batchId, fileId, status) {
+    const session = sessions.get(batchId);
+    if (!session) return;
+    const file = session.files.find(f => f.file_id === fileId);
+    if (file) file.analysis_status = status;
   }
 
   setFileError(batchId, fileId, errorMessage) {

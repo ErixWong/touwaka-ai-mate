@@ -1,5 +1,7 @@
 import apiClient, { apiRequest } from './client'
 
+const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
+
 export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
 export type AnalysisStatus = 'pending' | 'parsing' | 'ready' | 'analyzing' | 'completed' | 'failed'
 
@@ -14,17 +16,50 @@ export interface SessionFileItem {
   analysis_status: AnalysisStatus
   warning_count: number
   error_message: string | null
+  raw_data?: number[][] | null
   result: FileAnalysisResult | null
+  _duplicate_diagnosis?: {
+    duplicate_count: number
+    duplicate_times: number[]
+    message: string
+  } | null
+}
+
+export interface SegmentItem {
+  segment_index: number
+  start_index?: number
+  end_index?: number
+  start_time: number
+  end_time: number
+  duration: number
+  point_count: number
+  min_current?: number
+  max_current?: number
+  mean_current?: number
+  representative_current?: number
+  bandwidth?: number
+  baseline_ratio?: number
+  slope?: number
+  line_fit_error?: number
+  kind?: string | null
+  polyline_points?: number[][] | null
 }
 
 export interface FileAnalysisResult {
   globals?: Record<string, number>
-  segments?: any[]
+  segments?: SegmentItem[]
   events?: any[]
   llm_result?: {
     stages: any[]
     summary?: string
     warnings?: any[]
+    _error?: string
+    _debug?: {
+      attempt?: number
+      content_length?: number
+      content_preview?: string
+      reasoning_preview?: string
+    } | null
   }
   stage_metrics?: any[]
   file_metrics?: Record<string, any>
@@ -69,58 +104,60 @@ export const currentFeatureAnalyzerApi = {
     files.forEach(f => formData.append('files', f))
     if (ruleSetId) formData.append('rule_set_id', ruleSetId)
     return apiRequest<BatchSession>(
-      apiClient.post('/current-feature-analyzer/uploads', formData, {
+      apiClient.post('/apps/current-feature-analyzer/uploads', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
     )
   },
 
   getBatch: (batchId: string) =>
-    apiRequest<BatchSession>(apiClient.get(`/current-feature-analyzer/batches/${batchId}`)),
+    apiRequest<BatchSession>(apiClient.get(`/apps/current-feature-analyzer/batches/${batchId}`)),
 
   getFileDetail: (batchId: string, fileId: string) =>
     apiRequest<SessionFileItem>(
-      apiClient.get(`/current-feature-analyzer/batches/${batchId}/files/${fileId}`)
+      apiClient.get(`/apps/current-feature-analyzer/batches/${batchId}/files/${fileId}`)
     ),
 
   runAnalysis: (batchId: string, ruleSetId: string, options?: Record<string, number>) =>
     apiRequest<BatchSession>(
-      apiClient.post('/current-feature-analyzer/analysis/run', {
+      apiClient.post('/apps/current-feature-analyzer/analysis/run', {
         batch_id: batchId,
         rule_set_id: ruleSetId,
         analysis_options: options,
+      }, {
+        timeout: ANALYSIS_TIMEOUT_MS,
       })
     ),
 
   getReport: (batchId: string) =>
-    apiRequest<BatchSession>(apiClient.get(`/current-feature-analyzer/reports/${batchId}`)),
+    apiRequest<BatchSession>(apiClient.get(`/apps/current-feature-analyzer/reports/${batchId}`)),
 
   exportReport: (batchId: string) =>
-    apiClient.post(`/current-feature-analyzer/reports/${batchId}/export`, {}, {
+    apiClient.post(`/apps/current-feature-analyzer/reports/${batchId}/export`, {}, {
       responseType: 'blob',
     }),
 
   listRuleSets: () =>
-    apiRequest<{ items: RuleSetItem[] }>(apiClient.get('/current-feature-analyzer/rule-sets')),
+    apiRequest<{ items: RuleSetItem[] }>(apiClient.get('/apps/current-feature-analyzer/rule-sets')),
 
   getRuleSet: (id: string) =>
-    apiRequest<RuleSetDetail>(apiClient.get(`/current-feature-analyzer/rule-sets/${id}`)),
+    apiRequest<RuleSetDetail>(apiClient.get(`/apps/current-feature-analyzer/rule-sets/${id}`)),
 
   createRuleSet: (data: any) =>
-    apiRequest<RuleSetDetail>(apiClient.post('/current-feature-analyzer/rule-sets', data)),
+    apiRequest<RuleSetDetail>(apiClient.post('/apps/current-feature-analyzer/rule-sets', data)),
 
   updateRuleSet: (id: string, data: any) =>
-    apiRequest<RuleSetDetail>(apiClient.put(`/current-feature-analyzer/rule-sets/${id}`, data)),
+    apiRequest<RuleSetDetail>(apiClient.put(`/apps/current-feature-analyzer/rule-sets/${id}`, data)),
 
   deleteRuleSet: (id: string) =>
-    apiRequest<{ deleted: boolean }>(apiClient.delete(`/current-feature-analyzer/rule-sets/${id}`)),
+    apiRequest<{ deleted: boolean }>(apiClient.delete(`/apps/current-feature-analyzer/rule-sets/${id}`)),
 
   copyRuleSet: (id: string) =>
-    apiRequest<RuleSetDetail>(apiClient.post(`/current-feature-analyzer/rule-sets/${id}/copy`)),
+    apiRequest<RuleSetDetail>(apiClient.post(`/apps/current-feature-analyzer/rule-sets/${id}/copy`)),
 
   getConfig: () =>
-    apiRequest<any>(apiClient.get('/current-feature-analyzer/config')),
+    apiRequest<any>(apiClient.get('/apps/current-feature-analyzer/config')),
 
   saveConfig: (data: any) =>
-    apiRequest<any>(apiClient.put('/current-feature-analyzer/config', data)),
+    apiRequest<any>(apiClient.put('/apps/current-feature-analyzer/config', data)),
 }

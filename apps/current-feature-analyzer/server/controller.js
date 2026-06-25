@@ -1,3 +1,4 @@
+import fs from 'fs';
 import logger from '../../../lib/logger.js';
 import {
   ConfigService,
@@ -33,37 +34,43 @@ class CurrentFeatureAnalyzerController {
       const userId = this.getUserId(ctx);
       if (!userId) { ctx.error('Unauthorized', 401); return; }
 
-      const files = ctx.request.files?.files;
+      // multer 将文件放在 ctx.files 中
+      const files = ctx.files?.files || ctx.request.files?.files;
       if (!files || files.length === 0) {
         ctx.error('请至少上传一个 CSV 文件', 400);
         return;
       }
 
       const fileList = Array.isArray(files) ? files : [files];
-      const batch = this.uploadSessionService.createBatch(fileList.map(f => f.originalFilename || f.name || 'unknown.csv'));
+      const batch = this.uploadSessionService.createBatch(fileList.map(f => f.originalname || f.originalFilename || f.name || 'unknown.csv'));
 
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];
-        const text = await this.readUploadedFile(f);
-        const parsed = this.csvParseService.parse(text);
+        try {
+          const text = this.readUploadedFileSync(f);
+          const parsed = this.csvParseService.parse(text);
 
-        if (parsed.error) {
-          this.uploadSessionService.setFileError(batch.batch_id, batch.files[i].file_id, parsed.error);
-          continue;
-        }
-
-        this.uploadSessionService.setFileRawData(
-          batch.batch_id, batch.files[i].file_id, parsed.points, {
-            row_count: parsed.point_count,
-            time_column: parsed.time_column,
-            current_column: parsed.current_column,
-            file_size: f.size || 0,
+          if (parsed.error) {
+            this.uploadSessionService.setFileError(batch.batch_id, batch.files[i].file_id, parsed.error);
+            continue;
           }
-        );
 
-        if (parsed.duplicate_diagnosis) {
-          const file = this.uploadSessionService.getBatch(batch.batch_id).files[i];
-          file._duplicate_diagnosis = parsed.duplicate_diagnosis;
+          this.uploadSessionService.setFileRawData(
+            batch.batch_id, batch.files[i].file_id, parsed.points, {
+              row_count: parsed.point_count,
+              time_column: parsed.time_column,
+              current_column: parsed.current_column,
+              file_size: f.size || 0,
+            }
+          );
+
+          if (parsed.duplicate_diagnosis) {
+            const file = this.uploadSessionService.getBatch(batch.batch_id).files[i];
+            file._duplicate_diagnosis = parsed.duplicate_diagnosis;
+          }
+        } catch (fileErr) {
+          logger.error(`[cfa controller] file parse error for ${f.originalname || f.name}:`, fileErr.message);
+          this.uploadSessionService.setFileError(batch.batch_id, batch.files[i].file_id, fileErr.message);
         }
       }
 
@@ -75,16 +82,18 @@ class CurrentFeatureAnalyzerController {
     }
   }
 
-  async readUploadedFile(f) {
-    if (f.filepath) {
-      const fs = await import('fs/promises');
-      return fs.readFile(f.filepath, 'utf-8');
-    }
-    if (f.data) {
-      return f.data.toString('utf-8');
-    }
+  readUploadedFileSync(f) {
+    // multer memoryStorage → f.buffer
     if (f.buffer) {
       return f.buffer.toString('utf-8');
+    }
+    // fallback: disk storage → f.path (via fs)
+    if (f.filepath || f.path) {
+      return fs.readFileSync(f.filepath || f.path, 'utf-8');
+    }
+    // data URL / raw data
+    if (f.data) {
+      return typeof f.data === 'string' ? f.data : f.data.toString('utf-8');
     }
     throw new Error('无法读取上传文件');
   }
@@ -145,18 +154,41 @@ class CurrentFeatureAnalyzerController {
 
       this.uploadSessionService.setBatchStatus(batch_id, 'analyzing');
 
+      // 立即返回，实际分析在后台执行
+      ctx.success(this.uploadSessionService.getBatch(batch_id));
+
+      // 后台异步执行分析
+      this._runAnalysisInBackground(batch_id, ruleSet, appConfig, vcOptions);
+    } catch (err) {
+      logger.error('[cfa controller] runAnalysis error:', err.message);
+      ctx.error(err.message, 500);
+    }
+  }
+
+  async _runAnalysisInBackground(batch_id, ruleSet, appConfig, vcOptions) {
+    try {
+      const batch = this.uploadSessionService.getBatch(batch_id);
+      if (!batch) return;
+
       for (const file of batch.files) {
         if (!file.raw_data || file.analysis_status === 'failed') continue;
 
         try {
+          file.analysis_status = 'analyzing';
+          this.uploadSessionService.setFileStatus(batch_id, file.file_id, 'analyzing');
+
+          const compressionResult = this.vectorCompressionService.compress(file.raw_data, vcOptions);
+
+          // 压缩完成立即推送 segments/globals，前端轮询可立即显示图表
           this.uploadSessionService.setFileResult(batch_id, file.file_id, {
+            globals: compressionResult.globals,
+            segments: compressionResult.segments,
+            events: compressionResult.events,
             llm_result: { stages: [], warnings: [{ message: '分析中...' }] },
             stage_metrics: [],
             file_metrics: null,
           });
-          file.analysis_status = 'analyzing';
 
-          const compressionResult = this.vectorCompressionService.compress(file.raw_data, vcOptions);
           const llmResult = await this.llmStageRecognitionService.recognize(
             compressionResult.globals,
             compressionResult.segments,
@@ -178,6 +210,7 @@ class CurrentFeatureAnalyzerController {
             stage_metrics: stageMetrics,
             file_metrics: fileMetrics,
           });
+          this.uploadSessionService.setFileStatus(batch_id, file.file_id, 'completed');
         } catch (err) {
           logger.error(`[cfa controller] analysis error for file ${file.file_name}:`, err.message);
           this.uploadSessionService.setFileError(batch_id, file.file_id, err.message);
@@ -186,10 +219,18 @@ class CurrentFeatureAnalyzerController {
 
       this.uploadSessionService.buildSummary(batch_id);
       const updated = this.uploadSessionService.getBatch(batch_id);
-      ctx.success(updated);
+      const hasCompleted = updated.files.some(f => f.analysis_status === 'completed');
+      const hasFailed = updated.files.some(f => f.analysis_status === 'failed');
+      if (hasCompleted && hasFailed) {
+        this.uploadSessionService.setBatchStatus(batch_id, 'partial_failed');
+      } else if (hasFailed && !hasCompleted) {
+        this.uploadSessionService.setBatchStatus(batch_id, 'failed');
+      } else {
+        this.uploadSessionService.setBatchStatus(batch_id, 'completed');
+      }
     } catch (err) {
-      logger.error('[cfa controller] runAnalysis error:', err.message);
-      ctx.error(err.message, 500);
+      logger.error('[cfa controller] background analysis error:', err.message);
+      this.uploadSessionService.setBatchStatus(batch_id, 'failed');
     }
   }
 

@@ -3,9 +3,9 @@ import logger from '../../../../lib/logger.js';
 const DEFAULT_CONFIG = {
   enabled: true,
   llm_model_id: null,
-  temperature: 0.2,
-  max_tokens: 8000,
-  timeout_ms: 120000,
+  temperature: 0,
+  max_tokens: 2000,
+  timeout_ms: 240000,
   retry_times: 2,
   enable_json_repair: true,
   default_rule_set_id: null,
