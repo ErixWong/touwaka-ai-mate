@@ -20,8 +20,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { StageMetric } from '../api/current-feature-analyzer'
 
-const props = defineProps<{ metrics: any[] }>()
+const props = defineProps<{ metrics: StageMetric[] }>()
 
 const avgDuration = computed(() => {
   if (!props.metrics.length) return '-'

@@ -21,11 +21,24 @@
 
     <FileSummaryCard v-if="file" :file="file" />
 
-    <template v-if="file.analysis_status === 'completed' && file.result">
+    <template v-if="file.result && ['completed', 'failed'].includes(file.analysis_status)">
       <StageSummaryCard :metrics="file.result.stage_metrics || []" />
 
-      <RawCurrentChart :file-name="file.file_name" :result="file.result" />
+      <RawCurrentChart :file-name="file.file_name" :result="file.result" :raw-data="file.raw_data" />
       <CompressedCurrentChart :file-name="file.file_name" :result="file.result" />
+
+      <CompressionStatsCard
+        :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
+        :segments="file.result.segments"
+        :events="file.result.events"
+        :globals="file.result.globals"
+        :duplicate-diagnosis="file._duplicate_diagnosis"
+      />
+
+      <CompressedSegmentsTable
+        v-if="file.result.segments?.length"
+        :segments="file.result.segments"
+      />
 
       <StageMetricsTable
         v-if="file.result.stage_metrics?.length"
@@ -42,6 +55,45 @@
         :llm-result="file.result.llm_result"
         :show-reason="appConfig?.ui?.show_llm_reason !== false"
       />
+
+      <div v-if="file.analysis_status === 'failed'" class="cfa-error-block">
+        <el-alert
+          type="error"
+          :title="'分析失败'"
+          :description="file.error_message || file.result.llm_result?._error || '未知错误'"
+          show-icon
+          :closable="false"
+        />
+      </div>
+    </template>
+
+    <template v-else-if="file.analysis_status === 'analyzing'">
+      <RawCurrentChart
+        v-if="file.raw_data?.length"
+        :file-name="file.file_name"
+        :raw-data="file.raw_data"
+        :result="file.result"
+      />
+
+      <CompressedCurrentChart
+        v-if="file.result?.segments?.length"
+        :file-name="file.file_name"
+        :result="file.result"
+      />
+
+      <CompressionStatsCard
+        v-if="file.result?.segments?.length"
+        :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
+        :segments="file.result.segments"
+        :events="file.result.events"
+        :globals="file.result.globals"
+        :duplicate-diagnosis="file._duplicate_diagnosis"
+      />
+
+      <div class="cfa-loading-block">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>AI 正在分析识别阶段...</span>
+      </div>
     </template>
 
     <div v-else-if="file.analysis_status === 'failed'" class="cfa-error-block">
@@ -53,11 +105,7 @@
         :closable="false"
       />
     </div>
-    <div v-else-if="file.analysis_status === 'analyzing'" class="cfa-loading-block">
-      <el-icon class="is-loading"><Loading /></el-icon>
-      <span>分析中...</span>
-    </div>
-    <div v-else class="cfa-pending-block">
+    <div v-else-if="file.analysis_status === 'pending'" class="cfa-pending-block">
       <span>等待分析</span>
     </div>
   </div>
@@ -65,18 +113,20 @@
 
 <script setup lang="ts">
 import { Loading } from '@element-plus/icons-vue'
-import type { SessionFileItem, RuleSetDetail } from '@/api/current-feature-analyzer'
+import type { SessionFileItem, RuleSetDetail, AppConfig } from '../api/current-feature-analyzer'
 import FileSummaryCard from './FileSummaryCard.vue'
 import StageSummaryCard from './StageSummaryCard.vue'
 import RawCurrentChart from './RawCurrentChart.vue'
 import CompressedCurrentChart from './CompressedCurrentChart.vue'
+import CompressionStatsCard from './CompressionStatsCard.vue'
+import CompressedSegmentsTable from './CompressedSegmentsTable.vue'
 import StageMetricsTable from './StageMetricsTable.vue'
 import AuxiliaryMetricsPanel from './AuxiliaryMetricsPanel.vue'
 import LlmResultPanel from './LlmResultPanel.vue'
 
 defineProps<{
   file: SessionFileItem
-  appConfig: any
+  appConfig: AppConfig | null
   ruleSetDetail: RuleSetDetail | null
 }>()
 </script>

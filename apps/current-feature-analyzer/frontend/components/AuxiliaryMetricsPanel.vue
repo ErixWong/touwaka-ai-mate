@@ -21,7 +21,9 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ metrics: any[] }>()
+import type { StageMetric } from '../api/current-feature-analyzer'
+
+defineProps<{ metrics: StageMetric[] }>()
 function fmtNum(_row: any, _col: any, val: any) {
   if (typeof val === 'number') return val.toFixed(4)
   return val ?? '-'

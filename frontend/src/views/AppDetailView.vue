@@ -23,7 +23,7 @@ const AppComponentMap: Record<string, Component> = {
   'InvoiceView': defineAsyncComponent(() => import('@/views/invoice/InvoiceView.vue')),
   'OcrToolView': defineAsyncComponent(() => import('@/views/ocr-tool/OcrToolView.vue')),
   'ResumeScreeningView': defineAsyncComponent(() => import('@/views/resume-fast-screening/ResumeScreeningView.vue')),
-  'CurrentFeatureAnalyzerView': defineAsyncComponent(() => import('@/views/current-feature-analyzer/CurrentFeatureAnalyzerView.vue')),
+  'CurrentFeatureAnalyzerView': defineAsyncComponent(() => import('@apps/current-feature-analyzer/frontend/views/CurrentFeatureAnalyzerView.vue')),
 }
 
 const route = useRoute()

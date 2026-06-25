@@ -74,15 +74,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watchEffect, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { modelApi } from '@/api/services'
 import type { AIModel } from '@/types'
+import type { AppConfig } from '../api/current-feature-analyzer'
 
-const props = defineProps<{ config: any }>()
-const emit = defineEmits<{ close: []; save: [config: any] }>()
+const props = defineProps<{ config: AppConfig | null }>()
+const emit = defineEmits<{ close: []; save: [config: AppConfig] }>()
 
 const activeTab = ref('model')
-const form = reactive<any>({ ...(props.config || {}) })
+const form = reactive<Record<string, unknown>>({ ...(props.config || {}) })
 const models = ref<AIModel[]>([])
 
 onMounted(async () => {
@@ -90,17 +91,20 @@ onMounted(async () => {
     const all = await modelApi.getModels()
     models.value = (all || []).filter(m => m.is_active !== false && m.model_type === 'text')
   } catch {
-    // noop
   }
 })
 
-watchEffect(() => {
-  if (props.config) {
-    Object.assign(form, props.config)
-  }
-})
+watch(
+  () => props.config,
+  (config) => {
+    if (config) {
+      Object.assign(form, config)
+    }
+  },
+  { immediate: true }
+)
 
 function onSave() {
-  emit('save', { ...form })
+  emit('save', { ...(form as unknown as AppConfig) })
 }
 </script>

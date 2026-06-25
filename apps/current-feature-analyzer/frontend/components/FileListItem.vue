@@ -10,13 +10,20 @@
     <div class="cfa-file-item-meta">
       <el-tag :type="statusTagType" size="small">{{ statusLabel }}</el-tag>
       <span v-if="file.warning_count > 0" class="cfa-file-warn">⚠{{ file.warning_count }}</span>
+      <el-tooltip v-if="file._duplicate_diagnosis" :content="duplicateDiagnosisText" placement="top">
+        <el-icon class="cfa-file-warn-icon"><WarningFilled /></el-icon>
+      </el-tooltip>
+      <el-tooltip v-if="file.error_message && file.analysis_status === 'failed'" :content="file.error_message" placement="top">
+        <el-icon class="cfa-file-err-icon"><WarningFilled /></el-icon>
+      </el-tooltip>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SessionFileItem } from '@/api/current-feature-analyzer'
+import { WarningFilled } from '@element-plus/icons-vue'
+import type { SessionFileItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
   file: SessionFileItem
@@ -50,6 +57,12 @@ const statusTagType = computed(() => {
   }
   return map[props.file.analysis_status] || 'info'
 })
+
+const duplicateDiagnosisText = computed(() => {
+  const diagnosis = props.file._duplicate_diagnosis
+  if (!diagnosis) return ''
+  return `重复时间组数: ${diagnosis.duplicate_groups}，重复行数: ${diagnosis.duplicate_rows}，冲突组数: ${diagnosis.conflict_groups}，最大同时间行数: ${diagnosis.max_same_time_rows}，冲突比例: ${(diagnosis.conflict_ratio * 100).toFixed(2)}%`
+})
 </script>
 
 <style scoped>
@@ -77,5 +90,15 @@ const statusTagType = computed(() => {
 .cfa-file-warn {
   color: var(--el-color-warning);
   font-size: 11px;
+}
+.cfa-file-warn-icon {
+  color: var(--el-color-warning);
+  font-size: 14px;
+  cursor: help;
+}
+.cfa-file-err-icon {
+  color: var(--el-color-danger);
+  font-size: 14px;
+  cursor: help;
 }
 </style>

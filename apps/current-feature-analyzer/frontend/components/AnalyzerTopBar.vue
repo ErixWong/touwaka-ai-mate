@@ -23,26 +23,26 @@
       </el-select>
     </div>
     <div class="cfa-topbar-actions">
-      <el-button type="primary" @click="triggerUpload" :disabled="loading">上传 CSV</el-button>
+      <el-button type="primary" :disabled="loading" @click="triggerUpload">上传 CSV</el-button>
       <el-button
         type="success"
-        @click="$emit('runAnalysis')"
         :disabled="!canAnalyze || loading"
+        @click="$emit('runAnalysis')"
       >
         开始分析
       </el-button>
       <el-button
         type="warning"
-        @click="$emit('export')"
         :disabled="!canExport"
+        @click="$emit('export')"
       >
         导出 Excel
       </el-button>
       <el-tooltip v-if="isAdmin" content="系统配置" placement="bottom">
-        <el-button @click="$emit('openConfig')" icon="Setting">配置</el-button>
+        <el-button :icon="Setting" @click="$emit('openConfig')">配置</el-button>
       </el-tooltip>
       <el-tooltip v-if="isAdmin" content="规则集管理" placement="bottom">
-        <el-button @click="$emit('openRulesetEditor')" icon="Edit">规则</el-button>
+        <el-button :icon="Edit" @click="$emit('openRulesetEditor')">规则</el-button>
       </el-tooltip>
       <input
         ref="fileInputRef"
@@ -58,7 +58,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { RuleSetItem } from '@/api/current-feature-analyzer'
+import { Edit, Setting } from '@element-plus/icons-vue'
+import type { RuleSetItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
   batchStatus: string
@@ -85,12 +86,11 @@ const selectedRuleSet = computed({
 })
 
 const canAnalyze = computed(() => {
-  return props.batchStatus === 'ready' && props.selectedRuleSetId && !props.loading
+  const hasFiles = props.batchStatus === 'ready' || props.batchStatus === 'completed' || props.batchStatus === 'partial_failed'
+  return hasFiles && props.selectedRuleSetId && !props.loading
 })
 
-const canExport = computed(() => {
-  return props.batchStatus === 'completed' || props.batchStatus === 'partial_failed'
-})
+const canExport = computed(() => props.batchStatus === 'completed' || props.batchStatus === 'partial_failed')
 
 function triggerUpload() {
   fileInputRef.value?.click()

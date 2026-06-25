@@ -7,16 +7,13 @@
           <span class="cfa-summary-value">{{ fileStats.total }}</span>
           <span class="cfa-summary-label">文件总数</span>
         </div>
-        <div
-          class="cfa-summary-stat success"
-          :class="{ 'cfa-zero': fileStats.completed === 0 }"
-        >
+        <div class="cfa-summary-stat success" :class="{ 'cfa-zero': fileStats.completed === 0 }">
           <span class="cfa-summary-value">{{ fileStats.completed }}</span>
           <span class="cfa-summary-label">成功</span>
         </div>
         <div
-          class="cfa-summary-stat warning-stat clickable"
           v-if="fileStats.warning_count > 0"
+          class="cfa-summary-stat warning-stat clickable"
           @click="$emit('jumpWarning')"
         >
           <span class="cfa-summary-value warning-val">{{ fileStats.warning_count }}</span>
@@ -35,11 +32,11 @@
           <span class="cfa-summary-label">分析中</span>
         </div>
       </div>
-      <div class="cfa-export-hint" v-if="fileStats.completed > 0 && fileStats.failed === 0 && fileStats.analyzing === 0">
+      <div v-if="fileStats.completed > 0 && fileStats.failed === 0 && fileStats.analyzing === 0" class="cfa-export-hint">
         本次分析已全部完成，请及时导出 Excel
-        <el-button type="warning" size="small" @click="$emit('export')" style="margin-left: 8px">导出 Excel</el-button>
+        <el-button type="warning" size="small" style="margin-left: 8px" @click="$emit('export')">导出 Excel</el-button>
       </div>
-      <div class="cfa-export-hint export-partial" v-else-if="fileStats.failed > 0 && fileStats.analyzing === 0">
+      <div v-else-if="fileStats.failed > 0 && fileStats.analyzing === 0" class="cfa-export-hint export-partial">
         部分文件失败（{{ fileStats.failed }} 个），请先检查异常文件后再导出
       </div>
     </el-card>
@@ -47,8 +44,10 @@
 </template>
 
 <script setup lang="ts">
+import type { BatchSummary } from '../api/current-feature-analyzer'
+
 defineProps<{
-  summary: any
+  summary: BatchSummary | null
   fileStats: { total: number; completed: number; failed: number; warning_count: number; analyzing: number; pending: number }
 }>()
 
