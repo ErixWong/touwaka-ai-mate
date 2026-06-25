@@ -9,6 +9,12 @@
 import { ref, onMounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 
+interface CompressedSegment {
+  kind: string
+  segment_index: number
+  polyline_points?: [number, number][]
+}
+
 const props = defineProps<{ fileName: string; result: any }>()
 
 const chartRef = ref<HTMLElement | null>(null)
@@ -30,8 +36,8 @@ const kindColors: Record<string, string> = {
 function renderCompressed() {
   if (!chartRef.value) return
   const instance = echarts.init(chartRef.value)
-  const segs = props.result.segments || []
-  const series = segs.map(seg => ({
+  const segs: CompressedSegment[] = props.result?.segments || []
+  const series = segs.map((seg) => ({
     type: 'line',
     name: `${seg.kind} (${seg.segment_index})`,
     data: seg.polyline_points || [],
