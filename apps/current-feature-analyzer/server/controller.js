@@ -1,5 +1,8 @@
-import fs from 'fs';
 import logger from '../../../lib/logger.js';
+import {
+  BATCH_STATUS,
+  FILE_ANALYSIS_STATUS,
+} from '../states.js';
 import {
   ConfigService,
   RuleSetService,
@@ -10,7 +13,6 @@ import {
   StageMetricsService,
   ReportExportService,
 } from './services/index.js';
-import * as XLSX from 'xlsx';
 
 class CurrentFeatureAnalyzerController {
   constructor(db) {
@@ -42,7 +44,10 @@ class CurrentFeatureAnalyzerController {
       }
 
       const fileList = Array.isArray(files) ? files : [files];
-      const batch = this.uploadSessionService.createBatch(fileList.map(f => f.originalname || f.originalFilename || f.name || 'unknown.csv'));
+      const batch = this.uploadSessionService.createBatch(
+        fileList.map(f => f.originalname || f.originalFilename || f.name || 'unknown.csv'),
+        userId
+      );
 
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];
@@ -87,15 +92,11 @@ class CurrentFeatureAnalyzerController {
     if (f.buffer) {
       return f.buffer.toString('utf-8');
     }
-    // fallback: disk storage → f.path (via fs)
-    if (f.filepath || f.path) {
-      return fs.readFileSync(f.filepath || f.path, 'utf-8');
-    }
     // data URL / raw data
     if (f.data) {
       return typeof f.data === 'string' ? f.data : f.data.toString('utf-8');
     }
-    throw new Error('无法读取上传文件');
+    throw new Error('无法读取上传文件：仅支持内存存储模式');
   }
 
   async getBatch(ctx) {
@@ -105,7 +106,19 @@ class CurrentFeatureAnalyzerController {
       const { batch_id } = ctx.params;
       const batch = this.uploadSessionService.getBatch(batch_id);
       if (!batch) { ctx.error('批次不存在或已过期', 404); return; }
-      ctx.success(batch);
+      if (!this.uploadSessionService.isBatchOwner(batch_id, userId)) {
+        ctx.error('无权访问该批次', 403); return;
+      }
+      // 轻量模式：轮询接口剥离 raw_data，减少带宽与暴露面
+      // 完整数据（含 raw_data / result）通过 getFileDetail 按需获取
+      const lightBatch = {
+        ...batch,
+        files: batch.files.map(f => {
+          const { raw_data, result, ...rest } = f;
+          return rest;
+        }),
+      };
+      ctx.success(lightBatch);
     } catch (err) {
       logger.error('[cfa controller] getBatch error:', err.message);
       ctx.error(err.message, 500);
@@ -119,6 +132,9 @@ class CurrentFeatureAnalyzerController {
       const { batch_id, file_id } = ctx.params;
       const batch = this.uploadSessionService.getBatch(batch_id);
       if (!batch) { ctx.error('批次不存在或已过期', 404); return; }
+      if (!this.uploadSessionService.isBatchOwner(batch_id, userId)) {
+        ctx.error('无权访问该批次', 403); return;
+      }
       const file = batch.files.find(f => f.file_id === file_id);
       if (!file) { ctx.error('文件不存在', 404); return; }
       ctx.success(file);
@@ -137,6 +153,14 @@ class CurrentFeatureAnalyzerController {
 
       const batch = this.uploadSessionService.getBatch(batch_id);
       if (!batch) { ctx.error('批次不存在或已过期', 404); return; }
+      if (!this.uploadSessionService.isBatchOwner(batch_id, userId)) {
+        ctx.error('无权访问该批次', 403); return;
+      }
+
+      // 防重：已在分析中的批次禁止重复启动
+      if (batch.batch_status === BATCH_STATUS.ANALYZING) {
+        ctx.error('分析已在进行中，请等待完成', 409); return;
+      }
 
       const ruleSetId = rule_set_id || batch.selected_rule_set_id;
       if (!ruleSetId) { ctx.error('请先选择规则集', 400); return; }
@@ -152,7 +176,7 @@ class CurrentFeatureAnalyzerController {
         min_transition_points: analysis_options?.min_transition_points ?? appConfig.min_transition_points,
       };
 
-      this.uploadSessionService.setBatchStatus(batch_id, 'analyzing');
+      this.uploadSessionService.setBatchStatus(batch_id, BATCH_STATUS.ANALYZING);
 
       // 立即返回，实际分析在后台执行
       ctx.success(this.uploadSessionService.getBatch(batch_id));
@@ -171,11 +195,10 @@ class CurrentFeatureAnalyzerController {
       if (!batch) return;
 
       for (const file of batch.files) {
-        if (!file.raw_data || file.analysis_status === 'failed') continue;
+        if (!file.raw_data || file.analysis_status === FILE_ANALYSIS_STATUS.FAILED) continue;
 
         try {
-          file.analysis_status = 'analyzing';
-          this.uploadSessionService.setFileStatus(batch_id, file.file_id, 'analyzing');
+          this.uploadSessionService.setFileStatus(batch_id, file.file_id, FILE_ANALYSIS_STATUS.ANALYZING);
 
           const compressionResult = this.vectorCompressionService.compress(file.raw_data, vcOptions);
 
@@ -210,28 +233,26 @@ class CurrentFeatureAnalyzerController {
             stage_metrics: stageMetrics,
             file_metrics: fileMetrics,
           });
-          this.uploadSessionService.setFileStatus(batch_id, file.file_id, 'completed');
+          this.uploadSessionService.setFileStatus(batch_id, file.file_id, FILE_ANALYSIS_STATUS.COMPLETED);
         } catch (err) {
           logger.error(`[cfa controller] analysis error for file ${file.file_name}:`, err.message);
           this.uploadSessionService.setFileError(batch_id, file.file_id, err.message);
         }
       }
 
+      // 唯一决策点：通过 buildSummary 归约批次终态
       this.uploadSessionService.buildSummary(batch_id);
-      const updated = this.uploadSessionService.getBatch(batch_id);
-      if (!updated) return;
-      const hasCompleted = updated.files.some(f => f.analysis_status === 'completed');
-      const hasFailed = updated.files.some(f => f.analysis_status === 'failed');
-      if (hasCompleted && hasFailed) {
-        this.uploadSessionService.setBatchStatus(batch_id, 'partial_failed');
-      } else if (hasFailed && !hasCompleted) {
-        this.uploadSessionService.setBatchStatus(batch_id, 'failed');
-      } else {
-        this.uploadSessionService.setBatchStatus(batch_id, 'completed');
-      }
     } catch (err) {
       logger.error('[cfa controller] background analysis error:', err.message);
-      this.uploadSessionService.setBatchStatus(batch_id, 'failed');
+      // 仅在批次尚未进入终态时写入 FAILED，避免覆盖已有的终态结果
+      const current = this.uploadSessionService.getBatch(batch_id);
+      if (current && current.batch_status !== BATCH_STATUS.COMPLETED
+          && current.batch_status !== BATCH_STATUS.PARTIAL_FAILED
+          && current.batch_status !== BATCH_STATUS.FAILED) {
+        this.uploadSessionService.setBatchStatus(batch_id, BATCH_STATUS.FAILED);
+      } else if (current) {
+        logger.warn(`[cfa controller] batch ${batch_id} already terminal (${current.batch_status}), skipping FAILED override`);
+      }
     }
   }
 
@@ -242,6 +263,9 @@ class CurrentFeatureAnalyzerController {
       const { batch_id } = ctx.params;
       const batch = this.uploadSessionService.getBatch(batch_id);
       if (!batch) { ctx.error('批次不存在或已过期', 404); return; }
+      if (!this.uploadSessionService.isBatchOwner(batch_id, userId)) {
+        ctx.error('无权访问该批次', 403); return;
+      }
       ctx.success(batch);
     } catch (err) {
       logger.error('[cfa controller] getReport error:', err.message);
@@ -256,8 +280,21 @@ class CurrentFeatureAnalyzerController {
       const { batch_id } = ctx.params;
       const batch = this.uploadSessionService.getBatch(batch_id);
       if (!batch) { ctx.error('批次不存在或已过期', 404); return; }
+      if (!this.uploadSessionService.isBatchOwner(batch_id, userId)) {
+        ctx.error('无权访问该批次', 403); return;
+      }
 
       const { stageDetailRows, summaryRows } = this.reportExportService.buildExcelData(batch);
+
+      // 按需动态导入 xlsx，避免顶层强依赖影响服务启动
+      let XLSX;
+      try {
+        XLSX = await import('xlsx');
+      } catch (_) {
+        logger.error('[cfa controller] xlsx module not available for export');
+        ctx.error('导出功能暂不可用，请联系管理员安装 xlsx 依赖', 503);
+        return;
+      }
 
       const wb = XLSX.utils.book_new();
       const detailWs = XLSX.utils.json_to_sheet(stageDetailRows);

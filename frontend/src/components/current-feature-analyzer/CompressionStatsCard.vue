@@ -63,17 +63,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { DuplicateDiagnosis, SegmentItem } from '@/api/current-feature-analyzer'
 
 const props = defineProps<{
   rawPointCount: number
-  segments?: any[]
-  events?: any[]
+  segments?: SegmentItem[]
+  events?: Array<Record<string, unknown>>
   globals?: Record<string, number> | null
-  duplicateDiagnosis?: {
-    duplicate_count: number
-    duplicate_times: number[]
-    message: string
-  } | null
+  duplicateDiagnosis?: DuplicateDiagnosis | null
 }>()
 
 const visible = computed(() => props.rawPointCount > 0 || (props.segments?.length ?? 0) > 0)
@@ -114,10 +111,10 @@ const trendCount = computed(() => {
 })
 const eventCount = computed(() => props.events?.length ?? 0)
 
-const duplicateGroups = computed(() => props.duplicateDiagnosis?.duplicate_count ?? '-')
+const duplicateGroups = computed(() => props.duplicateDiagnosis?.duplicate_groups ?? '-')
 const duplicateRatio = computed(() => {
-  if (!props.rawPointCount || !props.duplicateDiagnosis?.duplicate_count) return '-'
-  return `${((props.duplicateDiagnosis.duplicate_count / props.rawPointCount) * 100).toFixed(2)}%`
+  if (!props.rawPointCount || !props.duplicateDiagnosis?.duplicate_groups) return '-'
+  return `${((props.duplicateDiagnosis.duplicate_groups / props.rawPointCount) * 100).toFixed(2)}%`
 })
 </script>
 

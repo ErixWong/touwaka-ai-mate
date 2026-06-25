@@ -71,8 +71,10 @@
 </template>
 
 <script setup lang="ts">
+import type { LlmResult } from '@/api/current-feature-analyzer'
+
 defineProps<{
-  llmResult: any
+  llmResult: LlmResult | null
   showReason?: boolean
 }>()
 </script>

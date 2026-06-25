@@ -15,7 +15,7 @@ interface CompressedSegment {
   polyline_points?: [number, number][]
 }
 
-const props = defineProps<{ fileName: string; result: any }>()
+const props = defineProps<{ fileName: string; result: import('@/api/current-feature-analyzer').FileAnalysisResult | null }>()
 
 const chartRef = ref<HTMLElement | null>(null)
 const hasData = ref(false)

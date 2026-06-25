@@ -77,12 +77,13 @@
 import { ref, reactive, watchEffect, onMounted } from 'vue'
 import { modelApi } from '@/api/services'
 import type { AIModel } from '@/types'
+import type { AppConfig } from '@/api/current-feature-analyzer'
 
-const props = defineProps<{ config: any }>()
-const emit = defineEmits<{ close: []; save: [config: any] }>()
+const props = defineProps<{ config: AppConfig | null }>()
+const emit = defineEmits<{ close: []; save: [config: AppConfig] }>()
 
 const activeTab = ref('model')
-const form = reactive<any>({ ...(props.config || {}) })
+const form = reactive<Record<string, unknown>>({ ...(props.config || {}) })
 const models = ref<AIModel[]>([])
 
 onMounted(async () => {

@@ -12,7 +12,9 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 
-const props = defineProps<{ fileName: string; result: any; rawData?: number[][] | null }>()
+import type { FileAnalysisResult } from '@/api/current-feature-analyzer'
+
+const props = defineProps<{ fileName: string; result: FileAnalysisResult | null; rawData?: number[][] | null }>()
 
 const chartRef = ref<HTMLElement | null>(null)
 const hasData = ref(false)
@@ -45,7 +47,7 @@ function getPoints(): number[][] {
 
   // 回退：使用压缩段的 polyline_points 拼接
   const segs = props.result?.segments || []
-  const allPoints: any[] = []
+  const allPoints: [number, number][] = []
   for (const seg of segs) {
     if (seg.polyline_points) {
       for (const [t, c] of seg.polyline_points) {

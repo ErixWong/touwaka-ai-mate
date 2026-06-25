@@ -100,10 +100,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted } from 'vue'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { useCurrentFeatureAnalyzerStore } from '@/stores/currentFeatureAnalyzer'
 import { useUserStore } from '@/stores/user'
+import type { AppConfig } from '@/api/current-feature-analyzer'
 import AnalyzerTopBar from '@/components/current-feature-analyzer/AnalyzerTopBar.vue'
 import FileListPanel from '@/components/current-feature-analyzer/FileListPanel.vue'
 import FileDetailPanel from '@/components/current-feature-analyzer/FileDetailPanel.vue'
@@ -116,22 +117,18 @@ const userStore = useUserStore()
 const showConfigModal = ref(false)
 const showRuleSetEditor = ref(false)
 
-const isAdmin = (userStore as any).user?.role === 'admin' || (userStore as any).isAdmin
+const isAdmin = userStore.isAdmin
 
 onMounted(async () => {
   await store.loadRuleSets()
   await store.loadConfig()
 })
 
-onBeforeUnmount(() => {
-  store.stopPolling()
-})
-
 function onUpload(files: File[]) {
   store.uploadFiles(files, store.selectedRuleSetId || undefined)
 }
 
-async function onSaveConfig(config: any) {
+async function onSaveConfig(config: AppConfig) {
   const { currentFeatureAnalyzerApi } = await import('@/api/current-feature-analyzer')
   await currentFeatureAnalyzerApi.saveConfig(config)
   await store.loadConfig()

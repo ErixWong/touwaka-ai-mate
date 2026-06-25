@@ -114,7 +114,7 @@
 
 <script setup lang="ts">
 import { Loading } from '@element-plus/icons-vue'
-import type { SessionFileItem, RuleSetDetail } from '@/api/current-feature-analyzer'
+import type { SessionFileItem, RuleSetDetail, AppConfig } from '@/api/current-feature-analyzer'
 import FileSummaryCard from './FileSummaryCard.vue'
 import StageSummaryCard from './StageSummaryCard.vue'
 import RawCurrentChart from './RawCurrentChart.vue'
@@ -127,7 +127,7 @@ import LlmResultPanel from './LlmResultPanel.vue'
 
 defineProps<{
   file: SessionFileItem
-  appConfig: any
+  appConfig: AppConfig | null
   ruleSetDetail: RuleSetDetail | null
 }>()
 </script>
