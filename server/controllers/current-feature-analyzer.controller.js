@@ -9,7 +9,6 @@ import {
   StageMetricsService,
   ReportExportService,
 } from '../services/current-feature-analyzer/index.js';
-import * as XLSX from 'xlsx';
 
 class CurrentFeatureAnalyzerController {
   constructor(db) {
@@ -216,6 +215,15 @@ class CurrentFeatureAnalyzerController {
       if (!batch) { ctx.error('批次不存在或已过期', 404); return; }
 
       const { stageDetailRows, summaryRows } = this.reportExportService.buildExcelData(batch);
+
+      let XLSX;
+      try {
+        ({ default: XLSX } = await import('xlsx'));
+      } catch (err) {
+        logger.error('[cfa controller] exportReport missing xlsx dependency:', err.message);
+        ctx.error('导出功能依赖未安装，请执行 npm install 后重试', 500);
+        return;
+      }
 
       const wb = XLSX.utils.book_new();
       const detailWs = XLSX.utils.json_to_sheet(stageDetailRows);
