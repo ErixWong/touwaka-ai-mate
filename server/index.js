@@ -36,7 +36,6 @@ const __dirname = path.dirname(__filename);
 import Database from '../lib/db.js';
 import ChatService from '../lib/chat-service.js';
 import BackgroundTaskScheduler from '../lib/background-scheduler.js';
-import { createEmbeddingTask } from '../lib/embedding-worker.js';
 import { createDocumentEmbeddingTask } from '../lib/document-embedding-worker.js';
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
@@ -65,7 +64,6 @@ import SkillController from './controllers/skill.controller.js';
 import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
-import KbController from './controllers/kb.controller.js';
 import DocController from './controllers/doc.controller.js';
 import DocCollectionController from './controllers/doc-collection.controller.js';
 import SolutionController from './controllers/solution.controller.js';
@@ -99,7 +97,6 @@ import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
-import kbV2Routes from './routes/kb-v2.routes.js';
 import docRoutes from './routes/doc.routes.js';
 import docCollectionRoutes from './routes/doc-collection.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
@@ -332,13 +329,6 @@ class ApiServer {
     // 初始化后台任务调度器
     this.scheduler = new BackgroundTaskScheduler(this.db);
 
-    // 注册向量化任务
-    this.scheduler.register({
-      name: 'embedding-worker',
-      interval: 30000, // 30秒
-      handler: createEmbeddingTask({ batchSize: 10 }),
-    });
-
     // 注册文档平台向量化任务
     this.scheduler.register({
       name: 'document-embedding-worker',
@@ -371,7 +361,7 @@ class ApiServer {
       preventOverlap: true,  // 如果上一轮还没处理完，本轮顺延
     });
 
-    logger.info('BackgroundTaskScheduler initialized with embedding-worker, document-embedding-worker, topic-archiver, and autonomous-task-executor tasks');
+    logger.info('BackgroundTaskScheduler initialized with document-embedding-worker, topic-archiver, and autonomous-task-executor tasks');
 
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
@@ -420,7 +410,6 @@ class ApiServer {
       skill: new SkillController(this.db),
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
-      kb: new KbController(this.db),
       doc: new DocController(this.db),
       docCollection: new DocCollectionController(this.db),
       solution: new SolutionController(this.db),
@@ -563,10 +552,6 @@ class ApiServer {
     // Task 路由
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
-
-    // KB 知识库路由（/api/docs/kb/* 统一入口）
-    this.app.use(kbV2Routes(this.controllers.kb).routes());
-    this.app.use(kbV2Routes(this.controllers.kb).allowedMethods());
 
     // Doc Collection 文档集合路由（/api/docs/collections/* 必须在 Doc 路由之前，防止 /collections 被 /:documentId 捕获）
     this.app.use(docCollectionRoutes(this.controllers.docCollection).routes());
@@ -844,10 +829,6 @@ class ApiServer {
         logger.info('  PUT  /api/roles/:id/permissions');
         logger.info('  GET  /api/roles/:id/experts');
         logger.info('  PUT  /api/roles/:id/experts');
-        logger.info('  GET  /api/docs/kb (知识库列表)');
-        logger.info('  POST /api/docs/kb (创建知识库)');
-        logger.info('  GET  /api/docs/kb/:id/articles (文章列表)');
-        logger.info('  POST /api/docs/kb/:id/articles (创建文章)');
         logger.info('  POST /api/docs/recall (统一召回)');
         logger.info('  GET  /api/docs (文档列表)');
 

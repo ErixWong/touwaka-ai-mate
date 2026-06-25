@@ -464,11 +464,13 @@ const getMimeTypeLabel = (mime_type: string): string => {
 // 获取来源标签
 const getSourceLabel = (source_tag: string): string => {
   const labels: Record<string, string> = {
-    'kb_article_image': t('attachment.sourceKbArticle'),
     'task_export': t('attachment.sourceTaskExport'),
     'chat_attachment': t('attachment.sourceChatAttachment'),
     'doc-platform': t('attachment.sourceDocPlatform'),
     'admin_upload': t('attachment.sourceAdminUpload'),
+  }
+  if (source_tag.startsWith('kb_')) {
+    return '知识库文章(已废弃)';
   }
   return labels[source_tag] || source_tag
 }

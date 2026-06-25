@@ -328,11 +328,10 @@ class AttachmentController {
     switch (sourceTag) {
       case 'kb_article_image':
       case 'kb_article_cover': {
-        // 检查用户是否有权限访问该知识库文章
-        const { canAccessKbArticle } = await import('../../lib/kb-permission.js');
-        return await canAccessKbArticle(this.db, sourceId, userId);
+        logger.warn(`[Attachment] kb_article_* source_tag is deprecated (tag=${sourceTag}, sourceId=${sourceId}). Access denied.`);
+        return false;
       }
-      
+
       case 'user_avatar': {
         // 头像公开可见，或检查是否本人
         return true;
@@ -354,7 +353,7 @@ class AttachmentController {
       
       case 'admin_upload': {
         // 管理员直接上传的附件，只有管理员可以访问
-        const { isSystemAdmin } = await import('../../lib/kb-permission.js');
+        const { isSystemAdmin } = await import('../../lib/permission-utils.js');
         return await isSystemAdmin(this.db, userId);
       }
       
@@ -855,7 +854,7 @@ class AttachmentController {
       const userId = ctx.state.session.id;
 
       // 检查管理员权限
-      const { isSystemAdmin } = await import('../../lib/kb-permission.js');
+      const { isSystemAdmin } = await import('../../lib/permission-utils.js');
       const isAdmin = await isSystemAdmin(this.db, userId);
       if (!isAdmin) {
         ctx.throw(403, '无权访问管理员接口');
@@ -961,7 +960,7 @@ class AttachmentController {
       // 权限检查：只有上传者或管理员可以删除
       if (attachment.created_by !== userId) {
         // 检查用户是否为管理员
-        const { isSystemAdmin } = await import('../../lib/kb-permission.js');
+        const { isSystemAdmin } = await import('../../lib/permission-utils.js');
         const isAdmin = await isSystemAdmin(this.db, userId);
         if (!isAdmin) {
           ctx.throw(403, '无权删除此附件');
