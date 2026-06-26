@@ -260,5 +260,6 @@
 - `docs/development/coding-standards.md`
 - `docs/development/code-review-checklist.md`
 - `docs/development/llm-call-standards.md`
+- `tests/skill-runtime/README.md` - Skill 调试技巧指南
 
 ✌Bazinga！
