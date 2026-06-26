@@ -38,7 +38,8 @@ class InternalController {
    * @param {string} ctx.request.body.content - 消息内容
    * @param {string} ctx.request.body.role - 消息角色（user/assistant/system）
    * @param {string} [ctx.request.body.topic_id] - 话题ID（可选，不传则自动获取/创建）
-   * @param {string} [ctx.request.body.task_id] - 任务ID（可选）
+   * @param {string} [ctx.request.body.task_db_id] - 任务数据库主键（推荐）
+   * @param {string} [ctx.request.body.task_id] - 任务ID（兼容旧接口）
    * @param {string} [ctx.request.body.inner_voice] - 内心独白（JSON字符串）
    * @param {string} [ctx.request.body.tool_calls] - 工具调用（JSON字符串）
    */
@@ -59,11 +60,15 @@ class InternalController {
         role = 'assistant',
         topic_id,
         task_id,
+        task_db_id,  // 新增标准化字段，与 task_id 兼容
         inner_voice,
         tool_calls,
         trigger_expert = false,  // 是否触发专家响应
         original_message = '',     // 用户的原始问题（助理场景使用）
       } = ctx.request.body;
+
+      // 标准化任务主键字段：优先使用 task_db_id，兼容 task_id
+      const normalizedTaskDbId = task_db_id || task_id || null;
 
       if (!user_id || !expert_id || !content) {
         ctx.error('缺少必要参数：user_id, expert_id, content');
@@ -73,7 +78,7 @@ class InternalController {
       // 3. 获取或创建 Topic
       let finalTopicId = topic_id;
       if (!finalTopicId) {
-        finalTopicId = await this.getOrCreateActiveTopic(user_id, expert_id, task_id);
+        finalTopicId = await this.getOrCreateActiveTopic(user_id, expert_id, normalizedTaskDbId);
       }
 
       // 4. 如果是助理场景，不保存用户消息，直接触发 Expert

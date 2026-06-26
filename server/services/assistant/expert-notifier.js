@@ -10,6 +10,7 @@
 import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
 import { executeStreamWithToolLoop } from '../../../lib/tool-calling-executor.js';
+import { formatWorkspaceDisplayFromTask } from '../../../lib/paths.js';
 
 // 记录已发送的通知，避免重复
 const notifiedRequests = new Set();
@@ -352,10 +353,11 @@ export async function notifyExpertResult(db, request, services) {
       const topic = await Topic.findByPk(finalTopicId, { raw: true });
 
       if (topic?.task_id) {
-        // 从 task 获取工作目录（workspace_path 已经是逻辑路径，不需要再加前缀）
+        // 使用统一 helper 获取工作目录展示文本
+        // 注意：这里获取的是展示用逻辑路径，不是执行用绝对路径
         const task = await Task.findByPk(topic.task_id, { raw: true });
-        if (task?.workspace_path) {
-          workspacePath = task.workspace_path;
+        if (task) {
+          workspacePath = formatWorkspaceDisplayFromTask(task, '');
         }
       }
 

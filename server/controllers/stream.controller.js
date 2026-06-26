@@ -320,7 +320,10 @@ class StreamController {
     try {
       await this._ensureRequestMaintenanceReady();
 
-      const { content, expert_id, model_id, task_id, working_path } = ctx.request.body;
+      // 标准化任务主键字段：优先使用 task_db_id，兼容 task_id
+      const { content, expert_id, model_id, task_id, task_db_id, working_path } = ctx.request.body;
+      // 标准化：task_db_id 为语义明确的字段名，task_id 为兼容字段
+      const normalizedTaskDbId = task_db_id || task_id || null;
 
       if (!content) {
         ctx.error('缺少必要参数：content');
@@ -353,8 +356,8 @@ class StreamController {
         return;
       }
 
-      // 获取或创建该用户与 Expert 的活跃 Topic（支持 task_id 关联）
-      const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id, task_id);
+      // 获取或创建该用户与 Expert 的活跃 Topic（支持 task_db_id 关联）
+      const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id, normalizedTaskDbId);
 
       // 创建 request_id（一次流式生成请求的唯一标识）
       const request_id = `req_${Utils.newID(16)}`;
@@ -366,7 +369,7 @@ class StreamController {
         expert_id,
         content,
         model_id,
-        task_id,
+        task_id: normalizedTaskDbId,  // 存储标准化后的主键
         working_path,
         status: 'accepted',
       });
@@ -379,7 +382,7 @@ class StreamController {
         expert_id,
         content,
         model_id,
-        task_id,
+        task_id: normalizedTaskDbId,  // 使用标准化后的主键
         working_path,
         session: ctx.state.session,
       });
