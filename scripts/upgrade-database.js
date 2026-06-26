@@ -2159,7 +2159,9 @@ const MIGRATIONS = [
     name: 'app_invoice_mgr_rows table (incremental)',
     check: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_rows')) return false;
-      return await hasColumn(conn, 'app_invoice_mgr_rows', 'issuer');
+      // 哨兵列：使用最新加入的列作为迁移完成标记
+      // ⚠️ 若在 missingCols 中新增列，必须同步更新此哨兵列为最新列名
+      return await hasColumn(conn, 'app_invoice_mgr_rows', 'keyword_count');
     },
     migrate: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_rows')) {
@@ -2261,7 +2263,9 @@ const MIGRATIONS = [
     name: 'app_invoice_mgr_items table (incremental)',
     check: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_items')) return false;
-      return await hasColumn(conn, 'app_invoice_mgr_items', 'sort_order');
+      // 哨兵列：使用最新加入的列作为迁移完成标记
+      // ⚠️ 若在 missingCols 中新增列，必须同步更新此哨兵列为最新列名
+      return await hasColumn(conn, 'app_invoice_mgr_items', 'created_at');
     },
     migrate: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_items')) {

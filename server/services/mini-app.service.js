@@ -1906,12 +1906,19 @@ ${JSON.stringify(listB, null, 2)}
     const config = this.getAutonomousAppConfig(appId);
     const transaction = await this.db.sequelize.transaction();
     const records = [];
+    const skipped = [];
 
     try {
       for (const attId of attachmentIds) {
         const attachment = await this.models.Attachment.findByPk(attId);
-        if (!attachment) continue;
-        if (attachment.created_by && attachment.created_by !== userId) continue;
+        if (!attachment) {
+          skipped.push({ attachment_id: attId, reason: 'not_found' });
+          continue;
+        }
+        if (attachment.created_by && attachment.created_by !== userId) {
+          skipped.push({ attachment_id: attId, reason: 'permission_denied' });
+          continue;
+        }
 
         const recordId = Utils.newID(20);
 
@@ -1944,8 +1951,11 @@ ${JSON.stringify(listB, null, 2)}
       await transaction.commit();
       return {
         upload_time: new Date().toISOString(),
-        count: records.length,
+        requested_count: attachmentIds.length,
+        created_count: records.length,
+        skipped_count: skipped.length,
         records,
+        skipped,
       };
     } catch (err) {
       await transaction.rollback();

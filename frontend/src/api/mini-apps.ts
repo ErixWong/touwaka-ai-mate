@@ -320,8 +320,11 @@ export async function confirmRecord(appId: string, recordId: string, data: Recor
 
 export async function batchUpload(appId: string, attachments: string[]): Promise<{
   upload_time: string
-  count: number
+  requested_count: number
+  created_count: number
+  skipped_count: number
   records: MiniAppRecord[]
+  skipped: { attachment_id: string; reason: string }[]
 }> {
   return apiRequest(apiClient.post(`/mini-apps/${appId}/data/batch`, { attachments }))
 }

@@ -156,13 +156,13 @@ export default {
 
     if (!file || !file.attachment) {
       logger.error(`[invoice-vl-extract] Record ${record.id}: No file`);
-      return { success: false, error: '未找到文件' };
+      return { success: false, failure_code: 'no_file', error: '未找到文件' };
     }
 
     const resolvedPath = file.attachment._resolvedPath || resolveAttachmentPath(file.attachment);
     if (!resolvedPath) {
       logger.error(`[invoice-vl-extract] Record ${record.id}: 无法解析文件路径`);
-      return { success: false, error: '无法解析文件路径' };
+      return { success: false, failure_code: 'path_resolve_failed', error: '无法解析文件路径' };
     }
 
     const skillPath = path.join('data', 'attachments', file.attachment.file_path);
@@ -218,19 +218,19 @@ export default {
           logger.info(`[invoice-vl-extract] Record ${record.id}: PDF渲染 ${renderResultPages.length} 页 → VL`);
         } else {
           logger.warn(`[invoice-vl-extract] Record ${record.id}: PDF 渲染无页面`);
-          return { success: false, error: 'PDF渲染失败' };
+          return { success: false, failure_code: 'pdf_render_empty', error: 'PDF渲染失败' };
         }
       } catch (e) {
         logger.error(`[invoice-vl-extract] Record ${record.id}: PDF渲染异常: ${e.message}`);
-        return { success: false, error: `PDF渲染失败: ${e.message}` };
+        return { success: false, failure_code: 'pdf_render_failed', error: `PDF渲染失败: ${e.message}` };
       }
     } else {
       logger.warn(`[invoice-vl-extract] Record ${record.id}: 不支持的文件格式 ${ext}`);
-      return { success: false, error: `不支持的文件格式: ${ext}` };
+      return { success: false, failure_code: 'unsupported_format', error: `不支持的文件格式: ${ext}` };
     }
 
     if (images.length === 0) {
-      return { success: false, error: '无图片数据' };
+      return { success: false, failure_code: 'no_image_data', error: '无图片数据' };
     }
 
     const callVL = (prompt, imageUrl) => services.llm.extractJson(prompt, '', {
@@ -273,10 +273,10 @@ export default {
               pageResult = await callVL(prompt, retryImage);
               logger.info(`[invoice-vl-extract] Record ${record.id}: 首页VL低分辨率重试成功`);
             } catch (retryErr) {
-              return { success: false, error: `首页 VL 提取失败: ${retryErr.message}` };
+              return { success: false, failure_code: 'vl_first_page_failed', error: `首页 VL 提取失败: ${retryErr.message}` };
             }
           } else {
-            return { success: false, error: `首页 VL 提取失败: ${e.message}` };
+            return { success: false, failure_code: 'vl_first_page_failed', error: `首页 VL 提取失败: ${e.message}` };
           }
         }
         // 续页失败跳过，不阻塞整张发票
@@ -288,7 +288,7 @@ export default {
       if (!pageResult) {
         logger.warn(`[invoice-vl-extract] Record ${record.id}: 第${i + 1}页 VL 返回空，跳过`);
         if (isFirstPage) {
-          return { success: false, error: '首页 VL 返回空' };
+          return { success: false, failure_code: 'vl_first_page_empty', error: '首页 VL 返回空' };
         }
         continue;
       }
@@ -304,7 +304,7 @@ export default {
 
     if (!data) {
       logger.error(`[invoice-vl-extract] Record ${record.id}: 首页 VL 返回空`);
-      return { success: false, error: 'VL提取结果为空' };
+      return { success: false, failure_code: 'vl_no_result', error: 'VL提取结果为空' };
     }
 
     // 合并所有页的 items
@@ -322,7 +322,7 @@ export default {
         extraction_status: 'failed',
         ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'VL did not extract valid invoice data' }),
       });
-      return { success: false, error: 'not_invoice' };
+      return { success: false, failure_code: 'not_invoice', error: 'not_invoice' };
     }
 
     const existingRowId = await checkDuplicate(services, data.invoice_number, record.id);

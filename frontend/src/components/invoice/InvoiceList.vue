@@ -2,12 +2,14 @@
 import { ref, onMounted } from 'vue'
 import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { createRecord, newID } from '@/api/mini-apps'
+import { batchUpload } from '@/api/mini-apps'
 import { ElMessage } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
+import { statusLabels } from '@/utils/invoice-status-labels'
 
 const APP_ID = 'invoice-mgr'
+const MAX_BATCH_SIZE = 10
 
 const loading = ref(false)
 const invoices = ref<InvoiceRow[]>([])
@@ -18,7 +20,7 @@ const showDetail = ref(false)
 const selectedRowId = ref('')
 const showCreateDialog = ref(false)
 const creating = ref(false)
-const selectedFile = ref<File | null>(null)
+const selectedFiles = ref<File[]>([])
 const exporting = ref(false)
 
 // 日期筛选
@@ -81,14 +83,6 @@ const filters = ref<InvoiceListParams>({
   order: 'desc',
 })
 
-const statusLabels: Record<string, { label: string; type: string }> = {
-  pending_process: { label: '待处理', type: 'info' },
-  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
-  pending_review: { label: '待确认', type: '' },
-  confirmed: { label: '已确认', type: 'success' },
-  extract_failed: { label: '识别失败', type: 'danger' },
-}
-
 onMounted(() => {
   loadList()
 })
@@ -143,45 +137,86 @@ function onReset() {
 }
 
 function openCreateDialog() {
-  selectedFile.value = null
+  selectedFiles.value = []
   showCreateDialog.value = true
 }
 
 function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
-  if (input.files?.length) {
-    selectedFile.value = input.files[0]!
+  if (!input.files?.length) return
+  const newFiles = Array.from(input.files).filter(f => {
+    const ext = f.name.split('.').pop()?.toLowerCase()
+    return ['pdf', 'jpg', 'jpeg', 'png'].includes(ext || '')
+  })
+  const total = selectedFiles.value.length + newFiles.length
+  if (total > MAX_BATCH_SIZE) {
+    ElMessage.warning(`单次最多上传 ${MAX_BATCH_SIZE} 个文件，当前已选 ${selectedFiles.value.length} 个，只能再添加 ${MAX_BATCH_SIZE - selectedFiles.value.length} 个`)
+    input.value = ''
+    return
   }
+  selectedFiles.value = [...selectedFiles.value, ...newFiles]
   input.value = ''
 }
 
-function clearFile() {
-  selectedFile.value = null
+function removeFile(index: number) {
+  selectedFiles.value.splice(index, 1)
 }
 
 async function handleCreate() {
-  if (!selectedFile.value) {
+  if (selectedFiles.value.length === 0) {
     ElMessage.warning('请先选择发票文件')
     return
   }
   creating.value = true
-  try {
-    const file = selectedFile.value
-    const att = await uploadAttachmentFormData({
-      source_tag: 'mini_app_file',
-      source_id: APP_ID,
-      file,
-    })
+  const totalFiles = selectedFiles.value.length
+  let uploadedCount = 0
+  const attachmentIds: string[] = []
 
-    const clientId = await newID(20)
-    await createRecord(APP_ID, {}, [att.id], clientId)
+  try {
+    // 1) 串行上传附件
+    for (const file of selectedFiles.value) {
+      try {
+        const att = await uploadAttachmentFormData({
+          source_tag: 'mini_app_file',
+          source_id: APP_ID,
+          file,
+        })
+        attachmentIds.push(att.id)
+        uploadedCount++
+      } catch (e: any) {
+        ElMessage.warning(`${file.name} 上传失败: ${e.message || '未知错误'}`)
+      }
+    }
+
+    if (attachmentIds.length === 0) {
+      ElMessage.error('所有文件上传失败，请检查网络后重试')
+      return
+    }
+
+    // 2) 批量建单
+    const result = await batchUpload(APP_ID, attachmentIds)
 
     showCreateDialog.value = false
-    selectedFile.value = null
+    selectedFiles.value = []
     page.value = 1
     filters.value.page = 1
     await loadList()
-    ElMessage.success('发票已创建，正在识别中')
+
+    // 3) 结果摘要
+    const skipped = result.skipped_count || 0
+    const created = result.created_count || 0
+    if (skipped > 0) {
+      ElMessage.success(
+        `已选择 ${totalFiles} 个文件，附件上传成功 ${uploadedCount} 个，` +
+        `发票记录创建成功 ${created} 个，跳过 ${skipped} 个。正在识别中`
+      )
+    } else if (uploadedCount < totalFiles) {
+      ElMessage.success(
+        `附件上传成功 ${uploadedCount}/${totalFiles} 个，已创建 ${created} 条发票记录。正在识别中`
+      )
+    } else {
+      ElMessage.success(`已创建 ${created} 条发票记录，正在识别中`)
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '创建失败')
   } finally {
@@ -381,19 +416,24 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
 
     <el-dialog v-model="showCreateDialog" title="新增发票" width="520px" destroy-on-close>
       <div class="create-file-upload">
-        <div v-if="selectedFile" class="create-file-selected">
-          <span class="create-file-name">{{ selectedFile.name }}</span>
-          <el-button size="small" text type="danger" @click="clearFile">移除</el-button>
+        <div class="create-file-list" v-if="selectedFiles.length > 0">
+          <div class="create-file-count">
+            已选择 {{ selectedFiles.length }} 个文件（上限 {{ MAX_BATCH_SIZE }} 个）
+          </div>
+          <div v-for="(f, idx) in selectedFiles" :key="idx" class="create-file-item">
+            <span class="create-file-name">{{ f.name }}</span>
+            <el-button size="small" text type="danger" @click="removeFile(idx)">移除</el-button>
+          </div>
         </div>
-        <label v-else class="create-file-trigger">
-          <span>选择发票文件</span>
-          <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="handleFileSelect" class="hidden-input" />
+        <label class="create-file-trigger">
+          <span>{{ selectedFiles.length > 0 ? '继续添加文件' : '选择发票文件' }}</span>
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple @change="handleFileSelect" class="hidden-input" />
         </label>
-        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG；创建后自动识别发票信息</div>
+        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG，单次最多 {{ MAX_BATCH_SIZE }} 个；创建后自动识别发票信息</div>
       </div>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" :loading="creating" :disabled="!selectedFile" @click="handleCreate">
+        <el-button type="primary" :loading="creating" :disabled="selectedFiles.length === 0" @click="handleCreate">
           创建并上传
         </el-button>
       </template>
@@ -484,16 +524,32 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
   padding: 16px;
 }
 
-.create-file-selected {
+.create-file-list {
+  margin-bottom: 12px;
+}
+
+.create-file-count {
+  color: var(--el-color-primary);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.create-file-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 4px 0;
+}
+
+.create-file-item + .create-file-item {
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .create-file-name {
   color: var(--el-text-color-primary);
   word-break: break-all;
+  font-size: 13px;
 }
 
 .create-file-trigger {
@@ -504,8 +560,12 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
   padding: 0 16px;
   border-radius: 6px;
   background: var(--el-fill-color-light);
-  color: var(--el-text-color-primary);
+  color: var(--el-color-primary);
   cursor: pointer;
+}
+
+.create-file-trigger:hover {
+  background: var(--el-fill-color);
 }
 
 .create-file-hint {

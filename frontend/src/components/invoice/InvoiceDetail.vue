@@ -4,6 +4,7 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 import { getInvoiceDetail, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
 import { deleteRecord, reExtractRecord } from '@/api/mini-apps'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { statusLabels } from '@/utils/invoice-status-labels'
 
 const props = defineProps<{ rowId: string }>()
 const emit = defineEmits<{ back: []; deleted: [] }>()
@@ -14,14 +15,6 @@ const deleting = ref(false)
 const reExtracting = ref(false)
 
 const APP_ID = 'invoice-mgr'
-
-const statusLabels: Record<string, { label: string; type: string }> = {
-  pending_process: { label: '待处理', type: 'info' },
-  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
-  pending_review: { label: '待确认', type: '' },
-  confirmed: { label: '已确认', type: 'success' },
-  extract_failed: { label: '识别失败', type: 'danger' },
-}
 
 onMounted(async () => {
   loading.value = true
