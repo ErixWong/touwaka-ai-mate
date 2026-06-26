@@ -11,7 +11,9 @@ const SOURCE_TAG_ACCESS_LEVEL_MAP = {
   expert_avatar: 'public',
   site_logo: 'public',
   site_background: 'public',
+  /** @deprecated kb_article_* 已废弃，控制器层已拒绝访问，此处仅为历史兼容保留 */
   kb_article_image: 'private',
+  /** @deprecated kb_article_* 已废弃，控制器层已拒绝访问，此处仅为历史兼容保留 */
   kb_article_cover: 'private',
   'doc-platform': 'private',
   task_export: 'private',

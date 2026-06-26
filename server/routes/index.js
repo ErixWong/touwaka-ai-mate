@@ -12,7 +12,6 @@ import streamRoutes from './stream.routes.js';
 import providerRoutes from './provider.routes.js';
 import chatRoutes from './chat.routes.js';
 import createSkillRoutes from './skill.routes.js';
-import createKbRoutes from './kb.routes.js';
 import docCollectionRoutes from './doc-collection.routes.js';
 import systemSettingRoutes, { createBrandingRoutes } from './system-setting.routes.js';
 import createPackageRoutes from './package.routes.js';
@@ -32,7 +31,6 @@ export {
   providerRoutes,
   chatRoutes,
   createSkillRoutes,
-  createKbRoutes,
   docCollectionRoutes,
   systemSettingRoutes,
   createBrandingRoutes,
