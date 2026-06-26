@@ -2,8 +2,8 @@
 import { ref, onMounted } from 'vue'
 import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { batchUpload } from '@/api/mini-apps'
-import { ElMessage } from 'element-plus'
+import { batchUpload, deleteRecord } from '@/api/mini-apps'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
 import { statusLabels } from '@/utils/invoice-status-labels'
@@ -21,6 +21,8 @@ const selectedRowId = ref('')
 const showCreateDialog = ref(false)
 const creating = ref(false)
 const selectedFiles = ref<File[]>([])
+const selectedRows = ref<InvoiceRow[]>([])
+const deleting = ref(false)
 const exporting = ref(false)
 
 // 日期筛选
@@ -224,6 +226,60 @@ async function handleCreate() {
   }
 }
 
+function handleSelectionChange(rows: InvoiceRow[]) {
+  selectedRows.value = rows
+}
+
+async function handleBatchDelete() {
+  if (selectedRows.value.length === 0) return
+  const count = selectedRows.value.length
+  const hasProcessing = selectedRows.value.some(r => r.status?.startsWith('pending_'))
+
+  try {
+    await ElMessageBox.confirm(
+      hasProcessing
+        ? `将删除 ${count} 条发票记录（其中包含正在分析中的记录），删除后不可恢复。确认继续？`
+        : `将删除 ${count} 条发票记录，删除后不可恢复。确认继续？`,
+      '批量删除确认',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return // 用户取消
+  }
+
+  deleting.value = true
+  let successCount = 0
+  let failCount = 0
+  const rowIds = selectedRows.value.map(r => r.id)
+
+  try {
+    for (const id of rowIds) {
+      try {
+        await deleteRecord(APP_ID, id)
+        successCount++
+      } catch (e: any) {
+        failCount++
+        console.error(`删除 ${id} 失败:`, e.message || e)
+      }
+    }
+
+    // 清空选择态
+    selectedRows.value = []
+    await loadList()
+
+    // 结果摘要
+    if (failCount === 0) {
+      ElMessage.success(`已成功删除 ${successCount} 条记录`)
+    } else {
+      ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条，请刷新后核对`)
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '批量删除异常')
+  } finally {
+    deleting.value = false
+  }
+}
+
 function onPageChange(p: number) {
   page.value = p
   filters.value.page = p
@@ -320,6 +376,9 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
             </el-select>
           </div>
           <div class="filter-right">
+            <el-button type="danger" :disabled="selectedRows.length === 0" :loading="deleting" @click="handleBatchDelete">
+              批量删除（{{ selectedRows.length }}）
+            </el-button>
             <el-button type="primary" @click="onSearch">搜索</el-button>
             <el-button @click="onReset">重置</el-button>
             <el-button type="primary" @click="openCreateDialog">
@@ -381,7 +440,8 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         </div>
       </div>
 
-      <el-table :data="invoices" v-loading="loading" stripe @row-click="onRowClick" style="cursor:pointer">
+      <el-table :data="invoices" v-loading="loading" stripe @row-click="onRowClick" @selection-change="handleSelectionChange" style="cursor:pointer">
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="invoice_number" label="发票号码" width="200" />
         <el-table-column prop="invoice_date" label="开票日期" width="120" />
         <el-table-column prop="invoice_type" label="发票类型" width="180" show-overflow-tooltip />
