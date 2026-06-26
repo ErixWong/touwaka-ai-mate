@@ -10,7 +10,7 @@ import InvoiceDetail from './InvoiceDetail.vue'
 import { statusLabels } from '@/utils/invoice-status-labels'
 
 const APP_ID = 'invoice-mgr'
-const MAX_BATCH_SIZE = 10
+const MAX_BATCH_SIZE = 20
 
 const loading = ref(false)
 const invoices = ref<InvoiceRow[]>([])
