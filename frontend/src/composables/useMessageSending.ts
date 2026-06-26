@@ -136,6 +136,7 @@ export function useMessageSending(options: UseMessageSendingOptions) {
         expert_id: string
         model_id?: string
         task_id?: string
+        task_db_id?: string
         working_path?: string
       } = {
         content: userPlaceholder?.content || content,
@@ -144,7 +145,9 @@ export function useMessageSending(options: UseMessageSendingOptions) {
       }
 
       if (taskStore.currentTask) {
-        messageParams.task_id = taskStore.currentTask.id
+        // 明确使用 task_db_id 传递数据库主键
+        // 不再发送兼容字段 task_id，后端会通过 task_db_id || task_id 兼容旧接口
+        messageParams.task_db_id = taskStore.currentTask.id
       }
 
       const activeSkill = skillDirectoryStore.currentWorkingSkill || skillDirectoryStore.browsingSkill

@@ -151,5 +151,5 @@ commit 2: fix: 补充修复 manager.js 和清理 vision-processor.js 重复代�
 ### 变更报告路径
 
 ```
-D:\projects\node\touwaka-mate-v2-p0\docs\tasks\active\task-20260624-expert-workdir-nesting-fix\changelog_round01.md
+D:\projects\node\touwaka-mate-v2-p1\docs\tasks\active\task-20260624-expert-workdir-nesting-fix\changelog_round01.md
 ```

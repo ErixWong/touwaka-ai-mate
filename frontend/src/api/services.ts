@@ -101,7 +101,8 @@ export const messageApi = {
     content: string;
     expert_id: string;
     model_id?: string;
-    task_id?: string;
+    task_db_id?: string;  // 数据库主键，与 task_id 语义相同但命名更明确（推荐使用）
+    task_id?: string;    // @deprecated 兼容旧接口使用，新代码请使用 task_db_id
     working_path?: string;  // 当前工作目录路径（任务模式下的浏览路径或技能目录路径）
   }) =>
     apiRequest<{ request_id: string; topic_id: string }>(apiClient.post('/chat', data)),

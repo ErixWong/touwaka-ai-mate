@@ -55,7 +55,7 @@ describe('workspace context renderer', () => {
   it('renders chat mode with no-file-creation guidance and admin permissions', () => {
     const section = baseOrganizer.generateTaskContextSection({
       workspace_mode: 'chat',
-      logical_workspace_path: 'work/admin/temp',
+      logical_workspace_path: 'admin/temp',
       current_path: '',
       user_id: 'admin',
       is_admin: true,
@@ -87,7 +87,7 @@ describe('workspace context renderer', () => {
       },
       {
         workspace_mode: 'chat',
-        logical_workspace_path: 'work/user-3/temp',
+        logical_workspace_path: 'user-3/temp',
         current_path: '',
         user_id: 'user-3',
       },
