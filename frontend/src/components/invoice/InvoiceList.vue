@@ -4,6 +4,7 @@ import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams }
 import { uploadAttachmentFormData } from '@/api/attachment'
 import { batchUpload, deleteRecord } from '@/api/mini-apps'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { ElTable } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
 import { statusLabels } from '@/utils/invoice-status-labels'
@@ -24,6 +25,7 @@ const selectedFiles = ref<File[]>([])
 const selectedRows = ref<InvoiceRow[]>([])
 const deleting = ref(false)
 const exporting = ref(false)
+const tableRef = ref<InstanceType<typeof ElTable>>()
 
 // 日期筛选
 const dateMode = ref<'year' | 'month' | 'day' | ''>('')
@@ -250,6 +252,7 @@ async function handleBatchDelete() {
   deleting.value = true
   let successCount = 0
   let failCount = 0
+  const failedInvoices: string[] = []
   const rowIds = selectedRows.value.map(r => r.id)
 
   try {
@@ -259,19 +262,30 @@ async function handleBatchDelete() {
         successCount++
       } catch (e: any) {
         failCount++
-        console.error(`删除 ${id} 失败:`, e.message || e)
+        const label = selectedRows.value.find(r => r.id === id)?.invoice_number || id
+        failedInvoices.push(label)
+        console.error(`删除 ${label} 失败:`, e.message || e)
       }
     }
 
-    // 清空选择态
+    // 清空选择态（显式清除表格勾选 UI + 本地状态）
+    tableRef.value?.clearSelection()
     selectedRows.value = []
     await loadList()
+
+    // 当前页全删后自动回退，避免停留在空页
+    if (invoices.value.length === 0 && page.value > 1) {
+      page.value -= 1
+      filters.value.page = page.value
+      await loadList()
+    }
 
     // 结果摘要
     if (failCount === 0) {
       ElMessage.success(`已成功删除 ${successCount} 条记录`)
     } else {
-      ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条，请刷新后核对`)
+      const detail = failedInvoices.slice(0, 3).join('、') + (failedInvoices.length > 3 ? '等' : '')
+      ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条（${detail}），请刷新后核对`)
     }
   } catch (e: any) {
     ElMessage.error(e.message || '批量删除异常')
@@ -440,7 +454,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         </div>
       </div>
 
-      <el-table :data="invoices" v-loading="loading" stripe @row-click="onRowClick" @selection-change="handleSelectionChange" style="cursor:pointer">
+      <el-table ref="tableRef" :data="invoices" v-loading="loading" stripe @row-click="onRowClick" @selection-change="handleSelectionChange" style="cursor:pointer">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="invoice_number" label="发票号码" width="200" />
         <el-table-column prop="invoice_date" label="开票日期" width="120" />
