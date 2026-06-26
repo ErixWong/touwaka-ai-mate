@@ -73,7 +73,7 @@ class InvoiceController {
       const params = {
         startDate: query.start_date,
         endDate: query.end_date,
-        sort: query.sort || 'invoice_date',
+        sort: query.sort || 'created_at',
         order: query.order || 'desc',
         userId,
         isAdmin,

@@ -79,7 +79,7 @@ const exportFieldGroups = [
 const filters = ref<InvoiceListParams>({
   page: 1,
   size: 20,
-  sort: 'invoice_date',
+  sort: 'created_at',
   order: 'desc',
 })
 
@@ -129,7 +129,7 @@ function onSearch() {
 }
 
 function onReset() {
-  filters.value = { page: 1, size: 20, sort: 'invoice_date', order: 'desc' }
+  filters.value = { page: 1, size: 20, sort: 'created_at', order: 'desc' }
   dateMode.value = ''
   dateValue.value = null
   page.value = 1
