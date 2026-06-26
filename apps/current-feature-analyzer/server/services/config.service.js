@@ -1,5 +1,35 @@
 import logger from '../../../../lib/logger.js';
 
+const DEFAULT_ANALYSIS_PROMPT_TEMPLATE = `你是一个电流时序数据分析专家。
+基于压缩后的电流时序分段信息，识别出符合业务规则的各个阶段。
+每个阶段应尽可能连续覆盖完整时间区间，不允许多个阶段的 start_time/end_time 在同一层级产生冲突。
+对于不确定的阶段，请通过 confidence 字段表达置信度，并在 warnings 中说明。
+你是结构化输出接口的一部分，不允许输出自然语言解释、思维链、分析过程或 markdown。`;
+
+const DEFAULT_JSON_OUTPUT_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: {
+    stages: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          stage_code: { type: 'string' },
+          stage_name: { type: 'string' },
+          start_time: { type: 'number' },
+          end_time: { type: 'number' },
+          confidence: { type: 'number' },
+          reason: { type: 'string' },
+        },
+        required: ['stage_code', 'stage_name', 'start_time', 'end_time'],
+      },
+    },
+    summary: { type: 'string' },
+    warnings: { type: 'array', items: { type: 'object' } },
+  },
+  required: ['stages'],
+});
+
 const DEFAULT_CONFIG = {
   enabled: true,
   llm_model_id: null,
@@ -13,8 +43,8 @@ const DEFAULT_CONFIG = {
   relative_resolution: 0.02,
   merge_gap_ratio: 0.6,
   min_transition_points: 3,
-  analysis_prompt_template: '',
-  json_output_schema: '',
+  analysis_prompt_template: DEFAULT_ANALYSIS_PROMPT_TEMPLATE,
+  json_output_schema: DEFAULT_JSON_OUTPUT_SCHEMA,
   ui: {
     show_ripple_rate: true,
     show_llm_reason: true,
