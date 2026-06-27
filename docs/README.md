@@ -59,7 +59,6 @@ docs/
 | [design/information-architecture.md](./design/information-architecture.md) | 文档信息架构与目录放置规则 |
 | [design/core/phase1/README.md](./design/core/phase1/README.md) | Phase 1 / Mind Core |
 | [design/core/phase2/README.md](./design/core/phase2/README.md) | Phase 2 / Task Layer 与右侧面板 |
-| [design/app-platform/README.md](./design/app-platform/README.md) | App 平台设计 |
 | [design/doc-platform/README.md](./design/doc-platform/README.md) | 文档平台当前实现 |
 
 ## 数据库与任务入口
@@ -85,7 +84,7 @@ docs/
 
 ## 说明
 
-- `docs/design/` 现已收敛为 `core/`、`app-platform/`、`doc-platform/`、`topics/`、`drafts/`、`archive/` 六层结构。
+- `docs/design/` 当前主要保留 `core/`、`doc-platform/`、`topics/`、`drafts/`、`archive/` 等设计与历史材料结构；App 平台现行实现文档已收敛到 `docs/apps/`。
 - `docs/design/information-architecture.md` 定义了 `docs/design/` 的放置规则与目录边界。
 - `docs/tasks/` 是当前主要使用中的任务留痕体系；`docs/tracking/` 当前仅保留为低活跃历史结构。
 - 若文档描述与代码冲突，以可验证仓库事实为准，并在对应任务中补充修正记录。

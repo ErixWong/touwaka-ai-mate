@@ -36,8 +36,8 @@
 - `server/services/app-market.service.js`：app 安装/卸载核心服务。
 - `server/services/mini-app.service.js`：app 运行期的数据和配置服务。
 - `lib/app-clock.js`：统一 tick 调度器。
-- `frontend/src/components/apps/GenericMiniApp.vue`：通用 app 前端容器。
-- `frontend/src/views/AppDetailView.vue`：app 详情页装配入口。
+- `frontend/src/views/AppDetailView.vue`：app 详情页装配入口（当前通过硬编码 `AppComponentMap` 装配专用前端组件）。
+- `frontend/src/components/apps/ReExtractDialog.vue`：仍保留的共享兼容组件示例。
 
 ### 核心数据表
 
@@ -48,7 +48,7 @@
 
 说明：
 
-- `app_state` / `app_row_handlers` 属于旧平台表，当前已退役。
+- `app_state` / `app_row_handlers` 属于旧平台表，当前已退出新标准主路径，但兼容代码仍存在。
 - 现阶段平台不再把状态机定义视为平台统一元数据。
 - 若 app 有状态机，状态定义应由 app 自己代码维护。
 
@@ -70,7 +70,7 @@
 
 - `id`：app 唯一标识，通常与 `apps/{appId}` 目录名一致。
 - `name` / `description` / `icon` / `type`：基础展示信息。
-- `component`：前端组件名；为空时默认走 `GenericMiniApp`。
+- `component`：前端组件名；当前 `AppDetailView.vue` 只会装配 `AppComponentMap` 中已注册的组件，未命中时显示“未配置前端组件”空态。
 - `fields`：字段定义 JSON。
 - `views`：视图定义 JSON。
 - `config`：运行配置 JSON。
@@ -267,7 +267,7 @@ await this.models.AppClockRegistry.create({
 3. `apps/{appId}/migrations/uninstall.js`
 4. `apps/{appId}/tick/index.js`，如果这个 app 需要后台轮询
 5. `apps/{appId}/handlers/*`，如果该 app 自己需要 handler 机制
-6. `apps/{appId}/states.js`，如果该 app 想把状态定义集中到单独模块（推荐，但非强制）
+6. `apps/{appId}/states.js`，如果该 app 想把状态定义集中到单独模块（推荐；对 `invoice-mgr`、`contract-mgr` 这类严格状态 app 当前为必需）
 
 ### manifest 里最重要的内容
 
@@ -287,7 +287,7 @@ await this.models.AppClockRegistry.create({
 
 1. 平台只负责 tick 调度、路由挂载、附件/数据库/LLM/MCP 等宿主能力。
 2. 平台不再负责维护各个 app 的状态机元数据。
-3. `app_state` / `app_row_handlers` 已退役，不再作为新 app 的标准依赖。
+3. `app_state` / `app_row_handlers` 已退出新 app 标准依赖，但兼容代码和部分管理入口仍未完全删除。
 
 如果 app 有状态机，推荐实现是：
 
@@ -297,11 +297,15 @@ await this.models.AppClockRegistry.create({
 - `classifyStatus()`
 - `getStatusSummaryCategories()`
 
-但这只是**推荐实现**，不是平台强制标准。只要状态语义由 app 自己代码负责，而不是由平台通用层负责，也可以放在：
+但这只是**默认推荐实现**，不是平台对所有 app 的统一强制标准。只要状态语义由 app 自己代码负责，而不是由平台通用层负责，也可以放在：
 
 1. tick 模块常量中
 2. app 自己的 service 模块中
 3. app 自己的 routes / runtime 模块中
+
+需要补充一条当前仓库事实：
+
+- `server/services/mini-app.service.js` 中的 `STRICT_STATE_APP_IDS` 目前把 `invoice-mgr` 和 `contract-mgr` 视为严格状态 app；这两个 app 若缺失 `states.js` 或缺失关键导出，会在运行时报错。
 
 关键约束只有一条：
 
@@ -387,32 +391,17 @@ await this.models.AppClockRegistry.create({
 1. 根据路由中的 `appId` 调用 `getApp(appId)`。
 2. 读取返回的 `component` 字段。
 3. 如果 `component` 在 `AppComponentMap` 中有映射，则加载专用视图。
-4. 否则回退到 `GenericMiniApp.vue`。
+4. 如果 `component` 未命中 `AppComponentMap`，则显示“该应用尚未配置前端组件”的空状态，不再回退到 `GenericMiniApp.vue`。
 
-### 通用前端容器能做什么
+### 关于通用前端容器的当前事实
 
-`GenericMiniApp.vue` 当前已经具备较强的低代码容器能力：
+`GenericMiniApp.vue` 已经从当前主路径退役并删除，不再作为现行实现的一部分。
 
-- 列表渲染
-- 状态筛选
-- 分页
-- 新建记录
-- 编辑记录
-- 删除记录
-- 详情查看
-- OCR 内容查看
-- 批量上传
-- 对比结果查看
-- 步骤资源配置
+这意味着当前前端装配现实是：
 
-它依赖的核心元数据来自：
-
-- `app.fields`
-- `app.views`
-- `app.states`
-- `app.config`
-
-也就是说，只要一个 app 的模型足够遵守 manifest 约定，很多场景不需要定制前端页面也能直接运行。
+1. 平台主路径依赖 `AppDetailView.vue` 中硬编码的 `AppComponentMap`
+2. app 若要在当前前端可用，通常仍需要接入专用视图组件
+3. “通用容器覆盖大多数 app”的思路属于历史方案，不应再当作当前实现假设
 
 ### 自定义前端组件当前如何工作
 
@@ -501,7 +490,13 @@ apps/{appId}/
 
 ### 步骤 5：决定是否走通用前端
 
-如果只是标准化的记录录入、列表、详情、OCR 查看、对比，优先复用 `GenericMiniApp.vue`。
+当前不应再以复用 `GenericMiniApp.vue` 作为新 app 的默认前端方案。
+
+按当前实现，优先策略应是：
+
+1. 明确 app 是否已有专用视图组件
+2. 若需要在现有前端可访问，则把组件接入 `AppDetailView.vue` 的 `AppComponentMap`
+3. 动态组件加载链路仍是后续优化方向，不是现行默认主路径
 
 只有在以下情况才建议做专用组件：
 
@@ -575,16 +570,17 @@ apps/{appId}/
 - 要么正式支持 manifest 自定义 tick 脚本路径
 - 要么删除该历史预留，减少误导
 
-### 4. 拆分 `GenericMiniApp.vue`
+### 4. 收敛前端装配入口
 
 现状：
 
-- 单文件职责过多
+- `AppDetailView.vue` 仍依赖硬编码 `AppComponentMap`
+- 动态组件加载 API 已存在，但尚未成为默认主路径
 
 建议：
 
-- 拆成列表容器、表单容器、详情容器、对比容器
-- 保持对外 props 不变，先做内部重构
+- 让 `AppDetailView.vue` 优先消费动态组件加载链路
+- 将当前硬编码映射收敛为兼容兜底，而不是长期主路径
 
 ### 5. 将文档补齐到“manifest 契约级”
 
@@ -604,8 +600,8 @@ apps/{appId}/
 - 用 manifest 描述 app
 - 用安装服务把 manifest 转成平台内实例
 - 用 `mini_apps` 作为实例注册表
-- 用 `app_state + handler + tick` 驱动后台工作流
-- 用 `GenericMiniApp` 承担通用前端渲染
+- 用 `AppClock` + app 自己的 tick / routes / service 驱动后台工作流
+- 用 `mini_apps` 元数据 + `AppDetailView.vue` 装配专用前端组件
 
 它已经具备一个小型 app 平台的基础骨架，尤其适合文档处理、异步流水线和结构化数据提取类场景。
 
