@@ -6,8 +6,8 @@
 
 1. 平台负责 tick 调度、路由挂载、附件/数据库/LLM/MCP 等宿主能力。
 2. app 自己负责业务语义与状态机。
-3. `states.js` 是推荐实现，但不是平台强制标准。
-4. `app_state` / `app_row_handlers` 属于历史机制，当前已退役。
+3. `states.js` 是推荐实现，但不是对所有 app 一刀切的统一强制标准；部分严格状态 app 当前仍把它作为必需依赖。
+4. `app_state` / `app_row_handlers` 属于历史机制，已退出新标准主路径，但兼容代码和部分治理入口仍存在。
 
 ## 推荐阅读顺序
 
@@ -21,7 +21,7 @@
    - 当前实现的详细开发手册
    - 安装链路
    - tick 宿主能力
-   - GenericMiniApp 与 app 详情装配
+   - app 详情装配与当前前端接入方式
 
 3. [historical/README.md](./historical/README.md)
    - 历史设计稿入口

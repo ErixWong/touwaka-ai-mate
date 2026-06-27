@@ -1,6 +1,6 @@
 # 设计文档索引
 
-本目录汇总项目的架构设计、平台设计、专题设计、草稿与归档材料。当前结构不再以 `phase1/phase2/phase3` 作为最外层目录，而是收敛为更稳定的语义化模块：`core/`、`app-platform/`、`doc-platform/`、`topics/`、`drafts/`、`archive/`。
+本目录汇总项目的架构设计、专题设计、草稿与归档材料。App 平台现行实现文档已经收敛到 `docs/apps/`，因此这里不再保留独立的 App Platform 设计主入口。
 
 ## 信息架构
 
@@ -8,7 +8,7 @@
 |------|------|
 | [information-architecture.md](./information-architecture.md) | `docs/design/` 的放置规则、目录边界与治理原则 |
 | [core/README.md](./core/README.md) | 核心架构与基础设施设计入口 |
-| [app-platform/README.md](./app-platform/README.md) | App 平台设计入口 |
+| [../apps/README.md](../apps/README.md) | App 平台现行文档入口 |
 | [doc-platform/README.md](./doc-platform/README.md) | 当前文档平台实现入口 |
 | [topics/README.md](./topics/README.md) | 专题设计入口 |
 
@@ -19,7 +19,6 @@ design/
 ├── README.md                         # 本文件
 ├── information-architecture.md       # 目录治理规则
 ├── core/                             # 核心架构与基础设施设计
-├── app-platform/                     # App 平台主线与平台治理设计
 ├── doc-platform/                     # 当前文档平台实现说明
 ├── topics/                           # 跨阶段专题设计
 ├── drafts/                           # 草稿与工作文档
@@ -41,15 +40,6 @@ design/
 | [core/resident-process-management-redesign.md](./core/resident-process-management-redesign.md) | 驻留进程管理重设计 | 核心基础设施 |
 | [core/architecture-improvements.md](./core/architecture-improvements.md) | 架构改进建议 | 历史核心建议 |
 | [core/improvement-suggestions.md](./core/improvement-suggestions.md) | 功能与架构改进建议 | 历史核心建议 |
-
-### App Platform
-
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [app-platform/README.md](./app-platform/README.md) | App Platform 目录入口 | 总览 |
-| [app-platform/dev-readiness.md](./app-platform/dev-readiness.md) | App 平台开发就绪度审查 | 评估文档 |
-| [app-platform/review.md](./app-platform/review.md) | App 平台设计审查 | 评审文档 |
-| [app-platform/ADR-mini-app-retirement.md](./app-platform/ADR-mini-app-retirement.md) | Mini-app 退役 ADR | 架构决策 |
 
 ### Doc Platform
 
@@ -135,4 +125,4 @@ design/
 
 ---
 
-*最后更新: 2026-06-20*
+*最后更新: 2026-06-27*

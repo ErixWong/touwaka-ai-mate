@@ -170,7 +170,7 @@ nav 结构（现有）：
 
 ### 数据库设计
 
-> **完整的数据库表定义已提取到独立文件**：[`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md)
+> **历史说明**：该设计当年曾把完整数据库表定义提取到独立 schema 文档；该独立设计稿现已移除，不再作为当前仓库事实来源。
 >
 > 包含：核心表（`mini_apps`、`mini_app_rows`、`mini_app_files`）、状态机表（`app_row_handlers`、`app_state`、`app_action_logs`）、权限表（`mini_app_role_access`）、知识库扩展字段、虚拟列索引、ER 关系图。
 >
@@ -533,7 +533,7 @@ function computeSummaries(data, fields) {
 
 ### 虚拟列索引（按需优化）
 
-> 完整的虚拟列 SQL 示例见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"虚拟列索引"章节。
+> 历史上曾有独立 schema 设计稿记录虚拟列 SQL 示例；该设计稿现已移除，不再作为当前事实来源。
 
 **策略**：初期不建虚拟列，纯 JSON 查询。当某个小程序数据量超过 1000 条且查询变慢时，再按需添加。
 
@@ -679,7 +679,7 @@ ADD INDEX idx_app_status (app_id, _status);
 
 #### 新增表：处理脚本、状态定义、执行日志
 
-> 完整的 CREATE TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"状态机表"章节。
+> 历史上曾有独立 schema 设计稿记录状态机表 CREATE TABLE 语句；该设计稿现已移除，不再作为当前事实来源。
 
 | 表名 | 用途 |
 |------|------|
@@ -2413,7 +2413,7 @@ App 级权限控制的是"用户能否看到和使用某个小程序"。参考�
 
 #### 数据模型扩展
 
-> 完整的 SQL 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"权限表"章节。
+> 历史上曾有独立 schema 设计稿记录权限表 SQL；该设计稿现已移除，不再作为当前事实来源。
 
 `mini_apps` 表增加权限字段：`visibility`、`owner_id`、`creator_id`（已在核心表 CREATE TABLE 中包含）。
 新增 `mini_app_role_access` 表用于 `visibility = 'role'` 时的角色访问控制。
@@ -2598,7 +2598,7 @@ const parseResult = await mcpClient.callTool('mineru', 'parse', {
 
 场景 C（质量文档管理）需要扩展知识库：
 
-> 完整的 ALTER TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"知识库扩展"章节。
+> 历史上曾有独立 schema 设计稿记录知识库扩展 ALTER TABLE 语句；该设计稿现已移除，不再作为当前事实来源。
 
 RAG 检索时增加过滤条件：`WHERE document_status = 'effective' AND (expiry_date IS NULL OR expiry_date > NOW())`
 
@@ -3463,7 +3463,7 @@ temperature: 0.1
 
 ### 数据模型
 
-> 完整的 ALTER TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"知识库扩展"章节。
+> 历史上曾有独立 schema 设计稿记录知识库扩展 ALTER TABLE 语句；该设计稿现已移除，不再作为当前事实来源。
 
 `mini_apps.config` 中增加 `kb_sync` 配置项：
 
@@ -4156,7 +4156,7 @@ async function processExtractResult(record, llmResult) {
 
 ### 数据模型：app_event_handlers 表
 
-> **完整的 CREATE TABLE 语句见 [`../../design/phase3/database-schema.md`](../../design/phase3/database-schema.md) 的"事件处理器表"章节。
+> **历史说明**：事件处理器表的完整 CREATE TABLE 语句当年曾单独记录在 schema 设计稿中；该设计稿现已移除，不再作为当前事实来源。
 
 ```sql
 CREATE TABLE app_event_handlers (
