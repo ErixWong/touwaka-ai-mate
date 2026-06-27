@@ -11,17 +11,7 @@
           <el-tab-pane :label="$t('apps.reExtract.lastPrompt')" name="prompt">
             <div class="prompt-section">
               <div class="prompt-label">{{ $t('apps.reExtract.lastPrompt') }}</div>
-              <div class="prompt-box">{{ lastPrompt }}</div>
-            </div>
-            
-            <div class="prompt-section">
-              <div class="prompt-label">{{ $t('apps.reExtract.newPrompt') }}</div>
-              <el-input
-                v-model="newPrompt"
-                type="textarea"
-                :rows="6"
-                :placeholder="$t('apps.reExtract.useLast')"
-              />
+              <div class="prompt-box">{{ lastPrompt || $t('apps.reExtract.noHistory') }}</div>
             </div>
             
             <div class="prompt-section">
@@ -89,7 +79,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import apiClient, { apiRequest } from '@/api/client'
+import { reExtractRecord } from '@/api/mini-apps'
 
 interface Props {
   visible: boolean
@@ -113,7 +103,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const activeTab = ref('prompt')
-const newPrompt = ref('')
 const comparisonMode = ref(false)
 const currentResult = ref<Record<string, unknown> | null>(null)
 const isProcessing = ref(false)
@@ -125,7 +114,6 @@ const previewText = computed(() => {
 watch(() => props.visible, (val) => {
   if (val) {
     activeTab.value = 'prompt'
-    newPrompt.value = props.lastPrompt
     comparisonMode.value = false
     currentResult.value = null
   }
@@ -143,13 +131,8 @@ function formatJson(obj: Record<string, unknown> | null | undefined): string {
 async function handleExtract() {
   isProcessing.value = true
   try {
-    const promptToUse = newPrompt.value.trim() || props.lastPrompt
-    const result = await apiRequest<{ data: Record<string, unknown> }>(
-      apiClient.post(`/mini-apps/${props.appId}/rows/${props.recordId}/re-extract`, {
-        prompt: promptToUse
-      })
-    )
-    currentResult.value = result.data || result
+    const result = await reExtractRecord(props.appId, props.recordId)
+    currentResult.value = result || {}
     comparisonMode.value = true
     activeTab.value = 'comparison'
   } catch (err: unknown) {

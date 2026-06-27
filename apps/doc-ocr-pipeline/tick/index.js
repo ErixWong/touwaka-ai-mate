@@ -146,17 +146,13 @@ async function updateBoundAppOnSubmit(services, binding, submittedResult) {
   }
 
   if (binding.app_id === 'contract-mgr') {
+    // Write to autonomous content table only (no mini_app_rows dependency)
     await services.execute(
-      `INSERT INTO app_contract_mgr_content (row_id, process_step, file_id, created_at, updated_at)
-       VALUES (?, 'ocr_submitted', NULL, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE process_step = VALUES(process_step), updated_at = NOW()`,
-      [binding.row_id]
+      `INSERT INTO app_contract_mgr_content (row_id, process_step, ocr_service, ocr_task_id, created_at, updated_at)
+       VALUES (?, 'ocr_submitted', ?, ?, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE process_step = VALUES(process_step), ocr_service = VALUES(ocr_service), ocr_task_id = VALUES(ocr_task_id), updated_at = NOW()`,
+      [binding.row_id, provider, taskId]
     );
-
-    const data = await loadMiniAppRowData(services, binding.row_id);
-    data._ocr_task_id = taskId;
-    data._ocr_service = provider;
-    await services.execute(`UPDATE mini_app_rows SET status = 'ocr_submitted', data = ? WHERE id = ?`, [JSON.stringify(data), binding.row_id]);
   }
 }
 
@@ -172,26 +168,13 @@ async function updateBoundAppOnCompletedSync(services, binding, syncResult, mark
   }
 
   if (binding.app_id === 'contract-mgr') {
+    // Write to autonomous content table only (no mini_app_rows dependency)
     await services.execute(
-      `INSERT INTO app_contract_mgr_content (row_id, ocr_text, ocr_service, ocr_at, created_at, updated_at)
-       VALUES (?, ?, ?, NOW(), NOW(), NOW())
-       ON DUPLICATE KEY UPDATE ocr_text = VALUES(ocr_text), ocr_service = VALUES(ocr_service), ocr_at = VALUES(ocr_at)` ,
+      `INSERT INTO app_contract_mgr_content (row_id, ocr_text, ocr_service, ocr_at, process_step, created_at, updated_at)
+       VALUES (?, ?, ?, NOW(), 'pending_filter', NOW(), NOW())
+       ON DUPLICATE KEY UPDATE ocr_text = VALUES(ocr_text), ocr_service = VALUES(ocr_service), ocr_at = VALUES(ocr_at), process_step = VALUES(process_step), updated_at = NOW()` ,
       [binding.row_id, markdownText, provider]
     );
-
-    const data = await loadMiniAppRowData(services, binding.row_id);
-    data._ocr_service = provider;
-    await services.execute(`UPDATE mini_app_rows SET status = 'pending_filter', data = ? WHERE id = ?`, [JSON.stringify(data), binding.row_id]);
-  }
-}
-
-async function loadMiniAppRowData(services, rowId) {
-  const rows = await services.query(`SELECT data FROM mini_app_rows WHERE id = ? LIMIT 1`, [rowId]);
-  const rawData = rows?.[0]?.data || '{}';
-  try {
-    return JSON.parse(rawData);
-  } catch {
-    return {};
   }
 }
 
