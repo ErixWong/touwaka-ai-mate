@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
+import { listInvoices, exportInvoices, createInvoiceRecord, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
+import { newID } from '@/api/mini-apps'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { createRecord, newID } from '@/api/mini-apps'
 import { ElMessage } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
@@ -174,7 +174,7 @@ async function handleCreate() {
     })
 
     const clientId = await newID(20)
-    await createRecord(APP_ID, {}, [att.id], clientId)
+    await createInvoiceRecord({ data: {}, attachments: [att.id], clientRecordId: clientId })
 
     showCreateDialog.value = false
     selectedFile.value = null

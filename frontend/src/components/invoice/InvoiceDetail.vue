@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { getInvoiceDetail, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
-import { deleteRecord, reExtractRecord } from '@/api/mini-apps'
+import { getInvoiceDetail, deleteInvoiceRecord, reExtractInvoiceRecord, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps<{ rowId: string }>()
@@ -12,8 +11,6 @@ const loading = ref(false)
 const detail = ref<InvoiceDetailType | null>(null)
 const deleting = ref(false)
 const reExtracting = ref(false)
-
-const APP_ID = 'invoice-mgr'
 
 const statusLabels: Record<string, { label: string; type: string }> = {
   pending_process: { label: '待处理', type: 'info' },
@@ -53,7 +50,7 @@ async function onDelete() {
 
   deleting.value = true
   try {
-    await deleteRecord(APP_ID, props.rowId)
+    await deleteInvoiceRecord(props.rowId)
     ElMessage.success('记录已删除')
     emit('deleted')
     emit('back')
@@ -84,7 +81,7 @@ async function onReExtract() {
 
   reExtracting.value = true
   try {
-    await reExtractRecord(APP_ID, props.rowId)
+    await reExtractInvoiceRecord(props.rowId)
     ElMessage.success('已重置为初始状态，系统将自动重新分析')
     emit('deleted')
     emit('back')

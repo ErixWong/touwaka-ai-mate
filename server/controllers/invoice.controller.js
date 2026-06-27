@@ -1,9 +1,12 @@
 import logger from '../../lib/logger.js';
 import InvoiceService from '../services/invoice.service.js';
+import MiniAppService from '../services/mini-app.service.js';
 
 class InvoiceController {
   constructor(db) {
+    this.db = db;
     this.invoiceService = new InvoiceService(db);
+    this.miniAppService = new MiniAppService(db);
   }
 
   _getUserContext(ctx) {
@@ -116,6 +119,75 @@ class InvoiceController {
     } catch (error) {
       logger.error('[Invoice] export error:', error.message);
       ctx.error(error.message, 500);
+    }
+  }
+
+  // ==================== Records API (自治 app 专属) ====================
+
+  async create(ctx) {
+    try {
+      const { userId } = this._getUserContext(ctx);
+      if (!userId) return ctx.error('未登录', 401);
+
+      const { data, attachments, clientRecordId } = ctx.request.body;
+      if (!attachments || !Array.isArray(attachments) || attachments.length === 0) {
+        return ctx.error('附件必填', 400);
+      }
+
+      // 复用 miniAppService 自治能力创建记录
+      const record = await this.miniAppService.createAutonomousRecord(
+        'invoice-mgr',
+        userId,
+        data || {},
+        attachments,
+        clientRecordId
+      );
+
+      ctx.success(record, 'Created');
+    } catch (error) {
+      logger.error('[Invoice] create error:', error.message);
+      ctx.error(error.message, 400);
+    }
+  }
+
+  async remove(ctx) {
+    try {
+      const { userId } = this._getUserContext(ctx);
+      if (!userId) return ctx.error('未登录', 401);
+
+      const { rowId } = ctx.params;
+
+      // 复用 miniAppService 自治能力删除记录
+      await this.miniAppService.deleteAutonomousRecord('invoice-mgr', rowId, userId);
+
+      ctx.success(null, 'Deleted');
+    } catch (error) {
+      logger.error('[Invoice] remove error:', error.message);
+      ctx.error(error.message, 400);
+    }
+  }
+
+  async reExtract(ctx) {
+    try {
+      const { userId, isAdmin } = this._getUserContext(ctx);
+      if (!userId) return ctx.error('未登录', 401);
+      if (!isAdmin) return ctx.error('仅管理员可执行重新分析', 403);
+
+      const { rowId } = ctx.params;
+
+      // 复用 miniAppService 自治能力更新记录状态为 pending_process
+      const record = await this.miniAppService.updateAutonomousRecord(
+        'invoice-mgr',
+        rowId,
+        userId,
+        {},
+        { status: 'pending_process' }
+      );
+
+      ctx.success(record, 'Re-extract triggered');
+    } catch (error) {
+      logger.error('[Invoice] reExtract error:', error.message);
+      ctx.error(error.message, 400);
     }
   }
 }

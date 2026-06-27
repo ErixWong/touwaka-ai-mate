@@ -148,6 +148,222 @@ class ExtensionTableService {
     return rows[0] || null;
   }
 
+  // ============================================================
+  // Phase 6 NEW: Autonomous query path (no mini_app_rows anchor)
+  // ============================================================
+  //
+  // NOTE: These methods are provided as a reusable generic capability.
+  // Currently, invoice-mgr and contract-mgr use the hardcoded config in
+  // mini-app.service.js getAutonomousAppConfig() instead.
+  // These methods can be used by apps that don't have hardcoded config.
+  //
+  // Current status:
+  //   - contract-mgr-v2: uses its own dedicated route system (/api/apps/contract-mgr-v2/*)
+  //   - invoice-mgr: uses mini-app.service.js autonomous path
+  //   - contract-mgr: uses mini-app.service.js autonomous path
+  //
+  // The generic autonomous path in this file remains available for:
+  //   - Future autonomous apps without hardcoded config
+  //   - Apps that need dynamic table configuration
+  //
+  // When used, pass options with:
+  //   - base_table: Main records table (e.g., 'app_contract_mgr_v2_records')
+  //   - primary_table: Extension primary table (e.g., 'app_contract_mgr_v2_rows')
+  //   - And other config options as documented in the method JSDoc
+  // ============================================================
+
+  /**
+   * Autonomous app records query - uses autonomous main table as anchor
+   * instead of mini_app_rows
+   * 
+   * @param {string} appId - App ID (e.g., 'contract-mgr-v2')
+   * @param {string} userId - User ID for permission filtering
+   * @param {Object} params - Query params: { page, size, filter, sort }
+   * @param {Object} options - Autonomous table config
+   *   - base_table: Main records table (e.g., 'app_contract_mgr_v2_records')
+   *   - base_alias: Table alias (e.g., 'm')
+   *   - pk_column: Primary key column (e.g., 'id')
+   *   - primary_table: Extension primary table (e.g., 'app_contract_mgr_v2_rows')
+   *   - primary_alias: Extension table alias (e.g., 'e')
+   *   - user_column: User ID column in main table (e.g., 'user_id')
+   *   - status_column: Status column in main table (e.g., 'status')
+   *   - created_at_column: Created_at column (e.g., 'created_at')
+   *   - app_id_column: App ID column (optional, for multi-app tables)
+   *   - app_id_value: App ID value (if app_id_column is set)
+   */
+  async getRecordsWithExtensionAutonomous(appId, userId, params, options) {
+    this.ensureModels();
+    const extConfigs = await this.getExtensionConfigs(appId);
+    if (!extConfigs || extConfigs.length === 0) return null;
+
+    const primaryConfig = extConfigs.find(c => c.type === 'primary');
+    if (!primaryConfig) return null;
+
+    const {
+      base_table,
+      base_alias = 'm',
+      pk_column = 'id',
+      primary_table,
+      primary_alias = 'e',
+      user_column = 'user_id',
+      status_column = 'status',
+      created_at_column = 'created_at',
+      app_id_column = null,
+      app_id_value = null
+    } = options;
+
+    if (!base_table || !primary_table) {
+      throw new Error('base_table and primary_table are required for autonomous query');
+    }
+
+    const { page = 1, size = 10, filter, sort } = params || {};
+    const limit = Math.min(Math.max(parseInt(size) || 10, 1), 100);
+    const offset = (parseInt(page) - 1) * limit;
+
+    const isAdmin = await this.isAdmin(userId);
+
+    const replacements = { appId, userId, limit, offset };
+    const conditions = [];
+
+    // Add app_id condition if specified
+    if (app_id_column && app_id_value) {
+      conditions.push(`${base_alias}.${app_id_column} = :appId`);
+      replacements.appId = app_id_value;
+    }
+
+    // Add user_id condition for non-admin
+    if (!isAdmin && user_column) {
+      conditions.push(`${base_alias}.${user_column} = :userId`);
+    }
+
+    // Build filter conditions
+    if (filter) {
+      const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
+      for (const [key, value] of Object.entries(filterObj)) {
+        const paramName = `filter_${key}`;
+        if (key === 'status') {
+          conditions.push(`${base_alias}.${status_column} = :${paramName}`);
+          replacements[paramName] = value;
+        } else if (primaryConfig.fields.some(f => f.name === key)) {
+          conditions.push(`${primary_alias}.${key} = :${paramName}`);
+          replacements[paramName] = value;
+        }
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Build order clause
+    let orderClause = `ORDER BY ${base_alias}.${created_at_column} DESC`;
+    if (sort) {
+      const { field, order = 'DESC' } = sort;
+      const validOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+      
+      if (field === 'created_at' || field === 'status') {
+        orderClause = `ORDER BY ${base_alias}.${field} ${validOrder}`;
+      } else if (primaryConfig.fields.some(f => f.name === field)) {
+        orderClause = `ORDER BY ${primary_alias}.${field} ${validOrder}`;
+      }
+    }
+
+    const selectFields = primaryConfig.fields.map(f => `${primary_alias}.${f.name}`).join(', ');
+
+    const sql = `
+      SELECT 
+        ${base_alias}.${pk_column} as id, 
+        ${app_id_column ? `${base_alias}.${app_id_column} as app_id,` : ''}
+        ${base_alias}.${user_column} as user_id, 
+        ${base_alias}.${status_column} as status, 
+        ${base_alias}.data, 
+        ${base_alias}.${created_at_column} as created_at, 
+        ${base_alias}.updated_at,
+        ${selectFields}
+      FROM ${base_table} ${base_alias}
+      LEFT JOIN ${primary_table} ${primary_alias} ON ${primary_alias}.row_id = ${base_alias}.${pk_column}
+      ${whereClause}
+      ${orderClause}
+      LIMIT :limit OFFSET :offset
+    `;
+
+    const countSql = `
+      SELECT COUNT(*) as total
+      FROM ${base_table} ${base_alias}
+      LEFT JOIN ${primary_table} ${primary_alias} ON ${primary_alias}.row_id = ${base_alias}.${pk_column}
+      ${whereClause}
+    `;
+
+    const [rows, countResult] = await Promise.all([
+      this.sequelize.query(sql, {
+        replacements,
+        type: Sequelize.QueryTypes.SELECT
+      }),
+      this.sequelize.query(countSql, {
+        replacements,
+        type: Sequelize.QueryTypes.SELECT
+      })
+    ]);
+
+    return { rows, count: countResult[0]?.total || 0 };
+  }
+
+  /**
+   * Autonomous app single record query
+   */
+  async getRecordWithExtensionAutonomous(appId, recordId, options) {
+    this.ensureModels();
+    const extConfigs = await this.getExtensionConfigs(appId);
+    if (!extConfigs || extConfigs.length === 0) return null;
+
+    const primaryConfig = extConfigs.find(c => c.type === 'primary');
+    if (!primaryConfig) return null;
+
+    const {
+      base_table,
+      base_alias = 'm',
+      pk_column = 'id',
+      primary_table,
+      primary_alias = 'e',
+      user_column = 'user_id',
+      status_column = 'status',
+      created_at_column = 'created_at',
+      app_id_column = null,
+      app_id_value = null
+    } = options;
+
+    if (!base_table || !primary_table) {
+      throw new Error('base_table and primary_table are required for autonomous query');
+    }
+
+    const selectFields = primaryConfig.fields.map(f => `${primary_alias}.${f.name}`).join(', ');
+
+    let appIdCondition = '';
+    if (app_id_column && app_id_value) {
+      appIdCondition = `AND ${base_alias}.${app_id_column} = :appIdValue`;
+    }
+
+    const sql = `
+      SELECT 
+        ${base_alias}.${pk_column} as id, 
+        ${app_id_column ? `${base_alias}.${app_id_column} as app_id,` : ''}
+        ${base_alias}.${user_column} as user_id, 
+        ${base_alias}.${status_column} as status, 
+        ${base_alias}.data, 
+        ${base_alias}.${created_at_column} as created_at, 
+        ${base_alias}.updated_at,
+        ${selectFields}
+      FROM ${base_table} ${base_alias}
+      LEFT JOIN ${primary_table} ${primary_alias} ON ${primary_alias}.row_id = ${base_alias}.${pk_column}
+      WHERE ${base_alias}.${pk_column} = :recordId ${appIdCondition}
+    `;
+
+    const rows = await this.sequelize.query(sql, {
+      replacements: { recordId, appIdValue: app_id_value },
+      type: Sequelize.QueryTypes.SELECT
+    });
+
+    return rows[0] || null;
+  }
+
   async getDistinctValues(appId, fieldName) {
     this.ensureModels();
     const extConfigs = await this.getExtensionConfigs(appId);

@@ -1,4 +1,5 @@
 import apiClient, { apiRequest } from './client'
+import type { MiniAppRecord } from './mini-apps'
 
 export interface InvoiceItem {
   id: string
@@ -125,4 +126,30 @@ export async function exportInvoices(params: InvoiceExportParams = {}) {
   link.click()
   document.body.removeChild(link)
   window.URL.revokeObjectURL(url)
+}
+
+// ==================== Records API (自治 app 专属) ====================
+
+export interface CreateInvoiceParams {
+  data?: Record<string, unknown>
+  attachments: string[]
+  clientRecordId?: string
+}
+
+export async function createInvoiceRecord(params: CreateInvoiceParams): Promise<MiniAppRecord> {
+  return apiRequest<MiniAppRecord>(
+    apiClient.post('/invoice', params)
+  )
+}
+
+export async function deleteInvoiceRecord(rowId: string): Promise<void> {
+  return apiRequest<void>(
+    apiClient.delete(`/invoice/${rowId}`)
+  )
+}
+
+export async function reExtractInvoiceRecord(rowId: string): Promise<MiniAppRecord> {
+  return apiRequest<MiniAppRecord>(
+    apiClient.post(`/invoice/${rowId}/re-extract`)
+  )
 }
