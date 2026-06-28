@@ -1,15 +1,24 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
+
+// 先加载环境变量，确保 ATTACHMENT_BASE_PATH 能正确读取
+dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.env') });
+
+// 懒加载：附件目录路径在使用时才解析（避免在 dotenv.config() 之前计算）
+function getAttachmentBasePath() {
+  const basePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
+  return path.resolve(basePath);
+}
 
 import Database from '../lib/db.js';
 import logger from '../lib/logger.js';
 import AppClock from '../lib/app-clock.js';
+import { collectOcrAttachmentIds } from '../lib/doc-ocr-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 function parseArgs(argv) {
   const result = {};
@@ -77,6 +86,34 @@ async function main() {
       }
     }
 
+    // 事务外预先缓存所有待删附件 ID 和文件路径（确保事务提交后删盘时能拿到数据）
+    // 注意：必须在事务开始前或事务内删除数据库记录前缓存
+    let allAttachmentIds = [];
+    let attachmentFiles = [];
+    if (args.deleteDocument && document) {
+      // 统一收集所有 OCR 相关附件 ID（使用单一事实源）
+      const ocrAttachmentIds = collectOcrAttachmentIds(ocrResult, { includeAll: true });
+      const ocrImages = await DocOcrImage.findAll({
+        where: { ocr_result_id: ocrResult.id },
+        attributes: ['attachment_id'],
+        raw: true,
+      });
+      const ocrImageIds = ocrImages.map(item => item.attachment_id).filter(Boolean);
+      
+      // 合并并去重，形成单一删除集合
+      allAttachmentIds = [...new Set([...ocrAttachmentIds, ...ocrImageIds])];
+      
+      // 从数据库查询文件路径（此时数据库记录尚在）
+      attachmentFiles = allAttachmentIds.length > 0
+        ? await Attachment.findAll({
+            where: { id: { [Op.in]: allAttachmentIds } },
+            attributes: ['id', 'file_path'],
+            raw: true,
+          })
+        : [];
+    }
+
+    // 执行事务：更新状态 + 删除数据库记录
     await db.sequelize.transaction(async (t) => {
       await DocOcrResult.update({
         status: 'failed',
@@ -104,31 +141,45 @@ async function main() {
       });
 
       if (args.deleteDocument && document) {
-        const attachmentIds = [
-          ocrResult.main_markdown_attachment_id,
-          ocrResult.raw_result_attachment_id,
-          ocrResult.deliverables_manifest_attachment_id,
-          ocrResult.middle_json_attachment_id,
-          ocrResult.content_list_attachment_id,
-          ocrResult.content_list_v2_attachment_id,
-          ocrResult.model_json_attachment_id,
-          ocrResult.image_manifest_attachment_id,
-        ].filter(Boolean);
-
+        // 清理 document_revision 的 current_revision_id 引用
         await Document.update({ current_revision_id: null }, { where: { id: document.id }, transaction: t });
+        // 删除 OCR 图片、OCR 结果（数据库记录）
         await DocOcrImage.destroy({ where: { ocr_result_id: ocrResult.id }, transaction: t });
         await DocOcrResult.destroy({ where: { id: ocrResult.id }, transaction: t });
+        // 删除关联的 revision 和 chunk
         if (revision) {
           await models.document_chunk.destroy({ where: { revision_id: revision.id }, transaction: t });
           await DocumentRevision.destroy({ where: { id: revision.id }, transaction: t });
         }
-        if (attachmentIds.length > 0) {
-          await Attachment.destroy({ where: { id: { [Op.in]: attachmentIds } }, transaction: t });
+        // 删除附件记录（使用事务前缓存的 ID 列表，避免重复查询）
+        if (allAttachmentIds.length > 0) {
+          await Attachment.destroy({ where: { id: { [Op.in]: allAttachmentIds } }, transaction: t });
         }
+        // 删除文档标签和文档本身
         await models.doc_document_tag.destroy({ where: { document_id: document.id }, transaction: t });
         await Document.destroy({ where: { id: document.id }, transaction: t });
       }
-    });
+    }); // 事务结束
+
+    // 事务提交后，根据事务前缓存的文件路径删除磁盘文件
+    let deletedCount = 0;
+    let failedCount = 0;
+    if (args.deleteDocument && document && attachmentFiles.length > 0) {
+      for (const att of attachmentFiles) {
+        if (!att.file_path) continue;
+        const fullPath = path.join(getAttachmentBasePath(), att.file_path);
+        try {
+          await fs.unlink(fullPath);
+          deletedCount += 1;
+        } catch (err) {
+          if (err.code !== 'ENOENT') {
+            failedCount += 1;
+            logger.warn(`[stop-stuck-ocr] Failed to delete file: ${fullPath}`, err.message);
+          }
+        }
+      }
+      logger.info(`[stop-stuck-ocr] File cleanup: to_delete=${attachmentFiles.length}, deleted=${deletedCount}, failed=${failedCount}`);
+    }
 
     console.log(JSON.stringify({
       ok: true,
@@ -136,6 +187,7 @@ async function main() {
       document_id: ocrResult.document_id,
       revision_id: ocrResult.revision_id,
       deleteDocument: !!args.deleteDocument,
+      file_cleanup: args.deleteDocument ? { to_delete: attachmentFiles.length, deleted: deletedCount, failed: failedCount } : null,
       remoteCancel,
     }, null, 2));
   } finally {

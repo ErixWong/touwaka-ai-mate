@@ -23,16 +23,18 @@ export interface SystemSettings {
     refresh_expiry: string
   }
   timeout: {
-    vm_execution: number
-    python_execution: number
-    skill_call: number
-    skill_http: number
-    resident_skill: number
-    internal_llm: number
-    external_http: number
-    mcp_request: number
-    embedding: number
-    chat_idle: number
+    fast_timeout: number
+    task_timeout: number
+    vm_execution?: number
+    python_execution?: number
+    skill_call?: number
+    skill_http?: number
+    resident_skill?: number
+    internal_llm?: number
+    external_http?: number
+    mcp_request?: number
+    embedding?: number
+    chat_idle?: number
   }
   tool: {
     max_rounds: number
@@ -99,6 +101,8 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
       refresh_expiry: '',
     },
     timeout: {
+      fast_timeout: 0,
+      task_timeout: 0,
       vm_execution: 0,
       python_execution: 0,
       skill_call: 0,

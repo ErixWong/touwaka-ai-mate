@@ -1,5 +1,6 @@
 import logger from '../../../lib/logger.js';
 import DocPipelineAdvancer from '../../../lib/doc-pipeline-advancer.js';
+import { getPreviewAttachmentId } from '../../../lib/doc-ocr-utils.js';
 
 const MAX_BATCH_SIZE = 5;
 
@@ -128,7 +129,9 @@ async function syncBoundAppRowOnSync(services, documentId, syncResult) {
 
   if (!syncResult?.completed) return;
 
-  const markdownText = await loadAttachmentTextById(services, syncResult.ocrResult?.main_markdown_attachment_id);
+  // 使用统一语义获取预览稿（优先 cleaned_markdown，兼容 main_markdown）
+  const previewAttachmentId = getPreviewAttachmentId(syncResult.ocrResult);
+  const markdownText = await loadAttachmentTextById(services, previewAttachmentId);
 
   await updateBoundAppOnCompletedSync(services, binding, syncResult, markdownText);
 }
