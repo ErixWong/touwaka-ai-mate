@@ -220,7 +220,7 @@
             </template>
             <!-- 不支持的类型 -->
             <div v-else class="preview-unsupported">
-              <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
+              <p>{{ $t('tasks.previewNotSupported') }}</p>
             </div>
           </template>
         </div>
