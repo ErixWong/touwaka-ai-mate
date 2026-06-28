@@ -70,9 +70,7 @@
             <el-form-item label="Provider 标识">
               <el-input v-model="form.pending_ocr.provider_name" placeholder="mineru" />
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_ocr.mcp_timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
+            <!-- 阶段字段优先，系统设置兜底：pending_ocr 使用 MCP 内部超时 -->
             <el-divider content-position="left">附件提取参数</el-divider>
             <el-form-item label="file_base64">
               <div class="param-row">
@@ -193,9 +191,7 @@
             <el-form-item label="轮询间隔(ms)">
               <el-input-number v-model="form.ocr_processing.poll_interval_ms" :min="1000" :step="1000" />
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.ocr_processing.poll_request_timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
+            <!-- 阶段字段优先，系统设置兜底：轮询间隔使用 poll_interval_ms，系统 fast_timeout 作为兜底 -->
             <el-divider content-position="left">LLM 归一化</el-divider>
             <el-form-item label="归一化模型">
               <el-select v-model="form.ocr_processing.judge.model_id" placeholder="默认模型" clearable filterable>
@@ -330,9 +326,6 @@
                 工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
               </div>
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.ocr_finalize.mcp_timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
             <el-form-item label="持久化原始结果">
               <el-switch v-model="form.ocr_finalize.persist_raw_result" />
             </el-form-item>
@@ -383,6 +376,10 @@
             <el-form-item label="分块最大长度">
               <el-input-number v-model="form.pending_clean.chunk_max_length" :min="500" :step="500" />
             </el-form-item>
+            <el-form-item label="超时(毫秒)">
+              <el-input-number v-model="form.pending_clean.llm_timeout_ms" :min="60000" :step="30000" />
+              <div class="param-hint">阶段字段优先，系统 task_timeout 作为兜底默认值</div>
+            </el-form-item>
             <el-form-item label="清洗提示词">
               <el-input v-model="form.pending_clean.prompt_template" type="textarea" :rows="4" />
             </el-form-item>
@@ -391,9 +388,6 @@
             <el-form-item label="移水印"><el-switch v-model="form.pending_clean.rules.remove_watermark" /></el-form-item>
             <el-form-item label="移除乱码"><el-switch v-model="form.pending_clean.rules.remove_garbled_text" /></el-form-item>
             <el-form-item label="移除页眉页脚"><el-switch v-model="form.pending_clean.rules.remove_header_footer" /></el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_clean.timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
           </template>
 
           <!-- pending_outline -->
@@ -406,6 +400,10 @@
             <el-form-item label="温度">
               <el-input-number v-model="form.pending_outline.temperature" :min="0" :max="2" :step="0.1" />
             </el-form-item>
+            <el-form-item label="超时(毫秒)">
+              <el-input-number v-model="form.pending_outline.llm_timeout_ms" :min="60000" :step="30000" />
+              <div class="param-hint">阶段字段优先，系统 task_timeout 作为兜底默认值</div>
+            </el-form-item>
             <el-form-item label="窗口大小">
               <el-input-number v-model="form.pending_outline.window_size" :min="1000" :step="1000" />
             </el-form-item>
@@ -416,9 +414,23 @@
               <el-input-number v-model="form.pending_outline.max_heading_level" :min="1" :max="10" :step="1" />
             </el-form-item>
             <el-form-item label="标题去重"><el-switch v-model="form.pending_outline.deduplicate_titles" /></el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_outline.timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
+            <!-- 章节提取参数说明面板 -->
+            <el-alert
+              title="章节提取参数说明"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-top: 12px;"
+            >
+              <template #default>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 12px; line-height: 1.6;">
+                  <li><strong>窗口大小</strong>：每次发送给 LLM 的文本长度。值越大理解越全面，但耗时更长、费用更高。</li>
+                  <li><strong>步长</strong>：每次窗口向后移动的字符数。值越小重叠越多，越不易遗漏边界内容，但会产生更多重复计算。</li>
+                  <li><strong>最大标题层级</strong>：提取到第几级标题。例如 3 表示提取 H1~H3 标题。</li>
+                  <li><strong>推荐</strong>：窗口 60000 / 步长 40000 适合大多数文档；短文档可减小窗口以提高速度。</li>
+                </ul>
+              </template>
+            </el-alert>
           </template>
 
           <!-- pending_chunk -->
@@ -457,8 +469,9 @@
             <el-form-item label="重试次数">
               <el-input-number v-model="form.pending_embedding.retry_times" :min="0" :max="10" :step="1" />
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_embedding.embedding_timeout_ms" :min="5000" :step="10000" />
+            <el-form-item label="超时(毫秒)">
+              <el-input-number v-model="form.pending_embedding.embedding_timeout_ms" :min="10000" :step="10000" />
+              <div class="param-hint">阶段字段优先，系统 fast_timeout 作为兜底默认值</div>
             </el-form-item>
           </template>
 
@@ -470,7 +483,7 @@
       <div class="dialog-footer">
         <el-button @click="resetStage">恢复默认</el-button>
         <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!loadedFromBackend" @click="save">保存</el-button>
       </div>
     </template>
   </el-dialog>
@@ -507,12 +520,13 @@ const stages = [
 const activeStage = ref('pending_ocr')
 const saving = ref(false)
 const loading = ref(false)
+const loadedFromBackend = ref(false)  // 配置是否成功从后端加载
 const schemaError = ref<Record<string, string>>({})
 
 const defaultForm: DocPipelineConfig = {
   meta: { version: 1, enabled: true },
   pending_ocr: {
-    enabled: true, type: 'mcp', provider_name: 'mineru', mcp_timeout_ms: 120000,
+    enabled: true, type: 'mcp', provider_name: 'mineru',
     mcp: {
       server: 'mineru',
       tool: 'create_task_from_file',
@@ -529,18 +543,20 @@ const defaultForm: DocPipelineConfig = {
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_processing: {
-    enabled: true, type: 'mcp', poll_request_timeout_ms: 120000, poll_interval_ms: 5000,
+    enabled: true, type: 'mcp', poll_interval_ms: 5000,
     mcp: { server: 'mineru', tool: 'get_task_status', params_mapping: { task_id: 'task_id' }, params: {} },
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_finalize: {
     enabled: true, mcp: { server: 'mineru' },
     default_deliverable_tool: 'get_default_deliverable', list_deliverables_tool: 'list_deliverables', image_deliverables_tool: 'get_image_deliverables',
-    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true, mcp_timeout_ms: 120000,
+    // 阶段字段优先：使用 MCP 内部超时
+    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true,
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   pending_clean: {
-    enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, prompt_template: '', timeout_ms: 120000,
+    enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, llm_timeout_ms: 300000,
+    prompt_template: '',
     rules: { remove_page_number: true, remove_watermark: true, remove_garbled_text: true, remove_header_footer: true },
   },
   pending_outline: {
@@ -554,10 +570,12 @@ const defaultForm: DocPipelineConfig = {
     max_heading_level: 3,
     preserve_line_info: true,
     deduplicate_titles: true,
-    timeout_ms: 120000,
+    llm_timeout_ms: 300000,
   },
   pending_chunk: { enabled: true, type: 'builtin', chunk_mode: 'heading', max_length: 1000, overlap_length: 100, keep_heading: true, merge_small_chunks: false },
-  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, embedding_timeout_ms: 120000 },
+  pending_embedding: {
+    enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, embedding_timeout_ms: 120000,
+  },
 }
 
 const form = reactive<DocPipelineConfig>(JSON.parse(JSON.stringify(defaultForm)))
@@ -682,13 +700,22 @@ async function loadMcpServers() {
   try {
     const res = await docPipelineApi.getMcpServers()
     mcpServers.value = res.servers || []
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.error('Failed to load MCP servers:', err)
+    ElMessage.error('MCP 服务列表加载失败，请稍后重试')
+    mcpServers.value = []
+  }
 }
 
 async function loadModels() {
   try {
-    models.value = await docPipelineApi.getModels()
-  } catch { /* ignore */ }
+    const res = await docPipelineApi.getModels()
+    models.value = res || []
+  } catch (err) {
+    console.error('Failed to load models:', err)
+    ElMessage.error('模型列表加载失败，请稍后重试')
+    models.value = []
+  }
 }
 
 async function onOpen() {
@@ -704,12 +731,15 @@ async function onOpen() {
 
 async function loadConfig() {
   loading.value = true
+  loadedFromBackend.value = false
   try {
     const config = await docPipelineApi.getConfig()
     Object.assign(form, JSON.parse(JSON.stringify(config)))
+    loadedFromBackend.value = true
     initialForm = JSON.stringify(form)
   } catch {
-    ElMessage.error('加载配置失败')
+    ElMessage.error('加载配置失败，请检查网络或后端服务')
+    loadedFromBackend.value = false
   } finally {
     loading.value = false
   }
@@ -720,6 +750,12 @@ watch(() => form.ocr_processing.mcp?.server, (s) => { if (s) loadToolsForServer(
 watch(() => form.ocr_finalize.mcp?.server, (s) => { if (s) loadToolsForServer(s) })
 
 async function save() {
+  // 禁止在配置未成功加载时保存占位结构
+  if (!loadedFromBackend.value) {
+    ElMessage.warning('配置未成功加载，请刷新页面后重试')
+    return
+  }
+
   if (Object.keys(schemaError.value).length > 0) {
     ElMessage.warning('请先修正所有阶段中格式错误的输出 Schema')
     return
