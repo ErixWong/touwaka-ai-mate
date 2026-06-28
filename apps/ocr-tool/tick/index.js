@@ -11,6 +11,7 @@ import {
   pruneTasks,
   getTask,
 } from '../../../lib/ocr-tool-store.js';
+import { getPreviewAttachmentId } from '../../../lib/doc-ocr-utils.js';
 
 // 压缩图片到指定大小以下（单位：字节）
 async function compressImage(dataUrl, maxBytes = 900 * 1024) {
@@ -130,8 +131,10 @@ async function processPlatformOcrTask(taskId, app, context) {
       task.updated_at = new Date().toISOString();
     }
 
-    if (latestOcrResult?.status === 'completed' && latestOcrResult?.main_markdown_attachment_id) {
-      completeTask(taskId, latestOcrResult.main_markdown_attachment_id || 'platform_ocr_completed');
+    // 使用统一语义判断完成态（优先 cleaned_markdown，兼容 main_markdown）
+    const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
+    if (latestOcrResult?.status === 'completed' && previewAttachmentId) {
+      completeTask(taskId, previewAttachmentId);
       return { taskId, success: true, delegated: true, completed: true, reused: true };
     }
 
@@ -158,7 +161,9 @@ async function processPlatformOcrTask(taskId, app, context) {
       return { taskId, success: true, delegated: true, status: syncResult.ocrResult.status };
     }
 
-    completeTask(taskId, syncResult.ocrResult.main_markdown_attachment_id || 'platform_ocr_completed');
+    // 使用统一语义获取预览稿（优先 cleaned_markdown，兼容 main_markdown）
+    const previewAttachmentId = getPreviewAttachmentId(syncResult.ocrResult);
+    completeTask(taskId, previewAttachmentId || 'platform_ocr_completed');
     return { taskId, success: true, delegated: true, completed: true };
   } catch (err) {
     logger.error(`[ocr-tool tick] Platform OCR task ${taskId} failed: ${err.message}`);

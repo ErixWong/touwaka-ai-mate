@@ -16,7 +16,7 @@ import { Op, Sequelize } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
-import { parseOcrMetadata, getPreviewAttachmentId, hasPreviewResult } from '../../lib/doc-ocr-utils.js';
+import { hasPreviewResult, buildOcrSemanticObject, collectOcrAttachmentIds } from '../../lib/doc-ocr-utils.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
@@ -380,15 +380,20 @@ class DocController {
         raw: true,
       });
 
-      const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
-      const ocrMetadata = parseOcrMetadata(latestOcrResult?.metadata);
-      const attachmentIds = [
-        previewAttachmentId,
-        latestOcrResult?.raw_result_attachment_id,
-        latestOcrResult?.deliverables_manifest_attachment_id,
-        latestOcrResult?.image_manifest_attachment_id,
-        ocrMetadata?.cleaned_markdown_attachment_id,
-      ].filter(Boolean);
+      // 使用统一工具函数收集详情接口所需的 OCR 附件 ID
+      // 包含：main_markdown_attachment_id, raw_result_attachment_id, metadata.cleaned_markdown_attachment_id
+      // 详情接口附件全集：preview_markdown_attachment, raw_markdown_attachment, cleaned_markdown_attachment, main_markdown_attachment,
+      //                   raw_result_attachment, deliverables_manifest_attachment, image_manifest_attachment
+      // 注意：collectOcrAttachmentIds() 默认不包含 manifest 附件，需显式补充
+      let attachmentIds = collectOcrAttachmentIds(latestOcrResult);
+      // 详情接口必须预加载 manifest 附件，否则 buildAttachmentResponse() 会返回 null
+      if (latestOcrResult?.deliverables_manifest_attachment_id) {
+        attachmentIds.push(latestOcrResult.deliverables_manifest_attachment_id);
+      }
+      if (latestOcrResult?.image_manifest_attachment_id) {
+        attachmentIds.push(latestOcrResult.image_manifest_attachment_id);
+      }
+      attachmentIds = [...new Set(attachmentIds)]; // 去重
 
       const resultAttachments = attachmentIds.length > 0
         ? await Attachment.findAll({
@@ -482,6 +487,14 @@ class DocController {
 
       const hasPreview = hasPreviewResult(latestOcrResult);
 
+      // 使用统一语义构造器构建 OCR 响应
+      const ocrSemantic = buildOcrSemanticObject(latestOcrResult, resultAttachmentMap);
+      // 为语义对象中的每个附件添加 URL
+      const buildSemanticAttachment = (attachment) => {
+        if (!attachment) return null;
+        return buildAttachmentResponse(attachment.id);
+      };
+
       ctx.success({
         document: {
           ...document,
@@ -512,8 +525,9 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
-          cleaned_markdown_attachment: buildAttachmentResponse(ocrMetadata?.cleaned_markdown_attachment_id),
-          main_markdown_attachment: buildAttachmentResponse(latestOcrResult.main_markdown_attachment_id),
+          // 新语义（推荐使用）
+          preview_markdown_attachment: buildSemanticAttachment(ocrSemantic.preview_markdown_attachment),
+          raw_markdown_attachment: buildSemanticAttachment(ocrSemantic.raw_markdown_attachment),
           raw_result_attachment: buildAttachmentResponse(latestOcrResult.raw_result_attachment_id),
           deliverables_manifest_attachment: buildAttachmentResponse(latestOcrResult.deliverables_manifest_attachment_id),
           image_manifest_attachment: buildAttachmentResponse(latestOcrResult.image_manifest_attachment_id),
@@ -721,28 +735,30 @@ class DocController {
 
       const ocrResults = await DocOcrResult.findAll({
         where: { document_id: documentId },
-        attributes: ['id', 'main_markdown_attachment_id', 'raw_result_attachment_id', 'deliverables_manifest_attachment_id', 'image_manifest_attachment_id'],
+        attributes: ['id', 'main_markdown_attachment_id', 'raw_result_attachment_id', 'deliverables_manifest_attachment_id', 'image_manifest_attachment_id', 'metadata'],
         raw: true,
       });
       const ocrResultIds = ocrResults.map(item => item.id);
 
-      const ocrImages = ocrResultIds.length > 0
-        ? await DocOcrImage.findAll({
+      const attachmentIds = new Set();
+      for (const result of ocrResults) {
+        // 使用统一工具函数收集所有 OCR 附件（包括 cleaned_markdown_attachment_id）
+        // includeAll: true 表示包含所有中间产物
+        const ids = collectOcrAttachmentIds(result, { includeAll: true });
+        ids.forEach(id => attachmentIds.add(id));
+      }
+
+      // 收集 OCR 图片附件 ID（doc_ocr_images 表中的 attachment_id）
+      if (ocrResultIds.length > 0) {
+        const ocrImages = await DocOcrImage.findAll({
           where: { ocr_result_id: { [Op.in]: ocrResultIds } },
           attributes: ['attachment_id'],
           raw: true,
-        })
-        : [];
-
-      const attachmentIds = new Set();
-      for (const result of ocrResults) {
-        [result.main_markdown_attachment_id, result.raw_result_attachment_id, result.deliverables_manifest_attachment_id, result.image_manifest_attachment_id]
-          .filter(Boolean)
-          .forEach(id => attachmentIds.add(id));
+        });
+        ocrImages.forEach(item => {
+          if (item.attachment_id) attachmentIds.add(item.attachment_id);
+        });
       }
-      ocrImages.forEach(item => {
-        if (item.attachment_id) attachmentIds.add(item.attachment_id);
-      });
 
       if (revisionIds.length > 0) {
         const sourceAttachments = await Attachment.findAll({
@@ -1072,6 +1088,40 @@ async createVersion(ctx) {
         raw: true,
       });
 
+      const Attachment = this.db.getModel('attachment');
+      
+      // 使用统一工具函数收集所有可能的 preview 语义来源
+      // 包含：main_markdown_attachment_id, raw_result_attachment_id, metadata.cleaned_markdown_attachment_id
+      const attachmentIds = collectOcrAttachmentIds(latestOcrResult);
+      
+      const attachmentsMap = new Map();
+      if (attachmentIds.length > 0) {
+        const attachments = await Attachment.findAll({
+          where: { id: { [Op.in]: attachmentIds } },
+          attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_at'],
+          raw: true,
+        });
+        for (const att of attachments) {
+          attachmentsMap.set(att.id, att);
+        }
+      }
+
+      // 使用统一语义构造器
+      const ocrSemantic = buildOcrSemanticObject(latestOcrResult, attachmentsMap);
+
+      // 状态接口返回简洁的附件信息（不含签名 URL，详情接口才返回完整 URL）
+      const buildSimpleAttachment = (attachment) => {
+        if (!attachment) return null;
+        return {
+          id: attachment.id,
+          file_name: attachment.file_name,
+          mime_type: attachment.mime_type,
+          file_size: attachment.file_size,
+          access_level: attachment.access_level,
+          created_at: attachment.created_at,
+        };
+      };
+
       const hasPreview = hasPreviewResult(latestOcrResult);
 
       ctx.success({
@@ -1088,6 +1138,10 @@ async createVersion(ctx) {
           status: latestOcrResult.status,
           progress: latestOcrResult.progress,
           image_count: latestOcrResult.image_count,
+          // 新语义（推荐使用）- 状态接口返回简洁信息
+          preview_markdown_attachment: buildSimpleAttachment(ocrSemantic.preview_markdown_attachment),
+          raw_markdown_attachment: buildSimpleAttachment(ocrSemantic.raw_markdown_attachment),
+          // 兼容字段（@deprecated）
           main_markdown_attachment_id: latestOcrResult.main_markdown_attachment_id,
           raw_result_attachment_id: latestOcrResult.raw_result_attachment_id,
           deliverables_manifest_attachment_id: latestOcrResult.deliverables_manifest_attachment_id,
