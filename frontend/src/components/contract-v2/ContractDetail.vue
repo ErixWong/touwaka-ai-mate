@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { useContractV2Store } from '@/stores/contract-v2'
+import { useI18n } from 'vue-i18n'
+import { useContractV2Store, getProcessingStatusLabel } from '@/stores/contract-v2'
 import type { ContractVersion } from '@/api/contract-v2'
+import { getVersionContent } from '@/api/contract-v2'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { createRecord, newID, getDocumentContent, type DocumentContent } from '@/api/mini-apps'
 import { getRevisions, getDocumentPermissions, type DocRevision, type DocPermissions } from '@/api/docs'
 import DocumentContentViewer from '@/components/apps/DocumentContentViewer.vue'
 
 const APP_ID = 'contract-mgr-v2'
+const { t } = useI18n()
 
 const emit = defineEmits<{
   back: []
@@ -20,9 +22,18 @@ const contract = computed(() => store.currentContract)
 const versions = computed(() => store.currentContractVersions)
 
 const uploading = ref(false)
+const uploadingType = ref('sales')
+const uploadDocumentMode = ref<'new' | 'existing'>('new')
+const selectedExistingDocumentId = ref('')
 const showUploadDialog = ref(false)
 const showContentDialog = ref(false)
-const documentContent = ref<DocumentContent | null>(null)
+const documentContent = ref<{
+  has_content: boolean
+  ocr_text?: string | null
+  filtered_text?: string | null
+  sections?: Array<{ title: string; content: string }> | null
+  extract_json?: Record<string, unknown> | null
+} | null>(null)
 const contentLoading = ref(false)
 const contentVersionName = ref('')
 
@@ -32,44 +43,111 @@ const docCurrentRevisionId = ref<string | null>(null)
 const docPermissions = ref<DocPermissions | null>(null)
 
 const retryingProcessing = ref(false)
+const versionProcessingStatus = ref<Record<string, {
+  status: string
+  label: string
+  type: string
+  // 该版本绑定的 revision 是否为 document 当前 revision；
+  // false 时 processing_status 仅反映 document 最新 revision 进度，不直接等于该历史版本事实
+  isCurrentRevision?: boolean
+}>>({})
+const selectedVersionsForCompare = ref<string[]>([])
+const showCompareDialog = ref(false)
+const compareRunId = ref('')
+const compareResultLoading = ref(false)
+const compareResult = ref<null | {
+  run_id: string
+  status: string
+  summary: { total: number; high: number; medium: number; low: number }
+  items: Array<{ id: string; change_type: string; risk_level: string | null; summary: string | null }>
+}>(null)
 
-const versionTypeLabels: Record<string, string> = {
-  draft: '草稿',
-  signed: '正式签署',
-  amendment: '补充协议',
-  supplement: '附件',
-}
+// 元数据编辑相关
+const showMetadataDialog = ref(false)
+const metadataLoading = ref(false)
+const metadataVersionId = ref<string>('')
+const editableMetadata = ref({
+  contract_number: '',
+  party_a: '',
+  party_b: '',
+  contract_amount: null as number | null,
+})
+const savingMetadata = ref(false)
 
-const versionStatusLabels: Record<string, { label: string; type: string }> = {
-  draft: { label: '草稿', type: 'info' },
-  reviewing: { label: '审核中', type: 'warning' },
-  approved: { label: '已审批', type: 'success' },
-  rejected: { label: '已驳回', type: 'danger' },
-  archived: { label: '已归档', type: '' },
-}
+const versionTypeLabels = computed<Record<string, string>>(() => ({
+  draft: t('contractV2.versionTypes.draft'),
+  signed: t('contractV2.versionTypes.signed'),
+  amendment: t('contractV2.versionTypes.amendment'),
+  supplement: t('contractV2.versionTypes.supplement'),
+}))
 
-const contractTypeLabels: Record<string, string> = {
-  strategy: '战略合同',
-  framework: '框架合同',
-  development: '开发合同',
-  supply: '供应合同',
-  purchase: '采购合同',
-  quality: '质量合同',
-  nda: '保密协议',
-  technical: '技术合同',
-  other: '其他',
-}
+// 合同类型字典：与 ContractList.vue / manifest.json fields.contract_type.options 保持一致
+// 复用 contractTypeLabels 作为单一字典来源，避免上传弹窗与系统字典分叉
+const contractTypeLabels = computed<Record<string, string>>(() => ({
+  strategy: t('contractV2.contractTypes.strategy'),
+  framework: t('contractV2.contractTypes.framework'),
+  development: t('contractV2.contractTypes.development'),
+  sales: t('contractV2.contractTypes.sales'),
+  supply: t('contractV2.contractTypes.supply'),
+  purchase: t('contractV2.contractTypes.purchase'),
+  quality: t('contractV2.contractTypes.quality'),
+  nda: t('contractV2.contractTypes.nda'),
+  technical: t('contractV2.contractTypes.technical'),
+  other: t('contractV2.contractTypes.other'),
+}))
+const contractTypeOptions = computed(() =>
+  Object.entries(contractTypeLabels.value).map(([value, label]) => ({ value, label }))
+)
 
-const processingStatusLabels: Record<string, { label: string; type: string }> = {
-  pending_ocr: { label: '待OCR识别', type: 'info' },
-  ocr_processing: { label: 'OCR识别中', type: 'warning' },
-  pending_clean: { label: '待文本清洗', type: 'info' },
-  pending_outline: { label: '待提取大纲', type: 'info' },
-  pending_chunk: { label: '待段落分段', type: 'info' },
-  pending_embedding: { label: '待向量化', type: 'info' },
-  ready: { label: '已完成', type: 'success' },
-  error: { label: '处理失败', type: 'danger' },
-}
+const versionStatusLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+  draft: { label: t('contractV2.versionStatuses.draft'), type: 'info' },
+  reviewing: { label: t('contractV2.versionStatuses.reviewing'), type: 'warning' },
+  approved: { label: t('contractV2.versionStatuses.approved'), type: 'success' },
+  rejected: { label: t('contractV2.versionStatuses.rejected'), type: 'danger' },
+  archived: { label: t('contractV2.versionStatuses.archived'), type: '' },
+}))
+
+const processingStatusLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+  pending_ocr: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
+  ocr_processing: { label: t('contractV2.processingStatuses.processing'), type: 'warning' },
+  pending_clean: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
+  pending_outline: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
+  pending_chunk: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
+  pending_embedding: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
+  ready: { label: t('contractV2.processingStatuses.ready'), type: 'success' },
+  error: { label: t('contractV2.processingStatuses.error'), type: 'danger' },
+}))
+
+const revisionStatusLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+  draft: { label: t('contractV2.revisionStatuses.draft'), type: 'info' },
+  review: { label: t('contractV2.revisionStatuses.review'), type: 'warning' },
+  approved: { label: t('contractV2.revisionStatuses.approved'), type: 'success' },
+  effective: { label: t('contractV2.revisionStatuses.effective'), type: 'success' },
+  expired: { label: t('contractV2.revisionStatuses.expired'), type: 'info' },
+  archived: { label: t('contractV2.revisionStatuses.archived'), type: '' },
+}))
+
+const compareStatusLabels = computed<Record<string, string>>(() => ({
+  pending: t('contractV2.compareStatuses.pending'),
+  processing: t('contractV2.compareStatuses.processing'),
+  completed: t('contractV2.compareStatuses.completed'),
+  failed: t('contractV2.compareStatuses.failed'),
+}))
+
+const compareChangeTypeLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+  identical: { label: t('contractV2.compareChangeTypes.identical'), type: 'success' },
+  modified: { label: t('contractV2.compareChangeTypes.modified'), type: 'warning' },
+  semantic_change: { label: t('contractV2.compareChangeTypes.semantic_change'), type: 'danger' },
+  added: { label: t('contractV2.compareChangeTypes.added'), type: 'info' },
+  removed: { label: t('contractV2.compareChangeTypes.removed'), type: 'danger' },
+}))
+
+const compareRiskLevelLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+  none: { label: t('contractV2.compareRiskLevels.none'), type: '' },
+  low: { label: t('contractV2.compareRiskLevels.low'), type: 'info' },
+  medium: { label: t('contractV2.compareRiskLevels.medium'), type: 'warning' },
+  high: { label: t('contractV2.compareRiskLevels.high'), type: 'danger' },
+}))
 
 const classificationItems = computed(() => {
   return contract.value?.classification_json || []
@@ -81,7 +159,7 @@ const processingInfo = computed(() => {
   const entry = map[contract.value.document_id]
   const status = entry?.status || contract.value.processing_status
   if (!status) return null
-  const label = processingStatusLabels[status] || { label: status, type: 'info' }
+  const label = processingStatusLabels.value[status] || { label: status, type: 'info' }
   return {
     status,
     label: label.label,
@@ -129,11 +207,36 @@ watch(() => contract.value?.id, () => {
   }
 }, { immediate: true })
 
+// 监听 versions 变化，加载文档处理状态
+watch(() => versions.value, async (newVersions) => {
+  if (!newVersions?.length) return
+  
+  for (const version of newVersions) {
+    if (version.document_id && !versionProcessingStatus.value[version.id]) {
+      try {
+        const status = await store.fetchVersionProcessingStatus(version.id)
+        if (status.has_document && status.processing_status) {
+          const statusInfo = getProcessingStatusLabel(status.processing_status)
+          versionProcessingStatus.value[version.id] = {
+            status: status.processing_status,
+            label: statusInfo.label,
+            type: statusInfo.type,
+            // status_scope: document_current_revision 表示该版本 revision 即为 document 当前 revision
+            isCurrentRevision: status.status_scope === 'document_current_revision',
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load processing status:', e)
+      }
+    }
+  }
+}, { immediate: true })
+
 async function handleSetCurrent(revisionId: string) {
   try {
-    await ElMessageBox.confirm('确认设为此版为当前版本？', '确认', {
-      confirmButtonText: '设为当前',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('contractV2.revisions.confirmSetCurrentMessage'), t('common.confirm'), {
+      confirmButtonText: t('contractV2.revisions.setCurrent'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     })
     await store.setDocRevisionCurrent(revisionId)
@@ -167,26 +270,136 @@ async function handleApprove(versionId: string) {
 
 async function handleDeleteVersion(versionId: string) {
   try {
-    await ElMessageBox.confirm('确认删除此版本？', '确认', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('contractV2.businessVersions.confirmDeleteMessage'), t('common.confirm'), {
+      confirmButtonText: t('common.delete'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     })
     await store.removeVersion(versionId)
   } catch {}
 }
 
+async function handleExtractMetadata(versionId: string) {
+  try {
+    const result = await store.doExtractMetadata(versionId)
+    if (result?.metadata) {
+      // 显示提取的元数据，并附带落库目标（revision_id / row_id）便于核对版本级事实
+      const metaLines = Object.entries(result.metadata)
+        .map(([key, value]) => `${key}: ${value || '-'}`)
+        .join('<br>')
+      const targetLines = result.revision_id || result.row_id
+        ? `<br><span style="color:#909399;font-size:12px;">${t('contractV2.businessVersions.extractTarget', { revisionId: result.revision_id || '-', rowId: result.row_id || '-' })}</span>`
+        : ''
+      await ElMessageBox.alert(
+        metaLines + targetLines,
+        t('contractV2.businessVersions.extractResultTitle'),
+        { confirmButtonText: t('common.confirm'), dangerouslyUseHTMLString: true }
+      )
+    }
+  } catch {}
+}
+
+async function handleEditMetadata(versionId: string) {
+  metadataVersionId.value = versionId
+  metadataLoading.value = true
+  showMetadataDialog.value = true
+  try {
+    const metadata = await store.doGetVersionMetadata(versionId)
+    editableMetadata.value = {
+      contract_number: metadata.contract_number || '',
+      party_a: metadata.party_a || '',
+      party_b: metadata.party_b || '',
+      contract_amount: metadata.contract_amount,
+    }
+  } catch {
+    editableMetadata.value = {
+      contract_number: '',
+      party_a: '',
+      party_b: '',
+      contract_amount: null,
+    }
+  } finally {
+    metadataLoading.value = false
+  }
+}
+
+async function handleSaveMetadata() {
+  if (!metadataVersionId.value) return
+  savingMetadata.value = true
+  try {
+    await store.doUpdateVersionMetadata(metadataVersionId.value, {
+      contract_number: editableMetadata.value.contract_number || null,
+      party_a: editableMetadata.value.party_a || null,
+      party_b: editableMetadata.value.party_b || null,
+      contract_amount: editableMetadata.value.contract_amount,
+    })
+    showMetadataDialog.value = false
+  } finally {
+    savingMetadata.value = false
+  }
+}
+
+function toggleVersionForCompare(versionId: string) {
+  const idx = selectedVersionsForCompare.value.indexOf(versionId)
+  if (idx >= 0) {
+    selectedVersionsForCompare.value.splice(idx, 1)
+  } else if (selectedVersionsForCompare.value.length < 2) {
+    selectedVersionsForCompare.value.push(versionId)
+  }
+}
+
+async function handleStartCompare() {
+  if (selectedVersionsForCompare.value.length !== 2) {
+    return
+  }
+  const [versionIdA, versionIdB] = selectedVersionsForCompare.value
+  if (!versionIdA || !versionIdB) {
+    return
+  }
+  try {
+    const result = await store.doCreateCompareRun(
+      versionIdA,
+      versionIdB
+    )
+    if (result?.run_id) {
+      compareRunId.value = result.run_id
+      showCompareDialog.value = true
+      await loadCompareResult()
+      await ElMessageBox.alert(
+        t('contractV2.compare.taskCreated', { runId: result.run_id }),
+        t('contractV2.compare.taskStarted'),
+        { confirmButtonText: t('common.confirm') }
+      )
+    }
+  } catch (e: unknown) {
+    console.error('Compare failed:', e)
+  }
+}
+
+async function loadCompareResult() {
+  if (!compareRunId.value) return
+  compareResultLoading.value = true
+  try {
+    compareResult.value = await store.doGetCompareRunResult(compareRunId.value)
+  } finally {
+    compareResultLoading.value = false
+  }
+}
+
 function openUploadDialog() {
+  uploadDocumentMode.value = 'new'
+  selectedExistingDocumentId.value = contract.value?.document_id || ''
   showUploadDialog.value = true
 }
 
 async function handleViewContent(row: ContractVersion) {
-  if (!row.row_id) return
+  if (!row.id) return
   contentLoading.value = true
   contentVersionName.value = row.version_name || `V${row.version_number}`
   showContentDialog.value = true
   try {
-    documentContent.value = await getDocumentContent(APP_ID, row.row_id)
+    // 使用新的 app 内 API，不再依赖 mini-apps
+    documentContent.value = await getVersionContent(row.id)
   } catch {
     documentContent.value = null
   } finally {
@@ -208,21 +421,23 @@ async function handleFileUpload(event: Event) {
       file,
     })
 
-    const clientId = await newID(20)
-    const record = await createRecord(APP_ID, {}, [att.id], clientId)
-
+    // 使用新接口，不依赖 mini-app.service.js
     const nextVerNum = String(versions.value.length + 1)
-    await store.addVersion(contract.value.id, {
-      row_id: record.id,
+    await store.addVersionFromAttachment(contract.value.id, {
       file_id: att.id,
+      contract_type: uploadingType.value,
       version_number: nextVerNum,
       version_name: file.name,
       version_type: 'draft',
+      document_mode: uploadDocumentMode.value,
+      existing_document_id: uploadDocumentMode.value === 'existing' ? selectedExistingDocumentId.value : undefined,
     })
 
     showUploadDialog.value = false
   } catch (e: unknown) {
-    console.error('Upload failed:', e)
+    const msg = e instanceof Error ? e.message : t('contractV2.upload.failed')
+    console.error('Upload failed:', msg)
+    ElMessageBox.alert(msg, t('contractV2.upload.failed'), { type: 'error' })
   } finally {
     uploading.value = false
   }
@@ -292,28 +507,30 @@ async function handleFileUpload(event: Event) {
         <h3>{{ $t('contractV2.revisions.title') }}</h3>
       </div>
       <el-table :data="docRevisions" stripe v-loading="docRevisionsLoading">
-        <el-table-column prop="revision_no" label="版本号" width="100" />
-        <el-table-column prop="revision_label" label="版本标签" min-width="150">
+        <el-table-column prop="revision_no" :label="$t('contractV2.businessVersions.columnVersionNo')" width="100" />
+        <el-table-column prop="revision_label" :label="$t('contractV2.businessVersions.columnVersionLabel')" min-width="150">
           <template #default="{ row }">
             {{ row.revision_label || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="is_current" label="当前版本" width="80" align="center">
+        <el-table-column prop="is_current" :label="$t('contractV2.businessVersions.columnCurrentVersion')" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.is_current" type="success" size="small" effect="dark">{{ $t('contractV2.revisions.current') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="effective_from" label="生效日期" width="120">
+        <el-table-column prop="effective_from" :label="$t('contractV2.revisions.effectiveFrom')" width="120">
           <template #default="{ row }">
             {{ row.effective_from || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="revision_status" label="状态" width="90" align="center">
+        <el-table-column prop="revision_status" :label="$t('contractV2.businessVersions.columnVersionStatus')" width="90" align="center">
           <template #default="{ row }">
-            {{ row.revision_status }}
+            <el-tag size="small" :type="(revisionStatusLabels[row.revision_status]?.type as any) || 'info'" disable-transitions>
+              {{ revisionStatusLabels[row.revision_status]?.label || row.revision_status }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column :label="$t('contractV2.businessVersions.columnActions')" width="120" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="!row.is_current"
@@ -359,46 +576,113 @@ async function handleFileUpload(event: Event) {
     <div class="contract-detail-section">
       <div class="contract-detail-section-header">
         <h3>{{ $t('contractV2.businessVersions.title') }}</h3>
-        <el-button type="primary" size="small" @click="openUploadDialog">
-          {{ $t('contractV2.uploadNewVersion') }}
-        </el-button>
+        <div>
+          <el-button
+            v-if="selectedVersionsForCompare.length > 0"
+            size="small"
+            @click="selectedVersionsForCompare = []"
+          >{{ $t('contractV2.businessVersions.clearSelection', { count: selectedVersionsForCompare.length }) }}</el-button>
+          <el-button
+            v-if="selectedVersionsForCompare.length === 2"
+            type="primary"
+            size="small"
+            @click="handleStartCompare"
+          >{{ $t('contractV2.businessVersions.compareSelected') }}</el-button>
+          <el-button type="primary" size="small" @click="openUploadDialog">
+            {{ $t('contractV2.uploadNewVersion') }}
+          </el-button>
+        </div>
       </div>
       <el-table :data="versions" stripe>
-        <el-table-column prop="version_number" label="版本号" width="100" />
-        <el-table-column prop="version_name" label="版本名称" min-width="150">
+        <el-table-column prop="version_number" :label="$t('contractV2.businessVersions.columnVersionNo')" width="100" />
+        <el-table-column prop="version_name" :label="$t('contractV2.businessVersions.columnVersionName')" min-width="150">
           <template #default="{ row }">
             {{ row.version_name || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="version_type" label="类型" width="100">
+        <el-table-column prop="version_type" :label="$t('contractV2.businessVersions.columnVersionType')" width="100">
           <template #default="{ row }">
             {{ versionTypeLabels[row.version_type] || row.version_type || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="version_status" label="状态" width="90" align="center">
+        <el-table-column prop="version_status" :label="$t('contractV2.businessVersions.columnVersionStatus')" width="90" align="center">
           <template #default="{ row }">
             <el-tag size="small" :type="(versionStatusLabels[row.version_status]?.type as any) || 'info'" disable-transitions>
               {{ versionStatusLabels[row.version_status]?.label || row.version_status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="is_current" label="当前版本" width="80" align="center">
+        <el-table-column prop="document_id" :label="$t('contractV2.businessVersions.columnDocumentProcessing')" width="120" align="center">
+          <template #default="{ row }">
+            <template v-if="row.document_id">
+              <el-tooltip
+                v-if="versionProcessingStatus[row.id]"
+                :disabled="versionProcessingStatus[row.id]?.isCurrentRevision !== false"
+                placement="top"
+              >
+                <template #content>
+                  {{ $t('contractV2.businessVersions.statusScopeSharedTooltip') }}
+                </template>
+                <el-tag
+                  size="small"
+                  :type="(versionProcessingStatus[row.id]?.type as any) ?? 'info'"
+                  disable-transitions
+                >
+                  {{ versionProcessingStatus[row.id]?.label ?? $t('contractV2.businessVersions.loading') }}
+                </el-tag>
+              </el-tooltip>
+              <el-tag v-else size="small" type="info">{{ $t('contractV2.businessVersions.loading') }}</el-tag>
+            </template>
+            <span v-else class="text-gray">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="is_current" :label="$t('contractV2.businessVersions.columnCurrentVersion')" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.is_current" type="success" size="small" effect="dark">{{ $t('contractV2.revisions.current') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="contract_number" label="合同编号" width="130">
+        <el-table-column prop="contract_number" :label="$t('contractV2.businessVersions.columnContractNumber')" width="130">
           <template #default="{ row }">
             {{ row.contract_number || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="party_a" label="甲方" width="130">
+        <el-table-column prop="party_a" :label="$t('contractV2.businessVersions.columnPartyA')" width="130">
           <template #default="{ row }">
             {{ row.party_a || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column prop="document_id" :label="$t('contractV2.businessVersions.columnDocumentId')" min-width="170">
           <template #default="{ row }">
+            <span class="mono-text">{{ row.document_id || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="revision_id" :label="$t('contractV2.businessVersions.columnRevisionId')" min-width="170">
+          <template #default="{ row }">
+            <span class="mono-text">{{ row.revision_id || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('contractV2.businessVersions.columnActions')" width="430" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.document_id"
+              size="small"
+              text
+              type="warning"
+              @click="handleExtractMetadata(row.id)"
+            >{{ $t('contractV2.businessVersions.extractMetadata') }}</el-button>
+            <el-button
+              v-if="row.row_id"
+              size="small"
+              text
+              type="primary"
+              @click="handleEditMetadata(row.id)"
+            >{{ $t('contractV2.businessVersions.editMetadata') }}</el-button>
+            <el-button
+              size="small"
+              text
+              type="info"
+              @click="toggleVersionForCompare(row.id)"
+            >{{ selectedVersionsForCompare.includes(row.id) ? $t('contractV2.businessVersions.cancelSelect') : $t('contractV2.businessVersions.selectForCompare') }}</el-button>
             <el-button
               v-if="row.row_id"
               size="small"
@@ -430,8 +714,31 @@ async function handleFileUpload(event: Event) {
       </el-table>
     </div>
 
-    <el-dialog v-model="showUploadDialog" title="上传合同文件" width="480px" destroy-on-close>
+    <el-dialog v-model="showUploadDialog" :title="$t('contractV2.upload.title')" width="480px" destroy-on-close>
       <div class="upload-zone">
+        <div class="form-item">
+          <label class="form-label">{{ $t('contractV2.upload.contractType') }}</label>
+          <el-select v-model="uploadingType" :placeholder="$t('contractV2.upload.contractTypePlaceholder')" style="width: 100%;">
+            <el-option
+              v-for="item in contractTypeOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </div>
+        <div class="form-item">
+          <label class="form-label">{{ $t('contractV2.upload.documentOwnership') }}</label>
+          <el-radio-group v-model="uploadDocumentMode">
+            <el-radio value="new">{{ $t('contractV2.upload.createNew') }}</el-radio>
+            <el-radio value="existing" :disabled="!contract.document_id">{{ $t('contractV2.upload.reuseExisting') }}</el-radio>
+          </el-radio-group>
+        </div>
+        <div v-if="uploadDocumentMode === 'existing'" class="form-item">
+          <label class="form-label">{{ $t('contractV2.upload.reuseExisting') }}</label>
+          <el-input v-model="selectedExistingDocumentId" readonly />
+          <div class="upload-hint">{{ $t('contractV2.upload.reuseHint') }}</div>
+        </div>
         <div v-if="uploading" class="upload-loading">
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
           <span>{{ $t('contractV2.upload.uploading') }}</span>
@@ -448,8 +755,58 @@ async function handleFileUpload(event: Event) {
     </el-dialog>
 
     <el-dialog
+      v-model="showCompareDialog"
+      :title="$t('contractV2.compare.title')"
+      width="900px"
+      destroy-on-close
+    >
+      <div class="contract-detail-section-header">
+        <div>
+          <div class="mono-text">{{ $t('contractV2.compare.runId') }}: {{ compareRunId || '-' }}</div>
+          <div v-if="compareResult" class="compare-summary">
+            {{ $t('contractV2.compare.summaryLine', {
+              status: compareStatusLabels[compareResult.status] || compareResult.status,
+              totalLabel: $t('contractV2.compare.total'),
+              total: compareResult.summary.total,
+              highLabel: $t('contractV2.compare.highRisk'),
+              high: compareResult.summary.high,
+              mediumLabel: $t('contractV2.compare.mediumRisk'),
+              medium: compareResult.summary.medium,
+              lowLabel: $t('contractV2.compare.lowRisk'),
+              low: compareResult.summary.low
+            }) }}
+          </div>
+        </div>
+        <el-button size="small" @click="loadCompareResult" :loading="compareResultLoading">{{ $t('contractV2.compare.refreshResult') }}</el-button>
+      </div>
+      <el-table v-if="compareResult" :data="compareResult.items" stripe v-loading="compareResultLoading">
+        <el-table-column prop="change_type" :label="$t('contractV2.compare.columnChangeType')" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="(compareChangeTypeLabels[row.change_type]?.type as any) || 'info'" disable-transitions>
+              {{ compareChangeTypeLabels[row.change_type]?.label || row.change_type }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="risk_level" :label="$t('contractV2.compare.columnRiskLevel')" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.risk_level" size="small" :type="(compareRiskLevelLabels[row.risk_level]?.type as any) || 'info'" disable-transitions>
+              {{ compareRiskLevelLabels[row.risk_level]?.label || row.risk_level }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="summary" :label="$t('contractV2.compare.columnSummary')" min-width="420">
+          <template #default="{ row }">
+            {{ row.summary || '-' }}
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else-if="!compareResultLoading" :description="$t('contractV2.compare.noResult')" />
+    </el-dialog>
+
+    <el-dialog
       v-model="showContentDialog"
-      :title="`文档内容 - ${contentVersionName}`"
+      :title="$t('contractV2.content.dialogTitle', { versionName: contentVersionName })"
       width="1200px"
       top="5vh"
       destroy-on-close
@@ -460,7 +817,7 @@ async function handleFileUpload(event: Event) {
       </div>
       <div v-else-if="documentContent && documentContent.has_content">
         <el-tabs>
-          <el-tab-pane label="基本信息">
+          <el-tab-pane :label="$t('contractV2.content.basicInfo')">
             <div class="detail-grid">
               <template v-if="documentContent.extract_json">
                 <div v-for="(val, key) in documentContent.extract_json" :key="key" class="detail-row">
@@ -468,13 +825,9 @@ async function handleFileUpload(event: Event) {
                   <span class="detail-value">{{ val ?? '-' }}</span>
                 </div>
               </template>
-              <div v-if="documentContent.extract_at" class="detail-row">
-                <span class="detail-label">{{ $t('contractV2.content.extractTime') }}</span>
-                <span class="detail-value">{{ documentContent.extract_at }}</span>
-              </div>
             </div>
           </el-tab-pane>
-          <el-tab-pane label="文档内容">
+          <el-tab-pane :label="$t('contractV2.content.documentContent')">
             <DocumentContentViewer
               :content-text="documentContent.filtered_text || documentContent.ocr_text || ''"
               :sections="documentContent.sections || []"
@@ -485,6 +838,32 @@ async function handleFileUpload(event: Event) {
       <div v-else style="text-align: center; padding: 60px 0; color: var(--el-text-color-placeholder);">
         {{ $t('contractV2.content.noContent') }}
       </div>
+    </el-dialog>
+
+    <!-- 元数据编辑对话框 -->
+    <el-dialog v-model="showMetadataDialog" :title="$t('contractV2.metadata.title')" width="480px" destroy-on-close>
+      <div v-if="metadataLoading" style="text-align: center; padding: 40px 0;">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <p>{{ $t('contractV2.metadata.loading') }}</p>
+      </div>
+      <el-form v-else label-width="80px">
+        <el-form-item :label="$t('contractV2.metadata.contractNumber')">
+          <el-input v-model="editableMetadata.contract_number" :placeholder="$t('contractV2.metadata.contractNumberPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('contractV2.metadata.partyA')">
+          <el-input v-model="editableMetadata.party_a" :placeholder="$t('contractV2.metadata.partyAPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('contractV2.metadata.partyB')">
+          <el-input v-model="editableMetadata.party_b" :placeholder="$t('contractV2.metadata.partyBPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('contractV2.metadata.contractAmount')">
+          <el-input-number v-model="editableMetadata.contract_amount" :min="0" :precision="2" :placeholder="$t('contractV2.metadata.contractAmountPlaceholder')" style="width: 100%;" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showMetadataDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="savingMetadata" @click="handleSaveMetadata">{{ $t('common.save') }}</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -617,6 +996,18 @@ async function handleFileUpload(event: Event) {
   text-align: center;
 }
 
+.form-item {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+
 .upload-loading {
   display: flex;
   flex-direction: column;
@@ -671,5 +1062,16 @@ async function handleFileUpload(event: Event) {
 .detail-value {
   font-size: 13px;
   color: var(--el-text-color-primary);
+}
+
+.compare-summary {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.mono-text {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
 }
 </style>
