@@ -580,6 +580,10 @@ const defaultForm: DocPipelineConfig = {
 
 const form = reactive<DocPipelineConfig>(JSON.parse(JSON.stringify(defaultForm)))
 
+function resetFormToDefaults() {
+  Object.assign(form, JSON.parse(JSON.stringify(defaultForm)))
+}
+
 const mcpServers = ref<{ id: string; name: string; is_enabled: boolean }[]>([])
 const models = ref<{ id: string; model_name: string }[]>([])
 
@@ -738,6 +742,8 @@ async function loadConfig() {
     loadedFromBackend.value = true
     initialForm = JSON.stringify(form)
   } catch {
+    resetFormToDefaults()
+    initialForm = JSON.stringify(form)
     ElMessage.error('加载配置失败，请检查网络或后端服务')
     loadedFromBackend.value = false
   } finally {
@@ -796,6 +802,11 @@ async function save() {
 }
 
 async function resetStage() {
+  if (!loadedFromBackend.value) {
+    ElMessage.warning('配置未成功加载，暂不允许恢复默认')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(`确定恢复「${stages.find(s => s.key === activeStage.value)?.label}」阶段为默认配置吗？`, '恢复默认', { type: 'warning' })
     await docPipelineApi.resetConfig([activeStage.value])
