@@ -693,7 +693,7 @@ class ApiServer {
     const currentFeatureAnalyzerRouter = currentFeatureAnalyzerRoutes(this.controllers.currentFeatureAnalyzer);
     this.app.use(currentFeatureAnalyzerRouter.routes());
     this.app.use(currentFeatureAnalyzerRouter.allowedMethods());
-    logger.info('Current Feature Analyzer routes registered (/api/apps/current-feature-analyzer/*)');
+    logger.info('Current Feature Analyzer routes registered (/api/current-feature-analyzer/*, legacy: /api/apps/current-feature-analyzer/*)');
 
     const appClockRouter = appClockRoutes(this.db);
     this.app.use(appClockRouter.routes());
