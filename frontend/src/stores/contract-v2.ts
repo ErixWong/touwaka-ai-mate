@@ -10,16 +10,24 @@ import {
   createContract,
   updateContract,
   deleteContract,
-  createVersion,
+  createVersionFromAttachment,
   approveVersion,
   setCurrentVersion,
   deleteVersion,
   getDashboard,
+  getVersionProcessingStatus,
+  extractMetadata,
+  getVersionMetadata,
+  updateVersionMetadata,
+  createCompareRun,
+  getCompareRunResult,
   type OrgNode,
   type ContractMainRecord,
   type ContractVersion,
   type ContractListResult,
   type DashboardData,
+  type CompareRunResult,
+  type VersionMetadata,
 } from '@/api/contract-v2'
 import {
   getProcessingStatus,
@@ -28,8 +36,20 @@ import {
 } from '@/api/docs'
 import { useToastStore } from './toast'
 
-const POLL_INTERVAL_MS = 10_000
-const POLL_CONCURRENCY = 5
+export function getProcessingStatusLabel(status: string) {
+  const processingStatusLabels: Record<string, { label: string; type: string }> = {
+    pending_ocr: { label: '处理中', type: 'info' },
+    ocr_processing: { label: '处理中', type: 'warning' },
+    pending_clean: { label: '处理中', type: 'info' },
+    pending_outline: { label: '处理中', type: 'info' },
+    pending_chunk: { label: '处理中', type: 'info' },
+    pending_embedding: { label: '处理中', type: 'info' },
+    ready: { label: '已完成', type: 'success' },
+    error: { label: '处理失败', type: 'danger' },
+  }
+
+  return processingStatusLabels[status] || { label: status, type: 'info' }
+}
 
 export const useContractV2Store = defineStore('contract-v2', () => {
   const toast = useToastStore()
@@ -74,8 +94,6 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     errorCode?: string | null
     updatedAt?: string
   }>>({})
-
-  let pollingTimer: ReturnType<typeof setInterval> | null = null
 
   function resetFilters() {
     filterStatus.value = ''
@@ -141,10 +159,9 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     try {
       const result: ContractListResult = await listContracts(params)
       contracts.value = result.items
-      contractsTotal.value = result.total
-      contractsPage.value = result.page
-      contractsPageSize.value = result.page_size
-      startPolling()
+      contractsTotal.value = result.pagination.total
+      contractsPage.value = result.pagination.page
+      contractsPageSize.value = result.pagination.size
     } catch (e: unknown) {
       toast.error((e as Error).message || '加载合同列表失败')
     } finally {
@@ -203,9 +220,17 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     }
   }
 
-  async function addVersion(contractId: string, data: { row_id: string; file_id?: string; version_number?: string; version_name?: string; version_type?: string }) {
+  async function addVersionFromAttachment(contractId: string, data: {
+    file_id: string
+    contract_type: string
+    version_number?: string
+    version_name?: string
+    version_type?: string
+    document_mode?: 'new' | 'existing'
+    existing_document_id?: string
+  }) {
     try {
-      const version = await createVersion(contractId, data)
+      const version = await createVersionFromAttachment(contractId, data)
       toast.success('版本创建成功')
       await loadContractDetail(contractId)
       return version
@@ -280,9 +305,8 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   }
 
   async function fetchProcessingStatusBatch(documentIds: string[]) {
-    for (let i = 0; i < documentIds.length; i += POLL_CONCURRENCY) {
-      const batch = documentIds.slice(i, i + POLL_CONCURRENCY)
-      await Promise.all(batch.map(id => fetchProcessingStatus(id)))
+    for (const documentId of documentIds) {
+      await fetchProcessingStatus(documentId)
     }
   }
 
@@ -312,38 +336,59 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     }
   }
 
-  function getPollableDocIds(): string[] {
-    const ids: string[] = []
-    for (const c of contracts.value) {
-      if (c.document_id) {
-        const existing = processingStatusMap.value[c.document_id]
-        if (!existing || existing.status !== 'ready') {
-          ids.push(c.document_id)
-        }
-      }
+  async function fetchVersionProcessingStatus(versionId: string) {
+    return await getVersionProcessingStatus(versionId)
+  }
+
+  async function doExtractMetadata(versionId: string) {
+    try {
+      const result = await extractMetadata(versionId)
+      toast.success('元数据提取成功')
+      return result
+    } catch (e: unknown) {
+      toast.error((e as Error).message || '元数据提取失败')
+      throw e
     }
-    return ids
   }
 
-  async function pollTick() {
-    const ids = getPollableDocIds()
-    if (ids.length === 0) return
-    await fetchProcessingStatusBatch(ids)
-  }
-
-  function startPolling() {
-    stopPolling()
-    const ids = getPollableDocIds()
-    if (ids.length === 0) return
-    pollTick()
-    pollingTimer = setInterval(pollTick, POLL_INTERVAL_MS)
-  }
-
-  function stopPolling() {
-    if (pollingTimer !== null) {
-      clearInterval(pollingTimer)
-      pollingTimer = null
+  async function doGetVersionMetadata(versionId: string): Promise<VersionMetadata> {
+    try {
+      return await getVersionMetadata(versionId)
+    } catch (e: unknown) {
+      toast.error((e as Error).message || '获取元数据失败')
+      throw e
     }
+  }
+
+  async function doUpdateVersionMetadata(versionId: string, metadata: {
+    contract_number?: string | null
+    party_a?: string | null
+    party_b?: string | null
+    contract_amount?: number | null
+  }) {
+    try {
+      const result = await updateVersionMetadata(versionId, metadata)
+      toast.success('元数据保存成功')
+      return result
+    } catch (e: unknown) {
+      toast.error((e as Error).message || '保存元数据失败')
+      throw e
+    }
+  }
+
+  async function doCreateCompareRun(versionIdA: string, versionIdB: string) {
+    try {
+      const result = await createCompareRun(versionIdA, versionIdB)
+      toast.success('比对任务已创建')
+      return result
+    } catch (e: unknown) {
+      toast.error((e as Error).message || '创建比对失败')
+      throw e
+    }
+  }
+
+  async function doGetCompareRunResult(runId: string): Promise<CompareRunResult> {
+    return await getCompareRunResult(runId)
   }
 
   return {
@@ -374,16 +419,20 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     addContract,
     editContract,
     removeContract,
-    addVersion,
+    addVersionFromAttachment,
     setVersionCurrent,
     approveVersionAction,
     removeVersion,
     loadDashboard,
     fetchProcessingStatus,
     fetchProcessingStatusBatch,
+    fetchVersionProcessingStatus,
+    doExtractMetadata,
+    doGetVersionMetadata,
+    doUpdateVersionMetadata,
+    doCreateCompareRun,
+    doGetCompareRunResult,
     retryDocProcessing,
     setDocRevisionCurrent,
-    startPolling,
-    stopPolling,
   }
 })

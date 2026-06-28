@@ -75,7 +75,6 @@ import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
 import AppRegistryController from './controllers/app-registry.controller.js';
 import AppBackupController from './controllers/app-backup.controller.js';
-import ContractV2Controller from './controllers/contract-v2.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
 import ELSController from './controllers/els.controller.js';
 import OcrToolController from './controllers/ocr-tool.controller.js';
@@ -117,7 +116,6 @@ import appRegistryRoutes from './routes/app-registry.routes.js';
 import appBackupRoutes from './routes/app-backup.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
-import contractV2Routes from './routes/contract-v2.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import elsRoutes from './routes/els.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
@@ -424,7 +422,6 @@ class ApiServer {
       appMarket: new AppMarketController(this.db, this.sharedRegistryService),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
-      contractV2: new ContractV2Controller(this.db),
       invoice: new InvoiceController(this.db),
       els: new ELSController(this.db),
       ocrTool: new OcrToolController(this.db),
@@ -677,12 +674,6 @@ class ApiServer {
     this.app.use(mcpRouter.routes());
     this.app.use(mcpRouter.allowedMethods());
     logger.info('MCP routes registered (GET/POST /api/mcp/*)');
-
-    // Contract V2 合同管理v2路由
-    const contractV2Router = contractV2Routes(this.controllers.contractV2);
-    this.app.use(contractV2Router.routes());
-    this.app.use(contractV2Router.allowedMethods());
-    logger.info('Contract V2 routes registered (/api/contract-v2/*)');
 
     const invoiceRouter = invoiceRoutes(this.controllers.invoice);
     this.app.use(invoiceRouter.routes());

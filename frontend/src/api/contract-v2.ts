@@ -44,6 +44,8 @@ export interface ContractVersion {
   contract_id: string
   row_id: string
   file_id: string | null
+  document_id: string | null
+  revision_id: string | null
   version_number: string
   version_name: string | null
   version_type: 'draft' | 'signed' | 'amendment' | 'supplement' | null
@@ -63,9 +65,14 @@ export interface ContractVersion {
 
 export interface ContractListResult {
   items: ContractMainRecord[]
-  total: number
-  page: number
-  page_size: number
+  pagination: {
+    page: number
+    size: number
+    total: number
+    pages: number
+    has_next: boolean
+    has_prev: boolean
+  }
 }
 
 export interface DashboardData {
@@ -86,23 +93,23 @@ export interface OrgNodeStats {
 }
 
 export async function getOrgTree(): Promise<OrgNode[]> {
-  return apiRequest<OrgNode[]>(apiClient.get('/contract-v2/org-nodes/tree'))
+  return apiRequest<OrgNode[]>(apiClient.get('/apps/contract-mgr-v2/org-nodes/tree'))
 }
 
 export async function createOrgNode(data: { name: string; node_type: string; parent_id?: string }): Promise<OrgNode> {
-  return apiRequest<OrgNode>(apiClient.post('/contract-v2/org-nodes', data))
+  return apiRequest<OrgNode>(apiClient.post('/apps/contract-mgr-v2/org-nodes', data))
 }
 
 export async function updateOrgNode(nodeId: string, data: { name?: string; sort_order?: number }): Promise<OrgNode> {
-  return apiRequest<OrgNode>(apiClient.put(`/contract-v2/org-nodes/${nodeId}`, data))
+  return apiRequest<OrgNode>(apiClient.put(`/apps/contract-mgr-v2/org-nodes/${nodeId}`, data))
 }
 
 export async function deleteOrgNode(nodeId: string): Promise<void> {
-  return apiRequest<void>(apiClient.delete(`/contract-v2/org-nodes/${nodeId}`))
+  return apiRequest<void>(apiClient.delete(`/apps/contract-mgr-v2/org-nodes/${nodeId}`))
 }
 
 export async function getOrgNodeStats(nodeId: string): Promise<OrgNodeStats> {
-  return apiRequest<OrgNodeStats>(apiClient.get(`/contract-v2/org-nodes/${nodeId}/stats`))
+  return apiRequest<OrgNodeStats>(apiClient.get(`/apps/contract-mgr-v2/org-nodes/${nodeId}/stats`))
 }
 
 export async function listContracts(params?: {
@@ -113,11 +120,11 @@ export async function listContracts(params?: {
   page?: number
   page_size?: number
 }): Promise<ContractListResult> {
-  return apiRequest<ContractListResult>(apiClient.get('/contract-v2/contracts', { params }))
+  return apiRequest<ContractListResult>(apiClient.get('/apps/contract-mgr-v2/contracts', { params }))
 }
 
 export async function getContract(contractId: string): Promise<ContractMainRecord> {
-  return apiRequest<ContractMainRecord>(apiClient.get(`/contract-v2/contracts/${contractId}`))
+  return apiRequest<ContractMainRecord>(apiClient.get(`/apps/contract-mgr-v2/contracts/${contractId}`))
 }
 
 export async function createContract(data: {
@@ -125,7 +132,7 @@ export async function createContract(data: {
   contract_name: string
   contract_type?: string
 }): Promise<ContractMainRecord> {
-  return apiRequest<ContractMainRecord>(apiClient.post('/contract-v2/contracts', data))
+  return apiRequest<ContractMainRecord>(apiClient.post('/apps/contract-mgr-v2/contracts', data))
 }
 
 export async function updateContract(contractId: string, data: {
@@ -133,43 +140,182 @@ export async function updateContract(contractId: string, data: {
   contract_type?: string
   status?: string
 }): Promise<ContractMainRecord> {
-  return apiRequest<ContractMainRecord>(apiClient.put(`/contract-v2/contracts/${contractId}`, data))
+  return apiRequest<ContractMainRecord>(apiClient.put(`/apps/contract-mgr-v2/contracts/${contractId}`, data))
 }
 
 export async function deleteContract(contractId: string): Promise<void> {
-  return apiRequest<void>(apiClient.delete(`/contract-v2/contracts/${contractId}`))
+  return apiRequest<void>(apiClient.delete(`/apps/contract-mgr-v2/contracts/${contractId}`))
 }
 
-export async function createVersion(contractId: string, data: {
-  row_id: string
-  file_id?: string
+/**
+ * 从已上传的附件创建版本
+ * 不依赖 mini-app.service.js 和 mini_app_rows
+ */
+export async function createVersionFromAttachment(contractId: string, data: {
+  file_id: string
+  contract_type: string  // 必填：sales(销售合同) | supply(供货合同)
   version_number?: string
   version_name?: string
   version_type?: string
+  document_mode?: 'new' | 'existing'
+  existing_document_id?: string
 }): Promise<ContractVersion> {
-  return apiRequest<ContractVersion>(apiClient.post(`/contract-v2/contracts/${contractId}/versions`, data))
+  return apiRequest<ContractVersion>(apiClient.post(`/apps/contract-mgr-v2/contracts/${contractId}/versions/from-attachment`, data))
 }
 
 export async function listVersions(contractId: string): Promise<ContractVersion[]> {
-  return apiRequest<ContractVersion[]>(apiClient.get(`/contract-v2/contracts/${contractId}/versions`))
+  return apiRequest<ContractVersion[]>(apiClient.get(`/apps/contract-mgr-v2/contracts/${contractId}/versions`))
 }
 
 export async function updateVersion(versionId: string, data: Record<string, unknown>): Promise<ContractVersion> {
-  return apiRequest<ContractVersion>(apiClient.put(`/contract-v2/versions/${versionId}`, data))
+  return apiRequest<ContractVersion>(apiClient.put(`/apps/contract-mgr-v2/versions/${versionId}`, data))
 }
 
 export async function approveVersion(versionId: string): Promise<ContractVersion> {
-  return apiRequest<ContractVersion>(apiClient.put(`/contract-v2/versions/${versionId}/approve`))
+  return apiRequest<ContractVersion>(apiClient.put(`/apps/contract-mgr-v2/versions/${versionId}/approve`))
 }
 
 export async function setCurrentVersion(versionId: string): Promise<ContractVersion> {
-  return apiRequest<ContractVersion>(apiClient.put(`/contract-v2/versions/${versionId}/current`))
+  return apiRequest<ContractVersion>(apiClient.put(`/apps/contract-mgr-v2/versions/${versionId}/current`))
 }
 
 export async function deleteVersion(versionId: string): Promise<void> {
-  return apiRequest<void>(apiClient.delete(`/contract-v2/versions/${versionId}`))
+  return apiRequest<void>(apiClient.delete(`/apps/contract-mgr-v2/versions/${versionId}`))
 }
 
 export async function getDashboard(): Promise<DashboardData> {
-  return apiRequest<DashboardData>(apiClient.get('/contract-v2/dashboard'))
+  return apiRequest<DashboardData>(apiClient.get('/apps/contract-mgr-v2/dashboard'))
+}
+
+export interface ProcessingStatus {
+  has_document: boolean
+  document_id?: string
+  revision_id?: string | null
+  /**
+   * document 维度的处理状态（平台状态机当前口径）。
+   * 多 revision 场景下反映的是 document 最新 revision 的处理进度。
+   */
+  document_processing_status?: string
+  /**
+   * 兼容字段：与 document_processing_status 相同，供现有前端继续使用。
+   */
+  processing_status?: string
+  processing_error_code?: string | null
+  processing_error_message?: string | null
+  /**
+   * 状态口径标识：
+   * - none: 未关联文档
+   * - document_current_revision: 该版本绑定的 revision 即为 document 当前 revision，状态可直接代表该版本
+   * - document_shared: 该版本绑定的 revision 不是 document 当前 revision，状态为 document 维度共享值
+   */
+  status_scope?: 'none' | 'document_current_revision' | 'document_shared'
+  status_scope_note?: string
+}
+
+export async function getVersionProcessingStatus(versionId: string): Promise<ProcessingStatus> {
+  return apiRequest<ProcessingStatus>(apiClient.get(`/apps/contract-mgr-v2/versions/${versionId}/processing-status`))
+}
+
+export interface ExtractMetadataResult {
+  success: boolean
+  metadata: Record<string, unknown>
+  fields: string[]
+  /** 本次提取读取的 revision_id（= 该版本绑定的 revision_id） */
+  revision_id?: string
+  /** 回填目标 row_id（= 该版本自己的 row_id） */
+  row_id?: string
+}
+
+export async function extractMetadata(versionId: string): Promise<ExtractMetadataResult> {
+  return apiRequest<ExtractMetadataResult>(apiClient.post(`/apps/contract-mgr-v2/versions/${versionId}/extract-metadata`))
+}
+
+export interface VersionMetadata {
+  has_metadata: boolean
+  contract_number: string | null
+  party_a: string | null
+  party_b: string | null
+  contract_amount: number | null
+}
+
+export async function getVersionMetadata(versionId: string): Promise<VersionMetadata> {
+  return apiRequest<VersionMetadata>(apiClient.get(`/apps/contract-mgr-v2/versions/${versionId}/metadata`))
+}
+
+export async function updateVersionMetadata(versionId: string, metadata: {
+  contract_number?: string | null
+  party_a?: string | null
+  party_b?: string | null
+  contract_amount?: number | null
+}): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(apiClient.put(`/apps/contract-mgr-v2/versions/${versionId}/metadata`, metadata))
+}
+
+export interface CompareRunResult {
+  run_id: string
+  status: string
+  summary: {
+    total: number
+    high: number
+    medium: number
+    low: number
+  }
+  items: Array<{
+    id: string
+    run_id: string
+    base_unit_id: string | null
+    target_unit_id: string | null
+    change_type: 'identical' | 'modified' | 'semantic_change' | 'added' | 'removed'
+    summary: string | null
+    risk_level: 'none' | 'low' | 'medium' | 'high' | null
+  }>
+  high_severity_items: Array<{
+    id: string
+    run_id: string
+    change_type: string
+    summary: string | null
+    risk_level: string | null
+  }>
+  medium_severity_items: Array<{
+    id: string
+    run_id: string
+    change_type: string
+    summary: string | null
+    risk_level: string | null
+  }>
+  low_severity_items: Array<{
+    id: string
+    run_id: string
+    change_type: string
+    summary: string | null
+    risk_level: string | null
+  }>
+}
+
+export async function createCompareRun(versionIdA: string, versionIdB: string): Promise<{ run_id: string; status: string }> {
+  return apiRequest<{ run_id: string; status: string }>(apiClient.post(`/apps/contract-mgr-v2/compare-runs`, {
+    version_id_a: versionIdA,
+    version_id_b: versionIdB,
+  }))
+}
+
+export async function getCompareRunResult(runId: string): Promise<CompareRunResult> {
+  return apiRequest<CompareRunResult>(apiClient.get(`/apps/contract-mgr-v2/compare-runs/${runId}`))
+}
+
+export interface VersionContent {
+  has_content: boolean
+  row_id?: string
+  ocr_text?: string | null
+  ocr_service?: string | null
+  ocr_at?: string | null
+  filtered_text?: string | null
+  filter_at?: string | null
+  sections?: Array<{ title: string; content: string }> | null
+  extract_json?: Record<string, unknown> | null
+  extract_at?: string | null
+}
+
+export async function getVersionContent(versionId: string): Promise<VersionContent> {
+  return apiRequest<VersionContent>(apiClient.get(`/apps/contract-mgr-v2/versions/${versionId}/content`))
 }

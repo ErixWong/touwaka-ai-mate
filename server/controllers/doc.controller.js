@@ -794,7 +794,7 @@ class DocController {
         );
 
         if (compareRunIds.length > 0) {
-          await DocCompareItem.destroy({ where: { compare_run_id: { [Op.in]: compareRunIds } }, transaction: t });
+          await DocCompareItem.destroy({ where: { run_id: { [Op.in]: compareRunIds } }, transaction: t });
           await DocCompareRun.destroy({ where: { id: { [Op.in]: compareRunIds } }, transaction: t });
         }
 
