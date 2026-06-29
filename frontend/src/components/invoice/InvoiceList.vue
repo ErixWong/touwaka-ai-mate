@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
+import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams, type InvoiceExportParams } from '@/api/invoice'
 import { uploadAttachmentFormData } from '@/api/attachment'
 import { batchUpload, deleteRecord } from '@/api/mini-apps'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -345,7 +345,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
   exporting.value = true
   try {
     const dateFilter = buildDateFilter()
-    const params: any = {
+    const params: InvoiceExportParams = {
       type,
       ...dateFilter,
       sort: filters.value.sort,

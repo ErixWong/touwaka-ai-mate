@@ -77,7 +77,7 @@ class InvoiceService {
       created_at: 'm.created_at',
       'm.created_at': 'm.created_at',
     };
-    return sortFieldMap[sort] || 'r.invoice_date';
+    return sortFieldMap[sort] || 'm.created_at';
   }
 
   _buildOrderClause(sort = 'created_at', order = 'desc') {
