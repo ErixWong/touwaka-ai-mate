@@ -161,7 +161,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { marked } from 'marked'
 import { ElMessage } from 'element-plus'
-import { Upload, WarningFilled, InfoFilled, Setting, Loading, Camera, ZoomIn, Close, Document } from '@element-plus/icons-vue'
+import { Upload, Setting, Loading, Camera, ZoomIn, Close, Document } from '@element-plus/icons-vue'
 import { analyzeOcrImage, getOcrStatus, getOcrPromptPresets, type OcrPromptPreset } from '@/api/ocr-tool'
 import { getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import { modelApi } from '@/api/services'
@@ -218,26 +218,6 @@ function closeToast() {
     toastTimer = null
   }
 }
-
-const statusLabel = computed(() => {
-  switch (status.value) {
-    case 'pending': return '排队中'
-    case 'processing': return '识别中'
-    case 'done': return '已完成'
-    case 'error': return '失败'
-    default: return '等待上传'
-  }
-})
-
-const statusTagType = computed(() => {
-  switch (status.value) {
-    case 'pending': return 'info'
-    case 'processing': return 'warning'
-    case 'done': return 'success'
-    case 'error': return 'danger'
-    default: return 'info'
-  }
-})
 
 // 只有选择表格格式时才显示"复制为表格"按钮
 const showCopyAsExcel = computed(() => {

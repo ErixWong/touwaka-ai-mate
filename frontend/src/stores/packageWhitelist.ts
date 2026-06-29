@@ -38,6 +38,10 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
+  function getErrorMessage(cause: unknown, fallback: string) {
+    return cause instanceof Error ? cause.message : fallback
+  }
+
   // 计算属性
   const nodePackages = computed(() => packages.value.node)
   const pythonPackages = computed(() => packages.value.python)
@@ -51,8 +55,8 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
     try {
       const result = await apiRequest<PackageList>(apiClient.get('/system/packages'))
       packages.value = result || { node: [], python: [] }
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load packages')
       console.error('Failed to load packages:', e)
     } finally {
       isLoading.value = false
@@ -69,8 +73,8 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
         allowed_node_modules: [],
         allowed_python_packages: [],
       }
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load whitelist')
       console.error('Failed to load whitelist:', e)
     } finally {
       isLoading.value = false
@@ -85,8 +89,8 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
       const result = await apiRequest<WhitelistConfig>(apiClient.patch('/system/packages/whitelist', config))
       whitelist.value = result
       return true
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to update whitelist')
       console.error('Failed to update whitelist:', e)
       return false
     } finally {
@@ -102,8 +106,8 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
       const result = await apiRequest<WhitelistConfig>(apiClient.post('/system/packages/whitelist/reset'))
       whitelist.value = result
       return true
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to reset whitelist')
       console.error('Failed to reset whitelist:', e)
       return false
     } finally {
@@ -126,10 +130,11 @@ export const usePackageWhitelistStore = defineStore('packageWhitelist', () => {
         await loadPackages()
       }
       return result || { success: false, message: 'No response from server' }
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      const message = getErrorMessage(e, 'Failed to install package')
+      error.value = message
       console.error('Failed to install package:', e)
-      return { success: false, message: e.message }
+      return { success: false, message }
     } finally {
       isLoading.value = false
     }

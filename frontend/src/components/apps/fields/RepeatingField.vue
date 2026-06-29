@@ -57,9 +57,12 @@ import { useI18n } from 'vue-i18n'
 import type { AppField } from '@/api/mini-apps'
 import FieldRenderer from '@/components/apps/FieldRenderer.vue'
 
+type RepeatingRow = Record<string, unknown>
+type SummaryFieldConfig = { source?: string; function?: 'sum' | 'count' | 'avg' }
+
 const props = defineProps<{
   field: AppField
-  modelValue: any[]
+  modelValue: RepeatingRow[]
   readonly?: boolean
 }>()
 
@@ -72,15 +75,15 @@ const visibleFields = computed(() => {
   return (props.field.fields || []).filter(f => f.type !== 'file')
 })
 
-const summaryFields = computed(() => {
-  return props.field.summary_fields || []
+const summaryFields = computed<SummaryFieldConfig[]>(() => {
+  return (props.field.summary_fields as SummaryFieldConfig[] | undefined) || []
 })
 
 function addRow() {
   const maxItems = props.field.max_items
   if (maxItems && rows.value.length >= maxItems) return
 
-  const newRow: Record<string, any> = {}
+  const newRow: RepeatingRow = {}
   for (const subField of props.field.fields || []) {
     newRow[subField.name] = subField.default !== undefined ? subField.default : null
   }
@@ -96,7 +99,7 @@ function removeRow(index: number) {
   emit('update:model-value', newRows)
 }
 
-function handleCellUpdate(rowIndex: number, fieldName: string, value: any) {
+function handleCellUpdate(rowIndex: number, fieldName: string, value: unknown) {
   const newRows = [...rows.value]
   newRows[rowIndex] = { ...newRows[rowIndex], [fieldName]: value }
   emit('update:model-value', newRows)

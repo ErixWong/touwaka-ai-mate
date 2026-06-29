@@ -56,7 +56,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { useExpertStore } from '@/stores/expert'
 
 /**
@@ -69,7 +68,6 @@ import { useExpertStore } from '@/stores/expert'
  */
 
 const router = useRouter()
-const { t } = useI18n()
 const expertStore = useExpertStore()
 
 // 正在启动的专家 ID（用于显示加载状态）

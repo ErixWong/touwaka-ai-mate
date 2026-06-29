@@ -104,13 +104,13 @@ function openApp(app: MiniApp) {
 }
 
 // 处理应用安装完成
-function handleAppInstalled(appId: string) {
+function handleAppInstalled() {
   loadMyApps()
   currentTab.value = 'my-apps'
 }
 
 // 处理应用卸载完成
-function handleAppUninstalled(appId: string) {
+function handleAppUninstalled() {
   loadMyApps()
 }
 

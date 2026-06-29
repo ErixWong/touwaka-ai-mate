@@ -1,6 +1,6 @@
 import apiClient, { apiRequest } from './client'
 
-export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error'] as const
+export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error', 'failed'] as const
 export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding'] as const
 export const DOC_PROCESSING_ACTION_COMPLETE_STATUSES = ['ready', 'pending_embedding'] as const
 export const DOC_PROCESSING_OCR_ACTIVE_STATUSES = ['pending_ocr', 'ocr_processing'] as const
@@ -14,9 +14,10 @@ export const DOC_PROCESSING_STATUS_TAG_TYPES: Record<string, 'success' | 'warnin
   pending_embedding: 'info',
   ready: 'success',
   error: 'danger',
+  failed: 'danger',
 }
 
-export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error'
+export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error' | 'failed'
 export type DocRevisionStatus = 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
 export type DocOcrStatus = 'pending' | 'processing' | 'completed' | 'failed' | string
 
@@ -29,7 +30,7 @@ export function isNonTerminalDocProcessingStatus(status?: string | null): boolea
 }
 
 export function isFailedDocProcessingStatus(status?: string | null): boolean {
-  return status === 'error'
+  return status === 'error' || status === 'failed'
 }
 
 export function isActionCompleteDocProcessingStatus(status?: string | null): boolean {

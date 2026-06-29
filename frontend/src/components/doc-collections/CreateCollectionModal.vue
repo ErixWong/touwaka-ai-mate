@@ -1,66 +1,76 @@
 <template>
   <el-dialog
     :model-value="props.visible"
-    title="新建文档集合"
+    :title="$t('docs.workspace.home.createCollection')"
     width="520px"
     @update:model-value="$emit('update:visible', $event)"
     @open="onOpen"
     :close-on-click-modal="false"
   >
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
-      <el-form-item label="集合名称" prop="name">
-        <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="输入集合名称" />
+      <el-form-item :label="$t('docs.workspace.settings.collectionName')" prop="name">
+        <el-input v-model="form.name" maxlength="100" show-word-limit :placeholder="$t('docs.workspace.settings.collectionNamePlaceholder')" />
       </el-form-item>
-      <el-form-item label="描述" prop="description">
-        <el-input v-model="form.description" type="textarea" maxlength="500" show-word-limit placeholder="可选描述" :rows="3" />
+      <el-form-item :label="$t('docs.workspace.settings.description')" prop="description">
+        <el-input v-model="form.description" type="textarea" maxlength="500" show-word-limit :placeholder="$t('docs.workspace.settings.descriptionPlaceholder')" :rows="3" />
       </el-form-item>
-      <el-form-item label="嵌入模型" prop="embedding_model_id">
-        <el-select v-model="form.embedding_model_id" placeholder="选择嵌入模型" style="width:100%">
+      <el-form-item :label="$t('docs.workspace.settings.embeddingModel')" prop="embedding_model_id">
+        <el-select v-model="form.embedding_model_id" :placeholder="$t('docs.workspace.settings.embeddingModelPlaceholder')" style="width:100%">
           <el-option v-for="m in embeddingModels" :key="m.id" :label="m.name" :value="m.id" />
         </el-select>
       </el-form-item>
-      <el-form-item label="可见范围" prop="visibility">
+      <el-form-item :label="$t('docs.workspace.settings.visibility')" prop="visibility">
         <el-radio-group v-model="form.visibility">
-          <el-radio value="private">私有</el-radio>
-          <el-radio value="department" :disabled="!userHasDepartment">部门</el-radio>
-          <el-radio value="public">公开</el-radio>
+          <el-radio value="private">{{ $t('docs.workspace.settings.visibilityPrivate') }}</el-radio>
+          <el-radio value="department" :disabled="!userHasDepartment">{{ $t('docs.workspace.settings.visibilityDepartment') }}</el-radio>
+          <el-radio value="public">{{ $t('docs.workspace.settings.visibilityPublic') }}</el-radio>
         </el-radio-group>
         <div v-if="!userHasDepartment && form.visibility === 'department'" class="form-hint">
-          请先加入部门后才能创建部门可见集合
+          {{ $t('docs.workspace.settings.departmentRequiredHint') }}
         </div>
       </el-form-item>
-      <el-form-item v-if="form.visibility === 'department'" label="所属部门" prop="department_id">
+      <el-form-item v-if="form.visibility === 'department'" :label="$t('docs.workspace.settings.department')" prop="department_id">
         <el-tree-select
           v-model="form.department_id"
           :data="departmentTree"
           :props="{ label: 'name', value: 'id', children: 'children' }"
-          placeholder="选择所属部门"
+          :placeholder="$t('docs.workspace.settings.departmentPlaceholder')"
           check-strictly
           style="width:100%"
         />
       </el-form-item>
-      <el-form-item v-if="form.visibility === 'department'" label="部门范围" prop="department_scope">
+      <el-form-item v-if="form.visibility === 'department'" :label="$t('docs.workspace.settings.departmentScope')" prop="department_scope">
         <el-radio-group v-model="form.department_scope">
-          <el-radio value="self">仅本部门</el-radio>
-          <el-radio value="self_and_descendants">本部门及下级</el-radio>
+          <el-radio value="self">{{ $t('docs.workspace.settings.departmentScopeSelf') }}</el-radio>
+          <el-radio value="self_and_descendants">{{ $t('docs.workspace.settings.departmentScopeDescendants') }}</el-radio>
         </el-radio-group>
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="$emit('update:visible', false)">取消</el-button>
-      <el-button type="primary" @click="submit" :loading="submitting">创建</el-button>
+      <el-button @click="$emit('update:visible', false)">{{ $t('common.cancel') }}</el-button>
+      <el-button type="primary" @click="submit" :loading="submitting">{{ $t('docs.workspace.home.createCollection') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
 import { modelApi } from '@/api/services'
 import { departmentApi } from '@/api/services'
 import { useUserStore } from '@/stores/user'
 import { useCollectionStore } from '@/stores/collection'
+import type { CreateCollectionRequest } from '@/api/collections'
 import type { AIModel } from '@/types'
+
+type DepartmentTreeNode = {
+  id: string
+  name: string
+  children?: DepartmentTreeNode[]
+}
+
+type FormRuleValidator = (rule: unknown, value: unknown, callback: (error?: Error) => void) => void
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{
@@ -70,10 +80,11 @@ const emit = defineEmits<{
 
 const userStore = useUserStore()
 const collectionStore = useCollectionStore()
+const { t } = useI18n()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const embeddingModels = ref<AIModel[]>([])
-const departmentTree = ref<any[]>([])
+const departmentTree = ref<DepartmentTreeNode[]>([])
 const userHasDepartment = ref(false)
 
 const form = reactive({
@@ -86,19 +97,19 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  name: [{ required: true, message: '请输入集合名称', trigger: 'blur' }],
-  embedding_model_id: [{ required: true, message: '请选择嵌入模型', trigger: 'change' }],
+  name: [{ required: true, message: t('docs.workspace.settings.collectionNamePlaceholder'), trigger: 'blur' }],
+  embedding_model_id: [{ required: true, message: t('docs.workspace.settings.embeddingModelPlaceholder'), trigger: 'change' }],
   department_id: [{
     required: true,
-    message: '请选择所属部门',
+    message: t('docs.workspace.settings.departmentPlaceholder'),
     trigger: 'change',
-    validator: (_rule: any, _value: any, callback: any) => {
+    validator: ((_rule, _value, callback) => {
       if (form.visibility === 'department' && !form.department_id) {
-        callback(new Error('请选择所属部门'))
+        callback(new Error(t('docs.workspace.settings.departmentPlaceholder')))
       } else {
         callback()
       }
-    },
+    }) as FormRuleValidator,
   }],
 }
 
@@ -130,7 +141,7 @@ async function submit() {
 
   submitting.value = true
   try {
-    const data: any = {
+    const data: CreateCollectionRequest = {
       name: form.name.trim(),
       embedding_model_id: form.embedding_model_id,
       visibility: form.visibility,

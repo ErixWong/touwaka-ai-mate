@@ -1148,12 +1148,6 @@ const systemMenuItems = [
   { key: 'system', label: t('settings.systemConfig'), route: '/system/config' },
 ]
 
-const menuItemsByGroup: Record<string, { key: string; label: string; route: string }[]> = {
-  organization: organizationMenuItems,
-  personal: personalMenuItems,
-  system: systemMenuItems,
-}
-
 // 当前分组的菜单项
 const currentMenuItems = computed(() => {
   let items: { key: string; label: string; route: string }[]
@@ -1350,7 +1344,7 @@ const expertForm = reactive({
   // 上下文压缩配置
   context_strategy: 'full' as 'full' | 'simple' | 'minimal',
   context_threshold: 0.70,
-  psyche_config: {} as Record<string, any>,
+  psyche_config: {} as Record<string, unknown>,
   // LLM 参数配置
   temperature: 0.70,
   reflective_temperature: 0.30,
@@ -1371,12 +1365,6 @@ const isExpertFormValid = computed(() => {
 
 // Expert 对话框 Tab 状态
 const expertActiveTab = ref<'basic' | 'personality' | 'model'>('basic')
-
-const expertTabs = computed(() => [
-  { key: 'basic' as const, label: t('settings.expertTabBasic') },
-  { key: 'personality' as const, label: t('settings.expertTabPersonality') },
-  { key: 'model' as const, label: t('settings.expertTabModel') },
-])
 
 // 技能管理对话框
 const showSkillsDialog = ref(false)
@@ -1530,7 +1518,7 @@ const openUserDialog = async (user?: UserListItem) => {
     userForm.status = user.status
     userForm.avatar = user.avatar || ''
     userForm.newPassword = ''
-    userForm.invitation_quota = (user as any).invitation_quota ?? 1
+    userForm.invitation_quota = user.invitation_quota ?? 1
     // 设置用户当前角色：根据角色标识符(mark)找到对应的角色ID
     if (user.roles && user.roles.length > 0) {
       const roleIds = rolesList.value
@@ -2010,10 +1998,10 @@ const openModelDialog = (model?: AIModel) => {
     modelForm.name = model.name
     modelForm.model_name = model.model_name || ''
     modelForm.provider_id = model.provider_id || ''
-    modelForm.model_type = (model as any).model_type || 'text'
+    modelForm.model_type = model.model_type || 'text'
     modelForm.max_tokens = model.max_tokens
     modelForm.max_output_tokens = model.max_output_tokens
-    modelForm.embedding_dim = (model as any).embedding_dim
+    modelForm.embedding_dim = model.embedding_dim
     modelForm.cost_per_1k_input = model.cost_per_1k_input
     modelForm.cost_per_1k_output = model.cost_per_1k_output
     modelForm.description = model.description || ''
@@ -2100,9 +2088,9 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.expressive_model_id = expert.expressive_model_id || ''
     expertForm.reflective_model_id = expert.reflective_model_id || ''
     expertForm.prompt_template = expert.prompt_template || ''
-    expertForm.context_strategy = (expert as any).context_strategy ?? 'full'
+    expertForm.context_strategy = expert.context_strategy ?? 'full'
     expertForm.context_threshold = expert.context_threshold ?? 0.70
-    expertForm.psyche_config = (expert as any).psyche_config || {}  // P1-1: 回显
+    expertForm.psyche_config = expert.psyche_config || {}  // P1-1: 回显
     // LLM 参数
     expertForm.temperature = expert.temperature ?? 0.70
     expertForm.reflective_temperature = expert.reflective_temperature ?? 0.30
@@ -2273,7 +2261,7 @@ const loadExpertSkills = async (expertId: string) => {
   }
 }
 
-const handleSkillToggle = (skill: ExpertSkill) => {
+const handleSkillToggle = () => {
   skillsChanged.value = true
 }
 

@@ -252,10 +252,10 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
   const getSetting = (path: string): number | string | undefined => {
     if (!settings.value) return undefined
     const parts = path.split('.')
-    let result: any = settings.value
+    let result: unknown = settings.value
     for (const part of parts) {
       if (result && typeof result === 'object' && part in result) {
-        result = result[part]
+        result = Reflect.get(result, part)
       } else {
         return undefined
       }

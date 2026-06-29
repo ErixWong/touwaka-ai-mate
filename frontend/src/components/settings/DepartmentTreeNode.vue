@@ -63,7 +63,6 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 import type { Department } from '@/types'
 
 const props = defineProps<{
@@ -78,8 +77,6 @@ defineEmits<{
   delete: [department: Department]
   'add-child': [department: undefined, parentId: string]
 }>()
-
-const { t } = useI18n()
 
 const level = props.level || 1
 const isExpanded = ref(true)

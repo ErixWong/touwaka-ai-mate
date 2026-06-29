@@ -91,10 +91,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
-import ChatWindow, { type ChatMessage } from '@/components/ChatWindow.vue'
+import ChatWindow from '@/components/ChatWindow.vue'
 import RightPanel from '@/components/panel/RightPanel.vue'
 import { useChatStore } from '@/stores/chat'
 import { useModelStore } from '@/stores/model'
@@ -109,7 +108,6 @@ import type { Topic, Doc } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
 const chatStore = useChatStore()
 const modelStore = useModelStore()
 const expertStore = useExpertStore()

@@ -423,7 +423,7 @@ async function copyToClipboard() {
             </tr>
           </thead>
           <tbody>
-            <template v-for="(group, idx) in groupedData" :key="group.category">
+            <template v-for="group in groupedData" :key="group.category">
               <tr v-for="(row, rowIdx) in group.rows" :key="`${group.category}-${rowIdx}`">
                 <td>{{ row.account }}</td>
                 <td class="num">{{ fmt(row.directWage) }}</td>

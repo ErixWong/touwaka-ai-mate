@@ -234,19 +234,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
-import { useUserStore } from '@/stores/user'
 import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import type { MiniApp, AppField, AppState, AppRowHandler } from '@/api/mini-apps'
 import StateDesigner from '@/components/settings/StateDesigner.vue'
 
 const { t } = useI18n()
 const toast = useToastStore()
-const userStore = useUserStore()
-
-const isAdmin = computed(() => userStore.isAdmin)
 const loading = ref(false)
 const apps = ref<MiniApp[]>([])
 const handlers = ref<AppRowHandler[]>([])

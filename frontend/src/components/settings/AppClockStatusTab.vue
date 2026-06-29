@@ -155,7 +155,7 @@ async function refresh() {
   try {
     const response = await apiClient.get('/app-clock/status')
     statusList.value = response.data.data || []
-  } catch (err) {
+  } catch {
     toast.error(t('appClock.loadFailed'))
   } finally {
     loading.value = false

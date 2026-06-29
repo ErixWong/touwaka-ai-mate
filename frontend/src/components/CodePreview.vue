@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-// @ts-ignore - VCodeBlock 没有完整的类型导出
+// @ts-expect-error - VCodeBlock 没有完整的类型导出
 import VCodeBlock from '@wdns/vue-code-block'
 // 导入 highlight.js 样式 - 使用 github 主题作为亮色，github-dark 作为暗色
 import 'highlight.js/styles/github.css'
@@ -137,23 +137,6 @@ const normalizedLanguage = computed(() => {
   return lang
 })
 
-/**
- * 检测系统主题偏好
- */
-const prefersDark = computed(() => {
-  if (typeof window === 'undefined') return false
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-})
-
-/**
- * 解析实际使用的主题
- */
-const resolvedTheme = computed(() => {
-  if (props.theme === 'auto') {
-    return prefersDark.value ? 'dark' : 'light'
-  }
-  return props.theme
-})
 </script>
 
 <style scoped>

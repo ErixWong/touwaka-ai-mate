@@ -36,6 +36,17 @@ import { useToastStore } from '@/stores/toast'
 import apiClient from '@/api/client'
 import type { AppField, AppConfig } from '@/api/mini-apps'
 
+type FileFieldValue = {
+  attachment_id: string
+  name: string
+  size?: number
+  mimeType?: string
+}
+
+function isFileFieldValue(value: unknown): value is FileFieldValue {
+  return typeof value === 'object' && value !== null && 'name' in value
+}
+
 const props = defineProps<{
   field: AppField
   modelValue: unknown
@@ -57,7 +68,7 @@ const accept = computed(() => {
 })
 
 const placeholder = computed(() => {
-  return (props.field as any).placeholder || '点击上传合同文件 (PDF/DOC/图片)'
+  return props.field.label || '点击上传合同文件 (PDF/DOC/图片)'
 })
 
 function triggerUpload() {
