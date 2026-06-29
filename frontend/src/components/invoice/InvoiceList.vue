@@ -284,8 +284,16 @@ async function handleBatchDelete() {
     if (failCount === 0) {
       ElMessage.success(`已成功删除 ${successCount} 条记录`)
     } else {
-      const detail = failedInvoices.slice(0, 3).join('、') + (failedInvoices.length > 3 ? '等' : '')
-      ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条（${detail}），请刷新后核对`)
+      ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条`)
+      // 弹窗展示完整失败明细，便于审计与排障
+      const failDetailHtml = failedInvoices
+        .map((inv, i) => `<p>${i + 1}. ${inv}</p>`)
+        .join('')
+      ElMessageBox.alert(
+        `<div><p><strong>成功：${successCount} 条</strong></p><p><strong>失败：${failCount} 条</strong></p><hr/>${failDetailHtml}</div>`,
+        '批量删除结果',
+        { dangerouslyUseHTMLString: true, confirmButtonText: '我知道了', type: 'warning' }
+      ).catch(() => { /* 用户关闭弹窗 */ })
     }
   } catch (e: any) {
     ElMessage.error(e.message || '批量删除异常')

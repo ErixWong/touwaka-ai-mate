@@ -80,16 +80,24 @@ class InvoiceService {
     return sortFieldMap[sort] || 'r.invoice_date';
   }
 
+  _buildOrderClause(sort = 'created_at', order = 'desc') {
+    const sortField = this._getSortField(sort);
+    const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
+
+    if (sortField === 'm.created_at') {
+      return `m.created_at ${sortOrder}, r.invoice_number ${sortOrder}, m.id ${sortOrder}`;
+    }
+
+    return `${sortField} ${sortOrder}, m.created_at ${sortOrder}, r.invoice_number ${sortOrder}, m.id ${sortOrder}`;
+  }
+
   async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin }) {
     const { conditions, replacements } = this._buildConditions({
       invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
     });
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
-    const sortField = this._getSortField(sort);
-    const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
-    // 稳定二级排序：created_at 排序时追加 m.id 防止同时间结果抖动
-    const stableClause = (sort === 'created_at' || sortField === 'm.created_at') ? `, m.id ${sortOrder}` : '';
+    const orderClause = this._buildOrderClause(sort, order);
     const offset = (page - 1) * size;
 
     const [rows, countResult] = await Promise.all([
@@ -103,7 +111,7 @@ class InvoiceService {
          FROM app_invoice_mgr_records m
          LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
          ${where}
-         ORDER BY ${sortField} ${sortOrder}${stableClause}
+         ORDER BY ${orderClause}
          LIMIT ? OFFSET ?`,
         { replacements: [...replacements, size, offset], type: Sequelize.QueryTypes.SELECT }
       ),
@@ -165,15 +173,13 @@ class InvoiceService {
    * - Sheet1「发票信息」：所有发票的 header 字段
    * - Sheet2「商品明细」：所有明细行（含发票号码用于 VLOOKUP）
    */
-  async exportFull({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin }) {
+  async exportFull({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status }) {
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
     });
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
-    const sortField = this._getSortField(sort);
-    const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
-    const stableClause = (sort === 'created_at' || sortField === 'm.created_at') ? `, m.id ${sortOrder}` : '';
+    const orderClause = this._buildOrderClause(sort, order);
 
     // 查询所有符合条件的发票 header
     const rows = await this.sequelize.query(
@@ -186,7 +192,7 @@ class InvoiceService {
        FROM app_invoice_mgr_records m
        LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        ${where}
-       ORDER BY ${sortField} ${sortOrder}${stableClause}`,
+       ORDER BY ${orderClause}`,
       { replacements, type: Sequelize.QueryTypes.SELECT }
     );
 
@@ -270,7 +276,7 @@ class InvoiceService {
   /**
    * 个性化导出：用户选择字段 + 可选商品明细
    */
-  async exportCustom({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, fields, includeItems }) {
+  async exportCustom({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, fields, includeItems }) {
     // ⚠️ 字段定义需与前端 exportFieldGroups (InvoiceList.vue) 保持同步
     const ALL_HEADER_FIELDS = [
       { key: 'invoice_number', header: '发票号码', width: 22 },
@@ -301,13 +307,11 @@ class InvoiceService {
     }
 
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
     });
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
-    const sortField = this._getSortField(sort);
-    const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
-    const stableClause = (sort === 'created_at' || sortField === 'm.created_at') ? `, m.id ${sortOrder}` : '';
+    const orderClause = this._buildOrderClause(sort, order);
 
     // 查询所有符合条件的发票 header
     const rows = await this.sequelize.query(
@@ -320,7 +324,7 @@ class InvoiceService {
        FROM app_invoice_mgr_records m
        LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
        ${where}
-       ORDER BY ${sortField} ${sortOrder}${stableClause}`,
+       ORDER BY ${orderClause}`,
       { replacements, type: Sequelize.QueryTypes.SELECT }
     );
 
@@ -401,8 +405,7 @@ class InvoiceService {
     });
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
-    const sortField = this._getSortField(sort);
-    const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
+    const orderClause = this._buildOrderClause(sort, order);
 
     // 直接 JOIN 查出所有负值明细，一条 SQL 搞定
     // 同时检查 amount < 0 和 tax_amount < 0（防止负值金额混入名称导致 amount=0）
@@ -414,7 +417,7 @@ class InvoiceService {
        JOIN app_invoice_mgr_items i ON i.row_id = m.id
        ${where}
          AND (i.amount < 0 OR i.tax_amount < 0)
-       ORDER BY r.invoice_date ASC, i.row_id, i.sort_order`,
+       ORDER BY ${orderClause}, i.row_id, i.sort_order`,
       { replacements, type: Sequelize.QueryTypes.SELECT }
     );
 
