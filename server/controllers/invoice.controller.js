@@ -76,8 +76,12 @@ class InvoiceController {
       const params = {
         startDate: query.start_date,
         endDate: query.end_date,
-        sort: query.sort || 'invoice_date',
+        sort: query.sort || 'created_at',
         order: query.order || 'desc',
+        invoiceNumber: query.invoice_number,
+        sellerName: query.seller_name,
+        buyerName: query.buyer_name,
+        status: query.status,
         userId,
         isAdmin,
       };
@@ -97,13 +101,7 @@ class InvoiceController {
         buffer = await this.invoiceService.exportCustom({ ...params, fields, includeItems });
         filename = `发票信息个性化导出-${ts}.xlsx`;
       } else if (type === 'negative') {
-        buffer = await this.invoiceService.exportNegative({
-          ...params,
-          invoiceNumber: query.invoice_number,
-          sellerName: query.seller_name,
-          buyerName: query.buyer_name,
-          status: query.status,
-        });
+        buffer = await this.invoiceService.exportNegative(params);
         filename = `负值明细导出-${ts}.xlsx`;
       } else {
         return ctx.error('不支持的导出类型', 400);

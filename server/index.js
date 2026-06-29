@@ -318,6 +318,15 @@ class ApiServer {
         // 升级失败不阻止服务器启动，只记录警告
         logger.warn('Server will continue with current schema');
       }
+
+      // 启动期 schema 健康检查：验证关键 app 扩展表列完整性
+      // 防止因哨兵列迁移检查不完整导致的 schema 漂移在生产环境引发 SELECT 报错
+      try {
+        await this.runSchemaHealthCheck();
+      } catch (error) {
+        logger.error('Schema health check failed:', error.message);
+        logger.warn('Server will continue, but some features may be unavailable');
+      }
     }
 
     // 初始化 ChatService
@@ -386,6 +395,41 @@ class ApiServer {
     });
     // 不在这里启动，等 server listen 后统一启动
     logger.info('AppClock initialized');
+  }
+
+  /**
+   * 启动期 schema 健康检查
+   * 验证关键 app 扩展表的关键列是否存在，防止 schema 漂移导致 SELECT 报错
+   * 不阻止启动，仅输出警告
+   */
+  async runSchemaHealthCheck() {
+    const checks = [
+      // invoice-mgr: 列表/详情/导出依赖这些列
+      { table: 'app_invoice_mgr_rows', col: 'text_items_count', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'keyword_count', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'issuer', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'ocr_method', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'extraction_status', usedBy: 'invoice.service.js (list/detail/export)' },
+    ];
+
+    let hasMissing = false;
+    for (const { table, col, usedBy } of checks) {
+      const rows = await this.db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [this.db.config.database, table, col]
+      );
+      if (!rows || rows.length === 0) {
+        hasMissing = true;
+        logger.error(`[SchemaHealthCheck] MISSING: ${table}.${col} (used by ${usedBy}) — 请执行 scripts/upgrade-database.js`);
+      }
+    }
+
+    if (hasMissing) {
+      logger.error('[SchemaHealthCheck] ⚠️ 存在缺失列，发票管理等模块可能无法正常工作');
+    } else {
+      logger.info('[SchemaHealthCheck] ✓ 关键列检查通过');
+    }
   }
 
   /**

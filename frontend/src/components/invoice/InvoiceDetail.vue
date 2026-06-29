@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { getInvoiceDetail, deleteInvoiceRecord, reExtractInvoiceRecord, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { statusLabels } from '@/utils/invoice-status-labels'
 
 const props = defineProps<{ rowId: string }>()
 const emit = defineEmits<{ back: []; deleted: [] }>()
@@ -11,14 +12,6 @@ const loading = ref(false)
 const detail = ref<InvoiceDetailType | null>(null)
 const deleting = ref(false)
 const reExtracting = ref(false)
-
-const statusLabels: Record<string, { label: string; type: string }> = {
-  pending_process: { label: '待处理', type: 'info' },
-  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
-  pending_review: { label: '待确认', type: '' },
-  confirmed: { label: '已确认', type: 'success' },
-  extract_failed: { label: '识别失败', type: 'danger' },
-}
 
 onMounted(async () => {
   loading.value = true

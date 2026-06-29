@@ -90,9 +90,9 @@ export interface InvoiceExportParams {
 
 export async function exportInvoices(params: InvoiceExportParams = {}) {
   // 将 fields 数组序列化为逗号分隔字符串
-  const queryParams: any = { ...params }
-  if (Array.isArray(queryParams.fields)) {
-    queryParams.fields = queryParams.fields.join(',')
+  const queryParams: Record<string, string | boolean | undefined> = { ...params }
+  if (Array.isArray(params.fields)) {
+    queryParams.fields = params.fields.join(',')
   }
 
   const response = await apiClient.get('/invoice/export', {

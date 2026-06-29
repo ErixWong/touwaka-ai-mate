@@ -41,8 +41,8 @@ const TOKEN_CONFIG = {
   EXPIRES_IN: 3600,  // 有效期：1 小时（秒）
 };
 
-// 批量上传单次最多 10 个文件
-const MAX_BATCH_SIZE = 10;
+// 批量上传单次最多 20 个文件
+const MAX_BATCH_SIZE = 20;
 
 // 允许上传的 MIME 类型白名单
 const ALLOWED_MIME_TYPES = [
