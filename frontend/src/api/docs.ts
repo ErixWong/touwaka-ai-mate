@@ -121,10 +121,9 @@ export interface DocProcessingStatus {
     status: DocOcrStatus
     progress: number
     image_count: number | null
-    main_markdown_attachment_id: string | null
-    raw_result_attachment_id: string | null
-    deliverables_manifest_attachment_id: string | null
-    image_manifest_attachment_id: string | null
+    // 新语义（推荐使用）- 状态接口返回简洁信息，不含 URL
+    preview_markdown_attachment: DocSimpleAttachmentInfo | null
+    raw_markdown_attachment: DocSimpleAttachmentInfo | null
     line_count: number | null
     error_code: string | null
     error_message: string | null
@@ -157,6 +156,15 @@ export interface DocIntakeResult {
   processing_status: DocProcessingStage
   source_ref_id?: string
   attachment_count?: number
+}
+
+export interface DocSimpleAttachmentInfo {
+  id: string
+  file_name: string | null
+  mime_type: string
+  file_size: number
+  access_level: string
+  created_at: string
 }
 
 export interface DocAttachmentInfo {
@@ -221,8 +229,9 @@ export interface DocResultDetail {
     error_code: string | null
     error_message: string | null
     preview_markdown_content?: string | null
-    cleaned_markdown_attachment?: DocAttachmentInfo | null
-    main_markdown_attachment: DocAttachmentInfo | null
+    // 新语义（推荐使用）
+    preview_markdown_attachment: DocAttachmentInfo | null
+    raw_markdown_attachment: DocAttachmentInfo | null
     raw_result_attachment: DocAttachmentInfo | null
     deliverables_manifest_attachment: DocAttachmentInfo | null
     image_manifest_attachment: DocAttachmentInfo | null

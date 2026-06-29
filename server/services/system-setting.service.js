@@ -26,6 +26,12 @@ const DEFAULT_SETTINGS = {
     refresh_expiry: { value: '7d', type: 'string', description: 'Refresh Token 过期时间' },
   },
   timeout: {
+    // 两档用户可见超时配置（统一抽象层）
+    // fast_timeout: 快速回复类操作（如轮询、短请求）
+    // task_timeout: 长时间任务（如 LLM 调用、OCR 处理）
+    fast_timeout: { value: 120, type: 'number', description: '快速操作超时（秒）' },
+    task_timeout: { value: 300, type: 'number', description: '长时间任务超时（秒）' },
+    // 内部能力映射（不对用户单独强调，由运行时自动映射）
     vm_execution: { value: 30, type: 'number', description: 'VM 执行超时（秒）' },
     python_execution: { value: 300, type: 'number', description: 'Python 执行超时（秒）' },
     skill_call: { value: 60, type: 'number', description: '技能调用超时（秒）' },
@@ -71,6 +77,8 @@ const VALIDATION_RULES = {
   'llm.presence_penalty': { min: -2, max: 2 },
   'connection.max_per_user': { min: 1, max: 100 },
   'connection.max_per_expert': { min: 1, max: 1000 },
+  'timeout.fast_timeout': { min: 10, max: 600 },
+  'timeout.task_timeout': { min: 60, max: 1800 },
   'timeout.vm_execution': { min: 5, max: 300 },
   'timeout.python_execution': { min: 10, max: 1800 },
   'timeout.skill_call': { min: 10, max: 600 },
@@ -296,6 +304,22 @@ class SystemSettingService {
   async getTimeoutConfig() {
     const settings = await this.getAllSettings();
     return settings.timeout || this._getEmptySettings().timeout;
+  }
+
+  /**
+   * 获取快速操作超时配置（秒）
+   * @returns {Promise<number>} 超时值
+   */
+  async getFastTimeout() {
+    return this.getTimeout('fast_timeout');
+  }
+
+  /**
+   * 获取长时间任务超时配置（秒）
+   * @returns {Promise<number>} 超时值
+   */
+  async getTaskTimeout() {
+    return this.getTimeout('task_timeout');
   }
 
   /**

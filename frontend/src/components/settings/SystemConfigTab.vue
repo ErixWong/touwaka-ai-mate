@@ -163,73 +163,24 @@
             <h3 class="section-title">⏱️ {{ $t('settings.timeoutConfig') }}</h3>
             <el-button @click="resetSection('timeout')">{{ $t('common.reset') }}</el-button>
           </div>
+
+          <!-- 两档用户可见超时配置（唯一主入口） -->
           <div class="config-grid">
             <div class="config-item full-width subsection-header">
-              <h4 class="subsection-title">💬 {{ $t('settings.chatTimeoutGroup') }}</h4>
-              <p class="subsection-description">{{ $t('settings.chatIdleTimeoutHint') }}</p>
+              <h4 class="subsection-title">🚀 {{ $t('settings.userFacingTimeoutGroup') }}</h4>
+              <p class="subsection-description">{{ $t('settings.userFacingTimeoutGroupDesc') }}</p>
             </div>
             <div class="config-item">
-              <label class="config-label">{{ $t('settings.chatIdleTimeout') }}</label>
-              <el-input-number v-model="form.timeout.chat_idle" :min="30" :max="1800" />
-              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
-            </div>
-
-            <div class="config-item full-width subsection-header">
-              <h4 class="subsection-title">⚙️ {{ $t('settings.backendTimeoutGroup') }}</h4>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.internalLlmTimeout') }}</label>
-              <el-input-number v-model="form.timeout.internal_llm" :min="30" :max="1800" />
-              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.internalLlmTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.externalHttpTimeout') }}</label>
-              <el-input-number v-model="form.timeout.external_http" :min="30" :max="600" />
-              <span class="config-hint">30-600 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.externalHttpTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.mcpRequestTimeout') }}</label>
-              <el-input-number v-model="form.timeout.mcp_request" :min="30" :max="1800" />
-              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.mcpRequestTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.embeddingTimeout') }}</label>
-              <el-input-number v-model="form.timeout.embedding" :min="30" :max="1800" />
-              <span class="config-hint">30-1800 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.embeddingTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.skillCallTimeout') }}</label>
-              <el-input-number v-model="form.timeout.skill_call" :min="10" :max="600" />
+              <label class="config-label">{{ $t('settings.fastTimeout') }}</label>
+              <el-input-number v-model="form.timeout.fast_timeout" :min="10" :max="600" />
               <span class="config-hint">10-600 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.skillCallTimeoutHint') }}</p>
+              <p class="config-description">{{ $t('settings.fastTimeoutHint') }}</p>
             </div>
             <div class="config-item">
-              <label class="config-label">{{ $t('settings.vmExecutionTimeout') }}</label>
-              <el-input-number v-model="form.timeout.vm_execution" :min="5" :max="300" />
-              <span class="config-hint">5-300 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.vmExecutionTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.pythonExecutionTimeout') }}</label>
-              <el-input-number v-model="form.timeout.python_execution" :min="10" :max="1800" />
-              <span class="config-hint">10-1800 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.pythonExecutionTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.skillHttpTimeout') }}</label>
-              <el-input-number v-model="form.timeout.skill_http" :min="10" :max="1800" />
-              <span class="config-hint">10-1800 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.skillHttpTimeoutHint') }}</p>
-            </div>
-            <div class="config-item">
-              <label class="config-label">{{ $t('settings.residentSkillTimeout') }}</label>
-              <el-input-number v-model="form.timeout.resident_skill" :min="30" :max="7200" />
-              <span class="config-hint">30-7200 {{ $t('settings.seconds') }}</span>
-              <p class="config-description">{{ $t('settings.residentSkillTimeoutHint') }}</p>
+              <label class="config-label">{{ $t('settings.taskTimeout') }}</label>
+              <el-input-number v-model="form.timeout.task_timeout" :min="60" :max="1800" />
+              <span class="config-hint">60-1800 {{ $t('settings.seconds') }}</span>
+              <p class="config-description">{{ $t('settings.taskTimeoutHint') }}</p>
             </div>
           </div>
           <div class="config-actions">
@@ -383,7 +334,8 @@ const createEmptyForm = () => ({
   registration: { allow_self_registration: false, default_invitation_quota: 0, default_invitation_max_uses: 0, invitation_expiry_days: 0 },
   connection: { max_per_user: 0, max_per_expert: 0 },
   token: { access_expiry: '', refresh_expiry: '' },
-  timeout: { vm_execution: 0, python_execution: 0, skill_call: 0, skill_http: 0, resident_skill: 0, internal_llm: 0, external_http: 0, mcp_request: 0, embedding: 0, chat_idle: 0 },
+  // timeout 已收口为两档：fast_timeout（快速操作）、task_timeout（长时间任务）
+  timeout: { fast_timeout: 0, task_timeout: 0 },
   tool: { max_rounds: 0 },
   app: { clock_interval: 0, tick_warn_after_ms: 0, batch_size: 0, max_concurrency: 0, text_filter_max_length: 0, attachment_base_path: '', max_upload_size: 0 },
   branding: { app_name: '', logo_icon: '' },

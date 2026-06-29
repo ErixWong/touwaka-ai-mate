@@ -153,10 +153,10 @@
                     </tbody>
                   </table>
                   <div v-if="csvTruncated" class="csv-truncated-hint">
-                    {{ $t('tasks.csvTruncated', { shown: CSV_MAX_ROWS, total: csvRows.length - 1 }) || `仅显示前 ${CSV_MAX_ROWS} 行，共 ${csvRows.length - 1} 行数据` }}
+                    {{ $t('tasks.csvTruncated', { shown: CSV_MAX_ROWS, total: csvRows.length - 1 }) }}
                   </div>
                   <div v-else-if="csvRows.length === 0" class="preview-unsupported">
-                    <p>{{ $t('tasks.csvEmpty') || 'CSV 文件为空或无法解析' }}</p>
+                    <p>{{ $t('tasks.csvEmpty') }}</p>
                   </div>
                 </div>
               </template>
@@ -186,9 +186,9 @@
               
               <!-- 不支持的类型 -->
               <div v-else class="preview-unsupported">
-                <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
+                <p>{{ $t('tasks.previewNotSupported') }}</p>
                 <el-button type="primary" @click="handleDownload(previewFile!)">
-                  {{ $t('tasks.download') || '下载文件' }}
+                  {{ $t('tasks.download') }}
                 </el-button>
               </div>
             </template>

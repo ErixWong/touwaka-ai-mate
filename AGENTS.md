@@ -182,6 +182,13 @@
 
 未完成的工作不要提前归档。
 
+### 4.5 提交边界（关键）
+
+- `docs/tasks/` 的主要用途是**本地任务留痕与协作复盘**，默认按仓库 `.gitignore` 规则处理，**不要提交到 Git / PR**。
+- AI 在任务中创建或更新 `docs/tasks/active/...` 下的文件，默认仅用于本地记录，不得因为“需要留痕”就擅自 `git add -f` 强制纳入版本库。
+- 若确实需要把某个 `docs/tasks` 文件作为 PR 交付物提交，必须先获得 Eric 明确确认；未确认前，一律视为**禁止提交**。
+- 若发现 `AGENTS.md` 的“需要写 `docs/tasks`”与 `.gitignore` 的忽略规则同时存在，以仓库事实为准：**写入本地、默认不入库**。
+
 ---
 
 ## 5. 开发实现要求
@@ -260,5 +267,6 @@
 - `docs/development/coding-standards.md`
 - `docs/development/code-review-checklist.md`
 - `docs/development/llm-call-standards.md`
+- `tests/skill-runtime/README.md` - Skill 调试技巧指南
 
 ✌Bazinga！

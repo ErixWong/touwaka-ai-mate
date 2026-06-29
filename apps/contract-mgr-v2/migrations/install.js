@@ -41,7 +41,7 @@ export default {
         id VARCHAR(32) PRIMARY KEY,
         org_node_id VARCHAR(32) NOT NULL COMMENT '所属组织节点',
         contract_name VARCHAR(128) NOT NULL COMMENT '合同名称',
-        contract_type ENUM('strategy','framework','development','supply','purchase','quality','nda','technical','other') COMMENT '合同类型',
+        contract_type ENUM('strategy','framework','development','sales','supply','purchase','quality','nda','technical','other') COMMENT '合同类型',
         current_version_id VARCHAR(32) COMMENT '当前生效版本ID',
         version_count INT DEFAULT 0 COMMENT '版本总数',
         status ENUM('draft','active','expired','terminated') DEFAULT 'active',
@@ -56,12 +56,13 @@ export default {
     `);
     console.log('  ✓ Created contract_v2_main_records table');
 
-    await sequelize.query(`
+await sequelize.query(`
       CREATE TABLE IF NOT EXISTS contract_v2_versions (
         id VARCHAR(32) PRIMARY KEY,
         contract_id VARCHAR(32) NOT NULL COMMENT '合同主记录ID',
         row_id VARCHAR(32) NOT NULL COMMENT '兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）',
         file_id VARCHAR(32) COMMENT '文件ID',
+        document_id VARCHAR(32) NULL COMMENT '文档平台 document_id',
         version_number VARCHAR(16) NOT NULL COMMENT '版本号',
         version_name VARCHAR(64) COMMENT '版本名称',
         version_type ENUM('draft','signed','amendment','supplement') COMMENT '版本类型',
@@ -80,12 +81,41 @@ export default {
         UNIQUE KEY uk_contract_version (contract_id, version_number),
         INDEX idx_contract (contract_id),
         INDEX idx_row (row_id),
+        INDEX idx_document (document_id),
         INDEX idx_current (is_current),
         INDEX idx_status (version_status),
         FOREIGN KEY (contract_id) REFERENCES contract_v2_main_records(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同版本表'
     `);
     console.log('  ✓ Created contract_v2_versions table');
+
+    // 为已存在的 versions 表添加 document_id 字段（如果不存在）
+    try {
+      await sequelize.query(`
+        ALTER TABLE contract_v2_versions ADD COLUMN document_id VARCHAR(32) NULL COMMENT '文档平台 document_id' AFTER file_id
+      `);
+      console.log('  ✓ Added document_id column to contract_v2_versions');
+    } catch (e) {
+      if (e.message.includes('Duplicate')) {
+        console.log('  - document_id column already exists');
+      } else {
+        console.log('  - document_id column addition skipped:', e.message);
+      }
+    }
+
+    // 为已存在的 versions 表添加 revision_id 字段（如果不存在）
+    try {
+      await sequelize.query(`
+        ALTER TABLE contract_v2_versions ADD COLUMN revision_id VARCHAR(32) NULL COMMENT '文档平台当前 revision_id' AFTER document_id
+      `);
+      console.log('  ✓ Added revision_id column to contract_v2_versions');
+    } catch (e) {
+      if (e.message.includes('Duplicate')) {
+        console.log('  - revision_id column already exists');
+      } else {
+        console.log('  - revision_id column addition skipped:', e.message);
+      }
+    }
 
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_content (

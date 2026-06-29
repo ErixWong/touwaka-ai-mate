@@ -1910,7 +1910,7 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await safeExecute(conn, `
         CREATE TABLE IF NOT EXISTS app_contract_mgr_v2_rows (
-          row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 mini_app_rows.id',
+          row_id VARCHAR(32) PRIMARY KEY COMMENT '业务内容表主键（独立生成）',
           contract_number VARCHAR(64) NULL COMMENT '合同编号',
           party_a VARCHAR(128) NULL COMMENT '甲方',
           parent_company VARCHAR(128) NULL COMMENT '上级公司',
@@ -1924,12 +1924,47 @@ const MIGRATIONS = [
           INDEX idx_contract_date (contract_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='合同元数据扩展表'
       `);
-      await safeExecute(conn, `
-        ALTER TABLE app_contract_mgr_v2_rows
-        ADD CONSTRAINT fk_app_contract_mgr_v2_rows_row_id
-        FOREIGN KEY (row_id) REFERENCES mini_app_rows(id) ON DELETE CASCADE
-      `);
       console.log('  ✓ Ensured app_contract_mgr_v2_rows table');
+    }
+  },
+
+  {
+    name: 'contract-mgr-v2 versions add document_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'contract_v2_versions')) return true;
+      return await hasColumn(conn, 'contract_v2_versions', 'document_id');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE contract_v2_versions ADD COLUMN document_id VARCHAR(32) NULL COMMENT '文档平台 document_id' AFTER file_id`);
+      console.log('  ✓ Added document_id to contract_v2_versions');
+    }
+  },
+
+  {
+    name: 'contract-mgr-v2 versions add revision_id',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'contract_v2_versions')) return true;
+      return await hasColumn(conn, 'contract_v2_versions', 'revision_id');
+    },
+    migrate: async (conn) => {
+      await safeExecute(conn, `ALTER TABLE contract_v2_versions ADD COLUMN revision_id VARCHAR(32) NULL COMMENT '文档平台当前 revision_id' AFTER document_id`);
+      console.log('  ✓ Added revision_id to contract_v2_versions');
+    }
+  },
+
+  {
+    name: 'contract-mgr-v2 main_records contract_type add sales',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'contract_v2_main_records')) return true;
+      const columnType = await getColumnType(conn, 'contract_v2_main_records', 'contract_type');
+      return !!columnType && columnType.includes('sales');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE contract_v2_main_records
+        MODIFY COLUMN contract_type ENUM('strategy','framework','development','sales','supply','purchase','quality','nda','technical','other') COMMENT '合同类型'
+      `);
+      console.log('  ✓ Added sales to contract_v2_main_records.contract_type');
     }
   },
 

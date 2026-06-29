@@ -1,14 +1,22 @@
 /**
  * XLSX Skill - Excel 文件处理技能 (ExcelJS 版本)
- * 
- * 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
+ *
+ * 路径模型说明：
+ * - 所有路径参数都应为相对路径，依赖 VM 沙箱层按工作目录统一解析
+ * - 这与 fs skill 的路径模型一致
+ * - 绝对路径将被拒绝
+ * - 进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可
  */
 
 const ExcelJS = require('exceljs');
 const fs = require('fs');
 const path = require('path');
 
-let HyperFormula = null;
+/**
+ * ============================================
+ * 内部服务层
+ * ============================================
+ */
 
 function getHyperFormula() {
   if (!HyperFormula) {
@@ -19,16 +27,46 @@ function getHyperFormula() {
 }
 
 /**
- * Resolve path - VM 已设置 cwd，直接使用相对路径即可（与 FS 技能一致）
+ * Path Service - 统一路径处理
+ * 
+ * 安全说明：
+ * - 只接受相对路径，不接受绝对路径
+ * - 规范化路径后拒绝任何路径遍历尝试（包含 ..）
+ * - 使用 path.normalize() 处理路径归一化
  */
 function resolvePath(relativePath) {
+  // 拒绝绝对路径
   if (path.isAbsolute(relativePath)) {
     throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
   }
-  return relativePath;
+  
+  // 规范化路径（处理 ./, ../, 多重路径分隔符等）
+  const normalizedPath = path.normalize(relativePath);
+  
+  // 检查是否存在路径遍历尝试
+  // path.normalize 会将 ../ 解析为实际路径，但我们需要检测是否试图跳出基础目录
+  // 由于 skill 的 cwd 已在 VM 启动时设置为工作目录，我们只需要检查归一化后的路径
+  // 如果路径包含 .. 且不是简单的单点路径，说明有问题
+  const pathParts = normalizedPath.split(path.sep);
+  let hasPathTraversal = false;
+  for (const part of pathParts) {
+    if (part === '..') {
+      hasPathTraversal = true;
+      break;
+    }
+  }
+  
+  if (hasPathTraversal) {
+    throw new Error(`Path traversal not allowed: ${relativePath}. Relative paths must stay within working directory.`);
+  }
+  
+  return normalizedPath;
 }
 
-function readExcelFile(filePath) { return fs.readFileSync(resolvePath(filePath)); }
+function readExcelFile(filePath) {
+  return fs.readFileSync(resolvePath(filePath));
+}
+
 function saveExcelFile(filePath, buffer) {
   const resolvedPath = resolvePath(filePath);
   const dir = path.dirname(resolvedPath);
@@ -36,6 +74,70 @@ function saveExcelFile(filePath, buffer) {
   fs.writeFileSync(resolvedPath, buffer);
 }
 
+/**
+ * Workbook Service - 统一工作簿操作
+ */
+async function createWorkbook(options = {}) {
+  const { loadFile } = options;
+  const workbook = new ExcelJS.Workbook();
+  if (loadFile) {
+    try {
+      await workbook.xlsx.load(readExcelFile(loadFile));
+    } catch (e) {
+      // 文件不存在，创建新的工作簿
+    }
+  }
+  return workbook;
+}
+
+async function saveWorkbook(workbook, filePath) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveExcelFile(filePath, Buffer.from(buffer));
+  return buffer;
+}
+
+/**
+ * Formula Service - 统一公式处理
+ * 
+ * 返回结构说明：
+ * - 成功计算：{ formula, result, error: null }
+ * - 计算失败：{ formula, result: null, error: "错误信息" }
+ * - 结果为空：{ formula, result: null, error: null }
+ */
+function createFormulaEngine(sheetName, data) {
+  const hf = getHyperFormula().buildFromSheets({ [sheetName]: data }, { licenseKey: 'gpl-v3' });
+  const sheetId = hf.getSheetId(sheetName);
+  return { hf, sheetId };
+}
+
+function evaluateFormula(sheetName, data, formula, row, col) {
+  const { hf, sheetId } = createFormulaEngine(sheetName, data);
+  try {
+    return { value: hf.getCellValue({ sheet: sheetId, col, row }), error: null };
+  } catch (e) {
+    return { value: null, error: e.message };
+  } finally {
+    hf.destroy();
+  }
+}
+
+function buildFormulaCell(sheetName, data, formula, row, col) {
+  const fStr = formula.startsWith('=') ? formula.substring(1) : formula;
+  const hfData = data.map(r => [...r]);
+  while (hfData.length <= row) hfData.push([]);
+  while (hfData[row].length <= col) hfData[row].push(null);
+  hfData[row][col] = '=' + fStr;
+  try {
+    const result = evaluateFormula(sheetName, hfData, fStr, row, col);
+    return { formula: fStr, result: result.value, error: result.error };
+  } catch (e) {
+    return { formula: fStr, result: null, error: e.message };
+  }
+}
+
+/**
+ * Cell/Range Utilities
+ */
 function colLetterToNumber(colStr) {
   let num = 0;
   for (let i = 0; i < colStr.length; i++) num = num * 26 + (colStr.charCodeAt(i) - 64);
@@ -62,6 +164,9 @@ function parseRange(rangeStr) {
   return { start, end };
 }
 
+/**
+ * Sheet Data Mapper - 统一数据转换
+ */
 function sheetToAoA(worksheet, range) {
   const result = [];
   if (!worksheet || !worksheet.rowCount) return result;
@@ -123,6 +228,12 @@ function jsonToSheet(worksheet, data) {
   }
 }
 
+/**
+ * ============================================
+ * 工具实现层
+ * ============================================
+ */
+
 async function excelRead(params) {
   const { path: filePath, scope = 'workbook', sheet, cell, includeData, header, range } = params;
   const workbook = new ExcelJS.Workbook();
@@ -179,27 +290,95 @@ async function excelWrite(params) {
     const workbook = new ExcelJS.Workbook();
     if (properties) { if (properties.title) workbook.title = properties.title; if (properties.author) workbook.author = properties.author; }
     for (const sd of (sheets || [])) {
-      const ws = workbook.addWorksheet(sd.name || 'Sheet1');
+      const ws = workbook.addWorksheet(sd.name || 'Sheet' + (workbook.worksheets.length + 1));
       if (sd.headers) aoaToSheet(ws, [sd.headers, ...(sd.data || [])]);
       else aoaToSheet(ws, sd.data || []);
     }
     if (!sheets || sheets.length === 0) workbook.addWorksheet('Sheet1');
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sheetCount: workbook.worksheets.length, sheetNames: workbook.worksheets.map(ws => ws.name) };
   }
   
   if (scope === 'sheet') {
     let workbook;
-    try { workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(readExcelFile(filePath)); } catch (e) { workbook = new ExcelJS.Workbook(); }
-    const sheetName = sheet || 'Sheet1';
-    let worksheet = workbook.getWorksheet(sheetName);
-    if (!worksheet) worksheet = workbook.addWorksheet(sheetName);
+    const targetSheetName = sheet || 'Sheet1';
+    try {
+      workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(readExcelFile(filePath));
+    } catch (e) {
+      workbook = new ExcelJS.Workbook();
+    }
+    let worksheet = workbook.getWorksheet(targetSheetName);
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(targetSheetName);
+    }
+    const sheetName = targetSheetName;
     if (mode === 'overwrite') {
-      worksheet.eachRow((row) => row.eachCell((c) => { if (c.row > 1 || c.col > 1) c.value = null; }));
-      aoaToSheet(worksheet, data || []);
+      // 安全方式清空工作表：移除旧工作表并在相同位置创建新的
+      // 避免使用 worksheet._rows 等私有字段
+      // 注意：ExcelJS addWorksheet 第二个参数是 options 对象而非索引，
+      // 需要通过 orderNo 手动恢复工作表位置
+      const oldOrderNo = worksheet.orderNo;
+      workbook.removeWorksheet(worksheet);
+      worksheet = workbook.addWorksheet(sheetName);
+      // 恢复工作表在原位置的排序
+      if (oldOrderNo !== undefined) {
+        worksheet.orderNo = oldOrderNo;
+      }
+      
+      const formulaCells = [];
+      for (let r = 0; r < (data || []).length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        for (let c = 0; c < row.length; c++) {
+          if (typeof row[c] === 'string' && row[c].startsWith('=')) {
+            formulaCells.push({ r, c, f: row[c] });
+          } else if (row[c] !== null && row[c] !== undefined) {
+            worksheet.getCell(r + 1, c + 1).value = row[c];
+          }
+        }
+      }
+      if (formulaCells.length > 0) {
+        const hfData = sheetToAoA(worksheet);
+        for (const fc of formulaCells) {
+          try {
+            const result = buildFormulaCell(sheetName, hfData, fc.f, fc.r, fc.c);
+            worksheet.getCell(fc.r + 1, fc.c + 1).value = result;
+          } catch (e) {
+            const fStr = fc.f.startsWith('=') ? fc.f.substring(1) : fc.f;
+            worksheet.getCell(fc.r + 1, fc.c + 1).value = { formula: fStr, result: null, error: e.message };
+          }
+        }
+      }
     } else if (mode === 'append') {
       const existing = sheetToAoA(worksheet);
-      aoaToSheet(worksheet, [...existing, ...(data || [])]);
+      const startRow = existing.length;
+      const formulaCells = [];
+      for (let r = 0; r < (data || []).length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        for (let c = 0; c < row.length; c++) {
+          if (typeof row[c] === 'string' && row[c].startsWith('=')) {
+            formulaCells.push({ r: startRow + r, c, f: row[c] });
+          } else if (row[c] !== null && row[c] !== undefined) {
+            worksheet.getCell(startRow + r + 1, c + 1).value = row[c];
+          }
+        }
+      }
+      if (formulaCells.length > 0) {
+        const hfData = sheetToAoA(worksheet);
+        for (const fc of formulaCells) {
+          try {
+            const result = buildFormulaCell(sheetName, hfData, fc.f, fc.r, fc.c);
+            worksheet.getCell(fc.r + 1, fc.c + 1).value = result;
+          } catch (e) {
+            const fStr = fc.f.startsWith('=') ? fc.f.substring(1) : fc.f;
+            worksheet.getCell(fc.r + 1, fc.c + 1).value = { formula: fStr, result: null, error: e.message };
+          }
+        }
+      } else {
+        aoaToSheet(worksheet, [...existing, ...(data || [])]);
+      }
     } else if (mode === 'insert') {
       const ref = decodeCell(startCell);
       for (let r = 0; r < (data || []).length; r++) {
@@ -208,7 +387,7 @@ async function excelWrite(params) {
         for (let c = 0; c < row.length; c++) if (row[c] !== null && row[c] !== undefined) worksheet.getCell(ref.row + r + 1, ref.col + c + 1).value = row[c];
       }
     }
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sheetName, mode };
   }
   
@@ -222,19 +401,10 @@ async function excelWrite(params) {
     const ref = decodeCell(cell.toUpperCase());
     const c = worksheet.getCell(ref.row + 1, ref.col + 1);
     if (formula) {
-      const fStr = formula.startsWith('=') ? formula.substring(1) : formula;
-      try {
-        const hfData = sheetToAoA(worksheet);
-        while (hfData.length <= ref.row) hfData.push([]);
-        while (hfData[ref.row].length <= ref.col) hfData[ref.row].push(null);
-        hfData[ref.row][ref.col] = '=' + fStr;
-        const hf = getHyperFormula().buildFromSheets({ [sheetName]: hfData }, { licenseKey: 'gpl-v3' });
-        const sheetId = hf.getSheetId(sheetName);
-        c.value = { formula: fStr, result: hf.getCellValue({ sheet: sheetId, col: ref.col, row: ref.row }) };
-        hf.destroy();
-      } catch (e) { c.value = { formula: fStr, result: 0 }; }
+      const hfData = sheetToAoA(worksheet);
+      c.value = buildFormulaCell(sheetName, hfData, formula, ref.row, ref.col);
     } else c.value = value;
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), cell: cell.toUpperCase(), value: formula || value };
   }
   
@@ -252,7 +422,7 @@ async function excelSheet(params) {
     if (workbook.getWorksheet(name)) throw new Error('Sheet exists');
     const ws = workbook.addWorksheet(name);
     if (data && data.length > 0) aoaToSheet(ws, data);
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sheetName: name };
   }
   
@@ -262,7 +432,7 @@ async function excelSheet(params) {
     if (!ws) throw new Error('Sheet not found');
     if (workbook.worksheets.length === 1) throw new Error('Cannot delete last sheet');
     workbook.removeWorksheet(ws.id);
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), deletedSheet: sheet, remainingSheets: workbook.worksheets.map(ws => ws.name) };
   }
   
@@ -272,7 +442,7 @@ async function excelSheet(params) {
     if (!ws) throw new Error('Sheet not found');
     if (workbook.getWorksheet(newName)) throw new Error('New name exists');
     ws.name = newName;
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), oldName: sheet, newName };
   }
   
@@ -286,13 +456,13 @@ async function excelSheet(params) {
       try { targetWb = new ExcelJS.Workbook(); await targetWb.xlsx.load(readExcelFile(targetFile)); } catch (e) { targetWb = new ExcelJS.Workbook(); }
       const tgtWs = targetWb.addWorksheet(targetSheet);
       srcWs.eachRow((row) => row.eachCell((c) => tgtWs.getCell(c.row, c.col).value = c.value));
-      saveExcelFile(targetFile, Buffer.from(await targetWb.xlsx.writeBuffer()));
+      await saveWorkbook(targetWb, targetFile);
       return { success: true, sourceFile: resolvePath(filePath), targetFile: resolvePath(targetFile), sourceSheet: src, targetSheet };
     }
     if (workbook.getWorksheet(targetSheet)) throw new Error('Target exists');
     const tgtWs = workbook.addWorksheet(targetSheet);
     srcWs.eachRow((row) => row.eachCell((c) => tgtWs.getCell(c.row, c.col).value = c.value));
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sourceSheet: src, targetSheet };
   }
   
@@ -315,7 +485,7 @@ async function excelFormat(params) {
       else colNum = col.column || columns.indexOf(col) + 1;
       worksheet.getColumn(colNum).width = col.width;
     }
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sheetName, columnsUpdated: columns.length };
   }
   
@@ -329,7 +499,7 @@ async function excelFormat(params) {
       if (style.border) c.border = style.border;
       if (style.numFmt) c.numFmt = style.numFmt;
     }
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sheetName, cellsUpdated: cells.length };
   }
   
@@ -382,7 +552,7 @@ async function excelQuery(params) {
       const newWb = new ExcelJS.Workbook();
       const newWs = newWb.addWorksheet(sheetName);
       jsonToSheet(newWs, data);
-      saveExcelFile(output, Buffer.from(await newWb.xlsx.writeBuffer()));
+      await saveWorkbook(newWb, output);
       return { success: true, path: resolvePath(output), sheetName, column: col, order, count: data.length };
     }
     return { success: true, sheetName, column: col, order, data, count: data.length };
@@ -429,27 +599,22 @@ async function excelConvert(params) {
         }
       }
       if (formulaCells.length > 0) {
-        try {
-          const hfData = data.map(r => [...r]);
-          const hf = getHyperFormula().buildFromSheets({ [sheetName]: hfData }, { licenseKey: 'gpl-v3' });
-          const sheetId = hf.getSheetId(sheetName);
-          for (const fc of formulaCells) {
+        const hfData = data.map(r => [...r]);
+        for (const fc of formulaCells) {
+          try {
+            const result = buildFormulaCell(sheetName, hfData, fc.f, fc.r, fc.c);
+            worksheet.getCell(fc.r + 1, fc.c + 1).value = result;
+          } catch (e) {
             const fStr = fc.f.startsWith('=') ? fc.f.substring(1) : fc.f;
-            worksheet.getCell(fc.r + 1, fc.c + 1).value = { formula: fStr, result: hf.getCellValue({ sheet: sheetId, col: fc.c, row: fc.r }) || 0 };
-          }
-          hf.destroy();
-        } catch (e) {
-          for (const fc of formulaCells) {
-            const fStr = fc.f.startsWith('=') ? fc.f.substring(1) : fc.f;
-            worksheet.getCell(fc.r + 1, fc.c + 1).value = { formula: fStr, result: 0 };
+            worksheet.getCell(fc.r + 1, fc.c + 1).value = { formula: fStr, result: null, error: e.message };
           }
         }
       }
-      saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+      await saveWorkbook(workbook, filePath);
       return { success: true, path: resolvePath(filePath), sheetName, rowCount: data.length, formulaCount: formulaCells.length };
     }
     jsonToSheet(worksheet, data);
-    saveExcelFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, filePath);
     return { success: true, path: resolvePath(filePath), sheetName, rowCount: data.length, formulaCount: 0 };
   }
   
@@ -485,7 +650,7 @@ async function excelConvert(params) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(sheet || 'Sheet1');
     aoaToSheet(worksheet, aoa);
-    saveExcelFile(output, Buffer.from(await workbook.xlsx.writeBuffer()));
+    await saveWorkbook(workbook, output);
     return { success: true, path: resolvePath(output), sheetName: sheet || 'Sheet1' };
   }
   
@@ -516,18 +681,18 @@ async function excelCalc(params) {
       while (hfData[f.row].length <= f.col) hfData[f.row].push(null);
       hfData[f.row][f.col] = '=' + f.formula;
     }
-    try {
-      const hf = getHyperFormula().buildFromSheets({ [sheetName]: hfData }, { licenseKey: 'gpl-v3' });
-      const sheetId = hf.getSheetId(sheetName);
-      for (const f of formulas) {
-        try { f.value = hf.getCellValue({ sheet: sheetId, col: f.col, row: f.row }); }
-        catch (e) { f.value = null; f.error = e.message; }
-        delete f.row; delete f.col;
+    const { hf, sheetId } = createFormulaEngine(sheetName, hfData);
+    for (const f of formulas) {
+      try {
+        f.result = hf.getCellValue({ sheet: sheetId, col: f.col, row: f.row });
+      } catch (e) {
+        f.result = null;
+        f.error = e.message;
       }
-      hf.destroy();
-    } catch (e) {
-      for (const f of formulas) { f.value = null; f.error = e.message; delete f.row; delete f.col; }
+      delete f.row;
+      delete f.col;
     }
+    hf.destroy();
   }
   
   return { success: true, sheetName, formulaCount: formulas.length, formulas };

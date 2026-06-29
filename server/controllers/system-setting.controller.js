@@ -10,6 +10,7 @@ import {
   DOC_PIPELINE_KEYS,
   getStageDefault,
   mergeWithDefaults,
+  cleanupStageConfigForWrite,
   isOcrStage,
 } from '../../lib/doc-pipeline-defaults.js';
 
@@ -183,12 +184,15 @@ class SystemSettingController {
         }
       }
 
+      // 保存各阶段配置（使用清理后的值）
       for (const key of DOC_PIPELINE_KEYS) {
         const settingKey = `doc_pipeline.${key}`;
-        const value = config[key] || getStageDefault(key);
+        // 写入收口：清理旧字段，只保留主字段
+        const rawValue = config[key] || getStageDefault(key);
+        const cleanedValue = cleanupStageConfigForWrite(rawValue, key);
         await this.SystemSetting.upsert({
           setting_key: settingKey,
-          setting_value: JSON.stringify(value),
+          setting_value: JSON.stringify(cleanedValue),
           value_type: 'json',
           description: `文档预处理流水线配置 - ${key}`,
           updated_at: new Date(),
@@ -199,7 +203,22 @@ class SystemSettingController {
         this.systemSettingService.clearCache();
       }
 
-      ctx.success(config);
+      // 从数据库重新读取并返回真实持久化的结果，确保与数据库状态一致
+      const records = await this.SystemSetting.findAll({
+        where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+        raw: true,
+      });
+      const stored = {};
+      for (const record of records) {
+        const stageKey = record.setting_key.replace('doc_pipeline.', '');
+        try {
+          stored[stageKey] = JSON.parse(record.setting_value);
+        } catch {
+          stored[stageKey] = null;
+        }
+      }
+      const result = mergeWithDefaults(stored);
+      ctx.success(result);
     } catch (error) {
       logger.error('Update doc pipeline config error:', error);
       ctx.error('保存文档预处理配置失败', 500);

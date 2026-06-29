@@ -1,3 +1,20 @@
+/**
+ * CFA 前缀迁移验证脚本
+ *
+ * 验证目标：
+ *   1. 新前缀 /api/current-feature-analyzer/* 可用
+ *   2. Legacy 前缀 /api/apps/current-feature-analyzer/* 可用并带 deprecated 标记
+ *   3. 新旧前缀响应数据一致
+ *
+ * 运行前置条件：
+ *   - 必须先启动后端服务：npm run api 或 node server/index.js
+ *   - 默认连接地址：http://localhost:3000
+ *   - 需要有效的登录账号（默认使用 admin/password123）
+ *   - 数据库中需有可用的 mini_apps 记录
+ *
+ * 使用方法：
+ *   node scripts/test-current-feature-analyzer-prefix.js
+ */
 const BASE_URL = 'http://localhost:3000';
 const RESULTS = {
   newPrefix: [],
@@ -71,7 +88,10 @@ async function runTests() {
     console.log('✅ 登录成功\n');
   } catch (e) {
     console.log('❌ 登录失败:', e.message);
-    console.log('\n请确保服务器已启动 (node server/index.js)');
+    console.log('\n前置条件检查：');
+    console.log('  1. 请确保后端服务已启动：npm run api 或 node server/index.js');
+    console.log('  2. 默认连接地址：http://localhost:3000（如端口不同需修改脚本中 BASE_URL）');
+    console.log('  3. 确保数据库中有 admin 账号且密码为 password123（或修改脚本中登录凭据）');
     return;
   }
 

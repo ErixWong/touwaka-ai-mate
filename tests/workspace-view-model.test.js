@@ -16,15 +16,15 @@ describe('workspace-view-model', () => {
     it('should build view model for task mode', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         title: 'Test Task',
         description: 'Test description',
         logical_workspace_path: 'user123/task-001',
-        currentPath: 'input',
-        inputFiles: [{ name: 'test.txt', size: 1024, isDirectory: false }],
-        isAdmin: false,
-        isSkillCreator: false
+        current_path: 'input',
+        input_files: [{ name: 'test.txt', size: 1024, isDirectory: false }],
+        is_admin: false,
+        is_skill_creator: false
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);
@@ -40,7 +40,7 @@ describe('workspace-view-model', () => {
     it('should build view model for chat mode', () => {
       const chatContext = {
         workspace_mode: 'chat',
-        userId: 'user123',
+        user_id: 'user123',
         logical_workspace_path: 'user123/temp'
       };
 
@@ -55,7 +55,7 @@ describe('workspace-view-model', () => {
     it('should build view model for skill mode', () => {
       const skillContext = {
         workspace_mode: 'skill',
-        userId: 'user123',
+        user_id: 'user123',
         logical_workspace_path: 'skills/my-skill'
       };
 
@@ -69,11 +69,11 @@ describe('workspace-view-model', () => {
     it('should include README content when present', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         logical_workspace_path: 'user123/task-001',
         readme: '# Project Readme',
-        inputFiles: []
+        input_files: []
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);
@@ -86,11 +86,11 @@ describe('workspace-view-model', () => {
     it('should include TODO content when present', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         logical_workspace_path: 'user123/task-001',
         todo: '- [ ] TODO item',
-        inputFiles: []
+        input_files: []
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);
@@ -102,11 +102,11 @@ describe('workspace-view-model', () => {
     it('should handle admin user correctly', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         logical_workspace_path: 'user123/task-001',
-        isAdmin: true,
-        inputFiles: []
+        is_admin: true,
+        input_files: []
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);
@@ -118,11 +118,11 @@ describe('workspace-view-model', () => {
     it('should handle skill creator correctly', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         logical_workspace_path: 'user123/task-001',
-        isSkillCreator: true,
-        inputFiles: []
+        is_skill_creator: true,
+        input_files: []
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);
@@ -134,11 +134,11 @@ describe('workspace-view-model', () => {
     it('should handle empty currentPath correctly', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         logical_workspace_path: 'user123/task-001',
-        currentPath: '',
-        inputFiles: []
+        current_path: '',
+        input_files: []
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);
@@ -149,11 +149,11 @@ describe('workspace-view-model', () => {
     it('should handle non-empty currentPath correctly', () => {
       const taskContext = {
         workspace_mode: 'task',
-        userId: 'user123',
+        user_id: 'user123',
         id: 'task-001',
         logical_workspace_path: 'user123/task-001',
-        currentPath: 'output',
-        inputFiles: []
+        current_path: 'output',
+        input_files: []
       };
 
       const vm = buildWorkspacePromptViewModel(taskContext);

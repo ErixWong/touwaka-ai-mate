@@ -215,12 +215,13 @@ const processingErrorMessage = computed(() => docStore.currentResult?.processing
 const displayDocumentTitle = computed(() => docStore.currentResult?.source_attachment?.file_name || docStore.currentResult?.document.title || '文档')
 
 const markdownAttachment = computed(() => {
-  const ocr = docStore.currentResult?.ocr_result
-  return ocr?.cleaned_markdown_attachment || ocr?.main_markdown_attachment || null
+  // 新语义：优先使用 preview_markdown_attachment
+  return docStore.currentResult?.ocr_result?.preview_markdown_attachment || null
 })
 
 const rawMarkdownAttachment = computed(() => {
-  return docStore.currentResult?.ocr_result?.main_markdown_attachment || null
+  // 新语义：使用 raw_markdown_attachment
+  return docStore.currentResult?.ocr_result?.raw_markdown_attachment || null
 })
 
 const markdownReferencedImagePaths = computed(() => {

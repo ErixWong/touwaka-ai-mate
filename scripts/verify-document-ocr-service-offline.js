@@ -1,3 +1,17 @@
+/**
+ * 离线验证脚本 - 验证 document-ocr-service 的底层能力
+ * 
+ * 本脚本验证的是存储层字段产物：
+ * - main_markdown_attachment_id: OCR 生成的原始 markdown（对应业务语义 raw_markdown_attachment）
+ * - raw_result_attachment_id: OCR 原始结果附件
+ * - deliverables_manifest_attachment_id: 交付物清单附件
+ * - image_manifest_attachment_id: 图片清单附件
+ * 
+ * 注意：业务语义层（preview_markdown_attachment, raw_markdown_attachment）
+ * 是由 doc.controller.js 中的 buildOcrSemanticObject() 从这些存储字段解析而来，
+ * 不在本脚本验证范围内，请参考在线验证脚本 verify-doc-platform-mineru.js。
+ */
+
 import assert from 'assert';
 import fs from 'fs/promises';
 import os from 'os';
@@ -74,11 +88,11 @@ function createService(db, tempDir, callMcpImpl) {
 }
 
 async function testHelpers(service) {
-  assert.equal(service.normalizeStatus('pending'), 'pending');
-  assert.equal(service.normalizeStatus('processing'), 'processing');
-  assert.equal(service.normalizeStatus('completed'), 'completed');
-  assert.equal(service.normalizeStatus('error'), 'failed');
-  assert.equal(service.normalizeStatus('unknown-status'), 'failed');
+  assert.equal(service.normalizeOcrResultStatus('pending'), 'pending');
+  assert.equal(service.normalizeOcrResultStatus('processing'), 'processing');
+  assert.equal(service.normalizeOcrResultStatus('completed'), 'completed');
+  assert.equal(service.normalizeOcrResultStatus('error'), 'failed');
+  assert.equal(service.normalizeOcrResultStatus('unknown-status'), 'failed');
 
   assert.equal(service.extractDefaultMarkdown({ result: 'plain markdown' }), 'plain markdown');
   assert.equal(service.extractDefaultMarkdown({ result: { markdown: '# title' } }), '# title');
