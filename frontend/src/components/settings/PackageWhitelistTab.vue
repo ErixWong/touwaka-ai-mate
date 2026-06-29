@@ -156,6 +156,10 @@ const pythonInstallName = ref('')
 const pythonInstallVersion = ref('')
 const pythonInstalling = ref(false)
 
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
+
 // 过滤后的 Node.js 包列表（合并内置模块和已安装包）
 const filteredNodePackages = computed(() => {
   const search = nodeSearch.value.toLowerCase()
@@ -298,8 +302,8 @@ const installNodePackage = async () => {
     } else {
       toast.error(t('settings.installFailed', { error: result?.message || 'Unknown error' }))
     }
-  } catch (error: any) {
-    toast.error(t('settings.installFailed', { error: error.message || 'Unknown error' }))
+  } catch (error: unknown) {
+    toast.error(t('settings.installFailed', { error: getErrorMessage(error, 'Unknown error') }))
   } finally {
     nodeInstalling.value = false
   }
@@ -323,8 +327,8 @@ const installPythonPackage = async () => {
     } else {
       toast.error(t('settings.installFailed', { error: result?.message || 'Unknown error' }))
     }
-  } catch (error: any) {
-    toast.error(t('settings.installFailed', { error: error.message || 'Unknown error' }))
+  } catch (error: unknown) {
+    toast.error(t('settings.installFailed', { error: getErrorMessage(error, 'Unknown error') }))
   } finally {
     pythonInstalling.value = false
   }

@@ -36,17 +36,6 @@ import { useToastStore } from '@/stores/toast'
 import apiClient from '@/api/client'
 import type { AppField, AppConfig } from '@/api/mini-apps'
 
-type FileFieldValue = {
-  attachment_id: string
-  name: string
-  size?: number
-  mimeType?: string
-}
-
-function isFileFieldValue(value: unknown): value is FileFieldValue {
-  return typeof value === 'object' && value !== null && 'name' in value
-}
-
 const props = defineProps<{
   field: AppField
   modelValue: unknown

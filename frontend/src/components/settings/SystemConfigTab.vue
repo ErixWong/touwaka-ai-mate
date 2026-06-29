@@ -325,7 +325,7 @@ const activeSubTab = ref<'general' | 'registration' | 'connection' | 'token' | '
 const saving = ref(false)
 
 // 表单基线：记录最近一次成功加载/保存后的状态，用于判断是否有改动
-const baselineSettings = ref<any>(null)
+const baselineSettings = ref<Record<string, unknown> | null>(null)
 
 // 空结构占位（仅用于表单初始化，不定义业务默认值）
 // 默认值权威来源在后端 /system-settings 接口

@@ -105,7 +105,7 @@ interface ContractRecord {
   id: string; status: string; created_at: string; updated_at: string;
   contract_number?: string; party_a?: string; party_b?: string;
   parent_company?: string; contract_amount?: string; contract_date?: string;
-  process_step?: string; extract_json?: any; sections?: any;
+  process_step?: string; extract_json?: Record<string, unknown> | null; sections?: unknown[] | null;
 }
 
 const APP_ID = 'contract-mgr'

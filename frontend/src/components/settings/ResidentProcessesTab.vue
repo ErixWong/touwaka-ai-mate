@@ -235,6 +235,10 @@ const restartingProcesses = reactive<Record<string, boolean>>({})
 const showRestartDialog = ref(false)
 const restartTarget = ref<ResidentProcessStatus | null>(null)
 
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
+
 // 自动刷新定时器
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
@@ -308,8 +312,8 @@ const loadProcesses = async () => {
     if (processes.value.length > 0 && !selectedProcess.value) {
       selectedProcess.value = processes.value[0]!
     }
-  } catch (error: any) {
-    toast.error(t('settings.resident.loadFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(t('settings.resident.loadFailed') + ': ' + getErrorMessage(error, t('common.operationFailed')))
   } finally {
     loading.value = false
   }
@@ -370,8 +374,8 @@ const executeRestart = async () => {
     const result = await debugApi.restartResidentProcess(toolId)
     toast.success(result.message || t('settings.resident.restartSuccess'))
     await loadProcesses()
-  } catch (error: any) {
-    toast.error(t('settings.resident.restartFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(t('settings.resident.restartFailed') + ': ' + getErrorMessage(error, t('common.operationFailed')))
   } finally {
     restartingProcesses[toolId] = false
     restartTarget.value = null

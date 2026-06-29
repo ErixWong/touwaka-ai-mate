@@ -116,6 +116,20 @@ const selectedDepartment = ref<Department | null>(null)
 const positions = ref<Position[]>([])
 const positionUserMap = ref<Map<string, string>>(new Map())
 
+function getApiErrorMessage(cause: unknown, fallback: string) {
+  if (typeof cause === 'object' && cause !== null && 'response' in cause) {
+    const response = Reflect.get(cause, 'response')
+    if (typeof response === 'object' && response !== null && 'data' in response) {
+      const data = Reflect.get(response, 'data')
+      if (typeof data === 'object' && data !== null && 'message' in data) {
+        const message = Reflect.get(data, 'message')
+        if (typeof message === 'string' && message) return message
+      }
+    }
+  }
+  return cause instanceof Error ? cause.message : fallback
+}
+
 const showDepartmentDialog = ref(false)
 const editingDepartment = ref<Department | null>(null)
 const departmentForm = reactive({ name: '', description: '', parent_id: '' })
@@ -206,10 +220,10 @@ const deleteDepartment = async (dept: Department) => {
       positions.value = []
     }
     await loadDepartmentTree()
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== 'cancel') {
       console.error('Failed to delete department:', error)
-      toast.error(error.response?.data?.message || t('common.deleteFailed'))
+      toast.error(getApiErrorMessage(error, t('common.deleteFailed')))
     }
   }
 }
@@ -251,10 +265,10 @@ const deletePosition = async (position: Position) => {
     await ElMessageBox.confirm(t('settings.confirmDeletePosition'), t('common.confirm'), { type: 'warning' })
     await positionApi.deletePosition(position.id)
     await loadPositions(selectedDepartment.value!.id)
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== 'cancel') {
       console.error('Failed to delete position:', error)
-      toast.error(error.response?.data?.message || t('common.deleteFailed'))
+      toast.error(getApiErrorMessage(error, t('common.deleteFailed')))
     }
   }
 }
@@ -270,9 +284,9 @@ const handlePositionUserChange = async (position: Position, user: UserListItem |
       positionUserMap.value.delete(position.id)
     }
     toast.success(t('settings.assignSuccess'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to assign user to position:', error)
-    toast.error(error.response?.data?.message || t('common.saveFailed'))
+    toast.error(getApiErrorMessage(error, t('common.saveFailed')))
     await loadPositionUsers()
   }
 }

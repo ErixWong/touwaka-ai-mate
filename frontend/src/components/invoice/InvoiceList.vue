@@ -36,6 +36,10 @@ function getErrorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error ? cause.message : fallback
 }
 
+function isBlobErrorResponse(cause: unknown): cause is { response?: { data?: Blob } } {
+  return typeof cause === 'object' && cause !== null && 'response' in cause
+}
+
 // 日期筛选
 const dateMode = ref<'year' | 'month' | 'day' | ''>('')
 const dateValue = ref<string | [string, string] | null>(null)
@@ -370,9 +374,9 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
     }
     await exportInvoices(params)
     ElMessage.success('导出成功')
-  } catch (e: any) {
+  } catch (e: unknown) {
     // 后端返回 JSON 错误时，blob 解析出消息
-    if (e.response?.data instanceof Blob) {
+    if (isBlobErrorResponse(e) && e.response?.data instanceof Blob) {
       const text = await e.response.data.text()
       try {
         const json = JSON.parse(text)
@@ -381,7 +385,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         ElMessage.error('导出失败')
       }
     } else {
-      ElMessage.error(e.message || '导出失败')
+      ElMessage.error(getErrorMessage(e, '导出失败'))
     }
   } finally {
     exporting.value = false

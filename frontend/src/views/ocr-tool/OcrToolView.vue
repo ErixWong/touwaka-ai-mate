@@ -192,6 +192,10 @@ const showToast = ref(false)
 const showConfigDialog = ref(false)
 const showFullscreen = ref(false)
 let defaultPresetId = 'text'
+
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
 const multimodalModels = ref<{ id: string; name: string }[]>([])
 const configData = ref({
   vlm_model_id: '',
@@ -376,8 +380,8 @@ async function submit() {
     taskId.value = res.task_id
     status.value = res.status as typeof status.value
     startPolling()
-  } catch (err: any) {
-    error.value = err?.message || '提交失败'
+  } catch (err: unknown) {
+    error.value = getErrorMessage(err, '提交失败')
     status.value = 'error'
     stopPolling()
     stopElapsedTimer()
@@ -408,8 +412,8 @@ function startPolling() {
         stopElapsedTimer()
         isProcessing.value = false
       }
-    } catch (err: any) {
-      error.value = err?.message || '状态查询失败'
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err, '状态查询失败')
       status.value = 'error'
       stopPolling()
       stopElapsedTimer()
@@ -509,8 +513,8 @@ async function saveConfig() {
     })
     toast.success('配置已保存')
     showConfigDialog.value = false
-  } catch (err: any) {
-    toast.error('保存失败: ' + err.message)
+  } catch (err: unknown) {
+    toast.error('保存失败: ' + getErrorMessage(err, '未知错误'))
   }
 }
 
