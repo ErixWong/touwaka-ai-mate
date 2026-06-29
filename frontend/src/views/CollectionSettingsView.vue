@@ -1,11 +1,11 @@
 <template>
   <div class="collection-settings">
     <div class="settings-breadcrumb">
-      <router-link to="/docs" class="breadcrumb-link">文档平台</router-link>
+      <router-link to="/docs" class="breadcrumb-link">{{ $t('docs.workspace.detail.breadcrumb.platform') }}</router-link>
       <span class="breadcrumb-sep">/</span>
-      <router-link :to="`/docs/collections/${collectionId}`" class="breadcrumb-link">{{ store.currentCollection?.name || '集合' }}</router-link>
+      <router-link :to="`/docs/collections/${collectionId}`" class="breadcrumb-link">{{ store.currentCollection?.name || $t('docs.workspace.collection.collectionName') }}</router-link>
       <span class="breadcrumb-sep">/</span>
-      <span class="breadcrumb-current">设置</span>
+      <span class="breadcrumb-current">{{ $t('docs.workspace.settings.settings') }}</span>
     </div>
 
     <div v-if="store.isLoading && !store.currentCollection" class="loading-state">
@@ -13,84 +13,84 @@
     </div>
 
     <template v-else-if="store.currentCollection">
-      <h2 class="settings-heading">集合设置</h2>
+      <h2 class="settings-heading">{{ $t('docs.workspace.settings.heading') }}</h2>
 
       <div class="settings-section">
-        <h3 class="section-title">基本信息</h3>
+        <h3 class="section-title">{{ $t('docs.workspace.settings.basicInfo') }}</h3>
         <el-form ref="formRef" :model="form" label-width="110px" class="settings-form">
-          <el-form-item label="集合名称">
+          <el-form-item :label="$t('docs.workspace.settings.collectionName')">
             <el-input v-model="form.name" maxlength="100" show-word-limit />
           </el-form-item>
-          <el-form-item label="描述">
+          <el-form-item :label="$t('docs.workspace.settings.description')">
             <el-input v-model="form.description" type="textarea" maxlength="500" show-word-limit :rows="3" />
           </el-form-item>
         </el-form>
       </div>
 
       <div class="settings-section">
-        <h3 class="section-title">权限与范围</h3>
+        <h3 class="section-title">{{ $t('docs.workspace.settings.permissionScope') }}</h3>
         <el-form ref="permFormRef" :model="form" label-width="110px" class="settings-form">
-          <el-form-item label="可见范围">
+          <el-form-item :label="$t('docs.workspace.settings.visibility')">
             <el-radio-group v-model="form.visibility">
-              <el-radio value="private">私有</el-radio>
-              <el-radio value="department">部门</el-radio>
-              <el-radio value="public">公开</el-radio>
+              <el-radio value="private">{{ $t('docs.workspace.settings.visibilityPrivate') }}</el-radio>
+              <el-radio value="department">{{ $t('docs.workspace.settings.visibilityDepartment') }}</el-radio>
+              <el-radio value="public">{{ $t('docs.workspace.settings.visibilityPublic') }}</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="form.visibility === 'department'" label="所属部门">
+          <el-form-item v-if="form.visibility === 'department'" :label="$t('docs.workspace.settings.department')">
             <el-tree-select
               v-model="form.department_id"
               :data="departmentTree"
               :props="{ label: 'name', value: 'id', children: 'children' }"
-              placeholder="选择所属部门"
+              :placeholder="$t('docs.workspace.settings.departmentPlaceholder')"
               check-strictly
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item v-if="form.visibility === 'department'" label="部门范围">
+          <el-form-item v-if="form.visibility === 'department'" :label="$t('docs.workspace.settings.departmentScope')">
             <el-radio-group v-model="form.department_scope">
-              <el-radio value="self">仅本部门</el-radio>
-              <el-radio value="self_and_descendants">本部门及下级</el-radio>
+              <el-radio value="self">{{ $t('docs.workspace.settings.departmentScopeSelf') }}</el-radio>
+              <el-radio value="self_and_descendants">{{ $t('docs.workspace.settings.departmentScopeDescendants') }}</el-radio>
             </el-radio-group>
           </el-form-item>
         </el-form>
       </div>
 
       <div class="settings-section">
-        <h3 class="section-title">高级设置</h3>
+        <h3 class="section-title">{{ $t('docs.workspace.settings.advanced') }}</h3>
         <el-form ref="advancedFormRef" :model="form" label-width="110px" class="settings-form">
-          <el-form-item label="嵌入模型">
-            <el-select v-model="form.embedding_model_id" placeholder="选择嵌入模型" style="width: 100%">
+          <el-form-item :label="$t('docs.workspace.settings.embeddingModel')">
+            <el-select v-model="form.embedding_model_id" :placeholder="$t('docs.workspace.settings.embeddingModelPlaceholder')" style="width: 100%">
               <el-option v-for="m in embeddingModels" :key="m.id" :label="m.name" :value="m.id" />
             </el-select>
-            <div class="form-hint">修改嵌入模型后需手动重新向量化，否则语义检索可能不准确</div>
+            <div class="form-hint">{{ $t('docs.workspace.settings.embeddingHint') }}</div>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="saveSettings" :loading="saving">保存设置</el-button>
+            <el-button type="primary" @click="saveSettings" :loading="saving">{{ $t('docs.workspace.settings.saveSettings') }}</el-button>
           </el-form-item>
         </el-form>
       </div>
 
       <div class="settings-section">
-        <h3 class="section-title">重新向量化</h3>
-        <p class="section-desc">当嵌入模型变更后，需要对集合内所有文档重新生成向量索引，以确保语义检索精度。</p>
-        <el-button type="warning" @click="doRevectorize" :loading="revectorizing">触发重新向量化</el-button>
+        <h3 class="section-title">{{ $t('docs.workspace.settings.revectorizeTitle') }}</h3>
+        <p class="section-desc">{{ $t('docs.workspace.settings.revectorizeDesc') }}</p>
+        <el-button type="warning" @click="doRevectorize" :loading="revectorizing">{{ $t('docs.workspace.settings.revectorizeAction') }}</el-button>
         <p v-if="revectorizeResult" class="action-result">{{ revectorizeResult }}</p>
       </div>
 
       <div class="settings-section danger-section">
-        <h3 class="section-title danger-title">危险操作</h3>
-        <p class="section-desc">仅可删除空集合，请先移除集合内所有文档后再执行删除操作。</p>
+        <h3 class="section-title danger-title">{{ $t('docs.workspace.settings.dangerTitle') }}</h3>
+        <p class="section-desc">{{ $t('docs.workspace.settings.deleteDesc') }}</p>
         <el-button
           type="danger"
           @click="doDelete"
           :loading="deleting"
           :disabled="(store.currentCollection.doc_count || 0) > 0"
         >
-          删除集合
+          {{ $t('docs.workspace.settings.deleteCollection') }}
         </el-button>
         <div v-if="(store.currentCollection.doc_count || 0) > 0" class="form-hint">
-          请先移除集合内的所有文档后再删除集合
+          {{ $t('docs.workspace.settings.deleteDisabledHint') }}
         </div>
       </div>
     </template>
@@ -100,6 +100,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { modelApi } from '@/api/services'
 import { departmentApi } from '@/api/services'
 import { useCollectionStore } from '@/stores/collection'
@@ -107,6 +108,7 @@ import type { AIModel } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const store = useCollectionStore()
 
 const collectionId = route.params.id as string
@@ -169,9 +171,9 @@ async function doRevectorize() {
   revectorizeResult.value = ''
   try {
     const result = await store.revectorize(collectionId)
-    revectorizeResult.value = `已触发 ${result?.revectorized_count || 0} 个版本的向量重建`
+    revectorizeResult.value = t('docs.workspace.settings.revectorizeResult', { count: result?.revectorized_count || 0 })
   } catch {
-    revectorizeResult.value = '操作失败'
+    revectorizeResult.value = t('common.operationFailed')
   } finally {
     revectorizing.value = false
   }

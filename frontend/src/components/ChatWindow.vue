@@ -48,7 +48,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
-import { useI18n } from 'vue-i18n'
 import MessageList from './MessageList.vue'
 import ChatInputArea from './ChatInputArea.vue'
 import type { Message } from '@/types'
@@ -79,7 +78,6 @@ defineEmits<{
   stop: []
 }>()
 
-const { t } = useI18n()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 
 const newMessagesHintText = computed(() => {

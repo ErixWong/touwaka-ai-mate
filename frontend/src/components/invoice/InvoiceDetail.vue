@@ -13,18 +13,22 @@ const detail = ref<InvoiceDetailType | null>(null)
 const deleting = ref(false)
 const reExtracting = ref(false)
 
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
+
 onMounted(async () => {
   loading.value = true
   try {
     detail.value = await getInvoiceDetail(props.rowId)
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
   }
 })
 
-function formatQuantity(v: any): string {
+function formatQuantity(v: number | string | null | undefined): string {
   const n = Number(v)
   if (isNaN(n)) return String(v ?? '')
   return n.toFixed(2)
@@ -47,8 +51,8 @@ async function onDelete() {
     ElMessage.success('记录已删除')
     emit('deleted')
     emit('back')
-  } catch (e: any) {
-    ElMessage.error(e.message || '删除失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '删除失败'))
   } finally {
     deleting.value = false
   }
@@ -78,8 +82,8 @@ async function onReExtract() {
     ElMessage.success('已重置为初始状态，系统将自动重新分析')
     emit('deleted')
     emit('back')
-  } catch (e: any) {
-    ElMessage.error(e.message || '重置失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '重置失败'))
   } finally {
     reExtracting.value = false
   }

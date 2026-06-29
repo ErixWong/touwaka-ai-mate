@@ -27,9 +27,22 @@ const deleting = ref(false)
 const exporting = ref(false)
 const tableRef = ref<InstanceType<typeof ElTable>>()
 
+type BatchUploadResult = {
+  skipped_count?: number
+  created_count?: number
+}
+
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
+
+function isBlobErrorResponse(cause: unknown): cause is { response?: { data?: Blob } } {
+  return typeof cause === 'object' && cause !== null && 'response' in cause
+}
+
 // 日期筛选
 const dateMode = ref<'year' | 'month' | 'day' | ''>('')
-const dateValue = ref<any>(null)
+const dateValue = ref<string | [string, string] | null>(null)
 
 // 个性化导出
 const showExportDialog = ref(false)
@@ -119,8 +132,8 @@ async function loadList() {
     const result = await listInvoices(params)
     invoices.value = result.list
     total.value = result.total
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
   }
@@ -187,8 +200,8 @@ async function handleCreate() {
         })
         attachmentIds.push(att.id)
         uploadedCount++
-      } catch (e: any) {
-        ElMessage.warning(`${file.name} 上传失败: ${e.message || '未知错误'}`)
+      } catch (e: unknown) {
+        ElMessage.warning(`${file.name} 上传失败: ${getErrorMessage(e, '未知错误')}`)
       }
     }
 
@@ -198,7 +211,7 @@ async function handleCreate() {
     }
 
     // 2) 批量建单
-    const result = await batchUpload(APP_ID, attachmentIds)
+    const result = await batchUpload(APP_ID, attachmentIds) as BatchUploadResult
 
     showCreateDialog.value = false
     selectedFiles.value = []
@@ -221,8 +234,8 @@ async function handleCreate() {
     } else {
       ElMessage.success(`已创建 ${created} 条发票记录，正在识别中`)
     }
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '创建失败'))
   } finally {
     creating.value = false
   }
@@ -260,11 +273,11 @@ async function handleBatchDelete() {
       try {
         await deleteRecord(APP_ID, id)
         successCount++
-      } catch (e: any) {
+      } catch (e: unknown) {
         failCount++
         const label = selectedRows.value.find(r => r.id === id)?.invoice_number || id
         failedInvoices.push(label)
-        console.error(`删除 ${label} 失败:`, e.message || e)
+        console.error(`删除 ${label} 失败:`, getErrorMessage(e, '未知错误'))
       }
     }
 
@@ -295,8 +308,8 @@ async function handleBatchDelete() {
         { confirmButtonText: '我知道了', type: 'warning' }
       ).catch(() => { /* 用户关闭弹窗 */ })
     }
-  } catch (e: any) {
-    ElMessage.error(e.message || '批量删除异常')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '批量删除异常'))
   } finally {
     deleting.value = false
   }
@@ -361,9 +374,9 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
     }
     await exportInvoices(params)
     ElMessage.success('导出成功')
-  } catch (e: any) {
+  } catch (e: unknown) {
     // 后端返回 JSON 错误时，blob 解析出消息
-    if (e.response?.data instanceof Blob) {
+    if (isBlobErrorResponse(e) && e.response?.data instanceof Blob) {
       const text = await e.response.data.text()
       try {
         const json = JSON.parse(text)
@@ -372,7 +385,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         ElMessage.error('导出失败')
       }
     } else {
-      ElMessage.error(e.message || '导出失败')
+      ElMessage.error(getErrorMessage(e, '导出失败'))
     }
   } finally {
     exporting.value = false

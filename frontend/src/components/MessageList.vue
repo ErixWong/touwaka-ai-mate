@@ -100,10 +100,6 @@ const {
   onLoadMore: () => emit('loadMore'),
 })
 
-const newMessagesHintText = computed(() => {
-  return pendingNewMessageCount.value > 1 ? `有 ${pendingNewMessageCount.value} 条新消息` : '有新消息'
-})
-
 defineExpose({
   scrollToBottom,
   handleScrollToBottom,

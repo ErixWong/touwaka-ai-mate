@@ -28,12 +28,12 @@ export interface AppField {
   required?: boolean
   ai_extractable?: boolean
   ai_confidence?: number
-  default?: any
+  default?: unknown
   options?: string[]
   fields?: AppField[]
   min_items?: number
   max_items?: number
-  summary_fields?: any[]
+  summary_fields?: unknown[]
   _isExtension?: boolean
 }
 
@@ -41,11 +41,11 @@ export interface AppViews {
   list?: {
     columns: string[]
     sort?: { field: string; order: string }
-    filters?: any[]
+    filters?: unknown[]
     row_actions?: string[]
   }
-  form?: any
-  detail?: any
+  form?: Record<string, unknown>
+  detail?: Record<string, unknown>
 }
 
 export interface ExtensionTableField {
@@ -169,7 +169,7 @@ export interface MiniAppRecord {
   id: string
   app_id: string
   user_id: string
-  data: Record<string, any>
+  data: Record<string, unknown>
   title?: string
   ai_extracted: boolean
   ai_confidence?: Record<string, number>
@@ -184,7 +184,7 @@ export interface MiniAppRecord {
   parent_company?: string
   contract_amount?: number
   contract_date?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export interface MiniAppFile {
@@ -193,7 +193,7 @@ export interface MiniAppFile {
   app_id: string
   attachment_id: string
   field_name?: string
-  attachment?: any
+  attachment?: Record<string, unknown>
 }
 
 export interface AppRowHandler {
@@ -236,7 +236,7 @@ export interface AppActionLog {
   trigger_status: string
   result_status?: string
   success: boolean
-  output_data?: any
+  output_data?: Record<string, unknown>
   error_message?: string
   duration?: number
   retry_count: number
@@ -302,7 +302,7 @@ export async function newID(length = 20): Promise<string> {
   return result.id
 }
 
-export async function updateRecord(appId: string, recordId: string, data: Record<string, any>): Promise<MiniAppRecord> {
+export async function updateRecord(appId: string, recordId: string, data: Record<string, unknown>): Promise<MiniAppRecord> {
   return apiRequest<MiniAppRecord>(apiClient.put(`/mini-apps/${appId}/data/${recordId}`, { data }))
 }
 
@@ -314,7 +314,7 @@ export async function reExtractRecord(appId: string, recordId: string): Promise<
   return apiRequest<MiniAppRecord>(apiClient.post(`/mini-apps/${appId}/data/${recordId}/re-extract`))
 }
 
-export async function confirmRecord(appId: string, recordId: string, data: Record<string, any>): Promise<MiniAppRecord> {
+export async function confirmRecord(appId: string, recordId: string, data: Record<string, unknown>): Promise<MiniAppRecord> {
   return apiRequest<MiniAppRecord>(apiClient.put(`/mini-apps/${appId}/data/${recordId}/confirm`, { data }))
 }
 
@@ -371,7 +371,7 @@ export interface DocumentContent {
   has_content: boolean
   ocr_text?: string
   filtered_text?: string
-  sections?: any[]
+  sections?: unknown[]
   extract_prompt?: string
   extract_json?: Record<string, unknown>
   extract_at?: string

@@ -43,44 +43,50 @@
   </div>
 </template>
 
-<script setup>
-import { reactive, watch, onMounted } from 'vue';
+<script setup lang="ts">
+import { reactive, watch, onMounted } from 'vue'
+
+type PsycheConfig = {
+  max_tokens_ratio?: number
+  reflection_lookback?: number
+  enable_notes?: boolean
+}
 
 const props = defineProps({
   modelValue: {
     type: Object,
-    default: () => ({}),
+    default: () => ({} as PsycheConfig),
   },
-});
+})
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue'])
 
 const localConfig = reactive({
   max_tokens_ratio: 0.3,
   reflection_lookback: 4,
   enable_notes: true,
-});
+})
 
 onMounted(() => {
-  syncFromProps();
-});
+  syncFromProps()
+})
 
 // P1-1: 监听外部值变化，同步到本地状态
 watch(() => props.modelValue, () => {
-  syncFromProps();
-});
+  syncFromProps()
+})
 
 function syncFromProps() {
   if (props.modelValue && typeof props.modelValue === 'object') {
-    localConfig.max_tokens_ratio = props.modelValue.max_tokens_ratio ?? 0.3;
-    localConfig.reflection_lookback = props.modelValue.reflection_lookback ?? 4;
-    localConfig.enable_notes = props.modelValue.enable_notes !== false;
+    localConfig.max_tokens_ratio = props.modelValue.max_tokens_ratio ?? 0.3
+    localConfig.reflection_lookback = props.modelValue.reflection_lookback ?? 4
+    localConfig.enable_notes = props.modelValue.enable_notes !== false
   }
 }
 
 watch(localConfig, () => {
-  emit('update:modelValue', { ...localConfig });
-}, { deep: true });
+  emit('update:modelValue', { ...localConfig })
+}, { deep: true })
 </script>
 
 <style scoped>

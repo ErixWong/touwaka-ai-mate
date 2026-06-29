@@ -432,20 +432,6 @@ const isImage = (mime_type?: string): boolean => {
   return mime_type.startsWith('image/')
 }
 
-// 获取文件图标
-const getFileIcon = (mime_type?: string): string => {
-  if (!mime_type) return '📄'
-  if (mime_type.startsWith('image/')) return '🖼️'
-  if (mime_type.startsWith('video/')) return '🎬'
-  if (mime_type.startsWith('audio/')) return '🎵'
-  if (mime_type.includes('pdf')) return '📕'
-  if (mime_type.includes('word') || mime_type.includes('document')) return '📘'
-  if (mime_type.includes('excel') || mime_type.includes('spreadsheet')) return '📊'
-  if (mime_type.includes('powerpoint') || mime_type.includes('presentation')) return '📙'
-  if (mime_type.includes('zip') || mime_type.includes('archive')) return '📦'
-  return '📄'
-}
-
 // 获取 MIME 类型标签
 const getMimeTypeLabel = (mime_type: string): string => {
   const types: Record<string, string> = {

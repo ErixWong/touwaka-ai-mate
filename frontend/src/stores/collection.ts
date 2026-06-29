@@ -41,6 +41,10 @@ export const useCollectionStore = defineStore('collection', () => {
   const error = ref<string | null>(null)
   const isUploadingDocument = ref(false)
 
+  function getErrorMessage(cause: unknown, fallback: string) {
+    return cause instanceof Error ? cause.message : fallback
+  }
+
   async function fetchCollections(params?: { page?: number; query?: string }) {
     isLoading.value = true
     error.value = null
@@ -53,8 +57,8 @@ export const useCollectionStore = defineStore('collection', () => {
       collections.value = result.items
       total.value = result.total
       if (params?.page) currentPage.value = params.page
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load collections'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load collections')
     } finally {
       isLoading.value = false
     }
@@ -66,8 +70,8 @@ export const useCollectionStore = defineStore('collection', () => {
     try {
       currentCollection.value = await getCollection(id)
       return currentCollection.value
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load collection'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load collection')
       return null
     } finally {
       isLoading.value = false
@@ -81,8 +85,8 @@ export const useCollectionStore = defineStore('collection', () => {
       collections.value.unshift(collection)
       total.value++
       return collection
-    } catch (e: any) {
-      error.value = e.message || 'Failed to create collection'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to create collection')
       return null
     }
   }
@@ -99,8 +103,8 @@ export const useCollectionStore = defineStore('collection', () => {
         collections.value[idx] = collection
       }
       return collection
-    } catch (e: any) {
-      error.value = e.message || 'Failed to update collection'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to update collection')
       return null
     }
   }
@@ -115,8 +119,8 @@ export const useCollectionStore = defineStore('collection', () => {
         currentCollection.value = null
       }
       return true
-    } catch (e: any) {
-      error.value = e.message || 'Failed to delete collection'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to delete collection')
       return false
     }
   }
@@ -134,8 +138,8 @@ export const useCollectionStore = defineStore('collection', () => {
       collectionDocuments.value = result.items
       docTotal.value = result.total
       if (params?.page) docPage.value = params.page
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load documents'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load documents')
     } finally {
       isLoading.value = false
     }
@@ -150,8 +154,8 @@ export const useCollectionStore = defineStore('collection', () => {
         await fetchCollection(collectionId)
       }
       return result
-    } catch (e: any) {
-      error.value = e.message || 'Failed to add document'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to add document')
       return null
     }
   }
@@ -163,8 +167,8 @@ export const useCollectionStore = defineStore('collection', () => {
       collectionDocuments.value = collectionDocuments.value.filter(d => d.id !== documentId)
       docTotal.value--
       return true
-    } catch (e: any) {
-      error.value = e.message || 'Failed to remove document'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to remove document')
       return false
     }
   }
@@ -174,8 +178,8 @@ export const useCollectionStore = defineStore('collection', () => {
     try {
       const result = await moveDocumentToCollection(documentId, data)
       return result
-    } catch (e: any) {
-      error.value = e.message || 'Failed to move document'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to move document')
       return null
     }
   }
@@ -185,8 +189,8 @@ export const useCollectionStore = defineStore('collection', () => {
     try {
       const result = await revealectorizeCollection(id)
       return result
-    } catch (e: any) {
-      error.value = e.message || 'Failed to trigger revectorization'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to trigger revectorization')
       return null
     }
   }
@@ -231,8 +235,8 @@ export const useCollectionStore = defineStore('collection', () => {
       await fetchCollection(collectionId)
 
       return { attachment, intake, submit }
-    } catch (e: any) {
-      error.value = e.message || 'Failed to upload document'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to upload document')
       return null
     } finally {
       isUploadingDocument.value = false

@@ -78,7 +78,7 @@ export const topicApi = {
 
   // 手动触发压缩 - 检查并更新 topics
   compress: (data?: { expert_id?: string }) =>
-    apiRequest<{ message: string; results: any[] }>(apiClient.post('/topics/compress', data || {})),
+    apiRequest<{ message: string; results: unknown[] }>(apiClient.post('/topics/compress', data || {})),
 
   // 归档话题
   archiveTopic: (id: string) =>
@@ -864,8 +864,8 @@ export const mcpApi = {
     apiRequest<{ tools: McpToolCache[] }>(apiClient.get(`/mcp/servers/${id}/tools`)),
 
   // 调用 MCP 工具（管理员测试用）
-  callTool: (id: string, toolName: string, args?: Record<string, any>) =>
-    apiRequest<{ server_name: string; tool_name: string; result: any }>(
+  callTool: (id: string, toolName: string, args?: Record<string, unknown>) =>
+    apiRequest<{ server_name: string; tool_name: string; result: unknown }>(
       apiClient.post(`/mcp/servers/${id}/call-tool`, { tool_name: toolName, arguments: args || {} })
     ),
 

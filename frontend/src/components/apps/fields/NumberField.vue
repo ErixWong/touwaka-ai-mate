@@ -13,7 +13,7 @@ import type { AppField } from '@/api/mini-apps'
 
 defineProps<{
   field: AppField
-  modelValue: any
+  modelValue: number | null | undefined
   readonly?: boolean
 }>()
 

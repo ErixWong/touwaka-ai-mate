@@ -234,19 +234,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
-import { useUserStore } from '@/stores/user'
 import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getAppConfig, updateAppConfig } from '@/api/mini-apps'
 import type { MiniApp, AppField, AppState, AppRowHandler } from '@/api/mini-apps'
 import StateDesigner from '@/components/settings/StateDesigner.vue'
 
 const { t } = useI18n()
 const toast = useToastStore()
-const userStore = useUserStore()
-
-const isAdmin = computed(() => userStore.isAdmin)
 const loading = ref(false)
 const apps = ref<MiniApp[]>([])
 const handlers = ref<AppRowHandler[]>([])
@@ -259,6 +255,10 @@ const configingApp = ref<MiniApp | null>(null)
 const configJsonText = ref('')
 const appDialogTab = ref<string>('basic')
 const selectedFieldIndex = ref(-1)
+
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
 
 const configJsonValid = computed(() => {
   try {
@@ -418,8 +418,8 @@ async function saveConfig() {
     await updateAppConfig(configingApp.value.id, config)
     toast.success(t('settings.appManagement.configSaved', '配置已保存'))
     closeConfigDialog()
-  } catch (error: any) {
-    toast.error(t('settings.appManagement.configSaveFailed', '配置保存失败') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(t('settings.appManagement.configSaveFailed', '配置保存失败') + ': ' + getErrorMessage(error, t('common.operationFailed')))
   }
 }
 
@@ -434,8 +434,8 @@ async function loadApps() {
   loading.value = true
   try {
     apps.value = await getApps()
-  } catch (error: any) {
-    toast.error(t('settings.appManagement.loadFailed', '加载失败') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(t('settings.appManagement.loadFailed', '加载失败') + ': ' + getErrorMessage(error, t('common.operationFailed')))
   } finally {
     loading.value = false
   }
@@ -447,7 +447,7 @@ async function loadHandlers() {
 
 async function saveApp() {
   try {
-    const data: any = {
+    const data: Partial<MiniApp> & { fields: AppField[] } = {
       name: appForm.name,
       icon: appForm.icon,
       type: appForm.type,
@@ -465,8 +465,8 @@ async function saveApp() {
     }
     closeAppDialog()
     await loadApps()
-  } catch (error: any) {
-    toast.error(t('settings.appManagement.saveFailed', '保存失败') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(t('settings.appManagement.saveFailed', '保存失败') + ': ' + getErrorMessage(error, t('common.operationFailed')))
   }
 }
 
@@ -478,8 +478,8 @@ async function deleteApp() {
     showDeleteDialog.value = false
     deletingApp.value = null
     await loadApps()
-  } catch (error: any) {
-    toast.error(t('settings.appManagement.deleteFailed', '删除失败') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(t('settings.appManagement.deleteFailed', '删除失败') + ': ' + getErrorMessage(error, t('common.operationFailed')))
   }
 }
 

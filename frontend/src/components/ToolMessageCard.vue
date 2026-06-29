@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-const props = defineProps<{
+defineProps<{
   toolName: string
   success?: boolean
   duration?: number | null

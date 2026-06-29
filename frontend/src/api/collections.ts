@@ -11,7 +11,7 @@ export interface DocCollection {
   visibility: 'private' | 'department' | 'public'
   department_scope: 'self' | 'self_and_descendants' | null
   embedding_model_id: string
-  metadata: any
+  metadata: Record<string, unknown> | null
   doc_count?: number
   needs_revectorize?: boolean
   created_at: string
@@ -77,7 +77,7 @@ export interface CreateCollectionRequest {
   department_id?: string
   department_scope?: 'self' | 'self_and_descendants'
   embedding_model_id: string
-  metadata?: any
+  metadata?: Record<string, unknown>
 }
 
 export interface UpdateCollectionRequest {
@@ -88,7 +88,13 @@ export interface UpdateCollectionRequest {
   department_scope?: 'self' | 'self_and_descendants'
   embedding_model_id?: string
   owner_id?: string
-  metadata?: any
+  metadata?: Record<string, unknown>
+}
+
+export interface CollectionActionResult {
+  success?: boolean
+  message?: string
+  [key: string]: unknown
 }
 
 export interface MoveDocumentRequest {
@@ -120,8 +126,8 @@ export async function deleteCollection(id: string): Promise<{ deleted: boolean }
   return apiRequest<{ deleted: boolean }>(apiClient.delete(`/docs/collections/${id}`))
 }
 
-export async function revealectorizeCollection(id: string): Promise<any> {
-  return apiRequest<any>(apiClient.post(`/docs/collections/${id}/revectorize`))
+export async function revealectorizeCollection(id: string): Promise<CollectionActionResult> {
+  return apiRequest<CollectionActionResult>(apiClient.post(`/docs/collections/${id}/revectorize`))
 }
 
 export async function listCollectionDocuments(id: string, params?: {
@@ -133,14 +139,14 @@ export async function listCollectionDocuments(id: string, params?: {
   return apiRequest<CollectionDocumentListResult>(apiClient.get(`/docs/collections/${id}/documents`, { params }))
 }
 
-export async function addDocumentToCollection(collectionId: string, documentId: string): Promise<any> {
-  return apiRequest<any>(apiClient.post(`/docs/collections/${collectionId}/documents`, { document_id: documentId }))
+export async function addDocumentToCollection(collectionId: string, documentId: string): Promise<CollectionActionResult> {
+  return apiRequest<CollectionActionResult>(apiClient.post(`/docs/collections/${collectionId}/documents`, { document_id: documentId }))
 }
 
-export async function removeDocumentFromCollection(collectionId: string, documentId: string): Promise<any> {
-  return apiRequest<any>(apiClient.delete(`/docs/collections/${collectionId}/documents/${documentId}`))
+export async function removeDocumentFromCollection(collectionId: string, documentId: string): Promise<CollectionActionResult> {
+  return apiRequest<CollectionActionResult>(apiClient.delete(`/docs/collections/${collectionId}/documents/${documentId}`))
 }
 
-export async function moveDocumentToCollection(documentId: string, data: MoveDocumentRequest): Promise<any> {
-  return apiRequest<any>(apiClient.post(`/docs/documents/${documentId}/move-collection`, data))
+export async function moveDocumentToCollection(documentId: string, data: MoveDocumentRequest): Promise<CollectionActionResult> {
+  return apiRequest<CollectionActionResult>(apiClient.post(`/docs/documents/${documentId}/move-collection`, data))
 }

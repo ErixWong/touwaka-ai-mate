@@ -3,22 +3,24 @@
     <ContextHeader
       :breadcrumbs="[{ label: $t('docs.navTitle') }]"
       :title="$t('docs.navTitle')"
-      :description="isMobileView ? undefined : '文档搜索、检索与管理平台'"
+      :description="isMobileView ? undefined : $t('docs.workspace.home.description')"
     >
       <template #meta>
         <el-button size="small" @click="activeView = 'documents'" :type="activeView === 'documents' ? 'primary' : 'default'" plain>
-          文档
+          {{ $t('docs.workspace.collection.allDocuments') }}
         </el-button>
         <el-button size="small" @click="activeView = 'collections'" :type="activeView === 'collections' ? 'primary' : 'default'" plain>
-          集合
+          {{ $t('docs.workspace.collection.collections') }}
         </el-button>
       </template>
       <template #actions>
-        <el-button v-if="isAdmin" size="small" @click="showConfigDialog = true">
-          <el-icon style="margin-right:4px"><Setting /></el-icon>配置
-        </el-button>
+        <el-tooltip :content="$t('docs.workspace.home.pipelineConfigTooltip')" placement="bottom">
+          <el-button v-if="isAdmin" size="small" @click="showConfigDialog = true">
+            <el-icon style="margin-right:4px"><Setting /></el-icon>{{ $t('docs.workspace.home.pipelineConfig') }}
+          </el-button>
+        </el-tooltip>
         <el-button v-if="activeView === 'collections'" type="primary" @click="showCreateDialog = true">
-          新建集合
+          {{ $t('docs.workspace.home.createCollection') }}
         </el-button>
       </template>
     </ContextHeader>
@@ -38,11 +40,11 @@
     <div v-if="activeView === 'collections'" class="collection-filter">
       <el-input
         v-model="collectionSearch"
-        placeholder="搜索集合名称..."
+        :placeholder="$t('docs.workspace.home.searchCollectionPlaceholder')"
         @keyup.enter="loadCollections"
       >
         <template #append>
-          <el-button @click="loadCollections">搜索</el-button>
+          <el-button @click="loadCollections">{{ $t('common.search') }}</el-button>
         </template>
       </el-input>
     </div>
@@ -63,12 +65,20 @@
               <span class="doc-title-link">{{ row.title }}</span>
             </template>
           </el-table-column>
+          <el-table-column :label="$t('docs.workspace.home.collectionColumn')" width="120">
+            <template #default="{ row }">
+              <span v-if="row.collection_id" class="collection-link" @click.stop="goToCollection(row.collection_id)">
+                {{ $t('docs.workspace.home.viewCollection') }}
+              </span>
+              <span v-else class="no-collection">-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="doc_type" :label="$t('docs.type')" width="110">
             <template #default="{ row }">
               <el-tag :type="docTypeTag(row.doc_type)" size="small">{{ docTypeLabel(row.doc_type) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="处理状态" width="120">
+          <el-table-column :label="$t('docs.workspace.collection.filterStatus')" width="120">
             <template #default="{ row }">
               <DocStatusBadge :status="row.processing_status" />
             </template>
@@ -124,8 +134,8 @@
       </div>
 
       <div v-else-if="collStore.collections.length === 0" class="empty-state">
-        <p>暂无文档集合</p>
-        <el-button type="primary" @click="showCreateDialog = true">创建第一个集合</el-button>
+        <p>{{ $t('docs.workspace.home.noCollections') }}</p>
+        <el-button type="primary" @click="showCreateDialog = true">{{ $t('docs.workspace.home.createFirstCollection') }}</el-button>
       </div>
 
       <template v-else>
@@ -164,6 +174,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting } from '@element-plus/icons-vue'
 import { useCollectionStore } from '@/stores/collection'
@@ -177,6 +188,7 @@ import CreateCollectionModal from '@/components/doc-collections/CreateCollection
 import DocPipelineConfigDialog from '@/components/docs/DocPipelineConfigDialog.vue'
 
 const router = useRouter()
+const { t, locale } = useI18n()
 const collStore = useCollectionStore()
 const docStore = useDocStore()
 const userStore = useUserStore()
@@ -213,7 +225,7 @@ function docTypeLabel(type: string) {
 
 function formatTime(t: string) {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN')
+  return new Date(t).toLocaleString(locale.value === 'zh-CN' ? 'zh-CN' : 'en-US')
 }
 
 function openDoc(row: { id: string; collection_id?: string | null }) {
@@ -224,6 +236,10 @@ function openDoc(row: { id: string; collection_id?: string | null }) {
 function openDocById(id: string, collectionId?: string | null) {
   const query = collectionId ? `?fromCollection=${collectionId}` : ''
   router.push(`/docs/${id}${query}`)
+}
+
+function goToCollection(collectionId: string) {
+  router.push(`/docs/collections/${collectionId}`)
 }
 
 function openCollection(col: { id: string }) {
@@ -268,23 +284,23 @@ async function doRecall() {
 async function onDeleteDocument(row: { id: string; title: string }) {
   try {
     await ElMessageBox.confirm(
-      `确定删除文档「${row.title}」吗？此操作会同时删除文档记录、OCR结果和附件文件。`,
-      '删除文档',
+      t('docs.deleteConfirmMessage', { name: row.title }),
+      t('docs.deleteConfirmTitle'),
       { type: 'warning' },
     )
     const ok = await docStore.removeDocument(row.id)
     if (!ok) {
-      ElMessage.error(docStore.error || '删除文档失败')
+      ElMessage.error(docStore.error || t('docs.deleteFailed'))
       return
     }
-    ElMessage.success('文档已删除')
+    ElMessage.success(t('docs.deleteSuccess'))
     if (docStore.documents.length === 0 && docStore.currentPage > 1) {
       docStore.currentPage -= 1
     }
     await loadDocumentList()
   } catch (error: unknown) {
     if (error === 'cancel' || error === 'close') return
-    ElMessage.error(docStore.error || '删除文档失败')
+    ElMessage.error(docStore.error || t('docs.deleteFailed'))
   }
 }
 
@@ -310,6 +326,9 @@ onMounted(() => {
 .doc-table { cursor: pointer; }
 .doc-title-link { color: #409eff; cursor: pointer; }
 .doc-title-link:hover { text-decoration: underline; }
+.collection-link { color: #409eff; cursor: pointer; text-decoration: none; }
+.collection-link:hover { text-decoration: underline; }
+.no-collection { color: #c0c4cc; }
 
 .recall-list { max-height: 500px; overflow-y: auto; }
 .recall-item { border-bottom: 1px solid #eee; padding: 12px 0; }

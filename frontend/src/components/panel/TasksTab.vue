@@ -598,11 +598,6 @@ const isAutonomousMode = computed(() => {
   return status === 'autonomous_wait' || status === 'autonomous_working'
 })
 
-// 计算属性：是否正在执行中（用于 UI 指示器）
-const isAutonomousWorking = computed(() => {
-  return taskStore.currentTask?.status === 'autonomous_working'
-})
-
 // 辅助函数：判断是否为自动运行相关状态
 const isAutonomousStatus = (status: string): boolean => {
   return status === 'autonomous_wait' || status === 'autonomous_working'
@@ -1230,21 +1225,6 @@ marked.setOptions({
   breaks: true, // 支持 GitHub 风格的换行
   gfm: true, // 启用 GitHub Flavored Markdown
 })
-
-// 渲染 Markdown 内容（基础渲染，不含 Mermaid）
-const renderMarkdown = (content: string): string => {
-  if (!content) return ''
-  try {
-    return markdownFormatter.formatMessage(content)
-  } catch (error) {
-    console.error('Markdown parsing error:', error)
-    return content
-      .replace(/&/g, '&')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/\n/g, '<br>')
-  }
-}
 
 // 检测内容是否包含 Mermaid 代码块
 const containsMermaid = (content: string): boolean => {

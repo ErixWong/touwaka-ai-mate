@@ -91,39 +91,9 @@ marked.use({
   }
 })
 
-const lines = computed(() => {
-  if (!props.contentText) return []
-  return props.contentText.split('\n')
-})
-
-const sectionsWithContent = computed(() => {
-  if (!props.sections || props.sections.length === 0) return []
-  
-  return props.sections.map(section => {
-    let content = ''
-    if (section.start_line !== undefined && section.end_line !== undefined && lines.value.length > 0) {
-      content = lines.value.slice(section.start_line, section.end_line + 1).join('\n')
-    } else if (section.content) {
-      content = section.content
-    }
-    console.debug(`[DocumentContentViewer] section="${section.title}", lines=${section.start_line}-${section.end_line}, totalLines=${lines.value.length}, contentLen=${content.length}`)
-    return {
-      ...section,
-      content
-    }
-  })
-})
-
 const renderedContent = computed(() => {
   if (!props.contentText) return ''
   return markdownFormatter.formatMessage(props.contentText)
-})
-
-const renderedSections = computed(() => {
-  return sectionsWithContent.value.map(section => ({
-    ...section,
-    renderedContent: section.content ? marked.parse(section.content) as string : ''
-  }))
 })
 
 const treeData = computed(() => {

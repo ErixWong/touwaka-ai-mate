@@ -57,7 +57,7 @@ import { useToolDataParser } from '@/composables/useToolDataParser'
 import { formatRelativeTime } from '@/composables/useTimeFormatter'
 import type { ChatMessage } from './ChatWindow.vue'
 
-const props = defineProps<{
+defineProps<{
   message: ChatMessage
   allMessages: ChatMessage[]
   expertAvatar?: string

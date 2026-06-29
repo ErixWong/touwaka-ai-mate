@@ -1,10 +1,12 @@
 /**
  * 简单的事件总线，用于组件间通信
  */
-class EventBus {
-  private listeners: Map<string, Set<(...args: any[]) => void>> = new Map()
+type EventCallback = (...args: unknown[]) => void
 
-  on(event: string, callback: (...args: any[]) => void) {
+class EventBus {
+  private listeners: Map<string, Set<EventCallback>> = new Map()
+
+  on(event: string, callback: EventCallback) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set())
     }
@@ -16,7 +18,7 @@ class EventBus {
     }
   }
 
-  emit(event: string, ...args: any[]) {
+  emit(event: string, ...args: unknown[]) {
     this.listeners.get(event)?.forEach(callback => {
       try {
         callback(...args)
@@ -26,7 +28,7 @@ class EventBus {
     })
   }
 
-  off(event: string, callback: (...args: any[]) => void) {
+  off(event: string, callback: EventCallback) {
     this.listeners.get(event)?.delete(callback)
   }
 }

@@ -24,14 +24,14 @@ import FieldRenderer from '@/components/apps/FieldRenderer.vue'
 
 const props = defineProps<{
   field: AppField
-  modelValue: Record<string, any>
+  modelValue: Record<string, unknown>
   readonly?: boolean
 }>()
 
 const emit = defineEmits(['update:model-value'])
 
-function handleSubFieldUpdate(name: string, value: any) {
-  const current = { ...props.modelValue }
+function handleSubFieldUpdate(name: string, value: unknown) {
+  const current: Record<string, unknown> = { ...props.modelValue }
   current[name] = value
   emit('update:model-value', current)
 }
