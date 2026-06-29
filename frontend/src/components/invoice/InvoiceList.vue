@@ -285,14 +285,14 @@ async function handleBatchDelete() {
       ElMessage.success(`已成功删除 ${successCount} 条记录`)
     } else {
       ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条`)
-      // 弹窗展示完整失败明细，便于审计与排障
-      const failDetailHtml = failedInvoices
-        .map((inv, i) => `<p>${i + 1}. ${inv}</p>`)
-        .join('')
+      // 使用纯文本展示失败明细，避免将发票号作为 HTML 渲染带来的注入风险
+      const failDetailText = failedInvoices
+        .map((inv, i) => `${i + 1}. ${inv}`)
+        .join('\n')
       ElMessageBox.alert(
-        `<div><p><strong>成功：${successCount} 条</strong></p><p><strong>失败：${failCount} 条</strong></p><hr/>${failDetailHtml}</div>`,
+        `成功：${successCount} 条\n失败：${failCount} 条\n\n失败明细：\n${failDetailText}`,
         '批量删除结果',
-        { dangerouslyUseHTMLString: true, confirmButtonText: '我知道了', type: 'warning' }
+        { confirmButtonText: '我知道了', type: 'warning' }
       ).catch(() => { /* 用户关闭弹窗 */ })
     }
   } catch (e: any) {
