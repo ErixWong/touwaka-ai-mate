@@ -12,6 +12,9 @@
     "backup": {
       "export": "backup/export.js",
       "import": "backup/import.js"
+    },
+    "server": {
+      "routes": "server/routes.js"
     }
   },
   "keywords": [
@@ -47,10 +50,11 @@
       "label": "合同类型",
       "type": "select",
       "options": [
+        "sales",
+        "supply",
         "strategy",
         "framework",
         "development",
-        "supply",
         "purchase",
         "quality",
         "nda",
@@ -185,6 +189,22 @@
       "org_tree",
       "versions",
       "dashboard"
+    ],
+    "contract_types": [
+      {
+        "id": "sales",
+        "name": "销售合同",
+        "description": "与客户签订的合同",
+        "collection_name": "销售合同",
+        "metadata_fields": ["客户", "合同名称", "合同编号", "甲方", "乙方", "生效日期", "版本号"]
+      },
+      {
+        "id": "supply",
+        "name": "供货合同",
+        "description": "与供应商签订的合同",
+        "collection_name": "供货合同",
+        "metadata_fields": ["供应商", "交货日期", "合同金额", "版本号"]
+      }
     ],
     "supported_formats": [
       ".pdf",
@@ -372,6 +392,7 @@
     { "path": "/contracts/:contractId", "methods": ["GET"], "handler": "server/controllers/contracts.js" },
     { "path": "/contracts/:contractId", "methods": ["PUT"], "handler": "server/controllers/contracts.js" },
     { "path": "/contracts/:contractId", "methods": ["DELETE"], "handler": "server/controllers/contracts.js" },
+    { "path": "/contracts/:contractId/versions/from-attachment", "methods": ["POST"], "handler": "server/controllers/version-from-attachment.js" },
     { "path": "/dashboard", "methods": ["GET"], "handler": "server/controllers/dashboard.js" }
   ],
   "visibility": "all"

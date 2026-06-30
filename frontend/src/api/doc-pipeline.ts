@@ -32,9 +32,22 @@ export interface DocPipelineMcpStage {
   }
   judge: DocPipelineJudge
   provider_name?: string
-  mcp_timeout_ms?: number
-  poll_request_timeout_ms?: number
-  poll_interval_ms?: number
+  // 阶段字段优先，系统设置兜底：pending_ocr 使用 MCP 内部超时，ocr_processing 使用 poll_interval_ms
+}
+
+// OCR 轮询阶段专用类型（包含 poll_interval_ms）
+export interface DocPipelineOcrProcessingStage {
+  enabled: boolean
+  type: string
+  mcp: {
+    server: string
+    tool: string
+    params_mapping: Record<string, string>
+    params?: Record<string, unknown>
+  }
+  judge: DocPipelineJudge
+  // 轮询间隔毫秒数
+  poll_interval_ms: number
 }
 
 export interface DocPipelineOcrFinalize {
@@ -48,7 +61,7 @@ export interface DocPipelineOcrFinalize {
   download_deliverable_tool: string | null
   persist_raw_result: boolean
   persist_image_attachments: boolean
-  mcp_timeout_ms: number
+  // 阶段字段优先，系统设置兜底：使用 MCP 内部超时
   judge: DocPipelineJudge
 }
 
@@ -65,7 +78,10 @@ export interface DocPipelineCleanStage {
     remove_garbled_text: boolean
     remove_header_footer: boolean
   }
-  timeout_ms: number
+  // 统一使用 llm_timeout_ms 作为主字段
+  llm_timeout_ms: number
+  // timeout_ms 仅保留兼容（旧数据迁移用），不再作为主字段
+  timeout_ms?: number
 }
 
 export interface DocPipelineOutlineStage {
@@ -79,8 +95,10 @@ export interface DocPipelineOutlineStage {
   max_heading_level: number
   preserve_line_info: boolean
   deduplicate_titles: boolean
-  timeout_ms: number
-  llm_timeout_ms?: number
+  // 统一使用 llm_timeout_ms 作为主字段
+  llm_timeout_ms: number
+  // timeout_ms 仅保留兼容（旧数据迁移用），不再作为主字段
+  timeout_ms?: number
 }
 
 export interface DocPipelineChunkStage {
@@ -99,7 +117,9 @@ export interface DocPipelineEmbeddingStage {
   batch_size: number
   skip_empty_chunks: boolean
   retry_times: number
+  // 统一使用 embedding_timeout_ms 作为主字段
   embedding_timeout_ms: number
+  // timeout_ms 仅保留兼容（旧数据迁移用），不再作为主字段
   timeout_ms?: number
 }
 
@@ -111,7 +131,7 @@ export interface DocPipelineMeta {
 export interface DocPipelineConfig {
   meta: DocPipelineMeta
   pending_ocr: DocPipelineMcpStage
-  ocr_processing: DocPipelineMcpStage
+  ocr_processing: DocPipelineOcrProcessingStage
   ocr_finalize: DocPipelineOcrFinalize
   pending_clean: DocPipelineCleanStage
   pending_outline: DocPipelineOutlineStage

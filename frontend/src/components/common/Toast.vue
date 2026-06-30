@@ -1,8 +1,10 @@
 <template>
-  <!-- Element Plus ElMessage 不需要模板，由 store 直接调用 -->
+  <div style="display:none"></div>
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'AppToast' })
+
 import { watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useToastStore } from '@/stores/toast'

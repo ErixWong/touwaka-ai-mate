@@ -29,7 +29,7 @@
 规则：
 
 - 如果文档是“现行 app 平台怎么做”的实现说明，优先放这里。
-- 如果文档是 App 平台的设计阶段材料，放到 `docs/design/app-platform/`。
+- 如果文档是 App 平台的历史设计阶段材料，优先放到 `docs/apps/historical/` 或 `docs/design/archive/`，不再新增独立 `docs/design/app-platform/`。
 
 ### 4. `docs/design/`
 
@@ -40,7 +40,6 @@
 ```text
 design/
 ├── core/
-├── app-platform/
 ├── doc-platform/
 ├── topics/
 ├── drafts/
@@ -65,20 +64,7 @@ design/
 - 新增核心主线设计时，优先判断是否属于 `phase1/phase2` 的延续；若是，则进入对应子目录。
 - 不再把 `phase1/phase2` 直接挂在 `design/` 根目录下。
 
-### 2. `app-platform/`
-
-用于放置 App 平台主线设计与其紧密相关的专题设计。
-
-包含：
-
-- 原 `phase3/` 主线文档（现已拍平到 `app-platform/` 根层）
-- App 平台的评审、就绪度、ADR 等平台治理材料
-
-规则：
-
-- App 平台主线设计直接放在 `app-platform/` 根层。
-- 与 App 平台直接绑定、且不适合进入 `docs/apps/` 当前实现手册的内容，放这里。
-### 3. `topics/`
+### 2. `topics/`
 
 用于放置跨阶段横切专题设计。
 
@@ -96,7 +82,7 @@ design/
 - 不属于某一阶段主线，但主题边界清晰、可以独立维护的设计，放入 `topics/`。
 - 新增专题时，优先创建语义化子目录，不再新增 `parse5`、`parse6` 一类目录。
 
-### 4. `doc-platform/`
+### 3. `doc-platform/`
 
 用于放置**当前已经落地**的文档平台实现说明。
 
@@ -111,15 +97,15 @@ design/
 - 这里只有在代码里已经存在的文档平台实现说明。
 - 未落地的文档智能产品设想，仍应保留在 `drafts/`，不能替代现有实现说明。
 
-### 5. `drafts/`
+### 4. `drafts/`
 
 放置尚未稳定、仍在探索中的草稿或工作文档。
 
 规则：
 
-- 草稿成熟后，要么进入 `core/`、`app-platform/` 或 `topics/`，要么归档。
+- 草稿成熟后，要么进入 `core/`、`topics/`，要么归档；App 平台现行说明应进入 `docs/apps/`。
 
-### 6. `archive/`
+### 5. `archive/`
 
 放置已完成使命的历史材料。
 
@@ -138,7 +124,7 @@ design/
 - `core/phase1/`
 - `core/phase2/`
 
-其中 `phase3/` 已进一步拍平到 `app-platform/` 根层，不再保留单独目录层级。
+其中 `phase3/` 不再保留为现行目录层级；相关历史材料应迁入 `docs/apps/historical/` 或 `docs/design/archive/`。
 
 ### 2. `parse4/`
 
@@ -172,7 +158,7 @@ design/
 
 ## 六、目录命名规则
 
-- 外层目录统一使用语义化命名：`core`、`app-platform`、`topics`、`drafts`、`archive`
+- 外层目录统一使用语义化命名：`core`、`doc-platform`、`topics`、`drafts`、`archive`
 - 阶段号只保留在确有必要的子目录层：当前为 `phase1`、`phase2`
 - 不再新增新的 `parse{n}` 命名
 - 不再使用 `v1` / `v2` 指代阶段目录
@@ -190,19 +176,22 @@ design/
    - 是：放 `docs/apps/`
 4. 这是系统核心主线设计吗？
    - 是：放 `docs/design/core/` 或对应 `phase1/phase2/`
-5. 这是 App 平台主线或其直属专题吗？
-   - 是：放 `docs/design/app-platform/`
-6. 这是跨阶段专题设计吗？
+5. 这是 App 平台当前实现手册吗？
+   - 是：放 `docs/apps/`
+6. 这是 App 平台历史设计材料吗？
+   - 是：放 `docs/apps/historical/` 或 `docs/design/archive/`
+7. 这是跨阶段专题设计吗？
    - 是：放 `docs/design/topics/<topic>/`
-7. 这是探索稿吗？
+8. 这是探索稿吗？
    - 是：放 `docs/design/drafts/`
-8. 这是历史材料吗？
+9. 这是历史材料吗？
    - 是：放 `docs/design/archive/`
 
 ## 八、当前治理结论
 
 - `core/` 是系统主线架构与基础设施设计的主入口。
-- `app-platform/` 是 App 平台设计的主入口。
+- `docs/apps/` 是 App 平台当前实现的主入口。
+- App 平台旧设计稿不再保留独立主入口。
 - `topics/` 是跨阶段专题设计的统一收纳层。
 - 当前优先级是用语义化目录稳定结构，减少继续新增阶段命名的冲动。
 
@@ -214,4 +203,4 @@ design/
 
 ---
 
-*最后更新: 2026-06-20*
+*最后更新: 2026-06-27*

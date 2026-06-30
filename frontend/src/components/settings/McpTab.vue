@@ -281,7 +281,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useToastStore } from '@/stores/toast'
-import { mcpApi, type McpServer, type McpToolCache, type McpUserCredential, type McpCredential } from '@/api/services'
+import { mcpApi, type McpServer, type McpToolCache, type McpUserCredential, type McpCredential, type UpdateMcpServerRequest } from '@/api/services'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -289,6 +289,37 @@ const toast = useToastStore()
 
 // 是否为管理员
 const isAdmin = computed(() => userStore.isAdmin)
+
+type McpTransportTypeLocal = 'stdio' | 'http' | 'sse' | 'statelessHttp'
+
+type ToolSchemaProperty = {
+  type?: string
+  description?: string
+  default?: unknown
+}
+
+type ToolSchema = {
+  properties?: Record<string, ToolSchemaProperty>
+  required?: string[]
+}
+
+type TestSchemaField = {
+  name: string
+  type: string
+  description: string
+  required: boolean
+  default: string
+}
+
+type McpToolRuntime = McpToolCache & {
+  input_schema?: string | ToolSchema
+}
+
+type McpServersResponse = { servers?: McpServer[] } | McpServer[] | null
+
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
 
 // Server 列表状态
 const loading = ref(false)
@@ -301,7 +332,7 @@ const showServerDialog = ref(false)
 const editingServer = ref<McpServer | null>(null)
 const serverForm = reactive({
   name: '',
-  transport_type: 'stdio' as 'stdio' | 'http' | 'sse',
+  transport_type: 'stdio' as McpTransportTypeLocal,
   // STDIO 字段
   command: '',
   args: '',
@@ -327,7 +358,7 @@ const isServerFormValid = computed(() => {
 })
 
 const isStdioMode = computed(() => serverForm.transport_type === 'stdio')
-const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse' || serverForm.transport_type === ('statelessHttp' as any))
+const isHttpMode = computed(() => serverForm.transport_type === 'http' || serverForm.transport_type === 'sse' || serverForm.transport_type === 'statelessHttp')
 
 // Server 删除对话框
 const showDeleteServerDialog = ref(false)
@@ -357,10 +388,10 @@ const defaultCredentialForm = reactive({
 const loadServers = async () => {
   loading.value = true
   try {
-    const result = await mcpApi.getServers()
-    servers.value = (result as any)?.servers || result as any || []
-  } catch (error: any) {
-    toast.error(t('settings.mcp.loadServersFailed') + ': ' + error.message)
+    const result = await mcpApi.getServers() as McpServersResponse
+    servers.value = Array.isArray(result) ? result : result?.servers || []
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.loadServersFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     loading.value = false
   }
@@ -384,9 +415,10 @@ const selectServer = (server: McpServer) => {
 const loadServerTools = async (serverId: string) => {
   toolsLoading.value = true
   try {
-    serverTools.value = (await mcpApi.getServerTools(serverId) as any)?.tools || []
-  } catch (error: any) {
-    toast.error(t('settings.mcp.loadToolsFailed') + ': ' + error.message)
+    const result = await mcpApi.getServerTools(serverId)
+    serverTools.value = result?.tools || []
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.loadToolsFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     toolsLoading.value = false
   }
@@ -400,8 +432,8 @@ const refreshTools = async () => {
     const result = await mcpApi.refreshTools(selectedServer.value.id)
     serverTools.value = result.tools
     toast.success(result.message || t('settings.mcp.refreshToolsSuccess'))
-  } catch (error: any) {
-    toast.error(t('settings.mcp.refreshToolsFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.refreshToolsFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     toolsLoading.value = false
   }
@@ -409,14 +441,14 @@ const refreshTools = async () => {
 
 // 测试工具
 const showTestToolDialog = ref(false)
-const testingTool = ref<any>(null)
+const testingTool = ref<McpToolRuntime | null>(null)
 const testToolArgs = ref('{}')
 const testToolResult = ref<string | null>(null)
 const testToolLoading = ref(false)
-const testToolSchemaFields = ref<any[]>([])
+const testToolSchemaFields = ref<TestSchemaField[]>([])
 const testFieldValues = ref<Record<string, string>>({})
 
-function deepParseJson(val: any): any {
+function deepParseJson(val: unknown): unknown {
   if (typeof val === 'string') {
     try {
       const parsed = JSON.parse(val)
@@ -427,7 +459,7 @@ function deepParseJson(val: any): any {
   }
   if (Array.isArray(val)) return val.map(deepParseJson)
   if (val && typeof val === 'object') {
-    const obj: Record<string, any> = {}
+    const obj: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(val)) {
       obj[k] = deepParseJson(v)
     }
@@ -436,17 +468,17 @@ function deepParseJson(val: any): any {
   return val
 }
 
-function formatToolResult(result: any): string {
+function formatToolResult(result: unknown): string {
   if (!result) return ''
   // 驻留进程已经提取了 content 为字符串，需要递归解析多层转义
-  if (typeof result.content === 'string') {
-    const parsed = deepParseJson(result.content)
+  if (typeof result === 'object' && result !== null && 'content' in result && typeof Reflect.get(result, 'content') === 'string') {
+    const parsed = deepParseJson(Reflect.get(result, 'content'))
     return JSON.stringify(parsed, null, 2)
   }
   return JSON.stringify(deepParseJson(result), null, 2)
 }
 
-const openTestToolDialog = (tool: any) => {
+const openTestToolDialog = (tool: McpToolRuntime) => {
   testingTool.value = tool
   testToolResult.value = null
   testFieldValues.value = {}
@@ -455,15 +487,15 @@ const openTestToolDialog = (tool: any) => {
 
   // 从 input_schema 自动解析字段
   try {
-    const schema = typeof tool.input_schema === 'string' ? JSON.parse(tool.input_schema) : tool.input_schema
+    const schema: ToolSchema = typeof tool.input_schema === 'string' ? JSON.parse(tool.input_schema) : (tool.input_schema || {})
     if (schema?.properties) {
       const required = schema.required || []
-      testToolSchemaFields.value = Object.entries(schema.properties).map(([name, def]: [string, any]) => ({
+      testToolSchemaFields.value = Object.entries(schema.properties).map(([name, def]) => ({
         name,
         type: def.type || 'string',
         description: def.description || '',
         required: required.includes(name),
-        default: def.default ?? '',
+        default: typeof def.default === 'string' ? def.default : def.default == null ? '' : String(def.default),
       }))
       // 填充默认值
       for (const field of testToolSchemaFields.value) {
@@ -481,7 +513,7 @@ const executeTestTool = async () => {
   testToolLoading.value = true
   testToolResult.value = null
   try {
-    let args: Record<string, any> = {}
+    let args: Record<string, unknown> = {}
     if (testToolSchemaFields.value.length > 0) {
       // 从表单字段构建参数
       for (const field of testToolSchemaFields.value) {
@@ -499,10 +531,10 @@ const executeTestTool = async () => {
     } else {
       args = JSON.parse(testToolArgs.value || '{}')
     }
-    const result = await mcpApi.callTool(selectedServer.value.id, (testingTool.value as any).tool_name, args)
+    const result = await mcpApi.callTool(selectedServer.value.id, testingTool.value.tool_name, args)
     testToolResult.value = formatToolResult(result.result)
-  } catch (error: any) {
-    testToolResult.value = `Error: ${error.message}`
+  } catch (error: unknown) {
+    testToolResult.value = `Error: ${getErrorMessage(error, t('common.operationFailed'))}`
   } finally {
     testToolLoading.value = false
   }
@@ -517,8 +549,8 @@ const loadUserCredential = async (serverId: string) => {
     // credentials 是对象 { api_key: "xxx" }，转成 key=value 格式显示
     const creds = result?.credentials || {}
     userCredentialForm.env_overrides = Object.entries(creds).map(([k, v]) => `${k}=${v}`).join('\n')
-  } catch (error: any) {
-    toast.error(t('settings.mcp.loadCredentialFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.loadCredentialFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     credentialsLoading.value = false
   }
@@ -534,8 +566,8 @@ const saveUserCredential = async () => {
     })
     userCredential.value = result
     toast.success(t('settings.mcp.saveCredentialSuccess'))
-  } catch (error: any) {
-    toast.error(t('settings.mcp.saveCredentialFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.saveCredentialFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     credentialsSaving.value = false
   }
@@ -549,8 +581,8 @@ const deleteUserCredential = async () => {
     userCredential.value = null
     userCredentialForm.env_overrides = ''
     toast.success(t('settings.mcp.deleteCredentialSuccess'))
-  } catch (error: any) {
-    toast.error(t('settings.mcp.deleteCredentialFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.deleteCredentialFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   }
 }
 
@@ -563,8 +595,8 @@ const loadDefaultCredential = async (serverId: string) => {
     // credentials 是对象 { api_key: "xxx" }，转成 key=value 格式显示
     const creds = result?.credentials || {}
     defaultCredentialForm.env_overrides = Object.entries(creds).map(([k, v]) => `${k}=${v}`).join('\n')
-  } catch (error: any) {
-    toast.error(t('settings.mcp.loadDefaultCredentialFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.loadDefaultCredentialFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     defaultCredentialLoading.value = false
   }
@@ -580,8 +612,8 @@ const saveDefaultCredential = async () => {
     })
     defaultCredential.value = result
     toast.success(t('settings.mcp.saveDefaultCredentialSuccess'))
-  } catch (error: any) {
-    toast.error(t('settings.mcp.saveDefaultCredentialFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.saveDefaultCredentialFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   } finally {
     defaultCredentialSaving.value = false
   }
@@ -595,8 +627,8 @@ const deleteDefaultCredential = async () => {
     defaultCredential.value = null
     defaultCredentialForm.env_overrides = ''
     toast.success(t('settings.mcp.deleteDefaultCredentialSuccess'))
-  } catch (error: any) {
-    toast.error(t('settings.mcp.deleteDefaultCredentialFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.deleteDefaultCredentialFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   }
 }
 
@@ -643,7 +675,7 @@ const saveServer = async () => {
     const normalized_headers = serverForm.headers.trim() ? serverForm.headers : null
 
     // 构建请求数据 - 全量更新：表单里有什么就传什么
-    const requestData: any = {
+    const requestData: UpdateMcpServerRequest = {
       name: serverForm.name,
       transport_type: serverForm.transport_type,
       is_public: serverForm.is_public,
@@ -675,8 +707,8 @@ const saveServer = async () => {
     } else if (servers.value.length > 0) {
       selectedServer.value = servers.value[servers.value.length - 1] as McpServer
     }
-  } catch (error: any) {
-    toast.error(t('settings.mcp.saveServerFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.saveServerFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   }
 }
 
@@ -708,8 +740,8 @@ const deleteServer = async () => {
     closeDeleteServerDialog()
     closeServerDialog()
     toast.success(t('settings.mcp.deleteServerSuccess'))
-  } catch (error: any) {
-    toast.error(t('settings.mcp.deleteServerFailed') + ': ' + error.message)
+  } catch (error: unknown) {
+    toast.error(`${t('settings.mcp.deleteServerFailed')}: ${getErrorMessage(error, t('common.operationFailed'))}`)
   }
 }
 

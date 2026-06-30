@@ -162,7 +162,7 @@ export default {
 
     if (!file || !file.attachment) {
       logger.error(`[invoice-extract] Record ${record.id}: No file`);
-      return { success: false, error: '未找到发票文件' };
+      return { success: false, failure_code: 'no_file', error: '未找到发票文件' };
     }
 
     const fileName = file.attachment.file_name;
@@ -173,12 +173,12 @@ export default {
 
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
       logger.info(`[invoice-extract] Record ${record.id}: 图片文件，路由到VL视觉提取`);
-      return { success: false, target_state: 'pending_vl_extract', error: '图片文件路由到VL' };
+      return { success: false, failure_code: 'image_routed_to_vl', target_state: 'pending_vl_extract', error: '图片文件路由到VL' };
     }
 
     if (ext !== '.pdf') {
       logger.warn(`[invoice-extract] Record ${record.id}: 不支持的文件格式 ${ext}`);
-      return { success: false, error: `不支持的文件格式: ${ext}` };
+      return { success: false, failure_code: 'unsupported_format', error: `不支持的文件格式: ${ext}` };
     }
 
     let result;
@@ -187,12 +187,12 @@ export default {
     } catch (e) {
       logger.warn(`[invoice-extract] Record ${record.id}: fapiao异常 → ${e.message}`);
       logger.info(`[invoice-extract] Record ${record.id}: PDF fapiao失败，路由到VL`);
-      return { success: false, target_state: 'pending_vl_extract', error: `fapiao异常: ${e.message}` };
+      return { success: false, failure_code: 'fapiao_exception', target_state: 'pending_vl_extract', error: `fapiao异常: ${e.message}` };
     }
 
     if (!result) {
       logger.info(`[invoice-extract] Record ${record.id}: PDF fapiao返回空，路由到VL`);
-      return { success: false, target_state: 'pending_vl_extract', error: 'fapiao返回为空' };
+      return { success: false, failure_code: 'fapiao_empty', target_state: 'pending_vl_extract', error: 'fapiao返回为空' };
     }
 
     const data = result.data || result;
@@ -205,7 +205,7 @@ export default {
         extraction_status: 'failed',
         ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'fapiao did not extract valid invoice data' }),
       });
-      return { success: false, target_state: 'pending_vl_extract', error: 'not_invoice' };
+      return { success: false, failure_code: 'not_invoice', target_state: 'pending_vl_extract', error: 'not_invoice' };
     }
 
     const existing = await checkDuplicate(services, data.invoice_number, record.id);

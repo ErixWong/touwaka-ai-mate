@@ -8,6 +8,7 @@ const contractTypeLabels: Record<string, string> = {
   strategy: '战略合同',
   framework: '框架合同',
   development: '开发合同',
+  sales: '销售合同',
   supply: '供应合同',
   purchase: '采购合同',
   quality: '质量合同',
@@ -55,9 +56,6 @@ const processingStats = computed(() => {
 
 async function handleRefresh() {
   await store.loadDashboard()
-  if (store.contracts.length > 0) {
-    store.startPolling()
-  }
 }
 </script>
 

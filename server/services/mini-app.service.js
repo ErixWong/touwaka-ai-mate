@@ -1566,10 +1566,20 @@ ${JSON.stringify(listB, null, 2)}
   }
 
   isFullyAutonomousApp(appId) {
+    // contract-mgr-v2 has its own dedicated route system (/api/apps/contract-mgr-v2/*)
+    // that bypasses mini-app.service.js, so it should NOT go through the generic autonomous path
     return appId === 'invoice-mgr' || appId === 'contract-mgr';
   }
 
   getAutonomousAppConfig(appId) {
+    // Note: contract-mgr-v2 is NOT listed here because it has its own dedicated
+    // route system (/api/apps/contract-mgr-v2/*) that bypasses mini-app.service.js.
+    // It uses ContractV2Service directly with tables:
+    //   - contract_v2_main_records (main records)
+    //   - contract_v2_versions (versioning)
+    //   - app_contract_mgr_v2_content (OCR/processing state)
+    //   - app_contract_mgr_v2_rows (contract metadata)
+    // If you add contract-mgr-v2 here, it would interfere with its own system.
     if (appId === 'invoice-mgr') {
       return {
         table: 'app_invoice_mgr_records',
@@ -1906,12 +1916,19 @@ ${JSON.stringify(listB, null, 2)}
     const config = this.getAutonomousAppConfig(appId);
     const transaction = await this.db.sequelize.transaction();
     const records = [];
+    const skipped = [];
 
     try {
       for (const attId of attachmentIds) {
         const attachment = await this.models.Attachment.findByPk(attId);
-        if (!attachment) continue;
-        if (attachment.created_by && attachment.created_by !== userId) continue;
+        if (!attachment) {
+          skipped.push({ attachment_id: attId, reason: 'not_found' });
+          continue;
+        }
+        if (attachment.created_by && attachment.created_by !== userId) {
+          skipped.push({ attachment_id: attId, reason: 'permission_denied' });
+          continue;
+        }
 
         const recordId = Utils.newID(20);
 
@@ -1944,8 +1961,11 @@ ${JSON.stringify(listB, null, 2)}
       await transaction.commit();
       return {
         upload_time: new Date().toISOString(),
-        count: records.length,
+        requested_count: attachmentIds.length,
+        created_count: records.length,
+        skipped_count: skipped.length,
         records,
+        skipped,
       };
     } catch (err) {
       await transaction.rollback();

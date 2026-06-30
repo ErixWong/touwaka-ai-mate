@@ -166,6 +166,20 @@ const usageLoading = ref(false)
 const usageList = ref<InvitationUsage[]>([])
 const currentInvitation = ref<Invitation | null>(null)
 
+function getApiErrorMessage(cause: unknown, fallback: string) {
+  if (typeof cause === 'object' && cause !== null && 'response' in cause) {
+    const response = Reflect.get(cause, 'response')
+    if (typeof response === 'object' && response !== null && 'data' in response) {
+      const data = Reflect.get(response, 'data')
+      if (typeof data === 'object' && data !== null && 'message' in data) {
+        const message = Reflect.get(data, 'message')
+        if (typeof message === 'string' && message) return message
+      }
+    }
+  }
+  return cause instanceof Error ? cause.message : fallback
+}
+
 // 加载数据
 onMounted(async () => {
   await loadData()
@@ -196,8 +210,8 @@ const handleCreateInvitation = async () => {
     await createInvitation()
     alert(t('invitation.createSuccess'))
     await loadData()
-  } catch (err: any) {
-    const errorMsg = err.response?.data?.message || t('invitation.createError')
+  } catch (err: unknown) {
+    const errorMsg = getApiErrorMessage(err, t('invitation.createError'))
     alert(errorMsg)
   } finally {
     creating.value = false
@@ -233,8 +247,8 @@ const handleRevoke = async (invitation: Invitation) => {
     await revokeInvitation(invitation.id)
     alert(t('invitation.revokeSuccess'))
     await loadData()
-  } catch (err: any) {
-    const errorMsg = err.response?.data?.message || t('invitation.revokeError')
+  } catch (err: unknown) {
+    const errorMsg = getApiErrorMessage(err, t('invitation.revokeError'))
     alert(errorMsg)
   }
 }

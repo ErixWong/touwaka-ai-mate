@@ -153,10 +153,10 @@
                     </tbody>
                   </table>
                   <div v-if="csvTruncated" class="csv-truncated-hint">
-                    {{ $t('tasks.csvTruncated', { shown: CSV_MAX_ROWS, total: csvRows.length - 1 }) || `仅显示前 ${CSV_MAX_ROWS} 行，共 ${csvRows.length - 1} 行数据` }}
+                    {{ $t('tasks.csvTruncated', { shown: CSV_MAX_ROWS, total: csvRows.length - 1 }) }}
                   </div>
                   <div v-else-if="csvRows.length === 0" class="preview-unsupported">
-                    <p>{{ $t('tasks.csvEmpty') || 'CSV 文件为空或无法解析' }}</p>
+                    <p>{{ $t('tasks.csvEmpty') }}</p>
                   </div>
                 </div>
               </template>
@@ -186,9 +186,9 @@
               
               <!-- 不支持的类型 -->
               <div v-else class="preview-unsupported">
-                <p>{{ $t('tasks.previewNotSupported') || '暂不支持此文件类型预览' }}</p>
+                <p>{{ $t('tasks.previewNotSupported') }}</p>
                 <el-button type="primary" @click="handleDownload(previewFile!)">
-                  {{ $t('tasks.download') || '下载文件' }}
+                  {{ $t('tasks.download') }}
                 </el-button>
               </div>
             </template>
@@ -596,11 +596,6 @@ const isTogglingAutonomous = ref(false)
 const isAutonomousMode = computed(() => {
   const status = taskStore.currentTask?.status
   return status === 'autonomous_wait' || status === 'autonomous_working'
-})
-
-// 计算属性：是否正在执行中（用于 UI 指示器）
-const isAutonomousWorking = computed(() => {
-  return taskStore.currentTask?.status === 'autonomous_working'
 })
 
 // 辅助函数：判断是否为自动运行相关状态
@@ -1230,21 +1225,6 @@ marked.setOptions({
   breaks: true, // 支持 GitHub 风格的换行
   gfm: true, // 启用 GitHub Flavored Markdown
 })
-
-// 渲染 Markdown 内容（基础渲染，不含 Mermaid）
-const renderMarkdown = (content: string): string => {
-  if (!content) return ''
-  try {
-    return markdownFormatter.formatMessage(content)
-  } catch (error) {
-    console.error('Markdown parsing error:', error)
-    return content
-      .replace(/&/g, '&')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/\n/g, '<br>')
-  }
-}
 
 // 检测内容是否包含 Mermaid 代码块
 const containsMermaid = (content: string): boolean => {

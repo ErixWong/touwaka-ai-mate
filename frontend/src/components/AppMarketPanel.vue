@@ -180,7 +180,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getAppMarketIndex,
-  getAppManifest,
   checkAppDependencies,
   installAppFromMarket,
   uninstallAppFromMarket,
@@ -202,6 +201,10 @@ const emit = defineEmits<{
   installed: [appId: string]
   uninstalled: [appId: string]
 }>()
+
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
 
 // 状态
 const isLoading = ref(false)
@@ -241,12 +244,12 @@ const filteredApps = computed(() => {
   // 标记已安装和有更新的
   return apps.map(app => ({
     ...app,
-    hasUpdate: props.installedApps.includes(app.id) && appHasUpdate(app.id)
+    hasUpdate: props.installedApps.includes(app.id) && appHasUpdate()
   }))
 })
 
 // 检查应用是否有更新（简化版，实际需要调用 API）
-function appHasUpdate(appId: string): boolean {
+function appHasUpdate(): boolean {
   // 这里可以实现本地缓存的版本对比
   return false
 }
@@ -261,8 +264,8 @@ async function refreshIndex() {
   error.value = null
   try {
     index.value = await getAppMarketIndex()
-  } catch (err: any) {
-    error.value = err.message || 'Failed to load app market'
+  } catch (err: unknown) {
+    error.value = getErrorMessage(err, 'Failed to load app market')
   } finally {
     isLoading.value = false
   }
@@ -293,8 +296,8 @@ async function installApp(app: AppSummary) {
     await installAppFromMarket(app.id, 'all')
     emit('installed', app.id)
     toast.success(`${app.name} installed successfully`)
-  } catch (err: any) {
-    toast.error(`Installation failed: ${err.message}`)
+  } catch (err: unknown) {
+    toast.error(`Installation failed: ${getErrorMessage(err, 'Unknown error')}`)
   } finally {
     isInstalling.value = null
   }
@@ -311,20 +314,8 @@ async function uninstallApp(app: AppSummary) {
     await uninstallAppFromMarket(app.id, true)
     emit('uninstalled', app.id)
     toast.success(`${app.name} uninstalled successfully`)
-  } catch (err: any) {
-    toast.error(`Uninstallation failed: ${err.message}`)
-  }
-}
-
-// 查看详情
-async function showAppDetail(app: AppSummary) {
-  selectedApp.value = app
-  showDetail.value = true
-  try {
-    selectedAppManifest.value = await getAppManifest(app.id)
-    dependencyCheck.value = await checkAppDependencies(app.id)
-  } catch (err: any) {
-    console.error('Failed to load app detail:', err)
+  } catch (err: unknown) {
+    toast.error(`Uninstallation failed: ${getErrorMessage(err, 'Unknown error')}`)
   }
 }
 

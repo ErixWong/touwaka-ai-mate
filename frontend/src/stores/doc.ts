@@ -48,14 +48,28 @@ export const useDocStore = defineStore('doc', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
-  function shouldStopPollingForError(err: any) {
-    const status = err?.status
-    const message = String(err?.message || '').toLowerCase()
+  function getErrorMessage(cause: unknown, fallback: string) {
+    return cause instanceof Error ? cause.message : fallback
+  }
+
+  function getErrorStatus(cause: unknown) {
+    return typeof cause === 'object' && cause !== null && 'status' in cause
+      ? Reflect.get(cause, 'status')
+      : undefined
+  }
+
+  function shouldStopPollingForError(err: unknown) {
+    const status = getErrorStatus(err)
+    const message = String(causeToMessage(err)).toLowerCase()
     return status === 403
       || status === 404
       || message.includes('write access denied')
       || message.includes('document not found')
       || message.includes('access denied')
+  }
+
+  function causeToMessage(cause: unknown) {
+    return cause instanceof Error ? cause.message : ''
   }
 
   async function fetchDocuments(params?: { doc_type?: string; page?: number }) {
@@ -70,8 +84,8 @@ export const useDocStore = defineStore('doc', () => {
       documents.value = result.items
       total.value = result.total
       if (params?.page) currentPage.value = params.page
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load documents'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load documents')
     } finally {
       isLoading.value = false
     }
@@ -83,8 +97,8 @@ export const useDocStore = defineStore('doc', () => {
     try {
       currentDoc.value = await getDocument(documentId)
       return currentDoc.value
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load document'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load document')
       return null
     } finally {
       isLoading.value = false
@@ -97,8 +111,8 @@ export const useDocStore = defineStore('doc', () => {
     try {
       currentResult.value = await getDocumentResult(documentId)
       return currentResult.value
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load document result'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load document result')
       return null
     } finally {
       isLoading.value = false
@@ -110,8 +124,8 @@ export const useDocStore = defineStore('doc', () => {
     try {
       processingStatus.value = await getProcessingStatus(documentId)
       return processingStatus.value
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load processing status'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load processing status')
       return null
     }
   }
@@ -123,9 +137,9 @@ export const useDocStore = defineStore('doc', () => {
     if (isOcrStage || !processingStatus.value) {
       try {
         await syncOcr(documentId)
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (isOcrStage) {
-          error.value = e.message || 'Failed to sync OCR status'
+          error.value = getErrorMessage(e, 'Failed to sync OCR status')
           if (shouldStopPollingForError(e)) {
             stopPolling()
           }
@@ -135,8 +149,8 @@ export const useDocStore = defineStore('doc', () => {
     }
     try {
       return await fetchProcessing(documentId)
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load processing status'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load processing status')
       if (shouldStopPollingForError(e)) {
         stopPolling()
       }
@@ -190,8 +204,8 @@ export const useDocStore = defineStore('doc', () => {
     error.value = null
     try {
       versions.value = await listVersions(documentId)
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load versions'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load versions')
     } finally {
       isLoading.value = false
     }
@@ -202,8 +216,8 @@ export const useDocStore = defineStore('doc', () => {
     error.value = null
     try {
       contentTree.value = await getContentTree(documentId, versionId)
-    } catch (e: any) {
-      error.value = e.message || 'Failed to load content tree'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to load content tree')
     } finally {
       isLoading.value = false
     }
@@ -215,8 +229,8 @@ export const useDocStore = defineStore('doc', () => {
     try {
       recallResults.value = await recall(params)
       return recallResults.value
-    } catch (e: any) {
-      error.value = e.message || 'Recall failed'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Recall failed')
       return []
     } finally {
       isLoading.value = false
@@ -229,8 +243,8 @@ export const useDocStore = defineStore('doc', () => {
       await setCurrentVersion(documentId, versionId)
       await fetchVersions(documentId)
       await fetchDocument(documentId)
-    } catch (e: any) {
-      error.value = e.message || 'Failed to set current version'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to set current version')
     }
   }
 
@@ -239,8 +253,8 @@ export const useDocStore = defineStore('doc', () => {
     try {
       await transitionVersion(documentId, versionId, toStatus)
       await fetchVersions(documentId)
-    } catch (e: any) {
-      error.value = e.message || 'Failed to transition version'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to transition version')
     }
   }
 
@@ -253,8 +267,8 @@ export const useDocStore = defineStore('doc', () => {
         await fetchDocumentResult(currentDoc.value.id)
       }
       return result
-    } catch (e: any) {
-      error.value = e.message || 'Failed to extract outline'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to extract outline')
       return null
     }
   }
@@ -271,8 +285,8 @@ export const useDocStore = defineStore('doc', () => {
         }
       }
       return result
-    } catch (e: any) {
-      error.value = e.message || 'Failed to generate chunks'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to generate chunks')
       return null
     }
   }
@@ -284,8 +298,8 @@ export const useDocStore = defineStore('doc', () => {
       await fetchProcessing(documentId)
       await fetchDocumentResult(documentId)
       return result
-    } catch (e: any) {
-      error.value = e.message || 'Failed to retry processing'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to retry processing')
       return null
     }
   }
@@ -301,8 +315,8 @@ export const useDocStore = defineStore('doc', () => {
       if (currentResult.value?.document?.id === documentId) currentResult.value = null
       if (processingStatus.value?.document_id === documentId) processingStatus.value = null
       return true
-    } catch (e: any) {
-      error.value = e.message || 'Failed to delete document'
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to delete document')
       return false
     }
   }

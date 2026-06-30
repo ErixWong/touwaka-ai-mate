@@ -57,7 +57,7 @@ const accept = computed(() => {
 })
 
 const placeholder = computed(() => {
-  return (props.field as any).placeholder || '点击上传合同文件 (PDF/DOC/图片)'
+  return props.field.label || '点击上传合同文件 (PDF/DOC/图片)'
 })
 
 function triggerUpload() {

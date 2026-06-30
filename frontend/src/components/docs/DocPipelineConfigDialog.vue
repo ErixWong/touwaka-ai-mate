@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="文档预处理配置"
+    :title="tp('dialogTitle')"
     width="960px"
     :close-on-click-modal="false"
     @open="onOpen"
@@ -25,25 +25,25 @@
         <el-form :model="form" label-width="130px" size="small">
           <!-- pending_ocr -->
           <template v-if="activeStage === 'pending_ocr'">
-            <el-form-item label="执行方式"><el-tag size="small" type="info">mcp（固定）</el-tag></el-form-item>
-            <el-divider content-position="left">MCP 配置</el-divider>
-            <el-form-item label="MCP 服务">
-              <el-select v-model="form.pending_ocr.mcp.server" placeholder="选择 MCP 服务" clearable filterable>
+            <el-form-item :label="tp('executionMode')"><el-tag size="small" type="info">{{ tp('mcpFixed') }}</el-tag></el-form-item>
+            <el-divider content-position="left">{{ tp('mcpConfig') }}</el-divider>
+            <el-form-item :label="tp('mcpServer')">
+              <el-select v-model="form.pending_ocr.mcp.server" :placeholder="tp('selectMcpServer')" clearable filterable>
                 <el-option v-for="s in mcpServers" :key="s.id" :label="s.name" :value="s.name" />
               </el-select>
             </el-form-item>
-            <el-form-item label="提交工具名">
+            <el-form-item :label="tp('submitToolName')">
               <!-- 工具下拉未启用 clearable：OCR 流水线工具为关键配置项，误清空后缺少有效提醒手段，与 McpTargetConfig 参考实现保持一致 -->
               <el-select
                 v-model="form.pending_ocr.mcp.tool"
-                placeholder="选择工具"
+                :placeholder="tp('selectTool')"
                 filterable
                 :loading="toolCache[form.pending_ocr.mcp.server]?.loading"
                 :disabled="!form.pending_ocr.mcp.server"
               >
                 <el-option
                   v-if="form.pending_ocr.mcp.tool && isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)"
-                  :label="`历史值：${form.pending_ocr.mcp.tool}（当前缓存未命中）`"
+                  :label="tp('historicalValueMissing', { value: form.pending_ocr.mcp.tool })"
                   :value="form.pending_ocr.mcp.tool"
                   disabled
                 />
@@ -55,88 +55,86 @@
                 />
               </el-select>
               <div v-if="form.pending_ocr.mcp.tool && !isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool) && getToolDescription(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint tool-desc">
-                说明：{{ getToolDescription(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool) }}
+                 {{ tp('descriptionPrefix') }}{{ getToolDescription(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool) }}
               </div>
               <div v-if="form.pending_ocr.mcp.server && toolCache[form.pending_ocr.mcp.server]?.loaded && getToolOptions(form.pending_ocr.mcp.server).length === 0 && !isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint">
-                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+                 {{ tp('toolCacheEmpty') }}
               </div>
               <div v-if="form.pending_ocr.mcp.tool && isToolValueStale(form.pending_ocr.mcp.server, form.pending_ocr.mcp.tool)" class="tool-hint tool-stale">
-                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+                 {{ tp('toolValueStale') }}
               </div>
               <div v-if="form.pending_ocr.mcp.server && toolCache[form.pending_ocr.mcp.server]?.error" class="tool-hint tool-error">
-                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+                 {{ tp('toolListLoadFailed') }}
               </div>
             </el-form-item>
-            <el-form-item label="Provider 标识">
+            <el-form-item :label="tp('providerName')">
               <el-input v-model="form.pending_ocr.provider_name" placeholder="mineru" />
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_ocr.mcp_timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
-            <el-divider content-position="left">附件提取参数</el-divider>
+            <!-- 阶段字段优先，系统设置兜底：pending_ocr 使用 MCP 内部超时 -->
+            <el-divider content-position="left">{{ tp('attachmentParams') }}</el-divider>
             <el-form-item label="file_base64">
               <div class="param-row">
-                <el-tag size="small" type="info">附件 Base64</el-tag>
+                <el-tag size="small" type="info">{{ tp('attachmentBase64') }}</el-tag>
                 <span class="param-arrow">→</span>
                 <el-input v-model="form.pending_ocr.mcp.params_mapping.file_base64" placeholder="file_base64" class="param-mapping-input" />
               </div>
             </el-form-item>
             <el-form-item label="file_name">
               <div class="param-row">
-                <el-tag size="small" type="info">附件文件名</el-tag>
+                <el-tag size="small" type="info">{{ tp('attachmentFileName') }}</el-tag>
                 <span class="param-arrow">→</span>
                 <el-input v-model="form.pending_ocr.mcp.params_mapping.file_name" placeholder="file_name" class="param-mapping-input" />
               </div>
             </el-form-item>
-            <el-divider content-position="left">设定值参数</el-divider>
-            <el-form-item label="公式识别">
+            <el-divider content-position="left">{{ tp('settingParams') }}</el-divider>
+            <el-form-item :label="tp('formulaRecognition')">
               <div class="param-row">
                 <el-switch v-model="getParamSource('formula_enable').value" />
                 <span class="param-arrow">→</span>
                 <el-input v-model="form.pending_ocr.mcp.params_mapping.formula_enable" placeholder="formula_enable" class="param-mapping-input" />
               </div>
             </el-form-item>
-            <el-form-item label="表格识别">
+            <el-form-item :label="tp('tableRecognition')">
               <div class="param-row">
                 <el-switch v-model="getParamSource('table_enable').value" />
                 <span class="param-arrow">→</span>
                 <el-input v-model="form.pending_ocr.mcp.params_mapping.table_enable" placeholder="table_enable" class="param-mapping-input" />
               </div>
             </el-form-item>
-            <el-form-item label="图片分析">
+            <el-form-item :label="tp('imageAnalysis')">
               <div class="param-row">
                 <el-switch v-model="getParamSource('image_analysis').value" />
                 <span class="param-arrow">→</span>
                 <el-input v-model="form.pending_ocr.mcp.params_mapping.image_analysis" placeholder="image_analysis" class="param-mapping-input" />
               </div>
             </el-form-item>
-            <el-form-item label="语言">
+            <el-form-item :label="tp('language')">
               <div class="param-row lang-param-row">
                 <el-switch v-model="getParamSource('lang').enabled" />
                 <el-input
                   v-if="getParamSource('lang').enabled"
                   v-model="getParamSource('lang').value"
-                  placeholder="如: ch, en"
+                  :placeholder="tp('languagePlaceholder')"
                   class="lang-value-input"
                 />
                 <span class="param-arrow">→</span>
                 <el-input v-model="form.pending_ocr.mcp.params_mapping.lang" placeholder="lang" class="param-mapping-input" />
               </div>
-              <div v-if="!getParamSource('lang').enabled" class="param-hint">未启用时不传递 lang 参数</div>
+              <div v-if="!getParamSource('lang').enabled" class="param-hint">{{ tp('langDisabledHint') }}</div>
             </el-form-item>
-            <el-divider content-position="left">LLM 归一化</el-divider>
-            <el-form-item label="归一化模型">
-              <el-select v-model="form.pending_ocr.judge.model_id" placeholder="默认模型" clearable filterable>
+            <el-divider content-position="left">{{ tp('llmNormalization') }}</el-divider>
+            <el-form-item :label="tp('normalizedModel')">
+              <el-select v-model="form.pending_ocr.judge.model_id" :placeholder="tp('defaultModel')" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="温度">
+            <el-form-item :label="tp('temperature')">
               <el-input-number v-model="form.pending_ocr.judge.temperature" :min="0" :max="2" :step="0.1" />
             </el-form-item>
-            <el-form-item label="归一化提示词">
+            <el-form-item :label="tp('normalizationPrompt')">
               <el-input v-model="form.pending_ocr.judge.prompt_template" type="textarea" :rows="4" />
             </el-form-item>
-            <el-form-item label="输出 Schema (JSON)">
+            <el-form-item :label="tp('outputSchema')">
               <el-input
                 :model-value="schemaJson(form.pending_ocr.judge.output_schema)"
                 type="textarea" :rows="4"
@@ -149,24 +147,24 @@
 
           <!-- ocr_processing -->
           <template v-if="activeStage === 'ocr_processing'">
-            <el-form-item label="执行方式"><el-tag size="small" type="info">mcp（固定）</el-tag></el-form-item>
-            <el-divider content-position="left">MCP 配置</el-divider>
-            <el-form-item label="MCP 服务">
-              <el-select v-model="form.ocr_processing.mcp.server" placeholder="选择 MCP 服务" clearable filterable>
+            <el-form-item :label="tp('executionMode')"><el-tag size="small" type="info">{{ tp('mcpFixed') }}</el-tag></el-form-item>
+            <el-divider content-position="left">{{ tp('mcpConfig') }}</el-divider>
+            <el-form-item :label="tp('mcpServer')">
+              <el-select v-model="form.ocr_processing.mcp.server" :placeholder="tp('selectMcpServer')" clearable filterable>
                 <el-option v-for="s in mcpServers" :key="s.id" :label="s.name" :value="s.name" />
               </el-select>
             </el-form-item>
-            <el-form-item label="查询工具名">
+            <el-form-item :label="tp('queryToolName')">
               <el-select
                 v-model="form.ocr_processing.mcp.tool"
-                placeholder="选择工具"
+                :placeholder="tp('selectTool')"
                 filterable
                 :loading="toolCache[form.ocr_processing.mcp.server]?.loading"
                 :disabled="!form.ocr_processing.mcp.server"
               >
                 <el-option
                   v-if="form.ocr_processing.mcp.tool && isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)"
-                  :label="`历史值：${form.ocr_processing.mcp.tool}（当前缓存未命中）`"
+                  :label="tp('historicalValueMissing', { value: form.ocr_processing.mcp.tool })"
                   :value="form.ocr_processing.mcp.tool"
                   disabled
                 />
@@ -178,37 +176,35 @@
                 />
               </el-select>
               <div v-if="form.ocr_processing.mcp.tool && !isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool) && getToolDescription(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint tool-desc">
-                说明：{{ getToolDescription(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool) }}
+                 {{ tp('descriptionPrefix') }}{{ getToolDescription(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool) }}
               </div>
               <div v-if="form.ocr_processing.mcp.server && toolCache[form.ocr_processing.mcp.server]?.loaded && getToolOptions(form.ocr_processing.mcp.server).length === 0 && !isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint">
-                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+                 {{ tp('toolCacheEmpty') }}
               </div>
               <div v-if="form.ocr_processing.mcp.tool && isToolValueStale(form.ocr_processing.mcp.server, form.ocr_processing.mcp.tool)" class="tool-hint tool-stale">
-                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+                 {{ tp('toolValueStale') }}
               </div>
               <div v-if="form.ocr_processing.mcp.server && toolCache[form.ocr_processing.mcp.server]?.error" class="tool-hint tool-error">
-                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+                 {{ tp('toolListLoadFailed') }}
               </div>
             </el-form-item>
-            <el-form-item label="轮询间隔(ms)">
+            <el-form-item :label="tp('pollIntervalMs')">
               <el-input-number v-model="form.ocr_processing.poll_interval_ms" :min="1000" :step="1000" />
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.ocr_processing.poll_request_timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
-            <el-divider content-position="left">LLM 归一化</el-divider>
-            <el-form-item label="归一化模型">
-              <el-select v-model="form.ocr_processing.judge.model_id" placeholder="默认模型" clearable filterable>
+            <!-- 阶段字段优先，系统设置兜底：轮询间隔使用 poll_interval_ms，系统 fast_timeout 作为兜底 -->
+            <el-divider content-position="left">{{ tp('llmNormalization') }}</el-divider>
+            <el-form-item :label="tp('normalizedModel')">
+              <el-select v-model="form.ocr_processing.judge.model_id" :placeholder="tp('defaultModel')" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="温度">
+            <el-form-item :label="tp('temperature')">
               <el-input-number v-model="form.ocr_processing.judge.temperature" :min="0" :max="2" :step="0.1" />
             </el-form-item>
-            <el-form-item label="归一化提示词">
+            <el-form-item :label="tp('normalizationPrompt')">
               <el-input v-model="form.ocr_processing.judge.prompt_template" type="textarea" :rows="4" />
             </el-form-item>
-            <el-form-item label="输出 Schema (JSON)">
+            <el-form-item :label="tp('outputSchema')">
               <el-input
                 :model-value="schemaJson(form.ocr_processing.judge.output_schema)"
                 type="textarea" :rows="4"
@@ -221,24 +217,24 @@
 
           <!-- ocr_finalize -->
           <template v-if="activeStage === 'ocr_finalize'">
-            <el-divider content-position="left">MCP 配置</el-divider>
-            <el-form-item label="MCP 服务">
-              <el-select v-model="form.ocr_finalize.mcp.server" placeholder="选择 MCP 服务" clearable filterable>
+            <el-divider content-position="left">{{ tp('mcpConfig') }}</el-divider>
+            <el-form-item :label="tp('mcpServer')">
+              <el-select v-model="form.ocr_finalize.mcp.server" :placeholder="tp('selectMcpServer')" clearable filterable>
                 <el-option v-for="s in mcpServers" :key="s.id" :label="s.name" :value="s.name" />
               </el-select>
             </el-form-item>
-            <el-divider content-position="left">产物工具</el-divider>
-            <el-form-item label="默认主产物工具">
+            <el-divider content-position="left">{{ tp('deliverableTools') }}</el-divider>
+            <el-form-item :label="tp('defaultPrimaryDeliverableTool')">
               <el-select
                 v-model="form.ocr_finalize.default_deliverable_tool"
-                placeholder="选择工具"
+                :placeholder="tp('selectTool')"
                 filterable
                 :loading="toolCache[form.ocr_finalize.mcp.server]?.loading"
                 :disabled="!form.ocr_finalize.mcp.server"
               >
                 <el-option
                   v-if="form.ocr_finalize.default_deliverable_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)"
-                  :label="`历史值：${form.ocr_finalize.default_deliverable_tool}（当前缓存未命中）`"
+                  :label="tp('historicalValueMissing', { value: form.ocr_finalize.default_deliverable_tool })"
                   :value="form.ocr_finalize.default_deliverable_tool"
                   disabled
                 />
@@ -250,29 +246,29 @@
                 />
               </el-select>
               <div v-if="form.ocr_finalize.default_deliverable_tool && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool) && getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint tool-desc">
-                说明：{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool) }}
+                 {{ tp('descriptionPrefix') }}{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool) }}
               </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint">
-                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+                 {{ tp('toolCacheEmpty') }}
               </div>
               <div v-if="form.ocr_finalize.default_deliverable_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.default_deliverable_tool)" class="tool-hint tool-stale">
-                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+                 {{ tp('toolValueStale') }}
               </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.error" class="tool-hint tool-error">
-                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+                 {{ tp('toolListLoadFailed') }}
               </div>
             </el-form-item>
-            <el-form-item label="交付物列表工具">
+            <el-form-item :label="tp('deliverableListTool')">
               <el-select
                 v-model="form.ocr_finalize.list_deliverables_tool"
-                placeholder="选择工具"
+                :placeholder="tp('selectTool')"
                 filterable
                 :loading="toolCache[form.ocr_finalize.mcp.server]?.loading"
                 :disabled="!form.ocr_finalize.mcp.server"
               >
                 <el-option
                   v-if="form.ocr_finalize.list_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)"
-                  :label="`历史值：${form.ocr_finalize.list_deliverables_tool}（当前缓存未命中）`"
+                  :label="tp('historicalValueMissing', { value: form.ocr_finalize.list_deliverables_tool })"
                   :value="form.ocr_finalize.list_deliverables_tool"
                   disabled
                 />
@@ -284,29 +280,29 @@
                 />
               </el-select>
               <div v-if="form.ocr_finalize.list_deliverables_tool && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool) && getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint tool-desc">
-                说明：{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool) }}
+                 {{ tp('descriptionPrefix') }}{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool) }}
               </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint">
-                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+                 {{ tp('toolCacheEmpty') }}
               </div>
               <div v-if="form.ocr_finalize.list_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.list_deliverables_tool)" class="tool-hint tool-stale">
-                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+                 {{ tp('toolValueStale') }}
               </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.error" class="tool-hint tool-error">
-                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+                 {{ tp('toolListLoadFailed') }}
               </div>
             </el-form-item>
-            <el-form-item label="图片产物工具">
+            <el-form-item :label="tp('imageDeliverableTool')">
               <el-select
                 v-model="form.ocr_finalize.image_deliverables_tool"
-                placeholder="选择工具"
+                :placeholder="tp('selectTool')"
                 filterable
                 :loading="toolCache[form.ocr_finalize.mcp.server]?.loading"
                 :disabled="!form.ocr_finalize.mcp.server"
               >
                 <el-option
                   v-if="form.ocr_finalize.image_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)"
-                  :label="`历史值：${form.ocr_finalize.image_deliverables_tool}（当前缓存未命中）`"
+                  :label="tp('historicalValueMissing', { value: form.ocr_finalize.image_deliverables_tool })"
                   :value="form.ocr_finalize.image_deliverables_tool"
                   disabled
                 />
@@ -318,40 +314,37 @@
                 />
               </el-select>
               <div v-if="form.ocr_finalize.image_deliverables_tool && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool) && getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint tool-desc">
-                说明：{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool) }}
+                 {{ tp('descriptionPrefix') }}{{ getToolDescription(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool) }}
               </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.loaded && getToolOptions(form.ocr_finalize.mcp.server).length === 0 && !isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint">
-                当前服务暂无工具缓存，请先到 MCP 设置中刷新工具列表
+                 {{ tp('toolCacheEmpty') }}
               </div>
               <div v-if="form.ocr_finalize.image_deliverables_tool && isToolValueStale(form.ocr_finalize.mcp.server, form.ocr_finalize.image_deliverables_tool)" class="tool-hint tool-stale">
-                当前工具值不在所选服务的缓存列表中，请重新选择有效工具
+                 {{ tp('toolValueStale') }}
               </div>
               <div v-if="form.ocr_finalize.mcp.server && toolCache[form.ocr_finalize.mcp.server]?.error" class="tool-hint tool-error">
-                工具列表加载失败，请稍后重试或检查 MCP 服务接口状态
+                 {{ tp('toolListLoadFailed') }}
               </div>
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.ocr_finalize.mcp_timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
-            <el-form-item label="持久化原始结果">
+            <el-form-item :label="tp('persistRawResult')">
               <el-switch v-model="form.ocr_finalize.persist_raw_result" />
             </el-form-item>
-            <el-form-item label="持久化图片附件">
+            <el-form-item :label="tp('persistImageAttachments')">
               <el-switch v-model="form.ocr_finalize.persist_image_attachments" />
             </el-form-item>
-            <el-divider content-position="left">LLM 归一化</el-divider>
-            <el-form-item label="归一化模型">
-              <el-select v-model="form.ocr_finalize.judge.model_id" placeholder="默认模型" clearable filterable>
+            <el-divider content-position="left">{{ tp('llmNormalization') }}</el-divider>
+            <el-form-item :label="tp('normalizedModel')">
+              <el-select v-model="form.ocr_finalize.judge.model_id" :placeholder="tp('defaultModel')" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="温度">
+            <el-form-item :label="tp('temperature')">
               <el-input-number v-model="form.ocr_finalize.judge.temperature" :min="0" :max="2" :step="0.1" />
             </el-form-item>
-            <el-form-item label="归一化提示词">
+            <el-form-item :label="tp('normalizationPrompt')">
               <el-input v-model="form.ocr_finalize.judge.prompt_template" type="textarea" :rows="4" />
             </el-form-item>
-            <el-form-item label="输出 Schema (JSON)">
+            <el-form-item :label="tp('outputSchema')">
               <el-input
                 :model-value="schemaJson(form.ocr_finalize.judge.output_schema)"
                 type="textarea" :rows="4"
@@ -364,101 +357,121 @@
 
           <!-- pending_clean -->
           <template v-if="activeStage === 'pending_clean'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_clean.enabled" /></el-form-item>
-            <el-form-item label="执行方式">
+            <el-form-item :label="tp('enabled')"><el-switch v-model="form.pending_clean.enabled" /></el-form-item>
+            <el-form-item :label="tp('executionMode')">
               <el-select v-model="form.pending_clean.type">
-                <el-option label="内置 LLM" value="internal_llm" />
-                <el-option label="脚本" value="script" />
-                <el-option label="禁用" value="disabled" />
+                <el-option :label="tp('internalLlm')" value="internal_llm" />
+                <el-option :label="tp('script')" value="script" />
+                <el-option :label="tp('disabled')" value="disabled" />
               </el-select>
             </el-form-item>
-            <el-form-item label="模型">
-              <el-select v-model="form.pending_clean.model_id" placeholder="默认模型" clearable filterable>
+            <el-form-item :label="tp('model')">
+              <el-select v-model="form.pending_clean.model_id" :placeholder="tp('defaultModel')" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="温度">
+            <el-form-item :label="tp('temperature')">
               <el-input-number v-model="form.pending_clean.temperature" :min="0" :max="2" :step="0.1" />
             </el-form-item>
-            <el-form-item label="分块最大长度">
+            <el-form-item :label="tp('chunkMaxLength')">
               <el-input-number v-model="form.pending_clean.chunk_max_length" :min="500" :step="500" />
             </el-form-item>
-            <el-form-item label="清洗提示词">
+            <el-form-item :label="tp('timeoutMs')">
+              <el-input-number v-model="form.pending_clean.llm_timeout_ms" :min="60000" :step="30000" />
+              <div class="param-hint">{{ tp('taskTimeoutFallback') }}</div>
+            </el-form-item>
+            <el-form-item :label="tp('cleanPrompt')">
               <el-input v-model="form.pending_clean.prompt_template" type="textarea" :rows="4" />
             </el-form-item>
-            <el-divider content-position="left">清洗规则</el-divider>
-            <el-form-item label="移除页码"><el-switch v-model="form.pending_clean.rules.remove_page_number" /></el-form-item>
-            <el-form-item label="移水印"><el-switch v-model="form.pending_clean.rules.remove_watermark" /></el-form-item>
-            <el-form-item label="移除乱码"><el-switch v-model="form.pending_clean.rules.remove_garbled_text" /></el-form-item>
-            <el-form-item label="移除页眉页脚"><el-switch v-model="form.pending_clean.rules.remove_header_footer" /></el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_clean.timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
+            <el-divider content-position="left">{{ tp('cleaningRules') }}</el-divider>
+            <el-form-item :label="tp('removePageNumber')"><el-switch v-model="form.pending_clean.rules.remove_page_number" /></el-form-item>
+            <el-form-item :label="tp('removeWatermark')"><el-switch v-model="form.pending_clean.rules.remove_watermark" /></el-form-item>
+            <el-form-item :label="tp('removeGarbledText')"><el-switch v-model="form.pending_clean.rules.remove_garbled_text" /></el-form-item>
+            <el-form-item :label="tp('removeHeaderFooter')"><el-switch v-model="form.pending_clean.rules.remove_header_footer" /></el-form-item>
           </template>
 
           <!-- pending_outline -->
           <template v-if="activeStage === 'pending_outline'">
-            <el-form-item label="模型">
-              <el-select v-model="form.pending_outline.model_id" placeholder="默认模型" clearable filterable>
+            <el-form-item :label="tp('model')">
+              <el-select v-model="form.pending_outline.model_id" :placeholder="tp('defaultModel')" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="温度">
+            <el-form-item :label="tp('temperature')">
               <el-input-number v-model="form.pending_outline.temperature" :min="0" :max="2" :step="0.1" />
             </el-form-item>
-            <el-form-item label="窗口大小">
+            <el-form-item :label="tp('timeoutMs')">
+              <el-input-number v-model="form.pending_outline.llm_timeout_ms" :min="60000" :step="30000" />
+              <div class="param-hint">{{ tp('taskTimeoutFallback') }}</div>
+            </el-form-item>
+            <el-form-item :label="tp('windowSize')">
               <el-input-number v-model="form.pending_outline.window_size" :min="1000" :step="1000" />
             </el-form-item>
-            <el-form-item label="步长">
+            <el-form-item :label="tp('stepSize')">
               <el-input-number v-model="form.pending_outline.step_size" :min="1000" :step="1000" />
             </el-form-item>
-            <el-form-item label="最大标题层级">
+            <el-form-item :label="tp('maxHeadingLevel')">
               <el-input-number v-model="form.pending_outline.max_heading_level" :min="1" :max="10" :step="1" />
             </el-form-item>
-            <el-form-item label="标题去重"><el-switch v-model="form.pending_outline.deduplicate_titles" /></el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_outline.timeout_ms" :min="5000" :step="10000" />
-            </el-form-item>
+            <el-form-item :label="tp('deduplicateTitles')"><el-switch v-model="form.pending_outline.deduplicate_titles" /></el-form-item>
+            <!-- 章节提取参数说明面板 -->
+            <el-alert
+              :title="tp('outlineParamGuideTitle')"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-top: 12px;"
+            >
+              <template #default>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 12px; line-height: 1.6;">
+                   <li><strong>{{ tp('windowSize') }}</strong>{{ tp('outlineGuideWindow') }}</li>
+                   <li><strong>{{ tp('stepSize') }}</strong>{{ tp('outlineGuideStep') }}</li>
+                   <li><strong>{{ tp('maxHeadingLevel') }}</strong>{{ tp('outlineGuideHeading') }}</li>
+                   <li><strong>{{ tp('recommended') }}</strong>{{ tp('outlineGuideRecommended') }}</li>
+                </ul>
+              </template>
+            </el-alert>
           </template>
 
           <!-- pending_chunk -->
           <template v-if="activeStage === 'pending_chunk'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_chunk.enabled" /></el-form-item>
-            <el-form-item label="分块模式">
+            <el-form-item :label="tp('enabled')"><el-switch v-model="form.pending_chunk.enabled" /></el-form-item>
+            <el-form-item :label="tp('chunkMode')">
               <el-select v-model="form.pending_chunk.chunk_mode">
-                <el-option label="按标题" value="heading" />
-                <el-option label="按段落" value="paragraph" />
-                <el-option label="固定长度" value="fixed" />
-                <el-option label="混合策略" value="mixed" />
+                <el-option :label="tp('chunkModeHeading')" value="heading" />
+                <el-option :label="tp('chunkModeParagraph')" value="paragraph" />
+                <el-option :label="tp('chunkModeFixed')" value="fixed" />
+                <el-option :label="tp('chunkModeMixed')" value="mixed" />
               </el-select>
             </el-form-item>
-            <el-form-item label="最大长度">
+            <el-form-item :label="tp('maxLength')">
               <el-input-number v-model="form.pending_chunk.max_length" :min="100" :step="100" />
             </el-form-item>
-            <el-form-item label="重叠长度">
+            <el-form-item :label="tp('overlapLength')">
               <el-input-number v-model="form.pending_chunk.overlap_length" :min="0" :step="50" />
             </el-form-item>
-            <el-form-item label="保留标题"><el-switch v-model="form.pending_chunk.keep_heading" /></el-form-item>
-            <el-form-item label="合并小块"><el-switch v-model="form.pending_chunk.merge_small_chunks" /></el-form-item>
+            <el-form-item :label="tp('keepHeading')"><el-switch v-model="form.pending_chunk.keep_heading" /></el-form-item>
+            <el-form-item :label="tp('mergeSmallChunks')"><el-switch v-model="form.pending_chunk.merge_small_chunks" /></el-form-item>
           </template>
 
           <!-- pending_embedding -->
           <template v-if="activeStage === 'pending_embedding'">
-            <el-form-item label="启用"><el-switch v-model="form.pending_embedding.enabled" /></el-form-item>
-            <el-form-item label="嵌入模型">
-              <el-select v-model="form.pending_embedding.embedding_model_id" placeholder="默认模型" clearable filterable>
+            <el-form-item :label="tp('enabled')"><el-switch v-model="form.pending_embedding.enabled" /></el-form-item>
+            <el-form-item :label="tp('embeddingModel')">
+              <el-select v-model="form.pending_embedding.embedding_model_id" :placeholder="tp('defaultModel')" clearable filterable>
                 <el-option v-for="m in models" :key="m.id" :label="m.model_name" :value="m.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="批处理大小">
+            <el-form-item :label="tp('batchSize')">
               <el-input-number v-model="form.pending_embedding.batch_size" :min="1" :step="5" />
             </el-form-item>
-            <el-form-item label="跳过空块"><el-switch v-model="form.pending_embedding.skip_empty_chunks" /></el-form-item>
-            <el-form-item label="重试次数">
+            <el-form-item :label="tp('skipEmptyChunks')"><el-switch v-model="form.pending_embedding.skip_empty_chunks" /></el-form-item>
+            <el-form-item :label="tp('retryTimes')">
               <el-input-number v-model="form.pending_embedding.retry_times" :min="0" :max="10" :step="1" />
             </el-form-item>
-            <el-form-item label="超时(ms)">
-              <el-input-number v-model="form.pending_embedding.embedding_timeout_ms" :min="5000" :step="10000" />
+            <el-form-item :label="tp('timeoutMs')">
+              <el-input-number v-model="form.pending_embedding.embedding_timeout_ms" :min="10000" :step="10000" />
+              <div class="param-hint">{{ tp('fastTimeoutFallback') }}</div>
             </el-form-item>
           </template>
 
@@ -468,9 +481,9 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="resetStage">恢复默认</el-button>
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <el-button @click="resetStage">{{ tp('resetDefault') }}</el-button>
+        <el-button @click="visible = false">{{ tp('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!loadedFromBackend" @click="save">{{ tp('save') }}</el-button>
       </div>
     </template>
   </el-dialog>
@@ -478,6 +491,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { docPipelineApi, type DocPipelineConfig } from '@/api/doc-pipeline'
 import { mcpApi, type McpToolCache } from '@/api/services'
@@ -489,6 +503,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', val: boolean): void
 }>()
+const { t } = useI18n()
 
 const visible = ref(props.modelValue)
 watch(() => props.modelValue, (v) => { visible.value = v })
@@ -507,12 +522,13 @@ const stages = [
 const activeStage = ref('pending_ocr')
 const saving = ref(false)
 const loading = ref(false)
+const loadedFromBackend = ref(false)  // 配置是否成功从后端加载
 const schemaError = ref<Record<string, string>>({})
 
 const defaultForm: DocPipelineConfig = {
   meta: { version: 1, enabled: true },
   pending_ocr: {
-    enabled: true, type: 'mcp', provider_name: 'mineru', mcp_timeout_ms: 120000,
+    enabled: true, type: 'mcp', provider_name: 'mineru',
     mcp: {
       server: 'mineru',
       tool: 'create_task_from_file',
@@ -529,18 +545,20 @@ const defaultForm: DocPipelineConfig = {
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_processing: {
-    enabled: true, type: 'mcp', poll_request_timeout_ms: 120000, poll_interval_ms: 5000,
+    enabled: true, type: 'mcp', poll_interval_ms: 5000,
     mcp: { server: 'mineru', tool: 'get_task_status', params_mapping: { task_id: 'task_id' }, params: {} },
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   ocr_finalize: {
     enabled: true, mcp: { server: 'mineru' },
     default_deliverable_tool: 'get_default_deliverable', list_deliverables_tool: 'list_deliverables', image_deliverables_tool: 'get_image_deliverables',
-    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true, mcp_timeout_ms: 120000,
+    // 阶段字段优先：使用 MCP 内部超时
+    download_deliverable_tool: null, persist_raw_result: true, persist_image_attachments: true,
     judge: { model_id: null, temperature: 0.1, prompt_template: '', output_schema: {} },
   },
   pending_clean: {
-    enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, prompt_template: '', timeout_ms: 120000,
+    enabled: true, type: 'internal_llm', model_id: null, temperature: 0.3, chunk_max_length: 8000, llm_timeout_ms: 300000,
+    prompt_template: '',
     rules: { remove_page_number: true, remove_watermark: true, remove_garbled_text: true, remove_header_footer: true },
   },
   pending_outline: {
@@ -554,13 +572,19 @@ const defaultForm: DocPipelineConfig = {
     max_heading_level: 3,
     preserve_line_info: true,
     deduplicate_titles: true,
-    timeout_ms: 120000,
+    llm_timeout_ms: 300000,
   },
   pending_chunk: { enabled: true, type: 'builtin', chunk_mode: 'heading', max_length: 1000, overlap_length: 100, keep_heading: true, merge_small_chunks: false },
-  pending_embedding: { enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, embedding_timeout_ms: 120000 },
+  pending_embedding: {
+    enabled: true, embedding_model_id: null, batch_size: 20, skip_empty_chunks: true, retry_times: 3, embedding_timeout_ms: 120000,
+  },
 }
 
 const form = reactive<DocPipelineConfig>(JSON.parse(JSON.stringify(defaultForm)))
+
+function resetFormToDefaults() {
+  Object.assign(form, JSON.parse(JSON.stringify(defaultForm)))
+}
 
 const mcpServers = ref<{ id: string; name: string; is_enabled: boolean }[]>([])
 const models = ref<{ id: string; model_name: string }[]>([])
@@ -572,6 +596,10 @@ interface ToolCacheEntry {
   error: boolean
 }
 const toolCache = ref<Record<string, ToolCacheEntry>>({})
+
+function tp(key: string, params?: Record<string, unknown>) {
+  return t(`docs.workspace.pipeline.${key}`, params)
+}
 
 function getToolOptions(serverName: string): { label: string; value: string; description?: string }[] {
   const entry = toolCache.value[serverName]
@@ -645,7 +673,7 @@ function onSchemaInput(val: string, stage: 'pending_ocr' | 'ocr_processing' | 'o
     form[stage].judge.output_schema = JSON.parse(val)
     delete schemaError.value[stage]
   } catch {
-    schemaError.value[stage] = 'JSON 格式错误，已保留原值'
+    schemaError.value[stage] = tp('schemaInvalid')
   }
 }
 
@@ -682,13 +710,22 @@ async function loadMcpServers() {
   try {
     const res = await docPipelineApi.getMcpServers()
     mcpServers.value = res.servers || []
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.error('Failed to load MCP servers:', err)
+    ElMessage.error(tp('loadMcpServersFailed'))
+    mcpServers.value = []
+  }
 }
 
 async function loadModels() {
   try {
-    models.value = await docPipelineApi.getModels()
-  } catch { /* ignore */ }
+    const res = await docPipelineApi.getModels()
+    models.value = res || []
+  } catch (err) {
+    console.error('Failed to load models:', err)
+    ElMessage.error(tp('loadModelsFailed'))
+    models.value = []
+  }
 }
 
 async function onOpen() {
@@ -704,12 +741,17 @@ async function onOpen() {
 
 async function loadConfig() {
   loading.value = true
+  loadedFromBackend.value = false
   try {
     const config = await docPipelineApi.getConfig()
     Object.assign(form, JSON.parse(JSON.stringify(config)))
+    loadedFromBackend.value = true
     initialForm = JSON.stringify(form)
   } catch {
-    ElMessage.error('加载配置失败')
+    resetFormToDefaults()
+    initialForm = JSON.stringify(form)
+    ElMessage.error(tp('loadConfigFailed'))
+    loadedFromBackend.value = false
   } finally {
     loading.value = false
   }
@@ -720,29 +762,35 @@ watch(() => form.ocr_processing.mcp?.server, (s) => { if (s) loadToolsForServer(
 watch(() => form.ocr_finalize.mcp?.server, (s) => { if (s) loadToolsForServer(s) })
 
 async function save() {
+  // 禁止在配置未成功加载时保存占位结构
+  if (!loadedFromBackend.value) {
+    ElMessage.warning(tp('configNotLoadedRetry'))
+    return
+  }
+
   if (Object.keys(schemaError.value).length > 0) {
-    ElMessage.warning('请先修正所有阶段中格式错误的输出 Schema')
+    ElMessage.warning(tp('schemaFixRequired'))
     return
   }
 
   const staleFields: string[] = []
   const ps = form.pending_ocr.mcp?.server
   const pt = form.pending_ocr.mcp?.tool
-  if (ps && pt && isToolValueStale(ps, pt)) staleFields.push('OCR提交 - 提交工具名')
+  if (ps && pt && isToolValueStale(ps, pt)) staleFields.push(tp('staleFieldPendingOcrTool'))
 
   const os = form.ocr_processing.mcp?.server
   const ot = form.ocr_processing.mcp?.tool
-  if (os && ot && isToolValueStale(os, ot)) staleFields.push('OCR轮询 - 查询工具名')
+  if (os && ot && isToolValueStale(os, ot)) staleFields.push(tp('staleFieldOcrProcessingTool'))
 
   const fs = form.ocr_finalize.mcp?.server
   if (fs) {
-    if (form.ocr_finalize.default_deliverable_tool && isToolValueStale(fs, form.ocr_finalize.default_deliverable_tool)) staleFields.push('OCR产物提取 - 默认主产物工具')
-    if (form.ocr_finalize.list_deliverables_tool && isToolValueStale(fs, form.ocr_finalize.list_deliverables_tool)) staleFields.push('OCR产物提取 - 交付物列表工具')
-    if (form.ocr_finalize.image_deliverables_tool && isToolValueStale(fs, form.ocr_finalize.image_deliverables_tool)) staleFields.push('OCR产物提取 - 图片产物工具')
+    if (form.ocr_finalize.default_deliverable_tool && isToolValueStale(fs, form.ocr_finalize.default_deliverable_tool)) staleFields.push(tp('staleFieldDefaultPrimaryDeliverableTool'))
+    if (form.ocr_finalize.list_deliverables_tool && isToolValueStale(fs, form.ocr_finalize.list_deliverables_tool)) staleFields.push(tp('staleFieldDeliverableListTool'))
+    if (form.ocr_finalize.image_deliverables_tool && isToolValueStale(fs, form.ocr_finalize.image_deliverables_tool)) staleFields.push(tp('staleFieldImageDeliverableTool'))
   }
 
   if (staleFields.length > 0) {
-    ElMessage.warning(`以下工具值已失效，请重新选择或先到 MCP 设置中刷新工具缓存：${staleFields.join('、')}`)
+    ElMessage.warning(tp('staleToolsWarning', { fields: staleFields.join('、') }))
     return
   }
 
@@ -751,26 +799,31 @@ async function save() {
     const result = await docPipelineApi.saveConfig(JSON.parse(JSON.stringify(form)))
     Object.assign(form, result)
     initialForm = JSON.stringify(form)
-    ElMessage.success('配置已保存')
+    ElMessage.success(tp('saveSuccess'))
   } catch {
-    ElMessage.error('保存失败')
+    ElMessage.error(tp('saveFailed'))
   } finally {
     saving.value = false
   }
 }
 
 async function resetStage() {
+  if (!loadedFromBackend.value) {
+    ElMessage.warning(tp('resetDisabledWhenNotLoaded'))
+    return
+  }
+
   try {
-    await ElMessageBox.confirm(`确定恢复「${stages.find(s => s.key === activeStage.value)?.label}」阶段为默认配置吗？`, '恢复默认', { type: 'warning' })
+    await ElMessageBox.confirm(tp('resetConfirmMessage', { stage: stages.find(s => s.key === activeStage.value)?.label }), tp('resetDefault'), { type: 'warning' })
     await docPipelineApi.resetConfig([activeStage.value])
     await loadConfig()
-    ElMessage.success('已恢复默认')
+    ElMessage.success(tp('resetSuccess'))
   } catch { /* cancelled */ }
 }
 
 function onClose() {
   if (JSON.stringify(form) !== initialForm) {
-    ElMessage.warning('未保存的配置已丢弃')
+    ElMessage.warning(tp('unsavedDiscarded'))
   }
 }
 </script>

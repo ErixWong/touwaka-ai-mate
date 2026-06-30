@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useContractV2Store } from '@/stores/contract-v2'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { createRecord, newID } from '@/api/mini-apps'
 import type { OrgNode } from '@/api/contract-v2'
+import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 
 const APP_ID = 'contract-mgr-v2'
+const toast = useToastStore()
 
 const emit = defineEmits<{
   'click-contract': [contractId: string]
@@ -24,6 +25,7 @@ const contractTypeLabels: Record<string, string> = {
   strategy: '战略合同',
   framework: '框架合同',
   development: '开发合同',
+  sales: '销售合同',
   supply: '供应合同',
   purchase: '采购合同',
   quality: '质量合同',
@@ -40,13 +42,16 @@ const statusLabels: Record<string, { label: string; type: string }> = {
 }
 
 const processingStatusLabels: Record<string, { label: string; type: string }> = {
-  pending_ocr: { label: '待OCR', type: 'info' },
-  ocr_processing: { label: 'OCR中', type: 'warning' },
-  pending_clean: { label: '待清洗', type: 'info' },
-  pending_outline: { label: '待提取大纲', type: 'info' },
-  pending_chunk: { label: '待分段', type: 'info' },
-  pending_embedding: { label: '待向量化', type: 'info' },
+  // 处理中（多阶段统一映射为"处理中"）
+  pending_ocr: { label: '处理中', type: 'info' },
+  ocr_processing: { label: '处理中', type: 'warning' },
+  pending_clean: { label: '处理中', type: 'info' },
+  pending_outline: { label: '处理中', type: 'info' },
+  pending_chunk: { label: '处理中', type: 'info' },
+  pending_embedding: { label: '处理中', type: 'info' },
+  // 完成
   ready: { label: '已完成', type: 'success' },
+  // 失败
   error: { label: '处理失败', type: 'danger' },
 }
 
@@ -130,6 +135,10 @@ function clearFile() {
 
 async function handleCreate() {
   if (!createForm.value.contract_name.trim()) return
+  if (!createForm.value.contract_type) {
+    toast.error('请选择合同类型')
+    return
+  }
   creating.value = true
   try {
     const newContract = await store.addContract({
@@ -146,27 +155,23 @@ async function handleCreate() {
         file,
       })
 
-      const clientId = await newID(20)
-      const record = await createRecord(APP_ID, {}, [att.id], clientId)
-
-      await store.addVersion(newContract.id, {
-        row_id: record.id,
+      // 使用新的独立接口创建版本
+      await store.addVersionFromAttachment(newContract.id, {
         file_id: att.id,
+        contract_type: createForm.value.contract_type,
         version_number: '1',
         version_name: file.name,
         version_type: 'draft',
       })
-
-      if (newContract.document_id) {
-        store.startPolling()
-      }
     }
 
     showCreateDialog.value = false
     if (newContract?.id) {
       emit('click-contract', newContract.id)
     }
-  } catch {} finally {
+  } catch (e: unknown) {
+    toast.error((e as Error).message || '创建失败')
+  } finally {
     creating.value = false
   }
 }
@@ -181,16 +186,6 @@ function flatTreeNodes(nodes: OrgNode[]): OrgNode[] {
 }
 
 const allNodes = computed(() => flatTreeNodes(store.tree))
-
-onMounted(() => {
-  if (store.contracts.length > 0) {
-    store.startPolling()
-  }
-})
-
-onUnmounted(() => {
-  store.stopPolling()
-})
 </script>
 
 <template>

@@ -68,7 +68,7 @@ export interface FieldDefinition {
   required?: boolean
   ai_extractable?: boolean
   options?: string[]
-  default?: any
+  default?: unknown
 }
 
 export interface AppStateDefinition {

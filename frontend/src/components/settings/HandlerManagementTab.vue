@@ -259,31 +259,6 @@ const isHandlerFormValid = computed(() => {
   return handlerForm.name.trim().length > 0 && handlerForm.handler.trim().length > 0
 })
 
-function openHandlerDialog(handler?: AppRowHandler) {
-  if (handler) {
-    editingHandler.value = handler
-    handlerForm.name = handler.name
-    handlerForm.description = handler.description || ''
-    handlerForm.handler = handler.handler
-    handlerForm.handler_function = handler.handler_function || 'process'
-    handlerForm.concurrency = handler.concurrency
-    handlerForm.timeout = handler.timeout
-    handlerForm.max_retries = handler.max_retries
-    handlerForm.is_active = handler.is_active
-  } else {
-    editingHandler.value = null
-    handlerForm.name = ''
-    handlerForm.description = ''
-    handlerForm.handler = ''
-    handlerForm.handler_function = 'process'
-    handlerForm.concurrency = 3
-    handlerForm.timeout = 60
-    handlerForm.max_retries = 2
-    handlerForm.is_active = true
-  }
-  showHandlerDialog.value = true
-}
-
 function closeHandlerDialog() {
   showHandlerDialog.value = false
   editingHandler.value = null
@@ -299,10 +274,6 @@ function confirmDeleteFromDialog() {
     showHandlerDialog.value = false
     confirmDeleteHandler(editingHandler.value)
   }
-}
-
-function viewLogs(_handler: AppRowHandler) {
-  toast.warning(t('settings.handlerManagement.frozen', '处理脚本管理已冻结'))
 }
 
 function viewLogDetail(log: AppActionLog) {

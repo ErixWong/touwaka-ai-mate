@@ -33,6 +33,22 @@ function mergeRecordData(existingData, handlerData) {
   return data;
 }
 
+/**
+ * 构建结构化失败信息，写入 record.data._last_failure
+ * 不新增数据库字段，利用现有 data JSON 承载故障分类
+ */
+function buildFailurePayload(result, stage, status) {
+  return {
+    _last_failure: {
+      failure_stage: stage,
+      failure_code: result.failure_code || 'unknown',
+      failure_message: result.error || 'unknown',
+      failed_status: status,
+      failed_at: new Date().toISOString(),
+    },
+  };
+}
+
 export function getStateGraph() {
   return STATE_GRAPH;
 }
@@ -114,6 +130,10 @@ export async function tick(context) {
         logger.info(`[invoice-mgr tick] Row ${row.id}: pending, keep status=${row.status}`);
       } else if (result.success) {
         const newData = mergeRecordData(recordData, result.data);
+        // 成功后清理旧失败信息，防止残留 _last_failure 误导后续排障
+        if (newData._last_failure) {
+          delete newData._last_failure;
+        }
         const nextState = graphEntry.success_next;
 
         if (nextState) {
@@ -130,7 +150,10 @@ export async function tick(context) {
           logger.warn(`[invoice-mgr tick] Row ${row.id} success but no success_next defined for ${row.status}`);
         }
       } else {
-        const newData = mergeRecordData(recordData, result.data);
+        // 失败路径：合并 handler 输出的 data + 结构化失败信息
+        const failurePayload = buildFailurePayload(result, graphEntry.handler, row.status);
+        const mergedHandlerData = mergeRecordData(result.data || {}, failurePayload);
+        const newData = mergeRecordData(recordData, mergedHandlerData);
         const nextState = result.target_state || graphEntry.failure_next;
 
         if (nextState) {
@@ -152,6 +175,23 @@ export async function tick(context) {
     } catch (e) {
       logger.error(`[invoice-mgr tick] Row ${row.id} error: ${e.message}`);
       logger.error(`[invoice-mgr tick] Row ${row.id} stack: ${e.stack}`);
+
+      // 即使 handler 硬崩溃，也尝试写入 _last_failure 到 record.data
+      // 使用独立的 try/catch，写入失败不阻断其他记录处理
+      try {
+        const crashPayload = buildFailurePayload(
+          { failure_code: 'handler_crash', error: e.message },
+          graphEntry?.handler || 'unknown',
+          row.status
+        );
+        const crashData = mergeRecordData(recordData, crashPayload);
+        await services.execute(
+          'UPDATE app_invoice_mgr_records SET data = ? WHERE id = ?',
+          [JSON.stringify(crashData), row.id]
+        );
+      } catch (writeErr) {
+        logger.error(`[invoice-mgr tick] Row ${row.id} failed to write _last_failure: ${writeErr.message}`);
+      }
     }
   }
 

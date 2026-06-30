@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { getInvoiceDetail, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
-import { deleteRecord, reExtractRecord } from '@/api/mini-apps'
+import { getInvoiceDetail, deleteInvoiceRecord, reExtractInvoiceRecord, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { statusLabels } from '@/utils/invoice-status-labels'
 
 const props = defineProps<{ rowId: string }>()
 const emit = defineEmits<{ back: []; deleted: [] }>()
@@ -13,28 +13,22 @@ const detail = ref<InvoiceDetailType | null>(null)
 const deleting = ref(false)
 const reExtracting = ref(false)
 
-const APP_ID = 'invoice-mgr'
-
-const statusLabels: Record<string, { label: string; type: string }> = {
-  pending_process: { label: '待处理', type: 'info' },
-  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
-  pending_review: { label: '待确认', type: '' },
-  confirmed: { label: '已确认', type: 'success' },
-  extract_failed: { label: '识别失败', type: 'danger' },
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
 }
 
 onMounted(async () => {
   loading.value = true
   try {
     detail.value = await getInvoiceDetail(props.rowId)
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
   }
 })
 
-function formatQuantity(v: any): string {
+function formatQuantity(v: number | string | null | undefined): string {
   const n = Number(v)
   if (isNaN(n)) return String(v ?? '')
   return n.toFixed(2)
@@ -53,12 +47,12 @@ async function onDelete() {
 
   deleting.value = true
   try {
-    await deleteRecord(APP_ID, props.rowId)
+    await deleteInvoiceRecord(props.rowId)
     ElMessage.success('记录已删除')
     emit('deleted')
     emit('back')
-  } catch (e: any) {
-    ElMessage.error(e.message || '删除失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '删除失败'))
   } finally {
     deleting.value = false
   }
@@ -84,12 +78,12 @@ async function onReExtract() {
 
   reExtracting.value = true
   try {
-    await reExtractRecord(APP_ID, props.rowId)
+    await reExtractInvoiceRecord(props.rowId)
     ElMessage.success('已重置为初始状态，系统将自动重新分析')
     emit('deleted')
     emit('back')
-  } catch (e: any) {
-    ElMessage.error(e.message || '重置失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '重置失败'))
   } finally {
     reExtracting.value = false
   }

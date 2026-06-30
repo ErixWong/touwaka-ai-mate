@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams } from '@/api/invoice'
+import { listInvoices, exportInvoices, type InvoiceRow, type InvoiceListParams, type InvoiceExportParams } from '@/api/invoice'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { createRecord, newID } from '@/api/mini-apps'
-import { ElMessage } from 'element-plus'
+import { batchUpload, deleteRecord } from '@/api/mini-apps'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { ElTable } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
+import { statusLabels } from '@/utils/invoice-status-labels'
 
 const APP_ID = 'invoice-mgr'
+const MAX_BATCH_SIZE = 20
 
 const loading = ref(false)
 const invoices = ref<InvoiceRow[]>([])
@@ -18,12 +21,28 @@ const showDetail = ref(false)
 const selectedRowId = ref('')
 const showCreateDialog = ref(false)
 const creating = ref(false)
-const selectedFile = ref<File | null>(null)
+const selectedFiles = ref<File[]>([])
+const selectedRows = ref<InvoiceRow[]>([])
+const deleting = ref(false)
 const exporting = ref(false)
+const tableRef = ref<InstanceType<typeof ElTable>>()
+
+type BatchUploadResult = {
+  skipped_count?: number
+  created_count?: number
+}
+
+function getErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback
+}
+
+function isBlobErrorResponse(cause: unknown): cause is { response?: { data?: Blob } } {
+  return typeof cause === 'object' && cause !== null && 'response' in cause
+}
 
 // 日期筛选
 const dateMode = ref<'year' | 'month' | 'day' | ''>('')
-const dateValue = ref<any>(null)
+const dateValue = ref<string | [string, string] | null>(null)
 
 // 个性化导出
 const showExportDialog = ref(false)
@@ -77,17 +96,9 @@ const exportFieldGroups = [
 const filters = ref<InvoiceListParams>({
   page: 1,
   size: 20,
-  sort: 'invoice_date',
+  sort: 'created_at',
   order: 'desc',
 })
-
-const statusLabels: Record<string, { label: string; type: string }> = {
-  pending_process: { label: '待处理', type: 'info' },
-  pending_vl_extract: { label: 'VL提取中', type: 'warning' },
-  pending_review: { label: '待确认', type: '' },
-  confirmed: { label: '已确认', type: 'success' },
-  extract_failed: { label: '识别失败', type: 'danger' },
-}
 
 onMounted(() => {
   loadList()
@@ -121,8 +132,8 @@ async function loadList() {
     const result = await listInvoices(params)
     invoices.value = result.list
     total.value = result.total
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载失败')
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
   }
@@ -135,7 +146,7 @@ function onSearch() {
 }
 
 function onReset() {
-  filters.value = { page: 1, size: 20, sort: 'invoice_date', order: 'desc' }
+  filters.value = { page: 1, size: 20, sort: 'created_at', order: 'desc' }
   dateMode.value = ''
   dateValue.value = null
   page.value = 1
@@ -143,49 +154,164 @@ function onReset() {
 }
 
 function openCreateDialog() {
-  selectedFile.value = null
+  selectedFiles.value = []
   showCreateDialog.value = true
 }
 
 function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
-  if (input.files?.length) {
-    selectedFile.value = input.files[0]!
+  if (!input.files?.length) return
+  const newFiles = Array.from(input.files).filter(f => {
+    const ext = f.name.split('.').pop()?.toLowerCase()
+    return ['pdf', 'jpg', 'jpeg', 'png'].includes(ext || '')
+  })
+  const total = selectedFiles.value.length + newFiles.length
+  if (total > MAX_BATCH_SIZE) {
+    ElMessage.warning(`单次最多上传 ${MAX_BATCH_SIZE} 个文件，当前已选 ${selectedFiles.value.length} 个，只能再添加 ${MAX_BATCH_SIZE - selectedFiles.value.length} 个`)
+    input.value = ''
+    return
   }
+  selectedFiles.value = [...selectedFiles.value, ...newFiles]
   input.value = ''
 }
 
-function clearFile() {
-  selectedFile.value = null
+function removeFile(index: number) {
+  selectedFiles.value.splice(index, 1)
 }
 
 async function handleCreate() {
-  if (!selectedFile.value) {
+  if (selectedFiles.value.length === 0) {
     ElMessage.warning('请先选择发票文件')
     return
   }
   creating.value = true
-  try {
-    const file = selectedFile.value
-    const att = await uploadAttachmentFormData({
-      source_tag: 'mini_app_file',
-      source_id: APP_ID,
-      file,
-    })
+  const totalFiles = selectedFiles.value.length
+  let uploadedCount = 0
+  const attachmentIds: string[] = []
 
-    const clientId = await newID(20)
-    await createRecord(APP_ID, {}, [att.id], clientId)
+  try {
+    // 1) 串行上传附件
+    for (const file of selectedFiles.value) {
+      try {
+        const att = await uploadAttachmentFormData({
+          source_tag: 'mini_app_file',
+          source_id: APP_ID,
+          file,
+        })
+        attachmentIds.push(att.id)
+        uploadedCount++
+      } catch (e: unknown) {
+        ElMessage.warning(`${file.name} 上传失败: ${getErrorMessage(e, '未知错误')}`)
+      }
+    }
+
+    if (attachmentIds.length === 0) {
+      ElMessage.error('所有文件上传失败，请检查网络后重试')
+      return
+    }
+
+    // 2) 批量建单
+    const result = await batchUpload(APP_ID, attachmentIds) as BatchUploadResult
 
     showCreateDialog.value = false
-    selectedFile.value = null
+    selectedFiles.value = []
     page.value = 1
     filters.value.page = 1
     await loadList()
-    ElMessage.success('发票已创建，正在识别中')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建失败')
+
+    // 3) 结果摘要
+    const skipped = result.skipped_count || 0
+    const created = result.created_count || 0
+    if (skipped > 0) {
+      ElMessage.success(
+        `已选择 ${totalFiles} 个文件，附件上传成功 ${uploadedCount} 个，` +
+        `发票记录创建成功 ${created} 个，跳过 ${skipped} 个。正在识别中`
+      )
+    } else if (uploadedCount < totalFiles) {
+      ElMessage.success(
+        `附件上传成功 ${uploadedCount}/${totalFiles} 个，已创建 ${created} 条发票记录。正在识别中`
+      )
+    } else {
+      ElMessage.success(`已创建 ${created} 条发票记录，正在识别中`)
+    }
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '创建失败'))
   } finally {
     creating.value = false
+  }
+}
+
+function handleSelectionChange(rows: InvoiceRow[]) {
+  selectedRows.value = rows
+}
+
+async function handleBatchDelete() {
+  if (selectedRows.value.length === 0) return
+  const count = selectedRows.value.length
+  const hasProcessing = selectedRows.value.some(r => r.status?.startsWith('pending_'))
+
+  try {
+    await ElMessageBox.confirm(
+      hasProcessing
+        ? `将删除 ${count} 条发票记录（其中包含正在分析中的记录），删除后不可恢复。确认继续？`
+        : `将删除 ${count} 条发票记录，删除后不可恢复。确认继续？`,
+      '批量删除确认',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return // 用户取消
+  }
+
+  deleting.value = true
+  let successCount = 0
+  let failCount = 0
+  const failedInvoices: string[] = []
+  const rowIds = selectedRows.value.map(r => r.id)
+
+  try {
+    for (const id of rowIds) {
+      try {
+        await deleteRecord(APP_ID, id)
+        successCount++
+      } catch (e: unknown) {
+        failCount++
+        const label = selectedRows.value.find(r => r.id === id)?.invoice_number || id
+        failedInvoices.push(label)
+        console.error(`删除 ${label} 失败:`, getErrorMessage(e, '未知错误'))
+      }
+    }
+
+    // 清空选择态（显式清除表格勾选 UI + 本地状态）
+    tableRef.value?.clearSelection()
+    selectedRows.value = []
+    await loadList()
+
+    // 当前页全删后自动回退，避免停留在空页
+    if (invoices.value.length === 0 && page.value > 1) {
+      page.value -= 1
+      filters.value.page = page.value
+      await loadList()
+    }
+
+    // 结果摘要
+    if (failCount === 0) {
+      ElMessage.success(`已成功删除 ${successCount} 条记录`)
+    } else {
+      ElMessage.warning(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条`)
+      // 使用纯文本展示失败明细，避免将发票号作为 HTML 渲染带来的注入风险
+      const failDetailText = failedInvoices
+        .map((inv, i) => `${i + 1}. ${inv}`)
+        .join('\n')
+      ElMessageBox.alert(
+        `成功：${successCount} 条\n失败：${failCount} 条\n\n失败明细：\n${failDetailText}`,
+        '批量删除结果',
+        { confirmButtonText: '我知道了', type: 'warning' }
+      ).catch(() => { /* 用户关闭弹窗 */ })
+    }
+  } catch (e: unknown) {
+    ElMessage.error(getErrorMessage(e, '批量删除异常'))
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -232,7 +358,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
   exporting.value = true
   try {
     const dateFilter = buildDateFilter()
-    const params: any = {
+    const params: InvoiceExportParams = {
       type,
       ...dateFilter,
       sort: filters.value.sort,
@@ -248,9 +374,9 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
     }
     await exportInvoices(params)
     ElMessage.success('导出成功')
-  } catch (e: any) {
+  } catch (e: unknown) {
     // 后端返回 JSON 错误时，blob 解析出消息
-    if (e.response?.data instanceof Blob) {
+    if (isBlobErrorResponse(e) && e.response?.data instanceof Blob) {
       const text = await e.response.data.text()
       try {
         const json = JSON.parse(text)
@@ -259,7 +385,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         ElMessage.error('导出失败')
       }
     } else {
-      ElMessage.error(e.message || '导出失败')
+      ElMessage.error(getErrorMessage(e, '导出失败'))
     }
   } finally {
     exporting.value = false
@@ -285,6 +411,9 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
             </el-select>
           </div>
           <div class="filter-right">
+            <el-button type="danger" :disabled="selectedRows.length === 0" :loading="deleting" @click="handleBatchDelete">
+              批量删除（{{ selectedRows.length }}）
+            </el-button>
             <el-button type="primary" @click="onSearch">搜索</el-button>
             <el-button @click="onReset">重置</el-button>
             <el-button type="primary" @click="openCreateDialog">
@@ -346,7 +475,8 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         </div>
       </div>
 
-      <el-table :data="invoices" v-loading="loading" stripe @row-click="onRowClick" style="cursor:pointer">
+      <el-table ref="tableRef" :data="invoices" v-loading="loading" stripe @row-click="onRowClick" @selection-change="handleSelectionChange" style="cursor:pointer">
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="invoice_number" label="发票号码" width="200" />
         <el-table-column prop="invoice_date" label="开票日期" width="120" />
         <el-table-column prop="invoice_type" label="发票类型" width="180" show-overflow-tooltip />
@@ -381,19 +511,24 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
 
     <el-dialog v-model="showCreateDialog" title="新增发票" width="520px" destroy-on-close>
       <div class="create-file-upload">
-        <div v-if="selectedFile" class="create-file-selected">
-          <span class="create-file-name">{{ selectedFile.name }}</span>
-          <el-button size="small" text type="danger" @click="clearFile">移除</el-button>
+        <div class="create-file-list" v-if="selectedFiles.length > 0">
+          <div class="create-file-count">
+            已选择 {{ selectedFiles.length }} 个文件（上限 {{ MAX_BATCH_SIZE }} 个）
+          </div>
+          <div v-for="(f, idx) in selectedFiles" :key="idx" class="create-file-item">
+            <span class="create-file-name">{{ f.name }}</span>
+            <el-button size="small" text type="danger" @click="removeFile(idx)">移除</el-button>
+          </div>
         </div>
-        <label v-else class="create-file-trigger">
-          <span>选择发票文件</span>
-          <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="handleFileSelect" class="hidden-input" />
+        <label class="create-file-trigger">
+          <span>{{ selectedFiles.length > 0 ? '继续添加文件' : '选择发票文件' }}</span>
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple @change="handleFileSelect" class="hidden-input" />
         </label>
-        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG；创建后自动识别发票信息</div>
+        <div class="create-file-hint">支持 PDF、JPG、JPEG、PNG，单次最多 {{ MAX_BATCH_SIZE }} 个；创建后自动识别发票信息</div>
       </div>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" :loading="creating" :disabled="!selectedFile" @click="handleCreate">
+        <el-button type="primary" :loading="creating" :disabled="selectedFiles.length === 0" @click="handleCreate">
           创建并上传
         </el-button>
       </template>
@@ -484,16 +619,32 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
   padding: 16px;
 }
 
-.create-file-selected {
+.create-file-list {
+  margin-bottom: 12px;
+}
+
+.create-file-count {
+  color: var(--el-color-primary);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.create-file-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 4px 0;
+}
+
+.create-file-item + .create-file-item {
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .create-file-name {
   color: var(--el-text-color-primary);
   word-break: break-all;
+  font-size: 13px;
 }
 
 .create-file-trigger {
@@ -504,8 +655,12 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
   padding: 0 16px;
   border-radius: 6px;
   background: var(--el-fill-color-light);
-  color: var(--el-text-color-primary);
+  color: var(--el-color-primary);
   cursor: pointer;
+}
+
+.create-file-trigger:hover {
+  background: var(--el-fill-color);
 }
 
 .create-file-hint {

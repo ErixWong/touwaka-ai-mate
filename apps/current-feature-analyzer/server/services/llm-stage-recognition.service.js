@@ -23,7 +23,7 @@ class LlmStageRecognitionService {
 
     if (!modelConfig) {
       try {
-        modelConfig = await modelRegistry.getExpertModelConfig(null, { model_type: 'text' });
+        modelConfig = await modelRegistry.getDefaultTextModelConfig();
       } catch (err) {
         logger.error('[cfa llm] failed to auto-select text model:', err.message);
         return {
@@ -106,9 +106,6 @@ class LlmStageRecognitionService {
             reasoning_length: typeof reasoningContent === 'string' ? reasoningContent.length : 0,
             parsed_from: this.detectParsedSource(content, reasoningContent),
           };
-          if (parsed._error) {
-            // _error 已在 extract/fallback 中设置，_debug 已在上面统一写入
-          }
           return parsed;
         }
 
@@ -225,7 +222,7 @@ class LlmStageRecognitionService {
         .map(alias => alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('|');
 
-      const regex = new RegExp(`(?:${aliasPattern})[^\\n。；]*?(\\d+(?:\\.\\d+)?)\\s*s?\ ?\s*(?:-|–|—|到|至)\s*(\\d+(?:\\.\\d+)?)\\s*s?`, 'ig');
+      const regex = new RegExp(`(?:${aliasPattern})[^\\n。；]*?(\\d+(?:\\.\\d+)?)\\s*s?\\s*(?:-|–|—|到|至)\s*(\\d+(?:\\.\\d+)?)\\s*s?`, 'ig');
 
       let match = null;
       while ((match = regex.exec(text)) !== null) {
@@ -250,7 +247,6 @@ class LlmStageRecognitionService {
       stages: this.normalizeStages(stages),
       summary: this.buildLogPreview(text, 300) || '（空响应）',
       warnings: [{ message: '结果来自文本提取，请人工复核' }],
-      _error: 'json_repaired_from_narrative',
     };
   }
 
@@ -281,7 +277,6 @@ class LlmStageRecognitionService {
       stages: this.normalizeStages(fallbackStages),
       summary: 'LLM 未返回合法 JSON，已按压缩段规则生成候选阶段',
       warnings: [{ message: '结果来自规则兜底，请人工复核' }],
-      _error: 'heuristic_stage_fallback',
       _debug: {
         attempt: null,
         content_length: typeof sourceText === 'string' ? sourceText.length : 0,

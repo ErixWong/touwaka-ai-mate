@@ -150,6 +150,10 @@ const selectedState = computed(() => {
   return null
 })
 
+function updateStates(nextStates: AppState[]) {
+  emit('update:states', nextStates)
+}
+
 function getHandlerName(handlerId: string): string {
   const handler = props.handlers.find(h => h.id === handlerId)
   return handler ? handler.name : handlerId
@@ -161,41 +165,31 @@ function otherStates(currentName: string): AppState[] {
 
 function handleInitialChange() {
   if (selectedState.value?.is_initial) {
-    props.states.forEach(s => {
-      if (s !== selectedState.value) s.is_initial = false
-    })
+    updateStates(props.states.map(s =>
+      s === selectedState.value ? s : { ...s, is_initial: false }
+    ))
   }
-}
-
-function addState() {
-  const newState: AppState = {
-    id: '',
-    app_id: '',
-    name: `state_${props.states.length + 1}`,
-    label: '',
-    sort_order: props.states.length,
-    is_initial: props.states.length === 0,
-    is_terminal: false,
-    is_error: false,
-  }
-  props.states.push(newState)
-  selectedStateIndex.value = props.states.length - 1
 }
 
 function removeState(index: number) {
-  props.states.splice(index, 1)
-  if (selectedStateIndex.value >= props.states.length) {
-    selectedStateIndex.value = props.states.length - 1
+  const nextStates = props.states.filter((_, stateIndex) => stateIndex !== index)
+  updateStates(nextStates)
+  if (selectedStateIndex.value >= nextStates.length) {
+    selectedStateIndex.value = nextStates.length - 1
   }
 }
 
 function moveState(index: number, direction: number) {
   const newIndex = index + direction
   if (newIndex < 0 || newIndex >= props.states.length) return
-  const temp = props.states[index]!
-  props.states[index] = props.states[newIndex]!
-  props.states[newIndex] = temp
-  props.states.forEach((s, i) => { s.sort_order = i })
+  const nextStates = [...props.states]
+  const temp = nextStates[index]!
+  nextStates[index] = nextStates[newIndex]!
+  nextStates[newIndex] = temp
+  nextStates.forEach((state, stateIndex) => {
+    state.sort_order = stateIndex
+  })
+  updateStates(nextStates)
   if (selectedStateIndex.value === index) {
     selectedStateIndex.value = newIndex
   }

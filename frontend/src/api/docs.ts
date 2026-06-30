@@ -1,6 +1,6 @@
 import apiClient, { apiRequest } from './client'
 
-export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error'] as const
+export const DOC_PROCESSING_TERMINAL_STATUSES = ['ready', 'error', 'failed'] as const
 export const DOC_PROCESSING_NON_TERMINAL_STATUSES = ['pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding'] as const
 export const DOC_PROCESSING_ACTION_COMPLETE_STATUSES = ['ready', 'pending_embedding'] as const
 export const DOC_PROCESSING_OCR_ACTIVE_STATUSES = ['pending_ocr', 'ocr_processing'] as const
@@ -14,9 +14,10 @@ export const DOC_PROCESSING_STATUS_TAG_TYPES: Record<string, 'success' | 'warnin
   pending_embedding: 'info',
   ready: 'success',
   error: 'danger',
+  failed: 'danger',
 }
 
-export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error'
+export type DocProcessingStage = 'pending_ocr' | 'ocr_processing' | 'pending_clean' | 'pending_outline' | 'pending_chunk' | 'pending_embedding' | 'ready' | 'error' | 'failed'
 export type DocRevisionStatus = 'draft' | 'review' | 'approved' | 'effective' | 'expired' | 'archived'
 export type DocOcrStatus = 'pending' | 'processing' | 'completed' | 'failed' | string
 
@@ -29,7 +30,7 @@ export function isNonTerminalDocProcessingStatus(status?: string | null): boolea
 }
 
 export function isFailedDocProcessingStatus(status?: string | null): boolean {
-  return status === 'error'
+  return status === 'error' || status === 'failed'
 }
 
 export function isActionCompleteDocProcessingStatus(status?: string | null): boolean {
@@ -121,10 +122,9 @@ export interface DocProcessingStatus {
     status: DocOcrStatus
     progress: number
     image_count: number | null
-    main_markdown_attachment_id: string | null
-    raw_result_attachment_id: string | null
-    deliverables_manifest_attachment_id: string | null
-    image_manifest_attachment_id: string | null
+    // 新语义（推荐使用）- 状态接口返回简洁信息，不含 URL
+    preview_markdown_attachment: DocSimpleAttachmentInfo | null
+    raw_markdown_attachment: DocSimpleAttachmentInfo | null
     line_count: number | null
     error_code: string | null
     error_message: string | null
@@ -157,6 +157,15 @@ export interface DocIntakeResult {
   processing_status: DocProcessingStage
   source_ref_id?: string
   attachment_count?: number
+}
+
+export interface DocSimpleAttachmentInfo {
+  id: string
+  file_name: string | null
+  mime_type: string
+  file_size: number
+  access_level: string
+  created_at: string
 }
 
 export interface DocAttachmentInfo {
@@ -221,8 +230,9 @@ export interface DocResultDetail {
     error_code: string | null
     error_message: string | null
     preview_markdown_content?: string | null
-    cleaned_markdown_attachment?: DocAttachmentInfo | null
-    main_markdown_attachment: DocAttachmentInfo | null
+    // 新语义（推荐使用）
+    preview_markdown_attachment: DocAttachmentInfo | null
+    raw_markdown_attachment: DocAttachmentInfo | null
     raw_result_attachment: DocAttachmentInfo | null
     deliverables_manifest_attachment: DocAttachmentInfo | null
     image_manifest_attachment: DocAttachmentInfo | null

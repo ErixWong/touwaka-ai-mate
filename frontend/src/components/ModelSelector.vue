@@ -17,11 +17,11 @@
 import { computed, onMounted } from 'vue'
 import { useModelStore } from '@/stores/model'
 
-const props = defineProps<{
+defineProps<{
   modelValue: string
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
@@ -34,11 +34,6 @@ const availableModels = computed(() => {
     (m.model_type === 'text' || m.model_type === 'multimodal')
   )
 })
-
-const handleChange = (event: Event) => {
-  const target = event.target as HTMLSelectElement
-  emit('update:modelValue', target.value)
-}
 
 onMounted(() => {
   // 确保模型列表已加载

@@ -36,7 +36,6 @@ const __dirname = path.dirname(__filename);
 import Database from '../lib/db.js';
 import ChatService from '../lib/chat-service.js';
 import BackgroundTaskScheduler from '../lib/background-scheduler.js';
-import { createEmbeddingTask } from '../lib/embedding-worker.js';
 import { createDocumentEmbeddingTask } from '../lib/document-embedding-worker.js';
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
@@ -65,7 +64,6 @@ import SkillController from './controllers/skill.controller.js';
 import DebugController from './controllers/debug.controller.js';
 import RoleController from './controllers/role.controller.js';
 import TaskController from './controllers/task.controller.js';
-import KbController from './controllers/kb.controller.js';
 import DocController from './controllers/doc.controller.js';
 import DocCollectionController from './controllers/doc-collection.controller.js';
 import SolutionController from './controllers/solution.controller.js';
@@ -77,7 +75,6 @@ import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
 import AppRegistryController from './controllers/app-registry.controller.js';
 import AppBackupController from './controllers/app-backup.controller.js';
-import ContractV2Controller from './controllers/contract-v2.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
 import ELSController from './controllers/els.controller.js';
 import OcrToolController from './controllers/ocr-tool.controller.js';
@@ -99,7 +96,6 @@ import skillRoutes from './routes/skill.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import roleRoutes from './routes/role.routes.js';
 import taskRoutes from './routes/task.routes.js';
-import kbV2Routes from './routes/kb-v2.routes.js';
 import docRoutes from './routes/doc.routes.js';
 import docCollectionRoutes from './routes/doc-collection.routes.js';
 import solutionRoutes from './routes/solution.routes.js';
@@ -120,7 +116,6 @@ import appRegistryRoutes from './routes/app-registry.routes.js';
 import appBackupRoutes from './routes/app-backup.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
-import contractV2Routes from './routes/contract-v2.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import elsRoutes from './routes/els.routes.js';
 import ocrToolRoutes from './routes/ocr-tool.routes.js';
@@ -323,6 +318,15 @@ class ApiServer {
         // 升级失败不阻止服务器启动，只记录警告
         logger.warn('Server will continue with current schema');
       }
+
+      // 启动期 schema 健康检查：验证关键 app 扩展表列完整性
+      // 防止因哨兵列迁移检查不完整导致的 schema 漂移在生产环境引发 SELECT 报错
+      try {
+        await this.runSchemaHealthCheck();
+      } catch (error) {
+        logger.error('Schema health check failed:', error.message);
+        logger.warn('Server will continue, but some features may be unavailable');
+      }
     }
 
     // 初始化 ChatService
@@ -331,13 +335,6 @@ class ApiServer {
 
     // 初始化后台任务调度器
     this.scheduler = new BackgroundTaskScheduler(this.db);
-
-    // 注册向量化任务
-    this.scheduler.register({
-      name: 'embedding-worker',
-      interval: 30000, // 30秒
-      handler: createEmbeddingTask({ batchSize: 10 }),
-    });
 
     // 注册文档平台向量化任务
     this.scheduler.register({
@@ -371,7 +368,7 @@ class ApiServer {
       preventOverlap: true,  // 如果上一轮还没处理完，本轮顺延
     });
 
-    logger.info('BackgroundTaskScheduler initialized with embedding-worker, document-embedding-worker, topic-archiver, and autonomous-task-executor tasks');
+    logger.info('BackgroundTaskScheduler initialized with document-embedding-worker, topic-archiver, and autonomous-task-executor tasks');
 
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
@@ -401,6 +398,41 @@ class ApiServer {
   }
 
   /**
+   * 启动期 schema 健康检查
+   * 验证关键 app 扩展表的关键列是否存在，防止 schema 漂移导致 SELECT 报错
+   * 不阻止启动，仅输出警告
+   */
+  async runSchemaHealthCheck() {
+    const checks = [
+      // invoice-mgr: 列表/详情/导出依赖这些列
+      { table: 'app_invoice_mgr_rows', col: 'text_items_count', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'keyword_count', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'issuer', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'ocr_method', usedBy: 'invoice.service.js (list/detail/export)' },
+      { table: 'app_invoice_mgr_rows', col: 'extraction_status', usedBy: 'invoice.service.js (list/detail/export)' },
+    ];
+
+    let hasMissing = false;
+    for (const { table, col, usedBy } of checks) {
+      const rows = await this.db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [this.db.config.database, table, col]
+      );
+      if (!rows || rows.length === 0) {
+        hasMissing = true;
+        logger.error(`[SchemaHealthCheck] MISSING: ${table}.${col} (used by ${usedBy}) — 请执行 scripts/upgrade-database.js`);
+      }
+    }
+
+    if (hasMissing) {
+      logger.error('[SchemaHealthCheck] ⚠️ 存在缺失列，发票管理等模块可能无法正常工作');
+    } else {
+      logger.info('[SchemaHealthCheck] ✓ 关键列检查通过');
+    }
+  }
+
+  /**
    * 初始化控制器
    */
   initializeControllers() {
@@ -420,7 +452,6 @@ class ApiServer {
       skill: new SkillController(this.db),
       debug: new DebugController(this.db, this.chatService),
       task: new TaskController(this.db),
-      kb: new KbController(this.db),
       doc: new DocController(this.db),
       docCollection: new DocCollectionController(this.db),
       solution: new SolutionController(this.db),
@@ -435,7 +466,6 @@ class ApiServer {
       appMarket: new AppMarketController(this.db, this.sharedRegistryService),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
-      contractV2: new ContractV2Controller(this.db),
       invoice: new InvoiceController(this.db),
       els: new ELSController(this.db),
       ocrTool: new OcrToolController(this.db),
@@ -564,10 +594,6 @@ class ApiServer {
     this.app.use(taskRoutes(this.controllers.task).routes());
     this.app.use(taskRoutes(this.controllers.task).allowedMethods());
 
-    // KB 知识库路由（/api/docs/kb/* 统一入口）
-    this.app.use(kbV2Routes(this.controllers.kb).routes());
-    this.app.use(kbV2Routes(this.controllers.kb).allowedMethods());
-
     // Doc Collection 文档集合路由（/api/docs/collections/* 必须在 Doc 路由之前，防止 /collections 被 /:documentId 捕获）
     this.app.use(docCollectionRoutes(this.controllers.docCollection).routes());
     this.app.use(docCollectionRoutes(this.controllers.docCollection).allowedMethods());
@@ -693,12 +719,6 @@ class ApiServer {
     this.app.use(mcpRouter.allowedMethods());
     logger.info('MCP routes registered (GET/POST /api/mcp/*)');
 
-    // Contract V2 合同管理v2路由
-    const contractV2Router = contractV2Routes(this.controllers.contractV2);
-    this.app.use(contractV2Router.routes());
-    this.app.use(contractV2Router.allowedMethods());
-    logger.info('Contract V2 routes registered (/api/contract-v2/*)');
-
     const invoiceRouter = invoiceRoutes(this.controllers.invoice);
     this.app.use(invoiceRouter.routes());
     this.app.use(invoiceRouter.allowedMethods());
@@ -717,7 +737,7 @@ class ApiServer {
     const currentFeatureAnalyzerRouter = currentFeatureAnalyzerRoutes(this.controllers.currentFeatureAnalyzer);
     this.app.use(currentFeatureAnalyzerRouter.routes());
     this.app.use(currentFeatureAnalyzerRouter.allowedMethods());
-    logger.info('Current Feature Analyzer routes registered (/api/apps/current-feature-analyzer/*)');
+    logger.info('Current Feature Analyzer routes registered (/api/current-feature-analyzer/*, legacy: /api/apps/current-feature-analyzer/*)');
 
     const appClockRouter = appClockRoutes(this.db);
     this.app.use(appClockRouter.routes());
@@ -844,10 +864,6 @@ class ApiServer {
         logger.info('  PUT  /api/roles/:id/permissions');
         logger.info('  GET  /api/roles/:id/experts');
         logger.info('  PUT  /api/roles/:id/experts');
-        logger.info('  GET  /api/docs/kb (知识库列表)');
-        logger.info('  POST /api/docs/kb (创建知识库)');
-        logger.info('  GET  /api/docs/kb/:id/articles (文章列表)');
-        logger.info('  POST /api/docs/kb/:id/articles (创建文章)');
         logger.info('  POST /api/docs/recall (统一召回)');
         logger.info('  GET  /api/docs (文档列表)');
 
