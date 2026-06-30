@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { Document, RefreshRight } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import type { DocCollection } from '@/api/collections'
 import VisibilityTag from './VisibilityTag.vue'
 
@@ -42,6 +43,8 @@ defineEmits<{
   open: [collection: DocCollection]
   settings: [collection: DocCollection]
 }>()
+
+const { t } = useI18n()
 
 function formatRelativeTime(timeStr: string) {
   if (!timeStr) return ''
