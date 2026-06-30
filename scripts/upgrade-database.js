@@ -3099,6 +3099,37 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== 文档流水线阶段事实模型 ====================
+  // 审计 AUDIT-ROUND01: 为 documents 增加 current_stage_started_at 字段
+  // 语义：记录进入当前阶段的时间点，与 processing_updated_at（最近变化时间）解耦
+  {
+    name: 'documents.current_stage_started_at column add',
+    check: async (conn) => await hasColumn(conn, 'documents', 'current_stage_started_at'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE documents
+        ADD COLUMN current_stage_started_at DATETIME NULL COMMENT '进入当前处理阶段的时间点'
+        AFTER processing_updated_at
+      `);
+      console.log('  ✓ Added documents.current_stage_started_at column');
+    }
+  },
+
+  // 审计 AUDIT-ROUND01: 为 doc_process_runs 增加 metadata JSON 字段
+  // 用于结构化存储 timeout / cancel reason / upstream task summary 等上下文
+  {
+    name: 'doc_process_runs.metadata column add',
+    check: async (conn) => await hasColumn(conn, 'doc_process_runs', 'metadata'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE doc_process_runs
+        ADD COLUMN metadata JSON NULL COMMENT '结构化上下文（timeout/cancel/retry/upstream summary）'
+        AFTER message
+      `);
+      console.log('  ✓ Added doc_process_runs.metadata column');
+    }
+  },
+
 ];
 
 /**
