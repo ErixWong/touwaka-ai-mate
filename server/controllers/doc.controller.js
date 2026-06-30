@@ -25,6 +25,7 @@ import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
+import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
@@ -38,6 +39,7 @@ class DocController {
     this.docAccessService = null;
     this.collectionAccessService = null;
     this.attachmentService = new AttachmentService(db);
+    this.docPipelineAdvancer = new DocPipelineAdvancer(db);
   }
 
   // ==================== 版本状态机 ====================
@@ -712,11 +714,13 @@ class DocController {
       if (!document) ctx.throw(404, 'Document not found');
 
       if (['pending_ocr', 'ocr_processing'].includes(document.processing_status)) {
-        await document.update({
-          processing_status: 'error',
-          processing_error_code: 'document_deleted',
-          processing_error_message: 'Document deleted by user',
-          processing_updated_at: new Date(),
+        await this.docPipelineAdvancer.cancelStage(documentId, document.processing_status, {
+          reason: 'document_deleted',
+          message: 'Document deleted by user',
+          metadata: {
+            deleted_by: userId,
+            deleted_at: new Date().toISOString(),
+          },
         });
       }
 
@@ -1183,12 +1187,23 @@ async createVersion(ctx) {
 
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
+      const result = await this.docPipelineAdvancer.enterStage(documentId, retryStage, {
+        revision_id: document.current_revision_id,
+        initiatedByType: 'user',
+        initiatedById: userId,
+        attemptNo: document.processing_retry_count + 1,
+        message: `Manual retry to ${retryStage} (error: ${document.processing_error_code})`,
+        metadata: {
+          retry: true,
+          previous_error_code: document.processing_error_code,
+          previous_error_message: document.processing_error_message,
+          retry_count: document.processing_retry_count + 1,
+        },
+      });
+
+      // enterStage 不负责 retry_count，单独递增
       await document.update({
-        processing_status: retryStage,
-        processing_error_code: null,
-        processing_error_message: null,
         processing_retry_count: document.processing_retry_count + 1,
-        processing_updated_at: new Date(),
       });
 
       ctx.success({

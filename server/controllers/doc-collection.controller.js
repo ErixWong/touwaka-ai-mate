@@ -10,12 +10,14 @@ import { Op } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
 import { hasPreviewResult } from '../../lib/doc-ocr-utils.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
+import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 
 class DocCollectionController {
   constructor(db) {
     this.db = db;
     this.models = {};
     this.accessService = null;
+    this.docPipelineAdvancer = new DocPipelineAdvancer(db);
   }
 
   ensureModels() {
@@ -449,24 +451,38 @@ class DocCollectionController {
       );
 
       // 同步将相关文档状态回退到 pending_embedding，确保文档状态与 chunk 状态一致
-      // 仅对已完成或出错状态的文档进行回退，避免覆盖正在处理中的文档
+      // 通过 DocPipelineAdvancer 统一入口推进，保证 run log 完整
       const affectedDocIds = [...new Set(currentVersions.map(v => v.document_id))];
+      let transitionedCount = 0;
       if (affectedDocIds.length > 0) {
-        await this.models.DocDocument.update(
-          {
-            processing_status: 'pending_embedding',
-            processing_error_code: null,
-            processing_error_message: null,
-            processing_updated_at: new Date(),
+        // 先查出需要回退的文档及其当前状态
+        const affectedDocs = await this.models.DocDocument.findAll({
+          where: {
+            id: { [Op.in]: affectedDocIds },
+            processing_status: { [Op.in]: ['pending_embedding', 'ready', 'error'] },
           },
-          {
-            where: {
-              id: { [Op.in]: affectedDocIds },
-              processing_status: { [Op.in]: ['pending_embedding', 'ready', 'error'] },
-            },
+          attributes: ['id', 'processing_status', 'current_revision_id'],
+          raw: true,
+        });
+
+        for (const doc of affectedDocs) {
+          try {
+            await this.docPipelineAdvancer.enterStage(doc.id, 'pending_embedding', {
+              revision_id: doc.current_revision_id || undefined,
+              message: `Revectorize: reset to pending_embedding (was ${doc.processing_status})`,
+              metadata: {
+                revectorize: true,
+                collection_id: id,
+                previous_status: doc.processing_status,
+                triggered_by: userId,
+              },
+            });
+            transitionedCount++;
+          } catch (err) {
+            logger.warn(`[Collection] revectorize: failed to transition document ${doc.id}: ${err.message}`);
           }
-        );
-        logger.info(`[Collection] revectorize: ${affectedDocIds.length} document(s) in collection reset to pending_embedding (only those with status ready/error/pending_embedding)`);
+        }
+        logger.info(`[Collection] revectorize: ${transitionedCount}/${affectedDocs.length} document(s) in collection reset to pending_embedding`);
       }
 
       ctx.success({
