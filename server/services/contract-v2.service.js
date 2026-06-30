@@ -238,8 +238,8 @@ class ContractV2Service {
     if (filters.contract_type) where.contract_type = filters.contract_type;
     if (filters.status) where.status = filters.status;
 
-    const page = filters.page || 1;
-    const pageSize = filters.page_size || 20;
+    const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(filters.page_size, 10) || 20, 1), 100);
     const offset = (page - 1) * pageSize;
 
     const result = await this.models.MainRecord.findAndCountAll({
