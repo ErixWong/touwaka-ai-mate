@@ -90,8 +90,15 @@ const maxCurrent = computed(() => {
 })
 const plateauKindSet = new Set(['stable', 'normal', 'off', 'plateau-low', 'plateau-mid', 'plateau-high'])
 const trendKindSet = new Set(['transition', 'rising', 'rising-fast', 'falling', 'falling-fast', 'spike', 'surge', 'drop', 'burst'])
-const plateauCount = computed(() => props.segments ? props.segments.filter(s => plateauKindSet.has(s.kind ?? '')).length : 0)
-const trendCount = computed(() => props.segments ? props.segments.filter(s => trendKindSet.has(s.kind ?? '')).length : 0)
+
+const plateauCount = computed(() => {
+  if (!props.segments) return 0
+  return props.segments.filter(s => plateauKindSet.has(s.kind)).length
+})
+const trendCount = computed(() => {
+  if (!props.segments) return 0
+  return props.segments.filter(s => trendKindSet.has(s.kind)).length
+})
 const eventCount = computed(() => props.events?.length ?? 0)
 const duplicateGroups = computed(() => props.duplicateDiagnosis?.duplicate_groups ?? '-')
 const duplicateRatio = computed(() => {
