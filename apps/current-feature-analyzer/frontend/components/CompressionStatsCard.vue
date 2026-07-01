@@ -88,16 +88,16 @@ const maxCurrent = computed(() => {
   const v = props.globals?.max_current
   return v != null ? `${Number(v).toFixed(2)} A` : '-'
 })
-const plateauKindSet = new Set(['stable', 'normal', 'off', 'plateau-low', 'plateau-mid', 'plateau-high'])
-const trendKindSet = new Set(['transition', 'rising', 'rising-fast', 'falling', 'falling-fast', 'spike', 'surge', 'drop', 'burst'])
+const plateauKindSet = new Set<string>(['stable', 'normal', 'off', 'plateau-low', 'plateau-mid', 'plateau-high'])
+const trendKindSet = new Set<string>(['transition', 'rising', 'rising-fast', 'falling', 'falling-fast', 'spike', 'surge', 'drop', 'burst'])
 
 const plateauCount = computed(() => {
   if (!props.segments) return 0
-  return props.segments.filter(s => plateauKindSet.has(s.kind)).length
+  return props.segments.filter(s => typeof s.kind === 'string' && plateauKindSet.has(s.kind)).length
 })
 const trendCount = computed(() => {
   if (!props.segments) return 0
-  return props.segments.filter(s => trendKindSet.has(s.kind)).length
+  return props.segments.filter(s => typeof s.kind === 'string' && trendKindSet.has(s.kind)).length
 })
 const eventCount = computed(() => props.events?.length ?? 0)
 const duplicateGroups = computed(() => props.duplicateDiagnosis?.duplicate_groups ?? '-')

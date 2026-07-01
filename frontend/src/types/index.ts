@@ -201,6 +201,7 @@ export interface Expert {
   // 上下文压缩配置
   context_strategy?: 'full' | 'simple' | 'minimal'  // 压缩策略，默认 'full'
   context_threshold?: number    // 压缩阈值，默认 0.70
+  psyche_config?: Record<string, unknown>
   // LLM 参数配置
   temperature?: number          // Expressive Mind 温度，默认 0.70
   reflective_temperature?: number // Reflective Mind 温度，默认 0.30

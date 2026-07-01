@@ -112,13 +112,16 @@ function buildDateFilter(): { start_date?: string; end_date?: string } {
   }
   if (dateMode.value === 'month') {
     const [start, end] = dateValue.value
+    if (!start || !end) return {}
     // end 是 YYYY-MM，取当月最后一天
     const [ey, em] = end.split('-').map(Number)
+    if (ey === undefined || em === undefined) return {}
     const lastDay = new Date(ey, em, 0).getDate()
     return { start_date: `${start}-01`, end_date: `${end}-${String(lastDay).padStart(2, '0')}` }
   }
   if (dateMode.value === 'day') {
     const [start, end] = dateValue.value
+    if (!start || !end) return {}
     return { start_date: start, end_date: end }
   }
   return {}

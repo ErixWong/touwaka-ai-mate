@@ -13,7 +13,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-// @ts-expect-error - VCodeBlock 没有完整的类型导出
 import VCodeBlock from '@wdns/vue-code-block'
 // 导入 highlight.js 样式 - 使用 github 主题作为亮色，github-dark 作为暗色
 import 'highlight.js/styles/github.css'
