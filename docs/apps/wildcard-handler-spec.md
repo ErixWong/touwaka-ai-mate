@@ -175,7 +175,7 @@ export async function post(ctx, deps) {
 
 **方式 B：直接使用 AttachmentService**
 ```js
-import AttachmentService from '../../../lib/attachment-service.js';
+import AttachmentService from '../../../server/services/attachment.service.js';
 
 export async function post(ctx, deps) {
   const attachmentService = new AttachmentService(deps.db);
@@ -230,6 +230,20 @@ export async function post(ctx, deps) {
   ctx.success(result);
 }
 ```
+
+### 5.4 常用服务路径汇总
+
+| 服务 | 导入路径 | 用途 |
+|------|----------|------|
+| LLM (Chat) | `../../../lib/internal-llm-service.js` | 调用大语言模型 |
+| Attachment | `../../../server/services/attachment.service.js` | 文件上传/下载 |
+| Document OCR | `../../../lib/document-ocr-service.js` | 文档 OCR 识别 |
+| Document Embedding | `../../../lib/document-embedding-service.js` | 文档向量化 |
+| Document Chunk | `../../../lib/document-chunk-service.js` | 文档分块 |
+| Document Clean | `../../../lib/document-clean-service.js` | 文档清洗 |
+| Document Outline | `../../../lib/document-outline-service.js` | 文档大纲提取 |
+| RAG | `../../../lib/rag-service.js` | RAG 检索增强 |
+| Recall | `../../../lib/doc-recall-service.js` | 文档召回 |
 
 ---
 
