@@ -55,11 +55,11 @@ export async function tick(context) {
           failed += 1;
           continue;
         }
-        await services.documentClean.clean(doc.id, {
+        await services.documentClean.submit(doc.id, {
           initiatedByType: 'scheduler',
           initiatedById: null,
         });
-        skipped += 1;
+        submitted += 1;
         continue;
       }
 
