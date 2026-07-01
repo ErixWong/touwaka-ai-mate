@@ -1,92 +1,39 @@
 import logger from '../../lib/logger.js';
 import path from 'path';
+import fs from 'fs';
 import { pathToFileURL } from 'url';
 import AppRuntimeLoader from '../../lib/app-runtime-loader.js';
 
 const APPS_DIR = path.join(process.cwd(), 'apps');
-const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+const HANDLERS_DIR = 'server/handlers';
 
-function parseApiPath(apiPath) {
-  const segments = apiPath.split('/').filter(Boolean);
-  const paramNames = [];
-  const pattern = [];
-
-  for (const seg of segments) {
-    if (seg.startsWith(':')) {
-      paramNames.push(seg.slice(1));
-      pattern.push({ type: 'param', name: seg.slice(1) });
-    } else {
-      pattern.push({ type: 'static', value: seg });
-    }
-  }
-
-  return { segments, paramNames, pattern };
-}
-
-function matchPath(requestSegments, apiPattern) {
-  if (requestSegments.length !== apiPattern.length) {
+function resolveHandlerPath(appInternalPath, method) {
+  const segments = appInternalPath.split('/').filter(Boolean);
+  
+  if (segments.length === 0) {
     return null;
   }
 
+  const handlerSegments = [];
   const params = {};
 
-  for (let i = 0; i < requestSegments.length; i++) {
-    const reqSeg = requestSegments[i];
-    const apiSeg = apiPattern[i];
-
-    if (apiSeg.type === 'static') {
-      if (reqSeg !== apiSeg.value) {
-        return null;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    handlerSegments.push(seg);
+    
+    const handlerPath = path.join(HANDLERS_DIR, ...handlerSegments) + '.js';
+    
+    const fullPath = path.join(APPS_DIR, handlerPath);
+    if (fs.existsSync(fullPath)) {
+      const remainingSegments = segments.slice(i + 1);
+      for (let j = 0; j < remainingSegments.length; j++) {
+        params[`p${j}`] = remainingSegments[j];
       }
-    } else if (apiSeg.type === 'param') {
-      params[apiSeg.name] = reqSeg;
+      return { handlerPath, params, remainingPath: remainingSegments.join('/') };
     }
   }
 
-  return params;
-}
-
-function validateApis(apis) {
-  if (!Array.isArray(apis)) {
-    return { valid: false, errors: ['apis must be an array'] };
-  }
-
-  const errors = [];
-  const seen = new Set();
-
-  for (const api of apis) {
-    if (!api.path) {
-      errors.push(`api missing path field`);
-      continue;
-    }
-
-    if (!api.path.startsWith('/')) {
-      errors.push(`api path "${api.path}" must start with /`);
-    }
-
-    if (!api.methods || !Array.isArray(api.methods) || api.methods.length === 0) {
-      errors.push(`api "${api.path}" missing methods array`);
-      continue;
-    }
-
-    for (const method of api.methods) {
-      if (!ALLOWED_METHODS.includes(method)) {
-        errors.push(`api "${api.path}" has invalid method "${method}"`);
-      }
-
-      const key = `${api.path}:${method}`;
-      if (seen.has(key)) {
-        errors.push(`duplicate api declaration: ${key}`);
-      }
-      seen.add(key);
-    }
-
-    if (!api.handler) {
-      errors.push(`api "${api.path}" missing handler field`);
-    }
-  }
-
-  return { valid: errors.length === 0, errors };
+  return null;
 }
 
 async function loadHandler(appId, handlerPath, appsDir) {
@@ -103,11 +50,13 @@ async function loadHandler(appId, handlerPath, appsDir) {
   return module;
 }
 
-function buildDeps(db, appId) {
+function buildDeps(db, appId, appRecord = null) {
   const Sequelize = db.sequelize.constructor;
 
   return {
     db,
+    appId,
+    app: appRecord,
     services: {
       query: async (sql, replacements = []) => {
         return await db.sequelize.query(sql, {
@@ -139,14 +88,12 @@ function buildDeps(db, appId) {
 
 export function createAppWildcardRouter(db, options = {}) {
   const runtimeLoader = options.runtimeLoader || new AppRuntimeLoader(db, APPS_DIR);
+  const authMiddleware = options.authMiddleware || null;
   const handlerCache = new Map();
-  const apisCache = new Map();
 
   const cacheManager = {
     clearAppCache(appId) {
       runtimeLoader.clearCache(appId);
-      const apisKey = `apis:${appId}`;
-      apisCache.delete(apisKey);
       for (const key of handlerCache.keys()) {
         if (key.startsWith(`handler:${appId}:`)) {
           handlerCache.delete(key);
@@ -158,41 +105,6 @@ export function createAppWildcardRouter(db, options = {}) {
 
   if (options.onCacheReady) {
     options.onCacheReady(cacheManager);
-  }
-
-  async function getAppApis(appId) {
-    const cacheKey = `apis:${appId}`;
-
-    if (apisCache.has(cacheKey) && process.env.NODE_ENV !== 'development') {
-      return apisCache.get(cacheKey);
-    }
-
-    const manifest = await runtimeLoader.loadManifest(appId);
-    const apis = manifest.apis;
-
-    if (!apis || (Array.isArray(apis) && apis.length === 0)) {
-      const result = { parsedApis: [], hasApis: false };
-      apisCache.set(cacheKey, result);
-      return result;
-    }
-
-    const validation = validateApis(apis);
-
-    if (!validation.valid) {
-      logger.error(`[WildcardRouter] Invalid apis for ${appId}: ${validation.errors.join(', ')}`);
-      const result = { parsedApis: [], hasApis: false, validationErrors: validation.errors };
-      apisCache.set(cacheKey, result);
-      return result;
-    }
-
-    const parsedApis = apis.map(api => ({
-      ...api,
-      parsed: parseApiPath(api.path),
-    }));
-
-    const result = { parsedApis, hasApis: true };
-    apisCache.set(cacheKey, result);
-    return result;
   }
 
   async function getHandler(appId, handlerPath) {
@@ -221,8 +133,15 @@ export function createAppWildcardRouter(db, options = {}) {
     }
 
     const appInternalPath = '/' + pathParts.slice(1).join('/');
-    const requestSegments = pathParts.slice(1).filter(Boolean);
+    const requestSegments = pathParts.slice(1);
     const method = ctx.method.toUpperCase();
+
+    if (authMiddleware) {
+      await authMiddleware(ctx, async () => {});
+      if (ctx.status === 401 || ctx.status === 403) {
+        return;
+      }
+    }
 
     try {
       const MiniApp = db.getModel('mini_app');
@@ -235,8 +154,8 @@ export function createAppWildcardRouter(db, options = {}) {
       const appRecord = await MiniApp.findOne({ where: { id: appId } });
 
       if (!appRecord) {
-        ctx.error(`App "${appId}" not found`, 404);
-        return;
+        logger.info(`[WildcardRouter] App "${appId}" not found in mini_apps, passing to next middleware`);
+        return await next();
       }
 
       if (!appRecord.is_active) {
@@ -244,72 +163,64 @@ export function createAppWildcardRouter(db, options = {}) {
         return;
       }
 
-      const apisResult = await getAppApis(appId);
+      const handlerInfo = resolveHandlerPath(appInternalPath, method);
 
-      if (!apisResult.hasApis) {
+      if (!handlerInfo) {
+        logger.info(`[WildcardRouter] No handler for "${appInternalPath}", passing to next middleware`);
         return await next();
       }
 
-      const apis = apisResult.parsedApis;
-      const matchedApis = [];
-
-      for (const api of apis) {
-        const params = matchPath(requestSegments, api.parsed.pattern);
-        if (params !== null) {
-          matchedApis.push({ api, params });
-        }
-      }
-
-      if (matchedApis.length === 0) {
-        ctx.error(`API "${appInternalPath}" not declared in manifest.apis`, 404);
-        return;
-      }
-
-      let matchedApi = null;
-      let matchedParams = null;
-
-      for (const { api, params } of matchedApis) {
-        if (api.methods.includes(method)) {
-          matchedApi = api;
-          matchedParams = params;
-          break;
-        }
-      }
-
-      if (!matchedApi) {
-        const allMethods = matchedApis.flatMap(m => m.api.methods);
-        const uniqueMethods = [...new Set(allMethods)];
-        ctx.error(`Method ${method} not allowed for "${appInternalPath}"`, 405);
-        ctx.body.data = { allowed_methods: uniqueMethods };
-        return;
-      }
-
+      const { handlerPath, params, remainingPath } = handlerInfo;
+      const handlerModule = await getHandler(appId, handlerPath);
+      
       const methodLower = method.toLowerCase();
-      const handlerModule = await getHandler(appId, matchedApi.handler);
-      const handlerFn = handlerModule[methodLower] || handlerModule.default?.[methodLower];
+      let handlerFn = handlerModule[methodLower];
+
+      if (!handlerFn && handlerModule.default) {
+        handlerFn = handlerModule.default[methodLower] || handlerModule.default;
+      }
+
+      if (!handlerFn && Object.keys(handlerModule).length > 0) {
+        const availableMethods = Object.keys(handlerModule).filter(k => k !== 'default');
+        ctx.error(`Method ${method} not allowed for "${appInternalPath}"`, 405);
+        ctx.body.data = { allowed_methods: availableMethods };
+        return;
+      }
 
       if (!handlerFn || typeof handlerFn !== 'function') {
-        ctx.error(`Handler function "${methodLower}" not found in ${matchedApi.handler}`, 500);
+        ctx.error(`Handler for "${appInternalPath}" is not a function`, 500);
         return;
       }
 
-      ctx.params = { ...ctx.params, ...matchedParams };
+      ctx.params = { ...ctx.params, ...params };
+      if (remainingPath) {
+        ctx.params._ = remainingPath;
+      }
 
-      const deps = buildDeps(db, appId);
+      const deps = buildDeps(db, appId, appRecord);
 
-      logger.info(`[WildcardRouter] ${method} ${ctx.path} -> ${appId}:${matchedApi.handler}:${methodLower}`);
+      logger.info(`[WildcardRouter] ${method} ${ctx.path} -> ${appId}:${handlerPath}:${methodLower}`);
 
       await handlerFn(ctx, deps);
 
     } catch (err) {
-      logger.error(`[WildcardRouter] Error handling ${ctx.path}: ${err.message}`);
+      logger.error(`[WildcardRouter] Error handling ${ctx.path}: ${err.message}`, err.stack);
 
       if (err.message.includes('not allowed')) {
         ctx.error('Handler path not allowed', 403);
         return;
       }
 
+      if (err.message.includes('not found') || err.code === 'ENOENT') {
+        logger.info(`[WildcardRouter] No handler for "${appInternalPath}", passing to next middleware`);
+        return await next();
+      }
+
       ctx.error(err.message || 'Internal server error', 500);
     }
   };
+}
+
+export function clearWildcardCache(appId, appsDir = APPS_DIR) {
+  logger.info(`[WildcardRouter] Cache clear requested for ${appId}`);
 }

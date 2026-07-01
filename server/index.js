@@ -44,6 +44,7 @@ import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
 import AppRouterLoader from '../lib/app-router-loader.js';
+import { createAppWildcardRouter } from './middlewares/app-wildcard-router.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
 import Router from '@koa/router';
@@ -683,14 +684,15 @@ class ApiServer {
     this.app.use(appRegistryRouter.allowedMethods());
     logger.info('App Registry routes registered (/api/apps/*)');
 
-    // App Backup 路由（新架构）
-    this.appRouterLoader = new AppRouterLoader(this.db, this.app);
-    this.appRouterLoader.setAuthMiddleware(authMiddleware.authenticate);
-    
-    const mountedCount = await this.appRouterLoader.mountAllApps();
-    logger.info(`[Startup] AppRouterLoader mounted ${mountedCount} app routes`);
+    // App Wildcard 路由（新架构）- 直接映射 handler 文件
+    const wildcardRouter = createAppWildcardRouter(this.db, {
+      authMiddleware: authMiddleware.authenticate,
+    });
+    this.app.use(wildcardRouter);
+    logger.info('App Wildcard router registered (/api/apps/:appId/*)');
 
-    const appBackupRouter = appBackupRoutes(this.controllers.appBackup);
+    // App Backup 路由（新架构）- 暂时保留 AppRouterLoader 兼容性
+    // TODO: 后续迁移到 wildcard 模式
     this.app.use(appBackupRouter.routes());
     this.app.use(appBackupRouter.allowedMethods());
     logger.info('App Backup routes registered (/api/app-backup/*)');
