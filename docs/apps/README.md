@@ -23,7 +23,14 @@
    - tick 宿主能力
    - app 详情装配与当前前端接入方式
 
-3. [historical/README.md](./historical/README.md)
+3. [wildcard-handler-spec.md](./wildcard-handler-spec.md) ⚡ **新版**
+   - App 后端 Handler 编写规范（Wildcard 模式）
+   - 约定大于配置：直接映射 handler 文件
+   - ctx/deps 上下文说明
+   - 平台服务复用（LLM、Attachment、OCR 等）
+   - 权限校验方式
+
+4. [historical/README.md](./historical/README.md)
    - 历史设计稿入口
    - 仅作背景参考，不代表当前实现
 
