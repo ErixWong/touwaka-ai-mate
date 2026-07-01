@@ -242,6 +242,8 @@ async getAppWithRuntime(appId) {
     
     await app.destroy();
     
+    await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
+    
     this.runtimeLoader.clearCache(appId);
     
     return true;
