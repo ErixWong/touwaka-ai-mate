@@ -74,9 +74,22 @@ class AppBackupController {
     }
   }
 
-  async getBackupInfo(ctx) {
+async getBackupInfo(ctx) {
     try {
       const { appId } = ctx.params;
+
+      const MiniApp = this.db.getModel('mini_app');
+      if (!MiniApp) {
+        ctx.error('mini_app model not available', 500);
+        return;
+      }
+
+      const appRecord = await MiniApp.findOne({ where: { id: appId, is_active: true }, raw: true });
+      if (!appRecord) {
+        ctx.error(`App ${appId} not found or not active`, 404);
+        return;
+      }
+
       const runtimeInfo = await this.runtimeLoader.getAppRuntimeInfo(appId);
 
       ctx.success({

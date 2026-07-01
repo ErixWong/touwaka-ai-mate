@@ -463,7 +463,7 @@ class ApiServer {
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
-      appMarket: new AppMarketController(this.db, this.sharedRegistryService),
+      appMarket: new AppMarketController(this.db, this.sharedRegistryService, this.appRouterLoader),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
       invoice: new InvoiceController(this.db),
