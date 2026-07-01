@@ -332,7 +332,6 @@ export interface ExtractOutlineResult {
   revision_id: string
   processing_status: string
 }
-}
 
 export interface GenerateChunksResult {
   revision_id: string
