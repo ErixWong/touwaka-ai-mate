@@ -260,7 +260,10 @@ export const useSystemSettingsStore = defineStore('systemSettings', () => {
         return undefined
       }
     }
-    return result
+    if (typeof result === 'string' || typeof result === 'number' || result === undefined) {
+      return result
+    }
+    return undefined
   }
 
   const loadBranding = async (): Promise<BrandingSettings> => {

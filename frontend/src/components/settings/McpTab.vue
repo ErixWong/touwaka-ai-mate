@@ -281,7 +281,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useToastStore } from '@/stores/toast'
-import { mcpApi, type McpServer, type McpToolCache, type McpUserCredential, type McpCredential, type UpdateMcpServerRequest } from '@/api/services'
+import { mcpApi, type McpServer, type McpToolCache, type McpUserCredential, type McpCredential, type CreateMcpServerRequest, type UpdateMcpServerRequest } from '@/api/services'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -351,7 +351,7 @@ const isServerFormValid = computed(() => {
   // 根据传输类型验证必填字段
   if (serverForm.transport_type === 'stdio') {
     return !!serverForm.command.trim()
-  } else if (serverForm.transport_type === 'http' || serverForm.transport_type === 'sse') {
+  } else if (serverForm.transport_type === 'http' || serverForm.transport_type === 'sse' || serverForm.transport_type === 'statelessHttp') {
     return !!serverForm.url.trim()
   }
   return true
@@ -672,7 +672,7 @@ const closeServerDialog = () => {
 // 保存 Server
 const saveServer = async () => {
   try {
-    const normalized_headers = serverForm.headers.trim() ? serverForm.headers : null
+    const normalized_headers = serverForm.headers.trim() ? serverForm.headers : undefined
 
     // 构建请求数据 - 全量更新：表单里有什么就传什么
     const requestData: UpdateMcpServerRequest = {
@@ -693,7 +693,7 @@ const saveServer = async () => {
       await mcpApi.updateServer(editingServer.value.id, requestData)
       toast.success(t('settings.mcp.saveServerSuccess'))
     } else {
-      await mcpApi.createServer(requestData)
+      await mcpApi.createServer(requestData as CreateMcpServerRequest)
       toast.success(t('settings.mcp.createServerSuccess'))
     }
     // 先记住编辑状态再关闭对话框

@@ -21,7 +21,7 @@
         :max="0.5"
         :step="0.05"
         show-input
-        :format-tooltip="(val) => (val * 100).toFixed(0) + '%'"
+        :format-tooltip="(val: number) => (val * 100).toFixed(0) + '%'"
       />
       <div class="el-form-item__tip">{{ $t('settings.maxTokensRatioHint') }}</div>
     </el-form-item>

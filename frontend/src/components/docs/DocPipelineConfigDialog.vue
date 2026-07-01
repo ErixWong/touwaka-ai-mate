@@ -597,7 +597,7 @@ interface ToolCacheEntry {
 }
 const toolCache = ref<Record<string, ToolCacheEntry>>({})
 
-function tp(key: string, params?: Record<string, unknown>) {
+function tp(key: string, params: Record<string, unknown> = {}) {
   return t(`docs.workspace.pipeline.${key}`, params)
 }
 

@@ -73,7 +73,6 @@
         v-if="file.raw_data?.length"
         :file-name="file.file_name"
         :raw-data="file.raw_data"
-        :result="file.result"
         :result="file.result || {}"
       />
 

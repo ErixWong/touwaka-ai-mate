@@ -234,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
 import { getApps, createApp, updateApp, deleteApp as deleteAppApi, getAppConfig, updateAppConfig } from '@/api/mini-apps'
@@ -292,9 +292,9 @@ const appDialogTabs = computed(() => [
 const appForm = reactive({
   name: '',
   icon: '📱',
-  type: 'document' as string,
+  type: 'document' as MiniApp['type'],
   description: '',
-  visibility: 'all' as string,
+  visibility: 'all' as MiniApp['visibility'],
   is_active: true,
   fields: [] as AppField[],
   states: [] as AppState[],
