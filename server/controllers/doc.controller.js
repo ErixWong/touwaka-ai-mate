@@ -376,11 +376,17 @@ class DocController {
         })
         : null;
 
-      const latestOcrResult = await DocOcrResult.findOne({
-        where: { document_id: documentId },
-        order: [['created_at', 'DESC']],
-        raw: true,
-      });
+      const latestOcrResult = revision?.id
+        ? await DocOcrResult.findOne({
+          where: { revision_id: revision.id },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        })
+        : await DocOcrResult.findOne({
+          where: { document_id: documentId },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        });
 
       // 使用统一工具函数收集详情接口所需的 OCR 附件 ID
       // 包含：main_markdown_attachment_id, raw_result_attachment_id, metadata.cleaned_markdown_attachment_id
@@ -1060,6 +1066,7 @@ async createVersion(ctx) {
   PROCESSING_RETRY_ERROR_STAGE = {
     ocr_failed: 'pending_ocr',
     clean_failed: 'pending_clean',
+    clean_timeout: 'pending_clean',
     outline_extraction_failed: 'pending_outline',
     chunk_generation_failed: 'pending_chunk',
     embedding_failed: 'pending_embedding',

@@ -102,7 +102,7 @@ export function useDocumentWorkspace(options: UseDocumentWorkspaceOptions) {
     }
 
     if (isFailedDocProcessingStatus(status)) {
-      if (errorCode === 'clean_failed') return { type: 'clean', label: t('docs.workspace.detail.retryClean') }
+      if (errorCode === 'clean_failed' || errorCode === 'clean_timeout') return { type: 'clean', label: t('docs.workspace.detail.retryClean') }
       if (errorCode === 'embedding_failed') return { type: 'embedding', label: t('docs.workspace.detail.retryEmbedding') }
       if (errorCode === 'ocr_failed') return { type: 'ocr', label: t('docs.workspace.detail.retryOcr') }
     }
