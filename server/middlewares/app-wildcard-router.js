@@ -41,7 +41,7 @@ const HANDLERS_DIR = 'server/handlers';
  * 解析 handler 文件路径
  * 从 URL 路径逐级尝试匹配 handler 文件
  */
-function resolveHandlerPath(appInternalPath, method) {
+function resolveHandlerPath(appInternalPath, appId, method) {
   const segments = appInternalPath.split('/').filter(Boolean);
   
   if (segments.length === 0) {
@@ -57,7 +57,7 @@ function resolveHandlerPath(appInternalPath, method) {
     
     const handlerPath = path.join(HANDLERS_DIR, ...handlerSegments) + '.js';
     
-    const fullPath = path.join(APPS_DIR, handlerPath);
+    const fullPath = path.join(APPS_DIR, appId, handlerPath);
     if (fs.existsSync(fullPath)) {
       const remainingSegments = segments.slice(i + 1);
       for (let j = 0; j < remainingSegments.length; j++) {
@@ -195,8 +195,9 @@ export function createAppWildcardRouter(db, options = {}) {
       const appRecord = await MiniApp.findOne({ where: { id: appId } });
 
       if (!appRecord) {
-        logger.info(`[WildcardRouter] App "${appId}" not found in mini_apps, passing to next middleware`);
-        return await next();
+        // 安装态唯一真相：app 不存在直接返回 404
+        ctx.error(`App "${appId}" not found`, 404);
+        return;
       }
 
       if (!appRecord.is_active) {
@@ -205,9 +206,10 @@ export function createAppWildcardRouter(db, options = {}) {
       }
 
       // 解析 handler 文件路径
-      const handlerInfo = resolveHandlerPath(appInternalPath, method);
+      const handlerInfo = resolveHandlerPath(appInternalPath, appId, method);
 
       if (!handlerInfo) {
+        // handler 不存在时，放行给后续路由（平台管理路由如 /config、/runtime 仍可工作）
         logger.info(`[WildcardRouter] No handler for "${appInternalPath}", passing to next middleware`);
         return await next();
       }

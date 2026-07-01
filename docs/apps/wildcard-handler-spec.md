@@ -2,6 +2,8 @@
 
 > 约定大于配置：直接映射 handler 文件，无需显式路由声明
 
+> 当前统一约束：所有 app handler 默认必须登录，暂不支持匿名 API。
+
 ## 1. 快速入门
 
 ### 1.1 创建 Handler
@@ -77,6 +79,32 @@ export async function method(ctx, deps) {
 }
 ```
 
+### 2.4 当前认证约束
+
+- wildcard 在进入 handler 前统一执行认证
+- 所有 app handler 默认要求已登录
+- 暂不支持匿名 API
+- 若未来确实需要匿名接口，必须先升级平台协议，而不是由单个 app 私自绕过
+
+### 2.5 可选元数据导出（预留）
+
+当前建议为 handler 预留轻量元数据导出，供后续平台能力收敛使用：
+
+```js
+export const route = {
+  admin_only: false,
+  methods: ['GET', 'POST'],
+  timeout_ms: 30000,
+}
+```
+
+当前优先考虑的元数据：
+
+- `admin_only`
+- `upload`
+- `methods`
+- `timeout_ms`
+
 ---
 
 ## 3. 上下文对象
@@ -115,16 +143,19 @@ const deps = {
 
 ## 4. 权限校验
 
-### 4.1 在 handler 内校验（推荐）
+### 4.1 平台已统一认证
+
+handler 默认运行前提：
+
+- 请求已通过认证
+- `ctx.state.session` 可用
+
+因此通常不需要再做平台级“是否登录”判断，除非希望自定义报错语义。
+
+### 4.2 在 handler 内校验管理员权限（当前推荐）
 
 ```js
 export async function post(ctx, deps) {
-  // 检查登录
-  if (!ctx.state.session) {
-    ctx.error('请先登录', 401);
-    return;
-  }
-
   // 检查管理员权限
   if (!ctx.state.session.isAdmin) {
     ctx.error('需要管理员权限', 403);
@@ -135,7 +166,7 @@ export async function post(ctx, deps) {
 }
 ```
 
-### 4.2 获取当前用户信息
+### 4.3 获取当前用户信息
 
 ```js
 export async function get(ctx, deps) {
@@ -306,7 +337,7 @@ apps/ocr-tool/
 
 ### Q: 如何处理 404？
 
-A: 如果 handler 文件不存在，Wildcard 会自动 pass 给下一个中间件。如果需要在 handler 内返回 404：
+A: 业务路由下如果没有对应 handler，应由 wildcard 返回 `404`。如果是 handler 内部业务对象不存在，可在 handler 中显式返回 `404`：
 
 ```js
 export async function get(ctx, deps) {

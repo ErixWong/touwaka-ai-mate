@@ -691,8 +691,8 @@ class ApiServer {
     this.app.use(wildcardRouter);
     logger.info('App Wildcard router registered (/api/apps/:appId/*)');
 
-    // App Backup 路由（新架构）- 暂时保留 AppRouterLoader 兼容性
-    // TODO: 后续迁移到 wildcard 模式
+    // App Backup 路由（保留独立路由，后续迁移到 wildcard）
+    const appBackupRouter = appBackupRoutes(this.controllers.appBackup);
     this.app.use(appBackupRouter.routes());
     this.app.use(appBackupRouter.allowedMethods());
     logger.info('App Backup routes registered (/api/app-backup/*)');
