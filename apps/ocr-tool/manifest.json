@@ -1,7 +1,7 @@
 {
   "id": "ocr-tool",
   "name": "OCR 文字识别工具",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "上传图片，使用多模态模型识别文字内容，不保存原图。",
   "icon": "📝",
   "type": "utility",
@@ -15,6 +15,9 @@
   ],
   "compatibility": {
     "min_platform_version": "2.0.0"
+  },
+  "runtime": {
+    "tick": "tick/index.js"
   },
   "config": {
     "max_concurrent_tasks": 2,
