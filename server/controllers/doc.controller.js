@@ -1289,7 +1289,7 @@ async createVersion(ctx) {
   }
 
   /**
-   * 提取章节大纲
+   * 提取章节大纲（异步受理）
    * POST /api/docs/revisions/:revisionId/outline/extract
    */
   async extractOutline(ctx) {
@@ -1320,19 +1320,11 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      const result = await this.documentOutlineService.extract(revisionId, {
-        initiatedByType: 'user',
-        initiatedById: userId,
+      // 异步受理：快速返回 accepted，后台执行章节提取
+      const result = await this.documentOutlineService.submit(revisionId, {
+        userId,
       });
-      ctx.success({
-        revision_id: revisionId,
-        document_id: revision.document_id,
-        outline_count: result.outline_count,
-        processing_status: 'pending_chunk',
-        partial: result.partial || false,
-        failed_chunks: result.failed_chunks || 0,
-        total_chunks: result.total_chunks || 1,
-      });
+      ctx.success(result);
     } catch (error) {
       logger.error('[Doc] extractOutline error:', error);
       ctx.throw(error.status || 500, error.message);

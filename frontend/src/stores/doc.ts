@@ -264,7 +264,8 @@ export const useDocStore = defineStore('doc', () => {
       const result = await extractOutline(revisionId)
       if (currentDoc.value) {
         await fetchProcessing(currentDoc.value.id)
-        await fetchDocumentResult(currentDoc.value.id)
+        // 受理成功后立即启动轮询，持续观察状态变化
+        startPolling(currentDoc.value.id)
       }
       return result
     } catch (e: unknown) {
