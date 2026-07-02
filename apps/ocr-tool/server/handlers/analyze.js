@@ -1,4 +1,5 @@
-import { createTask } from '../../../lib/ocr-tool-store.js';
+import { createOcrTask, markOcrTaskProcessing } from '../services/ocr-task.service.js';
+import { processTask } from '../../tick/index.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -25,6 +26,21 @@ function normalizeImageDataUrl(imageInput) {
   return { dataUrl, sizeBytes };
 }
 
+function triggerImmediateProcessing(taskId, app, db) {
+  setImmediate(async () => {
+    try {
+      const context = {
+        app,
+        db,
+        services: { log: (level, msg) => console.log(`[ocr-tool] ${msg}`) },
+      };
+      await processTask(taskId, app, context);
+    } catch (err) {
+      console.error('[ocr-tool] immediate processing failed:', err.message);
+    }
+  });
+}
+
 export async function post(ctx, deps) {
   const userId = ctx.state.session?.id;
   if (!userId) {
@@ -32,13 +48,7 @@ export async function post(ctx, deps) {
     return;
   }
 
-  const { image, prompt, attachment_id, use_document_platform = false } = ctx.request.body || {};
-
-  if (use_document_platform) {
-    const created = await createDocumentPlatformTask(deps, { userId, attachmentId: attachment_id, prompt });
-    ctx.success(created, 'created');
-    return;
-  }
+  const { image, prompt } = ctx.request.body || {};
 
   const normalized = normalizeImageDataUrl(image);
   if (normalized.error) {
@@ -51,43 +61,19 @@ export async function post(ctx, deps) {
     return;
   }
 
-  const task = createTask({
-    userId,
-    imageDataUrl: normalized.dataUrl,
+  const task = createOcrTask({
+    user_id: userId,
     prompt: typeof prompt === 'string' ? prompt : '',
+    image_data_url: normalized.dataUrl,
   });
+
+  markOcrTaskProcessing(task.id);
+
+  const app = deps.app || {};
+  triggerImmediateProcessing(task.id, app, deps.db);
 
   ctx.success({
     task_id: task.id,
-    status: task.status,
+    status: 'processing',
   }, 'created');
-}
-
-async function createDocumentPlatformTask(deps, { userId, attachmentId, prompt }) {
-  if (!attachmentId) {
-    throw new Error('attachment_id is required when use_document_platform is true');
-  }
-
-  const Attachment = deps.services.getModel('attachment');
-  const attachment = await Attachment.findByPk(attachmentId);
-
-  if (!attachment) {
-    throw new Error('attachment not found');
-  }
-
-  const Utils = await import('../../../lib/utils.js');
-  const taskId = Utils.default.newID(20);
-  
-  const task = {
-    id: taskId,
-    user_id: userId,
-    status: 'pending',
-    result: null,
-    error: null,
-    created_at: new Date(),
-  };
-
-  deps.services.log('info', `[OCR-Tool] Document platform task created: ${taskId}`);
-  
-  return { task_id: taskId, status: 'pending' };
 }

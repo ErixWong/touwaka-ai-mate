@@ -12,6 +12,13 @@
  *   GET /api/apps/ocr-tool/analyze/123 → apps/ocr-tool/server/handlers/analyze.js
  *   GET /api/apps/ocr-tool/status     → apps/ocr-tool/server/handlers/status.js
  * 
+ * Handler 级元数据（可选导出）：
+ *   export const route = {
+ *     path: '/batches/:batch_id/files/:file_id',  // 具名参数声明
+ *     methods: ['GET', 'POST'],                     // 允许的 HTTP 方法
+ *     upload: { mode: 'multipart', fields: [...] }, // 上传配置
+ *   }
+ * 
  * ==========================================
  * 快速入门
  * ==========================================
@@ -32,14 +39,52 @@ import logger from '../../lib/logger.js';
 import path from 'path';
 import fs from 'fs';
 import { pathToFileURL } from 'url';
+import multer from '@koa/multer';
 import AppRuntimeLoader from '../../lib/app-runtime-loader.js';
 
 const APPS_DIR = path.join(process.cwd(), 'apps');
 const HANDLERS_DIR = 'server/handlers';
 
 /**
+ * 从 route.path 声明中提取具名参数
+ * 例如 '/batches/:batch_id/files/:file_id' + 请求 '/batches/123/files/456'
+ *   → { batch_id: '123', file_id: '456' }
+ */
+function extractNamedParams(routePath, requestSegments) {
+  const routeSegments = routePath.split('/').filter(Boolean);
+  const params = {};
+
+  for (let i = 0; i < routeSegments.length && i < requestSegments.length; i++) {
+    const routeSeg = routeSegments[i];
+    const reqSeg = requestSegments[i];
+
+    if (routeSeg.startsWith(':')) {
+      const paramName = routeSeg.slice(1);
+      params[paramName] = reqSeg;
+    }
+  }
+
+  return params;
+}
+
+/**
  * 解析 handler 文件路径
- * 从 URL 路径逐级尝试匹配 handler 文件
+ * 
+ * 核心规则：最长匹配优先 + 支持目录内嵌套 handler
+ * 
+ * 解析策略：同时查找 handler 文件和目录，优先选择最深/最具体的匹配
+ * 
+ * 例如请求 /contracts/123/versions/from-attachment ：
+ *   文字匹配: handlers/contracts.js (浅层, depth=1)
+ *   目录遍历: handlers/contracts/ 目录存在 → 将 '123' 视为参数
+ *     → 查找 handlers/contracts/versions-from-attachment.js (存在！, depth=2)
+ *   结果: 选择更深层的 contracts/versions-from-attachment.js, params={p0:'123'}
+ * 
+ * 例如请求 /batches/BID/files/FID ：
+ *   文字匹配: handlers/batches.js (如果存在, depth=1)
+ *   目录遍历: handlers/batches/ 目录存在 → 将 'BID' 视为参数
+ *     → handlers/batches/files.js (存在, depth=2) → 将 'FID' 视为参数
+ *   结果: 选择更深层的 batches/files.js, params={p0:'BID', p1:'FID'}
  */
 function resolveHandlerPath(appInternalPath, appId, method) {
   const segments = appInternalPath.split('/').filter(Boolean);
@@ -48,26 +93,74 @@ function resolveHandlerPath(appInternalPath, appId, method) {
     return null;
   }
 
-  const handlerSegments = [];
-  const params = {};
+  const candidates = [];
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    handlerSegments.push(seg);
-    
-    const handlerPath = path.join(HANDLERS_DIR, ...handlerSegments) + '.js';
-    
-    const fullPath = path.join(APPS_DIR, appId, handlerPath);
+  // 收集所有候选匹配（字面文件 + 目录递归）
+  _collectCandidates(segments, [], [], appId, candidates);
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // 按 depth 降序排列，选择最深（最具体）的匹配
+  candidates.sort((a, b) => b.depth - a.depth);
+  return candidates[0];
+}
+
+/**
+ * 递归收集所有候选 handler 匹配
+ * 
+ * @param {string[]} remainingSegs - 剩余未处理的请求段
+ * @param {string[]} handlerPrefix - handler 文件路径前缀
+ * @param {string[]} collectedParams - 已收集的参数值（来自目录遍历）
+ * @param {string} appId - app ID
+ * @param {Object[]} candidates - 候选结果数组（就地修改）
+ */
+function _collectCandidates(remainingSegs, handlerPrefix, collectedParams, appId, candidates) {
+  if (remainingSegs.length === 0) {
+    return;
+  }
+
+  // ── 1. 检查字面 handler 文件（从长到短） ──
+  for (let len = remainingSegs.length; len >= 1; len--) {
+    const trySegments = remainingSegs.slice(0, len);
+    const relPath = [...handlerPrefix, ...trySegments].join('/');
+    const handlerFile = path.join(HANDLERS_DIR, relPath) + '.js';
+    const fullPath = path.join(APPS_DIR, appId, handlerFile);
+
     if (fs.existsSync(fullPath)) {
-      const remainingSegments = segments.slice(i + 1);
-      for (let j = 0; j < remainingSegments.length; j++) {
-        params[`p${j}`] = remainingSegments[j];
+      const rest = remainingSegs.slice(len);
+      const allParams = [...collectedParams, ...rest];
+      const params = {};
+      for (let j = 0; j < allParams.length; j++) {
+        params[`p${j}`] = allParams[j];
       }
-      return { handlerPath, params, remainingPath: remainingSegments.join('/') };
+      candidates.push({
+        handlerPath: handlerFile,
+        params,
+        remainingPath: allParams.join('/'),
+        depth: handlerPrefix.length + len,
+        handlerSegments: [...handlerPrefix, ...trySegments],
+      });
     }
   }
 
-  return null;
+  // ── 2. 尝试目录遍历（将后续段视为参数，查找更深的 handler） ──
+  for (let prefixLen = 1; prefixLen <= remainingSegs.length - 1; prefixLen++) {
+    const dirSegments = remainingSegs.slice(0, prefixLen);
+    const dirPath = path.join(APPS_DIR, appId, HANDLERS_DIR, ...dirSegments);
+
+    if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
+      // dirSegments 后的段作为参数值
+      const paramValue = remainingSegs[prefixLen];
+      const nextRemaining = remainingSegs.slice(prefixLen + 1);
+      const newPrefix = [...handlerPrefix, ...dirSegments];
+      const newCollectedParams = [...collectedParams, paramValue];
+
+      // 递归查找目录内更深的 handler
+      _collectCandidates(nextRemaining, newPrefix, newCollectedParams, appId, candidates);
+    }
+  }
 }
 
 async function loadHandler(appId, handlerPath, appsDir) {
@@ -214,9 +307,25 @@ export function createAppWildcardRouter(db, options = {}) {
         return await next();
       }
 
-      const { handlerPath, params, remainingPath } = handlerInfo;
+      const { handlerPath, params, remainingPath, handlerSegments } = handlerInfo;
       const handlerModule = await getHandler(appId, handlerPath);
       
+      // 读取 handler 级元数据
+      const routeMeta = handlerModule.route || handlerModule.config || {};
+
+      // ── 参数注入 ──
+      // 1. 基础 p0/p1/... 位置参数
+      ctx.params = { ...ctx.params, ...params };
+      if (remainingPath) {
+        ctx.params._ = remainingPath;
+      }
+
+      // 2. 如果 handler 声明了 route.path，提取具名参数
+      if (routeMeta.path && typeof routeMeta.path === 'string') {
+        const namedParams = extractNamedParams(routeMeta.path, requestSegments);
+        Object.assign(ctx.params, namedParams);
+      }
+
       const methodLower = method.toLowerCase();
       let handlerFn = handlerModule[methodLower];
 
@@ -227,7 +336,7 @@ export function createAppWildcardRouter(db, options = {}) {
 
       // 检查方法是否支持
       if (!handlerFn && Object.keys(handlerModule).length > 0) {
-        const availableMethods = Object.keys(handlerModule).filter(k => k !== 'default');
+        const availableMethods = Object.keys(handlerModule).filter(k => k !== 'default' && k !== 'route' && k !== 'config');
         ctx.error(`Method ${method} not allowed for "${appInternalPath}"`, 405);
         ctx.body.data = { allowed_methods: availableMethods };
         return;
@@ -238,10 +347,43 @@ export function createAppWildcardRouter(db, options = {}) {
         return;
       }
 
-      // 注入路径参数到 ctx.params
-      ctx.params = { ...ctx.params, ...params };
-      if (remainingPath) {
-        ctx.params._ = remainingPath;
+      // ── 上传解析 ──
+      // 如果 handler 声明了上传配置，在调用业务函数前先解析 multipart
+      const uploadConfig = routeMeta.upload || (routeMeta.multer ? { _legacyMulter: routeMeta.multer } : null);
+      if (uploadConfig) {
+        try {
+          let uploadMiddleware;
+          if (uploadConfig._legacyMulter) {
+            // 兼容旧 config.multer 形式
+            uploadMiddleware = uploadConfig._legacyMulter;
+          } else {
+            // 新声明式：route.upload = { mode, fields, single }
+            const multerInstance = multer({
+              storage: multer.memoryStorage(),
+              limits: { fileSize: 50 * 1024 * 1024 },
+            });
+
+            if (uploadConfig.single) {
+              uploadMiddleware = multerInstance.single(uploadConfig.single);
+            } else if (uploadConfig.fields) {
+              uploadMiddleware = multerInstance.fields(uploadConfig.fields);
+            } else {
+              // 默认：单个文件字段 'file'
+              uploadMiddleware = multerInstance.single('file');
+            }
+          }
+
+          await new Promise((resolve, reject) => {
+            uploadMiddleware(ctx, async (err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+        } catch (uploadErr) {
+          logger.error(`[WildcardRouter] Upload parse error for ${ctx.path}: ${uploadErr.message}`);
+          ctx.error(uploadErr.message || 'Upload parse failed', 400);
+          return;
+        }
       }
 
       // 构建依赖注入

@@ -60,7 +60,7 @@
 | 数据层 | Sequelize + `mysql2` |
 | 流式能力 | SSE |
 | AI 能力层 | `LLMClient`、`InternalLLMService`、`EmbeddingClient`、`ASRClient`、`TTSClient` |
-| App Runtime | `app-market.service.js` + `app-runtime-loader.js` + `app-router-loader.js` + `app-clock.js` |
+| App Runtime | `app-market.service.js` + `app-runtime-loader.js` + `app-clock.js` |
 
 ## 关键模块速查
 
@@ -79,7 +79,6 @@
 | ToolManager | `lib/tool-manager.js` | 工具调用调度 |
 | AppClock | `lib/app-clock.js` | app tick 调度 |
 | AppRuntimeLoader | `lib/app-runtime-loader.js` | app runtime 动态装载 |
-| AppRouterLoader | `lib/app-router-loader.js` | app 路由动态挂载 |
 
 ## 相关入口
 

@@ -79,6 +79,41 @@ export async function method(ctx, deps) {
 }
 ```
 
+### 2.4 Handler 级元数据导出（可选但推荐）
+
+为了更好的参数映射和平台能力支持，handler 可以导出 `route` 元数据对象：
+
+```js
+// 声明具名参数路径（平台将自动提取参数并注入 ctx.params）
+export const route = {
+  path: '/batches/:batch_id/files/:file_id',  // 具名参数声明
+  methods: ['GET', 'POST'],                     // 允许的 HTTP 方法
+  upload: {                                     // 上传配置（可选）
+    fields: [{ name: 'files', maxCount: 50 }], // multer fields 配置
+    // 或 single: 'file'                        // 单文件配置
+  },
+  admin_only: false,
+  timeout_ms: 30000,
+}
+```
+
+**为什么要声明 `route.path`？**
+
+- 平台会自动从 URL 中提取命名参数并注入 `ctx.params`
+- 不再需要手动解析 `ctx.params.p0/p1/...`
+- 例如：`path: '/batches/:batch_id/files/:file_id'` + 请求 `/batches/123/files/456`
+  → `ctx.params = { batch_id: '123', file_id: '456', p0: '123', p1: '456' }`
+
+**向后兼容：**
+
+- 如果 handler 没有声明 `route.path`，平台仍会注入 `p0/p1/...` 位置参数
+- 兼容旧的 `config.multer` 导出形式
+
+- wildcard 在进入 handler 前统一执行认证
+- 所有 app handler 默认要求已登录
+- 暂不支持匿名 API
+- 若未来确实需要匿名接口，必须先升级平台协议，而不是由单个 app 私自绕过
+
 ### 2.4 当前认证约束
 
 - wildcard 在进入 handler 前统一执行认证
@@ -86,7 +121,40 @@ export async function method(ctx, deps) {
 - 暂不支持匿名 API
 - 若未来确实需要匿名接口，必须先升级平台协议，而不是由单个 app 私自绕过
 
-### 2.5 可选元数据导出（预留）
+### 2.5 Handler 路径匹配规则
+
+**最长匹配优先 + 目录递归：**
+
+Wildcard 使用以下策略解析 handler 文件：
+
+1. **最长匹配优先**：从请求路径的最长前缀向最短尝试匹配 `.js` 文件
+2. **目录递归**：如果遇到目录，将后续段视为参数，递归进入目录查找更具体的 handler
+
+**示例：**
+
+| 请求 URL | Handler 文件 | 说明 |
+|---------|-------------|------|
+| `/contracts/123/versions/from-attachment` | `handlers/contracts/versions-from-attachment.js` | 嵌套 handler 被优先选择 |
+| `/batches/123/files/456` | `handlers/batches/files.js` | 目录递归 + 最长匹配 |
+| `/reports/123` | `handlers/reports/index.js` | 目录下的 index.js |
+
+**嵌套目录结构：**
+
+```text
+apps/my-app/server/handlers/
+├── index.js              # GET /api/apps/my-app/
+├── batches.js            # GET /api/apps/my-app/batches/:id
+├── batches/
+│   ├── index.js          # GET /api/apps/my-app/batches/ (列表)
+│   └── files.js          # GET /api/apps/my-app/batches/:batch_id/files/:file_id
+├── reports/
+│   ├── index.js          # GET /api/apps/my-app/reports/:batch_id
+│   └── export.js         # POST /api/apps/my-app/reports/:batch_id/export
+└── analysis/
+    └── run.js            # POST /api/apps/my-app/analysis/run
+```
+
+### 2.6 可选元数据导出（预留）
 
 当前建议为 handler 预留轻量元数据导出，供后续平台能力收敛使用：
 
@@ -113,9 +181,11 @@ export const route = {
 
 | 属性 | 说明 |
 |------|------|
-| `ctx.params` | 路径参数，如 `{ p0: '123', p1: 'abc' }` |
+| `ctx.params` | 路径参数，包含：<br>- **具名参数**：来自 handler 的 `route.path` 声明，如 `{ batch_id: '123', file_id: '456' }`<br>- **位置参数**：始终可用的 `p0/p1/...`，如 `{ p0: '123', p1: '456' }` |
+| `ctx.params._` | 剩余路径（如果有未匹配的段） |
 | `ctx.query` | Query 参数，如 `{ page: 1, size: 10 }` |
 | `ctx.request.body` | POST/PUT 请求体 JSON |
+| `ctx.files` / `ctx.request.files` | 上传的文件（如果有 handler 声明了 `route.upload`） |
 | `ctx.state.session` | 当前登录用户信息 |
 | `ctx.state.session.id` | 用户 ID |
 | `ctx.state.session.role` | 用户角色 |
@@ -183,7 +253,36 @@ export async function get(ctx, deps) {
 
 ### 5.1 文件上传
 
-**方式 A：调用平台 API**
+Wildcard 原生支持 handler 级上传声明。推荐方式：
+
+**声明式配置（推荐）：**
+```js
+export const route = {
+  path: '/uploads',
+  upload: {
+    fields: [{ name: 'files', maxCount: 50 }],  // 多文件
+    // 或 single: 'file'                         // 单文件
+  },
+};
+
+export async function post(ctx, deps) {
+  // ctx.files.files - 多文件上传
+  const files = ctx.files?.files || ctx.request.files?.files;
+  // ...
+}
+```
+
+**旧式配置（兼容）：**
+```js
+const upload = multer({ storage: multer.memoryStorage() });
+export const config = { multer: upload };
+```
+
+**平台上传能力：**
+
+- Wildcard 在调用 handler 前自动解析 multipart/form-data
+- 解析后的文件对象放入 `ctx.files` 或 `ctx.request.files`
+- 支持单文件 (`ctx.file`) 和多文件 (`ctx.files`) 场景
 ```js
 export async function post(ctx, deps) {
   const formData = new FormData();
@@ -316,7 +415,9 @@ export async function post(ctx, deps) {
 
 ---
 
-## 7. 目��结构示例
+## 7. 目录结构示例
+
+### 简单 App（ocr-tool）
 
 ```
 apps/ocr-tool/
@@ -329,6 +430,26 @@ apps/ocr-tool/
 │       ├── status.js     # GET  /api/apps/ocr-tool/status/:p0
 │       └── presets.js    # GET  /api/apps/ocr-tool/presets
 └── states.js
+```
+
+### 复杂 App（带嵌套路由）
+
+```
+apps/current-feature-analyzer/
+├── server/
+│   └── handlers/
+│       ├── uploads.js           # POST /api/apps/current-feature-analyzer/uploads
+│       ├── batches.js           # GET  /api/apps/current-feature-analyzer/batches/:batch_id
+│       ├── batches/
+│       │   ├── index.js         # GET  /api/apps/current-feature-analyzer/batches/
+│       │   └── files.js         # GET  /api/apps/current-feature-analyzer/batches/:batch_id/files/:file_id
+│       ├── analysis/
+│       │   └── run.js           # POST /api/apps/current-feature-analyzer/analysis/run
+│       ├── reports/
+│       │   ├── index.js         # GET  /api/apps/current-feature-analyzer/reports/:batch_id
+│       │   └── export.js        # POST /api/apps/current-feature-analyzer/reports/:batch_id/export
+│       ├── rule-sets.js         # CRUD /api/apps/current-feature-analyzer/rule-sets/:id
+│       └── config.js            # GET/PUT /api/apps/current-feature-analyzer/config
 ```
 
 ---

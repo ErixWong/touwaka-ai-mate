@@ -1,4 +1,4 @@
-import { getTask } from '../../../lib/ocr-tool-store.js';
+import { getOcrTask } from '../services/ocr-task.service.js';
 
 export async function get(ctx, deps) {
   const userId = ctx.state.session?.id;
@@ -13,17 +13,17 @@ export async function get(ctx, deps) {
     return;
   }
 
-  const task = getTask(taskId);
-  if (!task) {
+  const result = getOcrTask({ task_id: taskId, user_id: userId });
+  if (result.forbidden) {
+    ctx.error('forbidden', 403);
+    return;
+  }
+  if (result.notFound) {
     ctx.error('task not found', 404);
     return;
   }
 
-  if (task.user_id !== userId) {
-    ctx.error('forbidden', 403);
-    return;
-  }
-
+  const task = result;
   ctx.success({
     task_id: task.id,
     status: task.status,

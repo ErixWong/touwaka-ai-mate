@@ -11,7 +11,6 @@ import {
   pruneTasks,
   getTask,
 } from '../../../lib/ocr-tool-store.js';
-import { getPreviewAttachmentId } from '../../../lib/doc-ocr-utils.js';
 
 // 压缩图片到指定大小以下（单位：字节）
 async function compressImage(dataUrl, maxBytes = 900 * 1024) {
@@ -104,85 +103,13 @@ function buildMessages(prompt, imageDataUrl) {
   ];
 }
 
-async function processPlatformOcrTask(taskId, app, context) {
+export async function processTask(taskId, app, context) {
   const task = getTask(taskId);
   if (!task) return { taskId, skipped: true, reason: 'missing' };
 
   const config = typeof app?.config === 'string'
     ? JSON.parse(app.config || '{}')
     : (app?.config || {});
-
-  if (!context.documentOcrService) {
-    failTask(taskId, 'document_ocr_service_not_available');
-    return { taskId, success: false, error: 'document_ocr_service_not_available' };
-  }
-
-  if (!task.document_id) {
-    failTask(taskId, 'missing_document_id');
-    return { taskId, success: false, error: 'missing_document_id' };
-  }
-
-  try {
-    const latestOcrResult = await context.documentOcrService.getLatestOcrResult(task.document_id);
-
-    if (!task.ocr_result_id && latestOcrResult?.id) {
-      task.ocr_result_id = latestOcrResult.id;
-      task.ocr_task_id = latestOcrResult.task_id;
-      task.updated_at = new Date().toISOString();
-    }
-
-    // 使用统一语义判断完成态（优先 cleaned_markdown，兼容 main_markdown）
-    const previewAttachmentId = getPreviewAttachmentId(latestOcrResult);
-    if (latestOcrResult?.status === 'completed' && previewAttachmentId) {
-      completeTask(taskId, previewAttachmentId);
-      return { taskId, success: true, delegated: true, completed: true, reused: true };
-    }
-
-    if (!task.ocr_result_id) {
-      const submitResult = await context.documentOcrService.submit(task.document_id, {
-        attachmentId: task.attachment_id || null,
-        backend: config.mineru_backend,
-        lang: config.mineru_lang || 'ch',
-        imageAnalysis: config.mineru_image_analysis ?? true,
-        formulaEnable: config.mineru_formula_enable ?? true,
-        tableEnable: config.mineru_table_enable ?? true,
-      });
-      task.ocr_result_id = submitResult.id;
-      task.ocr_task_id = submitResult.task_id;
-      task.updated_at = new Date().toISOString();
-      return { taskId, success: true, delegated: true, status: submitResult.status };
-    }
-
-    const syncResult = await context.documentOcrService.syncTaskStatus(task.document_id);
-    task.ocr_task_id = syncResult.ocrResult.task_id;
-    task.updated_at = new Date().toISOString();
-
-    if (!syncResult.completed) {
-      return { taskId, success: true, delegated: true, status: syncResult.ocrResult.status };
-    }
-
-    // 使用统一语义获取预览稿（优先 cleaned_markdown，兼容 main_markdown）
-    const previewAttachmentId = getPreviewAttachmentId(syncResult.ocrResult);
-    completeTask(taskId, previewAttachmentId || 'platform_ocr_completed');
-    return { taskId, success: true, delegated: true, completed: true };
-  } catch (err) {
-    logger.error(`[ocr-tool tick] Platform OCR task ${taskId} failed: ${err.message}`);
-    failTask(taskId, err.message);
-    return { taskId, success: false, error: err.message };
-  }
-}
-
-async function processTask(taskId, app, context) {
-  const task = getTask(taskId);
-  if (!task) return { taskId, skipped: true, reason: 'missing' };
-
-  const config = typeof app?.config === 'string'
-    ? JSON.parse(app.config || '{}')
-    : (app?.config || {});
-
-  if (config.use_document_platform_ocr && task.document_id) {
-    return await processPlatformOcrTask(taskId, app, context);
-  }
 
   if (!task.image_data_url) {
     failTask(taskId, 'missing_image_data');
