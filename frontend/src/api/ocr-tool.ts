@@ -25,18 +25,18 @@ export interface OcrPresetsResponse {
 
 export function analyzeOcrImage(image: string, prompt?: string) {
   return apiRequest<OcrAnalyzeResponse>(
-    apiClient.post('/ocr/analyze', { image, prompt })
+    apiClient.post('/apps/ocr-tool/analyze', { image, prompt })
   )
 }
 
 export function getOcrStatus(taskId: string) {
   return apiRequest<OcrStatusResponse>(
-    apiClient.get(`/ocr/status/${taskId}`)
+    apiClient.get(`/apps/ocr-tool/status/${taskId}`)
   )
 }
 
 export function getOcrPromptPresets() {
   return apiRequest<OcrPresetsResponse>(
-    apiClient.get('/ocr/presets')
+    apiClient.get('/apps/ocr-tool/presets')
   )
 }

@@ -12,9 +12,6 @@
     "backup": {
       "export": "backup/export.js",
       "import": "backup/import.js"
-    },
-    "server": {
-      "routes": "server/routes.js"
     }
   },
   "keywords": [

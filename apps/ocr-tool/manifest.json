@@ -1,7 +1,7 @@
 {
   "id": "ocr-tool",
   "name": "OCR 文字识别工具",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "上传图片，使用多模态模型识别文字内容，不保存原图。",
   "icon": "📝",
   "type": "utility",
@@ -16,15 +16,12 @@
   "compatibility": {
     "min_platform_version": "2.0.0"
   },
+  "runtime": {
+    "tick": "tick/index.js"
+  },
   "config": {
     "max_concurrent_tasks": 2,
     "max_image_size_bytes": 5242880,
-    "use_document_platform_ocr": false,
-    "mineru_backend": null,
-    "mineru_lang": "ch",
-    "mineru_image_analysis": true,
-    "mineru_formula_enable": true,
-    "mineru_table_enable": true,
     "vlm_model_id": null,
     "vlm_prompt": "请识别图片中的所有文字内容，保持原有的格式和排版。如果图片中没有文字，请回复\"图片中未检测到文字\"。",
     "vlm_temperature": 0.2,
