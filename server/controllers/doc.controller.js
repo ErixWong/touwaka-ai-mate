@@ -1194,23 +1194,15 @@ async createVersion(ctx) {
 
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
-      const result = await this.docPipelineAdvancer.enterStage(documentId, retryStage, {
-        revision_id: document.current_revision_id,
-        initiatedByType: 'user',
-        initiatedById: userId,
-        attemptNo: document.processing_retry_count + 1,
-        message: `Manual retry to ${retryStage} (error: ${document.processing_error_code})`,
-        metadata: {
-          retry: true,
-          previous_error_code: document.processing_error_code,
-          previous_error_message: document.processing_error_message,
-          retry_count: document.processing_retry_count + 1,
-        },
-      });
-
-      // enterStage 不负责 retry_count，单独递增
+      // 只更新文档状态、清错误码，不通过 enterStage 创建 run 记录
+      // run 记录由后续 tick → submit() → enterStage 统一创建，避免阻塞 submit() 的 already_running 检查
       await document.update({
+        processing_status: retryStage,
+        current_stage_started_at: new Date(),
+        processing_error_code: null,
+        processing_error_message: null,
         processing_retry_count: document.processing_retry_count + 1,
+        processing_updated_at: new Date(),
       });
 
       ctx.success({

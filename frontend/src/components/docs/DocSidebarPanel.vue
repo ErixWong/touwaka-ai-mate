@@ -7,8 +7,8 @@
         <div class="status-row">
           <span class="status-label">{{ $t('docs.workspace.panel.processingStatus') }}</span>
           <span class="status-value">
-            <el-tag size="small" :type="processingTagType">
-              {{ processingLabel }}
+            <el-tag size="small" :type="processingTagType(processingStatus)">
+              {{ processingLabel(processingStatus) }}
             </el-tag>
             <span v-if="isLongRunning" class="duration-warn">{{ processingDuration }}</span>
           </span>
