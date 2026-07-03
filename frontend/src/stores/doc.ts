@@ -132,19 +132,22 @@ export const useDocStore = defineStore('doc', () => {
 
   async function syncProcessing(documentId: string) {
     error.value = null
-    const status = processingStatus.value?.processing_status
+    const latestProcessing = await fetchProcessing(documentId)
+    if (!latestProcessing) {
+      return null
+    }
+
+    const status = latestProcessing.processing_status
     const isOcrStage = isOcrActiveDocProcessingStatus(status)
-    if (isOcrStage || !processingStatus.value) {
+    if (isOcrStage) {
       try {
         await syncOcr(documentId)
       } catch (e: unknown) {
-        if (isOcrStage) {
-          error.value = getErrorMessage(e, 'Failed to sync OCR status')
-          if (shouldStopPollingForError(e)) {
-            stopPolling()
-          }
-          return null
+        error.value = getErrorMessage(e, 'Failed to sync OCR status')
+        if (shouldStopPollingForError(e)) {
+          stopPolling()
         }
+        return null
       }
     }
     try {
