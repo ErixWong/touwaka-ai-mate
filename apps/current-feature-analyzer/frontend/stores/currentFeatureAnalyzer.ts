@@ -108,10 +108,15 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
   }
 
   async function launchAnalysisTask(fileList: File[], ruleSetId: string, overwriteCurrentSession = true) {
+    const preservedRuleSetDetail = selectedRuleSetDetail.value
+    const preservedRuleSetId = selectedRuleSetId.value
     if (overwriteCurrentSession && hasActiveSession()) {
       clearSessionState()
       sessionExpired.value = false
     }
+
+    selectedRuleSetId.value = preservedRuleSetId || ruleSetId
+    selectedRuleSetDetail.value = preservedRuleSetDetail
 
     await uploadFiles(fileList, ruleSetId)
 

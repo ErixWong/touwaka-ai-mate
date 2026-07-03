@@ -35,6 +35,11 @@ export default class app_current_feature_rule_stage extends Model {
       allowNull: false,
       comment: "语义定义"
     },
+    stage_color: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "阶段颜色"
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: false,
