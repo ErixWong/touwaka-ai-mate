@@ -131,7 +131,6 @@ async getAppWithRuntime(appId) {
             valid: false,
             manifest_error: manifestError,
             has_tick: false,
-            has_routes: false,
             has_frontend: !!app.component,
             has_backup: false,
           },
@@ -148,7 +147,6 @@ async getAppWithRuntime(appId) {
           errors: runtimeInfo.validation?.errors ?? [],
           warnings: runtimeInfo.validation?.warnings ?? [],
           has_tick: runtimeInfo.hasTick,
-          has_routes: runtimeInfo.hasRoutes,
           has_frontend: runtimeInfo.hasFrontend,
           has_backup: runtimeInfo.hasBackupExport,
         },
@@ -241,6 +239,8 @@ async getAppWithRuntime(appId) {
     if (!app) throw new Error('App not found');
     
     await app.destroy();
+    
+    await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
     
     this.runtimeLoader.clearCache(appId);
     
@@ -381,14 +381,12 @@ async getAppWithRuntime(appId) {
         runtime: runtimeInfo ? {
           valid: runtimeInfo.validation?.valid ?? true,
           has_tick: runtimeInfo.hasTick,
-          has_routes: runtimeInfo.hasRoutes,
           has_frontend: runtimeInfo.hasFrontend,
           has_backup: runtimeInfo.hasBackupExport,
         } : {
           valid: false,
           error: runtimeError,
           has_tick: false,
-          has_routes: false,
           has_frontend: !!app.component,
           has_backup: false,
         },

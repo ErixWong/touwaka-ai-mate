@@ -7,10 +7,11 @@ import path from 'path';
  * App Market 控制器
  */
 class AppMarketController {
-  constructor(db, registryService = null) {
+  constructor(db, registryService = null, appRouterLoader = null) {
     this.db = db;
     this.appMarketService = new AppMarketService(db);
     this.registryService = registryService;
+    this.appRouterLoader = appRouterLoader;
     this.wildcardCacheManager = null;
   }
 
@@ -133,6 +134,12 @@ class AppMarketController {
       const result = await this.appMarketService.uninstallApp(appId, {
         keepData: keep_data
       });
+      
+      if (this.appRouterLoader) {
+        this.appRouterLoader.softUnmountAppRoutes(appId);
+      }
+      
+      this.clearAppCache(appId);
       
       ctx.success(result, 'App uninstalled successfully');
     } catch (error) {

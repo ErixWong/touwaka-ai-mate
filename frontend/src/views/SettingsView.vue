@@ -2261,7 +2261,7 @@ const loadExpertSkills = async (expertId: string) => {
   }
 }
 
-const handleSkillToggle = () => {
+const handleSkillToggle = (_skill?: ExpertSkill) => {
   skillsChanged.value = true
 }
 
