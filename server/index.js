@@ -43,6 +43,9 @@ import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
+import ClockCore from '../lib/clock/clock-core.js';
+import { buildDocPipelineContext } from '../lib/clock/job-context-builder.js';
+import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
 import { createAppWildcardRouter } from './middlewares/app-wildcard-router.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
@@ -253,6 +256,7 @@ class ApiServer {
     this.residentSkillManager = null;
     this.tokenCleanupJob = null;
     this.appClock = null;
+    this.clockCore = null;
     this.appRouterLoader = null;
     this.wildcardCacheManager = null;
     this.sharedRegistryService = null;
@@ -391,6 +395,35 @@ class ApiServer {
     });
     // 不在这里启动，等 server listen 后统一启动
     logger.info('AppClock initialized');
+
+    // 初始化 ClockCore（Unified Clock Phase 1）
+    // 注册 doc-pipeline-worker 为第一个 internal job
+    this.clockCore = new ClockCore(this.db, {
+      maxConsecutiveFailures: parseInt(process.env.CLOCK_MAX_FAILURES, 10) || 3,
+      failureCooldownMs: parseInt(process.env.CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
+    });
+
+    this.clockCore.register('doc-pipeline-worker', {
+      interval: appConfig.clock_interval * 1000,
+      preventOverlap: true,
+      handler: async (clockContext) => {
+        const services = buildDocPipelineContext(this.db, {
+          callMcp: this.appClock?.callMcp?.bind(this.appClock) ?? null,
+          callLlm: null,
+          getDocPipelineConfig: async () => {
+            try {
+              const systemSettingService = getSystemSettingService(this.db);
+              return await systemSettingService.getDocPipelineConfig?.() || null;
+            } catch {
+              return null;
+            }
+          },
+        });
+        return await docPipelineWorkerRun({ services });
+      },
+    });
+
+    logger.info('ClockCore initialized with doc-pipeline-worker internal job');
   }
 
   /**
@@ -877,6 +910,17 @@ class ApiServer {
           }
         }
 
+        // 启动 ClockCore（Unified Clock Phase 1）
+        // doc-pipeline-worker 作为第一个 internal job
+        if (this.clockCore) {
+          if (isFeatureEnabled('ENABLE_CLOCK_CORE')) {
+            this.clockCore.startAll();
+            logger.info('[Startup] ClockCore started with internal jobs');
+          } else {
+            logger.warn('[Startup] ClockCore disabled by ENABLE_CLOCK_CORE');
+          }
+        }
+
         // 启动 Token 清理任务（Issue #140）
         if (this.tokenCleanupJob) {
           if (isFeatureEnabled('ENABLE_TOKEN_CLEANUP')) {
@@ -912,6 +956,9 @@ process.on('SIGINT', async () => {
   if (server.appClock) {
     server.appClock.stop();
   }
+  if (server.clockCore) {
+    server.clockCore.stopAll();
+  }
   process.exit(0);
 });
 
@@ -928,6 +975,9 @@ process.on('SIGTERM', async () => {
   }
   if (server.appClock) {
     server.appClock.stop();
+  }
+  if (server.clockCore) {
+    server.clockCore.stopAll();
   }
   process.exit(0);
 });

@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import docOcrPipeline from '../apps/doc-ocr-pipeline/tick/index.js';
+import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
 
 function createServices(options = {}) {
   const executeCalls = [];
@@ -182,7 +183,32 @@ async function main() {
   await runContractMgrV2SubmitCase();
   await runContractMgrSyncCase();
   await runContractMgrV2SyncCase();
+
+  // Phase 1: 验证新 run() 入口与兼容 tick() 等价
+  console.log('\n--- Phase 1: New run() entry point validation ---');
+  await runNewEntryEquivalenceCase();
+
   console.log('doc-ocr-pipeline offline tests passed');
+}
+
+/**
+ * Phase 1: 验证新 run() 与旧 tick() 行为等价
+ */
+async function runNewEntryEquivalenceCase() {
+  const services = createServices({
+    documents: [{ id: 'doc-eq', processing_status: 'pending_ocr', current_revision_id: 'rev-eq' }],
+    bindings: {
+      'doc-eq': { app_id: 'contract-mgr-v2', row_id: 'row-eq', document_id: 'doc-eq' },
+    },
+    documentOcr: {
+      submit: async () => ({ provider: 'erix-mineru', task_id: 'task-eq' }),
+      syncTaskStatus: async () => ({ completed: false }),
+    },
+  });
+
+  const result = await docPipelineWorkerRun({ services });
+  assert.equal(result.submitted, 1);
+  console.log('  ✓ run() returns correct submitted count');
 }
 
 main().catch((error) => {

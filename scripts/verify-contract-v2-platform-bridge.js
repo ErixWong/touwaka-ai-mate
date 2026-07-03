@@ -7,6 +7,7 @@ dotenv.config();
 import Database from '../lib/db.js';
 import Utils from '../lib/utils.js';
 import { tick as docOcrPipelineTick } from '../apps/doc-ocr-pipeline/tick/index.js';
+import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
