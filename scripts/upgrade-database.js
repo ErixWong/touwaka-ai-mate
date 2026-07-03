@@ -3099,6 +3099,181 @@ const MIGRATIONS = [
     }
   },
 
+  // 41. current-feature-analyzer 规则集表字段收敛
+  {
+    name: 'remove deprecated columns from app_current_feature_rule_sets',
+    check: async (conn) => {
+      const hasRuleSetTable = await hasTable(conn, 'app_current_feature_rule_sets');
+      if (!hasRuleSetTable) return false;
+
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'app_current_feature_rule_sets'
+          AND COLUMN_NAME IN ('business_context', 'prompt_template', 'output_json_schema', 'llm_instructions')
+      `);
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'app_current_feature_rule_sets'
+          AND COLUMN_NAME IN ('business_context', 'prompt_template', 'output_json_schema', 'llm_instructions')
+      `);
+
+      const columnNames = rows.map(row => row.COLUMN_NAME);
+      if (columnNames.length === 0) {
+        console.log('  ✓ No deprecated columns found in app_current_feature_rule_sets');
+        return;
+      }
+
+      const dropSql = columnNames.map(name => `DROP COLUMN ${name}`).join(', ');
+      await conn.execute(`ALTER TABLE app_current_feature_rule_sets ${dropSql}`);
+      console.log(`  ✓ Removed deprecated columns from app_current_feature_rule_sets: ${columnNames.join(', ')}`);
+    }
+  },
+
+  // 42. current-feature-analyzer 阶段表字段收敛
+  {
+    name: 'remove deprecated columns from app_current_feature_rule_stages',
+    check: async (conn) => {
+      const hasStageTable = await hasTable(conn, 'app_current_feature_rule_stages');
+      if (!hasStageTable) return false;
+
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'app_current_feature_rule_stages'
+          AND COLUMN_NAME IN (
+            'expected_signal_features',
+            'required',
+            'allow_repeat',
+            'allow_overlap',
+            'min_duration_ms',
+            'max_duration_ms',
+            'notes'
+          )
+      `);
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'app_current_feature_rule_stages'
+          AND COLUMN_NAME IN (
+            'expected_signal_features',
+            'required',
+            'allow_repeat',
+            'allow_overlap',
+            'min_duration_ms',
+            'max_duration_ms',
+            'notes'
+          )
+      `);
+
+      const columnNames = rows.map(row => row.COLUMN_NAME);
+      if (columnNames.length === 0) {
+        console.log('  ✓ No deprecated columns found in app_current_feature_rule_stages');
+        return;
+      }
+
+      const dropSql = columnNames.map(name => `DROP COLUMN ${name}`).join(', ');
+      await conn.execute(`ALTER TABLE app_current_feature_rule_stages ${dropSql}`);
+      console.log(`  ✓ Removed deprecated columns from app_current_feature_rule_stages: ${columnNames.join(', ')}`);
+    }
+  },
+
+  // 43. app_current_feature_rule_stages 新增 stage_color 字段
+  {
+    name: 'add stage_color column to app_current_feature_rule_stages',
+    check: async (conn) => {
+      const hasStageTable = await hasTable(conn, 'app_current_feature_rule_stages');
+      if (!hasStageTable) return true;
+      const [rows] = await conn.execute(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'app_current_feature_rule_stages'
+          AND COLUMN_NAME = 'stage_color'
+      `);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const DEFAULT_COLORS = ['#3b82f6', '#14b8a6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+      await conn.execute(`
+        ALTER TABLE app_current_feature_rule_stages
+        ADD COLUMN stage_color VARCHAR(32) NULL COMMENT '阶段标识颜色' AFTER stage_order
+      `);
+      const [stages] = await conn.execute(`
+        SELECT id, stage_order FROM app_current_feature_rule_stages ORDER BY rule_set_id, stage_order
+      `);
+      for (const stage of stages) {
+        const color = DEFAULT_COLORS[stage.stage_order % DEFAULT_COLORS.length];
+        await conn.execute(
+          `UPDATE app_current_feature_rule_stages SET stage_color = ? WHERE id = ?`,
+          [color, stage.id]
+        );
+      }
+      console.log('  ✓ Added stage_color column to app_current_feature_rule_stages');
+    }
+  },
+
+  // 44. doc_content_units.version_id 外键重绑到 document_revisions
+  {
+    name: 'rebind doc_content_units.version_id foreign key to document_revisions',
+    check: async (conn) => {
+      const hasTableDocContentUnits = await hasTable(conn, 'doc_content_units');
+      const hasTableDocumentRevisions = await hasTable(conn, 'document_revisions');
+      if (!hasTableDocContentUnits || !hasTableDocumentRevisions) return false;
+
+      const [rows] = await conn.execute(`
+        SELECT REFERENCED_TABLE_NAME, CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'doc_content_units'
+          AND COLUMN_NAME = 'version_id'
+          AND REFERENCED_TABLE_NAME IS NOT NULL
+      `);
+
+      if (rows.length === 0) return false;
+      return rows[0].REFERENCED_TABLE_NAME === 'document_revisions';
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT REFERENCED_TABLE_NAME, CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'doc_content_units'
+          AND COLUMN_NAME = 'version_id'
+          AND REFERENCED_TABLE_NAME IS NOT NULL
+      `);
+
+      for (const row of rows) {
+        await safeExecute(conn, `ALTER TABLE doc_content_units DROP FOREIGN KEY ${row.CONSTRAINT_NAME}`);
+      }
+
+      const [indexes] = await conn.execute(`SHOW INDEX FROM doc_content_units WHERE Key_name = 'fk_unit_version'`);
+      if (indexes.length > 0) {
+        await safeExecute(conn, `ALTER TABLE doc_content_units DROP INDEX fk_unit_version`);
+      }
+      await safeExecute(conn, `ALTER TABLE doc_content_units ADD INDEX idx_doc_content_units_version_id (version_id)`);
+      await conn.execute(`
+        ALTER TABLE doc_content_units
+        ADD CONSTRAINT fk_doc_content_units_revision
+        FOREIGN KEY (version_id) REFERENCES document_revisions(id)
+        ON DELETE CASCADE
+      `);
+
+      console.log('  ✓ Rebound doc_content_units.version_id → document_revisions.id');
+    }
+  },
+
 ];
 
 /**

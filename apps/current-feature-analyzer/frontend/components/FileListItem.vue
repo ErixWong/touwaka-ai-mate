@@ -17,6 +17,10 @@
         <el-icon class="cfa-file-err-icon"><WarningFilled /></el-icon>
       </el-tooltip>
     </div>
+    <div v-if="file.result?.stage_metrics?.length" class="cfa-file-item-summary">
+      <span class="summary-tag">阶段: {{ file.result.stage_metrics.length }}</span>
+      <span v-if="file.warning_count > 0" class="summary-tag warning">告警: {{ file.warning_count }}</span>
+    </div>
   </div>
 </template>
 
@@ -70,11 +74,22 @@ const duplicateDiagnosisText = computed(() => {
   padding: 10px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--el-border-color-lighter);
-  transition: background 0.15s;
+  transition: all 0.15s;
+  margin: 4px 8px;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
 }
 .cfa-file-item:hover { background: var(--el-fill-color-light); }
-.cfa-file-item.selected { background: var(--el-color-primary-light-9); }
-.cfa-file-item.error { border-left: 3px solid var(--el-color-danger); }
+.cfa-file-item.selected {
+  background: var(--el-color-primary-light-9);
+  border-left-color: var(--el-color-primary);
+}
+.cfa-file-item.selected .cfa-file-item-name {
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+.cfa-file-item.error { border-left-color: var(--el-color-danger); }
+.cfa-file-item.warning { border-left-color: var(--el-color-warning); }
 .cfa-file-item-name {
   font-size: 13px;
   white-space: nowrap;
@@ -86,6 +101,21 @@ const duplicateDiagnosisText = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.cfa-file-item-summary {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.summary-tag {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.summary-tag.warning {
+  color: var(--el-color-warning);
 }
 .cfa-file-warn {
   color: var(--el-color-warning);

@@ -65,9 +65,6 @@ export const DEFAULT_VC_OPTIONS = Object.freeze({
 
 export const DEFAULT_LLM_OPTIONS = Object.freeze({
   temperature: 0.2,
-  max_tokens: 8000,
-  timeout_ms: 120000,
-  retry_times: 2,
 });
 
 export const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 小时

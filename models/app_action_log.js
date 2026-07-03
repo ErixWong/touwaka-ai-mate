@@ -12,11 +12,7 @@ export default class app_action_log extends Model {
     handler_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "处理器ID",
-      references: {
-        model: 'app_row_handlers',
-        key: 'id'
-      }
+      comment: "处理器ID"
     },
     record_id: {
       type: DataTypes.STRING(32),

@@ -1,0 +1,290 @@
+<template>
+  <el-dialog
+    :model-value="true"
+    title="新建分析任务"
+    width="680px"
+    @close="$emit('close')"
+  >
+    <div class="task-launch-layout">
+      <el-alert
+        v-if="hasActiveSession"
+        title="当前已有进行中的分析会话"
+        type="warning"
+        :closable="false"
+        show-icon
+      >
+        <template #default>
+          <div class="task-launch-alert-body">
+            开始新任务前，需要明确是否覆盖当前会话结果。
+          </div>
+        </template>
+      </el-alert>
+
+      <el-form label-width="110px">
+        <el-form-item label="分析规则集" required>
+          <el-select
+            v-model="localRuleSetId"
+            placeholder="请选择一套规则集"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="ruleSet in enabledRuleSets"
+              :key="ruleSet.id"
+              :label="ruleSet.rule_set_name"
+              :value="ruleSet.id"
+            >
+              <div class="task-launch-option">
+                <span class="task-launch-option-name">{{ ruleSet.rule_set_name }}</span>
+                <span v-if="ruleSet.description" class="task-launch-option-desc">{{ ruleSet.description }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="上传文件" required>
+          <div class="task-launch-file-block">
+            <div class="task-launch-file-actions">
+              <el-tooltip content="选择 CSV 文件" placement="top">
+                <el-button type="primary" plain :icon="FolderOpened" @click="triggerFileSelect" />
+              </el-tooltip>
+              <span class="task-launch-file-hint">支持一次选择多个 `.csv` 文件</span>
+            </div>
+            <input
+              ref="fileInputRef"
+              type="file"
+              multiple
+              accept=".csv"
+              style="display: none"
+              @change="onFileChange"
+            >
+
+            <div v-if="selectedFiles.length > 0" class="task-launch-file-list">
+              <div class="task-launch-file-list-header">
+                已选择 {{ selectedFiles.length }} 个文件
+              </div>
+              <div
+                v-for="(file, index) in selectedFiles"
+                :key="`${file.name}-${index}`"
+                class="task-launch-file-item"
+              >
+                <div class="task-launch-file-meta">
+                  <span class="task-launch-file-name">{{ file.name }}</span>
+                  <span class="task-launch-file-size">{{ formatFileSize(file.size) }}</span>
+                </div>
+                <el-tooltip content="移除文件" placement="top">
+                  <el-button text type="danger" :icon="Delete" @click="removeFile(index)" />
+                </el-tooltip>
+              </div>
+            </div>
+            <div v-else class="task-launch-empty">
+              请选择至少一个 CSV 文件
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item v-if="hasActiveSession" label="会话处理" required>
+          <el-radio-group v-model="overwriteCurrentSession">
+            <el-radio :value="false">继续当前会话，不覆盖现有结果</el-radio>
+            <el-radio :value="true">覆盖当前会话并重新开始</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+
+      <div class="task-launch-summary">
+        <div class="task-launch-summary-title">任务确认</div>
+        <div class="task-launch-summary-grid">
+          <div class="task-launch-summary-item">
+            <span class="label">规则集</span>
+            <span class="value">{{ selectedRuleSetName || '未选择' }}</span>
+          </div>
+          <div class="task-launch-summary-item">
+            <span class="label">文件数</span>
+            <span class="value">{{ selectedFiles.length }}</span>
+          </div>
+          <div class="task-launch-summary-item">
+            <span class="label">任务动作</span>
+            <span class="value">上传后立即启动分析</span>
+          </div>
+          <div class="task-launch-summary-item" v-if="hasActiveSession">
+            <span class="label">会话策略</span>
+            <span class="value">{{ overwriteCurrentSession ? '覆盖当前会话' : '保留当前会话' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <el-button @click="$emit('close')">取消</el-button>
+      <el-tooltip content="开始分析" placement="top">
+        <el-button type="primary" :icon="Promotion" :disabled="!canSubmit" @click="submitTask" />
+      </el-tooltip>
+    </template>
+  </el-dialog>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { Delete, FolderOpened, Promotion } from '@element-plus/icons-vue'
+import type { RuleSetItem } from '../api/current-feature-analyzer'
+
+const props = defineProps<{
+  currentBatchStatus: string
+  defaultRuleSetId: string | null
+  ruleSets: RuleSetItem[]
+}>()
+
+const emit = defineEmits<{
+  close: []
+  submit: [{ files: File[]; ruleSetId: string; overwriteCurrentSession: boolean }]
+}>()
+
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const selectedFiles = ref<File[]>([])
+const localRuleSetId = ref(props.defaultRuleSetId || '')
+const overwriteCurrentSession = ref(true)
+
+const enabledRuleSets = computed(() => props.ruleSets.filter(ruleSet => ruleSet.is_enabled))
+const hasActiveSession = computed(() => props.currentBatchStatus !== 'idle')
+const selectedRuleSetName = computed(() => enabledRuleSets.value.find(ruleSet => ruleSet.id === localRuleSetId.value)?.rule_set_name || '')
+const canSubmit = computed(() => !!localRuleSetId.value && selectedFiles.value.length > 0)
+
+function triggerFileSelect() {
+  fileInputRef.value?.click()
+}
+
+function onFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files ? Array.from(input.files) : []
+  selectedFiles.value = files
+  input.value = ''
+}
+
+function removeFile(index: number) {
+  selectedFiles.value.splice(index, 1)
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function submitTask() {
+  if (!localRuleSetId.value || selectedFiles.value.length === 0) {
+    return
+  }
+  emit('submit', {
+    files: [...selectedFiles.value],
+    ruleSetId: localRuleSetId.value,
+    overwriteCurrentSession: overwriteCurrentSession.value,
+  })
+}
+</script>
+
+<style scoped>
+.task-launch-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.task-launch-alert-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.task-launch-file-block {
+  width: 100%;
+}
+.task-launch-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.task-launch-file-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.task-launch-empty {
+  padding: 18px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  background: var(--el-fill-color-lighter);
+}
+.task-launch-file-list {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.task-launch-file-list-header {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+}
+.task-launch-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.task-launch-file-item:first-of-type {
+  border-top: none;
+}
+.task-launch-file-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.task-launch-file-name {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+.task-launch-file-size {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.task-launch-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.task-launch-option-name {
+  color: var(--el-text-color-primary);
+}
+.task-launch-option-desc {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+.task-launch-summary {
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+}
+.task-launch-summary-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin-bottom: 10px;
+}
+.task-launch-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+.task-launch-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.task-launch-summary-item .label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.task-launch-summary-item .value {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+</style>

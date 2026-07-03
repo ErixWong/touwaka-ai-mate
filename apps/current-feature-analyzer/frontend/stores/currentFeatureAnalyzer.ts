@@ -103,6 +103,23 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     error.value = null
   }
 
+  function hasActiveSession() {
+    return batchStatus.value !== 'idle' || files.value.length > 0 || !!batchId.value
+  }
+
+  async function launchAnalysisTask(fileList: File[], ruleSetId: string, overwriteCurrentSession = true) {
+    if (overwriteCurrentSession && hasActiveSession()) {
+      clearSessionState()
+      sessionExpired.value = false
+    }
+
+    await uploadFiles(fileList, ruleSetId)
+
+    if (batchId.value && selectedRuleSetId.value) {
+      await runAnalysis()
+    }
+  }
+
   async function uploadFiles(fileList: File[], ruleSetId?: string) {
     loading.value = true
     batchStatus.value = 'uploading'
@@ -337,7 +354,9 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     appConfig,
     currentFile,
     fileStats,
+    hasActiveSession,
     uploadFiles,
+    launchAnalysisTask,
     loadRuleSets,
     selectRuleSet,
     selectFile,

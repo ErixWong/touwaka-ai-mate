@@ -1,4 +1,4 @@
-import { UploadSessionService, LlmStageRecognitionService } from '../../services/index.js';
+import { UploadSessionService, StageRecognitionWorkflowService } from '../../services/index.js';
 
 // Handler 元数据：声明具名参数路径
 export const route = {
@@ -26,8 +26,8 @@ export async function post(ctx, deps) {
       return;
     }
 
-    const llmStageRecognitionService = new LlmStageRecognitionService(deps.db);
-    const result = await llmStageRecognitionService.analyzeBatch(batch, rule_set_id, analysis_options);
+    const stageRecognitionWorkflowService = new StageRecognitionWorkflowService(deps.db);
+    const result = await stageRecognitionWorkflowService.analyzeBatch(batch, rule_set_id, analysis_options);
 
     ctx.success(result);
   } catch (err) {

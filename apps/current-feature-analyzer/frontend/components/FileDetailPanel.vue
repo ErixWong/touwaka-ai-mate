@@ -3,7 +3,6 @@
     <el-collapse v-if="ruleSetDetail" class="cfa-ruleset-info">
       <el-collapse-item :title="`当前规则集：${ruleSetDetail.rule_set_name}`">
         <div v-if="ruleSetDetail.description" class="cfa-ruleset-desc">{{ ruleSetDetail.description }}</div>
-        <div v-if="ruleSetDetail.business_context" class="cfa-ruleset-ctx">{{ ruleSetDetail.business_context }}</div>
         <div v-if="ruleSetDetail.stages?.length" class="cfa-ruleset-stages">
           <span class="cfa-ruleset-stages-label">识别阶段：</span>
           <el-tag

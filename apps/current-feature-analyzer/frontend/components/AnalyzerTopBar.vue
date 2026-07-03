@@ -2,107 +2,67 @@
   <div class="cfa-topbar">
     <div class="cfa-topbar-left">
       <div class="cfa-topbar-titles">
-        <span class="cfa-topbar-title">电流采样特征分析</span>
-        <span class="cfa-topbar-subtitle">基于规则集与 LLM 的电流阶段识别工作台</span>
+        <span class="cfa-topbar-title">电流特征分析</span>
+        <span class="cfa-topbar-subtitle">批量上传 CSV 文件，AI 智能识别各阶段起止时间</span>
       </div>
-      <el-select
-        v-model="selectedRuleSet"
-        placeholder="选择规则集"
-        size="default"
-        style="width: 220px"
-      >
-        <el-option
-          v-for="rs in ruleSets.filter(r => r.is_enabled)"
-          :key="rs.id"
-          :label="rs.rule_set_name"
-          :value="rs.id"
-        >
-          <span>{{ rs.rule_set_name }}</span>
-          <span v-if="rs.description" class="rs-option-desc">{{ rs.description }}</span>
-        </el-option>
-      </el-select>
     </div>
     <div class="cfa-topbar-actions">
-      <el-button type="primary" :disabled="loading" @click="triggerUpload">上传 CSV</el-button>
+      <el-tooltip content="新建分析任务" placement="bottom">
+        <el-button type="primary" :icon="FolderAdd" :disabled="loading" @click="$emit('openLaunch')" />
+      </el-tooltip>
       <el-button
         type="success"
+        :icon="Promotion"
         :disabled="!canAnalyze || loading"
         @click="$emit('runAnalysis')"
-      >
-        开始分析
-      </el-button>
+      />
       <el-button
         type="warning"
+        :icon="Download"
         :disabled="!canExport"
         @click="$emit('export')"
-      >
-        导出 Excel
-      </el-button>
-      <el-tooltip v-if="isAdmin" content="系统配置" placement="bottom">
-        <el-button :icon="Setting" @click="$emit('openConfig')">配置</el-button>
-      </el-tooltip>
-      <el-tooltip v-if="isAdmin" content="规则集管理" placement="bottom">
-        <el-button :icon="Edit" @click="$emit('openRulesetEditor')">规则</el-button>
-      </el-tooltip>
-      <input
-        ref="fileInputRef"
-        type="file"
-        multiple
-        accept=".csv"
-        style="display: none"
-        @change="onFileChange"
       />
+      <el-dropdown v-if="isAdmin" trigger="click">
+        <el-button :icon="MoreFilled" />
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="$emit('openRulesetEditor')">
+              <el-icon><Edit /></el-icon>分析规则管理
+            </el-dropdown-item>
+            <el-dropdown-item @click="$emit('openConfig')">
+              <el-icon><Setting /></el-icon>分析参数设置
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { Edit, Setting } from '@element-plus/icons-vue'
-import type { RuleSetItem } from '../api/current-feature-analyzer'
+import { computed } from 'vue'
+import { Download, Edit, FolderAdd, MoreFilled, Promotion, Setting } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   batchStatus: string
   loading: boolean
-  ruleSets: RuleSetItem[]
-  selectedRuleSetId: string | null
   isAdmin: boolean
 }>()
 
 const emit = defineEmits<{
-  upload: [files: File[]]
-  selectRuleSet: [id: string]
+  openLaunch: []
   runAnalysis: []
   export: []
   openConfig: []
   openRulesetEditor: []
 }>()
 
-const fileInputRef = ref<HTMLInputElement | null>(null)
-
-const selectedRuleSet = computed({
-  get: () => props.selectedRuleSetId || '',
-  set: (val: string) => emit('selectRuleSet', val),
-})
-
 const canAnalyze = computed(() => {
   const hasFiles = props.batchStatus === 'ready' || props.batchStatus === 'completed' || props.batchStatus === 'partial_failed'
-  return hasFiles && props.selectedRuleSetId && !props.loading
+  return hasFiles && !props.loading
 })
 
 const canExport = computed(() => props.batchStatus === 'completed' || props.batchStatus === 'partial_failed')
-
-function triggerUpload() {
-  fileInputRef.value?.click()
-}
-
-function onFileChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (input.files && input.files.length > 0) {
-    emit('upload', Array.from(input.files))
-  }
-  input.value = ''
-}
 </script>
 
 <style scoped>
@@ -135,10 +95,5 @@ function onFileChange(e: Event) {
 .cfa-topbar-actions {
   display: flex;
   gap: 8px;
-}
-.rs-option-desc {
-  font-size: 11px;
-  color: var(--el-text-color-placeholder);
-  margin-left: 8px;
 }
 </style>

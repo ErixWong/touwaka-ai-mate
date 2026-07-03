@@ -1,14 +1,19 @@
 import logger from '../../../../lib/logger.js';
-import { callWithRetry } from '../../../../lib/chat/base-llm.js';
 import modelRegistry from '../../../../lib/model-registry.js';
+import InternalLLMService from '../../../../lib/internal-llm-service.js';
+import ConfigService from './config.service.js';
+import VectorCompressionService from './vector-compression.service.js';
+import StageMetricsService from './stage-metrics.service.js';
+import { BATCH_STATUS, FILE_ANALYSIS_STATUS } from '../../states.js';
 
 const INVALID_JSON_LOG_LIMIT = 1200;
 const MAX_SEGMENTS_FOR_LLM = 120;
 
-class LlmStageRecognitionService {
+class StageRecognitionWorkflowService {
   constructor(db) {
     this.db = db;
     modelRegistry.init(db);
+    this.internalLLM = new InternalLLMService(db);
   }
 
   async recognize(globals, segments, events, ruleSet, appConfig) {
@@ -47,47 +52,32 @@ class LlmStageRecognitionService {
     const reducedSegments = this.reduceSegmentsForLlm(segments);
     const userMessage = this.buildUserMessage(globals, reducedSegments, events, ruleSet, appConfig, segments.length);
 
-    const systemPrompt = ruleSet.prompt_template
-      || appConfig.analysis_prompt_template
-      || this.buildDefaultSystemPrompt();
+    const systemPrompt = this.buildSystemPrompt(ruleSet, appConfig);
 
-    const schemaText = ruleSet.output_json_schema
-      || appConfig.json_output_schema
-      || this.buildDefaultOutputSchema();
+    const schemaText = appConfig.json_output_schema || this.buildDefaultOutputSchema();
+    const finalSystemPrompt = `${systemPrompt}\n\n输出要求：\n1. 只能输出一个 JSON 对象，禁止输出 markdown、代码块、注释、前言、结尾说明。\n2. 禁止输出思考过程、reasoning、analysis、thinking process。\n3. 即使无法完整识别，也必须返回合法 JSON。\n4. JSON 中只能包含 schema 允许的字段，不要添加额外字段。\n5. 所有字符串必须使用标准 JSON 双引号。\n\n输出必须严格遵守以下 JSON Schema:\n${schemaText}`;
+    const finalUserPrompt = `${userMessage}\n\n请直接返回纯 JSON，不要附加任何解释。`;
 
-    const messages = [
-      { role: 'system', content: `${systemPrompt}\n\n输出要求：\n1. 只能输出一个 JSON 对象，禁止输出 markdown、代码块、注释、前言、结尾说明。\n2. 禁止输出思考过程、reasoning、analysis、thinking process。\n3. 即使无法完整识别，也必须返回合法 JSON。\n4. JSON 中只能包含 schema 允许的字段，不要添加额外字段。\n5. 所有字符串必须使用标准 JSON 双引号。\n\n输出必须严格遵守以下 JSON Schema:\n${schemaText}` },
-      { role: 'user', content: `${userMessage}\n\n请直接返回纯 JSON，不要附加任何解释。` },
-    ];
-
-    const retryTimes = appConfig.retry_times ?? 2;
-    const timeout = appConfig.timeout_ms ?? 120000;
+    const retryTimes = this.internalLLM.maxRetries;
     let lastDebugResponse = null;
-    const thinkingConfig = this.buildThinkingConfig(modelConfig);
 
     for (let attempt = 0; attempt <= retryTimes; attempt++) {
       try {
-        const response = await callWithRetry(modelConfig, messages, {
+        let parsed = await this.internalLLM.extractJson(finalSystemPrompt, finalUserPrompt, {
+          modelId: modelConfig.id,
           temperature: appConfig.temperature ?? 0.2,
-          max_tokens: appConfig.max_tokens ?? 2000,
-          timeout,
-          response_format: { type: 'json_object' },
-          ...(thinkingConfig.thinking ? { thinking: thinkingConfig.thinking } : {}),
-          ...(thinkingConfig.reasoning ? { reasoning: thinkingConfig.reasoning } : {}),
-          ...(thinkingConfig.chat_template_kwargs ? { chat_template_kwargs: thinkingConfig.chat_template_kwargs } : {}),
+          schema: JSON.parse(schemaText),
         });
 
-        const content = response?.content || response?.message?.content || '';
-        const reasoningContent = response?.reasoningContent || response?.reasoning_content || '';
-        const candidateText = this.getBestJsonCandidate(content, reasoningContent);
-        let parsed = this.extractAndValidateJson(candidateText);
+        const content = JSON.stringify(parsed);
+        const reasoningContent = '';
 
         if ((!parsed || !Array.isArray(parsed.stages) || parsed.stages.length === 0) && appConfig.enable_json_repair !== false) {
-          parsed = this.extractStagesFromNarrative(candidateText, ruleSet);
+          parsed = this.extractStagesFromNarrative(content, ruleSet);
         }
 
         if ((!parsed || !Array.isArray(parsed.stages) || parsed.stages.length === 0) && appConfig.enable_json_repair !== false) {
-          parsed = this.buildHeuristicFallback(segments, ruleSet, candidateText);
+          parsed = this.buildHeuristicFallback(segments, ruleSet, content);
         }
 
         if (parsed && parsed.stages && Array.isArray(parsed.stages)) {
@@ -147,39 +137,25 @@ class LlmStageRecognitionService {
     };
   }
 
-  buildThinkingConfig(modelConfig) {
-    const thinkingFormat = String(modelConfig?.thinking_format || 'none').toLowerCase();
-    const supportsReasoning = !!modelConfig?.supports_reasoning;
-    const modelName = String(modelConfig?.model_name || '').toLowerCase();
+  buildSystemPrompt(ruleSet, appConfig) {
+    const basePrompt = appConfig.analysis_prompt_template || this.buildDefaultSystemPrompt();
+    const scenarioDescription = String(ruleSet?.description || '').trim();
+    const stageDefinitions = Array.isArray(ruleSet?.stages) ? ruleSet.stages : [];
 
-    if (thinkingFormat === 'openai' || modelName.startsWith('o1-') || modelName.startsWith('o3-') || modelName.startsWith('o4-')) {
-      return {
-        thinking: null,
-        reasoning: { effort: 'low' },
-      };
-    }
+    const stageText = stageDefinitions.length > 0
+      ? stageDefinitions.map((stage, index) => {
+        return `${index + 1}. ${stage.stage_code || 'unnamed'} (${stage.stage_name || '未命名阶段'})：${stage.semantic_definition || ''}`;
+      }).join('\n')
+      : '未配置阶段定义，请仅基于可识别信号输出最接近的阶段结果。';
 
-    if ((thinkingFormat === 'qwen' || thinkingFormat === 'deepseek') && supportsReasoning) {
-      return {
-        thinking: { type: 'disabled' },
-        reasoning: null,
-      };
-    }
+    const sections = [
+      basePrompt,
+      scenarioDescription ? `场景说明：\n${scenarioDescription}` : null,
+      `阶段定义：\n${stageText}`,
+      '请基于以上阶段定义识别每个阶段的起止时间，并保持阶段数组结构稳定。',
+    ].filter(Boolean);
 
-    // qwen 模型在部分网关上会强制开启思考模式导致 content 为空
-    // 通过 chat_template_kwargs 在模板层面关闭思考
-    if (modelName.includes('qwen')) {
-      return {
-        thinking: null,
-        reasoning: null,
-        chat_template_kwargs: { enable_thinking: false },
-      };
-    }
-
-    return {
-      thinking: null,
-      reasoning: null,
-    };
+    return sections.join('\n\n');
   }
 
   getBestJsonCandidate(content, reasoningContent) {
@@ -335,7 +311,7 @@ class LlmStageRecognitionService {
 ${segText}
 
 当前规则集:
-业务背景: ${ruleSet.business_context || '无'}
+场景说明: ${ruleSet.description || '无'}
 阶段定义:
 ${ruleText}
 
@@ -501,6 +477,138 @@ ${ruleText}
 
     return `${normalized.slice(0, maxLen)}... [truncated ${normalized.length - maxLen} chars]`;
   }
+
+  async analyzeBatch(batch, ruleSetId, analysisOptions = {}) {
+    const configService = new ConfigService(this.db);
+    const appConfig = await configService.getConfig();
+    const ruleSet = await this.resolveRuleSet(ruleSetId);
+
+    if (!ruleSet) {
+      return { success: false, error: '未找到规则集' };
+    }
+
+    const compressionOptions = this.buildCompressionOptions(analysisOptions, appConfig);
+    return this.executeBatchAnalysis(batch, ruleSet, compressionOptions);
+  }
+
+  async resolveRuleSet(ruleSetId) {
+    if (ruleSetId) {
+      return this.getRuleSetById(ruleSetId);
+    }
+    return this.getDefaultRuleSet();
+  }
+
+  buildCompressionOptions(analysisOptions, appConfig) {
+    return {
+      absolute_resolution: analysisOptions.absolute_resolution ?? appConfig.absolute_resolution ?? 0.03,
+      relative_resolution: analysisOptions.relative_resolution ?? appConfig.relative_resolution ?? 0.02,
+      merge_gap_ratio: analysisOptions.merge_gap_ratio ?? appConfig.merge_gap_ratio ?? 0.6,
+      min_transition_points: analysisOptions.min_transition_points ?? appConfig.min_transition_points ?? 3,
+    };
+  }
+
+  async executeBatchAnalysis(batch, ruleSet, compressionOptions) {
+    const vectorCompression = new VectorCompressionService(this.db);
+    const stageMetricsService = new StageMetricsService(this.db);
+    const configService = new ConfigService(this.db);
+    const appConfig = await configService.getConfig();
+
+    batch.batch_status = BATCH_STATUS.ANALYZING;
+    batch.selected_rule_set_id = ruleSet.id;
+
+    const results = { processed: 0, failed: 0, files: [] };
+
+    for (const file of batch.files) {
+      const fileResult = await this.analyzeSingleFile(
+        file, ruleSet, compressionOptions, appConfig, vectorCompression, stageMetricsService
+      );
+      if (fileResult.failed) results.failed++;
+      else results.processed++;
+      results.files.push(fileResult.fileSummary);
+    }
+
+    this.finalizeBatchStatus(batch, results);
+    return this.buildBatchResult(batch, results);
+  }
+
+  async analyzeSingleFile(file, ruleSet, compressionOptions, appConfig, vectorCompression, stageMetricsService) {
+    if (!file.raw_data || file.raw_data.length === 0) {
+      file.warning_count = 0;
+      return this.markFileFailed(file, '无原始数据');
+    }
+
+    file.analysis_status = FILE_ANALYSIS_STATUS.ANALYZING;
+
+    try {
+      const { globals, segments, events } = vectorCompression.compress(file.raw_data, compressionOptions);
+      const llmResult = await this.recognize(globals, segments, events, ruleSet, appConfig);
+      const stageMetrics = stageMetricsService.calculate(file.raw_data, llmResult);
+      const fileMetrics = stageMetricsService.buildFileMetrics(file.raw_data, segments, stageMetrics, llmResult);
+
+      file.result = { globals, segments, events, llm_result: llmResult, stage_metrics: stageMetrics, file_metrics: fileMetrics };
+      file.warning_count = (llmResult.warnings || []).length;
+
+      if (llmResult._error) {
+        return this.markFileFailed(file, llmResult._error);
+      }
+
+      file.analysis_status = FILE_ANALYSIS_STATUS.COMPLETED;
+      return { failed: false, fileSummary: { file_id: file.file_id, status: file.analysis_status } };
+    } catch (err) {
+      logger.error(`[cfa analyzeBatch] file ${file.file_id} error:`, err.message);
+      return this.markFileFailed(file, err.message);
+    }
+  }
+
+  markFileFailed(file, errorMessage) {
+    file.analysis_status = FILE_ANALYSIS_STATUS.FAILED;
+    file.error_message = errorMessage;
+    if (file.result?.llm_result?.warnings) {
+      file.warning_count = file.result.llm_result.warnings.length;
+    }
+    return { failed: true, fileSummary: { file_id: file.file_id, status: file.analysis_status, error: errorMessage } };
+  }
+
+  finalizeBatchStatus(batch, results) {
+    batch.summary = {
+      file_total: batch.files.length,
+      success_count: results.processed,
+      failed_count: results.failed,
+      stage_distribution: [],
+    };
+
+    if (results.failed === batch.files.length) {
+      batch.batch_status = BATCH_STATUS.FAILED;
+    } else if (results.failed > 0) {
+      batch.batch_status = BATCH_STATUS.PARTIAL_FAILED;
+    } else {
+      batch.batch_status = BATCH_STATUS.COMPLETED;
+    }
+  }
+
+buildBatchResult(batch, results) {
+    return {
+      success: batch.batch_status !== BATCH_STATUS.FAILED,
+      batch_status: batch.batch_status,
+      summary: batch.summary,
+      files: batch.files,
+      processed: results.processed,
+      failed: results.failed,
+    };
+  }
+
+  async getRuleSetById(id) {
+    const RuleSetModule = await import('./rule-set.service.js');
+    const service = new RuleSetModule.default(this.db);
+    return service.getById(id, true);
+  }
+
+  async getDefaultRuleSet() {
+    const RuleSetModule = await import('./rule-set.service.js');
+    const service = new RuleSetModule.default(this.db);
+    const all = await service.list();
+    return all.find(r => r.is_default) || all[0] || null;
+  }
 }
 
-export default LlmStageRecognitionService;
+export default StageRecognitionWorkflowService;

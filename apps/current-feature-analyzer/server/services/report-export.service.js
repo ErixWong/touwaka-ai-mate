@@ -1,4 +1,5 @@
 import logger from '../../../../lib/logger.js';
+import ExcelJS from 'exceljs';
 
 class ReportExportService {
   constructor(db) {
@@ -42,6 +43,56 @@ class ReportExportService {
     }];
 
     return { stageDetailRows, summaryRows };
+  }
+
+  async generateReport(batchId) {
+    const UploadSessionService = (await import('./upload-session.service.js')).default;
+    const sessionService = new UploadSessionService(this.db);
+    const batch = sessionService.getBatch(batchId);
+
+    if (!batch) {
+      return { success: false, error: '批次不存在' };
+    }
+
+    const { stageDetailRows, summaryRows } = this.buildExcelData(batch);
+    return {
+      success: true,
+      batch_id: batchId,
+      summary: summaryRows[0],
+      stage_details: stageDetailRows,
+    };
+  }
+
+  async exportReport(batchId, options = {}) {
+    const UploadSessionService = (await import('./upload-session.service.js')).default;
+    const sessionService = new UploadSessionService(this.db);
+    const batch = sessionService.getBatch(batchId);
+
+    if (!batch) {
+      throw new Error('批次不存在');
+    }
+
+    const { stageDetailRows, summaryRows } = this.buildExcelData(batch);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'current-feature-analyzer';
+    workbook.created = new Date();
+
+    const summarySheet = workbook.addWorksheet('Summary');
+    summarySheet.columns = Object.keys(summaryRows[0] || {}).map(key => ({ header: key, key }));
+    summarySheet.addRows(summaryRows);
+
+    const detailSheet = workbook.addWorksheet('StageDetails');
+    if (stageDetailRows.length > 0) {
+      detailSheet.columns = Object.keys(stageDetailRows[0]).map(key => ({ header: key, key }));
+      detailSheet.addRows(stageDetailRows);
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return {
+      filename: `analysis_report_${batchId}_${Date.now()}.xlsx`,
+      buffer: Buffer.from(buffer),
+      mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
   }
 }
 

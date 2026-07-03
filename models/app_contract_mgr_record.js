@@ -14,6 +14,10 @@ export default class app_contract_mgr_record extends Model {
       allowNull: false,
       defaultValue: "contract-mgr"
     },
+    user_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true
+    },
     status: {
       type: DataTypes.STRING(32),
       allowNull: false,
@@ -53,6 +57,13 @@ export default class app_contract_mgr_record extends Model {
         fields: [
           { name: "app_id" },
           { name: "status" },
+        ]
+      },
+      {
+        name: "idx_user_id",
+        using: "BTREE",
+        fields: [
+          { name: "user_id" },
         ]
       },
     ]

@@ -35,44 +35,6 @@ export default class app_current_feature_rule_stage extends Model {
       allowNull: false,
       comment: "语义定义"
     },
-    expected_signal_features: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "期望信号特征，可为 JSON 文本"
-    },
-    required: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: true,
-      comment: "是否必选阶段"
-    },
-    allow_repeat: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-      comment: "是否允许重复"
-    },
-    allow_overlap: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-      comment: "是否允许与其他阶段重叠"
-    },
-    min_duration_ms: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: "最小时长毫秒"
-    },
-    max_duration_ms: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: "最大时长毫秒"
-    },
-    notes: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "备注"
-    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: false,
