@@ -9,6 +9,9 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
+import { THINKING_FORMATS, normalizeThinkingFormat } from '../../lib/llm-thinking-config.js';
+
+const ALLOWED_THINKING_FORMATS = THINKING_FORMATS;
 
 class ModelController {
   constructor(db) {
@@ -112,10 +115,18 @@ class ModelController {
   async create(ctx) {
     try {
       const body = ctx.request.body;
+      const supports_reasoning = !!body.supports_reasoning;
+      const thinking_format = supports_reasoning
+        ? normalizeThinkingFormat(body.thinking_format)
+        : 'none';
 
       // 验证必填字段
       if (!body.name || !body.model_name || !body.provider_id) {
         return ctx.error('模型名称、模型标识符和提供商不能为空', 400);
+      }
+
+      if (!ALLOWED_THINKING_FORMATS.includes(thinking_format)) {
+        return ctx.error('不支持的思考配置格式', 400);
       }
 
       // 检查提供商是否存在
@@ -146,8 +157,8 @@ class ModelController {
         max_tokens: body.max_tokens || 65536,
         max_output_tokens: body.max_output_tokens || 32768,
         embedding_dim: body.embedding_dim || null,
-        supports_reasoning: body.supports_reasoning || false,
-        thinking_format: body.thinking_format || 'none',
+        supports_reasoning,
+        thinking_format,
         cost_per_1k_input: body.cost_per_1k_input || 0,
         cost_per_1k_output: body.cost_per_1k_output || 0,
         description: body.description || null,
@@ -192,6 +203,10 @@ class ModelController {
     try {
       const { id } = ctx.params;
       const body = ctx.request.body;
+      const supports_reasoning = body.supports_reasoning !== undefined ? !!body.supports_reasoning : undefined;
+      const thinking_format = body.thinking_format !== undefined
+        ? normalizeThinkingFormat(body.thinking_format)
+        : undefined;
 
       // 检查模型是否存在
       const existing = await this.AiModel.findOne({ where: { id } });
@@ -231,12 +246,20 @@ class ModelController {
       if (body.max_tokens !== undefined) updates.max_tokens = body.max_tokens;
       if (body.max_output_tokens !== undefined) updates.max_output_tokens = body.max_output_tokens;
       if (body.embedding_dim !== undefined) updates.embedding_dim = body.embedding_dim || null;
-      if (body.supports_reasoning !== undefined) updates.supports_reasoning = body.supports_reasoning;
-      if (body.thinking_format !== undefined) updates.thinking_format = body.thinking_format;
+      if (body.supports_reasoning !== undefined) updates.supports_reasoning = supports_reasoning;
+      if (body.thinking_format !== undefined) updates.thinking_format = thinking_format;
       if (body.cost_per_1k_input !== undefined) updates.cost_per_1k_input = body.cost_per_1k_input;
       if (body.cost_per_1k_output !== undefined) updates.cost_per_1k_output = body.cost_per_1k_output;
       if (body.description !== undefined) updates.description = body.description;
       if (body.is_active !== undefined) updates.is_active = body.is_active;
+
+      if (body.thinking_format !== undefined && !ALLOWED_THINKING_FORMATS.includes(thinking_format)) {
+        return ctx.error('不支持的思考配置格式', 400);
+      }
+
+      if (supports_reasoning === false) {
+        updates.thinking_format = 'none';
+      }
 
       if (Object.keys(updates).length === 0) {
         return ctx.error('没有要更新的字段', 400);
