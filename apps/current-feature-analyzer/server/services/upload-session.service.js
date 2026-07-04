@@ -79,7 +79,7 @@ function finalizeBatchStatus(batch) {
  * 后端批次状态迁移表
  *
  * 说明：IDLE / UPLOADING 为前端视觉状态，不经过后端迁移表。
- * 后端仅管理 READY -> ANALYZING -> terminal 这一段。
+ * 后端支持的状态：READY -> ANALYZING -> terminal
  * 终态不可再迁移，防止异常路径覆盖已完成的分析结果。
  */
 const BATCH_TRANSITIONS = {
@@ -90,11 +90,13 @@ const BATCH_TRANSITIONS = {
 /**
  * 文件分析状态迁移表
  *
- * 说明：PARSING 为预留状态（当前未启用），保留迁移定义以备未来细化上传解析阶段。
+ * 说明：支持细化的分析阶段状态
  */
 const FILE_TRANSITIONS = {
   [FILE_ANALYSIS_STATUS.PENDING]: [FILE_ANALYSIS_STATUS.READY, FILE_ANALYSIS_STATUS.FAILED],
-  [FILE_ANALYSIS_STATUS.READY]: [FILE_ANALYSIS_STATUS.ANALYZING, FILE_ANALYSIS_STATUS.FAILED],
+  [FILE_ANALYSIS_STATUS.READY]: [FILE_ANALYSIS_STATUS.COMPRESSING, FILE_ANALYSIS_STATUS.ANALYZING, FILE_ANALYSIS_STATUS.FAILED],
+  [FILE_ANALYSIS_STATUS.COMPRESSING]: [FILE_ANALYSIS_STATUS.LLM_RECOGNIZING, FILE_ANALYSIS_STATUS.FAILED],
+  [FILE_ANALYSIS_STATUS.LLM_RECOGNIZING]: [FILE_ANALYSIS_STATUS.COMPLETED, FILE_ANALYSIS_STATUS.FAILED],
   [FILE_ANALYSIS_STATUS.ANALYZING]: [FILE_ANALYSIS_STATUS.COMPLETED, FILE_ANALYSIS_STATUS.FAILED],
 };
 
@@ -227,6 +229,10 @@ class UploadSessionService {
     // 唯一决策点：批次终态归约
     finalizeBatchStatus(session);
     return summary;
+  }
+
+  pruneExpiredSessions() {
+    pruneExpiredSessions();
   }
 
   getBatchSummary(batchId) {

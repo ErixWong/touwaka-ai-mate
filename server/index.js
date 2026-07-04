@@ -43,7 +43,7 @@ import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
-import AppRouterLoader from '../lib/app-router-loader.js';
+import { createAppWildcardRouter } from './middlewares/app-wildcard-router.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
 import Router from '@koa/router';
@@ -77,8 +77,6 @@ import AppRegistryController from './controllers/app-registry.controller.js';
 import AppBackupController from './controllers/app-backup.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
 import ELSController from './controllers/els.controller.js';
-import OcrToolController from './controllers/ocr-tool.controller.js';
-import CurrentFeatureAnalyzerController from './controllers/current-feature-analyzer.controller.js';
 import { getAssistantManager } from './services/assistant/index.js';
 import AppRegistryService from './services/app-registry.service.js';
 
@@ -118,8 +116,6 @@ import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import elsRoutes from './routes/els.routes.js';
-import ocrToolRoutes from './routes/ocr-tool.routes.js';
-import currentFeatureAnalyzerRoutes from './routes/current-feature-analyzer.routes.js';
 import appClockRoutes from './routes/app-clock.routes.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
@@ -463,13 +459,11 @@ class ApiServer {
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db),
-      appMarket: new AppMarketController(this.db, this.sharedRegistryService, this.appRouterLoader),
+      appMarket: new AppMarketController(this.db, this.sharedRegistryService, null),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
       invoice: new InvoiceController(this.db),
       els: new ELSController(this.db),
-      ocrTool: new OcrToolController(this.db),
-      currentFeatureAnalyzer: new CurrentFeatureAnalyzerController(this.db),
     };
   }
 
@@ -683,13 +677,14 @@ class ApiServer {
     this.app.use(appRegistryRouter.allowedMethods());
     logger.info('App Registry routes registered (/api/apps/*)');
 
-    // App Backup 路由（新架构）
-    this.appRouterLoader = new AppRouterLoader(this.db, this.app);
-    this.appRouterLoader.setAuthMiddleware(authMiddleware.authenticate);
-    
-    const mountedCount = await this.appRouterLoader.mountAllApps();
-    logger.info(`[Startup] AppRouterLoader mounted ${mountedCount} app routes`);
+    // App Wildcard 路由（新架构）- 直接映射 handler 文件
+    const wildcardRouter = createAppWildcardRouter(this.db, {
+      authMiddleware: authMiddleware.authenticate(),
+    });
+    this.app.use(wildcardRouter);
+    logger.info('App Wildcard router registered (/api/apps/:appId/*)');
 
+    // App Backup 路由（保留独立路由，后续迁移到 wildcard）
     const appBackupRouter = appBackupRoutes(this.controllers.appBackup);
     this.app.use(appBackupRouter.routes());
     this.app.use(appBackupRouter.allowedMethods());
@@ -728,16 +723,6 @@ class ApiServer {
     this.app.use(elsRouter.routes());
     this.app.use(elsRouter.allowedMethods());
     logger.info('ELS routes registered (/api/els/*)');
-
-    const ocrToolRouter = ocrToolRoutes;
-    this.app.use(ocrToolRouter.routes());
-    this.app.use(ocrToolRouter.allowedMethods());
-    logger.info('OCR Tool routes registered (/api/ocr/*)');
-
-    const currentFeatureAnalyzerRouter = currentFeatureAnalyzerRoutes(this.controllers.currentFeatureAnalyzer);
-    this.app.use(currentFeatureAnalyzerRouter.routes());
-    this.app.use(currentFeatureAnalyzerRouter.allowedMethods());
-    logger.info('Current Feature Analyzer routes registered (/api/current-feature-analyzer/*, legacy: /api/apps/current-feature-analyzer/*)');
 
     const appClockRouter = appClockRoutes(this.db);
     this.app.use(appClockRouter.routes());

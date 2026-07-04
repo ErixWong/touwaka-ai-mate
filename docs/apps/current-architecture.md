@@ -2,19 +2,19 @@
 
 ## 1. 定位
 
-App 模块当前已经从“平台统一状态机”模式，演进为“平台提供宿主能力，app 自己管理业务语义”的模式。
+当前平台正在从“双调度体系”演进到“统一 Clock Core”模式。
 
 因此，理解当前架构要先记住一句话：
 
-> 平台只负责 tick 和宿主能力，app 自己负责状态机和业务流程。
+> 平台统一负责 Clock Core；任务分为 `internal_job` 与 `app_tick` 两类，业务 app 只是其中一个子集。
 
 ## 2. 平台边界
 
 平台层当前负责：
 
 1. `mini_apps` 元数据注册
-2. `app_clock_registry` 注册与调度
-3. `lib/app-clock.js` 提供统一 tick 宿主能力
+2. 统一 Clock / Scheduler 调度能力
+3. `app_tick` 与 `internal_job` 的运行宿主能力
 4. app 自定义 routes 挂载
 5. 附件、数据库、LLM、MCP、日志等基础设施能力
 
@@ -31,9 +31,15 @@ app 自己负责：
 
 1. 业务数据结构
 2. 扩展表 / 自治表
-3. tick 逻辑
+3. app 级周期任务逻辑（若存在）
 4. routes / service 业务语义
 5. 状态机（如果有）
+
+需要特别区分：
+
+1. `app_tick` 属于业务 app 子集
+2. `internal_job` 属于平台内部任务
+3. 平台内部状态机推进，不应再被错误建模成业务 app
 
 ## 4. 关于状态机
 
@@ -42,6 +48,10 @@ app 自己负责：
 1. `app_state` / `app_row_handlers` 属于历史机制，**已退出新标准主路径**，但兼容代码和部分存量治理入口仍存在。
 2. 如果 app 有状态机，应由 app 自己代码管理。
 3. 平台不再要求状态机必须存到平台公共表。
+
+补充原则：
+
+4. 平台内部状态机（如文档处理流水线）不属于 app 状态机，不应再以 `mini_apps` 形态存在。
 
 ### 4.2 `states.js` 的地位
 
@@ -81,11 +91,27 @@ apps/{appId}/
   states.js           # 推荐：集中定义状态语义
 ```
 
+平台内部任务建议目录：
+
+```text
+server/jobs/
+  doc-pipeline-job.js
+  document-embedding-job.js
+```
+
+或：
+
+```text
+lib/clock/
+lib/doc-pipeline-worker.js
+```
+
 ## 6. 当前推荐阅读
 
 1. 先看 [README.md](./README.md)
-2. 再看 [app-generation-guide.md](./app-generation-guide.md)
-3. 如需理解旧思路，再看 [historical/README.md](./historical/README.md)
+2. 再看 [../design/core/unified-clock-architecture.md](../design/core/unified-clock-architecture.md)
+3. 再看 [app-generation-guide.md](./app-generation-guide.md)
+4. 如需理解旧思路，再看 [historical/README.md](./historical/README.md)
 
 ---
 
