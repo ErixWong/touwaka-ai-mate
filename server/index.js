@@ -43,6 +43,9 @@ import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
+import ClockCore from '../lib/clock/clock-core.js';
+import { buildDocPipelineContext } from '../lib/clock/job-context-builder.js';
+import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
 import { createAppWildcardRouter } from './middlewares/app-wildcard-router.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
@@ -244,6 +247,12 @@ const isFeatureEnabled = (envName) => {
   return !['0', 'false', 'off', 'no'].includes(String(value).trim().toLowerCase());
 };
 
+const isFeatureEnabledOptIn = (envName) => {
+  const value = process.env[envName];
+  if (value == null) return false;
+  return !['0', 'false', 'off', 'no'].includes(String(value).trim().toLowerCase());
+};
+
 class ApiServer {
   constructor() {
     this.app = new Koa();
@@ -253,6 +262,7 @@ class ApiServer {
     this.residentSkillManager = null;
     this.tokenCleanupJob = null;
     this.appClock = null;
+    this.clockCore = null;
     this.appRouterLoader = null;
     this.wildcardCacheManager = null;
     this.sharedRegistryService = null;
@@ -391,6 +401,35 @@ class ApiServer {
     });
     // 不在这里启动，等 server listen 后统一启动
     logger.info('AppClock initialized');
+
+    // 初始化 ClockCore（Unified Clock Phase 1）
+    // 注册 doc-pipeline-worker 为第一个 internal job
+    this.clockCore = new ClockCore(this.db, {
+      maxConsecutiveFailures: parseInt(process.env.CLOCK_MAX_FAILURES, 10) || 3,
+      failureCooldownMs: parseInt(process.env.CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
+    });
+
+    this.clockCore.register('doc-pipeline-worker', {
+      interval: appConfig.clock_interval * 1000,
+      preventOverlap: true,
+      handler: async (clockContext) => {
+        const services = buildDocPipelineContext(this.db, {
+          callMcp: this.appClock?.callMcp?.bind(this.appClock) ?? null,
+          callLlm: null,
+          getDocPipelineConfig: async () => {
+            try {
+              const systemSettingService = getSystemSettingService(this.db);
+              return await systemSettingService.getDocPipelineConfig?.() || null;
+            } catch {
+              return null;
+            }
+          },
+        });
+        return await docPipelineWorkerRun({ services });
+      },
+    });
+
+    logger.info('ClockCore initialized with doc-pipeline-worker internal job');
   }
 
   /**
@@ -866,14 +905,40 @@ class ApiServer {
           }
         }
 
+        // 启动 AppClock / ClockCore（互斥保护）
+        // 避免 doc-ocr-pipeline 被新旧入口同时调度
+        const enableAppClock = isFeatureEnabled('ENABLE_APP_CLOCK');
+        // ClockCore 作为迁移期开关，必须显式开启，避免未配置环境被默认切流。
+        const enableClockCore = isFeatureEnabledOptIn('ENABLE_CLOCK_CORE');
+
+        if (enableAppClock && enableClockCore) {
+          logger.error('[Startup] ⚠️ ENABLE_APP_CLOCK 与 ENABLE_CLOCK_CORE 同时启用！');
+          logger.error('[Startup]    这会导致 doc-ocr-pipeline 双跑（AppClock tick + ClockCore internal job）');
+          logger.error('[Startup]    自动降级：跳过 ClockCore，仅启动 AppClock');
+          logger.error('[Startup]    请设置 ENABLE_CLOCK_CORE=0 或在迁移完成后关闭 ENABLE_APP_CLOCK');
+        }
+
         // 启动 AppClock（Issue #654）
         if (this.appClock) {
-          if (isFeatureEnabled('ENABLE_APP_CLOCK')) {
+          if (enableAppClock) {
             this.appClock.start().catch(err => {
               logger.error('[Startup] Failed to start AppClock:', err.message);
             });
           } else {
             logger.warn('[Startup] AppClock disabled by ENABLE_APP_CLOCK');
+          }
+        }
+
+        // 启动 ClockCore（Unified Clock Phase 1）
+        // 注意：若与 AppClock 同时启用，ClockCore 被跳过（见上方互斥保护）
+        if (this.clockCore) {
+          if (enableClockCore && !enableAppClock) {
+            this.clockCore.startAll();
+            logger.info('[Startup] ClockCore started with internal jobs');
+          } else if (enableClockCore && enableAppClock) {
+            logger.warn('[Startup] ClockCore skipped — ENABLE_APP_CLOCK also active (mutual exclusion)');
+          } else {
+            logger.warn('[Startup] ClockCore disabled by ENABLE_CLOCK_CORE');
           }
         }
 
@@ -912,6 +977,9 @@ process.on('SIGINT', async () => {
   if (server.appClock) {
     server.appClock.stop();
   }
+  if (server.clockCore) {
+    server.clockCore.stopAll();
+  }
   process.exit(0);
 });
 
@@ -928,6 +996,9 @@ process.on('SIGTERM', async () => {
   }
   if (server.appClock) {
     server.appClock.stop();
+  }
+  if (server.clockCore) {
+    server.clockCore.stopAll();
   }
   process.exit(0);
 });
