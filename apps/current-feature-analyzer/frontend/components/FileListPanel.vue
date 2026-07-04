@@ -1,7 +1,7 @@
 <template>
   <div class="cfa-file-list">
     <BatchOverviewCard v-if="fileStats.total > 0" :stats="fileStats" />
-    <div class="cfa-file-list-header">
+    <div v-if="total > 0" class="cfa-file-list-header">
       <span>分析任务</span>
       <span class="cfa-file-stats">
         {{ completed }}/{{ total }}
@@ -15,9 +15,6 @@
         :selected="file.file_id === selectedFileId"
         @select="$emit('select', file.file_id)"
       />
-      <div v-if="files.length === 0" class="cfa-file-list-empty">
-        暂无文件
-      </div>
     </div>
   </div>
 </template>
