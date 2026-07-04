@@ -26,10 +26,14 @@
         @open-ruleset-editor="showRuleSetEditor = true"
       />
 
-        <div v-if="store.batchStatus === 'idle' || store.batchStatus === 'ready'" class="cfa-session-hint">
+      <div v-if="store.batchStatus === 'idle' || store.batchStatus === 'ready'" class="cfa-session-hint">
+        <div class="cfa-session-hint-title">
           <el-icon><InfoFilled /></el-icon>
-          <span>分析结果当前仅保留在本次会话，请及时导出报告。上传文件需包含时间列和电流列。</span>
+          <span>重要提醒：分析结果仅保留在本次会话</span>
         </div>
+        <p class="cfa-session-hint-desc">请在完成分析后立即导出报告，避免刷新页面后结果失效。</p>
+        <p class="cfa-session-hint-desc">上传文件必须同时包含“时间列”和“电流列”。</p>
+      </div>
 
       <div class="cfa-workspace">
         <FileListPanel
@@ -152,14 +156,26 @@ async function onSaveConfig(config: AppConfig) {
   height: 100%;
 }
 .cfa-session-hint {
+  margin: 10px 16px 0;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, #fff8eb 0%, #fff3db 100%);
+  border: 1px solid #f5d6a7;
+  border-left: 4px solid var(--el-color-warning);
+  border-radius: 8px;
+}
+.cfa-session-hint-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 16px;
-  background: var(--el-color-info-light-9);
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  font-size: 14px;
+  font-weight: 700;
+  color: #9a5d00;
+}
+.cfa-session-hint-desc {
+  margin: 6px 0 0 24px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a5a14;
 }
 .cfa-workspace {
   flex: 1;
