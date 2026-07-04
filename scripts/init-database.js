@@ -58,7 +58,7 @@ const TABLES = [
     max_output_tokens INT DEFAULT 4096 COMMENT '每次请求最多生成的 token 数',
     embedding_dim INT NULL COMMENT '向量化模型的嵌入维度（仅 embedding 类型模型使用）',
     supports_reasoning BIT(1) DEFAULT b'0' COMMENT '是否支持思考/推理模式（DeepSeek、OpenAI o1/o3、Qwen 等）',
-    thinking_format ENUM('openai', 'deepseek', 'qwen', 'none') DEFAULT 'none' COMMENT '思考模式格式',
+    thinking_format ENUM('openai', 'deepseek', 'glm', 'qwen', 'none') DEFAULT 'none' COMMENT '思考模式格式',
     cost_per_1k_input DECIMAL(10, 6) DEFAULT 0,
     cost_per_1k_output DECIMAL(10, 6) DEFAULT 0,
     description TEXT,

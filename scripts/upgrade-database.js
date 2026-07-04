@@ -2980,6 +2980,20 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    name: 'ai_models.thinking_format add glm enum',
+    check: async (conn) => {
+      const columnType = await getColumnType(conn, 'ai_models', 'thinking_format');
+      return columnType && columnType.includes("'glm'");
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ai_models
+        MODIFY COLUMN thinking_format ENUM('openai','deepseek','glm','qwen','none') DEFAULT 'none' COMMENT '思考模式格式'
+      `);
+      console.log('  ✓ Extended ai_models.thinking_format to include glm');
+    },
+  },
 
   // 39. 迁移旧 timeout.remote_llm → timeout.internal_llm
   // PR #860 复盘: 系统级 timeout 分类收口，存量数据需搬迁
