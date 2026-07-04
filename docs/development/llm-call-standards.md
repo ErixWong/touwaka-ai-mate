@@ -1,7 +1,7 @@
 # AI Provider 统一调用标准
 
-> **最后更新**: 2026-06-14
-> **版本**: v2.0 (第二阶段收敛)
+> **最后更新**: 2026-07-04
+> **版本**: v2.1 (messages 调用层收敛)
 > **关联**: `AGENTS.md` / `coding-standards.md` / `code-review-checklist.md`
 
 ---
@@ -12,6 +12,13 @@
 
 经过两阶段收敛后，本项目已建立统一的 AI Provider 能力调用规范。
 
+2026-07 补充收敛结果：
+
+1. `ChatService` 与 `InternalLLMService` 仍保留为两类主语义入口
+2. 所有真实 LLM 请求统一下沉到 `lib/message-llm-client.js` 的 `messages` 级调用层
+3. `createCallLlmFn()` 已移除，文档管线改为内部直接解析模型配置并调用统一 `messages` 级入口
+4. `SimpleLLMClient` 已退化为兼容别名层，不再作为项目级主入口宣传
+
 ---
 
 ## 2. 统一架构
@@ -19,7 +26,9 @@
 ```
 业务模块层（chat / ocr / kb / recall / skills）
          ↓
-  能力客户端层（LLMClient / InternalLLMService / EmbeddingClient / ASRClient / TTSClient）
+  业务语义层（ChatService / LLMClient / InternalLLMService / EmbeddingClient / ASRClient / TTSClient）
+         ↓
+  统一消息调用层（message-llm-client）
          ↓
   基础设施层（modelRegistry / db.getModelConfig() / normalizeBaseUrl()）
          ↓
@@ -33,14 +42,20 @@
 | 模型配置读取 | `lib/db.js` `getModelConfig()` | JOIN provider 获取完整配置 |
 | 模型注册表 | `lib/model-registry.js` | 缓存 + 默认模型选择 |
 
-### 能力客户端层
+### 业务语义层
 | 能力 | 客户端 | 文件 |
 |------|--------|------|
+| Chat 编排 | `ChatService` | `lib/chat-service.js` |
 | LLM Chat (Expert) | `LLMClient` | `lib/llm-client.js` |
 | LLM Chat (Internal) | `InternalLLMService` | `lib/internal-llm-service.js` |
 | Embedding | `EmbeddingClient` | `lib/embedding-client.js` |
 | ASR | `ASRClient` | `lib/asr-client.js`（接口骨架） |
 | TTS | `TTSClient` | `lib/tts-client.js`（接口骨架） |
+
+### 统一消息调用层
+| 能力 | 文件 | 职责 |
+|------|------|------|
+| LLM messages 调用 | `lib/message-llm-client.js` | 统一 `messages` 级调用、thinking/provider 参数收敛、流式/非流式分发 |
 
 ---
 
@@ -89,9 +104,9 @@ const client = new EmbeddingClient(modelConfig);
 
 ### 5.1 LLM Chat
 
-- **LLMClient**: Expert Chat / persona / stream / tools / 多模态聊天
+- **ChatService + LLMClient**: Expert Chat / persona / stream / tools / 多模态聊天
 - **InternalLLMService**: 结构化提取 / judge / 内部判断 / `extractJson()` / `generateText()`
-- Doc Pipeline judge 通过 `createCallLlmFn()` 统一入口（内部使用 `db.getModelConfig()`）
+- **Doc Pipeline judge / clean / outline**: 由文档管线服务内部直接使用 `db.getModelConfig()` + `message-llm-client`，不再保留第三个 LLM 入口
 
 ### 5.2 Embedding
 
@@ -125,7 +140,7 @@ const client = new EmbeddingClient(modelConfig);
 当无显式 `model_id` 时，通过以下策略选择:
 
 - **InternalLLMService**: 通过 `modelRegistry.getExpertModelConfig(expertId)` 按专家配置
-- **Doc Pipeline judge**: `createCallLlmFn()` 自动选择最新创建的激活文本模型（`model_type: 'text', is_active: true, created_at DESC`）
+- **Doc Pipeline judge / clean / outline**: 由各自服务内部自动选择最新创建的激活文本模型（`model_type: 'text', is_active: true, created_at DESC`），或显式使用 stage 配置中的 `model_id`
 
 ### 6.2 多模态模型（VLM / OCR）
 
@@ -148,7 +163,7 @@ const client = new EmbeddingClient(modelConfig);
 | 业务代码直接拼 provider URL | 绕过 URL 归一化 + 配置来源统一 |
 | 直接读 `ai_model` 表构造 LLM/Embedding 参数 | 缺少 provider.base_url/api_key |
 | 自建 `fetch('/embeddings', ...)` 请求 | 绕过 EmbeddingClient |
-| 自建 HTTP chat client | 绕过 LLMClient / InternalLLMService |
+| 自建 HTTP chat client | 绕过 `message-llm-client` / `base-llm` 的统一规则 |
 | 自行实现 `normalizeBaseUrl()` 逻辑 | 规则漂移 |
 | 在多处复制相同的默认模型选择逻辑 | 应走 modelRegistry |
 
@@ -212,6 +227,6 @@ PR 审查时必须检查:
 |------|------|------|
 | ASR 实时 WebSocket | 未实施 | 仅接口骨架就绪 |
 | TTS 流式输出 | 未实施 | 仅接口骨架就绪 |
-| 历史 app/skill/assistant 全量迁移 | 未实施 | 按模块逐步推进 |
+| 历史 app/skill/assistant 全量迁移 | 进行中 | 已完成 `SimpleLLMClient` / `createCallLlmFn` 收口，继续按模块推进 |
 
 ✌Bazinga！
