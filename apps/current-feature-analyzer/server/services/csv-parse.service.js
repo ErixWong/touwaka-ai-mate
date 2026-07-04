@@ -10,6 +10,10 @@ function normalizeColumnName(name) {
   return (name || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ');
 }
 
+function isSingleTokenCandidate(candidate) {
+  return normalizeColumnName(candidate).length <= 2;
+}
+
 /**
  * 在候选列表中查找最匹配的列索引，使用模糊匹配
  */
@@ -26,6 +30,7 @@ function findColumn(headers, candidates) {
   // 2. 包含匹配（候选词出现在列名中）
   for (const candidate of candidates) {
     const candNorm = normalizeColumnName(candidate);
+    if (isSingleTokenCandidate(candNorm)) continue;
     const match = normalized.find(h => h.name.includes(candNorm));
     if (match) return match.idx;
   }
@@ -33,6 +38,7 @@ function findColumn(headers, candidates) {
   // 3. 列名包含候选词
   for (const candidate of candidates) {
     const candNorm = normalizeColumnName(candidate);
+    if (isSingleTokenCandidate(candNorm)) continue;
     const match = normalized.find(h => candNorm.includes(h.name));
     if (match) return match.idx;
   }
@@ -73,23 +79,25 @@ function detectDelimiter(text) {
  * 跳过文件开头的说明行，找到真正的表头行
  */
 function findHeaderLine(lines, delimiter) {
-  // 跳过空行
   let start = 0;
   while (start < lines.length && lines[start].trim() === '') start++;
 
   if (start >= lines.length) return start;
 
-  // 如果第一行解析出的列数 > 1 且包含常见的列名字符，就是表头
-  const firstColumns = splitLine(lines[start], delimiter);
-  if (firstColumns.length >= 2) {
-    const hasTextColumns = firstColumns.some(c => /[a-zA-Z\u4e00-\u9fff]/.test(c));
-    if (hasTextColumns) return start;
+  const maxScanRows = Math.min(lines.length, start + 12);
+  for (let index = start; index < maxScanRows; index++) {
+    const columns = splitLine(lines[index], delimiter);
+    if (columns.length < 2) continue;
+
+    const timeIdx = findColumn(columns, TIME_COLUMN_NAMES);
+    const currentIdx = findColumn(columns, CURRENT_COLUMN_NAMES);
+    if (timeIdx !== -1 && currentIdx !== -1 && timeIdx !== currentIdx) {
+      return index;
+    }
   }
 
-  // 尝试下一行
   if (start + 1 < lines.length) {
-    const secondColumns = splitLine(lines[start + 1], delimiter);
-    if (secondColumns.length >= 2) return start + 1;
+    return start + 1;
   }
 
   return start;

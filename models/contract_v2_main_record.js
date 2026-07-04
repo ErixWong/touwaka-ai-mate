@@ -24,7 +24,7 @@ export default class contract_v2_main_record extends Model {
       comment: "合同名称"
     },
     contract_type: {
-      type: DataTypes.ENUM('strategy','framework','development','supply','purchase','quality','nda','technical','other'),
+      type: DataTypes.ENUM('strategy','framework','development','sales','supply','purchase','quality','nda','technical','other'),
       allowNull: true,
       comment: "合同类型"
     },

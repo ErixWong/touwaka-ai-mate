@@ -15,7 +15,7 @@ export default class doc_content_unit extends Model {
       allowNull: false,
       comment: "版本ID",
       references: {
-        model: 'doc_versions',
+        model: 'document_revisions',
         key: 'id'
       }
     },
@@ -123,6 +123,13 @@ export default class doc_content_unit extends Model {
         using: "BTREE",
         fields: [
           { name: "parent_id" },
+        ]
+      },
+      {
+        name: "idx_doc_content_units_version_id",
+        using: "BTREE",
+        fields: [
+          { name: "version_id" },
         ]
       },
     ]

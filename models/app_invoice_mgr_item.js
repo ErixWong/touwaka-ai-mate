@@ -12,7 +12,7 @@ export default class app_invoice_mgr_item extends Model {
     row_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "关联 mini_app_rows.id",
+      comment: "关联 app_invoice_mgr_records.id",
       references: {
         model: 'app_invoice_mgr_records',
         key: 'id'
@@ -74,11 +74,6 @@ export default class app_invoice_mgr_item extends Model {
       type: DataTypes.DECIMAL(12,2),
       allowNull: true,
       comment: "税额"
-    },
-    issuer: {
-      type: DataTypes.STRING(32),
-      allowNull: true,
-      comment: "开票人"
     },
     created_at: {
       type: DataTypes.DATE,

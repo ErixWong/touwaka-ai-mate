@@ -212,6 +212,7 @@
 - 禁止前端私自做 snake_case 与 camelCase 转换
 - 新增用户可见文本时，检查是否需要同步 i18n
 - 已有 Element Plus 组件可覆盖的场景，优先复用，不重复造轮子
+- 若页面已基于 Element Plus 实现，操作按钮、图标和按钮组默认优先使用 Element Plus 原生 `el-button` / `el-button-group` / `@element-plus/icons-vue`，禁止手搓内联 SVG 或自定义按钮皮肤替代原生组件，除非有明确设计需求和视觉稿支撑。
 
 ### 5.4 技能 / AI 相关代码
 

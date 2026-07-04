@@ -8,7 +8,7 @@ export default class app_invoice_mgr_row extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "关联 mini_app_rows.id",
+      comment: "关联 app_invoice_mgr_records.id",
       references: {
         model: 'app_invoice_mgr_records',
         key: 'id'
@@ -84,6 +84,11 @@ export default class app_invoice_mgr_row extends Model {
       type: DataTypes.TEXT,
       allowNull: true,
       comment: "备注"
+    },
+    issuer: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "开票人"
     },
     ocr_method: {
       type: DataTypes.STRING(32),

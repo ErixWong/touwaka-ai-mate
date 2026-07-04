@@ -1,12 +1,12 @@
 import logger from '../../../../lib/logger.js';
 
-const DEFAULT_ANALYSIS_PROMPT_TEMPLATE = `你是一个电流时序数据分析专家。
+export const DEFAULT_ANALYSIS_PROMPT_TEMPLATE = `你是一个电流时序数据分析专家。
 基于压缩后的电流时序分段信息，识别出符合业务规则的各个阶段。
 每个阶段应尽可能连续覆盖完整时间区间，不允许多个阶段的 start_time/end_time 在同一层级产生冲突。
 对于不确定的阶段，请通过 confidence 字段表达置信度，并在 warnings 中说明。
 你是结构化输出接口的一部分，不允许输出自然语言解释、思维链、分析过程或 markdown。`;
 
-const DEFAULT_JSON_OUTPUT_SCHEMA = JSON.stringify({
+export const DEFAULT_JSON_OUTPUT_SCHEMA = JSON.stringify({
   type: 'object',
   properties: {
     stages: {
@@ -34,9 +34,6 @@ const DEFAULT_CONFIG = {
   enabled: true,
   llm_model_id: null,
   temperature: 0,
-  max_tokens: 2000,
-  timeout_ms: 240000,
-  retry_times: 2,
   enable_json_repair: true,
   default_rule_set_id: null,
   absolute_resolution: 0.03,
@@ -81,8 +78,8 @@ class ConfigService {
       if (config.llm_model_id) {
         const modelConfig = await this.db.getModelConfig(config.llm_model_id);
         if (!modelConfig) throw new Error('指定的 LLM 模型不存在');
-        if (modelConfig.model_type && modelConfig.model_type !== 'text') {
-          throw new Error('仅允许选择文本模型 (model_type: text)');
+        if (modelConfig.model_type && !['text', 'multimodal'].includes(modelConfig.model_type)) {
+          throw new Error('仅允许选择文本或多模态模型 (model_type: text | multimodal)');
         }
       }
       const merged = { ...DEFAULT_CONFIG, ...config };

@@ -22,15 +22,6 @@
           <el-form-item label="Temperature">
             <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" />
           </el-form-item>
-          <el-form-item label="Max Tokens">
-            <el-input-number v-model="form.max_tokens" :min="100" :max="100000" :step="100" />
-          </el-form-item>
-          <el-form-item label="超时(ms)">
-            <el-input-number v-model="form.timeout_ms" :min="5000" :max="300000" :step="5000" />
-          </el-form-item>
-          <el-form-item label="重试次数">
-            <el-input-number v-model="form.retry_times" :min="0" :max="5" />
-          </el-form-item>
           <el-form-item label="JSON 修复">
             <el-switch v-model="form.enable_json_repair" />
           </el-form-item>
@@ -54,14 +45,14 @@
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane label="Prompt 与输出约束" name="prompt">
+      <el-tab-pane label="系统分析策略" name="prompt">
         <el-form :model="form" label-width="120px">
-          <el-form-item label="Prompt 模板">
-            <el-input v-model="form.analysis_prompt_template" type="textarea" :rows="4" placeholder="自定义分析 Prompt" />
+          <el-form-item label="系统 Prompt">
+            <el-input v-model="form.analysis_prompt_template" type="textarea" :rows="4" placeholder="系统级默认分析 Prompt" />
           </el-form-item>
-          <el-form-item label="JSON Schema">
-            <el-input v-model="form.json_output_schema" type="textarea" :rows="6" placeholder="LLM 输出 JSON Schema" />
-          </el-form-item>
+          <div class="config-help-text">
+            输出 JSON 结构由系统固定协议统一控制，不在常规管理员表单中开放编辑。
+          </div>
         </el-form>
       </el-tab-pane>
     </el-tabs>
@@ -89,7 +80,9 @@ const models = ref<AIModel[]>([])
 onMounted(async () => {
   try {
     const all = await modelApi.getModels()
-    models.value = (all || []).filter(m => m.is_active !== false && m.model_type === 'text')
+    models.value = (all || []).filter(m =>
+      m.is_active !== false && (m.model_type === 'text' || m.model_type === 'multimodal')
+    )
   } catch {
   }
 })
@@ -108,3 +101,11 @@ function onSave() {
   emit('save', { ...(form as unknown as AppConfig) })
 }
 </script>
+
+<style scoped>
+.config-help-text {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--el-text-color-secondary);
+}
+</style>

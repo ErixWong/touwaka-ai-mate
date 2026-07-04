@@ -50,13 +50,37 @@
         <div class="cfa-stat-value">{{ duplicateRatio }}</div>
         <div class="cfa-stat-label">冲突Y值占比</div>
       </div>
+      <div class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ absoluteResolution }}</div>
+        <div class="cfa-stat-label">绝对电流分辨率</div>
+      </div>
+      <div class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ relativeResolution }}</div>
+        <div class="cfa-stat-label">相对电流分辨率</div>
+      </div>
+      <div class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ mergeGapRatio }}</div>
+        <div class="cfa-stat-label">合并间隙比例</div>
+      </div>
+      <div class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ minTransitionPoints }}</div>
+        <div class="cfa-stat-label">最小过渡点数</div>
+      </div>
+      <div class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ targetSegmentCount }}</div>
+        <div class="cfa-stat-label">目标压缩段数</div>
+      </div>
+      <div class="cfa-stat-card cfa-stat-card-wide" style="background:#eefaf3">
+        <div class="cfa-stat-value cfa-stat-value-text">{{ selectionReason }}</div>
+        <div class="cfa-stat-label">自动适配依据</div>
+      </div>
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { DuplicateDiagnosis, SegmentItem } from '../api/current-feature-analyzer'
+import type { CompressionMeta, DuplicateDiagnosis, SegmentItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
   rawPointCount: number
@@ -64,6 +88,7 @@ const props = defineProps<{
   events?: Array<Record<string, unknown>>
   globals?: Record<string, number> | null
   duplicateDiagnosis?: DuplicateDiagnosis | null
+  compressionMeta?: CompressionMeta | null
 }>()
 
 const visible = computed(() => props.rawPointCount > 0 || (props.segments?.length ?? 0) > 0)
@@ -105,6 +130,24 @@ const duplicateRatio = computed(() => {
   if (!props.rawPointCount || !props.duplicateDiagnosis?.duplicate_groups) return '-'
   return `${((props.duplicateDiagnosis.duplicate_groups / props.rawPointCount) * 100).toFixed(2)}%`
 })
+const absoluteResolution = computed(() => props.compressionMeta?.absolute_resolution != null ? `${Number(props.compressionMeta.absolute_resolution).toFixed(6)} A` : '-')
+const relativeResolution = computed(() => props.compressionMeta?.relative_resolution != null ? Number(props.compressionMeta.relative_resolution).toFixed(3) : '-')
+const mergeGapRatio = computed(() => props.compressionMeta?.merge_gap_ratio != null ? Number(props.compressionMeta.merge_gap_ratio).toFixed(2) : '-')
+const minTransitionPoints = computed(() => props.compressionMeta?.min_transition_points != null ? String(props.compressionMeta.min_transition_points) : '-')
+const targetSegmentCount = computed(() => props.compressionMeta?.target_segment_count != null ? String(props.compressionMeta.target_segment_count) : '-')
+const selectionReason = computed(() => {
+  const meta = props.compressionMeta
+  if (!meta?.selection_reason) return '-'
+  if (meta.selection_reason === 'closest_reachable_target') return '最接近目标段数（已达到目标）'
+  if (meta.selection_reason === 'closest_unreachable_target') return '最接近目标段数（当前搜索范围内未达到目标）'
+  if (meta.selection_reason === 'cliff_boundary_target_crossing' && meta.selection_context) {
+    return `断崖临界值（${meta.selection_context.left_points} -> ${meta.selection_context.right_points} 段）`
+  }
+  if (meta.selection_reason === 'largest_cliff' && meta.selection_context) {
+    return `最大断崖值（${meta.selection_context.left_points} -> ${meta.selection_context.right_points} 段）`
+  }
+  return meta.selection_reason
+})
 </script>
 
 <style scoped>
@@ -118,10 +161,17 @@ const duplicateRatio = computed(() => {
   border-radius: 8px;
   text-align: center;
 }
+.cfa-stat-card-wide {
+  grid-column: span 2;
+}
 .cfa-stat-value {
   font-size: 20px;
   font-weight: 700;
   color: var(--el-text-color-primary);
+}
+.cfa-stat-value-text {
+  font-size: 14px;
+  line-height: 1.5;
 }
 .cfa-stat-label {
   font-size: 12px;
