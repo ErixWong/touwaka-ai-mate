@@ -153,6 +153,26 @@ async function getAnyExistingUserId(connection) {
  *    - migrate: 迁移函数，执行实际的数据库变更
  */
 const MIGRATIONS = [
+  // ==================== 退役 remote-llm 技能 ====================
+  {
+    name: 'retire-remote-llm-skill',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT 1 FROM skills WHERE id = 'remote-llm'"
+      );
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      console.log('  ⚠ Retiring remote-llm skill...');
+      await conn.execute("DELETE FROM skill_parameters WHERE skill_id = 'remote-llm'");
+      console.log('    - Deleted skill_parameters entries');
+      await conn.execute("DELETE FROM skill_tools WHERE skill_id = 'remote-llm'");
+      console.log('    - Deleted skill_tools entries');
+      await conn.execute("DELETE FROM skills WHERE id = 'remote-llm'");
+      console.log('    - Deleted skills entry');
+      console.log('  ✓ Retired remote-llm skill');
+    }
+  },
   // ==================== 专家聊天请求持久化 ====================
   {
     name: 'create chat_requests table',

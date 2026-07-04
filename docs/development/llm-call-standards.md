@@ -92,7 +92,6 @@ const client = new EmbeddingClient(modelConfig);
 - **LLMClient**: Expert Chat / persona / stream / tools / 多模态聊天
 - **InternalLLMService**: 结构化提取 / judge / 内部判断 / `extractJson()` / `generateText()`
 - Doc Pipeline judge 通过 `createCallLlmFn()` 统一入口（内部使用 `db.getModelConfig()`）
-- `remote-llm` skill 通过内部 API 获取模型配置，不走直连
 
 ### 5.2 Embedding
 
@@ -211,7 +210,6 @@ PR 审查时必须检查:
 
 | 项目 | 状态 | 计划 |
 |------|------|------|
-| `remote-llm` skill 自建 HTTP chat client | 待收敛 | 后续评估改为复用统一调用层 |
 | ASR 实时 WebSocket | 未实施 | 仅接口骨架就绪 |
 | TTS 流式输出 | 未实施 | 仅接口骨架就绪 |
 | 历史 app/skill/assistant 全量迁移 | 未实施 | 按模块逐步推进 |

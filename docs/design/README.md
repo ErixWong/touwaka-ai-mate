@@ -67,8 +67,6 @@ design/
 | 文档 | 说明 |
 |------|------|
 | [topics/resident-processes/resident-skill-design.md](./topics/resident-processes/resident-skill-design.md) | 驻留 Skill 设计 |
-| [topics/resident-processes/remote-llm-redesign.md](./topics/resident-processes/remote-llm-redesign.md) | 远程 LLM 重构 |
-| [topics/resident-processes/remote-llm-skill-design.md](./topics/resident-processes/remote-llm-skill-design.md) | 远程 LLM Skill 设计 |
 | [topics/resident-processes/mcp-client-resident-design.md](./topics/resident-processes/mcp-client-resident-design.md) | MCP Client 驻留设计 |
 | [topics/resident-processes/ssh-skill-tools-design.md](./topics/resident-processes/ssh-skill-tools-design.md) | SSH Skill / Tools 设计 |
 
