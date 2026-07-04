@@ -22,8 +22,6 @@
 |------|------|
 | `test-basic.js` | 基础测试：验证数据库连接、配置加载和 LLM 客户端初始化 |
 | `test-internal-llm-qwen-thinking.js` | 测试 InternalLLMService 对 Qwen thinking 开关的控制效果 |
-| `test-remote-llm-full.js` | 完整测试远程 LLM 调用（模拟 skill-loader 环境变量注入的真实请求） |
-| `test-remote-llm.js` | 测试远程 LLM 调用（驻留进程状态、内部 API 模型解析、VM 沙箱 submit 工具） |
 | `test-doc-embedding.js` | 测试文档平台向量化服务（5 种场景：正常、缺模型、无 chunk、revectorize、错误重试） |
 
 ## MCP / 驻留进程测试
@@ -32,7 +30,7 @@
 |------|------|
 | `test-mcp-http-direct.js` | 测试 MCP HTTP 直连（initialize、tools/list 等 JSON-RPC 调用） |
 | `test-mcp-stateless.js` | 测试 StatelessHTTPTransport 连接、获取工具列表及调用工具 |
-| `test-resident-direct.js` | 直接测试驻留进程 invoke 执行（模拟 `ResidentProcess` 调用） |
+| `test-resident-direct.js` | 直接测试驻留进程内部 API（模型配置获取、消息插入） |
 | `test-resident-status.js` | 测试驻留进程状态 API（查询进程健康状态和运行信息） |
 
 ## Skill 相关测试
