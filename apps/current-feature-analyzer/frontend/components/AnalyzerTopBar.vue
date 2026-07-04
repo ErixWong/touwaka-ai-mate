@@ -3,7 +3,7 @@
     <div class="cfa-topbar-left">
       <div class="cfa-topbar-titles">
         <span class="cfa-topbar-title">电流特征分析</span>
-        <span class="cfa-topbar-subtitle">批量上传 CSV 文件，AI 智能识别各阶段起止时间</span>
+        <span class="cfa-topbar-subtitle">批量上传 CSV 文件，在前端完成电流特征分析并导出结果</span>
       </div>
     </div>
     <div class="cfa-topbar-actions">
@@ -58,7 +58,7 @@ const emit = defineEmits<{
 }>()
 
 const canAnalyze = computed(() => {
-  const hasFiles = props.batchStatus === 'ready' || props.batchStatus === 'completed' || props.batchStatus === 'partial_failed'
+  const hasFiles = props.batchStatus === 'ready'
   return hasFiles && !props.loading
 })
 

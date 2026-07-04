@@ -80,7 +80,9 @@ const models = ref<AIModel[]>([])
 onMounted(async () => {
   try {
     const all = await modelApi.getModels()
-    models.value = (all || []).filter(m => m.is_active !== false && m.model_type === 'text')
+    models.value = (all || []).filter(m =>
+      m.is_active !== false && (m.model_type === 'text' || m.model_type === 'multimodal')
+    )
   } catch {
   }
 })

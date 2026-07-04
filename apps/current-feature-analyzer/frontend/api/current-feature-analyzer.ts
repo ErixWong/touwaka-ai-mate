@@ -5,7 +5,7 @@ const PREFIX = '/apps/current-feature-analyzer'
 const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
 
 export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
-export type AnalysisStatus = 'pending' | 'parsing' | 'ready' | 'analyzing' | 'completed' | 'failed'
+export type AnalysisStatus = 'pending' | 'ready' | 'compressing' | 'llm_recognizing' | 'analyzing' | 'completed' | 'failed'
 
 export interface DuplicateDiagnosis {
   duplicate_groups: number
@@ -31,6 +31,8 @@ export interface LlmStageItem {
   stage_name: string
   start_time: number
   end_time: number
+  cycle_index?: number | null
+  cycle_stage_index?: number | null
   confidence?: number | null
   reason?: string | null
 }
@@ -50,6 +52,8 @@ export interface StageMetric {
   end_time: number
   duration: number
   point_count: number
+  start_current: number
+  end_current: number
   min_current: number
   max_current: number
   avg_current: number
@@ -133,10 +137,27 @@ export interface SegmentItem {
   polyline_point_count?: number
 }
 
+export interface CompressionMeta {
+  absolute_resolution: number
+  relative_resolution: number
+  merge_gap_ratio: number
+  min_transition_points: number
+  target_segment_count: number
+  selected_segment_count: number
+  selection_reason?: string | null
+  selection_context?: {
+    left_resolution: number
+    left_points: number
+    right_resolution: number
+    right_points: number
+  } | null
+}
+
 export interface FileAnalysisResult {
   globals?: Record<string, number>
   segments?: SegmentItem[]
   events?: Array<Record<string, unknown>>
+  compression_meta?: CompressionMeta
   llm_result?: LlmResult
   stage_metrics?: StageMetric[]
   file_metrics?: FileMetrics | null
@@ -180,6 +201,22 @@ export interface RuleSetDetail extends RuleSetItem {
   stages?: RuleSetStage[]
 }
 
+export interface TaskLaunchResponse {
+  batch_id: string
+  batch_status: BatchStatus
+  selected_rule_set_id?: string | null
+  files?: SessionFileItem[]
+  summary?: BatchSummary | null
+}
+
+export interface FileAnalysisSubmitItem {
+  file_id: string
+  analysis_status: AnalysisStatus
+  warning_count?: number
+  error_message?: string | null
+  result?: FileAnalysisResult | null
+}
+
 export const currentFeatureAnalyzerApi = {
   upload: (files: File[], ruleSetId?: string) => {
     const formData = new FormData()
@@ -196,23 +233,18 @@ export const currentFeatureAnalyzerApi = {
     apiRequest<BatchSession>(apiClient.get(`${PREFIX}/batches/${batchId}`)),
 
   getFileDetail: (batchId: string, fileId: string) =>
-    apiRequest<SessionFileItem>(
-      apiClient.get(`${PREFIX}/batches/${batchId}/files/${fileId}`)
-    ),
+    apiRequest<SessionFileItem>(apiClient.get(`${PREFIX}/batches/${batchId}/files/${fileId}`)),
 
-  runAnalysis: (batchId: string, ruleSetId: string, options?: Record<string, number>) =>
-    apiRequest<BatchSession>(
+  runAnalysis: (batchId: string, ruleSetId: string, fileResults: FileAnalysisSubmitItem[]) =>
+    apiRequest<TaskLaunchResponse>(
       apiClient.post(`${PREFIX}/analysis/run`, {
         batch_id: batchId,
         rule_set_id: ruleSetId,
-        analysis_options: options,
+        file_results: fileResults,
       }, {
         timeout: ANALYSIS_TIMEOUT_MS,
       })
     ),
-
-  getReport: (batchId: string) =>
-    apiRequest<BatchSession>(apiClient.get(`${PREFIX}/reports/${batchId}`)),
 
   exportReport: (batchId: string) =>
     apiClient.post(`${PREFIX}/reports/${batchId}/export`, {}, {

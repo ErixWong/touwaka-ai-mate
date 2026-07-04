@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import {
   currentFeatureAnalyzerApi,
   type SessionFileItem,
@@ -9,10 +9,11 @@ import {
   type BatchSummary,
   type AppConfig,
   type FileAnalysisResult,
+  type FileAnalysisSubmitItem,
 } from '../api/current-feature-analyzer'
 import { APIError } from '@/api/client'
-import { useCurrentFeatureAnalyzerPolling } from '../composables/useCurrentFeatureAnalyzerPolling'
 import { normalizeApiError, enhanceApiError } from '../composables/useCurrentFeatureAnalyzerError'
+import { runLocalCurrentFeatureAnalysis } from '../utils/local-analysis'
 
 type FileDetailData = Pick<SessionFileItem, 'raw_data' | 'result' | '_duplicate_diagnosis'>
 
@@ -49,24 +50,6 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     files.value.splice(0, files.value.length, ...mergedFiles)
   }
 
-  const { startPolling, stopPolling } = useCurrentFeatureAnalyzerPolling(
-    batchId,
-    batchStatus,
-    files,
-    summary,
-    loading,
-    {
-      onSessionExpired: () => {
-        clearSessionState()
-        sessionExpired.value = true
-      },
-      onError: (message) => {
-        setError(message)
-      },
-      mergeFiles,
-    }
-  )
-
   const currentFile = computed(() => {
     return files.value.find(f => f.file_id === selectedFileId.value) || null
   })
@@ -79,8 +62,8 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       completed: completed.length,
       failed: failed.length,
       warning_count: completed.filter(f => f.warning_count > 0).length,
-      analyzing: files.value.filter(f => f.analysis_status === 'analyzing').length,
-      pending: files.value.filter(f => ['pending', 'parsing', 'ready'].includes(f.analysis_status)).length,
+      analyzing: files.value.filter(f => ['compressing', 'llm_recognizing', 'analyzing'].includes(f.analysis_status)).length,
+      pending: files.value.filter(f => ['pending', 'ready'].includes(f.analysis_status)).length,
     }
   })
 
@@ -90,7 +73,6 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
   }
 
   function clearSessionState() {
-    stopPolling()
     batchId.value = null
     batchStatus.value = 'idle'
     selectedFileId.value = null
@@ -135,6 +117,15 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       batchId.value = batch.batch_id
       batchStatus.value = batch.batch_status || 'ready'
       mergeFiles(batch.files || [])
+      for (const file of batch.files || []) {
+        if (file.raw_data?.length) {
+          fileDetailCache.value.set(file.file_id, {
+            raw_data: file.raw_data,
+            result: file.result,
+            _duplicate_diagnosis: file._duplicate_diagnosis,
+          })
+        }
+      }
       selectedRuleSetId.value = batch.selected_rule_set_id || ruleSetId || null
       if (files.value.length > 0) {
         const firstOk = files.value.find(f => f.analysis_status !== 'failed')
@@ -142,7 +133,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
         if (!fallbackFile) return
         selectedFileId.value = firstOk ? firstOk.file_id : fallbackFile.file_id
         if (selectedFileId.value && batchId.value) {
-          loadFileDetail(batchId.value, selectedFileId.value)
+          await loadFileDetail(batchId.value, selectedFileId.value)
         }
       }
       const failedCount = files.value.filter(f => f.analysis_status === 'failed').length
@@ -231,75 +222,162 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     }
   }
 
+  async function ensureRawDataLoaded(bid: string, fid: string) {
+    const cachedDetail = fileDetailCache.value.get(fid)
+    if (cachedDetail?.raw_data?.length) {
+      return cachedDetail.raw_data
+    }
+
+    const detail = await currentFeatureAnalyzerApi.getFileDetail(bid, fid)
+    if (!detail.raw_data?.length) {
+      throw new Error('文件详情未返回原始数据')
+    }
+    const targetFile = files.value.find(file => file.file_id === fid)
+    fileDetailCache.value.set(fid, {
+      raw_data: detail.raw_data,
+      result: detail.result,
+      _duplicate_diagnosis: detail._duplicate_diagnosis,
+    })
+    if (targetFile) {
+      Object.assign(targetFile, {
+        raw_data: detail.raw_data,
+        result: detail.result,
+        _duplicate_diagnosis: detail._duplicate_diagnosis,
+      })
+    }
+    return detail.raw_data
+  }
+
+  async function preloadRawDataForAnalysis(bid: string) {
+    const pendingFiles = files.value.filter(file => file.analysis_status !== 'failed' && !file.raw_data?.length)
+    await Promise.all(pendingFiles.map(file => ensureRawDataLoaded(bid, file.file_id)))
+  }
+
   watch(
     () => {
       const f = files.value.find(x => x.file_id === selectedFileId.value)
       return f?.analysis_status ?? null
     },
     (newStatus, oldStatus) => {
-      if (newStatus && newStatus !== oldStatus && batchId.value && selectedFileId.value) {
-        fileDetailCache.value.delete(selectedFileId.value)
+      if (
+        newStatus &&
+        newStatus !== oldStatus &&
+        batchId.value &&
+        selectedFileId.value &&
+        ['completed', 'failed'].includes(newStatus)
+      ) {
         const targetFile = files.value.find(file => file.file_id === selectedFileId.value)
-        if (targetFile) {
-          delete targetFile.raw_data
-          targetFile.result = null
-          targetFile._duplicate_diagnosis = null
+        if (!targetFile) {
+          return
         }
+
+        if (targetFile.raw_data?.length && targetFile.result) {
+          return
+        }
+
+        fileDetailCache.value.delete(selectedFileId.value)
         loadFileDetail(batchId.value, selectedFileId.value, true)
       }
     }
   )
-
-  function jumpToFirstFailed() {
-    const first = files.value.find(f => f.analysis_status === 'failed')
-    if (first) selectFile(first.file_id)
-  }
-
-  function jumpToFirstWarning() {
-    const first = files.value.find(f => f.analysis_status === 'completed' && f.warning_count > 0)
-    if (first) selectFile(first.file_id)
-  }
 
   async function runAnalysis() {
     if (!batchId.value || !selectedRuleSetId.value) {
       setError('请先选择规则集')
       return
     }
+
+    const currentBatchId = batchId.value
+    const currentRuleSetId = selectedRuleSetId.value
     loading.value = true
     batchStatus.value = 'analyzing'
     error.value = null
     sessionExpired.value = false
     try {
-      const batch = await currentFeatureAnalyzerApi.runAnalysis(batchId.value, selectedRuleSetId.value)
-      mergeFiles(batch.files || [])
-      batchStatus.value = batch.batch_status || 'analyzing'
-      summary.value = batch.summary
+      await preloadRawDataForAnalysis(currentBatchId)
 
-      if (files.value.length > 0 && !selectedFileId.value) {
-        const first = files.value.find(f => f.analysis_status !== 'failed')
-        const fallbackFile = files.value[0]
-        if (!fallbackFile) return
-        selectedFileId.value = first?.file_id || fallbackFile.file_id
-        if (selectedFileId.value && batchId.value) {
-          loadFileDetail(batchId.value, selectedFileId.value)
+      const fileResults: FileAnalysisSubmitItem[] = []
+
+      for (const file of files.value) {
+        if (file.analysis_status === 'failed') {
+          fileResults.push({
+            file_id: file.file_id,
+            analysis_status: 'failed',
+            error_message: file.error_message,
+            warning_count: file.warning_count,
+          })
+          continue
+        }
+
+        try {
+          const rawData = file.raw_data?.length ? file.raw_data : await ensureRawDataLoaded(currentBatchId, file.file_id)
+          if (!rawData?.length) {
+            file.analysis_status = 'failed'
+            file.error_message = '文件原始数据缺失，无法在前端完成分析'
+            fileResults.push({
+              file_id: file.file_id,
+              analysis_status: 'failed',
+              error_message: file.error_message,
+              warning_count: file.warning_count,
+            })
+            continue
+          }
+
+          file.analysis_status = 'compressing'
+          if (selectedFileId.value === file.file_id) {
+            await nextTick()
+          }
+          const localResult = runLocalCurrentFeatureAnalysis(rawData, appConfig.value)
+          file.result = localResult
+          file.warning_count = 0
+          file.error_message = null
+          file.analysis_status = 'llm_recognizing'
+          fileResults.push({
+            file_id: file.file_id,
+            analysis_status: 'completed',
+            warning_count: 0,
+            result: localResult,
+          })
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : '前端分析失败'
+          file.analysis_status = 'failed'
+          file.error_message = message
+          fileResults.push({
+            file_id: file.file_id,
+            analysis_status: 'failed',
+            error_message: message,
+            warning_count: file.warning_count,
+          })
         }
       }
 
-      if (batchStatus.value === 'analyzing') {
-        startPolling()
-      } else {
-        loading.value = false
+      const taskResult = await currentFeatureAnalyzerApi.runAnalysis(currentBatchId, currentRuleSetId, fileResults)
+      batchStatus.value = taskResult.batch_status || 'completed'
+      if (taskResult.files?.length) {
+        mergeFiles(taskResult.files)
+      }
+      if (taskResult.summary) {
+        summary.value = taskResult.summary
+      }
+      if (selectedFileId.value && batchId.value) {
+        await loadFileDetail(batchId.value, selectedFileId.value, true)
       }
     } catch (err: unknown) {
-      stopPolling()
-      const msg = enhanceApiError(err, { batchId: batchId.value })
+      const msg = enhanceApiError(err, { batchId: currentBatchId })
 
-      if (err instanceof APIError && err.status === 404 && batchId.value) {
+      if (err instanceof APIError && err.status === 404 && currentBatchId) {
         clearSessionState()
         sessionExpired.value = true
       }
       setError(msg)
       batchStatus.value = 'failed'
+      for (const file of files.value) {
+        if (file.analysis_status === 'llm_recognizing') {
+          file.analysis_status = 'failed'
+          file.error_message = msg
+        }
+      }
+    } finally {
       loading.value = false
     }
   }
@@ -365,10 +443,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     loadRuleSets,
     selectRuleSet,
     selectFile,
-    jumpToFirstFailed,
-    jumpToFirstWarning,
     runAnalysis,
-    stopPolling,
     exportReport,
     loadConfig,
     reset,

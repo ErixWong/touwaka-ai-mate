@@ -1,10 +1,6 @@
 import logger from '../../../../lib/logger.js';
 import modelRegistry from '../../../../lib/model-registry.js';
 import InternalLLMService from '../../../../lib/internal-llm-service.js';
-import ConfigService from './config.service.js';
-import VectorCompressionService from './vector-compression.service.js';
-import StageMetricsService from './stage-metrics.service.js';
-import { BATCH_STATUS, FILE_ANALYSIS_STATUS } from '../../states.js';
 
 const INVALID_JSON_LOG_LIMIT = 1200;
 const MAX_SEGMENTS_FOR_LLM = 120;
@@ -28,9 +24,27 @@ class StageRecognitionWorkflowService {
 
     if (!modelConfig) {
       try {
-        modelConfig = await modelRegistry.getDefaultTextModelConfig();
+        const AiModel = this.db.getModel('ai_model');
+        if (!AiModel) {
+          throw new Error('ai_model not available');
+        }
+
+        const model = await AiModel.findOne({
+          where: {
+            is_active: true,
+            model_type: ['text', 'multimodal'],
+          },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        });
+
+        if (!model) {
+          throw new Error('No active text/multimodal model found');
+        }
+
+        modelConfig = await this.db.getModelConfig(model.id);
       } catch (err) {
-        logger.error('[cfa llm] failed to auto-select text model:', err.message);
+        logger.error('[cfa llm] failed to auto-select text/multimodal model:', err.message);
         return {
           stages: [],
           summary: '无可用 LLM 模型',
@@ -44,7 +58,7 @@ class StageRecognitionWorkflowService {
       return {
         stages: [],
         summary: '无可用 LLM 模型',
-        warnings: [{ message: '未找到可用文本模型，请先在系统设置中添加并激活文本模型' }],
+        warnings: [{ message: '未找到可用文本或多模态模型，请先在系统设置中添加并激活模型' }],
         _error: 'no_model_available',
       };
     }
@@ -279,7 +293,7 @@ class StageRecognitionWorkflowService {
   }
 
   normalizeStages(stages) {
-    return stages
+    const normalized = stages
       .filter(stage => stage && Number.isFinite(Number(stage.start_time)) && Number.isFinite(Number(stage.end_time)))
       .map(stage => ({
         ...stage,
@@ -287,6 +301,47 @@ class StageRecognitionWorkflowService {
         end_time: Number(Number(stage.end_time).toFixed(6)),
       }))
       .sort((a, b) => a.start_time - b.start_time);
+
+    return this.assignCycleMarkers(normalized);
+  }
+
+  assignCycleMarkers(stages) {
+    if (!Array.isArray(stages) || stages.length < 2) {
+      return Array.isArray(stages) ? stages : [];
+    }
+
+    for (let chunkSize = 1; chunkSize <= Math.floor(stages.length / 2); chunkSize++) {
+      if (stages.length % chunkSize !== 0) continue;
+      const cycleCount = stages.length / chunkSize;
+      if (cycleCount <= 1) continue;
+
+      const firstChunkSignature = stages
+        .slice(0, chunkSize)
+        .map(stage => `${stage.stage_code || ''}::${stage.stage_name || ''}`)
+        .join('|');
+
+      let repeated = true;
+      for (let cycleIndex = 1; cycleIndex < cycleCount; cycleIndex++) {
+        const signature = stages
+          .slice(cycleIndex * chunkSize, (cycleIndex + 1) * chunkSize)
+          .map(stage => `${stage.stage_code || ''}::${stage.stage_name || ''}`)
+          .join('|');
+        if (signature !== firstChunkSignature) {
+          repeated = false;
+          break;
+        }
+      }
+
+      if (!repeated) continue;
+
+      return stages.map((stage, index) => ({
+        ...stage,
+        cycle_index: Math.floor(index / chunkSize) + 1,
+        cycle_stage_index: (index % chunkSize) + 1,
+      }));
+    }
+
+    return stages;
   }
 
   buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length) {
@@ -371,6 +426,8 @@ ${ruleText}
               stage_name: { type: 'string' },
               start_time: { type: 'number' },
               end_time: { type: 'number' },
+              cycle_index: { type: 'number' },
+              cycle_stage_index: { type: 'number' },
               confidence: { type: 'number' },
               reason: { type: 'string' },
             },
@@ -478,137 +535,6 @@ ${ruleText}
     return `${normalized.slice(0, maxLen)}... [truncated ${normalized.length - maxLen} chars]`;
   }
 
-  async analyzeBatch(batch, ruleSetId, analysisOptions = {}) {
-    const configService = new ConfigService(this.db);
-    const appConfig = await configService.getConfig();
-    const ruleSet = await this.resolveRuleSet(ruleSetId);
-
-    if (!ruleSet) {
-      return { success: false, error: '未找到规则集' };
-    }
-
-    const compressionOptions = this.buildCompressionOptions(analysisOptions, appConfig);
-    return this.executeBatchAnalysis(batch, ruleSet, compressionOptions);
-  }
-
-  async resolveRuleSet(ruleSetId) {
-    if (ruleSetId) {
-      return this.getRuleSetById(ruleSetId);
-    }
-    return this.getDefaultRuleSet();
-  }
-
-  buildCompressionOptions(analysisOptions, appConfig) {
-    return {
-      absolute_resolution: analysisOptions.absolute_resolution ?? appConfig.absolute_resolution ?? 0.03,
-      relative_resolution: analysisOptions.relative_resolution ?? appConfig.relative_resolution ?? 0.02,
-      merge_gap_ratio: analysisOptions.merge_gap_ratio ?? appConfig.merge_gap_ratio ?? 0.6,
-      min_transition_points: analysisOptions.min_transition_points ?? appConfig.min_transition_points ?? 3,
-    };
-  }
-
-  async executeBatchAnalysis(batch, ruleSet, compressionOptions) {
-    const vectorCompression = new VectorCompressionService(this.db);
-    const stageMetricsService = new StageMetricsService(this.db);
-    const configService = new ConfigService(this.db);
-    const appConfig = await configService.getConfig();
-
-    batch.batch_status = BATCH_STATUS.ANALYZING;
-    batch.selected_rule_set_id = ruleSet.id;
-
-    const results = { processed: 0, failed: 0, files: [] };
-
-    for (const file of batch.files) {
-      const fileResult = await this.analyzeSingleFile(
-        file, ruleSet, compressionOptions, appConfig, vectorCompression, stageMetricsService
-      );
-      if (fileResult.failed) results.failed++;
-      else results.processed++;
-      results.files.push(fileResult.fileSummary);
-    }
-
-    this.finalizeBatchStatus(batch, results);
-    return this.buildBatchResult(batch, results);
-  }
-
-  async analyzeSingleFile(file, ruleSet, compressionOptions, appConfig, vectorCompression, stageMetricsService) {
-    if (!file.raw_data || file.raw_data.length === 0) {
-      file.warning_count = 0;
-      return this.markFileFailed(file, '无原始数据');
-    }
-
-    file.analysis_status = FILE_ANALYSIS_STATUS.ANALYZING;
-
-    try {
-      const { globals, segments, events } = vectorCompression.compress(file.raw_data, compressionOptions);
-      const llmResult = await this.recognize(globals, segments, events, ruleSet, appConfig);
-      const stageMetrics = stageMetricsService.calculate(file.raw_data, llmResult);
-      const fileMetrics = stageMetricsService.buildFileMetrics(file.raw_data, segments, stageMetrics, llmResult);
-
-      file.result = { globals, segments, events, llm_result: llmResult, stage_metrics: stageMetrics, file_metrics: fileMetrics };
-      file.warning_count = (llmResult.warnings || []).length;
-
-      if (llmResult._error) {
-        return this.markFileFailed(file, llmResult._error);
-      }
-
-      file.analysis_status = FILE_ANALYSIS_STATUS.COMPLETED;
-      return { failed: false, fileSummary: { file_id: file.file_id, status: file.analysis_status } };
-    } catch (err) {
-      logger.error(`[cfa analyzeBatch] file ${file.file_id} error:`, err.message);
-      return this.markFileFailed(file, err.message);
-    }
-  }
-
-  markFileFailed(file, errorMessage) {
-    file.analysis_status = FILE_ANALYSIS_STATUS.FAILED;
-    file.error_message = errorMessage;
-    if (file.result?.llm_result?.warnings) {
-      file.warning_count = file.result.llm_result.warnings.length;
-    }
-    return { failed: true, fileSummary: { file_id: file.file_id, status: file.analysis_status, error: errorMessage } };
-  }
-
-  finalizeBatchStatus(batch, results) {
-    batch.summary = {
-      file_total: batch.files.length,
-      success_count: results.processed,
-      failed_count: results.failed,
-      stage_distribution: [],
-    };
-
-    if (results.failed === batch.files.length) {
-      batch.batch_status = BATCH_STATUS.FAILED;
-    } else if (results.failed > 0) {
-      batch.batch_status = BATCH_STATUS.PARTIAL_FAILED;
-    } else {
-      batch.batch_status = BATCH_STATUS.COMPLETED;
-    }
-  }
-
-buildBatchResult(batch, results) {
-    return {
-      success: batch.batch_status !== BATCH_STATUS.FAILED,
-      batch_status: batch.batch_status,
-      summary: batch.summary,
-      files: batch.files,
-      processed: results.processed,
-      failed: results.failed,
-    };
-  }
-
-  async getRuleSetById(id) {
-    const RuleSetModule = await import('./rule-set.service.js');
-    const service = new RuleSetModule.default(this.db);
-    return service.getById(id, true);
-  }
-
-  async getDefaultRuleSet() {
-    const RuleSetModule = await import('./rule-set.service.js');
-    const service = new RuleSetModule.default(this.db);
-    const all = await service.list();
-    return all.find(r => r.is_default) || all[0] || null;
-  }
 }
 
 export default StageRecognitionWorkflowService;

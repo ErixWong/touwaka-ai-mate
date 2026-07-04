@@ -26,10 +26,10 @@
         @open-ruleset-editor="showRuleSetEditor = true"
       />
 
-      <div v-if="store.batchStatus === 'idle' || store.batchStatus === 'ready'" class="cfa-session-hint">
-        <el-icon><InfoFilled /></el-icon>
-        <span>分析结果不保留历史，请及时导出报告。上传文件需包含时间列和电流列。</span>
-      </div>
+        <div v-if="store.batchStatus === 'idle' || store.batchStatus === 'ready'" class="cfa-session-hint">
+          <el-icon><InfoFilled /></el-icon>
+          <span>分析结果当前仅保留在本次会话，请及时导出报告。上传文件需包含时间列和电流列。</span>
+        </div>
 
       <div class="cfa-workspace">
         <FileListPanel
@@ -43,7 +43,7 @@
           <div v-if="!store.currentFile" class="cfa-empty-detail">
             <div class="cfa-empty-guide">
               <p class="cfa-empty-title">电流特征分析</p>
-              <p class="cfa-empty-sub">批量上传 CSV，AI 自动识别电流阶段</p>
+               <p class="cfa-empty-sub">批量上传 CSV，前端完成压缩，后端同步识别阶段并生成指标</p>
               <ul class="cfa-empty-steps">
                 <li>1. 点击「上传 CSV」上传一个或多个文件</li>
                 <li>2. 选择分析规则集</li>
@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted } from 'vue'
 import { InfoFilled, RefreshRight } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import type { AppConfig } from '../api/current-feature-analyzer'
@@ -125,14 +125,10 @@ onMounted(async () => {
   await store.loadConfig()
 })
 
-onBeforeUnmount(() => {
-  store.stopPolling()
-})
-
 async function onLaunchTask(payload: { files: File[]; ruleSetId: string; overwriteCurrentSession: boolean }) {
+  showLaunchModal.value = false
   await store.selectRuleSet(payload.ruleSetId)
   await store.launchAnalysisTask(payload.files, payload.ruleSetId, payload.overwriteCurrentSession)
-  showLaunchModal.value = false
 }
 
 async function onSaveConfig(config: AppConfig) {

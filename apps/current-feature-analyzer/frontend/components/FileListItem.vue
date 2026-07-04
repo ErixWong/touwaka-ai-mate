@@ -28,6 +28,7 @@
 import { computed } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
 import type { SessionFileItem } from '../api/current-feature-analyzer'
+import { ANALYSIS_STATUS_LABELS, ANALYSIS_STATUS_TAG_TYPES } from '../utils/status-labels'
 
 const props = defineProps<{
   file: SessionFileItem
@@ -38,29 +39,9 @@ defineEmits<{
   select: []
 }>()
 
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    pending: '待处理',
-    parsing: '解析中',
-    ready: '就绪',
-    analyzing: '分析中',
-    completed: '已完成',
-    failed: '失败',
-  }
-  return map[props.file.analysis_status] || props.file.analysis_status
-})
+const statusLabel = computed(() => ANALYSIS_STATUS_LABELS[props.file.analysis_status] || props.file.analysis_status)
 
-const statusTagType = computed(() => {
-  const map: Record<string, string> = {
-    pending: 'info',
-    parsing: 'warning',
-    ready: '',
-    analyzing: 'warning',
-    completed: 'success',
-    failed: 'danger',
-  }
-  return map[props.file.analysis_status] || 'info'
-})
+const statusTagType = computed(() => ANALYSIS_STATUS_TAG_TYPES[props.file.analysis_status] || 'info')
 
 const duplicateDiagnosisText = computed(() => {
   const diagnosis = props.file._duplicate_diagnosis

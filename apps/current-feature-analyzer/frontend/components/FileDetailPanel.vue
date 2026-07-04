@@ -21,39 +21,59 @@
     <FileSummaryCard v-if="file" :file="file" />
 
     <template v-if="file.result && ['completed', 'failed'].includes(file.analysis_status)">
-      <StageSummaryCard :metrics="file.result.stage_metrics || []" />
+      <div class="cfa-chart-stack cfa-chart-stack-always">
+        <RawCurrentChart :file-name="file.file_name" :result="file.result" :raw-data="file.raw_data" />
+        <CompressedCurrentChart :file-name="file.file_name" :result="file.result" />
+      </div>
 
-      <RawCurrentChart :file-name="file.file_name" :result="file.result" :raw-data="file.raw_data" />
-      <CompressedCurrentChart :file-name="file.file_name" :result="file.result" />
+      <el-tabs v-model="activeResultTab" class="cfa-result-tabs">
 
-      <CompressionStatsCard
-        :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
-        :segments="file.result.segments"
-        :events="file.result.events"
-        :globals="file.result.globals"
-        :duplicate-diagnosis="file._duplicate_diagnosis"
-      />
+        <el-tab-pane label="概览" name="overview">
+          <StageSummaryCard :metrics="file.result.stage_metrics || []" />
+          <CompressionStatsCard
+            :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
+            :segments="file.result.segments"
+            :events="file.result.events"
+            :globals="file.result.globals"
+            :duplicate-diagnosis="file._duplicate_diagnosis"
+            :compression-meta="file.result.compression_meta"
+          />
+        </el-tab-pane>
 
-      <CompressedSegmentsTable
-        v-if="file.result.segments?.length"
-        :segments="file.result.segments"
-      />
+        <el-tab-pane label="压缩段" name="segments">
+          <CompressedSegmentsTable
+            v-if="file.result.segments?.length"
+            :segments="file.result.segments"
+          />
+          <div v-else class="cfa-pending-block">
+            <span>暂无压缩段结果</span>
+          </div>
+        </el-tab-pane>
 
-      <StageMetricsTable
-        v-if="file.result.stage_metrics?.length"
-        :metrics="file.result.stage_metrics"
-      />
+        <el-tab-pane label="阶段指标" name="metrics">
+          <StageMetricsTable
+            v-if="file.result.stage_metrics?.length"
+            :metrics="file.result.stage_metrics"
+          />
+          <AuxiliaryMetricsPanel
+            v-if="file.result.stage_metrics?.length"
+          />
+          <div v-if="!file.result.stage_metrics?.length" class="cfa-pending-block">
+            <span>暂无阶段指标</span>
+          </div>
+        </el-tab-pane>
 
-      <AuxiliaryMetricsPanel
-        v-if="appConfig?.ui?.show_ripple_rate !== false && file.result.stage_metrics?.length"
-        :metrics="file.result.stage_metrics"
-      />
-
-      <LlmResultPanel
-        v-if="file.result.llm_result"
-        :llm-result="file.result.llm_result"
-        :show-reason="appConfig?.ui?.show_llm_reason !== false"
-      />
+        <el-tab-pane label="LLM 结果" name="llm">
+          <LlmResultPanel
+            v-if="file.result.llm_result"
+            :llm-result="file.result.llm_result"
+            :show-reason="appConfig?.ui?.show_llm_reason !== false"
+          />
+          <div v-else class="cfa-pending-block">
+            <span>暂无 LLM 识别结果</span>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
       <div v-if="file.analysis_status === 'failed'" class="cfa-error-block">
         <el-alert
@@ -67,32 +87,43 @@
     </template>
 
     <!-- 分析中：先画可用的图，LLM 结果区域显示等待 -->
-    <template v-else-if="file.analysis_status === 'analyzing'">
-      <RawCurrentChart
-        v-if="file.raw_data?.length"
-        :file-name="file.file_name"
-        :raw-data="file.raw_data"
-        :result="file.result || {}"
-      />
+    <template v-else-if="['analyzing', 'compressing', 'llm_recognizing', 'stage_metrics'].includes(file.analysis_status)">
+      <div class="cfa-chart-stack cfa-chart-stack-always">
+        <RawCurrentChart
+          v-if="file.raw_data?.length"
+          :file-name="file.file_name"
+          :raw-data="file.raw_data"
+          :result="file.result || {}"
+        />
 
-      <CompressedCurrentChart
-        v-if="file.result?.segments?.length"
-        :file-name="file.file_name"
-        :result="file.result"
-      />
+        <CompressedCurrentChart
+          v-if="file.result?.segments?.length"
+          :file-name="file.file_name"
+          :result="file.result"
+        />
+      </div>
 
-      <CompressionStatsCard
-        v-if="file.result?.segments?.length"
-        :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
-        :segments="file.result.segments"
-        :events="file.result.events"
-        :globals="file.result.globals"
-        :duplicate-diagnosis="file._duplicate_diagnosis"
-      />
+      <el-tabs v-model="activeResultTab" class="cfa-result-tabs">
+
+        <el-tab-pane label="统计" name="overview">
+          <CompressionStatsCard
+            v-if="file.result?.segments?.length"
+            :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
+            :segments="file.result.segments"
+            :events="file.result.events"
+            :globals="file.result.globals"
+            :duplicate-diagnosis="file._duplicate_diagnosis"
+            :compression-meta="file.result.compression_meta"
+          />
+          <div v-else class="cfa-pending-block">
+            <span>正在等待压缩统计结果...</span>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
       <div class="cfa-loading-block">
         <el-icon class="is-loading"><Loading /></el-icon>
-        <span>AI 正在分析识别阶段...</span>
+        <span>{{ file.analysis_status === 'compressing' ? '正在前端压缩分析...' : 'AI 正在分析识别阶段...' }}</span>
       </div>
     </template>
 
@@ -112,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import type { SessionFileItem, RuleSetDetail, AppConfig } from '../api/current-feature-analyzer'
 import FileSummaryCard from './FileSummaryCard.vue'
@@ -129,11 +161,22 @@ defineProps<{
   appConfig: AppConfig | null
   ruleSetDetail: RuleSetDetail | null
 }>()
+
+const activeResultTab = ref('overview')
 </script>
 
 <style scoped>
 .cfa-file-detail > * { margin-bottom: 16px; }
 .cfa-ruleset-info { margin-bottom: 16px; }
+.cfa-result-tabs { margin-bottom: 16px; }
+.cfa-chart-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.cfa-chart-stack-always {
+  margin-bottom: 16px;
+}
 .cfa-ruleset-desc { font-size: 13px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
 .cfa-ruleset-ctx { font-size: 13px; color: var(--el-text-color-regular); margin-bottom: 8px; line-height: 1.5; }
 .cfa-ruleset-stages { margin-top: 6px; }

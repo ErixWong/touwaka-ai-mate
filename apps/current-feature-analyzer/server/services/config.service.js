@@ -78,8 +78,8 @@ class ConfigService {
       if (config.llm_model_id) {
         const modelConfig = await this.db.getModelConfig(config.llm_model_id);
         if (!modelConfig) throw new Error('指定的 LLM 模型不存在');
-        if (modelConfig.model_type && modelConfig.model_type !== 'text') {
-          throw new Error('仅允许选择文本模型 (model_type: text)');
+        if (modelConfig.model_type && !['text', 'multimodal'].includes(modelConfig.model_type)) {
+          throw new Error('仅允许选择文本或多模态模型 (model_type: text | multimodal)');
         }
       }
       const merged = { ...DEFAULT_CONFIG, ...config };

@@ -3,6 +3,7 @@
     :model-value="true"
     title="新建分析任务"
     width="680px"
+    class="task-launch-dialog"
     @close="$emit('close')"
   >
     <div class="task-launch-layout">
@@ -91,24 +92,10 @@
       </el-form>
 
       <div class="task-launch-summary">
-        <div class="task-launch-summary-title">任务确认</div>
-        <div class="task-launch-summary-grid">
-          <div class="task-launch-summary-item">
-            <span class="label">规则集</span>
-            <span class="value">{{ selectedRuleSetName || '未选择' }}</span>
-          </div>
-          <div class="task-launch-summary-item">
-            <span class="label">文件数</span>
-            <span class="value">{{ selectedFiles.length }}</span>
-          </div>
-          <div class="task-launch-summary-item">
-            <span class="label">任务动作</span>
-            <span class="value">上传后立即启动分析</span>
-          </div>
-          <div class="task-launch-summary-item" v-if="hasActiveSession">
-            <span class="label">会话策略</span>
-            <span class="value">{{ overwriteCurrentSession ? '覆盖当前会话' : '保留当前会话' }}</span>
-          </div>
+        <div class="task-launch-summary-line">
+          <span class="label">任务确认</span>
+          <span class="value">文件数 {{ selectedFiles.length }}</span>
+          <span v-if="hasActiveSession" class="value">{{ overwriteCurrentSession ? '覆盖当前会话' : '保留当前会话' }}</span>
         </div>
       </div>
     </div>
@@ -145,7 +132,6 @@ const overwriteCurrentSession = ref(true)
 
 const enabledRuleSets = computed(() => props.ruleSets.filter(ruleSet => ruleSet.is_enabled))
 const hasActiveSession = computed(() => props.currentBatchStatus !== 'idle')
-const selectedRuleSetName = computed(() => enabledRuleSets.value.find(ruleSet => ruleSet.id === localRuleSetId.value)?.rule_set_name || '')
 const canSubmit = computed(() => !!localRuleSetId.value && selectedFiles.value.length > 0)
 
 function triggerFileSelect() {
@@ -186,6 +172,9 @@ function submitTask() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: min(68vh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .task-launch-alert-body {
   font-size: 13px;
@@ -216,6 +205,8 @@ function submitTask() {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
   overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .task-launch-file-list-header {
   padding: 10px 12px;
@@ -235,16 +226,22 @@ function submitTask() {
 }
 .task-launch-file-meta {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 .task-launch-file-name {
   font-size: 13px;
   color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .task-launch-file-size {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 .task-launch-option {
   display: flex;
@@ -259,32 +256,27 @@ function submitTask() {
   color: var(--el-text-color-secondary);
 }
 .task-launch-summary {
-  padding: 14px;
+  padding: 10px 14px;
   border-radius: 10px;
   background: var(--el-fill-color-light);
 }
-.task-launch-summary-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  margin-bottom: 10px;
-}
-.task-launch-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
-}
-.task-launch-summary-item {
+.task-launch-summary-line {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.task-launch-summary-item .label {
+.task-launch-summary-line .label {
   font-size: 12px;
+  font-weight: 600;
   color: var(--el-text-color-secondary);
 }
-.task-launch-summary-item .value {
+.task-launch-summary-line .value {
   font-size: 13px;
   color: var(--el-text-color-primary);
+}
+:deep(.task-launch-dialog .el-dialog__body) {
+  max-height: min(76vh, 640px);
+  overflow: hidden;
 }
 </style>
