@@ -27,7 +27,7 @@ import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
-import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
+import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
 
 class DocController {
   constructor(db) {
@@ -127,7 +127,6 @@ class DocController {
           }
           return mergeWithDefaults(stored);
         },
-        callLlm: createCallLlmFn(this.db),
       });
     }
   }
@@ -152,7 +151,6 @@ class DocController {
           }
           return mergeWithDefaults(stored);
         },
-        callLlm: createCallLlmFn(this.db),
       });
     }
   }

@@ -13,7 +13,8 @@
 import dotenv from 'dotenv';
 import Database from '../lib/db.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
-import { callWithRetry as baseCallWithRetry } from '../lib/chat/base-llm.js';
+import { invokeWithRetry } from '../lib/message-llm-client.js';
+import { resolveThinkingRequestConfig } from '../lib/llm-thinking-config.js';
 
 dotenv.config();
 
@@ -70,24 +71,22 @@ async function resolveModelConfig(db, targetModelName) {
 
 async function testInternalDisabled(db, modelConfig) {
   const internalLLM = new InternalLLMService(db);
-  const thinkingConfig = internalLLM._buildThinkingCallOptions(modelConfig);
+  const thinkingConfig = resolveThinkingRequestConfig(modelConfig, {
+    enable_reasoning: false,
+    logger_prefix: '[InternalLLMService]',
+  });
   const systemPrompt = '你是一个简洁的测试助手。请直接回答，不要输出无关信息。';
-  const finalSystemPrompt = thinkingConfig.append_no_think
-    ? `${systemPrompt}\n/no_think`
-    : systemPrompt;
 
   const messages = [
-    { role: 'system', content: finalSystemPrompt },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: '请回答：strawberry 里有几个字母 r？只回答一个数字。' },
   ];
 
-  const response = await baseCallWithRetry(modelConfig, messages, {
+  const response = await invokeWithRetry(modelConfig, messages, {
     temperature: 0.3,
     max_tokens: 128,
-    thinking: thinkingConfig.thinking,
-    reasoning: thinkingConfig.reasoning,
-    reasoning_effort: thinkingConfig.reasoning_effort,
-    enable_thinking: thinkingConfig.enable_thinking,
+    thinking_policy: 'disable',
+    logger_prefix: '[InternalLLMService]',
     chat_template_kwargs: thinkingConfig.chat_template_kwargs,
     timeout: await internalLLM._resolveTimeoutMs(),
     maxRetries: internalLLM.maxRetries,
@@ -106,9 +105,11 @@ async function testDirectEnabled(modelConfig) {
     { role: 'user', content: '请回答：strawberry 里有几个字母 r？只回答一个数字。' },
   ];
 
-  const response = await baseCallWithRetry(modelConfig, messages, {
+  const response = await invokeWithRetry(modelConfig, messages, {
     temperature: 0.3,
     max_tokens: 128,
+    thinking_policy: 'enable',
+    logger_prefix: '[QwenThinkingTest]',
     chat_template_kwargs: { enable_thinking: true },
     timeout: modelConfig.timeout || 120000,
     maxRetries: 1,
