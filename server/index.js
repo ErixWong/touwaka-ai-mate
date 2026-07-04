@@ -247,6 +247,12 @@ const isFeatureEnabled = (envName) => {
   return !['0', 'false', 'off', 'no'].includes(String(value).trim().toLowerCase());
 };
 
+const isFeatureEnabledOptIn = (envName) => {
+  const value = process.env[envName];
+  if (value == null) return false;
+  return !['0', 'false', 'off', 'no'].includes(String(value).trim().toLowerCase());
+};
+
 class ApiServer {
   constructor() {
     this.app = new Koa();
@@ -902,7 +908,8 @@ class ApiServer {
         // 启动 AppClock / ClockCore（互斥保护）
         // 避免 doc-ocr-pipeline 被新旧入口同时调度
         const enableAppClock = isFeatureEnabled('ENABLE_APP_CLOCK');
-        const enableClockCore = isFeatureEnabled('ENABLE_CLOCK_CORE');
+        // ClockCore 作为迁移期开关，必须显式开启，避免未配置环境被默认切流。
+        const enableClockCore = isFeatureEnabledOptIn('ENABLE_CLOCK_CORE');
 
         if (enableAppClock && enableClockCore) {
           logger.error('[Startup] ⚠️ ENABLE_APP_CLOCK 与 ENABLE_CLOCK_CORE 同时启用！');
