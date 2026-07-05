@@ -65,6 +65,11 @@ export default class doc_process_run extends Model {
       allowNull: true,
       comment: "结果说明"
     },
+    metadata: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: "结构化上下文（timeout/cancel/retry/upstream summary）"
+    },
     started_at: {
       type: DataTypes.DATE,
       allowNull: false,

@@ -142,10 +142,11 @@ const sanitizeMarkdownHtml = (rawHtml: string): string => {
   })
 }
 
-const formatMessage = (content: string) => {
+const formatMessage = (content: string, cacheKey?: string) => {
   if (!content) return ''
 
-  const cached = formattedCache.get(content)
+  const effectiveCacheKey = cacheKey || content
+  const cached = formattedCache.get(effectiveCacheKey)
   if (cached !== undefined) {
     return cached
   }
@@ -163,7 +164,7 @@ const formatMessage = (content: string) => {
       const keys = Array.from(formattedCache.keys()).slice(0, keysToDelete)
       keys.forEach(key => formattedCache.delete(key))
     }
-    formattedCache.set(content, cleanHtml)
+    formattedCache.set(effectiveCacheKey, cleanHtml)
 
     return cleanHtml
   } catch (error) {
