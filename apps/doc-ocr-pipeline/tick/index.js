@@ -1,5 +1,4 @@
 import logger from '../../../lib/logger.js';
-import DocPipelineAdvancer from '../../../lib/doc-pipeline-advancer.js';
 import { getPreviewAttachmentId } from '../../../lib/doc-ocr-utils.js';
 
 const MAX_BATCH_SIZE = 5;
@@ -28,11 +27,9 @@ export async function tick(context) {
   let submitted = 0;
   let synced = 0;
   let skipped = 0;
-  let outlineExtracted = 0;
+  let outlineSubmitted = 0;
   let chunksGenerated = 0;
   let failed = 0;
-
-  const advancer = new DocPipelineAdvancer(context.db);
 
   for (const doc of documents) {
     try {
@@ -75,11 +72,10 @@ export async function tick(context) {
           failed += 1;
           continue;
         }
-        await services.documentOutline.extract(doc.current_revision_id, {
-          initiatedByType: 'scheduler',
-          initiatedById: null,
-        });
-        outlineExtracted += 1;
+        const outlineSubmitResult = await services.documentOutline.submit(doc.current_revision_id, {});
+        if (outlineSubmitResult?.accepted) {
+          outlineSubmitted += 1;
+        }
         continue;
       }
 
@@ -110,7 +106,7 @@ export async function tick(context) {
     submitted,
     synced,
     skipped,
-    outlineExtracted,
+    outlineSubmitted,
     chunksGenerated,
     failed,
   };
@@ -179,32 +175,6 @@ async function updateBoundAppOnCompletedSync(services, binding, syncResult, mark
       [binding.row_id, markdownText, provider]
     );
   }
-}
-
-async function recordPassThroughRun(services, doc) {
-  const DocProcessRun = services.getModel('doc_process_run');
-  if (!DocProcessRun) return;
-  const Utils = await import('../../../lib/utils.js');
-  const { STATUS_SEQUENCE } = await import('../../../lib/doc-pipeline-advancer.js');
-  const currentIdx = STATUS_SEQUENCE.indexOf(doc.processing_status);
-  const nextStage = currentIdx >= 0 && currentIdx < STATUS_SEQUENCE.length - 1
-    ? STATUS_SEQUENCE[currentIdx + 1]
-    : 'next';
-  await DocProcessRun.create({
-    id: Utils.default.newID(),
-    revision_id: doc.current_revision_id,
-    subject_type: 'documents',
-    subject_id: doc.id,
-    pipeline_step: doc.processing_status,
-    operation: 'start',
-    initiated_by_type: 'scheduler',
-    initiated_by_id: null,
-    result_status: 'ok',
-    attempt_no: 1,
-    message: `Auto-passed ${doc.processing_status} → ${nextStage} (no handler)`,
-    started_at: new Date(),
-    finished_at: new Date(),
-  });
 }
 
 async function getActiveBinding(services, documentId) {

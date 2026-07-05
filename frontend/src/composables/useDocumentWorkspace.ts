@@ -98,7 +98,7 @@ export function useDocumentWorkspace(options: UseDocumentWorkspaceOptions) {
     }
 
     if (errorCode === 'chunk_generation_failed') {
-      return { type: 'chunk', label: t('docs.workspace.detail.retryChunk') }
+      return { type: 'processing', label: t('docs.workspace.detail.retryChunk') }
     }
 
     if (isFailedDocProcessingStatus(status)) {

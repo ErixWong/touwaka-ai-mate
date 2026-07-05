@@ -1354,9 +1354,9 @@ async createVersion(ctx) {
       });
       if (!document) ctx.throw(404, 'Document not found');
 
-      const validStates = ['pending_chunk', 'error'];
+      const validStates = ['pending_chunk'];
       if (!validStates.includes(document.processing_status)) {
-        ctx.throw(400, `Document must be in pending_chunk or error state (current: ${document.processing_status})`);
+        ctx.throw(400, `Document must be in pending_chunk state (current: ${document.processing_status})`);
       }
 
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
