@@ -913,11 +913,10 @@ async function main() {
 
 ```bash
 # 检查技能语法
-node --check data/skills/remote-llm/index.js
-node --check data/skills/remote-llm/submit.js
+node --check data/skills/searxng/index.js
 
 # 检查数据库工具配置
-node tests/db-query.js skill_tools --where="skill_id='remote-llm'" --format=json
+node tests/db-query.js skill_tools --where="skill_id='searxng'" --format=json
 
 # 检查是否有不必要的 package.json（只用内置模块的技能）
 ls data/skills/*/package.json

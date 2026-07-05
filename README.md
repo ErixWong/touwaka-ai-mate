@@ -383,7 +383,6 @@ touwaka-mate-v2/
 | `kb-editor` | 知识库编辑 |
 | `kb-search` | 知识库搜索 |
 | `wikijs` | Wiki.js 集成 |
-| `remote-llm` | 远程 LLM 调用 |
 | `user-code-executor` | 用户代码执行 |
 | `erix-ssh` | SSH 连接管理 |
 | `recall` | 统一召回工具（话题搜索、消息读取） |

@@ -36,7 +36,7 @@ export async function get(ctx, deps) {
       ctx.success(ruleSet);
     } else {
       const ruleSets = await ruleSetService.listRuleSets();
-      ctx.success(ruleSets);
+      ctx.success({ items: ruleSets });
     }
   } catch (err) {
     ctx.error(err.message, 500);
@@ -46,8 +46,20 @@ export async function get(ctx, deps) {
 export async function post(ctx, deps) {
   if (!requireAdmin(ctx)) return;
   try {
+    const userId = getUserId(ctx);
+    const { id, p0 } = ctx.params;
     const ruleSetService = new RuleSetService(deps.db);
-    const ruleSet = await ruleSetService.createRuleSet(ctx.request.body);
+
+    if (id && p0 === 'copy') {
+      const copiedRuleSet = await ruleSetService.copy(id, userId);
+      ctx.success(copiedRuleSet);
+      return;
+    }
+
+    const ruleSet = await ruleSetService.createRuleSet({
+      ...ctx.request.body,
+      created_by: userId,
+    });
     ctx.success(ruleSet);
   } catch (err) {
     ctx.error(err.message, 400);
@@ -57,9 +69,13 @@ export async function post(ctx, deps) {
 export async function put(ctx, deps) {
   if (!requireAdmin(ctx)) return;
   try {
+    const userId = getUserId(ctx);
     const { id } = ctx.params;
     const ruleSetService = new RuleSetService(deps.db);
-    const ruleSet = await ruleSetService.updateRuleSet(id, ctx.request.body);
+    const ruleSet = await ruleSetService.updateRuleSet(id, {
+      ...ctx.request.body,
+      updated_by: userId,
+    });
     ctx.success(ruleSet);
   } catch (err) {
     ctx.error(err.message, 400);

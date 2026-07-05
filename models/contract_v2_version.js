@@ -32,6 +32,16 @@ export default class contract_v2_version extends Model {
       allowNull: true,
       comment: "文件ID"
     },
+    document_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "文档平台 document_id"
+    },
+    revision_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "文档平台当前 revision_id"
+    },
     version_number: {
       type: DataTypes.STRING(16),
       allowNull: false,

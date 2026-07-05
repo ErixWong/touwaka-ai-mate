@@ -121,7 +121,7 @@ export interface TokenUsage {
 }
 
 // 思考模式格式类型
-export type ThinkingFormat = 'openai' | 'deepseek' | 'qwen' | 'none'
+export type ThinkingFormat = 'openai' | 'deepseek' | 'glm' | 'qwen' | 'none'
 
 // AI 模型 (匹配后端 ai_models 表)
 export interface AIModel {

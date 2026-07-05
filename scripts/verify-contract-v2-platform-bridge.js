@@ -6,7 +6,7 @@ dotenv.config();
 
 import Database from '../lib/db.js';
 import Utils from '../lib/utils.js';
-import { tick as docOcrPipelineTick } from '../apps/doc-ocr-pipeline/tick/index.js';
+import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -283,15 +283,13 @@ async function main() {
     seeded = await seedBridgeScenario(db, userId, collectionId);
 
     const services = createServices(db);
-    const result = await docOcrPipelineTick({
-      app: { id: 'doc-ocr-pipeline', name: 'doc-ocr-pipeline' },
-      services,
-    });
+    const result = await docPipelineWorkerRun({ services });
 
     const verification = await loadResult(db, seeded.ids.rowId);
 
     console.log(JSON.stringify({
       success: true,
+      entrypoint: 'docPipelineWorkerRun',
       pipelineResult: result,
       verification,
       tempContentTableCreated: createdTempContentTable,

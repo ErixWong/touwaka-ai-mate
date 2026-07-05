@@ -20,17 +20,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionFileItem } from '../api/current-feature-analyzer'
+import { ANALYSIS_STATUS_LABELS, ANALYSIS_STATUS_TAG_TYPES } from '../utils/status-labels'
 
 const props = defineProps<{ file: SessionFileItem }>()
 
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    pending: '待处理', parsing: '解析中', ready: '就绪',
-    analyzing: '分析中', completed: '已完成', failed: '失败',
-  }
-  return map[props.file.analysis_status] || props.file.analysis_status
-})
-const statusType = computed(() => props.file.analysis_status === 'completed' ? 'success' : props.file.analysis_status === 'failed' ? 'danger' : 'warning')
+const statusLabel = computed(() => ANALYSIS_STATUS_LABELS[props.file.analysis_status] || props.file.analysis_status)
+const statusType = computed(() => ANALYSIS_STATUS_TAG_TYPES[props.file.analysis_status] || 'warning')
 function formatSize(bytes: number) {
   if (!bytes) return '-'
   if (bytes < 1024) return `${bytes} B`

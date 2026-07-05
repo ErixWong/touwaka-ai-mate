@@ -24,7 +24,10 @@ export async function get(ctx, deps) {
     }
 
     const lightBatch = {
-      ...batch,
+      batch_id: batch.batch_id,
+      batch_status: batch.batch_status,
+      selected_rule_set_id: batch.selected_rule_set_id,
+      summary: batch.summary,
       files: batch.files.map(f => {
         const { raw_data, result, ...rest } = f;
         return rest;

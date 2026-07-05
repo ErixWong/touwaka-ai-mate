@@ -102,7 +102,15 @@ export async function post(ctx, deps) {
       }
     }
 
-    ctx.success(uploadSessionService.getBatch(batch.batch_id));
+    const fullBatch = uploadSessionService.getBatch(batch.batch_id);
+    const lightBatch = {
+      batch_id: fullBatch.batch_id,
+      batch_status: fullBatch.batch_status,
+      selected_rule_set_id: fullBatch.selected_rule_set_id,
+      summary: fullBatch.summary,
+      files: fullBatch.files,
+    };
+    ctx.success(lightBatch);
   } catch (err) {
     logger.error('[cfa] upload error:', err.message);
     ctx.error(err.message, 500);

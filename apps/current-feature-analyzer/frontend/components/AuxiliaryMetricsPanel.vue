@@ -1,35 +1,69 @@
 <template>
   <el-card shadow="never">
-    <template #header><span class="card-title">辅助指标</span></template>
-    <el-table :data="metrics" size="small" stripe border>
-      <el-table-column prop="stage_name" label="阶段" width="120" />
-      <el-table-column prop="ripple_rate" label="纹波率" width="120">
-        <template #default="{ row }">
-          {{ (row.ripple_rate * 100).toFixed(2) }}%
-        </template>
-      </el-table-column>
-      <el-table-column prop="peak_to_peak" label="峰峰值(A)" width="110" :formatter="fmtNum" />
-      <el-table-column label="提示" min-width="200">
-        <template #default="{ row }">
-          <span v-if="row._low_base_warning" class="cfa-warn-tip">{{ row._low_base_warning }}</span>
-          <span v-else-if="row._warning" class="cfa-warn-tip">{{ row._warning }}</span>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
-    </el-table>
+    <template #header><span class="card-title">指标说明</span></template>
+    <div class="metric-help-list">
+      <div class="metric-help-item">
+        <div class="metric-help-name">开始 / 结束 / 时长</div>
+        <div class="metric-help-desc">开始和结束来自阶段识别结果，时长 = `end_time - start_time`。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">点数</div>
+        <div class="metric-help-desc">原始电流数据中，时间落在该阶段区间内的采样点数量。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">平均电流</div>
+        <div class="metric-help-desc">该阶段所有采样点电流值的算术平均值。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">标准差</div>
+        <div class="metric-help-desc">该阶段电流围绕平均电流的离散程度，越大说明波动越明显。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">抖动率</div>
+        <div class="metric-help-desc">`标准差 / max(|平均电流|, 0.001)`，用于描述相对波动幅度。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">纹波率</div>
+        <div class="metric-help-desc">`(最大电流 - 最小电流) / max(|平均电流|, 0.001)`，反映峰谷摆动相对平均电流的比例。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">峰峰值</div>
+        <div class="metric-help-desc">`最大电流 - 最小电流`，表示该阶段电流摆幅的绝对值。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">置信度</div>
+        <div class="metric-help-desc">来自阶段识别结果，用于表达该阶段识别的可信程度。</div>
+      </div>
+      <div class="metric-help-item">
+        <div class="metric-help-name">提示</div>
+        <div class="metric-help-desc">当阶段内无有效点，或平均电流过低导致抖动率参考意义有限时，会在表中显示提示信息。</div>
+      </div>
+    </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import type { StageMetric } from '../api/current-feature-analyzer'
-
-defineProps<{ metrics: StageMetric[] }>()
-function fmtNum(_row: any, _col: any, val: any) {
-  if (typeof val === 'number') return val.toFixed(4)
-  return val ?? '-'
-}
 </script>
 
 <style scoped>
-.cfa-warn-tip { color: var(--el-color-warning); font-size: 12px; }
+.metric-help-list {
+  display: grid;
+  gap: 12px;
+}
+.metric-help-item {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+.metric-help-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin-bottom: 4px;
+}
+.metric-help-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
 </style>

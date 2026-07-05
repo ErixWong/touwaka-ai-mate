@@ -186,26 +186,6 @@
       "is_active": true
     },
     {
-      "id": "remote-llm",
-      "name": "Remote LLM",
-      "description": "远程 LLM 调用技能 - 让专家可以调用其他 LLM 模型",
-      "version": "2.0.0",
-      "author": "",
-      "tags": [],
-      "source_type": "local",
-      "source_path": "skills\\remote-llm",
-      "source_url": null,
-      "skill_md": null,
-      "security_score": 100,
-      "security_warnings": null,
-      "license": null,
-      "argument_hint": "",
-      "disable_model_invocation": true,
-      "user_invocable": true,
-      "allowed_tools": null,
-      "is_active": true
-    },
-    {
       "id": "mnbs681pqiej9tvgx1pd",
       "name": "searxng",
       "description": "Search the web using SearXNG. Use when you need current information, news, or web search. Triggers on \"search\", \"look up\", \"find online\", \"web search\".",
@@ -3044,72 +3024,6 @@
       "is_resident": false
     },
     {
-      "id": "remote-llm-submit",
-      "skill_id": "remote-llm",
-      "name": "remote_llm_submit",
-      "description": "提交远程 LLM 调用请求，完成后会通知专家",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "file": {
-            "type": "string",
-            "description": "本地图片路径（可选，用于图片处理，支持相对 DATA_BASE_PATH 的路径）"
-          },
-          "files": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "多个本地图片路径数组（可选）"
-          },
-          "prompt": {
-            "type": "string",
-            "description": "额外的提示内容（可选，会追加到默认 prompt 后）"
-          }
-        },
-        "required": []
-      },
-      "script_path": "submit.js",
-      "is_resident": false
-    },
-    {
-      "id": "remote-llm-executor",
-      "skill_id": "remote-llm",
-      "name": "remote-llm-executor",
-      "description": "驻留进程：执行远程 LLM 调用，完成后通知专家",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "model_id": {
-            "type": "string",
-            "description": "目标模型 ID（ai_models 表）"
-          },
-          "prompt": {
-            "type": "string",
-            "description": "发送给 LLM 的提示"
-          },
-          "system_prompt": {
-            "type": "string",
-            "description": "系统提示"
-          },
-          "temperature": {
-            "type": "number",
-            "description": "温度参数"
-          },
-          "max_tokens": {
-            "type": "number",
-            "description": "最大输出 token"
-          }
-        },
-        "required": [
-          "model_id",
-          "prompt"
-        ]
-      },
-      "script_path": "index.js",
-      "is_resident": false
-    },
-    {
       "id": "sm_tool_delete",
       "skill_id": "skill-manager",
       "name": "delete",
@@ -3444,30 +3358,5 @@
       "is_resident": false
     }
   ],
-  "parameters": [
-    {
-      "id": "mn0cngqm62uzwgvfxk3mj9flbb7q4cr6",
-      "skill_id": "remote-llm",
-      "param_name": "max_tokens",
-      "param_value": "128000",
-      "is_secret": true,
-      "description": null
-    },
-    {
-      "id": "mn0cngqaag18pv8ndf3qxa7s34hsodpd",
-      "skill_id": "remote-llm",
-      "param_name": "model_id",
-      "param_value": "mmfxrlo40h7ybx33m8l5",
-      "is_secret": true,
-      "description": null
-    },
-    {
-      "id": "mn0cngqh13v5pnoh93p8ica76z1a06tw",
-      "skill_id": "remote-llm",
-      "param_name": "prompt",
-      "param_value": "请把图片中的文字转为文本给我。注意:json格式，多个字段，包括原文、图片描述等",
-      "is_secret": true,
-      "description": null
-    }
-  ]
+  "parameters": []
 }

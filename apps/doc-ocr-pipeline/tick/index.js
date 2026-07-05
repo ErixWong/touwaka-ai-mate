@@ -1,7 +1,16 @@
-import logger from '../../../lib/logger.js';
-import { getPreviewAttachmentId } from '../../../lib/doc-ocr-utils.js';
+/**
+ * apps/doc-ocr-pipeline/tick/index.js
+ *
+ * COMPATIBILITY SHELL (Phase 1)
+ *
+ * 本文件保留用于向后兼容，实际执行已委托给 lib/doc-pipeline-worker.js。
+ * 当 AppClock 仍然拉取 doc-ocr-pipeline 时，tick() 会将调用转发到新的 run()。
+ *
+ * Phase 2 退役后本文件将被移除。
+ */
 
-const MAX_BATCH_SIZE = 5;
+import logger from '../../../lib/logger.js';
+import { run as docPipelineWorkerRun } from '../../../lib/doc-pipeline-worker.js';
 
 export async function tick(context) {
   const { app, services } = context;
@@ -10,197 +19,15 @@ export async function tick(context) {
     return { skipped: true, reason: 'no_app' };
   }
 
-  const documents = await services.query(
-    `SELECT id, processing_status, current_revision_id
-     FROM documents
-     WHERE processing_status IN ('pending_ocr', 'ocr_processing', 'pending_clean', 'pending_outline', 'pending_chunk', 'pending_embedding')
-       AND current_revision_id IS NOT NULL
-     ORDER BY processing_updated_at ASC
-     LIMIT ?`,
-    [MAX_BATCH_SIZE]
-  );
+  logger.info('[doc-ocr-pipeline:tick] Compatibility shell: delegating to doc-pipeline-worker');
 
-  if (!documents || documents.length === 0) {
-    return { skipped: true, reason: 'no_pending_documents' };
+  try {
+    const result = await docPipelineWorkerRun({ services });
+    return result;
+  } catch (error) {
+    logger.error(`[doc-ocr-pipeline:tick] Delegation failed: ${error.message}`);
+    return { success: false, error: error.message };
   }
-
-  let submitted = 0;
-  let synced = 0;
-  let skipped = 0;
-  let outlineSubmitted = 0;
-  let chunksGenerated = 0;
-  let failed = 0;
-
-  for (const doc of documents) {
-    try {
-      if (doc.processing_status === 'pending_ocr') {
-        const submittedResult = await services.documentOcr.submit(doc.id);
-        await syncBoundAppRowOnSubmit(services, doc.id, submittedResult);
-        submitted += 1;
-        continue;
-      }
-
-      if (doc.processing_status === 'ocr_processing') {
-        const syncResult = await services.documentOcr.syncTaskStatus(doc.id);
-        await syncBoundAppRowOnSync(services, doc.id, syncResult);
-        synced += 1;
-        continue;
-      }
-
-      if (doc.processing_status === 'pending_clean') {
-        if (!services.documentClean) {
-          failed += 1;
-          continue;
-        }
-        await services.documentClean.submit(doc.id, {
-          initiatedByType: 'scheduler',
-          initiatedById: null,
-        });
-        submitted += 1;
-        continue;
-      }
-
-      // pending_embedding 由独立后台 worker (document-embedding-worker) 异步处理，
-      // 不做同步透传，避免阻塞 OCR tick 循环
-      if (doc.processing_status === 'pending_embedding') {
-        skipped += 1;
-        continue;
-      }
-
-      if (doc.processing_status === 'pending_outline') {
-        if (!services.documentOutline) {
-          failed += 1;
-          continue;
-        }
-        const outlineSubmitResult = await services.documentOutline.submit(doc.current_revision_id, {});
-        if (outlineSubmitResult?.accepted) {
-          outlineSubmitted += 1;
-        }
-        continue;
-      }
-
-      if (doc.processing_status === 'pending_chunk') {
-        if (!services.documentChunk) {
-          failed += 1;
-          continue;
-        }
-        await services.documentChunk.generate(doc.current_revision_id, {
-          initiatedByType: 'scheduler',
-          initiatedById: null,
-        });
-        chunksGenerated += 1;
-      }
-    } catch (error) {
-      failed += 1;
-      if (error?.code === 'DOCUMENT_DELETED') {
-        logger.warn(`[doc-ocr-pipeline] document ${doc.id} skipped after deletion: ${error.message}`);
-      } else {
-        logger.error(`[doc-ocr-pipeline] document ${doc.id} failed: ${error.message}`);
-      }
-    }
-  }
-
-  return {
-    success: true,
-    processed: documents.length,
-    submitted,
-    synced,
-    skipped,
-    outlineSubmitted,
-    chunksGenerated,
-    failed,
-  };
-}
-
-async function syncBoundAppRowOnSubmit(services, documentId, submittedResult) {
-  const binding = await getActiveBinding(services, documentId);
-  if (!binding) return;
-
-  await updateBoundAppOnSubmit(services, binding, submittedResult);
-}
-
-async function syncBoundAppRowOnSync(services, documentId, syncResult) {
-  const binding = await getActiveBinding(services, documentId);
-  if (!binding) return;
-
-  if (!syncResult?.completed) return;
-
-  // 使用统一语义获取预览稿（优先 cleaned_markdown，兼容 main_markdown）
-  const previewAttachmentId = getPreviewAttachmentId(syncResult.ocrResult);
-  const markdownText = await loadAttachmentTextById(services, previewAttachmentId);
-
-  await updateBoundAppOnCompletedSync(services, binding, syncResult, markdownText);
-}
-
-async function updateBoundAppOnSubmit(services, binding, submittedResult) {
-  const provider = submittedResult.provider || 'mineru';
-  const taskId = submittedResult.task_id || '';
-
-  if (binding.app_id === 'contract-mgr-v2') {
-    await services.execute(
-      `UPDATE app_contract_mgr_v2_content SET process_step = 'ocr_submitted', ocr_task_id = ?, ocr_service = ? WHERE row_id = ?`,
-      [taskId, provider, binding.row_id]
-    );
-    return;
-  }
-
-  if (binding.app_id === 'contract-mgr') {
-    // Write to autonomous content table only (no mini_app_rows dependency)
-    await services.execute(
-      `INSERT INTO app_contract_mgr_content (row_id, process_step, ocr_service, ocr_task_id, created_at, updated_at)
-       VALUES (?, 'ocr_submitted', ?, ?, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE process_step = VALUES(process_step), ocr_service = VALUES(ocr_service), ocr_task_id = VALUES(ocr_task_id), updated_at = NOW()`,
-      [binding.row_id, provider, taskId]
-    );
-  }
-}
-
-async function updateBoundAppOnCompletedSync(services, binding, syncResult, markdownText) {
-  const provider = syncResult.ocrResult?.provider || 'mineru';
-
-  if (binding.app_id === 'contract-mgr-v2') {
-    await services.execute(
-      `UPDATE app_contract_mgr_v2_content SET process_step = 'pending_filter', ocr_text = ?, ocr_service = ?, ocr_at = NOW() WHERE row_id = ?`,
-      [markdownText, provider, binding.row_id]
-    );
-    return;
-  }
-
-  if (binding.app_id === 'contract-mgr') {
-    // Write to autonomous content table only (no mini_app_rows dependency)
-    await services.execute(
-      `INSERT INTO app_contract_mgr_content (row_id, ocr_text, ocr_service, ocr_at, process_step, created_at, updated_at)
-       VALUES (?, ?, ?, NOW(), 'pending_filter', NOW(), NOW())
-       ON DUPLICATE KEY UPDATE ocr_text = VALUES(ocr_text), ocr_service = VALUES(ocr_service), ocr_at = VALUES(ocr_at), process_step = VALUES(process_step), updated_at = NOW()` ,
-      [binding.row_id, markdownText, provider]
-    );
-  }
-}
-
-async function getActiveBinding(services, documentId) {
-  const rows = await services.query(
-    `SELECT app_id, row_id, document_id
-     FROM app_doc_bindings
-     WHERE document_id = ? AND binding_status = 'active'
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [documentId]
-  );
-  return rows && rows.length > 0 ? rows[0] : null;
-}
-
-async function loadAttachmentTextById(services, attachmentId) {
-  if (!attachmentId) return '';
-  const rows = await services.query(
-    `SELECT file_path FROM attachments WHERE id = ? LIMIT 1`,
-    [attachmentId]
-  );
-  if (!rows || rows.length === 0 || !rows[0].file_path) return '';
-
-  const fs = await import('fs/promises');
-  const path = await import('path');
-  const fullPath = path.resolve(process.env.ATTACHMENT_BASE_PATH || './data/attachments', rows[0].file_path);
-  return await fs.readFile(fullPath, 'utf8');
 }
 
 export default { tick };

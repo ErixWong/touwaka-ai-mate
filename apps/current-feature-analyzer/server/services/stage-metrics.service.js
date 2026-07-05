@@ -21,6 +21,8 @@ class StageMetricsService {
           ...stage,
           point_count: 0,
           duration: parseFloat((stage.end_time - stage.start_time).toFixed(6)),
+          start_current: 0,
+          end_current: 0,
           min_current: 0,
           max_current: 0,
           avg_current: 0,
@@ -33,14 +35,25 @@ class StageMetricsService {
         continue;
       }
 
-      const currents = stagePoints.map(p => p[1]);
-      const n = currents.length;
-      const minCurrent = Math.min(...currents);
-      const maxCurrent = Math.max(...currents);
-      const sum = currents.reduce((a, b) => a + b, 0);
-      const avgCurrent = sum / n;
+      const n = stagePoints.length;
+      const startCurrent = stagePoints[0][1];
+      const endCurrent = stagePoints[n - 1][1];
+      let minCurrent = stagePoints[0][1];
+      let maxCurrent = stagePoints[0][1];
+      let sum = 0;
 
-      const variance = currents.reduce((s, c) => s + (c - avgCurrent) * (c - avgCurrent), 0) / n;
+      for (const [, current] of stagePoints) {
+        if (current < minCurrent) minCurrent = current;
+        if (current > maxCurrent) maxCurrent = current;
+        sum += current;
+      }
+
+      const avgCurrent = sum / n;
+      let varianceSum = 0;
+      for (const [, current] of stagePoints) {
+        varianceSum += (current - avgCurrent) * (current - avgCurrent);
+      }
+      const variance = varianceSum / n;
       const stdCurrent = Math.sqrt(variance);
 
       const absAvg = Math.max(Math.abs(avgCurrent), EPSILON);
@@ -55,6 +68,8 @@ class StageMetricsService {
         end_time: stage.end_time,
         duration: parseFloat((stage.end_time - stage.start_time).toFixed(6)),
         point_count: n,
+        start_current: parseFloat(startCurrent.toFixed(6)),
+        end_current: parseFloat(endCurrent.toFixed(6)),
         min_current: parseFloat(minCurrent.toFixed(6)),
         max_current: parseFloat(maxCurrent.toFixed(6)),
         avg_current: parseFloat(avgCurrent.toFixed(6)),
