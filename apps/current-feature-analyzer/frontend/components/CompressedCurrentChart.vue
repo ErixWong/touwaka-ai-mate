@@ -1,21 +1,22 @@
 <template>
   <el-card v-if="hasData" shadow="never">
     <template #header><span class="card-title">压缩分段曲线</span></template>
-    <div ref="chartRef" class="cfa-chart"></div>
+    <div ref="chartRef" class="cfa-chart" :style="chartStyle"></div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import * as echarts from 'echarts'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
 
-const props = defineProps<{ fileName: string; result: FileAnalysisResult | null }>()
+const props = defineProps<{ fileName: string; result: FileAnalysisResult | null; chartHeight?: number }>()
 
 const chartRef = ref<HTMLElement | null>(null)
 const hasData = ref(false)
 let chartInstance: any = null
 let resizeHandler: (() => void) | null = null
+const chartStyle = computed(() => ({ height: `${props.chartHeight ?? 280}px` }))
 
 const kindColors: Record<string, string> = {
   stable: '#94a3b8', normal: '#60a5fa', transition: '#6366f1', spike: '#8b5cf6',
@@ -112,6 +113,10 @@ watch(() => props.result?.segments, (newVal) => {
     hasData.value = true
     nextTick(() => renderCompressed())
   }
+})
+
+watch(() => props.chartHeight, () => {
+  nextTick(() => chartInstance?.resize())
 })
 </script>
 
