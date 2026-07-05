@@ -62,7 +62,9 @@ export async function post(ctx, deps) {
     }
 
     const exportResult = await reportExportService.exportReport(batchId, ctx.request.body);
-    ctx.success(exportResult);
+    ctx.set('Content-Type', exportResult.mime_type);
+    ctx.set('Content-Disposition', `attachment; filename="${exportResult.filename}"`);
+    ctx.body = exportResult.buffer;
   } catch (err) {
     ctx.error(err.message, 500);
   }

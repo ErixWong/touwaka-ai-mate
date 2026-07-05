@@ -4,7 +4,7 @@ const PREFIX = '/apps/current-feature-analyzer'
 
 const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
 
-export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
+export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'preparing_analysis' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
 export type AnalysisStatus = 'pending' | 'ready' | 'compressing' | 'llm_recognizing' | 'analyzing' | 'completed' | 'failed'
 
 export interface DuplicateDiagnosis {
@@ -245,11 +245,6 @@ export const currentFeatureAnalyzerApi = {
         timeout: ANALYSIS_TIMEOUT_MS,
       })
     ),
-
-  exportReport: (batchId: string) =>
-    apiClient.post(`${PREFIX}/reports/${batchId}/export`, {}, {
-      responseType: 'blob',
-    }),
 
   listRuleSets: () =>
     apiRequest<{ items: RuleSetItem[] }>(apiClient.get(`${PREFIX}/rule-sets`)),
