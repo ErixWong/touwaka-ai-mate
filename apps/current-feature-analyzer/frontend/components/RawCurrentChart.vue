@@ -4,16 +4,21 @@
       <span class="card-title">电流曲线（原始数据）</span>
       <el-tag v-if="isSampled" size="small" type="info" style="margin-left: 8px">已采样 {{ sampledCount }} / {{ totalCount }} 点</el-tag>
     </template>
-    <div ref="chartRef" class="cfa-chart"></div>
+    <div ref="chartRef" class="cfa-chart" :style="chartStyle"></div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import * as echarts from 'echarts'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
 
-const props = defineProps<{ fileName: string; result: FileAnalysisResult | null; rawData?: number[][] | null }>()
+const props = defineProps<{
+  fileName: string
+  result: FileAnalysisResult | null
+  rawData?: number[][] | null
+  chartHeight?: number
+}>()
 
 const chartRef = ref<HTMLElement | null>(null)
 const hasData = ref(false)
@@ -24,6 +29,7 @@ let chartInstance: any = null
 let resizeHandler: (() => void) | null = null
 
 const MAX_POINTS = 3000
+const chartStyle = computed(() => ({ height: `${props.chartHeight ?? 250}px` }))
 
 function getPoints(): number[][] {
   if (props.rawData && Array.isArray(props.rawData) && props.rawData.length > 0) {
@@ -113,6 +119,10 @@ onBeforeUnmount(() => {
 
 watch([() => props.rawData, () => props.result], () => {
   nextTick(() => renderRaw())
+})
+
+watch(() => props.chartHeight, () => {
+  nextTick(() => chartInstance?.resize())
 })
 </script>
 
