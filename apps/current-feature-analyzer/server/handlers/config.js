@@ -1,5 +1,10 @@
 import { ConfigService } from '../services/index.js';
 
+export const route = {
+  path: '/config',
+  methods: ['GET', 'PUT'],
+};
+
 function getUserId(ctx) {
   return ctx.state.session?.id || ctx.state.user?.id || null;
 }
