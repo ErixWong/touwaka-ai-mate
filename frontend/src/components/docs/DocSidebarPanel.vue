@@ -234,11 +234,11 @@ function isTerminalStatus(status?: string): boolean {
   return status ? terminalStatuses.includes(status) : false
 }
 
-function processingTagType(status?: string): string {
-  return getDocProcessingStatusTagType(status)
+function processingTagType(status?: string | null): string {
+  return getDocProcessingStatusTagType(status ?? undefined)
 }
 
-function processingLabel(status?: string): string {
+function processingLabel(status?: string | null): string {
   if (!status) return '-'
   return t(`contractV2.processingStatus.${status}`)
 }

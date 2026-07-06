@@ -2107,6 +2107,7 @@ const MIGRATIONS = [
   {
     name: 'app_contract_mgr_v2_content add content_id',
     check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
       const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
       if (!hasCol) return false;
       const [rows] = await conn.execute(
@@ -2116,6 +2117,7 @@ const MIGRATIONS = [
       return await hasIndex(conn, 'app_contract_mgr_v2_content', 'uk_content_id');
     },
     migrate: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return;
       const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
       if (!hasCol) {
         await conn.execute(
@@ -3310,6 +3312,13 @@ const MIGRATIONS = [
       return rows[0].REFERENCED_TABLE_NAME === 'document_revisions';
     },
     migrate: async (conn) => {
+      const hasTableDocContentUnits = await hasTable(conn, 'doc_content_units');
+      const hasTableDocumentRevisions = await hasTable(conn, 'document_revisions');
+      if (!hasTableDocContentUnits || !hasTableDocumentRevisions) {
+        console.log('  ⏭️  Skipping FK rebind: doc_content_units or document_revisions table does not exist');
+        return;
+      }
+
       const [rows] = await conn.execute(`
         SELECT REFERENCED_TABLE_NAME, CONSTRAINT_NAME
         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE

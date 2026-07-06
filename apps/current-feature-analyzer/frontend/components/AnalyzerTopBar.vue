@@ -8,22 +8,16 @@
     </div>
     <div class="cfa-topbar-actions">
       <el-tooltip content="新建分析任务" placement="bottom">
-        <el-button type="primary" :icon="FolderAdd" :disabled="loading" @click="$emit('openLaunch')" />
+        <el-button class="cfa-topbar-btn is-primary" :icon="FolderAdd" :disabled="loading" @click="$emit('openLaunch')" />
       </el-tooltip>
       <el-button
-        type="success"
-        :icon="Promotion"
-        :disabled="!canAnalyze || loading"
-        @click="$emit('runAnalysis')"
-      />
-      <el-button
-        type="warning"
+        class="cfa-topbar-btn"
         :icon="Download"
         :disabled="!canExport"
         @click="$emit('export')"
       />
       <el-dropdown v-if="isAdmin" trigger="click">
-        <el-button :icon="MoreFilled" />
+        <el-button class="cfa-topbar-btn" :icon="Setting" />
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item @click="$emit('openRulesetEditor')">
@@ -41,7 +35,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Download, Edit, FolderAdd, MoreFilled, Promotion, Setting } from '@element-plus/icons-vue'
+import { Download, Edit, FolderAdd, Setting } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   batchStatus: string
@@ -51,16 +45,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   openLaunch: []
-  runAnalysis: []
   export: []
   openConfig: []
   openRulesetEditor: []
 }>()
-
-const canAnalyze = computed(() => {
-  const hasFiles = props.batchStatus === 'ready'
-  return hasFiles && !props.loading
-})
 
 const canExport = computed(() => props.batchStatus === 'completed' || props.batchStatus === 'partial_failed')
 </script>
@@ -94,6 +82,41 @@ const canExport = computed(() => props.batchStatus === 'completed' || props.batc
 }
 .cfa-topbar-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
+}
+:deep(.cfa-topbar-btn) {
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  box-shadow: none;
+}
+:deep(.cfa-topbar-btn:hover),
+:deep(.cfa-topbar-btn:focus-visible) {
+  border-color: var(--el-color-primary-light-5);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+:deep(.cfa-topbar-btn.is-primary) {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary);
+  color: #fff;
+}
+:deep(.cfa-topbar-btn.is-primary:hover),
+:deep(.cfa-topbar-btn.is-primary:focus-visible) {
+  border-color: var(--el-color-primary-light-3);
+  background: var(--el-color-primary-light-3);
+  color: #fff;
+}
+:deep(.cfa-topbar-btn.is-disabled),
+:deep(.cfa-topbar-btn.is-disabled:hover) {
+  border-color: var(--el-border-color-lighter);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-placeholder);
 }
 </style>

@@ -18,6 +18,8 @@ type Globals = {
   sample_interval: number
 }
 
+type InternalSegment = Omit<SegmentItem, 'segment_index'> & { segment_index?: number }
+
 const DEFAULT_OPTIONS: CompressionOptions = {
   absolute_resolution: 0.03,
   relative_resolution: 0.02,
@@ -50,18 +52,18 @@ function quantizeCurrent(current: number, resolution: number) {
   return Math.round(current / resolution) * resolution
 }
 
-function pointLineVerticalError(point: { time: number; current: number }, start: { time: number; current: number }, end: { time: number; current: number }) {
-  const duration = end.time - start.time
+function pointLineVerticalError(point: RawPoint, start: RawPoint, end: RawPoint) {
+  const duration = end[0] - start[0]
   if (duration === 0) {
-    return Math.abs(point.current - start.current)
+    return Math.abs(point[1] - start[1])
   }
 
-  const ratio = (point.time - start.time) / duration
-  const predicted = start.current + (end.current - start.current) * ratio
-  return Math.abs(point.current - predicted)
+  const ratio = (point[0] - start[0]) / duration
+  const predicted = start[1] + (end[1] - start[1]) * ratio
+  return Math.abs(point[1] - predicted)
 }
 
-function simplifyPolyline(points: Array<{ time: number; current: number }>, epsilon: number) {
+function simplifyPolyline(points: RawPoint[], epsilon: number) {
   if (points.length <= 2) {
     return points.slice()
   }
@@ -72,14 +74,14 @@ function simplifyPolyline(points: Array<{ time: number; current: number }>, epsi
 
   const stack: Array<[number, number]> = [[0, points.length - 1]]
   while (stack.length > 0) {
-    const [startIndex, endIndex] = stack.pop() as [number, number]
+    const [startIndex, endIndex] = stack.pop()!
     let maxDistance = -1
     let splitIndex = -1
-    const start = points[startIndex]
-    const end = points[endIndex]
+    const start = points[startIndex]!
+    const end = points[endIndex]!
 
     for (let index = startIndex + 1; index < endIndex; index++) {
-      const distance = pointLineVerticalError(points[index], start, end)
+      const distance = pointLineVerticalError(points[index]!, start, end)
       if (distance > maxDistance) {
         maxDistance = distance
         splitIndex = index
@@ -93,23 +95,26 @@ function simplifyPolyline(points: Array<{ time: number; current: number }>, epsi
     }
   }
 
-  const result: Array<{ time: number; current: number }> = []
+  const result: RawPoint[] = []
   for (let index = 0; index < points.length; index++) {
     if (keep[index]) {
-      result.push(points[index])
+      result.push(points[index]!)
     }
   }
   return result
 }
 
-function calculateLineFitError(points: RawPoint[]) {
-  if (points.length <= 2) return 0
-  const start = points[0]
-  const end = points[points.length - 1]
+function calculateLineFitError(points: RawPoint[], startIndex: number, endIndex: number) {
+  if (endIndex - startIndex <= 1) return 0
+  const start = points[startIndex]
+  const end = points[endIndex]
+  if (!start || !end) return 0
   const duration = end[0] - start[0]
   if (duration <= 0) return 0
   let maxResidual = 0
-  for (const point of points) {
+  for (let index = startIndex; index <= endIndex; index++) {
+    const point = points[index]
+    if (!point) continue
     const ratio = (point[0] - start[0]) / duration
     const predicted = start[1] + (end[1] - start[1]) * ratio
     maxResidual = Math.max(maxResidual, Math.abs(point[1] - predicted))
@@ -125,7 +130,7 @@ function isTrendKind(kind?: string | null) {
   return kind === 'rising' || kind === 'rising-fast' || kind === 'falling' || kind === 'falling-fast'
 }
 
-function isTrendCandidate(segment: SegmentItem, options: CompressionOptions, globals: Globals, index: number, segments: SegmentItem[]) {
+function isTrendCandidate(segment: InternalSegment, options: CompressionOptions, globals: Globals, index: number, segments: InternalSegment[]) {
   if (!segment.kind || !isTrendKind(segment.kind)) return false
   if (segment.point_count < Math.max(options.min_transition_points, 2)) return false
   if (Math.abs(segment.slope || 0) < Math.max(options.absolute_resolution * 2, baselineMagnitude(globals) * 0.05)) return false
@@ -170,19 +175,27 @@ function classifySegmentKind(input: {
 }
 
 function calculateGlobals(points: RawPoint[]): Globals {
-  let minCurrent = points[0][1]
-  let maxCurrent = points[0][1]
+  let minCurrent = points[0]![1]
+  let maxCurrent = points[0]![1]
   let totalCurrent = 0
+  const headCandidates: RawPoint[] = []
 
   for (const point of points) {
     if (point[1] < minCurrent) minCurrent = point[1]
     if (point[1] > maxCurrent) maxCurrent = point[1]
     totalCurrent += point[1]
+    if (headCandidates.length < BASELINE_SAMPLE_COUNT && Math.abs(point[1]) > ABS_EPSILON) {
+      headCandidates.push(point)
+    }
   }
 
-  const nonZeroPoints = points.filter(([, current]) => Math.abs(current) > ABS_EPSILON)
-  const headCandidates = nonZeroPoints.slice(0, BASELINE_SAMPLE_COUNT)
-  const tailCandidates = nonZeroPoints.slice(-BASELINE_SAMPLE_COUNT)
+  const tailCandidates: RawPoint[] = []
+  for (let index = points.length - 1; index >= 0 && tailCandidates.length < BASELINE_SAMPLE_COUNT; index--) {
+    const point = points[index]
+    if (point && Math.abs(point[1]) > ABS_EPSILON) {
+      tailCandidates.push(point)
+    }
+  }
 
   const averageCurrent = (samples: RawPoint[]) => {
     if (!samples.length) return null
@@ -206,7 +219,7 @@ function calculateGlobals(points: RawPoint[]): Globals {
   let intervalCount = 0
   const sampleUpperBound = Math.min(points.length, 2000)
   for (let index = 1; index < sampleUpperBound; index++) {
-    intervalSum += points[index][0] - points[index - 1][0]
+    intervalSum += points[index]![0] - points[index - 1]![0]
     intervalCount++
   }
 
@@ -219,33 +232,40 @@ function calculateGlobals(points: RawPoint[]): Globals {
   }
 }
 
-function createSegment(points: RawPoint[], startIndex: number, endIndex: number, globals: Globals, options: CompressionOptions): SegmentItem {
-  const slice = points.slice(startIndex, endIndex + 1)
-  const startTime = slice[0][0]
-  const endTime = slice[slice.length - 1][0]
-  const duration = Math.max(endTime - startTime, 0)
-  let minCurrent = slice[0][1]
-  let maxCurrent = slice[0][1]
-  let totalCurrent = 0
-  for (const point of slice) {
-    if (point[1] < minCurrent) minCurrent = point[1]
-    if (point[1] > maxCurrent) maxCurrent = point[1]
-    totalCurrent += point[1]
+function createSegment(points: RawPoint[], startIndex: number, endIndex: number, globals: Globals, options: CompressionOptions): InternalSegment {
+  const startPoint = points[startIndex]
+  const endPoint = points[endIndex]
+  if (!startPoint || !endPoint) {
+    throw new Error('Invalid segment: points not found')
   }
-  const meanCurrent = totalCurrent / slice.length
+  const startTime = startPoint[0]
+  const endTime = endPoint[0]
+  const duration = Math.max(endTime - startTime, 0)
+  let minCurrent = startPoint[1]
+  let maxCurrent = startPoint[1]
+  let totalCurrent = 0
+  for (let index = startIndex; index <= endIndex; index++) {
+    const point = points[index]
+    if (point && point[1] < minCurrent) minCurrent = point[1]
+    if (point && point[1] > maxCurrent) maxCurrent = point[1]
+    if (point) totalCurrent += point[1]
+  }
+  const pointCount = endIndex - startIndex + 1
+  const meanCurrent = totalCurrent / pointCount
   const resolution = resolutionForCurrent(meanCurrent, options)
   const representativeCurrent = quantizeCurrent(meanCurrent, resolution)
-  const slope = duration > 0 ? (slice[slice.length - 1][1] - slice[0][1]) / duration : 0
+  const slope = duration > 0 ? (endPoint[1] - startPoint[1]) / duration : 0
   const bandwidth = maxCurrent - minCurrent
-  const lineFitError = calculateLineFitError(slice)
+  const lineFitError = calculateLineFitError(points, startIndex, endIndex)
 
   return {
+    segment_index: -1,
     start_index: startIndex,
     end_index: endIndex,
     start_time: Number(startTime.toFixed(6)),
     end_time: Number(endTime.toFixed(6)),
     duration: Number(duration.toFixed(6)),
-    point_count: slice.length,
+    point_count: pointCount,
     min_current: Number(minCurrent.toFixed(6)),
     max_current: Number(maxCurrent.toFixed(6)),
     mean_current: Number(meanCurrent.toFixed(6)),
@@ -255,7 +275,7 @@ function createSegment(points: RawPoint[], startIndex: number, endIndex: number,
     slope: Number(slope.toFixed(6)),
     line_fit_error: Number(lineFitError.toFixed(6)),
     kind: classifySegmentKind({
-      point_count: slice.length,
+      point_count: pointCount,
       bandwidth,
       mean_current: meanCurrent,
       slope,
@@ -267,14 +287,14 @@ function createSegment(points: RawPoint[], startIndex: number, endIndex: number,
 }
 
 function buildInitialSegments(points: RawPoint[], options: CompressionOptions, globals: Globals) {
-  const segments: SegmentItem[] = []
+  const segments: InternalSegment[] = []
   let startIndex = 0
-  let segmentMin = points[0][1]
-  let segmentMax = points[0][1]
-  let sumCurrent = points[0][1]
+  let segmentMin = points[0]![1]
+  let segmentMax = points[0]![1]
+  let sumCurrent = points[0]![1]
 
   for (let index = 1; index < points.length; index++) {
-    const candidate = points[index]
+    const candidate = points[index]!
     const nextMin = Math.min(segmentMin, candidate[1])
     const nextMax = Math.max(segmentMax, candidate[1])
     const nextCount = index - startIndex + 1
@@ -299,26 +319,27 @@ function buildInitialSegments(points: RawPoint[], options: CompressionOptions, g
   return segments
 }
 
-function summarizeBucket(bucket: SegmentItem[], globals: Globals, options: CompressionOptions): SegmentItem {
+function summarizeBucket(bucket: InternalSegment[], globals: Globals, options: CompressionOptions): InternalSegment {
   const pointCount = bucket.reduce((sum, item) => sum + (item.point_count || 0), 0)
   const meanCurrent = bucket.reduce((sum, item) => sum + (item.mean_current || 0) * (item.point_count || 0), 0) / Math.max(pointCount, 1)
-  let minCurrent = bucket[0].min_current || 0
-  let maxCurrent = bucket[0].max_current || 0
+  let minCurrent = bucket[0]!.min_current || 0
+  let maxCurrent = bucket[0]!.max_current || 0
   for (const item of bucket) {
     if ((item.min_current || 0) < minCurrent) minCurrent = item.min_current || 0
     if ((item.max_current || 0) > maxCurrent) maxCurrent = item.max_current || 0
   }
-  const startTime = bucket[0].start_time || 0
-  const endTime = bucket[bucket.length - 1].end_time || 0
+  const startTime = bucket[0]!.start_time || 0
+  const endTime = bucket[bucket.length - 1]!.end_time || 0
   const duration = Math.max(endTime - startTime, 0)
   const resolution = resolutionForCurrent(meanCurrent, options)
   const bandwidth = maxCurrent - minCurrent
-  const slope = duration > 0 ? ((bucket[bucket.length - 1].mean_current || 0) - (bucket[0].mean_current || 0)) / duration : 0
+  const slope = duration > 0 ? ((bucket[bucket.length - 1]!.mean_current || 0) - (bucket[0]!.mean_current || 0)) / duration : 0
   const lineFitError = bucket.reduce((sum, item) => sum + (item.line_fit_error || 0) * (item.point_count || 0), 0) / Math.max(pointCount, 1)
 
   return {
-    start_index: bucket[0].start_index,
-    end_index: bucket[bucket.length - 1].end_index,
+    segment_index: -1,
+    start_index: bucket[0]!.start_index,
+    end_index: bucket[bucket.length - 1]!.end_index,
     start_time: Number(startTime.toFixed(6)),
     end_time: Number(endTime.toFixed(6)),
     duration: Number(duration.toFixed(6)),
@@ -343,7 +364,7 @@ function summarizeBucket(bucket: SegmentItem[], globals: Globals, options: Compr
   }
 }
 
-function canMergeBucket(left: SegmentItem, right: SegmentItem, options: CompressionOptions) {
+function canMergeBucket(left: InternalSegment, right: InternalSegment, options: CompressionOptions) {
   const leftResolution = resolutionForCurrent(left.mean_current || 0, options)
   const rightResolution = resolutionForCurrent(right.mean_current || 0, options)
   const allowedGap = Math.max(leftResolution, rightResolution) * (1 + options.merge_gap_ratio)
@@ -354,12 +375,12 @@ function canMergeBucket(left: SegmentItem, right: SegmentItem, options: Compress
   return levelGap <= allowedGap
 }
 
-function mergeShortInteriorSegments(segments: SegmentItem[], options: CompressionOptions, globals: Globals) {
+function mergeShortInteriorSegments(segments: InternalSegment[], options: CompressionOptions, globals: Globals) {
   if (segments.length <= 2) return segments
-  const result: SegmentItem[] = []
+  const result: InternalSegment[] = []
   let index = 0
   while (index < segments.length) {
-    const current = segments[index]
+    const current = segments[index]!
     const previous = result[result.length - 1]
     const next = segments[index + 1]
     const isShort = (current.point_count || 0) < options.min_transition_points
@@ -382,27 +403,27 @@ function mergeShortInteriorSegments(segments: SegmentItem[], options: Compressio
   return result
 }
 
-function mergeTrendRuns(segments: SegmentItem[], options: CompressionOptions, globals: Globals) {
+function mergeTrendRuns(segments: InternalSegment[], options: CompressionOptions, globals: Globals) {
   if (segments.length <= 2) return segments
-  const merged: SegmentItem[] = []
+  const merged: InternalSegment[] = []
   let index = 0
   while (index < segments.length) {
-    const current = segments[index]
+    const current = segments[index]!
     if (!isTrendCandidate(current, options, globals, index, segments)) {
       merged.push(current)
       index++
       continue
     }
 
-    const bucket = [current]
+    const bucket: InternalSegment[] = [current]
     let nextIndex = index + 1
     let direction = 0
     while (nextIndex < segments.length) {
-      const candidate = segments[nextIndex]
+      const candidate = segments[nextIndex]!
       if (!isTrendCandidate(candidate, options, globals, nextIndex, segments)) {
         break
       }
-      const delta = (candidate.representative_current || 0) - (bucket[bucket.length - 1].representative_current || 0)
+      const delta = (candidate.representative_current || 0) - (bucket[bucket.length - 1]!.representative_current || 0)
       const candidateDirection = Math.sign(delta)
       if (candidateDirection === 0) break
       if (direction === 0) direction = candidateDirection
@@ -410,7 +431,7 @@ function mergeTrendRuns(segments: SegmentItem[], options: CompressionOptions, gl
 
       const allowedGap = Math.max(
         resolutionForCurrent(candidate.mean_current || 0, options),
-        resolutionForCurrent(bucket[bucket.length - 1].mean_current || 0, options)
+        resolutionForCurrent(bucket[bucket.length - 1]!.mean_current || 0, options)
       ) * 12
       if (Math.abs(delta) > allowedGap) break
       bucket.push(candidate)
@@ -433,14 +454,14 @@ function mergeTrendRuns(segments: SegmentItem[], options: CompressionOptions, gl
   return merged
 }
 
-function mergeSegments(initialSegments: SegmentItem[], options: CompressionOptions, globals: Globals) {
+function mergeSegments(initialSegments: InternalSegment[], options: CompressionOptions, globals: Globals) {
   if (initialSegments.length <= 1) {
     return initialSegments.map((segment, index) => ({ ...segment, segment_index: index }))
   }
-  const merged: SegmentItem[] = []
-  let bucket: SegmentItem[] = [initialSegments[0]]
+  const merged: InternalSegment[] = []
+  let bucket: InternalSegment[] = [initialSegments[0]!]
   for (let index = 1; index < initialSegments.length; index++) {
-    const candidate = initialSegments[index]
+    const candidate = initialSegments[index]!
     const bucketSummary = summarizeBucket(bucket, globals, options)
     if (canMergeBucket(bucketSummary, candidate, options)) {
       bucket.push(candidate)
@@ -455,20 +476,20 @@ function mergeSegments(initialSegments: SegmentItem[], options: CompressionOptio
   return trendMerged.map((segment, index) => ({ ...segment, segment_index: index }))
 }
 
-function samplePointsForVisualization(points: Array<{ time: number; current: number }>, maxPoints: number) {
+function samplePointsForVisualization(points: RawPoint[], maxPoints: number) {
   if (points.length <= maxPoints) {
     return points
   }
-  const sampled = [points[0]]
+  const sampled = [points[0]!]
   const step = Math.ceil((points.length - 2) / Math.max(maxPoints - 2, 1))
   for (let index = step; index < points.length - 1; index += step) {
-    sampled.push(points[index])
+    sampled.push(points[index]!)
   }
-  sampled.push(points[points.length - 1])
+  sampled.push(points[points.length - 1]!)
   return sampled
 }
 
-function buildPolylinePoints(segment: SegmentItem, slice: RawPoint[], globals: Globals, options: CompressionOptions) {
+function buildPolylinePoints(segment: InternalSegment, points: RawPoint[], startIndex: number, endIndex: number, globals: Globals, options: CompressionOptions) {
   if (isPlateauKind(segment.kind)) {
     return [
       [segment.start_time || 0, segment.representative_current || 0],
@@ -476,17 +497,18 @@ function buildPolylinePoints(segment: SegmentItem, slice: RawPoint[], globals: G
     ]
   }
 
-  const points = slice.map(point => ({ time: point[0], current: point[1] }))
-  const sampled = samplePointsForVisualization(points, 1200)
+  const segmentPoints = points.slice(startIndex, endIndex + 1)
+  const sampled = samplePointsForVisualization(segmentPoints, 1200)
   const epsilon = Math.max(resolutionForCurrent(segment.mean_current || 0, options), baselineMagnitude(globals) * 0.01)
   const simplified = simplifyPolyline(sampled, epsilon)
-  return simplified.map(point => [Number(point.time.toFixed(6)), Number(point.current.toFixed(6))])
+  return simplified.map(point => [Number(point[0].toFixed(6)), Number(point[1].toFixed(6))])
 }
 
-function attachPolylinePoints(segments: SegmentItem[], points: RawPoint[], globals: Globals, options: CompressionOptions) {
+function attachPolylinePoints(segments: InternalSegment[], points: RawPoint[], globals: Globals, options: CompressionOptions) {
   return segments.map(segment => {
-    const slice = points.slice((segment.start_index || 0), (segment.end_index || 0) + 1)
-    const polylinePoints = buildPolylinePoints(segment, slice, globals, options)
+    const startIndex = segment.start_index || 0
+    const endIndex = segment.end_index || 0
+    const polylinePoints = buildPolylinePoints(segment, points, startIndex, endIndex, globals, options)
     return {
       ...segment,
       polyline_points: polylinePoints,
@@ -495,10 +517,10 @@ function attachPolylinePoints(segments: SegmentItem[], points: RawPoint[], globa
   })
 }
 
-function extractEvents(segments: SegmentItem[]) {
+function extractEvents(segments: InternalSegment[]) {
   const events: Array<Record<string, unknown>> = []
   for (let index = 0; index < segments.length; index++) {
-    const segment = segments[index]
+    const segment = segments[index]!
     if (segment.kind === 'spike' || segment.kind === 'burst') {
       events.push({ type: segment.kind, time: segment.start_time, segment_index: index })
     }
@@ -517,17 +539,17 @@ type OptimizedCompressionResult = {
   result: CompressionRunResult
 }
 
-function runCompression(points: RawPoint[], options: CompressionOptions): CompressionRunResult {
-  const globals = calculateGlobals(points)
+function runCompression(points: RawPoint[], options: CompressionOptions, globals: Globals): CompressionRunResult {
   const initialSegments = buildInitialSegments(points, options, globals)
   const mergedSegments = mergeSegments(initialSegments, options, globals)
-  const segments = attachPolylinePoints(mergedSegments, points, globals, options)
-  return { globals, segments, events: extractEvents(segments) }
+  const segments = attachPolylinePoints(mergedSegments, points, globals, options) as SegmentItem[]
+  return { globals, segments, events: extractEvents(segments as InternalSegment[]) }
 }
 
 function optimizeCompressionOptions(points: RawPoint[], baseOptions: CompressionOptions): OptimizedCompressionResult {
   const target = Math.max(10, Number(baseOptions.target_segment_count) || 45)
   const baseResolution = Math.max(baseOptions.absolute_resolution, 0.000001)
+  const globals = calculateGlobals(points)
   const multipliers = [0.125, 0.1875, 0.25, 0.375, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
   const candidates = multipliers.map(multiplier => {
     const absolute_resolution = Number((baseResolution * multiplier).toPrecision(12))
@@ -541,13 +563,13 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
       selection_reason: null,
       selection_context: null,
     }
-    const result = runCompression(points, options)
+    const result = runCompression(points, options, globals)
     options.selected_segment_count = result.segments.length
     return { options, result }
   }).sort((left, right) => left.options.absolute_resolution - right.options.absolute_resolution)
 
-  let bestCandidate = candidates[0]
-  let bestDistance = Math.abs(candidates[0].result.segments.length - target)
+  let bestCandidate = candidates[0]!
+  let bestDistance = Math.abs(candidates[0]!.result.segments.length - target)
   for (const candidate of candidates) {
     const distance = Math.abs(candidate.result.segments.length - target)
     if (
@@ -561,7 +583,7 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
 
   const acceptableCandidates = candidates.filter(candidate => candidate.result.segments.length <= target)
   if (acceptableCandidates.length > 0) {
-    let nearestAcceptable = acceptableCandidates[0]
+    let nearestAcceptable = acceptableCandidates[0]!
     for (const candidate of acceptableCandidates) {
       const currentDistance = Math.abs(candidate.result.segments.length - target)
       const selectedDistance = Math.abs(nearestAcceptable.result.segments.length - target)
@@ -580,8 +602,8 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
   let bestCliffPair: { left: OptimizedCompressionResult; right: OptimizedCompressionResult; crossesTarget: boolean } | null = null
   let bestCliffScore = -1
   for (let index = 0; index < candidates.length - 1; index++) {
-    const left = candidates[index]
-    const right = candidates[index + 1]
+    const left = candidates[index]!
+    const right = candidates[index + 1]!
     const leftCount = left.result.segments.length
     const rightCount = right.result.segments.length
     const pointGap = Math.abs(rightCount - leftCount)
@@ -606,13 +628,13 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
   if (bestCliffPair.crossesTarget) {
     const acceptableChoices = pairChoices.filter(item => item.result.segments.length <= target)
     if (acceptableChoices.length > 0) {
-      selected = acceptableChoices[0]
+      selected = acceptableChoices[0]!
       for (const item of acceptableChoices) {
         const currentDistance = Math.abs(item.result.segments.length - target)
-        const selectedDistance = Math.abs((selected as OptimizedCompressionResult).result.segments.length - target)
+        const selectedDistance = Math.abs(selected!.result.segments.length - target)
         if (
           currentDistance < selectedDistance ||
-          (currentDistance === selectedDistance && item.options.absolute_resolution < (selected as OptimizedCompressionResult).options.absolute_resolution)
+          (currentDistance === selectedDistance && item.options.absolute_resolution < selected!.options.absolute_resolution)
         ) {
           selected = item
         }
@@ -621,13 +643,13 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
   }
 
   if (!selected) {
-    selected = pairChoices[0]
+    selected = pairChoices[0]!
     for (const item of pairChoices) {
       const currentDistance = Math.abs(item.result.segments.length - target)
-      const selectedDistance = Math.abs((selected as OptimizedCompressionResult).result.segments.length - target)
+      const selectedDistance = Math.abs(selected!.result.segments.length - target)
       if (
         currentDistance < selectedDistance ||
-        (currentDistance === selectedDistance && item.options.absolute_resolution < (selected as OptimizedCompressionResult).options.absolute_resolution)
+        (currentDistance === selectedDistance && item.options.absolute_resolution < selected!.options.absolute_resolution)
       ) {
         selected = item
       }
@@ -658,16 +680,33 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
 }
 
 export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null): FileAnalysisResult {
-  const points = rawData
-    .filter(point => Array.isArray(point) && point.length >= 2)
-    .map(point => [Number(point[0]), Number(point[1])] as RawPoint)
-    .filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]))
+  const points: RawPoint[] = []
+  let isSorted = true
+  let previousTime = Number.NEGATIVE_INFINITY
+
+  for (const point of rawData) {
+    if (!Array.isArray(point) || point.length < 2) {
+      continue
+    }
+
+    const time = Number(point[0])
+    const current = Number(point[1])
+    if (!Number.isFinite(time) || !Number.isFinite(current)) {
+      continue
+    }
+
+    if (time < previousTime) {
+      isSorted = false
+    }
+    previousTime = time
+    points.push([time, current])
+  }
 
   if (points.length === 0) {
     throw new Error('文件中无有效数据点')
   }
 
-  const sortedPoints = points.slice().sort((left, right) => left[0] - right[0])
+  const sortedPoints = isSorted ? points : points.slice().sort((left, right) => left[0] - right[0])
   const baseOptions: CompressionOptions = {
     absolute_resolution: appConfig?.absolute_resolution ?? DEFAULT_OPTIONS.absolute_resolution,
     relative_resolution: appConfig?.relative_resolution ?? DEFAULT_OPTIONS.relative_resolution,
