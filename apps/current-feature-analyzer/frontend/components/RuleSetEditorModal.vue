@@ -94,7 +94,8 @@
       </div>
 
       <div v-if="editForm.stages.length === 0" class="rs-empty-stage">
-        当前还没有阶段定义，请至少添加一个阶段。
+        <span>当前还没有阶段定义，请至少添加一个阶段。</span>
+        <el-button size="small" type="primary" round :icon="Plus" @click="addStage">添加阶段</el-button>
       </div>
       <div v-if="editForm.stages.length > 0" class="stage-nav-row">
         <div class="stage-nav-wrap">
@@ -429,6 +430,16 @@ function removeStage(i: number) {
 .rs-table-header-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.rs-empty-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px 0;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
 }
 
 .stage-nav-row {
