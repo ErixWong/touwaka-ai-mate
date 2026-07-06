@@ -95,7 +95,7 @@ function simplifyPolyline(points: RawPoint[], epsilon: number) {
     }
   }
 
-  const result: Array<{ time: number; current: number }> = []
+  const result: RawPoint[] = []
   for (let index = 0; index < points.length; index++) {
     if (keep[index]) {
       result.push(points[index]!)
@@ -114,6 +114,7 @@ function calculateLineFitError(points: RawPoint[], startIndex: number, endIndex:
   let maxResidual = 0
   for (let index = startIndex; index <= endIndex; index++) {
     const point = points[index]
+    if (!point) continue
     const ratio = (point[0] - start[0]) / duration
     const predicted = start[1] + (end[1] - start[1]) * ratio
     maxResidual = Math.max(maxResidual, Math.abs(point[1] - predicted))
@@ -191,7 +192,7 @@ function calculateGlobals(points: RawPoint[]): Globals {
   const tailCandidates: RawPoint[] = []
   for (let index = points.length - 1; index >= 0 && tailCandidates.length < BASELINE_SAMPLE_COUNT; index--) {
     const point = points[index]
-    if (Math.abs(point[1]) > ABS_EPSILON) {
+    if (point && Math.abs(point[1]) > ABS_EPSILON) {
       tailCandidates.push(point)
     }
   }

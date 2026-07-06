@@ -2107,6 +2107,7 @@ const MIGRATIONS = [
   {
     name: 'app_contract_mgr_v2_content add content_id',
     check: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return true;
       const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
       if (!hasCol) return false;
       const [rows] = await conn.execute(
@@ -2116,6 +2117,7 @@ const MIGRATIONS = [
       return await hasIndex(conn, 'app_contract_mgr_v2_content', 'uk_content_id');
     },
     migrate: async (conn) => {
+      if (!await hasTable(conn, 'app_contract_mgr_v2_content')) return;
       const hasCol = await hasColumn(conn, 'app_contract_mgr_v2_content', 'content_id');
       if (!hasCol) {
         await conn.execute(

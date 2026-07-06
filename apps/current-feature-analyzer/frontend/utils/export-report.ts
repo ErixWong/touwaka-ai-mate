@@ -58,7 +58,12 @@ function appendTabularSection(sheet: ExcelJS.Worksheet, startRow: number, rows: 
     return startRow
   }
 
-  const columns = Object.keys(rows[0])
+  const firstRow = rows[0]
+  if (!firstRow) {
+    return startRow
+  }
+
+  const columns = Object.keys(firstRow)
   columns.forEach((column, index) => {
     const cell = sheet.getCell(startRow, index + 1)
     cell.value = column
