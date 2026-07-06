@@ -241,6 +241,14 @@ function updateChartTotalHeight() {
   ensureChartBounds()
 }
 
+function resetChartHeights() {
+  if (canResizeCharts.value) {
+    rawChartHeight.value = Math.round(chartTotalHeight.value * RAW_CHART_DEFAULT_RATIO)
+    compressedChartHeight.value = chartTotalHeight.value - rawChartHeight.value
+  }
+  ensureChartBounds()
+}
+
 function stopChartResize() {
   if (!isResizing) return
   isResizing = false
@@ -271,18 +279,15 @@ function onFocusRangeChange(range: [number, number] | null) {
 }
 
 watch(
-  () => props.file,
+  () => [props.file.file_id, canResizeCharts.value],
   () => {
-<<<<<<< HEAD
     activeResultTab.value = 'overview'
     focusRange.value = null
     resetChartHeights()
-=======
     updateChartTotalHeight()
     ensureChartBounds()
->>>>>>> origin/master
   },
-  { immediate: true, deep: true },
+  { immediate: true },
 )
 
 onMounted(() => {
