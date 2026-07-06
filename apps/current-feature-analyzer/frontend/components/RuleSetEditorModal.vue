@@ -237,7 +237,7 @@ const currentStage = computed(() => {
   if (selectedStageIndex.value < 0 || selectedStageIndex.value >= editForm.stages.length) {
     return null
   }
-  return editForm.stages[selectedStageIndex.value] as StageEditFormItem
+  return editForm.stages[selectedStageIndex.value] as unknown as StageEditFormItem
 })
 
 function getErrorMessage(err: unknown, fallback: string) {
@@ -278,7 +278,7 @@ function isStageComplete(stage: Record<string, unknown>) {
 }
 
 function getStageColor(index: number) {
-  return STAGE_PRESET_COLORS[index % STAGE_PRESET_COLORS.length].value
+  return STAGE_PRESET_COLORS[index % STAGE_PRESET_COLORS.length]?.value ?? STAGE_PRESET_COLORS[0]?.value ?? '#3b82f6'
 }
 
 function getStageChipStyle(stage: Record<string, unknown>, index: number) {
@@ -406,7 +406,7 @@ function addStage() {
   const idx = editForm.stages.length
   editForm.stages.push({
     stage_code: '', stage_name: '', stage_order: idx,
-    stage_color: STAGE_PRESET_COLORS[idx % STAGE_PRESET_COLORS.length].value,
+    stage_color: STAGE_PRESET_COLORS[idx % STAGE_PRESET_COLORS.length]?.value ?? STAGE_PRESET_COLORS[0]?.value ?? '#3b82f6',
     semantic_definition: '',
   } satisfies StageEditFormItem)
   selectedStageIndex.value = editForm.stages.length - 1
