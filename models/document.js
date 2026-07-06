@@ -80,6 +80,11 @@ export default class document extends Model {
       defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
       comment: "处理状态更新时间"
     },
+    current_stage_started_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "进入当前处理阶段的时间点"
+    },
     metadata: {
       type: DataTypes.TEXT,
       allowNull: true,

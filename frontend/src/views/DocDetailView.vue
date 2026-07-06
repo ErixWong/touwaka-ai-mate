@@ -229,8 +229,12 @@ async function loadMarkdownPreview() {
     try {
       const result = await docStore.extractOutlineAction(revId)
       if (result) {
-        ElMessage.success(t('docs.workspace.detail.submitOutline'))
-        await loadMarkdownPreview()
+        if (result.status === 'already_running') {
+          ElMessage.info(t('docs.workspace.detail.outlineRunning') || '章节提取正在进行中')
+        } else {
+          ElMessage.success(t('docs.workspace.detail.submitOutline'))
+        }
+        // 不再立即加载 markdown——轮询结束时自动刷新
       } else {
         ElMessage.error(docStore.error || t('docs.workspace.detail.outlineFailed'))
       }
