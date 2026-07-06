@@ -159,8 +159,8 @@ const props = defineProps<{
 }>()
 
 type StageRow = NonNullable<LlmResult['stages']>[number] & {
-  cycle_index?: number
-  cycle_stage_index?: number
+  cycle_index?: number | null
+  cycle_stage_index?: number | null
 }
 
 const cycleMeta = computed(() => {
