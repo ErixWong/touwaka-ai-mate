@@ -208,6 +208,7 @@ export interface Expert {
   top_p?: number                // 核采样，默认 1.0
   frequency_penalty?: number    // 频率惩罚，默认 0.0
   presence_penalty?: number     // 存在惩罚，默认 0.0
+  knowledge_config?: ExpertKnowledgeConfig | null
   // 工具调用配置
   max_tool_rounds?: number | null  // 最大工具调用轮数（NULL表示使用系统默认，范围 1-50）
   // 头像

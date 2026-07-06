@@ -51,6 +51,8 @@ class ExpertController {
           'is_active', 'created_at',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
+          // 知识策略配置
+          'knowledge_config',
           // P2-1: Psyche 配置
           'psyche_config',
           // LLM 参数配置
@@ -69,6 +71,7 @@ class ExpertController {
       const formattedExperts = experts.map(e => ({
         ...e,
         is_active: !!e.is_active,
+        knowledge_config: e.knowledge_config ? safeParseJson(e.knowledge_config) : null,
         psyche_config: e.psyche_config ? safeParseJson(e.psyche_config) : null,
       }));
 
@@ -94,6 +97,8 @@ class ExpertController {
           'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
+          // 知识策略配置
+          'knowledge_config',
           // P2-1: Psyche 配置
           'psyche_config',
           // LLM 参数配置
@@ -115,6 +120,7 @@ class ExpertController {
       ctx.success({
         ...expert,
         is_active: !!expert.is_active,
+        knowledge_config: expert.knowledge_config ? safeParseJson(expert.knowledge_config) : null,
         psyche_config: expert.psyche_config ? safeParseJson(expert.psyche_config) : null,
       });
     } catch (error) {
@@ -134,6 +140,8 @@ class ExpertController {
         prompt_template, is_active = true,
         // 上下文压缩配置
         context_threshold, context_strategy,
+        // 知识策略配置
+        knowledge_config,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
@@ -170,6 +178,8 @@ class ExpertController {
         // 上下文压缩配置（使用系统默认值）
         context_threshold: context_threshold ?? llmDefaults.context_threshold,
         context_strategy: context_strategy || 'full',
+        // 知识策略配置（JSON 字符串存储）
+        knowledge_config: typeof knowledge_config === 'object' ? JSON.stringify(knowledge_config) : (knowledge_config || null),
         // LLM 参数配置（使用系统默认值）
         temperature: temperature ?? llmDefaults.temperature,
         reflective_temperature: reflective_temperature ?? llmDefaults.reflective_temperature,
@@ -191,6 +201,8 @@ class ExpertController {
         // 上下文压缩配置
         context_threshold: expertData.context_threshold,
         context_strategy: expertData.context_strategy,
+        // 知识策略配置
+        knowledge_config: knowledge_config || null,
         // LLM 参数配置
         temperature: expertData.temperature,
         reflective_temperature: expertData.reflective_temperature,
@@ -220,6 +232,8 @@ class ExpertController {
         prompt_template, is_active,
         // 上下文压缩配置
         context_threshold, context_strategy,
+        // 知识策略配置
+        knowledge_config,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
@@ -255,6 +269,10 @@ class ExpertController {
       // 上下文压缩配置
       if (context_threshold !== undefined) updates.context_threshold = context_threshold;
       if (context_strategy !== undefined) updates.context_strategy = context_strategy;
+      // 知识策略配置
+      if (knowledge_config !== undefined) {
+        updates.knowledge_config = typeof knowledge_config === 'object' ? JSON.stringify(knowledge_config) : (knowledge_config || null);
+      }
       // LLM 参数配置
       if (temperature !== undefined) updates.temperature = temperature;
       if (reflective_temperature !== undefined) updates.reflective_temperature = reflective_temperature;

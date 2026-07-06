@@ -833,6 +833,68 @@
             <div class="el-form-item__tip">{{ $t('settings.maxToolRoundsExpertHint') }}</div>
           </el-form-item>
         </el-tab-pane>
+
+        <el-tab-pane :label="$t('settings.expertKnowledgeStrategy')" name="knowledge">
+          <el-form-item>
+            <el-switch v-model="expertForm.knowledge_config.enabled" />
+            <span class="inline-switch-label">{{ $t('settings.expertKnowledgeEnabled') }}</span>
+            <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeEnabledHint') }}</div>
+          </el-form-item>
+
+          <template v-if="expertForm.knowledge_config.enabled">
+            <el-form-item :label="$t('settings.expertKnowledgeCollection')">
+              <el-select v-model="expertForm.knowledge_config.collection_id" clearable filterable>
+                <el-option
+                  v-for="collection in collectionStore.collections"
+                  :key="collection.id"
+                  :label="collection.name"
+                  :value="collection.id"
+                />
+              </el-select>
+              <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeCollectionHint') }}</div>
+            </el-form-item>
+
+            <el-form-item :label="$t('settings.expertKnowledgeDocTypes')">
+              <el-select v-model="expertForm.knowledge_config.doc_types" multiple clearable collapse-tags>
+                <el-option label="Knowledge" value="knowledge" />
+                <el-option label="Contract" value="contract" />
+                <el-option label="Department Doc" value="department_doc" />
+                <el-option label="Standard" value="standard" />
+              </el-select>
+              <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeDocTypesHint') }}</div>
+            </el-form-item>
+
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item :label="$t('settings.expertKnowledgeTopK')">
+                  <el-input-number v-model="expertForm.knowledge_config.top_k" :min="1" :max="20" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item :label="$t('settings.expertKnowledgeThreshold')">
+                  <el-input-number v-model="expertForm.knowledge_config.threshold" :min="0" :max="1" :step="0.05" :precision="2" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item :label="$t('settings.expertKnowledgeMaxTokens')">
+                  <el-input-number v-model="expertForm.knowledge_config.max_tokens" :min="200" :max="8000" :step="100" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item :label="$t('settings.expertKnowledgeStyle')">
+                  <el-select v-model="expertForm.knowledge_config.style">
+                    <el-option :label="$t('settings.expertKnowledgeStyleDefault')" value="default" />
+                    <el-option :label="$t('settings.expertKnowledgeStyleConcise')" value="concise" />
+                    <el-option :label="$t('settings.expertKnowledgeStyleDetailed')" value="detailed" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
+        </el-tab-pane>
       </el-tabs>
 
       <template #footer>
@@ -1081,6 +1143,7 @@ import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
+import { useCollectionStore } from '@/stores/collection'
 import { useToastStore } from '@/stores/toast'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
 import { expertApi, userApi, roleApi } from '@/api/services'
@@ -1106,6 +1169,7 @@ const userStore = useUserStore()
 const modelStore = useModelStore()
 const providerStore = useProviderStore()
 const expertStore = useExpertStore()
+const collectionStore = useCollectionStore()
 const toast = useToastStore()
 
 // 应用版本号
@@ -1352,6 +1416,15 @@ const expertForm = reactive({
   top_p: 1.0,
   frequency_penalty: 0.0,
   presence_penalty: 0.0,
+  knowledge_config: {
+    enabled: false,
+    collection_id: '',
+    doc_types: [] as string[],
+    top_k: 5,
+    threshold: 0.7,
+    max_tokens: 2000,
+    style: 'default' as 'default' | 'concise' | 'detailed',
+  },
   // 工具调用配置
   max_tool_rounds: null as number | null,
   // 头像
@@ -1365,7 +1438,7 @@ const isExpertFormValid = computed(() => {
 })
 
 // Expert 对话框 Tab 状态
-const expertActiveTab = ref<'basic' | 'personality' | 'model'>('basic')
+const expertActiveTab = ref<'basic' | 'personality' | 'model' | 'knowledge'>('basic')
 
 // 技能管理对话框
 const showSkillsDialog = ref(false)
@@ -2103,6 +2176,15 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = expert.top_p ?? 1.0
     expertForm.frequency_penalty = expert.frequency_penalty ?? 0.0
     expertForm.presence_penalty = expert.presence_penalty ?? 0.0
+    expertForm.knowledge_config = {
+      enabled: expert.knowledge_config?.enabled ?? false,
+      collection_id: expert.knowledge_config?.collection_id || '',
+      doc_types: expert.knowledge_config?.doc_types || [],
+      top_k: expert.knowledge_config?.top_k ?? 5,
+      threshold: expert.knowledge_config?.threshold ?? 0.7,
+      max_tokens: expert.knowledge_config?.max_tokens ?? 2000,
+      style: expert.knowledge_config?.style ?? 'default',
+    }
     // 工具调用配置
     expertForm.max_tool_rounds = expert.max_tool_rounds ?? null
     // 头像
@@ -2130,6 +2212,15 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = 1.0
     expertForm.frequency_penalty = 0.0
     expertForm.presence_penalty = 0.0
+    expertForm.knowledge_config = {
+      enabled: false,
+      collection_id: '',
+      doc_types: [],
+      top_k: 5,
+      threshold: 0.7,
+      max_tokens: 2000,
+      style: 'default',
+    }
     // 工具调用配置默认值
     expertForm.max_tool_rounds = null
     // 头像
@@ -2137,6 +2228,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.avatar_large_base64 = ''
     expertForm.is_active = true
   }
+  collectionStore.fetchCollections({ page: 1 })
   showExpertDialog.value = true
 }
 
