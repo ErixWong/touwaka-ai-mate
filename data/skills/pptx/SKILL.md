@@ -1,6 +1,6 @@
 ---
 name: pptx
-description: "PowerPoint 演示文稿处理。用于读取现有 PPTX 信息、创建新演示文稿、提取媒体文件。支持文本、图片、表格、图表、形状、媒体、演讲者备注。当用户提到 .pptx 文件或需要操作 PowerPoint 时触发。"
+description: "PowerPoint 演示文稿处理。用于读取现有 PPTX 基本信息、文本、表格、图表基础数据与备注，创建新演示文稿，并提取媒体文件。支持在新建演示文稿时添加文本、图片、表格、图表、形状、媒体与演讲者备注。当用户提到 .pptx 文件或需要操作 PowerPoint 时触发。"
 license: MIT
 argument-hint: "[file|slide|object|master] [action] [path]"
 user-invocable: true
@@ -55,8 +55,34 @@ user-invocable: true
 - `scope` (string, optional): 读取范围
   - `info`: 基本信息（幻灯片数量、元数据）
   - `text`: 提取所有文本内容
-  - `structure`: 提取结构信息（形状、图片等）
-  - `media`: 提取媒体信息（图片、视频列表）
+  - `structure`: 提取页面级粗粒度结构信息（文本形状、图片、表格、图表、媒体引用、对象顺序及基础变换信息）
+  - `normalized`: 提取标准化 slide object model，可直接作为 JSON 中间表示消费
+  - `media`: 提取媒体信息（图片、视频列表）和幻灯片引用关系
+  - `tables`: 提取表格内容
+  - `charts`: 提取图表基础数据（类型、系列、标签、数值）
+  - `notes`: 提取演讲者备注文本
+- `includeAssets` (boolean, optional): 当 `scope = "normalized"` 时，是否内联 `presentation.assetMap`，用于直接 round-trip 重建资源对象
+
+`structure` 结果会按幻灯片返回 `summary`、`notes` 与 `objects`。它更适合作为分析视图使用，用于理解页面内容与结构，不建议作为默认编辑入口。
+
+`normalized` 在 `structure` 基础上提供显式的标准化导出入口，返回更收敛的 schema：仅保留 `presentation`、`slides[].summary` 和 `slides[].objects[]` 下的核心字段，适合直接持久化为 JSON 或作为后续重建输入。当前 read/create 结果都会回显 `schema` 元信息，其中包含 `presentation`、`slide`、`object` 三层契约定义。
+
+当前实现中，normalized 的支持矩阵与对象校验已经共享同一套 schema 定义，`requirements` / `requirementsAnyOf` 与 `warningCode` 会同时体现在支持矩阵和创建阶段反馈中。schema 里还会显式回显字段级 `required`、`properties`、`defaults` 和 `example`，便于 LLM 或调用方按字段约束生成/修正对象。
+
+**默认推荐工作流**：
+1. `file read` with `scope: "normalized"`
+2. 修改 normalized JSON
+3. `file create` with `source: "normalized"`
+
+**支持矩阵（normalized -> create）**：
+- `text`: `full`，要求 `content.text`
+- `image`: `partial`，要求 `source.path`、`source.data` 或 `source.assetKey`；仅有 `embedId` 时会返回 `image-resource-mapping-required`
+- `table`: `partial`，要求 `content.previewRows`
+- `chart`: `basic`，要求 `content.chartType` 与 `content.series`
+- `shape`: `basic`，支持基础 shape 参数
+- `notes`: `full`，要求 `content.text`
+- `media`: `partial`，要求 `source.path` / `source.data` / `source.assetKey`；缺失资源映射时会返回 `media-resource-mapping-required`
+
 - `slideNumbers` (number[], optional): 指定幻灯片编号
 
 **示例**：
@@ -69,6 +95,15 @@ pptx__file({ action: "read", path: "presentation.pptx", scope: "text" })
 
 // 提取结构
 pptx__file({ action: "read", path: "presentation.pptx", scope: "structure" })
+
+// 导出标准化模型
+pptx__file({ action: "read", path: "presentation.pptx", scope: "normalized" })
+
+// 导出可直接 round-trip 的标准化模型（内联资源）
+pptx__file({ action: "read", path: "presentation.pptx", scope: "normalized", includeAssets: true })
+
+// 提取备注
+pptx__file({ action: "read", path: "presentation.pptx", scope: "notes" })
 ```
 
 ### create - 创建演示文稿
@@ -76,9 +111,10 @@ pptx__file({ action: "read", path: "presentation.pptx", scope: "structure" })
 **参数**：
 - `action` (string, required): `"create"`
 - `path` (string, required): 输出文件路径
-- `source` (string, optional): 创建来源 - `data` 或 `markdown`（默认: `data`）
+- `source` (string, optional): 创建来源 - `data`、`markdown` 或 `normalized`（默认: `data`）
 - `slides` (object[], optional): 幻灯片数据数组
-- `markdown` (string, optional): Markdown 内容
+- `markdown` (string, optional): Markdown 内容（当前支持一级标题、二级标题、普通文本、无序列表）
+- `normalized` (object, optional): 标准化 slide object model，可选包含 `assetMap`
 - `properties` (object, optional): 文档属性
   - `title`: 标题
   - `author`: 作者
@@ -105,7 +141,29 @@ pptx__file({
   source: "markdown",
   markdown: "# 标题页\n\n## 内容\n- 要点一\n- 要点二"
 })
+
+// 从标准化模型重建（当前最小支持 text/table/notes/chart/shape/image）
+pptx__file({
+  action: "create",
+  path: "normalized.pptx",
+  source: "normalized",
+  normalized: {
+    slides: [
+      {
+        number: 1,
+        objects: [
+          { kind: "text", content: { text: "标题" }, transform: { inches: { x: 0.5, y: 0.5, w: 4, h: 0.5 } } },
+          { kind: "table", content: { previewRows: [["A", "B"], ["1", "2"]] }, transform: { inches: { x: 0.5, y: 1.5, w: 5 } } },
+          { kind: "chart", name: "销量", content: { chartType: "bar", series: [{ name: "Sales", labels: ["Q1", "Q2"], values: [10, 20] }] }, transform: { inches: { x: 0.5, y: 3.5, w: 5, h: 3 } } },
+          { kind: "notes", content: { text: "讲解备注" } }
+        ]
+      }
+    ]
+  }
+})
 ```
+
+使用 `source: "normalized"` 创建时，返回结果会额外包含 `rebuildStats`、结构化 `warnings`、normalized 版本元信息和支持矩阵回显，便于判断哪些对象已成功重建、哪些对象被跳过。`warnings` 现在还会附带 `suggestedFix`，方便基于 warning code 自动修正对象。`image` 当前支持 `source.path`、`source.data`，也支持通过 `normalized.assetMap` 或 `normalized.presentation.assetMap` 配合 `source.assetKey` 重建；仅有 `embedId` 时仍需要外部资源映射。`media` 同样支持 `source.path`、`source.data` 或 `source.assetKey + assetMap`。
 
 ### extract - 提取媒体文件
 
@@ -179,6 +237,7 @@ pptx__slide({
 **参数**：
 - `action` (string, required): `"add"`
 - `output` (string, required): 输出文件路径
+- `slideNumber` (number, optional): 仅接受 `1`。当前工具会创建一个新的单页演示文稿，不支持写入指定页。
 - `type` (string, required): 对象类型
   - `text`: 文本
   - `image`: 图片
@@ -307,6 +366,8 @@ pptx__master({
 
 ### list - 列出母版
 
+返回的是 PPTX 中可枚举的布局信息（`slideLayout*.xml`），可用于识别布局名称，但不是完整的母版结构解析。
+
 **参数**：
 - `action` (string, required): `"list"`
 - `path` (string, required): PPTX 文件路径
@@ -347,8 +408,12 @@ interface SlideData {
 |------|------|--------|
 | 读取基本信息 | `file` | `read` (scope: `info`) |
 | 提取文本 | `file` | `read` (scope: `text`) |
-| 提取结构 | `file` | `read` (scope: `structure`) |
-| 提取媒体信息 | `file` | `read` (scope: `media`) |
+| 提取页面级粗粒度结构 | `file` | `read` (scope: `structure`) |
+| 导出标准化模型 | `file` | `read` (scope: `normalized`) |
+| 提取媒体信息与引用 | `file` | `read` (scope: `media`) |
+| 提取表格 | `file` | `read` (scope: `tables`) |
+| 提取图表基础数据 | `file` | `read` (scope: `charts`) |
+| 提取备注 | `file` | `read` (scope: `notes`) |
 | 创建演示文稿 | `file` | `create` |
 | 提取媒体文件 | `file` | `extract` |
 | 创建幻灯片 | `slide` | `add` |
@@ -361,7 +426,7 @@ interface SlideData {
 | 添加备注 | `object` | `add` (type: `notes`) |
 | 提取对象 | `object` | `extract` |
 | 定义母版 | `master` | `define` |
-| 列出母版 | `master` | `list` |
+| 列出布局 | `master` | `list` |
 
 ---
 

@@ -26,6 +26,7 @@
         :result="file.result"
         :raw-data="file.raw_data"
         :chart-height="rawChartHeight"
+        :focus-range="focusRange"
       />
       <div v-if="showChartResizer" class="cfa-chart-resizer" @pointerdown="startChartResize">
         <span class="cfa-chart-resizer-handle" />
@@ -34,6 +35,8 @@
         :file-name="file.file_name"
         :result="file.result"
         :chart-height="compressedChartHeight"
+        :focus-range="focusRange"
+        @focus-range-change="onFocusRangeChange"
       />
 
       <el-tabs v-model="activeResultTab" class="cfa-result-tabs">
@@ -101,6 +104,7 @@
         :raw-data="file.raw_data"
         :result="file.result || {}"
         :chart-height="rawChartHeight"
+        :focus-range="focusRange"
       />
 
       <div v-if="showChartResizer" class="cfa-chart-resizer" @pointerdown="startChartResize">
@@ -112,6 +116,8 @@
         :file-name="file.file_name"
         :result="file.result"
         :chart-height="compressedChartHeight"
+        :focus-range="focusRange"
+        @focus-range-change="onFocusRangeChange"
       />
 
       <el-tabs v-model="activeResultTab" class="cfa-result-tabs">
@@ -173,6 +179,7 @@ const props = defineProps<{
 }>()
 
 const activeResultTab = ref('overview')
+const focusRange = ref<[number, number] | null>(null)
 const DESKTOP_CHART_TOTAL_HEIGHT = 560
 const MOBILE_CHART_TOTAL_HEIGHT = 440
 const RAW_CHART_MIN_HEIGHT = 220
@@ -259,11 +266,21 @@ function startChartResize(event: PointerEvent) {
   window.addEventListener('pointerup', stopChartResize)
 }
 
+function onFocusRangeChange(range: [number, number] | null) {
+  focusRange.value = range
+}
+
 watch(
   () => props.file,
   () => {
+<<<<<<< HEAD
+    activeResultTab.value = 'overview'
+    focusRange.value = null
+    resetChartHeights()
+=======
     updateChartTotalHeight()
     ensureChartBounds()
+>>>>>>> origin/master
   },
   { immediate: true, deep: true },
 )

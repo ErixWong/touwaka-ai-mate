@@ -1,12 +1,6 @@
 <template>
   <div class="cfa-file-list">
     <BatchOverviewCard v-if="fileStats.total > 0" :stats="fileStats" />
-    <div v-if="total > 0" class="cfa-file-list-header">
-      <span>分析任务</span>
-      <span class="cfa-file-stats">
-        {{ completed }}/{{ total }}
-      </span>
-    </div>
     <div class="cfa-file-list-body">
       <FileListItem
         v-for="file in files"
@@ -32,14 +26,13 @@ const props = defineProps<{
 }>()
 
 const total = computed(() => props.files.length)
-const completed = computed(() => props.files.filter(file => file.analysis_status === 'completed').length)
 const failed = computed(() => props.files.filter(file => file.analysis_status === 'failed').length)
 const analyzing = computed(() => props.files.filter(file => file.analysis_status === 'analyzing').length)
 const warningCount = computed(() => props.files.filter(file => file.warning_count > 0).length)
 
 const fileStats = computed(() => ({
   total: total.value,
-  completed: completed.value,
+  completed: props.files.filter(file => file.analysis_status === 'completed').length,
   failed: failed.value,
   analyzing: analyzing.value,
   warning_count: warningCount.value,
