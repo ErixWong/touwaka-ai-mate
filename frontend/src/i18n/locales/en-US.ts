@@ -2264,7 +2264,7 @@ export default {
         visibilityPrivate: 'Private',
         visibilityDepartment: 'Department',
         visibilityPublic: 'Public',
-        departmentRequiredHint: 'Join a department before creating a department-visible collection',
+        departmentRequiredHint: 'Join a department before creating a collection',
         department: 'Department',
         departmentPlaceholder: 'Select department',
         departmentScope: 'Department Scope',
