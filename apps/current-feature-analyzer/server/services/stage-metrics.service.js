@@ -2,6 +2,38 @@ import logger from '../../../../lib/logger.js';
 
 const EPSILON = 0.001;
 
+function lowerBound(points, targetTime, hintIndex = 0) {
+  let left = Math.max(0, hintIndex);
+  let right = points.length;
+
+  while (left < right) {
+    const mid = Math.floor((left + right) / 2);
+    if (points[mid][0] < targetTime) {
+      left = mid + 1;
+    } else {
+      right = mid;
+    }
+  }
+
+  return left;
+}
+
+function upperBound(points, targetTime, hintIndex = 0) {
+  let left = Math.max(0, hintIndex);
+  let right = points.length;
+
+  while (left < right) {
+    const mid = Math.floor((left + right) / 2);
+    if (points[mid][0] <= targetTime) {
+      left = mid + 1;
+    } else {
+      right = mid;
+    }
+  }
+
+  return left;
+}
+
 class StageMetricsService {
   constructor(db) {
     this.db = db;
@@ -10,13 +42,15 @@ class StageMetricsService {
   calculate(points, llmResult) {
     const stages = llmResult.stages || [];
     const metrics = [];
+    let startHintIndex = 0;
 
     for (const stage of stages) {
-      const stagePoints = points.filter(
-        ([t]) => t >= stage.start_time && t <= stage.end_time
-      );
+      const startIndex = lowerBound(points, stage.start_time, startHintIndex);
+      const endExclusive = upperBound(points, stage.end_time, startIndex);
+      const pointCount = endExclusive - startIndex;
+      startHintIndex = startIndex;
 
-      if (stagePoints.length === 0) {
+      if (pointCount <= 0) {
         metrics.push({
           ...stage,
           point_count: 0,
@@ -35,25 +69,24 @@ class StageMetricsService {
         continue;
       }
 
-      const n = stagePoints.length;
-      const startCurrent = stagePoints[0][1];
-      const endCurrent = stagePoints[n - 1][1];
-      let minCurrent = stagePoints[0][1];
-      let maxCurrent = stagePoints[0][1];
+      const n = pointCount;
+      const startCurrent = points[startIndex][1];
+      const endCurrent = points[endExclusive - 1][1];
+      let minCurrent = startCurrent;
+      let maxCurrent = startCurrent;
       let sum = 0;
+      let sumSquares = 0;
 
-      for (const [, current] of stagePoints) {
+      for (let index = startIndex; index < endExclusive; index++) {
+        const current = points[index][1];
         if (current < minCurrent) minCurrent = current;
         if (current > maxCurrent) maxCurrent = current;
         sum += current;
+        sumSquares += current * current;
       }
 
       const avgCurrent = sum / n;
-      let varianceSum = 0;
-      for (const [, current] of stagePoints) {
-        varianceSum += (current - avgCurrent) * (current - avgCurrent);
-      }
-      const variance = varianceSum / n;
+      const variance = Math.max(0, (sumSquares / n) - (avgCurrent * avgCurrent));
       const stdCurrent = Math.sqrt(variance);
 
       const absAvg = Math.max(Math.abs(avgCurrent), EPSILON);

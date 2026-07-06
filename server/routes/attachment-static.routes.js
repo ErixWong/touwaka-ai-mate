@@ -187,7 +187,7 @@ export default (db) => {
         return;
       }
 
-      db.query(
+      db.execute(
         `UPDATE attachment_token SET last_access_at = NOW() WHERE id = ?`,
         [tokenRecord.id]
       ).catch(err => logger.error('Failed to update last_access_at:', err.message));

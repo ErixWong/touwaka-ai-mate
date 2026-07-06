@@ -168,14 +168,14 @@
     {
       "id": "BqqKfGgDw5LFZW33eBUN",
       "name": "pptx",
-      "description": "PowerPoint 演示文稿处理。用于读取现有 PPTX 信息、创建新演示文稿、提取媒体文件。支持文本、图片、表格、图表、形状、媒体、演讲者备注。当用户提到 .pptx 文件或需要操作 PowerPoint 时触发。",
+      "description": "PowerPoint 演示文稿处理。用于读取现有 PPTX、导出 normalized 标准模型并基于该模型重建演示文稿，也支持创建新演示文稿和提取媒体文件。当用户提到 .pptx 文件或需要操作 PowerPoint 时触发。默认推荐使用 normalized 作为编辑入口。",
       "version": "1.0.0",
       "author": "",
       "tags": [],
       "source_type": "local",
       "source_path": "skills/pptx",
       "source_url": null,
-      "skill_md": "---\nname: pptx\ndescription: \"PowerPoint 演示文稿处理。用于读取现有 PPTX 信息、创建新演示文稿、提取媒体文件。支持文本、图片、表格、图表、形状、媒体、演讲者备注。当用户提到 .pptx 文件或需要操作 PowerPoint 时触发。\"\nlicense: MIT\nargument-hint: \"[file|slide|object|master] [action] [path]\"\nuser-invocable: true\n---\n\n# PPTX - PowerPoint 演示文稿处理\n\n> **依赖**：pptxgenjs 4.0+ (创建演示文稿) + adm-zip (读取现有 PPTX)\n\n## ⚠️ 重要限制\n\n**pptxgenjs 4.0 只能创建新演示文稿，无法编辑现有文件！**\n\n- ✅ **支持**：创建新演示文稿、读取现有文件信息、提取内容\n- ❌ **不支持**：编辑现有 PPTX 文件（添加/修改/删除幻灯片或对象）\n\n**编辑现有文件的替代方案**：\n1. 使用 `file read` 读取现有文件内容\n2. 使用 `file create` 创建新文件，添加修改后的内容\n3. 删除原文件，重命名新文件\n\n---\n\n## 工具\n\n本技能提供四个工具：\n\n| 工具 | 最终名称 | 说明 |\n|------|----------|------|\n| `file` | `pptx__file` | 文件级操作（读取、创建、提取） |\n| `slide` | `pptx__slide` | 幻灯片创建（仅限新建演示文稿） |\n| `object` | `pptx__object` | 内容对象操作（添加、提取） |\n| `master` | `pptx__master` | 模板母版（定义、列出） |\n\n---\n\n## file - 文件级操作\n\n通过 `action` 参数区分具体操作：\n\n| action | 功能 | 关键参数 |\n|--------|------|----------|\n| `read` | 读取演示文稿信息 | `scope`, `slideNumbers` |\n| `create` | 创建演示文稿 | `source`, `slides`, `markdown` |\n| `extract` | 提取媒体文件 | `outputDir`, `extractType` |\n\n### read - 读取演示文稿\n\n**参数**：\n- `action` (string, required): `\"read\"`\n- `path` (string, required): PPTX 文件路径\n- `scope` (string, optional): 读取范围\n  - `info`: 基本信息（幻灯片数量、元数据）\n  - `text`: 提取所有文本内容\n  - `structure`: 提取结构信息（形状、图片等）\n  - `media`: 提取媒体信息（图片、视频列表）\n- `slideNumbers` (number[], optional): 指定幻灯片编号\n\n**示例**：\n```javascript\n// 读取基本信息\npptx__file({ action: \"read\", path: \"presentation.pptx\", scope: \"info\" })\n\n// 提取文本\npptx__file({ action: \"read\", path: \"presentation.pptx\", scope: \"text\" })\n\n// 提取结构\npptx__file({ action: \"read\", path: \"presentation.pptx\", scope: \"structure\" })\n```\n\n### create - 创建演示文稿\n\n**参数**：\n- `action` (string, required): `\"create\"`\n- `path` (string, required): 输出文件路径\n- `source` (string, optional): 创建来源 - `data` 或 `markdown`（默认: `data`）\n- `slides` (object[], optional): 幻灯片数据数组\n- `markdown` (string, optional): Markdown 内容\n- `properties` (object, optional): 文档属性\n  - `title`: 标题\n  - `author`: 作者\n  - `company`: 公司\n  - `layout`: 布局（`LAYOUT_16x9`, `LAYOUT_4x3`, `LAYOUT_WIDE`）\n\n**示例**：\n```javascript\n// 从数据创建\npptx__file({\n  action: \"create\",\n  path: \"new.pptx\",\n  slides: [\n    { title: \"第一章\", content: \"这是内容\" },\n    { title: \"第二章\", texts: [\"要点一\", \"要点二\"] }\n  ],\n  properties: { title: \"我的演示\", author: \"张三\" }\n})\n\n// 从 Markdown 创建\npptx__file({\n  action: \"create\",\n  path: \"markdown.pptx\",\n  source: \"markdown\",\n  markdown: \"# 标题页\\n\\n## 内容\\n- 要点一\\n- 要点二\"\n})\n```\n\n### extract - 提取媒体文件\n\n**参数**：\n- `action` (string, required): `\"extract\"`\n- `path` (string, required): PPTX 文件路径\n- `outputDir` (string, optional): 输出目录\n- `extractType` (string, optional): 提取类型 - `images`, `media`, `all`\n\n**示例**：\n```javascript\n// 提取图片\npptx__file({\n  action: \"extract\",\n  path: \"presentation.pptx\",\n  outputDir: \"images\",\n  extractType: \"images\"\n})\n```\n\n---\n\n## slide - 幻灯片创建\n\n创建新的演示文稿并添加幻灯片。\n\n**参数**：\n- `action` (string, required): `\"add\"`\n- `output` (string, required): 输出文件路径\n- `title` (string, optional): 幻灯片标题\n- `content` (string | string[], optional): 幻灯片内容\n- `slides` (object[], optional): 多个幻灯片数据\n- `background` (object, optional): 背景配置\n- `master` (object, optional): 母版配置\n- `properties` (object, optional): 文档属性\n\n**示例**：\n```javascript\n// 创建单个幻灯片\npptx__slide({\n  action: \"add\",\n  output: \"single.pptx\",\n  title: \"演示标题\",\n  content: [\"要点一\", \"要点二\"]\n})\n\n// 创建多个幻灯片\npptx__slide({\n  action: \"add\",\n  output: \"multi.pptx\",\n  slides: [\n    { title: \"第一页\", content: \"内容一\" },\n    { title: \"第二页\", texts: [\"要点A\", \"要点B\"] }\n  ]\n})\n```\n\n---\n\n## object - 内容对象操作\n\n通过 `action` 参数区分具体操作：\n\n| action | 功能 | 关键参数 |\n|--------|------|----------|\n| `add` | 创建包含对象的演示文稿 | `type`, `text`, `image`, `chart` 等 |\n| `extract` | 提取对象内容 | `type`, `outputDir` |\n\n### add - 添加对象到新演示文稿\n\n**参数**：\n- `action` (string, required): `\"add\"`\n- `output` (string, required): 输出文件路径\n- `type` (string, required): 对象类型\n  - `text`: 文本\n  - `image`: 图片\n  - `table`: 表格\n  - `chart`: 图表\n  - `shape`: 形状\n  - `media`: 视频/音频\n  - `notes`: 演讲者备注\n- `properties` (object, optional): 文档属性\n\n**文本示例**：\n```javascript\npptx__object({\n  action: \"add\",\n  output: \"text.pptx\",\n  type: \"text\",\n  text: \"Hello World\",\n  options: { fontSize: 24, bold: true, color: \"FF0000\" }\n})\n```\n\n**图片示例**：\n```javascript\npptx__object({\n  action: \"add\",\n  output: \"image.pptx\",\n  type: \"image\",\n  image: { path: \"photo.jpg\", x: 1, y: 1, w: 4, h: 3 }\n})\n```\n\n**表格示例**：\n```javascript\npptx__object({\n  action: \"add\",\n  output: \"table.pptx\",\n  type: \"table\",\n  table: {\n    rows: [\n      [{ text: \"姓名\" }, { text: \"年龄\" }],\n      [{ text: \"张三\" }, { text: \"25\" }]\n    ],\n    x: 0.5, y: 1, w: 9\n  }\n})\n```\n\n**图表示例**：\n```javascript\npptx__object({\n  action: \"add\",\n  output: \"chart.pptx\",\n  type: \"chart\",\n  chart: {\n    type: \"bar\",\n    data: [\n      { name: \"销售额\", labels: [\"一月\", \"二月\"], values: [100, 150] }\n    ],\n    title: \"月度销售额\"\n  }\n})\n```\n\n**支持的图表类型**：\n- `bar`, `bar3D`: 柱状图\n- `line`, `line3D`: 折线图\n- `pie`, `pie3D`: 饼图\n- `doughnut`: 环形图\n- `area`, `area3D`: 面积图\n- `scatter`: 散点图\n- `radar`, `radar3D`: 雷达图\n- `bubble`, `bubble3D`: 气泡图\n\n### extract - 提取对象内容\n\n**参数**：\n- `action` (string, required): `\"extract\"`\n- `path` (string, required): PPTX 文件路径\n- `type` (string, required): 提取类型 - `images`, `media`, `text`\n- `outputDir` (string, optional): 输出目录\n\n**示例**：\n```javascript\npptx__object({\n  action: \"extract\",\n  path: \"presentation.pptx\",\n  type: \"images\",\n  outputDir: \"extracted\"\n})\n```\n\n---\n\n## master - 模板母版\n\n通过 `action` 参数区分具体操作：\n\n| action | 功能 | 关键参数 |\n|--------|------|----------|\n| `define` | 定义母版并创建演示文稿 | `name`, `background`, `objects` |\n| `list` | 列出母版布局 | `path` |\n\n### define - 定义母版\n\n**参数**：\n- `action` (string, required): `\"define\"`\n- `output` (string, required): 输出文件路径\n- `name` (string, required): 母版名称\n- `background` (object, optional): 背景配置\n- `objects` (object[], optional): 母版上的固定对象\n- `slideNumber` (object, optional): 幻灯片编号配置\n- `properties` (object, optional): 文档属性\n\n**示例**：\n```javascript\npptx__master({\n  action: \"define\",\n  output: \"template.pptx\",\n  name: \"CompanyTemplate\",\n  background: { color: \"F5F5F5\" },\n  objects: [\n    { text: \"公司名称\", options: { x: 0.5, y: 0.2 } }\n  ]\n})\n```\n\n### list - 列出母版\n\n**参数**：\n- `action` (string, required): `\"list\"`\n- `path` (string, required): PPTX 文件路径\n\n**示例**：\n```javascript\npptx__master({\n  action: \"list\",\n  path: \"template.pptx\"\n})\n```\n\n---\n\n## 幻灯片数据结构\n\n创建演示文稿时，每个幻灯片支持以下字段：\n\n```typescript\ninterface SlideData {\n  title?: string;              // 标题\n  content?: string;            // 内容文本\n  texts?: (string | TextItem)[];  // 文本列表\n  images?: ImageItem[];        // 图片列表\n  tables?: TableItem[];        // 表格列表\n  charts?: ChartItem[];        // 图表列表\n  shapes?: ShapeItem[];        // 形状列表\n  background?: Background;     // 背景\n  notes?: string;              // 演讲者备注\n}\n```\n\n---\n\n## 快速参考\n\n| 任务 | 工具 | action |\n|------|------|--------|\n| 读取基本信息 | `file` | `read` (scope: `info`) |\n| 提取文本 | `file` | `read` (scope: `text`) |\n| 提取结构 | `file` | `read` (scope: `structure`) |\n| 提取媒体信息 | `file` | `read` (scope: `media`) |\n| 创建演示文稿 | `file` | `create` |\n| 提取媒体文件 | `file` | `extract` |\n| 创建幻灯片 | `slide` | `add` |\n| 添加文本 | `object` | `add` (type: `text`) |\n| 添加图片 | `object` | `add` (type: `image`) |\n| 添加表格 | `object` | `add` (type: `table`) |\n| 添加图表 | `object` | `add` (type: `chart`) |\n| 添加形状 | `object` | `add` (type: `shape`) |\n| 添加媒体 | `object` | `add` (type: `media`) |\n| 添加备注 | `object` | `add` (type: `notes`) |\n| 提取对象 | `object` | `extract` |\n| 定义母版 | `master` | `define` |\n| 列出母版 | `master` | `list` |\n\n---\n\n## 更新日志\n\n- **2026-03-28**: 升级到 pptxgenjs 4.0.1，重新设计工具架构（4 个工具）\n- **2026-03-28**: **重要变更**：移除编辑现有文件的功能（pptxgenjs 4.0 不支持）\n- **2026-03-28**: 新增图表类型支持（14 种图表）\n- **2026-03-28**: 新增演讲者备注、媒体、母版定义功能\n- **2026-03-28**: 新增 Markdown 创建支持\n",
+      "skill_md": "---\nname: pptx\ndescription: \"PowerPoint 演示文稿处理。用于读取现有 PPTX、导出 normalized 标准模型并基于该模型重建演示文稿，也支持创建新演示文稿和提取媒体文件。默认推荐使用 normalized 作为编辑入口。\"\nlicense: MIT\nargument-hint: \"[file|slide|object|master] [action] [path]\"\nuser-invocable: true\n---\n\n# PPTX - PowerPoint 演示文稿处理\n\n## 关键工作流\n\n1. `file read` with `scope: \"normalized\"`\n2. 如需直接 round-trip 资源对象，增加 `includeAssets: true`\n3. 修改 normalized JSON\n4. `file create` with `source: \"normalized\"`\n\n## file\n\n- `read`: 支持 `info`、`text`、`structure`、`normalized`、`media`、`tables`、`charts`、`notes`\n- `create`: 支持 `data`、`markdown`、`normalized`\n- `extract`: 支持媒体导出\n\n### normalized\n\n- `scope=normalized`: 导出标准化 slide object model\n- `includeAssets=true`: 在 `presentation.assetMap` 内联 `ppt/media/*`，便于直接 round-trip\n- `source=normalized`: 支持基于 normalized 重建演示文稿\n\n### normalized create 支持矩阵\n\n- `text`: full\n- `image`: partial (`source.path` / `source.data` / `source.assetKey`)\n- `table`: partial (`content.previewRows`)\n- `chart`: basic\n- `shape`: basic\n- `notes`: full\n- `media`: partial (`source.path` / `source.data` / `source.assetKey`)\n\n### 返回信息\n\n- `schema`: presentation/slide/object 契约\n- `supportMatrix`: 能力矩阵\n- `warnings`: 结构化告警，含 `code` 与 `suggestedFix`\n- `rebuildStats`: 重建统计",
       "security_score": 100,
       "security_warnings": null,
       "license": null,
@@ -305,17 +305,26 @@
               "info",
               "text",
               "structure",
-              "media"
+              "normalized",
+              "media",
+              "tables",
+              "charts",
+              "notes"
             ],
-            "description": "读取范围：info=基本信息，text=文本内容，structure=结构信息，media=媒体信息"
+            "description": "读取范围：info=基本信息，text=文本内容，structure=分析视图，normalized=标准化模型，media=媒体信息，tables=表格，charts=图表，notes=备注"
+          },
+          "includeAssets": {
+            "type": "boolean",
+            "description": "scope=normalized 时是否内联 presentation.assetMap"
           },
           "source": {
             "type": "string",
             "enum": [
               "data",
-              "markdown"
+              "markdown",
+              "normalized"
             ],
-            "description": "创建来源：data=数据，markdown=Markdown内容"
+            "description": "创建来源：data=数据，markdown=Markdown内容，normalized=标准化模型"
           },
           "slides": {
             "type": "array",
@@ -324,6 +333,10 @@
           "markdown": {
             "type": "string",
             "description": "Markdown内容"
+          },
+          "normalized": {
+            "type": "object",
+            "description": "标准化 slide object model，可选包含 assetMap"
           },
           "properties": {
             "type": "object",

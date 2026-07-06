@@ -14,8 +14,16 @@ import {
 import { APIError } from '@/api/client'
 import { normalizeApiError, enhanceApiError } from '../composables/useCurrentFeatureAnalyzerError'
 import { runLocalCurrentFeatureAnalysis } from '../utils/local-analysis'
+import { runLocalCurrentFeatureAnalysisAsync } from '../utils/local-analysis-worker'
+import { exportCurrentFeatureAnalyzerReport } from '../utils/export-report'
 
 type FileDetailData = Pick<SessionFileItem, 'raw_data' | 'result' | '_duplicate_diagnosis'>
+
+function yieldToMainThread() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
 
 export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyzer', () => {
   const batchId = ref<string | null>(null)
@@ -30,6 +38,9 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
   const sessionExpired = ref(false)
   const ruleSets = ref<RuleSetItem[]>([])
   const appConfig = ref<AppConfig | null>(null)
+  const analysisTransitionVisible = ref(false)
+  const analysisTransitionStage = ref<'syncing' | 'compressing' | 'recognizing'>('syncing')
+  let scheduledAnalysisToken = 0
   let pendingFileDetailId: string | null = null
 
   const fileDetailCache = ref<Map<string, FileDetailData>>(new Map())
@@ -72,6 +83,13 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     setTimeout(() => { error.value = null }, 5000)
   }
 
+  function logError(scope: string, err: unknown, extra?: Record<string, unknown>) {
+    console.error(`[current-feature-analyzer] ${scope}`, {
+      error: err,
+      ...extra,
+    })
+  }
+
   function clearSessionState() {
     batchId.value = null
     batchStatus.value = 'idle'
@@ -81,6 +99,8 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     fileDetailCache.value.clear()
     pendingFileDetailId = null
     summary.value = null
+    analysisTransitionVisible.value = false
+    analysisTransitionStage.value = 'syncing'
     loading.value = false
     error.value = null
   }
@@ -103,8 +123,30 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     await uploadFiles(fileList, ruleSetId)
 
     if (batchId.value && selectedRuleSetId.value) {
-      await runAnalysis()
+      scheduleAnalysisStart()
     }
+  }
+
+  function scheduleAnalysisStart() {
+    const token = ++scheduledAnalysisToken
+    batchStatus.value = 'preparing_analysis'
+    analysisTransitionVisible.value = true
+    analysisTransitionStage.value = 'syncing'
+
+    void (async () => {
+      await nextTick()
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve())
+        })
+      })
+
+      if (token !== scheduledAnalysisToken) {
+        return
+      }
+
+      await runAnalysis()
+    })()
   }
 
   async function uploadFiles(fileList: File[], ruleSetId?: string) {
@@ -133,7 +175,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
         if (!fallbackFile) return
         selectedFileId.value = firstOk ? firstOk.file_id : fallbackFile.file_id
         if (selectedFileId.value && batchId.value) {
-          await loadFileDetail(batchId.value, selectedFileId.value)
+          void loadFileDetail(batchId.value, selectedFileId.value)
         }
       }
       const failedCount = files.value.filter(f => f.analysis_status === 'failed').length
@@ -147,6 +189,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       }
     } catch (err: unknown) {
       const msg = enhanceApiError(err, {})
+      logError('uploadFiles failed', err, { ruleSetId, fileCount: fileList.length })
       setError(msg)
       batchStatus.value = 'idle'
     } finally {
@@ -205,11 +248,9 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
         _duplicate_diagnosis: detail._duplicate_diagnosis,
       })
       if (targetFile) {
-        Object.assign(targetFile, {
-          raw_data: detail.raw_data,
-          result: detail.result,
-          _duplicate_diagnosis: detail._duplicate_diagnosis,
-        })
+        if (targetFile.raw_data !== detail.raw_data) targetFile.raw_data = detail.raw_data
+        if (targetFile.result !== detail.result) targetFile.result = detail.result
+        if (targetFile._duplicate_diagnosis !== detail._duplicate_diagnosis) targetFile._duplicate_diagnosis = detail._duplicate_diagnosis
       }
     } catch {
     } finally {
@@ -239,11 +280,9 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       _duplicate_diagnosis: detail._duplicate_diagnosis,
     })
     if (targetFile) {
-      Object.assign(targetFile, {
-        raw_data: detail.raw_data,
-        result: detail.result,
-        _duplicate_diagnosis: detail._duplicate_diagnosis,
-      })
+      if (targetFile.raw_data !== detail.raw_data) targetFile.raw_data = detail.raw_data
+      if (targetFile.result !== detail.result) targetFile.result = detail.result
+      if (targetFile._duplicate_diagnosis !== detail._duplicate_diagnosis) targetFile._duplicate_diagnosis = detail._duplicate_diagnosis
     }
     return detail.raw_data
   }
@@ -291,6 +330,8 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     const currentRuleSetId = selectedRuleSetId.value
     loading.value = true
     batchStatus.value = 'analyzing'
+    analysisTransitionVisible.value = true
+    analysisTransitionStage.value = 'compressing'
     error.value = null
     sessionExpired.value = false
     try {
@@ -310,6 +351,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
         }
 
         try {
+          await yieldToMainThread()
           const rawData = file.raw_data?.length ? file.raw_data : await ensureRawDataLoaded(currentBatchId, file.file_id)
           if (!rawData?.length) {
             file.analysis_status = 'failed'
@@ -324,14 +366,16 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
           }
 
           file.analysis_status = 'compressing'
+          analysisTransitionStage.value = 'compressing'
           if (selectedFileId.value === file.file_id) {
             await nextTick()
           }
-          const localResult = runLocalCurrentFeatureAnalysis(rawData, appConfig.value)
+          const localResult = await runLocalCurrentFeatureAnalysisAsync(rawData, appConfig.value)
           file.result = localResult
           file.warning_count = 0
           file.error_message = null
           file.analysis_status = 'llm_recognizing'
+          analysisTransitionStage.value = 'recognizing'
           fileResults.push({
             file_id: file.file_id,
             analysis_status: 'completed',
@@ -340,6 +384,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
           })
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : '前端分析失败'
+          logError('local analysis failed', err, { batchId: currentBatchId, fileId: file.file_id, fileName: file.file_name })
           file.analysis_status = 'failed'
           file.error_message = message
           fileResults.push({
@@ -359,11 +404,13 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       if (taskResult.summary) {
         summary.value = taskResult.summary
       }
+      analysisTransitionVisible.value = false
       if (selectedFileId.value && batchId.value) {
         await loadFileDetail(batchId.value, selectedFileId.value, true)
       }
     } catch (err: unknown) {
       const msg = enhanceApiError(err, { batchId: currentBatchId })
+      logError('runAnalysis failed', err, { batchId: currentBatchId, ruleSetId: currentRuleSetId })
 
       if (err instanceof APIError && err.status === 404 && currentBatchId) {
         clearSessionState()
@@ -371,6 +418,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       }
       setError(msg)
       batchStatus.value = 'failed'
+      analysisTransitionVisible.value = false
       for (const file of files.value) {
         if (file.analysis_status === 'llm_recognizing') {
           file.analysis_status = 'failed'
@@ -393,18 +441,13 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       return
     }
     try {
-      const response = await currentFeatureAnalyzerApi.exportReport(batchId.value)
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `current-feature-analysis-${new Date().toISOString().slice(0, 19).replace(/[:]/g, '-')}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      await exportCurrentFeatureAnalyzerReport({
+        batchId: batchId.value,
+        files: files.value,
+      })
     } catch (err: unknown) {
-      const msg = normalizeApiError(err, '导出失败')
+      const msg = err instanceof Error ? err.message : normalizeApiError(err, '导出失败')
+      logError('exportReport failed', err, { batchId: batchId.value, fileCount: files.value.length })
       setError(`导出失败: ${msg}`)
     }
   }
@@ -435,11 +478,14 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     sessionExpired,
     ruleSets,
     appConfig,
+    analysisTransitionVisible,
+    analysisTransitionStage,
     currentFile,
     fileStats,
     hasActiveSession,
     uploadFiles,
     launchAnalysisTask,
+    scheduleAnalysisStart,
     loadRuleSets,
     selectRuleSet,
     selectFile,
