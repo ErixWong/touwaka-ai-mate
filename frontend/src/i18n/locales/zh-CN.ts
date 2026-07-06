@@ -2253,7 +2253,7 @@ export default {
         visibilityPrivate: '私有',
         visibilityDepartment: '部门',
         visibilityPublic: '公开',
-        departmentRequiredHint: '请先加入部门后才能创建部门可见集合',
+        departmentRequiredHint: '请先加入部门后才能创建集合',
         department: '所属部门',
         departmentPlaceholder: '选择所属部门',
         departmentScope: '部门范围',
