@@ -16,58 +16,15 @@ export const BATCH_STATUS = Object.freeze({
   FAILED: 'failed',
 });
 
-/** 批次已进入终态（不可再修改分析结果） */
-export function isBatchTerminal(status) {
-  return status === BATCH_STATUS.COMPLETED
-    || status === BATCH_STATUS.PARTIAL_FAILED
-    || status === BATCH_STATUS.FAILED;
-}
-
-/** 批次仍在处理中 */
-export function isBatchActive(status) {
-  return !isBatchTerminal(status);
-}
-
 // ── 文件分析状态 ──────────────────────────────────────────
 export const FILE_ANALYSIS_STATUS = Object.freeze({
   PENDING: 'pending',
-  PARSING: 'parsing',
   READY: 'ready',
+  COMPRESSING: 'compressing',
+  LLM_RECOGNIZING: 'llm_recognizing',
   ANALYZING: 'analyzing',
   COMPLETED: 'completed',
   FAILED: 'failed',
-});
-
-/** 文件分析已结束（成功或失败） */
-export function isFileAnalysisDone(status) {
-  return status === FILE_ANALYSIS_STATUS.COMPLETED
-    || status === FILE_ANALYSIS_STATUS.FAILED;
-}
-
-/** 文件分析正在进行中 */
-export function isFileAnalysisActive(status) {
-  return !isFileAnalysisDone(status);
-}
-
-// ── LLM 错误码 ────────────────────────────────────────────
-export const LLM_ERROR_CODES = Object.freeze({
-  NO_MODEL_AVAILABLE: 'no_model_available',
-  INVALID_JSON_RESPONSE: 'invalid_json_response',
-});
-
-// ── 默认配置 ──────────────────────────────────────────────
-export const DEFAULT_VC_OPTIONS = Object.freeze({
-  absolute_resolution: 0.03,
-  relative_resolution: 0.02,
-  merge_gap_ratio: 0.6,
-  min_transition_points: 3,
-});
-
-export const DEFAULT_LLM_OPTIONS = Object.freeze({
-  temperature: 0.2,
-  max_tokens: 8000,
-  timeout_ms: 120000,
-  retry_times: 2,
 });
 
 export const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 小时

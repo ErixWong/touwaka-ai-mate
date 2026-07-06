@@ -15,8 +15,6 @@ import _app_doc_binding from  "./app_doc_binding.js";
 import _app_invoice_mgr_item from  "./app_invoice_mgr_item.js";
 import _app_invoice_mgr_record from  "./app_invoice_mgr_record.js";
 import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
-import _app_row_handler from  "./app_row_handler.js";
-import _app_state from  "./app_state.js";
 import _app_tick_log from  "./app_tick_log.js";
 import _app_tick_run from  "./app_tick_run.js";
 import _assistant_message from  "./assistant_message.js";
@@ -97,8 +95,6 @@ export default function initModels(sequelize) {
   const app_invoice_mgr_item = _app_invoice_mgr_item.init(sequelize, DataTypes);
   const app_invoice_mgr_record = _app_invoice_mgr_record.init(sequelize, DataTypes);
   const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
-  const app_row_handler = _app_row_handler.init(sequelize, DataTypes);
-  const app_state = _app_state.init(sequelize, DataTypes);
   const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const app_tick_run = _app_tick_run.init(sequelize, DataTypes);
   const assistant_message = _assistant_message.init(sequelize, DataTypes);
@@ -181,10 +177,16 @@ export default function initModels(sequelize) {
   ai_model.hasMany(knowledge_basis, { as: "knowledge_bases", foreignKey: "embedding_model_id"});
   app_tick_log.belongsTo(app_clock_registry, { as: "registry", foreignKey: "registry_id"});
   app_clock_registry.hasMany(app_tick_log, { as: "app_tick_logs", foreignKey: "registry_id"});
-  app_action_log.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
-  app_row_handler.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "handler_id"});
-  app_state.belongsTo(app_row_handler, { as: "handler", foreignKey: "handler_id"});
-  app_row_handler.hasMany(app_state, { as: "app_states", foreignKey: "handler_id"});
+  app_contract_mgr_compare.belongsTo(app_contract_mgr_record, { as: "row", foreignKey: "row_id"});
+  app_contract_mgr_record.hasOne(app_contract_mgr_compare, { as: "app_contract_mgr_compare", foreignKey: "row_id"});
+  app_contract_mgr_content.belongsTo(app_contract_mgr_record, { as: "row", foreignKey: "row_id"});
+  app_contract_mgr_record.hasOne(app_contract_mgr_content, { as: "app_contract_mgr_content", foreignKey: "row_id"});
+  app_contract_mgr_row.belongsTo(app_contract_mgr_record, { as: "row", foreignKey: "row_id"});
+  app_contract_mgr_record.hasOne(app_contract_mgr_row, { as: "app_contract_mgr_row", foreignKey: "row_id"});
+  app_invoice_mgr_item.belongsTo(app_invoice_mgr_record, { as: "row", foreignKey: "row_id"});
+  app_invoice_mgr_record.hasMany(app_invoice_mgr_item, { as: "app_invoice_mgr_items", foreignKey: "row_id"});
+  app_invoice_mgr_row.belongsTo(app_invoice_mgr_record, { as: "row", foreignKey: "row_id"});
+  app_invoice_mgr_record.hasOne(app_invoice_mgr_row, { as: "app_invoice_mgr_row", foreignKey: "row_id"});
   doc_ocr_image.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
   attachment.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "attachment_id"});
   doc_ocr_result.belongsTo(attachment, { as: "main_markdown_attachment", foreignKey: "main_markdown_attachment_id"});
@@ -221,8 +223,6 @@ export default function initModels(sequelize) {
   doc_ocr_result.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "ocr_result_id"});
   doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
   doc_tag.hasMany(doc_document_tag, { as: "doc_document_tags", foreignKey: "tag_id"});
-  doc_content_unit.belongsTo(document_revision, { as: "version", foreignKey: "version_id"});
-  document_revision.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "version_id"});
   doc_compare_item.belongsTo(document_chunk, { as: "base_unit", foreignKey: "base_unit_id"});
   document_chunk.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "base_unit_id"});
   doc_compare_item.belongsTo(document_chunk, { as: "target_unit", foreignKey: "target_unit_id"});
@@ -237,6 +237,8 @@ export default function initModels(sequelize) {
   document_revision.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "base_version_id"});
   doc_compare_run.belongsTo(document_revision, { as: "target_version", foreignKey: "target_version_id"});
   document_revision.hasMany(doc_compare_run, { as: "target_version_doc_compare_runs", foreignKey: "target_version_id"});
+  doc_content_unit.belongsTo(document_revision, { as: "version", foreignKey: "version_id"});
+  document_revision.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "version_id"});
   doc_ocr_result.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
   document_revision.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "revision_id"});
   doc_process_run.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
@@ -295,20 +297,8 @@ export default function initModels(sequelize) {
   mcp_server.hasMany(mcp_user_credential, { as: "mcp_user_credentials", foreignKey: "mcp_server_id"});
   app_action_log.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "record_id"});
-  app_contract_mgr_compare.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasOne(app_contract_mgr_compare, { as: "app_contract_mgr_compare", foreignKey: "row_id"});
-  app_contract_mgr_compare.belongsTo(mini_app_row, { as: "target_row", foreignKey: "target_row_id"});
-  mini_app_row.hasMany(app_contract_mgr_compare, { as: "target_row_app_contract_mgr_compares", foreignKey: "target_row_id"});
-  app_contract_mgr_content.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasOne(app_contract_mgr_content, { as: "app_contract_mgr_content", foreignKey: "row_id"});
-  app_contract_mgr_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasOne(app_contract_mgr_row, { as: "app_contract_mgr_row", foreignKey: "row_id"});
   app_contract_mgr_v2_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasOne(app_contract_mgr_v2_row, { as: "app_contract_mgr_v2_row", foreignKey: "row_id"});
-  app_invoice_mgr_item.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasMany(app_invoice_mgr_item, { as: "app_invoice_mgr_items", foreignKey: "row_id"});
-  app_invoice_mgr_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasOne(app_invoice_mgr_row, { as: "app_invoice_mgr_row", foreignKey: "row_id"});
   contract_v2_version.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
   mini_app_row.hasMany(contract_v2_version, { as: "contract_v2_versions", foreignKey: "row_id"});
   mini_app_file.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
@@ -317,8 +307,6 @@ export default function initModels(sequelize) {
   mini_app.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "app_id"});
   app_clock_registry.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
   mini_app.hasMany(app_clock_registry, { as: "app_clock_registries", foreignKey: "app_id"});
-  app_state.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
-  mini_app.hasMany(app_state, { as: "app_states", foreignKey: "app_id"});
   mini_app_role_access.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
   mini_app.hasMany(mini_app_role_access, { as: "mini_app_role_accesses", foreignKey: "app_id"});
   mini_app_row.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
@@ -391,7 +379,7 @@ export default function initModels(sequelize) {
     app_action_log,
     app_clock_registry,
     app_contract_mgr_compare,
-app_contract_mgr_content,
+    app_contract_mgr_content,
     app_contract_mgr_record,
     app_contract_mgr_row,
     app_contract_mgr_v2_content,
@@ -399,11 +387,9 @@ app_contract_mgr_content,
     app_current_feature_rule_set,
     app_current_feature_rule_stage,
     app_doc_binding,
-app_invoice_mgr_item,
+    app_invoice_mgr_item,
     app_invoice_mgr_record,
     app_invoice_mgr_row,
-    app_row_handler,
-    app_state,
     app_tick_log,
     app_tick_run,
     assistant_message,

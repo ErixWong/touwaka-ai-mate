@@ -39,7 +39,7 @@
 
 1. 用户对话、流式回复、工具调用、多轮推理：优先走 `ChatService` + `LLMClient`
 2. 内部判断、结构化提取、轻量文本生成：优先走 `InternalLLMService`
-3. 文档管道中的 Judge/标准化场景：优先走 `createCallLlmFn()`
+3. 文档管道中的 Judge/标准化场景：优先在文档管线服务内部直接复用统一 `messages` 级调用层
 4. 向量化：优先走 `EmbeddingClient`
 5. ASR / TTS：优先走 `ASRClient` / `TTSClient`
 
@@ -70,14 +70,16 @@ AI 相关调用必须遵循当前项目已经收敛出的 timeout 原则：
   ├─ Knowledge Base / Recall / Embedding
   └─ Skills / Assistant / 其他 AI 业务
            ↓
-能力客户端层
+业务语义层
   ├─ ChatService
   ├─ LLMClient
   ├─ InternalLLMService
-  ├─ createCallLlmFn()
   ├─ EmbeddingClient
   ├─ ASRClient
   └─ TTSClient
+           ↓
+统一 messages 调用层
+  └─ message-llm-client
            ↓
 配置与模型基础设施层
   ├─ db.getModelConfig()
@@ -173,28 +175,25 @@ AI 相关调用必须遵循当前项目已经收敛出的 timeout 原则：
 1. 用户对话主链路
 2. 需要 tool calling 的大对话编排
 
-## 4.4 `createCallLlmFn()`
+## 4.4 `message-llm-client`
 
-文件：`lib/doc-pipeline-defaults.js`
+文件：`lib/message-llm-client.js`
 
-定位：**文档管道内部 Judge / Normalization 的统一 LLM 调用入口**。
+定位：**统一 `messages` 级调用实现**。
 
 它负责：
 
-1. 为 Doc Pipeline 提供统一 `callLlm(opts)` 闭包
-2. 通过 `db.getModelConfig()` 取完整模型配置
-3. 把 stage override timeout 透传到底层 `base-llm.call()`
-4. 返回 parse 之后的结构化结果
+1. 统一非流式 / 流式 `messages` 调用
+2. 统一接入 `llm-thinking-config.js`，收敛 `openai` / `glm` / `qwen` / `deepseek` 差异
+3. 统一处理 `thinking_policy`、`thinking`、`reasoning`、`reasoning_effort`、`chat_template_kwargs`
+4. 作为 `LLMClient`、`InternalLLMService`、Doc Pipeline 服务共用的底层消息调用层
 
-它是一个“场景型内部入口”，不是新的通用客户端。
+它不是业务语义入口，不直接承载：
 
-适用场景：
-
-1. OCR Judge 标准化
-2. Outline 抽取
-3. 文档流水线中明确属于“内部 judge / normalize”的步骤
-
-不建议把新的业务系统都挂到这里。若新功能不是 Doc Pipeline 的一部分，应优先评估 `InternalLLMService`。
+1. Expert 对话编排
+2. Topic / message 生命周期
+3. 结构化提取高层 API
+4. 文档管线业务流程
 
 ## 4.5 `EmbeddingClient`
 
@@ -295,8 +294,9 @@ AI 相关调用必须遵循当前项目已经收敛出的 timeout 原则：
 
 如果是：
 
-1. 优先复用 `createCallLlmFn()`
-2. 或在现有 `DocumentOcrService` / `DocumentOutlineService` 流程上补 handler
+1. 优先在现有 `DocumentOcrService` / `DocumentOutlineService` / `DocumentCleanService` 流程上补 handler
+2. LLM 调用统一复用 `message-llm-client`
+3. 不再新增独立的 Doc Pipeline LLM 入口函数
 
 ### 6.4 这是向量化吗？
 
@@ -330,16 +330,17 @@ Controller
 业务模块
   -> InternalLLMService.extractJson()
     -> modelRegistry / getModelConfig
-      -> base-llm.callWithRetry()
+      -> message-llm-client.invokeWithRetry()
+        -> base-llm.callWithRetry()
 ```
 
 ### 7.3 文档管道 Judge
 
 ```text
 DocumentOcrService / DocumentOutlineService
-  -> createCallLlmFn(db)
-    -> db.getModelConfig()
-      -> base-llm.call()
+  -> db.getModelConfig()
+    -> message-llm-client.invokeWithRetry()
+      -> base-llm.callWithRetry()
 ```
 
 ### 7.4 向量化

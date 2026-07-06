@@ -637,8 +637,9 @@
           <el-select v-model="modelForm.thinking_format">
             <el-option value="none" :label="$t('settings.thinkingFormatNone')" />
             <el-option value="openai" :label="$t('settings.thinkingFormatOpenai')" />
-            <el-option value="deepseek" :label="$t('settings.thinkingFormatDeepseek')" />
+            <el-option value="glm" :label="$t('settings.thinkingFormatGlm')" />
             <el-option value="qwen" :label="$t('settings.thinkingFormatQwen')" />
+            <el-option value="deepseek" :label="$t('settings.thinkingFormatDeepseek')" />
           </el-select>
           <div class="el-form-item__tip">{{ $t('settings.thinkingFormatHint') }}</div>
         </el-form-item>
@@ -2035,10 +2036,15 @@ const closeModelDialog = () => {
 
 const saveModel = async () => {
   try {
+    const payload = {
+      ...modelForm,
+      thinking_format: modelForm.supports_reasoning ? modelForm.thinking_format : 'none',
+    }
+
     if (editingModel.value) {
-      await modelStore.updateModel(editingModel.value.id, { ...modelForm })
+      await modelStore.updateModel(editingModel.value.id, payload)
     } else {
-      await modelStore.createModel({ ...modelForm })
+      await modelStore.createModel(payload)
     }
     closeModelDialog()
   } catch (err) {

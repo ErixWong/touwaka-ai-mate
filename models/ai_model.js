@@ -54,7 +54,7 @@ export default class ai_model extends Model {
       comment: "是否支持思考\/推理模式（DeepSeek、OpenAI o1\/o3、Qwen 等）"
     },
     thinking_format: {
-      type: DataTypes.ENUM('openai','deepseek','qwen','none'),
+      type: DataTypes.ENUM('openai','deepseek','glm','qwen','none'),
       allowNull: true,
       defaultValue: "none",
       comment: "思考模式格式"

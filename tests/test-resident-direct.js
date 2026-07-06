@@ -1,13 +1,12 @@
 /**
- * 直接测试驻留进程执行
- * 模拟 ResidentProcess.invoke 的调用
+ * 驻留进程内部 API 调试测试
+ * 测试内部 API 的模型配置获取和消息插入功能
  */
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
-import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -149,83 +148,6 @@ async function testInsertMessage() {
   }
 }
 
-// 直接运行驻留进程脚本进行测试
-async function testResidentProcess() {
-  console.log('\n📋 直接测试驻留进程脚本');
-  console.log('-'.repeat(60));
-  
-  const scriptPath = path.join(process.cwd(), 'data', 'skills', 'remote-llm', 'index.js');
-  console.log(`脚本路径: ${scriptPath}`);
-  
-  // 启动子进程
-  const proc = spawn('node', [scriptPath], {
-    cwd: path.dirname(scriptPath),
-    env: {
-      ...process.env,
-      INTERNAL_API_BASE: API_BASE,
-      INTERNAL_KEY: INTERNAL_KEY || '',
-      RESIDENT_MODE: 'true',
-    },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  
-  let stdout = '';
-  let stderr = '';
-  
-  proc.stdout.on('data', (data) => {
-    stdout += data.toString();
-    console.log(`[stdout] ${data.toString().trim()}`);
-  });
-  
-  proc.stderr.on('data', (data) => {
-    stderr += data.toString();
-    console.log(`[stderr] ${data.toString().trim()}`);
-  });
-  
-  // 等待就绪
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // 发送测试任务
-  console.log('\n发送测试任务...');
-  const task = {
-    command: 'invoke',
-    task_id: 'test-' + Date.now(),
-    params: {
-      user_id: 'c464d6d1e06b5d5d05c4',  // 真实用户 ID
-      expert_id: 'mmhe8thlii2ttugmo7v1',  // 真实专家 ID
-      model_id: 'mmfxrlo40h7ybx33m8l5',
-      prompt: '你好，请用一句话介绍自己。',
-      max_tokens: 100,
-    },
-  };
-  
-  proc.stdin.write(JSON.stringify(task) + '\n');
-  
-  // 等待处理
-  console.log('等待处理...');
-  await new Promise(resolve => setTimeout(resolve, 10000));
-  
-  // 发送退出命令
-  console.log('\n发送退出命令...');
-  proc.stdin.write(JSON.stringify({ command: 'exit' }) + '\n');
-  
-  // 等待进程退出
-  await new Promise(resolve => {
-    proc.on('close', (code) => {
-      console.log(`进程退出，code: ${code}`);
-      resolve();
-    });
-    setTimeout(() => {
-      proc.kill();
-      resolve();
-    }, 5000);
-  });
-  
-  console.log('\n最终输出:');
-  console.log('stdout:', stdout);
-  console.log('stderr:', stderr);
-}
-
 // 主函数
 async function main() {
   console.log('🔧 驻留进程调试测试');
@@ -234,15 +156,10 @@ async function main() {
   console.log(`INTERNAL_KEY: ${INTERNAL_KEY ? '已设置' : '未设置'}`);
   
   // 测试 1: 获取模型配置
-  const modelConfig = await testGetModelConfig();
-  
+  await testGetModelConfig();
+
   // 测试 2: 消息插入
-  const insertOk = await testInsertMessage();
-  
-  // 测试 3: 直接运行驻留进程
-  if (modelConfig) {
-    await testResidentProcess();
-  }
+  await testInsertMessage();
   
   console.log('\n' + '='.repeat(60));
   console.log('测试完成');

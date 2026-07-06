@@ -9,6 +9,10 @@ export default class app_invoice_mgr_record extends Model {
       allowNull: false,
       primaryKey: true
     },
+    user_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true
+    },
     status: {
       type: DataTypes.STRING(32),
       allowNull: false,
@@ -17,6 +21,11 @@ export default class app_invoice_mgr_record extends Model {
     data: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    attachment_id: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      comment: "附件ID"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -47,6 +56,20 @@ export default class app_invoice_mgr_record extends Model {
         using: "BTREE",
         fields: [
           { name: "status" },
+        ]
+      },
+      {
+        name: "idx_user_id",
+        using: "BTREE",
+        fields: [
+          { name: "user_id" },
+        ]
+      },
+      {
+        name: "idx_attachment_id",
+        using: "BTREE",
+        fields: [
+          { name: "attachment_id" },
         ]
       },
     ]

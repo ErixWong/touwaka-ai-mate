@@ -98,11 +98,11 @@ export function useDocumentWorkspace(options: UseDocumentWorkspaceOptions) {
     }
 
     if (errorCode === 'chunk_generation_failed') {
-      return { type: 'chunk', label: t('docs.workspace.detail.retryChunk') }
+      return { type: 'processing', label: t('docs.workspace.detail.retryChunk') }
     }
 
     if (isFailedDocProcessingStatus(status)) {
-      if (errorCode === 'clean_failed') return { type: 'clean', label: t('docs.workspace.detail.retryClean') }
+      if (errorCode === 'clean_failed' || errorCode === 'clean_timeout' || errorCode === 'pending_clean_timeout') return { type: 'clean', label: t('docs.workspace.detail.retryClean') }
       if (errorCode === 'embedding_failed') return { type: 'embedding', label: t('docs.workspace.detail.retryEmbedding') }
       if (errorCode === 'ocr_failed') return { type: 'ocr', label: t('docs.workspace.detail.retryOcr') }
     }

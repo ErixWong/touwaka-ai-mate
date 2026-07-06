@@ -1,5 +1,48 @@
 import Utils from '../../../../lib/utils.js';
 import logger from '../../../../lib/logger.js';
+import { DEFAULT_JSON_OUTPUT_SCHEMA } from './config.service.js';
+
+function normalizeRuleSetName(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+const DEFAULT_STAGE_COLORS = ['#3b82f6', '#14b8a6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+function normalizeStage(stage, index) {
+  return {
+    stage_code: typeof stage.stage_code === 'string' ? stage.stage_code.trim() : '',
+    stage_name: typeof stage.stage_name === 'string' ? stage.stage_name.trim() : '',
+    stage_order: Number.isFinite(Number(stage.stage_order)) ? Number(stage.stage_order) : index,
+    stage_color: typeof stage.stage_color === 'string' && stage.stage_color.trim()
+      ? stage.stage_color.trim()
+      : DEFAULT_STAGE_COLORS[index % DEFAULT_STAGE_COLORS.length],
+    semantic_definition: typeof stage.semantic_definition === 'string' ? stage.semantic_definition.trim() : '',
+  };
+}
+
+function validateStages(stages) {
+  if (!Array.isArray(stages) || stages.length === 0) {
+    throw new Error('请至少配置一个阶段定义');
+  }
+
+  const stageCodes = new Set();
+  for (let index = 0; index < stages.length; index++) {
+    const stage = normalizeStage(stages[index], index);
+    if (!stage.stage_code) {
+      throw new Error(`阶段 ${index + 1} 的阶段标识不能为空`);
+    }
+    if (!stage.stage_name) {
+      throw new Error(`阶段 ${index + 1} 的阶段名称不能为空`);
+    }
+    if (!stage.semantic_definition) {
+      throw new Error(`阶段 ${index + 1} 的业务语义不能为空`);
+    }
+    if (stageCodes.has(stage.stage_code)) {
+      throw new Error(`阶段标识 ${stage.stage_code} 重复，请保持唯一`);
+    }
+    stageCodes.add(stage.stage_code);
+  }
+}
 
 class RuleSetService {
   constructor(db) {
@@ -8,9 +51,19 @@ class RuleSetService {
 
   async list() {
     const sets = await this.db.query(`
-      SELECT id, rule_set_name, description, is_default, is_enabled, created_at, updated_at
-      FROM app_current_feature_rule_sets
-      ORDER BY is_default DESC, created_at DESC
+      SELECT
+        rs.id,
+        rs.rule_set_name,
+        rs.description,
+        rs.is_default,
+        rs.is_enabled,
+        rs.created_at,
+        rs.updated_at,
+        COUNT(st.id) AS stage_count
+      FROM app_current_feature_rule_sets rs
+      LEFT JOIN app_current_feature_rule_stages st ON st.rule_set_id = rs.id
+      GROUP BY rs.id, rs.rule_set_name, rs.description, rs.is_default, rs.is_enabled, rs.created_at, rs.updated_at
+      ORDER BY rs.is_default DESC, rs.created_at DESC
     `);
     return sets;
   }
@@ -29,10 +82,11 @@ class RuleSetService {
         [id]
       );
       ruleSet.stages = stages.map(s => ({
-        ...s,
-        required: s.required ? !!s.required[0] : true,
-        allow_repeat: s.allow_repeat ? !!s.allow_repeat[0] : false,
-        allow_overlap: s.allow_overlap ? !!s.allow_overlap[0] : false,
+        stage_code: s.stage_code,
+        stage_name: s.stage_name,
+        stage_order: s.stage_order,
+        stage_color: s.stage_color,
+        semantic_definition: s.semantic_definition,
       }));
     }
 
@@ -44,14 +98,14 @@ class RuleSetService {
     const {
       rule_set_name,
       description = '',
-      business_context = '',
-      prompt_template = '',
-      output_json_schema = '',
-      llm_instructions = '',
       is_default = false,
       is_enabled = true,
       stages = [],
     } = data;
+
+    if (!normalizeRuleSetName(rule_set_name)) {
+      throw new Error('规则集名称不能为空');
+    }
 
     if (is_default) {
       await this.db.execute(
@@ -61,16 +115,17 @@ class RuleSetService {
 
     await this.db.execute(`
       INSERT INTO app_current_feature_rule_sets
-      (id, rule_set_name, description, business_context, prompt_template,
-       output_json_schema, llm_instructions, is_default, is_enabled, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, rule_set_name, description, is_default, is_enabled, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
     `, [
-      id, rule_set_name, description, business_context, prompt_template,
-      output_json_schema, llm_instructions, is_default, is_enabled, userId,
+      id, normalizeRuleSetName(rule_set_name), description, is_default, is_enabled, userId,
     ]);
 
-    for (const stage of stages) {
-      await this.createStage(id, stage);
+    if (Array.isArray(stages) && stages.length > 0) {
+      validateStages(stages);
+      for (let index = 0; index < stages.length; index++) {
+        await this.createStage(id, normalizeStage(stages[index], index));
+      }
     }
 
     return this.getById(id, true);
@@ -80,10 +135,6 @@ class RuleSetService {
     const {
       rule_set_name,
       description,
-      business_context,
-      prompt_template,
-      output_json_schema,
-      llm_instructions,
       is_default,
       is_enabled,
       stages,
@@ -92,14 +143,17 @@ class RuleSetService {
     const updates = [];
     const params = [];
 
-    if (rule_set_name !== undefined) { updates.push('rule_set_name = ?'); params.push(rule_set_name); }
+    if (rule_set_name !== undefined) { updates.push('rule_set_name = ?'); params.push(normalizeRuleSetName(rule_set_name)); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
-    if (business_context !== undefined) { updates.push('business_context = ?'); params.push(business_context); }
-    if (prompt_template !== undefined) { updates.push('prompt_template = ?'); params.push(prompt_template); }
-    if (output_json_schema !== undefined) { updates.push('output_json_schema = ?'); params.push(output_json_schema); }
-    if (llm_instructions !== undefined) { updates.push('llm_instructions = ?'); params.push(llm_instructions); }
     if (is_default !== undefined) { updates.push('is_default = ?'); params.push(is_default); }
     if (is_enabled !== undefined) { updates.push('is_enabled = ?'); params.push(is_enabled); }
+
+    if (rule_set_name !== undefined && !normalizeRuleSetName(rule_set_name)) {
+      throw new Error('规则集名称不能为空');
+    }
+    if (stages !== undefined) {
+      validateStages(stages);
+    }
 
     if (updates.length > 0) {
       updates.push('updated_by = ?');
@@ -123,8 +177,8 @@ class RuleSetService {
         `DELETE FROM app_current_feature_rule_stages WHERE rule_set_id = ?`,
         [id]
       );
-      for (const stage of stages) {
-        await this.createStage(id, stage);
+      for (let index = 0; index < stages.length; index++) {
+        await this.createStage(id, normalizeStage(stages[index], index));
       }
     }
 
@@ -135,24 +189,15 @@ class RuleSetService {
     const id = Utils.newID();
     await this.db.execute(`
       INSERT INTO app_current_feature_rule_stages
-      (id, rule_set_id, stage_code, stage_name, stage_order,
-       semantic_definition, expected_signal_features,
-       required, allow_repeat, allow_overlap,
-       min_duration_ms, max_duration_ms, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, rule_set_id, stage_code, stage_name, stage_order, stage_color, semantic_definition)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [
       id, ruleSetId,
       stage.stage_code || '',
       stage.stage_name || '',
       stage.stage_order ?? 0,
+      stage.stage_color || '',
       stage.semantic_definition || '',
-      stage.expected_signal_features || null,
-      stage.required !== false,
-      stage.allow_repeat ?? false,
-      stage.allow_overlap ?? false,
-      stage.min_duration_ms ?? null,
-      stage.max_duration_ms ?? null,
-      stage.notes ?? null,
     ]);
     return id;
   }
@@ -170,24 +215,14 @@ class RuleSetService {
     const newData = {
       rule_set_name: `${source.rule_set_name} (副本)`,
       description: source.description,
-      business_context: source.business_context,
-      prompt_template: source.prompt_template,
-      output_json_schema: source.output_json_schema,
-      llm_instructions: source.llm_instructions,
       is_default: false,
       is_enabled: true,
       stages: (source.stages || []).map(s => ({
         stage_code: s.stage_code,
         stage_name: s.stage_name,
         stage_order: s.stage_order,
+        stage_color: s.stage_color,
         semantic_definition: s.semantic_definition,
-        expected_signal_features: s.expected_signal_features,
-        required: s.required,
-        allow_repeat: s.allow_repeat,
-        allow_overlap: s.allow_overlap,
-        min_duration_ms: s.min_duration_ms,
-        max_duration_ms: s.max_duration_ms,
-        notes: s.notes,
       })),
     };
 
@@ -198,6 +233,29 @@ class RuleSetService {
     await this.db.execute(`UPDATE app_current_feature_rule_sets SET is_default = b'0'`);
     await this.db.execute(`UPDATE app_current_feature_rule_sets SET is_default = b'1' WHERE id = ?`, [id]);
     return true;
+  }
+
+  // 兼容方法别名 - 适配 handler 调用
+  async listRuleSets() {
+    return this.list();
+  }
+
+  async getRuleSet(id) {
+    return this.getById(id, true);
+  }
+
+  async createRuleSet(data) {
+    const userId = data.created_by || data.userId || 'system';
+    return this.create(data, userId);
+  }
+
+  async updateRuleSet(id, data) {
+    const userId = data.updated_by || data.userId || 'system';
+    return this.update(id, data, userId);
+  }
+
+  async deleteRuleSet(id) {
+    return this.remove(id);
   }
 }
 

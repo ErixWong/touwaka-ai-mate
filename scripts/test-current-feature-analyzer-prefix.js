@@ -1,10 +1,9 @@
 /**
- * CFA 前缀迁移验证脚本
+ * CFA wildcard 路由验证脚本
  *
  * 验证目标：
- *   1. 新前缀 /api/current-feature-analyzer/* 可用
- *   2. Legacy 前缀 /api/apps/current-feature-analyzer/* 可用并带 deprecated 标记
- *   3. 新旧前缀响应数据一致
+ *   1. 正式前缀 /api/apps/current-feature-analyzer/* 可用
+ *   2. rule-sets 与 config 响应结构符合统一契约
  *
  * 运行前置条件：
  *   - 必须先启动后端服务：npm run api 或 node server/index.js
@@ -17,8 +16,7 @@
  */
 const BASE_URL = 'http://localhost:3000';
 const RESULTS = {
-  newPrefix: [],
-  legacyPrefix: [],
+  appPrefix: [],
   assertions: []
 };
 
@@ -46,41 +44,18 @@ async function testEndpoint(category, name, method, path, token, expectStatus, b
   const resp = await fetch(url, options);
   const status = resp.status;
   const data = await resp.json().catch(() => ({}));
-  const deprecatedHeader = resp.headers.get('X-Deprecated');
-  
   const allowed = Array.isArray(expectStatus) ? expectStatus : [expectStatus];
   const passed = allowed.includes(status);
   RESULTS[category].push({ 
     name, method, path, expected: expectStatus, actual: status, passed, 
-    deprecated: deprecatedHeader,
     data 
   });
-  
-  const deprecatedMark = deprecatedHeader ? ' [DEPRECATED]' : '';
-  console.log(`${passed ? '✅' : '❌'} ${name}: ${status} (expected ${allowed.join(' or ')})${deprecatedMark}`);
-  return { passed, data, status, deprecated: deprecatedHeader };
-}
-
-function assertDeprecatedHeader(result, testName) {
-  const passed = result.deprecated === 'true';
-  RESULTS.assertions.push({
-    name: testName,
-    expected: 'X-Deprecated: true',
-    actual: result.deprecated || '(not set)',
-    passed
-  });
-  
-  if (!passed) {
-    console.log(`❌ ${testName}: X-Deprecated header not set (expected 'true', got '${result.deprecated || '(not set)'}')`);
-  } else {
-    console.log(`✅ ${testName}: X-Deprecated header correctly set`);
-  }
-  
-  return passed;
+  console.log(`${passed ? '✅' : '❌'} ${name}: ${status} (expected ${allowed.join(' or ')})`);
+  return { passed, data, status };
 }
 
 async function runTests() {
-  console.log('=== Current Feature Analyzer 前缀迁移验证 ===\n');
+  console.log('=== Current Feature Analyzer wildcard 路由验证 ===\n');
   
   let token;
   try {
@@ -95,12 +70,12 @@ async function runTests() {
     return;
   }
 
-  console.log('--- Part 0: 新前缀 /api/current-feature-analyzer/* (Phase 1 主目标) ---');
-  
-  await testEndpoint('newPrefix', '新前缀：获取规则集列表', 'GET', '/api/current-feature-analyzer/rule-sets', token, 200);
-  await testEndpoint('newPrefix', '新前缀：获取配置', 'GET', '/api/current-feature-analyzer/config', token, [200, 404]);
+  console.log('--- Part 1: /api/apps/current-feature-analyzer/* ---');
 
-  const ruleSetsResp = await fetch(`${BASE_URL}/api/current-feature-analyzer/rule-sets`, {
+  await testEndpoint('appPrefix', '规则集列表', 'GET', '/api/apps/current-feature-analyzer/rule-sets', token, 200);
+  await testEndpoint('appPrefix', '读取配置', 'GET', '/api/apps/current-feature-analyzer/config', token, [200, 404]);
+
+  const ruleSetsResp = await fetch(`${BASE_URL}/api/apps/current-feature-analyzer/rule-sets`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
   const ruleSetsData = await ruleSetsResp.json();
@@ -109,77 +84,47 @@ async function runTests() {
   if (ruleSets.length > 0) {
     const ruleSetId = ruleSets[0].id;
     console.log(`使用规则集 ID: ${ruleSetId}\n`);
-    await testEndpoint('newPrefix', '新前缀：获取规则集详情', 'GET', `/api/current-feature-analyzer/rule-sets/${ruleSetId}`, token, 200);
+    await testEndpoint('appPrefix', '规则集详情', 'GET', `/api/apps/current-feature-analyzer/rule-sets/${ruleSetId}`, token, 200);
   } else {
     console.log('⚠️ 无现有规则集，跳过规则集详情测试');
   }
 
-  console.log('\n--- Part 1: Legacy 兼容层 /api/apps/current-feature-analyzer/* ---');
-  
-  const legacyResult1 = await testEndpoint('legacyPrefix', 'Legacy：获取规则集列表', 'GET', '/api/apps/current-feature-analyzer/rule-sets', token, 200);
-  const legacyResult2 = await testEndpoint('legacyPrefix', 'Legacy：获取配置', 'GET', '/api/apps/current-feature-analyzer/config', token, [200, 404]);
+  console.log('\n--- Part 2: 响应契约断言 ---');
+  const ruleSetsResult = RESULTS.appPrefix.find(r => r.name === '规则集列表');
+  const hasStandardEnvelope = !!ruleSetsResult?.data && typeof ruleSetsResult.data.code === 'number' && 'data' in ruleSetsResult.data;
+  RESULTS.assertions.push({
+    name: '规则集列表响应结构',
+    expected: '包含 code/message/data',
+    actual: hasStandardEnvelope ? '符合' : '不符合',
+    passed: hasStandardEnvelope,
+  });
 
-  console.log('\n--- Part 1.5: Deprecated Header 断言 ---');
-  assertDeprecatedHeader(legacyResult1, 'Legacy 规则集列表 deprecated header');
-  assertDeprecatedHeader(legacyResult2, 'Legacy 配置 deprecated header');
-
-  if (ruleSets.length > 0) {
-    const ruleSetId = ruleSets[0].id;
-    const legacyDetailResult = await testEndpoint('legacyPrefix', 'Legacy：获取规则集详情', 'GET', `/api/apps/current-feature-analyzer/rule-sets/${ruleSetId}`, token, 200);
-    assertDeprecatedHeader(legacyDetailResult, 'Legacy 规则集详情 deprecated header');
-  }
-
-  console.log('\n--- Part 2: 前缀响应一致性验证 ---');
-  
-  const newPrefixRuleSets = RESULTS.newPrefix.find(r => r.name === '新前缀：获取规则集列表');
-  const legacyRuleSets = RESULTS.legacyPrefix.find(r => r.name === 'Legacy：获取规则集列表');
-  
-  if (newPrefixRuleSets && legacyRuleSets && newPrefixRuleSets.data && legacyRuleSets.data) {
-    const newItems = newPrefixRuleSets.data?.data?.items || [];
-    const legacyItems = legacyRuleSets.data?.data?.items || [];
-    
-    const consistencyPassed = JSON.stringify(newItems) === JSON.stringify(legacyItems);
-    RESULTS.assertions.push({
-      name: '新旧前缀规则集列表响应一致性',
-      expected: 'JSON.stringify 相等',
-      actual: consistencyPassed ? '一致' : '不一致',
-      passed: consistencyPassed
-    });
-    
-    if (consistencyPassed) {
-      console.log('✅ 新旧前缀规则集列表响应一致');
-    } else {
-      console.log('❌ 新旧前缀规则集列表响应不一致');
-      console.log(`   新前缀 items count: ${newItems.length}`);
-      console.log(`   Legacy items count: ${legacyItems.length}`);
-    }
+  if (hasStandardEnvelope) {
+    console.log('✅ 规则集列表响应结构符合统一契约');
+  } else {
+    console.log('❌ 规则集列表响应结构不符合统一契约');
   }
 
   console.log('\n=== 测试结果汇总 ===');
   
-  const newPrefixPassed = RESULTS.newPrefix.filter(r => r.passed).length;
-  const newPrefixFailed = RESULTS.newPrefix.filter(r => !r.passed).length;
-  const legacyPassed = RESULTS.legacyPrefix.filter(r => r.passed).length;
-  const legacyFailed = RESULTS.legacyPrefix.filter(r => !r.passed).length;
+  const appPrefixPassed = RESULTS.appPrefix.filter(r => r.passed).length;
+  const appPrefixFailed = RESULTS.appPrefix.filter(r => !r.passed).length;
   const assertionsPassed = RESULTS.assertions.filter(r => r.passed).length;
   const assertionsFailed = RESULTS.assertions.filter(r => !r.passed).length;
   
-  console.log(`\n新前缀测试: 通过 ${newPrefixPassed}, 失败 ${newPrefixFailed}`);
-  console.log(`Legacy 兼容层: 通过 ${legacyPassed}, 失败 ${legacyFailed}`);
+  console.log(`\n应用前缀测试: 通过 ${appPrefixPassed}, 失败 ${appPrefixFailed}`);
   console.log(`断言检查: 通过 ${assertionsPassed}, 失败 ${assertionsFailed}`);
   
-  const totalFailed = newPrefixFailed + legacyFailed + assertionsFailed;
+  const totalFailed = appPrefixFailed + assertionsFailed;
   if (totalFailed > 0) {
     console.log('\n❌ 存在失败项，详见上方输出');
     console.log('\n失败的测试项:');
-    RESULTS.newPrefix.filter(r => !r.passed).forEach(r => console.log(`  - ${r.name}: ${r.actual} (expected ${r.expected})`));
-    RESULTS.legacyPrefix.filter(r => !r.passed).forEach(r => console.log(`  - ${r.name}: ${r.actual} (expected ${r.expected})`));
+    RESULTS.appPrefix.filter(r => !r.passed).forEach(r => console.log(`  - ${r.name}: ${r.actual} (expected ${r.expected})`));
     RESULTS.assertions.filter(r => !r.passed).forEach(r => console.log(`  - ${r.name}: ${r.actual} (expected ${r.expected})`));
   } else {
     console.log('\n✅ 所有测试通过');
-    console.log('\n--- Phase 1 验证结论 ---');
-    console.log('/api/current-feature-analyzer/* 新前缀可用');
-    console.log('/api/apps/current-feature-analyzer/* legacy 兼容层可用并带有 deprecated 标记');
+    console.log('\n--- 验证结论 ---');
+    console.log('/api/apps/current-feature-analyzer/* 路由可用');
   }
 }
 

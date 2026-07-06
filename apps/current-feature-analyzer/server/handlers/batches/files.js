@@ -14,15 +14,9 @@ export async function get(ctx, deps) {
     const userId = getUserId(ctx);
     if (!userId) { ctx.error('Unauthorized', 401); return; }
 
-    // 现在 ctx.params 同时包含：
-    // - named params: batch_id, file_id (来自 route.path 声明)
-    // - positional params: p0, p1 (来自 URL 解析)
     const { batch_id, file_id, p0, p1 } = ctx.params;
-    
-    // 兼容：优先使用具名参数，如果没有则使用位置参数
     const batchId = batch_id || p0;
     const fileId = file_id || p1;
-
     if (!batchId || !fileId) {
       ctx.error('batch_id and file_id are required', 400);
       return;

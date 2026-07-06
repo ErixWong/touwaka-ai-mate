@@ -1,14 +1,15 @@
 import logger from '../../../../lib/logger.js';
-import { callWithRetry } from '../../../../lib/chat/base-llm.js';
 import modelRegistry from '../../../../lib/model-registry.js';
+import InternalLLMService from '../../../../lib/internal-llm-service.js';
 
 const INVALID_JSON_LOG_LIMIT = 1200;
 const MAX_SEGMENTS_FOR_LLM = 120;
 
-class LlmStageRecognitionService {
+class StageRecognitionWorkflowService {
   constructor(db) {
     this.db = db;
     modelRegistry.init(db);
+    this.internalLLM = new InternalLLMService(db);
   }
 
   async recognize(globals, segments, events, ruleSet, appConfig) {
@@ -23,9 +24,27 @@ class LlmStageRecognitionService {
 
     if (!modelConfig) {
       try {
-        modelConfig = await modelRegistry.getDefaultTextModelConfig();
+        const AiModel = this.db.getModel('ai_model');
+        if (!AiModel) {
+          throw new Error('ai_model not available');
+        }
+
+        const model = await AiModel.findOne({
+          where: {
+            is_active: true,
+            model_type: ['text', 'multimodal'],
+          },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        });
+
+        if (!model) {
+          throw new Error('No active text/multimodal model found');
+        }
+
+        modelConfig = await this.db.getModelConfig(model.id);
       } catch (err) {
-        logger.error('[cfa llm] failed to auto-select text model:', err.message);
+        logger.error('[cfa llm] failed to auto-select text/multimodal model:', err.message);
         return {
           stages: [],
           summary: '无可用 LLM 模型',
@@ -39,7 +58,7 @@ class LlmStageRecognitionService {
       return {
         stages: [],
         summary: '无可用 LLM 模型',
-        warnings: [{ message: '未找到可用文本模型，请先在系统设置中添加并激活文本模型' }],
+        warnings: [{ message: '未找到可用文本或多模态模型，请先在系统设置中添加并激活模型' }],
         _error: 'no_model_available',
       };
     }
@@ -47,47 +66,32 @@ class LlmStageRecognitionService {
     const reducedSegments = this.reduceSegmentsForLlm(segments);
     const userMessage = this.buildUserMessage(globals, reducedSegments, events, ruleSet, appConfig, segments.length);
 
-    const systemPrompt = ruleSet.prompt_template
-      || appConfig.analysis_prompt_template
-      || this.buildDefaultSystemPrompt();
+    const systemPrompt = this.buildSystemPrompt(ruleSet, appConfig);
 
-    const schemaText = ruleSet.output_json_schema
-      || appConfig.json_output_schema
-      || this.buildDefaultOutputSchema();
+    const schemaText = appConfig.json_output_schema || this.buildDefaultOutputSchema();
+    const finalSystemPrompt = `${systemPrompt}\n\n输出要求：\n1. 只能输出一个 JSON 对象，禁止输出 markdown、代码块、注释、前言、结尾说明。\n2. 禁止输出思考过程、reasoning、analysis、thinking process。\n3. 即使无法完整识别，也必须返回合法 JSON。\n4. JSON 中只能包含 schema 允许的字段，不要添加额外字段。\n5. 所有字符串必须使用标准 JSON 双引号。\n\n输出必须严格遵守以下 JSON Schema:\n${schemaText}`;
+    const finalUserPrompt = `${userMessage}\n\n请直接返回纯 JSON，不要附加任何解释。`;
 
-    const messages = [
-      { role: 'system', content: `${systemPrompt}\n\n输出要求：\n1. 只能输出一个 JSON 对象，禁止输出 markdown、代码块、注释、前言、结尾说明。\n2. 禁止输出思考过程、reasoning、analysis、thinking process。\n3. 即使无法完整识别，也必须返回合法 JSON。\n4. JSON 中只能包含 schema 允许的字段，不要添加额外字段。\n5. 所有字符串必须使用标准 JSON 双引号。\n\n输出必须严格遵守以下 JSON Schema:\n${schemaText}` },
-      { role: 'user', content: `${userMessage}\n\n请直接返回纯 JSON，不要附加任何解释。` },
-    ];
-
-    const retryTimes = appConfig.retry_times ?? 2;
-    const timeout = appConfig.timeout_ms ?? 120000;
+    const retryTimes = this.internalLLM.maxRetries;
     let lastDebugResponse = null;
-    const thinkingConfig = this.buildThinkingConfig(modelConfig);
 
     for (let attempt = 0; attempt <= retryTimes; attempt++) {
       try {
-        const response = await callWithRetry(modelConfig, messages, {
+        let parsed = await this.internalLLM.extractJson(finalSystemPrompt, finalUserPrompt, {
+          modelId: modelConfig.id,
           temperature: appConfig.temperature ?? 0.2,
-          max_tokens: appConfig.max_tokens ?? 2000,
-          timeout,
-          response_format: { type: 'json_object' },
-          ...(thinkingConfig.thinking ? { thinking: thinkingConfig.thinking } : {}),
-          ...(thinkingConfig.reasoning ? { reasoning: thinkingConfig.reasoning } : {}),
-          ...(thinkingConfig.chat_template_kwargs ? { chat_template_kwargs: thinkingConfig.chat_template_kwargs } : {}),
+          schema: JSON.parse(schemaText),
         });
 
-        const content = response?.content || response?.message?.content || '';
-        const reasoningContent = response?.reasoningContent || response?.reasoning_content || '';
-        const candidateText = this.getBestJsonCandidate(content, reasoningContent);
-        let parsed = this.extractAndValidateJson(candidateText);
+        const content = JSON.stringify(parsed);
+        const reasoningContent = '';
 
         if ((!parsed || !Array.isArray(parsed.stages) || parsed.stages.length === 0) && appConfig.enable_json_repair !== false) {
-          parsed = this.extractStagesFromNarrative(candidateText, ruleSet);
+          parsed = this.extractStagesFromNarrative(content, ruleSet);
         }
 
         if ((!parsed || !Array.isArray(parsed.stages) || parsed.stages.length === 0) && appConfig.enable_json_repair !== false) {
-          parsed = this.buildHeuristicFallback(segments, ruleSet, candidateText);
+          parsed = this.buildHeuristicFallback(segments, ruleSet, content);
         }
 
         if (parsed && parsed.stages && Array.isArray(parsed.stages)) {
@@ -147,39 +151,25 @@ class LlmStageRecognitionService {
     };
   }
 
-  buildThinkingConfig(modelConfig) {
-    const thinkingFormat = String(modelConfig?.thinking_format || 'none').toLowerCase();
-    const supportsReasoning = !!modelConfig?.supports_reasoning;
-    const modelName = String(modelConfig?.model_name || '').toLowerCase();
+  buildSystemPrompt(ruleSet, appConfig) {
+    const basePrompt = appConfig.analysis_prompt_template || this.buildDefaultSystemPrompt();
+    const scenarioDescription = String(ruleSet?.description || '').trim();
+    const stageDefinitions = Array.isArray(ruleSet?.stages) ? ruleSet.stages : [];
 
-    if (thinkingFormat === 'openai' || modelName.startsWith('o1-') || modelName.startsWith('o3-') || modelName.startsWith('o4-')) {
-      return {
-        thinking: null,
-        reasoning: { effort: 'low' },
-      };
-    }
+    const stageText = stageDefinitions.length > 0
+      ? stageDefinitions.map((stage, index) => {
+        return `${index + 1}. ${stage.stage_code || 'unnamed'} (${stage.stage_name || '未命名阶段'})：${stage.semantic_definition || ''}`;
+      }).join('\n')
+      : '未配置阶段定义，请仅基于可识别信号输出最接近的阶段结果。';
 
-    if ((thinkingFormat === 'qwen' || thinkingFormat === 'deepseek') && supportsReasoning) {
-      return {
-        thinking: { type: 'disabled' },
-        reasoning: null,
-      };
-    }
+    const sections = [
+      basePrompt,
+      scenarioDescription ? `场景说明：\n${scenarioDescription}` : null,
+      `阶段定义：\n${stageText}`,
+      '请基于以上阶段定义识别每个阶段的起止时间，并保持阶段数组结构稳定。',
+    ].filter(Boolean);
 
-    // qwen 模型在部分网关上会强制开启思考模式导致 content 为空
-    // 通过 chat_template_kwargs 在模板层面关闭思考
-    if (modelName.includes('qwen')) {
-      return {
-        thinking: null,
-        reasoning: null,
-        chat_template_kwargs: { enable_thinking: false },
-      };
-    }
-
-    return {
-      thinking: null,
-      reasoning: null,
-    };
+    return sections.join('\n\n');
   }
 
   getBestJsonCandidate(content, reasoningContent) {
@@ -303,7 +293,7 @@ class LlmStageRecognitionService {
   }
 
   normalizeStages(stages) {
-    return stages
+    const normalized = stages
       .filter(stage => stage && Number.isFinite(Number(stage.start_time)) && Number.isFinite(Number(stage.end_time)))
       .map(stage => ({
         ...stage,
@@ -311,6 +301,47 @@ class LlmStageRecognitionService {
         end_time: Number(Number(stage.end_time).toFixed(6)),
       }))
       .sort((a, b) => a.start_time - b.start_time);
+
+    return this.assignCycleMarkers(normalized);
+  }
+
+  assignCycleMarkers(stages) {
+    if (!Array.isArray(stages) || stages.length < 2) {
+      return Array.isArray(stages) ? stages : [];
+    }
+
+    for (let chunkSize = 1; chunkSize <= Math.floor(stages.length / 2); chunkSize++) {
+      if (stages.length % chunkSize !== 0) continue;
+      const cycleCount = stages.length / chunkSize;
+      if (cycleCount <= 1) continue;
+
+      const firstChunkSignature = stages
+        .slice(0, chunkSize)
+        .map(stage => `${stage.stage_code || ''}::${stage.stage_name || ''}`)
+        .join('|');
+
+      let repeated = true;
+      for (let cycleIndex = 1; cycleIndex < cycleCount; cycleIndex++) {
+        const signature = stages
+          .slice(cycleIndex * chunkSize, (cycleIndex + 1) * chunkSize)
+          .map(stage => `${stage.stage_code || ''}::${stage.stage_name || ''}`)
+          .join('|');
+        if (signature !== firstChunkSignature) {
+          repeated = false;
+          break;
+        }
+      }
+
+      if (!repeated) continue;
+
+      return stages.map((stage, index) => ({
+        ...stage,
+        cycle_index: Math.floor(index / chunkSize) + 1,
+        cycle_stage_index: (index % chunkSize) + 1,
+      }));
+    }
+
+    return stages;
   }
 
   buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length) {
@@ -335,7 +366,7 @@ class LlmStageRecognitionService {
 ${segText}
 
 当前规则集:
-业务背景: ${ruleSet.business_context || '无'}
+场景说明: ${ruleSet.description || '无'}
 阶段定义:
 ${ruleText}
 
@@ -395,6 +426,8 @@ ${ruleText}
               stage_name: { type: 'string' },
               start_time: { type: 'number' },
               end_time: { type: 'number' },
+              cycle_index: { type: 'number' },
+              cycle_stage_index: { type: 'number' },
               confidence: { type: 'number' },
               reason: { type: 'string' },
             },
@@ -501,6 +534,7 @@ ${ruleText}
 
     return `${normalized.slice(0, maxLen)}... [truncated ${normalized.length - maxLen} chars]`;
   }
+
 }
 
-export default LlmStageRecognitionService;
+export default StageRecognitionWorkflowService;

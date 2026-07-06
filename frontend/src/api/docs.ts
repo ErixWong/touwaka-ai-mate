@@ -326,13 +326,11 @@ export interface DocCompareRun {
 }
 
 export interface ExtractOutlineResult {
-  revision_id: string
+  accepted: boolean
+  status: 'accepted' | 'already_running'
   document_id: string
-  outline_count: number
+  revision_id: string
   processing_status: string
-  partial: boolean
-  failed_chunks: number
-  total_chunks: number
 }
 
 export interface GenerateChunksResult {

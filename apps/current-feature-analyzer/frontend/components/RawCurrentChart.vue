@@ -1,19 +1,27 @@
 <template>
-  <el-card v-if="hasData" shadow="never">
+  <el-card shadow="never">
     <template #header>
       <span class="card-title">电流曲线（原始数据）</span>
       <el-tag v-if="isSampled" size="small" type="info" style="margin-left: 8px">已采样 {{ sampledCount }} / {{ totalCount }} 点</el-tag>
     </template>
-    <div ref="chartRef" class="cfa-chart"></div>
+    <div class="cfa-chart-wrap" :style="chartStyle">
+      <div ref="chartRef" class="cfa-chart" :style="chartStyle" v-show="hasData"></div>
+      <div v-if="!hasData" class="cfa-chart-empty" :style="chartStyle">暂无原始数据曲线</div>
+    </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import * as echarts from 'echarts'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
 
-const props = defineProps<{ fileName: string; result: FileAnalysisResult | null; rawData?: number[][] | null }>()
+const props = defineProps<{
+  fileName: string
+  result: FileAnalysisResult | null
+  rawData?: number[][] | null
+  chartHeight?: number
+}>()
 
 const chartRef = ref<HTMLElement | null>(null)
 const hasData = ref(false)
@@ -24,12 +32,14 @@ let chartInstance: any = null
 let resizeHandler: (() => void) | null = null
 
 const MAX_POINTS = 3000
+const chartStyle = computed(() => ({ height: `${props.chartHeight ?? 250}px` }))
 
 function getPoints(): number[][] {
   if (props.rawData && Array.isArray(props.rawData) && props.rawData.length > 0) {
     totalCount.value = props.rawData.length
     if (props.rawData.length <= MAX_POINTS) {
       isSampled.value = false
+      sampledCount.value = props.rawData.length
       return props.rawData
     }
     const step = props.rawData.length / MAX_POINTS
@@ -45,24 +55,10 @@ function getPoints(): number[][] {
     return sampled
   }
 
-  const segs = props.result?.segments || []
-  const allPoints: [number, number][] = []
-  for (const seg of segs) {
-    if (seg.polyline_points) {
-      for (const point of seg.polyline_points) {
-        const time = point?.[0]
-        const current = point?.[1]
-        if (typeof time === 'number' && typeof current === 'number') {
-          allPoints.push([time, current])
-        }
-      }
-    }
-  }
-  if (allPoints.length > 0) {
-    totalCount.value = allPoints.length
-    isSampled.value = false
-  }
-  return allPoints
+  totalCount.value = 0
+  sampledCount.value = 0
+  isSampled.value = false
+  return []
 }
 
 function disposeChart() {
@@ -76,12 +72,13 @@ function disposeChart() {
   }
 }
 
-function renderRaw() {
-  if (!chartRef.value) return
-  disposeChart()
+async function renderRaw() {
   const allPoints = getPoints()
   hasData.value = allPoints.length > 0
+  disposeChart()
   if (!hasData.value) return
+  await nextTick()
+  if (!chartRef.value) return
 
   chartInstance = echarts.init(chartRef.value)
   resizeHandler = () => chartInstance?.resize()
@@ -114,8 +111,21 @@ onBeforeUnmount(() => {
 watch([() => props.rawData, () => props.result], () => {
   nextTick(() => renderRaw())
 })
+
+watch(() => props.chartHeight, () => {
+  nextTick(() => chartInstance?.resize())
+})
 </script>
 
 <style scoped>
 .cfa-chart { height: 250px; }
+.cfa-chart-wrap { min-height: 250px; }
+.cfa-chart-empty {
+  height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
 </style>

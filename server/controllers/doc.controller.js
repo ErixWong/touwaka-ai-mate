@@ -25,9 +25,10 @@ import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
+import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
-import { DOC_PIPELINE_KEYS, mergeWithDefaults, createCallLlmFn } from '../../lib/doc-pipeline-defaults.js';
+import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
 
 class DocController {
   constructor(db) {
@@ -38,6 +39,7 @@ class DocController {
     this.docAccessService = null;
     this.collectionAccessService = null;
     this.attachmentService = new AttachmentService(db);
+    this.docPipelineAdvancer = new DocPipelineAdvancer(db);
   }
 
   // ==================== 版本状态机 ====================
@@ -127,7 +129,6 @@ class DocController {
           }
           return mergeWithDefaults(stored);
         },
-        callLlm: createCallLlmFn(this.db),
       });
     }
   }
@@ -152,7 +153,6 @@ class DocController {
           }
           return mergeWithDefaults(stored);
         },
-        callLlm: createCallLlmFn(this.db),
       });
     }
   }
@@ -374,11 +374,17 @@ class DocController {
         })
         : null;
 
-      const latestOcrResult = await DocOcrResult.findOne({
-        where: { document_id: documentId },
-        order: [['created_at', 'DESC']],
-        raw: true,
-      });
+      const latestOcrResult = revision?.id
+        ? await DocOcrResult.findOne({
+          where: { revision_id: revision.id },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        })
+        : await DocOcrResult.findOne({
+          where: { document_id: documentId },
+          order: [['created_at', 'DESC']],
+          raw: true,
+        });
 
       // 使用统一工具函数收集详情接口所需的 OCR 附件 ID
       // 包含：main_markdown_attachment_id, raw_result_attachment_id, metadata.cleaned_markdown_attachment_id
@@ -712,11 +718,13 @@ class DocController {
       if (!document) ctx.throw(404, 'Document not found');
 
       if (['pending_ocr', 'ocr_processing'].includes(document.processing_status)) {
-        await document.update({
-          processing_status: 'error',
-          processing_error_code: 'document_deleted',
-          processing_error_message: 'Document deleted by user',
-          processing_updated_at: new Date(),
+        await this.docPipelineAdvancer.cancelStage(documentId, document.processing_status, {
+          reason: 'document_deleted',
+          message: 'Document deleted by user',
+          metadata: {
+            deleted_by: userId,
+            deleted_at: new Date().toISOString(),
+          },
         });
       }
 
@@ -1056,6 +1064,7 @@ async createVersion(ctx) {
   PROCESSING_RETRY_ERROR_STAGE = {
     ocr_failed: 'pending_ocr',
     clean_failed: 'pending_clean',
+    clean_timeout: 'pending_clean',
     outline_extraction_failed: 'pending_outline',
     chunk_generation_failed: 'pending_chunk',
     embedding_failed: 'pending_embedding',
@@ -1183,8 +1192,11 @@ async createVersion(ctx) {
 
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
+      // 只更新文档状态、清错误码，不通过 enterStage 创建 run 记录
+      // run 记录由后续 tick → submit() → enterStage 统一创建，避免阻塞 submit() 的 already_running 检查
       await document.update({
         processing_status: retryStage,
+        current_stage_started_at: new Date(),
         processing_error_code: null,
         processing_error_message: null,
         processing_retry_count: document.processing_retry_count + 1,
@@ -1274,7 +1286,7 @@ async createVersion(ctx) {
   }
 
   /**
-   * 提取章节大纲
+   * 提取章节大纲（异步受理）
    * POST /api/docs/revisions/:revisionId/outline/extract
    */
   async extractOutline(ctx) {
@@ -1305,19 +1317,11 @@ async createVersion(ctx) {
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');
 
-      const result = await this.documentOutlineService.extract(revisionId, {
-        initiatedByType: 'user',
-        initiatedById: userId,
+      // 异步受理：快速返回 accepted，后台执行章节提取
+      const result = await this.documentOutlineService.submit(revisionId, {
+        userId,
       });
-      ctx.success({
-        revision_id: revisionId,
-        document_id: revision.document_id,
-        outline_count: result.outline_count,
-        processing_status: 'pending_chunk',
-        partial: result.partial || false,
-        failed_chunks: result.failed_chunks || 0,
-        total_chunks: result.total_chunks || 1,
-      });
+      ctx.success(result);
     } catch (error) {
       logger.error('[Doc] extractOutline error:', error);
       ctx.throw(error.status || 500, error.message);
@@ -1348,9 +1352,9 @@ async createVersion(ctx) {
       });
       if (!document) ctx.throw(404, 'Document not found');
 
-      const validStates = ['pending_chunk', 'error'];
+      const validStates = ['pending_chunk'];
       if (!validStates.includes(document.processing_status)) {
-        ctx.throw(400, `Document must be in pending_chunk or error state (current: ${document.processing_status})`);
+        ctx.throw(400, `Document must be in pending_chunk state (current: ${document.processing_status})`);
       }
 
       const canWrite = await this.docAccessService.canWrite(revision.document_id, userId);

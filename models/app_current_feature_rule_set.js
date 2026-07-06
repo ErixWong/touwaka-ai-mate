@@ -20,26 +20,6 @@ export default class app_current_feature_rule_set extends Model {
       allowNull: true,
       comment: "规则集描述"
     },
-    business_context: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "业务背景说明"
-    },
-    prompt_template: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-      comment: "阶段识别 Prompt 模板"
-    },
-    output_json_schema: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "期望输出 JSON Schema 文本"
-    },
-    llm_instructions: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "对 LLM 的额外约束说明"
-    },
     is_default: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
