@@ -5,21 +5,18 @@
  *
  * 使用 Sequelize ORM 进行数据库操作
  *
- * === knowledge_config 终态语义 ===
+ * === knowledge_config 历史兼容字段 ===
  *
- * 旧自动预检索路径已于 2026-07-07 退场，当前仅保留 tool 路径（document_retrieval）。
+ * 旧自动预检索路径已于 2026-07-07 Round 04 彻底退场（含 lib/rag-service.js 整体删除）。
  *
- * 活跃字段：
- *   - enabled: document_retrieval 工具的总开关
- *   - collection_id / doc_types: tool 默认过滤条件
- *
- * 数据兼容（仅保留读取，不再消费）：
- *   - top_k / threshold / max_tokens / style: 旧自动路径专属，已不再消费
- *   - retire_auto_path: 迁移门控字段，已随旧路径退场移除
- *
- * 数据兼容：
- *   - 历史 expert 记录的 knowledge_config 字段不做修改
+ * 字段当前仅作为历史数据兼容保留：
+ *   - create / update 不再主动写入 knowledge_config
+ *   - list / get 仍返回 knowledge_config（仅历史兼容读取，不建议新消费）
+ *   - 历史 expert 记录的 knowledge_config 不做修改
  *   - 读取时安全解析 JSON
+ *
+ * 文档检索当前唯一路径：document_retrieval tool（builtin tool，由 LLM 自主决定调用时机）。
+ * 检索范围由用户账户的集合/文档访问权限决定，不由 expert 配置控制。
  */
 
 import logger from '../../lib/logger.js';
@@ -67,7 +64,7 @@ class ExpertController {
           'is_active', 'created_at',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
-          // 知识策略配置
+          // knowledge_config: 历史兼容读取（旧自动预检索路径已退场，不再消费）
           'knowledge_config',
           // P2-1: Psyche 配置
           'psyche_config',
@@ -113,7 +110,7 @@ class ExpertController {
           'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
-          // 知识策略配置
+          // knowledge_config: 历史兼容读取（旧自动预检索路径已退场，不再消费）
           'knowledge_config',
           // P2-1: Psyche 配置
           'psyche_config',
@@ -156,8 +153,6 @@ class ExpertController {
         prompt_template, is_active = true,
         // 上下文压缩配置
         context_threshold, context_strategy,
-        // 知识策略配置
-        knowledge_config,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
@@ -178,6 +173,7 @@ class ExpertController {
       const id = Utils.newID(20);
 
       // 创建专家（使用系统默认值作为回退）
+      // 注意：knowledge_config 不再写入，旧自动预检索路径已退场（Round 04）
       const expertData = {
         id,
         name,
@@ -194,8 +190,6 @@ class ExpertController {
         // 上下文压缩配置（使用系统默认值）
         context_threshold: context_threshold ?? llmDefaults.context_threshold,
         context_strategy: context_strategy || 'full',
-        // 知识策略配置（JSON 字符串存储）
-        knowledge_config: typeof knowledge_config === 'object' ? JSON.stringify(knowledge_config) : (knowledge_config || null),
         // LLM 参数配置（使用系统默认值）
         temperature: temperature ?? llmDefaults.temperature,
         reflective_temperature: reflective_temperature ?? llmDefaults.reflective_temperature,
@@ -217,8 +211,6 @@ class ExpertController {
         // 上下文压缩配置
         context_threshold: expertData.context_threshold,
         context_strategy: expertData.context_strategy,
-        // 知识策略配置
-        knowledge_config: knowledge_config || null,
         // LLM 参数配置
         temperature: expertData.temperature,
         reflective_temperature: expertData.reflective_temperature,
@@ -248,8 +240,6 @@ class ExpertController {
         prompt_template, is_active,
         // 上下文压缩配置
         context_threshold, context_strategy,
-        // 知识策略配置
-        knowledge_config,
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
@@ -269,6 +259,7 @@ class ExpertController {
       }
 
       // 构建更新对象（字符串字段直接存储）
+      // 注意：knowledge_config 不再写入，旧自动预检索路径已退场（Round 04）
       const updates = {};
 
       if (name !== undefined) updates.name = name;
@@ -285,10 +276,6 @@ class ExpertController {
       // 上下文压缩配置
       if (context_threshold !== undefined) updates.context_threshold = context_threshold;
       if (context_strategy !== undefined) updates.context_strategy = context_strategy;
-      // 知识策略配置
-      if (knowledge_config !== undefined) {
-        updates.knowledge_config = typeof knowledge_config === 'object' ? JSON.stringify(knowledge_config) : (knowledge_config || null);
-      }
       // LLM 参数配置
       if (temperature !== undefined) updates.temperature = temperature;
       if (reflective_temperature !== undefined) updates.reflective_temperature = reflective_temperature;

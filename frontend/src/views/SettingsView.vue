@@ -834,46 +834,6 @@
           </el-form-item>
         </el-tab-pane>
 
-        <el-tab-pane :label="$t('settings.expertKnowledgeStrategy')" name="knowledge">
-          <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px;">
-            <template #title>{{ $t('settings.expertKnowledgeToolOnlyTitle') }}</template>
-            <template #default>{{ $t('settings.expertKnowledgeToolOnlyBody') }}</template>
-          </el-alert>
-          <el-form-item>
-            <el-switch v-model="expertForm.knowledge_config.enabled" />
-            <span class="inline-switch-label">{{ $t('settings.expertKnowledgeEnabled') }}</span>
-            <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeEnabledHint') }}</div>
-          </el-form-item>
-
-          <!-- knowledge_config 终态：仅 tool 路径，以下字段作为 tool 默认过滤条件 -->
-          <template v-if="expertForm.knowledge_config.enabled">
-            <el-divider content-position="left">
-              <span style="font-size: 12px; color: #909399;">{{ $t('settings.expertKnowledgeToolFilterGroup') }}</span>
-            </el-divider>
-
-            <el-form-item :label="$t('settings.expertKnowledgeCollection')">
-              <el-select v-model="expertForm.knowledge_config.collection_id" clearable filterable>
-                <el-option
-                  v-for="collection in collectionStore.collections"
-                  :key="collection.id"
-                  :label="collection.name"
-                  :value="collection.id"
-                />
-              </el-select>
-              <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeCollectionHint') }}</div>
-            </el-form-item>
-
-            <el-form-item :label="$t('settings.expertKnowledgeDocTypes')">
-              <el-select v-model="expertForm.knowledge_config.doc_types" multiple clearable collapse-tags>
-                <el-option label="Knowledge" value="knowledge" />
-                <el-option label="Contract" value="contract" />
-                <el-option label="Department Doc" value="department_doc" />
-                <el-option label="Standard" value="standard" />
-              </el-select>
-              <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeDocTypesHint') }}</div>
-            </el-form-item>
-          </template>
-        </el-tab-pane>
       </el-tabs>
 
       <template #footer>
@@ -1395,11 +1355,6 @@ const expertForm = reactive({
   top_p: 1.0,
   frequency_penalty: 0.0,
   presence_penalty: 0.0,
-  knowledge_config: {
-    enabled: false,
-    collection_id: '',
-    doc_types: [] as string[],
-  },
   // 工具调用配置
   max_tool_rounds: null as number | null,
   // 头像
@@ -1413,7 +1368,7 @@ const isExpertFormValid = computed(() => {
 })
 
 // Expert 对话框 Tab 状态
-const expertActiveTab = ref<'basic' | 'personality' | 'model' | 'knowledge'>('basic')
+const expertActiveTab = ref<'basic' | 'personality' | 'model'>('basic')
 
 // 技能管理对话框
 const showSkillsDialog = ref(false)
@@ -2151,11 +2106,6 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = expert.top_p ?? 1.0
     expertForm.frequency_penalty = expert.frequency_penalty ?? 0.0
     expertForm.presence_penalty = expert.presence_penalty ?? 0.0
-    expertForm.knowledge_config = {
-      enabled: expert.knowledge_config?.enabled ?? false,
-      collection_id: expert.knowledge_config?.collection_id || '',
-      doc_types: expert.knowledge_config?.doc_types || [],
-    }
     // 工具调用配置
     expertForm.max_tool_rounds = expert.max_tool_rounds ?? null
     // 头像
@@ -2183,11 +2133,6 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.top_p = 1.0
     expertForm.frequency_penalty = 0.0
     expertForm.presence_penalty = 0.0
-    expertForm.knowledge_config = {
-      enabled: false,
-      collection_id: '',
-      doc_types: [],
-    }
     // 工具调用配置默认值
     expertForm.max_tool_rounds = null
     // 头像
@@ -2195,7 +2140,6 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.avatar_large_base64 = ''
     expertForm.is_active = true
   }
-  collectionStore.fetchCollections({ page: 1 })
   showExpertDialog.value = true
 }
 
