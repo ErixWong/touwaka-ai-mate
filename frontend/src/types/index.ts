@@ -820,10 +820,18 @@ modified_at?: string
 // ============================================
 
 /**
- * 专家知识库配置
+ * 专家知识库配置（迁移态兼容结构）
+ *
+ * ⚠️ 该结构正处于从"自动预检索配置"向"tool过滤条件"的迁移期。
+ * - enabled / retire_auto_path: 旧自动预检索路径的兼容字段，推荐将 retire_auto_path 设为 true
+ * - collection_id / doc_types / top_k / threshold: 当前兼顾自动路径参数与 tool 默认值
+ * - max_tokens / style: 属于旧注入参数，计划在后续版本移除
+ *
+ * 参见 docs/tasks/active/task-20260707-expert-doc-retrieval-final-convergence/
  */
 export interface ExpertKnowledgeConfig {
   enabled: boolean
+  retire_auto_path?: boolean
   collection_id?: string
   doc_types?: string[]
   top_k?: number
