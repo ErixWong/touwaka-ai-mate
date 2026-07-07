@@ -194,27 +194,9 @@ class AppMarketService {
   }
 
   async fetchLocalManifest(appId) {
-    // 支持多个可能的 apps 目录路径
-    const possiblePaths = [
-      path.join(process.cwd(), 'apps'),
-      path.join(process.cwd(), '..', 'apps'),
-      path.join(process.dirname(process.cwd()), 'apps'),
-      path.resolve('apps'),
-    ];
-    
-    for (const appsDir of possiblePaths) {
-      const manifestPath = path.join(appsDir, appId, 'manifest.json');
-      try {
-        await fs.access(manifestPath);
-        logger.info(`[app-market] Found local manifest at: ${manifestPath}`);
-        const content = await fs.readFile(manifestPath, 'utf-8');
-        return JSON.parse(content);
-      } catch (err) {
-        logger.debug(`[app-market] Not found at: ${manifestPath}`);
-      }
-    }
-    
-    throw new Error(`App ${appId} not found in any local apps directory`);
+    const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+    const content = await fs.readFile(manifestPath, 'utf-8');
+    return JSON.parse(content);
   }
 
   /**
@@ -258,25 +240,8 @@ class AppMarketService {
   }
 
   async fetchLocalHandler(appId, handlerName) {
-    const possiblePaths = [
-      path.join(process.cwd(), 'apps'),
-      path.join(process.cwd(), '..', 'apps'),
-      path.join(process.dirname(process.cwd()), 'apps'),
-      path.resolve('apps'),
-    ];
-    
-    for (const appsDir of possiblePaths) {
-      const handlerPath = path.join(appsDir, appId, 'handlers', handlerName, 'index.js');
-      try {
-        await fs.access(handlerPath);
-        logger.info(`[app-market] Found local handler at: ${handlerPath}`);
-        return await fs.readFile(handlerPath, 'utf-8');
-      } catch (err) {
-        logger.debug(`[app-market] Handler not found at: ${handlerPath}`);
-      }
-    }
-    
-    throw new Error(`Handler ${handlerName} for ${appId} not found in any local apps directory`);
+    const handlerPath = path.join(this.appsDir, appId, 'handlers', handlerName, 'index.js');
+    return await fs.readFile(handlerPath, 'utf-8');
   }
 
   /**
