@@ -38,18 +38,6 @@
         <div class="cfa-stat-value">{{ vectorizationRatio }}</div>
         <div class="cfa-stat-label">向量化比</div>
       </div>
-      <div class="cfa-stat-card" style="background:#fef3c7">
-        <div class="cfa-stat-value">{{ eventCount }}</div>
-        <div class="cfa-stat-label">尖峰/事件数</div>
-      </div>
-      <div class="cfa-stat-card" style="background:#ffe4e6">
-        <div class="cfa-stat-value">{{ duplicateGroups }}</div>
-        <div class="cfa-stat-label">冲突Y值组数</div>
-      </div>
-      <div class="cfa-stat-card" style="background:#ffeef2">
-        <div class="cfa-stat-value">{{ duplicateRatio }}</div>
-        <div class="cfa-stat-label">冲突Y值占比</div>
-      </div>
       <div class="cfa-stat-card" style="background:#eefaf3">
         <div class="cfa-stat-value">{{ absoluteResolution }}</div>
         <div class="cfa-stat-label">绝对电流分辨率</div>
@@ -80,14 +68,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CompressionMeta, DuplicateDiagnosis, SegmentItem } from '../api/current-feature-analyzer'
+import type { CompressionMeta, SegmentItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
   rawPointCount: number
   segments?: SegmentItem[]
-  events?: Array<Record<string, unknown>>
   globals?: Record<string, number> | null
-  duplicateDiagnosis?: DuplicateDiagnosis | null
   compressionMeta?: CompressionMeta | null
 }>()
 
@@ -123,12 +109,6 @@ const plateauCount = computed(() => {
 const trendCount = computed(() => {
   if (!props.segments) return 0
   return props.segments.filter(s => typeof s.kind === 'string' && trendKindSet.has(s.kind)).length
-})
-const eventCount = computed(() => props.events?.length ?? 0)
-const duplicateGroups = computed(() => props.duplicateDiagnosis?.duplicate_groups ?? '-')
-const duplicateRatio = computed(() => {
-  if (!props.rawPointCount || !props.duplicateDiagnosis?.duplicate_groups) return '-'
-  return `${((props.duplicateDiagnosis.duplicate_groups / props.rawPointCount) * 100).toFixed(2)}%`
 })
 const absoluteResolution = computed(() => props.compressionMeta?.absolute_resolution != null ? `${Number(props.compressionMeta.absolute_resolution).toFixed(6)} A` : '-')
 const relativeResolution = computed(() => props.compressionMeta?.relative_resolution != null ? Number(props.compressionMeta.relative_resolution).toFixed(3) : '-')

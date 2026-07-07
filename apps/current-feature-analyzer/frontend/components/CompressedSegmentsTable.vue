@@ -20,6 +20,12 @@
           <el-tag size="small" effect="plain">{{ scope.row.kind || '-' }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="开始电流" min-width="110">
+        <template #default="scope">{{ formatNumber(scope.row.start_current) }}</template>
+      </el-table-column>
+      <el-table-column label="结束电流" min-width="110">
+        <template #default="scope">{{ formatNumber(scope.row.end_current) }}</template>
+      </el-table-column>
       <el-table-column label="开始时间" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.start_time) }}</template>
       </el-table-column>
@@ -56,7 +62,7 @@ defineProps<{ segments: SegmentItem[] }>()
 
 function formatNumber(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toFixed(4)
+  return value.toFixed(6)
 }
 </script>
 

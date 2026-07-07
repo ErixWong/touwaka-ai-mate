@@ -203,7 +203,7 @@ const cycleGroups = computed(() => {
 })
 
 function formatNumber(value: number | null | undefined) {
-  return Number.isFinite(Number(value)) ? Number(value).toFixed(4) : '-'
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(6) : '-'
 }
 
 function formatConfidence(value: number | null | undefined) {

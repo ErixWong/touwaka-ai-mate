@@ -105,14 +105,19 @@ export async function post(ctx, deps) {
         const globals = normalizedResult.globals || {}
         const segments = Array.isArray(normalizedResult.segments) ? normalizedResult.segments : []
         const events = Array.isArray(normalizedResult.events) ? normalizedResult.events : []
+        const compressionMeta = normalizedResult.compression_meta && typeof normalizedResult.compression_meta === 'object'
+          ? normalizedResult.compression_meta
+          : null
+        const rawData = file.raw_data || []
         const llmResult = await stageRecognitionWorkflowService.recognize(globals, segments, events, ruleSet, appConfig)
-        const stageMetrics = stageMetricsService.calculate(file.raw_data || [], llmResult)
-        const fileMetrics = stageMetricsService.buildFileMetrics(file.raw_data || [], segments, stageMetrics, llmResult)
+        const stageMetrics = stageMetricsService.calculate(rawData, llmResult)
+        const fileMetrics = stageMetricsService.buildFileMetrics(rawData, segments, stageMetrics, llmResult)
 
         uploadSessionService.setFileResult(batch_id, file.file_id, {
           globals,
           segments,
           events,
+          compression_meta: compressionMeta,
           llm_result: llmResult,
           stage_metrics: stageMetrics,
           file_metrics: fileMetrics,
