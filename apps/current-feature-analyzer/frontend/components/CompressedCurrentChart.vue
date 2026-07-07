@@ -12,8 +12,28 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
-import * as echarts from 'echarts'
+import { use, init } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, ScatterChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  DataZoomComponent,
+} from 'echarts/components'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
+
+use([
+  CanvasRenderer,
+  LineChart,
+  ScatterChart,
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  DataZoomComponent,
+])
 
 const props = defineProps<{
   fileName: string
@@ -116,7 +136,7 @@ function resetFocusRange() {
 function renderCompressed() {
   if (!chartRef.value) return
   if (!chartInstance) {
-    chartInstance = echarts.init(chartRef.value)
+    chartInstance = init(chartRef.value)
     resizeHandler = () => chartInstance?.resize()
     window.addEventListener('resize', resizeHandler)
   }

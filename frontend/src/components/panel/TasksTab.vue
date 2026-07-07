@@ -532,7 +532,6 @@ import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 import CodePreview from '@/components/CodePreview.vue'
 import type { Task, TaskFile, TaskStatus } from '@/types'
-import { renderMermaidInHtml } from '@/utils/mermaid'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 
 const { t } = useI18n()
@@ -1242,6 +1241,7 @@ const renderMarkdownWithMermaid = async (content: string): Promise<void> => {
     let cleanHtml = markdownFormatter.formatMessage(content)
 
     if (containsMermaid(content)) {
+      const { renderMermaidInHtml } = await import('@/utils/mermaid')
       cleanHtml = await renderMermaidInHtml(cleanHtml)
     }
     

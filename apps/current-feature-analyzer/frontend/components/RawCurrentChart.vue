@@ -15,8 +15,23 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
-import * as echarts from 'echarts'
+import { use, init } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  TooltipComponent,
+  GridComponent,
+} from 'echarts/components'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
+
+use([
+  CanvasRenderer,
+  LineChart,
+  TitleComponent,
+  TooltipComponent,
+  GridComponent,
+])
 
 const props = defineProps<{
   fileName: string
@@ -138,7 +153,7 @@ async function renderRaw() {
   if (!chartRef.value) return
 
   if (!chartInstance) {
-    chartInstance = echarts.init(chartRef.value)
+    chartInstance = init(chartRef.value)
     resizeHandler = () => chartInstance?.resize()
     window.addEventListener('resize', resizeHandler)
   }

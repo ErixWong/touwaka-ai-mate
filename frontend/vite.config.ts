@@ -75,11 +75,30 @@ export default defineConfig(({ command }) => ({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['vue', 'vue-router', 'pinia'],
-          elementPlus: ['element-plus'],
-          i18n: ['vue-i18n'],
-          chatbot: ['@aivue/chatbot'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('echarts') || id.includes('vue-echarts')) {
+              return 'echarts'
+            }
+            if (id.includes('katex')) {
+              return 'katex'
+            }
+            if (id.includes('mermaid')) {
+              return 'mermaid'
+            }
+            if (id.includes('marked') || id.includes('dompurify')) {
+              return 'markdown'
+            }
+            if (id.includes('vue-i18n')) {
+              return 'i18n'
+            }
+            if (id.includes('node_modules/vue') || id.includes('node_modules/vue-router') || id.includes('node_modules/pinia')) {
+              if (id.includes('node_modules/mermaid') || id.includes('node_modules/d3') || id.includes('node_modules/dagre')) {
+                return 'mermaid'
+              }
+              return 'vendor'
+            }
+          }
         },
       },
     },

@@ -58,13 +58,29 @@
           <div v-if="!store.currentFile" class="cfa-empty-detail">
             <div class="cfa-empty-guide">
               <p class="cfa-empty-title">电流特征分析</p>
-               <p class="cfa-empty-sub">批量上传 CSV，前端完成压缩，后端同步识别阶段并生成指标</p>
+              <p class="cfa-empty-sub">批量上传 CSV，前端完成压缩，后端同步识别阶段并生成指标</p>
               <ul class="cfa-empty-steps">
                 <li>1. 点击「上传 CSV」上传一个或多个文件</li>
                 <li>2. 选择分析规则集</li>
                 <li>3. 提交任务后自动开始识别</li>
                 <li>4. 分析完成后点击「导出报告」</li>
               </ul>
+              <div class="cfa-file-format-example">
+                <p class="cfa-format-title">支持的文件格式：CSV（支持多种列名）</p>
+                <div class="cfa-format-preview">
+                  <pre>time,current
+0.0,1.23
+0.1,1.25
+0.2,1.28
+0.3,1.30
+...</pre>
+                </div>
+                <ul class="cfa-format-rules">
+                  <li>时间列：time(s)、time、timestamp、second、sec、s、t、时间、秒（任选其一）</li>
+                  <li>电流列：current(A)、current、ampere、amp、a、i、电流、安培（任选其一）</li>
+                  <li>自动识别前两列，如列名不匹配则按位置识别</li>
+                </ul>
+              </div>
               <p class="cfa-empty-note">页面刷新后分析结果将失效，请及时导出</p>
             </div>
           </div>
@@ -336,6 +352,41 @@ async function onSaveConfig(config: AppConfig) {
   margin-bottom: 16px;
   font-size: 14px;
   line-height: 2;
+}
+.cfa-file-format-example {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  text-align: left;
+}
+.cfa-format-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--el-text-color-primary);
+}
+.cfa-format-preview {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+}
+.cfa-format-preview pre {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-primary);
+}
+.cfa-format-rules {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.8;
 }
 .cfa-empty-note {
   font-size: 12px;
