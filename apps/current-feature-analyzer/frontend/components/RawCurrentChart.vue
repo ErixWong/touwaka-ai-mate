@@ -2,7 +2,9 @@
   <el-card shadow="never">
     <template #header>
       <span class="card-title">电流曲线（原始数据）</span>
-      <el-tag v-if="isSampled" size="small" type="info" style="margin-left: 8px">已采样 {{ sampledCount }} / {{ totalCount }} 点</el-tag>
+      <el-tag v-if="hasData" size="small" type="info" style="margin-left: 8px">
+        {{ isSampled ? `当前窗口已采样 ${sampledCount} / ${totalCount} 点` : `当前窗口显示 ${sampledCount} / ${totalCount} 点` }}
+      </el-tag>
     </template>
     <div class="cfa-chart-wrap" :style="chartStyle">
       <div ref="chartRef" class="cfa-chart" :style="chartStyle" v-show="hasData"></div>
@@ -31,51 +33,62 @@ const sampledCount = ref(0)
 const totalCount = ref(0)
 let chartInstance: any = null
 let resizeHandler: (() => void) | null = null
-const pointCache = new Map<string, { points: number[][]; totalCount: number; sampledCount: number; isSampled: boolean }>()
+let focusRangeTimer: ReturnType<typeof setTimeout> | null = null
 
 const MAX_POINTS = 3000
 const chartStyle = computed(() => ({ height: `${props.chartHeight ?? 250}px` }))
 
-function getPoints(): number[][] {
-  const cacheKey = `${props.fileName}::${props.rawData?.length ?? 0}`
-  const cached = pointCache.get(cacheKey)
-  if (cached) {
-    totalCount.value = cached.totalCount
-    sampledCount.value = cached.sampledCount
-    isSampled.value = cached.isSampled
-    return cached.points
+function lowerBound(points: number[][], target: number) {
+  let left = 0
+  let right = points.length
+  while (left < right) {
+    const mid = Math.floor((left + right) / 2)
+    if ((points[mid]?.[0] ?? 0) < target) {
+      left = mid + 1
+    } else {
+      right = mid
+    }
   }
+  return left
+}
 
-  if (props.rawData && Array.isArray(props.rawData) && props.rawData.length > 0) {
-    totalCount.value = props.rawData.length
-    if (props.rawData.length <= MAX_POINTS) {
-      isSampled.value = false
-      sampledCount.value = props.rawData.length
-      pointCache.set(cacheKey, {
-        points: props.rawData,
-        totalCount: totalCount.value,
-        sampledCount: sampledCount.value,
-        isSampled: isSampled.value,
-      })
-      return props.rawData
+function upperBound(points: number[][], target: number) {
+  let left = 0
+  let right = points.length
+  while (left < right) {
+    const mid = Math.floor((left + right) / 2)
+    if ((points[mid]?.[0] ?? 0) <= target) {
+      left = mid + 1
+    } else {
+      right = mid
     }
-    const step = props.rawData.length / MAX_POINTS
-    const sampled: number[][] = []
-    for (let i = 0; i < MAX_POINTS; i++) {
-      const point = props.rawData[Math.floor(i * step)]
-      if (point) {
-        sampled.push(point)
-      }
-    }
-    isSampled.value = true
-    sampledCount.value = sampled.length
-    pointCache.set(cacheKey, {
-      points: sampled,
-      totalCount: totalCount.value,
-      sampledCount: sampledCount.value,
-      isSampled: isSampled.value,
-    })
-    return sampled
+  }
+  return left
+}
+
+function sampleWindow(points: number[][], startIndex = 0, endExclusive = points.length): number[][] {
+  const count = Math.max(0, endExclusive - startIndex)
+  if (count <= MAX_POINTS) return points.slice(startIndex, endExclusive)
+  const sampled: number[][] = []
+  const step = (count - 1) / (MAX_POINTS - 1)
+  for (let i = 0; i < MAX_POINTS; i++) {
+    const point = points[startIndex + Math.round(i * step)]
+    if (point) sampled.push(point)
+  }
+  return sampled
+}
+
+function getPoints(): number[][] {
+  const raw = props.rawData
+  if (raw && Array.isArray(raw) && raw.length > 0) {
+    const range = getNormalizedFocusRange()
+    const startIndex = range ? lowerBound(raw, range[0]) : 0
+    const endExclusive = range ? upperBound(raw, range[1]) : raw.length
+    totalCount.value = Math.max(0, endExclusive - startIndex)
+    const points = sampleWindow(raw, startIndex, endExclusive)
+    sampledCount.value = points.length
+    isSampled.value = totalCount.value > points.length
+    return points
   }
 
   totalCount.value = 0
@@ -85,6 +98,10 @@ function getPoints(): number[][] {
 }
 
 function disposeChart() {
+  if (focusRangeTimer) {
+    clearTimeout(focusRangeTimer)
+    focusRangeTimer = null
+  }
   if (resizeHandler) {
     window.removeEventListener('resize', resizeHandler)
     resizeHandler = null
@@ -104,14 +121,13 @@ function getNormalizedFocusRange() {
 }
 
 function applyFocusRange() {
-  if (!chartInstance) return
-  const range = getNormalizedFocusRange()
-  chartInstance.setOption({
-    xAxis: {
-      min: range ? range[0] : null,
-      max: range ? range[1] : null,
-    },
-  })
+  if (focusRangeTimer) {
+    clearTimeout(focusRangeTimer)
+  }
+  focusRangeTimer = setTimeout(() => {
+    focusRangeTimer = null
+    nextTick(() => renderRaw())
+  }, 80)
 }
 
 async function renderRaw() {
@@ -145,7 +161,7 @@ async function renderRaw() {
       lineStyle: { color: 'rgba(45, 156, 219, 1)', width: 1.4 },
       areaStyle: { color: 'rgba(45, 156, 219, 0.12)' },
     }],
-  }, true)
+  })
 }
 
 onMounted(() => {
@@ -165,7 +181,7 @@ watch(() => props.chartHeight, () => {
 })
 
 watch(() => props.focusRange, () => {
-  nextTick(() => applyFocusRange())
+  applyFocusRange()
 })
 </script>
 

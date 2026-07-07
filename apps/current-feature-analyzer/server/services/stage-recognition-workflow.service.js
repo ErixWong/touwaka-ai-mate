@@ -95,13 +95,11 @@ class StageRecognitionWorkflowService {
         }
 
         if (parsed && parsed.stages && Array.isArray(parsed.stages)) {
-          parsed.stages = parsed.stages.filter(s => s.start_time != null && s.end_time != null);
-          parsed.stages.sort((a, b) => a.start_time - b.start_time);
-          for (const stage of parsed.stages) {
-            if (stage.start_time > stage.end_time) {
-              [stage.start_time, stage.end_time] = [stage.end_time, stage.start_time];
-            }
-          }
+          parsed.stages = this.normalizeRecognizedStages(
+            parsed.stages,
+            segments?.[0]?.start_time,
+            segments?.[segments.length - 1]?.end_time,
+          );
           // 始终保留 LLM 原始返回，便于前端和调试查看
           parsed._debug = {
             content: content || '',
@@ -109,6 +107,8 @@ class StageRecognitionWorkflowService {
             content_length: typeof content === 'string' ? content.length : 0,
             reasoning_length: typeof reasoningContent === 'string' ? reasoningContent.length : 0,
             parsed_from: this.detectParsedSource(content, reasoningContent),
+            system_prompt_preview: this.buildLogPreview(finalSystemPrompt),
+            user_prompt_preview: this.buildLogPreview(finalUserPrompt),
           };
           return parsed;
         }
@@ -121,6 +121,8 @@ class StageRecognitionWorkflowService {
           content_preview,
           reasoning_preview,
           parsed_from: this.detectParsedSource(content, reasoningContent),
+          system_prompt_preview: this.buildLogPreview(finalSystemPrompt),
+          user_prompt_preview: this.buildLogPreview(finalUserPrompt),
         };
 
         logger.warn('[cfa llm] invalid JSON response details:', {
@@ -136,7 +138,11 @@ class StageRecognitionWorkflowService {
             summary: 'LLM 调用失败',
             warnings: [{ message: `LLM 调用失败（已重试 ${retryTimes} 次）: ${err.message}` }],
             _error: err.message,
-            _debug: lastDebugResponse,
+            _debug: {
+              ...lastDebugResponse,
+              system_prompt_preview: this.buildLogPreview(finalSystemPrompt),
+              user_prompt_preview: this.buildLogPreview(finalUserPrompt),
+            },
           };
         }
       }
@@ -263,8 +269,11 @@ class StageRecognitionWorkflowService {
       return null;
     }
 
+    const firstSegmentStart = segments[0]?.start_time;
+    const lastSegmentEnd = segments[segments.length - 1]?.end_time;
+
     return {
-      stages: this.normalizeStages(fallbackStages),
+      stages: this.normalizeStagesWithinRange(fallbackStages, firstSegmentStart, lastSegmentEnd),
       summary: 'LLM 未返回合法 JSON，已按压缩段规则生成候选阶段',
       warnings: [{ message: '结果来自规则兜底，请人工复核' }],
       _debug: {
@@ -303,6 +312,46 @@ class StageRecognitionWorkflowService {
       .sort((a, b) => a.start_time - b.start_time);
 
     return this.assignCycleMarkers(normalized);
+  }
+
+  normalizeRecognizedStages(stages, startTime, endTime) {
+    const rangeStart = Number(startTime);
+    const rangeEnd = Number(endTime);
+    const normalized = stages
+      .filter(stage => stage && Number.isFinite(Number(stage.start_time)) && Number.isFinite(Number(stage.end_time)))
+      .map(stage => {
+        let start = Number(stage.start_time);
+        let end = Number(stage.end_time);
+        if (start > end) {
+          [start, end] = [end, start];
+        }
+        if (Number.isFinite(rangeStart)) {
+          start = Math.max(start, rangeStart);
+          end = Math.max(end, rangeStart);
+        }
+        if (Number.isFinite(rangeEnd)) {
+          start = Math.min(start, rangeEnd);
+          end = Math.min(end, rangeEnd);
+        }
+        return {
+          ...stage,
+          start_time: Number(Math.min(start, end).toFixed(6)),
+          end_time: Number(Math.max(start, end).toFixed(6)),
+        };
+      })
+      .filter(stage => stage.end_time > stage.start_time)
+      .sort((a, b) => a.start_time - b.start_time);
+
+    const originalCount = Array.isArray(stages) ? stages.length : 0;
+    if (normalized.length !== originalCount) {
+      return normalized;
+    }
+
+    return this.assignCycleMarkers(normalized);
+  }
+
+  normalizeStagesWithinRange(stages, startTime, endTime) {
+    return this.normalizeRecognizedStages(stages, startTime, endTime);
   }
 
   assignCycleMarkers(stages) {
@@ -346,10 +395,12 @@ class StageRecognitionWorkflowService {
 
   buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length) {
     const stageDefs = ruleSet.stages || [];
+    const firstSegmentStart = Number(segments?.[0]?.start_time);
+    const lastSegmentEnd = Number(segments?.[segments.length - 1]?.end_time);
 
     let segText = '';
     for (const seg of segments) {
-      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 电流均值${seg.mean_current}A, 点数${seg.point_count}, 斜率${seg.slope}, 基线比${seg.baseline_ratio}, 开始电流${seg.start_current}A, 结束电流${seg.end_current}A\n`;
+      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 点数${seg.point_count}, 开始电流${seg.start_current}A, 结束电流${seg.end_current}A, 带宽${seg.bandwidth}A, 斜率${seg.slope}\n`;
     }
 
     let ruleText = '';
@@ -360,6 +411,7 @@ class StageRecognitionWorkflowService {
     return `文件摘要:
  总点数: ${segments.reduce((s, seg) => s + seg.point_count, 0)}
  全局: 最小电流 ${globals.min_current}A, 最大电流 ${globals.max_current}A, 均值 ${globals.mean_current}A, 基线均值 ${globals.baseline_mean}A, 采样间隔${globals.sample_interval}s
+ 时间范围: ${Number.isFinite(firstSegmentStart) ? firstSegmentStart : '-'}s -> ${Number.isFinite(lastSegmentEnd) ? lastSegmentEnd : '-'}s
    压缩段数量: 原始 ${originalSegmentCount} 段，本次送审 ${segments.length} 段
 
  压缩段列表:
@@ -369,7 +421,8 @@ class StageRecognitionWorkflowService {
  阶段定义:
  ${ruleText}
 
- 请根据上述压缩段信息和规则集，识别并返回各阶段的起止时间。`;
+ 请根据上述压缩段信息和规则集，识别并返回各阶段的起止时间。
+ 所有阶段时间必须落在给定时间范围内，不允许早于首个采样时间，也不允许晚于最后一个采样时间。`;
   }
 
   reduceSegmentsForLlm(segments) {
