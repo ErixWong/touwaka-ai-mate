@@ -115,6 +115,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { InfoFilled, RefreshRight } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import type { AppConfig } from '../api/current-feature-analyzer'
@@ -171,9 +172,15 @@ async function onLaunchTask(payload: { files: File[]; ruleSetId: string; overwri
 }
 
 async function onSaveConfig(config: AppConfig) {
-  await currentFeatureAnalyzerApi.saveConfig(config)
-  await store.loadConfig()
-  showConfigModal.value = false
+  try {
+    await currentFeatureAnalyzerApi.saveConfig(config)
+    await store.loadConfig()
+    showConfigModal.value = false
+    ElMessage.success('管理员配置已保存')
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : '保存管理员配置失败'
+    ElMessage.error(message)
+  }
 }
 </script>
 
