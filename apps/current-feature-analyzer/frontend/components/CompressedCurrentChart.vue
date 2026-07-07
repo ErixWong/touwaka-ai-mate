@@ -12,7 +12,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
-import { use } from 'echarts/core'
+import { use, init } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, ScatterChart } from 'echarts/charts'
 import {
@@ -22,7 +22,6 @@ import {
   GridComponent,
   DataZoomComponent,
 } from 'echarts/components'
-import * as echarts from 'echarts'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
 
 use([
@@ -137,7 +136,7 @@ function resetFocusRange() {
 function renderCompressed() {
   if (!chartRef.value) return
   if (!chartInstance) {
-    chartInstance = echarts.init(chartRef.value)
+    chartInstance = init(chartRef.value)
     resizeHandler = () => chartInstance?.resize()
     window.addEventListener('resize', resizeHandler)
   }
