@@ -266,6 +266,9 @@ function createSegment(points: RawPoint[], startIndex: number, endIndex: number,
     end_time: Number(endTime.toFixed(6)),
     duration: Number(duration.toFixed(6)),
     point_count: pointCount,
+    start_current: Number(startPoint[1].toFixed(6)),
+    end_current: Number(endPoint[1].toFixed(6)),
+    delta_current: Number((endPoint[1] - startPoint[1]).toFixed(6)),
     min_current: Number(minCurrent.toFixed(6)),
     max_current: Number(maxCurrent.toFixed(6)),
     mean_current: Number(meanCurrent.toFixed(6)),
@@ -335,6 +338,9 @@ function summarizeBucket(bucket: InternalSegment[], globals: Globals, options: C
   const bandwidth = maxCurrent - minCurrent
   const slope = duration > 0 ? ((bucket[bucket.length - 1]!.mean_current || 0) - (bucket[0]!.mean_current || 0)) / duration : 0
   const lineFitError = bucket.reduce((sum, item) => sum + (item.line_fit_error || 0) * (item.point_count || 0), 0) / Math.max(pointCount, 1)
+  // 边界电流：取合并前第一个段的 start_current 和最后一个段的 end_current
+  const startCurrent = bucket[0]!.start_current ?? bucket[0]!.mean_current ?? 0
+  const endCurrent = bucket[bucket.length - 1]!.end_current ?? bucket[bucket.length - 1]!.mean_current ?? 0
 
   return {
     segment_index: -1,
@@ -344,6 +350,9 @@ function summarizeBucket(bucket: InternalSegment[], globals: Globals, options: C
     end_time: Number(endTime.toFixed(6)),
     duration: Number(duration.toFixed(6)),
     point_count: pointCount,
+    start_current: Number(startCurrent.toFixed(6)),
+    end_current: Number(endCurrent.toFixed(6)),
+    delta_current: Number((endCurrent - startCurrent).toFixed(6)),
     min_current: Number(minCurrent.toFixed(6)),
     max_current: Number(maxCurrent.toFixed(6)),
     mean_current: Number(meanCurrent.toFixed(6)),
@@ -543,7 +552,11 @@ function runCompression(points: RawPoint[], options: CompressionOptions, globals
   const initialSegments = buildInitialSegments(points, options, globals)
   const mergedSegments = mergeSegments(initialSegments, options, globals)
   const segments = attachPolylinePoints(mergedSegments, points, globals, options) as SegmentItem[]
-  return { globals, segments, events: extractEvents(segments as InternalSegment[]) }
+  return {
+    globals,
+    segments,
+    events: extractEvents(segments as InternalSegment[]),
+  }
 }
 
 function optimizeCompressionOptions(points: RawPoint[], baseOptions: CompressionOptions): OptimizedCompressionResult {

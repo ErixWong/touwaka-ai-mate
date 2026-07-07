@@ -135,6 +135,12 @@ export interface SegmentItem {
   kind?: string | null
   polyline_points?: number[][] | null
   polyline_point_count?: number
+  /** 段首原始点电流值，来源 points[start_index][1] */
+  start_current?: number
+  /** 段尾原始点电流值，来源 points[end_index][1] */
+  end_current?: number
+  /** end_current - start_current */
+  delta_current?: number
 }
 
 export interface CompressionMeta {

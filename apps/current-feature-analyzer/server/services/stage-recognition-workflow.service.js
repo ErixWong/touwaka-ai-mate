@@ -349,7 +349,7 @@ class StageRecognitionWorkflowService {
 
     let segText = '';
     for (const seg of segments) {
-      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 电流均值${seg.mean_current}A, 点数${seg.point_count}, 斜率${seg.slope}, 基线比${seg.baseline_ratio}\n`;
+      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 电流均值${seg.mean_current}A, 点数${seg.point_count}, 斜率${seg.slope}, 基线比${seg.baseline_ratio}, 开始电流${seg.start_current}A, 结束电流${seg.end_current}A\n`;
     }
 
     let ruleText = '';
@@ -358,19 +358,18 @@ class StageRecognitionWorkflowService {
     }
 
     return `文件摘要:
-总点数: ${segments.reduce((s, seg) => s + seg.point_count, 0)}
-全局: 最小电流 ${globals.min_current}A, 最大电流 ${globals.max_current}A, 均值 ${globals.mean_current}A, 基线均值 ${globals.baseline_mean}A
-  压缩段数量: 原始 ${originalSegmentCount} 段，本次送审 ${segments.length} 段
+ 总点数: ${segments.reduce((s, seg) => s + seg.point_count, 0)}
+ 全局: 最小电流 ${globals.min_current}A, 最大电流 ${globals.max_current}A, 均值 ${globals.mean_current}A, 基线均值 ${globals.baseline_mean}A, 采样间隔${globals.sample_interval}s
+   压缩段数量: 原始 ${originalSegmentCount} 段，本次送审 ${segments.length} 段
 
-压缩段列表:
-${segText}
+ 压缩段列表:
+ ${segText}
+ 当前规则集:
+ 场景说明: ${ruleSet.description || '无'}
+ 阶段定义:
+ ${ruleText}
 
-当前规则集:
-场景说明: ${ruleSet.description || '无'}
-阶段定义:
-${ruleText}
-
-请根据上述压缩段信息和规则集，识别并返回各阶段的起止时间。`;
+ 请根据上述压缩段信息和规则集，识别并返回各阶段的起止时间。`;
   }
 
   reduceSegmentsForLlm(segments) {
