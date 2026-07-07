@@ -15,7 +15,6 @@ import { APIError } from '@/api/client'
 import { normalizeApiError, enhanceApiError } from '../composables/useCurrentFeatureAnalyzerError'
 import { runLocalCurrentFeatureAnalysis } from '../utils/local-analysis'
 import { runLocalCurrentFeatureAnalysisAsync } from '../utils/local-analysis-worker'
-import { exportCurrentFeatureAnalyzerReport } from '../utils/export-report'
 
 type FileDetailData = Pick<SessionFileItem, 'raw_data' | 'result' | '_duplicate_diagnosis'>
 
@@ -441,6 +440,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       return
     }
     try {
+      const { exportCurrentFeatureAnalyzerReport } = await import('../utils/export-report')
       await exportCurrentFeatureAnalyzerReport({
         batchId: batchId.value,
         files: files.value,

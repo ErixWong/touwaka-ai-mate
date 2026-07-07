@@ -5,6 +5,13 @@ import katex from 'katex'
 import type { ChatMessage } from '@/components/ChatWindow.vue'
 import { renderMermaidInHtml } from '@/utils/mermaid'
 
+let katexCssLoaded = false
+const loadKatexCss = () => {
+  if (katexCssLoaded) return Promise.resolve()
+  katexCssLoaded = true
+  return import('katex/dist/katex.min.css')
+}
+
 marked.setOptions({
   breaks: true,
   gfm: true,
@@ -144,6 +151,8 @@ const sanitizeMarkdownHtml = (rawHtml: string): string => {
 
 const formatMessage = (content: string, cacheKey?: string) => {
   if (!content) return ''
+
+  loadKatexCss()
 
   const effectiveCacheKey = cacheKey || content
   const cached = formattedCache.get(effectiveCacheKey)
