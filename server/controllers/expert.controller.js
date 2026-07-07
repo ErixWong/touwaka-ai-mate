@@ -5,30 +5,21 @@
  *
  * 使用 Sequelize ORM 进行数据库操作
  *
- * === knowledge_config 迁移策略 ===
+ * === knowledge_config 终态语义 ===
  *
- * knowledge_config 是旧"知识策略/自动预检索"模式的配置容器，正在逐步退场。
+ * 旧自动预检索路径已于 2026-07-07 退场，当前仅保留 tool 路径（document_retrieval）。
  *
- * 迁移阶段：
- *   阶段 1 (当前)：兼容读取 + retire_auto_path 灰度切换
- *     - enabled: 仍作为自动检索的总开关，但新增 retire_auto_path 可覆盖关闭
- *     - retire_auto_path: true → 关闭自动预检索，完全走 tool 路径
- *     - collection_id / doc_types: 仅作为自动检索的过滤条件，不影响权限
- *   阶段 2 (下一步)：enabled 不再作为默认触发源
- *     - 当 retire_auto_path 稳定后，enabled 将仅保留为历史兼容字段
- *   阶段 3 (最终)：knowledge_config 整体标记为 deprecated
- *     - style / max_tokens 等注入格式字段随自动预检索路径一并退场
- *     - collection_id / doc_types 语义迁移至 tool 参数
+ * 活跃字段：
+ *   - enabled: document_retrieval 工具的总开关
+ *   - collection_id / doc_types: tool 默认过滤条件
  *
- * 当前行为：
- *   - 未设置 retire_auto_path → enabled=true 时自动检索（兼容旧行为）
- *   - 设置 retire_auto_path=true → 跳过自动检索，由 LLM 通过 document_retrieval tool 检索
- *   - enabled=false → 不检索（与旧行为一致）
+ * 数据兼容（仅保留读取，不再消费）：
+ *   - top_k / threshold / max_tokens / style: 旧自动路径专属，已不再消费
+ *   - retire_auto_path: 迁移门控字段，已随旧路径退场移除
  *
  * 数据兼容：
  *   - 历史 expert 记录的 knowledge_config 字段不做修改
- *   - 读取时安全解析 JSON，缺失的 retire_auto_path 默认为 false
- *   - 写入时不新增字段校验，保留 knowledge_config 的灵活写入
+ *   - 读取时安全解析 JSON
  */
 
 import logger from '../../lib/logger.js';

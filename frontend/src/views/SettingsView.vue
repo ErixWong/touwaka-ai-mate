@@ -835,27 +835,17 @@
         </el-tab-pane>
 
         <el-tab-pane :label="$t('settings.expertKnowledgeStrategy')" name="knowledge">
-          <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 16px;">
-            <template #title>{{ $t('settings.expertKnowledgeDeprecationTitle') }}</template>
-            <template #default>{{ $t('settings.expertKnowledgeDeprecationBody') }}</template>
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px;">
+            <template #title>{{ $t('settings.expertKnowledgeToolOnlyTitle') }}</template>
+            <template #default>{{ $t('settings.expertKnowledgeToolOnlyBody') }}</template>
           </el-alert>
-          <el-form-item>
-            <el-switch v-model="expertForm.knowledge_config.retire_auto_path" />
-            <span class="inline-switch-label">{{ $t('settings.expertKnowledgeRetireAutoPath') }}</span>
-            <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeRetireAutoPathHint') }}</div>
-          </el-form-item>
           <el-form-item>
             <el-switch v-model="expertForm.knowledge_config.enabled" />
             <span class="inline-switch-label">{{ $t('settings.expertKnowledgeEnabled') }}</span>
             <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeEnabledHint') }}</div>
           </el-form-item>
 
-          <!--
-            knowledge_config 字段分组（对齐 lib/chat-service.js 分类）：
-            - 控制面（始终可见）：enabled、retire_auto_path
-            - 双用途（新旧共用，始终可见）：collection_id、doc_types
-            - 旧路径专属（仅 !retire_auto_path 可见）：top_k、threshold、max_tokens、style
-          -->
+          <!-- knowledge_config 终态：仅 tool 路径，以下字段作为 tool 默认过滤条件 -->
           <template v-if="expertForm.knowledge_config.enabled">
             <el-divider content-position="left">
               <span style="font-size: 12px; color: #909399;">{{ $t('settings.expertKnowledgeToolFilterGroup') }}</span>
@@ -882,42 +872,6 @@
               </el-select>
               <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeDocTypesHint') }}</div>
             </el-form-item>
-
-            <template v-if="!expertForm.knowledge_config.retire_auto_path">
-              <el-divider content-position="left">
-                <span style="font-size: 12px; color: #e6a23c;">{{ $t('settings.expertKnowledgeLegacyGroup') }}</span>
-              </el-divider>
-
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item :label="$t('settings.expertKnowledgeTopK')">
-                    <el-input-number v-model="expertForm.knowledge_config.top_k" :min="1" :max="20" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item :label="$t('settings.expertKnowledgeThreshold')">
-                    <el-input-number v-model="expertForm.knowledge_config.threshold" :min="0" :max="1" :step="0.05" :precision="2" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item :label="$t('settings.expertKnowledgeMaxTokens')">
-                    <el-input-number v-model="expertForm.knowledge_config.max_tokens" :min="200" :max="8000" :step="100" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item :label="$t('settings.expertKnowledgeStyle')">
-                    <el-select v-model="expertForm.knowledge_config.style">
-                      <el-option :label="$t('settings.expertKnowledgeStyleDefault')" value="default" />
-                      <el-option :label="$t('settings.expertKnowledgeStyleConcise')" value="concise" />
-                      <el-option :label="$t('settings.expertKnowledgeStyleDetailed')" value="detailed" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-            </template>
           </template>
         </el-tab-pane>
       </el-tabs>
@@ -1443,13 +1397,8 @@ const expertForm = reactive({
   presence_penalty: 0.0,
   knowledge_config: {
     enabled: false,
-    retire_auto_path: false,
     collection_id: '',
     doc_types: [] as string[],
-    top_k: 5,
-    threshold: 0.7,
-    max_tokens: 2000,
-    style: 'default' as 'default' | 'concise' | 'detailed',
   },
   // 工具调用配置
   max_tool_rounds: null as number | null,
@@ -2204,13 +2153,8 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.presence_penalty = expert.presence_penalty ?? 0.0
     expertForm.knowledge_config = {
       enabled: expert.knowledge_config?.enabled ?? false,
-      retire_auto_path: expert.knowledge_config?.retire_auto_path ?? false,
       collection_id: expert.knowledge_config?.collection_id || '',
       doc_types: expert.knowledge_config?.doc_types || [],
-      top_k: expert.knowledge_config?.top_k ?? 5,
-      threshold: expert.knowledge_config?.threshold ?? 0.7,
-      max_tokens: expert.knowledge_config?.max_tokens ?? 2000,
-      style: expert.knowledge_config?.style ?? 'default',
     }
     // 工具调用配置
     expertForm.max_tool_rounds = expert.max_tool_rounds ?? null
@@ -2241,13 +2185,8 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.presence_penalty = 0.0
     expertForm.knowledge_config = {
       enabled: false,
-      retire_auto_path: false,
       collection_id: '',
       doc_types: [],
-      top_k: 5,
-      threshold: 0.7,
-      max_tokens: 2000,
-      style: 'default',
     }
     // 工具调用配置默认值
     expertForm.max_tool_rounds = null

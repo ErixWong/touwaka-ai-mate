@@ -820,35 +820,34 @@ modified_at?: string
 // ============================================
 
 /**
- * 专家知识库配置（迁移态兼容结构）
+ * 专家知识库配置（终态语义）
  *
- * ⚠️ 该结构正处于从"自动预检索配置"向"tool过滤条件"的迁移期。
+ * 旧自动预检索路径已于 2026-07-07 退场，当前仅保留 tool 路径（document_retrieval）。
  *
- * ── 字段分类 ────────────────────────────────────────
- * 【控制面】新旧路径共用：
- *   enabled           — 文档检索总开关
- *   retire_auto_path  — 迁移门控：true → 仅 tool 路径，旧自动路径关闭
+ * ── 活跃字段 ────────────────────────────────────────
+ *   enabled       — 文档检索工具总开关（控制 document_retrieval tool 是否暴露）
+ *   collection_id — 知识库集合 ID（tool 默认过滤条件）
+ *   doc_types     — 文档类型白名单（tool 默认过滤条件）
  *
- * 【双用途】（当前仅服务于旧自动路径，未来可作为 tool 默认过滤条件）：
- *   collection_id     — 知识库集合 ID
- *   doc_types         — 文档类型白名单
+ * ── 仅保留兼容、不再消费（旧自动预检索路径已删除）──
+ *   top_k         — @deprecated 旧自动检索返回条数（不再消费）
+ *   threshold     — @deprecated 旧自动检索相似度阈值（不再消费）
+ *   max_tokens    — @deprecated 旧自动注入 token 预算（不再消费）
+ *   style         — @deprecated 旧自动注入格式化风格（不再消费）
  *
- * 【旧自动路径专属】（retire_auto_path=true 后不再消费，计划移除）：
- *   top_k             — 自动检索返回条数
- *   threshold         — 相似度阈值
- *   max_tokens        — 自动注入上下文 token 预算
- *   style             — 注入格式化风格
- *
- * 参见 docs/tasks/active/task-20260707-expert-doc-retrieval-final-convergence/
+ * 参见 docs/tasks/active/task-20260707-expert-doc-retrieval-legacy-retirement/
  */
 export interface ExpertKnowledgeConfig {
   enabled: boolean
-  retire_auto_path?: boolean
   collection_id?: string
   doc_types?: string[]
+  /** @deprecated 旧自动预检索路径已退场，不再消费 */
   top_k?: number
+  /** @deprecated 旧自动预检索路径已退场，不再消费 */
   threshold?: number
+  /** @deprecated 旧自动预检索路径已退场，不再消费 */
   max_tokens?: number
+  /** @deprecated 旧自动预检索路径已退场，不再消费 */
   style?: 'default' | 'concise' | 'detailed'
 }
 
