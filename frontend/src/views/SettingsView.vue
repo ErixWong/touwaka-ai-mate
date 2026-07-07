@@ -836,13 +836,13 @@
 
         <el-tab-pane :label="$t('settings.expertKnowledgeStrategy')" name="knowledge">
           <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 16px;">
-            <template #title>此功能为旧版"自动预检索"模式，正在逐步退场</template>
-            <template #default>推荐改用 <code>document_retrieval</code> 工具（LLM 按需调用，基于结构化证据回答）。开启"退场自动预检索"后，系统仅通过工具路径检索文档。</template>
+            <template #title>{{ $t('settings.expertKnowledgeDeprecationTitle') }}</template>
+            <template #default>{{ $t('settings.expertKnowledgeDeprecationBody') }}</template>
           </el-alert>
           <el-form-item>
             <el-switch v-model="expertForm.knowledge_config.retire_auto_path" />
-            <span class="inline-switch-label">退场自动预检索（推荐开启）</span>
-            <div class="el-form-item__tip">开启后不再每轮自动检索，由 LLM 判断是否需要调用 document_retrieval 工具</div>
+            <span class="inline-switch-label">{{ $t('settings.expertKnowledgeRetireAutoPath') }}</span>
+            <div class="el-form-item__tip">{{ $t('settings.expertKnowledgeRetireAutoPathHint') }}</div>
           </el-form-item>
           <el-form-item>
             <el-switch v-model="expertForm.knowledge_config.enabled" />
@@ -2225,6 +2225,7 @@ const openExpertDialog = (expert?: Expert) => {
     expertForm.presence_penalty = 0.0
     expertForm.knowledge_config = {
       enabled: false,
+      retire_auto_path: false,
       collection_id: '',
       doc_types: [],
       top_k: 5,
