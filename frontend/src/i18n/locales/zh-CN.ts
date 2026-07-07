@@ -307,6 +307,8 @@ export default {
     expertKnowledgeStyleDefault: '默认',
     expertKnowledgeStyleConcise: '精简',
     expertKnowledgeStyleDetailed: '详细',
+    expertKnowledgeToolFilterGroup: '— 以下参数同时作为 document_retrieval 工具的默认过滤条件 —',
+    expertKnowledgeLegacyGroup: '— 以下参数仅用于旧自动预检索路径，将随旧路径退场移除 —',
     deleteExpertConfirm: '确定要删除专家"{name}"吗？',
     select: '选择',
     selected: '已选择',

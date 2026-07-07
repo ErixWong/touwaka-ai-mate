@@ -851,6 +851,10 @@
           </el-form-item>
 
           <template v-if="expertForm.knowledge_config.enabled && !expertForm.knowledge_config.retire_auto_path">
+            <el-divider content-position="left">
+              <span style="font-size: 12px; color: #909399;">{{ $t('settings.expertKnowledgeToolFilterGroup') }}</span>
+            </el-divider>
+
             <el-form-item :label="$t('settings.expertKnowledgeCollection')">
               <el-select v-model="expertForm.knowledge_config.collection_id" clearable filterable>
                 <el-option
@@ -885,6 +889,10 @@
                 </el-form-item>
               </el-col>
             </el-row>
+
+            <el-divider content-position="left">
+              <span style="font-size: 12px; color: #e6a23c;">{{ $t('settings.expertKnowledgeLegacyGroup') }}</span>
+            </el-divider>
 
             <el-row :gutter="20">
               <el-col :span="12">

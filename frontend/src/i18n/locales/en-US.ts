@@ -307,6 +307,8 @@ export default {
     expertKnowledgeStyleDefault: 'Default',
     expertKnowledgeStyleConcise: 'Concise',
     expertKnowledgeStyleDetailed: 'Detailed',
+    expertKnowledgeToolFilterGroup: '— The following also serve as default filter params for the document_retrieval tool —',
+    expertKnowledgeLegacyGroup: '— The following are legacy auto-path only and will be removed with the old path —',
     deleteExpertConfirm: 'Are you sure you want to delete expert "{name}"?',
     select: 'Select',
     selected: 'Selected',
