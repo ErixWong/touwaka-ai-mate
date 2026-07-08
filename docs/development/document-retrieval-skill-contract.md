@@ -1,0 +1,181 @@
+# Document Retrieval Skill Contract
+
+> 本文档定义 `document_retrieval` 系统级 skill 的稳定协议。
+> 它是后续多 tool 演进的基础契约，所有实现必须对齐本文档。
+
+---
+
+## 1. Skill 定义
+
+| 属性 | 值 |
+|------|-----|
+| Skill Name | `document_retrieval` |
+| 类型 | 系统级 skill（非专家私有） |
+| 权限模型 | 基于 DocAccessService 的用户集合访问权限，不由 expert 配置控制 |
+| 当前阶段 | Phase 0 → Phase 1 过渡期（兼容单 tool 形态） |
+
+## 2. Tool 列表（目标形态）
+
+### 首批 Tool（Phase 2-3 实现）
+
+| Tool Name | 职责 | 用户任务 |
+|-----------|------|----------|
+| `answer_from_documents` | 基于文档证据回答问题 | "根据制度说明某个规定"、"文档里对某问题如何描述" |
+| `find_document` | 定位可能相关的文档 | "帮我找某份合同"、"哪个文档提到某项规则" |
+| `verify_fact` | 校验命题是否得到文档支持 | "文档里是不是这么写"、"某说法是否有依据" |
+
+### 后续 Tool
+
+| Tool Name | 职责 | 优先级 |
+|-----------|------|--------|
+| `compare_documents` | 比较多文档异同 | P2 |
+| `search_within_document` | 已知文档范围内定点检索 | P1/P2 |
+
+### 兼容期映射
+
+当前 LLM 可见的 `document_retrieval` 单 tool（含 `goal` 参数），内部按以下规则 dispatch：
+
+| `goal` 值 | 映射到 |
+|-----------|--------|
+| `answer_question`（默认） | `answer_from_documents` handler |
+| `find_document` | `find_document` handler |
+| `verify_fact` | `verify_fact` handler |
+
+## 3. 共享返回字段（所有 tool 通用）
+
+以下元数据字段在所有 tool 的返回中保持一致语义：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `strategy` | `string` | 检索策略：`document_first` / `chunk_first_fallback` / `degrade` |
+| `evidence_sufficiency` | `string` | 证据充分性：`strong` / `medium` / `weak` / `none` |
+| `reason_codes` | `string[]` | 原因代码列表（如 `no_candidates`、`weak_evidence_degrade`） |
+| `should_clarify` | `boolean` | 是否应向用户澄清问题 |
+| `should_answer_conservatively` | `boolean` | 是否应保守回答 |
+| `suggested_response_mode` | `string` | 建议回答模式（见下方枚举） |
+| `duration` | `number` | 检索耗时（ms） |
+
+### `suggested_response_mode` 枚举
+
+| 值 | 含义 | chat-service 行为 |
+|----|------|-------------------|
+| `direct_answer` | 证据充分，可直接回答 | LLM + 证据注入 |
+| `answer_with_citation` | 有明确来源，回答时引用出处 | LLM + 证据注入 + 引用约束 |
+| `candidate_list` | 多候选冲突，列出候选供确认 | **短路 LLM**，直接格式化候选列表 |
+| `clarify` | 意图模糊，应澄清问题 | LLM + 澄清约束骨架 |
+| `conservative_answer` | 证据不足，保守回答 | LLM + 保守回答约束骨架 |
+
+### `strategy` 枚举
+
+| 值 | 含义 |
+|----|------|
+| `document_first` | 标准 document-first 检索链路（文档候选 → chunk 证据） |
+| `chunk_first_fallback` | document-first 无结果后回退到 chunk-first 全库搜索 |
+| `degrade` | 所有路径失败，返回空证据包 |
+
+## 4. 各 Tool 独立返回字段
+
+### `answer_from_documents`
+
+```json
+{
+  // ...共享字段...
+  "documents": [{
+    "document_id": "string",
+    "document_title": "string",
+    "doc_type": "string",
+    "collection_name": "string",
+    "relevance_score": "number",
+    "candidate_confidence": "high|low",
+    "evidence_count": "number",
+    "top_evidence": [{
+      "content": "string (truncated 500 chars)",
+      "score": "number"
+    }]
+  }]
+}
+```
+
+### `find_document`
+
+```json
+{
+  // ...共享字段...
+  "candidates": [{
+    "document_id": "string",
+    "document_title": "string",
+    "doc_type": "string",
+    "collection_name": "string",
+    "relevance_score": "number",
+    "candidate_confidence": "high|low",
+    "match_reason": "string"  // 匹配原因简述
+  }],
+  "total_candidates": "number"
+}
+```
+
+注：`find_document` 不返回 chunk 级 evidence，仅返回文档级候选。
+
+### `verify_fact`
+
+```json
+{
+  // ...共享字段...
+  "verdict": "supported|contradicted|insufficient_evidence",
+  "supporting_evidence": [{ "content": "string", "document_id": "string", "score": "number" }],
+  "contradicting_evidence": [{ "content": "string", "document_id": "string", "score": "number" }],
+  "related_documents": ["..."]
+}
+```
+
+## 5. 内部服务分层（不暴露给 LLM）
+
+以下服务是 skill 内部实现，不应作为 tool 直接暴露：
+
+| 服务 | 职责 | 文件 |
+|------|------|------|
+| `DocumentQueryDecisionService` | 查询意图决策（规则引擎） | `lib/document-query-decision-service.js` |
+| `DocumentSearchService` | 文档级候选检索 | `lib/document-search-service.js` |
+| `DocRecallService` | chunk 级证据召回 | `lib/doc-recall-service.js` |
+| `DocumentEvidencePacker` | 证据打包与元数据生成 | `lib/document-evidence-packer.js` |
+| `DocAccessService` | 统一权限判定 | `lib/doc-access-service.js` |
+
+## 6. 可观测性要求
+
+每次 tool 调用必须记录以下观测字段：
+
+| 字段 | 来源 | 用途 |
+|------|------|------|
+| `tool_name` | 实际执行的 tool | 区分不同 tool 的调用分布 |
+| `goal` | 请求参数 | 兼容期任务类型追踪 |
+| `strategy` | 返回结果 | 检索路径分布 |
+| `duration_ms` | 计时 | 性能监控 |
+| `evidence_sufficiency` | 返回结果 | 质量监控 |
+| `reason_codes` | 返回结果 | 失败原因分析 |
+| `document_count` | 返回结果 | 召回量监控 |
+| `should_clarify` | 返回结果 | 降级率监控 |
+| `suggested_response_mode` | 返回结果 | 回答模式分布 |
+
+## 7. 演进路线图
+
+```
+Phase 0（当前）: contract 收口 + 内部 dispatch
+    ↓
+Phase 1（下个迭代）: 兼容映射 + 日志指标补全
+    ↓
+Phase 2: 向 LLM 暴露 find_document（独立 tool）
+    ↓
+Phase 3: 向 LLM 暴露 verify_fact（独立 tool）
+    ↓
+Phase 4: 移除 document_retrieval 单 tool，完全切换到多 tool
+```
+
+## 8. 历史命名清理清单
+
+| 旧名称 | 状态 | 处理方式 |
+|--------|------|----------|
+| `RAGService` (`lib/rag-service.js`) | ✅ 已删除 (Round 04) | 无需处理 |
+| `ragContext` | ✅ 已清除 | 无需处理 |
+| `knowledge_config` | ⚠️ 历史兼容读取 | expert.controller 保留读取，标注 `@deprecated` |
+| "知识策略开关" | ✅ 已清除 | 无需处理 |
+| "builtin tool" | ⚠️ 过渡态 | 内部实现保留，文档统一用 "系统级 skill" |
