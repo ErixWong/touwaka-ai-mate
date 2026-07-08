@@ -1,7 +1,7 @@
 # Document Retrieval Skill Contract
 
 > 本文档定义 `document_retrieval` 系统级 skill 的稳定协议。
-> 它是后续多 tool 演进的基础契约，所有实现必须对齐本文档。
+> 所有实现必须对齐本文档。
 
 ---
 
@@ -12,17 +12,19 @@
 | Skill Name | `document_retrieval` |
 | 类型 | 系统级 skill（非专家私有） |
 | 权限模型 | 基于 DocAccessService 的用户集合访问权限，不由 expert 配置控制 |
-| 当前阶段 | Phase 0 → Phase 1 过渡期（兼容单 tool 形态） |
+| 当前阶段 | Phase 1（纯多 tool 模式，旧 document_retrieval 单入口已删除） |
 
-## 2. Tool 列表（目标形态）
+## 2. Tool 列表（当前形态）
 
-### 首批 Tool（Phase 2-3 实现）
+### 当前 LLM 可见 Tool
 
 | Tool Name | 职责 | 用户任务 |
 |-----------|------|----------|
 | `answer_from_documents` | 基于文档证据回答问题 | "根据制度说明某个规定"、"文档里对某问题如何描述" |
 | `find_document` | 定位可能相关的文档 | "帮我找某份合同"、"哪个文档提到某项规则" |
 | `verify_fact` | 校验命题是否得到文档支持 | "文档里是不是这么写"、"某说法是否有依据" |
+
+三个 tool 通过 `skill_namespace: 'document_retrieval'` 聚合，chat-service 消费层按命名空间统一消费。
 
 ### 后续 Tool
 
@@ -31,15 +33,10 @@
 | `compare_documents` | 比较多文档异同 | P2 |
 | `search_within_document` | 已知文档范围内定点检索 | P1/P2 |
 
-### 兼容期映射
+### 历史说明
 
-当前 LLM 可见的 `document_retrieval` 单 tool（含 `goal` 参数），内部按以下规则 dispatch：
-
-| `goal` 值 | 映射到 |
-|-----------|--------|
-| `answer_question`（默认） | `answer_from_documents` handler |
-| `find_document` | `find_document` handler |
-| `verify_fact` | `verify_fact` handler |
+旧 `document_retrieval` 单入口 tool（含 `goal` 参数做内部分流）已于 Round 04 删除。
+`executeDocumentRetrieval()` 兼容壳层同步删除。
 
 ## 3. 共享返回字段（所有 tool 通用）
 
@@ -155,7 +152,6 @@
 | 字段 | 来源 | 用途 |
 |------|------|------|
 | `tool_name` | 实际执行的 tool | 区分不同 tool 的调用分布 |
-| `goal` | 请求参数 | 兼容期任务类型追踪 |
 | `strategy` | 返回结果 | 检索路径分布 |
 | `duration_ms` | 计时 | 性能监控 |
 | `evidence_sufficiency` | 返回结果 | 质量监控 |
@@ -167,15 +163,11 @@
 ## 7. 演进路线图
 
 ```
-Phase 0（当前）: contract 收口 + 内部 dispatch
+Phase 1（当前 Round 04）: 纯多 tool 外显 + 删除 document_retrieval 单入口 ✅
     ↓
-Phase 1（下个迭代）: 兼容映射 + 日志指标补全
+Phase 2（下一迭代）: verify_fact 反驳链路设计 + single_document 产品形态评估
     ↓
-Phase 2: 向 LLM 暴露 find_document（独立 tool）
-    ↓
-Phase 3: 向 LLM 暴露 verify_fact（独立 tool）
-    ↓
-Phase 4: 移除 document_retrieval 单 tool，完全切换到多 tool
+Phase 3: compare_documents / search_within_document
 ```
 
 ## 8. 历史命名清理清单
