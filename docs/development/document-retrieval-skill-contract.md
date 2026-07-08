@@ -57,13 +57,14 @@
 
 ### `suggested_response_mode` 枚举
 
-| 值 | 含义 | chat-service 行为 |
-|----|------|-------------------|
-| `direct_answer` | 证据充分，可直接回答 | LLM + 证据注入 |
-| `answer_with_citation` | 有明确来源，回答时引用出处 | LLM + 证据注入 + 引用约束 |
-| `candidate_list` | 多候选冲突，列出候选供确认 | **短路 LLM**，直接格式化候选列表 |
-| `clarify` | 意图模糊，应澄清问题 | LLM + 澄清约束骨架 |
-| `conservative_answer` | 证据不足，保守回答 | LLM + 保守回答约束骨架 |
+| 值 | 含义 | chat-service 行为 | 适用 tool |
+|----|------|-------------------|-----------|
+| `direct_answer` | 证据充分，可直接回答 | LLM + 证据注入 | answer_from_documents |
+| `answer_with_citation` | 有明确来源，回答时引用出处 | LLM + 证据注入 + 引用约束 | answer_from_documents |
+| `candidate_list` | 多候选，列出候选供用户确认 | **短路 LLM**，直接格式化候选列表 | answer_from_documents / find_document |
+| `single_document` | 单候选文档，直接展示文档信息 | LLM + 证据注入（find_document 语义） | find_document |
+| `clarify` | 意图模糊或信息不足，应澄清问题 | LLM + 澄清约束骨架 | 所有 tool |
+| `conservative_answer` | 证据不足，保守回答 | LLM + 保守回答约束骨架 | answer_from_documents |
 
 ### `strategy` 枚举
 
@@ -121,12 +122,19 @@
 ```json
 {
   // ...共享字段...
-  "verdict": "supported|contradicted|insufficient_evidence",
+  "verdict": "supported|insufficient_evidence",
+  "contradicted_available": false,
   "supporting_evidence": [{ "content": "string", "document_id": "string", "score": "number" }],
-  "contradicting_evidence": [{ "content": "string", "document_id": "string", "score": "number" }],
+  "contradicting_evidence": [],
   "related_documents": ["..."]
 }
 ```
+
+**能力诚实性说明**：
+- 当前版本仅稳定支持 `supported` / `insufficient_evidence` 判定
+- `contradicted` 判定需要独立的"反驳证据检测"链路，目前尚未实现
+- `contradicted_available: false` 明确告知消费方当前不支持真正反驳判定
+- `contradicting_evidence` 字段保留但当前恒为空数组（schema 预留）
 
 ## 5. 内部服务分层（不暴露给 LLM）
 
