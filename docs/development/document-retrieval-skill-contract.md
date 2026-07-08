@@ -44,7 +44,7 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `strategy` | `string` | 检索策略：`document_first` / `chunk_first_fallback` / `degrade` |
+| `strategy` | `string` | 检索策略：`document_first` / `chunk_first_fallback` / `degrade`。<br>区分推荐策略（`decision.recommended_strategy`）与实际执行策略（顶层 `strategy`）。 |
 | `evidence_sufficiency` | `string` | 证据充分性：`strong` / `medium` / `weak` / `none` |
 | `reason_codes` | `string[]` | 原因代码列表（如 `no_candidates`、`weak_evidence_degrade`） |
 | `should_clarify` | `boolean` | 是否应向用户澄清问题 |
@@ -85,6 +85,8 @@
     "collection_name": "string",
     "relevance_score": "number",
     "candidate_confidence": "high|low",
+    "identity_confidence": "confirmed|probable|unknown",
+    "identity_source": "search_match|evidence_backfill|fallback|inferred",
     "evidence_count": "number",
     "top_evidence": [{
       "content": "string (truncated 500 chars)",
@@ -106,13 +108,15 @@
     "collection_name": "string",
     "relevance_score": "number",
     "candidate_confidence": "high|low",
-    "match_reason": "string"  // 匹配原因简述
+    "identity_confidence": "confirmed|probable|unknown",
+    "match_reason": "string",
+    "supporting_evidence": [{ "content": "string (truncated 300 chars)" }]
   }],
   "total_candidates": "number"
 }
 ```
 
-注：`find_document` 不返回 chunk 级 evidence，仅返回文档级候选。
+注：单候选高置信时附带 1-3 条 supporting_evidence 供身份验证，多候选时不附带。
 
 ### `verify_fact`
 
