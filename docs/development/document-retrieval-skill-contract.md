@@ -163,6 +163,9 @@
 | `document_count` | 返回结果 | 召回量监控 |
 | `should_clarify` | 返回结果 | 降级率监控 |
 | `suggested_response_mode` | 返回结果 | 回答模式分布 |
+| `backfill_triggered` | 返回结果 | identity 回补触发率 |
+| `backfill_doc_count` | 返回结果 | identity 回补文档数 |
+| `identity_distribution` | 返回结果 | 各文档 identity_confidence / source 分布 |
 
 ## 7. 演进路线图
 
