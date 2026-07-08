@@ -79,9 +79,9 @@ const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorit
     adaptive_search: false,
     target_segment_count: KEY_POINT_TARGET_COUNT,
   },
-  envelope_turning_points_v1: {
-    key: 'envelope_turning_points_v1',
-    label: '包络转折点 V1',
+  envelope_turning_points_v2: {
+    key: 'envelope_turning_points_v2',
+    label: '包络转折点 V2',
     output_mode: 'key_points',
     baseline_mode: 'adaptive_v2',
     trend_mode: 'adaptive_v2',
@@ -808,7 +808,51 @@ function buildKeyPoint(index: number, windows: KeyPointWindow[], globals: Global
   }
 }
 
-function selectKeyPointIndices(windows: KeyPointWindow[], globals: Globals, thresholdPercent: number, includeEnvelopeExtrema: boolean) {
+function detectHighPlateauAnchors(windows: KeyPointWindow[], globals: Globals) {
+  if (!windows.length) return new Set<number>()
+  const anchors = new Set<number>()
+  const maxPeak = Math.max(...windows.map(window => window.max_current))
+  const highPeakThreshold = Math.max(globals.max_current * 0.94, maxPeak * 0.94)
+  const highMeanThreshold = globals.max_current * 0.82
+  let runStart = -1
+
+  const flushRun = (runEnd: number) => {
+    if (runStart === -1 || runEnd < runStart) return
+    const runLength = runEnd - runStart + 1
+    if (runLength < 2) {
+      runStart = -1
+      return
+    }
+    let peakIndex = runStart
+    for (let index = runStart + 1; index <= runEnd; index++) {
+      if (windows[index]!.max_current > windows[peakIndex]!.max_current) {
+        peakIndex = index
+      }
+    }
+    anchors.add(runStart)
+    anchors.add(peakIndex)
+    anchors.add(runEnd)
+    if (runStart + 1 <= runEnd) anchors.add(runStart + 1)
+    if (runEnd - 1 >= runStart) anchors.add(runEnd - 1)
+    runStart = -1
+  }
+
+  for (let index = 0; index < windows.length; index++) {
+    const window = windows[index]!
+    const inHighPlateau = window.max_current >= highPeakThreshold && window.mean_current >= highMeanThreshold
+    if (inHighPlateau) {
+      if (runStart === -1) runStart = index
+      continue
+    }
+    if (runStart !== -1) {
+      flushRun(index - 1)
+    }
+  }
+  flushRun(windows.length - 1)
+  return anchors
+}
+
+function selectKeyPointIndices(windows: KeyPointWindow[], globals: Globals, thresholdPercent: number, includeEnvelopeExtrema: boolean, includeHighPlateauAnchors = false) {
   const selected = new Set<number>([0, windows.length - 1])
   const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
   const meanValues = windows.map(window => window.mean_current)
@@ -838,6 +882,13 @@ function selectKeyPointIndices(windows: KeyPointWindow[], globals: Globals, thre
       if (prominencePercent >= extremaThreshold) {
         selected.add(index)
       }
+    }
+  }
+
+  if (includeHighPlateauAnchors) {
+    const plateauAnchors = detectHighPlateauAnchors(windows, globals)
+    for (const index of plateauAnchors) {
+      selected.add(index)
     }
   }
 
@@ -962,11 +1013,12 @@ function buildKeyPointSegments(keyPoints: KeyPointItem[]) {
 function runKeyPointCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
   const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
   const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
-  const includeEnvelopeExtrema = profile.key === 'envelope_turning_points_v1'
+  const includeEnvelopeExtrema = profile.key === 'envelope_turning_points_v2'
+  const includeHighPlateauAnchors = profile.key === 'envelope_turning_points_v2'
   const candidates = KEY_POINT_THRESHOLD_STEPS.map((thresholdPercent) => ({
     thresholdPercent,
     indices: reduceKeyPointIndices(
-      selectKeyPointIndices(windows, globals, thresholdPercent, includeEnvelopeExtrema),
+      selectKeyPointIndices(windows, globals, thresholdPercent, includeEnvelopeExtrema, includeHighPlateauAnchors),
       windows,
       globals,
       KEY_POINT_TARGET_COUNT,
@@ -986,7 +1038,7 @@ function runKeyPointCompression(points: RawPoint[], options: CompressionOptions,
   meta.target_key_point_min = KEY_POINT_TARGET_MIN
   meta.target_key_point_max = KEY_POINT_TARGET_MAX
   meta.selection_reason = includeEnvelopeExtrema
-    ? '关键点阈值 + 均值/峰值转折保留'
+    ? '关键点阈值 + 均值/峰值转折保留 + 堵转平台锚点'
     : '按相邻窗口变化幅度自适应筛选关键点'
 
   return {

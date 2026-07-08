@@ -163,9 +163,9 @@ const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: stri
     description: '按相邻窗口变化幅度自适应筛选约 40-60 个关键点，适合交给 LLM 做阶段推断。',
   },
   {
-    value: 'envelope_turning_points_v1',
-    label: '包络转折点 V1',
-    description: '在关键点阈值基础上额外保留均值/峰值转折，更突出启动尖峰与堵转峰值。',
+    value: 'envelope_turning_points_v2',
+    label: '包络转折点 V2',
+    description: '在关键点阈值基础上额外保留均值/峰值转折，并增强堵转顶部短平台保真。',
   },
 ]
 

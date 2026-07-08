@@ -342,11 +342,6 @@ class StageRecognitionWorkflowService {
       .filter(stage => stage.end_time > stage.start_time)
       .sort((a, b) => a.start_time - b.start_time);
 
-    const originalCount = Array.isArray(stages) ? stages.length : 0;
-    if (normalized.length !== originalCount) {
-      return normalized;
-    }
-
     return this.assignCycleMarkers(normalized);
   }
 
