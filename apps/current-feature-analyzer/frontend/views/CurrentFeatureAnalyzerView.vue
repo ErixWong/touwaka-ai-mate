@@ -134,7 +134,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { InfoFilled, RefreshRight } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import type { AppConfig } from '../api/current-feature-analyzer'
+import type { AppConfig, CompressionAlgorithmKey } from '../api/current-feature-analyzer'
 import { currentFeatureAnalyzerApi } from '../api/current-feature-analyzer'
 import { useCurrentFeatureAnalyzerStore } from '../stores/currentFeatureAnalyzer'
 import AnalyzerTopBar from '../components/AnalyzerTopBar.vue'
@@ -177,12 +177,12 @@ const transitionDescription = computed(() => {
   return '识别完成后会自动刷新阶段指标、LLM 结果和导出状态。'
 })
 
-async function onLaunchTask(payload: { files: File[]; ruleSetId: string; overwriteCurrentSession: boolean }) {
+async function onLaunchTask(payload: { files: File[]; ruleSetId: string; overwriteCurrentSession: boolean; compressionAlgorithm: CompressionAlgorithmKey }) {
   showLaunchModal.value = false
   void nextTick(() => {
     void (async () => {
       await store.selectRuleSet(payload.ruleSetId)
-      await store.launchAnalysisTask(payload.files, payload.ruleSetId, payload.overwriteCurrentSession)
+      await store.launchAnalysisTask(payload.files, payload.ruleSetId, payload.compressionAlgorithm, payload.overwriteCurrentSession)
     })()
   })
 }
