@@ -6,6 +6,7 @@ const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
 
 export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'preparing_analysis' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
 export type AnalysisStatus = 'pending' | 'ready' | 'compressing' | 'llm_recognizing' | 'analyzing' | 'completed' | 'failed'
+export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v1'
 
 export interface DuplicateDiagnosis {
   duplicate_groups: number
@@ -144,12 +145,20 @@ export interface SegmentItem {
 }
 
 export interface CompressionMeta {
+  algorithm_key?: CompressionAlgorithmKey
+  algorithm_label?: string
+  compression_mode?: 'segments' | 'key_points'
   absolute_resolution: number
   relative_resolution: number
   merge_gap_ratio: number
   min_transition_points: number
   target_segment_count: number
   selected_segment_count: number
+  window_seconds?: number | null
+  threshold_percent?: number | null
+  selected_key_point_count?: number | null
+  target_key_point_min?: number | null
+  target_key_point_max?: number | null
   selection_reason?: string | null
   selection_context?: {
     left_resolution: number

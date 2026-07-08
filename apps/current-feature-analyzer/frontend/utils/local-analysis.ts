@@ -1,4 +1,4 @@
-import type { AppConfig, CompressionMeta, FileAnalysisResult, SegmentItem } from '../api/current-feature-analyzer'
+import type { AppConfig, CompressionAlgorithmKey, CompressionMeta, FileAnalysisResult, SegmentItem } from '../api/current-feature-analyzer'
 
 type RawPoint = [number, number]
 
@@ -30,6 +30,66 @@ const DEFAULT_OPTIONS: CompressionOptions = {
 
 const ABS_EPSILON = 0.0001
 const BASELINE_SAMPLE_COUNT = 10
+const LEGACY_BASELINE_WINDOW_SECONDS = 0.5
+const KEY_POINT_WINDOW_SECONDS = 0.02
+const KEY_POINT_TARGET_MIN = 40
+const KEY_POINT_TARGET_MAX = 60
+const KEY_POINT_TARGET_COUNT = 52
+const KEY_POINT_THRESHOLD_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 9, 12, 15, 18, 22, 26, 30]
+
+type CompressionAlgorithmProfile = {
+  key: CompressionAlgorithmKey
+  label: string
+  output_mode: 'segments' | 'key_points'
+  baseline_mode: 'adaptive_v2' | 'legacy_v4'
+  trend_mode: 'adaptive_v2' | 'legacy_v4'
+  strict_duplicate_conflict: boolean
+  adaptive_search: boolean
+  target_segment_count: number
+}
+
+const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorithmProfile> = {
+  adaptive_v2: {
+    key: 'adaptive_v2',
+    label: '自适应 V2（默认）',
+    output_mode: 'segments',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: true,
+    target_segment_count: 45,
+  },
+  legacy_v4: {
+    key: 'legacy_v4',
+    label: '原始 V4',
+    output_mode: 'segments',
+    baseline_mode: 'legacy_v4',
+    trend_mode: 'legacy_v4',
+    strict_duplicate_conflict: true,
+    adaptive_search: true,
+    target_segment_count: 60,
+  },
+  adaptive_keypoints_v1: {
+    key: 'adaptive_keypoints_v1',
+    label: '关键点阈值 V1',
+    output_mode: 'key_points',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
+  envelope_turning_points_v1: {
+    key: 'envelope_turning_points_v1',
+    label: '包络转折点 V1',
+    output_mode: 'key_points',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
+}
 
 function currentMagnitude(value: number | undefined | null) {
   return Math.abs(Number(value) || 0)
@@ -140,6 +200,20 @@ function isTrendCandidate(segment: InternalSegment, options: CompressionOptions,
   return ratioToBaseline(segment.mean_current, globals) >= 2 && hasDifferentNeighbors
 }
 
+function isTrendCandidateLegacy(segment: InternalSegment, options: CompressionOptions, globals: Globals, index: number, segments: InternalSegment[]) {
+  if (isTrendKind(segment.kind)) return true
+  const tinySegment = segment.point_count <= Math.max(3, options.min_transition_points)
+  if (!tinySegment) return false
+  const previous = segments[index - 1]
+  const next = segments[index + 1]
+  const hasDifferentNeighbors = !!(
+    previous &&
+    next &&
+    previous.representative_current !== next.representative_current
+  )
+  return ratioToBaseline(segment.mean_current, globals) >= 2 && hasDifferentNeighbors
+}
+
 function classifySegmentKind(input: {
   point_count: number
   bandwidth: number
@@ -230,6 +304,50 @@ function calculateGlobals(points: RawPoint[]): Globals {
     baseline_mean: Number(baselineMean.toFixed(6)),
     sample_interval: Number((intervalCount > 0 ? intervalSum / intervalCount : 0).toFixed(6)),
   }
+}
+
+function calculateGlobalsLegacy(points: RawPoint[]): Globals {
+  let minCurrent = points[0]![1]
+  let maxCurrent = points[0]![1]
+  let totalCurrent = 0
+
+  for (const point of points) {
+    if (point[1] < minCurrent) minCurrent = point[1]
+    if (point[1] > maxCurrent) maxCurrent = point[1]
+    totalCurrent += point[1]
+  }
+
+  const firstTime = points[0]![0]
+  const windowCandidates = points.filter(point => point[0] - firstTime <= LEGACY_BASELINE_WINDOW_SECONDS)
+  const fallbackCandidates = points.slice(0, Math.min(points.length, 400))
+  const baselineCandidates = windowCandidates.length > 0 ? windowCandidates : fallbackCandidates
+  const baselineMean = baselineCandidates.length > 0
+    ? baselineCandidates.reduce((sum, [, current]) => sum + current, 0) / baselineCandidates.length
+    : 0
+
+  let intervalSum = 0
+  let intervalCount = 0
+  const sampleUpperBound = Math.min(points.length, 2000)
+  for (let index = 1; index < sampleUpperBound; index++) {
+    intervalSum += points[index]![0] - points[index - 1]![0]
+    intervalCount++
+  }
+
+  return {
+    min_current: Number(minCurrent.toFixed(6)),
+    max_current: Number(maxCurrent.toFixed(6)),
+    mean_current: Number((totalCurrent / points.length).toFixed(6)),
+    baseline_mean: Number(baselineMean.toFixed(6)),
+    sample_interval: Number((intervalCount > 0 ? intervalSum / intervalCount : 0).toFixed(6)),
+  }
+}
+
+function getAlgorithmProfile(algorithmKey?: CompressionAlgorithmKey | null) {
+  return COMPRESSION_ALGORITHMS[algorithmKey || 'adaptive_v2'] || COMPRESSION_ALGORITHMS.adaptive_v2
+}
+
+function normalizeDuplicateCurrentValue(current: number) {
+  return Number(current.toPrecision(12))
 }
 
 function createSegment(points: RawPoint[], startIndex: number, endIndex: number, globals: Globals, options: CompressionOptions): InternalSegment {
@@ -412,13 +530,16 @@ function mergeShortInteriorSegments(segments: InternalSegment[], options: Compre
   return result
 }
 
-function mergeTrendRuns(segments: InternalSegment[], options: CompressionOptions, globals: Globals) {
+function mergeTrendRuns(segments: InternalSegment[], options: CompressionOptions, globals: Globals, profile: CompressionAlgorithmProfile) {
   if (segments.length <= 2) return segments
   const merged: InternalSegment[] = []
   let index = 0
   while (index < segments.length) {
     const current = segments[index]!
-    if (!isTrendCandidate(current, options, globals, index, segments)) {
+    const currentIsTrendCandidate = profile.trend_mode === 'legacy_v4'
+      ? isTrendCandidateLegacy(current, options, globals, index, segments)
+      : isTrendCandidate(current, options, globals, index, segments)
+    if (!currentIsTrendCandidate) {
       merged.push(current)
       index++
       continue
@@ -429,7 +550,10 @@ function mergeTrendRuns(segments: InternalSegment[], options: CompressionOptions
     let direction = 0
     while (nextIndex < segments.length) {
       const candidate = segments[nextIndex]!
-      if (!isTrendCandidate(candidate, options, globals, nextIndex, segments)) {
+      const candidateIsTrendCandidate = profile.trend_mode === 'legacy_v4'
+        ? isTrendCandidateLegacy(candidate, options, globals, nextIndex, segments)
+        : isTrendCandidate(candidate, options, globals, nextIndex, segments)
+      if (!candidateIsTrendCandidate) {
         break
       }
       const delta = (candidate.representative_current || 0) - (bucket[bucket.length - 1]!.representative_current || 0)
@@ -463,7 +587,7 @@ function mergeTrendRuns(segments: InternalSegment[], options: CompressionOptions
   return merged
 }
 
-function mergeSegments(initialSegments: InternalSegment[], options: CompressionOptions, globals: Globals) {
+function mergeSegments(initialSegments: InternalSegment[], options: CompressionOptions, globals: Globals, profile: CompressionAlgorithmProfile) {
   if (initialSegments.length <= 1) {
     return initialSegments.map((segment, index) => ({ ...segment, segment_index: index }))
   }
@@ -481,7 +605,7 @@ function mergeSegments(initialSegments: InternalSegment[], options: CompressionO
   }
   merged.push(summarizeBucket(bucket, globals, options))
   const smoothed = mergeShortInteriorSegments(merged, options, globals)
-  const trendMerged = mergeTrendRuns(smoothed, options, globals)
+  const trendMerged = mergeTrendRuns(smoothed, options, globals, profile)
   return trendMerged.map((segment, index) => ({ ...segment, segment_index: index }))
 }
 
@@ -537,6 +661,344 @@ function extractEvents(segments: InternalSegment[]) {
   return events
 }
 
+type KeyPointWindow = {
+  index: number
+  start_time: number
+  end_time: number
+  duration: number
+  point_count: number
+  mean_current: number
+  min_current: number
+  max_current: number
+  span_current: number
+  baseline_ratio?: number
+  peak_ratio?: number
+  delta_mean?: number
+  delta_peak?: number
+}
+
+type KeyPointItem = {
+  point_index: number
+  time: number
+  mean_current: number
+  min_current: number
+  max_current: number
+  span_current: number
+  baseline_ratio: number
+  peak_ratio: number
+  delta_left: number
+  delta_right: number
+  change_percent: number
+}
+
+function clampIndex(index: number, length: number) {
+  return Math.max(0, Math.min(length - 1, index))
+}
+
+function quantile(sortedValues: number[], ratio: number) {
+  if (!sortedValues.length) return 0
+  return sortedValues[clampIndex(Math.floor((sortedValues.length - 1) * ratio), sortedValues.length)]!
+}
+
+function createKeyPointWindows(points: RawPoint[], windowSeconds: number) {
+  if (!points.length) return [] as KeyPointWindow[]
+  const windows: KeyPointWindow[] = []
+  let bucket: number[] = []
+  let bucketStart = points[0]![0]
+  let bucketEnd = bucketStart + windowSeconds
+
+  for (const point of points) {
+    const [time, current] = point
+    while (time >= bucketEnd) {
+      if (bucket.length > 0) {
+        windows.push(summarizeKeyPointWindow(bucket, bucketStart, bucketEnd, windows.length))
+      }
+      bucket = []
+      bucketStart = bucketEnd
+      bucketEnd = bucketStart + windowSeconds
+    }
+    bucket.push(current)
+  }
+
+  if (bucket.length > 0) {
+    windows.push(summarizeKeyPointWindow(bucket, bucketStart, bucketEnd, windows.length))
+  }
+
+  return windows
+}
+
+function summarizeKeyPointWindow(currents: number[], startTime: number, endTime: number, index: number): KeyPointWindow {
+  const sorted = currents.slice().sort((left, right) => left - right)
+  const sum = currents.reduce((acc, value) => acc + value, 0)
+  const mean = sum / currents.length
+  const min = sorted[0]!
+  const max = sorted[sorted.length - 1]!
+  return {
+    index,
+    start_time: Number(startTime.toFixed(6)),
+    end_time: Number(Math.min(endTime, startTime + KEY_POINT_WINDOW_SECONDS).toFixed(6)),
+    duration: Number((Math.min(endTime, startTime + KEY_POINT_WINDOW_SECONDS) - startTime).toFixed(6)),
+    point_count: currents.length,
+    mean_current: Number(mean.toFixed(6)),
+    min_current: Number(min.toFixed(6)),
+    max_current: Number(max.toFixed(6)),
+    span_current: Number((max - min).toFixed(6)),
+  }
+}
+
+function enrichKeyPointWindows(windows: KeyPointWindow[], globals: Globals) {
+  return windows.map((window, index) => {
+    const previous = windows[index - 1] || null
+    const next = windows[index + 1] || null
+    const deltaMean = previous ? window.mean_current - previous.mean_current : 0
+    const deltaPeak = previous ? window.max_current - previous.max_current : 0
+    const baselineRatio = ratioToBaseline(window.mean_current, globals)
+    const peakRatio = ratioToBaseline(window.max_current, globals)
+    return {
+      ...window,
+      baseline_ratio: Number(baselineRatio.toFixed(6)),
+      peak_ratio: Number(peakRatio.toFixed(6)),
+      delta_mean: Number(deltaMean.toFixed(6)),
+      delta_peak: Number(deltaPeak.toFixed(6)),
+      delta_next: Number(((next ? next.mean_current : window.mean_current) - window.mean_current).toFixed(6)),
+    }
+  })
+}
+
+function localExtremaIndices(values: number[]) {
+  const indices = new Set<number>()
+  for (let index = 1; index < values.length - 1; index++) {
+    const previous = values[index - 1]!
+    const current = values[index]!
+    const next = values[index + 1]!
+    if ((current >= previous && current >= next) || (current <= previous && current <= next)) {
+      indices.add(index)
+    }
+  }
+  return indices
+}
+
+function computeExtremaProminence(values: number[], index: number) {
+  if (index <= 0 || index >= values.length - 1) return 0
+  const current = values[index]!
+  const previous = values[index - 1]!
+  const next = values[index + 1]!
+  return Math.max(Math.abs(current - previous), Math.abs(current - next))
+}
+
+function buildKeyPoint(index: number, windows: KeyPointWindow[], globals: Globals, fullScale: number): KeyPointItem {
+  const window = windows[index]!
+  const previous = windows[index - 1] || window
+  const next = windows[index + 1] || window
+  const deltaLeft = window.mean_current - previous.mean_current
+  const deltaRight = next.mean_current - window.mean_current
+  const changePercent = Math.max(Math.abs(deltaLeft), Math.abs(deltaRight), Math.abs(window.delta_peak || 0)) / Math.max(fullScale, ABS_EPSILON) * 100
+  return {
+    point_index: index,
+    time: Number(window.start_time.toFixed(6)),
+    mean_current: window.mean_current,
+    min_current: window.min_current,
+    max_current: window.max_current,
+    span_current: window.span_current,
+    baseline_ratio: Number(window.baseline_ratio || 0),
+    peak_ratio: Number(window.peak_ratio || 0),
+    delta_left: Number(deltaLeft.toFixed(6)),
+    delta_right: Number(deltaRight.toFixed(6)),
+    change_percent: Number(changePercent.toFixed(3)),
+  }
+}
+
+function selectKeyPointIndices(windows: KeyPointWindow[], globals: Globals, thresholdPercent: number, includeEnvelopeExtrema: boolean) {
+  const selected = new Set<number>([0, windows.length - 1])
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const meanValues = windows.map(window => window.mean_current)
+  const peakValues = windows.map(window => window.max_current)
+  const meanExtrema = localExtremaIndices(meanValues)
+  const peakExtrema = localExtremaIndices(peakValues)
+  const extremaThreshold = Math.max(0.6, thresholdPercent * 0.35)
+
+  for (let index = 0; index < windows.length; index++) {
+    const window = windows[index]!
+    const deltaScore = Math.max(Math.abs(window.delta_mean || 0), Math.abs(window.delta_peak || 0)) / fullScale * 100
+    if (deltaScore >= thresholdPercent) {
+      selected.add(index)
+    }
+  }
+
+  for (const index of meanExtrema) {
+    const prominencePercent = computeExtremaProminence(meanValues, index) / fullScale * 100
+    if (prominencePercent >= extremaThreshold) {
+      selected.add(index)
+    }
+  }
+
+  if (includeEnvelopeExtrema) {
+    for (const index of peakExtrema) {
+      const prominencePercent = computeExtremaProminence(peakValues, index) / fullScale * 100
+      if (prominencePercent >= extremaThreshold) {
+        selected.add(index)
+      }
+    }
+  }
+
+  return [...selected].sort((left, right) => left - right)
+}
+
+function reduceKeyPointIndices(indices: number[], windows: KeyPointWindow[], globals: Globals, targetCount: number, thresholdPercent: number) {
+  if (indices.length <= targetCount) {
+    return indices
+  }
+
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const meanValues = windows.map(window => window.mean_current)
+  const peakValues = windows.map(window => window.max_current)
+  const candidates = indices.map((index) => {
+    const point = buildKeyPoint(index, windows, globals, fullScale)
+    const meanProminence = computeExtremaProminence(meanValues, index) / fullScale * 100
+    const peakProminence = computeExtremaProminence(peakValues, index) / fullScale * 100
+    const importance = point.change_percent * 4
+      + Math.max(point.peak_ratio - 1, 0) * 0.6
+      + Math.max(point.baseline_ratio - 1, 0) * 0.25
+      + meanProminence * 1.5
+      + peakProminence * 1.75
+    return { index, point, importance }
+  })
+
+  const anchors = new Set([0, windows.length - 1])
+  const stallPeakThreshold = globals.max_current / baselineMagnitude(globals) * 0.85
+  const keep = new Set<number>(
+    candidates
+      .filter(candidate => anchors.has(candidate.index) || candidate.point.change_percent >= Math.max(10, thresholdPercent * 1.5) || candidate.point.peak_ratio >= stallPeakThreshold)
+      .map(candidate => candidate.index)
+  )
+
+  const bucketCount = Math.min(12, targetCount)
+  const bucketSize = Math.max(1, Math.ceil(windows.length / bucketCount))
+  for (let bucketIndex = 0; bucketIndex < bucketCount && keep.size < targetCount; bucketIndex++) {
+    const bucketStart = bucketIndex * bucketSize
+    const bucketEnd = Math.min(windows.length, bucketStart + bucketSize)
+    const bucketCandidates = candidates
+      .filter(candidate => candidate.index >= bucketStart && candidate.index < bucketEnd && !keep.has(candidate.index))
+      .sort((left, right) => right.importance - left.importance)
+    if (bucketCandidates.length > 0) {
+      keep.add(bucketCandidates[0]!.index)
+    }
+  }
+
+  const sortedByImportance = candidates
+    .filter(candidate => !keep.has(candidate.index))
+    .sort((left, right) => right.importance - left.importance)
+  for (const candidate of sortedByImportance) {
+    if (keep.size >= targetCount) break
+    keep.add(candidate.index)
+  }
+
+  return [...keep].sort((left, right) => left - right)
+}
+
+function fitKeyPointSelection(candidates: Array<{ thresholdPercent: number; indices: number[] }>) {
+  let preferred = candidates[0]!
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const candidate of candidates) {
+    const count = candidate.indices.length
+    const targetMid = (KEY_POINT_TARGET_MIN + KEY_POINT_TARGET_MAX) / 2
+    const distance = count >= KEY_POINT_TARGET_MIN && count <= KEY_POINT_TARGET_MAX
+      ? Math.abs(count - targetMid)
+      : Math.min(Math.abs(count - KEY_POINT_TARGET_MIN), Math.abs(count - KEY_POINT_TARGET_MAX)) + 100
+    if (distance < bestDistance) {
+      preferred = candidate
+      bestDistance = distance
+    }
+  }
+  return preferred
+}
+
+function classifyKeyPointSegmentKind(startPoint: KeyPointItem, endPoint: KeyPointItem) {
+  const delta = endPoint.mean_current - startPoint.mean_current
+  if (Math.abs(delta) <= 0.25) {
+    if (Math.max(startPoint.baseline_ratio, endPoint.baseline_ratio) <= 1.5) return 'plateau-low'
+    if (Math.max(startPoint.peak_ratio, endPoint.peak_ratio) >= 24) return 'plateau-high'
+    return 'plateau-mid'
+  }
+  if (delta > 0) {
+    return Math.max(startPoint.peak_ratio, endPoint.peak_ratio) >= 20 ? 'rising-fast' : 'rising'
+  }
+  return Math.max(startPoint.peak_ratio, endPoint.peak_ratio) >= 20 ? 'falling-fast' : 'falling'
+}
+
+function buildKeyPointSegments(keyPoints: KeyPointItem[]) {
+  if (keyPoints.length < 2) return [] as SegmentItem[]
+  return keyPoints.slice(0, -1).map((point, index) => {
+    const nextPoint = keyPoints[index + 1]!
+    const duration = Math.max(nextPoint.time - point.time, 0)
+    const meanCurrent = Number((((point.mean_current + nextPoint.mean_current) / 2)).toFixed(6))
+    return {
+      segment_index: index,
+      start_time: point.time,
+      end_time: nextPoint.time,
+      duration: Number(duration.toFixed(6)),
+      point_count: Math.max(2, nextPoint.point_index - point.point_index + 1),
+      start_current: point.mean_current,
+      end_current: nextPoint.mean_current,
+      delta_current: Number((nextPoint.mean_current - point.mean_current).toFixed(6)),
+      min_current: Number(Math.min(point.min_current, nextPoint.min_current).toFixed(6)),
+      max_current: Number(Math.max(point.max_current, nextPoint.max_current).toFixed(6)),
+      mean_current: meanCurrent,
+      representative_current: meanCurrent,
+      bandwidth: Number((Math.max(point.max_current, nextPoint.max_current) - Math.min(point.min_current, nextPoint.min_current)).toFixed(6)),
+      baseline_ratio: Number((((point.baseline_ratio + nextPoint.baseline_ratio) / 2)).toFixed(6)),
+      slope: duration > 0 ? Number(((nextPoint.mean_current - point.mean_current) / duration).toFixed(6)) : 0,
+      line_fit_error: 0,
+      kind: classifyKeyPointSegmentKind(point, nextPoint),
+      polyline_points: [
+        [point.time, point.mean_current],
+        [nextPoint.time, nextPoint.mean_current],
+      ],
+      polyline_point_count: 2,
+    }
+  })
+}
+
+function runKeyPointCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
+  const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
+  const includeEnvelopeExtrema = profile.key === 'envelope_turning_points_v1'
+  const candidates = KEY_POINT_THRESHOLD_STEPS.map((thresholdPercent) => ({
+    thresholdPercent,
+    indices: reduceKeyPointIndices(
+      selectKeyPointIndices(windows, globals, thresholdPercent, includeEnvelopeExtrema),
+      windows,
+      globals,
+      KEY_POINT_TARGET_COUNT,
+      thresholdPercent,
+    ),
+  }))
+  const selected = fitKeyPointSelection(candidates)
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const keyPoints = selected.indices.map(index => buildKeyPoint(index, windows, globals, fullScale))
+  const segments = buildKeyPointSegments(keyPoints)
+  const meta = buildCompressionMeta(profile, options)
+  meta.compression_mode = 'key_points'
+  meta.window_seconds = KEY_POINT_WINDOW_SECONDS
+  meta.threshold_percent = selected.thresholdPercent
+  meta.selected_segment_count = segments.length
+  meta.selected_key_point_count = keyPoints.length
+  meta.target_key_point_min = KEY_POINT_TARGET_MIN
+  meta.target_key_point_max = KEY_POINT_TARGET_MAX
+  meta.selection_reason = includeEnvelopeExtrema
+    ? '关键点阈值 + 均值/峰值转折保留'
+    : '按相邻窗口变化幅度自适应筛选关键点'
+
+  return {
+    options: meta,
+    result: {
+      globals,
+      segments,
+      events: [],
+    },
+  }
+}
+
 type CompressionRunResult = {
   globals: Globals
   segments: SegmentItem[]
@@ -548,9 +1010,42 @@ type OptimizedCompressionResult = {
   result: CompressionRunResult
 }
 
-function runCompression(points: RawPoint[], options: CompressionOptions, globals: Globals): CompressionRunResult {
+function buildCompressionMeta(profile: CompressionAlgorithmProfile, options: CompressionOptions): CompressionMeta {
+  return {
+    algorithm_key: profile.key,
+    algorithm_label: profile.label,
+    compression_mode: profile.output_mode,
+    absolute_resolution: options.absolute_resolution,
+    relative_resolution: options.relative_resolution,
+    merge_gap_ratio: options.merge_gap_ratio,
+    min_transition_points: options.min_transition_points,
+    target_segment_count: Math.max(10, Number(options.target_segment_count) || 45),
+    selected_segment_count: 0,
+    window_seconds: null,
+    threshold_percent: null,
+    selected_key_point_count: null,
+    target_key_point_min: null,
+    target_key_point_max: null,
+    selection_reason: null,
+    selection_context: null,
+  }
+}
+
+function runFixedCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
+  const meta = buildCompressionMeta(profile, options)
+  const result = runCompression(points, options, globals, profile)
+  meta.selected_segment_count = result.segments.length
+  meta.selection_reason = 'fixed_resolution'
+  return {
+    options: meta,
+    result,
+  }
+}
+
+function runCompression(points: RawPoint[], options: CompressionOptions, globals: Globals, profile: CompressionAlgorithmProfile): CompressionRunResult {
   const initialSegments = buildInitialSegments(points, options, globals)
-  const mergedSegments = mergeSegments(initialSegments, options, globals)
+  const mergedSegments = mergeSegments(initialSegments, options, globals, profile)
   const segments = attachPolylinePoints(mergedSegments, points, globals, options) as SegmentItem[]
   return {
     globals,
@@ -559,24 +1054,23 @@ function runCompression(points: RawPoint[], options: CompressionOptions, globals
   }
 }
 
-function optimizeCompressionOptions(points: RawPoint[], baseOptions: CompressionOptions): OptimizedCompressionResult {
+function optimizeCompressionOptions(points: RawPoint[], baseOptions: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  if (!profile.adaptive_search) {
+    return runFixedCompression(points, baseOptions, profile)
+  }
+
   const target = Math.max(10, Number(baseOptions.target_segment_count) || 45)
   const baseResolution = Math.max(baseOptions.absolute_resolution, 0.000001)
-  const globals = calculateGlobals(points)
+  const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
   const multipliers = [0.125, 0.1875, 0.25, 0.375, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
   const candidates = multipliers.map(multiplier => {
     const absolute_resolution = Number((baseResolution * multiplier).toPrecision(12))
-    const options: CompressionMeta = {
+    const options = buildCompressionMeta(profile, {
+      ...baseOptions,
       absolute_resolution,
-      relative_resolution: baseOptions.relative_resolution,
-      merge_gap_ratio: baseOptions.merge_gap_ratio,
-      min_transition_points: baseOptions.min_transition_points,
       target_segment_count: target,
-      selected_segment_count: 0,
-      selection_reason: null,
-      selection_context: null,
-    }
-    const result = runCompression(points, options, globals)
+    })
+    const result = runCompression(points, options, globals, profile)
     options.selected_segment_count = result.segments.length
     return { options, result }
   }).sort((left, right) => left.options.absolute_resolution - right.options.absolute_resolution)
@@ -692,7 +1186,7 @@ function optimizeCompressionOptions(points: RawPoint[], baseOptions: Compression
   return selected
 }
 
-export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null): FileAnalysisResult {
+function normalizeRawPoints(rawData: number[][], profile: CompressionAlgorithmProfile): RawPoint[] {
   const points: RawPoint[] = []
   let isSorted = true
   let previousTime = Number.NEGATIVE_INFINITY
@@ -715,20 +1209,62 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
     points.push([time, current])
   }
 
-  if (points.length === 0) {
+  const sortedPoints = isSorted ? points : points.slice().sort((left, right) => left[0] - right[0])
+
+  if (profile.strict_duplicate_conflict) {
+    let index = 0
+    while (index < sortedPoints.length) {
+      const time = sortedPoints[index]![0]
+      const currents = [sortedPoints[index]![1]]
+      let nextIndex = index + 1
+
+      while (nextIndex < sortedPoints.length && sortedPoints[nextIndex]![0] === time) {
+        currents.push(sortedPoints[nextIndex]![1])
+        nextIndex++
+      }
+
+      if (currents.length > 1) {
+        const uniqueCurrents = new Set(currents.map(normalizeDuplicateCurrentValue))
+        if (uniqueCurrents.size > 1) {
+          throw new Error(`检测到重复时间点且电流值冲突: t=${time}`)
+        }
+        throw new Error(`检测到重复时间点: t=${time}`)
+      }
+
+      index = nextIndex
+    }
+  }
+
+  return sortedPoints
+}
+
+export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2'): FileAnalysisResult {
+  const profile = getAlgorithmProfile(algorithmKey)
+  const sortedPoints = normalizeRawPoints(rawData, profile)
+
+  if (sortedPoints.length === 0) {
     throw new Error('文件中无有效数据点')
   }
 
-  const sortedPoints = isSorted ? points : points.slice().sort((left, right) => left[0] - right[0])
   const baseOptions: CompressionOptions = {
     absolute_resolution: appConfig?.absolute_resolution ?? DEFAULT_OPTIONS.absolute_resolution,
     relative_resolution: appConfig?.relative_resolution ?? DEFAULT_OPTIONS.relative_resolution,
     merge_gap_ratio: appConfig?.merge_gap_ratio ?? DEFAULT_OPTIONS.merge_gap_ratio,
     min_transition_points: appConfig?.min_transition_points ?? DEFAULT_OPTIONS.min_transition_points,
-    target_segment_count: DEFAULT_OPTIONS.target_segment_count,
+    target_segment_count: profile.target_segment_count,
   }
 
-  const optimized = optimizeCompressionOptions(sortedPoints, baseOptions)
+  if (profile.output_mode === 'key_points') {
+    const optimized = runKeyPointCompression(sortedPoints, baseOptions, profile)
+    return {
+      globals: optimized.result.globals,
+      segments: optimized.result.segments,
+      events: optimized.result.events,
+      compression_meta: optimized.options,
+    }
+  }
+
+  const optimized = optimizeCompressionOptions(sortedPoints, baseOptions, profile)
   const result = optimized.result
 
   return {

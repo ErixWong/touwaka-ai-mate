@@ -16,7 +16,7 @@
       </div>
       <div class="cfa-stat-card" style="background:#f3e8ff">
         <div class="cfa-stat-value">{{ segmentCount }}</div>
-        <div class="cfa-stat-label">压缩段数</div>
+        <div class="cfa-stat-label">{{ segmentCountLabel }}</div>
       </div>
       <div class="cfa-stat-card" style="background:#f3e8ff">
         <div class="cfa-stat-value">{{ plateauCount }}</div>
@@ -32,7 +32,7 @@
       </div>
       <div class="cfa-stat-card" style="background:#eafaf1">
         <div class="cfa-stat-value">{{ simplifiedCount }}</div>
-        <div class="cfa-stat-label">简化折点数</div>
+        <div class="cfa-stat-label">{{ simplifiedCountLabel }}</div>
       </div>
       <div class="cfa-stat-card" style="background:#eafaf1">
         <div class="cfa-stat-value">{{ vectorizationRatio }}</div>
@@ -56,7 +56,19 @@
       </div>
       <div class="cfa-stat-card" style="background:#eefaf3">
         <div class="cfa-stat-value">{{ targetSegmentCount }}</div>
-        <div class="cfa-stat-label">目标压缩段数</div>
+        <div class="cfa-stat-label">{{ targetSegmentCountLabel }}</div>
+      </div>
+      <div v-if="keyPointCountVisible" class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ selectedKeyPointCount }}</div>
+        <div class="cfa-stat-label">关键点数量</div>
+      </div>
+      <div v-if="keyPointCountVisible" class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value">{{ thresholdPercent }}</div>
+        <div class="cfa-stat-label">变化阈值</div>
+      </div>
+      <div class="cfa-stat-card" style="background:#eefaf3">
+        <div class="cfa-stat-value cfa-stat-value-text">{{ algorithmLabel }}</div>
+        <div class="cfa-stat-label">压缩算法</div>
       </div>
       <div class="cfa-stat-card cfa-stat-card-wide" style="background:#eefaf3">
         <div class="cfa-stat-value cfa-stat-value-text">{{ selectionReason }}</div>
@@ -78,7 +90,9 @@ const props = defineProps<{
 }>()
 
 const visible = computed(() => props.rawPointCount > 0 || (props.segments?.length ?? 0) > 0)
+const isKeyPointMode = computed(() => props.compressionMeta?.compression_mode === 'key_points')
 const segmentCount = computed(() => props.segments?.length ?? 0)
+const segmentCountLabel = computed(() => isKeyPointMode.value ? '关键线段数' : '压缩段数')
 const compressionRatio = computed(() => {
   if (!segmentCount.value) return '-'
   return (props.rawPointCount / segmentCount.value).toFixed(1)
@@ -87,6 +101,7 @@ const simplifiedCount = computed(() => {
   if (!props.segments) return 0
   return props.segments.reduce((sum, seg) => sum + (seg.polyline_point_count || 0), 0)
 })
+const simplifiedCountLabel = computed(() => isKeyPointMode.value ? '折线顶点数' : '简化折点数')
 const vectorizationRatio = computed(() => {
   if (!simplifiedCount.value) return '-'
   return (props.rawPointCount / simplifiedCount.value).toFixed(1)
@@ -115,6 +130,11 @@ const relativeResolution = computed(() => props.compressionMeta?.relative_resolu
 const mergeGapRatio = computed(() => props.compressionMeta?.merge_gap_ratio != null ? Number(props.compressionMeta.merge_gap_ratio).toFixed(2) : '-')
 const minTransitionPoints = computed(() => props.compressionMeta?.min_transition_points != null ? String(props.compressionMeta.min_transition_points) : '-')
 const targetSegmentCount = computed(() => props.compressionMeta?.target_segment_count != null ? String(props.compressionMeta.target_segment_count) : '-')
+const targetSegmentCountLabel = computed(() => isKeyPointMode.value ? '目标关键点数' : '目标压缩段数')
+const selectedKeyPointCount = computed(() => props.compressionMeta?.selected_key_point_count != null ? String(props.compressionMeta.selected_key_point_count) : '-')
+const keyPointCountVisible = computed(() => isKeyPointMode.value)
+const thresholdPercent = computed(() => props.compressionMeta?.threshold_percent != null ? `${Number(props.compressionMeta.threshold_percent).toFixed(1)} %` : '-')
+const algorithmLabel = computed(() => props.compressionMeta?.algorithm_label || '-')
 const selectionReason = computed(() => {
   const meta = props.compressionMeta
   if (!meta?.selection_reason) return '-'
