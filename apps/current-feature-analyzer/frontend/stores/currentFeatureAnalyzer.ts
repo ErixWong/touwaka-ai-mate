@@ -8,6 +8,7 @@ import {
   type BatchStatus,
   type BatchSummary,
   type AppConfig,
+  type CompressionAlgorithmKey,
   type FileAnalysisResult,
   type FileAnalysisSubmitItem,
 } from '../api/current-feature-analyzer'
@@ -15,7 +16,6 @@ import { APIError } from '@/api/client'
 import { normalizeApiError, enhanceApiError } from '../composables/useCurrentFeatureAnalyzerError'
 import { runLocalCurrentFeatureAnalysis } from '../utils/local-analysis'
 import { runLocalCurrentFeatureAnalysisAsync } from '../utils/local-analysis-worker'
-import { exportCurrentFeatureAnalyzerReport } from '../utils/export-report'
 
 type FileDetailData = Pick<SessionFileItem, 'raw_data' | 'result' | '_duplicate_diagnosis'>
 
@@ -38,6 +38,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
   const sessionExpired = ref(false)
   const ruleSets = ref<RuleSetItem[]>([])
   const appConfig = ref<AppConfig | null>(null)
+  const selectedCompressionAlgorithm = ref<CompressionAlgorithmKey>('envelope_turning_points_v3')
   const analysisTransitionVisible = ref(false)
   const analysisTransitionStage = ref<'syncing' | 'compressing' | 'recognizing'>('syncing')
   let scheduledAnalysisToken = 0
@@ -109,7 +110,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     return batchStatus.value !== 'idle' || files.value.length > 0 || !!batchId.value
   }
 
-  async function launchAnalysisTask(fileList: File[], ruleSetId: string, overwriteCurrentSession = true) {
+  async function launchAnalysisTask(fileList: File[], ruleSetId: string, compressionAlgorithm: CompressionAlgorithmKey, overwriteCurrentSession = true) {
     const preservedRuleSetDetail = selectedRuleSetDetail.value
     const preservedRuleSetId = selectedRuleSetId.value
     if (overwriteCurrentSession && hasActiveSession()) {
@@ -119,6 +120,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
 
     selectedRuleSetId.value = preservedRuleSetId || ruleSetId
     selectedRuleSetDetail.value = preservedRuleSetDetail
+    selectedCompressionAlgorithm.value = compressionAlgorithm
 
     await uploadFiles(fileList, ruleSetId)
 
@@ -370,7 +372,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
           if (selectedFileId.value === file.file_id) {
             await nextTick()
           }
-          const localResult = await runLocalCurrentFeatureAnalysisAsync(rawData, appConfig.value)
+          const localResult = await runLocalCurrentFeatureAnalysisAsync(rawData, appConfig.value, selectedCompressionAlgorithm.value)
           file.result = localResult
           file.warning_count = 0
           file.error_message = null
@@ -441,6 +443,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
       return
     }
     try {
+      const { exportCurrentFeatureAnalyzerReport } = await import('../utils/export-report')
       await exportCurrentFeatureAnalyzerReport({
         batchId: batchId.value,
         files: files.value,
@@ -478,6 +481,7 @@ export const useCurrentFeatureAnalyzerStore = defineStore('currentFeatureAnalyze
     sessionExpired,
     ruleSets,
     appConfig,
+    selectedCompressionAlgorithm,
     analysisTransitionVisible,
     analysisTransitionStage,
     currentFile,

@@ -148,11 +148,23 @@ class AppMarketService {
 
   // ==================== Registry 拉取 ====================
 
+  async fetchLocalIndex() {
+    const indexPath = path.join(this.appsDir, 'index.json');
+    const content = await fs.readFile(indexPath, 'utf-8');
+    return JSON.parse(content);
+  }
+
   /**
-   * 从 GitHub Registry 拉取索引
+   * 从 GitHub Registry 拉取索引（失败时 fallback 到本地）
    */
   async fetchIndex() {
     const config = await this.getRegistryConfig();
+
+    if (config.offline_mode) {
+      logger.info('Offline mode: reading from local apps/index.json');
+      return await this.fetchLocalIndex();
+    }
+
     const url = `${config.registry_url}/index.json`;
     
     logger.info(`Fetching Registry index from: ${url}`);
@@ -169,7 +181,6 @@ class AppMarketService {
       
       const index = await response.json();
       
-      // 更新最后检查时间
       await this.models.SystemSetting.update(
         { setting_value: new Date().toISOString() },
         { where: { setting_key: 'app_market.last_check_at' } }
@@ -177,16 +188,28 @@ class AppMarketService {
       
       return index;
     } catch (error) {
-      logger.error('Failed to fetch Registry index:', error);
-      throw new Error(`无法连接到 App Market Registry: ${error.message}`);
+      logger.warn('Remote Registry failed, fallback to local:', error.message);
+      return await this.fetchLocalIndex();
     }
   }
 
+  async fetchLocalManifest(appId) {
+    const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+    const content = await fs.readFile(manifestPath, 'utf-8');
+    return JSON.parse(content);
+  }
+
   /**
-   * 从 GitHub Registry 拉取 App manifest
+   * 从 GitHub Registry 拉取 App manifest（失败时 fallback 到本地）
    */
   async fetchManifest(appId) {
     const config = await this.getRegistryConfig();
+
+    if (config.offline_mode) {
+      logger.info(`Offline mode: reading local manifest for ${appId}`);
+      return await this.fetchLocalManifest(appId);
+    }
+
     const url = `${config.registry_url}/${appId}/manifest.json`;
     
     logger.info(`Fetching manifest for ${appId} from: ${url}`);
@@ -206,16 +229,32 @@ class AppMarketService {
       
       return await response.json();
     } catch (error) {
-      logger.error(`Failed to fetch manifest for ${appId}:`, error);
-      throw error;
+      logger.warn(`Remote manifest failed for ${appId}, fallback to local:`, error.message);
+      try {
+        return await this.fetchLocalManifest(appId);
+      } catch (localError) {
+        logger.error(`App ${appId} not found locally either:`, localError.message);
+        throw new Error(`App ${appId} not found in Registry or local apps`);
+      }
     }
   }
 
+  async fetchLocalHandler(appId, handlerName) {
+    const handlerPath = path.join(this.appsDir, appId, 'handlers', handlerName, 'index.js');
+    return await fs.readFile(handlerPath, 'utf-8');
+  }
+
   /**
-   * 拉取处理脚本内容
+   * 拉取处理脚本内容（失败时 fallback 到本地）
    */
   async fetchHandler(appId, handlerName) {
     const config = await this.getRegistryConfig();
+
+    if (config.offline_mode) {
+      logger.info(`Offline mode: reading local handler ${handlerName} for ${appId}`);
+      return await this.fetchLocalHandler(appId, handlerName);
+    }
+
     const url = `${config.registry_url}/${appId}/handlers/${handlerName}/index.js`;
     
     logger.info(`Fetching handler ${handlerName} for ${appId}`);
@@ -229,8 +268,13 @@ class AppMarketService {
       
       return await response.text();
     } catch (error) {
-      logger.error(`Failed to fetch handler ${handlerName}:`, error);
-      throw error;
+      logger.warn(`Remote handler failed for ${handlerName}, fallback to local:`, error.message);
+      try {
+        return await this.fetchLocalHandler(appId, handlerName);
+      } catch (localError) {
+        logger.error(`Handler ${handlerName} not found locally:`, localError.message);
+        throw error;
+      }
     }
   }
 
@@ -315,11 +359,22 @@ class AppMarketService {
     return 0;
   }
 
+  async fetchLocalMigration(appId, scriptPath) {
+    const fullPath = path.join(this.appsDir, appId, scriptPath);
+    return await fs.readFile(fullPath, 'utf-8');
+  }
+
   /**
-   * 拉取迁移脚本
+   * 拉取迁移脚本（失败时 fallback 到本地）
    */
   async fetchMigration(appId, scriptPath) {
     const config = await this.getRegistryConfig();
+
+    if (config.offline_mode) {
+      logger.info(`Offline mode: reading local migration ${scriptPath} for ${appId}`);
+      return await this.fetchLocalMigration(appId, scriptPath);
+    }
+
     const url = `${config.registry_url}/${appId}/${scriptPath}`;
     
     logger.info(`Fetching migration ${scriptPath} for ${appId}`);
@@ -333,8 +388,13 @@ class AppMarketService {
       
       return await response.text();
     } catch (error) {
-      logger.error(`Failed to fetch migration ${scriptPath}:`, error);
-      throw error;
+      logger.warn(`Remote migration failed for ${appId}, fallback to local:`, error.message);
+      try {
+        return await this.fetchLocalMigration(appId, scriptPath);
+      } catch (localError) {
+        logger.error(`Migration ${scriptPath} not found locally:`, localError.message);
+        throw error;
+      }
     }
   }
 

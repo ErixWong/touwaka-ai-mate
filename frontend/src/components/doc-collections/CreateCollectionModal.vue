@@ -25,7 +25,7 @@
           <el-radio value="department" :disabled="!userHasDepartment">{{ $t('docs.workspace.settings.visibilityDepartment') }}</el-radio>
           <el-radio value="public">{{ $t('docs.workspace.settings.visibilityPublic') }}</el-radio>
         </el-radio-group>
-        <div v-if="!userHasDepartment && form.visibility === 'department'" class="form-hint">
+        <div v-if="!userHasDepartment" class="form-hint">
           {{ $t('docs.workspace.settings.departmentRequiredHint') }}
         </div>
       </el-form-item>
@@ -57,6 +57,7 @@
 import { ref, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { modelApi } from '@/api/services'
 import { departmentApi } from '@/api/services'
 import { useUserStore } from '@/stores/user'
@@ -136,6 +137,11 @@ async function onOpen() {
 }
 
 async function submit() {
+  if (!userHasDepartment.value) {
+    ElMessage.warning(t('docs.workspace.settings.departmentRequiredHint'))
+    return
+  }
+
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
@@ -151,8 +157,17 @@ async function submit() {
       data.department_id = form.department_id
       data.department_scope = form.department_scope
     }
-    await collectionStore.addCollection(data)
+    const result = await collectionStore.addCollection(data)
+    if (!result) {
+      const errMsg = collectionStore.error || ''
+      const isServerError = errMsg.includes('database') || errMsg.includes('SQL') || errMsg.includes('constraint')
+      ElMessage.error(isServerError ? t('common.error') : (collectionStore.error || t('common.error')))
+      return
+    }
     emit('created')
+    emit('update:visible', false)
+  } catch {
+    ElMessage.error(t('common.error'))
   } finally {
     submitting.value = false
   }

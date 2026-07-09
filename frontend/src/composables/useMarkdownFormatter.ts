@@ -3,7 +3,19 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
 import type { ChatMessage } from '@/components/ChatWindow.vue'
-import { renderMermaidInHtml } from '@/utils/mermaid'
+
+let katexCssPromise: Promise<void> | null = null
+const loadKatexCss = (): Promise<void> => {
+  if (katexCssPromise) return katexCssPromise
+  katexCssPromise = import('katex/dist/katex.min.css')
+    .then(() => {})
+    .catch((err) => {
+      console.error('Failed to load KaTeX CSS:', err)
+      // 加载失败时清除缓存，允许后续重试
+      katexCssPromise = null
+    })
+  return katexCssPromise
+}
 
 marked.setOptions({
   breaks: true,
@@ -145,6 +157,9 @@ const sanitizeMarkdownHtml = (rawHtml: string): string => {
 const formatMessage = (content: string, cacheKey?: string) => {
   if (!content) return ''
 
+  // 触发 KaTeX CSS 加载（不阻塞渲染，但加载失败时可重试）
+  loadKatexCss()
+
   const effectiveCacheKey = cacheKey || content
   const cached = formattedCache.get(effectiveCacheKey)
   if (cached !== undefined) {
@@ -183,6 +198,8 @@ const renderMermaidAsync = async (message: ChatMessage, html: string) => {
   renderingMermaid.value.add(messageId)
 
   try {
+    // 动态导入 Mermaid，仅在内容实际包含 mermaid 代码块时才加载
+    const { renderMermaidInHtml } = await import('@/utils/mermaid')
     const renderedHtml = await renderMermaidInHtml(html)
 
     if (mermaidRenderedHtml.value.size > MERMAID_CACHE_MAX_SIZE) {

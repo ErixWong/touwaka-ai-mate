@@ -4,7 +4,7 @@
       <div class="table-header">
         <div>
           <div class="table-title">压缩段明细</div>
-          <div class="table-note">直接观察每段的平台、斜坡、尖峰和拟合情况，判断是否符合人眼直觉</div>
+          <div class="table-note">保留足够判断阶段边界的信息，重点看时间范围、电流起止和段内变化幅度</div>
         </div>
       </div>
     </template>
@@ -20,6 +20,12 @@
           <el-tag size="small" effect="plain">{{ scope.row.kind || '-' }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="开始电流" min-width="110">
+        <template #default="scope">{{ formatNumber(scope.row.start_current) }}</template>
+      </el-table-column>
+      <el-table-column label="结束电流" min-width="110">
+        <template #default="scope">{{ formatNumber(scope.row.end_current) }}</template>
+      </el-table-column>
       <el-table-column label="开始时间" min-width="110">
         <template #default="scope">{{ formatNumber(scope.row.start_time) }}</template>
       </el-table-column>
@@ -30,20 +36,11 @@
         <template #default="scope">{{ formatNumber(scope.row.duration) }}</template>
       </el-table-column>
       <el-table-column prop="point_count" label="点数" min-width="90" />
-      <el-table-column label="代表电流" min-width="110">
-        <template #default="scope">{{ formatNumber(scope.row.representative_current) }}</template>
-      </el-table-column>
       <el-table-column label="带宽" min-width="100">
         <template #default="scope">{{ formatNumber(scope.row.bandwidth) }}</template>
       </el-table-column>
       <el-table-column label="斜率" min-width="100">
         <template #default="scope">{{ formatNumber(scope.row.slope) }}</template>
-      </el-table-column>
-      <el-table-column label="折点数" min-width="100">
-        <template #default="scope">{{ scope.row.polyline_points?.length ?? 0 }}</template>
-      </el-table-column>
-      <el-table-column label="拟合误差" min-width="110">
-        <template #default="scope">{{ formatNumber(scope.row.line_fit_error) }}</template>
       </el-table-column>
     </el-table>
   </el-card>
@@ -56,7 +53,7 @@ defineProps<{ segments: SegmentItem[] }>()
 
 function formatNumber(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toFixed(4)
+  return value.toFixed(6)
 }
 </script>
 

@@ -45,9 +45,7 @@
           <CompressionStatsCard
             :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
             :segments="file.result.segments"
-            :events="file.result.events"
             :globals="file.result.globals"
-            :duplicate-diagnosis="file._duplicate_diagnosis"
             :compression-meta="file.result.compression_meta"
           />
         </el-tab-pane>
@@ -126,9 +124,7 @@
             v-if="file.result?.segments?.length"
             :raw-point-count="file.raw_data?.length ?? file.row_count ?? 0"
             :segments="file.result.segments"
-            :events="file.result.events"
             :globals="file.result.globals"
-            :duplicate-diagnosis="file._duplicate_diagnosis"
             :compression-meta="file.result.compression_meta"
           />
           <div v-else class="cfa-pending-block">
