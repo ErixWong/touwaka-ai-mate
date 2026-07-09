@@ -89,6 +89,16 @@ const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorit
     adaptive_search: false,
     target_segment_count: KEY_POINT_TARGET_COUNT,
   },
+  envelope_turning_points_v3: {
+    key: 'envelope_turning_points_v3',
+    label: '包络转折点 V3',
+    output_mode: 'key_points',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
 }
 
 function currentMagnitude(value: number | undefined | null) {
@@ -343,7 +353,7 @@ function calculateGlobalsLegacy(points: RawPoint[]): Globals {
 }
 
 function getAlgorithmProfile(algorithmKey?: CompressionAlgorithmKey | null) {
-  return COMPRESSION_ALGORITHMS[algorithmKey || 'adaptive_v2'] || COMPRESSION_ALGORITHMS.adaptive_v2
+  return COMPRESSION_ALGORITHMS[algorithmKey || 'envelope_turning_points_v3'] || COMPRESSION_ALGORITHMS.envelope_turning_points_v3
 }
 
 function normalizeDuplicateCurrentValue(current: number) {
@@ -852,6 +862,69 @@ function detectHighPlateauAnchors(windows: KeyPointWindow[], globals: Globals) {
   return anchors
 }
 
+function classifyKeyPointWindowState(window: KeyPointWindow, globals: Globals) {
+  const baselineRatio = window.baseline_ratio || 0
+  const peakRatio = window.peak_ratio || 0
+  const deltaMean = window.delta_mean || 0
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const slopePercent = Math.abs(deltaMean) / fullScale * 100
+
+  if (baselineRatio <= 1.6 && peakRatio <= 2) return 'idle_plateau'
+  if (peakRatio >= Math.max(globals.max_current / baselineMagnitude(globals) * 0.92, 18)
+    && baselineRatio >= 0.8 * (globals.max_current / baselineMagnitude(globals) * 0.5)) {
+    return 'high_plateau'
+  }
+  if (slopePercent >= 3) {
+    return deltaMean >= 0 ? 'ramp_up' : 'ramp_down'
+  }
+  if (baselineRatio >= 5.5) return 'work_plateau'
+  if (baselineRatio >= 2.2) return 'mid_plateau'
+  return 'transition'
+}
+
+function buildKeyPointStateRuns(windows: KeyPointWindow[], globals: Globals) {
+  if (!windows.length) return [] as Array<{ state: string; start: number; end: number }>
+  const runs: Array<{ state: string; start: number; end: number }> = []
+  let currentRun = {
+    state: classifyKeyPointWindowState(windows[0]!, globals),
+    start: 0,
+    end: 0,
+  }
+  for (let index = 1; index < windows.length; index++) {
+    const state = classifyKeyPointWindowState(windows[index]!, globals)
+    const previousWindow = windows[index - 1]!
+    const currentWindow = windows[index]!
+    const smoothEnough = Math.abs(currentWindow.mean_current - previousWindow.mean_current) / Math.max(globals.max_current - globals.min_current, ABS_EPSILON) * 100 < 1.8
+    if (state === currentRun.state || (smoothEnough && state.includes('plateau') && currentRun.state.includes('plateau'))) {
+      currentRun.end = index
+      continue
+    }
+    runs.push(currentRun)
+    currentRun = { state, start: index, end: index }
+  }
+  runs.push(currentRun)
+  return runs
+}
+
+function detectPlateauBoundaryAnchors(windows: KeyPointWindow[], globals: Globals) {
+  const runs = buildKeyPointStateRuns(windows, globals)
+  const anchors = new Set<number>()
+  for (const run of runs) {
+    const isPlateau = run.state === 'idle_plateau'
+      || run.state === 'mid_plateau'
+      || run.state === 'work_plateau'
+      || run.state === 'high_plateau'
+    const length = run.end - run.start + 1
+    if (!isPlateau || length < 2) continue
+    anchors.add(run.start)
+    anchors.add(run.end)
+    if (length >= 5) anchors.add(Math.floor((run.start + run.end) / 2))
+    if (run.start - 1 >= 0) anchors.add(run.start - 1)
+    if (run.end + 1 < windows.length) anchors.add(run.end + 1)
+  }
+  return anchors
+}
+
 function selectKeyPointIndices(windows: KeyPointWindow[], globals: Globals, thresholdPercent: number, includeEnvelopeExtrema: boolean, includeHighPlateauAnchors = false) {
   const selected = new Set<number>([0, windows.length - 1])
   const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
@@ -895,7 +968,7 @@ function selectKeyPointIndices(windows: KeyPointWindow[], globals: Globals, thre
   return [...selected].sort((left, right) => left - right)
 }
 
-function reduceKeyPointIndices(indices: number[], windows: KeyPointWindow[], globals: Globals, targetCount: number, thresholdPercent: number) {
+function reduceKeyPointIndices(indices: number[], windows: KeyPointWindow[], globals: Globals, targetCount: number, thresholdPercent: number, mandatoryIndices: number[] = []) {
   if (indices.length <= targetCount) {
     return indices
   }
@@ -916,10 +989,11 @@ function reduceKeyPointIndices(indices: number[], windows: KeyPointWindow[], glo
   })
 
   const anchors = new Set([0, windows.length - 1])
+  const mandatorySet = new Set(mandatoryIndices)
   const stallPeakThreshold = globals.max_current / baselineMagnitude(globals) * 0.85
   const keep = new Set<number>(
     candidates
-      .filter(candidate => anchors.has(candidate.index) || candidate.point.change_percent >= Math.max(10, thresholdPercent * 1.5) || candidate.point.peak_ratio >= stallPeakThreshold)
+      .filter(candidate => anchors.has(candidate.index) || mandatorySet.has(candidate.index) || candidate.point.change_percent >= Math.max(10, thresholdPercent * 1.5) || candidate.point.peak_ratio >= stallPeakThreshold)
       .map(candidate => candidate.index)
   )
 
@@ -1013,16 +1087,24 @@ function buildKeyPointSegments(keyPoints: KeyPointItem[]) {
 function runKeyPointCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
   const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
   const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
-  const includeEnvelopeExtrema = profile.key === 'envelope_turning_points_v2'
-  const includeHighPlateauAnchors = profile.key === 'envelope_turning_points_v2'
+  const isEnvelopeTurningPoints = profile.key === 'envelope_turning_points_v2' || profile.key === 'envelope_turning_points_v3'
+  const includeEnvelopeExtrema = isEnvelopeTurningPoints
+  const includeHighPlateauAnchors = isEnvelopeTurningPoints
+  const plateauBoundaryAnchors = profile.key === 'envelope_turning_points_v3'
+    ? [...detectPlateauBoundaryAnchors(windows, globals)]
+    : []
   const candidates = KEY_POINT_THRESHOLD_STEPS.map((thresholdPercent) => ({
     thresholdPercent,
     indices: reduceKeyPointIndices(
-      selectKeyPointIndices(windows, globals, thresholdPercent, includeEnvelopeExtrema, includeHighPlateauAnchors),
+      Array.from(new Set([
+        ...selectKeyPointIndices(windows, globals, thresholdPercent, includeEnvelopeExtrema, includeHighPlateauAnchors),
+        ...plateauBoundaryAnchors,
+      ])).sort((left, right) => left - right),
       windows,
       globals,
       KEY_POINT_TARGET_COUNT,
       thresholdPercent,
+      plateauBoundaryAnchors,
     ),
   }))
   const selected = fitKeyPointSelection(candidates)
@@ -1037,9 +1119,11 @@ function runKeyPointCompression(points: RawPoint[], options: CompressionOptions,
   meta.selected_key_point_count = keyPoints.length
   meta.target_key_point_min = KEY_POINT_TARGET_MIN
   meta.target_key_point_max = KEY_POINT_TARGET_MAX
-  meta.selection_reason = includeEnvelopeExtrema
-    ? '关键点阈值 + 均值/峰值转折保留 + 堵转平台锚点'
-    : '按相邻窗口变化幅度自适应筛选关键点'
+  meta.selection_reason = profile.key === 'envelope_turning_points_v3'
+    ? '关键点阈值 + 均值/峰值转折保留 + 平台边界结构锚点'
+    : includeEnvelopeExtrema
+      ? '关键点阈值 + 均值/峰值转折保留 + 堵转平台锚点'
+      : '按相邻窗口变化幅度自适应筛选关键点'
 
   return {
     options: meta,
@@ -1290,7 +1374,7 @@ function normalizeRawPoints(rawData: number[][], profile: CompressionAlgorithmPr
   return sortedPoints
 }
 
-export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2'): FileAnalysisResult {
+export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'envelope_turning_points_v3'): FileAnalysisResult {
   const profile = getAlgorithmProfile(algorithmKey)
   const sortedPoints = normalizeRawPoints(rawData, profile)
 

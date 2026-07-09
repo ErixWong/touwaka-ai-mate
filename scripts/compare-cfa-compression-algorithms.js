@@ -204,7 +204,7 @@ function buildCandidateInfo(index, windows, globals) {
   };
 }
 
-function reduceIndices(indices, windows, globals, targetCount, thresholdPercent) {
+function reduceIndices(indices, windows, globals, targetCount, thresholdPercent, mandatoryIndices = []) {
   if (indices.length <= targetCount) {
     return indices;
   }
@@ -212,8 +212,10 @@ function reduceIndices(indices, windows, globals, targetCount, thresholdPercent)
   const candidates = indices.map(index => buildCandidateInfo(index, windows, globals));
   const anchors = new Set([0, windows.length - 1]);
   const stallPeakThreshold = globals.p95_current / globals.baseline_magnitude * 0.9;
+  const mandatorySet = new Set(mandatoryIndices);
   const mandatory = candidates.filter(candidate => (
     anchors.has(candidate.index)
+    || mandatorySet.has(candidate.index)
     || candidate.point.change_percent >= Math.max(10, thresholdPercent * 1.5)
     || candidate.point.peak_ratio >= stallPeakThreshold
   ));
@@ -286,6 +288,32 @@ function detectHighPlateauAnchors(windows, globals) {
     }
   }
   flushRun(windows.length - 1);
+  return anchors;
+}
+
+function detectPlateauBoundaryAnchors(windows, globals) {
+  const runs = buildStateRuns(windows, globals);
+  const anchors = new Set();
+
+  for (const run of runs) {
+    const isPlateau = run.state === 'idle_plateau'
+      || run.state === 'mid_plateau'
+      || run.state === 'work_plateau'
+      || run.state === 'high_plateau';
+    const length = run.end - run.start + 1;
+    if (!isPlateau || length < 2) continue;
+
+    anchors.add(run.start);
+    anchors.add(run.end);
+
+    if (length >= 5) {
+      anchors.add(Math.floor((run.start + run.end) / 2));
+    }
+
+    if (run.start - 1 >= 0) anchors.add(run.start - 1);
+    if (run.end + 1 < windows.length) anchors.add(run.end + 1);
+  }
+
   return anchors;
 }
 
@@ -1156,6 +1184,419 @@ function analyzeWithPrimitiveBudgetedSketch(windows, globals) {
   return buildBudgetedPrimitiveSketchResult('primitive_budgeted_sketch_v1', '宏原语预算素描 V1', windows, globals);
 }
 
+function primitiveTargetY(index, windows, globals) {
+  const feature = classifyPrimitiveWindow(index, windows, globals);
+  const window = windows[index];
+  if (feature === 'plateau_high' || feature === 'pulse' || feature === 'volatile') {
+    return window.max_current;
+  }
+  return window.mean_current;
+}
+
+function interpolateY(leftPoint, rightPoint, time) {
+  if (rightPoint.time === leftPoint.time) return leftPoint.mean_current;
+  const ratio = (time - leftPoint.time) / (rightPoint.time - leftPoint.time);
+  return leftPoint.mean_current + (rightPoint.mean_current - leftPoint.mean_current) * ratio;
+}
+
+function evaluateContourError(points, windows, globals) {
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+  let worst = null;
+  for (let pointIndex = 0; pointIndex < points.length - 1; pointIndex++) {
+    const leftPoint = points[pointIndex];
+    const rightPoint = points[pointIndex + 1];
+    const startIndex = leftPoint.point_index;
+    const endIndex = rightPoint.point_index;
+    if (endIndex - startIndex <= 1) continue;
+    for (let windowIndex = startIndex + 1; windowIndex < endIndex; windowIndex++) {
+      const targetY = primitiveTargetY(windowIndex, windows, globals);
+      const approxY = interpolateY(leftPoint, rightPoint, windows[windowIndex].start_time);
+      const errorPct = Math.abs(targetY - approxY) / fullScale * 100;
+      if (!worst || errorPct > worst.errorPct) {
+        worst = { windowIndex, errorPct };
+      }
+    }
+  }
+  return worst;
+}
+
+function refineAdaptivePoints(initialPoints, windows, globals) {
+  const pointsByIndex = new Map(initialPoints.map(point => [point.point_index, point]));
+  const maxPoints = 140;
+  const targetErrorPct = 2.2;
+
+  while (pointsByIndex.size < maxPoints) {
+    const points = [...pointsByIndex.values()].sort((left, right) => left.point_index - right.point_index);
+    const worst = evaluateContourError(points, windows, globals);
+    if (!worst || worst.errorPct <= targetErrorPct) {
+      break;
+    }
+    const y = primitiveTargetY(worst.windowIndex, windows, globals);
+    pointsByIndex.set(worst.windowIndex, buildPrimitivePoint(worst.windowIndex, windows, globals, y));
+  }
+
+  return [...pointsByIndex.values()].sort((left, right) => left.point_index - right.point_index);
+}
+
+function buildAdaptivePrimitiveSketchResult(algorithmKey, algorithmLabel, windows, globals) {
+  const runs = coalescePrimitiveRuns(buildPrimitiveRuns(windows, globals), windows, globals);
+  const seedPoints = [...new Map(runs.flatMap(run => buildBudgetedRunPoints(run, windows, globals)).map(point => [point.point_index, point])).values()]
+    .sort((left, right) => left.point_index - right.point_index);
+  const refinedPoints = refineAdaptivePoints(seedPoints, windows, globals);
+  const summaries = runs.map(run => summarizePrimitiveRun(run, windows));
+  const featureText = summaries.map(run => (
+    `- ${formatNumber(run.start_time, 3)}s -> ${formatNumber(run.end_time, 3)}s: ${run.feature}, ` +
+    `mean范围 ${formatNumber(run.mean_min)}A ~ ${formatNumber(run.mean_max)}A, ` +
+    `peak_max ${formatNumber(run.peak_max)}A, valley_min ${formatNumber(run.valley_min)}A`
+  )).join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: refinedPoints.length,
+    selection_reason: '先按宏原语生成基础轮廓，再按重建误差自适应加点，直到关键失真降到阈值内',
+    key_points: refinedPoints,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\n特征片段序列：\n${featureText}\n\n关键点序列：\n${renderKeyPoints(refinedPoints)}\n\n关键区间关系：\n${describeSegments(refinedPoints)}`,
+  };
+}
+
+function analyzeWithPrimitiveAdaptiveSketch(windows, globals) {
+  return buildAdaptivePrimitiveSketchResult('primitive_adaptive_sketch_v1', '宏原语自适应素描 V1', windows, globals);
+}
+
+function buildBudgetedRunPointIndices(run) {
+  const length = run.end - run.start + 1;
+  const middle = Math.floor((run.start + run.end) / 2);
+  const indices = [run.start];
+
+  if (run.feature === 'idle_band') {
+    if (length >= 12) indices.push(middle);
+  } else if (run.feature === 'high_band') {
+    indices.push(middle);
+  } else if (run.feature === 'work_band') {
+    if (length >= 6) indices.push(middle);
+  } else if (run.feature !== 'pulse' && run.feature !== 'volatile') {
+    if (length >= 8) indices.push(middle);
+  }
+
+  if (run.end !== run.start) indices.push(run.end);
+  return [...new Set(indices)].sort((left, right) => left - right);
+}
+
+function buildBudgetedPrimitiveSeedPoints(windows, globals) {
+  const runs = coalescePrimitiveRuns(buildPrimitiveRuns(windows, globals), windows, globals);
+  const points = runs.flatMap(run => buildBudgetedRunPoints(run, windows, globals));
+  return [...new Map(points.map(point => [point.point_index, point])).values()].sort((left, right) => left.point_index - right.point_index);
+}
+
+function reverseWindowsForAnalysis(windows) {
+  return windows.slice().reverse().map((window, reversedIndex) => ({
+    ...window,
+    original_index: windows.length - 1 - reversedIndex,
+  }));
+}
+
+function mapReversePointsToOriginal(reversePoints, reversedWindows, originalWindows, globals) {
+  return reversePoints.map((point) => {
+    const originalIndex = reversedWindows[point.point_index].original_index;
+    return buildPrimitivePoint(originalIndex, originalWindows, globals, point.mean_current);
+  });
+}
+
+function mergeConsensusPointSets(forwardPoints, reversePoints) {
+  const merged = new Map();
+  for (const point of [...forwardPoints, ...reversePoints]) {
+    const existing = merged.get(point.point_index);
+    if (!existing) {
+      merged.set(point.point_index, point);
+      continue;
+    }
+    merged.set(point.point_index, {
+      ...existing,
+      mean_current: Number((((existing.mean_current + point.mean_current) / 2)).toFixed(6)),
+    });
+  }
+  return [...merged.values()].sort((left, right) => left.point_index - right.point_index);
+}
+
+function refineConsensusPoints(initialPoints, windows, globals) {
+  const pointsByIndex = new Map(initialPoints.map(point => [point.point_index, point]));
+  const maxPoints = 120;
+  const targetErrorPct = 2.6;
+
+  while (pointsByIndex.size < maxPoints) {
+    const points = [...pointsByIndex.values()].sort((left, right) => left.point_index - right.point_index);
+    const worst = evaluateContourError(points, windows, globals);
+    if (!worst || worst.errorPct <= targetErrorPct) {
+      break;
+    }
+    const y = primitiveTargetY(worst.windowIndex, windows, globals);
+    pointsByIndex.set(worst.windowIndex, buildPrimitivePoint(worst.windowIndex, windows, globals, y));
+  }
+
+  return [...pointsByIndex.values()].sort((left, right) => left.point_index - right.point_index);
+}
+
+function buildBidirectionalIterativeSketchResult(algorithmKey, algorithmLabel, windows, globals) {
+  const forwardPoints = buildBudgetedPrimitiveSeedPoints(windows, globals);
+  const reversedWindows = reverseWindowsForAnalysis(windows);
+  const reverseSeedPoints = buildBudgetedPrimitiveSeedPoints(reversedWindows, globals);
+  const reverseMappedPoints = mapReversePointsToOriginal(reverseSeedPoints, reversedWindows, windows, globals);
+  const consensusPoints = mergeConsensusPointSets(forwardPoints, reverseMappedPoints);
+  const refinedPoints = refineConsensusPoints(consensusPoints, windows, globals);
+  const summaries = coalescePrimitiveRuns(buildPrimitiveRuns(windows, globals), windows, globals).map(run => summarizePrimitiveRun(run, windows));
+  const featureText = summaries.map(run => (
+    `- ${formatNumber(run.start_time, 3)}s -> ${formatNumber(run.end_time, 3)}s: ${run.feature}, ` +
+    `mean范围 ${formatNumber(run.mean_min)}A ~ ${formatNumber(run.mean_max)}A, ` +
+    `peak_max ${formatNumber(run.peak_max)}A, valley_min ${formatNumber(run.valley_min)}A`
+  )).join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: refinedPoints.length,
+    selection_reason: '先做正向与反向粗解析，取共识轮廓，再只对高误差区段做局部修正',
+    key_points: refinedPoints,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\n特征片段序列：\n${featureText}\n\n关键点序列：\n${renderKeyPoints(refinedPoints)}\n\n关键区间关系：\n${describeSegments(refinedPoints)}`,
+  };
+}
+
+function analyzeWithBidirectionalIterativeSketch(windows, globals) {
+  return buildBidirectionalIterativeSketchResult('bidirectional_iterative_sketch_v1', '双向迭代素描 V1', windows, globals);
+}
+
+function quantizeLevel(value, minValue, maxValue, binCount) {
+  if (maxValue <= minValue) return 0;
+  const ratio = (value - minValue) / (maxValue - minValue);
+  return Math.max(0, Math.min(binCount - 1, Math.floor(ratio * binCount)));
+}
+
+function mergeAdjacentGroups(groups, boundaryTransitions, targetGroupCount) {
+  const activeGroupCount = () => groups.filter(group => group.count > 0).length;
+  const mergeCost = (left, right) => {
+    const occupancy = left.count + right.count;
+    const boundary = boundaryTransitions[left.endBin] || 0;
+    return (occupancy + 1) / (1 + boundary * 2.5);
+  };
+
+  while (groups.length > 1 && activeGroupCount() > targetGroupCount) {
+    let bestIndex = 0;
+    let bestCost = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < groups.length - 1; index++) {
+      const cost = mergeCost(groups[index], groups[index + 1]);
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestIndex = index;
+      }
+    }
+    const merged = {
+      startBin: groups[bestIndex].startBin,
+      endBin: groups[bestIndex + 1].endBin,
+      count: groups[bestIndex].count + groups[bestIndex + 1].count,
+      sum: groups[bestIndex].sum + groups[bestIndex + 1].sum,
+    };
+    groups.splice(bestIndex, 2, merged);
+  }
+  return groups;
+}
+
+function buildHistogramAbsorption(windows, globals, rawBinCount = 240, roundTargets = [180, 130, 90, 60]) {
+  const minValue = globals.min_current;
+  const maxValue = globals.max_current;
+  const binCounts = Array.from({ length: rawBinCount }, () => 0);
+  const binSums = Array.from({ length: rawBinCount }, () => 0);
+  const boundaryTransitions = Array.from({ length: rawBinCount - 1 }, () => 0);
+  const windowBins = windows.map((window, index) => {
+    const sourceValue = Math.abs(window.max_current - window.mean_current) > globals.full_scale * 0.18 ? window.max_current : window.mean_current;
+    const bin = quantizeLevel(sourceValue, minValue, maxValue, rawBinCount);
+    binCounts[bin] += 1;
+    binSums[bin] += sourceValue;
+    if (index > 0) {
+      const previousBin = quantizeLevel(
+        Math.abs(windows[index - 1].max_current - windows[index - 1].mean_current) > globals.full_scale * 0.18 ? windows[index - 1].max_current : windows[index - 1].mean_current,
+        minValue,
+        maxValue,
+        rawBinCount,
+      );
+      if (Math.abs(previousBin - bin) === 1) {
+        boundaryTransitions[Math.min(previousBin, bin)] += 1;
+      }
+    }
+    return bin;
+  });
+
+  let groups = Array.from({ length: rawBinCount }, (_, bin) => ({
+    startBin: bin,
+    endBin: bin,
+    count: binCounts[bin],
+    sum: binSums[bin],
+  }));
+
+  for (const target of roundTargets) {
+    groups = mergeAdjacentGroups(groups, boundaryTransitions, target);
+  }
+
+  const binToGroupIndex = new Array(rawBinCount).fill(0);
+  groups.forEach((group, groupIndex) => {
+    for (let bin = group.startBin; bin <= group.endBin; bin++) {
+      binToGroupIndex[bin] = groupIndex;
+    }
+  });
+
+  return {
+    groups,
+    windowGroupIndices: windowBins.map(bin => binToGroupIndex[bin]),
+    representativeLevels: groups.map(group => group.count > 0 ? group.sum / group.count : minValue),
+    rawBinCount,
+    roundTargets,
+  };
+}
+
+function buildAbsorptionPoints(windows, globals, absorption) {
+  const points = [];
+  let runStart = 0;
+  for (let index = 1; index <= windows.length; index++) {
+    const currentGroup = index < windows.length ? absorption.windowGroupIndices[index] : null;
+    const previousGroup = absorption.windowGroupIndices[index - 1];
+    if (currentGroup === previousGroup) continue;
+    const runEnd = index - 1;
+    const groupLevel = absorption.representativeLevels[previousGroup] ?? windows[runStart].mean_current;
+    const middle = Math.floor((runStart + runEnd) / 2);
+    points.push(buildPrimitivePoint(runStart, windows, globals, groupLevel));
+    if (runEnd - runStart >= 5) {
+      points.push(buildPrimitivePoint(middle, windows, globals, groupLevel));
+    }
+    if (runEnd !== runStart) {
+      points.push(buildPrimitivePoint(runEnd, windows, globals, groupLevel));
+    }
+    runStart = index;
+  }
+  return [...new Map(points.map(point => [point.point_index, point])).values()].sort((left, right) => left.point_index - right.point_index);
+}
+
+function buildHistogramAbsorptionResult(algorithmKey, algorithmLabel, windows, globals) {
+  const absorption = buildHistogramAbsorption(windows, globals, 240, [180, 130, 90, 60]);
+  const points = buildAbsorptionPoints(windows, globals, absorption);
+  const featureText = absorption.groups
+    .filter(group => group.count > 0)
+    .map((group, index) => `- group_${index}: bins ${group.startBin}-${group.endBin}, count=${group.count}, level=${formatNumber(absorption.representativeLevels[index])}A`)
+    .join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: points.length,
+    selection_reason: '先按最大最小值量化为 210 个电平桶，再自动吸收相邻桶至约 70 组，最后按电平组输出轮廓点',
+    key_points: points,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\n电平分组摘要：\n${featureText}\n\n关键点序列：\n${renderKeyPoints(points)}\n\n关键区间关系：\n${describeSegments(points)}`,
+  };
+}
+
+function analyzeWithHistogramAbsorption(windows, globals) {
+  return buildHistogramAbsorptionResult('histogram_absorption_v1', '电平桶吸收 V1', windows, globals);
+}
+
+function classifyLevelAwareWindow(index, windows, globals, absorption) {
+  const window = windows[index];
+  const currentGroup = absorption.windowGroupIndices[index];
+  const previousGroup = index > 0 ? absorption.windowGroupIndices[index - 1] : currentGroup;
+  const nextGroup = index < windows.length - 1 ? absorption.windowGroupIndices[index + 1] : currentGroup;
+  const localDelta = nextGroup - previousGroup;
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+  const spanPct = (window.span_current || 0) / fullScale * 100;
+  const peakLiftPct = Math.abs((window.max_current || 0) - (window.mean_current || 0)) / fullScale * 100;
+  const level = absorption.representativeLevels[currentGroup] ?? window.mean_current;
+  const idleLike = level <= globals.baseline_mean + globals.full_scale * 0.06;
+  const highLike = level >= globals.p90_current * 0.92 || window.max_current >= globals.p95_current * 0.95;
+
+  if (Math.abs(localDelta) <= 1 && spanPct <= 3.2) {
+    if (idleLike) return 'plateau_idle';
+    if (highLike) return 'plateau_high';
+    return 'plateau_work';
+  }
+
+  if (Math.abs(localDelta) >= 4 && peakLiftPct >= 10) {
+    return 'pulse';
+  }
+
+  return localDelta >= 0 ? 'ramp_up' : 'ramp_down';
+}
+
+function buildLevelAwareRuns(windows, globals, absorption) {
+  if (!windows.length) return [];
+  const runs = [];
+  let current = { feature: classifyLevelAwareWindow(0, windows, globals, absorption), start: 0, end: 0 };
+  for (let index = 1; index < windows.length; index++) {
+    const feature = classifyLevelAwareWindow(index, windows, globals, absorption);
+    if (feature === current.feature) {
+      current.end = index;
+      continue;
+    }
+    runs.push(current);
+    current = { feature, start: index, end: index };
+  }
+  runs.push(current);
+  return runs;
+}
+
+function buildLevelAwarePoints(run, windows, globals, absorption) {
+  const points = [];
+  const runGroups = absorption.windowGroupIndices.slice(run.start, run.end + 1);
+  const length = run.end - run.start + 1;
+  const middle = Math.floor((run.start + run.end) / 2);
+  const groupMedian = median(runGroups.map(groupIndex => absorption.representativeLevels[groupIndex] ?? windows[run.start].mean_current));
+
+  if (run.feature.startsWith('plateau_')) {
+    points.push(buildPrimitivePoint(run.start, windows, globals, groupMedian));
+    if (length >= 6) points.push(buildPrimitivePoint(middle, windows, globals, groupMedian));
+    if (run.end !== run.start) points.push(buildPrimitivePoint(run.end, windows, globals, groupMedian));
+    return points;
+  }
+
+  if (run.feature === 'pulse') {
+    let peakIndex = run.start;
+    for (let index = run.start + 1; index <= run.end; index++) {
+      if (windows[index].max_current > windows[peakIndex].max_current) peakIndex = index;
+    }
+    points.push(buildPrimitivePoint(run.start, windows, globals, windows[run.start].mean_current));
+    points.push(buildPrimitivePoint(peakIndex, windows, globals, windows[peakIndex].max_current));
+    if (run.end !== run.start) points.push(buildPrimitivePoint(run.end, windows, globals, windows[run.end].mean_current));
+    return points;
+  }
+
+  points.push(buildPrimitivePoint(run.start, windows, globals, windows[run.start].mean_current));
+  if (length >= 8) points.push(buildPrimitivePoint(middle, windows, globals, windows[middle].mean_current));
+  if (run.end !== run.start) points.push(buildPrimitivePoint(run.end, windows, globals, windows[run.end].mean_current));
+  return points;
+}
+
+function buildLevelAwarePrimitiveResult(algorithmKey, algorithmLabel, windows, globals) {
+  const absorption = buildHistogramAbsorption(windows, globals, 240, [200, 160, 120, 90]);
+  const runs = coalescePrimitiveRuns(buildLevelAwareRuns(windows, globals, absorption), windows, globals);
+  const points = runs.flatMap(run => buildLevelAwarePoints(run, windows, globals, absorption));
+  const deduped = [...new Map(points.map(point => [point.point_index, point])).values()].sort((left, right) => left.point_index - right.point_index);
+  const reduced = reducePointList(deduped, globals, 72);
+  const summaries = runs.map(run => summarizePrimitiveRun(run, windows));
+  const featureText = summaries.map(run => (
+    `- ${formatNumber(run.start_time, 3)}s -> ${formatNumber(run.end_time, 3)}s: ${run.feature}, ` +
+    `mean范围 ${formatNumber(run.mean_min)}A ~ ${formatNumber(run.mean_max)}A, ` +
+    `peak_max ${formatNumber(run.peak_max)}A, valley_min ${formatNumber(run.valley_min)}A`
+  )).join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: reduced.length,
+    selection_reason: '先通过 240 桶多轮吸收建立电平层，再在离散电平层上做原语切分与预算压缩',
+    key_points: reduced,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\n特征片段序列：\n${featureText}\n\n关键点序列：\n${renderKeyPoints(reduced)}\n\n关键区间关系：\n${describeSegments(reduced)}`,
+  };
+}
+
+function analyzeWithLevelAwarePrimitive(windows, globals) {
+  return buildLevelAwarePrimitiveResult('level_aware_primitive_v1', '电平层原语压缩 V1', windows, globals);
+}
+
 function analyzeWithAdaptiveChangeThreshold(windows, globals) {
   const candidates = THRESHOLD_STEPS.map(step => ({
     thresholdPercent: step,
@@ -1204,6 +1645,30 @@ function analyzeWithEnvelopeTurningPointsV2(windows, globals) {
     windows,
     globals,
     '在 V1 基础上增加高电流顶部短平台锚点，保留堵转平台起点/峰值/尾端'
+  );
+}
+
+function analyzeWithEnvelopeTurningPointsV3(windows, globals) {
+  const plateauBoundaryAnchors = [...detectPlateauBoundaryAnchors(windows, globals)];
+  const candidates = THRESHOLD_STEPS.map(step => {
+    const selected = new Set(selectByThreshold(windows, globals, step, true, true));
+    for (const index of plateauBoundaryAnchors) {
+      selected.add(index);
+    }
+    return {
+      thresholdPercent: step,
+      indices: reduceIndices([...selected].sort((left, right) => left - right), windows, globals, 52, step, plateauBoundaryAnchors),
+    };
+  });
+  const selected = fitSelectionCount(candidates);
+  return buildAlgorithmResult(
+    'envelope_turning_points_v3',
+    '包络转折点 V3',
+    selected.thresholdPercent,
+    selected.indices,
+    windows,
+    globals,
+    '在 V2 基础上把各类平台段的起止边界设为结构锚点，二次裁剪时不可删除，避免平台尾端和下降沿被压成尖峰'
   );
 }
 
@@ -1284,6 +1749,7 @@ async function main() {
     analyzeWithAdaptiveChangeThreshold(enrichedWindows, globals),
     analyzeWithEnvelopeTurningPoints(enrichedWindows, globals),
     analyzeWithEnvelopeTurningPointsV2(enrichedWindows, globals),
+    analyzeWithEnvelopeTurningPointsV3(enrichedWindows, globals),
     analyzeWithStateRunPreserving(enrichedWindows, globals),
     analyzeWithPlateauTrendHybrid(enrichedWindows, globals),
     analyzeWithFeatureSegments(enrichedWindows, globals),
@@ -1293,6 +1759,10 @@ async function main() {
     analyzeWithPrimitiveSketch(enrichedWindows, globals),
     analyzeWithPrimitiveSketchDense(enrichedWindows, globals),
     analyzeWithPrimitiveBudgetedSketch(enrichedWindows, globals),
+    analyzeWithPrimitiveAdaptiveSketch(enrichedWindows, globals),
+    analyzeWithBidirectionalIterativeSketch(enrichedWindows, globals),
+    analyzeWithHistogramAbsorption(enrichedWindows, globals),
+    analyzeWithLevelAwarePrimitive(enrichedWindows, globals),
   ];
 
   printHeader('算法摘要');

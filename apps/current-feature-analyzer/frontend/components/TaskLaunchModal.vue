@@ -149,7 +149,7 @@ const emit = defineEmits<{
 const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: string; description: string }> = [
   {
     value: 'adaptive_v2',
-    label: '自适应 V2（默认）',
+    label: '自适应 V2',
     description: '当前项目实现，自适应搜索分辨率，段数更稳定。',
   },
   {
@@ -167,13 +167,18 @@ const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: stri
     label: '包络转折点 V2',
     description: '在关键点阈值基础上额外保留均值/峰值转折，并增强堵转顶部短平台保真。',
   },
+  {
+    value: 'envelope_turning_points_v3',
+    label: '包络转折点 V3（默认）',
+    description: '在 V2 基础上把平台起止边界设为结构锚点，减少平台尾端和下降沿被压成尖峰。',
+  },
 ]
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<File[]>([])
 const localRuleSetId = ref(props.defaultRuleSetId || '')
 const overwriteCurrentSession = ref(true)
-const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('adaptive_v2')
+const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('envelope_turning_points_v3')
 
 const enabledRuleSets = computed(() => props.ruleSets.filter(ruleSet => ruleSet.is_enabled))
 const hasActiveSession = computed(() => props.currentBatchStatus !== 'idle')
