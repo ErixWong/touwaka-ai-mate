@@ -83,6 +83,26 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="压缩算法" required>
+          <el-select
+            v-model="localCompressionAlgorithm"
+            placeholder="请选择压缩算法"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="algorithm in compressionAlgorithms"
+              :key="algorithm.value"
+              :label="algorithm.label"
+              :value="algorithm.value"
+            >
+              <div class="task-launch-option">
+                <span class="task-launch-option-name">{{ algorithm.label }}</span>
+                <span class="task-launch-option-desc">{{ algorithm.description }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
         <el-form-item v-if="hasActiveSession" label="会话处理" required>
           <el-radio-group v-model="overwriteCurrentSession">
             <el-radio :value="false">继续当前会话，不覆盖现有结果</el-radio>
@@ -95,6 +115,7 @@
         <div class="task-launch-summary-line">
           <span class="label">任务确认</span>
           <span class="value">文件数 {{ selectedFiles.length }}</span>
+          <span class="value">算法 {{ compressionAlgorithmLabel }}</span>
           <span v-if="hasActiveSession" class="value">{{ overwriteCurrentSession ? '覆盖当前会话' : '保留当前会话' }}</span>
         </div>
       </div>
@@ -112,7 +133,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Delete, FolderOpened, Promotion } from '@element-plus/icons-vue'
-import type { RuleSetItem } from '../api/current-feature-analyzer'
+import type { CompressionAlgorithmKey, RuleSetItem } from '../api/current-feature-analyzer'
 
 const props = defineProps<{
   currentBatchStatus: string
@@ -122,17 +143,49 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  submit: [{ files: File[]; ruleSetId: string; overwriteCurrentSession: boolean }]
+  submit: [{ files: File[]; ruleSetId: string; overwriteCurrentSession: boolean; compressionAlgorithm: CompressionAlgorithmKey }]
 }>()
+
+const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: string; description: string }> = [
+  {
+    value: 'adaptive_v2',
+    label: '自适应 V2',
+    description: '当前项目实现，自适应搜索分辨率，段数更稳定。',
+  },
+  {
+    value: 'legacy_v4',
+    label: '原始 V4',
+    description: '沿用 output_analysis_tool_fixed_v4.html 的原始压缩逻辑，便于对比。',
+  },
+  {
+    value: 'adaptive_keypoints_v1',
+    label: '关键点阈值 V1',
+    description: '按相邻窗口变化幅度自适应筛选约 40-60 个关键点，适合交给 LLM 做阶段推断。',
+  },
+  {
+    value: 'envelope_turning_points_v2',
+    label: '包络转折点 V2',
+    description: '在关键点阈值基础上额外保留均值/峰值转折，并增强堵转顶部短平台保真。',
+  },
+  {
+    value: 'envelope_turning_points_v3',
+    label: '包络转折点 V3（默认）',
+    description: '在 V2 基础上把平台起止边界设为结构锚点，减少平台尾端和下降沿被压成尖峰。',
+  },
+]
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<File[]>([])
 const localRuleSetId = ref(props.defaultRuleSetId || '')
 const overwriteCurrentSession = ref(true)
+const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('envelope_turning_points_v3')
 
 const enabledRuleSets = computed(() => props.ruleSets.filter(ruleSet => ruleSet.is_enabled))
 const hasActiveSession = computed(() => props.currentBatchStatus !== 'idle')
 const canSubmit = computed(() => !!localRuleSetId.value && selectedFiles.value.length > 0)
+const compressionAlgorithmLabel = computed(() => {
+  return compressionAlgorithms.find(item => item.value === localCompressionAlgorithm.value)?.label || '未选择'
+})
 
 function triggerFileSelect() {
   fileInputRef.value?.click()
@@ -163,6 +216,7 @@ function submitTask() {
     files: [...selectedFiles.value],
     ruleSetId: localRuleSetId.value,
     overwriteCurrentSession: overwriteCurrentSession.value,
+    compressionAlgorithm: localCompressionAlgorithm.value,
   })
 }
 </script>

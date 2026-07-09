@@ -1,4 +1,4 @@
-import type { AppConfig, FileAnalysisResult } from '../api/current-feature-analyzer'
+import type { AppConfig, CompressionAlgorithmKey, FileAnalysisResult } from '../api/current-feature-analyzer'
 import { runLocalCurrentFeatureAnalysis } from './local-analysis'
 
 type PendingTask = {
@@ -52,10 +52,10 @@ function getWorker() {
   return workerInstance
 }
 
-export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], appConfig: AppConfig | null) {
+export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'envelope_turning_points_v3') {
   const worker = getWorker()
   if (!worker) {
-    return runLocalCurrentFeatureAnalysis(rawData, appConfig)
+    return runLocalCurrentFeatureAnalysis(rawData, appConfig, algorithmKey)
   }
 
   const safeRawData = cloneRawData(rawData)
@@ -70,11 +70,12 @@ export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], a
         request_id: requestId,
         raw_data: safeRawData,
         app_config: safeAppConfig,
+        algorithm_key: algorithmKey,
       })
     } catch (error) {
       pendingTasks.delete(requestId)
       try {
-        resolve(runLocalCurrentFeatureAnalysis(safeRawData, safeAppConfig))
+        resolve(runLocalCurrentFeatureAnalysis(safeRawData, safeAppConfig, algorithmKey))
       } catch (fallbackError) {
         reject(fallbackError instanceof Error ? fallbackError : error)
       }
