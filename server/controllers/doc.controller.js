@@ -778,6 +778,17 @@ class DocController {
           raw: true,
         });
         sourceAttachments.forEach(item => attachmentIds.add(item.id));
+
+        // P0-1: 同时收集 OCR/Clean 产物附件（source_tag = 'doc-platform-ocr'），确保删除文档时一并清理
+        const ocrProductAttachments = await Attachment.findAll({
+          where: {
+            source_tag: 'doc-platform-ocr',
+            source_id: { [Op.in]: revisionIds },
+          },
+          attributes: ['id'],
+          raw: true,
+        });
+        ocrProductAttachments.forEach(item => attachmentIds.add(item.id));
       }
 
       const attachmentRows = attachmentIds.size > 0
