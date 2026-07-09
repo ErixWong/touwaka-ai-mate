@@ -18,6 +18,10 @@
         <div class="doc-header-main">
           <div class="doc-header-info">
             <h1 class="doc-title">{{ displayDocumentTitle }}</h1>
+            <div class="doc-id-line">
+              <span class="doc-id-label">{{ $t('docs.workspace.panel.docId') }}</span>
+              <span class="doc-id-value">{{ docStore.currentResult.document.id }}</span>
+            </div>
             <div class="doc-meta">
               <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
                 {{ processingLabel(docStore.currentResult.processing.status) }}
@@ -336,6 +340,22 @@ onBeforeUnmount(() => {
 .doc-header { margin-bottom: 24px; }
 .doc-header-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .doc-title { margin: 0; font-size: 22px; font-weight: 600; }
+.doc-id-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.doc-id-label {
+  color: var(--el-text-color-secondary);
+}
+.doc-id-value {
+  color: var(--el-text-color-regular);
+  font-family: var(--el-font-family-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
+  word-break: break-all;
+}
 .doc-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .doc-updated { font-size: 12px; color: #909399; }
 
