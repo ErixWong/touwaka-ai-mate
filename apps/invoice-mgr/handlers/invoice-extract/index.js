@@ -211,22 +211,16 @@ export default {
     const existing = await checkDuplicate(services, data.invoice_number, record.id);
     if (existing) {
       logger.info(`[invoice-extract] Record ${record.id}: 发票号 ${data.invoice_number} 已存在于 row_id=${existing.row_id}`);
-      await services.callExtension(ROWS_TABLE, 'upsert', {
-        row_id: record.id,
-        invoice_number: data.invoice_number,
-        ocr_method: 'fapiao',
-        extraction_status: 'duplicate',
-        text_items_count: 0,
-        keyword_count: 0,
-        ocr_raw: JSON.stringify({ duplicate: true, existing_row_id: existing.row_id }),
-      });
       return {
         success: true,
         data: {
           invoice_number: data.invoice_number,
           duplicate: true,
           existing_row_id: existing.row_id,
+          extraction_status: 'duplicate',
+          ocr_method: 'fapiao',
         },
+        target_state: 'extract_failed',
       };
     }
 

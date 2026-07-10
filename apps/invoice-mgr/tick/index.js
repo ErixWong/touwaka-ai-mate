@@ -135,7 +135,7 @@ export async function tick(context) {
         if (newData._last_failure) {
           delete newData._last_failure;
         }
-        const nextState = graphEntry.success_next;
+        const nextState = result.target_state || graphEntry.success_next;
 
         if (nextState) {
           await services.execute(
