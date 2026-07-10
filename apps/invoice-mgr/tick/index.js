@@ -82,13 +82,14 @@ export async function tick(context) {
   let processed = 0;
 
   for (const row of rows) {
+    const graphEntry = STATE_GRAPH[row.status];
+    const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
+
     try {
-      const graphEntry = STATE_GRAPH[row.status];
       if (!graphEntry) continue;
 
       logger.info(`[invoice-mgr tick] Processing row ${row.id} (status=${row.status}, handler=${graphEntry.handler})`);
 
-      const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
       const record = { id: row.id, status: row.status, data: recordData };
 
       const [fileRows] = await services.execute(

@@ -333,6 +333,8 @@ export default {
         invoice_number: data.invoice_number,
         ocr_method: 'vl',
         extraction_status: 'duplicate',
+        text_items_count: 0,
+        keyword_count: 0,
         ocr_raw: JSON.stringify({ duplicate: true, existing_row_id: existingRowId }),
       });
       return {
