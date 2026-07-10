@@ -32,6 +32,13 @@ type BatchUploadResult = {
   created_count?: number
 }
 
+function getDisplayStatus(row: InvoiceRow) {
+  if (row.is_duplicate) {
+    return statusLabels.duplicate
+  }
+  return statusLabels[row.status] || { label: row.status, type: 'info' as const }
+}
+
 function getErrorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error ? cause.message : fallback
 }
@@ -329,6 +336,11 @@ function onRowClick(row: InvoiceRow) {
   showDetail.value = true
 }
 
+function jumpToInvoiceDetail(rowId: string) {
+  selectedRowId.value = rowId
+  showDetail.value = true
+}
+
 function onBack() {
   showDetail.value = false
   selectedRowId.value = ''
@@ -488,11 +500,24 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         <el-table-column prop="total_with_tax" label="价税合计" width="140" align="right">
           <template #default="{ row }">¥{{ row.total_with_tax?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100" align="center">
+        <el-table-column prop="status" label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusLabels[row.status]?.type || 'info'" size="small">
-              {{ statusLabels[row.status]?.label || row.status }}
+            <el-tag :type="getDisplayStatus(row).type || 'info'" size="small">
+              {{ getDisplayStatus(row).label }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.is_duplicate && row.duplicate_source_row_id"
+              link
+              type="primary"
+              @click.stop="jumpToInvoiceDetail(row.duplicate_source_row_id)"
+            >
+              查看原发票
+            </el-button>
+            <span v-else>-</span>
           </template>
         </el-table-column>
       </el-table>

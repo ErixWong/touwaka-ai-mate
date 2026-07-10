@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { getInvoiceDetail, deleteInvoiceRecord, reExtractInvoiceRecord, type InvoiceDetail as InvoiceDetailType } from '@/api/invoice'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -17,14 +17,32 @@ function getErrorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error ? cause.message : fallback
 }
 
-onMounted(async () => {
+function getDisplayStatus(detailRow: InvoiceDetailType | null) {
+  if (detailRow?.is_duplicate) {
+    return statusLabels.duplicate
+  }
+  const status = detailRow?.status || ''
+  return statusLabels[status] || { label: status, type: 'info' as const }
+}
+
+async function loadDetail(rowId: string) {
   loading.value = true
   try {
-    detail.value = await getInvoiceDetail(props.rowId)
+    detail.value = await getInvoiceDetail(rowId)
   } catch (e: unknown) {
     ElMessage.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadDetail(props.rowId)
+})
+
+watch(() => props.rowId, async (rowId, oldRowId) => {
+  if (rowId && rowId !== oldRowId) {
+    await loadDetail(rowId)
   }
 })
 
@@ -35,6 +53,8 @@ function formatQuantity(v: number | string | null | undefined): string {
 }
 
 async function onDelete() {
+  const currentRowId = detail.value?.id || props.rowId
+
   try {
     await ElMessageBox.confirm('删除后不可恢复，是否继续？', '删除发票记录', {
       confirmButtonText: '删除',
@@ -47,7 +67,7 @@ async function onDelete() {
 
   deleting.value = true
   try {
-    await deleteInvoiceRecord(props.rowId)
+    await deleteInvoiceRecord(currentRowId)
     ElMessage.success('记录已删除')
     emit('deleted')
     emit('back')
@@ -59,6 +79,7 @@ async function onDelete() {
 }
 
 async function onReExtract() {
+  const currentRowId = detail.value?.id || props.rowId
   const currentStatus = detail.value?.status
   const statusLabel = currentStatus ? (statusLabels[currentStatus]?.label || currentStatus) : '未知'
 
@@ -78,7 +99,7 @@ async function onReExtract() {
 
   reExtracting.value = true
   try {
-    await reExtractInvoiceRecord(props.rowId)
+    await reExtractInvoiceRecord(currentRowId)
     ElMessage.success('已重置为初始状态，系统将自动重新分析')
     emit('deleted')
     emit('back')
@@ -87,6 +108,16 @@ async function onReExtract() {
   } finally {
     reExtracting.value = false
   }
+}
+
+async function onViewDuplicateSource() {
+  const targetRowId = detail.value?.duplicate_source_row_id
+  if (!targetRowId) {
+    ElMessage.warning('未找到原发票记录')
+    return
+  }
+
+  await loadDetail(targetRowId)
 }
 </script>
 
@@ -117,10 +148,30 @@ async function onReExtract() {
       <div class="detail-card">
         <div class="card-title">
           <span>发票详情</span>
-          <el-tag v-if="detail.status" :type="statusLabels[detail.status]?.type || 'info'" size="small">
-            {{ statusLabels[detail.status]?.label || detail.status }}
+          <el-tag v-if="detail.status" :type="getDisplayStatus(detail).type || 'info'" size="small">
+            {{ getDisplayStatus(detail).label }}
           </el-tag>
         </div>
+
+        <el-alert
+          v-if="detail.is_duplicate"
+          title="该发票与系统中已有发票重复，当前记录不会作为新的有效发票导出。"
+          type="warning"
+          show-icon
+          :closable="false"
+          style="margin-bottom:16px"
+        >
+          <template #default>
+            <el-button
+              v-if="detail.duplicate_source_row_id"
+              link
+              type="primary"
+              @click="onViewDuplicateSource"
+            >
+              查看已识别发票
+            </el-button>
+          </template>
+        </el-alert>
 
         <el-descriptions :column="2" border>
           <el-descriptions-item label="发票号码">{{ detail.invoice_number || '-' }}</el-descriptions-item>

@@ -91,6 +91,27 @@ class InvoiceService {
     return `${sortField} ${sortOrder}, m.created_at ${sortOrder}, r.invoice_number ${sortOrder}, m.id ${sortOrder}`;
   }
 
+  _parseRecordData(data) {
+    if (!data) return {};
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch {
+        return {};
+      }
+    }
+    return typeof data === 'object' ? data : {};
+  }
+
+  _decorateDuplicateMeta(row) {
+    const recordData = this._parseRecordData(row?.data);
+    return {
+      ...row,
+      is_duplicate: Boolean(recordData.duplicate),
+      duplicate_source_row_id: recordData.existing_row_id || null,
+    };
+  }
+
   async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin }) {
     const { conditions, replacements } = this._buildConditions({
       invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
@@ -103,6 +124,7 @@ class InvoiceService {
     const [rows, countResult] = await Promise.all([
       this.sequelize.query(
         `SELECT m.id, m.status, m.created_at,
+                m.data,
                 r.invoice_number, r.invoice_date, r.invoice_type,
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
@@ -125,7 +147,7 @@ class InvoiceService {
     ]);
 
     return {
-      list: rows,
+      list: rows.map(row => this._decorateDuplicateMeta(row)),
       total: countResult[0]?.total || 0,
       page,
       size,
@@ -146,6 +168,7 @@ class InvoiceService {
     const [rows, items] = await Promise.all([
       this.sequelize.query(
         `SELECT m.id, m.status, m.created_at,
+                m.data,
                 r.invoice_number, r.invoice_date, r.invoice_type,
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
@@ -163,7 +186,7 @@ class InvoiceService {
     ]);
 
     return {
-      ...(rows[0] || {}),
+      ...this._decorateDuplicateMeta(rows[0] || {}),
       items: items || [],
     };
   }

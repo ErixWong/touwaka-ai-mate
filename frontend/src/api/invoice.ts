@@ -20,6 +20,8 @@ export interface InvoiceRow {
   id: string
   status: string
   created_at: string
+  is_duplicate?: boolean
+  duplicate_source_row_id?: string | null
   invoice_number: string
   invoice_date: string
   invoice_type: string
