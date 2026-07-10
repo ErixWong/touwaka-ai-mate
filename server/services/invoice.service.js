@@ -91,6 +91,18 @@ class InvoiceService {
     return `${sortField} ${sortOrder}, m.created_at ${sortOrder}, r.invoice_number ${sortOrder}, m.id ${sortOrder}`;
   }
 
+  /**
+   * 基础查询条件拼接（列表、详情等读路径使用）
+   * 不添加 rows 表过滤，允许 duplicate 空壳记录（r.row_id IS NULL）出现在列表中
+   */
+  _buildBaseWhereClause(baseConditions) {
+    return `WHERE ${baseConditions.join(' AND ')}`;
+  }
+
+  /**
+   * 导出专用条件拼接
+   * 追加 r.row_id IS NOT NULL，确保 duplicate 空壳不进入导出
+   */
   _buildExportWhereClause(baseConditions) {
     const conditions = [...baseConditions, 'r.row_id IS NOT NULL'];
     return `WHERE ${conditions.join(' AND ')}`;
@@ -122,7 +134,7 @@ class InvoiceService {
       invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
     });
 
-    const where = this._buildExportWhereClause(conditions);
+    const where = this._buildBaseWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
     const offset = (page - 1) * size;
 
@@ -338,7 +350,7 @@ class InvoiceService {
       startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
     });
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
+    const where = this._buildExportWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
 
     // 查询所有符合条件的发票 header
