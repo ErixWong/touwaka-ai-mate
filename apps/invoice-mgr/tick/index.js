@@ -68,7 +68,7 @@ export async function tick(context) {
 
   const placeholders = stateNames.map(() => '?').join(',');
   const rows = await services.query(
-    `SELECT id, status, data FROM app_invoice_mgr_records
+    `SELECT id, status, data, user_id FROM app_invoice_mgr_records
      WHERE status IN (${placeholders})
      ORDER BY created_at ASC
      LIMIT 5`,
@@ -90,7 +90,7 @@ export async function tick(context) {
 
       logger.info(`[invoice-mgr tick] Processing row ${row.id} (status=${row.status}, handler=${graphEntry.handler})`);
 
-      const record = { id: row.id, status: row.status, data: recordData };
+      const record = { id: row.id, status: row.status, data: recordData, user_id: row.user_id };
 
       const [fileRows] = await services.execute(
         `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name

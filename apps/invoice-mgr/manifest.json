@@ -37,6 +37,12 @@
       "type": "primary",
       "fields": [
         {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "label": "用户ID（系统内部字段）",
+          "source": "user_id"
+        },
+        {
           "name": "invoice_number",
           "type": "VARCHAR(20)",
           "label": "发票号码",

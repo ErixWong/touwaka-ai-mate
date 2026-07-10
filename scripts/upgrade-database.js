@@ -2218,13 +2218,14 @@ const MIGRATIONS = [
       if (!await hasTable(conn, 'app_invoice_mgr_rows')) return false;
       // 哨兵列：使用最新加入的列作为迁移完成标记
       // ⚠️ 若在 missingCols 中新增列，必须同步更新此哨兵列为最新列名
-      return await hasColumn(conn, 'app_invoice_mgr_rows', 'keyword_count');
+      return await hasColumn(conn, 'app_invoice_mgr_rows', 'user_id');
     },
     migrate: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_rows')) {
         await conn.execute(`
           CREATE TABLE app_invoice_mgr_rows (
             row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_invoice_mgr_records.id',
+            user_id VARCHAR(32) COMMENT '用户ID，关联 app_invoice_mgr_records.user_id',
             invoice_number VARCHAR(20) COMMENT '发票号码（20位），用于去重',
             invoice_date DATE COMMENT '开票日期',
             invoice_type VARCHAR(64) COMMENT '发票类型',
@@ -2246,7 +2247,8 @@ const MIGRATIONS = [
             keyword_count INT DEFAULT 0 COMMENT '发票关键词匹配数',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_invoice_number (invoice_number),
+            UNIQUE KEY uk_user_invoice_number (user_id, invoice_number),
+            INDEX idx_user_id (user_id),
             INDEX idx_seller (seller_name),
             INDEX idx_buyer (buyer_name),
             INDEX idx_date (invoice_date),
@@ -2272,16 +2274,40 @@ const MIGRATIONS = [
         { col: 'extraction_status', def: "VARCHAR(16) DEFAULT 'success' COMMENT '提取状态'", after: 'ocr_raw' },
         { col: 'text_items_count', def: "INT DEFAULT 0 COMMENT 'PDF文本项总数'", after: 'extraction_status' },
         { col: 'keyword_count', def: "INT DEFAULT 0 COMMENT '发票关键词匹配数'", after: 'text_items_count' },
+        { col: 'user_id', def: "VARCHAR(32) COMMENT '用户ID'", after: 'keyword_count' },
       ];
       for (const c of missingCols) {
         if (!await hasColumn(conn, 'app_invoice_mgr_rows', c.col)) {
           await conn.execute(`ALTER TABLE app_invoice_mgr_rows ADD COLUMN ${c.col} ${c.def} AFTER ${c.after}`);
           console.log(`  ✓ Added column ${c.col} to app_invoice_mgr_rows`);
+
+          // user_id 列新增后立即回填历史数据
+          if (c.col === 'user_id') {
+            const [backfillResult] = await conn.execute(`
+              UPDATE app_invoice_mgr_rows r
+              JOIN app_invoice_mgr_records m ON m.id = r.row_id
+              SET r.user_id = m.user_id
+              WHERE r.user_id IS NULL
+            `);
+            const backfillCount = backfillResult?.affectedRows ?? backfillResult?.changedRows ?? '?';
+            console.log(`  ✓ Backfilled user_id for ${backfillCount} rows`);
+          }
+        }
+      }
+
+      // 索引迁移：删除旧 uk_invoice_number，新建 uk_user_invoice_number
+      if (await hasIndex(conn, 'app_invoice_mgr_rows', 'uk_invoice_number')) {
+        try {
+          await conn.execute('ALTER TABLE app_invoice_mgr_rows DROP INDEX uk_invoice_number');
+          console.log('  ✓ Dropped old index uk_invoice_number');
+        } catch (e) {
+          console.log(`  ⚠ Failed to drop uk_invoice_number: ${e.message}`);
         }
       }
 
       const missingIndexes = [
-        { name: 'uk_invoice_number', def: 'UNIQUE KEY uk_invoice_number (invoice_number)' },
+        { name: 'uk_user_invoice_number', def: 'UNIQUE KEY uk_user_invoice_number (user_id, invoice_number)' },
+        { name: 'idx_user_id', def: 'INDEX idx_user_id (user_id)' },
         { name: 'idx_seller', def: 'INDEX idx_seller (seller_name)' },
         { name: 'idx_buyer', def: 'INDEX idx_buyer (buyer_name)' },
         { name: 'idx_date', def: 'INDEX idx_date (invoice_date)' },

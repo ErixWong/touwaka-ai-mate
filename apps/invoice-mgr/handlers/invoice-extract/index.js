@@ -1,6 +1,7 @@
 import logger from '../../../../lib/logger.js';
 import path from 'path';
 import { resolveAttachmentPath } from '../shared.js';
+import { checkDuplicate, buildDuplicateResponse } from '../../lib/check-duplicate.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 const ITEMS_TABLE = 'app_invoice_mgr_items';
@@ -17,20 +18,10 @@ function parseDate(dateStr) {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
-async function checkDuplicate(services, invoiceNumber, currentRowId) {
-  const rows = await services.query(
-    'SELECT row_id, invoice_number FROM app_invoice_mgr_rows WHERE invoice_number = ? LIMIT 1',
-    [invoiceNumber]
-  );
-  if (rows && rows.length > 0 && rows[0].row_id !== currentRowId) {
-    return rows[0];
-  }
-  return null;
-}
-
-async function upsertRows(services, recordId, data, ocrMethod) {
+async function upsertRows(services, recordId, data, ocrMethod, userId) {
   await services.callExtension(ROWS_TABLE, 'upsert', {
     row_id: recordId,
+    user_id: userId,
     invoice_number: data.invoice_number,
     invoice_date: parseDate(data.invoice_date),
     invoice_type: data.invoice_type || '',
@@ -201,6 +192,7 @@ export default {
       logger.warn(`[invoice-extract] Record ${record.id}: 未识别到有效发票（inv=${data.invoice_number || '(空)'} total=${data.total_with_tax}）`);
       await services.callExtension(ROWS_TABLE, 'upsert', {
         row_id: record.id,
+        user_id: record.user_id,
         ocr_method: 'fapiao',
         extraction_status: 'failed',
         ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'fapiao did not extract valid invoice data' }),
@@ -208,20 +200,18 @@ export default {
       return { success: false, failure_code: 'not_invoice', target_state: 'pending_vl_extract', error: 'not_invoice' };
     }
 
-    const existing = await checkDuplicate(services, data.invoice_number, record.id);
+    const existing = await checkDuplicate(services, {
+      invoice_number: data.invoice_number,
+      user_id: record.user_id,
+      current_row_id: record.id,
+    });
     if (existing) {
       logger.info(`[invoice-extract] Record ${record.id}: 发票号 ${data.invoice_number} 已存在于 row_id=${existing.row_id}`);
-      return {
-        success: true,
-        data: {
-          invoice_number: data.invoice_number,
-          duplicate: true,
-          existing_row_id: existing.row_id,
-          extraction_status: 'duplicate',
-          ocr_method: 'fapiao',
-        },
-        target_state: 'extract_failed',
-      };
+      return buildDuplicateResponse({
+        invoice_number: data.invoice_number,
+        existing_row_id: existing.row_id,
+        ocr_method: 'fapiao',
+      });
     }
 
     // 从 fapiao 数据中提取开票人（取第一页的 issuer）
@@ -230,7 +220,7 @@ export default {
       data.issuer = pages[0]?.issuer || '';
     }
 
-    await upsertRows(services, record.id, data, 'fapiao');
+    await upsertRows(services, record.id, data, 'fapiao', record.user_id);
     const itemCount = await insertItems(services, record.id, data);
 
     logger.info(`[invoice-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品`);

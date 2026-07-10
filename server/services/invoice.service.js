@@ -91,6 +91,11 @@ class InvoiceService {
     return `${sortField} ${sortOrder}, m.created_at ${sortOrder}, r.invoice_number ${sortOrder}, m.id ${sortOrder}`;
   }
 
+  _buildExportWhereClause(baseConditions) {
+    const conditions = [...baseConditions, 'r.row_id IS NOT NULL'];
+    return `WHERE ${conditions.join(' AND ')}`;
+  }
+
   _parseRecordData(data) {
     if (!data) return {};
     if (typeof data === 'string') {
@@ -117,7 +122,7 @@ class InvoiceService {
       invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
     });
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
+    const where = this._buildExportWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
     const offset = (page - 1) * size;
 
@@ -201,7 +206,7 @@ class InvoiceService {
       startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
     });
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
+    const where = this._buildExportWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
 
     // 查询所有符合条件的发票 header
