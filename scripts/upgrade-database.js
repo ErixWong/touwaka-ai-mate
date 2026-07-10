@@ -2429,6 +2429,56 @@ const MIGRATIONS = [
     },
   },
 
+  // 42e. invoice-mgr 同步 mini_apps.config 中的 user_id 扩展字段
+  {
+    name: 'invoice-mgr sync user_id field to mini_apps.config',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT config FROM mini_apps WHERE id = 'invoice-mgr'"
+      );
+      if (!rows || rows.length === 0) return true;
+      const config = typeof rows[0].config === 'string'
+        ? JSON.parse(rows[0].config)
+        : rows[0].config;
+      const rowsTable = (config.extension_tables || []).find(t => t.name === 'app_invoice_mgr_rows');
+      if (!rowsTable) return true;
+      return rowsTable.fields.some(f => f.name === 'user_id');
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT config FROM mini_apps WHERE id = 'invoice-mgr'"
+      );
+      if (!rows || rows.length === 0) {
+        console.log('  ⚠ invoice-mgr not found in mini_apps');
+        return;
+      }
+      const config = typeof rows[0].config === 'string'
+        ? JSON.parse(rows[0].config)
+        : rows[0].config;
+      const rowsTable = (config.extension_tables || []).find(t => t.name === 'app_invoice_mgr_rows');
+      if (!rowsTable) {
+        console.log('  ⚠ app_invoice_mgr_rows not found in config');
+        return;
+      }
+      if (rowsTable.fields.some(f => f.name === 'user_id')) {
+        console.log('  ✓ user_id already in config fields');
+        return;
+      }
+      // 在 fields 最前面插入 user_id
+      rowsTable.fields.unshift({
+        name: 'user_id',
+        type: 'VARCHAR(32)',
+        label: '用户ID（系统内部字段）',
+        source: 'user_id',
+      });
+      await conn.execute(
+        "UPDATE mini_apps SET config = ? WHERE id = 'invoice-mgr'",
+        [JSON.stringify(config)]
+      );
+      console.log('  ✓ Synced user_id field to mini_apps.config');
+    },
+  },
+
   // 43. contract-mgr 自治主表
   {
     name: 'app_contract_mgr_records table',

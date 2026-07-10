@@ -17,12 +17,12 @@
 async function checkDuplicate(services, { invoice_number, user_id, current_row_id }) {
   if (!invoice_number || !user_id) return null;
 
+  // 直接使用 rows.user_id 查询，利用 uk_user_invoice_number (user_id, invoice_number) 索引
   const rows = await services.query(
-    `SELECT r.row_id, r.invoice_number
-     FROM app_invoice_mgr_rows r
-     JOIN app_invoice_mgr_records m ON m.id = r.row_id
-     WHERE r.invoice_number = ?
-       AND m.user_id = ?
+    `SELECT row_id, invoice_number
+     FROM app_invoice_mgr_rows
+     WHERE invoice_number = ?
+       AND user_id = ?
      LIMIT 1`,
     [invoice_number, user_id]
   );
