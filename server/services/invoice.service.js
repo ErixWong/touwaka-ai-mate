@@ -31,11 +31,11 @@ class InvoiceService {
     return matches[0][0];
   }
 
-  _buildConditions({ invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin }) {
+  _buildConditions({ invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin, includeAll = false }) {
     const conditions = ['m.status IS NOT NULL'];
     const replacements = [];
 
-    if (!isAdmin) {
+    if (!isAdmin || !includeAll) {
       conditions.push('m.user_id = ?');
       replacements.push(userId);
     }
@@ -91,18 +91,77 @@ class InvoiceService {
     return `${sortField} ${sortOrder}, m.created_at ${sortOrder}, r.invoice_number ${sortOrder}, m.id ${sortOrder}`;
   }
 
-  async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin }) {
+  /**
+   * 基础查询条件拼接（列表、详情等读路径使用）
+   * 不添加 rows 表过滤，允许 duplicate 空壳记录（r.row_id IS NULL）出现在列表中
+   */
+  _buildBaseWhereClause(baseConditions) {
+    return `WHERE ${baseConditions.join(' AND ')}`;
+  }
+
+  /**
+   * 导出专用条件拼接
+   * 追加 r.row_id IS NOT NULL，确保 duplicate 空壳不进入导出
+   */
+  _buildExportWhereClause(baseConditions) {
+    const conditions = [...baseConditions, 'r.row_id IS NOT NULL'];
+    return `WHERE ${conditions.join(' AND ')}`;
+  }
+
+  _parseRecordData(data) {
+    if (!data) return {};
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch {
+        return {};
+      }
+    }
+    return typeof data === 'object' ? data : {};
+  }
+
+  /**
+   * 在行数据上挂载 duplicate 元数据。
+   * - 管理员：直接透传 existing_row_id
+   * - 普通用户：通过 validSourceIds（批量模式）或调用方在 decorate 后自行二次校验
+   * @param {object} row
+   * @param {{ isAdmin?: boolean, validSourceIds?: Set<string> }} opts
+   */
+  _decorateDuplicateMeta(row, { isAdmin = false, validSourceIds = null } = {}) {
+    const recordData = this._parseRecordData(row?.data);
+    let sourceRowId = recordData.existing_row_id || null;
+
+    // 非管理员：校验 source row 归属当前用户
+    if (!isAdmin && sourceRowId) {
+      if (validSourceIds) {
+        // 批量模式：使用已验证的 ID 集合过滤
+        if (!validSourceIds.has(sourceRowId)) {
+          sourceRowId = null;
+        }
+      }
+      // 非批量模式（detail）：调用方在 decorate 后自行做单行 DB 校验
+    }
+
+    return {
+      ...row,
+      is_duplicate: Boolean(recordData.duplicate),
+      duplicate_source_row_id: sourceRowId,
+    };
+  }
+
+  async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, includeAll = false }) {
     const { conditions, replacements } = this._buildConditions({
-      invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
+      invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin, includeAll,
     });
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
+    const where = this._buildBaseWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
     const offset = (page - 1) * size;
 
     const [rows, countResult] = await Promise.all([
       this.sequelize.query(
         `SELECT m.id, m.status, m.created_at,
+                m.data,
                 r.invoice_number, r.invoice_date, r.invoice_type,
                 r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
                 r.total_amount, r.total_tax, r.total_with_tax,
@@ -124,8 +183,24 @@ class InvoiceService {
       ),
     ]);
 
+    // 批量校验 duplicate source row 归属（非管理员）
+    let validSourceIds = null;
+    if (!isAdmin) {
+      const sourceIds = rows
+        .map(row => this._parseRecordData(row?.data).existing_row_id)
+        .filter(Boolean);
+      if (sourceIds.length > 0) {
+        const placeholders = sourceIds.map(() => '?').join(',');
+        const validRows = await this.sequelize.query(
+          `SELECT id FROM app_invoice_mgr_records WHERE id IN (${placeholders}) AND user_id = ?`,
+          { replacements: [...sourceIds, userId], type: Sequelize.QueryTypes.SELECT }
+        );
+        validSourceIds = new Set(validRows.map(r => r.id));
+      }
+    }
+
     return {
-      list: rows,
+      list: rows.map(row => this._decorateDuplicateMeta(row, { isAdmin, validSourceIds })),
       total: countResult[0]?.total || 0,
       page,
       size,
@@ -143,27 +218,47 @@ class InvoiceService {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
 
-    const [rows, items] = await Promise.all([
-      this.sequelize.query(
-        `SELECT m.id, m.status, m.created_at,
-                r.invoice_number, r.invoice_date, r.invoice_type,
-                r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
-                r.total_amount, r.total_tax, r.total_with_tax,
-                r.item_count, r.page_count, r.remarks, r.issuer, r.ocr_method, r.ocr_raw, r.extraction_status,
-                r.text_items_count, r.keyword_count
-         FROM app_invoice_mgr_records m
-         LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
-         ${where}`,
-        { replacements, type: Sequelize.QueryTypes.SELECT }
-      ),
-      this.sequelize.query(
-        `SELECT * FROM app_invoice_mgr_items WHERE row_id = ? ORDER BY sort_order`,
-        { replacements: [rowId], type: Sequelize.QueryTypes.SELECT }
-      ),
-    ]);
+    // 阶段 1：先查主记录并完成授权校验
+    const rows = await this.sequelize.query(
+      `SELECT m.id, m.status, m.created_at,
+              m.data,
+              r.invoice_number, r.invoice_date, r.invoice_type,
+              r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
+              r.total_amount, r.total_tax, r.total_with_tax,
+              r.item_count, r.page_count, r.remarks, r.issuer, r.ocr_method, r.ocr_raw, r.extraction_status,
+              r.text_items_count, r.keyword_count
+       FROM app_invoice_mgr_records m
+       LEFT JOIN app_invoice_mgr_rows r ON r.row_id = m.id
+       ${where}`,
+      { replacements, type: Sequelize.QueryTypes.SELECT }
+    );
+
+    const record = rows[0];
+    if (!record) {
+      return {};
+    }
+
+    // 阶段 2：主记录存在且可访问后，再查明细
+    const items = await this.sequelize.query(
+      `SELECT * FROM app_invoice_mgr_items WHERE row_id = ? ORDER BY sort_order`,
+      { replacements: [rowId], type: Sequelize.QueryTypes.SELECT }
+    );
+
+    const decorated = this._decorateDuplicateMeta(record, { isAdmin });
+
+    // 非管理员：单行校验 duplicate source row 归属
+    if (!isAdmin && decorated.duplicate_source_row_id) {
+      const [ownerCheck] = await this.sequelize.query(
+        `SELECT id FROM app_invoice_mgr_records WHERE id = ? AND user_id = ? LIMIT 1`,
+        { replacements: [decorated.duplicate_source_row_id, userId], type: Sequelize.QueryTypes.SELECT }
+      );
+      if (!ownerCheck) {
+        decorated.duplicate_source_row_id = null;
+      }
+    }
 
     return {
-      ...(rows[0] || {}),
+      ...decorated,
       items: items || [],
     };
   }
@@ -173,12 +268,12 @@ class InvoiceService {
    * - Sheet1「发票信息」：所有发票的 header 字段
    * - Sheet2「商品明细」：所有明细行（含发票号码用于 VLOOKUP）
    */
-  async exportFull({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status }) {
+  async exportFull({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll = false }) {
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll,
     });
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
+    const where = this._buildExportWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
 
     // 查询所有符合条件的发票 header
@@ -276,7 +371,7 @@ class InvoiceService {
   /**
    * 个性化导出：用户选择字段 + 可选商品明细
    */
-  async exportCustom({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, fields, includeItems }) {
+  async exportCustom({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, fields, includeItems, includeAll = false }) {
     // ⚠️ 字段定义需与前端 exportFieldGroups (InvoiceList.vue) 保持同步
     const ALL_HEADER_FIELDS = [
       { key: 'invoice_number', header: '发票号码', width: 22 },
@@ -307,10 +402,10 @@ class InvoiceService {
     }
 
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll,
     });
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';
+    const where = this._buildExportWhereClause(conditions);
     const orderClause = this._buildOrderClause(sort, order);
 
     // 查询所有符合条件的发票 header
@@ -399,9 +494,9 @@ class InvoiceService {
   /**
    * 负值导出：筛选金额为负的商品明细，每行带上发票 header 信息
    */
-  async exportNegative({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status }) {
+  async exportNegative({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll = false }) {
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll,
     });
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';

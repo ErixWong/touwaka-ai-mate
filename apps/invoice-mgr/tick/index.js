@@ -68,7 +68,7 @@ export async function tick(context) {
 
   const placeholders = stateNames.map(() => '?').join(',');
   const rows = await services.query(
-    `SELECT id, status, data FROM app_invoice_mgr_records
+    `SELECT id, status, data, user_id FROM app_invoice_mgr_records
      WHERE status IN (${placeholders})
      ORDER BY created_at ASC
      LIMIT 5`,
@@ -82,14 +82,15 @@ export async function tick(context) {
   let processed = 0;
 
   for (const row of rows) {
+    const graphEntry = STATE_GRAPH[row.status];
+    const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
+
     try {
-      const graphEntry = STATE_GRAPH[row.status];
       if (!graphEntry) continue;
 
       logger.info(`[invoice-mgr tick] Processing row ${row.id} (status=${row.status}, handler=${graphEntry.handler})`);
 
-      const recordData = row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : {};
-      const record = { id: row.id, status: row.status, data: recordData };
+      const record = { id: row.id, status: row.status, data: recordData, user_id: row.user_id };
 
       const [fileRows] = await services.execute(
         `SELECT a.id, a.file_name, a.file_path, a.mime_type, a.ext_name
@@ -134,7 +135,7 @@ export async function tick(context) {
         if (newData._last_failure) {
           delete newData._last_failure;
         }
-        const nextState = graphEntry.success_next;
+        const nextState = result.target_state || graphEntry.success_next;
 
         if (nextState) {
           await services.execute(

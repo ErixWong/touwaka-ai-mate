@@ -16,6 +16,7 @@ export const statusLabels: Record<string, StatusLabel> = {
   pending_review: { label: '待确认', type: '' },
   confirmed: { label: '已确认', type: 'success' },
   extract_failed: { label: '识别失败', type: 'danger' },
+  duplicate: { label: '重复发票', type: 'warning' },
 }
 
 export function getStatusLabel(status: string): StatusLabel {

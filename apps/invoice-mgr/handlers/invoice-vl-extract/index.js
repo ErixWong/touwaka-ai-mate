@@ -1,6 +1,7 @@
 import logger from '../../../../lib/logger.js';
 import path from 'path';
 import { getStepResource, resolveAttachmentPath } from '../shared.js';
+import { checkDuplicate, buildDuplicateResponse } from '../../lib/check-duplicate.js';
 
 const ROWS_TABLE = 'app_invoice_mgr_rows';
 
@@ -58,20 +59,10 @@ function isValidInvoice(data) {
   return invNum && /^\d{20}$/.test(invNum) && total > 0;
 }
 
-async function checkDuplicate(services, invoiceNumber, currentRowId) {
-  const rows = await services.query(
-    'SELECT row_id FROM app_invoice_mgr_rows WHERE invoice_number = ? LIMIT 1',
-    [invoiceNumber]
-  );
-  if (rows && rows.length > 0 && rows[0].row_id !== currentRowId) {
-    return rows[0].row_id;
-  }
-  return null;
-}
-
-async function upsertRows(services, recordId, data, ocrMethod) {
+async function upsertRows(services, recordId, data, ocrMethod, userId) {
   await services.callExtension(ROWS_TABLE, 'upsert', {
     row_id: recordId,
+    user_id: userId,
     invoice_number: data.invoice_number,
     invoice_date: data.invoice_date || null,
     invoice_type: data.invoice_type || '',
@@ -318,6 +309,7 @@ export default {
       logger.warn(`[invoice-vl-extract] Record ${record.id}: VL提取结果无效(非发票)`);
       await services.callExtension(ROWS_TABLE, 'upsert', {
         row_id: record.id,
+        user_id: record.user_id,
         ocr_method: 'vl',
         extraction_status: 'failed',
         ocr_raw: JSON.stringify({ error: 'not_invoice', reason: 'VL did not extract valid invoice data' }),
@@ -325,27 +317,21 @@ export default {
       return { success: false, failure_code: 'not_invoice', error: 'not_invoice' };
     }
 
-    const existingRowId = await checkDuplicate(services, data.invoice_number, record.id);
-    if (existingRowId) {
+    const existing = await checkDuplicate(services, {
+      invoice_number: data.invoice_number,
+      user_id: record.user_id,
+      current_row_id: record.id,
+    });
+    if (existing) {
       logger.info(`[invoice-vl-extract] Record ${record.id}: 发票号 ${data.invoice_number} 已存在`);
-      await services.callExtension(ROWS_TABLE, 'upsert', {
-        row_id: record.id,
+      return buildDuplicateResponse({
         invoice_number: data.invoice_number,
+        existing_row_id: existing.row_id,
         ocr_method: 'vl',
-        extraction_status: 'duplicate',
-        ocr_raw: JSON.stringify({ duplicate: true, existing_row_id: existingRowId }),
       });
-      return {
-        success: true,
-        data: {
-          invoice_number: data.invoice_number,
-          duplicate: true,
-          existing_row_id: existingRowId,
-        },
-      };
     }
 
-    await upsertRows(services, record.id, data, 'vl');
+    await upsertRows(services, record.id, data, 'vl', record.user_id);
     const itemCount = await insertItems(services, record.id, data.items);
 
     logger.info(`[invoice-vl-extract] Record ${record.id}: 入库成功 ${data.invoice_number}, ${itemCount}项商品`);

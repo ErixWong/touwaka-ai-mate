@@ -20,6 +20,8 @@ export interface InvoiceRow {
   id: string
   status: string
   created_at: string
+  is_duplicate?: boolean
+  duplicate_source_row_id?: string | null
   invoice_number: string
   invoice_date: string
   invoice_type: string
@@ -60,6 +62,7 @@ export interface InvoiceListParams {
   end_date?: string
   sort?: string
   order?: string
+  include_all?: boolean
 }
 
 export function listInvoices(params: InvoiceListParams = {}) {
@@ -86,6 +89,7 @@ export interface InvoiceExportParams {
   seller_name?: string
   buyer_name?: string
   status?: string
+  include_all?: boolean
 }
 
 export async function exportInvoices(params: InvoiceExportParams = {}) {

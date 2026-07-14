@@ -636,7 +636,7 @@ const MIGRATIONS = [
           height INT DEFAULT NULL COMMENT '图片高度',
           alt_text VARCHAR(500) DEFAULT NULL COMMENT '替代文本',
           description TEXT DEFAULT NULL COMMENT '文件描述（VL模型生成）',
-          created_by VARCHAR(20) DEFAULT NULL COMMENT '上传者ID',
+          created_by VARCHAR(32) DEFAULT NULL COMMENT '上传者ID',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_source (source_tag, source_id),
@@ -2216,15 +2216,18 @@ const MIGRATIONS = [
     name: 'app_invoice_mgr_rows table (incremental)',
     check: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_rows')) return false;
-      // 哨兵列：使用最新加入的列作为迁移完成标记
-      // ⚠️ 若在 missingCols 中新增列，必须同步更新此哨兵列为最新列名
-      return await hasColumn(conn, 'app_invoice_mgr_rows', 'keyword_count');
+      // 哨兵：同时验证 user_id 列和 uk_user_invoice_number 索引
+      // 避免"列已补但旧 uk_invoice_number 索引未被替换"时迁移整体被跳过
+      const hasUserCol = await hasColumn(conn, 'app_invoice_mgr_rows', 'user_id');
+      const hasNewIndex = await hasIndex(conn, 'app_invoice_mgr_rows', 'uk_user_invoice_number');
+      return hasUserCol && hasNewIndex;
     },
     migrate: async (conn) => {
       if (!await hasTable(conn, 'app_invoice_mgr_rows')) {
         await conn.execute(`
           CREATE TABLE app_invoice_mgr_rows (
             row_id VARCHAR(32) PRIMARY KEY COMMENT '关联 app_invoice_mgr_records.id',
+            user_id VARCHAR(32) COMMENT '用户ID，关联 app_invoice_mgr_records.user_id',
             invoice_number VARCHAR(20) COMMENT '发票号码（20位），用于去重',
             invoice_date DATE COMMENT '开票日期',
             invoice_type VARCHAR(64) COMMENT '发票类型',
@@ -2246,7 +2249,8 @@ const MIGRATIONS = [
             keyword_count INT DEFAULT 0 COMMENT '发票关键词匹配数',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_invoice_number (invoice_number),
+            UNIQUE KEY uk_user_invoice_number (user_id, invoice_number),
+            INDEX idx_user_id (user_id),
             INDEX idx_seller (seller_name),
             INDEX idx_buyer (buyer_name),
             INDEX idx_date (invoice_date),
@@ -2272,16 +2276,40 @@ const MIGRATIONS = [
         { col: 'extraction_status', def: "VARCHAR(16) DEFAULT 'success' COMMENT '提取状态'", after: 'ocr_raw' },
         { col: 'text_items_count', def: "INT DEFAULT 0 COMMENT 'PDF文本项总数'", after: 'extraction_status' },
         { col: 'keyword_count', def: "INT DEFAULT 0 COMMENT '发票关键词匹配数'", after: 'text_items_count' },
+        { col: 'user_id', def: "VARCHAR(32) COMMENT '用户ID'", after: 'keyword_count' },
       ];
       for (const c of missingCols) {
         if (!await hasColumn(conn, 'app_invoice_mgr_rows', c.col)) {
           await conn.execute(`ALTER TABLE app_invoice_mgr_rows ADD COLUMN ${c.col} ${c.def} AFTER ${c.after}`);
           console.log(`  ✓ Added column ${c.col} to app_invoice_mgr_rows`);
+
+          // user_id 列新增后立即回填历史数据
+          if (c.col === 'user_id') {
+            const [backfillResult] = await conn.execute(`
+              UPDATE app_invoice_mgr_rows r
+              JOIN app_invoice_mgr_records m ON m.id = r.row_id
+              SET r.user_id = m.user_id
+              WHERE r.user_id IS NULL
+            `);
+            const backfillCount = backfillResult?.affectedRows ?? backfillResult?.changedRows ?? '?';
+            console.log(`  ✓ Backfilled user_id for ${backfillCount} rows`);
+          }
+        }
+      }
+
+      // 索引迁移：删除旧 uk_invoice_number，新建 uk_user_invoice_number
+      if (await hasIndex(conn, 'app_invoice_mgr_rows', 'uk_invoice_number')) {
+        try {
+          await conn.execute('ALTER TABLE app_invoice_mgr_rows DROP INDEX uk_invoice_number');
+          console.log('  ✓ Dropped old index uk_invoice_number');
+        } catch (e) {
+          console.log(`  ⚠ Failed to drop uk_invoice_number: ${e.message}`);
         }
       }
 
       const missingIndexes = [
-        { name: 'uk_invoice_number', def: 'UNIQUE KEY uk_invoice_number (invoice_number)' },
+        { name: 'uk_user_invoice_number', def: 'UNIQUE KEY uk_user_invoice_number (user_id, invoice_number)' },
+        { name: 'idx_user_id', def: 'INDEX idx_user_id (user_id)' },
         { name: 'idx_seller', def: 'INDEX idx_seller (seller_name)' },
         { name: 'idx_buyer', def: 'INDEX idx_buyer (buyer_name)' },
         { name: 'idx_date', def: 'INDEX idx_date (invoice_date)' },
@@ -2400,6 +2428,56 @@ const MIGRATIONS = [
       }
 
       console.log('  ✓ Incrementally upgraded app_invoice_mgr_items');
+    },
+  },
+
+  // 42e. invoice-mgr 同步 mini_apps.config 中的 user_id 扩展字段
+  {
+    name: 'invoice-mgr sync user_id field to mini_apps.config',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT config FROM mini_apps WHERE id = 'invoice-mgr'"
+      );
+      if (!rows || rows.length === 0) return true;
+      const config = typeof rows[0].config === 'string'
+        ? JSON.parse(rows[0].config)
+        : rows[0].config;
+      const rowsTable = (config.extension_tables || []).find(t => t.name === 'app_invoice_mgr_rows');
+      if (!rowsTable) return true;
+      return rowsTable.fields.some(f => f.name === 'user_id');
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT config FROM mini_apps WHERE id = 'invoice-mgr'"
+      );
+      if (!rows || rows.length === 0) {
+        console.log('  ⚠ invoice-mgr not found in mini_apps');
+        return;
+      }
+      const config = typeof rows[0].config === 'string'
+        ? JSON.parse(rows[0].config)
+        : rows[0].config;
+      const rowsTable = (config.extension_tables || []).find(t => t.name === 'app_invoice_mgr_rows');
+      if (!rowsTable) {
+        console.log('  ⚠ app_invoice_mgr_rows not found in config');
+        return;
+      }
+      if (rowsTable.fields.some(f => f.name === 'user_id')) {
+        console.log('  ✓ user_id already in config fields');
+        return;
+      }
+      // 在 fields 最前面插入 user_id
+      rowsTable.fields.unshift({
+        name: 'user_id',
+        type: 'VARCHAR(32)',
+        label: '用户ID（系统内部字段）',
+        source: 'user_id',
+      });
+      await conn.execute(
+        "UPDATE mini_apps SET config = ? WHERE id = 'invoice-mgr'",
+        [JSON.stringify(config)]
+      );
+      console.log('  ✓ Synced user_id field to mini_apps.config');
     },
   },
 
@@ -2665,6 +2743,26 @@ const MIGRATIONS = [
         SELECT COUNT(*) AS cnt FROM attachments WHERE access_level = 'public'
       `);
       console.log(`  ✓ Total ${result[0].cnt} attachments now marked as public`);
+    }
+  },
+
+  // ==================== attachments.created_by 字段扩容 ====================
+  {
+    name: 'attachments.created_by length upgrade',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'attachments' AND COLUMN_NAME = 'created_by'`,
+        [DB_CONFIG.database]
+      );
+      return rows.length > 0 && Number(rows[0].len) >= 32;
+    },
+    migrate: async (conn) => {
+      await dropForeignKeyIfExists(conn, 'attachments', 'attachments_ibfk_1');
+      await conn.execute(`ALTER TABLE attachments MODIFY COLUMN created_by VARCHAR(32) DEFAULT NULL COMMENT '上传者ID'`);
+      await safeExecute(conn, `ALTER TABLE attachments ADD CONSTRAINT attachments_ibfk_1 FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL`);
+      console.log('  ✓ Upgraded attachments.created_by to VARCHAR(32)');
     }
   },
 

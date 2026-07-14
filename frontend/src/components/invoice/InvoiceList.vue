@@ -8,9 +8,11 @@ import type { ElTable } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
 import { statusLabels } from '@/utils/invoice-status-labels'
+import { useUserStore } from '@/stores/user'
 
 const APP_ID = 'invoice-mgr'
 const MAX_BATCH_SIZE = 20
+const userStore = useUserStore()
 
 const loading = ref(false)
 const invoices = ref<InvoiceRow[]>([])
@@ -30,6 +32,13 @@ const tableRef = ref<InstanceType<typeof ElTable>>()
 type BatchUploadResult = {
   skipped_count?: number
   created_count?: number
+}
+
+function getDisplayStatus(row: InvoiceRow) {
+  if (row.is_duplicate) {
+    return statusLabels.duplicate
+  }
+  return statusLabels[row.status] || { label: row.status, type: 'info' as const }
 }
 
 function getErrorMessage(cause: unknown, fallback: string) {
@@ -98,6 +107,7 @@ const filters = ref<InvoiceListParams>({
   size: 20,
   sort: 'created_at',
   order: 'desc',
+  include_all: false,
 })
 
 onMounted(() => {
@@ -148,8 +158,14 @@ function onSearch() {
   loadList()
 }
 
+function onScopeChange() {
+  page.value = 1
+  filters.value.page = 1
+  loadList()
+}
+
 function onReset() {
-  filters.value = { page: 1, size: 20, sort: 'created_at', order: 'desc' }
+  filters.value = { page: 1, size: 20, sort: 'created_at', order: 'desc', include_all: false }
   dateMode.value = ''
   dateValue.value = null
   page.value = 1
@@ -329,6 +345,11 @@ function onRowClick(row: InvoiceRow) {
   showDetail.value = true
 }
 
+function jumpToInvoiceDetail(rowId: string) {
+  selectedRowId.value = rowId
+  showDetail.value = true
+}
+
 function onBack() {
   showDetail.value = false
   selectedRowId.value = ''
@@ -370,6 +391,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
       seller_name: filters.value.seller_name,
       buyer_name: filters.value.buyer_name,
       status: filters.value.status,
+      include_all: filters.value.include_all,
     }
     if (type === 'custom') {
       params.fields = exportSelectedFields.value
@@ -412,6 +434,15 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
             <el-select v-model="filters.status" placeholder="状态" clearable style="width:120px">
               <el-option v-for="(v, k) in statusLabels" :key="k" :label="v.label" :value="k" />
             </el-select>
+            <el-segmented
+              v-if="userStore.isAdmin"
+              v-model="filters.include_all"
+              :options="[
+                { label: '我的发票', value: false },
+                { label: '全部发票', value: true },
+              ]"
+              @change="onScopeChange"
+            />
           </div>
           <div class="filter-right">
             <el-button type="danger" :disabled="selectedRows.length === 0" :loading="deleting" @click="handleBatchDelete">
@@ -488,11 +519,24 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         <el-table-column prop="total_with_tax" label="价税合计" width="140" align="right">
           <template #default="{ row }">¥{{ row.total_with_tax?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100" align="center">
+        <el-table-column prop="status" label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusLabels[row.status]?.type || 'info'" size="small">
-              {{ statusLabels[row.status]?.label || row.status }}
+            <el-tag :type="getDisplayStatus(row).type || 'info'" size="small">
+              {{ getDisplayStatus(row).label }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.is_duplicate && row.duplicate_source_row_id"
+              link
+              type="primary"
+              @click.stop="jumpToInvoiceDetail(row.duplicate_source_row_id)"
+            >
+              查看原发票
+            </el-button>
+            <span v-else>-</span>
           </template>
         </el-table-column>
       </el-table>
