@@ -73,7 +73,7 @@ export default class attachment extends Model {
       comment: "访问级别：public=公开访问，private=私有受控访问"
     },
     created_by: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING(32),
       allowNull: true,
       comment: "上传者ID",
       references: {

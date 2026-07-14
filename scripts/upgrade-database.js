@@ -636,7 +636,7 @@ const MIGRATIONS = [
           height INT DEFAULT NULL COMMENT '图片高度',
           alt_text VARCHAR(500) DEFAULT NULL COMMENT '替代文本',
           description TEXT DEFAULT NULL COMMENT '文件描述（VL模型生成）',
-          created_by VARCHAR(20) DEFAULT NULL COMMENT '上传者ID',
+          created_by VARCHAR(32) DEFAULT NULL COMMENT '上传者ID',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_source (source_tag, source_id),
@@ -2741,6 +2741,26 @@ const MIGRATIONS = [
         SELECT COUNT(*) AS cnt FROM attachments WHERE access_level = 'public'
       `);
       console.log(`  ✓ Total ${result[0].cnt} attachments now marked as public`);
+    }
+  },
+
+  // ==================== attachments.created_by 字段扩容 ====================
+  {
+    name: 'attachments.created_by length upgrade',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'attachments' AND COLUMN_NAME = 'created_by'`,
+        [DB_CONFIG.database]
+      );
+      return rows.length > 0 && Number(rows[0].len) >= 32;
+    },
+    migrate: async (conn) => {
+      await dropForeignKeyIfExists(conn, 'attachments', 'attachments_ibfk_1');
+      await conn.execute(`ALTER TABLE attachments MODIFY COLUMN created_by VARCHAR(32) DEFAULT NULL COMMENT '上传者ID'`);
+      await safeExecute(conn, `ALTER TABLE attachments ADD CONSTRAINT attachments_ibfk_1 FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL`);
+      console.log('  ✓ Upgraded attachments.created_by to VARCHAR(32)');
     }
   },
 
