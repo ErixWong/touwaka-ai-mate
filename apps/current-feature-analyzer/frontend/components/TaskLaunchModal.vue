@@ -149,7 +149,7 @@ const emit = defineEmits<{
 const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: string; description: string }> = [
   {
     value: 'adaptive_v2',
-    label: '自适应 V2',
+    label: '自适应 V2（默认）',
     description: '当前项目实现，自适应搜索分辨率，段数更稳定。',
   },
   {
@@ -169,8 +169,23 @@ const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: stri
   },
   {
     value: 'envelope_turning_points_v3',
-    label: '包络转折点 V3（默认）',
+    label: '包络转折点 V3',
     description: '在 V2 基础上把平台起止边界设为结构锚点，减少平台尾端和下降沿被压成尖峰。',
+  },
+  {
+    value: 'structural_profile_v1',
+    label: '结构轮廓压缩 V1',
+    description: '先识别平台/斜坡/脉冲/陡边等结构单元，再按单元模板生成关键点，减少补丁式例外规则。',
+  },
+  {
+    value: 'structural_profile_v2',
+    label: '结构轮廓压缩 V2',
+    description: '边界事件优先：先剥离强跳变，再对剩余区域做平台/斜坡采样，优先保近 90 度陡边。',
+  },
+  {
+    value: 'structural_cusum_v1',
+    label: '结构轮廓 CUSUM V1',
+    description: '先用局部 CUSUM 检测候选跳变边界，再对剩余区域做平台/斜坡采样，减少纯阈值边界误判。',
   },
 ]
 
@@ -178,7 +193,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<File[]>([])
 const localRuleSetId = ref(props.defaultRuleSetId || '')
 const overwriteCurrentSession = ref(true)
-const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('envelope_turning_points_v3')
+const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('adaptive_v2')
 
 const enabledRuleSets = computed(() => props.ruleSets.filter(ruleSet => ruleSet.is_enabled))
 const hasActiveSession = computed(() => props.currentBatchStatus !== 'idle')

@@ -32,10 +32,12 @@ const ABS_EPSILON = 0.0001
 const BASELINE_SAMPLE_COUNT = 10
 const LEGACY_BASELINE_WINDOW_SECONDS = 0.5
 const KEY_POINT_WINDOW_SECONDS = 0.02
+const KEY_POINT_MIN_SEGMENT_SECONDS = KEY_POINT_WINDOW_SECONDS * 1.25
 const KEY_POINT_TARGET_MIN = 40
 const KEY_POINT_TARGET_MAX = 60
 const KEY_POINT_TARGET_COUNT = 52
 const KEY_POINT_THRESHOLD_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 9, 12, 15, 18, 22, 26, 30]
+const STRUCTURAL_CUSUM_RADIUS = 2
 
 type CompressionAlgorithmProfile = {
   key: CompressionAlgorithmKey
@@ -92,6 +94,36 @@ const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorit
   envelope_turning_points_v3: {
     key: 'envelope_turning_points_v3',
     label: '包络转折点 V3',
+    output_mode: 'key_points',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
+  structural_profile_v1: {
+    key: 'structural_profile_v1',
+    label: '结构轮廓压缩 V1',
+    output_mode: 'key_points',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
+  structural_profile_v2: {
+    key: 'structural_profile_v2',
+    label: '结构轮廓压缩 V2',
+    output_mode: 'key_points',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
+  structural_cusum_v1: {
+    key: 'structural_cusum_v1',
+    label: '结构轮廓 CUSUM V1',
     output_mode: 'key_points',
     baseline_mode: 'adaptive_v2',
     trend_mode: 'adaptive_v2',
@@ -353,7 +385,7 @@ function calculateGlobalsLegacy(points: RawPoint[]): Globals {
 }
 
 function getAlgorithmProfile(algorithmKey?: CompressionAlgorithmKey | null) {
-  return COMPRESSION_ALGORITHMS[algorithmKey || 'envelope_turning_points_v3'] || COMPRESSION_ALGORITHMS.envelope_turning_points_v3
+  return COMPRESSION_ALGORITHMS[algorithmKey || 'adaptive_v2'] || COMPRESSION_ALGORITHMS.adaptive_v2
 }
 
 function normalizeDuplicateCurrentValue(current: number) {
@@ -909,6 +941,18 @@ function buildKeyPointStateRuns(windows: KeyPointWindow[], globals: Globals) {
 function detectPlateauBoundaryAnchors(windows: KeyPointWindow[], globals: Globals) {
   const runs = buildKeyPointStateRuns(windows, globals)
   const anchors = new Set<number>()
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+
+  const isSteepBoundary = (leftIndex: number, rightIndex: number) => {
+    if (leftIndex < 0 || rightIndex >= windows.length) return false
+    const left = windows[leftIndex]!
+    const right = windows[rightIndex]!
+    const meanJumpPercent = Math.abs(right.mean_current - left.mean_current) / fullScale * 100
+    const peakJumpPercent = Math.abs(right.max_current - left.max_current) / fullScale * 100
+    const mixedWindowPercent = Math.max(left.span_current, right.span_current) / fullScale * 100
+    return meanJumpPercent >= 8 || peakJumpPercent >= 12 || mixedWindowPercent >= 18
+  }
+
   for (const run of runs) {
     const isPlateau = run.state === 'idle_plateau'
       || run.state === 'mid_plateau'
@@ -919,8 +963,8 @@ function detectPlateauBoundaryAnchors(windows: KeyPointWindow[], globals: Global
     anchors.add(run.start)
     anchors.add(run.end)
     if (length >= 5) anchors.add(Math.floor((run.start + run.end) / 2))
-    if (run.start - 1 >= 0) anchors.add(run.start - 1)
-    if (run.end + 1 < windows.length) anchors.add(run.end + 1)
+    if (run.start - 1 >= 0 && !isSteepBoundary(run.start - 1, run.start)) anchors.add(run.start - 1)
+    if (run.end + 1 < windows.length && !isSteepBoundary(run.end, run.end + 1)) anchors.add(run.end + 1)
   }
   return anchors
 }
@@ -1051,18 +1095,87 @@ function classifyKeyPointSegmentKind(startPoint: KeyPointItem, endPoint: KeyPoin
   return Math.max(startPoint.peak_ratio, endPoint.peak_ratio) >= 20 ? 'falling-fast' : 'falling'
 }
 
+function normalizeKeyPointsForSegments(keyPoints: KeyPointItem[]) {
+  if (keyPoints.length <= 1) return keyPoints.slice()
+
+  const sorted = keyPoints.slice().sort((left, right) => {
+    if (Math.abs(left.time - right.time) > 0.000001) return left.time - right.time
+    return left.point_index - right.point_index
+  })
+
+  const normalized: KeyPointItem[] = []
+  let group: KeyPointItem[] = []
+
+  const flush = () => {
+    if (group.length === 0) return
+    const ordered = group.slice().sort((left, right) => left.point_index - right.point_index)
+    const first = ordered[0]!
+    const last = ordered[ordered.length - 1]!
+    if (ordered.length === 1 || Math.abs(last.mean_current - first.mean_current) <= 0.05) {
+      normalized.push(first)
+    } else {
+      normalized.push(first)
+      if (last !== first) normalized.push(last)
+    }
+    group = []
+  }
+
+  for (const point of sorted) {
+    if (group.length === 0) {
+      group.push(point)
+      continue
+    }
+
+    if (Math.abs(point.time - group[0]!.time) <= 0.000001) {
+      group.push(point)
+      continue
+    }
+
+    flush()
+    group.push(point)
+  }
+  flush()
+
+  const deduped: KeyPointItem[] = []
+  for (const point of normalized) {
+    const previous = deduped[deduped.length - 1]
+    if (!previous) {
+      deduped.push(point)
+      continue
+    }
+
+    const sameTime = Math.abs(point.time - previous.time) <= 0.000001
+    const sameLevel = Math.abs(point.mean_current - previous.mean_current) <= 0.05
+    if (sameTime && sameLevel) {
+      continue
+    }
+
+    deduped.push(point)
+  }
+
+  return deduped
+}
+
 function buildKeyPointSegments(keyPoints: KeyPointItem[]) {
-  if (keyPoints.length < 2) return [] as SegmentItem[]
-  return keyPoints.slice(0, -1).map((point, index) => {
-    const nextPoint = keyPoints[index + 1]!
-    const duration = Math.max(nextPoint.time - point.time, 0)
+  const normalizedPoints = normalizeKeyPointsForSegments(keyPoints)
+  if (normalizedPoints.length < 2) return [] as SegmentItem[]
+  const segments: SegmentItem[] = []
+  for (let index = 0; index < normalizedPoints.length - 1; index++) {
+    const point = normalizedPoints[index]!
+    const nextPoint = normalizedPoints[index + 1]!
+    const rawDuration = nextPoint.time - point.time
+    if (rawDuration <= 0.000001) {
+      continue
+    }
+
+    const duration = Math.max(rawDuration, 0)
     const meanCurrent = Number((((point.mean_current + nextPoint.mean_current) / 2)).toFixed(6))
-    return {
-      segment_index: index,
+    segments.push({
+      segment_index: segments.length,
       start_time: point.time,
       end_time: nextPoint.time,
       duration: Number(duration.toFixed(6)),
-      point_count: Math.max(2, nextPoint.point_index - point.point_index + 1),
+      point_count: Math.max(2, Math.round(Math.abs(nextPoint.point_index - point.point_index)) + 1),
       start_current: point.mean_current,
       end_current: nextPoint.mean_current,
       delta_current: Number((nextPoint.mean_current - point.mean_current).toFixed(6)),
@@ -1080,11 +1193,692 @@ function buildKeyPointSegments(keyPoints: KeyPointItem[]) {
         [nextPoint.time, nextPoint.mean_current],
       ],
       polyline_point_count: 2,
+    })
+  }
+  return mergeTinyKeyPointSegments(segments, KEY_POINT_MIN_SEGMENT_SECONDS)
+}
+
+function getSegmentTrendFamily(segment: SegmentItem) {
+  const kind = segment.kind || ''
+  if (kind === 'rising' || kind === 'rising-fast') return 'rising'
+  if (kind === 'falling' || kind === 'falling-fast') return 'falling'
+  if (kind.startsWith('plateau')) return 'plateau'
+  return 'other'
+}
+
+function mergeSegmentBucket(bucket: SegmentItem[]) {
+  const first = bucket[0]!
+  const last = bucket[bucket.length - 1]!
+  const duration = Math.max((last.end_time || 0) - (first.start_time || 0), 0)
+  const totalPointCount = bucket.reduce((sum, segment) => sum + Math.max(segment.point_count || 0, 1), 0)
+  const weightedMeanCurrent = bucket.reduce((sum, segment) => sum + (segment.mean_current || 0) * Math.max(segment.point_count || 0, 1), 0) / Math.max(totalPointCount, 1)
+  const weightedBaselineRatio = bucket.reduce((sum, segment) => sum + (segment.baseline_ratio || 0) * Math.max(segment.point_count || 0, 1), 0) / Math.max(totalPointCount, 1)
+  const minCurrent = Math.min(...bucket.map(segment => segment.min_current ?? segment.start_current ?? segment.mean_current ?? 0))
+  const maxCurrent = Math.max(...bucket.map(segment => segment.max_current ?? segment.end_current ?? segment.mean_current ?? 0))
+  const startCurrent = first.start_current ?? first.mean_current ?? 0
+  const endCurrent = last.end_current ?? last.mean_current ?? 0
+  const startPointLike: KeyPointItem = {
+    point_index: 0,
+    time: first.start_time,
+    mean_current: startCurrent,
+    min_current: first.min_current ?? startCurrent,
+    max_current: first.max_current ?? startCurrent,
+    span_current: first.bandwidth ?? 0,
+    baseline_ratio: first.baseline_ratio ?? 0,
+    peak_ratio: first.baseline_ratio ?? 0,
+    delta_left: 0,
+    delta_right: 0,
+    change_percent: 0,
+  }
+  const endPointLike: KeyPointItem = {
+    point_index: 1,
+    time: last.end_time,
+    mean_current: endCurrent,
+    min_current: last.min_current ?? endCurrent,
+    max_current: last.max_current ?? endCurrent,
+    span_current: last.bandwidth ?? 0,
+    baseline_ratio: last.baseline_ratio ?? 0,
+    peak_ratio: last.baseline_ratio ?? 0,
+    delta_left: 0,
+    delta_right: 0,
+    change_percent: 0,
+  }
+  return {
+    segment_index: -1,
+    start_time: first.start_time,
+    end_time: last.end_time,
+    duration: Number(duration.toFixed(6)),
+    point_count: Math.max(2, totalPointCount),
+    start_current: Number(startCurrent.toFixed(6)),
+    end_current: Number(endCurrent.toFixed(6)),
+    delta_current: Number((endCurrent - startCurrent).toFixed(6)),
+    min_current: Number(minCurrent.toFixed(6)),
+    max_current: Number(maxCurrent.toFixed(6)),
+    mean_current: Number(weightedMeanCurrent.toFixed(6)),
+    representative_current: Number(weightedMeanCurrent.toFixed(6)),
+    bandwidth: Number((maxCurrent - minCurrent).toFixed(6)),
+    baseline_ratio: Number(weightedBaselineRatio.toFixed(6)),
+    slope: duration > 0 ? Number(((endCurrent - startCurrent) / duration).toFixed(6)) : 0,
+    line_fit_error: 0,
+    kind: classifyKeyPointSegmentKind(startPointLike, endPointLike),
+    polyline_points: [
+      [first.start_time, Number(startCurrent.toFixed(6))],
+      [last.end_time, Number(endCurrent.toFixed(6))],
+    ],
+    polyline_point_count: 2,
+  } as SegmentItem
+}
+
+function mergeTinyKeyPointSegments(segments: SegmentItem[], minDurationSeconds: number) {
+  if (segments.length < 3) {
+    return segments.map((segment, index) => ({ ...segment, segment_index: index }))
+  }
+
+  const result: SegmentItem[] = []
+  let index = 0
+  while (index < segments.length) {
+    const current = segments[index]!
+    const previous = result[result.length - 1]
+    const next = segments[index + 1]
+    const isTiny = (current.duration || 0) <= minDurationSeconds
+    if (previous && next && isTiny) {
+      const previousFamily = getSegmentTrendFamily(previous)
+      const currentFamily = getSegmentTrendFamily(current)
+      const nextFamily = getSegmentTrendFamily(next)
+      const canMergeTrendBridge = previousFamily === nextFamily && (previousFamily === 'rising' || previousFamily === 'falling')
+      const canMergePlateauBridge = currentFamily === 'plateau' && previousFamily === nextFamily && (previousFamily === 'rising' || previousFamily === 'falling')
+      if (canMergeTrendBridge || canMergePlateauBridge) {
+        result[result.length - 1] = mergeSegmentBucket([previous, current, next])
+        index += 2
+        continue
+      }
     }
+    result.push(current)
+    index++
+  }
+
+  return result.map((segment, segmentIndex) => ({
+    ...segment,
+    segment_index: segmentIndex,
+  }))
+}
+
+function reducePointList(points: KeyPointItem[], globals: Globals, targetCount: number) {
+  if (points.length <= targetCount) return points
+
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const withImportance = points.map((point, index) => {
+    const previous = points[index - 1] || point
+    const next = points[index + 1] || point
+    const localChange = Math.max(
+      Math.abs(point.mean_current - previous.mean_current),
+      Math.abs(next.mean_current - point.mean_current),
+    )
+    const importance = point.change_percent * 4
+      + point.peak_ratio * 0.8
+      + point.baseline_ratio * 0.25
+      + (localChange / Math.max(fullScale, ABS_EPSILON)) * 100 * 2
+    return { point, importance }
+  })
+
+  const keep = new Set<number>([0, points.length - 1])
+  const bucketCount = Math.min(12, targetCount)
+  const bucketSize = Math.max(1, Math.ceil(points.length / bucketCount))
+
+  for (let bucketIndex = 0; bucketIndex < bucketCount && keep.size < targetCount; bucketIndex++) {
+    const bucketStart = bucketIndex * bucketSize
+    const bucketEnd = Math.min(points.length, bucketStart + bucketSize)
+    const candidate = withImportance
+      .slice(bucketStart, bucketEnd)
+      .map((item, offset) => ({ ...item, index: bucketStart + offset }))
+      .sort((left, right) => right.importance - left.importance)[0]
+    if (candidate) keep.add(candidate.index)
+  }
+
+  const rest = withImportance
+    .map((item, index) => ({ ...item, index }))
+    .filter(item => !keep.has(item.index))
+    .sort((left, right) => right.importance - left.importance)
+
+  for (const item of rest) {
+    if (keep.size >= targetCount) break
+    keep.add(item.index)
+  }
+
+  return [...keep].sort((left, right) => left - right).map(index => points[index]!)
+}
+
+function classifyStructuralWindow(index: number, windows: KeyPointWindow[], globals: Globals) {
+  const window = windows[index]!
+  const previous = windows[index - 1] || window
+  const next = windows[index + 1] || window
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const deltaPrev = window.mean_current - previous.mean_current
+  const deltaNext = next.mean_current - window.mean_current
+  const edgeDelta = Math.abs(deltaNext) >= Math.abs(deltaPrev) ? deltaNext : deltaPrev
+  const edgePct = Math.abs(edgeDelta) / fullScale * 100
+  const jumpPct = Math.max(Math.abs(deltaPrev), Math.abs(deltaNext), Math.abs(window.delta_peak || 0)) / fullScale * 100
+  const spanPct = (window.span_current || 0) / fullScale * 100
+  const peakLiftPct = Math.abs((window.max_current || 0) - (window.mean_current || 0)) / fullScale * 100
+  const baselineRatio = window.baseline_ratio || 0
+  const peakRatio = window.peak_ratio || 0
+  const idleLike = baselineRatio <= 1.8 && peakRatio <= 2.2
+  const highLike = window.mean_current >= globals.max_current * 0.88 || window.max_current >= globals.max_current * 0.96
+  const stableLike = jumpPct <= 1.2 && spanPct <= 2.6
+
+  if (stableLike) {
+    if (idleLike) return 'plateau_idle'
+    if (highLike) return 'plateau_high'
+    return 'plateau_work'
+  }
+
+  if (edgePct >= 16 && spanPct >= 10) {
+    return edgeDelta >= 0 ? 'edge_up' : 'edge_down'
+  }
+
+  if (peakLiftPct >= 14 && window.max_current >= globals.max_current * 0.75) {
+    return 'pulse'
+  }
+
+  return edgeDelta >= 0 ? 'ramp_up' : 'ramp_down'
+}
+
+function buildStructuralRuns(windows: KeyPointWindow[], globals: Globals) {
+  if (!windows.length) return [] as Array<{ feature: string; start: number; end: number }>
+  const runs: Array<{ feature: string; start: number; end: number }> = []
+  let current = { feature: classifyStructuralWindow(0, windows, globals), start: 0, end: 0 }
+  const fullScale = Math.max(globals.max_current - globals.min_current, ABS_EPSILON)
+
+  for (let index = 1; index < windows.length; index++) {
+    const feature = classifyStructuralWindow(index, windows, globals)
+    const previousWindow = windows[index - 1]!
+    const currentWindow = windows[index]!
+    const closeEnough = Math.abs(currentWindow.mean_current - previousWindow.mean_current) / fullScale * 100 <= 0.9
+    const samePlateau = feature.startsWith('plateau_') && current.feature.startsWith('plateau_') && closeEnough
+    if (feature === current.feature || samePlateau) {
+      current.end = index
+      continue
+    }
+    runs.push(current)
+    current = { feature, start: index, end: index }
+  }
+
+  runs.push(current)
+  return runs
+}
+
+function buildStructuralPoint(index: number, windows: KeyPointWindow[], globals: Globals, yValue: number): KeyPointItem {
+  const point = buildKeyPoint(index, windows, globals, Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON))
+  return {
+    ...point,
+    mean_current: Number(yValue.toFixed(6)),
+  }
+}
+
+function buildStructuralSyntheticPoint(index: number, windows: KeyPointWindow[], globals: Globals, yValue: number, timeValue: number, pointIndex: number): KeyPointItem {
+  const point = buildKeyPoint(index, windows, globals, Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON))
+  return {
+    ...point,
+    point_index: pointIndex,
+    time: Number(timeValue.toFixed(6)),
+    mean_current: Number(yValue.toFixed(6)),
+  }
+}
+
+function collapseCoincidentKeyPoints(points: KeyPointItem[]) {
+  if (points.length <= 2) return points
+
+  const sorted = points.slice().sort((left, right) => left.point_index - right.point_index)
+  const collapsed: KeyPointItem[] = []
+  let group: KeyPointItem[] = []
+
+  const flush = () => {
+    if (group.length === 0) return
+    if (group.length <= 2) {
+      collapsed.push(...group)
+      group = []
+      return
+    }
+
+    const first = group[0]!
+    const last = group[group.length - 1]!
+    const direction = last.mean_current - first.mean_current
+    const low = group.reduce((best, item) => item.mean_current < best.mean_current ? item : best, group[0]!)
+    const high = group.reduce((best, item) => item.mean_current > best.mean_current ? item : best, group[0]!)
+
+    if (low === high) {
+      collapsed.push(low)
+      group = []
+      return
+    }
+
+    if (direction >= 0) {
+      collapsed.push(low, high)
+    } else {
+      collapsed.push(high, low)
+    }
+    group = []
+  }
+
+  for (const point of sorted) {
+    if (group.length === 0) {
+      group.push(point)
+      continue
+    }
+
+    if (Math.abs(point.time - group[0]!.time) <= 0.000001) {
+      group.push(point)
+      continue
+    }
+
+    flush()
+    group.push(point)
+  }
+  flush()
+  return collapsed
+}
+
+function structuralRunPoints(run: { feature: string; start: number; end: number }, windows: KeyPointWindow[], globals: Globals) {
+  const slice = windows.slice(run.start, run.end + 1)
+  const points: KeyPointItem[] = []
+  const length = run.end - run.start + 1
+  const middle = Math.floor((run.start + run.end) / 2)
+
+  if (run.feature.startsWith('plateau_')) {
+    const levelSource = run.feature === 'plateau_high'
+      ? slice.map(item => item.max_current)
+      : slice.map(item => item.mean_current)
+    const level = levelSource.slice().sort((left, right) => left - right)[Math.floor(levelSource.length / 2)] || windows[run.start]!.mean_current
+    points.push(buildStructuralPoint(run.start, windows, globals, level))
+    if (length >= 5) points.push(buildStructuralPoint(middle, windows, globals, level))
+    if (run.end !== run.start) points.push(buildStructuralPoint(run.end, windows, globals, level))
+    return [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index)
+  }
+
+  if (run.feature === 'pulse') {
+    let peakIndex = run.start
+    for (let index = run.start + 1; index <= run.end; index++) {
+      if (windows[index]!.max_current > windows[peakIndex]!.max_current) peakIndex = index
+    }
+    points.push(buildStructuralPoint(run.start, windows, globals, windows[run.start]!.mean_current))
+    points.push(buildStructuralPoint(peakIndex, windows, globals, windows[peakIndex]!.max_current))
+    if (run.end !== run.start) points.push(buildStructuralPoint(run.end, windows, globals, windows[run.end]!.mean_current))
+    return [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index)
+  }
+
+  if (run.feature === 'edge_up' || run.feature === 'edge_down') {
+    const previous = windows[Math.max(0, run.start - 1)]!
+    const startWindow = windows[run.start]!
+    const endWindow = windows[run.end]!
+    const next = windows[Math.min(windows.length - 1, run.end + 1)]!
+    const transitionStart = Number(startWindow.start_time.toFixed(6))
+    const transitionEnd = Number(endWindow.end_time.toFixed(6))
+
+    if (run.feature === 'edge_up') {
+      const lowLevel = Math.min(previous.mean_current, startWindow.min_current, endWindow.min_current)
+      const highLevel = Math.max(next.mean_current, startWindow.max_current, endWindow.max_current)
+      points.push(buildStructuralSyntheticPoint(run.start, windows, globals, lowLevel, transitionStart, run.start - 0.25))
+      points.push(buildStructuralSyntheticPoint(run.end, windows, globals, highLevel, transitionEnd, run.end + 0.25))
+    } else {
+      const highLevel = Math.max(previous.mean_current, startWindow.max_current, endWindow.max_current)
+      const lowLevel = Math.min(next.mean_current, startWindow.min_current, endWindow.min_current)
+      points.push(buildStructuralSyntheticPoint(run.start, windows, globals, highLevel, transitionStart, run.start - 0.25))
+      points.push(buildStructuralSyntheticPoint(run.end, windows, globals, lowLevel, transitionEnd, run.end + 0.25))
+    }
+
+    return points.sort((left, right) => left.point_index - right.point_index)
+  }
+
+  points.push(buildStructuralPoint(run.start, windows, globals, windows[run.start]!.mean_current))
+  if ((run.feature === 'ramp_up' || run.feature === 'ramp_down') && length >= 8) {
+    points.push(buildStructuralPoint(middle, windows, globals, windows[middle]!.mean_current))
+  }
+  if (run.end !== run.start) points.push(buildStructuralPoint(run.end, windows, globals, windows[run.end]!.mean_current))
+  return [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index)
+}
+
+function runStructuralProfileCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
+  const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
+  const runs = buildStructuralRuns(windows, globals)
+  const keyPoints = reducePointList(
+    [...new Map(runs.flatMap(run => structuralRunPoints(run, windows, globals)).map(point => [point.point_index, point])).values()].sort((left, right) => left.point_index - right.point_index),
+    globals,
+    KEY_POINT_TARGET_COUNT,
+  )
+  const segments = buildKeyPointSegments(keyPoints)
+  const meta = buildCompressionMeta(profile, options)
+  meta.compression_mode = 'key_points'
+  meta.window_seconds = KEY_POINT_WINDOW_SECONDS
+  meta.threshold_percent = null
+  meta.selected_segment_count = segments.length
+  meta.selected_key_point_count = keyPoints.length
+  meta.target_key_point_min = KEY_POINT_TARGET_MIN
+  meta.target_key_point_max = KEY_POINT_TARGET_MAX
+  meta.selection_reason = '先识别平台/斜坡/脉冲/陡边结构单元，再按单元最小表达模板生成关键点'
+
+  return {
+    options: meta,
+    result: {
+      globals,
+      segments,
+      events: [],
+    },
+  }
+}
+
+function detectStructuralEdgeEvents(windows: KeyPointWindow[], globals: Globals) {
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  const rawEvents: Array<{ type: 'edge_up' | 'edge_down'; leftIndex: number; rightIndex: number; boundaryTime: number; lowLevel: number; highLevel: number }> = []
+
+  for (let index = 0; index < windows.length - 1; index++) {
+    const left = windows[index]!
+    const right = windows[index + 1]!
+    const meanJumpPct = Math.abs(right.mean_current - left.mean_current) / fullScale * 100
+    const peakJumpPct = Math.abs(right.max_current - left.max_current) / fullScale * 100
+    const mixedSpanPct = Math.max(left.span_current, right.span_current) / fullScale * 100
+    const strongJump = meanJumpPct >= 12 || peakJumpPct >= 16
+    const mixedWindow = mixedSpanPct >= 8
+    if (!strongJump) continue
+
+    const type = right.mean_current >= left.mean_current ? 'edge_up' : 'edge_down'
+    const boundaryTime = Number((((left.end_time + right.start_time) / 2)).toFixed(6))
+    const lowLevel = Math.min(left.min_current, right.min_current, left.mean_current, right.mean_current)
+    const highLevel = Math.max(left.max_current, right.max_current, left.mean_current, right.mean_current)
+
+    rawEvents.push({
+      type,
+      leftIndex: index,
+      rightIndex: index + 1,
+      boundaryTime,
+      lowLevel: mixedWindow ? lowLevel : Math.min(left.mean_current, right.mean_current),
+      highLevel: mixedWindow ? highLevel : Math.max(left.mean_current, right.mean_current),
+    })
+  }
+
+  if (rawEvents.length === 0) return rawEvents
+
+  const clustered: typeof rawEvents = []
+  let current = { ...rawEvents[0]! }
+  for (let index = 1; index < rawEvents.length; index++) {
+    const next = rawEvents[index]!
+    const isAdjacent = next.leftIndex <= current.rightIndex + 1
+    if (next.type === current.type && isAdjacent) {
+      current = {
+        type: current.type,
+        leftIndex: current.leftIndex,
+        rightIndex: next.rightIndex,
+        boundaryTime: Number((((windows[current.leftIndex]!.end_time + windows[next.rightIndex]!.start_time) / 2)).toFixed(6)),
+        lowLevel: Math.min(current.lowLevel, next.lowLevel),
+        highLevel: Math.max(current.highLevel, next.highLevel),
+      }
+      continue
+    }
+    clustered.push(current)
+    current = { ...next }
+  }
+  clustered.push(current)
+  return clustered
+}
+
+function buildWindowMeanPrefixSums(windows: KeyPointWindow[]) {
+  const prefix = new Array(windows.length + 1).fill(0)
+  for (let index = 0; index < windows.length; index++) {
+    prefix[index + 1] = prefix[index]! + (windows[index]!.mean_current || 0)
+  }
+  return prefix
+}
+
+function averageWindowMean(prefix: number[], startIndex: number, endIndex: number) {
+  if (endIndex < startIndex) return 0
+  const sum = prefix[endIndex + 1]! - prefix[startIndex]!
+  return sum / Math.max(endIndex - startIndex + 1, 1)
+}
+
+function detectStructuralCusumEdgeEvents(windows: KeyPointWindow[], globals: Globals) {
+  const fullScale = Math.max(globals.max_current - globals.min_current, globals.max_current - globals.baseline_mean, ABS_EPSILON)
+  if (windows.length < 2) return [] as Array<{ type: 'edge_up' | 'edge_down'; leftIndex: number; rightIndex: number; boundaryTime: number; lowLevel: number; highLevel: number }>
+
+  const prefix = buildWindowMeanPrefixSums(windows)
+  const rawEvents: Array<{ type: 'edge_up' | 'edge_down'; leftIndex: number; rightIndex: number; boundaryTime: number; lowLevel: number; highLevel: number }> = []
+
+  for (let splitIndex = 0; splitIndex < windows.length - 1; splitIndex++) {
+    const leftStart = Math.max(0, splitIndex - STRUCTURAL_CUSUM_RADIUS + 1)
+    const leftEnd = splitIndex
+    const rightStart = splitIndex + 1
+    const rightEnd = Math.min(windows.length - 1, splitIndex + STRUCTURAL_CUSUM_RADIUS)
+    const leftCount = leftEnd - leftStart + 1
+    const rightCount = rightEnd - rightStart + 1
+    if (leftCount <= 0 || rightCount <= 0) continue
+
+    const leftMean = averageWindowMean(prefix, leftStart, leftEnd)
+    const rightMean = averageWindowMean(prefix, rightStart, rightEnd)
+    const meanJump = rightMean - leftMean
+    const meanJumpPct = Math.abs(meanJump) / fullScale * 100
+    const leftRegion = windows.slice(leftStart, leftEnd + 1)
+    const rightRegion = windows.slice(rightStart, rightEnd + 1)
+    const leftRangePct = (Math.max(...leftRegion.map(window => window.mean_current)) - Math.min(...leftRegion.map(window => window.mean_current))) / fullScale * 100
+    const rightRangePct = (Math.max(...rightRegion.map(window => window.mean_current)) - Math.min(...rightRegion.map(window => window.mean_current))) / fullScale * 100
+    const localMeanRangePct = Math.max(leftRangePct, rightRangePct)
+
+    const leftWindow = windows[splitIndex]!
+    const rightWindow = windows[splitIndex + 1]!
+    const directJumpPct = Math.abs((rightWindow.mean_current || 0) - (leftWindow.mean_current || 0)) / fullScale * 100
+    const localSpanPct = Math.max(leftWindow.span_current || 0, rightWindow.span_current || 0) / fullScale * 100
+
+    const cusumScore = Math.sqrt((leftCount * rightCount) / (leftCount + rightCount)) * Math.abs(meanJump)
+    const normalizedCusumPct = cusumScore / Math.max(fullScale, ABS_EPSILON) * 100
+    const strongJump = (
+      directJumpPct >= 8
+      && meanJumpPct >= Math.max(8, localMeanRangePct * 1.8)
+      && normalizedCusumPct >= Math.max(10, localMeanRangePct * 1.2)
+    ) || (
+      directJumpPct >= 10
+      && meanJumpPct >= Math.max(10, localMeanRangePct * 2.2)
+      && localSpanPct >= 6
+    )
+    if (!strongJump) continue
+
+    const region = windows.slice(leftStart, rightEnd + 1)
+    const lowLevel = Math.min(...region.map(window => Math.min(window.min_current, window.mean_current)))
+    const highLevel = Math.max(...region.map(window => Math.max(window.max_current, window.mean_current)))
+    const boundaryTime = Number((((leftWindow.end_time + rightWindow.start_time) / 2)).toFixed(6))
+    rawEvents.push({
+      type: meanJump >= 0 ? 'edge_up' : 'edge_down',
+      leftIndex: splitIndex,
+      rightIndex: splitIndex + 1,
+      boundaryTime,
+      lowLevel: localSpanPct >= 7 ? lowLevel : Math.min(leftMean, rightMean),
+      highLevel: localSpanPct >= 7 ? highLevel : Math.max(leftMean, rightMean),
+    })
+  }
+
+  if (rawEvents.length === 0) return rawEvents
+
+  const clustered: typeof rawEvents = []
+  let current = { ...rawEvents[0]! }
+  for (let index = 1; index < rawEvents.length; index++) {
+    const next = rawEvents[index]!
+    const isAdjacent = next.leftIndex <= current.rightIndex + 1
+    if (next.type === current.type && isAdjacent) {
+      current = {
+        type: current.type,
+        leftIndex: current.leftIndex,
+        rightIndex: next.rightIndex,
+        boundaryTime: Number((((windows[current.leftIndex]!.end_time + windows[next.rightIndex]!.start_time) / 2)).toFixed(6)),
+        lowLevel: Math.min(current.lowLevel, next.lowLevel),
+        highLevel: Math.max(current.highLevel, next.highLevel),
+      }
+      continue
+    }
+    clustered.push(current)
+    current = { ...next }
+  }
+  clustered.push(current)
+  return clustered
+}
+
+function buildStructuralProfileV2RegionRuns(windows: KeyPointWindow[], globals: Globals, blockedIndices: Set<number>) {
+  const runs: Array<{ feature: string; start: number; end: number }> = []
+  let current: { feature: string; start: number; end: number } | null = null
+  const fullScale = Math.max(globals.max_current - globals.min_current, ABS_EPSILON)
+
+  for (let index = 0; index < windows.length; index++) {
+    if (blockedIndices.has(index)) {
+      if (current) {
+        runs.push(current)
+        current = null
+      }
+      continue
+    }
+
+    const feature = classifyStructuralWindow(index, windows, globals)
+    if (!current) {
+      current = { feature, start: index, end: index }
+      continue
+    }
+
+    const previousWindow = windows[index - 1]!
+    const currentWindow = windows[index]!
+    const closeEnough = Math.abs(currentWindow.mean_current - previousWindow.mean_current) / fullScale * 100 <= 0.9
+    const samePlateau = feature.startsWith('plateau_') && current.feature.startsWith('plateau_') && closeEnough
+    if (feature === current.feature || samePlateau) {
+      current.end = index
+    } else {
+      runs.push(current)
+      current = { feature, start: index, end: index }
+    }
+  }
+
+  if (current) runs.push(current)
+  return runs
+}
+
+function buildStructuralEdgeEventPoints(events: ReturnType<typeof detectStructuralEdgeEvents>, windows: KeyPointWindow[], globals: Globals) {
+  return events.flatMap((event) => {
+    const leftWindow = windows[event.leftIndex]!
+    const rightWindow = windows[event.rightIndex]!
+    const previousWindow = windows[Math.max(0, event.leftIndex - 1)]!
+    const nextWindow = windows[Math.min(windows.length - 1, event.rightIndex + 1)]!
+    const lowLevel = Math.min(event.lowLevel, previousWindow.mean_current, nextWindow.mean_current)
+    const highLevel = Math.max(event.highLevel, previousWindow.mean_current, nextWindow.mean_current)
+    const transitionStart = Number(leftWindow.start_time.toFixed(6))
+    const transitionEnd = Number(rightWindow.end_time.toFixed(6))
+    if (event.type === 'edge_up') {
+      return [
+        buildStructuralSyntheticPoint(event.leftIndex, windows, globals, lowLevel, transitionStart, event.leftIndex + 0.1),
+        buildStructuralSyntheticPoint(event.rightIndex, windows, globals, highLevel, transitionEnd, event.rightIndex + 0.2),
+      ]
+    }
+
+    return [
+      buildStructuralSyntheticPoint(event.leftIndex, windows, globals, highLevel, transitionStart, event.leftIndex + 0.1),
+      buildStructuralSyntheticPoint(event.rightIndex, windows, globals, lowLevel, transitionEnd, event.rightIndex + 0.2),
+    ]
   })
 }
 
+function runStructuralProfileV2Compression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
+  const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
+  const edgeEvents = detectStructuralEdgeEvents(windows, globals)
+  const blockedIndices = new Set<number>()
+  for (const event of edgeEvents) {
+    blockedIndices.add(event.leftIndex)
+    blockedIndices.add(event.rightIndex)
+  }
+
+  const regionRuns = buildStructuralProfileV2RegionRuns(windows, globals, blockedIndices)
+  const regionPoints = regionRuns.flatMap(run => structuralRunPoints(run, windows, globals))
+  const edgePoints = buildStructuralEdgeEventPoints(edgeEvents, windows, globals)
+  const keyPoints = reducePointList(
+    [...new Map([...regionPoints, ...edgePoints].map(point => [point.point_index, point])).values()].sort((left, right) => left.point_index - right.point_index),
+    globals,
+    KEY_POINT_TARGET_COUNT,
+  )
+  const segments = buildKeyPointSegments(keyPoints)
+  const meta = buildCompressionMeta(profile, options)
+  meta.compression_mode = 'key_points'
+  meta.window_seconds = KEY_POINT_WINDOW_SECONDS
+  meta.threshold_percent = null
+  meta.selected_segment_count = segments.length
+  meta.selected_key_point_count = keyPoints.length
+  meta.target_key_point_min = KEY_POINT_TARGET_MIN
+  meta.target_key_point_max = KEY_POINT_TARGET_MAX
+  meta.selection_reason = '先检测强跳变边界事件，再对剩余区域做平台/斜坡采样，优先保持近 90 度陡边'
+
+  return {
+    options: meta,
+    result: {
+      globals,
+      segments,
+      events: edgeEvents.map(event => ({
+        type: event.type,
+        time: event.boundaryTime,
+      })),
+    },
+  }
+}
+
+function runStructuralCusumCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
+  const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
+  const edgeEvents = detectStructuralCusumEdgeEvents(windows, globals)
+  const blockedIndices = new Set<number>()
+  for (const event of edgeEvents) {
+    blockedIndices.add(Math.max(0, event.leftIndex - 1))
+    blockedIndices.add(event.leftIndex)
+    blockedIndices.add(event.rightIndex)
+    blockedIndices.add(Math.min(windows.length - 1, event.rightIndex + 1))
+  }
+
+  const regionRuns = buildStructuralProfileV2RegionRuns(windows, globals, blockedIndices)
+  const regionPoints = regionRuns.flatMap(run => structuralRunPoints(run, windows, globals))
+  const edgePoints = buildStructuralEdgeEventPoints(edgeEvents, windows, globals)
+  const keyPoints = reducePointList(
+    collapseCoincidentKeyPoints(
+      [...new Map([...regionPoints, ...edgePoints].map(point => [point.point_index, point])).values()].sort((left, right) => left.point_index - right.point_index)
+    ),
+    globals,
+    KEY_POINT_TARGET_COUNT,
+  )
+  const segments = buildKeyPointSegments(keyPoints)
+  const meta = buildCompressionMeta(profile, options)
+  meta.compression_mode = 'key_points'
+  meta.window_seconds = KEY_POINT_WINDOW_SECONDS
+  meta.threshold_percent = null
+  meta.selected_segment_count = segments.length
+  meta.selected_key_point_count = keyPoints.length
+  meta.target_key_point_min = KEY_POINT_TARGET_MIN
+  meta.target_key_point_max = KEY_POINT_TARGET_MAX
+  meta.selection_reason = '先用局部 CUSUM 检测候选跳变边界，再对剩余区域做平台/斜坡采样，减少纯阈值边界误判'
+
+  return {
+    options: meta,
+    result: {
+      globals,
+      segments,
+      events: edgeEvents.map(event => ({
+        type: event.type,
+        time: event.boundaryTime,
+      })),
+    },
+  }
+}
+
 function runKeyPointCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  if (profile.key === 'structural_cusum_v1') {
+    return runStructuralCusumCompression(points, options, profile)
+  }
+
+  if (profile.key === 'structural_profile_v2') {
+    return runStructuralProfileV2Compression(points, options, profile)
+  }
+
+  if (profile.key === 'structural_profile_v1') {
+    return runStructuralProfileCompression(points, options, profile)
+  }
+
   const globals = profile.baseline_mode === 'legacy_v4' ? calculateGlobalsLegacy(points) : calculateGlobals(points)
   const windows = enrichKeyPointWindows(createKeyPointWindows(points, KEY_POINT_WINDOW_SECONDS), globals)
   const isEnvelopeTurningPoints = profile.key === 'envelope_turning_points_v2' || profile.key === 'envelope_turning_points_v3'
@@ -1374,7 +2168,7 @@ function normalizeRawPoints(rawData: number[][], profile: CompressionAlgorithmPr
   return sortedPoints
 }
 
-export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'envelope_turning_points_v3'): FileAnalysisResult {
+export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2'): FileAnalysisResult {
   const profile = getAlgorithmProfile(algorithmKey)
   const sortedPoints = normalizeRawPoints(rawData, profile)
 

@@ -52,7 +52,7 @@ function getWorker() {
   return workerInstance
 }
 
-export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'envelope_turning_points_v3') {
+export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2') {
   const worker = getWorker()
   if (!worker) {
     return runLocalCurrentFeatureAnalysis(rawData, appConfig, algorithmKey)
