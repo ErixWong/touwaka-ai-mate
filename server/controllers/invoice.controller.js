@@ -40,6 +40,7 @@ class InvoiceController {
         order: query.order,
         userId,
         isAdmin,
+        includeAll: query.include_all === 'true' || query.include_all === '1',
       });
       ctx.success(result);
     } catch (error) {
@@ -84,6 +85,7 @@ class InvoiceController {
         status: query.status,
         userId,
         isAdmin,
+        includeAll: query.include_all === 'true' || query.include_all === '1',
       };
 
       let buffer;

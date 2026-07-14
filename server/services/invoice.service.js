@@ -31,11 +31,11 @@ class InvoiceService {
     return matches[0][0];
   }
 
-  _buildConditions({ invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin }) {
+  _buildConditions({ invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin, includeAll = false }) {
     const conditions = ['m.status IS NOT NULL'];
     const replacements = [];
 
-    if (!isAdmin) {
+    if (!isAdmin || !includeAll) {
       conditions.push('m.user_id = ?');
       replacements.push(userId);
     }
@@ -129,9 +129,9 @@ class InvoiceService {
     };
   }
 
-  async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin }) {
+  async list({ page = 1, size = 20, invoiceNumber, sellerName, buyerName, status, startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, includeAll = false }) {
     const { conditions, replacements } = this._buildConditions({
-      invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin,
+      invoiceNumber, sellerName, buyerName, status, startDate, endDate, userId, isAdmin, includeAll,
     });
 
     const where = this._buildBaseWhereClause(conditions);
@@ -213,9 +213,9 @@ class InvoiceService {
    * - Sheet1「发票信息」：所有发票的 header 字段
    * - Sheet2「商品明细」：所有明细行（含发票号码用于 VLOOKUP）
    */
-  async exportFull({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status }) {
+  async exportFull({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll = false }) {
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll,
     });
 
     const where = this._buildExportWhereClause(conditions);
@@ -316,7 +316,7 @@ class InvoiceService {
   /**
    * 个性化导出：用户选择字段 + 可选商品明细
    */
-  async exportCustom({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, fields, includeItems }) {
+  async exportCustom({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, fields, includeItems, includeAll = false }) {
     // ⚠️ 字段定义需与前端 exportFieldGroups (InvoiceList.vue) 保持同步
     const ALL_HEADER_FIELDS = [
       { key: 'invoice_number', header: '发票号码', width: 22 },
@@ -347,7 +347,7 @@ class InvoiceService {
     }
 
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll,
     });
 
     const where = this._buildExportWhereClause(conditions);
@@ -439,9 +439,9 @@ class InvoiceService {
   /**
    * 负值导出：筛选金额为负的商品明细，每行带上发票 header 信息
    */
-  async exportNegative({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status }) {
+  async exportNegative({ startDate, endDate, sort = 'created_at', order = 'desc', userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll = false }) {
     const { conditions, replacements } = this._buildConditions({
-      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status,
+      startDate, endDate, userId, isAdmin, invoiceNumber, sellerName, buyerName, status, includeAll,
     });
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : 'WHERE 1=1';

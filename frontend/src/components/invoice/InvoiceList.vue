@@ -8,9 +8,11 @@ import type { ElTable } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InvoiceDetail from './InvoiceDetail.vue'
 import { statusLabels } from '@/utils/invoice-status-labels'
+import { useUserStore } from '@/stores/user'
 
 const APP_ID = 'invoice-mgr'
 const MAX_BATCH_SIZE = 20
+const userStore = useUserStore()
 
 const loading = ref(false)
 const invoices = ref<InvoiceRow[]>([])
@@ -105,6 +107,7 @@ const filters = ref<InvoiceListParams>({
   size: 20,
   sort: 'created_at',
   order: 'desc',
+  include_all: false,
 })
 
 onMounted(() => {
@@ -155,8 +158,14 @@ function onSearch() {
   loadList()
 }
 
+function onScopeChange() {
+  page.value = 1
+  filters.value.page = 1
+  loadList()
+}
+
 function onReset() {
-  filters.value = { page: 1, size: 20, sort: 'created_at', order: 'desc' }
+  filters.value = { page: 1, size: 20, sort: 'created_at', order: 'desc', include_all: false }
   dateMode.value = ''
   dateValue.value = null
   page.value = 1
@@ -382,6 +391,7 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
       seller_name: filters.value.seller_name,
       buyer_name: filters.value.buyer_name,
       status: filters.value.status,
+      include_all: filters.value.include_all,
     }
     if (type === 'custom') {
       params.fields = exportSelectedFields.value
@@ -424,6 +434,15 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
             <el-select v-model="filters.status" placeholder="状态" clearable style="width:120px">
               <el-option v-for="(v, k) in statusLabels" :key="k" :label="v.label" :value="k" />
             </el-select>
+            <el-segmented
+              v-if="userStore.isAdmin"
+              v-model="filters.include_all"
+              :options="[
+                { label: '我的发票', value: false },
+                { label: '全部发票', value: true },
+              ]"
+              @change="onScopeChange"
+            />
           </div>
           <div class="filter-right">
             <el-button type="danger" :disabled="selectedRows.length === 0" :loading="deleting" @click="handleBatchDelete">

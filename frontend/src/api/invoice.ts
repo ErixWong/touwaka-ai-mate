@@ -62,6 +62,7 @@ export interface InvoiceListParams {
   end_date?: string
   sort?: string
   order?: string
+  include_all?: boolean
 }
 
 export function listInvoices(params: InvoiceListParams = {}) {
@@ -88,6 +89,7 @@ export interface InvoiceExportParams {
   seller_name?: string
   buyer_name?: string
   status?: string
+  include_all?: boolean
 }
 
 export async function exportInvoices(params: InvoiceExportParams = {}) {
