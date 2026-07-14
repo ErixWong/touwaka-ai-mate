@@ -9,6 +9,7 @@ import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
 import { hasPreviewResult } from '../../lib/doc-ocr-utils.js';
+import { getSourceAttachments } from '../../lib/doc-source-attachment.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 
@@ -244,7 +245,6 @@ class DocCollectionController {
 
       const DocVersion = this.db.getModel('document_revision');
       const DocOcrResult = this.db.getModel('doc_ocr_result');
-      const Attachment = this.db.getModel('attachment');
 
       const revisionIds = rows.map(r => r.current_revision_id).filter(Boolean);
       const docIds = rows.map(r => r.id);
@@ -264,13 +264,10 @@ class DocCollectionController {
           raw: true,
         }),
         revisionIds.length > 0
-          ? Attachment.findAll({
-            where: { source_tag: 'doc-platform', source_id: { [Op.in]: revisionIds } },
+          ? getSourceAttachments(this.db, revisionIds, {
             attributes: ['id', 'file_name', 'mime_type', 'file_size', 'source_id', 'created_at'],
-            order: [['created_at', 'ASC']],
-            raw: true,
           })
-          : [],
+          : Promise.resolve(new Map()),
       ]);
 
       const revisionMap = new Map();
@@ -281,10 +278,7 @@ class DocCollectionController {
         if (!ocrMap.has(r.document_id)) ocrMap.set(r.document_id, r);
       }
 
-      const attachmentMap = new Map();
-      for (const a of attachmentRows) {
-        if (!attachmentMap.has(a.source_id)) attachmentMap.set(a.source_id, a);
-      }
+      const attachmentMap = attachmentRows; // getSourceAttachments 已返回 Map<revision_id, attachment>
 
       const enrichedRows = rows.map((row) => {
         const doc = row.toJSON ? row.toJSON() : row;

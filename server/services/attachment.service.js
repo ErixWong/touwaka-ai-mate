@@ -16,6 +16,7 @@ const SOURCE_TAG_ACCESS_LEVEL_MAP = {
   /** @deprecated kb_article_* 已废弃，控制器层已拒绝访问，此处仅为历史兼容保留 */
   kb_article_cover: 'private',
   'doc-platform': 'private',
+  'doc-platform-ocr': 'private',
   task_export: 'private',
   admin_upload: 'private',
   mini_app: 'private',

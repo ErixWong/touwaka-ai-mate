@@ -810,23 +810,6 @@ modified_at?: string
 }
 
 // ============================================
-// 专家知识配置（文档平台语义）
-// ============================================
-
-/**
- * 专家知识库配置
- */
-export interface ExpertKnowledgeConfig {
-  enabled: boolean
-  collection_id?: string
-  doc_types?: string[]
-  top_k?: number
-  threshold?: number
-  max_tokens?: number
-  style?: 'default' | 'concise' | 'detailed'
-}
-
-// ============================================
 // 组织架构相关类型
 // ============================================
 

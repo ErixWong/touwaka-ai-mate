@@ -390,9 +390,10 @@ class AttachmentController {
         return false;
       }
 
-      case 'doc-platform': {
-        // 文档平台第一阶段上传入口。
-        // 创建 intake 前先以 temp 附件落库，后续由 intake 绑定到真实 document/revision。
+      case 'doc-platform':
+      case 'doc-platform-ocr': {
+        // 文档平台第一阶段上传入口 / OCR 产物附件。
+        // source_id 可以是 document_id 或 revision_id
         if (sourceId === 'temp') {
           return accessMode === 'write';
         }

@@ -28,6 +28,7 @@ import DocumentRevisionService from '../../lib/document-revision.service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
+import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
 
 class DocController {
@@ -243,11 +244,8 @@ class DocController {
         const hasPreview = hasPreviewResult(latestOcrResult);
 
         const sourceAttachment = doc.current_revision_id
-          ? await Attachment.findOne({
-            where: { source_tag: 'doc-platform', source_id: doc.current_revision_id },
+          ? await getSourceAttachment(this.db, doc.current_revision_id, {
             attributes: ['id', 'file_name', 'mime_type', 'file_size', 'created_at'],
-            order: [['created_at', 'ASC']],
-            raw: true,
           })
           : null;
 
@@ -366,11 +364,8 @@ class DocController {
         : null;
 
       const sourceAttachment = revision?.id
-        ? await Attachment.findOne({
-          where: { source_tag: 'doc-platform', source_id: revision.id },
+        ? await getSourceAttachment(this.db, revision.id, {
           attributes: ['id', 'file_name', 'mime_type', 'file_size', 'access_level', 'source_tag', 'source_id', 'created_by', 'created_at'],
-          order: [['created_at', 'ASC']],
-          raw: true,
         })
         : null;
 
@@ -778,6 +773,17 @@ class DocController {
           raw: true,
         });
         sourceAttachments.forEach(item => attachmentIds.add(item.id));
+
+        // P0-1: 同时收集 OCR/Clean 产物附件（source_tag = 'doc-platform-ocr'），确保删除文档时一并清理
+        const ocrProductAttachments = await Attachment.findAll({
+          where: {
+            source_tag: 'doc-platform-ocr',
+            source_id: { [Op.in]: revisionIds },
+          },
+          attributes: ['id'],
+          raw: true,
+        });
+        ocrProductAttachments.forEach(item => attachmentIds.add(item.id));
       }
 
       const attachmentRows = attachmentIds.size > 0

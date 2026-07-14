@@ -4,6 +4,19 @@
  * 字段名规则：全栈统一使用数据库字段名（snake_case），不做任何转换
  *
  * 使用 Sequelize ORM 进行数据库操作
+ *
+ * === knowledge_config 历史兼容字段 ===
+ *
+ * 旧自动预检索路径已于 2026-07-07 Round 04 彻底退场（含 lib/rag-service.js 整体删除）。
+ *
+ * 字段当前仅作为历史数据兼容保留：
+ *   - create / update 不再主动写入 knowledge_config
+ *   - list / get 仍返回 knowledge_config（仅历史兼容读取，不建议新消费）
+ *   - 历史 expert 记录的 knowledge_config 不做修改
+ *   - 读取时安全解析 JSON
+ *
+ * 文档检索当前唯一路径：document_retrieval tool（builtin tool，由 LLM 自主决定调用时机）。
+ * 检索范围由用户账户的集合/文档访问权限决定，不由 expert 配置控制。
  */
 
 import logger from '../../lib/logger.js';
@@ -51,6 +64,8 @@ class ExpertController {
           'is_active', 'created_at',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
+          // knowledge_config: 历史兼容读取（旧自动预检索路径已退场，不再消费）
+          'knowledge_config',
           // P2-1: Psyche 配置
           'psyche_config',
           // LLM 参数配置
@@ -69,6 +84,7 @@ class ExpertController {
       const formattedExperts = experts.map(e => ({
         ...e,
         is_active: !!e.is_active,
+        knowledge_config: e.knowledge_config ? safeParseJson(e.knowledge_config) : null,
         psyche_config: e.psyche_config ? safeParseJson(e.psyche_config) : null,
       }));
 
@@ -94,6 +110,8 @@ class ExpertController {
           'expressive_model_id', 'reflective_model_id', 'prompt_template', 'is_active',
           // 上下文压缩配置
           'context_threshold', 'context_strategy',
+          // knowledge_config: 历史兼容读取（旧自动预检索路径已退场，不再消费）
+          'knowledge_config',
           // P2-1: Psyche 配置
           'psyche_config',
           // LLM 参数配置
@@ -115,6 +133,7 @@ class ExpertController {
       ctx.success({
         ...expert,
         is_active: !!expert.is_active,
+        knowledge_config: expert.knowledge_config ? safeParseJson(expert.knowledge_config) : null,
         psyche_config: expert.psyche_config ? safeParseJson(expert.psyche_config) : null,
       });
     } catch (error) {
@@ -154,6 +173,7 @@ class ExpertController {
       const id = Utils.newID(20);
 
       // 创建专家（使用系统默认值作为回退）
+      // 注意：knowledge_config 不再写入，旧自动预检索路径已退场（Round 04）
       const expertData = {
         id,
         name,
@@ -239,6 +259,7 @@ class ExpertController {
       }
 
       // 构建更新对象（字符串字段直接存储）
+      // 注意：knowledge_config 不再写入，旧自动预检索路径已退场（Round 04）
       const updates = {};
 
       if (name !== undefined) updates.name = name;

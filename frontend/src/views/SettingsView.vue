@@ -833,6 +833,7 @@
             <div class="el-form-item__tip">{{ $t('settings.maxToolRoundsExpertHint') }}</div>
           </el-form-item>
         </el-tab-pane>
+
       </el-tabs>
 
       <template #footer>
@@ -1081,6 +1082,7 @@ import { useUserStore } from '@/stores/user'
 import { useModelStore } from '@/stores/model'
 import { useProviderStore } from '@/stores/provider'
 import { useExpertStore } from '@/stores/expert'
+import { useCollectionStore } from '@/stores/collection'
 import { useToastStore } from '@/stores/toast'
 import { compressSmallAvatar, compressLargeAvatar } from '@/utils/imageCompress'
 import { expertApi, userApi, roleApi } from '@/api/services'
@@ -1106,6 +1108,7 @@ const userStore = useUserStore()
 const modelStore = useModelStore()
 const providerStore = useProviderStore()
 const expertStore = useExpertStore()
+const collectionStore = useCollectionStore()
 const toast = useToastStore()
 
 // 应用版本号

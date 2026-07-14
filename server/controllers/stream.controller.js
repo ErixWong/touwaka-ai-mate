@@ -647,6 +647,12 @@ class StreamController {
         },
         // onComplete - 完成回调（广播到所有连接）
         (result) => {
+          logger.info('[StreamController] stream complete', {
+            request_id,
+            topic_id: result.message?.topic_id || topic_id,
+            assistant_message_id: result.message?.id || null,
+            user_message_id: result.user_message_id || existing_user_message_id || null,
+          });
           const activeRequest = this.activeRequests.get(request_id);
           if (activeRequest?.stopped) {
             this.activeRequests.delete(request_id);
@@ -673,6 +679,12 @@ class StreamController {
         // onError - 错误回调（广播到所有连接）
         (error) => {
           logger.error('Stream chat error:', error);
+          logger.error('[StreamController] stream error detail', {
+            request_id,
+            expert_id,
+            user_id,
+            message: error.message || '流式处理失败',
+          });
           const activeRequest = this.activeRequests.get(request_id);
           if (activeRequest?.stopped || error.message === 'Request aborted by user') {
             this._updateRequestRecord(request_id, {
