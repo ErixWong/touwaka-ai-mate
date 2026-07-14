@@ -464,11 +464,6 @@ export interface DocFormData {
 export type SkillSourceType = 'url' | 'zip' | 'local'
 
 /**
- * 工具类型
- */
-export type SkillToolType = 'http' | 'script' | 'builtin'
-
-/**
  * 技能工具（匹配数据库 skill_tools 表）
  */
 export interface SkillTool {
