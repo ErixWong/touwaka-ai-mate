@@ -6,7 +6,7 @@ const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
 
 export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'preparing_analysis' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
 export type AnalysisStatus = 'pending' | 'ready' | 'compressing' | 'llm_recognizing' | 'analyzing' | 'completed' | 'failed'
-export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v2' | 'envelope_turning_points_v3'
+export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v2' | 'envelope_turning_points_v3' | 'structural_profile_v1' | 'structural_profile_v2' | 'structural_cusum_v1'
 
 export interface DuplicateDiagnosis {
   duplicate_groups: number

@@ -294,6 +294,17 @@ function detectHighPlateauAnchors(windows, globals) {
 function detectPlateauBoundaryAnchors(windows, globals) {
   const runs = buildStateRuns(windows, globals);
   const anchors = new Set();
+  const fullScale = Math.max(globals.full_scale, globals.p99_current - globals.baseline_mean, 0.0001);
+
+  const isSteepBoundary = (leftIndex, rightIndex) => {
+    if (leftIndex < 0 || rightIndex >= windows.length) return false;
+    const left = windows[leftIndex];
+    const right = windows[rightIndex];
+    const meanJumpPercent = Math.abs(right.mean_current - left.mean_current) / fullScale * 100;
+    const peakJumpPercent = Math.abs(right.max_current - left.max_current) / fullScale * 100;
+    const mixedWindowPercent = Math.max(left.span_current, right.span_current) / fullScale * 100;
+    return meanJumpPercent >= 8 || peakJumpPercent >= 12 || mixedWindowPercent >= 18;
+  };
 
   for (const run of runs) {
     const isPlateau = run.state === 'idle_plateau'
@@ -310,8 +321,8 @@ function detectPlateauBoundaryAnchors(windows, globals) {
       anchors.add(Math.floor((run.start + run.end) / 2));
     }
 
-    if (run.start - 1 >= 0) anchors.add(run.start - 1);
-    if (run.end + 1 < windows.length) anchors.add(run.end + 1);
+    if (run.start - 1 >= 0 && !isSteepBoundary(run.start - 1, run.start)) anchors.add(run.start - 1);
+    if (run.end + 1 < windows.length && !isSteepBoundary(run.end, run.end + 1)) anchors.add(run.end + 1);
   }
 
   return anchors;
@@ -889,6 +900,453 @@ function analyzeWithContourSketch(windows, globals) {
 
 function analyzeWithContourSketchDense(windows, globals) {
   return buildContourSketchResult('contour_sketch_dense_v1', '轮廓素描压缩 Dense V1', windows, globals, 'dense');
+}
+
+function classifyStructuralWindow(index, windows, globals) {
+  const window = windows[index];
+  const previous = windows[index - 1] || window;
+  const next = windows[index + 1] || window;
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+  const deltaPrev = window.mean_current - previous.mean_current;
+  const deltaNext = next.mean_current - window.mean_current;
+  const edgeDelta = Math.abs(deltaNext) >= Math.abs(deltaPrev) ? deltaNext : deltaPrev;
+  const edgePct = Math.abs(edgeDelta) / fullScale * 100;
+  const jumpPct = Math.max(Math.abs(deltaPrev), Math.abs(deltaNext), Math.abs(window.delta_peak || 0)) / fullScale * 100;
+  const spanPct = (window.span_current || 0) / fullScale * 100;
+  const peakLiftPct = Math.abs((window.max_current || 0) - (window.mean_current || 0)) / fullScale * 100;
+  const baselineRatio = window.baseline_ratio || 0;
+  const peakRatio = window.peak_ratio || 0;
+  const idleLike = baselineRatio <= 1.8 && peakRatio <= 2.2;
+  const highLike = window.mean_current >= globals.p90_current * 0.92 || window.max_current >= globals.p95_current * 0.96;
+  const stableLike = jumpPct <= 1.2 && spanPct <= 2.6;
+
+  if (stableLike) {
+    if (idleLike) return 'plateau_idle';
+    if (highLike) return 'plateau_high';
+    return 'plateau_work';
+  }
+
+  if (edgePct >= 16 && spanPct >= 10) {
+    return edgeDelta >= 0 ? 'edge_up' : 'edge_down';
+  }
+
+  if (peakLiftPct >= 14 && window.max_current >= globals.p95_current * 0.75) {
+    return 'pulse';
+  }
+
+  return edgeDelta >= 0 ? 'ramp_up' : 'ramp_down';
+}
+
+function buildStructuralRuns(windows, globals) {
+  if (!windows.length) return [];
+  const runs = [];
+  let current = { feature: classifyStructuralWindow(0, windows, globals), start: 0, end: 0 };
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+
+  for (let index = 1; index < windows.length; index++) {
+    const feature = classifyStructuralWindow(index, windows, globals);
+    const previousWindow = windows[index - 1];
+    const currentWindow = windows[index];
+    const closeEnough = Math.abs(currentWindow.mean_current - previousWindow.mean_current) / fullScale * 100 <= 0.9;
+    const samePlateau = feature.startsWith('plateau_') && current.feature.startsWith('plateau_') && closeEnough;
+    if (feature === current.feature || samePlateau) {
+      current.end = index;
+      continue;
+    }
+    runs.push(current);
+    current = { feature, start: index, end: index };
+  }
+
+  runs.push(current);
+  return runs;
+}
+
+function buildStructuralPoint(index, windows, globals, yValue, role) {
+  const point = buildKeyPoint(index, windows, globals);
+  return {
+    ...point,
+    raw_mean_current: point.mean_current,
+    mean_current: Number(yValue.toFixed(6)),
+    structural_role: role,
+  };
+}
+
+function buildStructuralSyntheticPoint(index, windows, globals, yValue, timeValue, pointIndex, role) {
+  const point = buildKeyPoint(index, windows, globals);
+  return {
+    ...point,
+    point_index: pointIndex,
+    time: Number(timeValue.toFixed(6)),
+    raw_mean_current: point.mean_current,
+    mean_current: Number(yValue.toFixed(6)),
+    structural_role: role,
+  };
+}
+
+function summarizeStructuralRun(run, windows) {
+  const slice = windows.slice(run.start, run.end + 1);
+  return {
+    ...run,
+    start_time: windows[run.start].start_time,
+    end_time: windows[run.end].end_time,
+    duration: windows[run.end].end_time - windows[run.start].start_time,
+    mean_min: Math.min(...slice.map(item => item.mean_current)),
+    mean_max: Math.max(...slice.map(item => item.mean_current)),
+    peak_max: Math.max(...slice.map(item => item.max_current)),
+    valley_min: Math.min(...slice.map(item => item.min_current)),
+  };
+}
+
+function structuralRunPoints(run, windows, globals) {
+  const points = [];
+  const slice = windows.slice(run.start, run.end + 1);
+  const length = run.end - run.start + 1;
+  const middle = Math.floor((run.start + run.end) / 2);
+
+  if (run.feature.startsWith('plateau_')) {
+    const levelSource = run.feature === 'plateau_high'
+      ? slice.map(item => item.max_current)
+      : slice.map(item => item.mean_current);
+    const level = median(levelSource);
+    points.push(buildStructuralPoint(run.start, windows, globals, level, 'start'));
+    if (length >= 5) {
+      points.push(buildStructuralPoint(middle, windows, globals, level, 'mid'));
+    }
+    if (run.end !== run.start) {
+      points.push(buildStructuralPoint(run.end, windows, globals, level, 'end'));
+    }
+    return [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index);
+  }
+
+  if (run.feature === 'pulse') {
+    let peakIndex = run.start;
+    for (let index = run.start + 1; index <= run.end; index++) {
+      if (windows[index].max_current > windows[peakIndex].max_current) peakIndex = index;
+    }
+    points.push(buildStructuralPoint(run.start, windows, globals, windows[run.start].mean_current, 'pulse_start'));
+    points.push(buildStructuralPoint(peakIndex, windows, globals, windows[peakIndex].max_current, 'pulse_peak'));
+    if (run.end !== run.start) {
+      points.push(buildStructuralPoint(run.end, windows, globals, windows[run.end].mean_current, 'pulse_end'));
+    }
+    return [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index);
+  }
+
+  if (run.feature === 'edge_up' || run.feature === 'edge_down') {
+    const previous = windows[Math.max(0, run.start - 1)];
+    const startWindow = windows[run.start];
+    const endWindow = windows[run.end];
+    const next = windows[Math.min(windows.length - 1, run.end + 1)];
+    const boundaryTime = Number((((startWindow.start_time + endWindow.end_time) / 2)).toFixed(6));
+
+    if (run.feature === 'edge_up') {
+      const lowLevel = Math.min(previous.mean_current, startWindow.min_current, endWindow.min_current);
+      const highLevel = Math.max(next.mean_current, startWindow.max_current, endWindow.max_current);
+      points.push(buildStructuralSyntheticPoint(run.start, windows, globals, lowLevel, boundaryTime, run.start - 0.25, 'edge_low'));
+      points.push(buildStructuralSyntheticPoint(run.end, windows, globals, highLevel, boundaryTime, run.end + 0.25, 'edge_high'));
+    } else {
+      const highLevel = Math.max(previous.mean_current, startWindow.max_current, endWindow.max_current);
+      const lowLevel = Math.min(next.mean_current, startWindow.min_current, endWindow.min_current);
+      points.push(buildStructuralSyntheticPoint(run.start, windows, globals, highLevel, boundaryTime, run.start - 0.25, 'edge_high'));
+      points.push(buildStructuralSyntheticPoint(run.end, windows, globals, lowLevel, boundaryTime, run.end + 0.25, 'edge_low'));
+    }
+
+    return points.sort((left, right) => left.point_index - right.point_index);
+  }
+
+  points.push(buildStructuralPoint(run.start, windows, globals, windows[run.start].mean_current, 'ramp_start'));
+  if (length >= 8) {
+    points.push(buildStructuralPoint(middle, windows, globals, windows[middle].mean_current, 'ramp_mid'));
+  }
+  if (run.end !== run.start) {
+    points.push(buildStructuralPoint(run.end, windows, globals, windows[run.end].mean_current, 'ramp_end'));
+  }
+  return [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index);
+}
+
+function buildStructuralProfileResult(algorithmKey, algorithmLabel, windows, globals) {
+  const runs = buildStructuralRuns(windows, globals);
+  const points = runs.flatMap(run => structuralRunPoints(run, windows, globals));
+  const deduped = [...new Map(points.map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index);
+  const reduced = reducePointList(deduped, globals, TARGET_POINT_COUNT);
+  const summaries = runs.map(run => summarizeStructuralRun(run, windows));
+  const featureText = summaries.map(run => (
+    `- ${formatNumber(run.start_time, 3)}s -> ${formatNumber(run.end_time, 3)}s: ${run.feature}, ` +
+    `mean范围 ${formatNumber(run.mean_min)}A ~ ${formatNumber(run.mean_max)}A, ` +
+    `peak_max ${formatNumber(run.peak_max)}A, valley_min ${formatNumber(run.valley_min)}A`
+  )).join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: reduced.length,
+    selection_reason: '先识别平台/斜坡/脉冲/陡边等结构单元，再按单元最小表达模板生成关键点，最后在预算内裁剪',
+    key_points: reduced,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\n结构单元序列：\n${featureText}\n\n关键点序列：\n${renderKeyPoints(reduced)}\n\n关键区间关系：\n${describeSegments(reduced)}`,
+  };
+}
+
+function analyzeWithStructuralProfile(windows, globals) {
+  return buildStructuralProfileResult('structural_profile_v1', '结构轮廓压缩 V1', windows, globals);
+}
+
+function detectStructuralEdgeEvents(windows, globals) {
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+  const rawEvents = [];
+
+  for (let index = 0; index < windows.length - 1; index++) {
+    const left = windows[index];
+    const right = windows[index + 1];
+    const meanJumpPct = Math.abs(right.mean_current - left.mean_current) / fullScale * 100;
+    const peakJumpPct = Math.abs(right.max_current - left.max_current) / fullScale * 100;
+    const mixedSpanPct = Math.max(left.span_current, right.span_current) / fullScale * 100;
+    const strongJump = meanJumpPct >= 12 || peakJumpPct >= 16;
+    const mixedWindow = mixedSpanPct >= 8;
+    if (!strongJump) continue;
+
+    const type = right.mean_current >= left.mean_current ? 'edge_up' : 'edge_down';
+    const boundaryTime = Number((((left.end_time + right.start_time) / 2)).toFixed(6));
+    const lowLevel = Math.min(left.min_current, right.min_current, left.mean_current, right.mean_current);
+    const highLevel = Math.max(left.max_current, right.max_current, left.mean_current, right.mean_current);
+    rawEvents.push({
+      type,
+      leftIndex: index,
+      rightIndex: index + 1,
+      boundaryTime,
+      lowLevel: mixedWindow ? lowLevel : Math.min(left.mean_current, right.mean_current),
+      highLevel: mixedWindow ? highLevel : Math.max(left.mean_current, right.mean_current),
+    });
+  }
+
+  if (rawEvents.length === 0) return rawEvents;
+
+  const clustered = [];
+  let current = { ...rawEvents[0] };
+  for (let index = 1; index < rawEvents.length; index++) {
+    const next = rawEvents[index];
+    const isAdjacent = next.leftIndex <= current.rightIndex + 1;
+    if (next.type === current.type && isAdjacent) {
+      current = {
+        type: current.type,
+        leftIndex: current.leftIndex,
+        rightIndex: next.rightIndex,
+        boundaryTime: Number((((windows[current.leftIndex].end_time + windows[next.rightIndex].start_time) / 2)).toFixed(6)),
+        lowLevel: Math.min(current.lowLevel, next.lowLevel),
+        highLevel: Math.max(current.highLevel, next.highLevel),
+      };
+      continue;
+    }
+    clustered.push(current);
+    current = { ...next };
+  }
+  clustered.push(current);
+  return clustered;
+}
+
+function buildWindowMeanPrefixSums(windows) {
+  const prefix = new Array(windows.length + 1).fill(0);
+  for (let index = 0; index < windows.length; index++) {
+    prefix[index + 1] = prefix[index] + (windows[index].mean_current || 0);
+  }
+  return prefix;
+}
+
+function averageWindowMean(prefix, startIndex, endIndex) {
+  if (endIndex < startIndex) return 0;
+  const sum = prefix[endIndex + 1] - prefix[startIndex];
+  return sum / Math.max(endIndex - startIndex + 1, 1);
+}
+
+function detectStructuralCusumEdgeEvents(windows, globals, radius = 2) {
+  const fullScale = Math.max(globals.full_scale, globals.p99_current - globals.baseline_mean, 0.0001);
+  if (windows.length < 2) return [];
+
+  const prefix = buildWindowMeanPrefixSums(windows);
+  const rawEvents = [];
+
+  for (let splitIndex = 0; splitIndex < windows.length - 1; splitIndex++) {
+    const leftStart = Math.max(0, splitIndex - radius + 1);
+    const leftEnd = splitIndex;
+    const rightStart = splitIndex + 1;
+    const rightEnd = Math.min(windows.length - 1, splitIndex + radius);
+    const leftCount = leftEnd - leftStart + 1;
+    const rightCount = rightEnd - rightStart + 1;
+    if (leftCount <= 0 || rightCount <= 0) continue;
+
+    const leftMean = averageWindowMean(prefix, leftStart, leftEnd);
+    const rightMean = averageWindowMean(prefix, rightStart, rightEnd);
+    const meanJump = rightMean - leftMean;
+    const meanJumpPct = Math.abs(meanJump) / fullScale * 100;
+
+    const leftWindow = windows[splitIndex];
+    const rightWindow = windows[splitIndex + 1];
+    const directJumpPct = Math.abs(rightWindow.mean_current - leftWindow.mean_current) / fullScale * 100;
+    const localSpanPct = Math.max(leftWindow.span_current || 0, rightWindow.span_current || 0) / fullScale * 100;
+    const cusumScore = Math.sqrt((leftCount * rightCount) / (leftCount + rightCount)) * Math.abs(meanJump);
+    const normalizedCusumPct = cusumScore / Math.max(fullScale, 0.0001) * 100;
+    const strongJump = normalizedCusumPct >= 10 || (meanJumpPct >= 7.5 && directJumpPct >= 6);
+    if (!strongJump) continue;
+
+    const region = windows.slice(leftStart, rightEnd + 1);
+    const lowLevel = Math.min(...region.map(window => Math.min(window.min_current, window.mean_current)));
+    const highLevel = Math.max(...region.map(window => Math.max(window.max_current, window.mean_current)));
+    const boundaryTime = Number((((leftWindow.end_time + rightWindow.start_time) / 2)).toFixed(6));
+    rawEvents.push({
+      type: meanJump >= 0 ? 'edge_up' : 'edge_down',
+      leftIndex: splitIndex,
+      rightIndex: splitIndex + 1,
+      boundaryTime,
+      lowLevel: localSpanPct >= 7 ? lowLevel : Math.min(leftMean, rightMean),
+      highLevel: localSpanPct >= 7 ? highLevel : Math.max(leftMean, rightMean),
+    });
+  }
+
+  if (rawEvents.length === 0) return rawEvents;
+
+  const clustered = [];
+  let current = { ...rawEvents[0] };
+  for (let index = 1; index < rawEvents.length; index++) {
+    const next = rawEvents[index];
+    const isAdjacent = next.leftIndex <= current.rightIndex + 1;
+    if (next.type === current.type && isAdjacent) {
+      current = {
+        type: current.type,
+        leftIndex: current.leftIndex,
+        rightIndex: next.rightIndex,
+        boundaryTime: Number((((windows[current.leftIndex].end_time + windows[next.rightIndex].start_time) / 2)).toFixed(6)),
+        lowLevel: Math.min(current.lowLevel, next.lowLevel),
+        highLevel: Math.max(current.highLevel, next.highLevel),
+      };
+      continue;
+    }
+    clustered.push(current);
+    current = { ...next };
+  }
+  clustered.push(current);
+  return clustered;
+}
+
+function buildStructuralProfileV2RegionRuns(windows, globals, blockedIndices) {
+  const runs = [];
+  let current = null;
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+
+  for (let index = 0; index < windows.length; index++) {
+    if (blockedIndices.has(index)) {
+      if (current) {
+        runs.push(current);
+        current = null;
+      }
+      continue;
+    }
+
+    const feature = classifyStructuralWindow(index, windows, globals);
+    if (!current) {
+      current = { feature, start: index, end: index };
+      continue;
+    }
+
+    const previousWindow = windows[index - 1];
+    const currentWindow = windows[index];
+    const closeEnough = Math.abs(currentWindow.mean_current - previousWindow.mean_current) / fullScale * 100 <= 0.9;
+    const samePlateau = feature.startsWith('plateau_') && current.feature.startsWith('plateau_') && closeEnough;
+    if (feature === current.feature || samePlateau) {
+      current.end = index;
+    } else {
+      runs.push(current);
+      current = { feature, start: index, end: index };
+    }
+  }
+
+  if (current) runs.push(current);
+  return runs;
+}
+
+function buildStructuralEdgeEventPoints(events, windows, globals) {
+  return events.flatMap((event) => {
+    const previousWindow = windows[Math.max(0, event.leftIndex - 1)];
+    const nextWindow = windows[Math.min(windows.length - 1, event.rightIndex + 1)];
+    const lowLevel = Math.min(event.lowLevel, previousWindow.mean_current, nextWindow.mean_current);
+    const highLevel = Math.max(event.highLevel, previousWindow.mean_current, nextWindow.mean_current);
+    if (event.type === 'edge_up') {
+      return [
+        buildStructuralSyntheticPoint(event.leftIndex, windows, globals, lowLevel, event.boundaryTime, event.leftIndex + 0.1, 'edge_low'),
+        buildStructuralSyntheticPoint(event.rightIndex, windows, globals, highLevel, event.boundaryTime, event.rightIndex + 0.2, 'edge_high'),
+      ];
+    }
+
+    return [
+      buildStructuralSyntheticPoint(event.leftIndex, windows, globals, highLevel, event.boundaryTime, event.leftIndex + 0.1, 'edge_high'),
+      buildStructuralSyntheticPoint(event.rightIndex, windows, globals, lowLevel, event.boundaryTime, event.rightIndex + 0.2, 'edge_low'),
+    ];
+  });
+}
+
+function buildStructuralProfileV2Result(algorithmKey, algorithmLabel, windows, globals) {
+  const edgeEvents = detectStructuralEdgeEvents(windows, globals);
+  const blockedIndices = new Set();
+  for (const event of edgeEvents) {
+    blockedIndices.add(event.leftIndex);
+    blockedIndices.add(event.rightIndex);
+  }
+  const runs = buildStructuralProfileV2RegionRuns(windows, globals, blockedIndices);
+  const regionPoints = runs.flatMap(run => structuralRunPoints(run, windows, globals));
+  const edgePoints = buildStructuralEdgeEventPoints(edgeEvents, windows, globals);
+  const deduped = [...new Map([...regionPoints, ...edgePoints].map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index);
+  const reduced = reducePointList(deduped, globals, TARGET_POINT_COUNT);
+  const summaries = runs.map(run => summarizeStructuralRun(run, windows));
+  const eventText = edgeEvents.map(event => `- ${formatNumber(event.boundaryTime, 3)}s: ${event.type}, low=${formatNumber(event.lowLevel)}A, high=${formatNumber(event.highLevel)}A`).join('\n');
+  const regionText = summaries.map(run => (
+    `- ${formatNumber(run.start_time, 3)}s -> ${formatNumber(run.end_time, 3)}s: ${run.feature}, ` +
+    `mean范围 ${formatNumber(run.mean_min)}A ~ ${formatNumber(run.mean_max)}A, ` +
+    `peak_max ${formatNumber(run.peak_max)}A, valley_min ${formatNumber(run.valley_min)}A`
+  )).join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: reduced.length,
+    selection_reason: '先检测强跳变边界事件，再对剩余区域做平台/斜坡采样，优先保持近 90 度陡边',
+    key_points: reduced,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\n边界事件：\n${eventText}\n\n结构区域：\n${regionText}\n\n关键点序列：\n${renderKeyPoints(reduced)}\n\n关键区间关系：\n${describeSegments(reduced)}`,
+  };
+}
+
+function analyzeWithStructuralProfileV2(windows, globals) {
+  return buildStructuralProfileV2Result('structural_profile_v2', '结构轮廓压缩 V2', windows, globals);
+}
+
+function buildStructuralCusumResult(algorithmKey, algorithmLabel, windows, globals) {
+  const edgeEvents = detectStructuralCusumEdgeEvents(windows, globals);
+  const blockedIndices = new Set();
+  for (const event of edgeEvents) {
+    blockedIndices.add(event.leftIndex);
+    blockedIndices.add(event.rightIndex);
+  }
+  const runs = buildStructuralProfileV2RegionRuns(windows, globals, blockedIndices);
+  const regionPoints = runs.flatMap(run => structuralRunPoints(run, windows, globals));
+  const edgePoints = buildStructuralEdgeEventPoints(edgeEvents, windows, globals);
+  const deduped = [...new Map([...regionPoints, ...edgePoints].map(item => [item.point_index, item])).values()].sort((left, right) => left.point_index - right.point_index);
+  const reduced = reducePointList(deduped, globals, TARGET_POINT_COUNT);
+  const summaries = runs.map(run => summarizeStructuralRun(run, windows));
+  const eventText = edgeEvents.map(event => `- ${formatNumber(event.boundaryTime, 3)}s: ${event.type}, low=${formatNumber(event.lowLevel)}A, high=${formatNumber(event.highLevel)}A`).join('\n');
+  const regionText = summaries.map(run => (
+    `- ${formatNumber(run.start_time, 3)}s -> ${formatNumber(run.end_time, 3)}s: ${run.feature}, ` +
+    `mean范围 ${formatNumber(run.mean_min)}A ~ ${formatNumber(run.mean_max)}A, ` +
+    `peak_max ${formatNumber(run.peak_max)}A, valley_min ${formatNumber(run.valley_min)}A`
+  )).join('\n');
+  return {
+    algorithm_key: algorithmKey,
+    algorithm_label: algorithmLabel,
+    threshold_percent: null,
+    point_count: reduced.length,
+    selection_reason: '先用局部 CUSUM 检测候选跳变边界，再对剩余区域做平台/斜坡采样，减少纯阈值边界误判',
+    key_points: reduced,
+    prompt_preview: `${buildSemanticPrompt(globals)}\n\nCUSUM 边界事件：\n${eventText}\n\n结构区域：\n${regionText}\n\n关键点序列：\n${renderKeyPoints(reduced)}\n\n关键区间关系：\n${describeSegments(reduced)}`,
+  };
+}
+
+function analyzeWithStructuralCusum(windows, globals) {
+  return buildStructuralCusumResult('structural_cusum_v1', '结构轮廓 CUSUM V1', windows, globals);
 }
 
 function neighborhoodRange(values, center, radius) {
@@ -1750,6 +2208,9 @@ async function main() {
     analyzeWithEnvelopeTurningPoints(enrichedWindows, globals),
     analyzeWithEnvelopeTurningPointsV2(enrichedWindows, globals),
     analyzeWithEnvelopeTurningPointsV3(enrichedWindows, globals),
+    analyzeWithStructuralProfile(enrichedWindows, globals),
+    analyzeWithStructuralProfileV2(enrichedWindows, globals),
+    analyzeWithStructuralCusum(enrichedWindows, globals),
     analyzeWithStateRunPreserving(enrichedWindows, globals),
     analyzeWithPlateauTrendHybrid(enrichedWindows, globals),
     analyzeWithFeatureSegments(enrichedWindows, globals),
