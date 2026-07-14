@@ -15,6 +15,12 @@ const SAMPLE_SUITE = [
   'D:\\seafile\\temp_files\\临时文件\\2026\\06\\C518-85-RR_1.csv',
   'D:\\seafile\\temp_files\\临时文件\\2026\\06\\scope_0.1.csv',
 ];
+const STRUCTURAL_FOCUS_ALGORITHMS = [
+  'envelope_turning_points_v3',
+  'structural_profile_v1',
+  'structural_profile_v2',
+  'structural_cusum_v1',
+];
 
 function printHeader(title) {
   console.log(`\n========== ${title} ==========`);
@@ -2158,11 +2164,56 @@ function printPromptPreview(result) {
   console.log(result.prompt_preview);
 }
 
-async function main() {
-  const sampleFile = process.argv.find((arg, index) => index >= 2 && arg !== '--suite') || DEFAULT_SAMPLE_FILE;
+function parseCliOptions(argv) {
+  const options = {
+    sampleFile: DEFAULT_SAMPLE_FILE,
+    runSuite: false,
+    algorithmFilter: null,
+  };
+
+  for (let index = 2; index < argv.length; index++) {
+    const arg = argv[index];
+    if (!arg) continue;
+    if (arg === '--suite') {
+      options.runSuite = true;
+      continue;
+    }
+    if (arg === '--focus-structural') {
+      options.algorithmFilter = new Set(STRUCTURAL_FOCUS_ALGORITHMS);
+      continue;
+    }
+    if (arg.startsWith('--algorithms=')) {
+      const values = arg
+        .slice('--algorithms='.length)
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+      options.algorithmFilter = values.length > 0 ? new Set(values) : null;
+      continue;
+    }
+    if (!arg.startsWith('--')) {
+      options.sampleFile = arg;
+    }
+  }
+
+  return options;
+}
+
+function filterResults(results, algorithmFilter) {
+  if (!algorithmFilter || algorithmFilter.size === 0) {
+    return results;
+  }
+  return results.filter(result => algorithmFilter.has(result.algorithm_key));
+}
+
+async function analyzeSampleFile(sampleFile, options = {}) {
   console.log('CFA 关键点压缩算法对比');
   console.log('======================');
   console.log(`样本文件: ${sampleFile}`);
+
+  if (options.algorithmFilter?.size) {
+    console.log(`算法过滤: ${Array.from(options.algorithmFilter).join(', ')}`);
+  }
 
   if (!fs.existsSync(sampleFile)) {
     throw new Error(`样本文件不存在: ${sampleFile}`);
@@ -2225,29 +2276,41 @@ async function main() {
     analyzeWithHistogramAbsorption(enrichedWindows, globals),
     analyzeWithLevelAwarePrimitive(enrichedWindows, globals),
   ];
+  const filteredResults = filterResults(results, options.algorithmFilter);
+
+  if (filteredResults.length === 0) {
+    throw new Error('算法过滤后无可输出结果，请检查 --algorithms 参数');
+  }
 
   printHeader('算法摘要');
-  for (const result of results) {
+  for (const result of filteredResults) {
     printAlgorithmResult(result);
   }
 
-  for (const result of results) {
+  for (const result of filteredResults) {
     printPromptPreview(result);
   }
 }
 
-async function runSuite() {
+async function runSuite(options) {
   for (const file of SAMPLE_SUITE) {
     if (!fs.existsSync(file)) continue;
     console.log(`\n################ ${file} ################`);
-    process.argv[2] = file;
-    await main();
+    await analyzeSampleFile(file, options);
   }
 }
 
-const shouldRunSuite = process.argv.includes('--suite');
+async function main() {
+  const options = parseCliOptions(process.argv);
+  if (options.runSuite) {
+    await runSuite(options);
+    return;
+  }
 
-(shouldRunSuite ? runSuite() : main()).catch((error) => {
+  await analyzeSampleFile(options.sampleFile, options);
+}
+
+main().catch((error) => {
   console.error('\n对比失败:');
   console.error(error && error.stack ? error.stack : error);
   process.exit(1);
