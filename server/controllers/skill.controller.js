@@ -168,7 +168,6 @@ class SkillController {
           security_warnings: securityWarnings,
           tools: tools.map(t => ({
             ...t,
-            type: t.type || 'http',
             is_resident: !!t.is_resident,
           })),
           assigned_experts: assigned_experts.map(e => ({
@@ -621,7 +620,6 @@ class SkillController {
             skill_id,
             name: tool_name,
             description: tool_desc || '',
-            type: 'http',
             parameters: tool_params ? JSON.stringify(tool_params) : '{}',
             script_path: tool_script_path,
           });

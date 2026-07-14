@@ -2,7 +2,7 @@
  * FS Skill - Node.js Implementation
  * 
  * File system operations including read, write, search, and manage files.
- * 注意：相对路径由 skill-runner 的沙箱层按工作目录统一解析，技能代码无需自行拼接绝对路径。
+ * 注意：路径安全由 skill-runner 的沙箱层统一控制，技能代码只做轻量规范化。
  * 
  * @module fs-skill
  */
@@ -20,13 +20,10 @@ console.error(`  USER_ID: ${process.env.USER_ID || 'default'}`);
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 /**
- * Resolve path - 相对路径由沙箱层解析到工作目录
+ * Normalize path - 路径安全由沙箱层负责
  */
 function resolvePath(relativePath) {
-  if (path.isAbsolute(relativePath)) {
-    throw new Error(`Absolute path not allowed: ${relativePath}. Use relative path instead.`);
-  }
-  return relativePath;
+  return path.normalize(String(relativePath));
 }
 
 /**
