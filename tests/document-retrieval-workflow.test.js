@@ -68,22 +68,12 @@ function makeMockDecisionService(overrides = {}) {
   };
 }
 
-function makeMockRetrievalService(overrides = {}) {
-  return {
-    retrieve: async (q, opts) => (overrides.retrieveResult || {
-      packet: { meta: { evidence_sufficiency: 'none', should_clarify: true, should_answer_conservatively: true, suggested_response_mode: 'conservative_answer', reason_codes: [], total_evidence: 0 }, documents: [] },
-      strategy: 'degrade',
-    }),
-  };
-}
-
 function makeWorkflow(opts = {}) {
   return new DocumentRetrievalWorkflow(null, null, {
     atomicTools: opts.atomicTools || makeMockAtomicTools(),
     accessService: opts.accessService || makeMockAccessService(),
     decisionService: opts.decisionService || makeMockDecisionService(),
-    retrievalService: opts.retrievalService || makeMockRetrievalService(),
-    packer: opts.packer || null, // null = use real DocumentEvidencePacker
+    packer: opts.packer || null,
   });
 }
 
