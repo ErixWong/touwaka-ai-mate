@@ -3,8 +3,8 @@
 > 本文档定义 `document_retrieval` 系统级 skill/workflow 的稳定协议。
 > 所有实现必须对齐本文档。
 >
-> **audit-round06 收口**：外部接口原子化完成。LLM 仅看到 1 个 `document_retrieval` tool，
-> 内部由 DocumentRetrievalWorkflow 编排 6 个原子 tool，执行轨迹通过 `atomic_steps` 暴露。
+> **audit-round07 收口**：6 个原子 tool 对外暴露给 LLM，内部由 DocumentRetrievalWorkflow
+> 统一编排管线。`tool_name` 日志与前端展示均为 LLM 实际调用的原子 tool 名。
 
 ---
 
@@ -14,129 +14,94 @@
 |------|-----|
 | Skill Name | `document_retrieval` |
 | 类型 | 系统级 skill/workflow（非专家私有） |
-| 权限模型 | 基于 DocAccessService 的用户集合访问权限，不由 expert 配置控制 |
-| 当前阶段 | Phase 2（单一 LLM 入口 + 6 原子 tool 内部编排 + steps[] 轨迹暴露） |
+| 权限模型 | 基于 DocAccessService 的用户集合访问权限 |
+| 当前阶段 | Phase 2（6 原子 tool 外显 + workflow 内编排 + atomic_steps 轨迹） |
 
-## 2. LLM 可见 Tool
+## 2. LLM 可见 Tool（6 个原子 tool）
 
-### 唯一入口：`document_retrieval`
+| Tool Name | 职责 | 典型场景 |
+|-----------|------|----------|
+| `search_documents_by_metadata` | 按标题/文件名/元数据检索文档 | "帮我找XX合同"、"标准号是多少" |
+| `read_document_content` | 读取指定文档内容/章节 | "合同第三条怎么写的" |
+| `search_chunks_in_document` | 在已定位文档内搜索段落 | 已有候选文档，需找具体条款 |
+| `search_chunks_globally` | 全库内容级 chunk 搜索 | 不知道在哪个文档里，按内容搜 |
+| `rank_chunks_for_question` | 对 chunk 结果精排 | 多候选需选最相关的 |
+| `resolve_documents_from_chunks` | 从 chunk 命中反查文档信息 | 搜到内容片段但不知道属于哪个文档 |
 
-| 属性 | 值 |
-|------|-----|
-| Tool Name | `document_retrieval` |
-| 职责 | 从文档平台检索与用户问题相关的证据并返回结构化结果 |
-| 覆盖场景 | 基于文档证据回答问题 / 定位可能相关文档 / 校验命题是否有文档依据 |
-| skill_namespace | `document_retrieval` |
-
-**参数**：
+**所有 6 个 tool 共享相同参数签名**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `query` | `string` | ✅ | 检索查询文本 |
 | `collection_id` | `string` | ❌ | 限定文档集合ID（仅过滤，非授权） |
-| `doc_types` | `string[]` | ❌ | 限定文档类型，如 `["contract", "invoice"]` |
+| `doc_types` | `string[]` | ❌ | 限定文档类型 |
 
-### 内部原子 Tool（不暴露给 LLM）
-
-以下 6 个原子 tool 仅由 DocumentRetrievalWorkflow 内部编排调用，LLM 不可见：
-
-| Tool Name | 职责 |
-|-----------|------|
-| `search_documents_by_metadata` | 按标题/元数据检索文档候选 |
-| `read_document_content` | 读取文档完整内容 |
-| `search_chunks_in_document` | 在指定文档内搜索相关 chunk |
-| `search_chunks_globally` | 全库 chunk 全局搜索（fallback） |
-| `rank_chunks_for_question` | 对 chunk 按问题相关性重排序 |
-| `resolve_documents_from_chunks` | 从 chunk 命中的文档ID解析文档信息 |
+**`skill_namespace`** 统一为 `"document_retrieval"`，chat-service 按此聚合消费。
 
 ## 3. 标准返回字段
 
-### 共享字段
+所有 6 个 tool 返回统一结构，`tool_name` 字段为 LLM 实际调用的原子 tool 名：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `tool_name` | `string` | 固定为 `"document_retrieval"` |
-| `skill_namespace` | `string` | 固定为 `"document_retrieval"` |
-| `workflow_action` | `string` | **主动作信号**。枚举见下方 |
+| `tool_name` | `string` | LLM 实际调用的原子 tool 名（`search_documents_by_metadata` 等） |
+| `skill_namespace` | `string` | 固定 `"document_retrieval"` |
+| `workflow_action` | `string` | 主动作信号 |
 | `strategy` | `string` | 实际检索策略：`document_first` / `chunk_first_fallback` / `degrade` |
 | `evidence_sufficiency` | `string` | 证据充分性：`strong` / `medium` / `weak` / `none` |
-| `reason_codes` | `string[]` | 原因代码列表 |
+| `reason_codes` | `string[]` | 原因代码 |
 | `documents` | `object[]` | 候选文档列表（含 top_evidence） |
 | `scoped_identity` | `object` | 文档身份确认信息 |
-| `atomic_steps` | `string[]` | **原子 tool 执行轨迹**（audit-round06 新增），如 `["decision","search_documents_by_metadata","search_chunks_in_document","evidence_packing"]` |
-| `duration` | `number` | 检索耗时（ms） |
+| `atomic_steps` | `string[]` | 内部 workflow 编排的原子 tool 执行轨迹（审计可观测） |
+| `duration` | `number` | 耗时（ms） |
 
 ### `workflow_action` 枚举
 
 | 值 | 含义 | chat-service 行为 |
 |----|------|-------------------|
-| `answer_with_ranked_chunks` | 证据充分，LLM + 证据注入回答 | LLM + 证据注入（强证据附加引用约束） |
-| `return_document_candidates` | 多候选冲突/弱证据多文档 | **短路 LLM**，直接格式化候选列表 |
-| `ask_for_clarification` | 意图模糊或信息不足 | LLM + 澄清约束骨架 |
-| `decline_due_to_insufficient_evidence` | 无任何可用证据 | LLM + 保守回答约束骨架 |
-
-### `strategy` 枚举
-
-| 值 | 含义 |
-|----|------|
-| `document_first` | 标准 document-first 检索链路（文档候选 → chunk 证据） |
-| `chunk_first_fallback` | document-first 无结果后回退到 chunk-first 全库搜索 |
-| `degrade` | 所有路径失败，返回空证据包 |
-
-### `documents[]` 结构
-
-```json
-[{
-  "document_id": "string",
-  "document_title": "string",
-  "doc_type": "string",
-  "collection_name": "string",
-  "relevance_score": "number",
-  "candidate_confidence": "high|low",
-  "identity_confidence": "confirmed|probable|unknown",
-  "identity_source": "search_match|evidence_backfill|fallback|inferred",
-  "evidence_count": "number",
-  "top_evidence": [{
-    "content": "string (truncated 500 chars)",
-    "score": "number"
-  }]
-}]
-```
+| `answer_with_ranked_chunks` | 证据充分 | LLM + 证据注入 |
+| `return_document_candidates` | 多候选冲突 | 短路 LLM，直接格式化候选列表 |
+| `ask_for_clarification` | 意图模糊 | LLM + 澄清约束 |
+| `decline_due_to_insufficient_evidence` | 无可用证据 | LLM + 保守回答约束 |
 
 ## 4. 内部服务分层（不暴露给 LLM）
 
 | 服务 | 职责 | 文件 |
 |------|------|------|
-| `DocumentRetrievalWorkflow` | 显式编排 6 原子 tool 的检索管线 | `lib/document-retrieval-workflow.js` |
-| `DocumentAtomicTools` | 6 个原子 tool 的实现 | `lib/document-atomic-tools.js` |
-| `DocumentQueryDecisionService` | 查询意图决策（规则引擎） | `lib/document-query-decision-service.js` |
-| `DocumentEvidencePacker` | 证据打包与元数据生成 | `lib/document-evidence-packer.js` |
-| `DocAccessService` | 统一权限判定 | `lib/doc-access-service.js` |
+| `DocumentRetrievalWorkflow` | 编排 6 原子 tool 的检索管线 | `lib/document-retrieval-workflow.js` |
+| `DocumentAtomicTools` | 6 个原子 tool 的内部实现 | `lib/document-atomic-tools.js` |
+| `DocumentQueryDecisionService` | 查询意图决策 | `lib/document-query-decision-service.js` |
+| `DocumentEvidencePacker` | 证据打包 | `lib/document-evidence-packer.js` |
+| `DocAccessService` | 权限判定 | `lib/doc-access-service.js` |
 
-## 5. 可观测性要求
+## 5. 可观测性
 
-每次 tool 调用必须记录以下观测字段：
-
-| 字段 | 来源 | 用途 |
-|------|------|------|
-| `tool_name` | 固定 `"document_retrieval"` | 调用分布 |
-| `strategy` | 返回结果 | 检索路径分布 |
-| `duration_ms` | 计时 | 性能监控 |
-| `evidence_sufficiency` | 返回结果 | 质量监控 |
-| `reason_codes` | 返回结果 | 失败原因分析 |
-| `document_count` | 返回结果 | 召回量监控 |
-| `workflow_action` | 返回结果 | 回答动作分布 |
-| `atomic_steps` | 返回结果 | 原子工具调用轨迹（audit-round06 新增） |
+| 字段 | 说明 |
+|------|------|
+| `tool_name` | LLM 实际调用的原子 tool 名 |
+| `strategy` / `duration_ms` | 检索路径分布 / 性能 |
+| `evidence_sufficiency` / `reason_codes` | 质量监控 / 失败分析 |
+| `workflow_action` | 回答动作分布 |
+| `atomic_steps` | 内部编排轨迹 |
 
 ## 6. 演进路线图
 
 ```
-Phase 1（Round 03-04）: 3 复合 tool 模式 + 内部原子化 ✅
-    ↓
-Phase 2（Round 06 当前）: 外部接口原子化 — 单一 document_retrieval 入口 + 6 原子编排 ✅
-    ↓
-Phase 3（下一迭代）: 反驳证据链路 + compare_documents / search_within_document 新能力
+Phase 1（Round 03-04）: 3 复合 tool + 内部原子化 ✅
+Phase 2（Round 06-07）: 6 原子 tool 外显 + workflow 内编排 ✅
+Phase 3（下一迭代）: 反驳证据链路 + compare_documents / search_within_document
 ```
+
+## 7. 历史清理
+
+| 旧名称 | 状态 |
+|--------|------|
+| `answer_from_documents` | ❌ round06 删除 |
+| `find_document` | ❌ round06 删除 |
+| `verify_fact` | ❌ round06 删除 |
+| `document_retrieval`（单复合入口） | ❌ round07 撤销（改为 6 原子外显） |
+| `suggested_response_mode` | ❌ round04 删除 |
+| `should_clarify` / `should_answer_conservatively` | ❌ round04 删除 |
 
 ## 7. 历史命名清理
 
