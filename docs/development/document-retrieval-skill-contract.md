@@ -3,8 +3,9 @@
 > 本文档定义 `document_retrieval` 系统级 skill/workflow 的稳定协议。
 > 所有实现必须对齐本文档。
 >
-> **audit-round07 收口**：6 个原子 tool 对外暴露给 LLM，内部由 DocumentRetrievalWorkflow
+> **audit-round08 收口**：6 个原子 tool 对外暴露给 LLM，内部由 DocumentRetrievalWorkflow
 > 统一编排管线。`tool_name` 日志与前端展示均为 LLM 实际调用的原子 tool 名。
+> 关于"为何不让 6 tool 行为独立化"的架构决策，见 2.1 过渡实现说明。
 
 ---
 
@@ -15,7 +16,7 @@
 | Skill Name | `document_retrieval` |
 | 类型 | 系统级 skill/workflow（非专家私有） |
 | 权限模型 | 基于 DocAccessService 的用户集合访问权限 |
-| 当前阶段 | Phase 2（6 原子 tool 外显 + workflow 内编排 + atomic_steps 轨迹） |
+| 当前阶段 | Phase 2 过渡态（6 原子 tool 外显 + workflow 统一编排 + atomic_steps 轨迹，见 2.1） |
 
 ## 2. LLM 可见 Tool（6 个原子 tool）
 
@@ -37,6 +38,27 @@
 | `doc_types` | `string[]` | ❌ | 限定文档类型 |
 
 **`skill_namespace`** 统一为 `"document_retrieval"`，chat-service 按此聚合消费。
+
+### 2.1 过渡实现说明（audit-round08 诚实标注）
+
+> **当前实现状态**：6 个原子 tool 名对 LLM 是**语义化选择入口**，执行层统一路由到
+> `DocumentRetrievalWorkflow.runAnswerQuestion()` 完整管线，真实执行步骤通过
+> `atomic_steps` 字段对外暴露。
+>
+> **为什么不让每个 tool 独立执行**：
+> 1. 6 个原子 tool 内部存在硬依赖链（`rank_chunks_for_question` 需要上游 chunks，
+>    `read_document_content` 需要上游 document_id）。若强制独立执行，LLM 必须多步
+>    编排并传递中间结果——这正是 Phase 1 之前被淘汰的反模式（幻觉 ID、丢失中间态、
+>    延迟放大 3-5 倍）。
+> 2. 参数签名差异化（如要求 LLM 传 `chunks: object[]`）在当前 tool-calling 范式下
+>    不可靠。
+>
+> **接口分层定位**：tool 名是接口层（帮助 LLM 表达意图），workflow 是编排层（保证
+> 管线正确），`atomic_steps` 是可观测层（审计真实执行轨迹）。类比 REST 多 endpoint
+> 共享 service 层。
+>
+> **收敛方向**：Phase 3 计划正式化"意图路由层"，使各 tool 名可映射到差异化的管线
+> 裁剪（如 `search_documents_by_metadata` 跳过 chunk 精排），而非统一全管线。
 
 ## 3. 标准返回字段
 
@@ -88,8 +110,8 @@
 
 ```
 Phase 1（Round 03-04）: 3 复合 tool + 内部原子化 ✅
-Phase 2（Round 06-07）: 6 原子 tool 外显 + workflow 内编排 ✅
-Phase 3（下一迭代）: 反驳证据链路 + compare_documents / search_within_document
+Phase 2（Round 06-08）: 6 原子 tool 外显 + workflow 内编排 + atomic_steps 轨迹 ✅（过渡态，见 2.1）
+Phase 3（下一迭代）: 意图路由层（按 tool 名裁剪管线）+ 反驳证据链路 + compare_documents
 ```
 
 ## 7. 历史清理
