@@ -57,6 +57,14 @@ function makeMockDecisionService(overrides = {}) {
       initial_strategy_hint: 'chunk_first',
       analysis: {},
     }),
+    // audit-round02 变更项 A：runAnswerQuestion 新增决策分析调用
+    analyze: (q, ctx) => (overrides.analyzeResult || {
+      intent: 'informational',
+      anchor_strength: 'medium',
+      confidence: 0.6,
+      recommended_strategy: 'document_first',
+      reason_codes: [],
+    }),
   };
 }
 
@@ -75,6 +83,7 @@ function makeWorkflow(opts = {}) {
     accessService: opts.accessService || makeMockAccessService(),
     decisionService: opts.decisionService || makeMockDecisionService(),
     retrievalService: opts.retrievalService || makeMockRetrievalService(),
+    packer: opts.packer || null, // null = use real DocumentEvidencePacker
   });
 }
 
@@ -217,73 +226,145 @@ async function testFindDocumentEmptyQuery() {
 }
 
 // ============================================================
-// runAnswerQuestion
+// runAnswerQuestion（audit-round02 变更项 A：从 retrievalService 迁出）
 // ============================================================
 
 async function testAnswerQuestionSufficientEvidence() {
   console.log('\n📋 WF-07: answer_question — 强证据 → answer_with_ranked_chunks');
 
-  const mockRet = makeMockRetrievalService({
-    retrieveResult: {
-      packet: {
-        meta: { evidence_sufficiency: 'strong', should_clarify: false, should_answer_conservatively: false, suggested_response_mode: 'answer_with_citation', reason_codes: ['single_candidate'], total_evidence: 5, scoped_identity_confirmed: false },
-        documents: [
-          { document_id: 'd1', document_title: 'GB/T 4208', doc_type: 'standard', collection_name: '标准库', relevance_score: 95, candidate_confidence: 'high', evidence: [{ content: 'IPX5试验：喷嘴内径6.3mm', score: 0.92 }] },
-        ],
-      },
-      strategy: 'document_first',
+  const mockAtomic = makeMockAtomicTools({
+    metaResult: {
+      success: true,
+      documents: [
+        { document_id: 'd1', document_title: 'GB/T 4208', doc_type: 'standard', collection_name: '标准库', relevance_score: 95 },
+      ],
+      total: 1,
+      matched_by: 'title_metadata',
+    },
+    scopedResult: {
+      success: true,
+      chunks: [
+        { chunk_id: 'c1', document_id: 'd1', document_title: 'GB/T 4208', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: 'IPX5试验：喷嘴内径6.3mm', score: 0.92 },
+        { chunk_id: 'c2', document_id: 'd1', document_title: 'GB/T 4208', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 2, chunk_title: '', content: '水流量12.5L/min', score: 0.88 },
+        { chunk_id: 'c3', document_id: 'd1', document_title: 'GB/T 4208', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 3, chunk_title: '', content: '试验持续时间3min', score: 0.82 },
+        { chunk_id: 'c4', document_id: 'd1', document_title: 'GB/T 4208', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 4, chunk_title: '', content: '防护等级IPX5', score: 0.78 },
+      ],
+      total: 4,
     },
   });
-  const wf = makeWorkflow({ retrievalService: mockRet });
+  const mockDec = makeMockDecisionService({
+    analyzeResult: { recommended_strategy: 'document_first', intent: 'factual_lookup', anchor_strength: 'strong', confidence: 0.85, reason_codes: [] },
+  });
+  const wf = makeWorkflow({ atomicTools: mockAtomic, decisionService: mockDec });
 
   const r = await wf.runAnswerQuestion({ query: 'IPX5试验条件', user_id: 'u1' });
 
   assert(r.success, 'WF-07.1 success=true');
   assertEqual(r.action, 'answer_with_ranked_chunks', 'WF-07.2 action=answer_with_ranked_chunks');
   assertEqual(r.strategy, 'document_first', 'WF-07.3 strategy preserved');
-  assertEqual(r.documents.length, 1, 'WF-07.4 1 document');
-  assertEqual(r.documents[0].top_evidence.length, 1, 'WF-07.5 top_evidence 映射');
+  assert(r.documents.length >= 1, 'WF-07.4 has documents');
+  assert(r.steps.length >= 4, 'WF-07.5 explicit steps (decision+meta+recall+pack)');
+  // 验证 steps 已显式化
+  const stepNames = r.steps.map(s => s.step);
+  assert(stepNames.includes('decision'), 'WF-07.6 decision step visible');
+  assert(stepNames.includes('search_documents_by_metadata'), 'WF-07.7 metadata step visible');
+  assert(stepNames.includes('search_chunks_in_document'), 'WF-07.8 scoped_recall step visible');
+  assert(stepNames.includes('evidence_packing'), 'WF-07.9 evidence_packing step visible');
 }
 
 async function testAnswerQuestionCandidateList() {
-  console.log('\n📋 WF-08: answer_question — candidate_list → return_document_candidates');
+  console.log('\n📋 WF-08: answer_question — 多候选弱证据 → return_document_candidates');
 
-  const mockRet = makeMockRetrievalService({
-    retrieveResult: {
-      packet: {
-        meta: { evidence_sufficiency: 'medium', should_clarify: false, should_answer_conservatively: false, suggested_response_mode: 'candidate_list', reason_codes: ['multiple_candidates'], total_evidence: 3 },
-        documents: [
-          { document_id: 'd1', document_title: 'Doc A', doc_type: 'contract', collection_name: '合同库', relevance_score: 80, candidate_confidence: 'high', evidence: [{ content: '...', score: 0.75 }] },
-          { document_id: 'd2', document_title: 'Doc B', doc_type: 'contract', collection_name: '合同库', relevance_score: 75, candidate_confidence: 'high', evidence: [{ content: '...', score: 0.72 }] },
-        ],
-      },
-      strategy: 'document_first',
+  const mockAtomic = makeMockAtomicTools({
+    metaResult: {
+      success: true,
+      documents: [
+        { document_id: 'd1', document_title: 'Doc A', doc_type: 'contract', collection_name: '合同库', relevance_score: 80 },
+        { document_id: 'd2', document_title: 'Doc B', doc_type: 'contract', collection_name: '合同库', relevance_score: 75 },
+        { document_id: 'd3', document_title: 'Doc C', doc_type: 'contract', collection_name: '合同库', relevance_score: 70 },
+      ],
+      total: 3,
+    },
+    scopedResult: {
+      success: true,
+      chunks: [
+        { chunk_id: 'c1', document_id: 'd1', document_title: 'Doc A', doc_type: 'contract', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: 'some content', score: 0.45 },
+        { chunk_id: 'c2', document_id: 'd2', document_title: 'Doc B', doc_type: 'contract', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: 'other content', score: 0.42 },
+      ],
+      total: 2,
     },
   });
-  const wf = makeWorkflow({ retrievalService: mockRet });
+  const mockDec = makeMockDecisionService({
+    analyzeResult: { recommended_strategy: 'document_first', intent: 'informational', anchor_strength: 'weak', confidence: 0.4, reason_codes: [] },
+  });
+  const wf = makeWorkflow({ atomicTools: mockAtomic, decisionService: mockDec });
 
   const r = await wf.runAnswerQuestion({ query: '合同条款', user_id: 'u1' });
 
   assertEqual(r.action, 'return_document_candidates', 'WF-08.1 action=return_document_candidates');
+  assert(r.documents.length >= 3, 'WF-08.2 3 文档候选');
+  assertEqual(r.evidence_sufficiency, 'weak', 'WF-08.3 weak evidence');
 }
 
 async function testAnswerQuestionNoEvidence() {
-  console.log('\n📋 WF-09: answer_question — 零证据零文档 → decline_due_to_insufficient_evidence');
+  console.log('\n📋 WF-09: answer_question — 零证据零文档 → decline');
 
-  const mockRet = makeMockRetrievalService({
-    retrieveResult: {
-      packet: {
-        meta: { evidence_sufficiency: 'none', should_clarify: true, should_answer_conservatively: true, suggested_response_mode: 'conservative_answer', reason_codes: ['no_candidates'], total_evidence: 0 },
-        documents: [],
-      },
-      strategy: 'degrade',
-    },
+  // metadata 无结果 + global chunks 也无结果
+  const mockAtomic = makeMockAtomicTools({
+    metaResult: { success: true, documents: [], total: 0 },
+    globalResult: { success: true, chunks: [], total: 0 },
   });
-  const wf = makeWorkflow({ retrievalService: mockRet });
+  const mockDec = makeMockDecisionService({
+    analyzeResult: { recommended_strategy: 'document_first', intent: 'informational', anchor_strength: 'weak', confidence: 0.3, reason_codes: [] },
+  });
+  const wf = makeWorkflow({ atomicTools: mockAtomic, decisionService: mockDec });
 
   const r = await wf.runAnswerQuestion({ query: '不存在的内容', user_id: 'u1' });
 
   assertEqual(r.action, 'decline_due_to_insufficient_evidence', 'WF-09.1 decline');
+  assertEqual(r.evidence_sufficiency, 'none', 'WF-09.2 none');
+  assert(r.documents.length === 0, 'WF-09.3 0 docs');
+}
+
+async function testAnswerQuestionChunkFallback() {
+  console.log('\n📋 WF-09b: answer_question — metadata 0 结果 → chunk 回退');
+
+  // metadata 无结果，但 global chunks 有命中
+  const mockAtomic = makeMockAtomicTools({
+    metaResult: { success: true, documents: [], total: 0 },
+    globalResult: {
+      success: true,
+      chunks: [
+        { chunk_id: 'c1', document_id: 'd9', document_title: '标准文档X', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: '关于电气安全的关键段落...', score: 0.82 },
+        { chunk_id: 'c2', document_id: 'd9', document_title: '标准文档X', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 2, chunk_title: '', content: '防护等级要求...', score: 0.75 },
+      ],
+      total: 2,
+    },
+    resolveResult: {
+      success: true,
+      documents: [{ document_id: 'd9', document_title: '标准文档X', doc_type: 'standard', collection_id: 'col-1', collection_name: '标准库', max_chunk_score: 0.82, chunk_count: 2 }],
+      total: 1,
+    },
+    scopedResult: {
+      success: true,
+      chunks: [
+        { chunk_id: 'c1', document_id: 'd9', document_title: '标准文档X', doc_type: 'standard', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: '关于电气安全的关键段落...', score: 0.82 },
+      ],
+      total: 1,
+    },
+  });
+  const mockDec = makeMockDecisionService({
+    analyzeResult: { recommended_strategy: 'document_first', intent: 'factual_lookup', anchor_strength: 'medium', confidence: 0.5, reason_codes: [] },
+  });
+  const wf = makeWorkflow({ atomicTools: mockAtomic, decisionService: mockDec });
+
+  const r = await wf.runAnswerQuestion({ query: '电气安全要求', user_id: 'u1' });
+
+  assert(r.success, 'WF-09b.1 success');
+  assertEqual(r.strategy, 'chunk_first_fallback', 'WF-09b.2 chunk_first_fallback strategy');
+  assert(r.steps.map(s => s.step).includes('search_chunks_globally'), 'WF-09b.3 global chunk step visible');
+  assert(r.steps.map(s => s.step).includes('resolve_documents_from_chunks'), 'WF-09b.4 resolve step visible');
+  assert(r.documents.length >= 1, 'WF-09b.5 has docs from fallback');
 }
 
 // ============================================================
@@ -293,18 +374,26 @@ async function testAnswerQuestionNoEvidence() {
 async function testVerifyFactSupported() {
   console.log('\n📋 WF-10: verify_fact — strong → supported');
 
-  const mockRet = makeMockRetrievalService({
-    retrieveResult: {
-      packet: {
-        meta: { evidence_sufficiency: 'strong', suggested_response_mode: 'answer_with_citation', reason_codes: [], total_evidence: 4, should_clarify: false, should_answer_conservatively: false },
-        documents: [
-          { document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_name: 'Col', relevance_score: 90, candidate_confidence: 'high', evidence: [{ content: '匹配内容', score: 0.91 }] },
-        ],
-      },
-      strategy: 'document_first',
+  const mockAtomic = makeMockAtomicTools({
+    metaResult: {
+      success: true,
+      documents: [{ document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_name: 'Col', relevance_score: 90 }],
+      total: 1,
+    },
+    scopedResult: {
+      success: true,
+      chunks: [
+        { chunk_id: 'c1', document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: '匹配内容段落A', score: 0.91 },
+        { chunk_id: 'c2', document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 2, chunk_title: '', content: '匹配内容段落B', score: 0.85 },
+        { chunk_id: 'c3', document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 3, chunk_title: '', content: '匹配内容段落C', score: 0.81 },
+      ],
+      total: 3,
     },
   });
-  const wf = makeWorkflow({ retrievalService: mockRet });
+  const mockDec = makeMockDecisionService({
+    analyzeResult: { recommended_strategy: 'document_first', intent: 'factual_lookup', anchor_strength: 'strong', confidence: 0.9, reason_codes: [] },
+  });
+  const wf = makeWorkflow({ atomicTools: mockAtomic, decisionService: mockDec });
 
   const r = await wf.runVerifyFact({ query: '命题', user_id: 'u1' });
 
@@ -316,18 +405,25 @@ async function testVerifyFactSupported() {
 async function testVerifyFactInsufficient() {
   console.log('\n📋 WF-11: verify_fact — weak → insufficient_evidence');
 
-  const mockRet = makeMockRetrievalService({
-    retrieveResult: {
-      packet: {
-        meta: { evidence_sufficiency: 'weak', suggested_response_mode: 'conservative_answer', reason_codes: ['weak_evidence_degrade'], total_evidence: 1, should_clarify: false, should_answer_conservatively: true },
-        documents: [
-          { document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_name: 'Col', relevance_score: 40, candidate_confidence: 'low', evidence: [] },
-        ],
-      },
-      strategy: 'degrade',
+  // 有候选但证据弱（1 chunk, low score）
+  const mockAtomic = makeMockAtomicTools({
+    metaResult: {
+      success: true,
+      documents: [{ document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_name: 'Col', relevance_score: 40 }],
+      total: 1,
+    },
+    scopedResult: {
+      success: true,
+      chunks: [
+        { chunk_id: 'c1', document_id: 'd1', document_title: 'Doc', doc_type: 'contract', collection_id: 'col-1', revision_id: 'r1', outline_id: null, seq: 1, chunk_title: '', content: '弱相关内容', score: 0.35 },
+      ],
+      total: 1,
     },
   });
-  const wf = makeWorkflow({ retrievalService: mockRet });
+  const mockDec = makeMockDecisionService({
+    analyzeResult: { recommended_strategy: 'document_first', intent: 'informational', anchor_strength: 'weak', confidence: 0.3, reason_codes: [] },
+  });
+  const wf = makeWorkflow({ atomicTools: mockAtomic, decisionService: mockDec });
 
   const r = await wf.runVerifyFact({ query: '命题', user_id: 'u1' });
 
@@ -353,6 +449,7 @@ async function main() {
   await testAnswerQuestionSufficientEvidence();
   await testAnswerQuestionCandidateList();
   await testAnswerQuestionNoEvidence();
+  await testAnswerQuestionChunkFallback();
   await testVerifyFactSupported();
   await testVerifyFactInsufficient();
 
