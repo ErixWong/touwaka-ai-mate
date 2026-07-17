@@ -1,12 +1,12 @@
 /**
  * Chat-service 消费层联调测试
  *
- * audit-round03 变更项 C：
- * 验证 chat-service 已按 workflow_action 组织行为，不再仅依赖
- * suggested_response_mode 做主分支决策。
+ * audit-round04 变更项 D：
+ * 验证 chat-service 已按 workflow_action 组织行为，suggested_response_mode
+ * 兼容字段已从 tool-manager 输出面物理删除，不再作为正常输入面。
  *
  * 测试 _getResponseModeDecision / _resolveConstraintMode /
- * _buildResponseModeConstraint 在新旧路径下的行为。
+ * _buildResponseModeConstraint 在新路径下的行为。
  *
  * 运行：node tests/chat-service-consumption.test.js
  */
@@ -147,17 +147,17 @@ function testAskForClarificationConstraint() {
 }
 
 // ============================================================
-// CS-05: 无 workflow_action → fallback 到 suggested_response_mode
+// CS-05: 无 workflow_action（异常/旧数据路径）→ 防御性兜底
 // ============================================================
 
-function testFallbackToSuggestedResponseMode() {
-  console.log('\n📋 CS-05: 无 workflow_action → fallback 到旧 suggested_response_mode');
+function testNoWorkflowActionDefensiveFallback() {
+  console.log('\n📋 CS-05: 无 workflow_action → 防御性兜底（conservative_answer）');
 
   const svc = makeChatService();
   const result = {
     success: true,
-    // 无 workflow_action 字段
-    suggested_response_mode: 'candidate_list',
+    // audit-round04 变更项 A：suggested_response_mode 已从 tool-manager 输出面物理删除，
+    // 此用例验证异常/旧数据路径的防御性兜底行为。
     documents: [
       { document_id: 'd1', document_title: 'Doc X', doc_type: 'contract', collection_name: 'Col', relevance_score: 90, candidate_confidence: 'high' },
     ],
@@ -167,8 +167,46 @@ function testFallbackToSuggestedResponseMode() {
 
   const decision = svc._getResponseModeDecision(result);
 
-  assert(decision.isShortCircuit, 'CS-05.1 fallback still short circuits');
-  assert(decision.directResponse !== null, 'CS-05.2 has directResponse');
+  // 无 workflow_action 时不再短路 LLM，改为 conservative_answer + 证据注入兜底
+  assert(!decision.isShortCircuit, 'CS-05.1 not short circuit (defensive fallback)');
+  assertEqual(decision.directResponse, null, 'CS-05.2 no directResponse');
+  assert(decision.evidenceInjection !== null, 'CS-05.3 has evidenceInjection');
+  assert(decision.evidenceInjection.includes('依据有限') || decision.evidenceInjection.includes('保守回答'),
+    'CS-05.4 falls back to conservative constraint');
+}
+
+// ============================================================
+// CS-08: action/mode 冲突 → action 胜出（P0 补强测试）
+// ============================================================
+
+function testActionModeConflictActionWins() {
+  console.log('\n📋 CS-08: workflow_action 与旧 suggested_response_mode 冲突 → action 胜出');
+
+  const svc = makeChatService();
+  // 构造真正的冲突输入：
+  // workflow_action=return_document_candidates（应短路 LLM，输出候选列表）
+  // 但旧 suggested_response_mode=conservative_answer（应保守回答）
+  const result = {
+    success: true,
+    workflow_action: 'return_document_candidates',
+    // 即使旧兼容字段还在（防御测试），action 必须胜出
+    suggested_response_mode: 'conservative_answer',
+    documents: [
+      { document_id: 'd1', document_title: 'Contract Alpha', doc_type: 'contract', collection_name: 'Col', relevance_score: 90, candidate_confidence: 'high', top_evidence: [{ content: '违约金条款摘要', score: 0.85 }] },
+    ],
+    evidence_sufficiency: 'medium',
+    strategy: 'document_first',
+  };
+
+  const decision = svc._getResponseModeDecision(result);
+
+  // 关键断言：action 胜出 → 短路 LLM，输出候选列表
+  assert(decision.isShortCircuit, 'CS-08.1 action wins: isShortCircuit=true');
+  assert(decision.directResponse !== null, 'CS-08.2 action wins: has directResponse');
+  assert(decision.directResponse.includes('Contract Alpha'), 'CS-08.3 action wins: contains candidate doc');
+  // 不应进入 conservative_answer 路径
+  assert(!decision.evidenceInjection?.includes('依据有限'),
+    'CS-08.4 action wins: NOT conservative (would contain 依据有限)');
 }
 
 // ============================================================
@@ -185,8 +223,8 @@ function testResolveConstraintModeMapping() {
   assertEqual(svc._resolveConstraintMode({ workflow_action: 'decline_due_to_insufficient_evidence' }), 'conservative_answer', 'CS-06.3 decline → conservative');
   assertEqual(svc._resolveConstraintMode({ workflow_action: 'answer_with_ranked_chunks', evidence_sufficiency: 'strong' }), 'answer_with_citation', 'CS-06.4 strong → answer_with_citation');
   assertEqual(svc._resolveConstraintMode({ workflow_action: 'answer_with_ranked_chunks', evidence_sufficiency: 'weak' }), 'direct_answer', 'CS-06.5 weak → direct_answer');
-  // fallback 到 suggested_response_mode
-  assertEqual(svc._resolveConstraintMode({ suggested_response_mode: 'conservative_answer' }), 'conservative_answer', 'CS-06.6 no action → fallback');
+  // 无 workflow_action → 防御性兜底 conservative_answer（audit-round04 变更项 A）
+  assertEqual(svc._resolveConstraintMode({ suggested_response_mode: 'conservative_answer' }), 'conservative_answer', 'CS-06.6 no action → defensive conservative default');
 }
 
 // ============================================================
@@ -218,16 +256,17 @@ function testBuildResponseModeConstraint() {
 function main() {
   console.log('╔══════════════════════════════════════╗');
   console.log('║  Chat-Service 消费层联调测试        ║');
-  console.log('║  (audit-round03 变更项 C)           ║');
+  console.log('║  (audit-round04 变更项 D)           ║');
   console.log('╚══════════════════════════════════════╝');
 
   testReturnDocumentCandidatesShortCircuits();
   testAnswerWithRankedChunksInjectsEvidence();
   testDeclineInsufficientEvidenceConservativeAnswer();
   testAskForClarificationConstraint();
-  testFallbackToSuggestedResponseMode();
+  testNoWorkflowActionDefensiveFallback();
   testResolveConstraintModeMapping();
   testBuildResponseModeConstraint();
+  testActionModeConflictActionWins();
 
   console.log(`\n========================================`);
   console.log(`  ✅ 通过: ${passed}  |  ❌ 失败: ${failed}`);

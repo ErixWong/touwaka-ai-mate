@@ -47,21 +47,21 @@
 | `strategy` | `string` | 检索策略：`document_first` / `chunk_first_fallback` / `degrade`。<br>区分推荐策略（`decision.recommended_strategy`）与实际执行策略（顶层 `strategy`）。 |
 | `evidence_sufficiency` | `string` | 证据充分性：`strong` / `medium` / `weak` / `none` |
 | `reason_codes` | `string[]` | 原因代码列表（如 `no_candidates`、`weak_evidence_degrade`） |
-| `should_clarify` | `boolean` | 是否应向用户澄清问题 |
-| `should_answer_conservatively` | `boolean` | 是否应保守回答 |
-| `suggested_response_mode` | `string` | 建议回答模式（见下方枚举） |
+| `workflow_action` | `string` | **主动作信号**（审计 round04 起为唯一主动作字段）。枚举见下方。此字段替代旧 `suggested_response_mode` / `should_clarify` / `should_answer_conservatively`（已删除）。 |
 | `duration` | `number` | 检索耗时（ms） |
 
-### `suggested_response_mode` 枚举
+### `workflow_action` 枚举
+
+`workflow_action` 是 chat-service / tool-manager 消费层的主决策信号，覆盖所有 tool 的标准化动作码：
 
 | 值 | 含义 | chat-service 行为 | 适用 tool |
 |----|------|-------------------|-----------|
-| `direct_answer` | 证据充分，可直接回答 | LLM + 证据注入 | answer_from_documents |
-| `answer_with_citation` | 有明确来源，回答时引用出处 | LLM + 证据注入 + 引用约束 | answer_from_documents |
-| `candidate_list` | 多候选，列出候选供用户确认 | **短路 LLM**，直接格式化候选列表 | answer_from_documents / find_document |
-| `single_document` | 单候选文档，直接展示文档信息 | LLM + 证据注入（find_document 语义） | find_document |
-| `clarify` | 意图模糊或信息不足，应澄清问题 | LLM + 澄清约束骨架 | 所有 tool |
-| `conservative_answer` | 证据不足，保守回答 | LLM + 保守回答约束骨架 | answer_from_documents |
+| `answer_with_ranked_chunks` | 证据充分，LLM + 证据注入回答 | LLM + 证据注入（强证据附加引用约束） | answer_from_documents / verify_fact |
+| `return_document_candidates` | 多候选冲突/弱证据多文档，列出候选供确认 | **短路 LLM**，直接格式化候选列表 | answer_from_documents / find_document |
+| `ask_for_clarification` | 意图模糊或信息不足，应澄清问题 | LLM + 澄清约束骨架 | 所有 tool |
+| `decline_due_to_insufficient_evidence` | 无任何可用证据，保守回答 | LLM + 保守回答约束骨架 | answer_from_documents / verify_fact |
+
+> **历史说明**：旧 `suggested_response_mode` 枚举（`direct_answer` / `candidate_list` / `clarify` / `conservative_answer` / `answer_with_citation` / `single_document`）与旧布尔字段 `should_clarify` / `should_answer_conservatively` 已于审计 round04 删除。下游统一以 `workflow_action` 为主动作信号。chat-service 内部通过 `_resolveConstraintMode()` 将 action 映射到约束模式名，该映射为内部实现细节不暴露到 tool 契约。|
 
 ### `strategy` 枚举
 
@@ -161,8 +161,7 @@
 | `evidence_sufficiency` | 返回结果 | 质量监控 |
 | `reason_codes` | 返回结果 | 失败原因分析 |
 | `document_count` | 返回结果 | 召回量监控 |
-| `should_clarify` | 返回结果 | 降级率监控 |
-| `suggested_response_mode` | 返回结果 | 回答模式分布 |
+| `workflow_action` | 返回结果 | 回答动作分布（round04 起替代旧 should_clarify / suggested_response_mode） |
 | `backfill_triggered` | 返回结果 | identity 回补触发率 |
 | `backfill_doc_count` | 返回结果 | identity 回补文档数 |
 | `identity_distribution` | 返回结果 | 各文档 identity_confidence / source 分布 |
@@ -185,4 +184,5 @@ Phase 3: compare_documents / search_within_document
 | `ragContext` | ✅ 已清除 | 无需处理 |
 | `knowledge_config` | ⚠️ 历史兼容读取 | expert.controller 保留读取，标注 `@deprecated` |
 | "知识策略开关" | ✅ 已清除 | 无需处理 |
+| `suggested_response_mode` / `should_clarify` / `should_answer_conservatively` | ✅ 已删除 (Round 04) | 统一由 `workflow_action` 替代 |
 | "builtin tool" | ⚠️ 过渡态 | 内部实现保留，文档统一用 "系统级 skill" |

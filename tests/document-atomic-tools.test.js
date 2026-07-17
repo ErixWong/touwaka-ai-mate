@@ -64,6 +64,34 @@ function makeAtomicTools(opts = {}) {
   });
 }
 
+// audit-round04 变更项 F：6 chunk 的测试数据集（3 个 doc × 2 chunk），供排序测试复用
+function makeChunks3x2(scoreOffsets = []) {
+  const docs = [
+    { id: 'd1', title: 'GB 4785', type: 'standard' },
+    { id: 'd2', title: 'QCT 625', type: 'standard' },
+    { id: 'd3', title: 'GB/T 4208', type: 'standard' },
+  ];
+  const chunks = [];
+  for (const doc of docs) {
+    for (let i = 0; i < 2; i++) {
+      chunks.push({
+        chunk_id: `${doc.id}_c${i}`,
+        document_id: doc.id,
+        document_title: doc.title,
+        chunk_title: `条款${i + 1}`,
+        content: `${doc.title}的第${i + 1}部分内容`,
+        score: scoreOffsets.length > 0 ? scoreOffsets[chunks.length] : 0.5,
+        doc_type: doc.type,
+        collection_id: 'col-1',
+        revision_id: `${doc.id}_r1`,
+        outline_id: `o_${doc.id}`,
+        seq: i + 1,
+      });
+    }
+  }
+  return chunks;
+}
+
 // ============================================================
 // 1. search_documents_by_metadata
 // ============================================================
@@ -370,6 +398,47 @@ async function testResolveDocumentsEmptyChunks() {
 }
 
 // ============================================================
+// audit-round04 变更项 F：reranker 契约测试
+// ============================================================
+
+function testDefaultHeuristicRanking() {
+  // 验证无 reranker 注入时，默认启发式公式正常工作
+  const tools = makeAtomicTools();
+  const chunks = makeChunks3x2();
+  const r = tools.rankChunksForQuestion({ question: '违约金 合同', chunks });
+  assert(r.success, 'AT-RR-01.1 rank success');
+  assertEqual(r.total, 6, 'AT-RR-01.2 total=6');
+  // 第一条应是最高分（前2条命中“合同”关键词，需全覆盖）
+  assert(r.chunks[0].rank_score > 0, 'AT-RR-01.3 top chunk has positive score');
+  assert(r.chunks[0].rank_signals, 'AT-RR-01.4 has rank_signals');
+  assert(r.chunks[0].rank_signals.vector_score > 0, 'AT-RR-01.5 vector_score > 0');
+  assert(r.chunks[0].rank_score >= r.chunks[5].rank_score, 'AT-RR-01.6 descending order');
+}
+
+function testInjectedRerankerOverridesDefault() {
+  // 验证注入自定义 reranker 后，排序使用 computeScore 结果
+  // DocumentAtomicTools(db, configLoader, deps)，deps 包含 reranker
+  const deps = {
+    searchService: makeMockSearchService(),
+    recallService: makeMockRecallService(),
+    accessService: makeMockAccessService(),
+    reranker: { computeScore(_chunk, signals) { return signals.vector_score * 2; } },
+  };
+  const tools = new DocumentAtomicTools(makeMockDb(), null, deps);
+  const chunks = makeChunks3x2();
+
+  // 手动注入不同 vector_score，验证 reranker 生效
+  const modifiedChunks = chunks.map((c, i) => ({ ...c, score: (i % 2 === 1) ? 0.9 : 0.1 }));
+  const r = tools.rankChunksForQuestion({ question: '合同', chunks: modifiedChunks });
+  assert(r.success, 'AT-RR-02.1 rank success');
+  // 自定义 reranker 用 vector_score*2，前3条 odd 行 score=0.9*2=1.8 应排前3
+  assert(r.chunks[0].rank_score > r.chunks[3].rank_score, 'AT-RR-02.2 custom reranker drives ordering');
+  // 验证 rank_score 在合理范围
+  assert(Math.abs(r.chunks[0].rank_score - 1.8) < 0.01,
+    'AT-RR-02.3 custom reranker score ~=1.8 (0.9*2)');
+}
+
+// ============================================================
 // 运行
 // ============================================================
 
@@ -394,6 +463,8 @@ async function main() {
   testRankChunksNullChunks();
   await testResolveDocumentsFromChunks();
   await testResolveDocumentsEmptyChunks();
+  testDefaultHeuristicRanking();
+  testInjectedRerankerOverridesDefault();
 
   console.log(`\n${'='.repeat(40)}`);
   console.log(`  ✅ 通过: ${passed}  |  ❌ 失败: ${failed}`);

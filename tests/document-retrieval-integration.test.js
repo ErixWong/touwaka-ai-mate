@@ -135,7 +135,8 @@ async function testStrongEvidenceSingleDoc() {
   assertEqual(r.documents.length, 1, 'INT-01.4 1 doc');
   assert(r.documents[0].evidence_count >= 3, 'INT-01.5 ≥3 evidence items');
   assert(r.steps.map(s => s.step).includes('evidence_packing'), 'INT-01.6 evidence_packing visible');
-  assert(!r.should_clarify, 'INT-01.7 should not clarify');
+  // audit-round04 变更项 A：should_clarify 已删除，用 workflow_action 替代
+  assertEqual(r.action, 'answer_with_ranked_chunks', 'INT-01.7 action not ask_for_clarification');
 }
 
 // ============================================================
