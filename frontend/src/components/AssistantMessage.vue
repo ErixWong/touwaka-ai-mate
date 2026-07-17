@@ -16,6 +16,7 @@
         :result-formatted="toolParser.formatToolCallResult(toolCall)"
         :result-preview="toolCall.result_preview"
         :tool-message-id="toolCall.tool_message_id ? String(toolCall.tool_message_id) : undefined"
+        :atomic-steps="toolCall.atomic_steps"
         :embedded="true"
         @jump-to-message="$emit('jumpToMessage', $event)"
       />

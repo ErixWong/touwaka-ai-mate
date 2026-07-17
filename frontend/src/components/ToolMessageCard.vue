@@ -17,6 +17,14 @@
           </svg>
         </span>
       </div>
+      <div v-if="atomicSteps && atomicSteps.length > 0" class="tool-atomic-trail">
+        <span class="atomic-trail-label">⛓️</span>
+        <span
+          v-for="(step, si) in atomicSteps"
+          :key="`step-${si}`"
+          class="atomic-step-chip"
+        >{{ step }}<span v-if="si < atomicSteps.length - 1" class="atomic-sep">→</span></span>
+      </div>
       <div v-if="context" class="tool-context-line">
         <span class="tool-context-icon">💭</span>
         <span class="tool-context-text">{{ context }}</span>
@@ -60,6 +68,8 @@ defineProps<{
   resultPreview?: string
   toolMessageId?: string
   embedded?: boolean
+  /** audit-round06：原子工具执行步骤列表 */
+  atomicSteps?: string[]
 }>()
 
 defineEmits<{
@@ -188,6 +198,39 @@ const addLineNumbers = (code: string): string => {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+}
+
+/* audit-round06：原子工具执行轨迹 */
+.tool-atomic-trail {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.atomic-trail-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.atomic-step-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--code-bg, #2d2d2d);
+  color: #a0d9f7;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  white-space: nowrap;
+}
+
+.atomic-sep {
+  color: var(--text-hint, #999);
+  margin-left: 4px;
+  font-size: 10px;
 }
 
 .tool-context-icon {
