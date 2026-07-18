@@ -135,9 +135,9 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     sseHandler.clearSendingTimeout()
 
-    // 标记仅用于停止确认窗口期的 SSE 抑制：
-    // - 成功路径：后端广播 stopped 事件后由 useSSEHandler 清除
-    // - 失败路径：必须在下方回滚，禁止静默吞掉后续 SSE
+    // 标记仅用于「点击停止 → 本地终态写入」窗口期的 SSE 抑制：
+    // - 成功/409终态路径：本函数结束前就地清除（stopped 广播中的清除仅为幂等冗余）
+    // - 失败路径：必须回滚，禁止静默吞掉后续 SSE
     if (requestId) {
       chatStore.markRequestManuallyStopped(requestId)
     }
@@ -145,7 +145,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     try {
       if (!requestId) return
       await messageApi.stopGeneration(requestId)
-      // 成功路径：标记保留至后端 stopped 广播到达，由 useSSEHandler 清除
+      // 停止已被后端接受，走下方本地终态收口
     } catch (error) {
       if (error instanceof APIError && error.status === 409 && requestId) {
         try {
@@ -158,11 +158,37 @@ export function useChatSession(options: UseChatSessionOptions) {
           }
           // 409 + DB 已终态：不会再有 stopped 广播，就地清除标记并按 DB 状态收口
           chatStore.clearManuallyStoppedRequest(requestId)
+
+          if (requestStatus.status === 'completed') {
+            // completed 语义收口：从 DB 同步最终 assistant 消息（最终内容/metadata/真实 ID），
+            // 不得以流式中间态内容冒充最终回答
+            let synced = false
+            if (requestStatus.assistant_message_id) {
+              synced = await sseHandler.replaceTempMessagesWithDb(requestStatus.assistant_message_id, requestId)
+            }
+            if (!synced && streamingAssistant) {
+              // 降级：DB 同步失败时保留本地内容按 completed 收口，由 heartbeat 增量同步事后纠正
+              chatStore.updateMessageContent(
+                streamingAssistant.id,
+                streamingContent.value || streamingAssistant.content || '',
+                'completed'
+              )
+              chatStore.updateMessageMetadata(streamingAssistant.id, {
+                recovering: false,
+                recovery_attempt: 0,
+                recovery_round: null,
+              })
+            }
+            chatStore.setCurrentStreaming(null)
+            return
+          }
+
+          // stopped：停止语义下本地累计内容即最终内容
           if (streamingAssistant) {
             chatStore.updateMessageContent(
               streamingAssistant.id,
               streamingContent.value || streamingAssistant.content || '',
-              requestStatus.status === 'completed' ? 'completed' : 'stopped'
+              'stopped'
             )
             chatStore.updateMessageMetadata(streamingAssistant.id, {
               recovering: false,
@@ -201,6 +227,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         recovery_round: null,
       })
       chatStore.setCurrentStreaming(null)
+    }
+
+    // 本地终态写入后标记即完成使命：消息已非 streaming，晚到 SSE 自然落空。
+    // 就地清除，标记生命周期收窄为「点击停止 → 本地终态写入」窗口，
+    // 不再依赖 stopped 广播作为唯一清理路径（事件处理器中的清除保留为幂等冗余）。
+    if (requestId) {
+      chatStore.clearManuallyStoppedRequest(requestId)
     }
   }
 

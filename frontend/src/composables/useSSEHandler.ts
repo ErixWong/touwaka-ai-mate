@@ -573,6 +573,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
     lastKnownMessageId,
     handleSSEEvent,
     handleCompleteEvent,
+    replaceTempMessagesWithDb,
     setSendingTimeoutProtection,
     clearSendingTimeout,
     detectAndEmitSkillEvents,
