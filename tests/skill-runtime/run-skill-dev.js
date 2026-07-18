@@ -12,7 +12,7 @@
  * node tests/skill-runtime/run-skill-dev.js xlsx excel_read --path=test.xlsx
  *
  * 环境变量：
- * - API_BASE: API 地址，默认 http://localhost:3000
+ * - API_BASE: API 地址，默认 http://localhost:3017
  * - USER_ACCESS_TOKEN: 用户访问令牌（可选，脚本会自动生成管理员 token）
  * - JWT_SECRET: JWT 密钥，默认 your-secret-key-change-in-production
  *
@@ -35,7 +35,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://localhost:3017';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 let USER_ACCESS_TOKEN = process.env.USER_ACCESS_TOKEN || '';
 

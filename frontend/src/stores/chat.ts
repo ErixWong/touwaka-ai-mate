@@ -19,6 +19,7 @@ export const useChatStore = defineStore('chat', () => {
   const requestToAssistantMessageId = reactive<Map<string, string>>(new Map())
   const requestToUserMessageId = reactive<Map<string, string>>(new Map())
   const userMessageForAssistant = reactive<Map<string, string>>(new Map())
+  const manuallyStoppedRequestIds = reactive<Set<string>>(new Set())
   const currentStreamingMessageId = ref<string | null>(null)
 
   const sortedMessages = computed(() => messages.value)
@@ -103,6 +104,18 @@ export const useChatStore = defineStore('chat', () => {
 
   const setCurrentStreaming = (messageId: string | null) => {
     currentStreamingMessageId.value = messageId
+  }
+
+  const markRequestManuallyStopped = (requestId: string) => {
+    manuallyStoppedRequestIds.add(requestId)
+  }
+
+  const clearManuallyStoppedRequest = (requestId: string) => {
+    manuallyStoppedRequestIds.delete(requestId)
+  }
+
+  const isRequestManuallyStopped = (requestId?: string | null) => {
+    return !!requestId && manuallyStoppedRequestIds.has(requestId)
   }
 
   const insertMessageSorted = (message: Message) => {
@@ -506,6 +519,9 @@ export const useChatStore = defineStore('chat', () => {
     getUserMessageByRequestId,
     getStreamingAssistant,
     setCurrentStreaming,
+    markRequestManuallyStopped,
+    clearManuallyStoppedRequest,
+    isRequestManuallyStopped,
 
     loadMessagesByExpert,
     loadMoreMessages,

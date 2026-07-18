@@ -71,6 +71,8 @@ export default {
     placeholder: '请输入消息...',
     send: '发送',
     thinking: '正在思考...',
+    recovering: '连接中断，正在恢复生成',
+    recoveringAttempt: '连接中断，正在恢复生成（第 {n} 次）',
     stopGenerate: '停止生成',
     stopped: '已停止',
     emptyState: '发送消息开始与专家对话',

@@ -17,6 +17,45 @@ import Utils from '../../lib/utils.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getPermissionService } from '../services/permission.service.js';
 
+/**
+ * request runtime 相位定义（内存态状态机，与 DB chat_requests.status 解耦）
+ *
+ * 状态转移图：
+ *   accepted  -> running | stopping | stopped | failed
+ *   running   -> recovering | stopping | stopped | completed | failed
+ *   recovering-> running | stopping | stopped | failed
+ *   stopping  -> stopped
+ *   stopped / completed / failed 为终态，不再迁出
+ */
+const RUNTIME_PHASE = {
+  ACCEPTED: 'accepted',
+  RUNNING: 'running',
+  RECOVERING: 'recovering',
+  STOPPING: 'stopping',
+  STOPPED: 'stopped',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+};
+
+const RUNTIME_TERMINAL_PHASES = new Set([
+  RUNTIME_PHASE.STOPPED,
+  RUNTIME_PHASE.COMPLETED,
+  RUNTIME_PHASE.FAILED,
+]);
+
+const RUNTIME_ALLOWED_TRANSITIONS = {
+  [RUNTIME_PHASE.ACCEPTED]: [RUNTIME_PHASE.RUNNING, RUNTIME_PHASE.STOPPING, RUNTIME_PHASE.STOPPED, RUNTIME_PHASE.FAILED],
+  [RUNTIME_PHASE.RUNNING]: [RUNTIME_PHASE.RECOVERING, RUNTIME_PHASE.STOPPING, RUNTIME_PHASE.STOPPED, RUNTIME_PHASE.COMPLETED, RUNTIME_PHASE.FAILED],
+  [RUNTIME_PHASE.RECOVERING]: [RUNTIME_PHASE.RUNNING, RUNTIME_PHASE.STOPPING, RUNTIME_PHASE.STOPPED, RUNTIME_PHASE.FAILED],
+  [RUNTIME_PHASE.STOPPING]: [RUNTIME_PHASE.STOPPED],
+  [RUNTIME_PHASE.STOPPED]: [],
+  [RUNTIME_PHASE.COMPLETED]: [],
+  [RUNTIME_PHASE.FAILED]: [],
+};
+
+// stopping 状态超过该时长未被执行管线收口时，允许清扫（防御性兜底）
+const RUNTIME_STOPPING_SWEEP_MS = 5 * 60 * 1000;
+
 class StreamController {
   constructor(db, chatService) {
     this.db = db;
@@ -29,7 +68,26 @@ class StreamController {
     this.permissionService = getPermissionService(db);
     // 存储活跃的 SSE 连接：Map<expertId, Set<{userId, res}>>
     this.expertConnections = new Map();
-    // 存储活跃请求：Map<requestId, {expertId, userId, stopped}>
+    // 活跃请求的统一 runtime 真相源：Map<requestId, RequestRuntimeState>
+    // RequestRuntimeState = {
+    //   request_id, expert_id, user_id,
+    //   phase, stop_requested, round, recovery_attempt,
+    //   has_active_transport, round_snapshot_ref,
+    //   created_at, updated_at
+    // }
+    //
+    // 状态真相源分层约定：
+    // - activeRequests：request 生命周期的内存真相源（phase / stop_requested 驱动一切决策）
+    // - requestStore：chat_requests 表的读缓存投影，不是独立真相源
+    // - chat_requests 表：持久化终态（accepted/running/completed/failed/stopped/timeout），
+    //   recovering/stopping 为内存态相位，不落库
+    //
+    // 字段职责：
+    // - phase / stop_requested：决策字段，stop/recover/complete/error 全部以此为依据
+    // - has_active_transport：观测字段（chat-service 经共享引用维护，stopRequest abort 后回填），
+    //   仅用于日志与调试，不作为停止或恢复决策依据
+    // - round_snapshot_ref：观测元信息 { round, taken_at }；真实快照按分层保留在
+    //   chat-service._executeLLMRounds 闭包内，此处不复制消息体
     this.activeRequests = new Map();
     // 存储聊天请求状态：Map<requestId, requestRecord>
     this.requestStore = new Map();
@@ -42,6 +100,106 @@ class StreamController {
     this.eventSequences = new Map();
     // 最新游标：Map<expertId:userId, { latest_message_id: string | null }>
     this.latestCursors = new Map();
+  }
+
+  // ============================================================
+  // Request Runtime State Store（统一状态真相源）
+  // ============================================================
+
+  /**
+   * 创建 request runtime state（初始相位 accepted）
+   */
+  _createRuntimeState(request_id, { expert_id, user_id }) {
+    const now = new Date().toISOString();
+    const state = {
+      request_id,
+      expert_id,
+      user_id,
+      phase: RUNTIME_PHASE.ACCEPTED,
+      stop_requested: false,
+      round: 0,
+      recovery_attempt: 0,
+      has_active_transport: false,
+      round_snapshot_ref: null,
+      created_at: now,
+      updated_at: now,
+    };
+    this.activeRequests.set(request_id, state);
+    this._sweepStaleRuntimeStates();
+    return state;
+  }
+
+  _getRuntimeState(request_id) {
+    return this.activeRequests.get(request_id) || null;
+  }
+
+  /**
+   * request 级停止信号：执行管线各检查点统一读取该字段
+   */
+  _isStopRequested(request_id) {
+    return this.activeRequests.get(request_id)?.stop_requested === true;
+  }
+
+  /**
+   * runtime 相位转移（唯一入口）
+   * - 终态与 stopping 之后的非法迁出会被忽略，避免停止语义被覆盖
+   * - 其他非预期转移仅告警并放行，不阻塞执行管线
+   */
+  _transitionRuntimeState(request_id, nextPhase, patch = {}) {
+    const state = this.activeRequests.get(request_id);
+    if (!state) return null;
+
+    const prevPhase = state.phase;
+    const cleanPatch = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) cleanPatch[key] = value;
+    }
+
+    if (prevPhase === nextPhase) {
+      Object.assign(state, cleanPatch, { updated_at: new Date().toISOString() });
+      return state;
+    }
+
+    const allowed = RUNTIME_ALLOWED_TRANSITIONS[prevPhase] || [];
+    if (!allowed.includes(nextPhase)) {
+      // 终态与 stopping 是停止语义的保护区，非法迁出直接忽略
+      if (RUNTIME_TERMINAL_PHASES.has(prevPhase) || prevPhase === RUNTIME_PHASE.STOPPING) {
+        logger.debug(`[StreamController] 忽略保护区相位迁出: ${request_id} ${prevPhase} -> ${nextPhase}`);
+        return state;
+      }
+      logger.warn(`[StreamController] 非预期相位转移（仍放行）: ${request_id} ${prevPhase} -> ${nextPhase}`);
+    }
+
+    Object.assign(state, cleanPatch, {
+      phase: nextPhase,
+      updated_at: new Date().toISOString(),
+    });
+    if (RUNTIME_TERMINAL_PHASES.has(nextPhase)) {
+      state.has_active_transport = false;
+    }
+
+    logger.info(`[StreamController] request 相位转移: ${request_id} ${prevPhase} -> ${nextPhase}`, {
+      round: state.round,
+      recovery_attempt: state.recovery_attempt,
+      stop_requested: state.stop_requested,
+    });
+    return state;
+  }
+
+  /**
+   * 清扫长期停留在 stopping 的残留 entry（执行管线正常会自行收口删除，这里仅兜底）
+   */
+  _sweepStaleRuntimeStates() {
+    const now = Date.now();
+    for (const [requestId, state] of this.activeRequests.entries()) {
+      if (state.phase !== RUNTIME_PHASE.STOPPING) continue;
+      const updatedAt = Date.parse(state.updated_at || 0);
+      if (Number.isNaN(updatedAt)) continue;
+      if (now - updatedAt > RUNTIME_STOPPING_SWEEP_MS) {
+        logger.warn(`[StreamController] 清扫残留 stopping 状态: ${requestId}`);
+        this.activeRequests.delete(requestId);
+      }
+    }
   }
 
   async _createRequestRecord(data) {
@@ -570,7 +728,8 @@ class StreamController {
     }
 
     logger.info(`Broadcasting to ${userConnections.length} connection(s) for user: ${user_id}`);
-    this.activeRequests.set(request_id, { expert_id, user_id, stopped: false });
+    const runtimeState = this._createRuntimeState(request_id, { expert_id, user_id });
+    this._transitionRuntimeState(request_id, RUNTIME_PHASE.RUNNING);
     await this._updateRequestRecord(request_id, {
       status: 'running',
       topic_id,
@@ -593,6 +752,8 @@ class StreamController {
           session,  // 直接传递 session 对象，chatService 只透传
           skip_user_message_persist,
           existing_user_message_id,
+          shouldStop: () => this._isStopRequested(request_id),
+          runtimeState,  // 共享 runtime 真相源，chatService 更新 round/recovery 等观测字段
         },
         // onDelta - 流式数据回调（广播到所有连接）
         (delta) => {
@@ -643,6 +804,23 @@ class StreamController {
               request_id,
               ...delta,
             });
+          } else if (delta.type === 'recovering') {
+            // 状态机统一入口：running -> recovering
+            this._transitionRuntimeState(request_id, RUNTIME_PHASE.RECOVERING, {
+              round: typeof delta.round === 'number' ? delta.round : undefined,
+              recovery_attempt: typeof delta.attempt === 'number' ? delta.attempt : undefined,
+            });
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'recovering', {
+              request_id,
+              ...delta,
+            });
+          } else if (delta.type === 'recovered') {
+            // 状态机统一入口：recovering -> running（当前轮已重新发起）
+            this._transitionRuntimeState(request_id, RUNTIME_PHASE.RUNNING);
+            this._broadcastToConnections(expert_id, user_id, userConnections, 'recovered', {
+              request_id,
+              ...delta,
+            });
           }
         },
         // onComplete - 完成回调（广播到所有连接）
@@ -653,12 +831,16 @@ class StreamController {
             assistant_message_id: result.message?.id || null,
             user_message_id: result.user_message_id || existing_user_message_id || null,
           });
-          const activeRequest = this.activeRequests.get(request_id);
-          if (activeRequest?.stopped) {
+          const state = this._getRuntimeState(request_id);
+          if (state?.stop_requested) {
+            // stopped 是强终态：complete 不得覆盖停止语义
+            logger.warn('[StreamController] onComplete 被忽略：request 已接受停止命令', { request_id });
+            this._transitionRuntimeState(request_id, RUNTIME_PHASE.STOPPED);
             this.activeRequests.delete(request_id);
             return;
           }
 
+          this._transitionRuntimeState(request_id, RUNTIME_PHASE.COMPLETED);
           if (result.message?.id) {
             this._updateLatestCursor(expert_id, user_id, result.message.id);
           }
@@ -685,8 +867,10 @@ class StreamController {
             user_id,
             message: error.message || '流式处理失败',
           });
-          const activeRequest = this.activeRequests.get(request_id);
-          if (activeRequest?.stopped || error.message === 'Request aborted by user') {
+          const state = this._getRuntimeState(request_id);
+          if (state?.stop_requested || error.message === 'Request aborted by user') {
+            // 停止命令已被接受（或 transport abort 回传）：统一收口为 stopped，不再广播 error
+            this._transitionRuntimeState(request_id, RUNTIME_PHASE.STOPPED);
             this._updateRequestRecord(request_id, {
               status: 'stopped',
               error_message: '请求已停止',
@@ -695,6 +879,7 @@ class StreamController {
             this.activeRequests.delete(request_id);
             return;
           }
+          this._transitionRuntimeState(request_id, RUNTIME_PHASE.FAILED);
           this._updateRequestRecord(request_id, {
             status: 'failed',
             error_message: error.message || '流式处理失败',
@@ -709,6 +894,18 @@ class StreamController {
       );
     } catch (error) {
       logger.error('Process message error:', error);
+      const state = this._getRuntimeState(request_id);
+      if (state?.stop_requested || error.message === 'Request aborted by user') {
+        this._transitionRuntimeState(request_id, RUNTIME_PHASE.STOPPED);
+        await this._updateRequestRecord(request_id, {
+          status: 'stopped',
+          error_message: '请求已停止',
+          completed_at: new Date().toISOString(),
+        });
+        this.activeRequests.delete(request_id);
+        return;
+      }
+      this._transitionRuntimeState(request_id, RUNTIME_PHASE.FAILED);
       this._updateRequestRecord(request_id, {
         status: 'failed',
         error_message: error.message || '处理失败',
@@ -722,26 +919,67 @@ class StreamController {
     }
   }
 
+  /**
+   * 停止请求（request 级取消，而非 transport 级 abort）
+   *
+   * 语义：
+   * 1. 先将 runtime state 切换为 stopping 并设置 stop_requested（停止命令已被接受）
+   * 2. 若当前存在活跃 transport，再执行 abort（仅为实现动作之一，不定义 stop 成败）
+   * 3. 若处于 recovery backoff 或其他检查点之间，执行管线会在下一检查点读取 stop_requested 退出
+   * 4. 统一进入 stopped：广播 stopped 事件 + DB 收口
+   *
+   * 返回值反映“request 是否已接受停止命令”，而非底层 socket 是否存在。
+   */
   async stopRequest(request_id, user_id) {
-    const activeRequest = this.activeRequests.get(request_id);
-    if (!activeRequest || activeRequest.user_id !== user_id) {
+    const state = this._getRuntimeState(request_id);
+
+    if (!state) {
+      // 内存态缺失（如进程重启）：回退到 DB 记录做 request 级收口
+      const record = await this._getRequestRecord(request_id);
+      if (!record || record.user_id !== user_id) {
+        return { success: false, aborted: false, expert_id: null };
+      }
+      if (!['accepted', 'running'].includes(record.status)) {
+        return { success: false, aborted: false, expert_id: record.expert_id };
+      }
+
+      await this._updateRequestRecord(request_id, {
+        status: 'stopped',
+        error_message: '请求已停止',
+        completed_at: new Date().toISOString(),
+      });
+      const recordConnections = this._getUserConnections(record.expert_id, user_id);
+      this._broadcastToConnections(record.expert_id, user_id, recordConnections, 'stopped', { request_id });
+      logger.info(`[StreamController] stopRequest 通过 DB 收口（无内存态）: ${request_id}`);
+      return { success: true, aborted: false, expert_id: record.expert_id };
+    }
+
+    if (state.user_id !== user_id) {
       return { success: false, aborted: false, expert_id: null };
     }
 
-    activeRequest.stopped = true;
-    const aborted = await this.chatService.abortRequest(activeRequest.expert_id, request_id);
-
-    if (!aborted) {
-      activeRequest.stopped = false;
-      return {
-        success: false,
-        aborted: false,
-        expert_id: activeRequest.expert_id,
-      };
+    if (state.stop_requested) {
+      // 停止命令已被接受，幂等返回，不重复广播
+      return { success: true, aborted: false, expert_id: state.expert_id, already_stopping: true };
     }
 
-    const userConnections = this._getUserConnections(activeRequest.expert_id, user_id);
-    this._broadcastToConnections(activeRequest.expert_id, user_id, userConnections, 'stopped', { request_id });
+    // 1. 先改 runtime state：request 级取消已被接受
+    this._transitionRuntimeState(request_id, RUNTIME_PHASE.STOPPING, { stop_requested: true });
+
+    // 2. 再尝试 abort 当前活跃 transport（best-effort）
+    let aborted = false;
+    try {
+      aborted = await this.chatService.abortRequest(state.expert_id, request_id);
+    } catch (error) {
+      logger.warn(`[StreamController] stopRequest abort transport 失败（不影响停止语义）: ${error.message}`);
+    }
+    state.has_active_transport = false;
+
+    // 3. 统一进入 stopped
+    this._transitionRuntimeState(request_id, RUNTIME_PHASE.STOPPED);
+
+    const userConnections = this._getUserConnections(state.expert_id, user_id);
+    this._broadcastToConnections(state.expert_id, user_id, userConnections, 'stopped', { request_id });
 
     await this._updateRequestRecord(request_id, {
       status: 'stopped',
@@ -749,12 +987,10 @@ class StreamController {
       completed_at: new Date().toISOString(),
     });
 
-    this.activeRequests.delete(request_id);
-
     return {
       success: true,
-      aborted: true,
-      expert_id: activeRequest.expert_id,
+      aborted,
+      expert_id: state.expert_id,
     };
   }
 

@@ -841,7 +841,7 @@ class ApiServer {
   /**
    * 启动服务器
    */
-  async start(port = 3000) {
+  async start(port = 3017) {
     try {
       await this.initializeDatabase();
       logger.info('Database connected');
@@ -960,7 +960,7 @@ class ApiServer {
 
 // 启动服务器
 const server = new ApiServer();
-server.start(process.env.API_PORT || 3000);
+server.start(process.env.API_PORT || 3017);
 
 // 优雅关闭
 process.on('SIGINT', async () => {

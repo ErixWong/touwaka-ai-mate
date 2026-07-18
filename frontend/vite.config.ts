@@ -37,22 +37,22 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3017',
         changeOrigin: true,
       },
       // 附件静态文件服务代理
       '/attach': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3017',
         changeOrigin: true,
       },
       // 任务静态文件服务代理
       '/task-static': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3017',
         changeOrigin: true,
       },
       // SSE 流式接口需要单独配置，禁用缓冲
       '/api/chat/stream': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3017',
         changeOrigin: true,
         // 禁用代理缓冲，确保 SSE 事件实时转发
         configure: (proxy) => {

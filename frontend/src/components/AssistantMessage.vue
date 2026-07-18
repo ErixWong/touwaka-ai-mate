@@ -46,6 +46,10 @@
       v-html="formattedHtml"
     ></div>
 
+    <div v-if="isRecovering" class="recovering-indicator" data-testid="assistant-recovering-indicator">
+      {{ recoveringText }}
+    </div>
+
     <div v-if="message.status === 'streaming'" class="streaming-indicator">
       <span class="dot"></span>
       <span class="dot"></span>
@@ -105,6 +109,16 @@ const filteredContent = computed(() => {
 
 const formattedHtml = computed(() => {
   return formatter.formatStreamingMessage(props.message, filteredContent.value)
+})
+
+const isRecovering = computed(() => props.message.metadata?.recovering === true)
+
+const recoveringText = computed(() => {
+  const attempt = props.message.metadata?.recovery_attempt
+  if (typeof attempt === 'number' && attempt > 0) {
+    return t('chat.recoveringAttempt', { n: attempt }) || `连接中断，正在恢复生成（第 ${attempt} 次）`
+  }
+  return t('chat.recovering') || '连接中断，正在恢复生成'
 })
 
 const formattedTime = computed(() => {
@@ -218,6 +232,12 @@ const formattedTime = computed(() => {
   display: inline-flex;
   gap: 4px;
   margin-left: 8px;
+}
+
+.recovering-indicator {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--warning-color, #c27c00);
 }
 
 .streaming-indicator .dot {

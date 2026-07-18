@@ -6,6 +6,7 @@ import { useConnection } from '@/composables/useConnection'
 import { useMessageSending } from '@/composables/useMessageSending'
 import { useSSEHandler } from '@/composables/useSSEHandler'
 import { messageApi } from '@/api/services'
+import { APIError } from '@/api/client'
 import type { ChatMessage } from '@/components/ChatWindow.vue'
 
 export interface UseChatSessionOptions {
@@ -129,23 +130,55 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     console.log('[useChatSession] Stopping generation...')
 
-    const assistant = chatStore.getStreamingAssistant()
-    if (assistant) {
+    const streamingAssistant = chatStore.getStreamingAssistant()
+    const requestId = streamingAssistant?.request_id
+
+    if (requestId) {
+      chatStore.markRequestManuallyStopped(requestId)
+    }
+
+    if (streamingAssistant) {
       chatStore.updateMessageContent(
-        assistant.id,
+        streamingAssistant.id,
         streamingContent.value || '',
         'stopped'
       )
+      chatStore.updateMessageMetadata(streamingAssistant.id, {
+        recovering: false,
+        recovery_attempt: 0,
+        recovery_round: null,
+      })
+      chatStore.setCurrentStreaming(null)
     }
 
     sseHandler.clearSendingTimeout()
 
     try {
-      const streamingAssistant = chatStore.getStreamingAssistant()
-      const requestId = streamingAssistant?.request_id
       if (!requestId) return
       await messageApi.stopGeneration(requestId)
     } catch (error) {
+      if (error instanceof APIError && error.status === 409 && requestId) {
+        try {
+          const requestStatus = await messageApi.getChatRequestStatus(requestId)
+          if (requestStatus.status === 'stopped') {
+            if (streamingAssistant) {
+              chatStore.updateMessageContent(
+                streamingAssistant.id,
+                streamingContent.value || streamingAssistant.content || '',
+                'stopped'
+              )
+            }
+            chatStore.clearManuallyStoppedRequest(requestId)
+            return
+          }
+          if (requestStatus.status === 'completed') {
+            chatStore.clearManuallyStoppedRequest(requestId)
+            return
+          }
+        } catch (statusError) {
+          console.warn('[useChatSession] Failed to reconcile stop status:', statusError)
+        }
+      }
       console.warn('[useChatSession] Stop generation API not available:', error)
     }
   }

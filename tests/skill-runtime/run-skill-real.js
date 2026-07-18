@@ -35,7 +35,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://localhost:3017';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const DATA_BASE_PATH = process.env.DATA_BASE_PATH || path.join(__dirname, '..', '..', 'data');
 const USER_ID = process.env.USER_ID || 'test-user';

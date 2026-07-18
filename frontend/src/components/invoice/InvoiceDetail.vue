@@ -148,8 +148,8 @@ async function onViewDuplicateSource() {
       <div class="detail-card">
         <div class="card-title">
           <span>发票详情</span>
-          <el-tag v-if="detail.status" :type="getDisplayStatus(detail).type || 'info'" size="small">
-            {{ getDisplayStatus(detail).label }}
+          <el-tag v-if="detail.status" :type="getDisplayStatus(detail)?.type || 'info'" size="small">
+            {{ getDisplayStatus(detail)?.label }}
           </el-tag>
         </div>
 
