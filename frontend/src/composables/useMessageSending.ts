@@ -260,5 +260,6 @@ export function useMessageSending(options: UseMessageSendingOptions) {
 
     sendMessage,
     retryMessage,
+    syncCompletedRequest,
   }
 }

@@ -55,6 +55,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
   const flushBuffers = () => {
     const assistant = getStreamingAssistant()
     if (!assistant) {
+      // 无流式目标时缓冲即孤儿数据：必须丢弃，避免残留内容污染下一次流式会话的首次 flush
+      contentBuffer = ''
+      reasoningBuffer = ''
       flushTimer = null
       return
     }
@@ -573,7 +576,6 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
     lastKnownMessageId,
     handleSSEEvent,
     handleCompleteEvent,
-    replaceTempMessagesWithDb,
     setSendingTimeoutProtection,
     clearSendingTimeout,
     detectAndEmitSkillEvents,

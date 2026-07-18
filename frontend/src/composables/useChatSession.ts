@@ -160,12 +160,10 @@ export function useChatSession(options: UseChatSessionOptions) {
           chatStore.clearManuallyStoppedRequest(requestId)
 
           if (requestStatus.status === 'completed') {
-            // completed 语义收口：从 DB 同步最终 assistant 消息（最终内容/metadata/真实 ID），
+            // completed 语义收口：复用 retry 恢复路径同款 syncCompletedRequest，
+            // 从 DB 同步最终 assistant 消息并显式移除临时消息（最终内容/metadata/真实 ID），
             // 不得以流式中间态内容冒充最终回答
-            let synced = false
-            if (requestStatus.assistant_message_id) {
-              synced = await sseHandler.replaceTempMessagesWithDb(requestStatus.assistant_message_id, requestId)
-            }
+            const synced = await messageSending.syncCompletedRequest(requestStatus, streamingAssistant?.id)
             if (!synced && streamingAssistant) {
               // 降级：DB 同步失败时保留本地内容按 completed 收口，由 heartbeat 增量同步事后纠正
               chatStore.updateMessageContent(
