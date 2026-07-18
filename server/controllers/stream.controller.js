@@ -53,8 +53,10 @@ const RUNTIME_ALLOWED_TRANSITIONS = {
   [RUNTIME_PHASE.FAILED]: [],
 };
 
-// stopping 状态超过该时长未被执行管线收口时，允许清扫（防御性兜底）
-const RUNTIME_STOPPING_SWEEP_MS = 5 * 60 * 1000;
+// stopping/终态条目正常由执行管线即时收口删除；超过该时长仍残留视为管线回调缺失，允许清扫。
+// 注意：TTL 必须保守（与请求最长执行时间同级），过早清扫会丢失 stop_requested 信号，
+// 导致 abort 失败后仍在执行的管线在下一检查点读不到停止命令。
+const RUNTIME_STALE_SWEEP_MS = 30 * 60 * 1000;
 
 class StreamController {
   constructor(db, chatService) {
@@ -187,16 +189,21 @@ class StreamController {
   }
 
   /**
-   * 清扫长期停留在 stopping 的残留 entry（执行管线正常会自行收口删除，这里仅兜底）
+   * 清扫残留 runtime state（执行管线正常会自行收口删除，这里仅兜底）：
+   * 覆盖 stopping 与 stopped/completed/failed 终态的残留条目，
+   * 统一使用保守 TTL（RUNTIME_STALE_SWEEP_MS），保证不会与仍在执行的管线竞争 stop_requested。
    */
   _sweepStaleRuntimeStates() {
     const now = Date.now();
     for (const [requestId, state] of this.activeRequests.entries()) {
-      if (state.phase !== RUNTIME_PHASE.STOPPING) continue;
+      const sweepable = state.phase === RUNTIME_PHASE.STOPPING || RUNTIME_TERMINAL_PHASES.has(state.phase);
+      if (!sweepable) continue;
+
       const updatedAt = Date.parse(state.updated_at || 0);
       if (Number.isNaN(updatedAt)) continue;
-      if (now - updatedAt > RUNTIME_STOPPING_SWEEP_MS) {
-        logger.warn(`[StreamController] 清扫残留 stopping 状态: ${requestId}`);
+
+      if (now - updatedAt > RUNTIME_STALE_SWEEP_MS) {
+        logger.warn(`[StreamController] 清扫残留 runtime state: ${requestId} (phase=${state.phase})`);
         this.activeRequests.delete(requestId);
       }
     }

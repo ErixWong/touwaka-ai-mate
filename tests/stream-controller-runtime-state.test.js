@@ -184,6 +184,39 @@ describe('request runtime state machine', () => {
 
     expect(controller._isStopRequested('req_missing')).toBe(false);
   });
+
+  it('清扫路径：超时残留的 stopping/终态条目被回收，新鲜与活跃条目保留', () => {
+    const staleTime = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+
+    // 残留终态条目（超 TTL）
+    controller._createRuntimeState('req_stale_stopped', { expert_id: 'e1', user_id: 'u1' });
+    controller._transitionRuntimeState('req_stale_stopped', 'running');
+    controller._transitionRuntimeState('req_stale_stopped', 'stopped');
+    controller._getRuntimeState('req_stale_stopped').updated_at = staleTime;
+
+    // 残留 stopping 条目（超 TTL）
+    controller._createRuntimeState('req_stale_stopping', { expert_id: 'e1', user_id: 'u1' });
+    controller._transitionRuntimeState('req_stale_stopping', 'running');
+    controller._transitionRuntimeState('req_stale_stopping', 'stopping', { stop_requested: true });
+    controller._getRuntimeState('req_stale_stopping').updated_at = staleTime;
+
+    // 新鲜终态条目（未超 TTL）
+    controller._createRuntimeState('req_fresh_stopped', { expert_id: 'e1', user_id: 'u1' });
+    controller._transitionRuntimeState('req_fresh_stopped', 'running');
+    controller._transitionRuntimeState('req_fresh_stopped', 'stopped');
+
+    // 活跃条目即便时间久也不清扫（stop_requested 信号不能丢）
+    controller._createRuntimeState('req_old_running', { expert_id: 'e1', user_id: 'u1' });
+    controller._transitionRuntimeState('req_old_running', 'running');
+    controller._getRuntimeState('req_old_running').updated_at = staleTime;
+
+    controller._sweepStaleRuntimeStates();
+
+    expect(controller._getRuntimeState('req_stale_stopped')).toBeNull();
+    expect(controller._getRuntimeState('req_stale_stopping')).toBeNull();
+    expect(controller._getRuntimeState('req_fresh_stopped')).not.toBeNull();
+    expect(controller._getRuntimeState('req_old_running')).not.toBeNull();
+  });
 });
 
 describe('stopRequest: request 级取消', () => {

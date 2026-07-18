@@ -133,14 +133,66 @@ export function useChatSession(options: UseChatSessionOptions) {
     const streamingAssistant = chatStore.getStreamingAssistant()
     const requestId = streamingAssistant?.request_id
 
+    sseHandler.clearSendingTimeout()
+
+    // 标记仅用于停止确认窗口期的 SSE 抑制：
+    // - 成功路径：后端广播 stopped 事件后由 useSSEHandler 清除
+    // - 失败路径：必须在下方回滚，禁止静默吞掉后续 SSE
     if (requestId) {
       chatStore.markRequestManuallyStopped(requestId)
     }
 
+    try {
+      if (!requestId) return
+      await messageApi.stopGeneration(requestId)
+      // 成功路径：标记保留至后端 stopped 广播到达，由 useSSEHandler 清除
+    } catch (error) {
+      if (error instanceof APIError && error.status === 409 && requestId) {
+        try {
+          const requestStatus = await messageApi.getChatRequestStatus(requestId)
+          if (requestStatus.status !== 'stopped' && requestStatus.status !== 'completed') {
+            // 409 但后端并未终态收口：停止未生效，回滚标记让 SSE 继续
+            chatStore.clearManuallyStoppedRequest(requestId)
+            console.warn('[useChatSession] Stop rejected and request still active, SSE continues:', requestStatus.status)
+            return
+          }
+          // 409 + DB 已终态：不会再有 stopped 广播，就地清除标记并按 DB 状态收口
+          chatStore.clearManuallyStoppedRequest(requestId)
+          if (streamingAssistant) {
+            chatStore.updateMessageContent(
+              streamingAssistant.id,
+              streamingContent.value || streamingAssistant.content || '',
+              requestStatus.status === 'completed' ? 'completed' : 'stopped'
+            )
+            chatStore.updateMessageMetadata(streamingAssistant.id, {
+              recovering: false,
+              recovery_attempt: 0,
+              recovery_round: null,
+            })
+            chatStore.setCurrentStreaming(null)
+          }
+          return
+        } catch (statusError) {
+          // 无法确认后端状态：保守回滚，保持流可接收
+          chatStore.clearManuallyStoppedRequest(requestId)
+          console.warn('[useChatSession] Failed to reconcile stop status, SSE continues:', statusError)
+          return
+        }
+      } else {
+        // 网络错误 / 500 等：停止未被接受，回滚标记让 SSE 继续
+        if (requestId) {
+          chatStore.clearManuallyStoppedRequest(requestId)
+        }
+        console.warn('[useChatSession] Stop generation API failed, SSE continues:', error)
+        return
+      }
+    }
+
+    // 停止已被后端接受：写入前端本地终态
     if (streamingAssistant) {
       chatStore.updateMessageContent(
         streamingAssistant.id,
-        streamingContent.value || '',
+        streamingContent.value || streamingAssistant.content || '',
         'stopped'
       )
       chatStore.updateMessageMetadata(streamingAssistant.id, {
@@ -149,37 +201,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         recovery_round: null,
       })
       chatStore.setCurrentStreaming(null)
-    }
-
-    sseHandler.clearSendingTimeout()
-
-    try {
-      if (!requestId) return
-      await messageApi.stopGeneration(requestId)
-    } catch (error) {
-      if (error instanceof APIError && error.status === 409 && requestId) {
-        try {
-          const requestStatus = await messageApi.getChatRequestStatus(requestId)
-          if (requestStatus.status === 'stopped') {
-            if (streamingAssistant) {
-              chatStore.updateMessageContent(
-                streamingAssistant.id,
-                streamingContent.value || streamingAssistant.content || '',
-                'stopped'
-              )
-            }
-            chatStore.clearManuallyStoppedRequest(requestId)
-            return
-          }
-          if (requestStatus.status === 'completed') {
-            chatStore.clearManuallyStoppedRequest(requestId)
-            return
-          }
-        } catch (statusError) {
-          console.warn('[useChatSession] Failed to reconcile stop status:', statusError)
-        }
-      }
-      console.warn('[useChatSession] Stop generation API not available:', error)
     }
   }
 
