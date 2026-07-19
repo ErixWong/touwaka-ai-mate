@@ -253,15 +253,12 @@ AI 相关调用必须遵循当前项目已经收敛出的 timeout 原则：
 
 ### 5.2 系统级 timeout 来源
 
-当前约定的 I/O 层 timeout 分类：
+当前约定的 timeout 模型分为两层：
 
-1. `timeout.internal_llm`
-2. `timeout.external_http`
-3. `timeout.mcp_request`
-4. `timeout.embedding`
-5. `timeout.chat_idle`（前端 UI）
+1. 用户可见主入口：`timeout.fast_timeout`、`timeout.task_timeout`
+2. 内部兼容字段：`timeout.mcp_request`、`timeout.embedding`、`timeout.internal_llm`、`timeout.chat_idle`（前端 UI）等
 
-新增功能应复用这些分类，而不是再次引入新的泛化 `timeout_ms`。
+新增功能应优先复用两档用户可见主入口；如需兼容既有执行器或运行时模块，可继续读取内部兼容字段，但不要再次引入新的泛化 `timeout_ms`。
 
 ### 5.3 URL 归一化
 

@@ -40,7 +40,7 @@ function loadEnvFile() {
 loadEnvFile();
 
 // 配置
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://localhost:3017';
 const INTERNAL_KEY = process.env.INTERNAL_KEY || '';
 
 // HTTP 请求封装

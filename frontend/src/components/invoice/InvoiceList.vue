@@ -521,8 +521,8 @@ async function doExport(type: 'full' | 'custom' | 'negative') {
         </el-table-column>
         <el-table-column prop="status" label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="getDisplayStatus(row).type || 'info'" size="small">
-              {{ getDisplayStatus(row).label }}
+            <el-tag :type="getDisplayStatus(row)?.type || 'info'" size="small">
+              {{ getDisplayStatus(row)?.label }}
             </el-tag>
           </template>
         </el-table-column>

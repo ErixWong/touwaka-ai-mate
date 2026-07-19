@@ -48,7 +48,7 @@ JWT_SECRET=your_jwt_secret
 JWT_REFRESH_SECRET=your_refresh_secret
 
 # 其他
-API_PORT=3000
+API_PORT=3017
 FRONTEND_URL=http://localhost:5173
 ```
 
@@ -87,12 +87,12 @@ node scripts/init-core-skills.js
 npm run dev
 
 # 或分别启动
-npm start           # 后端 :3000
+npm start           # 后端 :3017
 npm run dev:frontend # 前端 :5173
 ```
 
 - **前端**：http://localhost:5173
-- **后端 API**：http://localhost:3000
+- **后端 API**：http://localhost:3017
 
 ### 测试账号
 

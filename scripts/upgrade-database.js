@@ -3177,6 +3177,21 @@ const MIGRATIONS = [
       console.log('  ✓ Simplified documents.processing_status enum and migrated legacy states');
     },
   },
+  {
+    name: 'remove timeout.external_http setting',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT setting_key FROM system_settings WHERE setting_key = 'timeout.external_http'`
+      );
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        `DELETE FROM system_settings WHERE setting_key = 'timeout.external_http'`
+      );
+      console.log('  ✓ Removed deprecated timeout.external_http setting');
+    },
+  },
 
   // 40. current-feature-analyzer 规则集持久化表
   {

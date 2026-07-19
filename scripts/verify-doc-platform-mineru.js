@@ -4,7 +4,7 @@ import path from 'path';
 import Database from '../lib/db.js';
 
 const DEFAULT_PDF = 'C:/Users/gxz/Desktop/mcp测试/MxMoE.pdf';
-const DEFAULT_BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3000/api';
+const DEFAULT_BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3017/api';
 const DEFAULT_ACCOUNT = process.env.TEST_ACCOUNT || 'admin';
 const DEFAULT_PASSWORD = process.env.TEST_PASSWORD || '123456';
 const DEFAULT_TIMEOUT_MS = Number(process.env.TEST_TIMEOUT_MS || 20 * 60 * 1000);

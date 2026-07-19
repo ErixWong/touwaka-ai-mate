@@ -33,6 +33,7 @@
 | [mind-context-management.md](./mind-context-management.md) | Psyche 上下文管理机制 |
 | [context-organization-architecture.md](./context-organization-architecture.md) | 上下文组织与编排架构 |
 | [message-flow-analysis.md](./message-flow-analysis.md) | 系统消息流转分析 |
+| [chat-request-lifecycle.md](./chat-request-lifecycle.md) | 聊天请求生命周期管理（runtime 状态机 / stop 语义 / 轮级恢复 / 前端终态收口） |
 | [resident-process-management-redesign.md](./resident-process-management-redesign.md) | 驻留进程管理重设计 |
 | [architecture-improvements.md](./architecture-improvements.md) | 架构改进建议 |
 | [improvement-suggestions.md](./improvement-suggestions.md) | 核心功能与架构改进建议 |
@@ -45,4 +46,4 @@
 
 ---
 
-*最后更新: 2026-06-20*
+*最后更新: 2026-07-19*

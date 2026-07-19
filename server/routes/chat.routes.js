@@ -49,39 +49,21 @@ export default (controller, services = {}) => {
       const result = await controller.stopRequest(request_id, user_id);
 
       if (!result.success) {
-        ctx.status = 409;
-        ctx.body = {
-          code: 409,
-          message: 'stop failed',
-          data: {
-            success: false,
-            aborted: false,
-            request_id,
-            expert_id: result.expert_id,
-            user_id,
-          },
-        };
+        // 请求不存在、非本人或已终态：交由前端按 409 做状态 reconcile
+        ctx.error('停止请求失败：请求不存在或已结束', 409);
         return;
       }
-      
-      ctx.body = {
-        code: 0,
-        message: 'success',
-        data: {
-          success: result.success,
-          aborted: result.aborted,
-          request_id,
-          expert_id: result.expert_id,
-          user_id,
-        },
-      };
+
+      ctx.success({
+        success: result.success,
+        aborted: result.aborted,
+        request_id,
+        expert_id: result.expert_id,
+        user_id,
+      });
     } catch (error) {
       logger.error('[ChatRoutes] Stop generation error:', error);
-      ctx.body = {
-        code: 500,
-        message: error.message,
-        data: { success: false },
-      };
+      ctx.error(error.message || '停止请求失败', 500);
     }
   });
 

@@ -48,9 +48,16 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
     return chatStore.getStreamingAssistant()
   }
 
+  const isManuallyStoppedRequest = (requestId?: string | null) => {
+    return chatStore.isRequestManuallyStopped(requestId)
+  }
+
   const flushBuffers = () => {
     const assistant = getStreamingAssistant()
     if (!assistant) {
+      // 无流式目标时缓冲即孤儿数据：必须丢弃，避免残留内容污染下一次流式会话的首次 flush
+      contentBuffer = ''
+      reasoningBuffer = ''
       flushTimer = null
       return
     }
@@ -181,6 +188,15 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
   }
 
   const handleCompleteEvent = async (data: CompleteEventData) => {
+    if (isManuallyStoppedRequest(data.request_id)) {
+      if (data.request_id) {
+        chatStore.clearManuallyStoppedRequest(data.request_id)
+      }
+      chatStore.setCurrentStreaming(null)
+      clearSendingTimeout()
+      return
+    }
+
     const assistant = chatStore.findStreamingAssistantByRequestId(data.request_id || '')
     if (!assistant) {
       clearSendingTimeout()
@@ -202,6 +218,12 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
     const finalContent = data.message?.content || assistant.content
     options.onComplete?.(finalContent)
+
+    chatStore.updateMessageMetadata(assistant.id, {
+      recovering: false,
+      recovery_attempt: 0,
+      recovery_round: null,
+    })
 
     chatStore.setCurrentStreaming(null)
     clearSendingTimeout()
@@ -310,6 +332,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           break
 
         case 'delta':
+          if (isManuallyStoppedRequest(data.request_id)) {
+            break
+          }
           if (getStreamingAssistant()) {
             bumpSendingTimeoutProtection()
             contentBuffer += data.content
@@ -327,6 +352,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           break
 
         case 'reasoning_delta':
+          if (isManuallyStoppedRequest(data.request_id)) {
+            break
+          }
           if (getStreamingAssistant()) {
             bumpSendingTimeoutProtection()
             reasoningBuffer += data.content
@@ -344,6 +372,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           break
 
         case 'tool_call':
+          if (isManuallyStoppedRequest(data.request_id)) {
+            break
+          }
           console.log('[useSSEHandler] Tool call:', data)
           if (getStreamingAssistant() && data.toolCalls) {
             bumpSendingTimeoutProtection()
@@ -360,6 +391,9 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
         case 'tool_result':
         case 'tool_results':
+          if (isManuallyStoppedRequest(data.request_id)) {
+            break
+          }
           if (data.request_id) {
             bindPendingAssistantToRequest(data.request_id)
           }
@@ -392,6 +426,60 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
           }
           break
 
+        case 'recovering':
+          if (isManuallyStoppedRequest(data.request_id)) {
+            break
+          }
+          if (flushTimer) {
+            clearTimeout(flushTimer)
+            flushTimer = null
+          }
+          contentBuffer = ''
+          reasoningBuffer = ''
+          if (data.request_id) {
+            bindPendingAssistantToRequest(data.request_id)
+          }
+          {
+            const assistant = chatStore.findStreamingAssistantByRequestId(data.request_id || '')
+            if (assistant) {
+              if (typeof data.content === 'string') {
+                chatStore.updateMessageContent(
+                  assistant.id,
+                  data.content,
+                  'streaming'
+                )
+              }
+              if (typeof data.reasoning_content === 'string') {
+                chatStore.updateMessageReasoningContent(assistant.id, data.reasoning_content)
+              }
+              chatStore.updateMessageMetadata(assistant.id, {
+                recovering: true,
+                recovery_attempt: typeof data.attempt === 'number' ? data.attempt : undefined,
+                recovery_round: typeof data.round === 'number' ? data.round : undefined,
+              })
+            }
+          }
+          bumpSendingTimeoutProtection()
+          break
+
+        case 'recovered':
+          // 当前轮已重新发起：恢复指示与后端状态机 recovering -> running 保持一致
+          if (isManuallyStoppedRequest(data.request_id)) {
+            break
+          }
+          {
+            const assistant = chatStore.findStreamingAssistantByRequestId(data.request_id || '')
+            if (assistant) {
+              chatStore.updateMessageMetadata(assistant.id, {
+                recovering: false,
+                recovery_attempt: 0,
+                recovery_round: null,
+              })
+            }
+          }
+          bumpSendingTimeoutProtection()
+          break
+
         case 'complete':
           if (flushTimer) {
             clearTimeout(flushTimer)
@@ -421,12 +509,29 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
                 assistant.content || '',
                 'stopped'
               )
+              chatStore.updateMessageMetadata(assistant.id, {
+                recovering: false,
+                recovery_attempt: 0,
+                recovery_round: null,
+              })
             }
           }
+          if (data.request_id) {
+            chatStore.clearManuallyStoppedRequest(data.request_id)
+          }
+          chatStore.setCurrentStreaming(null)
           clearSendingTimeout()
           break
 
         case 'error':
+          if (isManuallyStoppedRequest(data.request_id)) {
+            if (data.request_id) {
+              chatStore.clearManuallyStoppedRequest(data.request_id)
+            }
+            chatStore.setCurrentStreaming(null)
+            clearSendingTimeout()
+            break
+          }
           console.error('[useSSEHandler] SSE error event:', data)
           if (flushTimer) {
             clearTimeout(flushTimer)
@@ -445,6 +550,11 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
                 data.message || t('error.unknownError'),
                 'error'
               )
+              chatStore.updateMessageMetadata(assistant.id, {
+                recovering: false,
+                recovery_attempt: 0,
+                recovery_round: null,
+              })
             }
           }
           clearSendingTimeout()

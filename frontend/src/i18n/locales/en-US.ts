@@ -71,6 +71,8 @@ export default {
     placeholder: 'Type a message...',
     send: 'Send',
     thinking: 'Thinking...',
+    recovering: 'Connection interrupted, recovering generation',
+    recoveringAttempt: 'Connection interrupted, recovering generation (attempt {n})',
     stopGenerate: 'Stop generating',
     stopped: 'Stopped',
     emptyState: 'Send a message to start chatting with the expert',

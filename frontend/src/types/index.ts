@@ -94,6 +94,9 @@ export interface MessageMetadata {
   provider?: string
   error?: string
   cached?: boolean
+  recovering?: boolean
+  recovery_attempt?: number
+  recovery_round?: number | null
   tool_calls?: string | ToolCallData  // 工具调用信息（JSON 字符串或对象）
 }
 
@@ -320,6 +323,8 @@ export type SSEEventType =
   | 'tool_call'
   | 'tool_result'
   | 'tool_results'
+  | 'recovering'
+  | 'recovered'
   | 'complete'
   | 'error'
   | 'heartbeat'
@@ -361,6 +366,15 @@ export interface SSEToolResultData {
 
 export interface SSEToolResultsData {
   results: SSEToolResultData[]
+}
+
+export interface SSERecoveringData {
+  request_id?: string
+  round?: number
+  attempt?: number
+  max_attempts?: number
+  content?: string
+  reasoning_content?: string
 }
 
 export interface SSECompleteData {

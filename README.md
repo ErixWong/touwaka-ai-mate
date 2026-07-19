@@ -121,7 +121,7 @@ cd frontend && npm run build
 npm run dev
 
 # 或分别启动
-npm start           # 后端 :3000
+npm start           # 后端 :3017
 npm run dev:frontend # 前端 :5173
 ```
 
@@ -155,7 +155,7 @@ JWT_SECRET=your_random_secret_key_here
 JWT_REFRESH_SECRET=your_random_refresh_key_here
 
 # 应用配置
-PORT=3000
+API_PORT=3017
 LOG_LEVEL=info
 EOF
 
@@ -170,7 +170,7 @@ docker-compose exec app node scripts/init-skills-from-json.js
 docker-compose logs -f app
 ```
 
-**访问应用**：http://localhost:3000
+**访问应用**：http://localhost:3017
 
 ---
 
@@ -226,7 +226,7 @@ docker-compose exec app node scripts/init-skills-from-json.js
 
 | 变量 | 说明 | 默认值 | 是否需要配置 |
 |------|------|--------|-------------|
-| `PORT` | 应用端口 | `3000` | 可选 |
+| `API_PORT` | 应用端口 | `3017` | 可选 |
 | `DB_NAME` | 数据库名 | `touwaka_mate` | 可选 |
 | `DB_USER` | 数据库用户 | `touwaka` | 可选 |
 | `DB_PASSWORD` | 数据库密码 | `touwaka_secret` | **必须修改** |
