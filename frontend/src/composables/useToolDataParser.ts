@@ -13,6 +13,8 @@ export interface ToolCallData {
   result?: unknown
   result_preview?: string
   context?: string
+  /** round03：原子工具执行轨迹（仅 document_retrieval skill） */
+  atomic_steps?: string[]
 }
 
 export interface NormalizedToolData {
