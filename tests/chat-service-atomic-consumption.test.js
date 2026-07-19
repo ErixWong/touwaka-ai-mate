@@ -187,6 +187,18 @@ console.log('\n场景 6：静态证据规则文本要点');
 }
 
 // ============================================================
+// 场景 7：search + rank 同一批 chunk 不重复注入（round03 去重修复）
+// ============================================================
+console.log('\n场景 7：chunk 按 chunk_id 去重');
+{
+  // globalResult 与 rankResult 携带同一 chunk_id: c1
+  const injection = svc.buildEvidenceInjection([globalResult, rankResult]);
+  const occurrences = (injection.match(/IPX5 防水试验片段/g) || []).length;
+  assert(occurrences === 1, '同一 chunk_id 只注入一次（rank 版本优先）', `occurrences=${occurrences}`);
+  assert(injection.includes('95%'), '去重后保留 rank_score 版本（95% 而非原始 88%）');
+}
+
+// ============================================================
 console.log('\n' + '='.repeat(40));
 console.log(`  ✅ 通过: ${passed}  |  ❌ 失败: ${failed}`);
 console.log('='.repeat(40));
