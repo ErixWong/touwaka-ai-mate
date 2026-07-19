@@ -147,6 +147,17 @@ DocumentSearchService / DocRecallService / DocAccessService / DocumentHandleStor
 
 | Phase | 内容 | 状态 |
 |-------|------|------|
-| Phase 1 | 真原子 schema + handle 基础设施 + 消费层数据驱动 + 一致性测试 | ✅ 本契约版本 |
-| Phase 2 | 吸收查询解析锚点识别、四维混合 rerank、证据打包增强 | 规划中 |
-| Phase 3 | 重评跨文档桥接、多候选 mergeable、候选条件化短路、handle MySQL 持久化 | 待 Phase 1/2 运行数据裁决 |
+| Phase 1 | 真原子 schema + handle 基础设施 + 消费层数据驱动 + 一致性测试 | ✅ 已合并（#967） |
+| Phase 2 | parser 锚点识别、四维 rerank、coverage 覆盖统计 | ✅ 已完成（#968） |
+| Phase 3 | 暂缓项裁决 | ✅ 已裁决 |
+
+### Phase 3 裁决记录（feat-260719-03）
+
+| 暂缓项 | 裁决 | 形态 |
+|--------|------|------|
+| 跨文档桥接 | 做（轻量） | scoped 无命中时 tool 响应 hint 引导 + prompt 范式四，无服务端机制 |
+| 多候选 mergeable | 做（数据面） | metadata 检索附 `candidates_analysis` 分组统计（by_doc_type / by_collection / same_*），决策归 LLM |
+| attribute/参数覆盖 | 做（裁剪） | coverage 增加 attribute_total / covered / missed 维度，替代完整闭合检测 |
+| 候选条件化短路 | 不做 | 违背数据驱动契约；prompt 规则 3 已覆盖；运行数据不佳可重开 |
+| handle MySQL 持久化 | 不做 | 内存 + 滑动 TTL + hint 自愈已闭环；多实例需求出现再评 |
+| DocumentOrchestrationService 决策表 | 不做 | 编排器思维与真实原子化冲突；merge 价值已由 candidates_analysis 数据面覆盖 |
