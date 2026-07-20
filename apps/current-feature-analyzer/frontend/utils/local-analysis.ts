@@ -53,7 +53,7 @@ type CompressionAlgorithmProfile = {
 const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorithmProfile> = {
   adaptive_v2: {
     key: 'adaptive_v2',
-    label: '自适应 V2（默认）',
+    label: '自适应 V2',
     output_mode: 'segments',
     baseline_mode: 'adaptive_v2',
     trend_mode: 'adaptive_v2',
@@ -133,7 +133,7 @@ const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorit
   },
   optimal_segmentation_v1: {
     key: 'optimal_segmentation_v1',
-    label: '最优分段 V1（实验）',
+    label: '最优分段 V1（默认）',
     output_mode: 'segments',
     baseline_mode: 'adaptive_v2',
     trend_mode: 'adaptive_v2',
@@ -395,7 +395,7 @@ function calculateGlobalsLegacy(points: RawPoint[]): Globals {
 }
 
 function getAlgorithmProfile(algorithmKey?: CompressionAlgorithmKey | null) {
-  return COMPRESSION_ALGORITHMS[algorithmKey || 'adaptive_v2'] || COMPRESSION_ALGORITHMS.adaptive_v2
+  return COMPRESSION_ALGORITHMS[algorithmKey || 'optimal_segmentation_v1'] || COMPRESSION_ALGORITHMS.optimal_segmentation_v1
 }
 
 function normalizeDuplicateCurrentValue(current: number) {
@@ -2395,7 +2395,7 @@ function buildContourSamples(segments: SegmentItem[], targetCells: number = CONT
   return { start: Number(tMin.toFixed(6)), step: Number(step.toFixed(6)), values }
 }
 
-export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2'): FileAnalysisResult {
+export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'optimal_segmentation_v1'): FileAnalysisResult {
   const profile = getAlgorithmProfile(algorithmKey)
   const sortedPoints = normalizeRawPoints(rawData, profile)
 

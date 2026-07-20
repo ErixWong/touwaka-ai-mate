@@ -68,7 +68,7 @@ function getWorker() {
   return workerInstance
 }
 
-export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2') {
+export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'optimal_segmentation_v1') {
   const worker = getWorker()
   if (!worker) {
     return runLocalCurrentFeatureAnalysis(rawData, appConfig, algorithmKey)
