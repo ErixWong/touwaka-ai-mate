@@ -12,7 +12,7 @@ class StageRecognitionWorkflowService {
     this.internalLLM = new InternalLLMService(db);
   }
 
-  async recognize(globals, segments, events, ruleSet, appConfig) {
+  async recognize(globals, segments, events, ruleSet, appConfig, contour = null) {
     let modelConfig = null;
     if (appConfig.llm_model_id) {
       try {
@@ -64,7 +64,7 @@ class StageRecognitionWorkflowService {
     }
 
     const reducedSegments = this.reduceSegmentsForLlm(segments);
-    const userMessage = this.buildUserMessage(globals, reducedSegments, events, ruleSet, appConfig, segments.length);
+    const userMessage = this.buildUserMessage(globals, reducedSegments, events, ruleSet, appConfig, segments.length, contour);
 
     const systemPrompt = this.buildSystemPrompt(ruleSet, appConfig);
 
@@ -430,12 +430,22 @@ class StageRecognitionWorkflowService {
     return knots.join(' -> ');
   }
 
-  buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length) {
+  isValidContour(contour) {
+    return !!contour
+      && Number.isFinite(Number(contour.start))
+      && Number.isFinite(Number(contour.step))
+      && Number(contour.step) > 0
+      && Array.isArray(contour.values)
+      && contour.values.length > 0;
+  }
+
+  buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length, providedContour = null) {
     const stageDefs = ruleSet.stages || [];
     const firstSegmentStart = Number(segments?.[0]?.start_time);
     const lastSegmentEnd = Number(segments?.[segments.length - 1]?.end_time);
 
-    const contour = this.buildContourSamples(segments);
+    // 优先使用前端压缩时提交的轮廓（与 chart 渲染同源），旧结果回退服务端自算
+    const contour = this.isValidContour(providedContour) ? providedContour : this.buildContourSamples(segments);
     const contourText = contour
       ? `等距轮廓（步长 ${contour.step}s，共 ${contour.values.length} 个电流值(A)，第 i 个值（i 从 0 开始）对应时刻 t = ${contour.start} + (i + 0.5) × ${contour.step} 秒）:\n${contour.values.join(', ')}`
       : '（轮廓数据不足）';

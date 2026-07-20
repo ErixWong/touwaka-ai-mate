@@ -144,7 +144,7 @@ function renderCompressed() {
   const segs = props.result?.segments || []
   if (!segs.length) return
 
-   const cacheKey = `${props.fileName}::${segs.length}::${segs[0]?.start_time ?? 0}::${segs[segs.length - 1]?.end_time ?? 0}`
+   const cacheKey = `${props.fileName}::${segs.length}::${segs[0]?.start_time ?? 0}::${segs[segs.length - 1]?.end_time ?? 0}::${props.result?.contour?.values?.length ?? 0}`
    const cached = chartDataCache.get(cacheKey)
 
    let lineData: [number, number][]
@@ -161,19 +161,33 @@ function renderCompressed() {
     pointData = []
     pointColors = []
 
-    for (const seg of segs) {
-      const pts = seg.polyline_points
-      if (pts && pts.length > 0) {
-        for (const point of pts) {
-          const time = point?.[0]
-          const current = point?.[1]
-          if (typeof time === 'number' && typeof current === 'number') {
-            lineData.push([time, current])
-          }
+    // 优先按等距轮廓渲染（与发给 LLM 的数据同源，所见即所发），缺失时回退 polyline
+    const contour = props.result?.contour
+    const hasContour = !!contour && Number.isFinite(contour.start) && Number.isFinite(contour.step) && contour.step > 0 && Array.isArray(contour.values) && contour.values.length > 0
+    if (hasContour) {
+      for (let i = 0; i < contour.values.length; i++) {
+        const current = contour.values[i]
+        if (typeof current === 'number') {
+          lineData.push([contour.start + (i + 0.5) * contour.step, current])
         }
-      } else if (seg.start_time != null && seg.end_time != null) {
-        const c = seg.mean_current ?? 0
-        lineData.push([seg.start_time, c], [seg.end_time, c])
+      }
+    }
+
+    for (const seg of segs) {
+      if (!hasContour) {
+        const pts = seg.polyline_points
+        if (pts && pts.length > 0) {
+          for (const point of pts) {
+            const time = point?.[0]
+            const current = point?.[1]
+            if (typeof time === 'number' && typeof current === 'number') {
+              lineData.push([time, current])
+            }
+          }
+        } else if (seg.start_time != null && seg.end_time != null) {
+          const c = seg.mean_current ?? 0
+          lineData.push([seg.start_time, c], [seg.end_time, c])
+        }
       }
 
       const midT = seg.start_time != null && seg.end_time != null ? (seg.start_time + seg.end_time) / 2 : 0

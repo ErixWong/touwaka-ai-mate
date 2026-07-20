@@ -173,11 +173,22 @@ export interface CompressionMeta {
   } | null
 }
 
+export interface ContourSamples {
+  /** 起始时刻（第一个 cell 的左边界） */
+  start: number
+  /** cell 步长（秒），第 i 个值对应 t = start + (i + 0.5) × step */
+  step: number
+  /** 等距电流值序列 */
+  values: number[]
+}
+
 export interface FileAnalysisResult {
   globals?: Record<string, number>
   segments?: SegmentItem[]
   events?: Array<Record<string, unknown>>
   compression_meta?: CompressionMeta
+  /** 等距数值轮廓：chart 渲染与 LLM 输入的同源数据 */
+  contour?: ContourSamples | null
   llm_result?: LlmResult
   stage_metrics?: StageMetric[]
   file_metrics?: FileMetrics | null

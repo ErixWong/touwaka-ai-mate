@@ -1,4 +1,4 @@
-import type { AppConfig, CompressionAlgorithmKey, CompressionMeta, FileAnalysisResult, SegmentItem } from '../api/current-feature-analyzer'
+import type { AppConfig, CompressionAlgorithmKey, CompressionMeta, ContourSamples, FileAnalysisResult, SegmentItem } from '../api/current-feature-analyzer'
 
 type RawPoint = [number, number]
 
@@ -2358,6 +2358,43 @@ function normalizeRawPoints(rawData: number[][], profile: CompressionAlgorithmPr
   return sortedPoints
 }
 
+const CONTOUR_TARGET_CELLS = 128
+
+function buildContourSamples(segments: SegmentItem[], targetCells: number = CONTOUR_TARGET_CELLS): ContourSamples | null {
+  // 等距数值轮廓：chart 渲染与 LLM 输入的同源数据。
+  // 与服务端 stage-recognition-workflow.service.js 的同名函数保持同算法（服务端仅用于旧结果回退）。
+  const points: RawPoint[] = []
+  for (const segment of segments) {
+    const polyline = Array.isArray(segment.polyline_points) && segment.polyline_points.length >= 2
+      ? segment.polyline_points as RawPoint[]
+      : [[segment.start_time || 0, segment.start_current || 0], [segment.end_time || 0, segment.end_current || 0]] as RawPoint[]
+    for (const point of polyline) {
+      if (Array.isArray(point) && point.length >= 2) {
+        points.push([Number(point[0]), Number(point[1])])
+      }
+    }
+  }
+  if (points.length < 2) return null
+
+  const tMin = points[0]![0]
+  const tMax = points[points.length - 1]![0]
+  if (!(tMax > tMin)) return null
+  const step = (tMax - tMin) / targetCells
+
+  const values: number[] = []
+  let cursor = 0
+  for (let cell = 0; cell < targetCells; cell++) {
+    const t = tMin + (cell + 0.5) * step
+    while (cursor < points.length - 2 && points[cursor + 1]![0] < t) cursor++
+    const [t0, v0] = points[cursor]!
+    const [t1, v1] = points[cursor + 1]!
+    const value = t1 > t0 ? v0 + (v1 - v0) * (t - t0) / (t1 - t0) : v0
+    values.push(Number(value.toFixed(2)))
+  }
+
+  return { start: Number(tMin.toFixed(6)), step: Number(step.toFixed(6)), values }
+}
+
 export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2'): FileAnalysisResult {
   const profile = getAlgorithmProfile(algorithmKey)
   const sortedPoints = normalizeRawPoints(rawData, profile)
@@ -2381,6 +2418,7 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
       segments: optimized.result.segments,
       events: optimized.result.events,
       compression_meta: optimized.options,
+      contour: buildContourSamples(optimized.result.segments),
     }
   }
 
@@ -2391,6 +2429,7 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
       segments: optimized.result.segments,
       events: optimized.result.events,
       compression_meta: optimized.options,
+      contour: buildContourSamples(optimized.result.segments),
     }
   }
 
@@ -2402,5 +2441,6 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
     segments: result.segments,
     events: result.events,
     compression_meta: optimized.options,
+    contour: buildContourSamples(result.segments),
   }
 }
