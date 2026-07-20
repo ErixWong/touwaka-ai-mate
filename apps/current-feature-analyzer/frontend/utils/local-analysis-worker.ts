@@ -4,6 +4,9 @@ import { runLocalCurrentFeatureAnalysis } from './local-analysis'
 type PendingTask = {
   resolve: (value: FileAnalysisResult) => void
   reject: (reason?: unknown) => void
+  raw_data: number[][]
+  app_config: AppConfig | null
+  algorithm_key: CompressionAlgorithmKey
 }
 
 let workerInstance: Worker | null = null
@@ -47,6 +50,19 @@ function getWorker() {
 
       task.reject(new Error(payload.error_message || '前端分析失败'))
     }
+    workerInstance.onerror = () => {
+      // Worker 脚本加载失败（如 dev 环境静态服务拦截）时，回退到同步分析，避免任务悬挂
+      const tasks = [...pendingTasks.values()]
+      pendingTasks.clear()
+      workerInstance = null
+      for (const task of tasks) {
+        try {
+          task.resolve(runLocalCurrentFeatureAnalysis(task.raw_data, task.app_config, task.algorithm_key))
+        } catch (error) {
+          task.reject(error)
+        }
+      }
+    }
   }
 
   return workerInstance
@@ -63,7 +79,13 @@ export async function runLocalCurrentFeatureAnalysisAsync(rawData: number[][], a
 
   return await new Promise<FileAnalysisResult>((resolve, reject) => {
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`
-    pendingTasks.set(requestId, { resolve, reject })
+    pendingTasks.set(requestId, {
+      resolve,
+      reject,
+      raw_data: safeRawData,
+      app_config: safeAppConfig,
+      algorithm_key: algorithmKey,
+    })
 
     try {
       worker.postMessage({

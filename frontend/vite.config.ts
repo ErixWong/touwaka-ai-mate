@@ -35,6 +35,11 @@ export default defineConfig(({ command }) => ({
   server: {
     host: true,  // 监听所有网络接口（包括 localhost 和 127.0.0.1）
     port: 5173,
+    fs: {
+      // apps/**/frontend 在 vite root 之外，worker 等独立入口脚本不经过 ESM 模块图，
+      // 必须显式放行仓库根目录，否则 dev 下 worker 脚本 403 导致本地分析悬挂
+      allow: ['..'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3017',
