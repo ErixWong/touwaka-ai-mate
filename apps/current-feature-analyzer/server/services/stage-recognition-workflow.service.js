@@ -255,10 +255,10 @@ class StageRecognitionWorkflowService {
     const stageByCode = new Map(stageDefs.map(stage => [String(stage.stage_code || '').toLowerCase(), stage]));
     const fallbackStages = [];
 
-    const stableLowSegments = segments.filter(seg => seg.kind === 'stable' && Number(seg.baseline_ratio || 0) <= 1.2);
-    const startupSegments = segments.filter(seg => ['surge', 'spike', 'transition'].includes(seg.kind) && Number(seg.slope || 0) > 0);
-    const normalSegments = segments.filter(seg => ['stable', 'surge'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 1.2);
-    const stallSegments = segments.filter(seg => ['surge', 'spike'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 3);
+    const stableLowSegments = segments.filter(seg => seg.kind === 'plateau-low' && Number(seg.baseline_ratio || 0) <= 1.2);
+    const startupSegments = segments.filter(seg => ['spike', 'transition', 'rising', 'rising-fast'].includes(seg.kind) && Number(seg.slope || 0) > 0);
+    const normalSegments = segments.filter(seg => ['plateau-mid', 'plateau-high'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 1.2);
+    const stallSegments = segments.filter(seg => ['spike', 'burst', 'plateau-high'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 3);
 
     this.pushMergedStage(fallbackStages, stageByCode.get('standby'), stableLowSegments, 0.35, '按低电流稳定段推断');
     this.pushMergedStage(fallbackStages, stageByCode.get('startup'), startupSegments.slice(0, 3), 0.35, '按上升尖峰段推断');
@@ -395,7 +395,12 @@ class StageRecognitionWorkflowService {
 
     let segText = '';
     for (const seg of segments) {
-      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 点数${seg.point_count}, 开始电流${seg.start_current}A, 结束电流${seg.end_current}A, 带宽${seg.bandwidth}A, 斜率${seg.slope}\n`;
+      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 点数${seg.point_count}, 开始电流${seg.start_current}A, 结束电流${seg.end_current}A, 最小电流${seg.min_current ?? '-'}A, 最大电流${seg.max_current ?? '-'}A, 平均电流${seg.mean_current ?? '-'}A, 基线比${seg.baseline_ratio ?? '-'}, 带宽${seg.bandwidth}A, 斜率${seg.slope}\n`;
+    }
+
+    let eventText = '';
+    if (Array.isArray(events) && events.length > 0) {
+      eventText = `\n 关键事件:\n${events.map(event => `- ${event.type} @ ${event.time}s`).join('\n')}\n`;
     }
 
     let ruleText = '';
@@ -409,9 +414,10 @@ class StageRecognitionWorkflowService {
  时间范围: ${Number.isFinite(firstSegmentStart) ? firstSegmentStart : '-'}s -> ${Number.isFinite(lastSegmentEnd) ? lastSegmentEnd : '-'}s
    压缩段数量: 原始 ${originalSegmentCount} 段，本次送审 ${segments.length} 段
 
- 压缩段列表:
+  压缩段列表:
  ${segText}
- 当前规则集:
+ ${eventText}
+  当前规则集:
  场景说明: ${ruleSet.description || '无'}
  阶段定义:
  ${ruleText}
@@ -430,7 +436,7 @@ class StageRecognitionWorkflowService {
     keepIndices.add(0);
     keepIndices.add(lastIndex);
 
-    const priorityKinds = new Set(['surge', 'spike', 'drop', 'transition']);
+    const priorityKinds = new Set(['spike', 'burst', 'transition', 'plateau-high']);
     segments.forEach((seg, index) => {
       const baselineRatio = Number(seg.baseline_ratio || 0);
       const duration = Number(seg.duration || 0);
