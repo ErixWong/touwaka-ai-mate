@@ -2062,22 +2062,29 @@ function runOptimalSegmentationCompression(points: RawPoint[], options: Compress
   // 结点数超上限时放大分辨率重建，保证 DP 复杂度可控
   let resolution = options.absolute_resolution
   let microSegments = buildInitialSegments(workingPoints, { ...options, absolute_resolution: resolution }, globals)
-  for (let attempt = 0; microSegments.length + 1 > OPTIMAL_SEGMENTATION_MAX_KNOTS && attempt < 8; attempt++) {
+  // 结点数 ≈ 2 × 微段数（起点+终点），按结点数控制 DP 复杂度上界
+  for (let attempt = 0; microSegments.length * 2 > OPTIMAL_SEGMENTATION_MAX_KNOTS && attempt < 8; attempt++) {
     resolution *= 2
     microSegments = buildInitialSegments(workingPoints, { ...options, absolute_resolution: resolution }, globals)
   }
 
-  // 结点候选 = 各微段起点 + 末段终点（均为抽取后的采样点下标，边界天然采样级精确）
-  const knotRawIndices = microSegments.map(segment => segment.start_index || 0)
-  const finalEndIndex = microSegments[microSegments.length - 1]!.end_index || 0
-  if (knotRawIndices[knotRawIndices.length - 1] !== finalEndIndex) {
-    knotRawIndices.push(finalEndIndex)
+  // 结点候选 = 所有微段边界（起点与终点交替）。
+  // 关键：微段 END 必须成为候选点。陡沿脚部是上一微段的 END，若候选集只含微段 START，
+  // "脚部→峰顶"的跳变对 DP 弦误差不可见，"平台+陡沿"的合并代价会被错算为 ~0，
+  // 导致段边界落在峰顶（出现"待机结束电流 13A"这类荒谬锚点）。
+  // 候选集必须对微段边界封闭，代价函数才能看见每一个显著跳变。
+  const knotRawIndices: number[] = []
+  const internalErrors: number[] = []
+  for (const segment of microSegments) {
+    knotRawIndices.push(segment.start_index || 0, segment.end_index || 0)
+    // 间隙（start→end）为微段内部，取 line_fit_error；间隙（end→下一 start）跨微段，无内部误差
+    internalErrors.push(segment.line_fit_error || 0, 0)
   }
+  // 最后一个结点之后没有间隙
+  internalErrors.length = knotRawIndices.length - 1
 
   const knotTimes = knotRawIndices.map(index => workingPoints[index]![0])
   const knotValues = knotRawIndices.map(index => workingPoints[index]![1])
-  // 每个间隙（knot g -> knot g+1）对应一个微段，内部误差取其 line_fit_error
-  const internalErrors = microSegments.map(segment => segment.line_fit_error || 0)
 
   const segmentCount = Math.min(target, knotRawIndices.length - 1)
   const selectedKnots = minimaxKnotSelection(knotTimes, knotValues, internalErrors, Math.max(1, segmentCount))
