@@ -12,7 +12,7 @@ class StageRecognitionWorkflowService {
     this.internalLLM = new InternalLLMService(db);
   }
 
-  async recognize(globals, segments, events, ruleSet, appConfig) {
+  async recognize(globals, segments, events, ruleSet, appConfig, contour = null) {
     let modelConfig = null;
     if (appConfig.llm_model_id) {
       try {
@@ -64,7 +64,7 @@ class StageRecognitionWorkflowService {
     }
 
     const reducedSegments = this.reduceSegmentsForLlm(segments);
-    const userMessage = this.buildUserMessage(globals, reducedSegments, events, ruleSet, appConfig, segments.length);
+    const userMessage = this.buildUserMessage(globals, reducedSegments, events, ruleSet, appConfig, segments.length, contour);
 
     const systemPrompt = this.buildSystemPrompt(ruleSet, appConfig);
 
@@ -255,10 +255,10 @@ class StageRecognitionWorkflowService {
     const stageByCode = new Map(stageDefs.map(stage => [String(stage.stage_code || '').toLowerCase(), stage]));
     const fallbackStages = [];
 
-    const stableLowSegments = segments.filter(seg => seg.kind === 'stable' && Number(seg.baseline_ratio || 0) <= 1.2);
-    const startupSegments = segments.filter(seg => ['surge', 'spike', 'transition'].includes(seg.kind) && Number(seg.slope || 0) > 0);
-    const normalSegments = segments.filter(seg => ['stable', 'surge'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 1.2);
-    const stallSegments = segments.filter(seg => ['surge', 'spike'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 3);
+    const stableLowSegments = segments.filter(seg => seg.kind === 'plateau-low' && Number(seg.baseline_ratio || 0) <= 1.2);
+    const startupSegments = segments.filter(seg => ['spike', 'transition', 'rising', 'rising-fast'].includes(seg.kind) && Number(seg.slope || 0) > 0);
+    const normalSegments = segments.filter(seg => ['plateau-mid', 'plateau-high'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 1.2);
+    const stallSegments = segments.filter(seg => ['spike', 'burst', 'plateau-high'].includes(seg.kind) && Number(seg.baseline_ratio || 0) >= 3);
 
     this.pushMergedStage(fallbackStages, stageByCode.get('standby'), stableLowSegments, 0.35, '按低电流稳定段推断');
     this.pushMergedStage(fallbackStages, stageByCode.get('startup'), startupSegments.slice(0, 3), 0.35, '按上升尖峰段推断');
@@ -388,14 +388,73 @@ class StageRecognitionWorkflowService {
     return stages;
   }
 
-  buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length) {
+  buildContourSamples(segments, targetCells = 128) {
+    // 等距数值轮廓：沿压缩折线在每个 cell 中心线性插值取值，
+    // 第 i 个值对应时刻 t = start + (i + 0.5) * step，x 坐标隐式精确，无需读图
+    const points = [];
+    for (const seg of Array.isArray(segments) ? segments : []) {
+      const polyline = Array.isArray(seg.polyline_points) && seg.polyline_points.length >= 2
+        ? seg.polyline_points
+        : [[seg.start_time, seg.start_current], [seg.end_time, seg.end_current]];
+      for (const point of polyline) {
+        if (Array.isArray(point) && point.length >= 2) points.push([Number(point[0]), Number(point[1])]);
+      }
+    }
+    if (points.length < 2) return null;
+
+    const tMin = points[0][0];
+    const tMax = points[points.length - 1][0];
+    if (!(tMax > tMin)) return null;
+    const step = (tMax - tMin) / targetCells;
+
+    const values = [];
+    let cursor = 0;
+    for (let cell = 0; cell < targetCells; cell++) {
+      const t = tMin + (cell + 0.5) * step;
+      while (cursor < points.length - 2 && points[cursor + 1][0] < t) cursor++;
+      const [t0, v0] = points[cursor];
+      const [t1, v1] = points[cursor + 1];
+      const value = t1 > t0 ? v0 + (v1 - v0) * (t - t0) / (t1 - t0) : v0;
+      values.push(Number(value.toFixed(2)));
+    }
+
+    return { start: Number(tMin.toFixed(6)), step: Number(step.toFixed(6)), values };
+  }
+
+  buildKnotSequence(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) return '';
+    const knots = [`${segments[0].start_time}s:${segments[0].start_current}A`];
+    for (const seg of segments) {
+      knots.push(`${seg.end_time}s:${seg.end_current}A`);
+    }
+    return knots.join(' -> ');
+  }
+
+  isValidContour(contour) {
+    return !!contour
+      && Number.isFinite(Number(contour.start))
+      && Number.isFinite(Number(contour.step))
+      && Number(contour.step) > 0
+      && Array.isArray(contour.values)
+      && contour.values.length > 0;
+  }
+
+  buildUserMessage(globals, segments, events, ruleSet, appConfig, originalSegmentCount = segments.length, providedContour = null) {
     const stageDefs = ruleSet.stages || [];
     const firstSegmentStart = Number(segments?.[0]?.start_time);
     const lastSegmentEnd = Number(segments?.[segments.length - 1]?.end_time);
 
-    let segText = '';
-    for (const seg of segments) {
-      segText += `段${seg.segment_index}: ${seg.kind}, 时间${seg.start_time}s-${seg.end_time}s, 持续${seg.duration}s, 点数${seg.point_count}, 开始电流${seg.start_current}A, 结束电流${seg.end_current}A, 带宽${seg.bandwidth}A, 斜率${seg.slope}\n`;
+    // 优先使用前端压缩时提交的轮廓（与 chart 渲染同源），旧结果回退服务端自算
+    const contour = this.isValidContour(providedContour) ? providedContour : this.buildContourSamples(segments);
+    const contourText = contour
+      ? `等距轮廓（步长 ${contour.step}s，共 ${contour.values.length} 个电流值(A)，第 i 个值（i 从 0 开始）对应时刻 t = ${contour.start} + (i + 0.5) × ${contour.step} 秒）:\n${contour.values.join(', ')}`
+      : '（轮廓数据不足）';
+
+    const knotText = this.buildKnotSequence(segments) || '（无转折点）';
+
+    let eventText = '';
+    if (Array.isArray(events) && events.length > 0) {
+      eventText = `\n 关键事件:\n${events.map(event => `- ${event.type} @ ${event.time}s`).join('\n')}\n`;
     }
 
     let ruleText = '';
@@ -404,20 +463,24 @@ class StageRecognitionWorkflowService {
     }
 
     return `文件摘要:
- 总点数: ${segments.reduce((s, seg) => s + seg.point_count, 0)}
- 全局: 最小电流 ${globals.min_current}A, 最大电流 ${globals.max_current}A, 均值 ${globals.mean_current}A, 基线均值 ${globals.baseline_mean}A, 采样间隔${globals.sample_interval}s
- 时间范围: ${Number.isFinite(firstSegmentStart) ? firstSegmentStart : '-'}s -> ${Number.isFinite(lastSegmentEnd) ? lastSegmentEnd : '-'}s
-   压缩段数量: 原始 ${originalSegmentCount} 段，本次送审 ${segments.length} 段
+  总点数: ${segments.reduce((s, seg) => s + seg.point_count, 0)}
+  全局: 最小电流 ${globals.min_current}A, 最大电流 ${globals.max_current}A, 均值 ${globals.mean_current}A, 基线均值 ${globals.baseline_mean}A, 采样间隔${globals.sample_interval}s
+  时间范围: ${Number.isFinite(firstSegmentStart) ? firstSegmentStart : '-'}s -> ${Number.isFinite(lastSegmentEnd) ? lastSegmentEnd : '-'}s
+    压缩段数量: 原始 ${originalSegmentCount} 段，本次送审 ${segments.length} 段
 
- 压缩段列表:
- ${segText}
- 当前规则集:
- 场景说明: ${ruleSet.description || '无'}
- 阶段定义:
- ${ruleText}
+  ${contourText}
 
- 请根据上述压缩段信息和规则集，识别并返回各阶段的起止时间。
- 所有阶段时间必须落在给定时间范围内，不允许早于首个采样时间，也不允许晚于最后一个采样时间。`;
+  转折点序列（时间:电流，为压缩折线的精确锚点，与上方等距轮廓同一时间轴）:
+  ${knotText}
+  ${eventText}
+  当前规则集:
+  场景说明: ${ruleSet.description || '无'}
+  阶段定义:
+  ${ruleText}
+
+  请根据上述等距轮廓、转折点序列和规则集，识别并返回各阶段的起止时间。
+  阶段边界时间优先参考转折点序列中的精确时刻；等距轮廓用于理解整体形状与阶段拓扑。
+  所有阶段时间必须落在给定时间范围内，不允许早于首个采样时间，也不允许晚于最后一个采样时间。`;
   }
 
   reduceSegmentsForLlm(segments) {
@@ -430,7 +493,7 @@ class StageRecognitionWorkflowService {
     keepIndices.add(0);
     keepIndices.add(lastIndex);
 
-    const priorityKinds = new Set(['surge', 'spike', 'drop', 'transition']);
+    const priorityKinds = new Set(['spike', 'burst', 'transition', 'plateau-high']);
     segments.forEach((seg, index) => {
       const baselineRatio = Number(seg.baseline_ratio || 0);
       const duration = Number(seg.duration || 0);

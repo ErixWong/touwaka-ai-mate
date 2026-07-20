@@ -1,10 +1,15 @@
 <template>
   <el-card shadow="never">
     <template #header>
-      <span class="card-title">电流曲线（原始数据）</span>
-      <el-tag v-if="hasData" size="small" type="info" style="margin-left: 8px">
-        {{ isSampled ? `当前窗口已采样 ${sampledCount} / ${totalCount} 点` : `当前窗口显示 ${sampledCount} / ${totalCount} 点` }}
-      </el-tag>
+      <div class="cfa-chart-header">
+        <div>
+          <span class="card-title">电流曲线（原始数据，滚轮缩放 / 拖动平移）</span>
+          <el-tag v-if="hasData" size="small" type="info" style="margin-left: 8px">
+            {{ isSampled ? `当前窗口已采样 ${sampledCount} / ${totalCount} 点` : `当前窗口显示 ${sampledCount} / ${totalCount} 点` }}
+          </el-tag>
+        </div>
+        <el-button link type="primary" :disabled="!hasData" @click="resetZoom">重置缩放</el-button>
+      </div>
     </template>
     <div class="cfa-chart-wrap" :style="chartStyle">
       <div ref="chartRef" class="cfa-chart" :style="chartStyle" v-show="hasData"></div>
@@ -22,8 +27,10 @@ import {
   TitleComponent,
   TooltipComponent,
   GridComponent,
+  DataZoomComponent,
 } from 'echarts/components'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
+import { decimateMinMax } from '../utils/local-analysis'
 
 use([
   CanvasRenderer,
@@ -31,6 +38,7 @@ use([
   TitleComponent,
   TooltipComponent,
   GridComponent,
+  DataZoomComponent,
 ])
 
 const props = defineProps<{
@@ -38,7 +46,6 @@ const props = defineProps<{
   result: FileAnalysisResult | null
   rawData?: number[][] | null
   chartHeight?: number
-  focusRange?: [number, number] | null
 }>()
 
 const chartRef = ref<HTMLElement | null>(null)
@@ -48,7 +55,7 @@ const sampledCount = ref(0)
 const totalCount = ref(0)
 let chartInstance: any = null
 let resizeHandler: (() => void) | null = null
-let focusRangeTimer: ReturnType<typeof setTimeout> | null = null
+let renderTimer: ReturnType<typeof setTimeout> | null = null
 
 const MAX_POINTS = 3000
 const chartStyle = computed(() => ({ height: `${props.chartHeight ?? 250}px` }))
@@ -84,68 +91,140 @@ function upperBound(points: number[][], target: number) {
 function sampleWindow(points: number[][], startIndex = 0, endExclusive = points.length): number[][] {
   const count = Math.max(0, endExclusive - startIndex)
   if (count <= MAX_POINTS) return points.slice(startIndex, endExclusive)
-  const sampled: number[][] = []
-  const step = (count - 1) / (MAX_POINTS - 1)
-  for (let i = 0; i < MAX_POINTS; i++) {
-    const point = points[startIndex + Math.round(i * step)]
-    if (point) sampled.push(point)
-  }
-  return sampled
+  // min-max 分桶抽取：包络无损，全景/缩放任何级别都不会藏住尖峰；
+  // O(窗口点数) 单遍扫描，缩放重采样开销可忽略
+  return decimateMinMax(points.slice(startIndex, endExclusive) as [number, number][], MAX_POINTS)
+}
+
+// 当前缩放窗口（null = 全范围），由本图 dataZoom 自管，无需跨组件联动
+let currentWindow: [number, number] | null = null
+let dataExtent: { min: number; max: number } | null = null
+let isSyncingZoom = false
+
+let fullSampleCache: { raw: number[][]; sample: number[][] } | null = null
+
+function getFullSample(): number[][] {
+  const raw = props.rawData
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return []
+  if (fullSampleCache?.raw === raw) return fullSampleCache.sample
+  const sample = decimateMinMax(raw as [number, number][], MAX_POINTS)
+  fullSampleCache = { raw, sample }
+  return sample
 }
 
 function getPoints(): number[][] {
   const raw = props.rawData
-  if (raw && Array.isArray(raw) && raw.length > 0) {
-    const range = getNormalizedFocusRange()
-    const startIndex = range ? lowerBound(raw, range[0]) : 0
-    const endExclusive = range ? upperBound(raw, range[1]) : raw.length
-    totalCount.value = Math.max(0, endExclusive - startIndex)
-    const points = sampleWindow(raw, startIndex, endExclusive)
-    sampledCount.value = points.length
-    isSampled.value = totalCount.value > points.length
-    return points
+  if (!raw || !Array.isArray(raw) || raw.length === 0) {
+    totalCount.value = 0
+    sampledCount.value = 0
+    isSampled.value = false
+    return []
   }
 
-  totalCount.value = 0
-  sampledCount.value = 0
-  isSampled.value = false
-  return []
+  // 全景骨架 + 窗口精修：series 数据必须始终覆盖全时间轴。
+  // 若放大时把数据替换为窗口子集，x 轴范围会收缩到窗口内，
+  // 之后缩小会撞上数据边界——用户看到的"缩小回不去"就是这个根因。
+  const fullSample = getFullSample()
+  if (!currentWindow) {
+    totalCount.value = raw.length
+    sampledCount.value = fullSample.length
+    isSampled.value = totalCount.value > fullSample.length
+    return fullSample
+  }
+
+  const [windowStart, windowEnd] = currentWindow
+  const startIndex = lowerBound(raw, windowStart)
+  const endExclusive = upperBound(raw, windowEnd)
+  totalCount.value = Math.max(0, endExclusive - startIndex)
+  const refined = sampleWindow(raw, startIndex, endExclusive)
+  sampledCount.value = refined.length
+  isSampled.value = totalCount.value > refined.length
+
+  const merged: number[][] = []
+  for (const point of fullSample) {
+    if ((point[0] ?? 0) < windowStart) merged.push(point)
+  }
+  merged.push(...refined)
+  for (const point of fullSample) {
+    if ((point[0] ?? 0) > windowEnd) merged.push(point)
+  }
+  return merged
+}
+
+function resolveWindowFromZoom(): [number, number] | null {
+  const option = chartInstance?.getOption?.()
+  const zoom = Array.isArray(option?.dataZoom) ? option.dataZoom[0] : null
+  if (!zoom) return currentWindow
+
+  let start = typeof zoom.startValue === 'number' ? zoom.startValue : null
+  let end = typeof zoom.endValue === 'number' ? zoom.endValue : null
+  if ((start == null || end == null) && dataExtent && typeof zoom.start === 'number' && typeof zoom.end === 'number') {
+    const span = dataExtent.max - dataExtent.min
+    start = dataExtent.min + (span * zoom.start) / 100
+    end = dataExtent.min + (span * zoom.end) / 100
+  }
+  if (start == null || end == null || !(end > start)) return currentWindow
+
+  // 接近全范围则吸附为无窗口（阈值 3%，避免滚轮缩回到 99% 时卡在"几乎全范围"状态）
+  if (dataExtent) {
+    const span = dataExtent.max - dataExtent.min
+    if (start <= dataExtent.min + span * 0.03 && end >= dataExtent.max - span * 0.03) {
+      return null
+    }
+  }
+  return [start, end]
+}
+
+// 显式复位标志：仅 resetZoom 时强制 dataZoom 回全范围；
+// 吸附（zoom 接近全范围 → currentWindow=null）只影响采样口径，不能重置用户的缩放状态
+let forceFullZoom = false
+
+function resetZoom() {
+  currentWindow = null
+  forceFullZoom = true
+  renderRaw()
+}
+
+function onDataZoomChanged() {
+  if (isSyncingZoom) return
+  currentWindow = resolveWindowFromZoom()
+  scheduleRender()
 }
 
 function disposeChart() {
-  if (focusRangeTimer) {
-    clearTimeout(focusRangeTimer)
-    focusRangeTimer = null
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+    renderTimer = null
   }
   if (resizeHandler) {
     window.removeEventListener('resize', resizeHandler)
     resizeHandler = null
   }
   if (chartInstance) {
+    chartInstance.off('datazoom', onDataZoomChanged)
     chartInstance.dispose()
     chartInstance = null
   }
 }
 
-function getNormalizedFocusRange() {
-  const range = props.focusRange
-  if (!range || range.length !== 2) return null
-  const [start, end] = range
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null
-  return [start, end] as [number, number]
-}
-
-function applyFocusRange() {
-  if (focusRangeTimer) {
-    clearTimeout(focusRangeTimer)
+function scheduleRender() {
+  if (renderTimer) {
+    clearTimeout(renderTimer)
   }
-  focusRangeTimer = setTimeout(() => {
-    focusRangeTimer = null
+  renderTimer = setTimeout(() => {
+    renderTimer = null
     nextTick(() => renderRaw())
-  }, 80)
+  }, 150)
 }
 
 async function renderRaw() {
+  const raw = props.rawData
+  if (raw && raw.length > 1) {
+    dataExtent = { min: raw[0]![0] ?? 0, max: raw[raw.length - 1]![0] ?? 0 }
+  } else {
+    dataExtent = null
+  }
+
   const allPoints = getPoints()
   hasData.value = allPoints.length > 0
   if (!hasData.value) return
@@ -158,16 +237,45 @@ async function renderRaw() {
     window.addEventListener('resize', resizeHandler)
   }
 
+  // 缩放状态策略：有窗口 → 同步窗口值；显式复位 → 强制回全范围；
+  // 其余（含全范围吸附）→ 不传缩放字段，merge 模式保留用户当前缩放状态
+  const zoomWindow = currentWindow
+    ? { startValue: currentWindow[0], endValue: currentWindow[1] }
+    : forceFullZoom
+      ? { start: 0, end: 100 }
+      : {}
+  forceFullZoom = false
+
+  isSyncingZoom = true
   chartInstance.setOption({
     tooltip: { trigger: 'axis' },
-    grid: { left: 50, right: 20, top: 10, bottom: 30 },
+    grid: { left: 50, right: 20, top: 10, bottom: 56 },
     xAxis: {
       type: 'value',
       name: '时间 (s)',
-      min: getNormalizedFocusRange()?.[0] ?? null,
-      max: getNormalizedFocusRange()?.[1] ?? null,
     },
     yAxis: { type: 'value', name: '电流 (A)' },
+    dataZoom: [
+      {
+        id: 'zoom-inside',
+        type: 'inside',
+        xAxisIndex: 0,
+        ...zoomWindow,
+      },
+      {
+        id: 'zoom-slider',
+        type: 'slider',
+        xAxisIndex: 0,
+        height: 18,
+        bottom: 8,
+        showDetail: false,
+        showDataShadow: true,
+        fillerColor: 'rgba(45, 156, 219, 0.18)',
+        borderColor: 'rgba(148, 163, 184, 0.5)',
+        backgroundColor: 'rgba(148, 163, 184, 0.12)',
+        ...zoomWindow,
+      },
+    ],
     series: [{
       type: 'line',
       data: allPoints,
@@ -176,6 +284,11 @@ async function renderRaw() {
       lineStyle: { color: 'rgba(45, 156, 219, 1)', width: 1.4 },
       areaStyle: { color: 'rgba(45, 156, 219, 0.12)' },
     }],
+  })
+  chartInstance.off('datazoom', onDataZoomChanged)
+  chartInstance.on('datazoom', onDataZoomChanged)
+  requestAnimationFrame(() => {
+    isSyncingZoom = false
   })
 }
 
@@ -188,20 +301,23 @@ onBeforeUnmount(() => {
 })
 
 watch([() => props.rawData, () => props.result], () => {
+  currentWindow = null
   nextTick(() => renderRaw())
 })
 
 watch(() => props.chartHeight, () => {
   nextTick(() => chartInstance?.resize())
 })
-
-watch(() => props.focusRange, () => {
-  applyFocusRange()
-})
 </script>
 
 <style scoped>
 .cfa-chart { height: 250px; }
+.cfa-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .cfa-chart-wrap { min-height: 250px; }
 .cfa-chart-empty {
   height: 250px;

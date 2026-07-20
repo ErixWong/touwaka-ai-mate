@@ -6,7 +6,7 @@ const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
 
 export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'preparing_analysis' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
 export type AnalysisStatus = 'pending' | 'ready' | 'compressing' | 'llm_recognizing' | 'analyzing' | 'completed' | 'failed'
-export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v2' | 'envelope_turning_points_v3' | 'structural_profile_v1' | 'structural_profile_v2' | 'structural_cusum_v1'
+export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v2' | 'envelope_turning_points_v3' | 'structural_profile_v1' | 'structural_profile_v2' | 'structural_cusum_v1' | 'optimal_segmentation_v1'
 
 export interface DuplicateDiagnosis {
   duplicate_groups: number
@@ -161,11 +161,25 @@ export interface CompressionMeta {
   target_key_point_max?: number | null
   selection_reason?: string | null
   selection_context?: {
-    left_resolution: number
-    left_points: number
-    right_resolution: number
-    right_points: number
+    left_resolution?: number
+    left_points?: number
+    right_resolution?: number
+    right_points?: number
+    raw_point_count?: number
+    decimated_point_count?: number
+    micro_segment_count?: number
+    knot_count?: number
+    target_segment_count?: number
   } | null
+}
+
+export interface ContourSamples {
+  /** 起始时刻（第一个 cell 的左边界） */
+  start: number
+  /** cell 步长（秒），第 i 个值对应 t = start + (i + 0.5) × step */
+  step: number
+  /** 等距电流值序列 */
+  values: number[]
 }
 
 export interface FileAnalysisResult {
@@ -173,6 +187,8 @@ export interface FileAnalysisResult {
   segments?: SegmentItem[]
   events?: Array<Record<string, unknown>>
   compression_meta?: CompressionMeta
+  /** 等距数值轮廓：chart 渲染与 LLM 输入的同源数据 */
+  contour?: ContourSamples | null
   llm_result?: LlmResult
   stage_metrics?: StageMetric[]
   file_metrics?: FileMetrics | null

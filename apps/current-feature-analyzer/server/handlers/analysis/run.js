@@ -108,8 +108,11 @@ export async function post(ctx, deps) {
         const compressionMeta = normalizedResult.compression_meta && typeof normalizedResult.compression_meta === 'object'
           ? normalizedResult.compression_meta
           : null
+        const contour = normalizedResult.contour && typeof normalizedResult.contour === 'object'
+          ? normalizedResult.contour
+          : null
         const rawData = file.raw_data || []
-        const llmResult = await stageRecognitionWorkflowService.recognize(globals, segments, events, ruleSet, appConfig)
+        const llmResult = await stageRecognitionWorkflowService.recognize(globals, segments, events, ruleSet, appConfig, contour)
         const stageMetrics = stageMetricsService.calculate(rawData, llmResult)
         const fileMetrics = stageMetricsService.buildFileMetrics(rawData, segments, stageMetrics, llmResult)
 
@@ -118,6 +121,7 @@ export async function post(ctx, deps) {
           segments,
           events,
           compression_meta: compressionMeta,
+          contour,
           llm_result: llmResult,
           stage_metrics: stageMetrics,
           file_metrics: fileMetrics,

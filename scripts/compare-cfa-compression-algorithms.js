@@ -2136,6 +2136,194 @@ function analyzeWithEnvelopeTurningPointsV3(windows, globals) {
   );
 }
 
+function chordMaxError(times, values, startIndex, endIndex) {
+  const t0 = times[startIndex];
+  const v0 = values[startIndex];
+  const t1 = times[endIndex];
+  const v1 = values[endIndex];
+  const dt = t1 - t0;
+  let maxErr = 0;
+  for (let k = startIndex + 1; k < endIndex; k++) {
+    const ratio = dt > 0 ? (times[k] - t0) / dt : 0;
+    const predicted = v0 + (v1 - v0) * ratio;
+    const err = Math.abs(values[k] - predicted);
+    if (err > maxErr) maxErr = err;
+  }
+  return maxErr;
+}
+
+function minimaxKnotSelection(times, values, segmentCount) {
+  // 精确 minimax k 段分段：f[s][j] = min over i of max(f[s-1][i], cost(i, j))
+  // 返回使最大弦误差最小的结点下标序列（含首尾）
+  const n = times.length;
+  const last = n - 1;
+  if (segmentCount >= last) {
+    return Array.from({ length: n }, (_, index) => index);
+  }
+
+  // 段代价矩阵（只算 i < j）
+  const cost = Array.from({ length: n }, () => new Float64Array(n));
+  for (let i = 0; i < last; i++) {
+    for (let j = i + 1; j < n; j++) {
+      cost[i][j] = chordMaxError(times, values, i, j);
+    }
+  }
+
+  const INF = Number.POSITIVE_INFINITY;
+  let previous = new Float64Array(n);
+  const parent = [];
+  for (let j = 0; j < n; j++) {
+    previous[j] = cost[0][j];
+  }
+  parent.push(new Int32Array(n).fill(0));
+
+  for (let s = 2; s <= segmentCount; s++) {
+    const current = new Float64Array(n).fill(INF);
+    const currentParent = new Int32Array(n).fill(-1);
+    for (let j = s - 1; j < n; j++) {
+      let best = INF;
+      let bestI = -1;
+      for (let i = s - 2; i < j; i++) {
+        const value = Math.max(previous[i], cost[i][j]);
+        if (value < best) {
+          best = value;
+          bestI = i;
+        }
+      }
+      current[j] = best;
+      currentParent[j] = bestI;
+    }
+    parent.push(currentParent);
+    previous = current;
+  }
+
+  const knots = [last];
+  let segmentsUsed = segmentCount;
+  let cursor = last;
+  while (segmentsUsed > 1 && cursor > 0) {
+    const predecessor = parent[segmentsUsed - 1][cursor];
+    if (predecessor < 0) break;
+    knots.push(predecessor);
+    cursor = predecessor;
+    segmentsUsed--;
+  }
+  knots.push(0);
+  return [...new Set(knots)].sort((left, right) => left - right);
+}
+
+function analyzeWithOptimalMerge(windows, globals) {
+  const count = windows.length;
+  const times = windows.map(window => window.start_time);
+  const values = windows.map(window => window.mean_current);
+  const targetKnots = Math.min(TARGET_POINT_COUNT, count);
+  const knotIndices = minimaxKnotSelection(times, values, Math.max(2, targetKnots - 1));
+
+  return buildAlgorithmResult(
+    'optimal_merge_v1',
+    '最优合并分段 V1（沙盒）',
+    null,
+    knotIndices,
+    windows,
+    globals,
+    '精确 minimax K 段分段：预算约束下使 L∞ 弦误差最小，边界为真实窗口点，无锚点无特例'
+  );
+}
+
+function reconstructAtTime(keyPoints, time) {
+  const first = keyPoints[0];
+  const last = keyPoints[keyPoints.length - 1];
+  if (time <= first.time) return first.mean_current;
+  if (time >= last.time) return last.mean_current;
+  let lo = 0;
+  let hi = keyPoints.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (keyPoints[mid].time <= time) lo = mid;
+    else hi = mid;
+  }
+  const left = keyPoints[lo];
+  const right = keyPoints[hi];
+  if (right.time === left.time) return right.mean_current;
+  const ratio = (time - left.time) / (right.time - left.time);
+  return left.mean_current + (right.mean_current - left.mean_current) * ratio;
+}
+
+function crossingTimes(times, values, level) {
+  const result = [];
+  for (let index = 1; index < values.length; index++) {
+    const before = values[index - 1] - level;
+    const after = values[index] - level;
+    if (before === 0) {
+      result.push(times[index - 1]);
+      continue;
+    }
+    if ((before < 0 && after >= 0) || (before > 0 && after <= 0)) {
+      const ratio = before / (before - after);
+      result.push(times[index - 1] + (times[index] - times[index - 1]) * ratio);
+    }
+  }
+  return result;
+}
+
+function evaluateFidelity(keyPoints, windows, globals) {
+  if (!Array.isArray(keyPoints) || keyPoints.length < 2 || !windows.length) return null;
+  const sortedPoints = keyPoints.slice().sort((left, right) => left.time - right.time);
+  const fullScale = Math.max(globals.full_scale, 0.0001);
+  const times = windows.map(window => window.start_time);
+  const meanValues = windows.map(window => window.mean_current);
+  const reconValues = times.map(time => reconstructAtTime(sortedPoints, time));
+
+  const errors = meanValues.map((mean, index) => Math.abs(reconValues[index] - mean) / fullScale * 100);
+  const sortedErrors = errors.slice().sort((left, right) => left - right);
+
+  let peakWindow = windows[0];
+  let peakIndex = 0;
+  windows.forEach((window, index) => {
+    if (window.max_current > peakWindow.max_current) {
+      peakWindow = window;
+      peakIndex = index;
+    }
+  });
+  const peakErrPct = Math.abs(peakWindow.max_current - reconValues[peakIndex]) / fullScale * 100;
+
+  let crossingErrSeconds = 0;
+  let missedCrossings = 0;
+  const levels = [0.25, 0.5, 0.75].map(fraction => globals.baseline_mean + fraction * (globals.p99_current - globals.baseline_mean));
+  for (const level of levels) {
+    const rawCrossings = crossingTimes(times, meanValues, level);
+    const reconCrossings = crossingTimes(times, reconValues, level);
+    for (const rawTime of rawCrossings) {
+      let nearest = Infinity;
+      for (const reconTime of reconCrossings) {
+        nearest = Math.min(nearest, Math.abs(reconTime - rawTime));
+      }
+      if (!Number.isFinite(nearest) || nearest > 0.05) {
+        missedCrossings++;
+        crossingErrSeconds = Math.max(crossingErrSeconds, Number.isFinite(nearest) ? nearest : 0.05);
+      } else {
+        crossingErrSeconds = Math.max(crossingErrSeconds, nearest);
+      }
+    }
+  }
+
+  return {
+    max_err_pct: maxOfArray(errors),
+    p95_err_pct: sortedErrors[clampIndex(Math.floor(0.95 * (sortedErrors.length - 1)), sortedErrors.length)],
+    mean_err_pct: errors.reduce((sum, value) => sum + value, 0) / errors.length,
+    peak_err_pct: peakErrPct,
+    crossing_err_s: crossingErrSeconds,
+    missed_crossings: missedCrossings,
+  };
+}
+
+function maxOfArray(values) {
+  let max = -Infinity;
+  for (const value of values) {
+    if (value > max) max = value;
+  }
+  return max;
+}
+
 function printGlobals(globals) {
   console.log(`点数: ${globals.point_count}`);
   console.log(`时间范围: ${formatNumber(globals.time_start, 6)}s -> ${formatNumber(globals.time_end, 6)}s`);
@@ -2275,6 +2463,7 @@ async function analyzeSampleFile(sampleFile, options = {}) {
     analyzeWithBidirectionalIterativeSketch(enrichedWindows, globals),
     analyzeWithHistogramAbsorption(enrichedWindows, globals),
     analyzeWithLevelAwarePrimitive(enrichedWindows, globals),
+    analyzeWithOptimalMerge(enrichedWindows, globals),
   ];
   const filteredResults = filterResults(results, options.algorithmFilter);
 
@@ -2285,6 +2474,21 @@ async function analyzeSampleFile(sampleFile, options = {}) {
   printHeader('算法摘要');
   for (const result of filteredResults) {
     printAlgorithmResult(result);
+  }
+
+  printHeader('保真度指标（重建折线 vs 窗口均值）');
+  for (const result of filteredResults) {
+    const fidelity = evaluateFidelity(result.key_points, enrichedWindows, globals);
+    if (!fidelity) {
+      console.log(`${result.algorithm_key}: 关键点不足，无法评估`);
+      continue;
+    }
+    console.log(
+      `${result.algorithm_key}: max=${formatNumber(fidelity.max_err_pct, 2)}% ` +
+      `p95=${formatNumber(fidelity.p95_err_pct, 2)}% mean=${formatNumber(fidelity.mean_err_pct, 2)}% ` +
+      `peak=${formatNumber(fidelity.peak_err_pct, 2)}% cross=${formatNumber(fidelity.crossing_err_s, 4)}s ` +
+      `missed_crossings=${fidelity.missed_crossings}`
+    );
   }
 
   for (const result of filteredResults) {
