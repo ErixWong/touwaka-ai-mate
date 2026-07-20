@@ -1,7 +1,7 @@
 <template>
   <el-card shadow="never">
     <template #header>
-      <span class="card-title">电流曲线（原始数据）</span>
+      <span class="card-title">电流曲线（原始数据，滚轮缩放 / 拖动平移）</span>
       <el-tag v-if="hasData" size="small" type="info" style="margin-left: 8px">
         {{ isSampled ? `当前窗口已采样 ${sampledCount} / ${totalCount} 点` : `当前窗口显示 ${sampledCount} / ${totalCount} 点` }}
       </el-tag>
@@ -22,6 +22,7 @@ import {
   TitleComponent,
   TooltipComponent,
   GridComponent,
+  DataZoomComponent,
 } from 'echarts/components'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
 import { decimateMinMax } from '../utils/local-analysis'
@@ -32,6 +33,7 @@ use([
   TitleComponent,
   TooltipComponent,
   GridComponent,
+  DataZoomComponent,
 ])
 
 const props = defineProps<{
@@ -39,7 +41,6 @@ const props = defineProps<{
   result: FileAnalysisResult | null
   rawData?: number[][] | null
   chartHeight?: number
-  focusRange?: [number, number] | null
 }>()
 
 const chartRef = ref<HTMLElement | null>(null)
@@ -49,7 +50,7 @@ const sampledCount = ref(0)
 const totalCount = ref(0)
 let chartInstance: any = null
 let resizeHandler: (() => void) | null = null
-let focusRangeTimer: ReturnType<typeof setTimeout> | null = null
+let renderTimer: ReturnType<typeof setTimeout> | null = null
 
 const MAX_POINTS = 3000
 const chartStyle = computed(() => ({ height: `${props.chartHeight ?? 250}px` }))
@@ -90,10 +91,15 @@ function sampleWindow(points: number[][], startIndex = 0, endExclusive = points.
   return decimateMinMax(points.slice(startIndex, endExclusive) as [number, number][], MAX_POINTS)
 }
 
+// 当前缩放窗口（null = 全范围），由本图 dataZoom 自管，无需跨组件联动
+let currentWindow: [number, number] | null = null
+let dataExtent: { min: number; max: number } | null = null
+let isSyncingZoom = false
+
 function getPoints(): number[][] {
   const raw = props.rawData
   if (raw && Array.isArray(raw) && raw.length > 0) {
-    const range = getNormalizedFocusRange()
+    const range = currentWindow
     const startIndex = range ? lowerBound(raw, range[0]) : 0
     const endExclusive = range ? upperBound(raw, range[1]) : raw.length
     totalCount.value = Math.max(0, endExclusive - startIndex)
@@ -109,40 +115,70 @@ function getPoints(): number[][] {
   return []
 }
 
+function resolveWindowFromZoom(): [number, number] | null {
+  const option = chartInstance?.getOption?.()
+  const zoom = Array.isArray(option?.dataZoom) ? option.dataZoom[0] : null
+  if (!zoom) return currentWindow
+
+  let start = typeof zoom.startValue === 'number' ? zoom.startValue : null
+  let end = typeof zoom.endValue === 'number' ? zoom.endValue : null
+  if ((start == null || end == null) && dataExtent && typeof zoom.start === 'number' && typeof zoom.end === 'number') {
+    const span = dataExtent.max - dataExtent.min
+    start = dataExtent.min + (span * zoom.start) / 100
+    end = dataExtent.min + (span * zoom.end) / 100
+  }
+  if (start == null || end == null || !(end > start)) return currentWindow
+
+  // 接近全范围则视为无窗口
+  if (dataExtent) {
+    const span = dataExtent.max - dataExtent.min
+    if (start <= dataExtent.min + span * 0.005 && end >= dataExtent.max - span * 0.005) {
+      return null
+    }
+  }
+  return [start, end]
+}
+
+function onDataZoomChanged() {
+  if (isSyncingZoom) return
+  currentWindow = resolveWindowFromZoom()
+  scheduleRender()
+}
+
 function disposeChart() {
-  if (focusRangeTimer) {
-    clearTimeout(focusRangeTimer)
-    focusRangeTimer = null
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+    renderTimer = null
   }
   if (resizeHandler) {
     window.removeEventListener('resize', resizeHandler)
     resizeHandler = null
   }
   if (chartInstance) {
+    chartInstance.off('datazoom', onDataZoomChanged)
     chartInstance.dispose()
     chartInstance = null
   }
 }
 
-function getNormalizedFocusRange() {
-  const range = props.focusRange
-  if (!range || range.length !== 2) return null
-  const [start, end] = range
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null
-  return [start, end] as [number, number]
-}
-
-function applyFocusRange() {
-  if (focusRangeTimer) {
-    clearTimeout(focusRangeTimer)
+function scheduleRender() {
+  if (renderTimer) {
+    clearTimeout(renderTimer)
   }
-  focusRangeTimer = setTimeout(() => {
-    focusRangeTimer = null
+  renderTimer = setTimeout(() => {
+    renderTimer = null
     nextTick(() => renderRaw())
-  }, 80)
+  }, 150)
 }
 
 async function renderRaw() {
+  const raw = props.rawData
+  if (raw && raw.length > 1) {
+    dataExtent = { min: raw[0]![0] ?? 0, max: raw[raw.length - 1]![0] ?? 0 }
+  } else {
+    dataExtent = null
+  }
+
   const allPoints = getPoints()
   hasData.value = allPoints.length > 0
   if (!hasData.value) return
@@ -155,16 +191,38 @@ async function renderRaw() {
     window.addEventListener('resize', resizeHandler)
   }
 
+  isSyncingZoom = true
   chartInstance.setOption({
     tooltip: { trigger: 'axis' },
-    grid: { left: 50, right: 20, top: 10, bottom: 30 },
+    grid: { left: 50, right: 20, top: 10, bottom: 56 },
     xAxis: {
       type: 'value',
       name: '时间 (s)',
-      min: getNormalizedFocusRange()?.[0] ?? null,
-      max: getNormalizedFocusRange()?.[1] ?? null,
     },
     yAxis: { type: 'value', name: '电流 (A)' },
+    dataZoom: [
+      {
+        id: 'zoom-inside',
+        type: 'inside',
+        xAxisIndex: 0,
+        startValue: currentWindow?.[0],
+        endValue: currentWindow?.[1],
+      },
+      {
+        id: 'zoom-slider',
+        type: 'slider',
+        xAxisIndex: 0,
+        height: 18,
+        bottom: 8,
+        showDetail: false,
+        showDataShadow: true,
+        fillerColor: 'rgba(45, 156, 219, 0.18)',
+        borderColor: 'rgba(148, 163, 184, 0.5)',
+        backgroundColor: 'rgba(148, 163, 184, 0.12)',
+        startValue: currentWindow?.[0],
+        endValue: currentWindow?.[1],
+      },
+    ],
     series: [{
       type: 'line',
       data: allPoints,
@@ -173,6 +231,11 @@ async function renderRaw() {
       lineStyle: { color: 'rgba(45, 156, 219, 1)', width: 1.4 },
       areaStyle: { color: 'rgba(45, 156, 219, 0.12)' },
     }],
+  })
+  chartInstance.off('datazoom', onDataZoomChanged)
+  chartInstance.on('datazoom', onDataZoomChanged)
+  requestAnimationFrame(() => {
+    isSyncingZoom = false
   })
 }
 
@@ -185,15 +248,12 @@ onBeforeUnmount(() => {
 })
 
 watch([() => props.rawData, () => props.result], () => {
+  currentWindow = null
   nextTick(() => renderRaw())
 })
 
 watch(() => props.chartHeight, () => {
   nextTick(() => chartInstance?.resize())
-})
-
-watch(() => props.focusRange, () => {
-  applyFocusRange()
 })
 </script>
 
