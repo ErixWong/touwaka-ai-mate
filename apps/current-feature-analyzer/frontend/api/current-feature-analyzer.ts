@@ -165,6 +165,8 @@ export interface CompressionMeta {
     left_points?: number
     right_resolution?: number
     right_points?: number
+    raw_point_count?: number
+    decimated_point_count?: number
     micro_segment_count?: number
     knot_count?: number
     target_segment_count?: number

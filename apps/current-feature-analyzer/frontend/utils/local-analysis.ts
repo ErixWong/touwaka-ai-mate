@@ -1940,6 +1940,42 @@ function runKeyPointCompression(points: RawPoint[], options: CompressionOptions,
 }
 
 const OPTIMAL_SEGMENTATION_MAX_KNOTS = 700
+const OPTIMAL_SEGMENTATION_DECIMATE_TARGET = 3000
+
+export function decimateMinMax(points: RawPoint[], targetCount: number): RawPoint[] {
+  // min-max 分桶抽取：每桶保留最小/最大两个原始点，包络无损、陡沿保留，
+  // 避免均匀抽样的混叠问题（尖峰可能在抽样间隔中丢失）
+  if (points.length <= targetCount) {
+    return points
+  }
+  const bucketCount = Math.max(1, Math.floor((targetCount - 2) / 2))
+  const result: RawPoint[] = [points[0]!]
+  const bucketSize = (points.length - 2) / bucketCount
+
+  for (let bucket = 0; bucket < bucketCount; bucket++) {
+    const start = 1 + Math.floor(bucket * bucketSize)
+    const end = Math.min(points.length - 1, 1 + Math.floor((bucket + 1) * bucketSize))
+    if (end <= start) continue
+
+    let minIndex = start
+    let maxIndex = start
+    for (let index = start; index < end; index++) {
+      if (points[index]![1] < points[minIndex]![1]) minIndex = index
+      if (points[index]![1] > points[maxIndex]![1]) maxIndex = index
+    }
+
+    if (minIndex === maxIndex) {
+      result.push(points[minIndex]!)
+    } else if (minIndex < maxIndex) {
+      result.push(points[minIndex]!, points[maxIndex]!)
+    } else {
+      result.push(points[maxIndex]!, points[minIndex]!)
+    }
+  }
+
+  result.push(points[points.length - 1]!)
+  return result
+}
 
 function minimaxKnotSelection(times: number[], values: number[], internalErrors: number[], segmentCount: number): number[] {
   // 精确 minimax K 段分段：f[s][j] = min over i of max(f[s-1][i], cost(i, j))
@@ -2016,27 +2052,30 @@ function minimaxKnotSelection(times: number[], values: number[], internalErrors:
 }
 
 function runOptimalSegmentationCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
-  const globals = calculateGlobals(points)
+  const rawPointCount = points.length
+  // 先做特征保持抽取，把后续预切分/DP 的复杂度与原始点数解耦
+  const workingPoints = decimateMinMax(points, OPTIMAL_SEGMENTATION_DECIMATE_TARGET)
+  const globals = calculateGlobals(workingPoints)
   const target = Math.max(10, Number(profile.target_segment_count) || 45)
 
   // 精细预切分：微段内部误差被分辨率天然限界（≤ 2×resolution）；
   // 结点数超上限时放大分辨率重建，保证 DP 复杂度可控
   let resolution = options.absolute_resolution
-  let microSegments = buildInitialSegments(points, { ...options, absolute_resolution: resolution }, globals)
+  let microSegments = buildInitialSegments(workingPoints, { ...options, absolute_resolution: resolution }, globals)
   for (let attempt = 0; microSegments.length + 1 > OPTIMAL_SEGMENTATION_MAX_KNOTS && attempt < 8; attempt++) {
     resolution *= 2
-    microSegments = buildInitialSegments(points, { ...options, absolute_resolution: resolution }, globals)
+    microSegments = buildInitialSegments(workingPoints, { ...options, absolute_resolution: resolution }, globals)
   }
 
-  // 结点候选 = 各微段起点 + 末段终点（均为原始采样点下标，边界天然采样级精确）
+  // 结点候选 = 各微段起点 + 末段终点（均为抽取后的采样点下标，边界天然采样级精确）
   const knotRawIndices = microSegments.map(segment => segment.start_index || 0)
   const finalEndIndex = microSegments[microSegments.length - 1]!.end_index || 0
   if (knotRawIndices[knotRawIndices.length - 1] !== finalEndIndex) {
     knotRawIndices.push(finalEndIndex)
   }
 
-  const knotTimes = knotRawIndices.map(index => points[index]![0])
-  const knotValues = knotRawIndices.map(index => points[index]![1])
+  const knotTimes = knotRawIndices.map(index => workingPoints[index]![0])
+  const knotValues = knotRawIndices.map(index => workingPoints[index]![1])
   // 每个间隙（knot g -> knot g+1）对应一个微段，内部误差取其 line_fit_error
   const internalErrors = microSegments.map(segment => segment.line_fit_error || 0)
 
@@ -2047,15 +2086,17 @@ function runOptimalSegmentationCompression(points: RawPoint[], options: Compress
   for (let index = 0; index < selectedKnots.length - 1; index++) {
     const startRaw = knotRawIndices[selectedKnots[index]!]!
     const endRaw = knotRawIndices[selectedKnots[index + 1]!]!
-    segments.push(createSegment(points, startRaw, endRaw, globals, options))
+    segments.push(createSegment(workingPoints, startRaw, endRaw, globals, options))
   }
   const indexedSegments = segments.map((segment, index) => ({ ...segment, segment_index: index }))
-  const withPolyline = attachPolylinePoints(indexedSegments, points, globals, options) as SegmentItem[]
+  const withPolyline = attachPolylinePoints(indexedSegments, workingPoints, globals, options) as SegmentItem[]
 
   const meta = buildCompressionMeta(profile, { ...options, absolute_resolution: resolution })
   meta.selected_segment_count = withPolyline.length
   meta.selection_reason = 'minimax_dp_budget'
   meta.selection_context = {
+    raw_point_count: rawPointCount,
+    decimated_point_count: workingPoints.length,
     micro_segment_count: microSegments.length,
     knot_count: knotRawIndices.length,
     target_segment_count: target,

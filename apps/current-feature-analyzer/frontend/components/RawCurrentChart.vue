@@ -24,6 +24,7 @@ import {
   GridComponent,
 } from 'echarts/components'
 import type { FileAnalysisResult } from '../api/current-feature-analyzer'
+import { decimateMinMax } from '../utils/local-analysis'
 
 use([
   CanvasRenderer,
@@ -84,13 +85,9 @@ function upperBound(points: number[][], target: number) {
 function sampleWindow(points: number[][], startIndex = 0, endExclusive = points.length): number[][] {
   const count = Math.max(0, endExclusive - startIndex)
   if (count <= MAX_POINTS) return points.slice(startIndex, endExclusive)
-  const sampled: number[][] = []
-  const step = (count - 1) / (MAX_POINTS - 1)
-  for (let i = 0; i < MAX_POINTS; i++) {
-    const point = points[startIndex + Math.round(i * step)]
-    if (point) sampled.push(point)
-  }
-  return sampled
+  // min-max 分桶抽取：包络无损，全景/缩放任何级别都不会藏住尖峰；
+  // O(窗口点数) 单遍扫描，缩放重采样开销可忽略
+  return decimateMinMax(points.slice(startIndex, endExclusive) as [number, number][], MAX_POINTS)
 }
 
 function getPoints(): number[][] {
