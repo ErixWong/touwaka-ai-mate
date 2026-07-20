@@ -131,6 +131,16 @@ const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorit
     adaptive_search: false,
     target_segment_count: KEY_POINT_TARGET_COUNT,
   },
+  optimal_segmentation_v1: {
+    key: 'optimal_segmentation_v1',
+    label: '最优分段 V1（实验）',
+    output_mode: 'segments',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: 45,
+  },
 }
 
 function currentMagnitude(value: number | undefined | null) {
@@ -1929,6 +1939,138 @@ function runKeyPointCompression(points: RawPoint[], options: CompressionOptions,
   }
 }
 
+const OPTIMAL_SEGMENTATION_MAX_KNOTS = 700
+
+function minimaxKnotSelection(times: number[], values: number[], internalErrors: number[], segmentCount: number): number[] {
+  // 精确 minimax K 段分段：f[s][j] = min over i of max(f[s-1][i], cost(i, j))
+  // cost(i, j) = 弦在内部结点上的最大垂直误差 + 区间内微段内部误差最大值（L∞ 真实误差的上界）
+  // 返回使上界最小的结点下标序列（含首尾）
+  const n = times.length
+  const last = n - 1
+  if (segmentCount >= last) {
+    return Array.from({ length: n }, (_, index) => index)
+  }
+
+  const cost: Float64Array[] = new Array(n)
+  for (let i = 0; i < last; i++) {
+    const row = new Float64Array(n)
+    const t0 = times[i]!
+    const v0 = values[i]!
+    let internalMax = internalErrors[i] ?? 0
+    for (let j = i + 1; j < n; j++) {
+      if (j > i + 1) {
+        internalMax = Math.max(internalMax, internalErrors[j - 1] ?? 0)
+      }
+      const t1 = times[j]!
+      const v1 = values[j]!
+      const dt = t1 - t0
+      let maxErr = 0
+      for (let k = i + 1; k < j; k++) {
+        const ratio = dt > 0 ? (times[k]! - t0) / dt : 0
+        const err = Math.abs(values[k]! - (v0 + (v1 - v0) * ratio))
+        if (err > maxErr) maxErr = err
+      }
+      row[j] = maxErr + internalMax
+    }
+    cost[i] = row
+  }
+
+  let previous = new Float64Array(n)
+  const parents: Int32Array[] = [new Int32Array(n).fill(0)]
+  for (let j = 0; j < n; j++) {
+    previous[j] = cost[0]![j]!
+  }
+
+  for (let s = 2; s <= segmentCount; s++) {
+    const current = new Float64Array(n).fill(Number.POSITIVE_INFINITY)
+    const currentParent = new Int32Array(n).fill(-1)
+    for (let j = s - 1; j < n; j++) {
+      let best = Number.POSITIVE_INFINITY
+      let bestI = -1
+      for (let i = s - 2; i < j; i++) {
+        const value = Math.max(previous[i]!, cost[i]![j]!)
+        if (value < best) {
+          best = value
+          bestI = i
+        }
+      }
+      current[j] = best
+      currentParent[j] = bestI
+    }
+    parents.push(currentParent)
+    previous = current
+  }
+
+  const knots = [last]
+  let segmentsUsed = segmentCount
+  let cursor = last
+  while (segmentsUsed > 1 && cursor > 0) {
+    const predecessor = parents[segmentsUsed - 1]![cursor]!
+    if (predecessor < 0) break
+    knots.push(predecessor)
+    cursor = predecessor
+    segmentsUsed--
+  }
+  knots.push(0)
+  return [...new Set(knots)].sort((left, right) => left - right)
+}
+
+function runOptimalSegmentationCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const globals = calculateGlobals(points)
+  const target = Math.max(10, Number(profile.target_segment_count) || 45)
+
+  // 精细预切分：微段内部误差被分辨率天然限界（≤ 2×resolution）；
+  // 结点数超上限时放大分辨率重建，保证 DP 复杂度可控
+  let resolution = options.absolute_resolution
+  let microSegments = buildInitialSegments(points, { ...options, absolute_resolution: resolution }, globals)
+  for (let attempt = 0; microSegments.length + 1 > OPTIMAL_SEGMENTATION_MAX_KNOTS && attempt < 8; attempt++) {
+    resolution *= 2
+    microSegments = buildInitialSegments(points, { ...options, absolute_resolution: resolution }, globals)
+  }
+
+  // 结点候选 = 各微段起点 + 末段终点（均为原始采样点下标，边界天然采样级精确）
+  const knotRawIndices = microSegments.map(segment => segment.start_index || 0)
+  const finalEndIndex = microSegments[microSegments.length - 1]!.end_index || 0
+  if (knotRawIndices[knotRawIndices.length - 1] !== finalEndIndex) {
+    knotRawIndices.push(finalEndIndex)
+  }
+
+  const knotTimes = knotRawIndices.map(index => points[index]![0])
+  const knotValues = knotRawIndices.map(index => points[index]![1])
+  // 每个间隙（knot g -> knot g+1）对应一个微段，内部误差取其 line_fit_error
+  const internalErrors = microSegments.map(segment => segment.line_fit_error || 0)
+
+  const segmentCount = Math.min(target, knotRawIndices.length - 1)
+  const selectedKnots = minimaxKnotSelection(knotTimes, knotValues, internalErrors, Math.max(1, segmentCount))
+
+  const segments: InternalSegment[] = []
+  for (let index = 0; index < selectedKnots.length - 1; index++) {
+    const startRaw = knotRawIndices[selectedKnots[index]!]!
+    const endRaw = knotRawIndices[selectedKnots[index + 1]!]!
+    segments.push(createSegment(points, startRaw, endRaw, globals, options))
+  }
+  const indexedSegments = segments.map((segment, index) => ({ ...segment, segment_index: index }))
+  const withPolyline = attachPolylinePoints(indexedSegments, points, globals, options) as SegmentItem[]
+
+  const meta = buildCompressionMeta(profile, { ...options, absolute_resolution: resolution })
+  meta.selected_segment_count = withPolyline.length
+  meta.selection_reason = 'minimax_dp_budget'
+  meta.selection_context = {
+    micro_segment_count: microSegments.length,
+    knot_count: knotRawIndices.length,
+    target_segment_count: target,
+  }
+
+  return {
+    options: meta,
+    result: {
+      globals,
+      segments: withPolyline,
+      events: extractEvents(indexedSegments),
+    },
+  }
+}
+
 type CompressionRunResult = {
   globals: Globals
   segments: SegmentItem[]
@@ -2182,6 +2324,16 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
     merge_gap_ratio: appConfig?.merge_gap_ratio ?? DEFAULT_OPTIONS.merge_gap_ratio,
     min_transition_points: appConfig?.min_transition_points ?? DEFAULT_OPTIONS.min_transition_points,
     target_segment_count: profile.target_segment_count,
+  }
+
+  if (profile.key === 'optimal_segmentation_v1') {
+    const optimized = runOptimalSegmentationCompression(sortedPoints, baseOptions, profile)
+    return {
+      globals: optimized.result.globals,
+      segments: optimized.result.segments,
+      events: optimized.result.events,
+      compression_meta: optimized.options,
+    }
   }
 
   if (profile.output_mode === 'key_points') {

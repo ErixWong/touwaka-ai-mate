@@ -6,7 +6,7 @@ const ANALYSIS_TIMEOUT_MS = 5 * 60 * 1000
 
 export type BatchStatus = 'idle' | 'uploading' | 'ready' | 'preparing_analysis' | 'analyzing' | 'completed' | 'partial_failed' | 'failed'
 export type AnalysisStatus = 'pending' | 'ready' | 'compressing' | 'llm_recognizing' | 'analyzing' | 'completed' | 'failed'
-export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v2' | 'envelope_turning_points_v3' | 'structural_profile_v1' | 'structural_profile_v2' | 'structural_cusum_v1'
+export type CompressionAlgorithmKey = 'adaptive_v2' | 'legacy_v4' | 'adaptive_keypoints_v1' | 'envelope_turning_points_v2' | 'envelope_turning_points_v3' | 'structural_profile_v1' | 'structural_profile_v2' | 'structural_cusum_v1' | 'optimal_segmentation_v1'
 
 export interface DuplicateDiagnosis {
   duplicate_groups: number
@@ -161,10 +161,13 @@ export interface CompressionMeta {
   target_key_point_max?: number | null
   selection_reason?: string | null
   selection_context?: {
-    left_resolution: number
-    left_points: number
-    right_resolution: number
-    right_points: number
+    left_resolution?: number
+    left_points?: number
+    right_resolution?: number
+    right_points?: number
+    micro_segment_count?: number
+    knot_count?: number
+    target_segment_count?: number
   } | null
 }
 
