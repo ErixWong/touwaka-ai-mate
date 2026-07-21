@@ -141,7 +141,7 @@ const renderedContent = computed(() => {
 .markdown-body :deep(code) { background: var(--el-fill-color-lighter); padding: 2px 6px; border-radius: var(--el-border-radius-base); font-family: monospace; }
 .markdown-body :deep(pre code) { background: none; padding: 0; }
 .markdown-body :deep(img) { display: block; max-width: 100%; height: auto; margin: 12px auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
-.markdown-body :deep(table) { border-collapse: collapse; width: 100%; margin: 12px 0; background: #fff; }
+.markdown-body :deep(table) { display: block; border-collapse: collapse; min-width: 100%; width: auto; margin: 12px 0; background: #fff; overflow-x: auto; }
 .markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--el-border-color-lighter); padding: 8px 10px; vertical-align: top; }
 .markdown-body :deep(th) { background: var(--el-fill-color-lighter); font-weight: 600; }
 .markdown-body :deep(a) { color: var(--el-color-primary); text-decoration: none; }
