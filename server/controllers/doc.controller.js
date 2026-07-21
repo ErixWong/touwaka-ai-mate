@@ -1612,6 +1612,58 @@ async createVersion(ctx) {
     }
   }
 
+  async probeGatewayTask(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocumentOcrService(ctx);
+      const { taskId } = ctx.params;
+      if (!taskId || !/^[0-9a-fA-F-]{36}$/.test(taskId)) {
+        ctx.throw(400, 'Invalid task id');
+      }
+      const result = await this.documentOcrService.probeGatewayTask(taskId);
+      ctx.success(result);
+    } catch (error) {
+      if (error.code === 'gateway_task_not_found') {
+        ctx.success({ task_id: ctx.params.taskId, status: 'not_found' });
+        return;
+      }
+      logger.error('[Doc] probeGatewayTask error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async importGatewayTask(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocumentOcrService(ctx);
+      const userId = ctx.state.session.id;
+      const { collection_id, task_id, title } = ctx.request.body || {};
+
+      if (!collection_id) ctx.throw(400, 'collection_id is required');
+      if (!task_id || !/^[0-9a-fA-F-]{36}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
+
+      const DocumentCollection = this.db.getModel('document_collection');
+      const collection = await DocumentCollection.findByPk(collection_id);
+      if (!collection) ctx.throw(404, 'Collection not found');
+
+      const collectionAccess = new CollectionAccessService(this.db);
+      const canWrite = await collectionAccess.canWrite(collection_id, userId);
+      if (!canWrite) ctx.throw(403, 'Only the collection owner can import documents');
+
+      const result = await this.documentOcrService.importGatewayTask({
+        taskId: task_id,
+        collectionId: collection_id,
+        userId,
+        title: typeof title === 'string' ? title : null,
+      });
+      ctx.success(result);
+      logger.info(`[Doc] importGatewayTask: ${task_id} -> ${result.document_id} for collection ${collection_id}`);
+    } catch (error) {
+      logger.error('[Doc] importGatewayTask error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
   async getUserDepartmentId(userId) {
     try {
       const User = this.db.getModel('user');

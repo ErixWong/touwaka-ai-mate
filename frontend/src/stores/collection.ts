@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import { createDocIntake, submitOcr } from '@/api/docs'
+import { createDocIntake, submitOcr, importGatewayTask } from '@/api/docs'
 import {
   listCollections,
   getCollection,
@@ -243,6 +243,26 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
+  async function importGatewayTaskToCollection(collectionId: string, taskId: string, title?: string) {
+    isUploadingDocument.value = true
+    error.value = null
+    try {
+      const result = await importGatewayTask({
+        collection_id: collectionId,
+        task_id: taskId,
+        ...(title ? { title } : {}),
+      })
+      await fetchCollectionDocuments(collectionId)
+      await fetchCollection(collectionId)
+      return result
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to import gateway task')
+      return null
+    } finally {
+      isUploadingDocument.value = false
+    }
+  }
+
   return {
     collections, total, currentPage, pageSize,
     currentCollection,
@@ -251,6 +271,6 @@ export const useCollectionStore = defineStore('collection', () => {
     fetchCollections, fetchCollection,
     addCollection, editCollection, removeCollection,
     fetchCollectionDocuments, addDocument, removeDocument, moveDocument,
-    revectorize, uploadDocumentToCollection,
+    revectorize, uploadDocumentToCollection, importGatewayTaskToCollection,
   }
 })
