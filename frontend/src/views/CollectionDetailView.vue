@@ -632,9 +632,14 @@ async function probeTaskId() {
 }
 
 async function confirmTaskIdImport() {
-  const taskId = taskIdInput.value.trim()
-  if (!taskId || taskIdProbe.value?.status !== 'completed') return
-  const result = await store.importGatewayTaskToCollection(collectionId, taskId, taskIdDocTitle.value.trim() || undefined)
+  const probe = taskIdProbe.value
+  if (!probe || probe.status !== 'completed') return
+  const result = await store.importGatewayTaskToCollection(
+    collectionId,
+    probe.task_id,
+    taskIdDocTitle.value.trim() || undefined,
+    probe.already_imported === true
+  )
   if (!result) {
     ElMessage.error(store.error || t('docs.workspace.collection.importFailed'))
     return

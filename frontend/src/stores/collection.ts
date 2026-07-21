@@ -243,7 +243,7 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
-  async function importGatewayTaskToCollection(collectionId: string, taskId: string, title?: string) {
+  async function importGatewayTaskToCollection(collectionId: string, taskId: string, title?: string, force = false) {
     isUploadingDocument.value = true
     error.value = null
     try {
@@ -251,6 +251,7 @@ export const useCollectionStore = defineStore('collection', () => {
         collection_id: collectionId,
         task_id: taskId,
         ...(title ? { title } : {}),
+        ...(force ? { force: true } : {}),
       })
       await fetchCollectionDocuments(collectionId)
       await fetchCollection(collectionId)

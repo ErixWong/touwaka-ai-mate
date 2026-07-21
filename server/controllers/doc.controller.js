@@ -1196,6 +1196,20 @@ async createVersion(ctx) {
         ctx.throw(400, 'Only documents in error state can be retried');
       }
 
+      if (document.processing_error_code === 'gateway_import_failed') {
+        this.ensureDocumentOcrService(ctx);
+        const result = await this.documentOcrService.retryImportGatewayTask(documentId);
+        await document.update({
+          processing_retry_count: document.processing_retry_count + 1,
+        });
+        ctx.success({
+          document_id: document.id,
+          processing_status: result.processing_status,
+        });
+        logger.info(`[Doc] retryProcessing: ${documentId} → gateway_import retry (retry #${document.processing_retry_count + 1})`);
+        return;
+      }
+
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
       // 只更新文档状态、清错误码，不通过 enterStage 创建 run 记录
@@ -1617,7 +1631,7 @@ async createVersion(ctx) {
       this.ensureModels();
       this.ensureDocumentOcrService(ctx);
       const { taskId } = ctx.params;
-      if (!taskId || !/^[0-9a-fA-F-]{36}$/.test(taskId)) {
+      if (!taskId || !/^[0-9a-zA-Z-]{32,40}$/.test(taskId)) {
         ctx.throw(400, 'Invalid task id');
       }
       const result = await this.documentOcrService.probeGatewayTask(taskId);
@@ -1637,10 +1651,10 @@ async createVersion(ctx) {
       this.ensureModels();
       this.ensureDocumentOcrService(ctx);
       const userId = ctx.state.session.id;
-      const { collection_id, task_id, title } = ctx.request.body || {};
+      const { collection_id, task_id, title, force } = ctx.request.body || {};
 
       if (!collection_id) ctx.throw(400, 'collection_id is required');
-      if (!task_id || !/^[0-9a-fA-F-]{36}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
+      if (!task_id || !/^[0-9a-zA-Z-]{32,40}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
 
       const DocumentCollection = this.db.getModel('document_collection');
       const collection = await DocumentCollection.findByPk(collection_id);
@@ -1655,10 +1669,20 @@ async createVersion(ctx) {
         collectionId: collection_id,
         userId,
         title: typeof title === 'string' ? title : null,
+        force: force === true,
       });
       ctx.success(result);
       logger.info(`[Doc] importGatewayTask: ${task_id} -> ${result.document_id} for collection ${collection_id}`);
     } catch (error) {
+      if (error.code === 'gateway_task_already_imported') {
+        ctx.throw(409, JSON.stringify({
+          code: 'gateway_task_already_imported',
+          existing_document: error.existingDocument || null,
+        }));
+      }
+      if (error.code === 'gateway_task_not_completed') {
+        ctx.throw(409, `Gateway task is not completed (status: ${error.gatewayStatus || 'unknown'})`);
+      }
       logger.error('[Doc] importGatewayTask error:', error);
       ctx.throw(error.status || 500, error.message);
     }
