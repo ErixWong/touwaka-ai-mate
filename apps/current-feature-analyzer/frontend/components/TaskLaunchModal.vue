@@ -148,8 +148,13 @@ const emit = defineEmits<{
 
 const compressionAlgorithms: Array<{ value: CompressionAlgorithmKey; label: string; description: string }> = [
   {
+    value: 'optimal_segmentation_v1',
+    label: '最优分段 V1（默认）',
+    description: '单一 L∞ 目标、预算约束的精确 minimax 分段，边界为真实采样点，无锚点无特例。',
+  },
+  {
     value: 'adaptive_v2',
-    label: '自适应 V2（默认）',
+    label: '自适应 V2',
     description: '当前项目实现，自适应搜索分辨率，段数更稳定。',
   },
   {
@@ -193,7 +198,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<File[]>([])
 const localRuleSetId = ref(props.defaultRuleSetId || '')
 const overwriteCurrentSession = ref(true)
-const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('adaptive_v2')
+const localCompressionAlgorithm = ref<CompressionAlgorithmKey>('optimal_segmentation_v1')
 
 const enabledRuleSets = computed(() => props.ruleSets.filter(ruleSet => ruleSet.is_enabled))
 const hasActiveSession = computed(() => props.currentBatchStatus !== 'idle')

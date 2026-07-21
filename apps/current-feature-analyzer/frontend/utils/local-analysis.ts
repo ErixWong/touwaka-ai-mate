@@ -1,4 +1,4 @@
-import type { AppConfig, CompressionAlgorithmKey, CompressionMeta, FileAnalysisResult, SegmentItem } from '../api/current-feature-analyzer'
+import type { AppConfig, CompressionAlgorithmKey, CompressionMeta, ContourSamples, FileAnalysisResult, SegmentItem } from '../api/current-feature-analyzer'
 
 type RawPoint = [number, number]
 
@@ -53,7 +53,7 @@ type CompressionAlgorithmProfile = {
 const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorithmProfile> = {
   adaptive_v2: {
     key: 'adaptive_v2',
-    label: '自适应 V2（默认）',
+    label: '自适应 V2',
     output_mode: 'segments',
     baseline_mode: 'adaptive_v2',
     trend_mode: 'adaptive_v2',
@@ -130,6 +130,16 @@ const COMPRESSION_ALGORITHMS: Record<CompressionAlgorithmKey, CompressionAlgorit
     strict_duplicate_conflict: false,
     adaptive_search: false,
     target_segment_count: KEY_POINT_TARGET_COUNT,
+  },
+  optimal_segmentation_v1: {
+    key: 'optimal_segmentation_v1',
+    label: '最优分段 V1（默认）',
+    output_mode: 'segments',
+    baseline_mode: 'adaptive_v2',
+    trend_mode: 'adaptive_v2',
+    strict_duplicate_conflict: false,
+    adaptive_search: false,
+    target_segment_count: 45,
   },
 }
 
@@ -385,7 +395,7 @@ function calculateGlobalsLegacy(points: RawPoint[]): Globals {
 }
 
 function getAlgorithmProfile(algorithmKey?: CompressionAlgorithmKey | null) {
-  return COMPRESSION_ALGORITHMS[algorithmKey || 'adaptive_v2'] || COMPRESSION_ALGORITHMS.adaptive_v2
+  return COMPRESSION_ALGORITHMS[algorithmKey || 'optimal_segmentation_v1'] || COMPRESSION_ALGORITHMS.optimal_segmentation_v1
 }
 
 function normalizeDuplicateCurrentValue(current: number) {
@@ -1929,6 +1939,186 @@ function runKeyPointCompression(points: RawPoint[], options: CompressionOptions,
   }
 }
 
+const OPTIMAL_SEGMENTATION_MAX_KNOTS = 700
+const OPTIMAL_SEGMENTATION_DECIMATE_TARGET = 3000
+
+export function decimateMinMax(points: RawPoint[], targetCount: number): RawPoint[] {
+  // min-max 分桶抽取：每桶保留最小/最大两个原始点，包络无损、陡沿保留，
+  // 避免均匀抽样的混叠问题（尖峰可能在抽样间隔中丢失）
+  if (points.length <= targetCount) {
+    return points
+  }
+  const bucketCount = Math.max(1, Math.floor((targetCount - 2) / 2))
+  const result: RawPoint[] = [points[0]!]
+  const bucketSize = (points.length - 2) / bucketCount
+
+  for (let bucket = 0; bucket < bucketCount; bucket++) {
+    const start = 1 + Math.floor(bucket * bucketSize)
+    const end = Math.min(points.length - 1, 1 + Math.floor((bucket + 1) * bucketSize))
+    if (end <= start) continue
+
+    let minIndex = start
+    let maxIndex = start
+    for (let index = start; index < end; index++) {
+      if (points[index]![1] < points[minIndex]![1]) minIndex = index
+      if (points[index]![1] > points[maxIndex]![1]) maxIndex = index
+    }
+
+    if (minIndex === maxIndex) {
+      result.push(points[minIndex]!)
+    } else if (minIndex < maxIndex) {
+      result.push(points[minIndex]!, points[maxIndex]!)
+    } else {
+      result.push(points[maxIndex]!, points[minIndex]!)
+    }
+  }
+
+  result.push(points[points.length - 1]!)
+  return result
+}
+
+function minimaxKnotSelection(times: number[], values: number[], internalErrors: number[], segmentCount: number): number[] {
+  // 精确 minimax K 段分段：f[s][j] = min over i of max(f[s-1][i], cost(i, j))
+  // cost(i, j) = 弦在内部结点上的最大垂直误差 + 区间内微段内部误差最大值（L∞ 真实误差的上界）
+  // 返回使上界最小的结点下标序列（含首尾）
+  const n = times.length
+  const last = n - 1
+  if (segmentCount >= last) {
+    return Array.from({ length: n }, (_, index) => index)
+  }
+
+  const cost: Float64Array[] = new Array(n)
+  for (let i = 0; i < last; i++) {
+    const row = new Float64Array(n)
+    const t0 = times[i]!
+    const v0 = values[i]!
+    let internalMax = internalErrors[i] ?? 0
+    for (let j = i + 1; j < n; j++) {
+      if (j > i + 1) {
+        internalMax = Math.max(internalMax, internalErrors[j - 1] ?? 0)
+      }
+      const t1 = times[j]!
+      const v1 = values[j]!
+      const dt = t1 - t0
+      let maxErr = 0
+      for (let k = i + 1; k < j; k++) {
+        const ratio = dt > 0 ? (times[k]! - t0) / dt : 0
+        const err = Math.abs(values[k]! - (v0 + (v1 - v0) * ratio))
+        if (err > maxErr) maxErr = err
+      }
+      row[j] = maxErr + internalMax
+    }
+    cost[i] = row
+  }
+
+  let previous = new Float64Array(n)
+  const parents: Int32Array[] = [new Int32Array(n).fill(0)]
+  for (let j = 0; j < n; j++) {
+    previous[j] = cost[0]![j]!
+  }
+
+  for (let s = 2; s <= segmentCount; s++) {
+    const current = new Float64Array(n).fill(Number.POSITIVE_INFINITY)
+    const currentParent = new Int32Array(n).fill(-1)
+    for (let j = s - 1; j < n; j++) {
+      let best = Number.POSITIVE_INFINITY
+      let bestI = -1
+      for (let i = s - 2; i < j; i++) {
+        const value = Math.max(previous[i]!, cost[i]![j]!)
+        if (value < best) {
+          best = value
+          bestI = i
+        }
+      }
+      current[j] = best
+      currentParent[j] = bestI
+    }
+    parents.push(currentParent)
+    previous = current
+  }
+
+  const knots = [last]
+  let segmentsUsed = segmentCount
+  let cursor = last
+  while (segmentsUsed > 1 && cursor > 0) {
+    const predecessor = parents[segmentsUsed - 1]![cursor]!
+    if (predecessor < 0) break
+    knots.push(predecessor)
+    cursor = predecessor
+    segmentsUsed--
+  }
+  knots.push(0)
+  return [...new Set(knots)].sort((left, right) => left - right)
+}
+
+function runOptimalSegmentationCompression(points: RawPoint[], options: CompressionOptions, profile: CompressionAlgorithmProfile): OptimizedCompressionResult {
+  const rawPointCount = points.length
+  // 先做特征保持抽取，把后续预切分/DP 的复杂度与原始点数解耦
+  const workingPoints = decimateMinMax(points, OPTIMAL_SEGMENTATION_DECIMATE_TARGET)
+  const globals = calculateGlobals(workingPoints)
+  const target = Math.max(10, Number(profile.target_segment_count) || 45)
+
+  // 精细预切分：微段内部误差被分辨率天然限界（≤ 2×resolution）；
+  // 结点数超上限时放大分辨率重建，保证 DP 复杂度可控
+  let resolution = options.absolute_resolution
+  let microSegments = buildInitialSegments(workingPoints, { ...options, absolute_resolution: resolution }, globals)
+  // 结点数 ≈ 2 × 微段数（起点+终点），按结点数控制 DP 复杂度上界
+  for (let attempt = 0; microSegments.length * 2 > OPTIMAL_SEGMENTATION_MAX_KNOTS && attempt < 8; attempt++) {
+    resolution *= 2
+    microSegments = buildInitialSegments(workingPoints, { ...options, absolute_resolution: resolution }, globals)
+  }
+
+  // 结点候选 = 所有微段边界（起点与终点交替）。
+  // 关键：微段 END 必须成为候选点。陡沿脚部是上一微段的 END，若候选集只含微段 START，
+  // "脚部→峰顶"的跳变对 DP 弦误差不可见，"平台+陡沿"的合并代价会被错算为 ~0，
+  // 导致段边界落在峰顶（出现"待机结束电流 13A"这类荒谬锚点）。
+  // 候选集必须对微段边界封闭，代价函数才能看见每一个显著跳变。
+  const knotRawIndices: number[] = []
+  const internalErrors: number[] = []
+  for (const segment of microSegments) {
+    knotRawIndices.push(segment.start_index || 0, segment.end_index || 0)
+    // 间隙（start→end）为微段内部，取 line_fit_error；间隙（end→下一 start）跨微段，无内部误差
+    internalErrors.push(segment.line_fit_error || 0, 0)
+  }
+  // 最后一个结点之后没有间隙
+  internalErrors.length = knotRawIndices.length - 1
+
+  const knotTimes = knotRawIndices.map(index => workingPoints[index]![0])
+  const knotValues = knotRawIndices.map(index => workingPoints[index]![1])
+
+  const segmentCount = Math.min(target, knotRawIndices.length - 1)
+  const selectedKnots = minimaxKnotSelection(knotTimes, knotValues, internalErrors, Math.max(1, segmentCount))
+
+  const segments: InternalSegment[] = []
+  for (let index = 0; index < selectedKnots.length - 1; index++) {
+    const startRaw = knotRawIndices[selectedKnots[index]!]!
+    const endRaw = knotRawIndices[selectedKnots[index + 1]!]!
+    segments.push(createSegment(workingPoints, startRaw, endRaw, globals, options))
+  }
+  const indexedSegments = segments.map((segment, index) => ({ ...segment, segment_index: index }))
+  const withPolyline = attachPolylinePoints(indexedSegments, workingPoints, globals, options) as SegmentItem[]
+
+  const meta = buildCompressionMeta(profile, { ...options, absolute_resolution: resolution })
+  meta.selected_segment_count = withPolyline.length
+  meta.selection_reason = 'minimax_dp_budget'
+  meta.selection_context = {
+    raw_point_count: rawPointCount,
+    decimated_point_count: workingPoints.length,
+    micro_segment_count: microSegments.length,
+    knot_count: knotRawIndices.length,
+    target_segment_count: target,
+  }
+
+  return {
+    options: meta,
+    result: {
+      globals,
+      segments: withPolyline,
+      events: extractEvents(indexedSegments),
+    },
+  }
+}
+
 type CompressionRunResult = {
   globals: Globals
   segments: SegmentItem[]
@@ -2168,7 +2358,44 @@ function normalizeRawPoints(rawData: number[][], profile: CompressionAlgorithmPr
   return sortedPoints
 }
 
-export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'adaptive_v2'): FileAnalysisResult {
+const CONTOUR_TARGET_CELLS = 128
+
+function buildContourSamples(segments: SegmentItem[], targetCells: number = CONTOUR_TARGET_CELLS): ContourSamples | null {
+  // 等距数值轮廓：chart 渲染与 LLM 输入的同源数据。
+  // 与服务端 stage-recognition-workflow.service.js 的同名函数保持同算法（服务端仅用于旧结果回退）。
+  const points: RawPoint[] = []
+  for (const segment of segments) {
+    const polyline = Array.isArray(segment.polyline_points) && segment.polyline_points.length >= 2
+      ? segment.polyline_points as RawPoint[]
+      : [[segment.start_time || 0, segment.start_current || 0], [segment.end_time || 0, segment.end_current || 0]] as RawPoint[]
+    for (const point of polyline) {
+      if (Array.isArray(point) && point.length >= 2) {
+        points.push([Number(point[0]), Number(point[1])])
+      }
+    }
+  }
+  if (points.length < 2) return null
+
+  const tMin = points[0]![0]
+  const tMax = points[points.length - 1]![0]
+  if (!(tMax > tMin)) return null
+  const step = (tMax - tMin) / targetCells
+
+  const values: number[] = []
+  let cursor = 0
+  for (let cell = 0; cell < targetCells; cell++) {
+    const t = tMin + (cell + 0.5) * step
+    while (cursor < points.length - 2 && points[cursor + 1]![0] < t) cursor++
+    const [t0, v0] = points[cursor]!
+    const [t1, v1] = points[cursor + 1]!
+    const value = t1 > t0 ? v0 + (v1 - v0) * (t - t0) / (t1 - t0) : v0
+    values.push(Number(value.toFixed(2)))
+  }
+
+  return { start: Number(tMin.toFixed(6)), step: Number(step.toFixed(6)), values }
+}
+
+export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: AppConfig | null, algorithmKey: CompressionAlgorithmKey = 'optimal_segmentation_v1'): FileAnalysisResult {
   const profile = getAlgorithmProfile(algorithmKey)
   const sortedPoints = normalizeRawPoints(rawData, profile)
 
@@ -2184,6 +2411,17 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
     target_segment_count: profile.target_segment_count,
   }
 
+  if (profile.key === 'optimal_segmentation_v1') {
+    const optimized = runOptimalSegmentationCompression(sortedPoints, baseOptions, profile)
+    return {
+      globals: optimized.result.globals,
+      segments: optimized.result.segments,
+      events: optimized.result.events,
+      compression_meta: optimized.options,
+      contour: buildContourSamples(optimized.result.segments),
+    }
+  }
+
   if (profile.output_mode === 'key_points') {
     const optimized = runKeyPointCompression(sortedPoints, baseOptions, profile)
     return {
@@ -2191,6 +2429,7 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
       segments: optimized.result.segments,
       events: optimized.result.events,
       compression_meta: optimized.options,
+      contour: buildContourSamples(optimized.result.segments),
     }
   }
 
@@ -2202,5 +2441,6 @@ export function runLocalCurrentFeatureAnalysis(rawData: number[][], appConfig: A
     segments: result.segments,
     events: result.events,
     compression_meta: optimized.options,
+    contour: buildContourSamples(result.segments),
   }
 }
