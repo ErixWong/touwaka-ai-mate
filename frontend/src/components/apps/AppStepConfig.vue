@@ -156,7 +156,7 @@ function getStepConfig(stepName: string): StepResourceConfig {
 }
 
 const states = computed<AppState[]>(() => {
-  return props.app.states || []
+  return []
 })
 
 const configurableStateNames = computed(() => Object.keys(configurableStatesInfo.value))

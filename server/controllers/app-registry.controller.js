@@ -203,6 +203,17 @@ class AppRegistryController {
       ctx.error(error.message, 400);
     }
   }
+
+  async getAvailableResources(ctx) {
+    try {
+      const { appId } = ctx.params;
+      const resources = await this.registryService.getAvailableResources(appId);
+      ctx.success(resources);
+    } catch (error) {
+      logger.error('Get available resources error:', error);
+      ctx.error(error.message, 500);
+    }
+  }
 }
 
 export default AppRegistryController;

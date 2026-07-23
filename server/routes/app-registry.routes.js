@@ -54,5 +54,9 @@ export default (controller) => {
     controller.updateClockRegistry(ctx)
   );
 
+  router.get('/api/app-registry/:appId/available-resources', authenticate(), requireAdmin(), (ctx) =>
+    controller.getAvailableResources(ctx)
+  );
+
   return router;
 };
