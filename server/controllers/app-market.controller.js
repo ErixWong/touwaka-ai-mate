@@ -9,7 +9,7 @@ import path from 'path';
 class AppMarketController {
   constructor(db, registryService = null, appRouterLoader = null) {
     this.db = db;
-    this.appMarketService = new AppMarketService(db);
+    this.appMarketService = new AppMarketService(db, registryService);
     this.registryService = registryService;
     this.appRouterLoader = appRouterLoader;
     this.wildcardCacheManager = null;

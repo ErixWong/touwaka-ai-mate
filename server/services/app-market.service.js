@@ -10,8 +10,9 @@ import { pathToFileURL } from 'url';
  * 负责从 GitHub Registry 拉取、安装、卸载 App
  */
 class AppMarketService {
-  constructor(db) {
+  constructor(db, registryService = null) {
     this.db = db;
+    this.registryService = registryService;
     this.models = {};
     this.appsDir = path.join(process.cwd(), 'apps');
   }
@@ -409,7 +410,9 @@ class AppMarketService {
     const { userId, visibility = 'all' } = options;
     
     // 1. 检查 App 是否已存在
-    const existing = await this.models.MiniApp.findByPk(appId);
+    const existing = this.registryService
+      ? await this.registryService.getAppById(appId)
+      : await this.models.MiniApp.findByPk(appId);
     if (existing) {
       throw new Error(`App ${appId} 已安装`);
     }
@@ -553,23 +556,43 @@ class AppMarketService {
    * 安装 App 元数据到数据库
    */
   async installAppMetadata(manifest, userId, visibility, config = null) {
-    await this.models.MiniApp.create({
-      id: manifest.id,
-      name: manifest.name,
-      description: manifest.description,
-      icon: manifest.icon || '📱',
-      type: manifest.type,
-      component: manifest.component || null,
-      fields: JSON.stringify(manifest.fields || []),
-      views: JSON.stringify(manifest.views || {}),
-      config: JSON.stringify(config || manifest.config || {}),
-      visibility,
-      owner_id: userId,
-      creator_id: userId,
-      sort_order: 0,
-      is_active: true,
-      revision: 1
-    });
+    if (this.registryService) {
+      await this.registryService.createApp({
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description,
+        icon: manifest.icon || '📱',
+        type: manifest.type,
+        component: manifest.component || null,
+        fields: JSON.stringify(manifest.fields || []),
+        views: JSON.stringify(manifest.views || {}),
+        config: JSON.stringify(config || manifest.config || {}),
+        visibility,
+        owner_id: userId,
+        creator_id: userId,
+        sort_order: 0,
+        is_active: true,
+        revision: 1
+      });
+    } else {
+      await this.models.MiniApp.create({
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description,
+        icon: manifest.icon || '📱',
+        type: manifest.type,
+        component: manifest.component || null,
+        fields: JSON.stringify(manifest.fields || []),
+        views: JSON.stringify(manifest.views || {}),
+        config: JSON.stringify(config || manifest.config || {}),
+        visibility,
+        owner_id: userId,
+        creator_id: userId,
+        sort_order: 0,
+        is_active: true,
+        revision: 1
+      });
+    }
   }
 
   /**
@@ -598,23 +621,43 @@ class AppMarketService {
     
     const Utils = await import('../../lib/utils.js');
     
-    await this.models.MiniApp.create({
-      id: appId,
-      name: backup.name || appId,
-      description: backup.description || '',
-      icon: backup.icon || '',
-      type: backup.type || 'document',
-      component: backup.component || null,
-      fields: backup.fields || '[]',
-      views: backup.views || '{}',
-      config: backup.config || '{}',
-      visibility: backup.visibility || 'all',
-      owner_id: backup.owner_id || userId,
-      creator_id: backup.creator_id || userId,
-      sort_order: backup.sort_order || 0,
-      is_active: backup.is_active !== undefined ? backup.is_active : true,
-      revision: backup.revision || 1
-    });
+    if (this.registryService) {
+      await this.registryService.createApp({
+        id: appId,
+        name: backup.name || appId,
+        description: backup.description || '',
+        icon: backup.icon || '',
+        type: backup.type || 'document',
+        component: backup.component || null,
+        fields: backup.fields || '[]',
+        views: backup.views || '{}',
+        config: backup.config || '{}',
+        visibility: backup.visibility || 'all',
+        owner_id: backup.owner_id || userId,
+        creator_id: backup.creator_id || userId,
+        sort_order: backup.sort_order || 0,
+        is_active: backup.is_active !== undefined ? backup.is_active : true,
+        revision: backup.revision || 1
+      });
+    } else {
+      await this.models.MiniApp.create({
+        id: appId,
+        name: backup.name || appId,
+        description: backup.description || '',
+        icon: backup.icon || '',
+        type: backup.type || 'document',
+        component: backup.component || null,
+        fields: backup.fields || '[]',
+        views: backup.views || '{}',
+        config: backup.config || '{}',
+        visibility: backup.visibility || 'all',
+        owner_id: backup.owner_id || userId,
+        creator_id: backup.creator_id || userId,
+        sort_order: backup.sort_order || 0,
+        is_active: backup.is_active !== undefined ? backup.is_active : true,
+        revision: backup.revision || 1
+      });
+    }
     
     await this.models.AppClockRegistry.create({
       id: Utils.default.newID(20),
