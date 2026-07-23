@@ -2,8 +2,9 @@ import logger from '../../lib/logger.js';
 import MiniAppService from '../services/mini-app.service.js';
 
 class MiniAppController {
-  constructor(db) {
+  constructor(db, registryService) {
     this.db = db;
+    this.registryService = registryService;
     this.miniAppService = new MiniAppService(db);
   }
 
@@ -12,7 +13,7 @@ class MiniAppController {
   async listApps(ctx) {
     try {
       const userId = ctx.state.session.id;
-      const apps = await this.miniAppService.getAccessibleApps(userId);
+      const apps = await this.registryService.getAccessibleApps(userId);
       ctx.success(apps);
     } catch (error) {
       logger.error('List apps error:', error);
@@ -23,7 +24,7 @@ class MiniAppController {
   async getApp(ctx) {
     try {
       const { appId } = ctx.params;
-      const app = await this.miniAppService.getAppById(appId);
+      const app = await this.registryService.getAppById(appId);
       if (!app) {
         ctx.error('App not found', 404);
         return;
@@ -40,7 +41,7 @@ class MiniAppController {
       const data = ctx.request.body;
       data.owner_id = data.owner_id || ctx.state.session.id;
       data.creator_id = ctx.state.session.id;
-      const app = await this.miniAppService.createApp(data);
+      const app = await this.registryService.createApp(data);
       ctx.success(app, 'Created');
     } catch (error) {
       logger.error('Create app error:', error);
@@ -52,7 +53,7 @@ class MiniAppController {
     try {
       const { appId } = ctx.params;
       const data = ctx.request.body;
-      const app = await this.miniAppService.updateApp(appId, data);
+      const app = await this.registryService.updateApp(appId, data);
       ctx.success(app, 'Updated');
     } catch (error) {
       logger.error('Update app error:', error);
@@ -63,7 +64,7 @@ class MiniAppController {
   async deleteApp(ctx) {
     try {
       const { appId } = ctx.params;
-      await this.miniAppService.deleteApp(appId);
+      await this.registryService.deleteApp(appId);
       ctx.success(null, 'Deleted');
     } catch (error) {
       logger.error('Delete app error:', error);
@@ -74,7 +75,7 @@ class MiniAppController {
   async getAppConfig(ctx) {
     try {
       const { appId } = ctx.params;
-      const config = await this.miniAppService.getAppConfig(appId);
+      const config = await this.registryService.getAppConfig(appId);
       ctx.success(config);
     } catch (error) {
       logger.error('Get app config error:', error);
@@ -86,7 +87,7 @@ class MiniAppController {
     try {
       const { appId } = ctx.params;
       const configData = ctx.request.body;
-      const config = await this.miniAppService.updateAppConfig(appId, configData);
+      const config = await this.registryService.updateAppConfig(appId, configData);
       ctx.success(config, 'Updated');
     } catch (error) {
       logger.error('Update app config error:', error);
@@ -97,7 +98,7 @@ class MiniAppController {
   async getAvailableResources(ctx) {
     try {
       const { appId } = ctx.params;
-      const resources = await this.miniAppService.getAvailableResources(appId);
+      const resources = await this.registryService.getAvailableResources(appId);
       ctx.success(resources);
     } catch (error) {
       logger.error('Get available resources error:', error);

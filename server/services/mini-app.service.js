@@ -96,230 +96,7 @@ class MiniAppService {
     }
   }
 
-  // ==================== App CRUD ====================
-
-  async getAccessibleApps(userId) {
-    this.ensureModels();
-
-    const user = await this.models.User.findByPk(userId);
-    if (!user) return [];
-
-    const isAdmin = await this.isAdmin(userId);
-
-    if (isAdmin) {
-      return await this.models.MiniApp.findAll({
-        where: { is_active: true },
-        order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
-      });
-    }
-
-    const apps = await this.models.MiniApp.findAll({
-      where: { is_active: true },
-      order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
-    });
-
-    const result = [];
-    for (const app of apps) {
-      if (app.visibility === 'all') {
-        result.push(app);
-      } else if (app.visibility === 'owner') {
-        if (app.owner_id === userId) {
-          result.push(app);
-        }
-      } else if (app.visibility === 'department') {
-        if (user && app.owner_id) {
-          const appOwner = await this.models.User.findByPk(app.owner_id);
-          if (appOwner && user.department_id && appOwner.department_id &&
-              user.department_id === appOwner.department_id) {
-            result.push(app);
-          }
-        }
-      } else if (app.visibility === 'role') {
-        const hasAccess = await this.models.MiniAppRoleAccess.findOne({
-          where: { app_id: app.id },
-          include: [{
-            model: this.models.UserRole,
-            where: { user_id: userId },
-            required: true,
-          }],
-        });
-        if (hasAccess) result.push(app);
-      }
-    }
-    return result;
-  }
-
-  async getAppById(appId) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) return null;
-
-    const appJson = app.toJSON();
-
-    // 解析 config 字段（JSON 字符串 -> 对象）
-    if (appJson.config && typeof appJson.config === 'string') {
-      try {
-        appJson.config = JSON.parse(appJson.config);
-      } catch {
-        appJson.config = {};
-      }
-    }
-
-    return appJson;
-  }
-
-  async createApp(data) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.create({
-      id: Utils.newID(20),
-      ...data,
-    });
-    return app;
-  }
-
-  async updateApp(appId, data) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-
-    await app.update(data);
-    if (data.fields) {
-      await app.update({ revision: app.revision + 1 });
-    }
-    return app;
-  }
-
-  async getAppConfig(appId) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-
-    let config = app.config;
-    if (typeof config === 'string') {
-      try { config = JSON.parse(config); } catch { config = {}; }
-    }
-
-    // 合并 manifest 的 step_resources 默认值
-    let manifest = app.fields;
-    if (typeof manifest === 'string') {
-      try { manifest = JSON.parse(manifest); } catch { manifest = {}; }
-    }
-    
-    // 从 app 的 manifest 字段获取 step_resources（如果存在）
-    // 注意：manifest 数据分布在 app 的各个字段中，这里需要从 manifest.json 文件读取
-    const defaultStepResources = this.getDefaultStepResources(appId);
-    
-    if (defaultStepResources && config) {
-      config.step_resources = { ...defaultStepResources, ...config.step_resources };
-    } else if (defaultStepResources) {
-      config = { ...config, step_resources: defaultStepResources };
-    }
-    
-    return config || {};
-  }
-
-  getDefaultStepResources(appId) {
-    // 从 manifest 文件读取默认 step_resources
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const manifestPath = path.join(process.cwd(), 'apps', appId, 'manifest.json');
-      if (fs.existsSync(manifestPath)) {
-        const manifestContent = fs.readFileSync(manifestPath, 'utf8');
-        const manifest = JSON.parse(manifestContent);
-        return manifest.config?.step_resources || null;
-      }
-    } catch (e) {
-      // 文件不存在或解析失败，返回 null
-    }
-    return null;
-  }
-
-  async updateAppConfig(appId, configData) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-
-    let currentConfig = app.config;
-    if (typeof currentConfig === 'string') {
-      try { currentConfig = JSON.parse(currentConfig); } catch { currentConfig = {}; }
-    }
-
-    const mergedConfig = { ...currentConfig, ...configData };
-    await app.update({ config: JSON.stringify(mergedConfig) });
-    return mergedConfig;
-  }
-
-  async getAvailableResources(appId) {
-    this.ensureModels();
-    const MCPServer = this.db.getModel('mcp_server');
-    const MCPToolsCache = this.db.getModel('mcp_tools_cache');
-    const AiModel = this.db.getModel('ai_model');
-    const Provider = this.db.getModel('provider');
-
-    const servers = await MCPServer.findAll({
-      where: { is_enabled: true },
-      raw: true,
-    });
-
-    const result = [];
-    for (const server of servers) {
-      const tools = await MCPToolsCache.findAll({
-        where: { mcp_server_id: server.id },
-        raw: true,
-      });
-      result.push({
-        id: server.id,
-        name: server.name,
-        display_name: server.display_name,
-        transport_type: server.transport_type,
-        tools: tools.map(t => {
-          let inputSchema = null;
-          if (t.input_schema) {
-            try { inputSchema = JSON.parse(t.input_schema); } catch { inputSchema = null; }
-          }
-          return {
-            name: t.tool_name,
-            description: t.description,
-            input_schema: inputSchema,
-          };
-        }),
-      });
-    }
-
-    const models = await AiModel.findAll({
-      where: { is_active: true },
-      attributes: ['id', 'name', 'model_name', 'provider_id', 'model_type'],
-      include: [{
-        model: Provider,
-        as: 'provider',
-        attributes: [['id', 'provider_id'], ['name', 'provider_name']],
-      }],
-      order: [['name', 'ASC']],
-      raw: true,
-      nest: true,
-    });
-
-    return {
-      mcp_servers: result,
-      internal_llm: {
-        available: true,
-        models: models.map(m => ({
-          id: m.id,
-          name: m.name,
-          model_name: m.model_name,
-          model_type: m.model_type || null,
-          provider_name: m.provider?.provider_name || '',
-        })),
-      },
-      handler_outputs: {},
-      configurable_states: {},
-    };
-  }
-
   async loadHandlerScript(handlerPath) {
-    const fs = await import('fs');
-    const path = await import('path');
     const allowedPrefixes = ['scripts/', 'apps/'];
     const absPath = path.resolve(handlerPath);
     const isAllowed = allowedPrefixes.some(p => absPath.includes(p.replace('/', path.sep)));
@@ -328,19 +105,11 @@ class MiniAppService {
     }
 
     const indexPath = path.join(absPath, 'index.js');
-    if (!fs.default.existsSync(indexPath)) {
+    if (!fsSync.existsSync(indexPath)) {
       throw new Error(`Handler script not found: ${indexPath}`);
     }
 
     return await import(`${pathToFileURL(indexPath).href}?t=${Date.now()}`);
-  }
-
-  async deleteApp(appId) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-    await app.destroy();
-    return true;
   }
 
   // ==================== Record CRUD ====================
@@ -852,7 +621,11 @@ async batchUpload(appId, userId, attachmentIds) {
 
     logger.info(`[compareRecords] Loaded content: A=${contentA.sections.length} sections, B=${contentB.sections.length} sections`);
 
-    const appConfig = await this.getAppConfig(appId);
+    const appRecord = await this.models.MiniApp.findByPk(appId);
+    let appConfig = {};
+    if (appRecord?.config) {
+      try { appConfig = typeof appRecord.config === 'string' ? JSON.parse(appRecord.config) : appRecord.config; } catch { appConfig = {}; }
+    }
     const comparePrompt = appConfig?.prompts?.compare || this._defaultComparePrompt();
 
     const modelId = options.model_id || null;

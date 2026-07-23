@@ -497,7 +497,7 @@ class ApiServer {
       internalDocs: new InternalDocsController(this.db),
       assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
-      miniApp: new MiniAppController(this.db),
+      miniApp: new MiniAppController(this.db, this.sharedRegistryService),
       appMarket: new AppMarketController(this.db, this.sharedRegistryService, null),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),

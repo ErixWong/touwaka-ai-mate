@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import AppRuntimeLoader from '../../lib/app-runtime-loader.js';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 
 const DEFAULT_APPS_DIR = path.join(process.cwd(), 'apps');
@@ -394,6 +395,86 @@ async getAppWithRuntime(appId) {
     }
     
     return result;
+  }
+
+  getDefaultStepResources(appId) {
+    try {
+      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+      if (fsSync.existsSync(manifestPath)) {
+        const manifestContent = fsSync.readFileSync(manifestPath, 'utf8');
+        const manifest = JSON.parse(manifestContent);
+        return manifest.config?.step_resources || null;
+      }
+    } catch (e) {
+      logger.warn(`[AppRegistryService] Failed to read manifest step_resources for ${appId}: ${e.message}`);
+    }
+    return null;
+  }
+
+  async getAvailableResources(appId) {
+    const MCPServer = this.db.getModel('mcp_server');
+    const MCPToolsCache = this.db.getModel('mcp_tools_cache');
+    const AiModel = this.db.getModel('ai_model');
+    const Provider = this.db.getModel('provider');
+
+    const servers = await MCPServer.findAll({
+      where: { is_enabled: true },
+      raw: true,
+    });
+
+    const result = [];
+    for (const server of servers) {
+      const tools = await MCPToolsCache.findAll({
+        where: { mcp_server_id: server.id },
+        raw: true,
+      });
+      result.push({
+        id: server.id,
+        name: server.name,
+        display_name: server.display_name,
+        transport_type: server.transport_type,
+        tools: tools.map(t => {
+          let inputSchema = null;
+          if (t.input_schema) {
+            try { inputSchema = JSON.parse(t.input_schema); } catch { inputSchema = null; }
+          }
+          return {
+            name: t.tool_name,
+            description: t.description,
+            input_schema: inputSchema,
+          };
+        }),
+      });
+    }
+
+    const models = await AiModel.findAll({
+      where: { is_active: true },
+      attributes: ['id', 'name', 'model_name', 'provider_id', 'model_type'],
+      include: [{
+        model: Provider,
+        as: 'provider',
+        attributes: [['id', 'provider_id'], ['name', 'provider_name']],
+      }],
+      order: [['name', 'ASC']],
+      raw: true,
+      nest: true,
+    });
+
+    return {
+      mcp_servers: result,
+      internal_llm: {
+        available: true,
+        models: models.map(m => ({
+          id: m.id,
+          name: m.name,
+          model_name: m.model_name,
+          model_type: m.model_type || null,
+          provider_name: m.provider?.provider_name || '',
+        })),
+      },
+      handler_outputs: {},
+      configurable_states: {},
+    };
   }
 }
 
