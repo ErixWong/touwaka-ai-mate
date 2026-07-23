@@ -106,32 +106,12 @@ async function runTests() {
 
   await testEndpoint('newPrefix', '新前缀：不存在的 app', 'GET', '/api/app-registry/non-existent-app-id', token, 404);
 
-  console.log('\n--- Part 1: Legacy 兼容层 /api/apps/* 验证 ---');
-  await testEndpoint('legacyPrefix', 'Legacy：列出可访问 app', 'GET', '/api/apps', token, 200);
-  await testEndpoint('legacyPrefix', 'Legacy：列出已安装 app', 'GET', '/api/apps/installed', token, 200);
-  await testEndpoint('legacyPrefix', 'Legacy：列出时钟注册', 'GET', '/api/apps/clock-registry', token, 200);
-
-  const appsRespLegacy = await fetch(`${BASE_URL}/api/apps`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  const appsDataLegacy = await appsRespLegacy.json();
-  const appsLegacy = appsDataLegacy.data || [];
-  
-  for (const appId of testApps) {
-    if (appsLegacy.some(a => a.id === appId)) {
-      await testEndpoint('legacyPrefix', `Legacy：获取 ${appId} 详情`, 'GET', `/api/apps/${appId}`, token, 200);
-      await testEndpoint('legacyPrefix', `Legacy：获取 ${appId} manifest`, 'GET', `/api/apps/${appId}/manifest`, token, 200);
-      await testEndpoint('legacyPrefix', `Legacy：验证 ${appId} runtime`, 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
-      await testEndpoint('legacyPrefix', `Legacy：获取 ${appId} runtime`, 'GET', `/api/apps/${appId}/runtime`, token, 200);
-    }
-  }
-
   console.log('\n--- Part 2: AppClock 接口测试 ---');
   await testEndpoint('clock', '获取时钟状态', 'GET', '/api/app-clock/status', token, 200);
 
   console.log('\n--- Part 3: 错误状态码验证 ---');
-  await testEndpoint('interface', 'Legacy：不存在的 app', 'GET', '/api/apps/non-existent-app-id', token, 404);
-  await testEndpoint('interface', 'Legacy：不存在 app manifest', 'GET', '/api/apps/non-existent-app-id/manifest', token, 422);
+  await testEndpoint('interface', '不存在的 app', 'GET', '/api/app-registry/non-existent-app-id', token, 404);
+  await testEndpoint('interface', '不存在 app manifest', 'GET', '/api/app-registry/non-existent-app-id/manifest', token, 422);
 
   console.log('\n--- Part 4: legacy 兼容性验证 ---');
   for (const appId of testApps) {

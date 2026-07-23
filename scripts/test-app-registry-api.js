@@ -69,31 +69,6 @@ async function runTests() {
     console.log('⚠️ 无已安装 app，跳过新前缀动态路由测试');
   }
 
-  console.log('\n--- Legacy 兼容层 /api/apps/* (向后兼容验证) ---');
-  await testEndpoint('Legacy：列出可访问 app', 'GET', '/api/apps', token, 200);
-  await testEndpoint('Legacy：列出已安装 app', 'GET', '/api/apps/installed', token, 200);
-  await testEndpoint('Legacy：列出时钟注册', 'GET', '/api/apps/clock-registry', token, 200);
-  
-  const appsRespLegacy = await fetch(`${BASE_URL}/api/apps`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  const appsDataLegacy = await appsRespLegacy.json();
-  const appsLegacy = appsDataLegacy.data || [];
-  
-  if (appsLegacy.length > 0) {
-    const appId = appsLegacy[0].id;
-    console.log(`Legacy 使用 appId: ${appId}\n`);
-    
-    await testEndpoint('Legacy：获取 app 详情', 'GET', `/api/apps/${appId}`, token, 200);
-    await testEndpoint('Legacy：获取 runtime 信息', 'GET', `/api/apps/${appId}/runtime`, token, 200);
-    await testEndpoint('Legacy：获取 manifest', 'GET', `/api/apps/${appId}/manifest`, token, 200);
-    await testEndpoint('Legacy：验证 runtime', 'GET', `/api/apps/${appId}/validate-runtime`, token, 200);
-    await testEndpoint('Legacy：获取配置', 'GET', `/api/apps/${appId}/config`, token, 200);
-    await testEndpoint('Legacy：获取时钟注册', 'GET', `/api/apps/${appId}/clock-registry`, token, 200);
-  } else {
-    console.log('⚠️ 无已安装 app，跳过 Legacy 动态路由测试');
-  }
-
   console.log('\n--- 错误状态码验证 ---');
   await testEndpoint('新前缀：不存在的 app', 'GET', '/api/app-registry/non-existent-app-id', token, 404);
   await testEndpoint('新前缀：不存在的 manifest', 'GET', '/api/app-registry/non-existent-app-id/manifest', token, 422);
