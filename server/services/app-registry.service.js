@@ -104,6 +104,18 @@ class AppRegistryService {
       }
     }
 
+    // 从 manifest 读取 states（用于步骤配置面板）
+    try {
+      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
+      if (fsSync.existsSync(manifestPath)) {
+        const manifestContent = fsSync.readFileSync(manifestPath, 'utf8');
+        const manifest = JSON.parse(manifestContent);
+        appJson.states = manifest.states || [];
+      }
+    } catch {
+      appJson.states = [];
+    }
+
     return appJson;
   }
 

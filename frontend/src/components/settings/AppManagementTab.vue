@@ -367,7 +367,7 @@ function openAppDialog(app?: MiniApp) {
     appForm.visibility = app.visibility
     appForm.is_active = app.is_active
     appForm.fields = JSON.parse(JSON.stringify(app.fields || []))
-    appForm.states = JSON.parse(JSON.stringify((app as any).states || []))
+    appForm.states = JSON.parse(JSON.stringify(app.states || []))
   } else {
     editingApp.value = null
     appForm.name = ''

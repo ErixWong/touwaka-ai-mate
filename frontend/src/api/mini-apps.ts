@@ -16,6 +16,7 @@ export interface MiniApp {
   sort_order: number
   is_active: boolean
   revision: number
+  states?: AppState[]
   created_at: string
   updated_at: string
 }
