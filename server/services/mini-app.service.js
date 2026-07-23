@@ -3,6 +3,7 @@ import Utils from '../../lib/utils.js';
 import { Op, Sequelize } from 'sequelize';
 import { pathToFileURL } from 'url';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import {
   buildPaginatedResponse,
