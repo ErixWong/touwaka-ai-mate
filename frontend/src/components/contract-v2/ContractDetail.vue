@@ -240,9 +240,9 @@ async function handleSetCurrent(revisionId: string) {
       type: 'warning',
     })
   } catch {
+    // 用户取消确认，正常行为
     return
   }
-
   try {
     await store.setDocRevisionCurrent(revisionId)
     await loadDocRevisions()
