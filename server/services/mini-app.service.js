@@ -27,10 +27,6 @@ class MiniAppService {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.MiniAppRow = this.db.getModel('mini_app_row');
       this.models.MiniAppFile = this.db.getModel('mini_app_file');
-      this.models.AppRowHandler = null;
-      try { this.models.AppRowHandler = this.db.getModel('app_row_handler'); } catch {}
-      this.models.AppState = null;
-      try { this.models.AppState = this.db.getModel('app_state'); } catch {}
       this.models.AppActionLog = this.db.getModel('app_action_log');
       this.models.MiniAppRoleAccess = this.db.getModel('mini_app_role_access');
       this.models.User = this.db.getModel('user');
@@ -159,12 +155,6 @@ class MiniAppService {
     if (!app) return null;
 
     const appJson = app.toJSON();
-    let states = [];
-    try { states = await this.models.AppState.findAll({
-      where: { app_id: appId },
-      order: [['sort_order', 'ASC']],
-    }); } catch { /* table dropped */ }
-    appJson.states = states;
 
     // 解析 config 字段（JSON 字符串 -> 对象）
     if (appJson.config && typeof appJson.config === 'string') {
@@ -176,53 +166,6 @@ class MiniAppService {
     }
 
     return appJson;
-  }
-
-  async getInitialStateFromManifest(appId) {
-    try {
-      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
-      const content = await fs.readFile(manifestPath, 'utf-8');
-      const manifest = JSON.parse(content);
-      const states = Array.isArray(manifest.states) ? manifest.states : [];
-      const initial = states.find(s => s?.is_initial);
-      return initial?.name || null;
-    } catch {
-      return null;
-    }
-  }
-
-  STRICT_STATE_APP_IDS = ['invoice-mgr', 'contract-mgr'];
-
-  async getAppStateModule(appId) {
-    try {
-      const statesPath = path.join(this.appsDir, appId, 'states.js');
-      const module = await import(pathToFileURL(statesPath).href);
-      return module.default || module;
-    } catch {
-      return null;
-    }
-  }
-
-  async getAppInitialState(appId) {
-    const stateModule = await this.getAppStateModule(appId);
-    if (stateModule && stateModule.getInitialState) {
-      return stateModule.getInitialState();
-    }
-    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
-      throw new Error(`App ${appId} 状态模块缺失或未导出 getInitialState，请检查 apps/${appId}/states.js`);
-    }
-    return await this.getInitialStateFromManifest(appId);
-  }
-
-  async getAppConfirmedState(appId) {
-    const stateModule = await this.getAppStateModule(appId);
-    if (stateModule && stateModule.getConfirmedState) {
-      return stateModule.getConfirmedState();
-    }
-    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
-      throw new Error(`App ${appId} 状态模块缺失或未导出 getConfirmedState，请检查 apps/${appId}/states.js`);
-    }
-    return 'confirmed';
   }
 
   async createApp(data) {
@@ -311,7 +254,6 @@ class MiniAppService {
     this.ensureModels();
     const MCPServer = this.db.getModel('mcp_server');
     const MCPToolsCache = this.db.getModel('mcp_tools_cache');
-    const AppRowHandler = this.db.getModel('app_row_handler');
     const AiModel = this.db.getModel('ai_model');
     const Provider = this.db.getModel('provider');
 
@@ -358,67 +300,6 @@ class MiniAppService {
       nest: true,
     });
 
-    let handlerOutputs = {};
-    let configurableStates = {};
-    if (appId) {
-      const app = await this.models.MiniApp.findByPk(appId);
-      if (app) {
-        let states = [];
-        try {
-          const AppState = this.db.getModel('app_state');
-          states = await AppState.findAll({
-            where: { app_id: appId },
-            raw: true,
-          });
-        } catch { /* table dropped by migration #45 */ }
-
-        const handlerIds = states.filter(s => s.handler_id).map(s => s.handler_id);
-        const uniqueHandlerIds = [...new Set(handlerIds)];
-
-        for (const hid of uniqueHandlerIds) {
-          const handler = await AppRowHandler.findByPk(hid);
-          if (!handler) {
-            logger.warn(`[getAvailableResources] Handler ${hid} not found`);
-            continue;
-          }
-
-          try {
-            const scriptModule = await this.loadHandlerScript(handler.handler);
-            const outputs = scriptModule.availableOutputs || [];
-            logger.info(`[getAvailableResources] Handler ${hid} loaded, outputs: ${outputs.length}`);
-            handlerOutputs[hid] = outputs;
-          } catch (e) {
-            logger.error(`[getAvailableResources] Handler ${hid} load failed: ${e.message}`);
-            handlerOutputs[hid] = [];
-          }
-        }
-
-        const stateHandlerMap = new Map(
-          states.filter(s => s.handler_id).map(s => [s.name, s.handler_id])
-        );
-
-        let appConfig = {};
-        if (app.config) {
-          try {
-            appConfig = typeof app.config === 'string' ? JSON.parse(app.config) : app.config;
-          } catch { appConfig = {}; }
-        }
-
-        const defaultStepResources = this.getDefaultStepResources(appId) || {};
-        const stepResources = { ...defaultStepResources, ...(appConfig.step_resources || {}) };
-
-        for (const stateName of stateHandlerMap.keys()) {
-          const resource = stepResources[stateName];
-          if (resource) {
-            configurableStates[stateName] = {
-              type: resource.type,
-              model_type: resource.model_type || null,
-            };
-          }
-        }
-      }
-    }
-
     return {
       mcp_servers: result,
       internal_llm: {
@@ -431,8 +312,8 @@ class MiniAppService {
           provider_name: m.provider?.provider_name || '',
         })),
       },
-      handler_outputs: handlerOutputs,
-      configurable_states: configurableStates,
+      handler_outputs: {},
+      configurable_states: {},
     };
   }
 
@@ -566,15 +447,7 @@ class MiniAppService {
     this.validateData(app.fields, data);
     logger.info(`[MiniAppService] Data validated`);
 
-    let initialState = null;
-    try { initialState = await this.models.AppState.findOne({
-      where: { app_id: appId, is_initial: true },
-    }); } catch { /* table dropped */ }
-    logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
-
-    // status 现在是实体字段，不放在 data 里
-    const manifestInitialState = initialState ? null : await this.getInitialStateFromManifest(appId);
-    const status = initialState?.name || manifestInitialState || 'pending_process';
+    const status = 'pending_process';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);
@@ -785,11 +658,6 @@ class MiniAppService {
     const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
     const mergedData = { ...existingData, ...data };
 
-    let confirmedState = null;
-    try { confirmedState = await this.models.AppState.findOne({
-      where: { app_id: appId, is_terminal: true },
-    }); } catch { /* table dropped */ }
-
     const title = this.computeTitle(app.fields, mergedData);
 
     await this.models.MiniAppRow.update(
@@ -797,7 +665,7 @@ class MiniAppService {
         data: JSON.stringify(mergedData),
         title,
         revision: record.revision + 1,
-        status: confirmedState?.name || 'confirmed',
+        status: 'confirmed',
       },
       { where: { id: record.id } }
     );
@@ -806,7 +674,7 @@ class MiniAppService {
     if (autonomousTable) {
       await this.db.sequelize.query(
         `UPDATE \`${autonomousTable}\` SET status = ?, data = ? WHERE id = ?`,
-        { replacements: [confirmedState?.name || 'confirmed', JSON.stringify(mergedData), record.id] }
+        { replacements: ['confirmed', JSON.stringify(mergedData), record.id] }
       );
     }
 
@@ -832,11 +700,7 @@ async batchUpload(appId, userId, attachmentIds) {
     }
 
     // 默认逻辑
-    let initialState = null;
-    try { initialState = await this.models.AppState.findOne({
-      where: { app_id: appId, is_initial: true },
-    }); } catch { /* table dropped */ }
-    const initialStatus = initialState ? initialState.name : 'pending';
+    const initialStatus = 'pending';
 
     const records = [];
     for (const attId of attachmentIds) {
@@ -930,92 +794,6 @@ async batchUpload(appId, userId, attachmentIds) {
     }
 
     return { total, by_status: byStatus, completed, processing, failed };
-  }
-
-  // ==================== State CRUD ====================
-
-  async getStates(appId) {
-    this.ensureModels();
-    return await this.models.AppState.findAll({
-      where: { app_id: appId },
-      order: [['sort_order', 'ASC']],
-    });
-  }
-
-  async createState(appId, data) {
-    this.ensureModels();
-    return await this.models.AppState.create({
-      id: Utils.newID(20),
-      app_id: appId,
-      ...data,
-    });
-  }
-
-  async updateState(appId, stateId, data) {
-    this.ensureModels();
-    const state = await this.models.AppState.findOne({
-      where: { id: stateId, app_id: appId },
-    });
-    if (!state) throw new Error('State not found');
-    await state.update(data);
-    return state;
-  }
-
-  async deleteState(appId, stateId) {
-    this.ensureModels();
-    const state = await this.models.AppState.findOne({
-      where: { id: stateId, app_id: appId },
-    });
-    if (!state) throw new Error('State not found');
-    await state.destroy();
-    return true;
-  }
-
-  // ==================== Handler CRUD ====================
-
-  async getHandlers() {
-    this.ensureModels();
-    return await this.models.AppRowHandler.findAll({
-      order: [['created_at', 'DESC']],
-    });
-  }
-
-  async getHandlerById(handlerId) {
-    this.ensureModels();
-    return await this.models.AppRowHandler.findByPk(handlerId);
-  }
-
-  async createHandler(data) {
-    this.ensureModels();
-    return await this.models.AppRowHandler.create({
-      id: Utils.newID(20),
-      ...data,
-    });
-  }
-
-  async updateHandler(handlerId, data) {
-    this.ensureModels();
-    const handler = await this.models.AppRowHandler.findByPk(handlerId);
-    if (!handler) throw new Error('Handler not found');
-    await handler.update(data);
-    return handler;
-  }
-
-  async deleteHandler(handlerId) {
-    this.ensureModels();
-    const handler = await this.models.AppRowHandler.findByPk(handlerId);
-    if (!handler) throw new Error('Handler not found');
-    await handler.destroy();
-    return true;
-  }
-
-  async getHandlerLogs(handlerId, limit = 20) {
-    this.ensureModels();
-    return await this.models.AppActionLog.findAll({
-      where: { handler_id: handlerId },
-      order: [['created_at', 'DESC']],
-      limit,
-    });
   }
 
   // ==================== Compare ====================
@@ -1894,7 +1672,7 @@ ${JSON.stringify(listB, null, 2)}
   async confirmAutonomousRecord(appId, recordId, userId, data) {
     const record = await this.getAutonomousRecord(appId, recordId, userId);
 
-    const confirmedStateName = await this.getAppConfirmedState(appId);
+    const confirmedStateName = 'confirmed';
 
     const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
     const mergedData = { ...existingData, ...data };
@@ -2002,15 +1780,6 @@ ${JSON.stringify(listB, null, 2)}
       replacements,
       type: Sequelize.QueryTypes.SELECT,
     });
-
-    const stateModule = await this.getAppStateModule(appId);
-    if (stateModule && stateModule.getStatusSummaryCategories) {
-      return stateModule.getStatusSummaryCategories(results);
-    }
-
-    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
-      throw new Error(`App ${appId} 状态模块缺失或未导出 getStatusSummaryCategories，请检查 apps/${appId}/states.js`);
-    }
 
     const byStatus = {};
     let total = 0;
