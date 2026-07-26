@@ -9,6 +9,9 @@
   "license": "MIT",
   "runtime": {
     "tick": "tick/index.js",
+    "frontend": {
+      "entry": "frontend/views/CurrentFeatureAnalyzerView.vue"
+    },
     "server": {}
   },
   "tags": [

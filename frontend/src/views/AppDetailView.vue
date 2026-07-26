@@ -7,7 +7,7 @@
     </div>
     <div v-else-if="!AppComponent" class="empty-state">
       <p>该应用尚未配置前端组件</p>
-      <p class="empty-hint">请在应用管理中配置 component 字段</p>
+      <p class="empty-hint">请在应用 manifest 中配置 runtime.frontend.entry 或 component 字段</p>
       <button class="btn-back" @click="goBack">← 返回</button>
     </div>
     <component v-else :is="AppComponent" :app="currentApp" />
@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import { shallowRef, ref, onMounted, defineAsyncComponent, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getApp, type MiniApp } from '@/api/mini-apps'
+import { getAppWithRuntime, type AppRuntimeFrontend, type MiniApp } from '@/api/mini-apps'
 
 const AppComponentMap: Record<string, Component> = {
   'ContractMgrView': defineAsyncComponent(() => import('@/views/contract-mgr/ContractMgrView.vue')),
@@ -30,6 +30,8 @@ const AppComponentMap: Record<string, Component> = {
   'CurrentFeatureAnalyzerView': defineAsyncComponent(() => import('@apps/current-feature-analyzer/frontend/views/CurrentFeatureAnalyzerView.vue')),
 }
 
+const RuntimeComponentModules = import.meta.glob('@apps/*/frontend/views/*.vue')
+
 const route = useRoute()
 const router = useRouter()
 const currentApp = shallowRef<MiniApp | null>(null)
@@ -39,18 +41,42 @@ const isLoading = ref(true)
 onMounted(async () => {
   try {
     const appId = route.params.appId as string
-    currentApp.value = await getApp(appId)
-    const componentKey = currentApp.value?.component
-    if (componentKey && componentKey in AppComponentMap) {
-      AppComponent.value = AppComponentMap[componentKey]!
-    }
-    // 如果 componentKey 不存在于 AppComponentMap 中，AppComponent 保持 null，显示空状态
+    currentApp.value = await getAppWithRuntime(appId)
+    AppComponent.value = resolveAppComponent(currentApp.value)
   } catch (error) {
     console.error('Failed to load app:', error)
   } finally {
     isLoading.value = false
   }
 })
+
+function resolveAppComponent(app: MiniApp | null): Component | null {
+  if (!app) return null
+
+  const runtimeComponent = resolveRuntimeFrontendComponent(app.id, app.runtime?.frontend)
+  if (runtimeComponent) return runtimeComponent
+
+  const componentKey = app.runtime?.frontend?.component || app.component
+  if (componentKey && componentKey in AppComponentMap) {
+    return AppComponentMap[componentKey]!
+  }
+
+  return null
+}
+
+function resolveRuntimeFrontendComponent(appId: string, frontend?: AppRuntimeFrontend | null): Component | null {
+  if (!frontend?.entry || frontend.legacy) return null
+
+  const entry = frontend.entry.replace(/^\.?\//, '')
+  const loader = [
+    `@apps/${appId}/${entry}`,
+    `../apps/${appId}/${entry}`,
+  ].map((moduleKey) => RuntimeComponentModules[moduleKey]).find(Boolean)
+
+  if (!loader) return null
+
+  return defineAsyncComponent(loader as () => Promise<Component>)
+}
 
 function goBack() {
   router.push('/apps')
