@@ -3,6 +3,7 @@ import Utils from '../../lib/utils.js';
 import { Op, Sequelize } from 'sequelize';
 import { pathToFileURL } from 'url';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import {
   buildPaginatedResponse,
@@ -27,10 +28,6 @@ class MiniAppService {
       this.models.MiniApp = this.db.getModel('mini_app');
       this.models.MiniAppRow = this.db.getModel('mini_app_row');
       this.models.MiniAppFile = this.db.getModel('mini_app_file');
-      this.models.AppRowHandler = null;
-      try { this.models.AppRowHandler = this.db.getModel('app_row_handler'); } catch {}
-      this.models.AppState = null;
-      try { this.models.AppState = this.db.getModel('app_state'); } catch {}
       this.models.AppActionLog = this.db.getModel('app_action_log');
       this.models.MiniAppRoleAccess = this.db.getModel('mini_app_role_access');
       this.models.User = this.db.getModel('user');
@@ -100,345 +97,7 @@ class MiniAppService {
     }
   }
 
-  // ==================== App CRUD ====================
-
-  async getAccessibleApps(userId) {
-    this.ensureModels();
-
-    const user = await this.models.User.findByPk(userId);
-    if (!user) return [];
-
-    const isAdmin = await this.isAdmin(userId);
-
-    if (isAdmin) {
-      return await this.models.MiniApp.findAll({
-        where: { is_active: true },
-        order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
-      });
-    }
-
-    const apps = await this.models.MiniApp.findAll({
-      where: { is_active: true },
-      order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
-    });
-
-    const result = [];
-    for (const app of apps) {
-      if (app.visibility === 'all') {
-        result.push(app);
-      } else if (app.visibility === 'owner') {
-        if (app.owner_id === userId) {
-          result.push(app);
-        }
-      } else if (app.visibility === 'department') {
-        if (user && app.owner_id) {
-          const appOwner = await this.models.User.findByPk(app.owner_id);
-          if (appOwner && user.department_id && appOwner.department_id &&
-              user.department_id === appOwner.department_id) {
-            result.push(app);
-          }
-        }
-      } else if (app.visibility === 'role') {
-        const hasAccess = await this.models.MiniAppRoleAccess.findOne({
-          where: { app_id: app.id },
-          include: [{
-            model: this.models.UserRole,
-            where: { user_id: userId },
-            required: true,
-          }],
-        });
-        if (hasAccess) result.push(app);
-      }
-    }
-    return result;
-  }
-
-  async getAppById(appId) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) return null;
-
-    const appJson = app.toJSON();
-    let states = [];
-    try { states = await this.models.AppState.findAll({
-      where: { app_id: appId },
-      order: [['sort_order', 'ASC']],
-    }); } catch { /* table dropped */ }
-    appJson.states = states;
-
-    // 解析 config 字段（JSON 字符串 -> 对象）
-    if (appJson.config && typeof appJson.config === 'string') {
-      try {
-        appJson.config = JSON.parse(appJson.config);
-      } catch {
-        appJson.config = {};
-      }
-    }
-
-    return appJson;
-  }
-
-  async getInitialStateFromManifest(appId) {
-    try {
-      const manifestPath = path.join(this.appsDir, appId, 'manifest.json');
-      const content = await fs.readFile(manifestPath, 'utf-8');
-      const manifest = JSON.parse(content);
-      const states = Array.isArray(manifest.states) ? manifest.states : [];
-      const initial = states.find(s => s?.is_initial);
-      return initial?.name || null;
-    } catch {
-      return null;
-    }
-  }
-
-  STRICT_STATE_APP_IDS = ['invoice-mgr', 'contract-mgr'];
-
-  async getAppStateModule(appId) {
-    try {
-      const statesPath = path.join(this.appsDir, appId, 'states.js');
-      const module = await import(pathToFileURL(statesPath).href);
-      return module.default || module;
-    } catch {
-      return null;
-    }
-  }
-
-  async getAppInitialState(appId) {
-    const stateModule = await this.getAppStateModule(appId);
-    if (stateModule && stateModule.getInitialState) {
-      return stateModule.getInitialState();
-    }
-    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
-      throw new Error(`App ${appId} 状态模块缺失或未导出 getInitialState，请检查 apps/${appId}/states.js`);
-    }
-    return await this.getInitialStateFromManifest(appId);
-  }
-
-  async getAppConfirmedState(appId) {
-    const stateModule = await this.getAppStateModule(appId);
-    if (stateModule && stateModule.getConfirmedState) {
-      return stateModule.getConfirmedState();
-    }
-    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
-      throw new Error(`App ${appId} 状态模块缺失或未导出 getConfirmedState，请检查 apps/${appId}/states.js`);
-    }
-    return 'confirmed';
-  }
-
-  async createApp(data) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.create({
-      id: Utils.newID(20),
-      ...data,
-    });
-    return app;
-  }
-
-  async updateApp(appId, data) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-
-    await app.update(data);
-    if (data.fields) {
-      await app.update({ revision: app.revision + 1 });
-    }
-    return app;
-  }
-
-  async getAppConfig(appId) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-
-    let config = app.config;
-    if (typeof config === 'string') {
-      try { config = JSON.parse(config); } catch { config = {}; }
-    }
-
-    // 合并 manifest 的 step_resources 默认值
-    let manifest = app.fields;
-    if (typeof manifest === 'string') {
-      try { manifest = JSON.parse(manifest); } catch { manifest = {}; }
-    }
-    
-    // 从 app 的 manifest 字段获取 step_resources（如果存在）
-    // 注意：manifest 数据分布在 app 的各个字段中，这里需要从 manifest.json 文件读取
-    const defaultStepResources = this.getDefaultStepResources(appId);
-    
-    if (defaultStepResources && config) {
-      config.step_resources = { ...defaultStepResources, ...config.step_resources };
-    } else if (defaultStepResources) {
-      config = { ...config, step_resources: defaultStepResources };
-    }
-    
-    return config || {};
-  }
-
-  getDefaultStepResources(appId) {
-    // 从 manifest 文件读取默认 step_resources
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const manifestPath = path.join(process.cwd(), 'apps', appId, 'manifest.json');
-      if (fs.existsSync(manifestPath)) {
-        const manifestContent = fs.readFileSync(manifestPath, 'utf8');
-        const manifest = JSON.parse(manifestContent);
-        return manifest.config?.step_resources || null;
-      }
-    } catch (e) {
-      // 文件不存在或解析失败，返回 null
-    }
-    return null;
-  }
-
-  async updateAppConfig(appId, configData) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-
-    let currentConfig = app.config;
-    if (typeof currentConfig === 'string') {
-      try { currentConfig = JSON.parse(currentConfig); } catch { currentConfig = {}; }
-    }
-
-    const mergedConfig = { ...currentConfig, ...configData };
-    await app.update({ config: JSON.stringify(mergedConfig) });
-    return mergedConfig;
-  }
-
-  async getAvailableResources(appId) {
-    this.ensureModels();
-    const MCPServer = this.db.getModel('mcp_server');
-    const MCPToolsCache = this.db.getModel('mcp_tools_cache');
-    const AppRowHandler = this.db.getModel('app_row_handler');
-    const AiModel = this.db.getModel('ai_model');
-    const Provider = this.db.getModel('provider');
-
-    const servers = await MCPServer.findAll({
-      where: { is_enabled: true },
-      raw: true,
-    });
-
-    const result = [];
-    for (const server of servers) {
-      const tools = await MCPToolsCache.findAll({
-        where: { mcp_server_id: server.id },
-        raw: true,
-      });
-      result.push({
-        id: server.id,
-        name: server.name,
-        display_name: server.display_name,
-        transport_type: server.transport_type,
-        tools: tools.map(t => {
-          let inputSchema = null;
-          if (t.input_schema) {
-            try { inputSchema = JSON.parse(t.input_schema); } catch { inputSchema = null; }
-          }
-          return {
-            name: t.tool_name,
-            description: t.description,
-            input_schema: inputSchema,
-          };
-        }),
-      });
-    }
-
-    const models = await AiModel.findAll({
-      where: { is_active: true },
-      attributes: ['id', 'name', 'model_name', 'provider_id', 'model_type'],
-      include: [{
-        model: Provider,
-        as: 'provider',
-        attributes: [['id', 'provider_id'], ['name', 'provider_name']],
-      }],
-      order: [['name', 'ASC']],
-      raw: true,
-      nest: true,
-    });
-
-    let handlerOutputs = {};
-    let configurableStates = {};
-    if (appId) {
-      const app = await this.models.MiniApp.findByPk(appId);
-      if (app) {
-        let states = [];
-        try {
-          const AppState = this.db.getModel('app_state');
-          states = await AppState.findAll({
-            where: { app_id: appId },
-            raw: true,
-          });
-        } catch { /* table dropped by migration #45 */ }
-
-        const handlerIds = states.filter(s => s.handler_id).map(s => s.handler_id);
-        const uniqueHandlerIds = [...new Set(handlerIds)];
-
-        for (const hid of uniqueHandlerIds) {
-          const handler = await AppRowHandler.findByPk(hid);
-          if (!handler) {
-            logger.warn(`[getAvailableResources] Handler ${hid} not found`);
-            continue;
-          }
-
-          try {
-            const scriptModule = await this.loadHandlerScript(handler.handler);
-            const outputs = scriptModule.availableOutputs || [];
-            logger.info(`[getAvailableResources] Handler ${hid} loaded, outputs: ${outputs.length}`);
-            handlerOutputs[hid] = outputs;
-          } catch (e) {
-            logger.error(`[getAvailableResources] Handler ${hid} load failed: ${e.message}`);
-            handlerOutputs[hid] = [];
-          }
-        }
-
-        const stateHandlerMap = new Map(
-          states.filter(s => s.handler_id).map(s => [s.name, s.handler_id])
-        );
-
-        let appConfig = {};
-        if (app.config) {
-          try {
-            appConfig = typeof app.config === 'string' ? JSON.parse(app.config) : app.config;
-          } catch { appConfig = {}; }
-        }
-
-        const defaultStepResources = this.getDefaultStepResources(appId) || {};
-        const stepResources = { ...defaultStepResources, ...(appConfig.step_resources || {}) };
-
-        for (const stateName of stateHandlerMap.keys()) {
-          const resource = stepResources[stateName];
-          if (resource) {
-            configurableStates[stateName] = {
-              type: resource.type,
-              model_type: resource.model_type || null,
-            };
-          }
-        }
-      }
-    }
-
-    return {
-      mcp_servers: result,
-      internal_llm: {
-        available: true,
-        models: models.map(m => ({
-          id: m.id,
-          name: m.name,
-          model_name: m.model_name,
-          model_type: m.model_type || null,
-          provider_name: m.provider?.provider_name || '',
-        })),
-      },
-      handler_outputs: handlerOutputs,
-      configurable_states: configurableStates,
-    };
-  }
-
   async loadHandlerScript(handlerPath) {
-    const fs = await import('fs');
-    const path = await import('path');
     const allowedPrefixes = ['scripts/', 'apps/'];
     const absPath = path.resolve(handlerPath);
     const isAllowed = allowedPrefixes.some(p => absPath.includes(p.replace('/', path.sep)));
@@ -447,19 +106,11 @@ class MiniAppService {
     }
 
     const indexPath = path.join(absPath, 'index.js');
-    if (!fs.default.existsSync(indexPath)) {
+    if (!fsSync.existsSync(indexPath)) {
       throw new Error(`Handler script not found: ${indexPath}`);
     }
 
     return await import(`${pathToFileURL(indexPath).href}?t=${Date.now()}`);
-  }
-
-  async deleteApp(appId) {
-    this.ensureModels();
-    const app = await this.models.MiniApp.findByPk(appId);
-    if (!app) throw new Error('App not found');
-    await app.destroy();
-    return true;
   }
 
   // ==================== Record CRUD ====================
@@ -566,15 +217,7 @@ class MiniAppService {
     this.validateData(app.fields, data);
     logger.info(`[MiniAppService] Data validated`);
 
-    let initialState = null;
-    try { initialState = await this.models.AppState.findOne({
-      where: { app_id: appId, is_initial: true },
-    }); } catch { /* table dropped */ }
-    logger.info(`[MiniAppService] Initial state: ${initialState?.name || 'none'}`);
-
-    // status 现在是实体字段，不放在 data 里
-    const manifestInitialState = initialState ? null : await this.getInitialStateFromManifest(appId);
-    const status = initialState?.name || manifestInitialState || 'pending_process';
+    const status = 'pending_process';
 
     const title = this.computeTitle(app.fields, data);
     logger.info(`[MiniAppService] Title computed: ${title}`);
@@ -785,11 +428,6 @@ class MiniAppService {
     const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
     const mergedData = { ...existingData, ...data };
 
-    let confirmedState = null;
-    try { confirmedState = await this.models.AppState.findOne({
-      where: { app_id: appId, is_terminal: true },
-    }); } catch { /* table dropped */ }
-
     const title = this.computeTitle(app.fields, mergedData);
 
     await this.models.MiniAppRow.update(
@@ -797,7 +435,7 @@ class MiniAppService {
         data: JSON.stringify(mergedData),
         title,
         revision: record.revision + 1,
-        status: confirmedState?.name || 'confirmed',
+        status: 'confirmed',
       },
       { where: { id: record.id } }
     );
@@ -806,7 +444,7 @@ class MiniAppService {
     if (autonomousTable) {
       await this.db.sequelize.query(
         `UPDATE \`${autonomousTable}\` SET status = ?, data = ? WHERE id = ?`,
-        { replacements: [confirmedState?.name || 'confirmed', JSON.stringify(mergedData), record.id] }
+        { replacements: ['confirmed', JSON.stringify(mergedData), record.id] }
       );
     }
 
@@ -832,11 +470,7 @@ async batchUpload(appId, userId, attachmentIds) {
     }
 
     // 默认逻辑
-    let initialState = null;
-    try { initialState = await this.models.AppState.findOne({
-      where: { app_id: appId, is_initial: true },
-    }); } catch { /* table dropped */ }
-    const initialStatus = initialState ? initialState.name : 'pending';
+    const initialStatus = 'pending';
 
     const records = [];
     for (const attId of attachmentIds) {
@@ -932,92 +566,6 @@ async batchUpload(appId, userId, attachmentIds) {
     return { total, by_status: byStatus, completed, processing, failed };
   }
 
-  // ==================== State CRUD ====================
-
-  async getStates(appId) {
-    this.ensureModels();
-    return await this.models.AppState.findAll({
-      where: { app_id: appId },
-      order: [['sort_order', 'ASC']],
-    });
-  }
-
-  async createState(appId, data) {
-    this.ensureModels();
-    return await this.models.AppState.create({
-      id: Utils.newID(20),
-      app_id: appId,
-      ...data,
-    });
-  }
-
-  async updateState(appId, stateId, data) {
-    this.ensureModels();
-    const state = await this.models.AppState.findOne({
-      where: { id: stateId, app_id: appId },
-    });
-    if (!state) throw new Error('State not found');
-    await state.update(data);
-    return state;
-  }
-
-  async deleteState(appId, stateId) {
-    this.ensureModels();
-    const state = await this.models.AppState.findOne({
-      where: { id: stateId, app_id: appId },
-    });
-    if (!state) throw new Error('State not found');
-    await state.destroy();
-    return true;
-  }
-
-  // ==================== Handler CRUD ====================
-
-  async getHandlers() {
-    this.ensureModels();
-    return await this.models.AppRowHandler.findAll({
-      order: [['created_at', 'DESC']],
-    });
-  }
-
-  async getHandlerById(handlerId) {
-    this.ensureModels();
-    return await this.models.AppRowHandler.findByPk(handlerId);
-  }
-
-  async createHandler(data) {
-    this.ensureModels();
-    return await this.models.AppRowHandler.create({
-      id: Utils.newID(20),
-      ...data,
-    });
-  }
-
-  async updateHandler(handlerId, data) {
-    this.ensureModels();
-    const handler = await this.models.AppRowHandler.findByPk(handlerId);
-    if (!handler) throw new Error('Handler not found');
-    await handler.update(data);
-    return handler;
-  }
-
-  async deleteHandler(handlerId) {
-    this.ensureModels();
-    const handler = await this.models.AppRowHandler.findByPk(handlerId);
-    if (!handler) throw new Error('Handler not found');
-    await handler.destroy();
-    return true;
-  }
-
-  async getHandlerLogs(handlerId, limit = 20) {
-    this.ensureModels();
-    return await this.models.AppActionLog.findAll({
-      where: { handler_id: handlerId },
-      order: [['created_at', 'DESC']],
-      limit,
-    });
-  }
-
   // ==================== Compare ====================
 
   async getCompareResult(appId, rowId) {
@@ -1074,7 +622,11 @@ async batchUpload(appId, userId, attachmentIds) {
 
     logger.info(`[compareRecords] Loaded content: A=${contentA.sections.length} sections, B=${contentB.sections.length} sections`);
 
-    const appConfig = await this.getAppConfig(appId);
+    const appRecord = await this.models.MiniApp.findByPk(appId);
+    let appConfig = {};
+    if (appRecord?.config) {
+      try { appConfig = typeof appRecord.config === 'string' ? JSON.parse(appRecord.config) : appRecord.config; } catch { appConfig = {}; }
+    }
     const comparePrompt = appConfig?.prompts?.compare || this._defaultComparePrompt();
 
     const modelId = options.model_id || null;
@@ -1894,7 +1446,7 @@ ${JSON.stringify(listB, null, 2)}
   async confirmAutonomousRecord(appId, recordId, userId, data) {
     const record = await this.getAutonomousRecord(appId, recordId, userId);
 
-    const confirmedStateName = await this.getAppConfirmedState(appId);
+    const confirmedStateName = 'confirmed';
 
     const existingData = typeof record.data === 'string' ? JSON.parse(record.data) : (record.data || {});
     const mergedData = { ...existingData, ...data };
@@ -2002,15 +1554,6 @@ ${JSON.stringify(listB, null, 2)}
       replacements,
       type: Sequelize.QueryTypes.SELECT,
     });
-
-    const stateModule = await this.getAppStateModule(appId);
-    if (stateModule && stateModule.getStatusSummaryCategories) {
-      return stateModule.getStatusSummaryCategories(results);
-    }
-
-    if (this.STRICT_STATE_APP_IDS.includes(appId)) {
-      throw new Error(`App ${appId} 状态模块缺失或未导出 getStatusSummaryCategories，请检查 apps/${appId}/states.js`);
-    }
 
     const byStatus = {};
     let total = 0;

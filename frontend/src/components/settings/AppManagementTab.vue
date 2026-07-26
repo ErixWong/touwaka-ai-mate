@@ -177,8 +177,9 @@
           <!-- 状态设计器 -->
           <div v-if="appDialogTab === 'states'" class="tab-pane">
             <StateDesigner
-              v-model:states="appForm.states"
+              :states="appForm.states"
               :handlers="handlers"
+              readonly
             />
           </div>
         </div>

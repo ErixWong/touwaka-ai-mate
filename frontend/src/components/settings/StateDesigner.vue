@@ -84,28 +84,28 @@
       <div class="form-row">
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.stateName', '状态标识') }} *</label>
-          <el-input v-model="selectedState.name" placeholder="pending_ocr" />
+          <el-input :model-value="selectedState.name" placeholder="pending_ocr" disabled />
           <p class="form-hint">{{ $t('settings.appManagement.stateDesigner.stateNameHint', '英文标识，用于系统内部') }}</p>
         </div>
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.stateLabel', '显示名称') }} *</label>
-          <el-input v-model="selectedState.label" :placeholder="$t('settings.appManagement.stateDesigner.stateLabelPlaceholder', '待OCR')" />
+          <el-input :model-value="selectedState.label" :placeholder="$t('settings.appManagement.stateDesigner.stateLabelPlaceholder', '待OCR')" disabled />
         </div>
       </div>
       <div class="form-item-group">
-        <el-checkbox v-model="selectedState.is_initial" @change="handleInitialChange">
+        <el-checkbox :model-value="selectedState.is_initial" disabled>
           {{ $t('settings.appManagement.stateDesigner.initial', '初始状态') }}
         </el-checkbox>
-        <el-checkbox v-model="selectedState.is_terminal">
+        <el-checkbox :model-value="selectedState.is_terminal" disabled>
           {{ $t('settings.appManagement.stateDesigner.terminal', '终态') }}
         </el-checkbox>
-        <el-checkbox v-model="selectedState.is_error">
+        <el-checkbox :model-value="selectedState.is_error" disabled>
           {{ $t('settings.appManagement.stateDesigner.error', '错误状态') }}
         </el-checkbox>
       </div>
       <div class="form-item">
         <label class="form-label">{{ $t('settings.appManagement.stateDesigner.handler', '处理脚本') }}</label>
-        <el-select v-model="selectedState.handler_id" clearable>
+        <el-select :model-value="selectedState.handler_id" clearable disabled>
           <el-option value="" :label="$t('settings.appManagement.stateDesigner.noHandler', '无（手动处理）')" />
           <el-option v-for="h in handlers" :key="h.id" :value="h.id" :label="h.name" />
         </el-select>
@@ -113,13 +113,13 @@
       <div class="form-row">
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.successNext', '成功后转到') }}</label>
-          <el-select v-model="selectedState.success_next_state" clearable>
+          <el-select :model-value="selectedState.success_next_state" clearable disabled>
             <el-option v-for="s in otherStates(selectedState.name)" :key="s.name" :value="s.name" :label="s.label || s.name" />
           </el-select>
         </div>
         <div class="form-item">
           <label class="form-label">{{ $t('settings.appManagement.stateDesigner.failureNext', '失败后转到') }}</label>
-          <el-select v-model="selectedState.failure_next_state" clearable>
+          <el-select :model-value="selectedState.failure_next_state" clearable disabled>
             <el-option v-for="s in otherStates(selectedState.name)" :key="s.name" :value="s.name" :label="s.label || s.name" />
           </el-select>
         </div>
@@ -132,16 +132,20 @@
 import { ref, computed } from 'vue'
 import type { AppState, AppRowHandler } from '@/api/mini-apps'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   states: AppState[]
   handlers: AppRowHandler[]
-}>()
+  readonly?: boolean
+}>(), {
+  readonly: true,
+})
 
 const emit = defineEmits<{
   'update:states': [value: AppState[]]
 }>()
 
 const selectedStateIndex = ref(-1)
+const isReadonly = computed(() => props.readonly)
 
 const selectedState = computed(() => {
   if (selectedStateIndex.value >= 0 && selectedStateIndex.value < props.states.length) {
@@ -151,6 +155,7 @@ const selectedState = computed(() => {
 })
 
 function updateStates(nextStates: AppState[]) {
+  if (isReadonly.value) return
   emit('update:states', nextStates)
 }
 
@@ -163,15 +168,8 @@ function otherStates(currentName: string): AppState[] {
   return props.states.filter(s => s.name !== currentName)
 }
 
-function handleInitialChange() {
-  if (selectedState.value?.is_initial) {
-    updateStates(props.states.map(s =>
-      s === selectedState.value ? s : { ...s, is_initial: false }
-    ))
-  }
-}
-
 function removeState(index: number) {
+  if (isReadonly.value) return
   const nextStates = props.states.filter((_, stateIndex) => stateIndex !== index)
   updateStates(nextStates)
   if (selectedStateIndex.value >= nextStates.length) {
@@ -180,6 +178,7 @@ function removeState(index: number) {
 }
 
 function moveState(index: number, direction: number) {
+  if (isReadonly.value) return
   const newIndex = index + direction
   if (newIndex < 0 || newIndex >= props.states.length) return
   const nextStates = [...props.states]

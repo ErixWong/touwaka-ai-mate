@@ -246,37 +246,37 @@ export interface AppActionLog {
 // ==================== App ====================
 
 export async function getApps(): Promise<MiniApp[]> {
-  return apiRequest<MiniApp[]>(apiClient.get('/mini-apps'))
+  return apiRequest<MiniApp[]>(apiClient.get('/app-registry'))
 }
 
 export async function getApp(appId: string): Promise<MiniApp> {
-  return apiRequest<MiniApp>(apiClient.get(`/mini-apps/${appId}`))
+  return apiRequest<MiniApp>(apiClient.get(`/app-registry/${appId}`))
 }
 
 export async function createApp(data: Partial<MiniApp>): Promise<MiniApp> {
-  return apiRequest<MiniApp>(apiClient.post('/mini-apps', data))
+  return apiRequest<MiniApp>(apiClient.post('/app-registry', data))
 }
 
 export async function updateApp(appId: string, data: Partial<MiniApp>): Promise<MiniApp> {
-  return apiRequest<MiniApp>(apiClient.put(`/mini-apps/${appId}`, data))
+  return apiRequest<MiniApp>(apiClient.put(`/app-registry/${appId}`, data))
 }
 
 export async function deleteApp(appId: string): Promise<void> {
-  return apiRequest<void>(apiClient.delete(`/mini-apps/${appId}`))
+  return apiRequest<void>(apiClient.delete(`/app-registry/${appId}`))
 }
 
 // ==================== Config ====================
 
 export async function getAppConfig(appId: string): Promise<AppConfig> {
-  return apiRequest<AppConfig>(apiClient.get(`/mini-apps/${appId}/config`))
+  return apiRequest<AppConfig>(apiClient.get(`/app-registry/${appId}/config`))
 }
 
 export async function updateAppConfig(appId: string, config: Partial<AppConfig>): Promise<AppConfig> {
-  return apiRequest<AppConfig>(apiClient.put(`/mini-apps/${appId}/config`, config))
+  return apiRequest<AppConfig>(apiClient.put(`/app-registry/${appId}/config`, config))
 }
 
 export async function getAvailableResources(appId: string): Promise<AvailableResources> {
-  return apiRequest<AvailableResources>(apiClient.get(`/mini-apps/${appId}/available-resources`))
+  return apiRequest<AvailableResources>(apiClient.get(`/app-registry/${appId}/available-resources`))
 }
 
 // ==================== Records ====================
@@ -333,38 +333,6 @@ export async function getStatusSummary(appId: string, createdAfter?: string): Pr
   return apiRequest<StatusSummary>(apiClient.get(`/mini-apps/${appId}/status-summary`, {
     params: createdAfter ? { created_after: createdAfter } : undefined,
   }))
-}
-
-// ==================== States ====================
-
-export async function getStates(appId: string): Promise<AppState[]> {
-  return apiRequest<AppState[]>(apiClient.get(`/mini-apps/${appId}/states`))
-}
-
-// ==================== Handlers ====================
-
-export async function getHandlers(): Promise<AppRowHandler[]> {
-  return apiRequest<AppRowHandler[]>(apiClient.get('/handlers'))
-}
-
-export async function getHandlerLogs(handlerId: string, limit?: number): Promise<AppActionLog[]> {
-  return apiRequest<AppActionLog[]>(apiClient.get(`/handlers/${handlerId}/logs`, { params: { limit } }))
-}
-
-export async function getHandler(handlerId: string): Promise<AppRowHandler> {
-  return apiRequest<AppRowHandler>(apiClient.get(`/handlers/${handlerId}`))
-}
-
-export async function createHandler(data: Partial<AppRowHandler>): Promise<AppRowHandler> {
-  return apiRequest<AppRowHandler>(apiClient.post('/handlers', data))
-}
-
-export async function updateHandler(handlerId: string, data: Partial<AppRowHandler>): Promise<AppRowHandler> {
-  return apiRequest<AppRowHandler>(apiClient.put(`/handlers/${handlerId}`, data))
-}
-
-export async function deleteHandler(handlerId: string): Promise<void> {
-  return apiRequest<void>(apiClient.delete(`/handlers/${handlerId}`))
 }
 
 export interface DocumentContent {

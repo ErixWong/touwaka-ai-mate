@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { useContractV2Store } from '@/stores/contract-v2'
 import type { OrgNode } from '@/api/contract-v2'
 
@@ -56,7 +56,9 @@ async function handleAddNode() {
   try {
     await store.addNode({ ...addForm.value, parent_id: addForm.value.parent_id || undefined })
     showAddDialog.value = false
-  } catch {}
+  } catch {
+    ElMessage.error('添加节点失败')
+  }
 }
 
 async function handleRenameNode() {
@@ -64,7 +66,9 @@ async function handleRenameNode() {
   try {
     await store.editNode(renameForm.value.nodeId, { name: renameForm.value.name.trim() })
     showRenameDialog.value = false
-  } catch {}
+  } catch {
+    ElMessage.error('重命名节点失败')
+  }
 }
 
 function handleNodeClick(nodeId: string) {
@@ -79,7 +83,9 @@ async function handleDeleteNode(nodeId: string) {
       type: 'warning',
     })
     await store.removeNode(nodeId)
-  } catch {}
+  } catch {
+    // 用户取消 ElMessageBox 确认时 throw，属于正常流程
+  }
 }
 
 const defaultProps = {

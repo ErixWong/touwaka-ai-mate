@@ -2,8 +2,9 @@ import logger from '../../lib/logger.js';
 import MiniAppService from '../services/mini-app.service.js';
 
 class MiniAppController {
-  constructor(db) {
+  constructor(db, registryService) {
     this.db = db;
+    this.registryService = registryService;
     this.miniAppService = new MiniAppService(db);
   }
 
@@ -12,7 +13,7 @@ class MiniAppController {
   async listApps(ctx) {
     try {
       const userId = ctx.state.session.id;
-      const apps = await this.miniAppService.getAccessibleApps(userId);
+      const apps = await this.registryService.getAccessibleApps(userId);
       ctx.success(apps);
     } catch (error) {
       logger.error('List apps error:', error);
@@ -23,7 +24,7 @@ class MiniAppController {
   async getApp(ctx) {
     try {
       const { appId } = ctx.params;
-      const app = await this.miniAppService.getAppById(appId);
+      const app = await this.registryService.getAppById(appId);
       if (!app) {
         ctx.error('App not found', 404);
         return;
@@ -40,7 +41,7 @@ class MiniAppController {
       const data = ctx.request.body;
       data.owner_id = data.owner_id || ctx.state.session.id;
       data.creator_id = ctx.state.session.id;
-      const app = await this.miniAppService.createApp(data);
+      const app = await this.registryService.createApp(data);
       ctx.success(app, 'Created');
     } catch (error) {
       logger.error('Create app error:', error);
@@ -52,7 +53,7 @@ class MiniAppController {
     try {
       const { appId } = ctx.params;
       const data = ctx.request.body;
-      const app = await this.miniAppService.updateApp(appId, data);
+      const app = await this.registryService.updateApp(appId, data);
       ctx.success(app, 'Updated');
     } catch (error) {
       logger.error('Update app error:', error);
@@ -63,7 +64,7 @@ class MiniAppController {
   async deleteApp(ctx) {
     try {
       const { appId } = ctx.params;
-      await this.miniAppService.deleteApp(appId);
+      await this.registryService.deleteApp(appId);
       ctx.success(null, 'Deleted');
     } catch (error) {
       logger.error('Delete app error:', error);
@@ -74,7 +75,7 @@ class MiniAppController {
   async getAppConfig(ctx) {
     try {
       const { appId } = ctx.params;
-      const config = await this.miniAppService.getAppConfig(appId);
+      const config = await this.registryService.getAppConfig(appId);
       ctx.success(config);
     } catch (error) {
       logger.error('Get app config error:', error);
@@ -86,7 +87,7 @@ class MiniAppController {
     try {
       const { appId } = ctx.params;
       const configData = ctx.request.body;
-      const config = await this.miniAppService.updateAppConfig(appId, configData);
+      const config = await this.registryService.updateAppConfig(appId, configData);
       ctx.success(config, 'Updated');
     } catch (error) {
       logger.error('Update app config error:', error);
@@ -97,7 +98,7 @@ class MiniAppController {
   async getAvailableResources(ctx) {
     try {
       const { appId } = ctx.params;
-      const resources = await this.miniAppService.getAvailableResources(appId);
+      const resources = await this.registryService.getAvailableResources(appId);
       ctx.success(resources);
     } catch (error) {
       logger.error('Get available resources error:', error);
@@ -240,145 +241,6 @@ class MiniAppController {
       ctx.success(result);
     } catch (error) {
       logger.error('Get status summary error:', error);
-      ctx.error(error.message, 500);
-    }
-  }
-
-  // ==================== State CRUD ====================
-
-  async listStates(ctx) {
-    try {
-      const { appId } = ctx.params;
-      const states = await this.miniAppService.getStates(appId);
-      ctx.success(states);
-    } catch (error) {
-      logger.error('List states error:', error);
-      ctx.error(error.message, 500);
-    }
-  }
-
-  async createState(ctx) {
-    try {
-      const { appId } = ctx.params;
-      const data = ctx.request.body;
-      const state = await this.miniAppService.createState(appId, data);
-      ctx.success(state, 'Created');
-    } catch (error) {
-      logger.error('Create state error:', error);
-      ctx.error(error.message, 400);
-    }
-  }
-
-  async updateState(ctx) {
-    try {
-      const { appId, stateId } = ctx.params;
-      const data = ctx.request.body;
-      const state = await this.miniAppService.updateState(appId, stateId, data);
-      ctx.success(state, 'Updated');
-    } catch (error) {
-      logger.error('Update state error:', error);
-      ctx.error(error.message, 400);
-    }
-  }
-
-  async deleteState(ctx) {
-    try {
-      const { appId, stateId } = ctx.params;
-      await this.miniAppService.deleteState(appId, stateId);
-      ctx.success(null, 'Deleted');
-    } catch (error) {
-      logger.error('Delete state error:', error);
-      ctx.error(error.message, 400);
-    }
-  }
-
-  // ==================== Handler CRUD ====================
-
-  async listHandlers(ctx) {
-    try {
-      const handlers = await this.miniAppService.getHandlers();
-      ctx.success(handlers);
-    } catch (error) {
-      logger.error('List handlers error:', error);
-      ctx.error(error.message, 500);
-    }
-  }
-
-  async getHandler(ctx) {
-    try {
-      const { handlerId } = ctx.params;
-      const handler = await this.miniAppService.getHandlerById(handlerId);
-      if (!handler) {
-        ctx.error('Handler not found', 404);
-        return;
-      }
-      ctx.success(handler);
-    } catch (error) {
-      logger.error('Get handler error:', error);
-      ctx.error(error.message, 500);
-    }
-  }
-
-  async createHandler(ctx) {
-    try {
-      const data = ctx.request.body;
-      const handler = await this.miniAppService.createHandler(data);
-      ctx.success(handler, 'Created');
-    } catch (error) {
-      logger.error('Create handler error:', error);
-      ctx.error(error.message, 400);
-    }
-  }
-
-  async updateHandler(ctx) {
-    try {
-      const { handlerId } = ctx.params;
-      const data = ctx.request.body;
-      const handler = await this.miniAppService.updateHandler(handlerId, data);
-      ctx.success(handler, 'Updated');
-    } catch (error) {
-      logger.error('Update handler error:', error);
-      ctx.error(error.message, 400);
-    }
-  }
-
-  async deleteHandler(ctx) {
-    try {
-      const { handlerId } = ctx.params;
-      await this.miniAppService.deleteHandler(handlerId);
-      ctx.success(null, 'Deleted');
-    } catch (error) {
-      logger.error('Delete handler error:', error);
-      ctx.error(error.message, 400);
-    }
-  }
-
-  async getHandlerLogs(ctx) {
-    try {
-      const { handlerId } = ctx.params;
-      const limit = parseInt(ctx.query.limit) || 20;
-      const logs = await this.miniAppService.getHandlerLogs(handlerId, limit);
-      ctx.success(logs);
-    } catch (error) {
-      logger.error('Get handler logs error:', error);
-      ctx.error(error.message, 500);
-    }
-  }
-
-  async testHandler(ctx) {
-    try {
-      const { handlerId } = ctx.params;
-      const { record_id } = ctx.request.body;
-
-      const handler = await this.miniAppService.getHandlerById(handlerId);
-      if (!handler) {
-        ctx.error('Handler not found', 404);
-        return;
-      }
-
-      ctx.success({ message: 'Test not implemented yet', handler_id: handlerId, record_id });
-    } catch (error) {
-      logger.error('Test handler error:', error);
       ctx.error(error.message, 500);
     }
   }
