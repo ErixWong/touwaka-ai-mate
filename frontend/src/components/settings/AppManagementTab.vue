@@ -179,6 +179,7 @@
             <StateDesigner
               :states="appForm.states"
               :handlers="handlers"
+              readonly
             />
           </div>
         </div>

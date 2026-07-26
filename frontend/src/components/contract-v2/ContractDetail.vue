@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useContractV2Store, getProcessingStatusLabel } from '@/stores/contract-v2'
 import type { ContractVersion } from '@/api/contract-v2'
@@ -239,9 +239,16 @@ async function handleSetCurrent(revisionId: string) {
       cancelButtonText: t('common.cancel'),
       type: 'warning',
     })
+  } catch {
+    return
+  }
+
+  try {
     await store.setDocRevisionCurrent(revisionId)
     await loadDocRevisions()
-  } catch {}
+  } catch {
+    ElMessage.error(t('common.operationFailed'))
+  }
 }
 
 async function handleRetryProcessing() {
@@ -276,7 +283,9 @@ async function handleDeleteVersion(versionId: string) {
       type: 'warning',
     })
     await store.removeVersion(versionId)
-  } catch {}
+  } catch {
+    // 用户取消或删除失败；ElMessageBox.confirm 取消时 throw，不需要额外提示
+  }
 }
 
 async function handleExtractMetadata(versionId: string) {
@@ -296,7 +305,9 @@ async function handleExtractMetadata(versionId: string) {
         { confirmButtonText: t('common.confirm'), dangerouslyUseHTMLString: true }
       )
     }
-  } catch {}
+  } catch {
+    ElMessage.error(t('common.operationFailed'))
+  }
 }
 
 async function handleEditMetadata(versionId: string) {

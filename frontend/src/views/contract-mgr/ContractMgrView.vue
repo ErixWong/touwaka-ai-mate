@@ -163,14 +163,18 @@ async function loadSummary() {
   try {
     const r = await apiRequest<{ summary: Record<string, number> }>(apiClient.get(`${BASE}/status-summary`))
     summary.value = r.summary || {}
-  } catch {}
+  } catch (error) {
+    console.error('loadSummary failed:', error)
+  }
 }
 
 async function openDetail(row: ContractRecord) {
   try {
     detail.value = await apiRequest<ContractRecord>(apiClient.get(`${BASE}/records/${row.id}`))
     drawer.value = true
-  } catch {}
+  } catch {
+    ElMessage.error('加载详情失败')
+  }
 }
 
 async function doConfirm() {
@@ -181,7 +185,9 @@ async function doConfirm() {
     drawer.value = false
     await loadList()
     await loadSummary()
-  } catch {}
+  } catch {
+    ElMessage.error('确认操作失败')
+  }
 }
 
 async function doRetry() {
@@ -192,7 +198,9 @@ async function doRetry() {
     drawer.value = false
     await loadList()
     await loadSummary()
-  } catch {}
+  } catch {
+    ElMessage.error('重试操作失败')
+  }
 }
 
 onMounted(() => { loadList(); loadSummary() })

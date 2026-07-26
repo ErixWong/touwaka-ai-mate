@@ -211,7 +211,9 @@ try {
   const mq = window.matchMedia('(max-width: 640px)')
   isMobileView.value = mq.matches
   mq.addEventListener('change', (e) => { isMobileView.value = e.matches })
-} catch {}
+} catch (error) {
+  console.error('matchMedia not supported:', error)
+}
 
 function docTypeTag(type: string) {
   const m: Record<string, string> = { knowledge: '', contract: 'warning', department_doc: 'info', standard: 'success' }

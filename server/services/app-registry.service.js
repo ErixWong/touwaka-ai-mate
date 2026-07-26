@@ -7,6 +7,22 @@ import path from 'path';
 
 const DEFAULT_APPS_DIR = path.join(process.cwd(), 'apps');
 
+function normalizeJsonColumnValue(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return value;
+}
+
 class AppRegistryService {
   constructor(db, appsDir = DEFAULT_APPS_DIR) {
     this.db = db;
@@ -188,6 +204,10 @@ async getAppWithRuntime(appId) {
 
   async createApp(data) {
     this.ensureModels();
+    const fields = normalizeJsonColumnValue(data.fields, []);
+    const views = normalizeJsonColumnValue(data.views, {});
+    const config = normalizeJsonColumnValue(data.config, {});
+
     const app = await this.models.MiniApp.create({
       id: data.id || Utils.newID(20),
       name: data.name,
@@ -195,9 +215,9 @@ async getAppWithRuntime(appId) {
       icon: data.icon || '',
       type: data.type || 'utility',
       component: data.component || null,
-      fields: JSON.stringify(data.fields || []),
-      views: JSON.stringify(data.views || {}),
-      config: JSON.stringify(data.config || {}),
+      fields: JSON.stringify(fields),
+      views: JSON.stringify(views),
+      config: JSON.stringify(config),
       visibility: data.visibility || 'all',
       owner_id: data.owner_id,
       creator_id: data.creator_id,
@@ -225,18 +245,16 @@ async getAppWithRuntime(appId) {
     if (data.sort_order !== undefined) updateData.sort_order = data.sort_order;
     
     if (data.fields !== undefined) {
-      updateData.fields = JSON.stringify(data.fields);
+      updateData.fields = JSON.stringify(normalizeJsonColumnValue(data.fields, []));
       updateData.revision = app.revision + 1;
     }
     
     if (data.views !== undefined) {
-      updateData.views = JSON.stringify(data.views);
+      updateData.views = JSON.stringify(normalizeJsonColumnValue(data.views, {}));
     }
     
     if (data.config !== undefined) {
-      updateData.config = typeof data.config === 'string' 
-        ? data.config 
-        : JSON.stringify(data.config);
+      updateData.config = JSON.stringify(normalizeJsonColumnValue(data.config, {}));
     }
 
     await app.update(updateData);

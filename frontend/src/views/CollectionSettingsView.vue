@@ -101,6 +101,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus'
 import { modelApi } from '@/api/services'
 import { departmentApi } from '@/api/services'
 import { useCollectionStore } from '@/stores/collection'
@@ -132,11 +133,15 @@ async function loadData() {
   try {
     const models = await modelApi.getModels()
     embeddingModels.value = (models || []).filter(m => m.model_type === 'embedding' && m.is_active)
-  } catch {}
+  } catch {
+    ElMessage.error(t('docs.workspace.settings.loadModelsFailed'))
+  }
   try {
     const tree = await departmentApi.getDepartmentTree()
     departmentTree.value = tree || []
-  } catch {}
+  } catch {
+    ElMessage.error(t('common.error'))
+  }
 }
 
 function populateForm() {

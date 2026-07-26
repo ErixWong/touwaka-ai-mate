@@ -126,12 +126,16 @@ async function onOpen() {
   try {
     const models = await modelApi.getModels()
     embeddingModels.value = (models || []).filter(m => m.model_type === 'embedding' && m.is_active)
-  } catch {}
+  } catch (error) {
+    console.error('Failed to load embedding models:', error)
+  }
 
   try {
     const tree = await departmentApi.getDepartmentTree()
     departmentTree.value = tree || []
-  } catch {}
+  } catch (error) {
+    console.error('Failed to load department tree:', error)
+  }
 
   userHasDepartment.value = !!(userStore.user?.department_id)
 }
