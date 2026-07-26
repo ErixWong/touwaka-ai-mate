@@ -43,13 +43,13 @@
 |------|------|
 | Registry 配置 | `getRegistryConfig()`, `updateRegistryConfig(updates)` |
 | 索引拉取 | `fetchIndex()` |
-| App 安装 | `installApp(appId, options)` — 通过 `installAppMetadata()` 写 App 元数据到 DB |
-| App 卸载 | `uninstallApp(appId, options)` |
-| 更新检查 | `checkUpdate(appId)` |
+| App 安装 | `installApp(appId, options)` — 通过 `AppRegistryService.createApp()` 写 App 元数据 |
+| App 卸载 | `uninstallApp(appId, options)` — 优先通过 `AppRegistryService.deleteApp()` 删除 App 元数据 |
+| 更新检查 | `checkUpdate(appId)` — 优先通过 `AppRegistryService.getAppById()` 读取本地版本 |
 | 依赖检查 | `checkDependencies(manifest)` |
 | Manifest 拉取 | `fetchManifest(appId)` |
 
-**注意**：Market 的 `installAppMetadata()` 目前直接写 `mini_app` 表。后续应收口为通过 `AppRegistryService.createApp()` 写入。
+**注意**：Market 的 App 元数据写入、卸载与更新检查主路径已优先委托 `AppRegistryService`。直接访问 `mini_app` 的代码仅作为无 Registry 注入时的兼容 fallback 保留。
 
 ### 2.3 MiniAppService — 数据面
 
@@ -94,7 +94,8 @@
 
 | 当前路径 | 目标路径 | 状态 |
 |----------|----------|------|
-| `mini-apps.ts` → `/api/mini-apps` | Registry → `/api/app-registry` | 待迁移（Phase B 后续轮次） |
+| `mini-apps.ts` App CRUD / Config | Registry → `/api/app-registry` | 已迁移，文件名待 Phase C/D 清理 |
+| `mini-apps.ts` Record / extension / content / compare | Legacy data → `/api/mini-apps` | 兼容保留，待后续迁移 |
 | `mini-apps.ts` → states/handlers API | 已删除 | 已移除 |
 
 ---

@@ -714,7 +714,7 @@ class ApiServer {
     const appRegistryRouter = appRegistryRoutes(this.controllers.appRegistry);
     this.app.use(appRegistryRouter.routes());
     this.app.use(appRegistryRouter.allowedMethods());
-    logger.info('App Registry routes registered (/api/apps/*)');
+    logger.info('App Registry routes registered (/api/app-registry/*)');
 
     // App Wildcard 路由（新架构）- 直接映射 handler 文件
     const wildcardRouter = createAppWildcardRouter(this.db, {
