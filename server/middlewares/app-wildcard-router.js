@@ -41,6 +41,7 @@ import fs from 'fs';
 import { pathToFileURL } from 'url';
 import multer from '@koa/multer';
 import AppRuntimeLoader from '../../lib/app-runtime-loader.js';
+import { buildAppHostContext } from '../../lib/app-host-context-builder.js';
 
 const APPS_DIR = path.join(process.cwd(), 'apps');
 const HANDLERS_DIR = 'server/handlers';
@@ -175,46 +176,6 @@ async function loadHandler(appId, handlerPath, appsDir) {
   const module = await import(`${pathToFileURL(normalizedPath).href}${cacheBuster}`);
 
   return module;
-}
-
-/**
- * 构建 handler 依赖注入
- * 传递 db、app 信息和服务方法给 handler
- */
-function buildDeps(db, appId, appRecord = null) {
-  const Sequelize = db.sequelize.constructor;
-
-  return {
-    db,
-    appId,
-    app: appRecord,
-    services: {
-      query: async (sql, replacements = []) => {
-        return await db.sequelize.query(sql, {
-          replacements,
-          type: Sequelize.QueryTypes.SELECT,
-        });
-      },
-      execute: async (sql, replacements = []) => {
-        return await db.sequelize.query(sql, {
-          replacements,
-          type: Sequelize.QueryTypes.RAW,
-        });
-      },
-      getModel: (modelName) => {
-        return db.getModel(modelName);
-      },
-      log: (level, message, meta = {}) => {
-        if (level === 'error') {
-          logger.error(`[App:${appId}] ${message}`, meta);
-        } else if (level === 'warn') {
-          logger.warn(`[App:${appId}] ${message}`, meta);
-        } else {
-          logger.info(`[App:${appId}] ${message}`, meta);
-        }
-      },
-    },
-  };
 }
 
 export function createAppWildcardRouter(db, options = {}) {
@@ -387,7 +348,12 @@ export function createAppWildcardRouter(db, options = {}) {
       }
 
       // 构建依赖注入
-      const deps = buildDeps(db, appId, appRecord);
+      const deps = buildAppHostContext({
+        db,
+        appId,
+        appRecord,
+        requestContext: ctx,
+      });
 
       logger.info(`[WildcardRouter] ${method} ${ctx.path} -> ${appId}:${handlerPath}:${methodLower}`);
 
