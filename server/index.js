@@ -120,6 +120,7 @@ import createMcpRoutes from './routes/mcp.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import elsRoutes from './routes/els.routes.js';
 import appClockRoutes from './routes/app-clock.routes.js';
+import { registerRouter } from './routes/route-registration.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
 
 const PROCESS_ERROR_STRING_LIMIT = 4000;
@@ -575,99 +576,77 @@ class ApiServer {
     });
 
     // 注册路由
-    this.app.use(authRoutes(this.controllers.auth).routes());
-    this.app.use(authRoutes(this.controllers.auth).allowedMethods());
+    registerRouter(this.app, authRoutes(this.controllers.auth));
     
-    this.app.use(userRoutes(this.controllers.user).routes());
-    this.app.use(userRoutes(this.controllers.user).allowedMethods());
+    registerRouter(this.app, userRoutes(this.controllers.user));
     
-    this.app.use(topicRoutes(this.controllers.topic, this.controllers.message).routes());
-    this.app.use(topicRoutes(this.controllers.topic, this.controllers.message).allowedMethods());
+    registerRouter(this.app, topicRoutes(this.controllers.topic, this.controllers.message));
     
-    this.app.use(messageRoutes(this.controllers.message).routes());
-    this.app.use(messageRoutes(this.controllers.message).allowedMethods());
+    registerRouter(this.app, messageRoutes(this.controllers.message));
     
-    this.app.use(expertRoutes(this.controllers.expert).routes());
-    this.app.use(expertRoutes(this.controllers.expert).allowedMethods());
+    registerRouter(this.app, expertRoutes(this.controllers.expert));
     
-    this.app.use(modelRoutes(this.controllers.model).routes());
-    this.app.use(modelRoutes(this.controllers.model).allowedMethods());
+    registerRouter(this.app, modelRoutes(this.controllers.model));
     
-    this.app.use(streamRoutes(this.controllers.stream).routes());
-    this.app.use(streamRoutes(this.controllers.stream).allowedMethods());
+    registerRouter(this.app, streamRoutes(this.controllers.stream));
     
     // Chat 路由（前端兼容）
     const permissionService = getPermissionService(this.db);
-    this.app.use(chatRoutes(this.controllers.stream, { permissionService }).routes());
-    this.app.use(chatRoutes(this.controllers.stream, { permissionService }).allowedMethods());
+    registerRouter(this.app, chatRoutes(this.controllers.stream, { permissionService }));
     
     // Provider 路由（需要数据库实例）
     try {
       const providerRouter = providerRoutes(this.db);
-      this.app.use(providerRouter.routes());
-      this.app.use(providerRouter.allowedMethods());
+      registerRouter(this.app, providerRouter);
       logger.info('Provider routes registered successfully');
     } catch (err) {
       logger.error('Failed to register provider routes:', err.message);
     }
 
     // Skill 路由
-    this.app.use(skillRoutes(this.controllers.skill).routes());
-    this.app.use(skillRoutes(this.controllers.skill).allowedMethods());
+    registerRouter(this.app, skillRoutes(this.controllers.skill));
 
     // Debug 路由
-    this.app.use(debugRoutes(this.controllers.debug).routes());
-    this.app.use(debugRoutes(this.controllers.debug).allowedMethods());
+    registerRouter(this.app, debugRoutes(this.controllers.debug));
 
     // Role 路由
-    this.app.use(roleRoutes(RoleController).routes());
-    this.app.use(roleRoutes(RoleController).allowedMethods());
+    registerRouter(this.app, roleRoutes(RoleController));
 
     // Task 路由
-    this.app.use(taskRoutes(this.controllers.task).routes());
-    this.app.use(taskRoutes(this.controllers.task).allowedMethods());
+    registerRouter(this.app, taskRoutes(this.controllers.task));
 
     // Doc Collection 文档集合路由（/api/docs/collections/* 必须在 Doc 路由之前，防止 /collections 被 /:documentId 捕获）
-    this.app.use(docCollectionRoutes(this.controllers.docCollection).routes());
-    this.app.use(docCollectionRoutes(this.controllers.docCollection).allowedMethods());
+    registerRouter(this.app, docCollectionRoutes(this.controllers.docCollection));
 
     // Doc 统一文档平台路由（主入口 /api/docs/*）
-    this.app.use(docRoutes(this.controllers.doc).routes());
-    this.app.use(docRoutes(this.controllers.doc).allowedMethods());
+    registerRouter(this.app, docRoutes(this.controllers.doc));
 
     // Solution 解决方案路由
-    this.app.use(solutionRoutes(this.controllers.solution).routes());
-    this.app.use(solutionRoutes(this.controllers.solution).allowedMethods());
+    registerRouter(this.app, solutionRoutes(this.controllers.solution));
 
     // Department 路由
     const departmentRouter = departmentRoutes(this.db);
-    this.app.use(departmentRouter.routes());
-    this.app.use(departmentRouter.allowedMethods());
+    registerRouter(this.app, departmentRouter);
 
     // Position 路由
     const positionRouter = positionRoutes(this.db);
-    this.app.use(positionRouter.routes());
-    this.app.use(positionRouter.allowedMethods());
+    registerRouter(this.app, positionRouter);
 
     // System Setting 路由
     const systemSettingRouter = systemSettingRoutes(this.db);
-    this.app.use(systemSettingRouter.routes());
-    this.app.use(systemSettingRouter.allowedMethods());
+    registerRouter(this.app, systemSettingRouter);
 
     // Branding 路由（公开，无需认证）
     const brandingRouter = createBrandingRoutes(this.db);
-    this.app.use(brandingRouter.routes());
-    this.app.use(brandingRouter.allowedMethods());
+    registerRouter(this.app, brandingRouter);
 
     // Package 白名单路由
     const packageRouter = packageRoutes(this.db);
-    this.app.use(packageRouter.routes());
-    this.app.use(packageRouter.allowedMethods());
+    registerRouter(this.app, packageRouter);
 
 // Assistant 助理路由
     const assistantRouter = assistantRoutes(this.controllers.assistant);
-    this.app.use(assistantRouter.routes());
-    this.app.use(assistantRouter.allowedMethods());
+    registerRouter(this.app, assistantRouter);
 
     // Internal 内部 API 路由（驻留进程调用）
     // 将 StreamController 的 SSE 连接池共享给 InternalController
@@ -678,26 +657,22 @@ class ApiServer {
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
     // 将 Scheduler 共享给 DebugController
     this.controllers.debug.setScheduler(this.scheduler);
-    this.app.use(internalRoutes(this.controllers.internal, this.controllers.internalDocs, authMiddleware).routes());
-    this.app.use(internalRoutes(this.controllers.internal, this.controllers.internalDocs, authMiddleware).allowedMethods());
+    registerRouter(this.app, internalRoutes(this.controllers.internal, this.controllers.internalDocs, authMiddleware));
     logger.info('Internal routes registered (POST /internal/messages/insert, GET /internal/models/:model_id, POST /internal/resident/invoke, /internal/docs/*)');
 
     // Task Static 静态文件服务路由（Issue #140）
     const taskStaticRouter = taskStaticRoutes(this.db);
-    this.app.use(taskStaticRouter.routes());
-    this.app.use(taskStaticRouter.allowedMethods());
+    registerRouter(this.app, taskStaticRouter);
     logger.info('Task static routes registered (GET /task-static/t/:token/p/*)');
 
     // Attachment 附件服务路由（Issue #557）
     const attachmentRouter = attachmentRoutes(this.controllers.attachment);
-    this.app.use(attachmentRouter.routes());
-    this.app.use(attachmentRouter.allowedMethods());
+    registerRouter(this.app, attachmentRouter);
     logger.info('Attachment routes registered (POST/GET/DELETE /api/attachments/*)');
 
     // Attachment Static 静态文件服务路由（Issue #557）
     const attachmentStaticRouter = attachmentStaticRoutes(this.db);
-    this.app.use(attachmentStaticRouter.routes());
-    this.app.use(attachmentStaticRouter.allowedMethods());
+    registerRouter(this.app, attachmentStaticRouter);
     logger.info('Attachment static routes registered (GET /attach/t/:token/:attachment_id)');
 
     // Utility 路由
@@ -706,14 +681,12 @@ class ApiServer {
       const length = parseInt(ctx.query.length) || 20;
       ctx.success({ id: Utils.newID(length) });
     });
-    this.app.use(utilityRouter.routes());
-    this.app.use(utilityRouter.allowedMethods());
+    registerRouter(this.app, utilityRouter);
     logger.info('Utility routes registered (GET /api/newid)');
 
     // App Registry 路由（新架构）
     const appRegistryRouter = appRegistryRoutes(this.controllers.appRegistry);
-    this.app.use(appRegistryRouter.routes());
-    this.app.use(appRegistryRouter.allowedMethods());
+    registerRouter(this.app, appRegistryRouter);
     logger.info('App Registry routes registered (/api/app-registry/*)');
 
     // App Wildcard 路由（新架构）- 直接映射 handler 文件
@@ -725,47 +698,39 @@ class ApiServer {
 
     // App Backup 路由（保留独立路由，后续迁移到 wildcard）
     const appBackupRouter = appBackupRoutes(this.controllers.appBackup);
-    this.app.use(appBackupRouter.routes());
-    this.app.use(appBackupRouter.allowedMethods());
+    registerRouter(this.app, appBackupRouter);
     logger.info('App Backup routes registered (/api/app-backup/*)');
 
     // Mini App 平台路由（Issue #603）
     const miniAppRouter = miniAppRoutes(this.controllers.miniApp);
-    this.app.use(miniAppRouter.routes());
-    this.app.use(miniAppRouter.allowedMethods());
+    registerRouter(this.app, miniAppRouter);
     logger.info('Mini App routes registered (/api/mini-apps/*, /api/handlers/*)');
 
     // App Market 路由
     const appMarketRouter = appMarketRoutes(this.controllers.appMarket);
-    this.app.use(appMarketRouter.routes());
-    this.app.use(appMarketRouter.allowedMethods());
+    registerRouter(this.app, appMarketRouter);
     logger.info('App Market routes registered (/api/app-market/*)');
 
     // Invitation 邀请码路由（Issue #222）
     const invitationRouter = createInvitationRoutes(this.db);
-    this.app.use(invitationRouter.routes());
-    this.app.use(invitationRouter.allowedMethods());
+    registerRouter(this.app, invitationRouter);
     logger.info('Invitation routes registered (GET/POST /api/invitations)');
 
     // MCP 服务管理路由（Issue #601）
     const mcpRouter = createMcpRoutes(this.db, authMiddleware, this.residentSkillManager);
-    this.app.use(mcpRouter.routes());
-    this.app.use(mcpRouter.allowedMethods());
+    registerRouter(this.app, mcpRouter);
     logger.info('MCP routes registered (GET/POST /api/mcp/*)');
 
     const invoiceRouter = invoiceRoutes(this.controllers.invoice);
-    this.app.use(invoiceRouter.routes());
-    this.app.use(invoiceRouter.allowedMethods());
+    registerRouter(this.app, invoiceRouter);
     logger.info('Invoice routes registered (/api/invoice/*)');
 
     const elsRouter = elsRoutes(this.controllers.els);
-    this.app.use(elsRouter.routes());
-    this.app.use(elsRouter.allowedMethods());
+    registerRouter(this.app, elsRouter);
     logger.info('ELS routes registered (/api/els/*)');
 
     const appClockRouter = appClockRoutes(this.db);
-    this.app.use(appClockRouter.routes());
-    this.app.use(appClockRouter.allowedMethods());
+    registerRouter(this.app, appClockRouter);
     logger.info('AppClock status routes registered (GET /api/app-clock/status, POST /api/app-clock/clear/:appId, POST /api/app-clock/force-tick/:appId)');
 
     // 前端静态文件服务（生产环境）
