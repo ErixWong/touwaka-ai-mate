@@ -112,6 +112,22 @@ class AppRegistryService {
 
     const appJson = app.toJSON();
 
+    if (appJson.fields && typeof appJson.fields === 'string') {
+      try {
+        appJson.fields = JSON.parse(appJson.fields);
+      } catch {
+        appJson.fields = [];
+      }
+    }
+
+    if (appJson.views && typeof appJson.views === 'string') {
+      try {
+        appJson.views = JSON.parse(appJson.views);
+      } catch {
+        appJson.views = {};
+      }
+    }
+
     if (appJson.config && typeof appJson.config === 'string') {
       try {
         appJson.config = JSON.parse(appJson.config);
@@ -241,6 +257,8 @@ async getAppWithRuntime(appId) {
     if (data.type !== undefined) updateData.type = data.type;
     if (data.component !== undefined) updateData.component = data.component;
     if (data.visibility !== undefined) updateData.visibility = data.visibility;
+    if (data.owner_id !== undefined) updateData.owner_id = data.owner_id;
+    if (data.creator_id !== undefined) updateData.creator_id = data.creator_id;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
     if (data.sort_order !== undefined) updateData.sort_order = data.sort_order;
     

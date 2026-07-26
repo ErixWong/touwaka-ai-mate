@@ -850,7 +850,9 @@ class AppMarketService {
     const { keepData = false } = options;
     
     // 1. 检查 App 是否存在
-    const app = await this.models.MiniApp.findByPk(appId);
+    const app = this.registryService
+      ? await this.registryService.getAppById(appId)
+      : await this.models.MiniApp.findByPk(appId);
     if (!app) {
       throw new Error(`App ${appId} 不存在`);
     }
@@ -863,7 +865,10 @@ class AppMarketService {
       manifest = JSON.parse(content);
     } catch (err) {
       // fallback: 从 app.config 读取 extension_tables
-      const config = app.config ? JSON.parse(app.config) : {};
+      let config = app.config || {};
+      if (typeof config === 'string') {
+        try { config = JSON.parse(config); } catch { config = {}; }
+      }
       manifest = {
         migrations: config.migrations || null
       };
@@ -875,12 +880,16 @@ class AppMarketService {
     }
     
     // 4. 删除数据库记录
-    await this.models.MiniApp.destroy({ where: { id: appId } });
+    if (this.registryService) {
+      await this.registryService.deleteApp(appId);
+    } else {
+      await this.models.MiniApp.destroy({ where: { id: appId } });
+      await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
+    }
     if (this.models.AppState) await this.models.AppState.destroy({ where: { app_id: appId } });
     if (this.models.AppRowHandler) await this.models.AppRowHandler.destroy({ 
       where: { handler: { [Op.like]: `apps/${appId}/handlers/%` } }
     });
-    await this.models.AppClockRegistry.destroy({ where: { app_id: appId } });
     
     // 5. 根据选项决定是否删除数据行
     if (!keepData) {
@@ -909,13 +918,15 @@ class AppMarketService {
   async checkUpdate(appId) {
     this.ensureModels();
     
-    const app = await this.models.MiniApp.findByPk(appId);
+    const app = this.registryService
+      ? await this.registryService.getAppById(appId)
+      : await this.models.MiniApp.findByPk(appId);
     if (!app) {
       throw new Error(`App ${appId} 不存在`);
     }
     
     const manifest = await this.fetchManifest(appId);
-    const localVersion = app.getDataValue ? app.getDataValue('revision') : 1;
+    const localVersion = app.getDataValue ? app.getDataValue('revision') : (app.revision || 1);
     
     return {
       has_update: this.compareVersion(manifest.version, localVersion.toString()) > 0,

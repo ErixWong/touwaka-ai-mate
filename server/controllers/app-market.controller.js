@@ -168,20 +168,32 @@ class AppMarketController {
   async updateApp(ctx) {
     const { appId } = ctx.params;
     const userId = ctx.state.session.id;
-    const { MiniApp } = this.db.getModels();
     
     // 1. 备份旧 App 的完整 metadata
-    const oldApp = await MiniApp.findByPk(appId);
+    const oldApp = this.registryService
+      ? await this.registryService.getAppById(appId)
+      : await this.db.getModels().MiniApp.findByPk(appId);
     if (!oldApp) {
       ctx.error('App not found', 404);
       return;
     }
     
+    const oldAppData = oldApp.toJSON ? oldApp.toJSON() : oldApp;
     const backup = {
-      visibility: oldApp.visibility,
-      owner_id: oldApp.owner_id,
-      sort_order: oldApp.sort_order,
-      is_active: oldApp.is_active
+      name: oldAppData.name,
+      description: oldAppData.description,
+      icon: oldAppData.icon,
+      type: oldAppData.type,
+      component: oldAppData.component,
+      fields: oldAppData.fields,
+      views: oldAppData.views,
+      config: oldAppData.config,
+      visibility: oldAppData.visibility,
+      owner_id: oldAppData.owner_id,
+      creator_id: oldAppData.creator_id,
+      sort_order: oldAppData.sort_order,
+      is_active: oldAppData.is_active,
+      revision: oldAppData.revision
     };
     
     try {
@@ -195,10 +207,19 @@ class AppMarketController {
       });
       
       // 4. 恢复备份的 metadata（除了 visibility 已在 install 时恢复）
-      await MiniApp.update(
-        { owner_id: backup.owner_id, sort_order: backup.sort_order, is_active: backup.is_active },
-        { where: { id: appId } }
-      );
+      if (this.registryService) {
+        await this.registryService.updateApp(appId, {
+          owner_id: backup.owner_id,
+          sort_order: backup.sort_order,
+          is_active: backup.is_active,
+        });
+      } else {
+        const { MiniApp } = this.db.getModels();
+        await MiniApp.update(
+          { owner_id: backup.owner_id, sort_order: backup.sort_order, is_active: backup.is_active },
+          { where: { id: appId } }
+        );
+      }
       
       ctx.success(result, 'App updated successfully');
     } catch (error) {
