@@ -177,6 +177,10 @@ async getAppWithRuntime(appId) {
             manifest_error: manifestError,
             has_tick: false,
             has_frontend: !!app.component,
+            frontend: app.component ? {
+              component: app.component,
+              legacy: true,
+            } : null,
             has_backup: false,
           },
         },
@@ -193,6 +197,7 @@ async getAppWithRuntime(appId) {
           warnings: runtimeInfo.validation?.warnings ?? [],
           has_tick: runtimeInfo.hasTick,
           has_frontend: runtimeInfo.hasFrontend,
+          frontend: runtimeInfo.frontend || null,
           has_backup: runtimeInfo.hasBackupExport,
         },
       },
@@ -431,12 +436,17 @@ async getAppWithRuntime(appId) {
           valid: runtimeInfo.validation?.valid ?? true,
           has_tick: runtimeInfo.hasTick,
           has_frontend: runtimeInfo.hasFrontend,
+          frontend: runtimeInfo.frontend || null,
           has_backup: runtimeInfo.hasBackupExport,
         } : {
           valid: false,
           error: runtimeError,
           has_tick: false,
           has_frontend: !!app.component,
+          frontend: app.component ? {
+            component: app.component,
+            legacy: true,
+          } : null,
           has_backup: false,
         },
       });

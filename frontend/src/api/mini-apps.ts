@@ -17,8 +17,27 @@ export interface MiniApp {
   is_active: boolean
   revision: number
   states?: AppState[]
+  runtime?: AppRuntimeInfo
   created_at: string
   updated_at: string
+}
+
+export interface AppRuntimeFrontend {
+  entry?: string
+  component?: string
+  legacy?: boolean
+  meta?: Record<string, unknown> | null
+}
+
+export interface AppRuntimeInfo {
+  valid: boolean
+  errors?: string[]
+  warnings?: string[]
+  manifest_error?: string
+  has_tick: boolean
+  has_frontend: boolean
+  frontend?: AppRuntimeFrontend | null
+  has_backup: boolean
 }
 
 export interface AppField {
@@ -251,6 +270,10 @@ export async function getApps(): Promise<MiniApp[]> {
 
 export async function getApp(appId: string): Promise<MiniApp> {
   return apiRequest<MiniApp>(apiClient.get(`/app-registry/${appId}`))
+}
+
+export async function getAppWithRuntime(appId: string): Promise<MiniApp> {
+  return apiRequest<MiniApp>(apiClient.get(`/app-registry/${appId}/runtime`))
 }
 
 export async function createApp(data: Partial<MiniApp>): Promise<MiniApp> {
