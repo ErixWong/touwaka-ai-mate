@@ -3,7 +3,6 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
-import docOcrPipeline from '../apps/doc-ocr-pipeline/tick/index.js';
 import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
 
 /**
@@ -68,7 +67,7 @@ async function runContractMgrSubmitCase() {
     },
   });
 
-  const result = await docOcrPipeline.tick({ app: { id: 'doc-ocr-pipeline' }, services });
+  const result = await docPipelineWorkerRun({ services });
   assert.equal(result.submitted, 1);
   assert.equal(result.synced, 0);
 
@@ -94,7 +93,7 @@ async function runContractMgrV2SubmitCase() {
     },
   });
 
-  const result = await docOcrPipeline.tick({ app: { id: 'doc-ocr-pipeline' }, services });
+  const result = await docPipelineWorkerRun({ services });
   assert.equal(result.submitted, 1);
 
   const updateContent = services.executeCalls.find(
@@ -136,7 +135,7 @@ async function runContractMgrSyncCase() {
     },
   });
 
-  const result = await docOcrPipeline.tick({ app: { id: 'doc-ocr-pipeline' }, services });
+  const result = await docPipelineWorkerRun({ services });
   assert.equal(result.synced, 1);
 
   const upsertContent = services.executeCalls.find(
@@ -178,7 +177,7 @@ async function runContractMgrV2SyncCase() {
     },
   });
 
-  const result = await docOcrPipeline.tick({ app: { id: 'doc-ocr-pipeline' }, services });
+  const result = await docPipelineWorkerRun({ services });
   assert.equal(result.synced, 1);
 
   const updateContent = services.executeCalls.find(
@@ -200,11 +199,11 @@ async function main() {
   console.log('\n--- Phase 1: New run() entry point validation ---');
   await runNewEntryEquivalenceCase();
 
-  console.log('doc-ocr-pipeline offline tests passed');
+  console.log('doc-pipeline-worker offline tests passed');
 }
 
 /**
- * Phase 1: 验证新 run() 与旧 tick() 行为等价
+ * Phase 2: 验证 internal job 入口 run() 行为
  */
 async function runNewEntryEquivalenceCase() {
   const services = createServices({
@@ -224,6 +223,6 @@ async function runNewEntryEquivalenceCase() {
 }
 
 main().catch((error) => {
-  console.error('doc-ocr-pipeline offline tests failed:', error);
+  console.error('doc-pipeline-worker offline tests failed:', error);
   process.exitCode = 1;
 });

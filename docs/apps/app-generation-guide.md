@@ -187,7 +187,7 @@ await this.models.AppClockRegistry.create({
 - `apps/contract-mgr/tick/index.js`
 - `apps/ocr-tool/tick/index.js`
 - `apps/invoice-mgr/tick/index.js`
-- `apps/doc-ocr-pipeline/tick/index.js`
+- `lib/doc-pipeline-worker.js`
 
 ### tick 上下文里有什么
 

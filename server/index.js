@@ -870,18 +870,11 @@ class ApiServer {
           }
         }
 
-        // 启动 AppClock / ClockCore（互斥保护）
-        // 避免 doc-ocr-pipeline 被新旧入口同时调度
+        // 启动 AppClock / ClockCore
+        // AppClock 负责业务 app_tick；ClockCore 负责平台 internal_job。
         const enableAppClock = isFeatureEnabled('ENABLE_APP_CLOCK');
         // ClockCore 作为迁移期开关，必须显式开启，避免未配置环境被默认切流。
         const enableClockCore = isFeatureEnabledOptIn('ENABLE_CLOCK_CORE');
-
-        if (enableAppClock && enableClockCore) {
-          logger.error('[Startup] ⚠️ ENABLE_APP_CLOCK 与 ENABLE_CLOCK_CORE 同时启用！');
-          logger.error('[Startup]    这会导致 doc-ocr-pipeline 双跑（AppClock tick + ClockCore internal job）');
-          logger.error('[Startup]    自动降级：跳过 ClockCore，仅启动 AppClock');
-          logger.error('[Startup]    请设置 ENABLE_CLOCK_CORE=0 或在迁移完成后关闭 ENABLE_APP_CLOCK');
-        }
 
         // 启动 AppClock（Issue #654）
         if (this.appClock) {
@@ -895,13 +888,10 @@ class ApiServer {
         }
 
         // 启动 ClockCore（Unified Clock Phase 1）
-        // 注意：若与 AppClock 同时启用，ClockCore 被跳过（见上方互斥保护）
         if (this.clockCore) {
-          if (enableClockCore && !enableAppClock) {
+          if (enableClockCore) {
             this.clockCore.startAll();
             logger.info('[Startup] ClockCore started with internal jobs');
-          } else if (enableClockCore && enableAppClock) {
-            logger.warn('[Startup] ClockCore skipped — ENABLE_APP_CLOCK also active (mutual exclusion)');
           } else {
             logger.warn('[Startup] ClockCore disabled by ENABLE_CLOCK_CORE');
           }

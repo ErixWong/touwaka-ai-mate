@@ -1338,35 +1338,24 @@ const MIGRATIONS = [
     }
   },
   {
-    name: 'register doc-ocr-pipeline to app_clock_registry',
+    name: 'retire doc-ocr-pipeline app metadata',
     check: async (conn) => {
-      const [rows] = await conn.execute(
-        `SELECT id FROM app_clock_registry WHERE app_id = 'doc-ocr-pipeline'`
+      const [registryRows] = await conn.execute(
+        `SELECT id FROM app_clock_registry WHERE app_id = 'doc-ocr-pipeline' LIMIT 1`
       );
-      return rows.length > 0;
+      const [miniAppRows] = await conn.execute(
+        `SELECT id FROM mini_apps WHERE id = 'doc-ocr-pipeline' LIMIT 1`
+      );
+      return registryRows.length === 0 && miniAppRows.length === 0;
     },
     migrate: async (conn) => {
-      const [miniAppRows] = await conn.execute(
-        `SELECT id FROM mini_apps WHERE id = 'doc-ocr-pipeline'`
-      );
-      if (miniAppRows.length === 0) {
-        const ownerId = await getAnyExistingUserId(conn);
-        if (!ownerId) {
-          throw new Error('Cannot register doc-ocr-pipeline: no user found for mini_apps.owner_id/creator_id');
-        }
-        await conn.execute(
-          `INSERT INTO mini_apps (id, name, description, icon, type, component, fields, views, config, visibility, owner_id, creator_id, sort_order, is_active, revision, created_at, updated_at)
-           VALUES ('doc-ocr-pipeline', '文档 OCR 调度器', '统一调度文档平台 OCR submit/sync', '⚙️', 'utility', NULL, '[]', NULL, NULL, 'owner', ?, ?, 0, 1, 1, NOW(), NOW())`,
-          [ownerId, ownerId]
-        );
-      }
-      const id = crypto.randomBytes(10).toString('hex').slice(0, 20);
       await conn.execute(
-        `INSERT INTO app_clock_registry (id, app_id, tick_script, is_active)
-         VALUES (?, 'doc-ocr-pipeline', NULL, 1)`,
-        [id]
+        `DELETE FROM app_clock_registry WHERE app_id = 'doc-ocr-pipeline'`
       );
-      console.log('  ✓ Registered doc-ocr-pipeline to app_clock_registry');
+      await conn.execute(
+        `DELETE FROM mini_apps WHERE id = 'doc-ocr-pipeline'`
+      );
+      console.log('  ✓ Retired doc-ocr-pipeline app metadata');
     }
   },
 

@@ -62,14 +62,14 @@ async function main() {
   await check('document_revisions 表存在', async () => await tableExists(conn, 'document_revisions'));
   await check('doc_ocr_results.main_markdown_attachment_id 字段存在', async () => await columnExists(conn, 'doc_ocr_results', 'main_markdown_attachment_id'));
 
-  await check('doc-ocr-pipeline mini_apps 已注册 (Phase 1 legacy, Phase 2 退役)', async () => {
+  await check('doc-ocr-pipeline mini_apps 已退役', async () => {
     const row = await queryOne(conn, `SELECT id, visibility, type FROM mini_apps WHERE id = 'doc-ocr-pipeline' LIMIT 1`);
-    return row ? `visibility=${row.visibility}, type=${row.type} (legacy)` : 'not-registered (expected in Phase 2)';
+    return row ? false : 'not-registered';
   });
 
-  await check('doc-ocr-pipeline app_clock_registry 已注册 (Phase 1 legacy, Phase 2 退役)', async () => {
+  await check('doc-ocr-pipeline app_clock_registry 已退役', async () => {
     const row = await queryOne(conn, `SELECT id, app_id, is_active FROM app_clock_registry WHERE app_id = 'doc-ocr-pipeline' LIMIT 1`);
-    return row ? `is_active=${row.is_active} (legacy)` : 'not-registered (expected in Phase 2)';
+    return row ? false : 'not-registered';
   });
 
   // Phase 1 新增：验证 doc-pipeline-worker 为 internal job 的核心文件存在
