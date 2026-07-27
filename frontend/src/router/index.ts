@@ -89,7 +89,7 @@ const router = createRouter({
             { path: 'attachments', name: 'sys-attachments', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'attachment', adminOnly: true } },
             { path: 'mcp', name: 'sys-mcp', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'mcp', adminOnly: true } },
             { path: 'apps', name: 'sys-apps', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'apps', adminOnly: true } },
-            { path: 'handlers', name: 'sys-handlers', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'handlers', adminOnly: true } },
+            { path: 'handlers', redirect: { name: 'sys-apps' } },
             { path: 'app-clock', name: 'sys-app-clock', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'appClock', adminOnly: true } },
             { path: 'config', name: 'sys-config', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'system', adminOnly: true } },
           ],
