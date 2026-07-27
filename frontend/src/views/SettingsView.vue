@@ -19,61 +19,8 @@
     <!-- 右侧主显示区 -->
     <div class="settings-main">
 
-    <!-- 个人资料 -->
     <div v-if="activeTab === 'profile'" class="settings-section profile-section">
-      <!-- 子 Tab 切换 -->
-      <el-tabs v-model="profileSubTab" class="profile-tabs">
-        <el-tab-pane :label="$t('settings.profileBasic')" name="basic">
-          <el-form label-width="80px">
-            <el-form-item :label="$t('settings.nickname')">
-              <el-input v-model="profileForm.nickname" />
-            </el-form-item>
-            <el-form-item :label="$t('settings.language')">
-              <el-select v-model="profileForm.language">
-                <el-option label="中文" value="zh-CN" />
-                <el-option label="English" value="en-US" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-          <el-button type="primary" @click="saveProfile">{{ $t('settings.save') }}</el-button>
-        </el-tab-pane>
-
-        <el-tab-pane :label="$t('settings.changePassword')" name="password">
-          <el-form label-width="100px">
-            <el-form-item :label="$t('settings.oldPassword')">
-              <el-input
-                v-model="passwordForm.old_password"
-                type="password"
-                :placeholder="$t('settings.oldPasswordPlaceholder')"
-                show-password
-              />
-            </el-form-item>
-            <el-form-item :label="$t('settings.newPassword')">
-              <el-input
-                v-model="passwordForm.new_password"
-                type="password"
-                :placeholder="$t('settings.newPasswordPlaceholder')"
-                show-password
-              />
-            </el-form-item>
-            <el-form-item :label="$t('settings.confirmPassword')">
-              <el-input
-                v-model="passwordForm.confirm_password"
-                type="password"
-                :placeholder="$t('settings.confirmPasswordPlaceholder')"
-                show-password
-              />
-            </el-form-item>
-          </el-form>
-          <el-button
-            type="primary"
-            :disabled="!isPasswordFormValid || passwordLoading"
-            @click="handleChangePassword"
-          >
-            {{ passwordLoading ? $t('common.saving') : $t('settings.changePasswordBtn') }}
-          </el-button>
-        </el-tab-pane>
-      </el-tabs>
+      <ProfileSecurityTab />
     </div>
 
     <!-- 邀请管理 -->
@@ -849,6 +796,7 @@ import OrganizationTab from '@/components/settings/OrganizationTab.vue'
 import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
 import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
+import ProfileSecurityTab from '@/components/settings/ProfileSecurityTab.vue'
 import ModelProviderTab from '@/components/settings/ModelProviderTab.vue'
 import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue'
 import AttachmentTab from '@/components/settings/AttachmentTab.vue'
@@ -860,7 +808,7 @@ import Pagination from '@/components/Pagination.vue'
 import PsycheConfigPanel from '@/components/PsycheConfigPanel.vue'
 import packageInfo from '../../package.json'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -952,7 +900,6 @@ const activeTab = computed({
   },
 })
 
-const profileSubTab = ref<'basic' | 'password'>('basic')
 const sidebarCollapsed = ref(false)
 
 const handleMenuSelect = (index: string) => {
@@ -962,28 +909,6 @@ const handleMenuSelect = (index: string) => {
     router.push(item.route)
   }
 }
-
-const profileForm = reactive({
-  nickname: '',
-  language: 'zh-CN',
-})
-
-// 修改密码表单
-const passwordForm = reactive({
-  old_password: '',
-  new_password: '',
-  confirm_password: '',
-})
-const passwordLoading = ref(false)
-
-// 密码表单验证
-const isPasswordFormValid = computed(() => {
-  return (
-    passwordForm.old_password.length >= 6 &&
-    passwordForm.new_password.length >= 6 &&
-    passwordForm.new_password === passwordForm.confirm_password
-  )
-})
 
 // 专家分页
 const expertPage = ref(1)
@@ -1561,37 +1486,6 @@ const saveRoleExperts = async () => {
   }
 }
 
-const saveProfile = async () => {
-  await userStore.updatePreferences({
-    language: profileForm.language as 'zh-CN' | 'en-US',
-  })
-  locale.value = profileForm.language
-}
-
-// 修改密码
-const handleChangePassword = async () => {
-  if (!isPasswordFormValid.value) return
-
-  passwordLoading.value = true
-  try {
-    await userApi.changePassword({
-      old_password: passwordForm.old_password,
-      new_password: passwordForm.new_password,
-    })
-    // 清空表单
-    passwordForm.old_password = ''
-    passwordForm.new_password = ''
-    passwordForm.confirm_password = ''
-    toast.success(t('settings.changePasswordSuccess'))
-  } catch (err) {
-    console.error('修改密码失败:', err)
-    const errorMsg = err instanceof Error ? err.message : t('settings.changePasswordFailed')
-    toast.error(errorMsg)
-  } finally {
-    passwordLoading.value = false
-  }
-}
-
 // Expert 管理方法
 const openExpertDialog = (expert?: Expert) => {
   // 重置 Tab 到基本信息
@@ -1822,11 +1716,6 @@ const enabledSkillsCount = computed(() => {
 })
 
 onMounted(() => {
-  // 加载用户设置
-  if (userStore.user) {
-    profileForm.nickname = userStore.user.nickname || ''
-    profileForm.language = userStore.preferences?.language || 'zh-CN'
-  }
   // 加载模型列表
   modelStore.loadModels()
   // 加载所有专家列表（包括非活跃的）
