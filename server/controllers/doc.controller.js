@@ -25,11 +25,13 @@ import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
+import DocumentIntakeService from '../../lib/document-intake.service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
+import { sortRevisionList, resolveCurrentRevisionId } from '../../lib/doc-version-utils.js';
 
 class DocController {
   constructor(db) {
@@ -290,12 +292,18 @@ class DocController {
           model: this.models.DocVersion,
           as: 'document_revisions',
           attributes: ['id', 'revision_no', 'revision_label', 'revision_status', 'is_current', 'effective_from', 'effective_to', 'created_at'],
-          order: [['revision_no', 'DESC']],
         }],
       });
 
       if (!document) {
         ctx.throw(404, 'Document not found');
+      }
+
+      // 使用平台统一排序对嵌套的 revisions 进行排序
+      if (document.document_revisions && Array.isArray(document.document_revisions)) {
+        document.document_revisions = sortRevisionList(
+          document.document_revisions.map(r => (r.toJSON ? r.toJSON() : r))
+        );
       }
 
       ctx.success(document);
@@ -561,17 +569,26 @@ class DocController {
       const document = await this.models.DocDocument.findOne({
         where: { id: documentId },
         attributes: ['id', 'current_revision_id'],
+        raw: true,
       });
 
       const versions = await this.models.DocVersion.findAll({
         where: { document_id: documentId },
-        order: [['revision_no', 'DESC']],
+        attributes: [
+          'id', 'document_id', 'revision_no', 'revision_label',
+          'revision_status', 'is_current', 'effective_from', 'effective_to',
+          'change_summary', 'created_by', 'created_at', 'updated_at', 'diff_status',
+        ],
+        raw: true,
       });
+
+      // 使用平台统一排序：年份优先 → 版号次之 → 创建时间兜底
+      const sortedVersions = sortRevisionList(versions);
 
       ctx.success({
         document_id: document.id,
         current_revision_id: document.current_revision_id,
-        items: versions,
+        items: sortedVersions,
       });
     } catch (error) {
       logger.error('[Doc] listVersions error:', error);
@@ -1608,6 +1625,81 @@ async createVersion(ctx) {
       logger.info(`[Doc] createIntake: ${document.id} for app ${app_id}, collection ${collection_id}`);
     } catch (error) {
       logger.error('[Doc] createIntake error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 为已有文档上传新版本（人工版本管理入口）
+   * POST /api/docs/documents/:documentId/intake-revision
+   *
+   * 语义：不创建新 doc_id，在当前文档下追加 revision_id，
+   * 触发完整解析链路（OCR → Clean → Outline → Chunk → Embedding）。
+   *
+   * 与 POST /api/docs/intakes 的区别：
+   *   - intakes：创建新文档 + 首个版本
+   *   - intake-revision：在已有文档下追加新版本
+   */
+  async createIntakeRevision(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const userId = ctx.state.session.id;
+      const { documentId } = ctx.params;
+      const { attachments, revision_label, change_summary } = ctx.request.body;
+
+      // 校验文档存在且可写
+      const document = await this.models.DocDocument.findOne({
+        where: { id: documentId },
+        attributes: ['id', 'collection_id', 'current_revision_id', 'metadata'],
+        raw: true,
+      });
+      if (!document) ctx.throw(404, 'Document not found');
+
+      const canWrite = await this.docAccessService.canWrite(documentId, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      // 校验附件
+      const attachmentList = Array.isArray(attachments) ? attachments : [];
+      const attachmentIds = attachmentList.map(item => item?.id).filter(Boolean);
+      const uniqueAttachmentIds = [...new Set(attachmentIds)];
+
+      if (attachmentList.length > 0 && attachmentIds.length !== attachmentList.length) {
+        ctx.throw(400, 'attachments must contain valid attachment ids');
+      }
+
+      if (uniqueAttachmentIds.length > 0) {
+        const Attachment = this.db.getModel('attachment');
+        const attachmentRows = await Attachment.findAll({
+          where: { id: uniqueAttachmentIds },
+          attributes: ['id', 'created_by'],
+          raw: true,
+        });
+
+        if (attachmentRows.length !== uniqueAttachmentIds.length) {
+          ctx.throw(404, 'One or more attachments not found');
+        }
+
+        const deniedAttachment = attachmentRows.find(item => item.created_by !== userId);
+        if (deniedAttachment) {
+          ctx.throw(403, 'Attachment access denied');
+        }
+      }
+
+      // 委托给 DocumentIntakeService（复用既有版本创建 + 附件挂接 + 状态重置逻辑）
+      const intakeService = new DocumentIntakeService(this.db);
+      const result = await intakeService.createIntakeRevision({
+        documentId,
+        attachments: attachmentList,
+        userId,
+        revisionLabel: revision_label || undefined,
+        changeSummary: change_summary || undefined,
+      });
+
+      ctx.success(result);
+      logger.info(`[Doc] createIntakeRevision: ${result.revision_id} for document ${documentId}`);
+    } catch (error) {
+      logger.error('[Doc] createIntakeRevision error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
