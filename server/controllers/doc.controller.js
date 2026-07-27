@@ -31,7 +31,7 @@ import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
-import { sortRevisionList, resolveCurrentRevisionId } from '../../lib/doc-version-utils.js';
+import { sortRevisionList, resolveCurrentRevision, resolveCurrentRevisionId } from '../../lib/doc-version-utils.js';
 
 class DocController {
   constructor(db) {
@@ -300,13 +300,23 @@ class DocController {
       }
 
       // 使用平台统一排序对嵌套的 revisions 进行排序
-      if (document.document_revisions && Array.isArray(document.document_revisions)) {
-        document.document_revisions = sortRevisionList(
-          document.document_revisions.map(r => (r.toJSON ? r.toJSON() : r))
-        );
-      }
+      const revisionsPlain = document.document_revisions && Array.isArray(document.document_revisions)
+        ? sortRevisionList(document.document_revisions.map(r => (r.toJSON ? r.toJSON() : r)))
+        : [];
 
-      ctx.success(document);
+      // 将 document 转为普通对象，替换排序后的 revisions 并附加解析后的当前版本
+      const docPlain = document.toJSON ? document.toJSON() : document;
+      docPlain.document_revisions = revisionsPlain;
+
+      // 使用平台统一解析当前版本（显式返回，避免前端自行推断）
+      const resolvedCurrentRevision = resolveCurrentRevision(
+        { id: docPlain.id, current_revision_id: docPlain.current_revision_id },
+        revisionsPlain
+      );
+      docPlain.resolved_current_revision_id = resolvedCurrentRevision ? resolvedCurrentRevision.id : null;
+      docPlain.resolved_current_revision = resolvedCurrentRevision || null;
+
+      ctx.success(docPlain);
       logger.info(`[Doc] getDocument: ${documentId}, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] getDocument error:', error);
@@ -585,9 +595,17 @@ class DocController {
       // 使用平台统一排序：年份优先 → 版号次之 → 创建时间兜底
       const sortedVersions = sortRevisionList(versions);
 
+      // 使用平台统一解析当前版本（显式返回，避免前端自行推断）
+      const resolvedCurrentRevision = resolveCurrentRevision(
+        { id: document.id, current_revision_id: document.current_revision_id },
+        sortedVersions
+      );
+
       ctx.success({
         document_id: document.id,
         current_revision_id: document.current_revision_id,
+        resolved_current_revision_id: resolvedCurrentRevision ? resolvedCurrentRevision.id : null,
+        resolved_current_revision: resolvedCurrentRevision || null,
         items: sortedVersions,
       });
     } catch (error) {
