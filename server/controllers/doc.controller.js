@@ -108,11 +108,11 @@ class DocController {
       const systemSettingService = getSystemSettingService(this.db);
       this.documentOcrService = new DocumentOcrService(this.db, {
         callMcp: async (server, tool, params, timeoutMs) => {
-          const appClock = ctx?.app?.context?.appClock;
-          if (!appClock || typeof appClock.callMcp !== 'function') {
-            throw new Error('AppClock MCP caller not available');
+          const mcpToolCaller = ctx?.app?.context?.mcpToolCaller;
+          if (!mcpToolCaller || typeof mcpToolCaller.callMcp !== 'function') {
+            throw new Error('MCP tool caller not available');
           }
-          return await appClock.callMcp(server, tool, params, timeoutMs);
+          return await mcpToolCaller.callMcp(server, tool, params, timeoutMs);
         },
         getDocPipelineConfig: async () => {
           const records = await systemSettingService.SystemSetting.findAll({

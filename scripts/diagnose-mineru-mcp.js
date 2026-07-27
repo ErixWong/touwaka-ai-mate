@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 
 import Database from '../lib/db.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
-import AppClock from '../lib/app-clock.js';
+import McpToolCaller from '../lib/mcp-tool-caller.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,9 +92,9 @@ async function main() {
   try {
     await residentSkillManager.initialize();
 
-    const appClock = new AppClock(db, { residentSkillManager });
+    const mcpToolCaller = new McpToolCaller(db, { residentSkillManager });
 
-    const admin_token = await appClock.generateUserToken();
+    const admin_token = await mcpToolCaller.generateAdminToken();
 
     const report = {
       started_at: new Date().toISOString(),
@@ -164,7 +164,7 @@ async function main() {
 
     if (options.task_id) {
       await runStep('get_task_status', async () => {
-        return await appClock.callMcp(
+        return await mcpToolCaller.callMcp(
           options.server_name,
           'get_task_status',
           { task_id: options.task_id },
@@ -174,7 +174,7 @@ async function main() {
 
       if (!options.skip_deliverables) {
         await runStep('list_deliverables', async () => {
-          return await appClock.callMcp(
+          return await mcpToolCaller.callMcp(
             options.server_name,
             'list_deliverables',
             { task_id: options.task_id },
@@ -183,7 +183,7 @@ async function main() {
         });
 
         await runStep('get_default_deliverable', async () => {
-          return await appClock.callMcp(
+          return await mcpToolCaller.callMcp(
             options.server_name,
             'get_default_deliverable',
             { task_id: options.task_id },

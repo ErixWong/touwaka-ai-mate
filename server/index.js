@@ -43,6 +43,7 @@ import ResidentSkillManager from '../lib/resident-skill-manager.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
+import McpToolCaller from '../lib/mcp-tool-caller.js';
 import ClockCore from '../lib/clock/clock-core.js';
 import { buildDocPipelineContext } from '../lib/clock/job-context-builder.js';
 import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
@@ -261,6 +262,7 @@ class ApiServer {
     this.chatService = null;
     this.scheduler = null;
     this.residentSkillManager = null;
+    this.mcpToolCaller = null;
     this.tokenCleanupJob = null;
     this.appClock = null;
     this.clockCore = null;
@@ -380,6 +382,9 @@ class ApiServer {
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
     await this.residentSkillManager.initialize();
+    this.mcpToolCaller = new McpToolCaller(this.db, {
+      residentSkillManager: this.residentSkillManager,
+    });
 
     // 初始化 Token 清理任务（Issue #140）
     this.tokenCleanupJob = new TokenCleanupJob(this.db);
@@ -398,6 +403,7 @@ class ApiServer {
       maxConsecutiveFailures: parseInt(process.env.APP_CLOCK_MAX_FAILURES, 10) || 3,
       failureCooldownMs: parseInt(process.env.APP_CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
       residentSkillManager: this.residentSkillManager,
+      mcpToolCaller: this.mcpToolCaller,
       skillLoader: new SkillLoader(this.db),
     });
     // 不在这里启动，等 server listen 后统一启动
@@ -415,7 +421,7 @@ class ApiServer {
       preventOverlap: true,
       handler: async (clockContext) => {
         const services = buildDocPipelineContext(this.db, {
-          callMcp: this.appClock?.callMcp?.bind(this.appClock) ?? null,
+          callMcp: this.mcpToolCaller?.callMcp?.bind(this.mcpToolCaller) ?? null,
           callLlm: null,
           getDocPipelineConfig: async () => {
             try {
@@ -826,6 +832,7 @@ class ApiServer {
       this.setupRoutes();
 
       this.app.context.appClock = this.appClock;
+      this.app.context.mcpToolCaller = this.mcpToolCaller;
 
       // 将 SSE 连接池共享给 AssistantManager（在 setupRoutes 之后，因为 StreamController 已创建）
       assistantManager.setExpertConnections(this.controllers.stream.expertConnections);
@@ -894,6 +901,7 @@ class ApiServer {
             logger.info('[Startup] ClockCore started with internal jobs');
           } else {
             logger.warn('[Startup] ClockCore disabled by ENABLE_CLOCK_CORE');
+            logger.warn('[Startup] Document pipeline auto-processing is disabled; set ENABLE_CLOCK_CORE=1 to advance pending_ocr/ocr_processing documents');
           }
         }
 
