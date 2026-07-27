@@ -1214,42 +1214,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.expert-section .panel-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--card-bg, #fff);
-}
-
-.expert-list-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 400px;
-}
-
-.expert-list {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.expert-item {
-  padding: 16px;
-  margin-bottom: 12px;
-  border-radius: 10px;
-  background: var(--secondary-bg, #f8f9fa);
-  border: 1px solid transparent;
-  transition: all 0.2s;
-}
-
-.expert-item:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--border-color, #e0e0e0);
-}
-
-.expert-item.inactive {
-  opacity: 0.6;
-}
-
 .expert-info {
   display: flex;
   align-items: center;
@@ -1269,20 +1233,6 @@ onMounted(() => {
   margin: 0 0 8px 0;
   line-height: 1.5;
 }
-
-.expert-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.expert-actions {
-  display: flex;
-  gap: 8px;
-}
-
-
 
 /* About */
 .about-content {
@@ -1368,90 +1318,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-/* 技能管理对话框 */.skills-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.skill-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--secondary-bg, #f8f9fa);
-  border: 1px solid transparent;
-  border-radius: 10px;
-  transition: all 0.2s;
-}
-
-.skill-item:hover {
-  background: var(--hover-bg, #e8e8e8);
-  border-color: var(--border-color, #e0e0e0);
-}
-
-.skill-item.builtin {
-  background: var(--secondary-bg, #f8f9fa);
-  border-color: var(--border-color, #e0e0e0);
-}
-
-.skill-item.builtin:hover {
-  background: var(--hover-bg, #e8e8e8);
-}
-
-.skill-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.skill-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.skill-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary, #333);
-}
-
-.skill-description {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  margin: 0;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* 切换开关 */
-
-
-
-
-
-
-.skills-count {
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .skill-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
 }
 
 /* 用户管理区域 */
