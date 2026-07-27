@@ -14,7 +14,8 @@ function getAttachmentBasePath() {
 
 import Database from '../lib/db.js';
 import logger from '../lib/logger.js';
-import AppClock from '../lib/app-clock.js';
+import ResidentSkillManager from '../lib/resident-skill-manager.js';
+import McpToolCaller from '../lib/mcp-tool-caller.js';
 import { collectOcrAttachmentIds } from '../lib/doc-ocr-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,6 +49,9 @@ async function main() {
   });
 
   await db.connect();
+  let residentSkillManager = null;
+  let mcpToolCaller = null;
+
   const models = db.models;
   const DocOcrResult = models.doc_ocr_result;
   const Document = models.document;
@@ -78,7 +82,10 @@ async function main() {
     if (!args.skipRemoteCancel && ocrResult.task_id && ['pending', 'processing'].includes(ocrResult.status)) {
       remoteCancel = { attempted: true, skipped: false, ok: false };
       try {
-        const result = await AppClock.callMcp('mineru', 'cancel_task', { task_id: ocrResult.task_id }, 30000);
+        residentSkillManager = new ResidentSkillManager(db);
+        await residentSkillManager.initialize();
+        mcpToolCaller = new McpToolCaller(db, { residentSkillManager });
+        const result = await mcpToolCaller.callMcp('mineru', 'cancel_task', { task_id: ocrResult.task_id }, 30000);
         remoteCancel.ok = true;
         remoteCancel.resultType = typeof result;
       } catch (error) {
@@ -191,6 +198,9 @@ async function main() {
       remoteCancel,
     }, null, 2));
   } finally {
+    if (residentSkillManager) {
+      await residentSkillManager.shutdown().catch(() => {});
+    }
     await db.close();
   }
 }
