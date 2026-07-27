@@ -332,7 +332,7 @@ lib/doc-pipeline-worker.js
 - `job-context-builder.js`
   - 为 `internal_job` / `app_tick` 提供统一上下文构造接口
 - `doc-pipeline-worker.js`
-  - 从 `apps/doc-ocr-pipeline/tick/index.js` 抽出核心执行入口，作为第一个 internal job 样板
+  - 从历史 `doc-ocr-pipeline` app tick 抽出核心执行入口，作为第一个 internal job 样板
 
 ##### 本轮复用对象
 
@@ -363,7 +363,7 @@ lib/doc-pipeline-worker.js
 
 需要落地的具体替换：
 
-1. 保留 `apps/doc-ocr-pipeline/tick/index.js` 现有核心业务逻辑可迁移复用
+1. 保留历史 `doc-ocr-pipeline` app tick 的核心业务逻辑可迁移复用
 2. 将其核心执行函数抽到 `lib/doc-pipeline-worker.js`
 3. 由统一 `Clock Core` 直接调 `doc-pipeline-worker`
 4. `AppClock` 不再承担 `doc-ocr-pipeline` 的运行入口

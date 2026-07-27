@@ -93,7 +93,7 @@ async function runTests() {
   const appsDataNew = await appsRespNew.json();
   const appsNew = appsDataNew.data || [];
 
-  const testApps = ['contract-mgr-v2', 'contract-mgr', 'invoice-mgr', 'ocr-tool', 'doc-ocr-pipeline'];
+  const testApps = ['contract-mgr-v2', 'contract-mgr', 'invoice-mgr', 'ocr-tool'];
   
   for (const appId of testApps) {
     if (appsNew.some(a => a.id === appId)) {
