@@ -104,6 +104,8 @@ export interface DocRevision {
 export interface DocRevisionsResponse {
   document_id: string
   current_revision_id: string | null
+  resolved_current_revision_id?: string | null
+  resolved_current_revision?: DocRevision | null
   items: DocRevision[]
 }
 
@@ -197,6 +199,7 @@ export interface DocResultImageAttachment {
 export interface DocResultDetail {
   document: DocDocument & {
     has_preview_result: boolean
+    resolved_current_revision_id: string | null
   }
   revision: {
     id: string
@@ -389,6 +392,20 @@ export async function getProcessingStatus(documentId: string): Promise<DocProces
 
 export async function createDocIntake(data: CreateDocIntakeRequest): Promise<DocIntakeResult> {
   return apiRequest<DocIntakeResult>(apiClient.post('/docs/intakes', data))
+}
+
+export interface CreateIntakeRevisionRequest {
+  attachments: Array<{ id: string }>
+  revision_label?: string | null
+  change_summary?: string | null
+}
+
+export async function createIntakeRevision(documentId: string, data: CreateIntakeRevisionRequest): Promise<DocIntakeResult> {
+  return apiRequest<DocIntakeResult>(apiClient.post(`/docs/documents/${documentId}/intake-revision`, data))
+}
+
+export async function updateRevisionLabel(revisionId: string, revision_label: string): Promise<DocRevision> {
+  return apiRequest<DocRevision>(apiClient.patch(`/docs/revisions/${revisionId}/label`, { revision_label }))
 }
 
 export async function submitOcr(documentId: string, data: SubmitOcrRequest = {}): Promise<SubmitOcrResult> {

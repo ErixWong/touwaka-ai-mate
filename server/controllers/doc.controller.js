@@ -31,7 +31,7 @@ import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
-import { sortRevisionList, resolveCurrentRevision, resolveCurrentRevisionId } from '../../lib/doc-version-utils.js';
+import { sortRevisionList, resolveCurrentRevision, resolveCurrentRevisionId, validateRevisionLabelUniqueness } from '../../lib/doc-version-utils.js';
 
 class DocController {
   constructor(db) {
@@ -518,6 +518,7 @@ class DocController {
         document: {
           ...document,
           has_preview_result: hasPreview,
+          resolved_current_revision_id: document.current_revision_id || (revision ? revision.id : null),
         },
         revision: revision ? {
           ...revision,
@@ -979,6 +980,52 @@ async createVersion(ctx) {
       logger.info(`[Doc] transitionVersionStatus: ${revisionId} ${version.revision_status} → ${to_status}`);
     } catch (error) {
       logger.error('[Doc] transitionVersionStatus error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * 修改 revision_label（人工版本号编辑）
+   * PATCH /api/docs/revisions/:revisionId/label
+   */
+  async updateRevisionLabel(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocAccessService();
+      const { revisionId } = ctx.params;
+      const { revision_label } = ctx.request.body;
+      const userId = ctx.state.session.id;
+
+      if (!revision_label || typeof revision_label !== 'string' || !revision_label.trim()) {
+        ctx.throw(400, 'revision_label is required and must be a non-empty string');
+      }
+
+      const newLabel = revision_label.trim();
+
+      const version = await this.models.DocVersion.findOne({
+        where: { id: revisionId },
+      });
+      if (!version) ctx.throw(404, 'Revision not found');
+
+      const canWrite = await this.docAccessService.canWrite(version.document_id, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      // 校验同一 doc_id 下 label 唯一性（排除自身）
+      const existingVersions = await this.models.DocVersion.findAll({
+        where: { document_id: version.document_id },
+        attributes: ['id', 'revision_label'],
+        raw: true,
+      });
+      const uniquenessCheck = validateRevisionLabelUniqueness(existingVersions, newLabel, revisionId);
+      if (!uniquenessCheck.valid) {
+        ctx.throw(409, uniquenessCheck.message);
+      }
+
+      await version.update({ revision_label: newLabel });
+      ctx.success(version);
+      logger.info(`[Doc] updateRevisionLabel: ${revisionId} → "${newLabel}"`);
+    } catch (error) {
+      logger.error('[Doc] updateRevisionLabel error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

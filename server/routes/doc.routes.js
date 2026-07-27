@@ -72,6 +72,9 @@ export default (controller) => {
   // 版本状态流转
   router.post('/revisions/:revisionId/transition', authenticate(), controller.transitionVersionStatus.bind(controller));
 
+  // 修改 revision_label（人工版本号编辑）
+  router.patch('/revisions/:revisionId/label', authenticate(), controller.updateRevisionLabel.bind(controller));
+
   // 查询版本差异状态 — 2.7
   router.get('/revisions/:revisionId/diff-status', authenticate(), controller.getDiffStatus.bind(controller));
 

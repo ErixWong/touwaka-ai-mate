@@ -76,6 +76,13 @@
           />
         </div>
       </div>
+
+      <DocVersionPanel
+        :document-id="docStore.currentResult.document.id"
+        :resolved-current-id="docStore.currentResult.document.resolved_current_revision_id"
+        :versions="docStore.versions"
+        @version-changed="onVersionChanged"
+      />
     </template>
   </div>
 </template>
@@ -93,6 +100,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DocContentPanel from '@/components/docs/DocContentPanel.vue'
 import DocSidebarPanel from '@/components/docs/DocSidebarPanel.vue'
+import DocVersionPanel from '@/components/docs/DocVersionPanel.vue'
 import { useDocumentWorkspace } from '@/composables/useDocumentWorkspace'
 
 const route = useRoute()
@@ -289,6 +297,14 @@ async function loadMarkdownPreview() {
     }
   }
 
+  async function onVersionChanged() {
+    const documentId = docStore.currentResult?.document?.id
+    if (!documentId) return
+    await docStore.fetchVersions(documentId)
+    await docStore.fetchDocumentResult(documentId)
+    await loadMarkdownPreview()
+  }
+
   onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
@@ -311,6 +327,9 @@ async function loadMarkdownPreview() {
     if (revId) {
       await docStore.fetchContentTree(documentId, revId)
     }
+
+    // 加载版本列表
+    await docStore.fetchVersions(documentId)
 
     const currentStatus = docStore.currentResult?.processing?.status
     if (!isTerminalDocProcessingStatus(currentStatus)) {

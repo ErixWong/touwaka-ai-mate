@@ -3461,6 +3461,84 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== revision_label 唯一性约束 ====================
+  // 文档平台版本管理 P0 收敛：为 revision_label 添加 NOT NULL + UNIQUE 约束
+  // 审计: audit-round02 §7.2 / audit-round03 §7.1
+  {
+    name: 'revision_label fill NULL and add UNIQUE constraint',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'document_revisions')) return true;
+
+      // 检查是否还有 NULL revision_label
+      const [nullRows] = await conn.execute(
+        `SELECT 1 FROM document_revisions WHERE revision_label IS NULL LIMIT 1`
+      );
+      if (nullRows.length > 0) return false;
+
+      // 检查唯一索引是否存在
+      return await hasIndex(conn, 'document_revisions', 'uk_document_revision_label');
+    },
+    migrate: async (conn) => {
+      console.log('  ⚠ Adding revision_label UNIQUE constraint...');
+
+      // Step 1: 回填 NULL label → 'v{revision_no}'
+      const [nullResult] = await conn.execute(
+        `UPDATE document_revisions SET revision_label = CONCAT('v', revision_no) WHERE revision_label IS NULL`
+      );
+      console.log(`    - Filled NULL revision_labels: ${nullResult.affectedRows} rows`);
+
+      // Step 2: 处理重复 label（同一 doc 下 label 相同的情况）
+      const [dupRows] = await conn.execute(
+        `SELECT id, document_id, revision_label, revision_no
+         FROM document_revisions dr1
+         WHERE revision_label IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM document_revisions dr2
+             WHERE dr2.document_id = dr1.document_id
+               AND dr2.revision_label = dr1.revision_label
+               AND dr2.id != dr1.id
+           )
+         ORDER BY document_id, revision_label, revision_no ASC`
+      );
+
+      if (dupRows.length > 0) {
+        console.log(`    - Found ${dupRows.length} duplicate revision_labels, fixing...`);
+        // 对重复项追加后缀，保留 revision_no 较小的原值不变
+        const seen = new Map(); // key: `${document_id}:${revision_label}` -> boolean
+        for (const row of dupRows) {
+          const key = `${row.document_id}:${row.revision_label}`;
+          if (seen.has(key)) {
+            const newLabel = `${row.revision_label}_dup_${row.revision_no}`;
+            await conn.execute(
+              `UPDATE document_revisions SET revision_label = ? WHERE id = ?`,
+              [newLabel, row.id]
+            );
+            console.log(`      - Renamed ${row.id}: "${row.revision_label}" → "${newLabel}"`);
+          } else {
+            seen.set(key, true);
+          }
+        }
+      }
+
+      // Step 3: 将 revision_label 改为 NOT NULL
+      await safeExecute(conn,
+        `ALTER TABLE document_revisions
+         MODIFY COLUMN revision_label VARCHAR(20) NOT NULL
+         COMMENT '展示版号(v1.0)'`
+      );
+      console.log('    - Changed revision_label to NOT NULL');
+
+      // Step 4: 添加唯一索引
+      await safeExecute(conn,
+        `ALTER TABLE document_revisions
+         ADD UNIQUE INDEX uk_document_revision_label (document_id, revision_label)`
+      );
+      console.log('    - Added UNIQUE index uk_document_revision_label');
+
+      console.log('  ✓ revision_label UNIQUE constraint added');
+    }
+  },
+
 ];
 
 /**
