@@ -15,6 +15,10 @@
   "compatibility": {
     "min_platform_version": "2.0.0"
   },
-  "component": "DowntimeAnalyzer",
+  "runtime": {
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
+  },
   "visibility": "all"
 }
