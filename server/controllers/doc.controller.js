@@ -1618,7 +1618,7 @@ async createVersion(ctx) {
     try {
       this.ensureModels();
       const userId = ctx.state.session.id;
-      const { app_id, collection_id, schema_id, attachments } = ctx.request.body;
+      const { app_id, collection_id, schema_id, revision_label, attachments } = ctx.request.body;
 
       if (!app_id) ctx.throw(400, 'app_id is required');
       if (!collection_id) ctx.throw(400, 'collection_id is required');
@@ -1656,6 +1656,10 @@ async createVersion(ctx) {
         }
       }
 
+      const initialRevisionLabel = typeof revision_label === 'string' && revision_label.trim()
+        ? revision_label.trim()
+        : 'v1';
+
       const sourceRefId = Utils.newID();
       const firstAttachment = attachmentList.length > 0 ? attachmentList[0] : null;
       const intakeMetadata = JSON.stringify({
@@ -1683,7 +1687,7 @@ async createVersion(ctx) {
           id: revisionId,
           document_id: documentId,
           revision_no: 1,
-          revision_label: 'v1',
+          revision_label: initialRevisionLabel,
           revision_status: 'draft',
           is_current: 1,
           change_summary: 'Initial intake revision',

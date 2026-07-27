@@ -88,6 +88,17 @@
       </div>
     </div>
 
+    <!-- 版本管理 -->
+    <div class="sidebar-section version-management-section">
+      <DocVersionPanel
+        :document-id="documentId || ''"
+        :resolved-current-id="resolvedCurrentId"
+        :versions="versions || []"
+        compact
+        @version-changed="$emit('versionChanged')"
+      />
+    </div>
+
     <!-- 下载 -->
     <div class="sidebar-section">
       <h4 class="sidebar-title">{{ $t('docs.workspace.panel.download') }}</h4>
@@ -126,6 +137,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDocProcessingStatusTagType } from '@/api/docs'
+import DocVersionPanel from '@/components/docs/DocVersionPanel.vue'
 
 const { t, locale } = useI18n()
 
@@ -170,6 +182,11 @@ interface Props {
   retryAction?: RetryAction | null
   retryLoading?: boolean
   isActionComplete?: boolean
+
+  // 版本管理
+  documentId?: string | null
+  resolvedCurrentId?: string | null
+  versions?: any[] | null
   
   // 下载链接
   attachmentDownloadUrl?: string | null
@@ -201,6 +218,9 @@ const props = withDefaults(defineProps<Props>(), {
   retryAction: null,
   retryLoading: false,
   isActionComplete: false,
+  documentId: null,
+  resolvedCurrentId: null,
+  versions: null,
   attachmentDownloadUrl: null,
   markdownDownloadUrl: null,
   rawMarkdownDownloadUrl: null,
@@ -212,6 +232,7 @@ const props = withDefaults(defineProps<Props>(), {
 defineEmits<{
   retry: [type: string]
   download: [url: string]
+  versionChanged: []
 }>()
 
 const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
@@ -279,6 +300,7 @@ const formattedCreatedAt = computed(() => fmt(props.createdAt))
 .attachment-item { border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
 .attachment-name { font-size: 13px; font-weight: 500; }
 .attachment-meta { font-size: 11px; color: #909399; margin: 2px 0; }
+.version-management-section { padding: 0; overflow: hidden; }
 
 .error-box { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: #fef0f0; color: #c45656; font-size: 12px; }
 

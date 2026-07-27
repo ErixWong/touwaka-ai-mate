@@ -356,6 +356,7 @@ export interface CreateDocIntakeRequest {
   app_id: string
   collection_id: string
   schema_id?: string | null
+  revision_label?: string | null
   attachments: Array<{ id: string }>
 }
 

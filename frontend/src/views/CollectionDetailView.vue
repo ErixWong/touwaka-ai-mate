@@ -13,17 +13,42 @@
         </span>
       </template>
       <template #actions>
-        <el-upload
-          :show-file-list="false"
-          :auto-upload="false"
-          :on-change="handleFileChange"
-          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-        >
-          <el-button type="primary" :loading="store.isUploadingDocument">{{ $t('docs.workspace.collection.uploadDoc') }}</el-button>
-        </el-upload>
+        <el-button type="primary" :loading="store.isUploadingDocument" @click="openUploadDialog">{{ $t('docs.workspace.collection.uploadDoc') }}</el-button>
         <el-button @click="goSettings">{{ $t('docs.workspace.collection.settings') }}</el-button>
       </template>
     </ContextHeader>
+
+    <el-dialog
+      v-model="uploadDialogVisible"
+      :title="$t('docs.workspace.collection.uploadDialogTitle')"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item :label="$t('docs.workspace.versionPanel.file')">
+          <el-upload
+            :show-file-list="true"
+            :auto-upload="false"
+            :limit="1"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+            drag
+          >
+            <div class="el-upload__text">{{ $t('docs.workspace.versionPanel.dragOrClick') }}</div>
+          </el-upload>
+        </el-form-item>
+        <el-form-item :label="$t('docs.workspace.collection.initialVersionLabel')">
+          <el-input v-model="newDocumentRevisionLabel" :placeholder="$t('docs.workspace.collection.initialVersionPlaceholder')" maxlength="20" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="uploadDialogVisible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="store.isUploadingDocument" :disabled="!pendingUploadFile" @click="submitUploadDocument">
+          {{ $t('docs.workspace.collection.confirmUpload') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <div v-if="store.isLoading && !store.currentCollection" class="loading-state">
       {{ $t('common.loading') }}
@@ -218,6 +243,9 @@ const store = useCollectionStore()
 const docStore = useDocStore()
 
 const collectionId = route.params.id as string
+const uploadDialogVisible = ref(false)
+const pendingUploadFile = ref<File | null>(null)
+const newDocumentRevisionLabel = ref('')
 const docSearch = ref('')
 const statusFilter = ref('')
 const selectedDocId = ref<string | null>(null)
@@ -464,16 +492,36 @@ function downloadAttachment(url?: string) {
 }
 
 async function handleFileChange(uploadFile: UploadFile) {
-  const rawFile = uploadFile.raw
+  pendingUploadFile.value = uploadFile.raw || null
+}
+
+function handleFileRemove() {
+  pendingUploadFile.value = null
+}
+
+function openUploadDialog() {
+  pendingUploadFile.value = null
+  newDocumentRevisionLabel.value = ''
+  uploadDialogVisible.value = true
+}
+
+async function submitUploadDocument() {
+  const rawFile = pendingUploadFile.value
   if (!rawFile) return
 
-  const result = await store.uploadDocumentToCollection(collectionId, rawFile)
+  const trimmedRevisionLabel = newDocumentRevisionLabel.value.trim()
+  const result = await store.uploadDocumentToCollection(collectionId, rawFile, {
+    revision_label: trimmedRevisionLabel || null,
+  })
   if (!result) {
     ElMessage.error(store.error || t('docs.workspace.detail.uploadFailed'))
     return
   }
 
   ElMessage.success(t('docs.workspace.detail.uploadSuccess'))
+  uploadDialogVisible.value = false
+  pendingUploadFile.value = null
+  newDocumentRevisionLabel.value = ''
   // 选中新上传的文档
   selectDocument(result.intake.document_id)
   await store.fetchCollection(collectionId)

@@ -65,6 +65,9 @@
             :retry-action="retryAction"
             :retry-loading="retryLoadingComputed"
             :is-action-complete="isProcessingActionComplete"
+            :document-id="docStore.currentResult?.document?.id"
+            :resolved-current-id="docStore.currentResult?.document?.resolved_current_revision_id"
+            :versions="docStore.versions"
             :attachment-download-url="docStore.currentResult?.source_attachment?.download_url"
             :markdown-download-url="markdownAttachmentFromWorkspace?.download_url"
             :raw-markdown-download-url="rawMarkdownAttachmentFromWorkspace?.download_url"
@@ -73,16 +76,10 @@
             :error-code="docStore.currentResult?.processing?.error_code"
             @retry="onRetryAction"
             @download="downloadAttachment"
+            @version-changed="onVersionChanged"
           />
         </div>
       </div>
-
-      <DocVersionPanel
-        :document-id="docStore.currentResult.document.id"
-        :resolved-current-id="docStore.currentResult.document.resolved_current_revision_id"
-        :versions="docStore.versions"
-        @version-changed="onVersionChanged"
-      />
     </template>
   </div>
 </template>
@@ -100,7 +97,6 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DocContentPanel from '@/components/docs/DocContentPanel.vue'
 import DocSidebarPanel from '@/components/docs/DocSidebarPanel.vue'
-import DocVersionPanel from '@/components/docs/DocVersionPanel.vue'
 import { useDocumentWorkspace } from '@/composables/useDocumentWorkspace'
 
 const route = useRoute()

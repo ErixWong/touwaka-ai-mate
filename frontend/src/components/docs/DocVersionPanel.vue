@@ -1,5 +1,5 @@
 <template>
-  <div class="doc-version-panel">
+  <div class="doc-version-panel" :class="{ compact: compact }">
     <div class="version-panel-header">
       <h3 class="version-panel-title">{{ $t('docs.workspace.versionPanel.title') }}</h3>
       <el-button type="primary" size="small" @click="openUploadDialog">
@@ -129,6 +129,7 @@ const props = defineProps<{
   documentId: string
   resolvedCurrentId?: string | null
   versions: DocRevision[]
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -315,6 +316,12 @@ function statusLabel(status: string) {
   background: #fff;
   border-radius: 8px;
   padding: 16px;
+}
+
+.doc-version-panel.compact {
+  margin-top: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .version-panel-header {

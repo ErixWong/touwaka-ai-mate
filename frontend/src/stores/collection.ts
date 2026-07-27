@@ -198,6 +198,7 @@ export const useCollectionStore = defineStore('collection', () => {
   async function uploadDocumentToCollection(collectionId: string, file: File, options?: {
     app_id?: string
     schema_id?: string | null
+    revision_label?: string | null
     lang?: string
     image_analysis?: boolean
     formula_enable?: boolean
@@ -220,6 +221,7 @@ export const useCollectionStore = defineStore('collection', () => {
         app_id: options?.app_id || 'contract-mgr-v2',
         collection_id: collectionId,
         schema_id: options?.schema_id ?? null,
+        revision_label: options?.revision_label ?? null,
         attachments: [{ id: attachment.id }],
       })
 
