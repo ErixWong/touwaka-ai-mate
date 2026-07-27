@@ -17,7 +17,10 @@
     "min_platform_version": "2.0.0"
   },
   "runtime": {
-    "tick": "tick/index.js"
+    "tick": "tick/index.js",
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
   },
   "config": {
     "max_concurrent_tasks": 2,
@@ -86,6 +89,5 @@
       "failure_next": null
     }
   ],
-  "component": "OcrToolView",
   "visibility": "all"
 }

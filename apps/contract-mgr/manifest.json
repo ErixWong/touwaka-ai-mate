@@ -361,7 +361,11 @@
       "failure_next": null
     }
   ],
-  "component": "ContractMgrView",
+  "runtime": {
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
+  },
   "apis": [
     { "path": "/records", "methods": ["GET"], "handler": "server/controllers/records.js" },
     { "path": "/records/:recordId", "methods": ["GET"], "handler": "server/controllers/records.js" },

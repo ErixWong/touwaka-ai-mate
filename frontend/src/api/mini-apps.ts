@@ -24,8 +24,6 @@ export interface MiniApp {
 
 export interface AppRuntimeFrontend {
   entry?: string
-  component?: string
-  legacy?: boolean
   meta?: Record<string, unknown> | null
 }
 

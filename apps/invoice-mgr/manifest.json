@@ -310,7 +310,11 @@
       "is_error": true
     }
   ],
-  "component": "InvoiceView",
+  "runtime": {
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
+  },
   "views": {
     "list": {
       "columns": [
