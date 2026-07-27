@@ -3536,6 +3536,8 @@ const MIGRATIONS = [
       console.log('    - Added UNIQUE index uk_document_revision_label');
 
       console.log('  ✓ revision_label UNIQUE constraint added');
+      console.log('  ⚠ IMPORTANT: After this migration, run "node scripts/generate-models.js" to regenerate models/');
+      console.log('    This will update models/document_revision.js with allowNull:false and the unique index.');
     }
   },
 

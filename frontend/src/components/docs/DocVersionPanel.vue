@@ -12,7 +12,7 @@
       stripe
       size="small"
       class="version-table"
-      empty-text="暂无版本"
+      :empty-text="$t('docs.workspace.versionPanel.emptyText')"
     >
       <el-table-column prop="revision_label" :label="$t('docs.workspace.versionPanel.label')" width="100">
         <template #default="{ row }">
@@ -206,13 +206,33 @@ async function handleUpload() {
 // --------------------- version list ---------------------
 const canEditLabel = ref(true)
 
+/**
+ * 客户端版本排序：年份 → revision_no DESC → created_at DESC
+ * 与后端 sortRevisionList() 保持一致，作为前端防御性兜底
+ */
 const sortedVersions = computed(() => {
-  return [...props.versions]
+  const list = [...props.versions]
+  list.sort((a, b) => {
+    const aLabel = a.revision_label || ''
+    const bLabel = b.revision_label || ''
+    const aYear = /^(\d{4})$/.test(aLabel) ? parseInt(aLabel, 10) : null
+    const bYear = /^(\d{4})$/.test(bLabel) ? parseInt(bLabel, 10) : null
+    // 年份版本优先，按年份降序
+    if (aYear && bYear) return bYear - aYear
+    if (aYear) return -1
+    if (bYear) return 1
+    // revision_no 降序
+    if (a.revision_no !== b.revision_no) return b.revision_no - a.revision_no
+    // created_at 降序兜底
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+  return list
 })
 
 // --------------------- edit label ---------------------
 const editingLabelId = ref<string | null>(null)
 const editLabelValue = ref('')
+const savingLabelFlag = ref(false)
 
 function startEditLabel(version: DocRevision) {
   editingLabelId.value = version.id
@@ -225,11 +245,21 @@ function cancelEditLabel() {
 }
 
 async function saveLabel(version: DocRevision) {
+  // 防重入：已退出编辑态或正在提交中则跳过
+  if (editingLabelId.value !== version.id || savingLabelFlag.value) return
+
   const newVal = editLabelValue.value.trim()
+
+  // 无变化则仅退出编辑态，不发请求
+  if (!newVal || newVal === version.revision_label) {
+    editingLabelId.value = null
+    editLabelValue.value = ''
+    return
+  }
+
+  savingLabelFlag.value = true
   editingLabelId.value = null
   editLabelValue.value = ''
-
-  if (!newVal || newVal === version.revision_label) return
 
   try {
     await updateRevisionLabel(version.id, newVal)
@@ -238,6 +268,8 @@ async function saveLabel(version: DocRevision) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : t('docs.workspace.versionPanel.labelUpdateFailed')
     ElMessage.error(msg)
+  } finally {
+    savingLabelFlag.value = false
   }
 }
 

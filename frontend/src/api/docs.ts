@@ -200,6 +200,7 @@ export interface DocResultDetail {
   document: DocDocument & {
     has_preview_result: boolean
     resolved_current_revision_id: string | null
+    resolved_current_revision: DocRevision | null
   }
   revision: {
     id: string

@@ -2265,6 +2265,7 @@ export default {
         currentSetFailed: '切换当前版本失败',
         labelUpdated: '版本号已更新',
         labelUpdateFailed: '更新版本号失败',
+        emptyText: '暂无版本',
       },
       settings: {
         settings: '设置',

@@ -274,6 +274,12 @@ class DocController {
   /**
    * 获取文档详情
    * GET /api/docs/:documentId
+   *
+   * 响应 document 对象包含：
+   * - current_revision_id: 用户/系统指定的当前版本 ID（主源）
+   * - resolved_current_revision_id / resolved_current_revision: 平台解析后的实际当前版本
+   *
+   * 消费约定：调用方应始终使用 resolved_* 字段判断当前版本。
    */
   async getDocument(ctx) {
     const startTime = Date.now();
@@ -327,6 +333,15 @@ class DocController {
   /**
    * 获取文档结果详情（阶段一：上传->OCR->预览）
    * GET /api/docs/documents/:documentId/result
+   *
+   * 响应 document 对象包含两个当前版本字段：
+   * - resolved_current_revision_id: 平台解析后的实际当前版本 ID
+   * - resolved_current_revision: 平台解析后的实际当前版本完整对象
+   *
+   * 调用方消费规则：
+   * - 始终使用 resolved_current_revision / resolved_current_revision_id 判断"当前版本"
+   * - 禁止自行遍历版本列表推断当前版本
+   * - current_revision_id 是用户指定值，resolved_* 是平台解析后的权威结果
    */
   async getDocumentResult(ctx) {
     try {
@@ -518,7 +533,17 @@ class DocController {
         document: {
           ...document,
           has_preview_result: hasPreview,
+          // 使用平台统一解析当前版本（与 getDocument / listVersions 语义对齐）
           resolved_current_revision_id: document.current_revision_id || (revision ? revision.id : null),
+          resolved_current_revision: revision ? {
+            id: revision.id,
+            document_id: revision.document_id,
+            revision_no: revision.revision_no,
+            revision_label: revision.revision_label,
+            revision_status: revision.revision_status,
+            created_by: revision.created_by,
+            created_at: revision.created_at,
+          } : null,
         },
         revision: revision ? {
           ...revision,
@@ -566,6 +591,12 @@ class DocController {
   /**
    * 获取版本列表
    * GET /api/docs/documents/:documentId/revisions
+   *
+   * 响应包含两个当前版本字段：
+   * - current_revision_id: 用户/系统指定的当前版本 ID（主源）
+   * - resolved_current_revision_id / resolved_current_revision: 平台解析后的实际当前版本
+   *
+   * 消费约定：调用方应始终使用 resolved_* 字段判断当前版本，禁止自行遍历列表推断。
    */
   async listVersions(ctx) {
     try {

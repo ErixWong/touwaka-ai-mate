@@ -2275,6 +2275,7 @@ export default {
         currentSetFailed: 'Failed to set current version',
         labelUpdated: 'Version label updated',
         labelUpdateFailed: 'Failed to update version label',
+        emptyText: 'No versions',
       },
       settings: {
         settings: 'Settings',
