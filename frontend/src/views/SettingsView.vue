@@ -287,11 +287,6 @@
       <AppManagementTab />
     </div>
 
-    <!-- 处理脚本管理（仅管理员） -->
-    <div v-if="activeTab === 'handlers' && isAdmin" class="settings-section handlers-section">
-      <HandlerManagementTab />
-    </div>
-
     <!-- AppClock 运行状态（仅管理员） -->
     <div v-if="activeTab === 'appClock' && isAdmin" class="settings-section appclock-section">
       <AppClockStatusTab />
@@ -502,7 +497,6 @@ import ResidentProcessesTab from '@/components/settings/ResidentProcessesTab.vue
 import AttachmentTab from '@/components/settings/AttachmentTab.vue'
 import McpTab from '@/components/settings/McpTab.vue'
 import AppManagementTab from '@/components/settings/AppManagementTab.vue'
-import HandlerManagementTab from '@/components/settings/HandlerManagementTab.vue'
 import AppClockStatusTab from '@/components/settings/AppClockStatusTab.vue'
 import Pagination from '@/components/Pagination.vue'
 import packageInfo from '../../package.json'
@@ -549,7 +543,6 @@ const systemMenuItems = [
   { key: 'attachment', label: t('settings.attachmentManagement'), route: '/system/attachments' },
   { key: 'mcp', label: t('settings.mcp.management'), route: '/system/mcp' },
   { key: 'apps', label: t('settings.appManagement.management'), route: '/system/apps' },
-  { key: 'handlers', label: t('settings.handlerManagement.management'), route: '/system/handlers' },
   { key: 'appClock', label: t('appClock.statusPanel'), route: '/system/app-clock' },
   { key: 'system', label: t('settings.systemConfig'), route: '/system/config' },
 ]
