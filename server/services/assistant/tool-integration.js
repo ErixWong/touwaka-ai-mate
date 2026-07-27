@@ -8,6 +8,7 @@
  */
 
 import logger from '../../../lib/logger.js';
+import { summarizeToolParamsForLog } from '../../../lib/tool-log-sanitizer.js';
 
 // 动态导入缓存
 let ToolManagerClass = null;
@@ -138,7 +139,7 @@ export async function getInheritedToolDefinitions(db, toolIds, expertId) {
  * @returns {Promise<object>} 工具执行结果
  */
 export async function executeInheritedTool(db, toolId, params, context) {
-  logger.info(`[ToolIntegration] 执行继承工具: ${toolId}`, params);
+  logger.info(`[ToolIntegration] 执行继承工具: ${toolId}`, summarizeToolParamsForLog(params));
 
   try {
     const ToolManager = await getToolManagerClass();

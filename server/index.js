@@ -901,7 +901,7 @@ class ApiServer {
             logger.info('[Startup] ClockCore started with internal jobs');
           } else {
             logger.warn('[Startup] ClockCore disabled by ENABLE_CLOCK_CORE');
-            logger.warn('[Startup] Document pipeline auto-processing is disabled; set ENABLE_CLOCK_CORE=1 to advance pending_ocr/ocr_processing documents');
+            logger.warn('[Startup] Document pipeline auto-processing is disabled; set ENABLE_CLOCK_CORE=1 to advance OCR, clean, outline, and chunk stages');
           }
         }
 
