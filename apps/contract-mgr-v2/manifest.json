@@ -9,6 +9,9 @@
   "license": "MIT",
   "runtime": {
     "tick": "tick/index.js",
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    },
     "backup": {
       "export": "backup/export.js",
       "import": "backup/import.js"
@@ -380,7 +383,6 @@
       "failure_next": null
     }
   ],
-  "component": "ContractV2View",
   "apis": [
     { "path": "/org-nodes/tree", "methods": ["GET"], "handler": "server/controllers/org-nodes.js" },
     { "path": "/org-nodes", "methods": ["POST"], "handler": "server/controllers/org-nodes.js" },

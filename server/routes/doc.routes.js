@@ -15,6 +15,8 @@ export default (controller) => {
 
   // 文档接入（启动固定流水线）— 2.1
   router.post('/intakes', authenticate(), controller.createIntake.bind(controller));
+  router.post('/intakes/import-task', authenticate(), controller.importGatewayTask.bind(controller));
+  router.get('/gateway-tasks/:taskId', authenticate(), controller.probeGatewayTask.bind(controller));
 
   // 为已有文档上传新版本（人工版本管理入口）— 2.1a
   router.post('/documents/:documentId/intake-revision', authenticate(), controller.createIntakeRevision.bind(controller));

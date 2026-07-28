@@ -246,7 +246,7 @@
       "disable_model_invocation": true,
       "user_invocable": true,
       "allowed_tools": null,
-      "is_active": true
+      "is_active": false
     },
     {
       "id": "mnbdoe1alv92mmh4f28y",

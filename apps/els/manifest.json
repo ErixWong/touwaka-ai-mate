@@ -45,6 +45,10 @@
     ]
   },
   "states": [],
-  "component": "ELSStudyView",
+  "runtime": {
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
+  },
   "visibility": "all"
 }

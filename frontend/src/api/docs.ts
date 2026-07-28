@@ -411,6 +411,35 @@ export async function updateRevisionLabel(revisionId: string, revision_label: st
   return apiRequest<DocRevision>(apiClient.patch(`/docs/revisions/${revisionId}/label`, { revision_label }))
 }
 
+export interface GatewayTaskProbe {
+  task_id: string
+  status: 'submitted' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'not_found'
+  progress?: number | null
+  message?: string | null
+  filename?: string | null
+  artifact_name?: string | null
+  image_count?: number
+  created_at?: string | null
+  completed_at?: string | null
+  already_imported?: boolean
+  existing_document?: { id: string; title: string; processing_status: string } | null
+}
+
+export interface ImportGatewayTaskResult {
+  document_id: string
+  revision_id: string
+  title: string
+  processing_status: string
+}
+
+export async function probeGatewayTask(taskId: string): Promise<GatewayTaskProbe> {
+  return apiRequest<GatewayTaskProbe>(apiClient.get(`/docs/gateway-tasks/${encodeURIComponent(taskId)}`))
+}
+
+export async function importGatewayTask(data: { collection_id: string; task_id: string; title?: string; force?: boolean }): Promise<ImportGatewayTaskResult> {
+  return apiRequest<ImportGatewayTaskResult>(apiClient.post('/docs/intakes/import-task', data))
+}
+
 export async function submitOcr(documentId: string, data: SubmitOcrRequest = {}): Promise<SubmitOcrResult> {
   return apiRequest<SubmitOcrResult>(apiClient.post(`/docs/documents/${documentId}/ocr/submit`, data))
 }

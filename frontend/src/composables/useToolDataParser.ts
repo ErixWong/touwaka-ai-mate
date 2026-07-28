@@ -26,10 +26,12 @@ export interface NormalizedToolData {
   arguments: Record<string, unknown> | null
 }
 
-const parsedToolCallCache = new Map<string, { source: unknown; data: ToolCallData | null }>()
+type ParsedToolCallsRaw = ToolCallData | ToolCallData[] | null
+
+const parsedToolCallCache = new Map<string, { source: unknown; data: ParsedToolCallsRaw }>()
 const normalizedToolDataCache = new Map<string, { source: unknown; data: NormalizedToolData }>()
 
-const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
+const parseToolCallsRaw = (message: ChatMessage): ParsedToolCallsRaw => {
   if (!message.tool_calls) return null
 
   const cached = parsedToolCallCache.get(message.id)
@@ -42,7 +44,7 @@ const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
       ? JSON.parse(message.tool_calls)
       : message.tool_calls
 
-    const parsed = toolCalls as ToolCallData
+    const parsed = toolCalls as ToolCallData | ToolCallData[]
     parsedToolCallCache.set(message.id, { source: message.tool_calls, data: parsed })
     return parsed
   } catch (e) {
@@ -50,6 +52,12 @@ const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
     parsedToolCallCache.set(message.id, { source: message.tool_calls, data: null })
     return null
   }
+}
+
+const parseToolCalls = (message: ChatMessage): ToolCallData | null => {
+  const toolCalls = parseToolCallsRaw(message)
+  if (!toolCalls) return null
+  return Array.isArray(toolCalls) ? (toolCalls[0] ?? null) : toolCalls
 }
 
 const getToolData = (message: ChatMessage): NormalizedToolData => {
@@ -73,20 +81,9 @@ const getToolData = (message: ChatMessage): NormalizedToolData => {
 }
 
 const parseToolCallsToArray = (message: ChatMessage): ToolCallData[] => {
-  if (!message.tool_calls) return []
-
-  try {
-    const toolCalls = typeof message.tool_calls === 'string'
-      ? JSON.parse(message.tool_calls)
-      : message.tool_calls
-
-    if (Array.isArray(toolCalls)) {
-      return toolCalls as ToolCallData[]
-    }
-    return [toolCalls as ToolCallData]
-  } catch {
-    return []
-  }
+  const toolCalls = parseToolCallsRaw(message)
+  if (!toolCalls) return []
+  return Array.isArray(toolCalls) ? toolCalls : [toolCalls]
 }
 
 const formatToolCallTime = (toolCall: ToolCallData): string => {
@@ -234,6 +231,7 @@ let instance: ReturnType<typeof createInstance> | null = null
 function createInstance() {
   return {
     parseToolCalls,
+    parseToolCallsRaw,
     getToolData,
     parseToolCallsToArray,
     formatToolCallTime,

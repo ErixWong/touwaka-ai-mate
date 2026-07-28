@@ -176,11 +176,8 @@ async getAppWithRuntime(appId) {
             valid: false,
             manifest_error: manifestError,
             has_tick: false,
-            has_frontend: !!app.component,
-            frontend: app.component ? {
-              component: app.component,
-              legacy: true,
-            } : null,
+            has_frontend: false,
+            frontend: null,
             has_backup: false,
           },
         },
@@ -442,11 +439,8 @@ async getAppWithRuntime(appId) {
           valid: false,
           error: runtimeError,
           has_tick: false,
-          has_frontend: !!app.component,
-          frontend: app.component ? {
-            component: app.component,
-            legacy: true,
-          } : null,
+          has_frontend: false,
+          frontend: null,
           has_backup: false,
         },
       });

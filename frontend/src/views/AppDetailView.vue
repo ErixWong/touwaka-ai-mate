@@ -7,7 +7,7 @@
     </div>
     <div v-else-if="!AppComponent" class="empty-state">
       <p>该应用尚未配置前端组件</p>
-      <p class="empty-hint">请在应用 manifest 中配置 runtime.frontend.entry 或 component 字段</p>
+      <p class="empty-hint">请在应用 manifest 中配置 runtime.frontend.entry</p>
       <button class="btn-back" @click="goBack">← 返回</button>
     </div>
     <component v-else :is="AppComponent" :app="currentApp" />
@@ -18,17 +18,6 @@
 import { shallowRef, ref, onMounted, defineAsyncComponent, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAppWithRuntime, type AppRuntimeFrontend, type MiniApp } from '@/api/mini-apps'
-
-const AppComponentMap: Record<string, Component> = {
-  'ContractMgrView': defineAsyncComponent(() => import('@/views/contract-mgr/ContractMgrView.vue')),
-  'ContractV2View': defineAsyncComponent(() => import('@/views/contract-v2/ContractV2View.vue')),
-  'DowntimeAnalyzer': defineAsyncComponent(() => import('@/views/downtime-analyzer/DowntimeAnalyzer.vue')),
-  'ELSStudyView': defineAsyncComponent(() => import('@/views/els/ELSStudyView.vue')),
-  'InvoiceView': defineAsyncComponent(() => import('@/views/invoice/InvoiceView.vue')),
-  'OcrToolView': defineAsyncComponent(() => import('@/views/ocr-tool/OcrToolView.vue')),
-  'ResumeScreeningView': defineAsyncComponent(() => import('@/views/resume-fast-screening/ResumeScreeningView.vue')),
-  'CurrentFeatureAnalyzerView': defineAsyncComponent(() => import('@apps/current-feature-analyzer/frontend/views/CurrentFeatureAnalyzerView.vue')),
-}
 
 const RuntimeComponentModules = import.meta.glob('@apps/*/frontend/views/*.vue')
 
@@ -53,19 +42,11 @@ onMounted(async () => {
 function resolveAppComponent(app: MiniApp | null): Component | null {
   if (!app) return null
 
-  const runtimeComponent = resolveRuntimeFrontendComponent(app.id, app.runtime?.frontend)
-  if (runtimeComponent) return runtimeComponent
-
-  const componentKey = app.runtime?.frontend?.component || app.component
-  if (componentKey && componentKey in AppComponentMap) {
-    return AppComponentMap[componentKey]!
-  }
-
-  return null
+  return resolveRuntimeFrontendComponent(app.id, app.runtime?.frontend)
 }
 
 function resolveRuntimeFrontendComponent(appId: string, frontend?: AppRuntimeFrontend | null): Component | null {
-  if (!frontend?.entry || frontend.legacy) return null
+  if (!frontend?.entry) return null
 
   const entry = frontend.entry.replace(/^\.?\//, '')
   const loader = [

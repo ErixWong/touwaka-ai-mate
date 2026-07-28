@@ -42,6 +42,10 @@
     ]
   },
   "states": [],
-  "component": "ResumeScreeningView",
+  "runtime": {
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
+  },
   "visibility": "all"
 }

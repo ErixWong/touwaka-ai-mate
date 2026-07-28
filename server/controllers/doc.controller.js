@@ -25,13 +25,11 @@ import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
-import DocumentIntakeService from '../../lib/document-intake.service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
-import { sortRevisionList, resolveCurrentRevision, resolveCurrentRevisionId, validateRevisionLabelUniqueness } from '../../lib/doc-version-utils.js';
 
 class DocController {
   constructor(db) {
@@ -110,11 +108,11 @@ class DocController {
       const systemSettingService = getSystemSettingService(this.db);
       this.documentOcrService = new DocumentOcrService(this.db, {
         callMcp: async (server, tool, params, timeoutMs) => {
-          const appClock = ctx?.app?.context?.appClock;
-          if (!appClock || typeof appClock.callMcp !== 'function') {
-            throw new Error('AppClock MCP caller not available');
+          const mcpToolCaller = ctx?.app?.context?.mcpToolCaller;
+          if (!mcpToolCaller || typeof mcpToolCaller.callMcp !== 'function') {
+            throw new Error('MCP tool caller not available');
           }
-          return await appClock.callMcp(server, tool, params, timeoutMs);
+          return await mcpToolCaller.callMcp(server, tool, params, timeoutMs);
         },
         getDocPipelineConfig: async () => {
           const records = await systemSettingService.SystemSetting.findAll({
@@ -274,12 +272,6 @@ class DocController {
   /**
    * 获取文档详情
    * GET /api/docs/:documentId
-   *
-   * 响应 document 对象包含：
-   * - current_revision_id: 用户/系统指定的当前版本 ID（主源）
-   * - resolved_current_revision_id / resolved_current_revision: 平台解析后的实际当前版本
-   *
-   * 消费约定：调用方应始终使用 resolved_* 字段判断当前版本。
    */
   async getDocument(ctx) {
     const startTime = Date.now();
@@ -298,6 +290,7 @@ class DocController {
           model: this.models.DocVersion,
           as: 'document_revisions',
           attributes: ['id', 'revision_no', 'revision_label', 'revision_status', 'is_current', 'effective_from', 'effective_to', 'created_at'],
+          order: [['revision_no', 'DESC']],
         }],
       });
 
@@ -305,24 +298,7 @@ class DocController {
         ctx.throw(404, 'Document not found');
       }
 
-      // 使用平台统一排序对嵌套的 revisions 进行排序
-      const revisionsPlain = document.document_revisions && Array.isArray(document.document_revisions)
-        ? sortRevisionList(document.document_revisions.map(r => (r.toJSON ? r.toJSON() : r)))
-        : [];
-
-      // 将 document 转为普通对象，替换排序后的 revisions 并附加解析后的当前版本
-      const docPlain = document.toJSON ? document.toJSON() : document;
-      docPlain.document_revisions = revisionsPlain;
-
-      // 使用平台统一解析当前版本（显式返回，避免前端自行推断）
-      const resolvedCurrentRevision = resolveCurrentRevision(
-        { id: docPlain.id, current_revision_id: docPlain.current_revision_id },
-        revisionsPlain
-      );
-      docPlain.resolved_current_revision_id = resolvedCurrentRevision ? resolvedCurrentRevision.id : null;
-      docPlain.resolved_current_revision = resolvedCurrentRevision || null;
-
-      ctx.success(docPlain);
+      ctx.success(document);
       logger.info(`[Doc] getDocument: ${documentId}, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] getDocument error:', error);
@@ -333,15 +309,6 @@ class DocController {
   /**
    * 获取文档结果详情（阶段一：上传->OCR->预览）
    * GET /api/docs/documents/:documentId/result
-   *
-   * 响应 document 对象包含两个当前版本字段：
-   * - resolved_current_revision_id: 平台解析后的实际当前版本 ID
-   * - resolved_current_revision: 平台解析后的实际当前版本完整对象
-   *
-   * 调用方消费规则：
-   * - 始终使用 resolved_current_revision / resolved_current_revision_id 判断"当前版本"
-   * - 禁止自行遍历版本列表推断当前版本
-   * - current_revision_id 是用户指定值，resolved_* 是平台解析后的权威结果
    */
   async getDocumentResult(ctx) {
     try {
@@ -533,17 +500,6 @@ class DocController {
         document: {
           ...document,
           has_preview_result: hasPreview,
-          // 使用平台统一解析当前版本（与 getDocument / listVersions 语义对齐）
-          resolved_current_revision_id: document.current_revision_id || (revision ? revision.id : null),
-          resolved_current_revision: revision ? {
-            id: revision.id,
-            document_id: revision.document_id,
-            revision_no: revision.revision_no,
-            revision_label: revision.revision_label,
-            revision_status: revision.revision_status,
-            created_by: revision.created_by,
-            created_at: revision.created_at,
-          } : null,
         },
         revision: revision ? {
           ...revision,
@@ -591,12 +547,6 @@ class DocController {
   /**
    * 获取版本列表
    * GET /api/docs/documents/:documentId/revisions
-   *
-   * 响应包含两个当前版本字段：
-   * - current_revision_id: 用户/系统指定的当前版本 ID（主源）
-   * - resolved_current_revision_id / resolved_current_revision: 平台解析后的实际当前版本
-   *
-   * 消费约定：调用方应始终使用 resolved_* 字段判断当前版本，禁止自行遍历列表推断。
    */
   async listVersions(ctx) {
     try {
@@ -611,34 +561,17 @@ class DocController {
       const document = await this.models.DocDocument.findOne({
         where: { id: documentId },
         attributes: ['id', 'current_revision_id'],
-        raw: true,
       });
 
       const versions = await this.models.DocVersion.findAll({
         where: { document_id: documentId },
-        attributes: [
-          'id', 'document_id', 'revision_no', 'revision_label',
-          'revision_status', 'is_current', 'effective_from', 'effective_to',
-          'change_summary', 'created_by', 'created_at', 'updated_at', 'diff_status',
-        ],
-        raw: true,
+        order: [['revision_no', 'DESC']],
       });
-
-      // 使用平台统一排序：年份优先 → 版号次之 → 创建时间兜底
-      const sortedVersions = sortRevisionList(versions);
-
-      // 使用平台统一解析当前版本（显式返回，避免前端自行推断）
-      const resolvedCurrentRevision = resolveCurrentRevision(
-        { id: document.id, current_revision_id: document.current_revision_id },
-        sortedVersions
-      );
 
       ctx.success({
         document_id: document.id,
         current_revision_id: document.current_revision_id,
-        resolved_current_revision_id: resolvedCurrentRevision ? resolvedCurrentRevision.id : null,
-        resolved_current_revision: resolvedCurrentRevision || null,
-        items: sortedVersions,
+        items: versions,
       });
     } catch (error) {
       logger.error('[Doc] listVersions error:', error);
@@ -1016,52 +949,6 @@ async createVersion(ctx) {
   }
 
   /**
-   * 修改 revision_label（人工版本号编辑）
-   * PATCH /api/docs/revisions/:revisionId/label
-   */
-  async updateRevisionLabel(ctx) {
-    try {
-      this.ensureModels();
-      this.ensureDocAccessService();
-      const { revisionId } = ctx.params;
-      const { revision_label } = ctx.request.body;
-      const userId = ctx.state.session.id;
-
-      if (!revision_label || typeof revision_label !== 'string' || !revision_label.trim()) {
-        ctx.throw(400, 'revision_label is required and must be a non-empty string');
-      }
-
-      const newLabel = revision_label.trim();
-
-      const version = await this.models.DocVersion.findOne({
-        where: { id: revisionId },
-      });
-      if (!version) ctx.throw(404, 'Revision not found');
-
-      const canWrite = await this.docAccessService.canWrite(version.document_id, userId);
-      if (!canWrite) ctx.throw(403, 'Write access denied');
-
-      // 校验同一 doc_id 下 label 唯一性（排除自身）
-      const existingVersions = await this.models.DocVersion.findAll({
-        where: { document_id: version.document_id },
-        attributes: ['id', 'revision_label'],
-        raw: true,
-      });
-      const uniquenessCheck = validateRevisionLabelUniqueness(existingVersions, newLabel, revisionId);
-      if (!uniquenessCheck.valid) {
-        ctx.throw(409, uniquenessCheck.message);
-      }
-
-      await version.update({ revision_label: newLabel });
-      ctx.success(version);
-      logger.info(`[Doc] updateRevisionLabel: ${revisionId} → "${newLabel}"`);
-    } catch (error) {
-      logger.error('[Doc] updateRevisionLabel error:', error);
-      ctx.throw(error.status || 500, error.message);
-    }
-  }
-
-  /**
    * 统一召回入口
    * POST /api/docs/recall
    *
@@ -1307,6 +1194,20 @@ async createVersion(ctx) {
 
       if (document.processing_status !== 'error') {
         ctx.throw(400, 'Only documents in error state can be retried');
+      }
+
+      if (document.processing_error_code === 'gateway_import_failed') {
+        this.ensureDocumentOcrService(ctx);
+        const result = await this.documentOcrService.retryImportGatewayTask(documentId);
+        await document.update({
+          processing_retry_count: document.processing_retry_count + 1,
+        });
+        ctx.success({
+          document_id: document.id,
+          processing_status: result.processing_status,
+        });
+        logger.info(`[Doc] retryProcessing: ${documentId} -> gateway_import retry (retry #${document.processing_retry_count + 1})`);
+        return;
       }
 
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
@@ -1618,7 +1519,7 @@ async createVersion(ctx) {
     try {
       this.ensureModels();
       const userId = ctx.state.session.id;
-      const { app_id, collection_id, schema_id, revision_label, attachments } = ctx.request.body;
+      const { app_id, collection_id, schema_id, attachments } = ctx.request.body;
 
       if (!app_id) ctx.throw(400, 'app_id is required');
       if (!collection_id) ctx.throw(400, 'collection_id is required');
@@ -1656,10 +1557,6 @@ async createVersion(ctx) {
         }
       }
 
-      const initialRevisionLabel = typeof revision_label === 'string' && revision_label.trim()
-        ? revision_label.trim()
-        : 'v1';
-
       const sourceRefId = Utils.newID();
       const firstAttachment = attachmentList.length > 0 ? attachmentList[0] : null;
       const intakeMetadata = JSON.stringify({
@@ -1687,7 +1584,7 @@ async createVersion(ctx) {
           id: revisionId,
           document_id: documentId,
           revision_no: 1,
-          revision_label: initialRevisionLabel,
+          revision_label: 'v1',
           revision_status: 'draft',
           is_current: 1,
           change_summary: 'Initial intake revision',
@@ -1729,77 +1626,63 @@ async createVersion(ctx) {
     }
   }
 
-  /**
-   * 为已有文档上传新版本（人工版本管理入口）
-   * POST /api/docs/documents/:documentId/intake-revision
-   *
-   * 语义：不创建新 doc_id，在当前文档下追加 revision_id，
-   * 触发完整解析链路（OCR → Clean → Outline → Chunk → Embedding）。
-   *
-   * 与 POST /api/docs/intakes 的区别：
-   *   - intakes：创建新文档 + 首个版本
-   *   - intake-revision：在已有文档下追加新版本
-   */
-  async createIntakeRevision(ctx) {
+  async probeGatewayTask(ctx) {
     try {
       this.ensureModels();
-      this.ensureDocAccessService();
+      this.ensureDocumentOcrService(ctx);
       const userId = ctx.state.session.id;
-      const { documentId } = ctx.params;
-      const { attachments, revision_label, change_summary } = ctx.request.body;
-
-      // 校验文档存在且可写
-      const document = await this.models.DocDocument.findOne({
-        where: { id: documentId },
-        attributes: ['id', 'collection_id', 'current_revision_id', 'metadata'],
-        raw: true,
-      });
-      if (!document) ctx.throw(404, 'Document not found');
-
-      const canWrite = await this.docAccessService.canWrite(documentId, userId);
-      if (!canWrite) ctx.throw(403, 'Write access denied');
-
-      // 校验附件
-      const attachmentList = Array.isArray(attachments) ? attachments : [];
-      const attachmentIds = attachmentList.map(item => item?.id).filter(Boolean);
-      const uniqueAttachmentIds = [...new Set(attachmentIds)];
-
-      if (attachmentList.length > 0 && attachmentIds.length !== attachmentList.length) {
-        ctx.throw(400, 'attachments must contain valid attachment ids');
+      const { taskId } = ctx.params;
+      if (!taskId || !/^[0-9a-zA-Z-]{32,40}$/.test(taskId)) {
+        ctx.throw(400, 'Invalid task id');
       }
 
-      if (uniqueAttachmentIds.length > 0) {
-        const Attachment = this.db.getModel('attachment');
-        const attachmentRows = await Attachment.findAll({
-          where: { id: uniqueAttachmentIds },
-          attributes: ['id', 'created_by'],
-          raw: true,
-        });
-
-        if (attachmentRows.length !== uniqueAttachmentIds.length) {
-          ctx.throw(404, 'One or more attachments not found');
-        }
-
-        const deniedAttachment = attachmentRows.find(item => item.created_by !== userId);
-        if (deniedAttachment) {
-          ctx.throw(403, 'Attachment access denied');
-        }
-      }
-
-      // 委托给 DocumentIntakeService（复用既有版本创建 + 附件挂接 + 状态重置逻辑）
-      const intakeService = new DocumentIntakeService(this.db);
-      const result = await intakeService.createIntakeRevision({
-        documentId,
-        attachments: attachmentList,
-        userId,
-        revisionLabel: revision_label || undefined,
-        changeSummary: change_summary || undefined,
-      });
-
+      const result = await this.documentOcrService.probeGatewayTask(taskId, { userId });
       ctx.success(result);
-      logger.info(`[Doc] createIntakeRevision: ${result.revision_id} for document ${documentId}`);
     } catch (error) {
-      logger.error('[Doc] createIntakeRevision error:', error);
+      if (error.code === 'gateway_task_not_found') {
+        ctx.success({ task_id: ctx.params.taskId, status: 'not_found' });
+        return;
+      }
+      logger.error('[Doc] probeGatewayTask error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async importGatewayTask(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocumentOcrService(ctx);
+      const userId = ctx.state.session.id;
+      const { collection_id, task_id, title, force } = ctx.request.body || {};
+
+      if (!collection_id) ctx.throw(400, 'collection_id is required');
+      if (!task_id || !/^[0-9a-zA-Z-]{32,40}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
+
+      const DocumentCollection = this.db.getModel('document_collection');
+      const collection = await DocumentCollection.findByPk(collection_id);
+      if (!collection) ctx.throw(404, 'Collection not found');
+
+      const collectionAccess = new CollectionAccessService(this.db);
+      const canWrite = await collectionAccess.canWrite(collection_id, userId);
+      if (!canWrite) ctx.throw(403, 'Only the collection owner can import documents');
+
+      const result = await this.documentOcrService.importGatewayTask({
+        taskId: task_id,
+        collectionId: collection_id,
+        userId,
+        title: typeof title === 'string' ? title : null,
+        force: force === true,
+      });
+      ctx.success(result);
+      logger.info(`[Doc] importGatewayTask: ${task_id} -> ${result.document_id} for collection ${collection_id}`);
+    } catch (error) {
+      if (error.code === 'gateway_task_already_imported') {
+        ctx.throw(409, 'Gateway task already imported');
+      }
+      if (error.code === 'gateway_task_not_completed') {
+        ctx.throw(409, `Gateway task is not completed (status: ${error.gatewayStatus || 'unknown'})`);
+      }
+      logger.error('[Doc] importGatewayTask error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
