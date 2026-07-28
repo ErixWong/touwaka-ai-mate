@@ -68,6 +68,9 @@ async function testExecuteRunsChildThroughRuntime() {
   assert.equal(result.agent_invocation_context, delegation.child_invocation);
   assert.equal(executorInputs.length, 1);
   assert.equal(executorInputs[0].invocation_context, delegation.child_invocation);
+  assert.equal(executorInputs[0].projection.invocation_context, delegation.child_invocation);
+  assert.equal(executorInputs[0].projection.messages[0].role, 'system');
+  assert.equal(executorInputs[0].projection.messages[1].role, 'user');
   assert.equal(executorInputs[0].principal_user_id, undefined);
   assert.equal(executorInputs[0].child_invocation.principal_user_id, 'user_1');
   assert.equal(executorInputs[0].child_invocation.caller_agent_id, 'expert_parent');
