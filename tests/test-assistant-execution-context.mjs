@@ -12,6 +12,7 @@ function testBuildsContextFromPersistedRequest() {
   const messageService = { append: () => {} };
   const context = buildAssistantExecutionContext({
     request_id: 'req_1',
+    assistant_id: 'assistant_1',
     user_id: 'user_1',
     contact_id: 'contact_1',
     expert_id: 'expert_1',
@@ -32,6 +33,22 @@ function testBuildsContextFromPersistedRequest() {
     expertId: 'expert_1',
     userId: 'user_1',
     contactId: 'contact_1',
+    agent_invocation: {
+      run_id: 'legacy_child_req_1',
+      parent_run_id: 'legacy_parent_req_1',
+      principal_user_id: 'user_1',
+      caller_agent_id: 'expert_1',
+      callee_agent_id: 'assistant_1',
+      delegation_depth: 1,
+      delegation_chain: ['expert_1', 'assistant_1'],
+      topic_id: 'topic_1',
+      task_id: null,
+      request_id: 'req_1',
+      workspace_scope: { workdir: 'D:/workspace/task' },
+      capability_scope: { legacy_inherited_tools: [] },
+      invocation_mode: 'legacy_assistant',
+      source: 'legacy_assistant',
+    },
     messageService,
   });
 }
@@ -57,6 +74,7 @@ function testFallsBackToWorkspaceForScopeOnly() {
   assert.equal(context.workdir, 'D:/workspace/fallback');
   assert.equal(context.userId, null);
   assert.equal(context.contactId, null);
+  assert.equal(context.agent_invocation, null);
 }
 
 function testHandlesMissingInput() {
@@ -72,6 +90,7 @@ function testHandlesMissingInput() {
   assert.equal(context.expertId, undefined);
   assert.equal(context.userId, 'user_3');
   assert.equal(context.contactId, 'contact_3');
+  assert.equal(context.agent_invocation, null);
 }
 
 function main() {

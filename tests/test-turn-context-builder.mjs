@@ -100,6 +100,18 @@ function testBuildStreamTurnContext() {
     taskContext,
     request_id: 'request_1',
   });
+  assert.equal(turnContext.agent_invocation.principal_user_id, 'user_1');
+  assert.equal(turnContext.agent_invocation.caller_agent_id, null);
+  assert.equal(turnContext.agent_invocation.callee_agent_id, 'expert_1');
+  assert.equal(turnContext.agent_invocation.delegation_depth, 0);
+  assert.deepEqual(turnContext.agent_invocation.delegation_chain, ['expert_1']);
+  assert.equal(turnContext.agent_invocation.topic_id, 'topic_1');
+  assert.equal(turnContext.agent_invocation.task_id, 'task_1');
+  assert.equal(turnContext.agent_invocation.request_id, 'request_1');
+  assert.deepEqual(turnContext.agent_invocation.workspace_scope, {
+    workdir: 'D:/workspace/task',
+    workspace_mode: 'task',
+  });
   assert.deepEqual(turnContext.toolContext, {
     user_id: 'user_1',
     expert_id: 'expert_1',
@@ -117,6 +129,7 @@ function testBuildStreamTurnContext() {
   assert.equal(turnContext.roundInput.task_id, 'task_1');
   assert.equal(turnContext.roundInput.session, session);
   assert.equal(turnContext.roundInput.request_id, 'request_1');
+  assert.equal(turnContext.roundInput.agent_invocation, turnContext.agent_invocation);
 }
 
 function main() {
