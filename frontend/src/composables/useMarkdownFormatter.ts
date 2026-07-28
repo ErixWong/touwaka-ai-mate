@@ -143,6 +143,7 @@ const sanitizeMarkdownHtml = (rawHtml: string): string => {
       'href', 'src', 'alt', 'title', 'class',
       'target', 'rel',
       'width', 'height',
+      'rowspan', 'colspan', 'align', 'valign', 'cellpadding', 'cellspacing', 'border',
       'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
       'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
       'transform', 'viewBox', 'xmlns', 'id', 'points', 'text-anchor',
@@ -151,6 +152,24 @@ const sanitizeMarkdownHtml = (rawHtml: string): string => {
       'markerWidth', 'markerHeight', 'orient', 'overflow', 'data-*'
     ],
     ALLOW_DATA_ATTR: true,
+  })
+}
+
+const RAW_HTML_BLOCK_RE = /<table[\s\S]*?<\/table>/gi
+
+const protectRawHtmlBlocks = (content: string): { content: string; blocks: string[] } => {
+  const blocks: string[] = []
+  const protectedContent = content.replace(RAW_HTML_BLOCK_RE, (match) => {
+    blocks.push(match)
+    return `\n\n<div data-raw-html-block="${blocks.length - 1}"></div>\n\n`
+  })
+  return { content: protectedContent, blocks }
+}
+
+const restoreRawHtmlBlocks = (html: string, blocks: string[]): string => {
+  if (!blocks.length) return html
+  return html.replace(/<div data-raw-html-block="(\d+)"><\/div>/g, (_, index: string) => {
+    return blocks[Number(index)] ?? ''
   })
 }
 
@@ -167,9 +186,11 @@ const formatMessage = (content: string, cacheKey?: string) => {
   }
 
   try {
-    const normalizedContent = normalizeInlineMath(content)
+    const { content: protectedContent, blocks } = protectRawHtmlBlocks(content)
+    const normalizedContent = normalizeInlineMath(protectedContent)
     const rawHtml = marked.parse(normalizedContent) as string
-    const htmlWithBlockMath = renderBlockMath(rawHtml)
+    const htmlWithTables = restoreRawHtmlBlocks(rawHtml, blocks)
+    const htmlWithBlockMath = renderBlockMath(htmlWithTables)
     const htmlWithMath = renderInlineMathPlaceholders(htmlWithBlockMath)
     const htmlWithNormalizedImages = normalizeRelativeImageSources(htmlWithMath)
     const cleanHtml = sanitizeMarkdownHtml(htmlWithNormalizedImages)
