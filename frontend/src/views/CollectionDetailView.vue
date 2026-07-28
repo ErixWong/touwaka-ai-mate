@@ -192,7 +192,6 @@
               <div class="doc-list-title">
                 <el-icon v-if="selectedDocId === doc.id" class="active-indicator"><ArrowRight /></el-icon>
                 <span class="doc-list-title-text">{{ doc.source_attachment?.file_name || doc.title }}</span>
-                <el-tag v-if="doc.import_source === 'taskid'" size="small" effect="plain" class="import-source-tag">{{ $t('docs.workspace.collection.taskIdImportTag') }}</el-tag>
               </div>
               <div class="doc-list-meta">
                 <DocStatusBadge :status="doc.processing_status" :ocr-status="doc.ocr_status" size="small" />
@@ -234,17 +233,27 @@
                     <span class="doc-id-label">{{ $t('docs.workspace.panel.docId') }}</span>
                     <span class="doc-id-value">{{ docStore.currentResult.document.id }}</span>
                   </div>
-                  <div class="doc-meta">
-                    <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
-                      {{ processingLabel(docStore.currentResult.processing.status) }}
-                    </el-tag>
-                    <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
-                      {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
-                    </el-tag>
-                    <span class="doc-updated">{{ formatDateTime(docStore.currentResult.document.updated_at) }}</span>
-                  </div>
                 </div>
                 <el-button type="danger" plain size="small" @click="onDeleteDocument">{{ $t('docs.workspace.collection.deleteDoc') }}</el-button>
+              </div>
+              <div class="doc-meta">
+                <div class="doc-meta-left">
+                  <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
+                    {{ processingLabel(docStore.currentResult.processing.status) }}
+                  </el-tag>
+                  <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
+                    {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
+                  </el-tag>
+                  <span class="doc-updated">{{ formatDateTime(docStore.currentResult.document.updated_at) }}</span>
+                </div>
+                <el-tag
+                  v-if="docStore.currentResult.ocr_result?.import_source === 'taskid'"
+                  size="small"
+                  effect="plain"
+                  class="import-source-tag"
+                >
+                  {{ $t('docs.workspace.collection.taskIdImportTag') }}
+                </el-tag>
               </div>
             </div>
 
@@ -809,7 +818,6 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 .doc-list-title-text { overflow: hidden; text-overflow: ellipsis; }
-.import-source-tag { flex-shrink: 0; }
 
 .active-indicator { color: #409eff; font-weight: bold; }
 
@@ -859,7 +867,9 @@ onBeforeUnmount(() => {
   font-family: var(--el-font-family-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
   word-break: break-all;
 }
-.doc-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.doc-meta { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px; }
+.doc-meta-left { display: flex; gap: 8px; align-items: center; }
+.import-source-tag { flex-shrink: 0; }
 .doc-updated { font-size: 12px; color: #909399; }
 
 /* 右栏：侧边栏 */

@@ -234,6 +234,7 @@ export interface DocResultDetail {
     completed_at: string | null
     error_code: string | null
     error_message: string | null
+    import_source?: string | null
     preview_markdown_content?: string | null
     // 新语义（推荐使用）
     preview_markdown_attachment: DocAttachmentInfo | null

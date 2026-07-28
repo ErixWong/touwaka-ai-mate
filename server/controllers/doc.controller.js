@@ -16,7 +16,7 @@ import { Op, Sequelize } from 'sequelize';
 import fs from 'fs/promises';
 import path from 'path';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
-import { hasPreviewResult, buildOcrSemanticObject, collectOcrAttachmentIds } from '../../lib/doc-ocr-utils.js';
+import { hasPreviewResult, buildOcrSemanticObject, collectOcrAttachmentIds, parseOcrMetadata } from '../../lib/doc-ocr-utils.js';
 import DocRecallService from '../../lib/doc-recall-service.js';
 import DocCompareExecutor from '../../lib/doc-compare-executor.js';
 import DocAccessService from '../../lib/doc-access-service.js';
@@ -547,6 +547,7 @@ class DocController {
           completed_at: latestOcrResult.completed_at,
           error_code: latestOcrResult.error_code,
           error_message: latestOcrResult.error_message,
+          import_source: parseOcrMetadata(latestOcrResult.metadata).import_source || null,
           // 新语义（推荐使用）
           preview_markdown_attachment: buildSemanticAttachment(ocrSemantic.preview_markdown_attachment),
           raw_markdown_attachment: buildSemanticAttachment(ocrSemantic.raw_markdown_attachment),

@@ -22,17 +22,27 @@
               <span class="doc-id-label">{{ $t('docs.workspace.panel.docId') }}</span>
               <span class="doc-id-value">{{ docStore.currentResult.document.id }}</span>
             </div>
-            <div class="doc-meta">
-              <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
-                {{ processingLabel(docStore.currentResult.processing.status) }}
-              </el-tag>
-              <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
-                {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
-              </el-tag>
-              <span class="doc-updated">{{ fmt(docStore.currentResult.document.updated_at) }}</span>
-            </div>
           </div>
           <el-button type="danger" plain size="small" @click="onDeleteDocument">{{ $t('docs.workspace.detail.deleteDoc') }}</el-button>
+        </div>
+        <div class="doc-meta">
+          <div class="doc-meta-left">
+            <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
+              {{ processingLabel(docStore.currentResult.processing.status) }}
+            </el-tag>
+            <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
+              {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
+            </el-tag>
+            <span class="doc-updated">{{ fmt(docStore.currentResult.document.updated_at) }}</span>
+          </div>
+          <el-tag
+            v-if="docStore.currentResult.ocr_result?.import_source === 'taskid'"
+            size="small"
+            effect="plain"
+            class="import-source-tag"
+          >
+            {{ $t('docs.workspace.collection.taskIdImportTag') }}
+          </el-tag>
         </div>
       </div>
 
@@ -385,7 +395,9 @@ onBeforeUnmount(() => {
   font-family: var(--el-font-family-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
   word-break: break-all;
 }
-.doc-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.doc-meta { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px; }
+.doc-meta-left { display: flex; gap: 8px; align-items: center; }
+.import-source-tag { flex-shrink: 0; }
 .doc-updated { font-size: 12px; color: #909399; }
 
 .doc-content-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
