@@ -607,6 +607,13 @@ class InternalController {
         skill_id,
         tool_name,
         params,
+        {
+          userId: ctx.state.session?.id || ctx.state.session?.userId || '',
+          accessToken: ctx.state.session?.accessToken || '',
+          expertId: ctx.state.session?.expertId || '',
+          isAdmin: ctx.state.session?.isAdmin || false,
+          workingDirectory: ctx.state.session?.workingDirectory || '',
+        },
         timeout || 60000
       );
 

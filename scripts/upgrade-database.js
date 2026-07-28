@@ -1097,6 +1097,62 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== Agent Child Runner 驻留技能注册 ====================
+  {
+    name: 'agent-child-runner.skill_registration',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT t.id
+        FROM skill_tools t
+        JOIN skills s ON s.id = t.skill_id
+        WHERE s.id = 'agent-child-runner'
+          AND t.id = 'agent-child-runner-invoke'
+          AND t.name = 'invoke'
+          AND t.script_path = 'index.js'
+          AND t.is_resident = 1
+      `);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        INSERT INTO skills (id, name, description, source_type, source_path, is_active, created_at, updated_at)
+        VALUES ('agent-child-runner', 'Agent Child Runner', 'Agent 子任务驻留执行器 - 管理 Child Agent 异步运行状态并回调主服务执行', 'local', 'skills/agent-child-runner', 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name),
+          description = VALUES(description),
+          source_type = VALUES(source_type),
+          source_path = VALUES(source_path),
+          is_active = VALUES(is_active),
+          updated_at = NOW()
+      `);
+      console.log('  ✓ Registered agent-child-runner skill');
+
+      await conn.execute(`
+        INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, is_resident, created_at, updated_at)
+        VALUES (
+          'agent-child-runner-invoke',
+          'agent-child-runner',
+          'invoke',
+          'Agent Child Runner 驻留进程入口工具',
+          '{"type":"object","properties":{"action":{"type":"string","enum":["start","status","result","events","cancel"],"description":"操作类型"},"delegation":{"type":"object","description":"已接受的 delegation envelope，用于 start"},"child_run_id":{"type":"string","description":"Child run ID，用于 status/result/events/cancel"},"options":{"type":"object","description":"运行选项，例如 session"}},"required":["action"]}',
+          'index.js',
+          1,
+          NOW(),
+          NOW()
+        )
+        ON DUPLICATE KEY UPDATE
+          skill_id = VALUES(skill_id),
+          name = VALUES(name),
+          description = VALUES(description),
+          parameters = VALUES(parameters),
+          script_path = VALUES(script_path),
+          is_resident = VALUES(is_resident),
+          updated_at = NOW()
+      `);
+      console.log('  ✓ Registered agent-child-runner invoke tool (is_resident=1)');
+    }
+  },
+
   // ==================== MCP Stateless HTTP 传输支持 ====================
   {
     name: 'mcp_servers.add_stateless_http_transport',

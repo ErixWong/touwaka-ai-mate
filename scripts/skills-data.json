@@ -267,6 +267,30 @@
       "user_invocable": true,
       "allowed_tools": null,
       "is_active": true
+    },
+    {
+      "id": "agent-child-runner",
+      "name": "Agent Child Runner",
+      "description": "Agent 子任务驻留执行器 - 管理 Child Agent 异步运行状态并回调主服务执行",
+      "version": "1.0.0",
+      "author": "System",
+      "tags": [
+        "agent",
+        "resident",
+        "internal"
+      ],
+      "source_type": "local",
+      "source_path": "skills/agent-child-runner",
+      "source_url": null,
+      "skill_md": "---\nname: agent-child-runner\ndescription: \"Internal resident worker for delegated child Agent runs.\"\nis_resident: 1\nuser-invocable: false\nallowed-tools: []\n---\n\n# Agent Child Runner\n\nInternal resident worker for asynchronous child Agent execution.\n\nThis skill is not intended to be exposed directly to the LLM. Root Agent control tools call it through `ResidentSkillManager.invokeByName()` using the `agent-child-runner` / `invoke` entrypoint.\n",
+      "security_score": 100,
+      "security_warnings": null,
+      "license": null,
+      "argument_hint": "",
+      "disable_model_invocation": true,
+      "user_invocable": false,
+      "allowed_tools": "[]",
+      "is_active": true
     }
   ],
   "tools": [
@@ -3369,6 +3393,45 @@
       },
       "script_path": "index.js",
       "is_resident": false
+    },
+    {
+      "id": "agent-child-runner-invoke",
+      "skill_id": "agent-child-runner",
+      "name": "invoke",
+      "description": "Agent Child Runner 驻留进程入口工具",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "status",
+              "result",
+              "events",
+              "cancel"
+            ],
+            "description": "操作类型"
+          },
+          "delegation": {
+            "type": "object",
+            "description": "已接受的 delegation envelope，用于 start"
+          },
+          "child_run_id": {
+            "type": "string",
+            "description": "Child run ID，用于 status/result/events/cancel"
+          },
+          "options": {
+            "type": "object",
+            "description": "运行选项，例如 session"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "script_path": "index.js",
+      "is_resident": true
     }
   ],
   "parameters": []

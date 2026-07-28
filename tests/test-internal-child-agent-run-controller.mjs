@@ -113,9 +113,52 @@ async function testRejectsMissingDelegation() {
   assert.match(ctx.body.message, /delegation\.child_invocation\.run_id is required/);
 }
 
+async function testInvokeResidentToolPassesUserContextAndTimeout() {
+  const calls = [];
+  const controller = new InternalController(createDbStub());
+  controller.setResidentSkillManager({
+    async invokeByName(skillId, toolName, params, userContext, timeout) {
+      calls.push({ skillId, toolName, params, userContext, timeout });
+      return { ok: true };
+    },
+  });
+  const ctx = createCtx({
+    skill_id: 'agent-child-runner',
+    tool_name: 'invoke',
+    params: { action: 'status', child_run_id: 'child_1' },
+    timeout: 1234,
+  });
+  ctx.state.session = {
+    id: 'user_internal',
+    accessToken: 'token_internal',
+    expertId: 'expert_internal',
+    isAdmin: true,
+    workingDirectory: 'D:/work/task',
+  };
+
+  await controller.invokeResidentTool(ctx);
+
+  assert.equal(ctx.body.code, 200);
+  assert.equal(ctx.body.data.ok, true);
+  assert.deepEqual(calls, [{
+    skillId: 'agent-child-runner',
+    toolName: 'invoke',
+    params: { action: 'status', child_run_id: 'child_1' },
+    userContext: {
+      userId: 'user_internal',
+      accessToken: 'token_internal',
+      expertId: 'expert_internal',
+      isAdmin: true,
+      workingDirectory: 'D:/work/task',
+    },
+    timeout: 1234,
+  }]);
+}
+
 async function main() {
   await testExecuteChildAgentRunUsesChatService();
   await testRejectsMissingDelegation();
+  await testInvokeResidentToolPassesUserContextAndTimeout();
 
   console.log('Internal child Agent run controller tests passed.');
 }
