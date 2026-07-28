@@ -8,7 +8,7 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { Op } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
-import { hasPreviewResult } from '../../lib/doc-ocr-utils.js';
+import { hasPreviewResult, parseOcrMetadata } from '../../lib/doc-ocr-utils.js';
 import { getSourceAttachments } from '../../lib/doc-source-attachment.js';
 import CollectionAccessService from '../../lib/collection-access-service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
@@ -294,6 +294,7 @@ class DocCollectionController {
           source_attachment: sourceAttachment,
           ocr_status: latestOcrResult?.status || null,
           has_preview_result: hasPreview,
+          import_source: parseOcrMetadata(latestOcrResult?.metadata).import_source || null,
         };
       });
 

@@ -1196,6 +1196,20 @@ async createVersion(ctx) {
         ctx.throw(400, 'Only documents in error state can be retried');
       }
 
+      if (document.processing_error_code === 'gateway_import_failed') {
+        this.ensureDocumentOcrService(ctx);
+        const result = await this.documentOcrService.retryImportGatewayTask(documentId);
+        await document.update({
+          processing_retry_count: document.processing_retry_count + 1,
+        });
+        ctx.success({
+          document_id: document.id,
+          processing_status: result.processing_status,
+        });
+        logger.info(`[Doc] retryProcessing: ${documentId} -> gateway_import retry (retry #${document.processing_retry_count + 1})`);
+        return;
+      }
+
       const retryStage = this.PROCESSING_RETRY_ERROR_STAGE[document.processing_error_code] || 'pending_ocr';
 
       // 只更新文档状态、清错误码，不通过 enterStage 创建 run 记录
@@ -1608,6 +1622,67 @@ async createVersion(ctx) {
       logger.info(`[Doc] createIntake: ${document.id} for app ${app_id}, collection ${collection_id}`);
     } catch (error) {
       logger.error('[Doc] createIntake error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async probeGatewayTask(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocumentOcrService(ctx);
+      const userId = ctx.state.session.id;
+      const { taskId } = ctx.params;
+      if (!taskId || !/^[0-9a-zA-Z-]{32,40}$/.test(taskId)) {
+        ctx.throw(400, 'Invalid task id');
+      }
+
+      const result = await this.documentOcrService.probeGatewayTask(taskId, { userId });
+      ctx.success(result);
+    } catch (error) {
+      if (error.code === 'gateway_task_not_found') {
+        ctx.success({ task_id: ctx.params.taskId, status: 'not_found' });
+        return;
+      }
+      logger.error('[Doc] probeGatewayTask error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  async importGatewayTask(ctx) {
+    try {
+      this.ensureModels();
+      this.ensureDocumentOcrService(ctx);
+      const userId = ctx.state.session.id;
+      const { collection_id, task_id, title, force } = ctx.request.body || {};
+
+      if (!collection_id) ctx.throw(400, 'collection_id is required');
+      if (!task_id || !/^[0-9a-zA-Z-]{32,40}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
+
+      const DocumentCollection = this.db.getModel('document_collection');
+      const collection = await DocumentCollection.findByPk(collection_id);
+      if (!collection) ctx.throw(404, 'Collection not found');
+
+      const collectionAccess = new CollectionAccessService(this.db);
+      const canWrite = await collectionAccess.canWrite(collection_id, userId);
+      if (!canWrite) ctx.throw(403, 'Only the collection owner can import documents');
+
+      const result = await this.documentOcrService.importGatewayTask({
+        taskId: task_id,
+        collectionId: collection_id,
+        userId,
+        title: typeof title === 'string' ? title : null,
+        force: force === true,
+      });
+      ctx.success(result);
+      logger.info(`[Doc] importGatewayTask: ${task_id} -> ${result.document_id} for collection ${collection_id}`);
+    } catch (error) {
+      if (error.code === 'gateway_task_already_imported') {
+        ctx.throw(409, 'Gateway task already imported');
+      }
+      if (error.code === 'gateway_task_not_completed') {
+        ctx.throw(409, `Gateway task is not completed (status: ${error.gatewayStatus || 'unknown'})`);
+      }
+      logger.error('[Doc] importGatewayTask error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

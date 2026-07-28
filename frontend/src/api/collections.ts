@@ -47,6 +47,7 @@ export interface CollectionDocumentItem {
   } | null
   ocr_status: string | null
   has_preview_result: boolean
+  import_source?: string | null
   source_system?: string
   source_ref_id?: string
   owner_id?: string
