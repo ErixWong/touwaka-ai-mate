@@ -395,6 +395,7 @@ class AttachmentController {
         // 文档平台第一阶段上传入口 / OCR 产物附件。
         // source_id 可以是 document_id 或 revision_id
         if (sourceId === 'temp') {
+          logger.info(`[Attachment] doc-platform temp ${accessMode} allowed for user=${userId}`);
           return accessMode === 'write';
         }
 

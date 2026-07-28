@@ -448,8 +448,10 @@ export async function syncOcr(documentId: string): Promise<SyncOcrResult> {
   return apiRequest<SyncOcrResult>(apiClient.post(`/docs/documents/${documentId}/ocr/sync`))
 }
 
-export async function getDocumentResult(documentId: string): Promise<DocResultDetail> {
-  return apiRequest<DocResultDetail>(apiClient.get(`/docs/documents/${documentId}/result`))
+export async function getDocumentResult(documentId: string, revisionId?: string): Promise<DocResultDetail> {
+  return apiRequest<DocResultDetail>(apiClient.get(`/docs/documents/${documentId}/result`, {
+    params: revisionId ? { revision_id: revisionId } : undefined,
+  }))
 }
 
 export async function retryProcessing(documentId: string, reason?: string): Promise<DocRetryResult> {
@@ -459,6 +461,12 @@ export async function retryProcessing(documentId: string, reason?: string): Prom
 export async function setCurrentRevision(revisionId: string, reason?: string): Promise<{ document_id: string; current_revision_id: string }> {
   return apiRequest<{ document_id: string; current_revision_id: string }>(
     apiClient.post(`/docs/revisions/${revisionId}/set-current`, { reason: reason || 'manual' })
+  )
+}
+
+export async function deleteRevision(revisionId: string): Promise<{ deleted: boolean; revision_id: string; document_id: string }> {
+  return apiRequest<{ deleted: boolean; revision_id: string; document_id: string }>(
+    apiClient.delete(`/docs/revisions/${revisionId}`)
   )
 }
 

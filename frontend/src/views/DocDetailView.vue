@@ -299,21 +299,25 @@ async function loadMarkdownPreview() {
     const documentId = docStore.currentResult?.document?.id
     if (!documentId) return
     await docStore.fetchVersions(documentId)
-    await docStore.fetchDocumentResult(documentId)
+    await docStore.previewVersion(documentId, null)
     await loadMarkdownPreview()
   }
 
   async function onPreviewVersion(revisionId: string) {
     const documentId = docStore.currentResult?.document?.id
     if (!documentId) return
-    await docStore.setCurrent(documentId, revisionId)
-    await docStore.fetchProcessing(documentId)
+    const result = await docStore.previewVersion(documentId, revisionId)
+    if (!result) {
+      ElMessage.error(docStore.error || t('docs.workspace.detail.previewFailed'))
+      return
+    }
     await loadMarkdownPreview()
   }
 
   onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
+    docStore.previewRevisionId = null
     const document = await docStore.fetchDocument(documentId)
     if (!document) {
       docStore.stopPolling()
