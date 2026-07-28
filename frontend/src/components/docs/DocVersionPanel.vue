@@ -374,7 +374,11 @@ async function handleTaskIdImport() {
 const canEditLabel = ref(true)
 
 // 高亮正在预览的版本行；未预览任何版本时高亮当前版本
-const highlightedId = computed(() => docStore.previewRevisionId || props.resolvedCurrentId || null)
+const highlightedId = computed(() => {
+  if (docStore.previewRevisionId) return docStore.previewRevisionId
+  if (props.resolvedCurrentId) return props.resolvedCurrentId
+  return props.versions.find(v => v.is_current)?.id || null
+})
 
 function rowClassName({ row }: { row: DocRevision }) {
   return row.id === highlightedId.value ? 'version-row-active' : ''
