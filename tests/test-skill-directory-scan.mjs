@@ -73,19 +73,37 @@ function testParameterSchemaNormalization() {
         tags: {
           type: 'array',
         },
+        body: {
+          oneOf: [
+            { type: 'string' },
+            { type: 'object' },
+          ],
+          description: 'Flexible request body',
+        },
+        data: {
+          description: 'Flexible chart data',
+        },
       },
-      required: ['query', 'missing'],
+      required: ['query', 'body', 'data', 'missing'],
     }),
   }, skill);
 
   const schema = tool.function.parameters;
 
   assert.equal(schema.type, 'object');
-  assert.deepEqual(schema.required, ['query']);
+  assert.deepEqual(schema.required, ['query', 'body', 'data']);
   assert.equal(schema.properties.query.type, 'string');
   assert.equal(schema.properties.query.required, undefined);
   assert.equal(schema.properties.count.type, 'string');
-  assert.deepEqual(schema.properties.tags.items, { type: 'string' });
+  assert.equal(schema.properties.tags.type, 'array');
+  assert.equal(schema.properties.tags.items, undefined);
+  assert.deepEqual(schema.properties.body.oneOf, [
+    { type: 'string' },
+    { type: 'object' },
+  ]);
+  assert.equal(schema.properties.body.type, undefined);
+  assert.equal(schema.properties.data.description, 'Flexible chart data');
+  assert.equal(schema.properties.data.type, undefined);
 }
 
 async function main() {
