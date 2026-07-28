@@ -19,6 +19,7 @@ import { getAssistantTools, getInheritedToolDefinitions, executeInheritedTool } 
 import { extractImageInput, executeVisionWithInput, readImageFile } from './vision-processor.js';
 import { refreshAssistantsCache, getAssistant, createAssistant, updateAssistant, deleteAssistant, getAssistantDetail } from './config-repository.js';
 import { executeAssistant } from './executor.js';
+import { buildAssistantExecutionContext } from './execution-context.js';
 import { pushSSENotification, notifyExpertResult, triggerExpertResponse, resendNotification } from './expert-notifier.js';
 
 class AssistantManager {
@@ -579,13 +580,16 @@ class AssistantManager {
       // 执行请求
       let result;
       try {
-        result = await executeAssistant(this.db, assistant, request.input, {
-          requestId,
-          workdir: request.input?.workspace?.workdir,
-          topicId: request.topic_id,
-          expertId: request.expert_id,
-          messageService: this.messageService,
-        });
+        result = await executeAssistant(
+          this.db,
+          assistant,
+          request.input,
+          buildAssistantExecutionContext(request, {
+            requestId,
+            messageService: this.messageService,
+          }),
+          this.messageService
+        );
       } catch (execError) {
         result = { error: execError.message };
       }
