@@ -19,7 +19,7 @@ export default (controller) => {
   router.get('/gateway-tasks/:taskId', authenticate(), controller.probeGatewayTask.bind(controller));
 
   // 为已有文档上传新版本（人工版本管理入口）— 2.1a
-  router.post('/documents/:documentId/intake-revision', authenticate(), controller.createIntakeRevision.bind(controller));
+  router.post('/documents/:documentId/intake-revision', authenticate(), controller.createVersion.bind(controller));
 
   // 获取文档列表 — 2.2
   router.get('/documents', authenticate(), controller.listDocuments.bind(controller));

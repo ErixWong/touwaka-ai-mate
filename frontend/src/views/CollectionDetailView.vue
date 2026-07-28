@@ -24,7 +24,26 @@
       width="480px"
       destroy-on-close
     >
-      <el-form label-position="top">
+      <div class="upload-source-switch">
+        <div
+          class="source-option"
+          :class="{ active: uploadSource === 'local' }"
+          @click="uploadSource = 'local'"
+        >
+          <div class="source-title">{{ $t('docs.workspace.collection.uploadLocal') }}</div>
+          <div class="source-desc">{{ $t('docs.workspace.collection.uploadLocalDesc') }}</div>
+        </div>
+        <div
+          class="source-option"
+          :class="{ active: uploadSource === 'taskid' }"
+          @click="uploadSource = 'taskid'"
+        >
+          <div class="source-title">{{ $t('docs.workspace.collection.uploadTaskId') }}</div>
+          <div class="source-desc">{{ $t('docs.workspace.collection.uploadTaskIdDesc') }}</div>
+        </div>
+      </div>
+
+      <el-form v-if="uploadSource === 'local'" label-position="top">
         <el-form-item :label="$t('docs.workspace.versionPanel.file')">
           <el-upload
             :show-file-list="true"
@@ -42,10 +61,77 @@
           <el-input v-model="newDocumentRevisionLabel" :placeholder="$t('docs.workspace.collection.initialVersionPlaceholder')" maxlength="20" />
         </el-form-item>
       </el-form>
+
+      <div v-else class="upload-taskid-body">
+        <div class="taskid-input-row">
+          <el-input
+            v-model="taskIdInput"
+            :placeholder="$t('docs.workspace.collection.taskIdPlaceholder')"
+            clearable
+            @keyup.enter="probeTaskId"
+          />
+          <el-button :loading="taskIdProbing" @click="probeTaskId">{{ $t('docs.workspace.collection.taskIdQuery') }}</el-button>
+        </div>
+
+        <el-alert v-if="taskIdError" :title="taskIdError" type="warning" :closable="false" show-icon class="taskid-alert" />
+
+        <div v-if="taskIdProbe?.status === 'completed'" class="taskid-result">
+          <div class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdFileName') }}</span>
+            <span class="taskid-value">{{ taskIdProbe.filename || taskIdProbe.artifact_name || taskIdProbe.task_id.slice(0, 8) }}</span>
+          </div>
+          <div class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdStatus') }}</span>
+            <el-tag type="success" size="small">{{ $t('docs.workspace.collection.taskIdStatusCompleted') }}</el-tag>
+          </div>
+          <div v-if="taskIdProbe.completed_at" class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdCompletedAt') }}</span>
+            <span class="taskid-value">{{ formatDateTime(taskIdProbe.completed_at) }}</span>
+          </div>
+          <div class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdImageCount') }}</span>
+            <span class="taskid-value">{{ taskIdProbe.image_count ?? 0 }}</span>
+          </div>
+          <el-input v-model="taskIdDocTitle" class="taskid-title-input">
+            <template #prepend>{{ $t('docs.workspace.collection.docNameLabel') }}</template>
+          </el-input>
+          <el-input
+            v-model="newDocumentRevisionLabel"
+            class="taskid-title-input"
+            :placeholder="$t('docs.workspace.collection.initialVersionPlaceholder')"
+            maxlength="20"
+          >
+            <template #prepend>{{ $t('docs.workspace.collection.initialVersionLabel') }}</template>
+          </el-input>
+          <el-alert
+            v-if="taskIdProbe.already_imported"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="taskid-alert"
+            :title="$t('docs.workspace.collection.alreadyImportedTip', { title: taskIdProbe.existing_document?.title || '' })"
+          />
+        </div>
+      </div>
       <template #footer>
         <el-button @click="uploadDialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="store.isUploadingDocument" :disabled="!pendingUploadFile" @click="submitUploadDocument">
+        <el-button
+          v-if="uploadSource === 'local'"
+          type="primary"
+          :loading="store.isUploadingDocument"
+          :disabled="!pendingUploadFile"
+          @click="submitUploadDocument"
+        >
           {{ $t('docs.workspace.collection.confirmUpload') }}
+        </el-button>
+        <el-button
+          v-else
+          type="primary"
+          :disabled="taskIdProbe?.status !== 'completed'"
+          :loading="store.isUploadingDocument"
+          @click="confirmTaskIdImport"
+        >
+          {{ taskIdProbe?.already_imported ? $t('docs.workspace.collection.confirmImportAgain') : $t('docs.workspace.collection.confirmImport') }}
         </el-button>
       </template>
     </el-dialog>
@@ -223,94 +309,6 @@
       </div>
     </template>
 
-    <el-dialog
-      v-model="uploadDialogVisible"
-      :title="$t('docs.workspace.collection.uploadDoc')"
-      width="480px"
-      :close-on-click-modal="false"
-    >
-      <div class="upload-source-switch">
-        <div
-          class="source-option"
-          :class="{ active: uploadSource === 'local' }"
-          @click="uploadSource = 'local'"
-        >
-          <div class="source-title">{{ $t('docs.workspace.collection.uploadLocal') }}</div>
-          <div class="source-desc">{{ $t('docs.workspace.collection.uploadLocalDesc') }}</div>
-        </div>
-        <div
-          class="source-option"
-          :class="{ active: uploadSource === 'taskid' }"
-          @click="uploadSource = 'taskid'"
-        >
-          <div class="source-title">{{ $t('docs.workspace.collection.uploadTaskId') }}</div>
-          <div class="source-desc">{{ $t('docs.workspace.collection.uploadTaskIdDesc') }}</div>
-        </div>
-      </div>
-
-      <div v-if="uploadSource === 'local'" class="upload-local-body">
-        <el-button type="primary" :loading="store.isUploadingDocument" @click="triggerLocalFileSelect">
-          {{ $t('docs.workspace.collection.uploadLocalAction') }}
-        </el-button>
-      </div>
-
-      <div v-else class="upload-taskid-body">
-        <div class="taskid-input-row">
-          <el-input
-            v-model="taskIdInput"
-            :placeholder="$t('docs.workspace.collection.taskIdPlaceholder')"
-            clearable
-            @keyup.enter="probeTaskId"
-          />
-          <el-button :loading="taskIdProbing" @click="probeTaskId">{{ $t('docs.workspace.collection.taskIdQuery') }}</el-button>
-        </div>
-
-        <el-alert v-if="taskIdError" :title="taskIdError" type="warning" :closable="false" show-icon class="taskid-alert" />
-
-        <div v-if="taskIdProbe?.status === 'completed'" class="taskid-result">
-          <div class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdFileName') }}</span>
-            <span class="taskid-value">{{ taskIdProbe.filename || taskIdProbe.artifact_name || taskIdProbe.task_id.slice(0, 8) }}</span>
-          </div>
-          <div class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdStatus') }}</span>
-            <el-tag type="success" size="small">{{ $t('docs.workspace.collection.taskIdStatusCompleted') }}</el-tag>
-          </div>
-          <div v-if="taskIdProbe.completed_at" class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdCompletedAt') }}</span>
-            <span class="taskid-value">{{ formatDateTime(taskIdProbe.completed_at) }}</span>
-          </div>
-          <div class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdImageCount') }}</span>
-            <span class="taskid-value">{{ taskIdProbe.image_count ?? 0 }}</span>
-          </div>
-          <el-input v-model="taskIdDocTitle" class="taskid-title-input">
-            <template #prepend>{{ $t('docs.workspace.collection.docNameLabel') }}</template>
-          </el-input>
-          <el-alert
-            v-if="taskIdProbe.already_imported"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="taskid-alert"
-            :title="$t('docs.workspace.collection.alreadyImportedTip', { title: taskIdProbe.existing_document?.title || '' })"
-          />
-        </div>
-      </div>
-
-      <template #footer>
-        <el-button @click="uploadDialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button
-          v-if="uploadSource === 'taskid'"
-          type="primary"
-          :disabled="taskIdProbe?.status !== 'completed'"
-          :loading="store.isUploadingDocument"
-          @click="confirmTaskIdImport"
-        >
-          {{ taskIdProbe?.already_imported ? $t('docs.workspace.collection.confirmImportAgain') : $t('docs.workspace.collection.confirmImport') }}
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -343,9 +341,15 @@ const collectionId = route.params.id as string
 const uploadDialogVisible = ref(false)
 const pendingUploadFile = ref<File | null>(null)
 const newDocumentRevisionLabel = ref('')
+const uploadSource = ref<'local' | 'taskid'>('local')
 const docSearch = ref('')
 const statusFilter = ref('')
 const selectedDocId = ref<string | null>(null)
+const taskIdInput = ref('')
+const taskIdProbing = ref(false)
+const taskIdProbe = ref<GatewayTaskProbe | null>(null)
+const taskIdError = ref('')
+const taskIdDocTitle = ref('')
 
 const markdownPreview = ref('')
 const markdownLoading = ref(false)
@@ -606,27 +610,12 @@ function downloadAttachment(url?: string) {
   window.open(url, '_blank')
 }
 
-const uploadDialogVisible = ref(false)
-const uploadSource = ref<'local' | 'taskid'>('local')
-const localUploadRef = ref()
-const taskIdInput = ref('')
-const taskIdProbing = ref(false)
-const taskIdProbe = ref<GatewayTaskProbe | null>(null)
-const taskIdError = ref('')
-const taskIdDocTitle = ref('')
-
-function openUploadDialog() {
-  uploadSource.value = 'local'
-  taskIdInput.value = ''
-  taskIdProbe.value = null
-  taskIdError.value = ''
-  taskIdDocTitle.value = ''
-  uploadDialogVisible.value = true
+function handleFileChange(file: UploadFile) {
+  pendingUploadFile.value = file.raw || null
 }
 
-function triggerLocalFileSelect() {
-  const input = localUploadRef.value?.$el?.querySelector('input[type="file"]') as HTMLInputElement | null
-  input?.click()
+function handleFileRemove() {
+  pendingUploadFile.value = null
 }
 
 const TASK_ID_RE = /^[0-9a-zA-Z-]{32,40}$/
@@ -655,8 +644,17 @@ async function probeTaskId() {
     } else {
       taskIdError.value = t('docs.workspace.collection.taskIdProcessing')
     }
-  } catch {
-    taskIdError.value = t('docs.workspace.collection.taskIdNotFound')
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : ''
+    if (/not found/i.test(message)) {
+      taskIdError.value = t('docs.workspace.collection.taskIdNotFound')
+    } else if (/cancel/i.test(message)) {
+      taskIdError.value = t('docs.workspace.collection.taskIdCancelled')
+    } else if (/fail/i.test(message)) {
+      taskIdError.value = t('docs.workspace.collection.taskIdFailed')
+    } else {
+      taskIdError.value = message || t('docs.workspace.collection.taskIdProcessing')
+    }
   } finally {
     taskIdProbing.value = false
   }
@@ -669,6 +667,7 @@ async function confirmTaskIdImport() {
     collectionId,
     probe.task_id,
     taskIdDocTitle.value.trim() || undefined,
+    newDocumentRevisionLabel.value.trim() || null,
     probe.already_imported === true,
   )
   if (!result) {
@@ -683,8 +682,13 @@ async function confirmTaskIdImport() {
 }
 
 function openUploadDialog() {
+  uploadSource.value = 'local'
   pendingUploadFile.value = null
   newDocumentRevisionLabel.value = ''
+  taskIdInput.value = ''
+  taskIdProbe.value = null
+  taskIdError.value = ''
+  taskIdDocTitle.value = ''
   uploadDialogVisible.value = true
 }
 
@@ -701,7 +705,6 @@ async function submitUploadDocument() {
     return
   }
 
-  uploadDialogVisible.value = false
   ElMessage.success(t('docs.workspace.detail.uploadSuccess'))
   uploadDialogVisible.value = false
   pendingUploadFile.value = null

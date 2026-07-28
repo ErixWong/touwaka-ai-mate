@@ -436,7 +436,7 @@ export async function probeGatewayTask(taskId: string): Promise<GatewayTaskProbe
   return apiRequest<GatewayTaskProbe>(apiClient.get(`/docs/gateway-tasks/${encodeURIComponent(taskId)}`))
 }
 
-export async function importGatewayTask(data: { collection_id: string; task_id: string; title?: string; force?: boolean }): Promise<ImportGatewayTaskResult> {
+export async function importGatewayTask(data: { collection_id: string; task_id: string; title?: string; revision_label?: string | null; force?: boolean }): Promise<ImportGatewayTaskResult> {
   return apiRequest<ImportGatewayTaskResult>(apiClient.post('/docs/intakes/import-task', data))
 }
 

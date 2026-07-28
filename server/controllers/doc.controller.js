@@ -948,6 +948,32 @@ async createVersion(ctx) {
     }
   }
 
+  async updateRevisionLabel(ctx) {
+    try {
+      this.ensureModels();
+      const { revisionId } = ctx.params;
+      const { revision_label } = ctx.request.body || {};
+
+      if (!revisionId) ctx.throw(400, 'revisionId is required');
+      if (typeof revision_label !== 'string' || !revision_label.trim()) {
+        ctx.throw(400, 'revision_label is required');
+      }
+
+      const Version = this.models.DocVersion;
+      const version = await Version.findByPk(revisionId);
+      if (!version) ctx.throw(404, 'Revision not found');
+
+      version.revision_label = revision_label.trim();
+      await version.save();
+
+      ctx.success(version);
+      logger.info(`[Doc] updateRevisionLabel: ${revisionId} -> ${version.revision_label}`);
+    } catch (error) {
+      logger.error('[Doc] updateRevisionLabel error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
   /**
    * 统一召回入口
    * POST /api/docs/recall
@@ -1653,7 +1679,7 @@ async createVersion(ctx) {
       this.ensureModels();
       this.ensureDocumentOcrService(ctx);
       const userId = ctx.state.session.id;
-      const { collection_id, task_id, title, force } = ctx.request.body || {};
+      const { collection_id, task_id, title, revision_label, force } = ctx.request.body || {};
 
       if (!collection_id) ctx.throw(400, 'collection_id is required');
       if (!task_id || !/^[0-9a-zA-Z-]{32,40}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
@@ -1671,6 +1697,7 @@ async createVersion(ctx) {
         collectionId: collection_id,
         userId,
         title: typeof title === 'string' ? title : null,
+        revisionLabel: typeof revision_label === 'string' ? revision_label : null,
         force: force === true,
       });
       ctx.success(result);
