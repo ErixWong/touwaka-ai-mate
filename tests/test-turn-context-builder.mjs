@@ -46,6 +46,7 @@ function testBuildToolContext() {
     user_id: 'user_1',
     expert_id: 'expert_1',
     session,
+    agent_invocation: null,
   });
 }
 
@@ -119,6 +120,7 @@ function testBuildStreamTurnContext() {
     user_id: 'user_1',
     expert_id: 'expert_1',
     session,
+    agent_invocation: turnContext.agent_invocation,
   });
   assert.equal(turnContext.roundInput.modelConfig, modelConfig);
   assert.equal(turnContext.roundInput.thinkingConfig, thinkingConfig);
