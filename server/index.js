@@ -382,6 +382,7 @@ class ApiServer {
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
     await this.residentSkillManager.initialize();
+    this.chatService.setResidentSkillManager(this.residentSkillManager);
     this.mcpToolCaller = new McpToolCaller(this.db, {
       residentSkillManager: this.residentSkillManager,
     });
