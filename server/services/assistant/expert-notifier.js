@@ -11,6 +11,7 @@ import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
 import { executeStreamWithToolLoop } from '../../../lib/tool-calling-executor.js';
 import { formatWorkspaceDisplayFromTask } from '../../../lib/paths.js';
+import { presentToolCalls } from '../../../lib/tool-call-presenter.js';
 
 // 记录已发送的通知，避免重复
 const notifiedRequests = new Set();
@@ -609,13 +610,7 @@ export async function triggerExpertResponse(db, chatService, expertConnections, 
         // 工具调用回调：发送 SSE tool_call 事件
         onToolCall: (toolCalls) => {
           if (!userConnection.res.writableEnded) {
-            const toolCallsWithDisplayNames = (Array.isArray(toolCalls) ? toolCalls : [toolCalls]).map(call => {
-              const toolId = call.function?.name || call.name;
-              return {
-                ...call,
-                displayName: expertService.toolManager.formatToolDisplay(toolId),
-              };
-            });
+            const toolCallsWithDisplayNames = presentToolCalls(toolCalls, expertService.toolManager);
             userConnection.res.write(`event: tool_call\n`);
             userConnection.res.write(`data: ${JSON.stringify({ type: 'tool_call', toolCalls: toolCallsWithDisplayNames })}\n\n`);
           }
