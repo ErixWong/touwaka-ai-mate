@@ -20,6 +20,7 @@ import {
 } from '@/api/docs'
 import type {
   DocDocument,
+  DocRevision,
   DocVersion,
   DocChunk,
   DocRecallItem,
@@ -70,6 +71,24 @@ export const useDocStore = defineStore('doc', () => {
 
   function causeToMessage(cause: unknown) {
     return cause instanceof Error ? cause.message : ''
+  }
+
+  function buildFallbackVersionFromResult(): DocVersion[] {
+    const revision = currentResult.value?.revision
+    if (!revision) return []
+    return [{
+      id: revision.id,
+      revision_no: revision.revision_no,
+      revision_label: revision.revision_label,
+      revision_status: revision.revision_status,
+      is_current: true,
+      diff_status: null,
+      created_by: revision.created_by,
+      effective_from: null,
+      effective_to: null,
+      created_at: revision.created_at,
+      updated_at: revision.created_at,
+    }]
   }
 
   async function fetchDocuments(params?: { doc_type?: string; page?: number }) {
@@ -206,9 +225,11 @@ export const useDocStore = defineStore('doc', () => {
     isLoading.value = true
     error.value = null
     try {
-      versions.value = await listVersions(documentId)
+      const items = await listVersions(documentId)
+      versions.value = items.length > 0 ? items : buildFallbackVersionFromResult()
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'Failed to load versions')
+      versions.value = buildFallbackVersionFromResult()
     } finally {
       isLoading.value = false
     }
@@ -246,6 +267,7 @@ export const useDocStore = defineStore('doc', () => {
       await setCurrentVersion(documentId, versionId)
       await fetchVersions(documentId)
       await fetchDocument(documentId)
+      await fetchDocumentResult(documentId)
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'Failed to set current version')
     }

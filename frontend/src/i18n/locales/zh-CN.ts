@@ -2198,6 +2198,7 @@ export default {
         fileType: '文件类型',
         size: '大小',
         uploader: '上传人',
+        revisionId: '版本编号',
         version: '版本',
         createdAt: '创建时间',
         processingActions: '处理操作',
@@ -2270,6 +2271,7 @@ export default {
         labelUpdated: '版本号已更新',
         labelUpdateFailed: '更新版本号失败',
         emptyText: '暂无版本',
+        editLabelInline: '编辑',
       },
       settings: {
         settings: '设置',

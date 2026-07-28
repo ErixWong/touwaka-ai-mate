@@ -13,6 +13,7 @@
       size="small"
       class="version-table"
       :empty-text="$t('docs.workspace.versionPanel.emptyText')"
+      @row-click="handlePreviewVersion"
     >
       <el-table-column prop="revision_label" :label="$t('docs.workspace.versionPanel.label')" width="100">
         <template #default="{ row }">
@@ -134,6 +135,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'version-changed'): void
+  (e: 'preview-version', revisionId: string): void
 }>()
 
 const { t, locale } = useI18n()
@@ -284,6 +286,10 @@ async function handleSetCurrent(versionId: string) {
     const msg = err instanceof Error ? err.message : t('docs.workspace.versionPanel.currentSetFailed')
     ElMessage.error(msg)
   }
+}
+
+function handlePreviewVersion(row: DocRevision) {
+  emit('preview-version', row.id)
 }
 
 // --------------------- helpers ---------------------

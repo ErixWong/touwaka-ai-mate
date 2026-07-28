@@ -60,6 +60,7 @@
             :mime-type="docStore.currentResult?.source_attachment?.mime_type"
             :file-size="docStore.currentResult?.source_attachment?.file_size"
             :uploader="docStore.currentResult?.revision?.uploader?.username"
+            :revision-id="docStore.currentResult?.revision?.id"
             :revision-label="revisionLabel"
             :created-at="docStore.currentResult?.document?.created_at"
             :retry-action="retryAction"
@@ -77,6 +78,7 @@
             @retry="onRetryAction"
             @download="downloadAttachment"
             @version-changed="onVersionChanged"
+            @previewVersion="onPreviewVersion"
           />
         </div>
       </div>
@@ -298,6 +300,14 @@ async function loadMarkdownPreview() {
     if (!documentId) return
     await docStore.fetchVersions(documentId)
     await docStore.fetchDocumentResult(documentId)
+    await loadMarkdownPreview()
+  }
+
+  async function onPreviewVersion(revisionId: string) {
+    const documentId = docStore.currentResult?.document?.id
+    if (!documentId) return
+    await docStore.setCurrent(documentId, revisionId)
+    await docStore.fetchProcessing(documentId)
     await loadMarkdownPreview()
   }
 

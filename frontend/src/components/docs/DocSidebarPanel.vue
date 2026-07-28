@@ -58,8 +58,29 @@
           <span class="status-value">{{ uploader || '-' }}</span>
         </div>
         <div class="status-row">
+          <span class="status-label">{{ $t('docs.workspace.panel.revisionId') }}</span>
+          <span class="status-value task-id-value">{{ revisionId || '-' }}</span>
+        </div>
+        <div class="status-row">
           <span class="status-label">{{ $t('docs.workspace.panel.version') }}</span>
-          <span class="status-value">{{ revisionLabel }}</span>
+          <span class="status-value version-edit-cell">
+            <template v-if="editingRevisionLabel">
+              <el-input
+                v-model="editingRevisionValue"
+                size="small"
+                class="revision-inline-input"
+                @keyup.enter="submitRevisionLabelEdit"
+                @keyup.escape="cancelRevisionLabelEdit"
+                @blur="submitRevisionLabelEdit"
+              />
+            </template>
+            <template v-else>
+              <span>{{ revisionLabel }}</span>
+              <el-button link type="primary" size="small" @click="startRevisionLabelEdit">
+                {{ $t('docs.workspace.versionPanel.editLabelInline') }}
+              </el-button>
+            </template>
+          </span>
         </div>
         <div class="status-row">
           <span class="status-label">{{ $t('docs.workspace.panel.createdAt') }}</span>
@@ -96,6 +117,7 @@
         :versions="versions || []"
         compact
         @version-changed="$emit('versionChanged')"
+        @preview-version="$emit('previewVersion', $event)"
       />
     </div>
 
@@ -138,6 +160,9 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDocProcessingStatusTagType } from '@/api/docs'
 import DocVersionPanel from '@/components/docs/DocVersionPanel.vue'
+import { ElMessage } from 'element-plus'
+import { ref, watch } from 'vue'
+import { updateRevisionLabel } from '@/api/docs'
 
 const { t, locale } = useI18n()
 
@@ -175,6 +200,7 @@ interface Props {
   mimeType?: string | null
   fileSize?: number | null
   uploader?: string | null
+  revisionId?: string | null
   revisionLabel?: string | null
   createdAt?: string | null
   
@@ -213,6 +239,7 @@ const props = withDefaults(defineProps<Props>(), {
   mimeType: null,
   fileSize: undefined,
   uploader: null,
+  revisionId: null,
   revisionLabel: '-',
   createdAt: null,
   retryAction: null,
@@ -229,11 +256,58 @@ const props = withDefaults(defineProps<Props>(), {
   errorCode: null,
 })
 
-defineEmits<{
+const emit = defineEmits<{
   retry: [type: string]
   download: [url: string]
   versionChanged: []
+  previewVersion: [revisionId: string]
 }>()
+
+const editingRevisionLabel = ref(false)
+const editingRevisionValue = ref('')
+const savingRevisionLabel = ref(false)
+
+watch(() => props.revisionLabel, (value) => {
+  if (!editingRevisionLabel.value) {
+    editingRevisionValue.value = value || ''
+  }
+}, { immediate: true })
+
+function startRevisionLabelEdit() {
+  editingRevisionValue.value = props.revisionLabel && props.revisionLabel !== '-' ? props.revisionLabel : ''
+  editingRevisionLabel.value = true
+}
+
+function cancelRevisionLabelEdit() {
+  editingRevisionLabel.value = false
+  editingRevisionValue.value = props.revisionLabel || ''
+}
+
+async function submitRevisionLabelEdit() {
+  if (!props.revisionId || savingRevisionLabel.value) {
+    editingRevisionLabel.value = false
+    return
+  }
+
+  const nextValue = editingRevisionValue.value.trim()
+  if (!nextValue || nextValue === props.revisionLabel) {
+    editingRevisionLabel.value = false
+    editingRevisionValue.value = props.revisionLabel || ''
+    return
+  }
+
+  savingRevisionLabel.value = true
+  try {
+    await updateRevisionLabel(props.revisionId, nextValue)
+    ElMessage.success(t('docs.workspace.versionPanel.labelUpdated'))
+    editingRevisionLabel.value = false
+    emit('versionChanged')
+  } catch (error: unknown) {
+    ElMessage.error(error instanceof Error ? error.message : t('docs.workspace.versionPanel.labelUpdateFailed'))
+  } finally {
+    savingRevisionLabel.value = false
+  }
+}
 
 const LONG_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
 
@@ -293,6 +367,8 @@ const formattedCreatedAt = computed(() => fmt(props.createdAt))
 .status-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .status-label { font-size: 12px; color: #909399; flex-shrink: 0; }
 .status-value { font-size: 13px; color: #303133; text-align: right; }
+.version-edit-cell { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.revision-inline-input { width: 120px; }
 .task-id-value { word-break: break-all; font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
 
 .sidebar-actions { display: flex; flex-direction: column; gap: 6px; }

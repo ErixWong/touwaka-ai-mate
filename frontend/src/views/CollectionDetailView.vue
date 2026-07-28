@@ -187,11 +187,15 @@
               :mime-type="docStore.currentResult.source_attachment?.mime_type"
               :file-size="docStore.currentResult.source_attachment?.file_size"
               :uploader="docStore.currentResult.revision?.uploader?.username"
+              :revision-id="docStore.currentResult.revision?.id"
               :revision-label="revisionLabel"
               :created-at="docStore.currentResult.document.created_at"
               :retry-action="retryAction"
               :retry-loading="retryLoading"
               :is-action-complete="isProcessingActionComplete"
+              :document-id="docStore.currentResult.document.id"
+              :resolved-current-id="docStore.currentResult.document.resolved_current_revision_id"
+              :versions="docStore.versions"
               :attachment-download-url="docStore.currentResult.source_attachment?.download_url"
               :markdown-download-url="markdownAttachmentFromWorkspace?.download_url"
               :raw-markdown-download-url="rawMarkdownAttachmentFromWorkspace?.download_url"
@@ -200,6 +204,8 @@
               :error-code="docStore.currentResult.processing.error_code"
               @retry="onRetryAction"
               @download="downloadAttachment"
+              @version-changed="onVersionChanged"
+              @previewVersion="onPreviewVersion"
             />
           </template>
           <template v-else-if="selectedDocId">
@@ -364,6 +370,8 @@ async function selectDocument(documentId: string) {
   
   const result = await docStore.fetchDocumentResult(documentId)
   if (!result) return
+
+  await docStore.fetchVersions(documentId)
   
   await docStore.fetchProcessing(documentId)
   await loadMarkdownPreview()
@@ -381,6 +389,22 @@ async function selectDocument(documentId: string) {
     await docStore.fetchDocumentResult(documentId)
     await loadMarkdownPreview()
   }
+}
+
+async function onVersionChanged() {
+  const documentId = docStore.currentResult?.document?.id
+  if (!documentId) return
+  await docStore.fetchVersions(documentId)
+  await docStore.fetchDocumentResult(documentId)
+  await loadMarkdownPreview()
+}
+
+async function onPreviewVersion(revisionId: string) {
+  const documentId = docStore.currentResult?.document?.id
+  if (!documentId) return
+  await docStore.setCurrent(documentId, revisionId)
+  await docStore.fetchProcessing(documentId)
+  await loadMarkdownPreview()
 }
 
 // 加载 Markdown 预览
