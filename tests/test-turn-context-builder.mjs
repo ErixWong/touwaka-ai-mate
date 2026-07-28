@@ -112,6 +112,9 @@ function testBuildStreamTurnContext() {
     workdir: 'D:/workspace/task',
     workspace_mode: 'task',
   });
+  assert.deepEqual(turnContext.agent_invocation.capability_scope, {
+    tools: ['demo_tool'],
+  });
   assert.deepEqual(turnContext.toolContext, {
     user_id: 'user_1',
     expert_id: 'expert_1',
