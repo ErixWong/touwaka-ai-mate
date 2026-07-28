@@ -7,6 +7,12 @@ user-invocable: false
 allowed-tools: []
 ---
 
+# Status
+
+Frozen draft. This skill is intentionally not discoverable by `scanSkillsDirectory()` because it has no `index.js` / `index.py` entrypoint.
+
+Do not register or enable it until the resident-process contract, permission boundary, credential handling, and user-facing audit trail are reviewed. See `STATUS.md`.
+
 # SSH - 远程服务器管理
 
 基于会话的 SSH 客户端，支持同步命令执行和 SFTP 文件传输。

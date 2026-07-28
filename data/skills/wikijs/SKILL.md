@@ -6,6 +6,12 @@ user-invocable: false
 allowed-tools: []
 ---
 
+# Status
+
+Frozen draft. This skill is intentionally not discoverable by `scanSkillsDirectory()` because it has no `index.js` / `index.py` entrypoint.
+
+Do not register or enable it until the external Wiki.js write boundary, credentials, and API wrapper contract are reviewed. See `STATUS.md`.
+
 # Wiki.js - Wiki 交互技能
 
 通过 GraphQL API 和 REST 上传端点操作 Wiki.js 实例。
