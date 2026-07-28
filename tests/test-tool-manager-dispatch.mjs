@@ -13,8 +13,17 @@ function createManager() {
   return new ToolManager(null, 'expert-dispatch-test');
 }
 
+function captureExecutionLogs(manager) {
+  const logs = [];
+  manager.logToolExecution = (display, toolId, params) => {
+    logs.push({ display, toolId, params });
+  };
+  return logs;
+}
+
 async function testBuiltinWinsOverRegistry() {
   const manager = createManager();
+  const logs = captureExecutionLogs(manager);
   const calls = [];
 
   manager.toolRegistry.set('execute', {
@@ -36,10 +45,17 @@ async function testBuiltinWinsOverRegistry() {
 
   assert.deepEqual(result, { success: true, route: 'builtin' });
   assert.deepEqual(calls.map(call => call.route), ['builtin']);
+  assert.equal(calls[0].display, 'execute');
+  assert.deepEqual(logs, [{
+    display: 'execute',
+    toolId: 'execute',
+    params: { type: 'javascript' },
+  }]);
 }
 
 async function testMcpWinsOverRegistry() {
   const manager = createManager();
+  const logs = captureExecutionLogs(manager);
   const calls = [];
 
   manager.toolRegistry.set('mcp_demo_search', {
@@ -61,10 +77,45 @@ async function testMcpWinsOverRegistry() {
 
   assert.deepEqual(result, { success: true, route: 'mcp' });
   assert.deepEqual(calls.map(call => call.route), ['mcp']);
+  assert.equal(calls[0].display, 'MCP/demo/search');
+  assert.deepEqual(logs, [{
+    display: 'MCP/demo/search',
+    toolId: 'mcp_demo_search',
+    params: { q: 'hello' },
+  }]);
+}
+
+async function testDocumentRetrievalUsesBuiltinNamespaceDisplay() {
+  const manager = createManager();
+  const logs = captureExecutionLogs(manager);
+  const calls = [];
+
+  manager.toolRegistry.set('search_documents_by_metadata', {
+    skillId: 'fake-skill',
+    skillName: 'Fake Skill',
+    toolName: 'search_documents_by_metadata',
+    scriptPath: 'index.js',
+  });
+  manager.executeBuiltinTool = async (toolId, params, context, display) => {
+    calls.push({ route: 'builtin', toolId, params, context, display });
+    return { success: true, route: 'document_retrieval' };
+  };
+
+  const result = await manager.executeTool('search_documents_by_metadata', { metadata_query: 'policy' }, {});
+
+  assert.deepEqual(result, { success: true, route: 'document_retrieval' });
+  assert.deepEqual(calls.map(call => call.route), ['builtin']);
+  assert.equal(calls[0].display, 'document_retrieval/search_documents_by_metadata');
+  assert.deepEqual(logs, [{
+    display: 'document_retrieval/search_documents_by_metadata',
+    toolId: 'search_documents_by_metadata',
+    params: { metadata_query: 'policy' },
+  }]);
 }
 
 async function testAssistantWinsOverRegistry() {
   const manager = createManager();
+  const logs = captureExecutionLogs(manager);
   const calls = [];
 
   manager.toolRegistry.set('assistant_summon', {
@@ -101,6 +152,11 @@ async function testAssistantWinsOverRegistry() {
     assert.equal(result.success, true);
     assert.equal(result.route, 'assistant');
     assert.deepEqual(calls.map(call => call.route), ['assistant']);
+    assert.deepEqual(logs, [{
+      display: 'Assistant/assistant_summon',
+      toolId: 'assistant_summon',
+      params: { assistant_id: 'helper-1' },
+    }]);
     assert.deepEqual(result.context, {
       expertId: 'expert-1',
       userId: 'user-1',
@@ -113,8 +169,43 @@ async function testAssistantWinsOverRegistry() {
   }
 }
 
+async function testAssistantFallsBackToRegistryWhenManagerUnavailable() {
+  const manager = createManager();
+  const logs = captureExecutionLogs(manager);
+  const calls = [];
+
+  setAssistantManager(null);
+  manager.skills.set('fake-skill', { id: 'fake-skill', name: 'Fake Skill' });
+  manager.toolRegistry.set('assistant_summon', {
+    skillId: 'fake-skill',
+    skillName: 'Fake Skill',
+    toolName: 'assistant_summon',
+    scriptPath: 'index.js',
+  });
+  manager.skillLoader.executeSkillTool = async (skillId, toolName, params, context, scriptPath) => {
+    calls.push({ route: 'skill', skillId, toolName, params, context, scriptPath });
+    return { fallback: true };
+  };
+
+  const result = await manager.executeTool(
+    'assistant_summon',
+    { assistant_id: 'helper-1' },
+    { taskContext: { absolute_workspace_path: 'D:/work/task' } }
+  );
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data, { fallback: true });
+  assert.deepEqual(calls.map(call => call.route), ['skill']);
+  assert.deepEqual(logs, [{
+    display: 'Fake Skill/assistant_summon',
+    toolId: 'assistant_summon',
+    params: { assistant_id: 'helper-1' },
+  }]);
+}
+
 async function testResidentDispatchesBeforeSkillRunner() {
   const manager = createManager();
+  const logs = captureExecutionLogs(manager);
   const calls = [];
 
   manager.toolRegistry.set('ssh__exec', {
@@ -139,10 +230,17 @@ async function testResidentDispatchesBeforeSkillRunner() {
   assert.equal(calls[0].scriptPath, 'resident://exec');
   assert.equal(calls[0].skillId, 'ssh');
   assert.equal(calls[0].toolId, 'ssh__exec');
+  assert.equal(calls[0].display, 'SSH/exec');
+  assert.deepEqual(logs, [{
+    display: 'SSH/exec',
+    toolId: 'ssh__exec',
+    params: { command: 'uptime' },
+  }]);
 }
 
 async function testNormalSkillDispatchesToSkillRunner() {
   const manager = createManager();
+  const logs = captureExecutionLogs(manager);
   const calls = [];
 
   manager.skills.set('searxng', { id: 'searxng', name: 'SearXNG' });
@@ -184,10 +282,16 @@ async function testNormalSkillDispatchesToSkillRunner() {
   assert.equal(calls[0].context.isAdmin, true);
   assert.equal(calls[0].context.isSkillCreator, true);
   assert.equal(calls[0].scriptPath, 'index.js');
+  assert.deepEqual(logs, [{
+    display: 'SearXNG/search',
+    toolId: 'searxng__search',
+    params: { query: 'tool dispatch' },
+  }]);
 }
 
 async function testMissingToolReturnsHonestError() {
   const manager = createManager();
+  const logs = captureExecutionLogs(manager);
 
   const result = await manager.executeTool('missing_tool', {}, {});
 
@@ -195,12 +299,19 @@ async function testMissingToolReturnsHonestError() {
     success: false,
     error: 'Tool not found: missing_tool',
   });
+  assert.deepEqual(logs, [{
+    display: 'missing_tool',
+    toolId: 'missing_tool',
+    params: {},
+  }]);
 }
 
 async function main() {
   await testBuiltinWinsOverRegistry();
   await testMcpWinsOverRegistry();
+  await testDocumentRetrievalUsesBuiltinNamespaceDisplay();
   await testAssistantWinsOverRegistry();
+  await testAssistantFallsBackToRegistryWhenManagerUnavailable();
   await testResidentDispatchesBeforeSkillRunner();
   await testNormalSkillDispatchesToSkillRunner();
   await testMissingToolReturnsHonestError();
