@@ -142,11 +142,79 @@ async function testRejectsDelegationCycle() {
   }), /delegation cycle detected/);
 }
 
+async function testDelegateAndExecuteUsesExplicitExecutor() {
+  const service = new AgentDelegationService({
+    definition_resolver: {
+      async resolve() {
+        return createDefinition();
+      },
+    },
+  });
+  const executorCalls = [];
+
+  const result = await service.delegateAndExecute({
+    parent_invocation: createParentInvocation(),
+    target: { source_type: 'expert', agent_id: 'expert_child' },
+    task: 'Search the project',
+    caller_scope: {
+      tools: ['search'],
+      skills: ['search'],
+      document_retrieval: true,
+      can_use_skills: true,
+    },
+    principal_scope: {
+      tools: ['search'],
+      skills: ['search'],
+      document_retrieval: true,
+      can_use_skills: true,
+    },
+    workspace_scope: {
+      tools: ['search'],
+      skills: ['search'],
+      document_retrieval: true,
+      can_use_skills: true,
+    },
+    requested_scope: { tools: ['search'] },
+  }, {
+    async execute(delegation) {
+      executorCalls.push(delegation);
+      return {
+        fullContent: 'Child result',
+        agent_invocation_context: delegation.child_invocation,
+      };
+    },
+  });
+
+  assert.equal(result.status, 'accepted');
+  assert.equal(result.execution_result.fullContent, 'Child result');
+  assert.equal(executorCalls.length, 1);
+  assert.equal(executorCalls[0].child_invocation.callee_agent_id, 'expert_child');
+  assert.deepEqual(executorCalls[0].effective_scope.tools, ['search']);
+}
+
+async function testDelegateAndExecuteRequiresExplicitExecutor() {
+  const service = new AgentDelegationService({
+    definition_resolver: {
+      async resolve() {
+        return createDefinition();
+      },
+    },
+  });
+
+  await assert.rejects(() => service.delegateAndExecute({
+    parent_invocation: createParentInvocation(),
+    target: { source_type: 'expert', agent_id: 'expert_child' },
+    task: 'Search the project',
+  }), /child_executor.execute is required/);
+}
+
 async function main() {
   await testDelegationBuildsChildRun();
   await testRejectsDeniedCapability();
   await testRejectsInactiveTarget();
   await testRejectsDelegationCycle();
+  await testDelegateAndExecuteUsesExplicitExecutor();
+  await testDelegateAndExecuteRequiresExplicitExecutor();
 
   console.log('Agent delegation service tests passed.');
 }
