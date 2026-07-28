@@ -116,9 +116,9 @@ async function testStartStatusAndResultFlow() {
 
   const finalStatus = await scheduler.waitForCompletion(started.child_run_id);
   assert.equal(finalStatus.status, 'completed');
-  assert.equal(facade.status({ child_run_id: started.child_run_id }).status, 'completed');
+  assert.equal((await facade.status({ child_run_id: started.child_run_id })).status, 'completed');
 
-  const result = facade.result({ child_run_id: started.child_run_id });
+  const result = await facade.result({ child_run_id: started.child_run_id });
   assert.equal(result.result.fullContent, 'child result');
   assert.equal(result.result.agent_invocation_context.run_id, started.child_run_id);
   assert.equal(events[0].type, 'delegation_created');
@@ -174,9 +174,9 @@ async function testCancelFlow() {
 
   const started = await facade.start(createStartParams(), createStartContext());
   await entered;
-  assert.equal(facade.status({ child_run_id: started.child_run_id }).status, 'running');
+  assert.equal((await facade.status({ child_run_id: started.child_run_id })).status, 'running');
 
-  const cancelling = facade.cancel({ child_run_id: started.child_run_id });
+  const cancelling = await facade.cancel({ child_run_id: started.child_run_id });
   assert.equal(cancelling.cancel_requested, true);
   continueRun();
 
