@@ -7,6 +7,10 @@
 
 import assert from 'node:assert/strict';
 import { AgentRuntime } from '../lib/agent/agent-runtime.js';
+import {
+  buildRootAgentInvocationContext,
+  deriveChildAgentInvocationContext,
+} from '../lib/agent/agent-invocation-context.js';
 
 async function testRunRootWrapsExecutorResult() {
   const events = [];
@@ -96,10 +100,70 @@ async function testRunRootEmitsCancelled() {
   assert.equal(events[2].type, 'agent_run_cancelled');
 }
 
+async function testRunChildWrapsExecutorResult() {
+  const events = [];
+  const runtime = new AgentRuntime({
+    event_sink: event => events.push(event),
+  });
+  const parent = buildRootAgentInvocationContext({
+    run_id: 'root_run_runtime_child_parent',
+    principal_user_id: 'user_child',
+    agent_id: 'expert_parent',
+  });
+  const child = deriveChildAgentInvocationContext(parent, {
+    run_id: 'child_run_runtime_1',
+    callee_agent_id: 'expert_child',
+    capability_scope: { tools: ['search'] },
+  });
+
+  const result = await runtime.runChild({
+    invocation_context: child,
+  }, async ({ invocation_context }) => {
+    assert.equal(invocation_context.parent_run_id, parent.run_id);
+    assert.equal(invocation_context.principal_user_id, 'user_child');
+    assert.equal(invocation_context.caller_agent_id, 'expert_parent');
+    assert.equal(invocation_context.callee_agent_id, 'expert_child');
+    assert.equal(invocation_context.delegation_depth, 1);
+
+    return {
+      fullContent: 'Child done',
+      allToolCalls: [],
+      llmCallsCount: 1,
+    };
+  });
+
+  assert.equal(result.fullContent, 'Child done');
+  assert.equal(result.agent_invocation_context, child);
+  assert.deepEqual(events.map(event => event.type), [
+    'agent_run_created',
+    'agent_run_started',
+    'agent_run_completed',
+  ]);
+  assert.equal(events[0].parent_run_id, parent.run_id);
+  assert.equal(events[0].caller_agent_id, 'expert_parent');
+  assert.equal(events[0].callee_agent_id, 'expert_child');
+  assert.equal(events[2].payload.llm_calls_count, 1);
+}
+
+async function testRunChildRejectsRootInvocation() {
+  const runtime = new AgentRuntime();
+  const root = buildRootAgentInvocationContext({
+    run_id: 'root_run_runtime_not_child',
+    principal_user_id: 'user_root',
+    agent_id: 'expert_root',
+  });
+
+  await assert.rejects(() => runtime.runChild({
+    invocation_context: root,
+  }, async () => ({ fullContent: 'should not run' })), /parent_run_id is required/);
+}
+
 async function main() {
   await testRunRootWrapsExecutorResult();
   await testRunRootEmitsFailure();
   await testRunRootEmitsCancelled();
+  await testRunChildWrapsExecutorResult();
+  await testRunChildRejectsRootInvocation();
 
   console.log('Agent runtime tests passed.');
 }
