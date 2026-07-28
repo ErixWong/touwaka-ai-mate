@@ -16,7 +16,7 @@ function createDbStub() {
   };
 }
 
-function createExpertServiceStub() {
+function createExpertServiceStub(toolContextCalls = []) {
   const modelConfig = {
     model_name: 'test-model',
     provider_name: 'test-provider',
@@ -50,7 +50,8 @@ function createExpertServiceStub() {
       };
     },
     toolManager: {
-      async getToolDefinitions() {
+      async getToolDefinitions(context) {
+        toolContextCalls.push(context);
         return [{ type: 'function', function: { name: 'demo_tool' } }];
       },
     },
@@ -75,6 +76,7 @@ function createRuntimeStub(calls) {
 async function testStreamChatUsesRootAgentRuntime() {
   const runtimeCalls = [];
   const loopCalls = [];
+  const toolContextCalls = [];
   const service = new ChatService(createDbStub(), {
     agentRuntime: createRuntimeStub(runtimeCalls),
     agentLoop: {
@@ -95,7 +97,7 @@ async function testStreamChatUsesRootAgentRuntime() {
       },
     },
   });
-  const expertService = createExpertServiceStub();
+  const expertService = createExpertServiceStub(toolContextCalls);
 
   service.getExpertService = async () => expertService;
   service._prepareTaskContext = async () => ({
@@ -125,6 +127,8 @@ async function testStreamChatUsesRootAgentRuntime() {
   });
 
   assert.equal(runtimeCalls.length, 1);
+  assert.equal(toolContextCalls.length, 1);
+  assert.equal(toolContextCalls[0].agent_invocation.delegation_depth, 0);
   const invocation = runtimeCalls[0].invocation_context;
   assert.equal(invocation.principal_user_id, 'user_1');
   assert.equal(invocation.caller_agent_id, null);
