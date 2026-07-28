@@ -10,7 +10,10 @@ import { AgentRuntime } from '../lib/agent/agent-runtime.js';
 import {
   AGENT_DELEGATE_TOOL_NAMES,
 } from '../lib/agent/agent-delegate-control-facade.js';
-import { createInMemoryAgentDelegateControlRuntime } from '../lib/agent/agent-delegate-control-runtime.js';
+import {
+  createInMemoryAgentDelegateControlRuntime,
+  createResidentAgentDelegateControlRuntime,
+} from '../lib/agent/agent-delegate-control-runtime.js';
 import { buildRootAgentInvocationContext } from '../lib/agent/agent-invocation-context.js';
 
 function createTool(name) {
@@ -204,8 +207,64 @@ function testRuntimeRequiresCompositionDependencies() {
   }), /get_expert_service is required/);
 }
 
+async function testResidentRuntimeUsesResidentScheduler() {
+  const calls = [];
+  const runtime = createResidentAgentDelegateControlRuntime({
+    definition_resolver: {
+      async resolve() {
+        return {
+          agent_id: 'expert_child',
+          source_type: 'expert',
+          display_name: 'Resident Child',
+          execution_policy: { mode: 'llm' },
+          capability_declarations: {
+            skills: [{ skill_id: 'skill_search', mark: 'search' }],
+          },
+          is_active: true,
+        };
+      },
+    },
+    resident_skill_manager: {
+      async invokeByName(skillId, toolName, params, userContext, timeoutMs) {
+        calls.push({ skillId, toolName, params, userContext, timeoutMs });
+        return {
+          child_run_id: params.child_run_id || params.delegation.child_invocation.run_id,
+          status: params.action === 'start' ? 'queued' : 'running',
+        };
+      },
+    },
+    timeout_ms: 1234,
+  });
+
+  const started = await runtime.control_facade.handleToolCall(
+    AGENT_DELEGATE_TOOL_NAMES.START,
+    {
+      source_type: 'expert',
+      agent_id: 'expert_child',
+      task: 'Search project',
+      requested_scope: { tools: ['search'] },
+    },
+    createStartContext(),
+  );
+  assert.equal(started.success, true);
+  assert.equal(started.data.child_run_id, started.data.run.child_run_id);
+
+  const status = await runtime.control_facade.handleToolCall(
+    AGENT_DELEGATE_TOOL_NAMES.STATUS,
+    { child_run_id: started.data.child_run_id },
+    createStartContext(),
+  );
+  assert.equal(status.success, true);
+  assert.equal(status.data.status, 'running');
+  assert.deepEqual(calls.map(call => call.params.action), ['start', 'status']);
+  assert.equal(calls[0].skillId, 'agent-child-runner');
+  assert.equal(calls[0].toolName, 'invoke');
+  assert.equal(calls[0].timeoutMs, 1234);
+}
+
 async function main() {
   await testRuntimeStartsAndCompletesChildRunEndToEnd();
+  await testResidentRuntimeUsesResidentScheduler();
   testRuntimeRequiresCompositionDependencies();
 
   console.log('Agent delegate control runtime tests passed.');

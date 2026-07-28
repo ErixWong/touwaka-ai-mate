@@ -154,8 +154,24 @@ async function testStreamChatUsesRootAgentRuntime() {
   });
 }
 
+function testChatServiceCanUseResidentDelegateRuntime() {
+  const residentSkillManager = {
+    async invokeByName() {
+      return {};
+    },
+  };
+  const service = new ChatService(createDbStub(), {
+    residentSkillManager,
+  });
+
+  const runtime = service.getAgentDelegateControlRuntime();
+
+  assert.equal(runtime.child_run_scheduler.resident_skill_manager, residentSkillManager);
+}
+
 async function main() {
   await testStreamChatUsesRootAgentRuntime();
+  testChatServiceCanUseResidentDelegateRuntime();
 
   console.log('ChatService AgentRuntime facade tests passed.');
 }
