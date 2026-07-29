@@ -58,7 +58,13 @@
             <el-tag size="small" type="success">{{ $t('docs.workspace.versionPanel.current') }}</el-tag>
           </template>
           <template v-else>
-            <el-button link type="primary" size="small" @click="handleSetCurrent(row.id)">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="row.revision_status === 'archived'"
+              @click.stop="handleSetCurrent(row.id)"
+            >
               {{ $t('docs.workspace.versionPanel.setCurrent') }}
             </el-button>
           </template>
@@ -357,7 +363,7 @@ async function handleTaskIdImport() {
       revision_label: newVersionLabel.value || null,
       change_summary: newChangeSummary.value || null,
       force: true,
-    })
+    }, { timeout: 300000 })
 
     ElMessage.success(t('docs.workspace.versionPanel.uploadSuccess'))
     uploadDialogVisible.value = false
@@ -453,14 +459,13 @@ async function saveLabel(version: DocRevision) {
 
 // --------------------- set current ---------------------
 async function handleSetCurrent(versionId: string) {
-  try {
-    await docStore.setCurrent(props.documentId, versionId)
-    ElMessage.success(t('docs.workspace.versionPanel.currentSet'))
-    emit('version-changed')
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : t('docs.workspace.versionPanel.currentSetFailed')
-    ElMessage.error(msg)
+  const ok = await docStore.setCurrent(props.documentId, versionId)
+  if (!ok) {
+    ElMessage.error(docStore.error || t('docs.workspace.versionPanel.currentSetFailed'))
+    return
   }
+  ElMessage.success(t('docs.workspace.versionPanel.currentSet'))
+  emit('version-changed')
 }
 
 function handlePreviewVersion(row: DocRevision) {

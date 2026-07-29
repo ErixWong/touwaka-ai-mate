@@ -45,8 +45,9 @@ class DocController {
   }
 
   // ==================== 版本状态机 ====================
+  // 临时方案（审批流落地前）：放行 draft → effective，此阶段 effective 语义为"当前在用"
   VALID_TRANSITIONS = {
-    'draft':    ['review', 'archived'],
+    'draft':    ['effective', 'review', 'archived'],
     'review':   ['approved', 'draft', 'archived'],
     'approved': ['effective', 'draft', 'archived'],
     'effective':['expired', 'archived'],

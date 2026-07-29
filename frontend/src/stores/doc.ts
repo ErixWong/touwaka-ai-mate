@@ -286,8 +286,10 @@ export const useDocStore = defineStore('doc', () => {
       await fetchVersions(documentId)
       await fetchDocument(documentId)
       await fetchDocumentResult(documentId)
+      return true
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'Failed to set current version')
+      return false
     }
   }
 
