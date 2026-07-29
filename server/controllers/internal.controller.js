@@ -607,6 +607,13 @@ class InternalController {
         skill_id,
         tool_name,
         params,
+        {
+          userId: ctx.state.session?.id || ctx.state.session?.userId || '',
+          accessToken: ctx.state.session?.accessToken || '',
+          expertId: ctx.state.session?.expertId || '',
+          isAdmin: ctx.state.session?.isAdmin || false,
+          workingDirectory: ctx.state.session?.workingDirectory || '',
+        },
         timeout || 60000
       );
 
@@ -616,6 +623,41 @@ class InternalController {
     } catch (error) {
       logger.error('Internal API invoke resident tool error:', error);
       ctx.error(error.message || '调用驻留工具失败', 500);
+    }
+  }
+
+  /**
+   * POST /internal/agent/child-run/execute
+   * Resident child runner worker 回调主服务执行实际 Child Agent。
+   */
+  async executeChildAgentRun(ctx) {
+    try {
+      if (!this.validateInternalAccess(ctx)) {
+        ctx.status = 403;
+        ctx.error('无权访问内部 API', 403, { code: 'FORBIDDEN' });
+        return;
+      }
+
+      if (!this.chatService || typeof this.chatService.executeChildDelegation !== 'function') {
+        ctx.status = 503;
+        ctx.error('ChatService child delegation executor is not available', 503);
+        return;
+      }
+
+      const { delegation, session = null } = ctx.request.body || {};
+      if (!delegation?.child_invocation?.run_id) {
+        ctx.error('delegation.child_invocation.run_id is required', 400);
+        return;
+      }
+
+      const result = await this.chatService.executeChildDelegation(delegation, {
+        session: session || ctx.state.session || null,
+      });
+
+      ctx.success(result);
+    } catch (error) {
+      logger.error('Internal API execute child Agent run error:', error);
+      ctx.error(error.message || '执行 Child Agent 失败', 500);
     }
   }
 

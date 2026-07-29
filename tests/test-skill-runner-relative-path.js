@@ -126,7 +126,7 @@ async function main() {
   const baseEnv = {
     DATA_BASE_PATH: dataBasePath,
     USER_ID: 'user-1',
-    WORKING_DIRECTORY: 'work/user-1/task-1',
+    WORKING_DIRECTORY: workDir,
   };
 
   let passed = 0;
@@ -180,7 +180,13 @@ async function main() {
       content: 'outside',
     }, baseEnv);
 
-    if (absoluteEscapeResult.code !== 0 && absoluteEscapeResult.result?.error?.includes('Absolute path not allowed')) {
+    if (
+      absoluteEscapeResult.code !== 0 &&
+      (
+        absoluteEscapeResult.result?.error?.includes('Absolute path not allowed') ||
+        absoluteEscapeResult.result?.error?.includes('Path not allowed')
+      )
+    ) {
       console.log('✅ 测试 4 通过: 绝对路径仍被技能层禁止');
       passed++;
     } else {
@@ -246,7 +252,84 @@ async function main() {
       failed++;
     }
 
-    console.log(`\n测试结果: ${passed} 通过, ${failed} 失败`);
+    const deleteInsideTarget = path.join(workDir, 'delete-me.txt');
+    fs.writeFileSync(deleteInsideTarget, 'delete me', 'utf-8');
+    const deleteInsideResult = await runFsTool('action', {
+      operation: 'delete',
+      path: 'delete-me.txt',
+    }, baseEnv);
+
+    if (deleteInsideResult.code === 0 && !fs.existsSync(deleteInsideTarget)) {
+      console.log('✅ Test 8 passed: fs action delete removes files inside WORKING_DIRECTORY');
+      passed++;
+    } else {
+      console.log('❌ Test 8 failed: fs action delete did not remove file inside WORKING_DIRECTORY');
+      failed++;
+    }
+
+    const deleteEscapeResult = await runFsTool('action', {
+      operation: 'delete',
+      path: '../outside-delete.txt',
+    }, baseEnv);
+
+    if (
+      deleteEscapeResult.code !== 0 &&
+      deleteEscapeResult.result?.error?.includes('Path not allowed')
+    ) {
+      console.log('✅ Test 9 passed: fs action delete cannot escape WORKING_DIRECTORY');
+      passed++;
+    } else {
+      console.log('❌ Test 9 failed: fs action delete escape was not blocked');
+      failed++;
+    }
+
+    const moveSource = path.join(workDir, 'move-source.txt');
+    const moveDest = path.join(workDir, 'nested', 'move-dest.txt');
+    fs.writeFileSync(moveSource, 'move me', 'utf-8');
+    const moveInsideResult = await runFsTool('action', {
+      operation: 'move',
+      source: 'move-source.txt',
+      destination: 'nested/move-dest.txt',
+    }, baseEnv);
+
+    if (
+      moveInsideResult.code === 0 &&
+      !fs.existsSync(moveSource) &&
+      fs.readFileSync(moveDest, 'utf-8') === 'move me'
+    ) {
+      console.log('✅ Test 10 passed: fs action move works inside WORKING_DIRECTORY');
+      passed++;
+    } else {
+      console.log('❌ Test 10 failed: fs action move inside WORKING_DIRECTORY did not behave correctly');
+      failed++;
+    }
+
+    const blockedMoveSource = path.join(workDir, 'blocked-move-source.txt');
+    const blockedMoveDest = path.join(tempRoot, 'blocked-move-dest.txt');
+    fs.writeFileSync(blockedMoveSource, 'blocked move', 'utf-8');
+    const moveEscapeResult = await runFsTool('action', {
+      operation: 'move',
+      source: 'blocked-move-source.txt',
+      destination: blockedMoveDest,
+    }, baseEnv);
+
+    if (
+      moveEscapeResult.code !== 0 &&
+      fs.existsSync(blockedMoveSource) &&
+      !fs.existsSync(blockedMoveDest) &&
+      (
+        moveEscapeResult.result?.error?.includes('Path not allowed') ||
+        moveEscapeResult.result?.error?.includes('Absolute path not allowed')
+      )
+    ) {
+      console.log('✅ Test 11 passed: fs action move cannot escape WORKING_DIRECTORY');
+      passed++;
+    } else {
+      console.log('❌ Test 11 failed: fs action move escape was not blocked');
+      failed++;
+    }
+
+    console.log(`Additional fs action tests included; final result: ${passed} passed, ${failed} failed`);
     process.exit(failed > 0 ? 1 : 0);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
