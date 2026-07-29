@@ -30,6 +30,7 @@ import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
+import { validateRevisionLabelUniqueness } from '../../lib/doc-version-utils.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
 
 class DocController {
@@ -1140,8 +1141,10 @@ async createVersion(ctx) {
   async updateRevisionLabel(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { revisionId } = ctx.params;
       const { revision_label } = ctx.request.body || {};
+      const userId = ctx.state.session.id;
 
       if (!revisionId) ctx.throw(400, 'revisionId is required');
       if (typeof revision_label !== 'string' || !revision_label.trim()) {
@@ -1151,6 +1154,17 @@ async createVersion(ctx) {
       const Version = this.models.DocVersion;
       const version = await Version.findByPk(revisionId);
       if (!version) ctx.throw(404, 'Revision not found');
+
+      const canWrite = await this.docAccessService.canWrite(version.document_id, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
+
+      const siblings = await Version.findAll({
+        where: { document_id: version.document_id },
+        attributes: ['id', 'revision_label'],
+        raw: true,
+      });
+      const uniquenessCheck = validateRevisionLabelUniqueness(siblings, revision_label, version.id);
+      if (!uniquenessCheck.valid) ctx.throw(400, uniquenessCheck.message);
 
       version.revision_label = revision_label.trim();
       await version.save();

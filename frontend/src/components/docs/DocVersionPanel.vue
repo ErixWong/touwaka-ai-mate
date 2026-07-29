@@ -54,7 +54,7 @@
       </el-table-column>
       <el-table-column :label="$t('docs.workspace.versionPanel.actions')" width="140">
         <template #default="{ row }">
-          <template v-if="row.id === resolvedCurrentId">
+          <template v-if="row.id === effectiveCurrentId">
             <el-tag size="small" type="success">{{ $t('docs.workspace.versionPanel.current') }}</el-tag>
           </template>
           <template v-else>
@@ -73,7 +73,7 @@
       <el-table-column :label="$t('docs.workspace.versionPanel.delete')" width="70" align="center">
         <template #default="{ row }">
           <el-tooltip
-            v-if="row.id === resolvedCurrentId"
+            v-if="row.id === effectiveCurrentId"
             :content="$t('docs.workspace.versionPanel.deleteCurrentForbidden')"
             placement="top"
           >
@@ -379,12 +379,14 @@ async function handleTaskIdImport() {
 // --------------------- version list ---------------------
 const canEditLabel = ref(true)
 
+// 当前版本 id：resolvedCurrentId 可能为空（后端未返回 resolved_current_revision_id），
+// 兜底用版本列表里的 is_current 标记
+const effectiveCurrentId = computed(() =>
+  props.resolvedCurrentId || props.versions.find(v => v.is_current)?.id || null
+)
+
 // 高亮正在预览的版本行；未预览任何版本时高亮当前版本
-const highlightedId = computed(() => {
-  if (docStore.previewRevisionId) return docStore.previewRevisionId
-  if (props.resolvedCurrentId) return props.resolvedCurrentId
-  return props.versions.find(v => v.is_current)?.id || null
-})
+const highlightedId = computed(() => docStore.previewRevisionId || effectiveCurrentId.value)
 
 function rowClassName({ row }: { row: DocRevision }) {
   return row.id === highlightedId.value ? 'version-row-active' : ''
