@@ -438,7 +438,8 @@ export async function probeGatewayTask(taskId: string): Promise<GatewayTaskProbe
 }
 
 export async function importGatewayTask(data: { collection_id: string; task_id: string; title?: string; revision_label?: string | null; force?: boolean }): Promise<ImportGatewayTaskResult> {
-  return apiRequest<ImportGatewayTaskResult>(apiClient.post('/docs/intakes/import-task', data))
+  // 导入会同步下载网关全部产物（图片逐张下载），耗时可能远超默认 30s 超时
+  return apiRequest<ImportGatewayTaskResult>(apiClient.post('/docs/intakes/import-task', data, { timeout: 300000 }))
 }
 
 export async function submitOcr(documentId: string, data: SubmitOcrRequest = {}): Promise<SubmitOcrResult> {
