@@ -631,14 +631,14 @@ function handleFileRemove() {
   pendingUploadFile.value = null
 }
 
-const TASK_ID_RE = /^[0-9a-zA-Z-]{32,40}$/
-
+// task_id 格式由 MinerU 网关定义，前端不做格式猜测，仅校验非空；
+// 非法或不存在的 id 由后端/gateway 返回 not_found，走统一提示。
 async function probeTaskId() {
   const taskId = taskIdInput.value.trim()
   taskIdProbe.value = null
   taskIdError.value = ''
-  if (!TASK_ID_RE.test(taskId)) {
-    taskIdError.value = t('docs.workspace.collection.taskIdInvalid')
+  if (!taskId) {
+    taskIdError.value = t('docs.workspace.collection.taskIdRequired')
     return
   }
   taskIdProbing.value = true

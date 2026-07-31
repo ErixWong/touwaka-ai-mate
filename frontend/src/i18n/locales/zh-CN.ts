@@ -2192,7 +2192,6 @@ export default {
         alreadyImportedTip: '该任务已导入过《{title}》，继续导入将创建新文档',
         confirmImport: '确认导入',
         confirmImportAgain: '仍要导入',
-        taskIdInvalid: 'Task ID 格式不正确',
         taskIdNotFound: '未找到该任务，请检查 Task ID 是否正确',
         taskIdProcessing: '该任务正在识别中，请稍后再试',
         taskIdCancelled: '该任务已被取消，无法导入',

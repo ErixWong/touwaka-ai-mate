@@ -2203,7 +2203,6 @@ export default {
         alreadyImportedTip: 'This task was already imported as "{title}". Importing again will create a new document.',
         confirmImport: 'Import',
         confirmImportAgain: 'Import Anyway',
-        taskIdInvalid: 'Invalid Task ID format',
         taskIdNotFound: 'Task not found. Please check the Task ID.',
         taskIdProcessing: 'This task is still being processed. Please try again later.',
         taskIdCancelled: 'This task was cancelled and cannot be imported.',
