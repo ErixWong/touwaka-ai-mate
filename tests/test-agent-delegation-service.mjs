@@ -7,6 +7,10 @@
 
 import assert from 'node:assert/strict';
 import { AgentDelegationService } from '../lib/agent/agent-delegation-service.js';
+import {
+  sealAgentDelegation,
+  verifyAgentDelegationIntegrity,
+} from '../lib/agent/agent-delegation-integrity.js';
 import { buildRootAgentInvocationContext } from '../lib/agent/agent-invocation-context.js';
 
 function createParentInvocation() {
@@ -88,6 +92,11 @@ async function testDelegationBuildsChildRun() {
   assert.equal(events.length, 1);
   assert.equal(events[0].type, 'delegation_created');
   assert.equal(events[0].callee_agent_id, 'expert_child');
+  assert.equal(verifyAgentDelegationIntegrity(delegation), true);
+  assert.equal(
+    verifyAgentDelegationIntegrity(JSON.parse(JSON.stringify(delegation))),
+    true
+  );
 }
 
 async function testRejectsDeniedCapability() {
@@ -208,6 +217,41 @@ async function testDelegateAndExecuteRequiresExplicitExecutor() {
   }), /child_executor.execute is required/);
 }
 
+async function testIntegritySurvivesJsonRoundTripWithUndefinedFields() {
+  const delegation = sealAgentDelegation({
+    status: 'accepted',
+    parent_invocation: createParentInvocation(),
+    child_invocation: {
+      run_id: 'child_run_json_integrity',
+      parent_run_id: 'root_run_1',
+      principal_user_id: 'user_1',
+      caller_agent_id: 'expert_parent',
+      callee_agent_id: 'expert_child',
+      request_id: undefined,
+    },
+    callee_definition: createDefinition({
+      debug_only: undefined,
+    }),
+    task: 'Search',
+    input: {
+      query: 'agent',
+      omitted: undefined,
+    },
+    expected_output: null,
+    requested_scope: null,
+    effective_scope: {
+      tools: ['search'],
+      omitted: undefined,
+    },
+  });
+
+  assert.equal(verifyAgentDelegationIntegrity(delegation), true);
+  assert.equal(
+    verifyAgentDelegationIntegrity(JSON.parse(JSON.stringify(delegation))),
+    true
+  );
+}
+
 async function main() {
   await testDelegationBuildsChildRun();
   await testRejectsDeniedCapability();
@@ -215,6 +259,7 @@ async function main() {
   await testRejectsDelegationCycle();
   await testDelegateAndExecuteUsesExplicitExecutor();
   await testDelegateAndExecuteRequiresExplicitExecutor();
+  await testIntegritySurvivesJsonRoundTripWithUndefinedFields();
 
   console.log('Agent delegation service tests passed.');
 }

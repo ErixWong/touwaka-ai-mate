@@ -223,24 +223,21 @@ describe('InternalController insertMessage 标准化回归测试', () => {
         content: '助理执行结果',
         task_db_id: 'shared_primary_key_20',
         trigger_expert: true,
-        original_message: '用户的原始问题',
       });
 
       await controller.insertMessage(ctx);
 
-      // getOrCreateActiveTopic 被调用
       expect(controller.getOrCreateActiveTopic).toHaveBeenCalledWith(
         'user001',
         'expert001',
         'shared_primary_key_20',
       );
 
-      // triggerExpertResponse 应使用 getOrCreateActiveTopic 返回的 topic_id
       expect(controller.triggerExpertResponse).toHaveBeenCalledWith(
         'user001',
         'expert001',
-        expect.any(String),  // constructedUserMessage
-        'topic_mock_001',    // 使用 getOrCreateActiveTopic 返回的 topic_id
+        '助理执行结果',
+        'topic_mock_001',
       );
     });
 
@@ -251,7 +248,6 @@ describe('InternalController insertMessage 标准化回归测试', () => {
         content: '助理执行结果',
         task_id: 'legacy_compat_key_20',
         trigger_expert: true,
-        original_message: '用户的原始问题',
       });
 
       await controller.insertMessage(ctx);
@@ -265,7 +261,7 @@ describe('InternalController insertMessage 标准化回归测试', () => {
       expect(controller.triggerExpertResponse).toHaveBeenCalledWith(
         'user001',
         'expert001',
-        expect.any(String),
+        '助理执行结果',
         'topic_mock_001',
       );
     });
@@ -359,7 +355,7 @@ describe('InternalController insertMessage 标准化回归测试', () => {
       );
     });
 
-    it('trigger_expert + original_message 场景不插入消息但触发专家', async () => {
+    it('trigger_expert 场景按普通消息插入并触发专家', async () => {
       // 重新设置 controller 以启用 chatService
       controller = new InternalController(mockDb, {
         expertConnections: new Map(),
@@ -379,15 +375,23 @@ describe('InternalController insertMessage 标准化回归测试', () => {
         content: '助理执行结果',
         task_db_id: 'db20charprimarykey12345',
         trigger_expert: true,
-        original_message: '用户的原始问题',
       });
 
       await controller.insertMessage(ctx);
 
-      // 助理场景不保存用户消息
-      expect(mockDb._mockMessage.create).not.toHaveBeenCalled();
-      // 但应触发专家响应
-      expect(controller.triggerExpertResponse).toHaveBeenCalled();
+      expect(mockDb._mockMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: 'user001',
+          expert_id: 'expert001',
+          content: '助理执行结果',
+        }),
+      );
+      expect(controller.triggerExpertResponse).toHaveBeenCalledWith(
+        'user001',
+        'expert001',
+        '助理执行结果',
+        'topic_mock_001',
+      );
     });
 
   });

@@ -10,6 +10,8 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
+import { verifyAgentDelegationIntegrity } from '../../lib/agent/agent-delegation-integrity.js';
+import { getPermissionService } from '../services/permission.service.js';
 
 class InternalController {
   /**
@@ -26,6 +28,7 @@ class InternalController {
     this.Provider = db.getModel('provider');
     this.expertConnections = options.expertConnections || new Map();
     this.chatService = options.chatService || null;
+    this.permissionService = options.permissionService || null;
   }
 
   /**
@@ -64,7 +67,6 @@ class InternalController {
         inner_voice,
         tool_calls,
         trigger_expert = false,  // 是否触发专家响应
-        original_message = '',     // 用户的原始问题（助理场景使用）
       } = ctx.request.body;
 
       // 标准化任务主键字段：优先使用 task_db_id，兼容 task_id
@@ -81,30 +83,20 @@ class InternalController {
         finalTopicId = await this.getOrCreateActiveTopic(user_id, expert_id, normalizedTaskDbId);
       }
 
-      // 4. 如果是助理场景，不保存用户消息，直接触发 Expert
+      // 4. 插入消息
       let messageId;
-      let constructedUserMessage = null;
-
-      if (trigger_expert && original_message) {
-        // 构造用户消息（不存入数据库，不显示在前端）
-        constructedUserMessage = `用户请求：${original_message}\n\n助理执行结果：\n${content}`;
-        messageId = 'assistant_trigger';
-        logger.info(`Internal API: 助理场景不保存用户消息，直接触发 Expert`);
-      } else {
-        // 普通场景：正常插入消息
-        messageId = Utils.newID(20);
-        await this.Message.create({
-          id: messageId,
-          topic_id: null,
-          user_id,
-          expert_id,
-          role,
-          content,
-          inner_voice: inner_voice ? (typeof inner_voice === 'string' ? inner_voice : JSON.stringify(inner_voice)) : null,
-          tool_calls: tool_calls ? (typeof tool_calls === 'string' ? tool_calls : JSON.stringify(tool_calls)) : null,
-        });
-        logger.info(`Internal API: 消息已插入 ${messageId}, expert=${expert_id}, user=${user_id}, trigger_expert=${trigger_expert}`);
-      }
+      messageId = Utils.newID(20);
+      await this.Message.create({
+        id: messageId,
+        topic_id: null,
+        user_id,
+        expert_id,
+        role,
+        content,
+        inner_voice: inner_voice ? (typeof inner_voice === 'string' ? inner_voice : JSON.stringify(inner_voice)) : null,
+        tool_calls: tool_calls ? (typeof tool_calls === 'string' ? tool_calls : JSON.stringify(tool_calls)) : null,
+      });
+      logger.info(`Internal API: 消息已插入 ${messageId}, expert=${expert_id}, user=${user_id}, trigger_expert=${trigger_expert}`);
 
       // 5. 通过 SSE 推送通知
       const sseSent = this.pushSSENotification(expert_id, user_id, {
@@ -119,9 +111,7 @@ class InternalController {
 
       // 6. 如果需要触发专家响应，异步执行
       if (trigger_expert && this.chatService) {
-        // 使用构造的用户消息内容触发 Expert
-        const triggerContent = constructedUserMessage || content;
-        this.triggerExpertResponse(user_id, expert_id, triggerContent, finalTopicId);
+        this.triggerExpertResponse(user_id, expert_id, content, finalTopicId);
       }
 
       // 7. 返回成功
@@ -360,6 +350,63 @@ class InternalController {
     }
 
     return true;
+  }
+
+  getSessionUserId(ctx) {
+    return ctx.state.session?.id || ctx.state.session?.userId || null;
+  }
+
+  async validateChildAgentRunAccess(ctx, delegation) {
+    const sessionUserId = this.getSessionUserId(ctx);
+    if (!sessionUserId) {
+      return { allowed: false, status: 403, message: 'Authenticated session is required' };
+    }
+
+    const childInvocation = delegation?.child_invocation || {};
+    const parentInvocation = delegation?.parent_invocation || {};
+    if (!verifyAgentDelegationIntegrity(delegation)) {
+      return { allowed: false, status: 403, message: 'delegation integrity verification failed' };
+    }
+
+    const principalUserId = childInvocation.principal_user_id;
+    if (!principalUserId || principalUserId !== sessionUserId) {
+      return {
+        allowed: false,
+        status: 403,
+        message: 'delegation principal does not match authenticated session',
+      };
+    }
+
+    if (parentInvocation.principal_user_id && parentInvocation.principal_user_id !== sessionUserId) {
+      return {
+        allowed: false,
+        status: 403,
+        message: 'parent delegation principal does not match authenticated session',
+      };
+    }
+
+    const calleeAgentId = childInvocation.callee_agent_id || delegation?.callee_definition?.agent_id;
+    if (!calleeAgentId) {
+      return { allowed: false, status: 400, message: 'delegation child callee_agent_id is required' };
+    }
+    if (delegation?.callee_definition?.agent_id && delegation.callee_definition.agent_id !== calleeAgentId) {
+      return { allowed: false, status: 400, message: 'delegation callee identity mismatch' };
+    }
+    if (delegation?.callee_definition?.source_type && delegation.callee_definition.source_type !== 'expert') {
+      return { allowed: false, status: 400, message: 'only expert child delegation is supported' };
+    }
+
+    const permissionService = this.permissionService || getPermissionService(this.db);
+    if (!permissionService || typeof permissionService.canAccessExpert !== 'function') {
+      return { allowed: false, status: 503, message: 'PermissionService is not available' };
+    }
+
+    const canAccess = await permissionService.canAccessExpert(sessionUserId, calleeAgentId);
+    if (!canAccess) {
+      return { allowed: false, status: 403, message: 'no permission to access child expert' };
+    }
+
+    return { allowed: true };
   }
 
   /**
@@ -644,17 +691,40 @@ class InternalController {
         return;
       }
 
-      const { delegation, session = null } = ctx.request.body || {};
+      const { delegation } = ctx.request.body || {};
       if (!delegation?.child_invocation?.run_id) {
         ctx.error('delegation.child_invocation.run_id is required', 400);
         return;
       }
 
-      const result = await this.chatService.executeChildDelegation(delegation, {
-        session: session || ctx.state.session || null,
-      });
+      const accessCheck = await this.validateChildAgentRunAccess(ctx, delegation);
+      if (!accessCheck.allowed) {
+        ctx.status = accessCheck.status;
+        ctx.error(accessCheck.message, accessCheck.status, { code: accessCheck.status === 403 ? 'FORBIDDEN' : 'INVALID_DELEGATION' });
+        return;
+      }
 
-      ctx.success(result);
+      let requestAborted = false;
+      const markAborted = () => {
+        requestAborted = true;
+      };
+      ctx.req?.on?.('aborted', markAborted);
+
+      const events = [];
+      let result;
+      try {
+        result = await this.chatService.executeChildDelegation(delegation, {
+          session: ctx.state.session || null,
+          onDelta: event => {
+            events.push(event);
+          },
+          shouldStop: () => requestAborted,
+        });
+      } finally {
+        ctx.req?.off?.('aborted', markAborted);
+      }
+
+      ctx.success({ result, events });
     } catch (error) {
       logger.error('Internal API execute child Agent run error:', error);
       ctx.error(error.message || '执行 Child Agent 失败', 500);

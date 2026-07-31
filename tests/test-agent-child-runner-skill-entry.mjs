@@ -81,9 +81,29 @@ async function testProcessCommandDispatchesToWorker() {
   }
 }
 
+async function testResolveApiBase() {
+  assert.equal(
+    __testing.resolveApiBase({ API_PORT: '3017' }),
+    'http://localhost:3017'
+  );
+  assert.equal(
+    __testing.resolveApiBase({ INTERNAL_API_BASE: 'http://127.0.0.1:4010/' }),
+    'http://127.0.0.1:4010'
+  );
+  assert.equal(
+    __testing.resolveApiBase({ API_BASE: 'http://localhost:3018/api/' }),
+    'http://localhost:3018/api'
+  );
+  assert.equal(
+    __testing.resolveApiBase({ INTERNAL_API_PROTOCOL: 'https', INTERNAL_API_HOST: 'api.internal', PORT: '4443' }),
+    'https://api.internal:4443'
+  );
+}
+
 async function main() {
   await testToolDefinition();
   await testProcessCommandDispatchesToWorker();
+  await testResolveApiBase();
 
   console.log('Agent child runner skill entry tests passed.');
 }

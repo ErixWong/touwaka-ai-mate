@@ -85,6 +85,10 @@ async function hasForeignKey(connection, tableName, constraintName) {
   return rows.length > 0;
 }
 
+function quoteIdentifier(identifier) {
+  return `\`${String(identifier).replace(/`/g, '``')}\``;
+}
+
 /**
  * 仅在外键存在时删除，兼容历史库中约束缺失的情况
  */
@@ -98,9 +102,37 @@ async function dropForeignKeyIfExists(connection, tableName, constraintName) {
   }
 
   await connection.execute(
-    `ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName}`
+    `ALTER TABLE ${quoteIdentifier(tableName)} DROP FOREIGN KEY ${quoteIdentifier(constraintName)}`
   );
   return true;
+}
+
+// Find foreign keys by column name, including legacy unnamed constraints.
+async function getForeignKeyNamesForColumn(connection, tableName, columnName) {
+  const [rows] = await connection.execute(
+    `SELECT DISTINCT CONSTRAINT_NAME
+     FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = ?
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+       AND REFERENCED_TABLE_NAME IS NOT NULL`,
+    [DB_CONFIG.database, tableName, columnName]
+  );
+  return rows.map(row => row.CONSTRAINT_NAME);
+}
+
+async function dropForeignKeysForColumn(connection, tableName, columnName) {
+  if (!await hasTable(connection, tableName)) {
+    return 0;
+  }
+
+  const constraintNames = await getForeignKeyNamesForColumn(connection, tableName, columnName);
+  for (const constraintName of constraintNames) {
+    await connection.execute(
+      `ALTER TABLE ${quoteIdentifier(tableName)} DROP FOREIGN KEY ${quoteIdentifier(constraintName)}`
+    );
+  }
+  return constraintNames.length;
 }
 
 /**
@@ -237,7 +269,12 @@ const MIGRATIONS = [
   // 将 assistant_type 重命名为 id
   {
     name: 'assistants.id column rename from assistant_type',
-    check: async (conn) => await hasColumn(conn, 'assistants', 'id'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'assistants') || !await hasTable(conn, 'assistant_requests')) {
+        return true;
+      }
+      return await hasColumn(conn, 'assistants', 'id');
+    },
     migrate: async (conn) => {
       // 1. 重命名主键字段
       await conn.execute(`
@@ -545,7 +582,12 @@ const MIGRATIONS = [
   // Issue #493: 助理通知状态跟踪
   {
     name: 'assistant_requests.notification_status column add',
-    check: async (conn) => await hasColumn(conn, 'assistant_requests', 'notification_status'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'assistant_requests')) {
+        return true;
+      }
+      return await hasColumn(conn, 'assistant_requests', 'notification_status');
+    },
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE assistant_requests
@@ -559,7 +601,12 @@ const MIGRATIONS = [
   // Issue #493: 助理通知错误信息
   {
     name: 'assistant_requests.notification_error column add',
-    check: async (conn) => await hasColumn(conn, 'assistant_requests', 'notification_error'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'assistant_requests')) {
+        return true;
+      }
+      return await hasColumn(conn, 'assistant_requests', 'notification_error');
+    },
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE assistant_requests
@@ -573,7 +620,12 @@ const MIGRATIONS = [
   // Issue #493: 助理通知发送时间
   {
     name: 'assistant_requests.notification_sent_at column add',
-    check: async (conn) => await hasColumn(conn, 'assistant_requests', 'notification_sent_at'),
+    check: async (conn) => {
+      if (!await hasTable(conn, 'assistant_requests')) {
+        return true;
+      }
+      return await hasColumn(conn, 'assistant_requests', 'notification_sent_at');
+    },
     migrate: async (conn) => {
       await conn.execute(`
         ALTER TABLE assistant_requests
@@ -2795,6 +2847,9 @@ const MIGRATIONS = [
   {
     name: 'attachments.created_by length upgrade',
     check: async (conn) => {
+      if (!await hasTable(conn, 'attachments') || !await hasColumn(conn, 'attachments', 'created_by')) {
+        return true;
+      }
       const [rows] = await conn.execute(
         `SELECT CHARACTER_MAXIMUM_LENGTH AS len
          FROM INFORMATION_SCHEMA.COLUMNS
@@ -2804,9 +2859,15 @@ const MIGRATIONS = [
       return rows.length > 0 && Number(rows[0].len) >= 32;
     },
     migrate: async (conn) => {
-      await dropForeignKeyIfExists(conn, 'attachments', 'attachments_ibfk_1');
+      await dropForeignKeysForColumn(conn, 'attachments', 'created_by');
       await conn.execute(`ALTER TABLE attachments MODIFY COLUMN created_by VARCHAR(32) DEFAULT NULL COMMENT '上传者ID'`);
-      await safeExecute(conn, `ALTER TABLE attachments ADD CONSTRAINT attachments_ibfk_1 FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL`);
+      if (await hasTable(conn, 'users')) {
+        await safeExecute(
+          conn,
+          `ALTER TABLE attachments ADD CONSTRAINT fk_attachments_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL`,
+          ['Duplicate', 'already exists']
+        );
+      }
       console.log('  ✓ Upgraded attachments.created_by to VARCHAR(32)');
     }
   },
@@ -3503,6 +3564,25 @@ const MIGRATIONS = [
       `);
 
       console.log('  ✓ Rebound doc_content_units.version_id → document_revisions.id');
+    }
+  },
+
+  // ==================== Legacy Assistant runtime retirement ====================
+  {
+    name: 'drop legacy assistant tables',
+    check: async (conn) => {
+      const tables = await Promise.all([
+        hasTable(conn, 'assistant_messages'),
+        hasTable(conn, 'assistant_requests'),
+        hasTable(conn, 'assistants'),
+      ]);
+      return tables.every(exists => !exists);
+    },
+    migrate: async (conn) => {
+      await conn.execute('DROP TABLE IF EXISTS assistant_messages');
+      await conn.execute('DROP TABLE IF EXISTS assistant_requests');
+      await conn.execute('DROP TABLE IF EXISTS assistants');
+      console.log('  ✓ Dropped legacy assistant tables');
     }
   },
 
