@@ -1,4 +1,3 @@
-import assistant from './zh-CN/assistant.ts'
 import settingsMcp from './zh-CN/settings-mcp.ts'
 
 export default {
@@ -222,7 +221,6 @@ export default {
     modelSettings: '模型设置',
     providerSettings: '提供商',
     expertSettings: '专家设置',
-    assistantSettings: '助理设置',
     about: '关于',
     // 专家管理
     expertManagement: '专家管理',
@@ -884,7 +882,6 @@ export default {
     expert: '专家',
     topics: '话题',
     tasks: '任务',
-    assistants: '助理',
     skills: '技能',
     skillsDirectory: '技能目录',
     debug: '调试',
@@ -1457,7 +1454,6 @@ export default {
       viewResult: '查看比对结果',
     },
   },
-  assistant,
 
   // 注册页面
   register: {

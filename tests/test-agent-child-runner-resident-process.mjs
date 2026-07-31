@@ -79,9 +79,13 @@ function startInternalApiServer(calls) {
         code: 200,
         message: 'success',
         data: {
-          fullContent: 'resident child result',
-          received_run_id: body.delegation?.child_invocation?.run_id,
-          received_session_user: body.session?.userId,
+          result: {
+            fullContent: 'resident child result',
+            received_run_id: body.delegation?.child_invocation?.run_id,
+          },
+          events: [
+            { type: 'delta', content: 'resident event' },
+          ],
         },
       }));
     } catch (error) {
@@ -218,9 +222,62 @@ async function testResidentProcessStartStatusResult() {
     assert.equal(result.success, true);
     assert.equal(result.result.result.fullContent, 'resident child result');
     assert.equal(result.result.result.received_run_id, 'child_run_process_1');
-    assert.equal(result.result.result.received_session_user, 'user_process');
+    assert.deepEqual(result.result.events, [{ type: 'delta', content: 'resident event' }]);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].authorization, 'Bearer token_process');
+    assert.equal(calls[0].body.session, undefined);
+  } finally {
+    proc.kill();
+    server.close();
+  }
+
+  assert.equal(stderr, '');
+}
+
+async function testResidentProcessDerivesApiBaseFromApiPort() {
+  const calls = [];
+  const server = await startInternalApiServer(calls);
+  const address = server.address();
+  const proc = spawn(process.execPath, ['data/skills/agent-child-runner/index.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      API_BASE: '',
+      API_PORT: String(address.port),
+      INTERNAL_API_HOST: '127.0.0.1',
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  let stderr = '';
+  proc.stderr.on('data', chunk => {
+    stderr += chunk.toString();
+  });
+
+  try {
+    const ready = await waitForLine(proc);
+    assert.equal(ready.type, 'ready');
+
+    const started = await sendCommand(proc, {
+      command: 'invoke',
+      task_id: 'start_port_fallback',
+      params: {
+        action: 'start',
+        delegation: createDelegation(),
+        options: {
+          session: {
+            userId: 'user_process',
+            accessToken: 'token_port_fallback',
+          },
+        },
+      },
+    });
+
+    assert.equal(started.success, true);
+    const completed = await waitForCompletedStatus(proc, started.result.child_run_id);
+    assert.equal(completed.status, 'completed');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].authorization, 'Bearer token_port_fallback');
   } finally {
     proc.kill();
     server.close();
@@ -231,6 +288,7 @@ async function testResidentProcessStartStatusResult() {
 
 async function main() {
   await testResidentProcessStartStatusResult();
+  await testResidentProcessDerivesApiBaseFromApiPort();
 
   console.log('Agent child runner resident process tests passed.');
 }

@@ -84,7 +84,6 @@ const router = createRouter({
             { path: '', redirect: { name: 'sys-models' } },
             { path: 'models', name: 'sys-models', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'model', adminOnly: true } },
             { path: 'experts', name: 'sys-experts', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'expert', adminOnly: true } },
-            { path: 'assistants', name: 'sys-assistants', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'assistant', adminOnly: true } },
             { path: 'resident', name: 'sys-resident', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'resident', adminOnly: true } },
             { path: 'attachments', name: 'sys-attachments', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'attachment', adminOnly: true } },
             { path: 'mcp', name: 'sys-mcp', component: () => import('@/views/SettingsView.vue'), meta: { settingsGroup: 'system', settingsTab: 'mcp', adminOnly: true } },

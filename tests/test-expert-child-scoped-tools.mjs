@@ -51,6 +51,10 @@ async function testFiltersToolsByEffectiveScope() {
     { name: 'legacy_shape_tool' },
   ];
   const session = { userId: 'user_scoped_tools' };
+  const taskContext = {
+    workspace_mode: 'repo_task',
+    absolute_workspace_path: 'D:/repo/docs/tasks/active/current-task',
+  };
   const expert_service = {
     toolManager: {
       async getToolDefinitions(context) {
@@ -65,6 +69,7 @@ async function testFiltersToolsByEffectiveScope() {
     invocation_context,
     effective_scope: { tools: ['search', 'legacy_shape_tool', 'missing_tool', 'search'] },
     session,
+    taskContext,
   });
 
   assert.deepEqual(scopedTools, [
@@ -77,6 +82,7 @@ async function testFiltersToolsByEffectiveScope() {
     expert_id: 'expert_child',
     expertId: 'expert_child',
     session,
+    taskContext,
   }]);
 }
 

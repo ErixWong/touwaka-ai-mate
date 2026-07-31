@@ -17,9 +17,6 @@ import _app_invoice_mgr_record from  "./app_invoice_mgr_record.js";
 import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
 import _app_tick_log from  "./app_tick_log.js";
 import _app_tick_run from  "./app_tick_run.js";
-import _assistant_message from  "./assistant_message.js";
-import _assistant_request from  "./assistant_request.js";
-import _assistant from  "./assistant.js";
 import _attachment_token from  "./attachment_token.js";
 import _attachment from  "./attachment.js";
 import _chat_request from  "./chat_request.js";
@@ -97,9 +94,6 @@ export default function initModels(sequelize) {
   const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
   const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const app_tick_run = _app_tick_run.init(sequelize, DataTypes);
-  const assistant_message = _assistant_message.init(sequelize, DataTypes);
-  const assistant_request = _assistant_request.init(sequelize, DataTypes);
-  const assistant = _assistant.init(sequelize, DataTypes);
   const attachment_token = _attachment_token.init(sequelize, DataTypes);
   const attachment = _attachment.init(sequelize, DataTypes);
   const chat_request = _chat_request.init(sequelize, DataTypes);
@@ -392,9 +386,6 @@ export default function initModels(sequelize) {
     app_invoice_mgr_row,
     app_tick_log,
     app_tick_run,
-    assistant_message,
-    assistant_request,
-    assistant,
     attachment_token,
     attachment,
     chat_request,

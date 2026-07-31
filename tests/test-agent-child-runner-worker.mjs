@@ -84,11 +84,13 @@ async function testStartCompletesAndReturnsResult() {
 
 async function testCancelRunningRun() {
   let releaseRun;
+  let observedAbortSignal = null;
   const enteredRun = new Promise(resolve => {
     releaseRun = resolve;
   });
   const worker = new AgentChildRunnerWorker({
     async execute_child_run(input) {
+      observedAbortSignal = input.abortSignal;
       enteredRun.then(() => {});
       await new Promise(resolve => {
         releaseRun = resolve;
@@ -106,11 +108,30 @@ async function testCancelRunningRun() {
 
   const cancelled = worker.cancel(started.child_run_id);
   assert.equal(cancelled.cancel_requested, true);
+  assert.equal(observedAbortSignal.aborted, true);
   releaseRun();
 
   const finalStatus = await worker.waitForCompletion(started.child_run_id);
   assert.equal(finalStatus.status, 'cancelled');
   assert.equal(finalStatus.error, 'Request aborted by user');
+}
+
+async function testTerminalRunRetentionCleanup() {
+  const worker = new AgentChildRunnerWorker({
+    terminal_retention_ms: 0,
+    async execute_child_run(input) {
+      return { run_id: input.delegation.child_invocation.run_id };
+    },
+  });
+
+  const first = worker.start(createDelegation('child_run_worker_retained_1'));
+  await worker.waitForCompletion(first.child_run_id);
+  assert.throws(() => worker.getStatus(first.child_run_id), /child run not found/);
+
+  const second = worker.start(createDelegation('child_run_worker_retained_2'));
+  await worker.waitForCompletion(second.child_run_id);
+
+  assert.throws(() => worker.getStatus(second.child_run_id), /child run not found/);
 }
 
 async function testFailedRunStatus() {
@@ -136,6 +157,7 @@ async function main() {
   await testStartCompletesAndReturnsResult();
   await testCancelRunningRun();
   await testFailedRunStatus();
+  await testTerminalRunRetentionCleanup();
   testRequiresExecutor();
 
   console.log('Agent child runner worker tests passed.');
