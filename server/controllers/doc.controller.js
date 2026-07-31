@@ -25,6 +25,7 @@ import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
+import DocumentReadService from '../../lib/document-read.service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
@@ -100,6 +101,12 @@ class DocController {
   ensureRevisionService() {
     if (!this.revisionService) {
       this.revisionService = new DocumentRevisionService(this.db);
+    }
+  }
+
+  ensureDocumentReadService() {
+    if (!this.documentReadService) {
+      this.documentReadService = new DocumentReadService(this.db);
     }
   }
 
@@ -607,6 +614,124 @@ class DocController {
       ctx.success(chunks);
     } catch (error) {
       logger.error('[Doc] getContentTree error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G1: 按 revision_id 读 outline 列表
+   * GET /api/docs/revisions/:revisionId/outlines
+   */
+  async getOutlinesByRevision(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const revision = await this.db.getModel('document_revision').findByPk(revisionId, { raw: true });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const canRead = await this.docAccessService.canRead(revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const outlines = await this.documentReadService.listOutlines(revisionId);
+      ctx.success(outlines);
+    } catch (error) {
+      logger.error('[Doc] getOutlinesByRevision error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G2: 按 outline_id 读 section 文本
+   * GET /api/docs/outlines/:outlineId/section
+   */
+  async getSectionByOutline(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { outlineId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const locator = await this.documentReadService.resolveOutline(outlineId);
+      if (!locator || !locator.revision) ctx.throw(404, 'Outline not found');
+
+      const canRead = await this.docAccessService.canRead(locator.revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const outline = await this.documentReadService.getSectionByOutlineId(outlineId);
+      ctx.success(outline);
+    } catch (error) {
+      logger.error('[Doc] getSectionByOutline error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G3: 按任意 revision_id 读全文
+   * GET /api/docs/revisions/:revisionId/content?max_chars=20000
+   *
+   * R2-7：支持 max_chars 截断参数，默认 20000
+   */
+  async getRevisionContent(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+      const maxChars = parseInt(ctx.query.max_chars, 10) || 20000;
+
+      const revision = await this.db.getModel('document_revision').findByPk(revisionId, { raw: true });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const canRead = await this.docAccessService.canRead(revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const result = await this.documentReadService.getRevisionText(revisionId, { max_chars: maxChars });
+      if (result.text === null && result.revision === null) {
+        ctx.throw(404, 'Revision not found');
+      }
+      ctx.success({
+        text: result.text,
+        revision: result.revision,
+        content_truncated: result.content_truncated,
+      });
+    } catch (error) {
+      logger.error('[Doc] getRevisionContent error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G4: outline_id 反查 document/revision 定位信息
+   * GET /api/docs/outlines/:outlineId/locator
+   */
+  async getOutlineLocator(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { outlineId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const locator = await this.documentReadService.resolveOutline(outlineId);
+      if (!locator) ctx.throw(404, 'Outline not found');
+
+      if (locator.revision) {
+        const canRead = await this.docAccessService.canRead(locator.revision.document_id, userId);
+        if (!canRead) ctx.throw(403, 'Access denied');
+      }
+
+      ctx.success({
+        outline_id: locator.outline?.id || null,
+        revision_id: locator.revision?.id || null,
+        document_id: locator.document?.id || null,
+        outline: locator.outline,
+        revision: locator.revision,
+        document: locator.document,
+      });
+    } catch (error) {
+      logger.error('[Doc] getOutlineLocator error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }

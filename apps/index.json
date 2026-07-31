@@ -106,6 +106,19 @@
       "tags": ["电流", "CSV", "阶段识别", "信号分析", "LLM", "报告"],
       "path": "apps/current-feature-analyzer",
       "manifest_url": "apps/current-feature-analyzer/manifest.json"
+    },
+    {
+      "id": "standard-mgr",
+      "name": "标准管理",
+      "version": "1.0.0",
+      "icon": "📐",
+      "type": "document",
+      "description": "标准文档纳管、引用清洗与锚点定位",
+      "author": "Touwaka Team",
+      "license": "MIT",
+      "tags": ["标准", "文档", "引用", "锚点", "合规"],
+      "path": "apps/standard-mgr",
+      "manifest_url": "apps/standard-mgr/manifest.json"
     }
   ],
   "categories": [
@@ -116,7 +129,7 @@
     { "id": "workflow", "name": "工作流", "icon": "🔄", "description": "流程审批、状态流转、智能匹配" }
   ],
   "metadata": {
-    "total_apps": 8,
+    "total_apps": 9,
     "min_platform_version": "2.0.0",
     "last_updated_by": "Touwaka Team"
   }

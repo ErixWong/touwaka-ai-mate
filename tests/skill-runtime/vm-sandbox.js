@@ -118,6 +118,7 @@ export function createTestSandbox(options = {}) {
     Buffer,
     URL,
     URLSearchParams,
+    fetch: (...args) => globalThis.fetch(...args),
     setTimeout,
     clearTimeout,
     setInterval,
