@@ -243,6 +243,8 @@ const props = defineProps<{
   resolvedCurrentId?: string | null
   versions: DocRevision[]
   compact?: boolean
+  /** 是否可编辑版本号（写权限联动；未传时默认 false，避免无权限用户误编辑） */
+  canEditLabel?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -266,11 +268,31 @@ const taskIdProbing = ref(false)
 const taskIdProbe = ref<GatewayTaskProbe | null>(null)
 const taskIdError = ref('')
 
+// --------------------- version helpers (与后端 doc-version-utils 对齐) ---------------------
+// 尝试从 revision_label 提取年份：任意位置 4 位数字（1900-2099），支持 2012、2012版、v2012 等
+function extractYear(label: string | null): number | null {
+  if (!label) return null
+  const m = label.match(/(\d{4})/)
+  if (!m || !m[1]) return null
+  const year = parseInt(m[1], 10)
+  return year >= 1900 && year <= 2099 ? year : null
+}
+
+// 尝试从 revision_label 提取版本编号：v1、v2.0、1.0、2 等 → major*1000+minor
+function extractVersionNumber(label: string | null): number | null {
+  if (!label) return null
+  const m = label.match(/^v?(\d+)(?:\.(\d+))?$/i)
+  if (!m || !m[1]) return null
+  const major = parseInt(m[1], 10)
+  const minor = m[2] ? parseInt(m[2], 10) : 0
+  return major * 1000 + minor
+}
+
 const labelHint = computed(() => {
   const labels = props.versions.map(v => v.revision_label).filter((l): l is string => Boolean(l))
   if (labels.length === 0) return 'v1'
-  // Check for year-based
-  const yearCount = labels.filter(l => /^\d{4}$/.test(l)).length
+  // 年份体系检测与后端 generateDefaultRevisionLabel 对齐：超过半数 label 含年份语义
+  const yearCount = labels.filter(l => extractYear(l) !== null).length
   if (yearCount > 0 && yearCount >= labels.length / 2) {
     return t('docs.workspace.versionPanel.yearHint')
   }
@@ -377,13 +399,14 @@ async function handleTaskIdImport() {
 }
 
 // --------------------- version list ---------------------
-const canEditLabel = ref(true)
-
 // 当前版本 id：resolvedCurrentId 可能为空（后端未返回 resolved_current_revision_id），
 // 兜底用版本列表里的 is_current 标记
 const effectiveCurrentId = computed(() =>
   props.resolvedCurrentId || props.versions.find(v => v.is_current)?.id || null
 )
+
+// 版本号编辑开关：与后端写权限联动（can_set_current_revision/canWrite），不再恒真
+const canEditLabel = computed(() => props.canEditLabel === true)
 
 // 高亮正在预览的版本行；未预览任何版本时高亮当前版本
 const highlightedId = computed(() => docStore.previewRevisionId || effectiveCurrentId.value)
@@ -393,24 +416,35 @@ function rowClassName({ row }: { row: DocRevision }) {
 }
 
 /**
- * 客户端版本排序：年份 → revision_no DESC → created_at DESC
- * 与后端 sortRevisionList() 保持一致，作为前端防御性兜底
+ * 客户端版本排序：与后端 compareRevisions() 完全一致的防御性兜底。
+ * 规则：年份优先（降序）→ 版号次之（降序）→ revision_no（降序）→ created_at（降序）。
+ * 任一环节无法判定时继续下一 tiebreak，不得提前返回。
  */
 const sortedVersions = computed(() => {
   const list = [...props.versions]
   list.sort((a, b) => {
-    const aLabel = a.revision_label || ''
-    const bLabel = b.revision_label || ''
-    const aYear = /^(\d{4})$/.test(aLabel) ? parseInt(aLabel, 10) : null
-    const bYear = /^(\d{4})$/.test(bLabel) ? parseInt(bLabel, 10) : null
-    // 年份版本优先，按年份降序
-    if (aYear && bYear) return bYear - aYear
-    if (aYear) return -1
-    if (bYear) return 1
-    // revision_no 降序
+    const yearA = extractYear(a.revision_label)
+    const yearB = extractYear(b.revision_label)
+
+    // 双方都有年份 → 按年份降序；单方有年份 → 有年份的优先
+    if (yearA !== null && yearB !== null && yearA !== yearB) return yearB - yearA
+    if (yearA !== null && yearB === null) return -1
+    if (yearB !== null && yearA === null) return 1
+
+    // 双方都没有年份（或年份相同）→ 尝试按版号排序
+    const verA = extractVersionNumber(a.revision_label)
+    const verB = extractVersionNumber(b.revision_label)
+    if (verA !== null && verB !== null && verA !== verB) return verB - verA
+    if (verA !== null && verB === null) return -1
+    if (verB !== null && verA === null) return 1
+
+    // 兜底：revision_no 降序
     if (a.revision_no !== b.revision_no) return b.revision_no - a.revision_no
-    // created_at 降序兜底
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+
+    // 最终兜底：created_at 降序
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
+    return timeB - timeA
   })
   return list
 })

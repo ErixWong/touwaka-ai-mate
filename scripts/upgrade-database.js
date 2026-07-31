@@ -3549,11 +3549,16 @@ const MIGRATIONS = [
       if (dupRows.length > 0) {
         console.log(`    - Found ${dupRows.length} duplicate revision_labels, fixing...`);
         // 对重复项追加后缀，保留 revision_no 较小的原值不变
+        // 注意：revision_label 为 VARCHAR(20)，拼接 _dup_{revision_no} 前必须截断原 label，
+        // 否则超长 label 会在后续 MODIFY NOT NULL / UNIQUE 索引阶段失败
         const seen = new Map(); // key: `${document_id}:${revision_label}` -> boolean
+        const MAX_LABEL_LENGTH = 20;
         for (const row of dupRows) {
           const key = `${row.document_id}:${row.revision_label}`;
           if (seen.has(key)) {
-            const newLabel = `${row.revision_label}_dup_${row.revision_no}`;
+            const suffix = `_dup_${row.revision_no}`;
+            const baseLabel = row.revision_label.slice(0, MAX_LABEL_LENGTH - suffix.length);
+            const newLabel = `${baseLabel}${suffix}`;
             await conn.execute(
               `UPDATE document_revisions SET revision_label = ? WHERE id = ?`,
               [newLabel, row.id]

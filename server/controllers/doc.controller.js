@@ -30,8 +30,20 @@ import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import { getSourceAttachment } from '../../lib/doc-source-attachment.js';
-import { validateRevisionLabelUniqueness } from '../../lib/doc-version-utils.js';
+import {
+  validateRevisionLabelUniqueness,
+  resolveCurrentRevision,
+  sortRevisionList,
+} from '../../lib/doc-version-utils.js';
 import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../../lib/doc-pipeline-defaults.js';
+
+// gateway task_id 的格式由 MinerU 网关定义，本系统不猜测其格式；
+// 只校验自身约束（非空字符串 + 长度上限），合法性交给 gateway 的 not_found 判定。
+const GATEWAY_TASK_ID_MAX_LENGTH = 128;
+
+function isPresentGatewayTaskId(value) {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= GATEWAY_TASK_ID_MAX_LENGTH;
+}
 
 class DocController {
   constructor(db) {
@@ -299,7 +311,6 @@ class DocController {
           model: this.models.DocVersion,
           as: 'document_revisions',
           attributes: ['id', 'revision_no', 'revision_label', 'revision_status', 'is_current', 'effective_from', 'effective_to', 'created_at'],
-          order: [['revision_no', 'DESC']],
         }],
       });
 
@@ -307,7 +318,17 @@ class DocController {
         ctx.throw(404, 'Document not found');
       }
 
-      ctx.success(document);
+      // 统一排序收敛：与 sortRevisionList 保持一致（年份优先 → 版号次之 → created_at 兜底）
+      const rawRevisions = document.document_revisions || [];
+      const sortedRevisions = sortRevisionList(rawRevisions.map(r => (r.toJSON ? r.toJSON() : r)));
+      const resolved = resolveCurrentRevision(document, sortedRevisions);
+
+      const documentJson = document.toJSON ? document.toJSON() : document;
+      documentJson.document_revisions = sortedRevisions;
+      documentJson.resolved_current_revision_id = resolved?.id ?? null;
+      documentJson.resolved_current_revision = resolved ?? null;
+
+      ctx.success(documentJson);
       logger.info(`[Doc] getDocument: ${documentId}, ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error('[Doc] getDocument error:', error);
@@ -356,6 +377,18 @@ class DocController {
       });
 
       if (!document) ctx.throw(404, 'Document not found');
+
+      // 解析"当前版本"（用户指定优先 → 排序后最新）：契约字段，前端依赖其判断当前行
+      const allRevisions = await DocumentRevision.findAll({
+        where: { document_id: documentId },
+        attributes: [
+          'id', 'document_id', 'revision_no', 'revision_label', 'revision_status',
+          'is_current', 'effective_from', 'effective_to', 'change_summary',
+          'created_by', 'created_at', 'updated_at', 'diff_status',
+        ],
+        raw: true,
+      });
+      const resolvedCurrent = resolveCurrentRevision(document, allRevisions);
 
       // 支持按 revision_id 预览指定版本（只读，不影响 current_revision_id）
       const requestedRevisionId = typeof ctx.query.revision_id === 'string' && ctx.query.revision_id.trim()
@@ -523,6 +556,8 @@ class DocController {
         document: {
           ...document,
           has_preview_result: hasPreview,
+          resolved_current_revision_id: resolvedCurrent?.id ?? null,
+          resolved_current_revision: resolvedCurrent ?? null,
         },
         revision: revision ? {
           ...revision,
@@ -585,17 +620,24 @@ class DocController {
       const document = await this.models.DocDocument.findOne({
         where: { id: documentId },
         attributes: ['id', 'current_revision_id'],
+        raw: true,
       });
 
       const versions = await this.models.DocVersion.findAll({
         where: { document_id: documentId },
-        order: [['revision_no', 'DESC']],
+        raw: true,
       });
+
+      // 统一排序：年份优先 → 版号次之 → created_at 兜底（与 sortRevisionList 一致）
+      const sortedVersions = sortRevisionList(versions);
+      const resolvedCurrent = resolveCurrentRevision(document, sortedVersions);
 
       ctx.success({
         document_id: document.id,
         current_revision_id: document.current_revision_id,
-        items: versions,
+        resolved_current_revision_id: resolvedCurrent?.id ?? null,
+        resolved_current_revision: resolvedCurrent ?? null,
+        items: sortedVersions,
       });
     } catch (error) {
       logger.error('[Doc] listVersions error:', error);
@@ -1151,6 +1193,10 @@ async createVersion(ctx) {
         ctx.throw(400, 'revision_label is required');
       }
 
+      // DB 字段为 VARCHAR(20)：超长 label 直接落库会触发 DB 报错，
+      // 这里与 ocr 导入的 truncateText(..., 20) 对齐，统一截断保护
+      const trimmedLabel = revision_label.trim().slice(0, 20);
+
       const Version = this.models.DocVersion;
       const version = await Version.findByPk(revisionId);
       if (!version) ctx.throw(404, 'Revision not found');
@@ -1163,10 +1209,10 @@ async createVersion(ctx) {
         attributes: ['id', 'revision_label'],
         raw: true,
       });
-      const uniquenessCheck = validateRevisionLabelUniqueness(siblings, revision_label, version.id);
+      const uniquenessCheck = validateRevisionLabelUniqueness(siblings, trimmedLabel, version.id);
       if (!uniquenessCheck.valid) ctx.throw(400, uniquenessCheck.message);
 
-      version.revision_label = revision_label.trim();
+      version.revision_label = trimmedLabel;
       await version.save();
 
       ctx.success(version);
@@ -1861,7 +1907,7 @@ async createVersion(ctx) {
       this.ensureDocumentOcrService(ctx);
       const userId = ctx.state.session.id;
       const { taskId } = ctx.params;
-      if (!taskId || !/^[0-9a-zA-Z-]{32,40}$/.test(taskId)) {
+      if (!isPresentGatewayTaskId(taskId)) {
         ctx.throw(400, 'Invalid task id');
       }
 
@@ -1885,7 +1931,7 @@ async createVersion(ctx) {
       const { collection_id, task_id, title, revision_label, force } = ctx.request.body || {};
 
       if (!collection_id) ctx.throw(400, 'collection_id is required');
-      if (!task_id || !/^[0-9a-zA-Z-]{32,40}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
+      if (!isPresentGatewayTaskId(task_id)) ctx.throw(400, 'Invalid task_id');
 
       const DocumentCollection = this.db.getModel('document_collection');
       const collection = await DocumentCollection.findByPk(collection_id);
@@ -1926,7 +1972,7 @@ async createVersion(ctx) {
       const { documentId } = ctx.params;
       const { task_id, revision_label, change_summary, force } = ctx.request.body || {};
 
-      if (!task_id || !/^[0-9a-zA-Z-]{32,40}$/.test(task_id)) ctx.throw(400, 'Invalid task_id');
+      if (!isPresentGatewayTaskId(task_id)) ctx.throw(400, 'Invalid task_id');
 
       const canWrite = await this.docAccessService.canWrite(documentId, userId);
       if (!canWrite) ctx.throw(403, 'Write access denied');

@@ -215,7 +215,6 @@ export interface DocResultDetail {
       username: string
     } | null
   } | null
-  versions?: DocRevision[]
   source_attachment: DocAttachmentInfo | null
   processing: {
     status: DocProcessingStage

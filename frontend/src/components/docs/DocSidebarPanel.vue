@@ -115,6 +115,7 @@
         :document-id="documentId || ''"
         :resolved-current-id="resolvedCurrentId"
         :versions="versions || []"
+        :can-edit-label="canEditLabel"
         compact
         @version-changed="$emit('versionChanged')"
         @preview-version="$emit('previewVersion', $event)"
@@ -158,11 +159,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getDocProcessingStatusTagType } from '@/api/docs'
+import { getDocProcessingStatusTagType, getDocumentPermissions, updateRevisionLabel, type DocRevision } from '@/api/docs'
 import DocVersionPanel from '@/components/docs/DocVersionPanel.vue'
 import { ElMessage } from 'element-plus'
 import { ref, watch } from 'vue'
-import { updateRevisionLabel } from '@/api/docs'
 
 const { t, locale } = useI18n()
 
@@ -212,7 +212,7 @@ interface Props {
   // 版本管理
   documentId?: string | null
   resolvedCurrentId?: string | null
-  versions?: any[] | null
+  versions?: DocRevision[] | null
   
   // 下载链接
   attachmentDownloadUrl?: string | null
@@ -266,6 +266,21 @@ const emit = defineEmits<{
 const editingRevisionLabel = ref(false)
 const editingRevisionValue = ref('')
 const savingRevisionLabel = ref(false)
+
+// 写权限：决定版本号是否可编辑/上传。后端统一由 canWrite 派生（can_set_current_revision）。
+const canEditLabel = ref(false)
+watch(() => props.documentId, async (documentId) => {
+  if (!documentId) {
+    canEditLabel.value = false
+    return
+  }
+  try {
+    const perms = await getDocumentPermissions(documentId)
+    canEditLabel.value = perms.can_set_current_revision === true
+  } catch {
+    canEditLabel.value = false
+  }
+}, { immediate: true })
 
 watch(() => props.revisionLabel, (value) => {
   if (!editingRevisionLabel.value) {

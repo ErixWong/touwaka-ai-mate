@@ -21,7 +21,6 @@ import {
 } from '@/api/docs'
 import type {
   DocDocument,
-  DocRevision,
   DocVersion,
   DocChunk,
   DocRecallItem,

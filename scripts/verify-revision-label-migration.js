@@ -29,7 +29,14 @@ const DB_CONFIG = {
 
 async function main() {
   const args = process.argv.slice(2);
+  // --dry-run（默认，只检查不修改）与 --fix（检查并修复）两种模式。
+  // 显式支持 --dry-run，与默认行为一致，便于验收脚本调用。
   const fixMode = args.includes('--fix');
+  const dryRun = args.includes('--dry-run');
+  if (dryRun && fixMode) {
+    console.error('❌ --dry-run 与 --fix 互斥，请二选一');
+    process.exit(1);
+  }
 
   console.log('='.repeat(60));
   console.log('📋 revision_label 迁移验证');
@@ -79,8 +86,7 @@ async function main() {
         for (const d of details) {
           const suffix = d.revision_no === details[0].revision_no ? ' (保留原值)' : ` → ${d.revision_label}_dup_${d.revision_no}`;
           console.log(`      ${d.id}: rev_no=${d.revision_no} label="${d.revision_label}"${suffix}`);
-        }
-      }
+        }      }
     }
 
     // ---- 检查 3: 唯一索引 ----
@@ -125,11 +131,15 @@ async function main() {
                ORDER BY revision_no ASC`,
               [row.document_id, row.revision_label]
             );
+            // revision_label 为 VARCHAR(20)：拼接 _dup_{revision_no} 前截断原 label，避免超长
+            const MAX_LABEL_LENGTH = 20;
             for (let i = 1; i < details.length; i++) {
               const d = details[i];
+              const suffix = `_dup_${d.revision_no}`;
+              const baseLabel = row.revision_label.slice(0, MAX_LABEL_LENGTH - suffix.length);
               await conn.execute(
                 `UPDATE document_revisions SET revision_label = ? WHERE id = ?`,
-                [`${row.revision_label}_dup_${d.revision_no}`, d.id]
+                [`${baseLabel}${suffix}`, d.id]
               );
             }
           }
