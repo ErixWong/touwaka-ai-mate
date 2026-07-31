@@ -15,7 +15,7 @@ export default class doc_compare_run extends Model {
       allowNull: false,
       comment: "文档ID",
       references: {
-        model: 'documents',
+        model: 'doc_documents',
         key: 'id'
       }
     },
@@ -24,7 +24,7 @@ export default class doc_compare_run extends Model {
       allowNull: false,
       comment: "基准版本ID",
       references: {
-        model: 'document_revisions',
+        model: 'doc_versions',
         key: 'id'
       }
     },
@@ -33,7 +33,7 @@ export default class doc_compare_run extends Model {
       allowNull: false,
       comment: "目标版本ID",
       references: {
-        model: 'document_revisions',
+        model: 'doc_versions',
         key: 'id'
       }
     },

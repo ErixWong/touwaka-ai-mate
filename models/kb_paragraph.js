@@ -34,6 +34,11 @@ export default class kb_paragraph extends Model {
       defaultValue: false,
       comment: "是否是知识点"
     },
+    embedding: {
+      type: "VECTOR(384)",
+      allowNull: true,
+      comment: "向量（只有知识点才向量化）"
+    },
     position: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -55,10 +60,6 @@ export default class kb_paragraph extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
-    },
-    embedding: {
-      type: "VECTOR(1536)",
-      allowNull: true
     }
   }, {
     sequelize,

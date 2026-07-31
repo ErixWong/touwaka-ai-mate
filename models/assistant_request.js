@@ -99,10 +99,10 @@ export default class assistant_request extends Model {
       comment: "是否已归档"
     },
     notification_status: {
-      type: DataTypes.ENUM('pending','sent','failed','skipped'),
+      type: DataTypes.STRING(20),
       allowNull: true,
       defaultValue: "pending",
-      comment: "通知专家状态: pending=待发送, sent=已发送, failed=发送失败, skipped=跳过(无SSE连接)"
+      comment: "通知状态: pending\/sent\/failed\/skipped"
     },
     notification_error: {
       type: DataTypes.TEXT,
@@ -154,13 +154,6 @@ export default class assistant_request extends Model {
         using: "BTREE",
         fields: [
           { name: "created_at" },
-        ]
-      },
-      {
-        name: "idx_notification_status",
-        using: "BTREE",
-        fields: [
-          { name: "notification_status" },
         ]
       },
     ]

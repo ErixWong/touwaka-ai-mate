@@ -8,7 +8,7 @@ export default class assistant extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "助理ID"
+      comment: "助理ID（格式：asst_xxxxxxxx）"
     },
     name: {
       type: DataTypes.STRING(128),

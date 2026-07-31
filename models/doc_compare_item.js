@@ -24,7 +24,7 @@ export default class doc_compare_item extends Model {
       allowNull: true,
       comment: "基准内容单元ID",
       references: {
-        model: 'document_chunks',
+        model: 'doc_chunks',
         key: 'id'
       }
     },
@@ -33,7 +33,7 @@ export default class doc_compare_item extends Model {
       allowNull: true,
       comment: "目标内容单元ID",
       references: {
-        model: 'document_chunks',
+        model: 'doc_chunks',
         key: 'id'
       }
     },
@@ -97,14 +97,14 @@ export default class doc_compare_item extends Model {
         ]
       },
       {
-        name: "idx_base_unit",
+        name: "fk_comp_items_base_chunk",
         using: "BTREE",
         fields: [
           { name: "base_unit_id" },
         ]
       },
       {
-        name: "idx_target_unit",
+        name: "fk_comp_items_target_chunk",
         using: "BTREE",
         fields: [
           { name: "target_unit_id" },

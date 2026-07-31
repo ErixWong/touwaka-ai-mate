@@ -7,7 +7,8 @@ export default class app_contract_mgr_v2_content extends Model {
     row_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      primaryKey: true
+      primaryKey: true,
+      comment: "关联 mini_app_rows.id"
     },
     content_id: {
       type: DataTypes.STRING(32),
@@ -18,7 +19,12 @@ export default class app_contract_mgr_v2_content extends Model {
     process_step: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      defaultValue: "pending_ocr"
+      comment: "处理步骤"
+    },
+    file_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "文件ID"
     },
     document_id: {
       type: DataTypes.STRING(32),
@@ -26,81 +32,92 @@ export default class app_contract_mgr_v2_content extends Model {
       comment: "Doc平台文档ID"
     },
     ocr_task_id: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    file_id: {
-      type: DataTypes.STRING(32),
-      allowNull: true
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      comment: "OCR任务ID"
     },
     ocr_text: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "OCR 原文"
     },
     ocr_service: {
       type: DataTypes.STRING(64),
-      allowNull: true
+      allowNull: true,
+      comment: "OCR 服务名称"
     },
     ocr_at: {
       type: DataTypes.DATE,
-      allowNull: true
+      allowNull: true,
+      comment: "OCR 时间"
     },
     filtered_text: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "过滤后文本"
     },
     filter_at: {
       type: DataTypes.DATE,
-      allowNull: true
+      allowNull: true,
+      comment: "过滤时间"
     },
     filter_carried_over: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "滑动窗口中间状态"
     },
     filter_chunk_index: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0
+      defaultValue: 0,
+      comment: "当前处理chunk索引"
     },
     sections: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "章节结构"
     },
     extract_prompt: {
       type: DataTypes.TEXT,
       allowNull: true,
       comment: "提取提示词"
     },
-    classification_json: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "版本识别建议"
-    },
     extract_json: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: true,
+      comment: "提取JSON"
     },
     extract_model: {
       type: DataTypes.STRING(64),
-      allowNull: true
+      allowNull: true,
+      comment: "提取模型"
     },
     extract_temperature: {
       type: DataTypes.DECIMAL(3,2),
-      allowNull: true
+      allowNull: true,
+      comment: "提取温度"
     },
     extract_at: {
       type: DataTypes.DATE,
-      allowNull: true
+      allowNull: true,
+      comment: "提取时间"
+    },
+    classification_json: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "分类结果"
     },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
+      comment: "创建时间"
     },
     updated_at: {
       type: DataTypes.DATE,
       allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
+      comment: "更新时间"
     }
   }, {
     sequelize,
@@ -122,20 +139,6 @@ export default class app_contract_mgr_v2_content extends Model {
         using: "BTREE",
         fields: [
           { name: "content_id" },
-        ]
-      },
-      {
-        name: "idx_process_step",
-        using: "BTREE",
-        fields: [
-          { name: "process_step" },
-        ]
-      },
-      {
-        name: "idx_document_id",
-        using: "BTREE",
-        fields: [
-          { name: "document_id" },
         ]
       },
     ]

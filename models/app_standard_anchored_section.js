@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class mcp_credential extends Model {
+export default class app_standard_anchored_section extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
@@ -9,31 +9,40 @@ export default class mcp_credential extends Model {
       allowNull: false,
       primaryKey: true
     },
-    mcp_server_id: {
+    standard_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "MCP Server ID",
+      comment: "所属标准 app_standard.id",
       references: {
-        model: 'mcp_servers',
+        model: 'app_standard',
         key: 'id'
-      },
-      unique: "mcp_credentials_ibfk_1"
+      }
     },
-    credentials: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-      comment: "系统默认凭证（加密存储）"
-    },
-    is_enabled: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true,
-      comment: "是否启用"
-    },
-    created_by: {
+    revision_id: {
       type: DataTypes.STRING(32),
+      allowNull: false,
+      comment: "来源版本 document_revisions.id"
+    },
+    outline_id: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      comment: "来源 section document_outlines.id"
+    },
+    anchored_text: {
+      type: DataTypes.TEXT,
       allowNull: true,
-      comment: "创建者（管理员）"
+      comment: "插入 <document_id+revision_id(+outline_id)> 锚点后的文本"
+    },
+    source_text_hash: {
+      type: DataTypes.STRING(64),
+      allowNull: false,
+      comment: "对齐 document_outlines.text_hash，不符则副本失效"
+    },
+    anchor_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+      comment: "本 section 内锚点数量"
     },
     created_at: {
       type: DataTypes.DATE,
@@ -47,7 +56,7 @@ export default class mcp_credential extends Model {
     }
   }, {
     sequelize,
-    tableName: 'mcp_credentials',
+    tableName: 'app_standard_anchored_section',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -60,18 +69,19 @@ export default class mcp_credential extends Model {
         ]
       },
       {
-        name: "uk_server",
+        name: "uk_anchored_section",
         unique: true,
         using: "BTREE",
         fields: [
-          { name: "mcp_server_id" },
+          { name: "revision_id" },
+          { name: "outline_id" },
         ]
       },
       {
-        name: "idx_is_enabled",
+        name: "idx_standard",
         using: "BTREE",
         fields: [
-          { name: "is_enabled" },
+          { name: "standard_id" },
         ]
       },
     ]

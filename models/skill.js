@@ -18,7 +18,7 @@ export default class skill extends Model {
       type: DataTypes.STRING(50),
       allowNull: true,
       comment: "技能标识（不可编辑，唯一），用于生成 tool_name",
-      unique: "idx_mark"
+      unique: "mark"
     },
     description: {
       type: DataTypes.TEXT,
@@ -130,7 +130,7 @@ export default class skill extends Model {
         ]
       },
       {
-        name: "idx_mark",
+        name: "mark",
         unique: true,
         using: "BTREE",
         fields: [

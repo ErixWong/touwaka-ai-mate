@@ -1,7 +1,7 @@
 import _sequelize from 'sequelize';
 const { Model, Sequelize } = _sequelize;
 
-export default class document_revision extends Model {
+export default class doc_version extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
@@ -13,23 +13,23 @@ export default class document_revision extends Model {
     document_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "所属文档ID",
+      comment: "文档ID",
       references: {
-        model: 'documents',
+        model: 'doc_documents',
         key: 'id'
       }
     },
-    revision_no: {
+    version_no: {
       type: DataTypes.INTEGER,
       allowNull: false,
       comment: "机器版号"
     },
-    revision_label: {
+    version_label: {
       type: DataTypes.STRING(20),
-      allowNull: false,
+      allowNull: true,
       comment: "展示版号(v1.0)"
     },
-    revision_status: {
+    version_status: {
       type: DataTypes.ENUM('draft','review','approved','effective','expired','archived'),
       allowNull: false,
       defaultValue: "draft",
@@ -38,18 +38,8 @@ export default class document_revision extends Model {
     is_current: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: 0,
+      defaultValue: false,
       comment: "是否当前版本"
-    },
-    effective_from: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-      comment: "生效日期"
-    },
-    effective_to: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-      comment: "废止日期(NULL=长期有效)"
     },
     change_summary: {
       type: DataTypes.TEXT,
@@ -71,11 +61,20 @@ export default class document_revision extends Model {
       allowNull: true,
       comment: "审批时间"
     },
-    diff_status: {
-      type: DataTypes.ENUM('pending','processing','ready','error'),
-      allowNull: false,
-      defaultValue: "pending",
-      comment: "版本差异状态(旁路)"
+    effective_from: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: "生效起始日期"
+    },
+    effective_to: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: "生效截止日期"
+    },
+    published_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "发布时间"
     },
     metadata: {
       type: DataTypes.TEXT,
@@ -94,7 +93,7 @@ export default class document_revision extends Model {
     }
   }, {
     sequelize,
-    tableName: 'document_revisions',
+    tableName: 'doc_versions',
     timestamps: false,
     freezeTableName: true,
     indexes: [
@@ -107,34 +106,16 @@ export default class document_revision extends Model {
         ]
       },
       {
-        name: "uk_revision_document_id",
+        name: "idx_doc_version_no",
         unique: true,
         using: "BTREE",
         fields: [
           { name: "document_id" },
-          { name: "id" },
+          { name: "version_no" },
         ]
       },
       {
-        name: "uk_document_revision_no",
-        unique: true,
-        using: "BTREE",
-        fields: [
-          { name: "document_id" },
-          { name: "revision_no" },
-        ]
-      },
-      {
-        name: "uk_document_revision_label",
-        unique: true,
-        using: "BTREE",
-        fields: [
-          { name: "document_id" },
-          { name: "revision_label" },
-        ]
-      },
-      {
-        name: "idx_revision_document_current",
+        name: "idx_doc_current",
         using: "BTREE",
         fields: [
           { name: "document_id" },
@@ -142,17 +123,12 @@ export default class document_revision extends Model {
         ]
       },
       {
-        name: "idx_revision_status",
+        name: "idx_status_effective",
         using: "BTREE",
         fields: [
-          { name: "revision_status" },
-        ]
-      },
-      {
-        name: "idx_revision_diff_status",
-        using: "BTREE",
-        fields: [
-          { name: "diff_status" },
+          { name: "version_status" },
+          { name: "effective_from" },
+          { name: "effective_to" },
         ]
       },
     ]

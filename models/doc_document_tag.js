@@ -57,14 +57,7 @@ export default class doc_document_tag extends Model {
         ]
       },
       {
-        name: "idx_doc_document",
-        using: "BTREE",
-        fields: [
-          { name: "document_id" },
-        ]
-      },
-      {
-        name: "idx_doc_tag_id",
+        name: "fk_doc_tag_tag",
         using: "BTREE",
         fields: [
           { name: "tag_id" },
