@@ -163,8 +163,8 @@ async function readRevisionContent(params) {
   const { revision_id, max_chars = 20000 } = params;
   if (!revision_id) throw new Error('revision_id is required');
 
-  const mc = max_chars === 0 ? '' : `?max_chars=${max_chars}`;
-  const result = await apiGet(`/api/docs/revisions/${revision_id}/content${mc}`);
+  // R3-4：始终透传 max_chars，服务端用 undefined 判断
+  const result = await apiGet(`/api/docs/revisions/${revision_id}/content?max_chars=${max_chars}`);
   return result;
 }
 

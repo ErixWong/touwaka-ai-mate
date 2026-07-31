@@ -31,10 +31,22 @@ export async function post(ctx, deps) {
       return;
     }
 
-    // R2-4/N8：补 DocAccessService 校验
-    if (document_id) {
-      const docAccessService = new DocAccessService(deps.db);
-      const canRead = await docAccessService.canRead(document_id, userId);
+    const docAccessService = new DocAccessService(deps.db);
+
+    // R3-5：仅传 revision_id 时先解析 document_id 再做权限校验
+    let resolvedDocumentId = document_id;
+    if (!resolvedDocumentId && revision_id) {
+      const DocumentRevision = deps.db.getModel('document_revision');
+      const rev = await DocumentRevision.findByPk(revision_id, { raw: true });
+      if (!rev) {
+        ctx.error('Revision not found', 404);
+        return;
+      }
+      resolvedDocumentId = rev.document_id;
+    }
+
+    if (resolvedDocumentId) {
+      const canRead = await docAccessService.canRead(resolvedDocumentId, userId);
       if (!canRead) {
         ctx.throw(403, 'Access denied');
       }
@@ -44,9 +56,9 @@ export async function post(ctx, deps) {
 
     // 确定 revision_id
     let targetRevisionId = revision_id;
-    if (!targetRevisionId && document_id) {
+    if (!targetRevisionId && resolvedDocumentId) {
       const Document = deps.db.getModel('document');
-      const doc = await Document.findByPk(document_id, { raw: true });
+      const doc = await Document.findByPk(resolvedDocumentId, { raw: true });
       if (!doc) {
         ctx.error('Document not found', 404);
         return;

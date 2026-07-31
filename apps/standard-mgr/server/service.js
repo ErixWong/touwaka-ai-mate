@@ -70,28 +70,16 @@ const ANCHOR_PATTERN = /<[^<>+]+\+[^<>+]+(?:\+[^<>]+)?>/g;
 const MANUAL_SOURCES = new Set([REF_SOURCE.MANUAL, REF_SOURCE.USER_CONFIRMED]);
 
 /**
- * 状态转换表：真实规则（R2-9）
- *
- * - invalid 只能由非 auto 来源改写（人工才能把无效引用复活）
- * - valid 不允许被 auto 来源直接改写（版本冻结：auto 只能从新建写入 valid）
- * - 人工来源（manual/user_confirmed）可以覆盖任何状态
- *
- * 注意：此表在 writeAnchorResult 中由 source 参数协同判定，
- * 不只是查表；空 table 表示的语义在代码中由真实规则承载。
- */
-const VALID_STATUS_TRANSITIONS = {
-  // valid → suspected / invalid / gap 均允许（数据质量修正）
-  [REF_STATUS.VALID]: [REF_STATUS.SUSPECTED, REF_STATUS.INVALID, REF_STATUS.GAP],
-  // suspected → 任意（待审核 -> 确定）
-  [REF_STATUS.SUSPECTED]: [REF_STATUS.VALID, REF_STATUS.INVALID, REF_STATUS.GAP],
-  // gap → 任意（回填成功/失败/需人工）
-  [REF_STATUS.GAP]: [REF_STATUS.VALID, REF_STATUS.SUSPECTED, REF_STATUS.INVALID],
-  // invalid → 任意（人工复查）
-  [REF_STATUS.INVALID]: [REF_STATUS.VALID, REF_STATUS.SUSPECTED, REF_STATUS.GAP],
-};
-
-/**
  * 判断一个状态转换是否合法
+ *
+ * 规则（R3-1 修正，R3-7 收口）：
+ * - 新建记录：任意来源可写任意状态（保护对象是已有记录，不是新建记录）
+ * - 人工来源（manual/user_confirmed）：可覆盖任何状态
+ * - auto_backfill：可覆盖任何状态（回填已有匹配结果）
+ * - invalid → *：仅人工/auto_backfill
+ * - valid → *：auto 不允许改写（版本冻结）
+ * - suspected → valid：auto 不允许（需人工确认）
+ * - 其余 transition：auto 来源允许（gap↔suspected, suspected→invalid 等）
  *
  * @param {string|null} fromStatus - 当前状态（null=新建）
  * @param {string} toStatus - 目标状态
@@ -99,14 +87,11 @@ const VALID_STATUS_TRANSITIONS = {
  * @returns {{ allowed: boolean, reason?: string }}
  */
 function validateStatusTransition(fromStatus, toStatus, source) {
-  // 新建记录：只允许 auto/auto_backfill 来源写 valid；人工来源可写任意
+  // R3-1：新建记录任意来源可写任意状态
+  // 保护对象是"已有记录的稳定性"（版本冻结），不是"新建记录的纯洁性"
+  // auto 必须能落 gap/suspected/invalid，否则治理体系无数据
   if (!fromStatus) {
-    if (toStatus === REF_STATUS.VALID) return { allowed: true };
-    if (MANUAL_SOURCES.has(source)) return { allowed: true };
-    return {
-      allowed: false,
-      reason: `New records from '${source}' source can only be created with status 'valid'`,
-    };
+    return { allowed: true };
   }
 
   // 状态不变：始终允许
@@ -115,30 +100,35 @@ function validateStatusTransition(fromStatus, toStatus, source) {
   // 人工来源可以覆盖任何状态
   if (MANUAL_SOURCES.has(source)) return { allowed: true };
 
-  // invalid → 任何状态：只有人工来源允许（已在上方覆盖）
+  // auto_backfill 可以覆盖任何状态（回填流程已有匹配结果，信任度高于纯 auto）
+  if (source === REF_SOURCE.AUTO_BACKFILL) return { allowed: true };
+
+  // invalid → 任何状态：只有人工/auto_backfill 来源允许（已在上方覆盖）
   if (fromStatus === REF_STATUS.INVALID) {
     return {
       allowed: false,
-      reason: `Only manual sources can move a record out of 'invalid'. Source '${source}' is not allowed.`,
+      reason: `Only manual/auto_backfill sources can move a record out of 'invalid'. Source '${source}' is not allowed.`,
     };
   }
 
-  // valid → 任何改变：auto/auto_backfill 不允许改写
+  // valid → 任何改变：auto 不允许改写已有 valid 记录（版本冻结）
   if (fromStatus === REF_STATUS.VALID && toStatus !== REF_STATUS.VALID) {
     return {
       allowed: false,
-      reason: `Auto source cannot change a 'valid' record. Only manual/user_confirmed can override.`,
+      reason: `Auto source cannot change a 'valid' record. Only manual/user_confirmed/auto_backfill can override.`,
     };
   }
 
-  // 其余：查表
-  const allowed = VALID_STATUS_TRANSITIONS[fromStatus];
-  if (allowed && allowed.includes(toStatus)) return { allowed: true };
+  // suspected → valid：auto 不允许（需人工确认），auto_backfill/人工 已在上面放行
+  if (fromStatus === REF_STATUS.SUSPECTED && toStatus === REF_STATUS.VALID) {
+    return {
+      allowed: false,
+      reason: `Auto source cannot confirm a 'suspected' record to 'valid'. Manual review or auto_backfill required.`,
+    };
+  }
 
-  return {
-    allowed: false,
-    reason: `Transition ${fromStatus} → ${toStatus} not allowed`,
-  };
+  // 其余 transition：auto 来源允许（gap↔suspected, suspected→invalid 等）
+  return { allowed: true };
 }
 
 class StandardMgrService {

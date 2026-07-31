@@ -3611,6 +3611,108 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== R3-2：注册 standard-mgr 到 mini_apps ====================
+  {
+    name: 'register standard-mgr in mini_apps',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT 1 FROM mini_apps WHERE id = 'standard-mgr'"
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const userId = await getAnyExistingUserId(conn);
+      await conn.execute(
+        `INSERT INTO mini_apps (id, name, description, icon, type, component, fields, views, config,
+           visibility, owner_id, creator_id, sort_order, is_active, revision)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          'standard-mgr',
+          '标准管理',
+          '标准文档纳管、引用清洗与锚点定位',
+          '📐',
+          'document',
+          null,
+          '[]',
+          '{}',
+          '{"extension_tables":["app_standard","app_standard_ref_anchor","app_standard_anchored_section"]}',
+          'all',
+          userId,
+          userId,
+          50,
+          1,
+          1,
+        ]
+      );
+      console.log('  ✓ Registered standard-mgr in mini_apps');
+    }
+  },
+
+  // ==================== R3-2：注册 standard-anchor 技能 ====================
+  {
+    name: 'register standard-anchor skill',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT 1 FROM skills WHERE name = 'standard-anchor'"
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const skillId = 'skill-standard-anchor';
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+      // 1. 插入技能记录
+      await conn.execute(
+        `INSERT INTO skills (id, name, mark, description, version, author, tags, source_type, source_path,
+           skill_md, security_score, security_warnings, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          skillId,
+          'standard-anchor',
+          'standard-anchor',
+          '标准锚点识别工具集：解析锚点、读取文档章节/全文、定位引用目标。',
+          '1.0.0',
+          'Touwaka Team',
+          '["标准","锚点","引用","文档"]',
+          'local',
+          'skills/standard-anchor',
+          '',  // skill_md — SKILL.md 内容按需通过 API 同步
+          50,
+          '[]',
+          1,
+          now,
+          now,
+        ]
+      );
+      console.log('  ✓ Registered standard-anchor skill');
+
+      // 2. 插入 12 个工具定义（与 data/skills/standard-anchor/index.js getTools() 同步）
+      const tools = [
+        ['st-anchor-parse', skillId, 'parse_anchor', '解析锚点字符串 <document_id+revision_id(+outline_id)> 为结构化对象', '{"type":"object","properties":{"anchor":{"type":"string","description":"锚点字符串"}},"required":["anchor"]}', 'index.js', now, now],
+        ['st-anchor-list-sec', skillId, 'list_revision_sections', '按 revision_id 列出所有章节（outline）', '{"type":"object","properties":{"revision_id":{"type":"string"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-read-sec', skillId, 'read_section_context', '读取指定 section 正文，可附带前后相邻 section 的上下文', '{"type":"object","properties":{"outline_id":{"type":"string"},"context_window":{"type":"number","description":"前后各取几个相邻 section"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-read-rev', skillId, 'read_revision_content', '读取指定 revision 的全文文本内容', '{"type":"object","properties":{"revision_id":{"type":"string"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-locator', skillId, 'get_section_locator', '通过 outline_id 反查所属的 document_id 和 revision_id', '{"type":"object","properties":{"outline_id":{"type":"string"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-find-code', skillId, 'find_documents_by_standard_code', '按标准编号查找已纳管的标准', '{"type":"object","properties":{"standard_code":{"type":"string"}},"required":["standard_code"]}', 'index.js', now, now],
+        ['st-anchor-find-name', skillId, 'find_documents_by_standard_name', '按标准名称查找已纳管的标准（模糊匹配）', '{"type":"object","properties":{"standard_name":{"type":"string"}},"required":["standard_name"]}', 'index.js', now, now],
+        ['st-anchor-get-revs', skillId, 'get_document_revisions', '获取指定文档的所有版本列表', '{"type":"object","properties":{"document_id":{"type":"string"}},"required":["document_id"]}', 'index.js', now, now],
+        ['st-anchor-sel-rev', skillId, 'select_revision_candidate', '按版本线索筛选最匹配 revision（纯函数）', '{"type":"object","properties":{"revisions":{"type":"array"},"hints":{"type":"object"}},"required":["revisions"]}', 'index.js', now, now],
+        ['st-anchor-find-sec', skillId, 'find_section_candidates', '按节号/标题查找候选 section', '{"type":"object","properties":{"document_id":{"type":"string"},"revision_id":{"type":"string"},"title_hint":{"type":"string"},"seq_hint":{"type":"number"},"query_text":{"type":"string"}},"required":[]}', 'index.js', now, now],
+        ['st-anchor-list-gap', skillId, 'list_reference_gaps', '列出指定标准中待回填的引用缺口（status=gap）', '{"type":"object","properties":{"standard_id":{"type":"string"},"limit":{"type":"number"},"offset":{"type":"number"}},"required":["standard_id"]}', 'index.js', now, now],
+        ['st-anchor-write', skillId, 'write_anchor_result', '写入引用判断结果（幂等），同时更新带锚点副本和汇总计数', '{"type":"object","properties":{"standard_id":{"type":"string"},"source_revision_id":{"type":"string"},"source_outline_id":{"type":"string"},"occurrence_index":{"type":"number"},"source_text":{"type":"string"},"ref_type":{"type":"string","enum":["explicit","implicit"]},"status":{"type":"string","enum":["valid","suspected","gap","invalid"]},"source":{"type":"string","enum":["auto","user_confirmed","manual","auto_backfill"]}},"required":["standard_id","source_revision_id","source_outline_id","occurrence_index","source_text","ref_type","status","source"]}', 'index.js', now, now],
+      ];
+
+      for (const t of tools) {
+        await conn.execute(
+          `INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          t
+        );
+      }
+      console.log('  ✓ Registered 12 standard-anchor tools');
+    }
+  },
+
 ];
 
 /**

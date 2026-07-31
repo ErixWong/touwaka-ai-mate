@@ -14,8 +14,10 @@ function getUserId(ctx) {
   return ctx.state.session?.id || null;
 }
 
+// R3-3：去掉 ? — 路由器 extractNamedParams 不支持 ? 语法，
+// 用 ':' 即可；少一段时不提取参数，自然走列表分支
 export const route = {
-  path: '/standards/:standardId?',
+  path: '/standards/:standardId',
 };
 
 export async function get(ctx, deps) {

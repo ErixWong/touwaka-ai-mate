@@ -680,7 +680,10 @@ class DocController {
       this.ensureDocAccessService();
       const { revisionId } = ctx.params;
       const userId = ctx.state.session.id;
-      const maxChars = parseInt(ctx.query.max_chars, 10) || 20000;
+      // R3-4：显式 undefined 判断，避免 0 被 || 吞掉
+      const maxChars = ctx.query.max_chars !== undefined
+        ? parseInt(ctx.query.max_chars, 10)
+        : 20000;
 
       const revision = await this.db.getModel('document_revision').findByPk(revisionId, { raw: true });
       if (!revision) ctx.throw(404, 'Revision not found');
