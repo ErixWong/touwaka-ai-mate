@@ -1150,8 +1150,10 @@ async createVersion(ctx) {
   async transitionVersionStatus(ctx) {
     try {
       this.ensureModels();
+      this.ensureDocAccessService();
       const { revisionId } = ctx.params;
       const { to_status } = ctx.request.body;
+      const userId = ctx.state.session.id;
 
       if (!to_status) ctx.throw(400, 'to_status is required');
 
@@ -1159,6 +1161,11 @@ async createVersion(ctx) {
         where: { id: revisionId },
       });
       if (!version) ctx.throw(404, 'Revision not found');
+
+      // LEGACY-1 修复：状态切换属写操作，补上与 updateRevisionLabel 一致的文档写权限校验，
+      // 避免任意已登录用户越权切换他人文档的版本状态（认证 ≠ 授权）
+      const canWrite = await this.docAccessService.canWrite(version.document_id, userId);
+      if (!canWrite) ctx.throw(403, 'Write access denied');
 
       this.validateTransition(version.revision_status, to_status);
 
