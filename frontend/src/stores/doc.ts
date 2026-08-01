@@ -13,6 +13,7 @@ import {
   retryProcessing,
   setCurrentVersion,
   transitionVersion,
+  deleteRevision,
   extractOutline,
   generateChunks,
   isOcrActiveDocProcessingStatus,
@@ -42,6 +43,7 @@ export const useDocStore = defineStore('doc', () => {
   const versions = ref<DocVersion[]>([])
   const contentTree = ref<DocChunk[]>([])
   const recallResults = ref<DocRecallItem[]>([])
+  const previewRevisionId = ref<string | null>(null)
   const isPolling = ref(false)
   let pollingTimer: number | null = null
 
@@ -70,6 +72,24 @@ export const useDocStore = defineStore('doc', () => {
 
   function causeToMessage(cause: unknown) {
     return cause instanceof Error ? cause.message : ''
+  }
+
+  function buildFallbackVersionFromResult(): DocVersion[] {
+    const revision = currentResult.value?.revision
+    if (!revision) return []
+    return [{
+      id: revision.id,
+      revision_no: revision.revision_no,
+      revision_label: revision.revision_label,
+      revision_status: revision.revision_status,
+      is_current: true,
+      diff_status: null,
+      created_by: revision.created_by,
+      effective_from: null,
+      effective_to: null,
+      created_at: revision.created_at,
+      updated_at: revision.created_at,
+    }]
   }
 
   async function fetchDocuments(params?: { doc_type?: string; page?: number }) {
@@ -105,11 +125,11 @@ export const useDocStore = defineStore('doc', () => {
     }
   }
 
-  async function fetchDocumentResult(documentId: string) {
+  async function fetchDocumentResult(documentId: string, revisionId?: string) {
     isLoading.value = true
     error.value = null
     try {
-      currentResult.value = await getDocumentResult(documentId)
+      currentResult.value = await getDocumentResult(documentId, revisionId ?? previewRevisionId.value ?? undefined)
       return currentResult.value
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'Failed to load document result')
@@ -117,6 +137,21 @@ export const useDocStore = defineStore('doc', () => {
     } finally {
       isLoading.value = false
     }
+  }
+
+  async function previewVersion(documentId: string, revisionId: string | null) {
+    previewRevisionId.value = revisionId
+    const result = await fetchDocumentResult(documentId)
+    if (!result) {
+      previewRevisionId.value = null
+      return null
+    }
+    if (result.revision?.id) {
+      await fetchContentTree(documentId, result.revision.id)
+    } else {
+      contentTree.value = []
+    }
+    return result
   }
 
   async function fetchProcessing(documentId: string) {
@@ -206,9 +241,11 @@ export const useDocStore = defineStore('doc', () => {
     isLoading.value = true
     error.value = null
     try {
-      versions.value = await listVersions(documentId)
+      const items = await listVersions(documentId)
+      versions.value = items.length > 0 ? items : buildFallbackVersionFromResult()
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'Failed to load versions')
+      versions.value = buildFallbackVersionFromResult()
     } finally {
       isLoading.value = false
     }
@@ -244,10 +281,30 @@ export const useDocStore = defineStore('doc', () => {
     error.value = null
     try {
       await setCurrentVersion(documentId, versionId)
+      previewRevisionId.value = null
       await fetchVersions(documentId)
       await fetchDocument(documentId)
+      await fetchDocumentResult(documentId)
+      return true
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'Failed to set current version')
+      return false
+    }
+  }
+
+  async function removeRevision(documentId: string, revisionId: string) {
+    error.value = null
+    try {
+      await deleteRevision(revisionId)
+      if (previewRevisionId.value === revisionId) {
+        previewRevisionId.value = null
+        await fetchDocumentResult(documentId)
+      }
+      await fetchVersions(documentId)
+      return true
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to delete version')
+      return false
     }
   }
 
@@ -313,6 +370,7 @@ export const useDocStore = defineStore('doc', () => {
     try {
       stopPolling()
       await deleteDocument(documentId)
+      previewRevisionId.value = null
       documents.value = documents.value.filter(item => item.id !== documentId)
       total.value = Math.max(0, total.value - 1)
       if (currentDoc.value?.id === documentId) currentDoc.value = null
@@ -336,12 +394,14 @@ export const useDocStore = defineStore('doc', () => {
     versions,
     contentTree,
     recallResults,
+    previewRevisionId,
     isLoading,
     isPolling,
     error,
     fetchDocuments,
     fetchDocument,
     fetchDocumentResult,
+    previewVersion,
     fetchProcessing,
     syncProcessing,
     startPolling,
@@ -350,6 +410,7 @@ export const useDocStore = defineStore('doc', () => {
     fetchContentTree,
     docRecall,
     setCurrent,
+    removeRevision,
     transition,
     removeDocument,
     extractOutlineAction,

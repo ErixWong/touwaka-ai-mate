@@ -95,6 +95,8 @@ async function main() {
     const mcpToolCaller = new McpToolCaller(db, { residentSkillManager });
 
     const admin_token = await mcpToolCaller.generateAdminToken();
+    const admin_payload = JSON.parse(Buffer.from(admin_token.split('.')[1], 'base64url').toString('utf8'));
+    const admin_user_id = admin_payload?.userId || admin_payload?.id || null;
 
     const report = {
       started_at: new Date().toISOString(),
@@ -132,7 +134,7 @@ async function main() {
         'mcp-client',
         'invoke',
         { action: 'list_servers' },
-        { accessToken: admin_token, isAdmin: true },
+        { accessToken: admin_token, isAdmin: true, userId: admin_user_id },
         options.timeout_ms,
       );
     });
@@ -147,7 +149,7 @@ async function main() {
         'mcp-client',
         'invoke',
         { action: 'refresh_tools', server_name: options.server_name },
-        { accessToken: admin_token, isAdmin: true },
+        { accessToken: admin_token, isAdmin: true, userId: admin_user_id },
         options.timeout_ms,
       );
     });
@@ -157,7 +159,7 @@ async function main() {
         'mcp-client',
         'invoke',
         { action: 'list_tools' },
-        { accessToken: admin_token, isAdmin: true },
+        { accessToken: admin_token, isAdmin: true, userId: admin_user_id },
         options.timeout_ms,
       );
     });

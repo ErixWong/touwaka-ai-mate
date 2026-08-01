@@ -22,17 +22,27 @@
               <span class="doc-id-label">{{ $t('docs.workspace.panel.docId') }}</span>
               <span class="doc-id-value">{{ docStore.currentResult.document.id }}</span>
             </div>
-            <div class="doc-meta">
-              <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
-                {{ processingLabel(docStore.currentResult.processing.status) }}
-              </el-tag>
-              <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
-                {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
-              </el-tag>
-              <span class="doc-updated">{{ fmt(docStore.currentResult.document.updated_at) }}</span>
-            </div>
           </div>
           <el-button type="danger" plain size="small" @click="onDeleteDocument">{{ $t('docs.workspace.detail.deleteDoc') }}</el-button>
+        </div>
+        <div class="doc-meta">
+          <div class="doc-meta-left">
+            <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
+              {{ processingLabel(docStore.currentResult.processing.status) }}
+            </el-tag>
+            <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
+              {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
+            </el-tag>
+            <span class="doc-updated">{{ fmt(docStore.currentResult.document.updated_at) }}</span>
+          </div>
+          <el-tag
+            v-if="docStore.currentResult.ocr_result?.import_source === 'taskid'"
+            size="small"
+            effect="plain"
+            class="import-source-tag"
+          >
+            {{ $t('docs.workspace.collection.taskIdImportTag') }}
+          </el-tag>
         </div>
       </div>
 
@@ -60,11 +70,15 @@
             :mime-type="docStore.currentResult?.source_attachment?.mime_type"
             :file-size="docStore.currentResult?.source_attachment?.file_size"
             :uploader="docStore.currentResult?.revision?.uploader?.username"
+            :revision-id="docStore.currentResult?.revision?.id"
             :revision-label="revisionLabel"
             :created-at="docStore.currentResult?.document?.created_at"
             :retry-action="retryAction"
             :retry-loading="retryLoadingComputed"
             :is-action-complete="isProcessingActionComplete"
+            :document-id="docStore.currentResult?.document?.id"
+            :resolved-current-id="docStore.currentResult?.document?.resolved_current_revision_id"
+            :versions="docStore.versions"
             :attachment-download-url="docStore.currentResult?.source_attachment?.download_url"
             :markdown-download-url="markdownAttachmentFromWorkspace?.download_url"
             :raw-markdown-download-url="rawMarkdownAttachmentFromWorkspace?.download_url"
@@ -73,6 +87,8 @@
             :error-code="docStore.currentResult?.processing?.error_code"
             @retry="onRetryAction"
             @download="downloadAttachment"
+            @version-changed="onVersionChanged"
+            @previewVersion="onPreviewVersion"
           />
         </div>
       </div>
@@ -289,9 +305,29 @@ async function loadMarkdownPreview() {
     }
   }
 
+  async function onVersionChanged() {
+    const documentId = docStore.currentResult?.document?.id
+    if (!documentId) return
+    await docStore.fetchVersions(documentId)
+    await docStore.previewVersion(documentId, null)
+    await loadMarkdownPreview()
+  }
+
+  async function onPreviewVersion(revisionId: string) {
+    const documentId = docStore.currentResult?.document?.id
+    if (!documentId) return
+    const result = await docStore.previewVersion(documentId, revisionId)
+    if (!result) {
+      ElMessage.error(docStore.error || t('docs.workspace.detail.previewFailed'))
+      return
+    }
+    await loadMarkdownPreview()
+  }
+
   onMounted(async () => {
   const documentId = route.params.documentId as string
   if (documentId) {
+    docStore.previewRevisionId = null
     const document = await docStore.fetchDocument(documentId)
     if (!document) {
       docStore.stopPolling()
@@ -311,6 +347,9 @@ async function loadMarkdownPreview() {
     if (revId) {
       await docStore.fetchContentTree(documentId, revId)
     }
+
+    // 加载版本列表
+    await docStore.fetchVersions(documentId)
 
     const currentStatus = docStore.currentResult?.processing?.status
     if (!isTerminalDocProcessingStatus(currentStatus)) {
@@ -356,7 +395,9 @@ onBeforeUnmount(() => {
   font-family: var(--el-font-family-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
   word-break: break-all;
 }
-.doc-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.doc-meta { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px; }
+.doc-meta-left { display: flex; gap: 8px; align-items: center; }
+.import-source-tag { flex-shrink: 0; }
 .doc-updated { font-size: 12px; color: #909399; }
 
 .doc-content-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }

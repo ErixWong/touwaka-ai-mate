@@ -547,7 +547,7 @@ const loadExpertSkills = async (expertId: string) => {
   try {
     const response = await expertApi.getExpertSkills(expertId)
     skillsList.value = response.skills || []
-  } catch (err) {
+  } catch {
     toast.error(t('settings.loadSkillsFailed'))
   } finally {
     skillsLoading.value = false
@@ -555,6 +555,7 @@ const loadExpertSkills = async (expertId: string) => {
 }
 
 const handleSkillToggle = (_skill?: ExpertSkill) => {
+  void _skill
   skillsChanged.value = true
 }
 
@@ -570,7 +571,7 @@ const saveSkills = async () => {
     await expertApi.updateExpertSkills(currentExpertForSkills.value.id, skillConfigs)
     skillsChanged.value = false
     closeSkillsDialog()
-  } catch (err) {
+  } catch {
     toast.error(t('settings.saveSkillsFailed'))
   }
 }

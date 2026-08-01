@@ -39,7 +39,7 @@ const pendingConnections = new Map();
 const toolsCache = new Map();
 
 // API 基础 URL（从环境变量获取）
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://localhost:3017';
 
 function defaultClientFactory() {
   return new Client({

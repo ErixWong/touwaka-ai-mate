@@ -14,17 +14,127 @@
       </template>
       <template #actions>
         <el-button type="primary" :loading="store.isUploadingDocument" @click="openUploadDialog">{{ $t('docs.workspace.collection.uploadDoc') }}</el-button>
-        <el-upload
-          ref="localUploadRef"
-          v-show="false"
-          :show-file-list="false"
-          :auto-upload="false"
-          :on-change="handleFileChange"
-          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-        />
         <el-button @click="goSettings">{{ $t('docs.workspace.collection.settings') }}</el-button>
       </template>
     </ContextHeader>
+
+    <el-dialog
+      v-model="uploadDialogVisible"
+      :title="$t('docs.workspace.collection.uploadDialogTitle')"
+      width="480px"
+      destroy-on-close
+    >
+      <div class="upload-source-switch">
+        <div
+          class="source-option"
+          :class="{ active: uploadSource === 'local' }"
+          @click="uploadSource = 'local'"
+        >
+          <div class="source-title">{{ $t('docs.workspace.collection.uploadLocal') }}</div>
+          <div class="source-desc">{{ $t('docs.workspace.collection.uploadLocalDesc') }}</div>
+        </div>
+        <div
+          class="source-option"
+          :class="{ active: uploadSource === 'taskid' }"
+          @click="uploadSource = 'taskid'"
+        >
+          <div class="source-title">{{ $t('docs.workspace.collection.uploadTaskId') }}</div>
+          <div class="source-desc">{{ $t('docs.workspace.collection.uploadTaskIdDesc') }}</div>
+        </div>
+      </div>
+
+      <el-form v-if="uploadSource === 'local'" label-position="top">
+        <el-form-item :label="$t('docs.workspace.versionPanel.file')">
+          <el-upload
+            :show-file-list="true"
+            :auto-upload="false"
+            :limit="1"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+            drag
+          >
+            <div class="el-upload__text">{{ $t('docs.workspace.versionPanel.dragOrClick') }}</div>
+          </el-upload>
+        </el-form-item>
+        <el-form-item :label="$t('docs.workspace.collection.initialVersionLabel')">
+          <el-input v-model="newDocumentRevisionLabel" :placeholder="$t('docs.workspace.collection.initialVersionPlaceholder')" maxlength="20" />
+        </el-form-item>
+      </el-form>
+
+      <div v-else class="upload-taskid-body">
+        <div class="taskid-input-row">
+          <el-input
+            v-model="taskIdInput"
+            :placeholder="$t('docs.workspace.collection.taskIdPlaceholder')"
+            clearable
+            @keyup.enter="probeTaskId"
+          />
+          <el-button :loading="taskIdProbing" @click="probeTaskId">{{ $t('docs.workspace.collection.taskIdQuery') }}</el-button>
+        </div>
+
+        <el-alert v-if="taskIdError" :title="taskIdError" type="warning" :closable="false" show-icon class="taskid-alert" />
+
+        <div v-if="taskIdProbe?.status === 'completed'" class="taskid-result">
+          <div class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdFileName') }}</span>
+            <span class="taskid-value">{{ taskIdProbe.filename || taskIdProbe.artifact_name || taskIdProbe.task_id.slice(0, 8) }}</span>
+          </div>
+          <div class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdStatus') }}</span>
+            <el-tag type="success" size="small">{{ $t('docs.workspace.collection.taskIdStatusCompleted') }}</el-tag>
+          </div>
+          <div v-if="taskIdProbe.completed_at" class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdCompletedAt') }}</span>
+            <span class="taskid-value">{{ formatDateTime(taskIdProbe.completed_at) }}</span>
+          </div>
+          <div class="taskid-result-row">
+            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdImageCount') }}</span>
+            <span class="taskid-value">{{ taskIdProbe.image_count ?? 0 }}</span>
+          </div>
+          <el-input v-model="taskIdDocTitle" class="taskid-title-input">
+            <template #prepend>{{ $t('docs.workspace.collection.docNameLabel') }}</template>
+          </el-input>
+          <el-input
+            v-model="newDocumentRevisionLabel"
+            class="taskid-title-input"
+            :placeholder="$t('docs.workspace.collection.initialVersionPlaceholder')"
+            maxlength="20"
+          >
+            <template #prepend>{{ $t('docs.workspace.collection.initialVersionLabel') }}</template>
+          </el-input>
+          <el-alert
+            v-if="taskIdProbe.already_imported"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="taskid-alert"
+            :title="$t('docs.workspace.collection.alreadyImportedTip', { title: taskIdProbe.existing_document?.title || '' })"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="uploadDialogVisible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button
+          v-if="uploadSource === 'local'"
+          type="primary"
+          :loading="store.isUploadingDocument"
+          :disabled="!pendingUploadFile"
+          @click="submitUploadDocument"
+        >
+          {{ $t('docs.workspace.collection.confirmUpload') }}
+        </el-button>
+        <el-button
+          v-else
+          type="primary"
+          :disabled="taskIdProbe?.status !== 'completed'"
+          :loading="store.isUploadingDocument"
+          @click="confirmTaskIdImport"
+        >
+          {{ taskIdProbe?.already_imported ? $t('docs.workspace.collection.confirmImportAgain') : $t('docs.workspace.collection.confirmImport') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <div v-if="store.isLoading && !store.currentCollection" class="loading-state">
       {{ $t('common.loading') }}
@@ -82,7 +192,6 @@
               <div class="doc-list-title">
                 <el-icon v-if="selectedDocId === doc.id" class="active-indicator"><ArrowRight /></el-icon>
                 <span class="doc-list-title-text">{{ doc.source_attachment?.file_name || doc.title }}</span>
-                <el-tag v-if="doc.import_source === 'taskid'" size="small" effect="plain" class="import-source-tag">{{ $t('docs.workspace.collection.taskIdImportTag') }}</el-tag>
               </div>
               <div class="doc-list-meta">
                 <DocStatusBadge :status="doc.processing_status" :ocr-status="doc.ocr_status" size="small" />
@@ -124,17 +233,27 @@
                     <span class="doc-id-label">{{ $t('docs.workspace.panel.docId') }}</span>
                     <span class="doc-id-value">{{ docStore.currentResult.document.id }}</span>
                   </div>
-                  <div class="doc-meta">
-                    <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
-                      {{ processingLabel(docStore.currentResult.processing.status) }}
-                    </el-tag>
-                    <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
-                      {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
-                    </el-tag>
-                    <span class="doc-updated">{{ formatDateTime(docStore.currentResult.document.updated_at) }}</span>
-                  </div>
                 </div>
                 <el-button type="danger" plain size="small" @click="onDeleteDocument">{{ $t('docs.workspace.collection.deleteDoc') }}</el-button>
+              </div>
+              <div class="doc-meta">
+                <div class="doc-meta-left">
+                  <el-tag size="small" :type="processingTagType(docStore.currentResult.processing.status)">
+                    {{ processingLabel(docStore.currentResult.processing.status) }}
+                  </el-tag>
+                  <el-tag size="small" :type="docTypeTag(docStore.currentResult.document.doc_type)">
+                    {{ docTypeLabel(docStore.currentResult.document.doc_type) }}
+                  </el-tag>
+                  <span class="doc-updated">{{ formatDateTime(docStore.currentResult.document.updated_at) }}</span>
+                </div>
+                <el-tag
+                  v-if="docStore.currentResult.ocr_result?.import_source === 'taskid'"
+                  size="small"
+                  effect="plain"
+                  class="import-source-tag"
+                >
+                  {{ $t('docs.workspace.collection.taskIdImportTag') }}
+                </el-tag>
               </div>
             </div>
 
@@ -164,11 +283,15 @@
               :mime-type="docStore.currentResult.source_attachment?.mime_type"
               :file-size="docStore.currentResult.source_attachment?.file_size"
               :uploader="docStore.currentResult.revision?.uploader?.username"
+              :revision-id="docStore.currentResult.revision?.id"
               :revision-label="revisionLabel"
               :created-at="docStore.currentResult.document.created_at"
               :retry-action="retryAction"
               :retry-loading="retryLoading"
               :is-action-complete="isProcessingActionComplete"
+              :document-id="docStore.currentResult.document.id"
+              :resolved-current-id="docStore.currentResult.document.resolved_current_revision_id"
+              :versions="docStore.versions"
               :attachment-download-url="docStore.currentResult.source_attachment?.download_url"
               :markdown-download-url="markdownAttachmentFromWorkspace?.download_url"
               :raw-markdown-download-url="rawMarkdownAttachmentFromWorkspace?.download_url"
@@ -177,6 +300,8 @@
               :error-code="docStore.currentResult.processing.error_code"
               @retry="onRetryAction"
               @download="downloadAttachment"
+              @version-changed="onVersionChanged"
+              @previewVersion="onPreviewVersion"
             />
           </template>
           <template v-else-if="selectedDocId">
@@ -193,94 +318,6 @@
       </div>
     </template>
 
-    <el-dialog
-      v-model="uploadDialogVisible"
-      :title="$t('docs.workspace.collection.uploadDoc')"
-      width="480px"
-      :close-on-click-modal="false"
-    >
-      <div class="upload-source-switch">
-        <div
-          class="source-option"
-          :class="{ active: uploadSource === 'local' }"
-          @click="uploadSource = 'local'"
-        >
-          <div class="source-title">{{ $t('docs.workspace.collection.uploadLocal') }}</div>
-          <div class="source-desc">{{ $t('docs.workspace.collection.uploadLocalDesc') }}</div>
-        </div>
-        <div
-          class="source-option"
-          :class="{ active: uploadSource === 'taskid' }"
-          @click="uploadSource = 'taskid'"
-        >
-          <div class="source-title">{{ $t('docs.workspace.collection.uploadTaskId') }}</div>
-          <div class="source-desc">{{ $t('docs.workspace.collection.uploadTaskIdDesc') }}</div>
-        </div>
-      </div>
-
-      <div v-if="uploadSource === 'local'" class="upload-local-body">
-        <el-button type="primary" :loading="store.isUploadingDocument" @click="triggerLocalFileSelect">
-          {{ $t('docs.workspace.collection.uploadLocalAction') }}
-        </el-button>
-      </div>
-
-      <div v-else class="upload-taskid-body">
-        <div class="taskid-input-row">
-          <el-input
-            v-model="taskIdInput"
-            :placeholder="$t('docs.workspace.collection.taskIdPlaceholder')"
-            clearable
-            @keyup.enter="probeTaskId"
-          />
-          <el-button :loading="taskIdProbing" @click="probeTaskId">{{ $t('docs.workspace.collection.taskIdQuery') }}</el-button>
-        </div>
-
-        <el-alert v-if="taskIdError" :title="taskIdError" type="warning" :closable="false" show-icon class="taskid-alert" />
-
-        <div v-if="taskIdProbe?.status === 'completed'" class="taskid-result">
-          <div class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdFileName') }}</span>
-            <span class="taskid-value">{{ taskIdProbe.filename || taskIdProbe.artifact_name || taskIdProbe.task_id.slice(0, 8) }}</span>
-          </div>
-          <div class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdStatus') }}</span>
-            <el-tag type="success" size="small">{{ $t('docs.workspace.collection.taskIdStatusCompleted') }}</el-tag>
-          </div>
-          <div v-if="taskIdProbe.completed_at" class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdCompletedAt') }}</span>
-            <span class="taskid-value">{{ formatDateTime(taskIdProbe.completed_at) }}</span>
-          </div>
-          <div class="taskid-result-row">
-            <span class="taskid-label">{{ $t('docs.workspace.collection.taskIdImageCount') }}</span>
-            <span class="taskid-value">{{ taskIdProbe.image_count ?? 0 }}</span>
-          </div>
-          <el-input v-model="taskIdDocTitle" class="taskid-title-input">
-            <template #prepend>{{ $t('docs.workspace.collection.docNameLabel') }}</template>
-          </el-input>
-          <el-alert
-            v-if="taskIdProbe.already_imported"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="taskid-alert"
-            :title="$t('docs.workspace.collection.alreadyImportedTip', { title: taskIdProbe.existing_document?.title || '' })"
-          />
-        </div>
-      </div>
-
-      <template #footer>
-        <el-button @click="uploadDialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button
-          v-if="uploadSource === 'taskid'"
-          type="primary"
-          :disabled="taskIdProbe?.status !== 'completed'"
-          :loading="store.isUploadingDocument"
-          @click="confirmTaskIdImport"
-        >
-          {{ taskIdProbe?.already_imported ? $t('docs.workspace.collection.confirmImportAgain') : $t('docs.workspace.collection.confirmImport') }}
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -310,9 +347,18 @@ const store = useCollectionStore()
 const docStore = useDocStore()
 
 const collectionId = route.params.id as string
+const uploadDialogVisible = ref(false)
+const pendingUploadFile = ref<File | null>(null)
+const newDocumentRevisionLabel = ref('')
+const uploadSource = ref<'local' | 'taskid'>('local')
 const docSearch = ref('')
 const statusFilter = ref('')
 const selectedDocId = ref<string | null>(null)
+const taskIdInput = ref('')
+const taskIdProbing = ref(false)
+const taskIdProbe = ref<GatewayTaskProbe | null>(null)
+const taskIdError = ref('')
+const taskIdDocTitle = ref('')
 
 const markdownPreview = ref('')
 const markdownLoading = ref(false)
@@ -421,6 +467,7 @@ function goSettings() {
 async function selectDocument(documentId: string) {
   selectedDocId.value = documentId
   docStore.stopPolling()
+  docStore.previewRevisionId = null
   
   // 加载文档详情
   await docStore.fetchDocument(documentId)
@@ -428,6 +475,8 @@ async function selectDocument(documentId: string) {
   
   const result = await docStore.fetchDocumentResult(documentId)
   if (!result) return
+
+  await docStore.fetchVersions(documentId)
   
   await docStore.fetchProcessing(documentId)
   await loadMarkdownPreview()
@@ -445,6 +494,25 @@ async function selectDocument(documentId: string) {
     await docStore.fetchDocumentResult(documentId)
     await loadMarkdownPreview()
   }
+}
+
+async function onVersionChanged() {
+  const documentId = docStore.currentResult?.document?.id
+  if (!documentId) return
+  await docStore.fetchVersions(documentId)
+  await docStore.previewVersion(documentId, null)
+  await loadMarkdownPreview()
+}
+
+async function onPreviewVersion(revisionId: string) {
+  const documentId = docStore.currentResult?.document?.id
+  if (!documentId) return
+  const result = await docStore.previewVersion(documentId, revisionId)
+  if (!result) {
+    ElMessage.error(docStore.error || t('docs.workspace.detail.previewFailed'))
+    return
+  }
+  await loadMarkdownPreview()
 }
 
 // 加载 Markdown 预览
@@ -555,37 +623,22 @@ function downloadAttachment(url?: string) {
   window.open(url, '_blank')
 }
 
-const uploadDialogVisible = ref(false)
-const uploadSource = ref<'local' | 'taskid'>('local')
-const localUploadRef = ref()
-const taskIdInput = ref('')
-const taskIdProbing = ref(false)
-const taskIdProbe = ref<GatewayTaskProbe | null>(null)
-const taskIdError = ref('')
-const taskIdDocTitle = ref('')
-
-function openUploadDialog() {
-  uploadSource.value = 'local'
-  taskIdInput.value = ''
-  taskIdProbe.value = null
-  taskIdError.value = ''
-  taskIdDocTitle.value = ''
-  uploadDialogVisible.value = true
+function handleFileChange(file: UploadFile) {
+  pendingUploadFile.value = file.raw || null
 }
 
-function triggerLocalFileSelect() {
-  const input = localUploadRef.value?.$el?.querySelector('input[type="file"]') as HTMLInputElement | null
-  input?.click()
+function handleFileRemove() {
+  pendingUploadFile.value = null
 }
 
-const TASK_ID_RE = /^[0-9a-zA-Z-]{32,40}$/
-
+// task_id 格式由 MinerU 网关定义，前端不做格式猜测，仅校验非空；
+// 非法或不存在的 id 由后端/gateway 返回 not_found，走统一提示。
 async function probeTaskId() {
   const taskId = taskIdInput.value.trim()
   taskIdProbe.value = null
   taskIdError.value = ''
-  if (!TASK_ID_RE.test(taskId)) {
-    taskIdError.value = t('docs.workspace.collection.taskIdInvalid')
+  if (!taskId) {
+    taskIdError.value = t('docs.workspace.collection.taskIdRequired')
     return
   }
   taskIdProbing.value = true
@@ -604,8 +657,17 @@ async function probeTaskId() {
     } else {
       taskIdError.value = t('docs.workspace.collection.taskIdProcessing')
     }
-  } catch {
-    taskIdError.value = t('docs.workspace.collection.taskIdNotFound')
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : ''
+    if (/not found/i.test(message)) {
+      taskIdError.value = t('docs.workspace.collection.taskIdNotFound')
+    } else if (/cancel/i.test(message)) {
+      taskIdError.value = t('docs.workspace.collection.taskIdCancelled')
+    } else if (/fail/i.test(message)) {
+      taskIdError.value = t('docs.workspace.collection.taskIdFailed')
+    } else {
+      taskIdError.value = message || t('docs.workspace.collection.taskIdProcessing')
+    }
   } finally {
     taskIdProbing.value = false
   }
@@ -618,6 +680,7 @@ async function confirmTaskIdImport() {
     collectionId,
     probe.task_id,
     taskIdDocTitle.value.trim() || undefined,
+    newDocumentRevisionLabel.value.trim() || null,
     probe.already_imported === true,
   )
   if (!result) {
@@ -631,18 +694,34 @@ async function confirmTaskIdImport() {
   await loadDocuments()
 }
 
-async function handleFileChange(uploadFile: UploadFile) {
-  const rawFile = uploadFile.raw
+function openUploadDialog() {
+  uploadSource.value = 'local'
+  pendingUploadFile.value = null
+  newDocumentRevisionLabel.value = ''
+  taskIdInput.value = ''
+  taskIdProbe.value = null
+  taskIdError.value = ''
+  taskIdDocTitle.value = ''
+  uploadDialogVisible.value = true
+}
+
+async function submitUploadDocument() {
+  const rawFile = pendingUploadFile.value
   if (!rawFile) return
 
-  const result = await store.uploadDocumentToCollection(collectionId, rawFile)
+  const trimmedRevisionLabel = newDocumentRevisionLabel.value.trim()
+  const result = await store.uploadDocumentToCollection(collectionId, rawFile, {
+    revision_label: trimmedRevisionLabel || null,
+  })
   if (!result) {
     ElMessage.error(store.error || t('docs.workspace.detail.uploadFailed'))
     return
   }
 
-  uploadDialogVisible.value = false
   ElMessage.success(t('docs.workspace.detail.uploadSuccess'))
+  uploadDialogVisible.value = false
+  pendingUploadFile.value = null
+  newDocumentRevisionLabel.value = ''
   // 选中新上传的文档
   selectDocument(result.intake.document_id)
   await store.fetchCollection(collectionId)
@@ -739,7 +818,6 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 .doc-list-title-text { overflow: hidden; text-overflow: ellipsis; }
-.import-source-tag { flex-shrink: 0; }
 
 .active-indicator { color: #409eff; font-weight: bold; }
 
@@ -789,7 +867,9 @@ onBeforeUnmount(() => {
   font-family: var(--el-font-family-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
   word-break: break-all;
 }
-.doc-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.doc-meta { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px; }
+.doc-meta-left { display: flex; gap: 8px; align-items: center; }
+.import-source-tag { flex-shrink: 0; }
 .doc-updated { font-size: 12px; color: #909399; }
 
 /* 右栏：侧边栏 */
