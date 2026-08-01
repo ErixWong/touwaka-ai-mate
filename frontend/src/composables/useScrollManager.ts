@@ -10,42 +10,125 @@ export interface UseScrollManagerOptions {
 
 export function useScrollManager(options: UseScrollManagerOptions) {
   const messagesContainer = ref<HTMLElement | null>(null)
+  const bottomSentinel = ref<HTMLElement | null>(null)
   const isUserAtBottom = ref(true)
   const showScrollToBottom = ref(false)
 
-  const scrollHeightBeforeLoad = ref(0)
   const isLoadingTriggered = ref(false)
+  const historyAnchor = ref<{
+    messageId: string
+    offsetTop: number
+    scrollHeight: number
+  } | null>(null)
 
   let streamingScrollRaf: number | null = null
+  let bottomObserver: IntersectionObserver | null = null
 
-  const triggerLoadMore = async () => {
+  const setBottomState = (atBottom: boolean) => {
+    isUserAtBottom.value = atBottom
+    showScrollToBottom.value = !atBottom
+  }
+
+  const captureVisibleAnchor = () => {
+    const container = messagesContainer.value
+    if (!container) return null
+
+    const containerTop = container.getBoundingClientRect().top
+    const messageElements = Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]'))
+    const firstVisible = messageElements.find((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.bottom >= containerTop
+    })
+
+    const messageId = firstVisible?.dataset.messageId
+    if (!firstVisible || !messageId) {
+      return {
+        messageId: '',
+        offsetTop: 0,
+        scrollHeight: container.scrollHeight,
+      }
+    }
+
+    return {
+      messageId,
+      offsetTop: firstVisible.getBoundingClientRect().top - containerTop,
+      scrollHeight: container.scrollHeight,
+    }
+  }
+
+  const restoreHistoryAnchor = () => {
+    const container = messagesContainer.value
+    const anchor = historyAnchor.value
+    if (!container || !anchor) return
+
+    if (anchor.messageId) {
+      const target = Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]'))
+        .find((element) => element.dataset.messageId === anchor.messageId)
+      if (target) {
+        const containerTop = container.getBoundingClientRect().top
+        const currentOffsetTop = target.getBoundingClientRect().top - containerTop
+        container.scrollTop += currentOffsetTop - anchor.offsetTop
+        return
+      }
+    }
+
+    container.scrollTop = container.scrollHeight - anchor.scrollHeight
+  }
+
+  const releaseHistoryLoad = () => {
+    isLoadingTriggered.value = false
+    historyAnchor.value = null
+  }
+
+  const triggerLoadMore = () => {
     if (!messagesContainer.value || isLoadingTriggered.value) return
 
     isLoadingTriggered.value = true
-    scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
+    historyAnchor.value = captureVisibleAnchor()
 
     try {
-      const oldLength = options.messages.value.length
-      await options.onLoadMore()
-      await nextTick()
-
-      if (!messagesContainer.value) return
-      if (options.messages.value.length > oldLength) {
-        const newScrollHeight = messagesContainer.value.scrollHeight
-        messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
-        isUserAtBottom.value = checkIsAtBottom()
-      }
+      const result = options.onLoadMore()
+      Promise.resolve(result).catch((error) => {
+        console.warn('[useScrollManager] load more failed:', error)
+        releaseHistoryLoad()
+      })
     } catch (error) {
       console.warn('[useScrollManager] load more failed:', error)
-    } finally {
-      isLoadingTriggered.value = false
+      releaseHistoryLoad()
     }
+
+    nextTick(() => {
+      if (isLoadingTriggered.value && !options.isLoadingMore.value) {
+        releaseHistoryLoad()
+      }
+    })
   }
 
   const checkIsAtBottom = () => {
     if (!messagesContainer.value) return true
     const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
     return scrollHeight - scrollTop - clientHeight < 100
+  }
+
+  const setupBottomObserver = () => {
+    bottomObserver?.disconnect()
+    bottomObserver = null
+
+    if (!messagesContainer.value || !bottomSentinel.value || typeof IntersectionObserver === 'undefined') {
+      setBottomState(checkIsAtBottom())
+      return
+    }
+
+    bottomObserver = new IntersectionObserver(
+      ([entry]) => {
+        setBottomState(entry?.isIntersecting || false)
+      },
+      {
+        root: messagesContainer.value,
+        threshold: 1,
+      }
+    )
+    bottomObserver.observe(bottomSentinel.value)
   }
 
   const scrollToBottom = (instant = false) => {
@@ -64,8 +147,9 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   const handleScroll = () => {
     if (!messagesContainer.value) return
 
-    isUserAtBottom.value = checkIsAtBottom()
-    showScrollToBottom.value = !isUserAtBottom.value
+    if (!bottomObserver) {
+      setBottomState(checkIsAtBottom())
+    }
 
     if (!options.hasMoreMessages.value || options.isLoadingMore.value) return
 
@@ -77,9 +161,8 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   }
 
   const handleScrollToBottom = () => {
-    isUserAtBottom.value = true
+    setBottomState(true)
     scrollToBottom()
-    showScrollToBottom.value = false
   }
 
   const handleLoadMore = () => {
@@ -94,23 +177,49 @@ export function useScrollManager(options: UseScrollManagerOptions) {
         if (!messagesContainer.value || newLength === 0) return
 
         if (isLoadingTriggered.value) {
+          if (newLength > (oldLength || 0)) {
+            restoreHistoryAnchor()
+            releaseHistoryLoad()
+            setBottomState(checkIsAtBottom())
+          }
           return
         }
 
         if (newLength > (oldLength || 0)) {
           if (oldLength === 0 || oldLength === undefined) {
             scrollToBottom()
-            isUserAtBottom.value = true
+            setBottomState(true)
           } else {
             if (isUserAtBottom.value) {
               scrollToBottom()
             }
           }
-          showScrollToBottom.value = !checkIsAtBottom()
+          if (!bottomObserver) {
+            setBottomState(checkIsAtBottom())
+          }
         }
       })
     },
     { immediate: true }
+  )
+
+  watch(
+    () => options.isLoadingMore.value,
+    (isLoadingMore, wasLoadingMore) => {
+      if (!isLoadingMore && wasLoadingMore && isLoadingTriggered.value) {
+        nextTick(() => {
+          releaseHistoryLoad()
+        })
+      }
+    }
+  )
+
+  watch(
+    [messagesContainer, bottomSentinel],
+    () => {
+      nextTick(setupBottomObserver)
+    },
+    { flush: 'post' }
   )
 
   watch(
@@ -128,6 +237,8 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   )
 
   const cleanup = () => {
+    bottomObserver?.disconnect()
+    bottomObserver = null
     if (streamingScrollRaf !== null) {
       cancelAnimationFrame(streamingScrollRaf)
       streamingScrollRaf = null
@@ -136,6 +247,7 @@ export function useScrollManager(options: UseScrollManagerOptions) {
 
   return {
     messagesContainer,
+    bottomSentinel,
     isUserAtBottom,
     showScrollToBottom,
     scrollToBottom,
