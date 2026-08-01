@@ -18,14 +18,6 @@
     />
 
     <button
-      v-if="messageListRef?.showNewMessagesHint"
-      class="new-messages-hint"
-      @click="messageListRef?.handleScrollToBottom()"
-    >
-      {{ newMessagesHintText }}
-    </button>
-
-    <button
       v-if="messageListRef?.showScrollToBottom"
       class="scroll-to-bottom-btn"
       @click="messageListRef?.handleScrollToBottom()"
@@ -47,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInputArea from './ChatInputArea.vue'
 import type { Message } from '@/types'
@@ -79,11 +71,6 @@ defineEmits<{
 }>()
 
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
-
-const newMessagesHintText = computed(() => {
-  const count = messageListRef.value?.pendingNewMessageCount ?? 0
-  return count > 1 ? `有 ${count} 条新消息` : '有新消息'
-})
 
 onUnmounted(() => {
   messageListRef.value?.cleanup()
@@ -158,23 +145,4 @@ defineExpose({
   transition: color 0.2s;
 }
 
-.new-messages-hint {
-  position: absolute;
-  bottom: 144px;
-  right: 24px;
-  z-index: 10;
-  padding: 8px 14px;
-  border: 1px solid var(--border-color, #dbe4ee);
-  border-radius: 999px;
-  background: var(--bg-primary, #fff);
-  color: var(--primary-color, #2196f3);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.new-messages-hint:hover {
-  background: var(--hover-bg, #f5faff);
-}
 </style>

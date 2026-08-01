@@ -40,6 +40,8 @@ import type {
   UserOrganization,
   UpdateUserOrganizationRequest,
   ChatRequestStatus,
+  MessageQueryRequest,
+  MessageQueryResponse,
 } from '@/types'
 
 /**
@@ -80,10 +82,29 @@ export const topicApi = {
 
 // 消息相关 API
 export const messageApi = {
+  // JSON 查询入口：filter / sort / pagination 放在 body 中
+  queryMessages: (data: MessageQueryRequest) =>
+    apiRequest<MessageQueryResponse>(apiClient.post('/messages/query', data)),
+
   // 按 expert 加载消息列表（主要入口）
   // 一个 expert 对一个 user 只有一个连续的对话 session
-  getMessagesByExpert: (expert_id: string, params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<Message>>(apiClient.get(`/messages/expert/${expert_id}`, { params })),
+  getMessagesByExpert: (expert_id: string, params?: PaginationParams) => {
+    const size = params?.size || params?.limit || params?.pageSize || 30
+    return messageApi.queryMessages({
+      filter: {
+        expert_id,
+      },
+      sort: [
+        { field: 'created_at', order: 'asc' },
+        { field: 'id', order: 'asc' },
+      ],
+      pagination: {
+        page: params?.page || 1,
+        size,
+        window: 'latest',
+      },
+    })
+  },
 
   // 获取消息列表（旧 API，按 topic，保留兼容）
   getMessages: (topic_id: string, params?: PaginationParams) =>

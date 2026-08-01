@@ -409,6 +409,19 @@ return await response.json()  // 错误！包含了 code/message 包装
 **请求参数规范**：
 - 使用 `page` 和 `size`（**不是** `page` 和 `pageSize`）
 - 示例：`GET /api/messages?expert_id=xxx&page=1&size=20`
+- 复杂列表查询应优先提供 `POST /query` JSON body，把 `filter`、`sort`、`pagination` 放在请求体中。
+- 消息主链路使用 `POST /api/messages/query`：
+  ```json
+  {
+    "filter": { "expert_id": "xxx" },
+    "sort": [
+      { "field": "created_at", "order": "asc" },
+      { "field": "id", "order": "asc" }
+    ],
+    "pagination": { "page": 1, "size": 30, "window": "latest" }
+  }
+  ```
+  后端必须使用排序字段白名单，当前消息查询只允许 `created_at` 和 `id`。
 
 **前端期望**：
 ```typescript

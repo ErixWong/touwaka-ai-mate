@@ -47,6 +47,152 @@ class MessageController {
     };
   }
 
+  getMessageListAttributes() {
+    return [
+      'id', 'request_id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
+      'prompt_tokens', 'completion_tokens',
+      'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
+    ];
+  }
+
+  parsePositiveInt(value, fallback, max = 100) {
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return Math.min(parsed, max);
+  }
+
+  normalizeMessageSort(sort) {
+    const allowedSortFields = new Set(['created_at', 'id']);
+    const requestedSort = Array.isArray(sort) ? sort : [];
+    const normalized = [];
+
+    for (const item of requestedSort) {
+      const field = item?.field;
+      if (!allowedSortFields.has(field)) continue;
+      const order = String(item?.order || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+      normalized.push([field, order]);
+    }
+
+    if (!normalized.some(([field]) => field === 'created_at')) {
+      normalized.push(['created_at', 'ASC']);
+    }
+    if (!normalized.some(([field]) => field === 'id')) {
+      normalized.push(['id', 'ASC']);
+    }
+
+    return normalized;
+  }
+
+  reverseSortOrder(order) {
+    return order.map(([field, direction]) => [field, direction === 'ASC' ? 'DESC' : 'ASC']);
+  }
+
+  buildMessageWhere(filter, userId) {
+    const where = {
+      user_id: userId,
+    };
+
+    if (filter.expert_id) {
+      where.expert_id = filter.expert_id;
+    }
+    if (filter.topic_id !== undefined) {
+      where.topic_id = filter.topic_id || null;
+    }
+    if (filter.role) {
+      const allowedRoles = new Set(['user', 'assistant', 'system', 'tool']);
+      if (allowedRoles.has(filter.role)) {
+        where.role = filter.role;
+      }
+    }
+
+    return where;
+  }
+
+  async queryMessagesByRequest(queryRequest, userId, fallbackExpertId = null) {
+    const filter = {
+      ...(queryRequest.filter || {}),
+    };
+    if (fallbackExpertId && !filter.expert_id) {
+      filter.expert_id = fallbackExpertId;
+    }
+
+    if (!filter.expert_id) {
+      return { error: '缺少 filter.expert_id 参数' };
+    }
+
+    const pagination = queryRequest.pagination || {};
+    const page = this.parsePositiveInt(pagination.page, 1, 100000);
+    const size = this.parsePositiveInt(pagination.size || pagination.limit, 30, 100);
+    const offset = (page - 1) * size;
+    const displayOrder = this.normalizeMessageSort(queryRequest.sort);
+    const pageWindow = pagination.window === 'absolute' ? 'absolute' : 'latest';
+    const queryOrder = pageWindow === 'latest' ? this.reverseSortOrder(displayOrder) : displayOrder;
+
+    const { count, rows } = await this.Message.findAndCountAll({
+      where: this.buildMessageWhere(filter, userId),
+      attributes: this.getMessageListAttributes(),
+      order: queryOrder,
+      limit: size,
+      offset,
+      raw: true,
+    });
+
+    const sortedRows = [...rows].sort((a, b) => {
+      for (const [field, direction] of displayOrder) {
+        const aValue = field === 'created_at' ? new Date(a[field]).getTime() : String(a[field] || '');
+        const bValue = field === 'created_at' ? new Date(b[field]).getTime() : String(b[field] || '');
+        if (aValue < bValue) return direction === 'ASC' ? -1 : 1;
+        if (aValue > bValue) return direction === 'ASC' ? 1 : -1;
+      }
+      return 0;
+    });
+
+    const pages = Math.ceil(count / size);
+
+    return {
+      data: {
+        items: sortedRows.map(m => this.formatMessage(m)),
+        sort: displayOrder.map(([field, direction]) => ({
+          field,
+          order: direction.toLowerCase(),
+        })),
+        pagination: {
+          page,
+          size,
+          total: count,
+          pages,
+          has_next: page < pages,
+          has_prev: page > 1,
+          window: pageWindow,
+        },
+      },
+    };
+  }
+
+  /**
+   * JSON 查询消息列表：filter / sort / pagination 均由 body 承载
+   */
+  async query(ctx) {
+    try {
+      const userId = ctx.state.session.id;
+      if (!userId) {
+        ctx.error('未登录', 401);
+        return;
+      }
+
+      const result = await this.queryMessagesByRequest(ctx.request.body || {}, userId);
+      if (result.error) {
+        ctx.error(result.error);
+        return;
+      }
+
+      ctx.success(result.data);
+    } catch (error) {
+      logger.error('Query messages error:', error);
+      ctx.error('查询消息失败', 500);
+    }
+  }
+
   /**
    * 按 expert + user 获取消息列表（主要入口）
    * 这是新的核心 API，用于加载某个 expert 与当前用户的对话历史
@@ -67,45 +213,24 @@ class MessageController {
         return;
       }
 
-      const page = parseInt(pageNumber);
-      const size = parseInt(pageSize);
-      const limit = size;
-      const offset = (page - 1) * limit;
-
-      // 先按时间倒序获取最近的消息，然后再反转成正序（最早的在前）
-      // 这样第1页返回的就是最近的50条消息
-      const { count, rows } = await this.Message.findAndCountAll({
-        where: {
-          expert_id: expertId,
-          user_id: userId,
-        },
-        attributes: [
-          'id', 'request_id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
-          'prompt_tokens', 'completion_tokens',
-          'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
+      const result = await this.queryMessagesByRequest({
+        filter: {},
+        sort: [
+          { field: 'created_at', order: 'asc' },
+          { field: 'id', order: 'asc' },
         ],
-        order: [['created_at', 'DESC']],  // 先倒序获取最新的
-        limit,
-        offset,
-        raw: true,
-      });
-
-      // 反转数组，使消息按时间正序返回（最早的在前，便于聊天界面显示）
-      const sortedRows = rows.reverse();
-
-      const pages = Math.ceil(count / size);
-
-      ctx.success({
-        items: sortedRows.map(m => this.formatMessage(m)),
         pagination: {
-          page,
-          size,
-          total: count,
-          pages,
-          has_next: page < pages,
-          has_prev: page > 1,
+          page: pageNumber,
+          size: pageSize,
+          window: 'latest',
         },
-      });
+      }, userId, expertId);
+      if (result.error) {
+        ctx.error(result.error);
+        return;
+      }
+
+      ctx.success(result.data);
     } catch (error) {
       console.error('Get messages by expert error:', error.stack || error);
       ctx.error('获取消息失败', 500);

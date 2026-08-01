@@ -12,8 +12,6 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   const messagesContainer = ref<HTMLElement | null>(null)
   const isUserAtBottom = ref(true)
   const showScrollToBottom = ref(false)
-  const showNewMessagesHint = ref(false)
-  const pendingNewMessageCount = ref(0)
 
   const scrollHeightBeforeLoad = ref(0)
   const isLoadingTriggered = ref(false)
@@ -45,11 +43,6 @@ export function useScrollManager(options: UseScrollManagerOptions) {
     isUserAtBottom.value = checkIsAtBottom()
     showScrollToBottom.value = !isUserAtBottom.value
 
-    if (isUserAtBottom.value) {
-      showNewMessagesHint.value = false
-      pendingNewMessageCount.value = 0
-    }
-
     if (!options.hasMoreMessages.value || options.isLoadingMore.value) return
 
     const { scrollTop } = messagesContainer.value
@@ -65,8 +58,6 @@ export function useScrollManager(options: UseScrollManagerOptions) {
     isUserAtBottom.value = true
     scrollToBottom()
     showScrollToBottom.value = false
-    showNewMessagesHint.value = false
-    pendingNewMessageCount.value = 0
   }
 
   const handleLoadMore = () => {
@@ -94,16 +85,9 @@ export function useScrollManager(options: UseScrollManagerOptions) {
           if (oldLength === 0 || oldLength === undefined) {
             scrollToBottom()
             isUserAtBottom.value = true
-            showNewMessagesHint.value = false
-            pendingNewMessageCount.value = 0
           } else {
             if (isUserAtBottom.value) {
               scrollToBottom()
-              showNewMessagesHint.value = false
-              pendingNewMessageCount.value = 0
-            } else {
-              pendingNewMessageCount.value += Math.max(newLength - (oldLength || 0), 1)
-              showNewMessagesHint.value = true
             }
           }
           showScrollToBottom.value = !checkIsAtBottom()
@@ -138,8 +122,6 @@ export function useScrollManager(options: UseScrollManagerOptions) {
     messagesContainer,
     isUserAtBottom,
     showScrollToBottom,
-    showNewMessagesHint,
-    pendingNewMessageCount,
     scrollToBottom,
     handleScroll,
     handleScrollToBottom,

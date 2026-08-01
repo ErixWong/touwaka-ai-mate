@@ -86,8 +86,6 @@ const handleJumpToMessage = (messageId: string) => {
 const {
   messagesContainer,
   showScrollToBottom,
-  showNewMessagesHint,
-  pendingNewMessageCount,
   handleScroll,
   handleScrollToBottom,
   handleLoadMore,
@@ -105,8 +103,6 @@ defineExpose({
   handleScrollToBottom,
   messagesContainer,
   showScrollToBottom,
-  showNewMessagesHint,
-  pendingNewMessageCount,
   cleanup,
 })
 </script>
