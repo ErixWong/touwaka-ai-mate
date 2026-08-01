@@ -19,6 +19,7 @@
       :key="message.id"
       :message="message"
       :all-messages="messages"
+      :tool-context-index="toolContextIndex"
       :expert-avatar="expertAvatar"
       :highlighted="highlightedMessageId === message.id"
       @retry="$emit('retry', $event)"
@@ -47,6 +48,7 @@
 import { ref, computed } from 'vue'
 import MessageItem from './MessageItem.vue'
 import { useScrollManager } from '@/composables/useScrollManager'
+import { useToolDataParser, type ToolContextIndex } from '@/composables/useToolDataParser'
 import type { ChatMessage } from './ChatWindow.vue'
 
 const props = defineProps<{
@@ -63,7 +65,10 @@ const emit = defineEmits<{
 }>()
 
 const highlightedMessageId = ref<string | null>(null)
+const toolParser = useToolDataParser()
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
+
+const toolContextIndex = computed<ToolContextIndex>(() => toolParser.buildToolContextIndex(props.messages))
 
 const handleJumpToMessage = (messageId: string) => {
   highlightedMessageId.value = messageId

@@ -13,6 +13,7 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   const bottomSentinel = ref<HTMLElement | null>(null)
   const isUserAtBottom = ref(true)
   const showScrollToBottom = ref(false)
+  const followMode = ref(true)
 
   const isLoadingTriggered = ref(false)
   const historyAnchor = ref<{
@@ -22,11 +23,34 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   } | null>(null)
 
   let streamingScrollRaf: number | null = null
+  let resizeScrollRaf: number | null = null
   let bottomObserver: IntersectionObserver | null = null
+  let resizeObserver: ResizeObserver | null = null
 
-  const setBottomState = (atBottom: boolean) => {
+  const setBottomPresentation = (atBottom: boolean) => {
     isUserAtBottom.value = atBottom
     showScrollToBottom.value = !atBottom
+  }
+
+  const enterFollowMode = () => {
+    followMode.value = true
+    setBottomPresentation(true)
+  }
+
+  const leaveFollowMode = () => {
+    followMode.value = false
+    setBottomPresentation(false)
+  }
+
+  const scheduleFollowScroll = () => {
+    if (!followMode.value || resizeScrollRaf !== null) return
+
+    resizeScrollRaf = requestAnimationFrame(() => {
+      resizeScrollRaf = null
+      if (followMode.value) {
+        scrollToBottom(true)
+      }
+    })
   }
 
   const captureVisibleAnchor = () => {
@@ -115,13 +139,23 @@ export function useScrollManager(options: UseScrollManagerOptions) {
     bottomObserver = null
 
     if (!messagesContainer.value || !bottomSentinel.value || typeof IntersectionObserver === 'undefined') {
-      setBottomState(checkIsAtBottom())
+      if (checkIsAtBottom()) {
+        enterFollowMode()
+      } else if (!followMode.value) {
+        setBottomPresentation(false)
+      }
       return
     }
 
     bottomObserver = new IntersectionObserver(
       ([entry]) => {
-        setBottomState(entry?.isIntersecting || false)
+        if (entry?.isIntersecting) {
+          enterFollowMode()
+        } else if (followMode.value) {
+          scheduleFollowScroll()
+        } else {
+          setBottomPresentation(false)
+        }
       },
       {
         root: messagesContainer.value,
@@ -147,8 +181,10 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   const handleScroll = () => {
     if (!messagesContainer.value) return
 
-    if (!bottomObserver) {
-      setBottomState(checkIsAtBottom())
+    if (checkIsAtBottom()) {
+      enterFollowMode()
+    } else {
+      leaveFollowMode()
     }
 
     if (!options.hasMoreMessages.value || options.isLoadingMore.value) return
@@ -161,7 +197,7 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   }
 
   const handleScrollToBottom = () => {
-    setBottomState(true)
+    enterFollowMode()
     scrollToBottom()
   }
 
@@ -180,7 +216,11 @@ export function useScrollManager(options: UseScrollManagerOptions) {
           if (newLength > (oldLength || 0)) {
             restoreHistoryAnchor()
             releaseHistoryLoad()
-            setBottomState(checkIsAtBottom())
+            if (checkIsAtBottom()) {
+              enterFollowMode()
+            } else {
+              leaveFollowMode()
+            }
           }
           return
         }
@@ -188,14 +228,16 @@ export function useScrollManager(options: UseScrollManagerOptions) {
         if (newLength > (oldLength || 0)) {
           if (oldLength === 0 || oldLength === undefined) {
             scrollToBottom()
-            setBottomState(true)
+            enterFollowMode()
           } else {
-            if (isUserAtBottom.value) {
+            if (followMode.value) {
               scrollToBottom()
             }
           }
-          if (!bottomObserver) {
-            setBottomState(checkIsAtBottom())
+          if (checkIsAtBottom()) {
+            enterFollowMode()
+          } else if (!followMode.value) {
+            setBottomPresentation(false)
           }
         }
       })
@@ -222,10 +264,38 @@ export function useScrollManager(options: UseScrollManagerOptions) {
     { flush: 'post' }
   )
 
+  const setupResizeObserver = () => {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+
+    if (!messagesContainer.value || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    resizeObserver = new ResizeObserver(() => {
+      if (isLoadingTriggered.value && historyAnchor.value) {
+        restoreHistoryAnchor()
+        return
+      }
+      scheduleFollowScroll()
+    })
+
+    const observedElements = messagesContainer.value.querySelectorAll<HTMLElement>('[data-message-id]')
+    observedElements.forEach((element) => resizeObserver?.observe(element))
+  }
+
+  watch(
+    [messagesContainer, () => options.messages.value.length],
+    () => {
+      nextTick(setupResizeObserver)
+    },
+    { flush: 'post', immediate: true }
+  )
+
   watch(
     () => options.messages.value[options.messages.value.length - 1]?.content,
     () => {
-      if (isUserAtBottom.value) {
+      if (followMode.value) {
         if (streamingScrollRaf === null) {
           streamingScrollRaf = requestAnimationFrame(() => {
             streamingScrollRaf = null
@@ -239,9 +309,15 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   const cleanup = () => {
     bottomObserver?.disconnect()
     bottomObserver = null
+    resizeObserver?.disconnect()
+    resizeObserver = null
     if (streamingScrollRaf !== null) {
       cancelAnimationFrame(streamingScrollRaf)
       streamingScrollRaf = null
+    }
+    if (resizeScrollRaf !== null) {
+      cancelAnimationFrame(resizeScrollRaf)
+      resizeScrollRaf = null
     }
   }
 

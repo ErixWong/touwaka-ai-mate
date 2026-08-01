@@ -1,5 +1,5 @@
 <template>
-  <div class="assistant-message">
+  <div ref="assistantMessageRef" class="assistant-message">
     <div
       v-if="message.role === 'assistant' && message.tool_calls"
       class="tool-calls-section"
@@ -71,18 +71,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ToolMessageCard from './ToolMessageCard.vue'
 import { useToolDataParser } from '@/composables/useToolDataParser'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { formatRelativeTime } from '@/composables/useTimeFormatter'
 import type { ChatMessage } from './ChatWindow.vue'
-import type { ToolCallData } from '@/composables/useToolDataParser'
+import type { ToolCallData, ToolContextIndex } from '@/composables/useToolDataParser'
 
 const props = defineProps<{
   message: ChatMessage
   allMessages: ChatMessage[]
+  toolContextIndex?: ToolContextIndex
 }>()
 
 defineEmits<{
@@ -95,6 +96,9 @@ const toolParser = useToolDataParser()
 const formatter = useMarkdownFormatter()
 
 const isReasoningExpanded = ref(false)
+const assistantMessageRef = ref<HTMLElement | null>(null)
+const isRenderVisible = ref(false)
+let visibilityObserver: IntersectionObserver | null = null
 
 const toggleReasoning = () => {
   isReasoningExpanded.value = !isReasoningExpanded.value
@@ -105,11 +109,13 @@ const parsedToolCalls = computed<ToolCallData[]>(() => {
 })
 
 const filteredContent = computed(() => {
-  return toolParser.filterAssistantContent(props.message, props.allMessages)
+  return toolParser.filterAssistantContent(props.message, props.allMessages, props.toolContextIndex)
 })
 
 const formattedHtml = computed(() => {
-  return formatter.formatStreamingMessage(props.message, filteredContent.value)
+  return formatter.formatStreamingMessage(props.message, filteredContent.value, {
+    renderMermaid: isRenderVisible.value,
+  })
 })
 
 const isRecovering = computed(() => props.message.metadata?.recovering === true)
@@ -125,6 +131,34 @@ const recoveringText = computed(() => {
 const formattedTime = computed(() => {
   if (!props.message.created_at) return ''
   return formatRelativeTime(props.message.created_at, t)
+})
+
+onMounted(() => {
+  if (!assistantMessageRef.value || typeof IntersectionObserver === 'undefined') {
+    isRenderVisible.value = true
+    return
+  }
+
+  visibilityObserver = new IntersectionObserver(
+    ([entry]) => {
+      if (entry?.isIntersecting) {
+        isRenderVisible.value = true
+        visibilityObserver?.disconnect()
+        visibilityObserver = null
+      }
+    },
+    {
+      root: null,
+      rootMargin: '240px 0px',
+      threshold: 0,
+    }
+  )
+  visibilityObserver.observe(assistantMessageRef.value)
+})
+
+onUnmounted(() => {
+  visibilityObserver?.disconnect()
+  visibilityObserver = null
 })
 </script>
 

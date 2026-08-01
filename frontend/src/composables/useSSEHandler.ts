@@ -163,27 +163,10 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
       if (tempUserId && tempAssistant) {
         chatStore.removeMessage(tempAssistantId)
         chatStore.removeMessage(tempUserId)
-
-        for (const msg of newMessages) {
-          const existing = chatStore.getMessageById(msg.id)
-          if (existing) {
-            existing.content = msg.content
-            existing.reasoning_content = msg.reasoning_content
-            existing.tool_calls = msg.tool_calls
-            existing.status = 'completed'
-            existing.metadata = msg.metadata
-            existing.updated_at = msg.updated_at || msg.created_at
-          } else {
-            chatStore.addLocalMessage({ ...msg, status: 'completed' })
-          }
-        }
-        return true
-      } else {
-        for (const msg of newMessages) {
-          chatStore.addLocalMessage({ ...msg, status: 'completed' })
-        }
-        return true
       }
+
+      chatStore.mergeMessages(newMessages.map(msg => ({ ...msg, status: 'completed' })))
+      return true
     } catch (error) {
       console.error('[useSSEHandler] Failed to fetch messages from DB:', error)
       return false
