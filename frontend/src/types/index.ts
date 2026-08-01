@@ -319,6 +319,7 @@ export interface MessageQueryRequest {
 }
 
 export interface MessageQueryResponse extends PaginatedResponse<Message> {
+  latest_message_id?: string | null
   sort?: Array<{
     field: MessageSortField
     order: SortOrder

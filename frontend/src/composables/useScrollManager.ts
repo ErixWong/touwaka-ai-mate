@@ -5,7 +5,7 @@ export interface UseScrollManagerOptions {
   messages: Ref<ChatMessage[]>
   hasMoreMessages: Ref<boolean>
   isLoadingMore: Ref<boolean>
-  onLoadMore: () => void
+  onLoadMore: () => Promise<unknown> | unknown
 }
 
 export function useScrollManager(options: UseScrollManagerOptions) {
@@ -17,6 +17,30 @@ export function useScrollManager(options: UseScrollManagerOptions) {
   const isLoadingTriggered = ref(false)
 
   let streamingScrollRaf: number | null = null
+
+  const triggerLoadMore = async () => {
+    if (!messagesContainer.value || isLoadingTriggered.value) return
+
+    isLoadingTriggered.value = true
+    scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
+
+    try {
+      const oldLength = options.messages.value.length
+      await options.onLoadMore()
+      await nextTick()
+
+      if (!messagesContainer.value) return
+      if (options.messages.value.length > oldLength) {
+        const newScrollHeight = messagesContainer.value.scrollHeight
+        messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
+        isUserAtBottom.value = checkIsAtBottom()
+      }
+    } catch (error) {
+      console.warn('[useScrollManager] load more failed:', error)
+    } finally {
+      isLoadingTriggered.value = false
+    }
+  }
 
   const checkIsAtBottom = () => {
     if (!messagesContainer.value) return true
@@ -48,9 +72,7 @@ export function useScrollManager(options: UseScrollManagerOptions) {
     const { scrollTop } = messagesContainer.value
 
     if (scrollTop < 100 && !isLoadingTriggered.value) {
-      isLoadingTriggered.value = true
-      scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
-      options.onLoadMore()
+      void triggerLoadMore()
     }
   }
 
@@ -62,9 +84,7 @@ export function useScrollManager(options: UseScrollManagerOptions) {
 
   const handleLoadMore = () => {
     if (!messagesContainer.value) return
-    scrollHeightBeforeLoad.value = messagesContainer.value.scrollHeight
-    isLoadingTriggered.value = true
-    options.onLoadMore()
+    void triggerLoadMore()
   }
 
   watch(
@@ -73,11 +93,7 @@ export function useScrollManager(options: UseScrollManagerOptions) {
       nextTick(() => {
         if (!messagesContainer.value || newLength === 0) return
 
-        if (isLoadingTriggered.value && options.isLoadingMore.value === false && newLength > (oldLength || 0)) {
-          const newScrollHeight = messagesContainer.value.scrollHeight
-          messagesContainer.value.scrollTop = newScrollHeight - scrollHeightBeforeLoad.value
-          isLoadingTriggered.value = false
-          isUserAtBottom.value = checkIsAtBottom()
+        if (isLoadingTriggered.value) {
           return
         }
 

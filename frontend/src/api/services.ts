@@ -147,7 +147,13 @@ export const messageApi = {
 
   // 增量获取指定游标之后的消息
   getMessagesSince: (expert_id: string, params?: { after_message_id?: string; limit?: number }) =>
-    apiRequest<{ items: Message[]; latest_message_id: string | null; has_more: boolean }>(
+    apiRequest<{
+      items: Message[];
+      latest_message_id: string | null;
+      has_more: boolean;
+      cursor_initialized?: boolean;
+      anchor_found?: boolean;
+    }>(
       apiClient.get(`/messages/expert/${expert_id}/since`, { params })
     ),
 }

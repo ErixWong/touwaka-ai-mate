@@ -21,6 +21,7 @@ export const useChatStore = defineStore('chat', () => {
   const userMessageForAssistant = reactive<Map<string, string>>(new Map())
   const manuallyStoppedRequestIds = reactive<Set<string>>(new Set())
   const currentStreamingMessageId = ref<string | null>(null)
+  const currentExpertGeneration = ref(0)
 
   const sortedMessages = computed(() => messages.value)
 
@@ -102,6 +103,17 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.find(m => m.role === 'assistant' && m.status === 'streaming')
   }
 
+  const isServerMessage = (message: Pick<Message, 'id'>) => {
+    return !!message.id && !message.id.startsWith('temp-')
+  }
+
+  const getLatestServerMessageId = (): string | null => {
+    const serverMessages = messages.value.filter(isServerMessage)
+    if (serverMessages.length === 0) return null
+    const sortedServerMessages = [...serverMessages].sort(compareMessages)
+    return sortedServerMessages[sortedServerMessages.length - 1]?.id || null
+  }
+
   const setCurrentStreaming = (messageId: string | null) => {
     currentStreamingMessageId.value = messageId
   }
@@ -159,17 +171,23 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const loadMessagesByExpert = async (expert_id: string, page: number = 1, size: number = 30) => {
+    const generation = page === 1
+      ? currentExpertGeneration.value + 1
+      : currentExpertGeneration.value
+
     if (page === 1) {
       const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
       if (hasStreamingMessage) {
         return
       }
 
+      currentExpertGeneration.value = generation
       isLoading.value = true
       messages.value = []
       messageById.clear()
       requestToAssistantMessageId.clear()
       requestToUserMessageId.clear()
+      userMessageForAssistant.clear()
       currentExpertId.value = expert_id
     } else {
       isLoadingMore.value = true
@@ -178,6 +196,10 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       const response = await messageApi.getMessagesByExpert(expert_id, { page, size })
+      if (currentExpertId.value !== expert_id || currentExpertGeneration.value !== generation) {
+        return
+      }
+
       const items = response.items || []
 
       if (page === 1) {
@@ -190,11 +212,15 @@ export const useChatStore = defineStore('chat', () => {
       hasMoreMessages.value = items.length === size
       currentPage.value = page
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load messages'
+      if (currentExpertId.value === expert_id && currentExpertGeneration.value === generation) {
+        error.value = err instanceof Error ? err.message : 'Failed to load messages'
+      }
       throw err
     } finally {
-      isLoading.value = false
-      isLoadingMore.value = false
+      if (currentExpertId.value === expert_id && currentExpertGeneration.value === generation) {
+        isLoading.value = false
+        isLoadingMore.value = false
+      }
     }
   }
 
@@ -214,6 +240,7 @@ export const useChatStore = defineStore('chat', () => {
     userMessageForAssistant.clear()
     currentPage.value = 1
     hasMoreMessages.value = true
+    currentExpertGeneration.value += 1
 
     if (expert_id) {
       await loadMessagesByExpert(expert_id, 1)
@@ -422,6 +449,7 @@ export const useChatStore = defineStore('chat', () => {
     requestToUserMessageId.clear()
     userMessageForAssistant.clear()
     currentStreamingMessageId.value = null
+    currentExpertGeneration.value += 1
     currentPage.value = 1
     hasMoreMessages.value = true
     error.value = null
@@ -518,6 +546,7 @@ export const useChatStore = defineStore('chat', () => {
     getAssistantMessageByRequestId,
     getUserMessageByRequestId,
     getStreamingAssistant,
+    getLatestServerMessageId,
     setCurrentStreaming,
     markRequestManuallyStopped,
     clearManuallyStoppedRequest,

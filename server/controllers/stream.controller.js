@@ -1109,10 +1109,30 @@ class StreamController {
     // 重要：设置 ctx.status 让 Koa 知道响应已处理
     ctx.status = 200;
 
+    let connectedLatestMessageId = this._getLatestCursor(expert_id, user_id).latest_message_id;
+    if (!connectedLatestMessageId) {
+      const latestMessage = await this.Message.findOne({
+        where: {
+          expert_id,
+          user_id,
+        },
+        order: [['created_at', 'DESC'], ['id', 'DESC']],
+        attributes: ['id'],
+        raw: true,
+      });
+      connectedLatestMessageId = latestMessage?.id || null;
+      this._updateLatestCursor(expert_id, user_id, connectedLatestMessageId);
+    }
+
     // 发送连接成功事件
     const connectedSequence = this._nextSequence(expert_id, user_id);
     ctx.res.write(`id: ${connectedSequence}\nevent: connected\n`);
-    ctx.res.write(`data: ${JSON.stringify({ status: 'connected', expert_id, sequence: connectedSequence })}\n\n`);
+    ctx.res.write(`data: ${JSON.stringify({
+      status: 'connected',
+      expert_id,
+      sequence: connectedSequence,
+      latest_message_id: connectedLatestMessageId,
+    })}\n\n`);
 
     // 存储连接到 Expert 的连接池
     if (!this.expertConnections.has(expert_id)) {
@@ -1141,7 +1161,7 @@ class StreamController {
               expert_id,
               user_id,
             },
-            order: [['created_at', 'DESC']],
+            order: [['created_at', 'DESC'], ['id', 'DESC']],
             attributes: ['id'],
             raw: true,
           });

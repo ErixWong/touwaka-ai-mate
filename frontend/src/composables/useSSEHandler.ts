@@ -26,6 +26,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
   const lastKnownMessageId = ref<string | null>(null)
   const lastKnownSequence = ref<number>(0)
+  const activeExpertId = ref<string | null>(null)
 
   let contentBuffer = ''
   let reasoningBuffer = ''
@@ -46,6 +47,26 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
   const getStreamingAssistant = (): Message | undefined => {
     return chatStore.getStreamingAssistant()
+  }
+
+  const resetLiveState = (expertId: string, liveCursor: string | null = null) => {
+    activeExpertId.value = expertId || null
+    lastKnownMessageId.value = liveCursor
+    lastKnownSequence.value = 0
+    contentBuffer = ''
+    reasoningBuffer = ''
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+  }
+
+  const ensureExpertState = () => {
+    const expertId = options.getExpertId()
+    if (expertId && activeExpertId.value !== expertId) {
+      resetLiveState(expertId, chatStore.getLatestServerMessageId())
+    }
+    return expertId
   }
 
   const isManuallyStoppedRequest = (requestId?: string | null) => {
@@ -255,6 +276,8 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
   }
 
   const handleSSEEvent = async (event: SSEEvent) => {
+    const currentExpertId = ensureExpertState()
+
     if (event.event === 'heartbeat') {
       try {
         const data = JSON.parse(event.data)
@@ -274,13 +297,22 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
         }
 
         if (serverLatestMessageId && serverLatestMessageId !== lastKnownMessageId.value) {
-          const expertId = options.getExpertId()
+          const expertId = currentExpertId
           if (expertId) {
+            if (!lastKnownMessageId.value) {
+              lastKnownMessageId.value = serverLatestMessageId
+              return
+            }
+
             try {
               const result = await messageApi.getMessagesSince(expertId, {
                 after_message_id: lastKnownMessageId.value || undefined,
                 limit: 50,
               })
+
+              if (activeExpertId.value !== expertId) {
+                return
+              }
 
               if (result.items?.length) {
                 chatStore.mergeMessages(result.items.map(message => ({
@@ -309,6 +341,15 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
     try {
       const data = JSON.parse(event.data)
       const eventSequence = Number(data.sequence || event.id || 0)
+      if (event.event === 'connected') {
+        const expertId = currentExpertId
+        activeExpertId.value = expertId || null
+        lastKnownSequence.value = eventSequence || 0
+        lastKnownMessageId.value = data.latest_message_id || chatStore.getLatestServerMessageId()
+        console.log('[useSSEHandler] SSE connected:', data)
+        return
+      }
+
       if (eventSequence && eventSequence <= lastKnownSequence.value && event.event !== 'connected') {
         return
       }
@@ -317,10 +358,6 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
       }
 
       switch (event.event) {
-        case 'connected':
-          console.log('[useSSEHandler] SSE connected:', data)
-          break
-
         case 'start':
           console.log('[useSSEHandler] SSE start:', data)
           bindPendingAssistantToRequest(data.request_id)
@@ -574,6 +611,7 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
 
   return {
     lastKnownMessageId,
+    resetLiveState,
     handleSSEEvent,
     handleCompleteEvent,
     setSendingTimeoutProtection,

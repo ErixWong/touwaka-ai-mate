@@ -148,10 +148,19 @@ class MessageController {
     });
 
     const pages = Math.ceil(count / size);
+    const latestRow = rows.reduce((latest, row) => {
+      if (!latest) return row;
+      const latestTime = new Date(latest.created_at).getTime();
+      const rowTime = new Date(row.created_at).getTime();
+      if (rowTime > latestTime) return row;
+      if (rowTime === latestTime && String(row.id).localeCompare(String(latest.id)) > 0) return row;
+      return latest;
+    }, null);
 
     return {
       data: {
         items: sortedRows.map(m => this.formatMessage(m)),
+        latest_message_id: latestRow?.id || null,
         sort: displayOrder.map(([field, direction]) => ({
           field,
           order: direction.toLowerCase(),
@@ -486,6 +495,29 @@ class MessageController {
       let anchorCreatedAt = null;
       let anchorId = null;
 
+      const getLatestMessageId = async () => {
+        const latest = await this.Message.findOne({
+          where: {
+            expert_id: expertId,
+            user_id: userId,
+          },
+          attributes: ['id'],
+          order: [['created_at', 'DESC'], ['id', 'DESC']],
+          raw: true,
+        });
+        return latest?.id || null;
+      };
+
+      if (!after_message_id) {
+        ctx.success({
+          items: [],
+          latest_message_id: await getLatestMessageId(),
+          has_more: false,
+          cursor_initialized: true,
+        });
+        return;
+      }
+
       if (after_message_id) {
         const anchor = await this.Message.findOne({
           where: {
@@ -497,10 +529,19 @@ class MessageController {
           raw: true,
         });
 
-        if (anchor) {
-          anchorCreatedAt = anchor.created_at;
-          anchorId = anchor.id;
+        if (!anchor) {
+          ctx.success({
+            items: [],
+            latest_message_id: await getLatestMessageId(),
+            has_more: false,
+            cursor_initialized: true,
+            anchor_found: false,
+          });
+          return;
         }
+
+        anchorCreatedAt = anchor.created_at;
+        anchorId = anchor.id;
       }
 
       const where = {
@@ -521,7 +562,7 @@ class MessageController {
       const rows = await this.Message.findAll({
         where,
         attributes: [
-          'id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
+          'id', 'request_id', 'expert_id', 'user_id', 'topic_id', 'role', 'content', 'reasoning_content',
           'prompt_tokens', 'completion_tokens',
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
