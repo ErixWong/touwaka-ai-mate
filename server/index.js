@@ -73,7 +73,6 @@ import DocCollectionController from './controllers/doc-collection.controller.js'
 import SolutionController from './controllers/solution.controller.js';
 import InternalController from './controllers/internal.controller.js';
 import InternalDocsController from './controllers/internal-docs.controller.js';
-import AssistantController from './controllers/assistant.controller.js';
 import AttachmentController from './controllers/attachment.controller.js';
 import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
@@ -81,7 +80,6 @@ import AppRegistryController from './controllers/app-registry.controller.js';
 import AppBackupController from './controllers/app-backup.controller.js';
 import InvoiceController from './controllers/invoice.controller.js';
 import ELSController from './controllers/els.controller.js';
-import { getAssistantManager } from './services/assistant/index.js';
 import AppRegistryService from './services/app-registry.service.js';
 
 // 路由
@@ -107,7 +105,6 @@ import systemSettingRoutes, { createBrandingRoutes } from './routes/system-setti
 import { getSystemSettingService } from './services/system-setting.service.js';
 import { getPermissionService } from './services/permission.service.js';
 import packageRoutes from './routes/package.routes.js';
-import assistantRoutes from './routes/assistant.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 import taskStaticRoutes from './routes/task-static.routes.js';
 import attachmentRoutes from './routes/attachment.routes.js';
@@ -503,7 +500,6 @@ class ApiServer {
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
       }),
       internalDocs: new InternalDocsController(this.db),
-      assistant: new AssistantController(this.db),
       attachment: new AttachmentController(this.db),
       miniApp: new MiniAppController(this.db, this.sharedRegistryService),
       appMarket: new AppMarketController(this.db, this.sharedRegistryService, null),
@@ -650,10 +646,6 @@ class ApiServer {
     // Package 白名单路由
     const packageRouter = packageRoutes(this.db);
     registerRouter(this.app, packageRouter);
-
-// Assistant 助理路由
-    const assistantRouter = assistantRoutes(this.controllers.assistant);
-    registerRouter(this.app, assistantRouter);
 
     // Internal 内部 API 路由（驻留进程调用）
     // 将 StreamController 的 SSE 连接池共享给 InternalController
@@ -820,24 +812,11 @@ class ApiServer {
 
       this.initializeControllers();
 
-      // Initialize Assistant Manager
-      const assistantManager = getAssistantManager(this.db, { chatService: this.chatService });
-      await assistantManager.initialize();
-      logger.info('Assistant Manager initialized');
-
-      // 将 AssistantManager 注入到 ChatService
-      this.chatService.assistantManager = assistantManager;
-      logger.info('AssistantManager injected into ChatService');
-
       this.setupMiddlewares();
       this.setupRoutes();
 
       this.app.context.appClock = this.appClock;
       this.app.context.mcpToolCaller = this.mcpToolCaller;
-
-      // 将 SSE 连接池共享给 AssistantManager（在 setupRoutes 之后，因为 StreamController 已创建）
-      assistantManager.setExpertConnections(this.controllers.stream.expertConnections);
-      logger.info('AssistantManager: expertConnections set');
 
       this.app.listen(port, () => {
         logger.info(`API Server (Koa) started on http://localhost:${port}`);

@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import InternalController from '../server/controllers/internal.controller.js';
+import { sealAgentDelegation } from '../lib/agent/agent-delegation-integrity.js';
 import {
   buildRootAgentInvocationContext,
   deriveChildAgentInvocationContext,
@@ -32,7 +33,7 @@ function createDelegation() {
     capability_scope: { tools: ['search'] },
   });
 
-  return {
+  return sealAgentDelegation({
     status: 'accepted',
     parent_invocation: parent,
     child_invocation: child,
@@ -45,6 +46,22 @@ function createDelegation() {
     task: 'Search project',
     requested_scope: { tools: ['search'] },
     effective_scope: { tools: ['search'] },
+  });
+}
+
+function createUnsignedDelegation() {
+  const sealed = createDelegation();
+  const { integrity, ...delegation } = sealed;
+  return delegation;
+}
+
+function createPermissionService(allowed = true) {
+  return {
+    calls: [],
+    async canAccessExpert(userId, expertId) {
+      this.calls.push({ userId, expertId });
+      return allowed;
+    },
   };
 }
 
@@ -74,27 +91,96 @@ function createCtx(body = {}) {
 
 async function testExecuteChildAgentRunUsesChatService() {
   const calls = [];
+  const permissionService = createPermissionService(true);
   const controller = new InternalController(createDbStub(), {
+    permissionService,
     chatService: {
       async executeChildDelegation(delegation, options) {
         calls.push({ delegation, options });
+        options.onDelta({ type: 'delta', content: 'child event' });
         return { fullContent: 'done' };
       },
     },
   });
-  const session = { id: 'user_internal', accessToken: 'token_1' };
+  const spoofedSession = { id: 'attacker', accessToken: 'token_spoof' };
   const ctx = createCtx({
     delegation: createDelegation(),
-    session,
+    session: spoofedSession,
   });
 
   await controller.executeChildAgentRun(ctx);
 
   assert.equal(ctx.body.code, 200);
-  assert.equal(ctx.body.data.fullContent, 'done');
+  assert.equal(ctx.body.data.result.fullContent, 'done');
+  assert.deepEqual(ctx.body.data.events, [{ type: 'delta', content: 'child event' }]);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].delegation.child_invocation.run_id, 'child_run_internal_1');
-  assert.equal(calls[0].options.session, session);
+  assert.equal(calls[0].options.session, ctx.state.session);
+  assert.notEqual(calls[0].options.session, spoofedSession);
+  assert.deepEqual(permissionService.calls, [{
+    userId: 'user_internal',
+    expertId: 'expert_child',
+  }]);
+}
+
+async function testRejectsPrincipalMismatch() {
+  const controller = new InternalController(createDbStub(), {
+    permissionService: createPermissionService(true),
+    chatService: {
+      async executeChildDelegation() {
+        throw new Error('unexpected');
+      },
+    },
+  });
+  const delegation = createDelegation();
+  const ctx = createCtx({
+    delegation: {
+      ...delegation,
+      child_invocation: {
+        ...delegation.child_invocation,
+        principal_user_id: 'attacker',
+      },
+    },
+  });
+
+  await controller.executeChildAgentRun(ctx);
+
+  assert.equal(ctx.status, 403);
+  assert.match(ctx.body.message, /integrity verification failed/);
+}
+
+async function testRejectsUnsignedDelegation() {
+  const controller = new InternalController(createDbStub(), {
+    permissionService: createPermissionService(true),
+    chatService: {
+      async executeChildDelegation() {
+        throw new Error('unexpected');
+      },
+    },
+  });
+  const ctx = createCtx({ delegation: createUnsignedDelegation() });
+
+  await controller.executeChildAgentRun(ctx);
+
+  assert.equal(ctx.status, 403);
+  assert.match(ctx.body.message, /integrity verification failed/);
+}
+
+async function testRejectsUnauthorizedChildExpert() {
+  const controller = new InternalController(createDbStub(), {
+    permissionService: createPermissionService(false),
+    chatService: {
+      async executeChildDelegation() {
+        throw new Error('unexpected');
+      },
+    },
+  });
+  const ctx = createCtx({ delegation: createDelegation() });
+
+  await controller.executeChildAgentRun(ctx);
+
+  assert.equal(ctx.status, 403);
+  assert.match(ctx.body.message, /no permission/);
 }
 
 async function testRejectsMissingDelegation() {
@@ -157,6 +243,9 @@ async function testInvokeResidentToolPassesUserContextAndTimeout() {
 
 async function main() {
   await testExecuteChildAgentRunUsesChatService();
+  await testRejectsPrincipalMismatch();
+  await testRejectsUnsignedDelegation();
+  await testRejectsUnauthorizedChildExpert();
   await testRejectsMissingDelegation();
   await testInvokeResidentToolPassesUserContextAndTimeout();
 

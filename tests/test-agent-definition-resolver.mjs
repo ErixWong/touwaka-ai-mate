@@ -14,10 +14,6 @@ import {
   buildExpertAgentDefinition,
   ExpertAgentDefinitionAdapter,
 } from '../lib/agent/expert-agent-definition-adapter.js';
-import {
-  buildLegacyAssistantAgentDefinition,
-  LegacyAssistantAgentDefinitionAdapter,
-} from '../server/services/assistant/legacy-agent-definition-adapter.js';
 
 function createExpertConfig() {
   return {
@@ -76,39 +72,6 @@ function testBuildExpertDefinition() {
   assert.equal(Object.isFrozen(definition), true);
 }
 
-function testBuildLegacyAssistantDefinition() {
-  const definition = buildLegacyAssistantAgentDefinition({
-    id: 'asst_1',
-    name: 'OCR Assistant',
-    description: 'Runs OCR workflow.',
-    model_id: 'model_1',
-    prompt_template: 'Extract text.',
-    max_tokens: 2048,
-    temperature: '0.4',
-    estimated_time: 20,
-    timeout: 90,
-    tool_name: 'ocr_analyze',
-    tool_description: 'Analyze OCR',
-    tool_parameters: JSON.stringify({ type: 'object' }),
-    can_use_skills: false,
-    execution_mode: 'direct',
-    is_active: true,
-  }, { id: 'model_1', model_name: 'assistant-model', api_key: 'secret_assistant' });
-
-  assert.equal(definition.agent_id, 'asst_1');
-  assert.equal(definition.source_type, AGENT_SOURCE_TYPES.legacy_assistant);
-  assert.equal(definition.execution_policy.mode, 'direct');
-  assert.equal(definition.execution_policy.supports_delegation, false);
-  assert.equal(definition.execution_policy.legacy, true);
-  assert.deepEqual(definition.model_config.primary_model, { id: 'model_1', model_name: 'assistant-model' });
-  assert.deepEqual(definition.capability_declarations.direct_tool, {
-    tool_name: 'ocr_analyze',
-    description: 'Analyze OCR',
-    parameters: { type: 'object' },
-  });
-  assert.equal(Object.isFrozen(definition), true);
-}
-
 async function testResolverDispatchesAdapters() {
   const resolver = new AgentDefinitionResolver({
     [AGENT_SOURCE_TYPES.expert]: {
@@ -153,37 +116,6 @@ async function testExpertAdapterUsesDbConfig() {
   assert.equal(definition.agent_id, 'expert_db');
 }
 
-async function testLegacyAssistantAdapterUsesDb() {
-  const assistantRow = {
-    id: 'asst_db',
-    name: 'LLM Assistant',
-    execution_mode: 'llm',
-    is_active: true,
-    can_use_skills: true,
-    model_id: 'model_db',
-  };
-  const adapter = new LegacyAssistantAgentDefinitionAdapter({
-    getModel(modelName) {
-      assert.equal(modelName, 'assistant');
-      return {
-        async findOne() {
-          return { ...assistantRow };
-        },
-      };
-    },
-    async getModelConfig(modelId) {
-      assert.equal(modelId, 'model_db');
-      return { id: 'model_db', model_name: 'llm-model' };
-    },
-  });
-
-  const definition = await adapter.resolve('asst_db');
-  assert.equal(definition.agent_id, 'asst_db');
-  assert.equal(definition.execution_policy.mode, 'llm');
-  assert.equal(definition.execution_policy.supports_delegation, true);
-  assert.equal(definition.capability_declarations.can_use_skills, true);
-}
-
 function testCanIncludeSensitiveModelConfigWhenExplicit() {
   const definition = buildExpertAgentDefinition(createExpertConfig(), {
     include_sensitive_model_config: true,
@@ -194,10 +126,8 @@ function testCanIncludeSensitiveModelConfigWhenExplicit() {
 
 async function main() {
   testBuildExpertDefinition();
-  testBuildLegacyAssistantDefinition();
   await testResolverDispatchesAdapters();
   await testExpertAdapterUsesDbConfig();
-  await testLegacyAssistantAdapterUsesDb();
   testCanIncludeSensitiveModelConfigWhenExplicit();
 
   console.log('Agent definition resolver tests passed.');

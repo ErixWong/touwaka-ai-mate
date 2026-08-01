@@ -37,7 +37,6 @@
         @select="handleTopicSelect"
       />
       <TasksTab v-if="activeTab === 'tasks'" />
-      <AssistantTab v-if="activeTab === 'assistants'" />
       <SkillsDirectoryTab v-if="activeTab === 'skills'" />
       <DebugTab v-if="activeTab === 'debug'" />
     </div>
@@ -51,7 +50,6 @@ import { useUserStore } from '@/stores/user'
 import ExpertTab from './ExpertTab.vue'
 import TopicsTab from './TopicsTab.vue'
 import TasksTab from './TasksTab.vue'
-import AssistantTab from './AssistantTab.vue'
 import SkillsDirectoryTab from './SkillsDirectoryTab.vue'
 import DebugTab from './DebugTab.vue'
 import type { Topic } from '@/types'
@@ -92,7 +90,7 @@ interface Tab {
 }
 
 // Tab 显示逻辑：
-// - expert、topics、tasks、assistants：所有人都有
+// - expert、topics、tasks：所有人都有
 // - skills：只有 admin/creator 才能看到
 // - debug：只有 admin 才能看到
 const visibleTabs = computed<Tab[]>(() => {
@@ -100,7 +98,6 @@ const visibleTabs = computed<Tab[]>(() => {
     { id: 'expert', label: t('panel.expert'), icon: '👤' },
     { id: 'topics', label: t('panel.topics'), icon: '💬' },
     { id: 'tasks', label: t('panel.tasks') || '任务', icon: '📁' },
-    { id: 'assistants', label: t('panel.assistants') || '助理', icon: '🤖' },
     { id: 'skills', label: t('panel.skillsDirectory') || '技能目录', icon: '🛠️', skillManagerOnly: true },
     { id: 'debug', label: t('panel.debug'), icon: '🔧', adminOnly: true },
   ]

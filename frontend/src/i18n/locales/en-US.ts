@@ -1,4 +1,3 @@
-import assistant from './en-US/assistant.ts'
 import settingsMcp from './en-US/settings-mcp.ts'
 
 export default {
@@ -223,7 +222,6 @@ export default {
     modelSettings: 'Model Settings',
     providerSettings: 'Providers',
     expertSettings: 'Expert Settings',
-    assistantSettings: 'Assistant Settings',
     about: 'About',
     // Expert Management
     expertManagement: 'Expert Management',
@@ -952,7 +950,6 @@ export default {
     expert: 'Expert',
     topics: 'Topics',
     tasks: 'Tasks',
-    assistants: 'Assistants',
     skills: 'Skills',
     skillsDirectory: 'Skills Directory',
     debug: 'Debug',
@@ -1516,7 +1513,6 @@ export default {
       viewResult: 'View Compare Result',
     },
   },
-  assistant,
 
   // Register page
   register: {

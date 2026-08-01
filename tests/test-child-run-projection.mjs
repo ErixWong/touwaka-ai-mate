@@ -18,6 +18,12 @@ function createDelegation(overrides = {}) {
     principal_user_id: 'user_projection',
     agent_id: 'expert_parent',
     topic_id: 'topic_1',
+    workspace_scope: {
+      workdir: 'D:/repo/docs/tasks/active/current-task',
+      logical_workdir: 'docs/tasks/active/current-task',
+      workspace_mode: 'repo_task',
+      current_path: '',
+    },
   });
   const child = deriveChildAgentInvocationContext(parent, {
     run_id: 'child_run_projection_1',
@@ -72,6 +78,12 @@ function testBuildsChildMessages() {
   assert.equal(taskPackage.parent_run_id, 'root_run_projection_parent');
   assert.equal(taskPackage.run_id, 'child_run_projection_1');
   assert.deepEqual(taskPackage.capability_scope, { tools: ['search'] });
+  assert.deepEqual(taskPackage.workspace, {
+    workspace_mode: 'repo_task',
+    current_workdir: 'docs/tasks/active/current-task',
+    current_path: '',
+    relative_paths_are_resolved_from_current_workdir: true,
+  });
 }
 
 function testKeepsPrincipalInMetadataNotPrompt() {

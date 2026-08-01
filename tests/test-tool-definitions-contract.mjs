@@ -11,7 +11,6 @@
 
 import assert from 'node:assert/strict';
 import ToolManager from '../lib/tool-manager.js';
-import { setAssistantManager } from '../server/services/assistant/index.js';
 
 function createManager() {
   return new ToolManager(null, 'expert-tool-definitions-test');
@@ -71,29 +70,6 @@ async function testFinalDefinitionsStripInternalMeta() {
     ];
   };
 
-  setAssistantManager({
-    getAssistantTools: () => [
-      {
-        type: 'function',
-        function: {
-          name: 'assistant_summon',
-          description: 'Summon an assistant',
-          parameters: {
-            type: 'object',
-            properties: {
-              assistant_id: { type: 'string' },
-              input: { type: 'object' },
-            },
-            required: ['assistant_id', 'input'],
-          },
-        },
-        _meta: {
-          assistant: true,
-        },
-      },
-    ],
-  });
-
   global.residentSkillManager = {
     invokeByName: async (skillId, toolName, params, context, timeoutMs) => {
       mcpCalls.push({ skillId, toolName, params, context, timeoutMs });
@@ -122,7 +98,6 @@ async function testFinalDefinitionsStripInternalMeta() {
 
     assert.ok(toolNames.includes('execute'), 'builtin tools should be included');
     assert.ok(toolNames.includes('demo__search'), 'skill tools should be included');
-    assert.ok(toolNames.includes('assistant_summon'), 'assistant tools should be included');
     assert.ok(toolNames.includes('mcp_demo_lookup'), 'MCP tools should be included');
 
     for (const tool of tools) {
@@ -141,7 +116,6 @@ async function testFinalDefinitionsStripInternalMeta() {
       },
     ]);
   } finally {
-    setAssistantManager(null);
     delete global.residentSkillManager;
   }
 }
@@ -149,14 +123,12 @@ async function testFinalDefinitionsStripInternalMeta() {
 async function testUnavailableOptionalSourcesDoNotBreakDefinitions() {
   const manager = createManager();
 
-  setAssistantManager(null);
   delete global.residentSkillManager;
 
   const tools = await manager.getToolDefinitions({});
   const toolNames = tools.map(tool => tool.function?.name || tool.name);
 
   assert.ok(toolNames.includes('execute'), 'builtin tools should still be available');
-  assert.equal(findTool(tools, 'assistant_summon'), undefined);
   assert.equal(findTool(tools, 'mcp_demo_lookup'), undefined);
   for (const tool of tools) {
     assertNoMetaFields(tool, tool.function?.name || tool.name || 'tool');
@@ -171,7 +143,6 @@ async function main() {
 }
 
 main().catch(error => {
-  setAssistantManager(null);
   delete global.residentSkillManager;
   console.error(error);
   process.exit(1);

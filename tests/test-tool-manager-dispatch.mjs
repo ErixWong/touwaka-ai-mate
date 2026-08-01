@@ -7,7 +7,6 @@
 
 import assert from 'node:assert/strict';
 import ToolManager from '../lib/tool-manager.js';
-import { setAssistantManager } from '../server/services/assistant/index.js';
 
 function createManager() {
   return new ToolManager(null, 'expert-dispatch-test');
@@ -110,96 +109,6 @@ async function testDocumentRetrievalUsesBuiltinNamespaceDisplay() {
     display: 'document_retrieval/search_documents_by_metadata',
     toolId: 'search_documents_by_metadata',
     params: { metadata_query: 'policy' },
-  }]);
-}
-
-async function testAssistantWinsOverRegistry() {
-  const manager = createManager();
-  const logs = captureExecutionLogs(manager);
-  const calls = [];
-
-  manager.toolRegistry.set('assistant_summon', {
-    skillId: 'fake-skill',
-    skillName: 'Fake Skill',
-    toolName: 'assistant_summon',
-    scriptPath: 'index.js',
-  });
-  manager.skillLoader.executeSkillTool = async () => {
-    calls.push({ route: 'skill' });
-    return {};
-  };
-
-  setAssistantManager({
-    executeTool: async (toolId, params, context) => {
-      calls.push({ route: 'assistant', toolId, params, context });
-      return { success: true, route: 'assistant', context };
-    },
-  });
-
-  try {
-    const result = await manager.executeTool(
-      'assistant_summon',
-      { assistant_id: 'helper-1' },
-      {
-        expertId: 'expert-1',
-        userId: 'user-1',
-        contactId: 'contact-1',
-        topicId: 'topic-1',
-        taskContext: { absolute_workspace_path: 'D:/work/task' },
-      }
-    );
-
-    assert.equal(result.success, true);
-    assert.equal(result.route, 'assistant');
-    assert.deepEqual(calls.map(call => call.route), ['assistant']);
-    assert.deepEqual(logs, [{
-      display: 'Assistant/assistant_summon',
-      toolId: 'assistant_summon',
-      params: { assistant_id: 'helper-1' },
-    }]);
-    assert.deepEqual(result.context, {
-      expertId: 'expert-1',
-      userId: 'user-1',
-      contactId: 'contact-1',
-      topicId: 'topic-1',
-      taskContext: { absolute_workspace_path: 'D:/work/task' },
-    });
-  } finally {
-    setAssistantManager(null);
-  }
-}
-
-async function testAssistantFallsBackToRegistryWhenManagerUnavailable() {
-  const manager = createManager();
-  const logs = captureExecutionLogs(manager);
-  const calls = [];
-
-  setAssistantManager(null);
-  manager.skills.set('fake-skill', { id: 'fake-skill', name: 'Fake Skill' });
-  manager.toolRegistry.set('assistant_summon', {
-    skillId: 'fake-skill',
-    skillName: 'Fake Skill',
-    toolName: 'assistant_summon',
-    scriptPath: 'index.js',
-  });
-  manager.skillLoader.executeSkillTool = async (skillId, toolName, params, context, scriptPath) => {
-    calls.push({ route: 'skill', skillId, toolName, params, context, scriptPath });
-    return { fallback: true };
-  };
-
-  const result = await manager.executeTool(
-    'assistant_summon',
-    { assistant_id: 'helper-1' },
-    { taskContext: { absolute_workspace_path: 'D:/work/task' } }
-  );
-
-  assert.equal(result.success, true);
-  assert.deepEqual(result.data, { fallback: true });
-  assert.deepEqual(calls.map(call => call.route), ['skill']);
-  assert.deepEqual(logs, [{
-    display: 'Fake Skill/assistant_summon',
-    toolId: 'assistant_summon',
-    params: { assistant_id: 'helper-1' },
   }]);
 }
 
@@ -310,8 +219,6 @@ async function main() {
   await testBuiltinWinsOverRegistry();
   await testMcpWinsOverRegistry();
   await testDocumentRetrievalUsesBuiltinNamespaceDisplay();
-  await testAssistantWinsOverRegistry();
-  await testAssistantFallsBackToRegistryWhenManagerUnavailable();
   await testResidentDispatchesBeforeSkillRunner();
   await testNormalSkillDispatchesToSkillRunner();
   await testMissingToolReturnsHonestError();
@@ -320,7 +227,6 @@ async function main() {
 }
 
 main().catch(error => {
-  setAssistantManager(null);
   console.error(error);
   process.exit(1);
 });

@@ -23,6 +23,10 @@ function createRootInvocation() {
     run_id: 'root_run_tool_manager_delegate',
     principal_user_id: 'user_delegate_tool',
     agent_id: 'expert_parent',
+    workspace_scope: {
+      workdir: 'D:/workspace/task_1',
+      workspace_mode: 'task',
+    },
     capability_scope: {
       tools: ['search', AGENT_DELEGATE_TOOL_NAMES.START],
     },
@@ -148,7 +152,10 @@ async function testDispatchesControlToolWithParentInvocationAndScopes() {
   assert.equal(calls[0].context.parent_invocation, rootInvocation);
   assert.deepEqual(calls[0].context.caller_scope, rootInvocation.capability_scope);
   assert.deepEqual(calls[0].context.principal_scope, rootInvocation.capability_scope);
-  assert.deepEqual(calls[0].context.workspace_scope, rootInvocation.capability_scope);
+  assert.deepEqual(calls[0].context.workspace_scope, {
+    ...rootInvocation.capability_scope,
+    ...rootInvocation.workspace_scope,
+  });
   assert.equal(calls[0].context.session, session);
 }
 
