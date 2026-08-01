@@ -12,6 +12,9 @@ import { authenticate, requireAdmin } from '../middlewares/auth.js';
 export default (controller) => {
   const router = new Router({ prefix: '/api/messages' });
 
+  // JSON 查询入口：filter / sort / pagination 均在 body 中
+  router.post('/query', authenticate(), controller.query.bind(controller));
+
   // 按 expert + user 获取消息列表（主要入口，需要认证）
   router.get('/expert/:expertId', authenticate(), controller.listByExpert.bind(controller));
 

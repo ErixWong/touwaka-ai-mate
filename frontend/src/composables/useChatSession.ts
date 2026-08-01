@@ -63,6 +63,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
   const connectToExpert = async (expert_id: string) => {
     console.log('[useChatSession] Connecting SSE for expert:', expert_id)
+    sseHandler.resetLiveState(expert_id, chatStore.getLatestServerMessageId())
 
     await rawConnect(expert_id, {
       timeout: 10000,
@@ -249,6 +250,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     }
 
     await chatStore.setCurrentExpert(expertId)
+    sseHandler.resetLiveState(expertId, chatStore.getLatestServerMessageId())
     connectToExpert(expertId)
   }
 

@@ -226,27 +226,33 @@ POST /api/topics/query
 }
 ```
 
-### 示例 4：嵌套关联查询
+### 示例 4：消息 JSON 查询
 
 ```json
 POST /api/messages/query
 {
-  "page": { "number": 1, "size": 50 },
   "filter": {
-    "topic_id": "topic-001",
-    "role_in": ["user", "assistant"],
-    "is_deleted": false
+    "expert_id": "expert-001",
+    "role": "assistant"
   },
-  "sort": [{ "field": "created_at", "order": "ASC" }],
-  "include": [
-    {
-      "model": "Topic",
-      "fields": ["id", "title"],
-      "include": ["Expert"]
-    }
-  ]
+  "sort": [
+    { "field": "created_at", "order": "asc" },
+    { "field": "id", "order": "asc" }
+  ],
+  "pagination": {
+    "page": 1,
+    "size": 30,
+    "window": "latest"
+  }
 }
 ```
+
+消息查询约束：
+
+- 复杂查询使用 `POST /api/messages/query`，不要把 filter / sort / pagination 拼到 URL。
+- `filter.expert_id` 必填；后端始终用当前登录用户作为 `user_id`，禁止前端传入用户 ID 决定查询归属。
+- 当前排序白名单仅允许 `created_at` 与 `id`；聊天窗口主链路按 `created_at asc, id asc` 返回老到新。
+- `pagination.window = "latest"` 表示从最新消息端取第 N 页，然后按展示顺序返回；旧 GET 入口仅作兼容。
 
 ---
 

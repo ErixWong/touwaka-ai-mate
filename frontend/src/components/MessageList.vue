@@ -38,6 +38,8 @@
         <div class="thinking-indicator">{{ $t('chat.thinking') }}</div>
       </div>
     </div>
+
+    <div ref="bottomSentinel" class="bottom-sentinel" aria-hidden="true"></div>
   </div>
 </template>
 
@@ -85,9 +87,8 @@ const handleJumpToMessage = (messageId: string) => {
 
 const {
   messagesContainer,
+  bottomSentinel,
   showScrollToBottom,
-  showNewMessagesHint,
-  pendingNewMessageCount,
   handleScroll,
   handleScrollToBottom,
   handleLoadMore,
@@ -104,9 +105,8 @@ defineExpose({
   scrollToBottom,
   handleScrollToBottom,
   messagesContainer,
+  bottomSentinel,
   showScrollToBottom,
-  showNewMessagesHint,
-  pendingNewMessageCount,
   cleanup,
 })
 </script>
@@ -209,5 +209,10 @@ defineExpose({
 .thinking-indicator {
   color: var(--text-secondary, #666);
   font-style: italic;
+}
+
+.bottom-sentinel {
+  width: 100%;
+  height: 1px;
 }
 </style>

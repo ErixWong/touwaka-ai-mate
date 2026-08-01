@@ -296,6 +296,36 @@ export interface PaginatedResponse<T> {
   }
 }
 
+export type MessageSortField = 'created_at' | 'id'
+export type SortOrder = 'asc' | 'desc'
+export type MessagePaginationWindow = 'latest' | 'absolute'
+
+export interface MessageQueryRequest {
+  filter: {
+    expert_id: string
+    topic_id?: string | null
+    role?: MessageRole
+  }
+  sort?: Array<{
+    field: MessageSortField
+    order: SortOrder
+  }>
+  pagination?: {
+    page?: number
+    size?: number
+    limit?: number
+    window?: MessagePaginationWindow
+  }
+}
+
+export interface MessageQueryResponse extends PaginatedResponse<Message> {
+  latest_message_id?: string | null
+  sort?: Array<{
+    field: MessageSortField
+    order: SortOrder
+  }>
+}
+
 // 聊天请求
 export interface ChatRequest {
   topic_id?: string

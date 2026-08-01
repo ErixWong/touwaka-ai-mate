@@ -183,6 +183,7 @@ const addLineNumbers = (code: string): string => {
 const filterAssistantContent = (message: ChatMessage, allMessages: ChatMessage[]): string => {
   if (!message.content) return ''
   if (message.role !== 'assistant') return message.content
+  if (!message.request_id) return message.content
 
   const currentIndex = allMessages.findIndex(m => m.id === message.id)
   if (currentIndex === -1) return message.content
@@ -190,7 +191,7 @@ const filterAssistantContent = (message: ChatMessage, allMessages: ChatMessage[]
   const toolContexts: string[] = []
   for (let i = 0; i < currentIndex; i++) {
     const msg = allMessages[i]
-    if (msg && msg.role === 'tool') {
+    if (msg && msg.role === 'tool' && msg.request_id === message.request_id) {
       const context = getToolData(msg).context
       if (context && context.trim()) {
         toolContexts.push(context.trim())
