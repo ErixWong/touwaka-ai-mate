@@ -28,6 +28,7 @@
 |------|------|
 | [AI 调用规范](./llm-call-standards.md) | `LLMClient` / `InternalLLMService` / `EmbeddingClient` 等统一入口规则 |
 | [AI 架构方针](./ai-architecture-guidelines.md) | AI / LLM 架构原则与演进建议 |
+| [Chat 记忆边界](./chat-memory-boundaries.md) | Topic、Memory Summary、Psyche 的当前职责与后续边界 |
 | [Skill 开发指南](./skill-development-guide.md) | Skill 结构、实现方式、接入流程 |
 | [XLSX 公式处理](./xlsx-skill-formula-handling.md) | Excel 公式读取与计算处理说明 |
 

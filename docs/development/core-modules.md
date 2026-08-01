@@ -61,7 +61,7 @@ const messages = await memory.getRecentMessages(userId, 20);
 - 读取和归档对话历史
 - 提供上下文给 LLM
 
-⚠️ **注意**：消息存储由 `ChatService` 直接处理，`MemorySystem` 只负责读取和归档。
+⚠️ **注意**：消息存储由 `ChatService` 直接处理，`MemorySystem` 只负责读取和归档。当前在线消息会绑定 active Topic，`topic_id = null` 只用于旧数据兼容或无话题上下文，不能再作为“未压缩/未归档”的主语义。
 
 ---
 

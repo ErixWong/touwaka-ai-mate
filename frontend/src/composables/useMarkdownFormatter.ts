@@ -28,7 +28,7 @@ const FORMATTED_CACHE_MAX_SIZE = 256
 
 const formattedCache = new Map<string, string>()
 const messageHtmlCache = new Map<string, { cacheKey: string; html: string }>()
-const mermaidRenderedHtml = ref<Map<string, string>>(new Map())
+const mermaidRenderedHtml = ref<Map<string, { cacheKey: string; html: string }>>(new Map())
 const renderingMermaid = ref<Set<string>>(new Set())
 
 const escapeHtml = (text: string): string => {
@@ -213,7 +213,7 @@ const containsMermaid = (content: string): boolean => {
   return /```mermaid\s*[\s\S]*?```/i.test(content)
 }
 
-const renderMermaidAsync = async (message: ChatMessage, html: string) => {
+const renderMermaidAsync = async (message: ChatMessage, html: string, cacheKey: string) => {
   const messageId = message.id
 
   renderingMermaid.value.add(messageId)
@@ -229,11 +229,11 @@ const renderMermaidAsync = async (message: ChatMessage, html: string) => {
       keys.forEach(key => mermaidRenderedHtml.value.delete(key))
     }
 
-    mermaidRenderedHtml.value.set(messageId, renderedHtml)
+    mermaidRenderedHtml.value.set(messageId, { cacheKey, html: renderedHtml })
     mermaidRenderedHtml.value = new Map(mermaidRenderedHtml.value)
   } catch (error) {
     console.error('Mermaid rendering error:', error)
-    mermaidRenderedHtml.value.set(messageId, html)
+    mermaidRenderedHtml.value.set(messageId, { cacheKey, html })
     mermaidRenderedHtml.value = new Map(mermaidRenderedHtml.value)
   } finally {
     renderingMermaid.value.delete(messageId)
@@ -256,7 +256,11 @@ const limitMessageHtmlCache = () => {
   keys.forEach(key => messageHtmlCache.delete(key))
 }
 
-const formatStreamingMessage = (message: ChatMessage, filteredContent: string): string => {
+const formatStreamingMessage = (
+  message: ChatMessage,
+  filteredContent: string,
+  options: { renderMermaid?: boolean } = {}
+): string => {
   if (!message.content) return ''
 
   if (message.status === 'streaming') {
@@ -271,22 +275,26 @@ const formatStreamingMessage = (message: ChatMessage, filteredContent: string): 
   }
 
   const cachedRendered = mermaidRenderedHtml.value.get(message.id)
-  if (cachedRendered) {
-    messageHtmlCache.set(message.id, { cacheKey, html: cachedRendered })
+  if (cachedRendered?.cacheKey === cacheKey) {
+    messageHtmlCache.set(message.id, { cacheKey, html: cachedRendered.html })
     limitMessageHtmlCache()
-    return cachedRendered
+    return cachedRendered.html
   }
 
   const html = formatMessage(filteredContent)
 
   if (containsMermaid(filteredContent)) {
+    if (options.renderMermaid === false) {
+      return html
+    }
+
     if (renderingMermaid.value.has(message.id)) {
       messageHtmlCache.set(message.id, { cacheKey, html })
       limitMessageHtmlCache()
       return html
     }
 
-    renderMermaidAsync(message, html)
+    renderMermaidAsync(message, html, cacheKey)
 
     messageHtmlCache.set(message.id, { cacheKey, html })
     limitMessageHtmlCache()

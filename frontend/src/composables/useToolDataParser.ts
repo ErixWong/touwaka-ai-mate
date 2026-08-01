@@ -30,6 +30,18 @@ type ParsedToolCallsRaw = ToolCallData | ToolCallData[] | null
 
 const parsedToolCallCache = new Map<string, { source: unknown; data: ParsedToolCallsRaw }>()
 const normalizedToolDataCache = new Map<string, { source: unknown; data: NormalizedToolData }>()
+let toolContextIndexCache = new WeakMap<ChatMessage[], ToolContextIndexCacheEntry>()
+
+interface ToolContextIndexCacheEntry {
+  length: number
+  last_message_id: string | null
+  index: ToolContextIndex
+}
+
+export interface ToolContextIndex {
+  messageIndexById: Map<string, number>
+  contextsByRequestId: Map<string, Array<{ index: number; context: string }>>
+}
 
 const parseToolCallsRaw = (message: ChatMessage): ParsedToolCallsRaw => {
   if (!message.tool_calls) return null
@@ -180,24 +192,59 @@ const addLineNumbers = (code: string): string => {
     .join('\n')
 }
 
-const filterAssistantContent = (message: ChatMessage, allMessages: ChatMessage[]): string => {
+const buildToolContextIndex = (allMessages: ChatMessage[]): ToolContextIndex => {
+  const messageIndexById = new Map<string, number>()
+  const contextsByRequestId = new Map<string, Array<{ index: number; context: string }>>()
+
+  allMessages.forEach((msg, index) => {
+    messageIndexById.set(msg.id, index)
+
+    if (msg.role !== 'tool' || !msg.request_id) return
+
+    const context = getToolData(msg).context?.trim()
+    if (!context) return
+
+    const contexts = contextsByRequestId.get(msg.request_id) || []
+    contexts.push({ index, context })
+    contextsByRequestId.set(msg.request_id, contexts)
+  })
+
+  return { messageIndexById, contextsByRequestId }
+}
+
+const getToolContextIndex = (allMessages: ChatMessage[]): ToolContextIndex => {
+  const lastMessage = allMessages[allMessages.length - 1]
+  const lastMessageId = lastMessage?.id || null
+  const cached = toolContextIndexCache.get(allMessages)
+  if (cached && cached.length === allMessages.length && cached.last_message_id === lastMessageId) {
+    return cached.index
+  }
+
+  const index = buildToolContextIndex(allMessages)
+  toolContextIndexCache.set(allMessages, {
+    length: allMessages.length,
+    last_message_id: lastMessageId,
+    index,
+  })
+  return index
+}
+
+const filterAssistantContent = (
+  message: ChatMessage,
+  allMessages: ChatMessage[],
+  prebuiltIndex?: ToolContextIndex
+): string => {
   if (!message.content) return ''
   if (message.role !== 'assistant') return message.content
   if (!message.request_id) return message.content
 
-  const currentIndex = allMessages.findIndex(m => m.id === message.id)
-  if (currentIndex === -1) return message.content
+  const index = prebuiltIndex || getToolContextIndex(allMessages)
+  const currentIndex = index.messageIndexById.get(message.id)
+  if (currentIndex === undefined) return message.content
 
-  const toolContexts: string[] = []
-  for (let i = 0; i < currentIndex; i++) {
-    const msg = allMessages[i]
-    if (msg && msg.role === 'tool' && msg.request_id === message.request_id) {
-      const context = getToolData(msg).context
-      if (context && context.trim()) {
-        toolContexts.push(context.trim())
-      }
-    }
-  }
+  const toolContexts = (index.contextsByRequestId.get(message.request_id) || [])
+    .filter(item => item.index < currentIndex)
+    .map(item => item.context)
 
   if (toolContexts.length === 0) return message.content
 
@@ -225,6 +272,7 @@ const filterAssistantContent = (message: ChatMessage, allMessages: ChatMessage[]
 const clearCaches = () => {
   parsedToolCallCache.clear()
   normalizedToolDataCache.clear()
+  toolContextIndexCache = new WeakMap<ChatMessage[], ToolContextIndexCacheEntry>()
 }
 
 let instance: ReturnType<typeof createInstance> | null = null
@@ -243,6 +291,7 @@ function createInstance() {
     formatToolArguments,
     formatToolResult,
     addLineNumbers,
+    buildToolContextIndex,
     filterAssistantContent,
     clearCaches,
   }
