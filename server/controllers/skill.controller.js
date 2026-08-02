@@ -12,6 +12,7 @@ import { parseSkillMd } from '../../lib/skill-parser.js';
 import fsOriginal from 'fs';
 import path from 'path';
 import { getSkillPath, getSkillsPath } from '../../lib/paths.js';
+import SkillRegistrationService from '../services/skill-registration.service.js';
 
 class SkillController {
   constructor(db) {
@@ -20,6 +21,7 @@ class SkillController {
     this.SkillTool = db.getModel('skill_tool');
     this.SkillParameter = db.getModel('skill_parameter');
     this.UserSkillParameter = db.getModel('user_skill_parameter');
+    this.skillRegistrationService = new SkillRegistrationService(db);
   }
 
   /**
@@ -410,6 +412,48 @@ class SkillController {
    * POST /api/skills/register
    */
   async register(ctx) {
+    try {
+      const {
+        source_path,
+        name: providedName,
+        description: providedDescription,
+        tools: providedTools,
+      } = ctx.request.body || {};
+
+      if (!source_path) {
+        ctx.error('source_path is required', 400);
+        return;
+      }
+
+      const pathValidation = this.#validateSkillSourcePath(source_path);
+      if (!pathValidation.valid) {
+        ctx.error(pathValidation.error || 'Invalid skill path', 400);
+        return;
+      }
+
+      if (providedTools !== undefined) {
+        logger.warn('[SkillController] register.tools is deprecated; using skill getSkillDefinition()/getTools() instead');
+      }
+
+      const result = await this.skillRegistrationService.register({
+        sourcePath: source_path,
+        fullPath: pathValidation.fullPath,
+        providedName,
+        providedDescription,
+      });
+
+      ctx.success({
+        ...result,
+        message: `Skill "${result.name}" ${result.action} with ${result.tools_registered} tools`,
+      });
+    } catch (error) {
+      logger.error('Register skill error:', error);
+      ctx.error('Skill registration failed: ' + error.message, 500);
+    }
+  }
+
+  // Legacy implementation retained temporarily for rollback comparison.
+  async registerLegacy(ctx) {
     try {
       const { source_path, name: provided_name, description: provided_desc, tools: provided_tools } = ctx.request.body;
 
