@@ -253,6 +253,7 @@ export class SkillRegistrationService {
       name: skill.name,
       action: existing ? 'updated' : 'created',
       tools_registered: descriptor.tools.length,
+      scenarios: descriptor.skill.scenarios || [],
       legacy_descriptor: descriptor.legacy_descriptor,
       source_path: normalizedSourcePath,
     };

@@ -282,10 +282,30 @@ function getTools() {
   ];
 }
 
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'skill-manager',
+      name: 'skill-manager',
+      description: 'Skill discovery, registration and lifecycle management',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['skill', 'management'],
+      scenarios: [
+        { id: 'skill_lifecycle', description: 'Discover, register and manage skills', tools: ['list', 'details', 'register', 'delete', 'toggle'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
 // Export for skill-runner
 module.exports = {
   execute,
   getTools,
+  getSkillDefinition,
   name: 'skill-manager',
   description: '技能管理工具：注册、删除、查询技能（通过 API 调用）',
 };

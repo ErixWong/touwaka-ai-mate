@@ -750,4 +750,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'net-operations',
+      name: 'net-operations',
+      description: 'DNS, SSL, HTTP and TCP network diagnostics',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['network', 'diagnostics'],
+      scenarios: [
+        { id: 'network_diagnostics', description: 'Inspect DNS, SSL, HTTP and TCP connectivity', tools: ['check', 'connect', 'port_scan', 'http_request'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

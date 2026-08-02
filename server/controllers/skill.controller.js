@@ -8,7 +8,6 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
-import { parseSkillMd } from '../../lib/skill-parser.js';
 import fsOriginal from 'fs';
 import path from 'path';
 import { getSkillPath, getSkillsPath } from '../../lib/paths.js';
@@ -417,7 +416,6 @@ class SkillController {
         source_path,
         name: providedName,
         description: providedDescription,
-        tools: providedTools,
       } = ctx.request.body || {};
 
       if (!source_path) {
@@ -429,10 +427,6 @@ class SkillController {
       if (!pathValidation.valid) {
         ctx.error(pathValidation.error || 'Invalid skill path', 400);
         return;
-      }
-
-      if (providedTools !== undefined) {
-        logger.warn('[SkillController] register.tools is deprecated; using skill getSkillDefinition()/getTools() instead');
       }
 
       const result = await this.skillRegistrationService.register({
@@ -453,6 +447,9 @@ class SkillController {
   }
 
   // Legacy implementation retained temporarily for rollback comparison.
+  /*
+   * Retained in source history during the migration window only. It is not
+   * executable; all callers must use SkillRegistrationService.
   async registerLegacy(ctx) {
     try {
       const { source_path, name: provided_name, description: provided_desc, tools: provided_tools } = ctx.request.body;
@@ -489,7 +486,13 @@ class SkillController {
       }
 
       const skill_md = fsOriginal.readFileSync(skill_md_path, 'utf-8');
-      const skill_info = parseSkillMd(skill_md);
+      const skill_info = {
+        name: provided_name || path.basename(full_path),
+        description: provided_desc || '',
+        version: '1.0.0',
+        author: '',
+        tags: [],
+      };
       const skill_name = provided_name || skill_info.name || path.basename(full_path);
       const skill_desc = provided_desc || skill_info.description || '';
 
@@ -690,6 +693,8 @@ class SkillController {
       ctx.error('注册技能失败: ' + error.message, 500);
     }
   }
+
+  */
 
   /**
    * 分配技能给专家
@@ -1226,21 +1231,23 @@ class SkillController {
 
         // 尝试读取 SKILL.md 获取描述
         let description = '';
-        const skillMdPath = path.join(dirPath, 'SKILL.md');
-        if (fsOriginal.existsSync(skillMdPath)) {
-          try {
-            const skillMd = fsOriginal.readFileSync(skillMdPath, 'utf-8');
-            const skillInfo = parseSkillMd(skillMd);
-            description = skillInfo.description || '';
-          } catch (e) {
-            logger.warn(`Failed to parse SKILL.md for ${dirName}:`, e.message);
-          }
+        let descriptor_status = 'unavailable';
+        try {
+          const described = await this.skillRegistrationService.describe({
+            sourcePath: relativePath,
+            fullPath: dirPath,
+          });
+          description = described.descriptor.skill.description || '';
+          descriptor_status = 'ready';
+        } catch (error) {
+          logger.debug(`Skill descriptor unavailable for ${dirName}: ${error.message}`);
         }
 
         directories.push({
           name: dirName,
           path: relativePath,
           description,
+          descriptor_status,
         });
       }
 

@@ -723,4 +723,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'xlsx',
+      name: 'xlsx',
+      description: 'Excel workbook reading, writing and transformation',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['document', 'spreadsheet'],
+      scenarios: [
+        { id: 'spreadsheet_workflow', description: 'Read, write, format and transform workbooks', tools: ['excel_read', 'excel_write', 'excel_sheet', 'excel_format', 'excel_query', 'excel_convert', 'excel_calc'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

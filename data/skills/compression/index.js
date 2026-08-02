@@ -246,4 +246,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, zip, unzip, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'compression',
+      name: 'compression',
+      description: 'ZIP file compression and extraction',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['file', 'compression'],
+      scenarios: [
+        { id: 'archive_management', description: 'Create or extract ZIP archives', tools: ['zip', 'unzip'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, zip, unzip, getTools, getSkillDefinition };
