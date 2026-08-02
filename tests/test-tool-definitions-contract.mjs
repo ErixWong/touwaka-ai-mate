@@ -12,8 +12,8 @@
 import assert from 'node:assert/strict';
 import ToolManager from '../lib/tool-manager.js';
 
-function createManager() {
-  return new ToolManager(null, 'expert-tool-definitions-test');
+function createManager(options = {}) {
+  return new ToolManager(null, 'expert-tool-definitions-test', options);
 }
 
 function assertNoMetaFields(value, path = 'tool') {
@@ -38,8 +38,29 @@ function findTool(tools, name) {
 }
 
 async function testFinalDefinitionsStripInternalMeta() {
-  const manager = createManager();
   const mcpCalls = [];
+  const residentSkillManager = {
+    invokeByName: async (skillId, toolName, params, context, timeoutMs) => {
+      mcpCalls.push({ skillId, toolName, params, context, timeoutMs });
+      return {
+        tools: [
+          {
+            name: 'mcp_demo_lookup',
+            server_name: 'demo',
+            original_name: 'lookup',
+            description: 'Lookup demo data',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+              },
+            },
+          },
+        ],
+      };
+    },
+  };
+  const manager = createManager({ residentSkillManager });
 
   manager.skills.set('demo-skill', {
     id: 'demo-skill',
@@ -70,30 +91,11 @@ async function testFinalDefinitionsStripInternalMeta() {
     ];
   };
 
-  global.residentSkillManager = {
-    invokeByName: async (skillId, toolName, params, context, timeoutMs) => {
-      mcpCalls.push({ skillId, toolName, params, context, timeoutMs });
-      return {
-        tools: [
-          {
-            name: 'mcp_demo_lookup',
-            server_name: 'demo',
-            original_name: 'lookup',
-            description: 'Lookup demo data',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-              },
-            },
-          },
-        ],
-      };
-    },
-  };
-
-  try {
-    const tools = await manager.getToolDefinitions({ userId: 'user-1' });
+  {
+    const tools = await manager.getToolDefinitions({
+      userId: 'user-1',
+      session: { roles: ['admin'] },
+    });
     const toolNames = tools.map(tool => tool.function?.name || tool.name);
 
     assert.ok(toolNames.includes('execute'), 'builtin tools should be included');
@@ -115,20 +117,17 @@ async function testFinalDefinitionsStripInternalMeta() {
         timeoutMs: 30000,
       },
     ]);
-  } finally {
-    delete global.residentSkillManager;
   }
 }
 
 async function testUnavailableOptionalSourcesDoNotBreakDefinitions() {
   const manager = createManager();
 
-  delete global.residentSkillManager;
-
   const tools = await manager.getToolDefinitions({});
   const toolNames = tools.map(tool => tool.function?.name || tool.name);
 
-  assert.ok(toolNames.includes('execute'), 'builtin tools should still be available');
+  assert.equal(findTool(tools, 'execute'), undefined, 'restricted builtin tools must be hidden from ordinary users');
+  assert.ok(toolNames.includes('recall'), 'ordinary users should retain unrestricted builtin tools');
   assert.equal(findTool(tools, 'mcp_demo_lookup'), undefined);
   for (const tool of tools) {
     assertNoMetaFields(tool, tool.function?.name || tool.name || 'tool');
@@ -143,7 +142,6 @@ async function main() {
 }
 
 main().catch(error => {
-  delete global.residentSkillManager;
   console.error(error);
   process.exit(1);
 });
