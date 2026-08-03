@@ -175,9 +175,10 @@ async function main() {
     }
   }
 
+  let anchorsInBiblio = [];
   if (biblioSectionIds.length > 0) {
     console.log(`检测到书目章节: ${biblioSectionIds.join(', ')}`);
-    const anchorsInBiblio = anchors.filter(a => biblioSectionIds.includes(a.source_outline_id));
+    anchorsInBiblio = anchors.filter(a => biblioSectionIds.includes(a.source_outline_id));
     if (anchorsInBiblio.length > 0) {
       console.log(`❌ 发现 ${anchorsInBiblio.length} 条引用落在书目章节内！`);
       for (const a of anchorsInBiblio) {
