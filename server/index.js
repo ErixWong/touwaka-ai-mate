@@ -46,7 +46,7 @@ import AppClock from '../lib/app-clock.js';
 import McpToolCaller from '../lib/mcp-tool-caller.js';
 import ClockCore from '../lib/clock/clock-core.js';
 import { buildDocPipelineContext } from '../lib/clock/job-context-builder.js';
-import { run as docPipelineWorkerRun } from '../lib/doc-pipeline-worker.js';
+import { run as docPipelineWorkerRun, settleStalePipelineRuns } from '../lib/doc-pipeline-worker.js';
 import { createAppWildcardRouter } from './middlewares/app-wildcard-router.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
@@ -435,6 +435,10 @@ class ApiServer {
     });
 
     logger.info('ClockCore initialized with doc-pipeline-worker internal job');
+
+    // 启动清理：结清 doc_process_runs 中上次崩溃遗留的僵尸 running 记录，
+    // 避免对应文档被 "already running" 守卫永久锁死（与 AppClock 启动清理同语义）
+    await settleStalePipelineRuns(this.db);
   }
 
   /**
