@@ -18,9 +18,9 @@
  * 使用"status 列 + 常量 + 单点转换函数"模式，不引入状态机引擎。
  */
 
-import logger from '../../lib/logger.js';
-import Utils from '../../lib/utils.js';
-import DocAccessService from '../../lib/doc-access-service.js';
+import logger from '../../../lib/logger.js';
+import Utils from '../../../lib/utils.js';
+import DocAccessService from '../../../lib/doc-access-service.js';
 
 // ============================================================
 // 常量
@@ -75,7 +75,7 @@ const MANUAL_SOURCES = new Set([REF_SOURCE.MANUAL, REF_SOURCE.USER_CONFIRMED]);
  * 规则（R3-1 修正，R3-7 收口）：
  * - 新建记录：任意来源可写任意状态（保护对象是已有记录，不是新建记录）
  * - 人工来源（manual/user_confirmed）：可覆盖任何状态
- * - auto_backfill：可覆盖任何状态（回填已有匹配结果）
+ * - auto_backfill：仅允许 gap 记录或状态不变（R4-3 PM 决策：回填输入域只有 gap）
  * - invalid → *：仅人工/auto_backfill
  * - valid → *：auto 不允许改写（版本冻结）
  * - suspected → valid：auto 不允许（需人工确认）
@@ -100,8 +100,15 @@ function validateStatusTransition(fromStatus, toStatus, source) {
   // 人工来源可以覆盖任何状态
   if (MANUAL_SOURCES.has(source)) return { allowed: true };
 
-  // auto_backfill 可以覆盖任何状态（回填流程已有匹配结果，信任度高于纯 auto）
-  if (source === REF_SOURCE.AUTO_BACKFILL) return { allowed: true };
+  // auto_backfill 仅允许 gap 记录或状态不变（R4-3 PM 决策：回填输入域只有 gap）
+  // 不得改写 valid（人工确认过的）/ invalid（人工判定错误）/ suspected（首洗标记）
+  if (source === REF_SOURCE.AUTO_BACKFILL) {
+    if (fromStatus === REF_STATUS.GAP || fromStatus === toStatus) return { allowed: true };
+    return {
+      allowed: false,
+      reason: `auto_backfill can only operate on 'gap' records (current: ${fromStatus}).`,
+    };
+  }
 
   // invalid → 任何状态：只有人工/auto_backfill 来源允许（已在上方覆盖）
   if (fromStatus === REF_STATUS.INVALID) {

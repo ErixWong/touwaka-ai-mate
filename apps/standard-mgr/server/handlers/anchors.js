@@ -6,7 +6,7 @@
  * 路由扁平化（R2-3）：原 anchors/list.js 重命名为 anchors.js。
  */
 
-import StandardMgrService from '../../service.js';
+import StandardMgrService from '../service.js';
 import logger from '../../../../lib/logger.js';
 
 function getUserId(ctx) {

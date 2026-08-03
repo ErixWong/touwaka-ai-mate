@@ -8,10 +8,10 @@
  */
 
 import StandardMgrService from '../../service.js';
-import DocumentReadService from '../../../../lib/document-read.service.js';
-import DocRecallService from '../../../../lib/doc-recall-service.js';
-import DocAccessService from '../../../../lib/doc-access-service.js';
-import logger from '../../../../lib/logger.js';
+import DocumentReadService from '../../../../../lib/document-read.service.js';
+import DocRecallService from '../../../../../lib/doc-recall-service.js';
+import DocAccessService from '../../../../../lib/doc-access-service.js';
+import logger from '../../../../../lib/logger.js';
 
 function getUserId(ctx) {
   return ctx.state.session?.id || null;

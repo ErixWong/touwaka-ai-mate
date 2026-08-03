@@ -9,7 +9,7 @@
  * 3. 人工修正（来源=manual / user_confirmed）
  */
 
-import StandardMgrService from '../../service.js';
+import StandardMgrService from '../service.js';
 import logger from '../../../../lib/logger.js';
 
 function getUserId(ctx) {

@@ -3687,19 +3687,21 @@ const MIGRATIONS = [
       console.log('  ✓ Registered standard-anchor skill');
 
       // 2. 插入 12 个工具定义（与 data/skills/standard-anchor/index.js getTools() 同步）
+      // R4-2：完整参数，不可手写子集；如变更工具定义，请通过 API POST /api/skills/register 重新注册
       const tools = [
-        ['st-anchor-parse', skillId, 'parse_anchor', '解析锚点字符串 <document_id+revision_id(+outline_id)> 为结构化对象', '{"type":"object","properties":{"anchor":{"type":"string","description":"锚点字符串"}},"required":["anchor"]}', 'index.js', now, now],
-        ['st-anchor-list-sec', skillId, 'list_revision_sections', '按 revision_id 列出所有章节（outline）', '{"type":"object","properties":{"revision_id":{"type":"string"}},"required":["revision_id"]}', 'index.js', now, now],
-        ['st-anchor-read-sec', skillId, 'read_section_context', '读取指定 section 正文，可附带前后相邻 section 的上下文', '{"type":"object","properties":{"outline_id":{"type":"string"},"context_window":{"type":"number","description":"前后各取几个相邻 section"}},"required":["outline_id"]}', 'index.js', now, now],
-        ['st-anchor-read-rev', skillId, 'read_revision_content', '读取指定 revision 的全文文本内容', '{"type":"object","properties":{"revision_id":{"type":"string"}},"required":["revision_id"]}', 'index.js', now, now],
-        ['st-anchor-locator', skillId, 'get_section_locator', '通过 outline_id 反查所属的 document_id 和 revision_id', '{"type":"object","properties":{"outline_id":{"type":"string"}},"required":["outline_id"]}', 'index.js', now, now],
-        ['st-anchor-find-code', skillId, 'find_documents_by_standard_code', '按标准编号查找已纳管的标准', '{"type":"object","properties":{"standard_code":{"type":"string"}},"required":["standard_code"]}', 'index.js', now, now],
-        ['st-anchor-find-name', skillId, 'find_documents_by_standard_name', '按标准名称查找已纳管的标准（模糊匹配）', '{"type":"object","properties":{"standard_name":{"type":"string"}},"required":["standard_name"]}', 'index.js', now, now],
-        ['st-anchor-get-revs', skillId, 'get_document_revisions', '获取指定文档的所有版本列表', '{"type":"object","properties":{"document_id":{"type":"string"}},"required":["document_id"]}', 'index.js', now, now],
-        ['st-anchor-sel-rev', skillId, 'select_revision_candidate', '按版本线索筛选最匹配 revision（纯函数）', '{"type":"object","properties":{"revisions":{"type":"array"},"hints":{"type":"object"}},"required":["revisions"]}', 'index.js', now, now],
-        ['st-anchor-find-sec', skillId, 'find_section_candidates', '按节号/标题查找候选 section', '{"type":"object","properties":{"document_id":{"type":"string"},"revision_id":{"type":"string"},"title_hint":{"type":"string"},"seq_hint":{"type":"number"},"query_text":{"type":"string"}},"required":[]}', 'index.js', now, now],
-        ['st-anchor-list-gap', skillId, 'list_reference_gaps', '列出指定标准中待回填的引用缺口（status=gap）', '{"type":"object","properties":{"standard_id":{"type":"string"},"limit":{"type":"number"},"offset":{"type":"number"}},"required":["standard_id"]}', 'index.js', now, now],
-        ['st-anchor-write', skillId, 'write_anchor_result', '写入引用判断结果（幂等），同时更新带锚点副本和汇总计数', '{"type":"object","properties":{"standard_id":{"type":"string"},"source_revision_id":{"type":"string"},"source_outline_id":{"type":"string"},"occurrence_index":{"type":"number"},"source_text":{"type":"string"},"ref_type":{"type":"string","enum":["explicit","implicit"]},"status":{"type":"string","enum":["valid","suspected","gap","invalid"]},"source":{"type":"string","enum":["auto","user_confirmed","manual","auto_backfill"]}},"required":["standard_id","source_revision_id","source_outline_id","occurrence_index","source_text","ref_type","status","source"]}', 'index.js', now, now],
+        ['st-anchor-parse', skillId, 'parse_anchor', '解析锚点字符串 <document_id+revision_id(+outline_id)> 为结构化对象', '{"type":"object","properties":{"anchor":{"type":"string","description":"锚点字符串，格式 <document_id+revision_id> 或 <document_id+revision_id+outline_id>"}},"required":["anchor"]}', 'index.js', now, now],
+        ['st-anchor-list-sec', skillId, 'list_revision_sections', '按 revision_id 列出所有章节（outline），返回 title/seq/from_line/to_line/outline_id', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-read-sec', skillId, 'read_section_context', '读取指定 section 正文，可附带前后相邻 section 的上下文', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"},"context_window":{"type":"number","description":"上下文窗口大小，前后各取几个相邻 section（默认 0）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-read-rev', skillId, 'read_revision_content', '读取指定 revision 的全文文本内容', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-locator', skillId, 'get_section_locator', '通过 outline_id 反查所属的 document_id 和 revision_id', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-find-code', skillId, 'find_documents_by_standard_code', '按标准编号查找已纳管的标准（查 app_standard 表）', '{"type":"object","properties":{"standard_code":{"type":"string","description":"标准编号，如 GB/T 19001-2016"}},"required":["standard_code"]}', 'index.js', now, now],
+        ['st-anchor-find-name', skillId, 'find_documents_by_standard_name', '按标准名称查找已纳管的标准（查 app_standard 表），支持模糊匹配', '{"type":"object","properties":{"standard_name":{"type":"string","description":"标准名称，支持模糊匹配"}},"required":["standard_name"]}', 'index.js', now, now],
+        ['st-anchor-get-revs', skillId, 'get_document_revisions', '获取指定文档的所有版本列表', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID（documents.id）"}},"required":["document_id"]}', 'index.js', now, now],
+        ['st-anchor-sel-rev', skillId, 'select_revision_candidate', '按版本线索从候选 revision 中筛选最匹配的版本（纯函数，不发 IO）', '{"type":"object","properties":{"revisions":{"type":"array","items":{"type":"object"},"description":"版本列表（含 revision_label、revision_no）"},"hints":{"type":"object","properties":{"year":{"type":"string","description":"年份线索，如 \\"2016\\""},"revision_label":{"type":"string","description":"精确 label 匹配"}}}},"required":["revisions"]}', 'index.js', now, now],
+        ['st-anchor-find-sec', skillId, 'find_section_candidates', '按节号/标题等线索查找候选 section（outline）', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID"},"revision_id":{"type":"string","description":"版本 ID（优先于 document_id）"},"title_hint":{"type":"string","description":"章节标题线索"},"seq_hint":{"type":"number","description":"章节序号线索"},"query_text":{"type":"string","description":"语义搜索文本（用于向量召回辅助）"}},"required":[]}', 'index.js', now, now],
+        ['st-anchor-list-gap', skillId, 'list_reference_gaps', '列出指定标准中待回填的引用缺口（status=gap）', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID（app_standard.id）"},"limit":{"type":"number","description":"返回数量上限（默认 100）"},"offset":{"type":"number","description":"偏移量（默认 0）"}},"required":["standard_id"]}', 'index.js', now, now],
+        // R4-2：write_anchor_result 必须含全部 16 个参数（含 target 三字段），否则 agent schema 层面无法写入 valid 锚点
+        ['st-anchor-write', skillId, 'write_anchor_result', '写入一个引用的完整判断结果（幂等），同时更新带锚点副本和汇总计数', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID"},"source_revision_id":{"type":"string","description":"来源 revision ID"},"source_outline_id":{"type":"string","description":"来源 outline ID"},"occurrence_index":{"type":"number","description":"同 section 内出现序号（从 0 开始）"},"source_text":{"type":"string","description":"原始引用文本"},"context_text":{"type":"string","description":"引用上下文"},"ref_type":{"type":"string","enum":["explicit","implicit"],"description":"引用类型"},"status":{"type":"string","enum":["valid","suspected","gap","invalid"],"description":"引用状态"},"source":{"type":"string","enum":["auto","user_confirmed","manual","auto_backfill"],"description":"来源"},"target_document_id":{"type":"string","description":"目标文档 ID"},"target_revision_id":{"type":"string","description":"目标 revision ID"},"target_outline_id":{"type":"string","description":"目标 outline ID"},"candidates_json":{"type":"object","description":"候选列表"},"status_reason":{"type":"string","description":"状态原因"},"anchored_text":{"type":"string","description":"带锚点副本的文本"},"source_text_hash":{"type":"string","description":"来源文本 hash"}},"required":["standard_id","source_revision_id","source_outline_id","occurrence_index","source_text","ref_type","status","source"]}', 'index.js', now, now],
       ];
 
       for (const t of tools) {
@@ -3710,6 +3712,62 @@ const MIGRATIONS = [
         );
       }
       console.log('  ✓ Registered 12 standard-anchor tools');
+    }
+  },
+
+  // ==================== R4-2：修复已注册的 standard-anchor 工具参数完整性 ====================
+  // R3-2 迁移中的 write_anchor_result 参数只有 8 个字段（缺 target 三字段等），
+  // 已运行过的实例需要此迁移补充完整。新安装不受影响（上面迁移已包含完整参数）。
+  {
+    name: 'fix standard-anchor tool params (R4-2)',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT parameters FROM skill_tools WHERE name = 'write_anchor_result' AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')"
+      );
+      if (rows.length === 0) return true; // 无记录，跳过
+      try {
+        const params = typeof rows[0].parameters === 'string' ? JSON.parse(rows[0].parameters) : rows[0].parameters;
+        // 检查是否缺 target_outline_id（说明是 R3-2 旧版手写参数）
+        return params?.properties?.target_outline_id !== undefined;
+      } catch {
+        return false; // JSON 解析失败，需要修复
+      }
+    },
+    migrate: async (conn) => {
+      const [skillRows] = await conn.execute(
+        "SELECT id FROM skills WHERE name = 'standard-anchor'"
+      );
+      if (skillRows.length === 0) return;
+      const skillId = skillRows[0].id;
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+      // 删除旧工具，重新插入完整参数
+      await conn.execute('DELETE FROM skill_tools WHERE skill_id = ?', [skillId]);
+      console.log('  ✓ Cleared stale standard-anchor tools');
+
+      const tools = [
+        ['st-anchor-parse', skillId, 'parse_anchor', '解析锚点字符串 <document_id+revision_id(+outline_id)> 为结构化对象', '{"type":"object","properties":{"anchor":{"type":"string","description":"锚点字符串，格式 <document_id+revision_id> 或 <document_id+revision_id+outline_id>"}},"required":["anchor"]}', 'index.js', now, now],
+        ['st-anchor-list-sec', skillId, 'list_revision_sections', '按 revision_id 列出所有章节（outline），返回 title/seq/from_line/to_line/outline_id', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-read-sec', skillId, 'read_section_context', '读取指定 section 正文，可附带前后相邻 section 的上下文', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"},"context_window":{"type":"number","description":"上下文窗口大小，前后各取几个相邻 section（默认 0）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-read-rev', skillId, 'read_revision_content', '读取指定 revision 的全文文本内容', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-locator', skillId, 'get_section_locator', '通过 outline_id 反查所属的 document_id 和 revision_id', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-find-code', skillId, 'find_documents_by_standard_code', '按标准编号查找已纳管的标准（查 app_standard 表）', '{"type":"object","properties":{"standard_code":{"type":"string","description":"标准编号，如 GB/T 19001-2016"}},"required":["standard_code"]}', 'index.js', now, now],
+        ['st-anchor-find-name', skillId, 'find_documents_by_standard_name', '按标准名称查找已纳管的标准（查 app_standard 表），支持模糊匹配', '{"type":"object","properties":{"standard_name":{"type":"string","description":"标准名称，支持模糊匹配"}},"required":["standard_name"]}', 'index.js', now, now],
+        ['st-anchor-get-revs', skillId, 'get_document_revisions', '获取指定文档的所有版本列表', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID（documents.id）"}},"required":["document_id"]}', 'index.js', now, now],
+        ['st-anchor-sel-rev', skillId, 'select_revision_candidate', '按版本线索筛选最匹配 revision（纯函数，不发 IO）', '{"type":"object","properties":{"revisions":{"type":"array","items":{"type":"object"},"description":"版本列表（含 revision_label、revision_no）"},"hints":{"type":"object","properties":{"year":{"type":"string","description":"年份线索"},"revision_label":{"type":"string","description":"精确 label 匹配"}}}},"required":["revisions"]}', 'index.js', now, now],
+        ['st-anchor-find-sec', skillId, 'find_section_candidates', '按节号/标题查找候选 section（outline）', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID"},"revision_id":{"type":"string","description":"版本 ID（优先于 document_id）"},"title_hint":{"type":"string","description":"章节标题线索"},"seq_hint":{"type":"number","description":"章节序号线索"},"query_text":{"type":"string","description":"语义搜索文本（用于向量召回辅助）"}},"required":[]}', 'index.js', now, now],
+        ['st-anchor-list-gap', skillId, 'list_reference_gaps', '列出指定标准中待回填的引用缺口（status=gap）', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID（app_standard.id）"},"limit":{"type":"number","description":"返回数量上限（默认 100）"},"offset":{"type":"number","description":"偏移量（默认 0）"}},"required":["standard_id"]}', 'index.js', now, now],
+        ['st-anchor-write', skillId, 'write_anchor_result', '写入一个引用的完整判断结果（幂等），同时更新带锚点副本和汇总计数', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID"},"source_revision_id":{"type":"string","description":"来源 revision ID"},"source_outline_id":{"type":"string","description":"来源 outline ID"},"occurrence_index":{"type":"number","description":"同 section 内出现序号（从 0 开始）"},"source_text":{"type":"string","description":"原始引用文本"},"context_text":{"type":"string","description":"引用上下文"},"ref_type":{"type":"string","enum":["explicit","implicit"],"description":"引用类型"},"status":{"type":"string","enum":["valid","suspected","gap","invalid"],"description":"引用状态"},"source":{"type":"string","enum":["auto","user_confirmed","manual","auto_backfill"],"description":"来源"},"target_document_id":{"type":"string","description":"目标文档 ID"},"target_revision_id":{"type":"string","description":"目标 revision ID"},"target_outline_id":{"type":"string","description":"目标 outline ID"},"candidates_json":{"type":"object","description":"候选列表"},"status_reason":{"type":"string","description":"状态原因"},"anchored_text":{"type":"string","description":"带锚点副本的文本"},"source_text_hash":{"type":"string","description":"来源文本 hash"}},"required":["standard_id","source_revision_id","source_outline_id","occurrence_index","source_text","ref_type","status","source"]}', 'index.js', now, now],
+      ];
+
+      for (const t of tools) {
+        await conn.execute(
+          `INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          t
+        );
+      }
+      console.log('  ✓ Re-registered 12 standard-anchor tools with full params');
     }
   },
 

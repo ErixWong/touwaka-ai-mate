@@ -5,7 +5,7 @@
  */
 
 import StandardMgrService from '../../service.js';
-import logger from '../../../../lib/logger.js';
+import logger from '../../../../../lib/logger.js';
 
 function getUserId(ctx) {
   return ctx.state.session?.id || null;
