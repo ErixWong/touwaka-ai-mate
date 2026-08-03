@@ -23,6 +23,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API_BASE = process.env.API_BASE || 'http://localhost:3017';
 const TEST_ACCOUNT = process.env.TEST_ACCOUNT || 'admin';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'password123';
+const EXPRESSIVE_MODEL_ID = process.env.EXPRESSIVE_MODEL_ID || null;
+const REFLECTIVE_MODEL_ID = process.env.REFLECTIVE_MODEL_ID || null;
 
 // ---- prompt_template（从 PLAN §3 行为契约提炼）----
 const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务是通读一份标准文档全文，识别其中对其他标准的引用，并定位到目标文档的对应章节，最后写入引用记录。
@@ -116,17 +118,21 @@ async function login() {
   return response.data.data.accessToken || response.data.data.access_token;
 }
 
-async function createExpert(token) {
+async function createExpert(token, expressiveModelId, reflectiveModelId) {
+  const body = {
+    name: '标准引用清洗专家',
+    introduction: '通读标准文档全文，识别对其他标准的引用并定位到目标章节，写入引用记录。',
+    prompt_template: PROMPT_TEMPLATE,
+    is_active: true,
+    max_tool_rounds: 50,
+  };
+  if (expressiveModelId) body.expressive_model_id = expressiveModelId;
+  if (reflectiveModelId) body.reflective_model_id = reflectiveModelId;
+
   const response = await requestJson('/api/experts', {
     method: 'POST',
     token,
-    body: {
-      name: '标准引用清洗专家',
-      introduction: '通读标准文档全文，识别对其他标准的引用并定位到目标章节，写入引用记录。',
-      prompt_template: PROMPT_TEMPLATE,
-      is_active: true,
-      max_tool_rounds: 50,
-    },
+    body,
   });
 
   if (response.status !== 200 || response.data?.code !== 200) {
@@ -158,6 +164,31 @@ async function verifyBinding(token, expertId) {
   return response.data.data.skills;
 }
 
+// ---- 自动检测可用模型（从已有专家获取）----
+async function detectModels(token) {
+  // 如果环境变量已指定，直接使用
+  if (EXPRESSIVE_MODEL_ID) {
+    console.log('  从环境变量 EXPRESSIVE_MODEL_ID 获取模型配置');
+    return { expressive: EXPRESSIVE_MODEL_ID, reflective: REFLECTIVE_MODEL_ID || EXPRESSIVE_MODEL_ID };
+  }
+
+  // 从已有活跃专家中获取模型配置
+  try {
+    const response = await requestJson('/api/experts', { token });
+    if (response.status === 200 && response.data?.code === 200) {
+      const experts = Array.isArray(response.data.data) ? response.data.data : [];
+      const configured = experts.find(e => e.expressive_model_id && e.is_active);
+      if (configured) {
+        console.log(`  自动检测模型: expressive=${configured.expressive_model_id}, reflective=${configured.reflective_model_id}`);
+        return { expressive: configured.expressive_model_id, reflective: configured.reflective_model_id || configured.expressive_model_id };
+      }
+    }
+  } catch {}
+
+  console.warn('  ⚠️ 无法自动检测模型，专家创建可能失败（缺少 expressive_model_id）');
+  return { expressive: null, reflective: null };
+}
+
 async function main() {
   console.log('=== P0-2: 创建引用清洗专家 ===\n');
 
@@ -166,11 +197,14 @@ async function main() {
   const token = await login();
   console.log('  ✅ 登录成功\n');
 
+  // 1.5 检测可用模型
+  const models = await detectModels(token);
+
   // 2. Create expert
   console.log('[2/4] 创建专家...');
   let expert;
   try {
-    expert = await createExpert(token);
+    expert = await createExpert(token, models.expressive, models.reflective);
     console.log(`  ✅ 专家已创建: id=${expert.id}, name=${expert.name}\n`);
   } catch (err) {
     if (err.message.includes('already exists') || err.message.includes('duplicate')) {
