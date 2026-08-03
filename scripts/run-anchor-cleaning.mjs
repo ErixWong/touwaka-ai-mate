@@ -323,6 +323,23 @@ async function main() {
       },
     });
 
+    // ---- Send the chat message (POST /api/chat) ----
+    console.log('  发送清洗指令...');
+    const postResp = await requestJson('/api/chat', {
+      method: 'POST',
+      token,
+      body: {
+        expert_id: EXPERT_ID,
+        content: chatMessage,
+      },
+    });
+    if (postResp.status !== 200 || postResp.data?.code !== 200) {
+      console.error(`  ❌ 发送消息失败: ${JSON.stringify(postResp.data)}`);
+      close();
+      process.exit(1);
+    }
+    console.log('  ✅ 消息已发送，等待清洗完成...');
+
     // Wait for completion
     console.log('  等待清洗完成...');
     const startedAt = Date.now();
