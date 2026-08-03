@@ -257,6 +257,23 @@ async function main() {
       runLog.steps.push({ step: 'onboard', status: 'skipped' });
     }
 
+    // 纳管未返回 standardId 时，通过文档 ID 查询已有标准
+    if (!standardId) {
+      try {
+        const lookupResp = await requestJson(`/api/apps/standard-mgr/standards?document_id=${DOCUMENT_ID}`, { token });
+        if (lookupResp.status === 200 && lookupResp.data?.code === 200) {
+          const list = Array.isArray(lookupResp.data.data) ? lookupResp.data.data : (lookupResp.data.data?.list || []);
+          const found = list.find(s => s.document_id === DOCUMENT_ID);
+          if (found) {
+            standardId = found.id;
+            console.log(`  📍 查询到已有标准: standard_id=${standardId}\n`);
+          }
+        }
+      } catch (err) {
+        console.log(`  ⚠️ 查询已有标准失败: ${err.message}\n`);
+      }
+    }
+
     // ---- Step 4: Run cleaning via SSE ----
     console.log('[4/5] 启动清洗对话...');
     const revisionId = doc.current_revision_id;
@@ -286,7 +303,7 @@ async function main() {
 
         // Track tool calls
         if (event.event === 'tool_call_start' || event.event === 'tool_call') {
-          const toolName = event.data?.tool_name || event.data?.name || 'unknown';
+          const toolName = event.data?.tool_name || event.data?.toolName || event.data?.name || 'unknown';
           const toolArgs = event.data?.arguments || event.data?.tool_args || null;
           runLog.toolCalls.push({
             time: new Date().toISOString(),
