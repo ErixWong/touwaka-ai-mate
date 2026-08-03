@@ -21,6 +21,7 @@
 import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
 import DocAccessService from '../../../lib/doc-access-service.js';
+import { Op } from 'sequelize';
 
 // ============================================================
 // 常量
@@ -492,7 +493,6 @@ class StandardMgrService {
    */
   async findStandards({ standard_code, standard_name }) {
     const AppStandard = this._appStandard();
-    const { Op } = this.db.sequelize;
 
     const where = { is_active: 1 };
 
