@@ -575,6 +575,91 @@ class StandardMgrService {
 
     return await AppStandard.findByPk(standardId, { raw: true });
   }
+
+  // ============================================================
+  // P0-1: createStandard — 纳管新标准
+  // ============================================================
+
+  /**
+   * 从文档平台纳管一份标准文档
+   *
+   * 校验：
+   * - 文档存在且 doc_type='standard'
+   * - 文档 processing_status='ready'（已完成 OCR → Clean → Outline → Chunk → Embedding 全链路）
+   * - document_id 唯一：同一文档只能纳管一次
+   *
+   * @param {object} params
+   * @param {string} params.document_id - 文档平台 documents.id
+   * @param {string} params.standard_type - national / industry / enterprise / international
+   * @param {string} params.standard_code - 标准编号
+   * @param {string} params.standard_name - 标准名称
+   * @param {string} [params.user_id] - 操作人 ID
+   * @returns {Promise<object>} 创建的 app_standard 记录
+   */
+  async createStandard({ document_id, standard_type, standard_code, standard_name, user_id }) {
+    // ---- 1. 校验文档存在与类型 ----
+    const Document = this.db.getModel('document');
+    const doc = await Document.findByPk(document_id, {
+      attributes: ['id', 'doc_type', 'processing_status', 'current_revision_id', 'collection_id'],
+      raw: true,
+    });
+    if (!doc) {
+      const err = new Error(`Document not found: ${document_id}`);
+      err.status = 404;
+      throw err;
+    }
+
+    if (doc.doc_type !== 'standard') {
+      const err = new Error(`Document must be doc_type=standard (current: ${doc.doc_type})`);
+      err.status = 400;
+      throw err;
+    }
+
+    if (doc.processing_status !== 'ready') {
+      const err = new Error(
+        `Document processing_status must be 'ready' (current: ${doc.processing_status}). ` +
+        'The document has not completed the full pipeline (OCR → Clean → Outline → Chunk → Embedding).'
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    // ---- 2. 校验 document_id 唯一 ----
+    const AppStandard = this._appStandard();
+    const existing = await AppStandard.findOne({
+      where: { document_id },
+      raw: true,
+    });
+    if (existing) {
+      const err = new Error(`Document already onboarded as standard: ${existing.id} (${existing.standard_code} ${existing.standard_name})`);
+      err.status = 409;
+      throw err;
+    }
+
+    // ---- 3. 纳管 ----
+    const id = Utils.newID();
+    const standard = await AppStandard.create({
+      id,
+      document_id,
+      standard_type,
+      standard_code,
+      standard_name,
+      current_revision_id: doc.current_revision_id,
+      is_active: true,
+      anchor_build_status: ANCHOR_BUILD_STATUS.PENDING,
+      reference_count: 0,
+      valid_reference_count: 0,
+      suspected_reference_count: 0,
+      gap_reference_count: 0,
+      invalid_reference_count: 0,
+      needs_review: 0,
+      has_manual_fix: 0,
+      manual_fix_count: 0,
+      created_by: user_id || null,
+    });
+
+    return standard.toJSON ? standard.toJSON() : standard;
+  }
 }
 
 export default StandardMgrService;

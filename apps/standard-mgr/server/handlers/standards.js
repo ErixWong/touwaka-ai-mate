@@ -1,8 +1,9 @@
 /**
  * standards handler
  *
- * GET /api/apps/standard-mgr/standards — 列表（R2-4：忽略客户端 enterprise_id）
- * GET /api/apps/standard-mgr/standards/:standardId — 详情
+ * GET  /api/apps/standard-mgr/standards — 列表（R2-4：忽略客户端 enterprise_id）
+ * GET  /api/apps/standard-mgr/standards/:standardId — 详情
+ * POST /api/apps/standard-mgr/standards — 纳管新标准（P0-1：从文档平台纳管标准文档）
  *
  * 路由扁平化（R2-3）：合并原 list.js + get.js 为单文件，按 ctx.params.standardId 有无分流。
  */
@@ -48,5 +49,61 @@ export async function get(ctx, deps) {
   } catch (err) {
     logger.error(`[standard-mgr] standards error: ${err.message}`);
     ctx.error(err.message, err.status || 500);
+  }
+}
+
+/**
+ * POST /api/apps/standard-mgr/standards — 纳管新标准
+ *
+ * 入参：{ document_id, standard_type, standard_code, standard_name }
+ * - document_id：文档平台 documents.id
+ * - standard_type：national / industry / enterprise / international
+ * - standard_code：标准编号，如 "GB/T 19001-2016"
+ * - standard_name：标准名称
+ *
+ * 校验：文档存在、doc_type='standard'、processing_status='ready'、document_id 不重复
+ */
+export async function post(ctx, deps) {
+  try {
+    const userId = getUserId(ctx);
+    const service = new StandardMgrService(deps.db);
+    const body = ctx.request.body;
+
+    const { document_id, standard_type, standard_code, standard_name } = body || {};
+
+    // 参数校验
+    if (!document_id) {
+      ctx.error('document_id is required', 400);
+      return;
+    }
+    if (!standard_type) {
+      ctx.error('standard_type is required', 400);
+      return;
+    }
+    if (!standard_code) {
+      ctx.error('standard_code is required', 400);
+      return;
+    }
+    if (!standard_name) {
+      ctx.error('standard_name is required', 400);
+      return;
+    }
+
+    const result = await service.createStandard({
+      document_id,
+      standard_type,
+      standard_code,
+      standard_name,
+      user_id: userId,
+    });
+
+    ctx.success(result);
+  } catch (err) {
+    logger.error(`[standard-mgr] createStandard error: ${err.message}`);
+    const status = err.status || (err.message?.includes('not found') ? 404 : null)
+      || (err.message?.includes('already') ? 409 : null)
+      || (err.message?.includes('must be') ? 400 : null)
+      || 500;
+    ctx.error(err.message, status);
   }
 }
