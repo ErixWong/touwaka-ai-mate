@@ -548,8 +548,153 @@ class StandardMgrService {
     });
   }
 
+  // ============================================================
+  // R2-1: rebuildAnchoredSections — 服务端确定性派生带锚点副本
+  //
+  // 带锚点副本 = 原文 + 确定性插入锚点标记，这是字符串处理，不是 LLM 任务。
+  // 让 LLM 转写原文既贵又会引入内容漂移，违反原文保真原则。
+  // ============================================================
+
+  /**
+   * 查找子串在字符串中第 n 次出现的位置（0-indexed）
+   */
+  _nthIndexOf(str, search, n) {
+    if (n <= 0 || !search) return -1;
+    let pos = -1;
+    for (let i = 0; i < n; i++) {
+      pos = str.indexOf(search, pos + 1);
+      if (pos === -1) return -1;
+    }
+    return pos;
+  }
+
+  /**
+   * 为指定标准重建全部带锚点副本
+   *
+   * 逻辑：
+   * 1. 按 source_outline_id 分组取该标准全部引用记录（按 occurrence_index 排序）
+   * 2. 从 document_outlines 取 original_text 与 text_hash
+   * 3. 在 original_text 中按 source_text 第 (occurrence_index+1) 次出现的位置后插入锚点标记
+   * 4. upsert app_standard_anchored_section（唯一键 revision_id+outline_id）
+   *
+   * 标记格式复用 ANCHOR_PATTERN：<anchor+ref_anchor_id>
+   *
+   * @param {string} standardId
+   * @returns {Promise<{sections: number, anchors: number, misses: Array}>}
+   */
+  async rebuildAnchoredSections(standardId) {
+    const RefAnchor = this._refAnchor();
+    const AnchoredSection = this._anchoredSection();
+    const AppStandard = this._appStandard();
+
+    // 校验标准存在
+    const standard = await AppStandard.findByPk(standardId, { raw: true });
+    if (!standard) throw new Error(`Standard not found: ${standardId}`);
+
+    // 获取该标准全部引用记录
+    const anchors = await RefAnchor.findAll({
+      where: { standard_id: standardId },
+      order: [['source_outline_id', 'ASC'], ['occurrence_index', 'ASC']],
+      raw: true,
+    });
+
+    if (anchors.length === 0) {
+      return { sections: 0, anchors: 0, misses: [] };
+    }
+
+    // 按 source_outline_id 分组
+    const byOutline = {};
+    for (const a of anchors) {
+      if (!byOutline[a.source_outline_id]) byOutline[a.source_outline_id] = [];
+      byOutline[a.source_outline_id].push(a);
+    }
+
+    // R2-1：先从 document_outlines 批量取原文
+    const DocOutline = this.db.getModel('document_outline');
+    const outlineIds = Object.keys(byOutline);
+    const outlineRows = await DocOutline.findAll({
+      where: { id: outlineIds },
+      attributes: ['id', 'revision_id', 'original_text', 'text_hash'],
+      raw: true,
+    });
+    const outlineMap = {};
+    for (const o of outlineRows) {
+      outlineMap[o.id] = o;
+    }
+
+    const misses = [];
+    let sectionCount = 0;
+
+    for (const [outlineId, outlineAnchors] of Object.entries(byOutline)) {
+      const outline = outlineMap[outlineId];
+      if (!outline || !outline.original_text) {
+        misses.push({ outline_id: outlineId, reason: 'outline or original_text not found' });
+        continue;
+      }
+
+      // 从原文派生带锚点副本：按 occurrence_index 升序插入标记
+      let anchoredText = outline.original_text;
+      let allMatched = true;
+
+      // 按 occurrence_index 升序处理（从小到大），每次插入后文本变长但不影响后续位置（后续在原字符串中位置不变）
+      for (const anchor of outlineAnchors) {
+        const searchText = anchor.source_text;
+        const nth = anchor.occurrence_index + 1; // occurrence_index 从 0 开始，nthIndexOf 从 1 开始
+        const pos = this._nthIndexOf(anchoredText, searchText, nth);
+
+        if (pos >= 0) {
+          const marker = `<anchor+${anchor.id}>`;
+          const end = pos + searchText.length;
+          anchoredText = anchoredText.slice(0, end) + marker + anchoredText.slice(end);
+        } else {
+          // 精确匹配失败——OCR 噪声导致 source_text 不是原文子串
+          allMatched = false;
+          misses.push({
+            ref_anchor_id: anchor.id,
+            outline_id: outlineId,
+            source_text: (searchText || '').slice(0, 80),
+            reason: 'source_text not found in original_text (OCR mismatch)',
+          });
+        }
+      }
+
+      // 即使部分锚点匹配失败，仍写入副本（含已成功插入的锚点）
+      const anchorCount = outlineAnchors.length - (allMatched ? 0 : misses.filter(m => m.outline_id === outlineId).length);
+
+      const existingSection = await AnchoredSection.findOne({
+        where: { revision_id: outline.revision_id, outline_id: outlineId },
+      });
+
+      if (existingSection) {
+        await existingSection.update({
+          anchored_text: anchoredText,
+          source_text_hash: outline.text_hash,
+          anchor_count: anchorCount,
+          updated_at: new Date(),
+        });
+      } else {
+        await AnchoredSection.create({
+          id: Utils.newID(),
+          standard_id: standardId,
+          revision_id: outline.revision_id,
+          outline_id: outlineId,
+          anchored_text: anchoredText,
+          source_text_hash: outline.text_hash,
+          anchor_count: anchorCount,
+        });
+      }
+
+      sectionCount++;
+    }
+
+    return { sections: sectionCount, anchors: anchors.length, misses };
+  }
+
   /**
    * 更新标准的锚点构建状态
+   *
+   * R2-2：当 status 转为 done 时，自动调用 rebuildAnchoredSections 生成带锚点副本，
+   * 副本生成与状态完成在同一事务内原子化——避免"done 了但副本没建"的中间态。
    */
   async updateAnchorBuildStatus(standardId, status, errorMessage = null) {
     if (![ANCHOR_BUILD_STATUS.PENDING, ANCHOR_BUILD_STATUS.PROCESSING, ANCHOR_BUILD_STATUS.DONE, ANCHOR_BUILD_STATUS.ERROR].includes(status)) {
@@ -571,9 +716,117 @@ class StandardMgrService {
       updateData.last_anchor_build_error = null;
     }
 
-    await AppStandard.update(updateData, { where: { id: standardId } });
+    // R2-2：status=done 时在同一事务内先生成副本再置状态
+    if (status === ANCHOR_BUILD_STATUS.DONE) {
+      const tx = await this.db.sequelize.transaction();
+      try {
+        const rebuildResult = await this._rebuildAnchoredSectionsInTx(standardId, tx);
+        await AppStandard.update(updateData, { where: { id: standardId }, transaction: tx });
+        await tx.commit();
+        const updated = await AppStandard.findByPk(standardId, { raw: true });
+        return { standard: updated, rebuild: rebuildResult };
+      } catch (error) {
+        await tx.rollback();
+        throw error;
+      }
+    }
 
-    return await AppStandard.findByPk(standardId, { raw: true });
+    await AppStandard.update(updateData, { where: { id: standardId } });
+    return { standard: await AppStandard.findByPk(standardId, { raw: true }), rebuild: null };
+  }
+
+  /**
+   * R2-1 事务内版本：在给定事务中重建带锚点副本
+   * 由 updateAnchorBuildStatus(status=done) 在同一事务中调用
+   */
+  async _rebuildAnchoredSectionsInTx(standardId, tx) {
+    const RefAnchor = this._refAnchor();
+    const AnchoredSection = this._anchoredSection();
+
+    const anchors = await RefAnchor.findAll({
+      where: { standard_id: standardId },
+      order: [['source_outline_id', 'ASC'], ['occurrence_index', 'ASC']],
+      raw: true,
+      transaction: tx,
+    });
+
+    if (anchors.length === 0) return { sections: 0, anchors: 0, misses: [] };
+
+    const byOutline = {};
+    for (const a of anchors) {
+      if (!byOutline[a.source_outline_id]) byOutline[a.source_outline_id] = [];
+      byOutline[a.source_outline_id].push(a);
+    }
+
+    const DocOutline = this.db.getModel('document_outline');
+    const outlineIds = Object.keys(byOutline);
+    const outlineRows = await DocOutline.findAll({
+      where: { id: outlineIds },
+      attributes: ['id', 'revision_id', 'original_text', 'text_hash'],
+      raw: true,
+      transaction: tx,
+    });
+    const outlineMap = {};
+    for (const o of outlineRows) outlineMap[o.id] = o;
+
+    const misses = [];
+    let sectionCount = 0;
+
+    for (const [outlineId, outlineAnchors] of Object.entries(byOutline)) {
+      const outline = outlineMap[outlineId];
+      if (!outline || !outline.original_text) {
+        misses.push({ outline_id: outlineId, reason: 'outline or original_text not found' });
+        continue;
+      }
+
+      let anchoredText = outline.original_text;
+      let matchedCount = 0;
+
+      for (const anchor of outlineAnchors) {
+        const pos = this._nthIndexOf(anchoredText, anchor.source_text, anchor.occurrence_index + 1);
+        if (pos >= 0) {
+          const marker = `<anchor+${anchor.id}>`;
+          const end = pos + anchor.source_text.length;
+          anchoredText = anchoredText.slice(0, end) + marker + anchoredText.slice(end);
+          matchedCount++;
+        } else {
+          misses.push({
+            ref_anchor_id: anchor.id,
+            outline_id: outlineId,
+            source_text: (anchor.source_text || '').slice(0, 80),
+            reason: 'source_text not found (OCR mismatch)',
+          });
+        }
+      }
+
+      const existingSection = await AnchoredSection.findOne({
+        where: { revision_id: outline.revision_id, outline_id: outlineId },
+        transaction: tx,
+      });
+
+      if (existingSection) {
+        await existingSection.update({
+          anchored_text: anchoredText,
+          source_text_hash: outline.text_hash,
+          anchor_count: matchedCount,
+          updated_at: new Date(),
+        }, { transaction: tx });
+      } else {
+        await AnchoredSection.create({
+          id: Utils.newID(),
+          standard_id: standardId,
+          revision_id: outline.revision_id,
+          outline_id: outlineId,
+          anchored_text: anchoredText,
+          source_text_hash: outline.text_hash,
+          anchor_count: matchedCount,
+        }, { transaction: tx });
+      }
+
+      sectionCount++;
+    }
+
+    return { sections: sectionCount, anchors: anchors.length, misses };
   }
 
   // ============================================================
@@ -659,6 +912,38 @@ class StandardMgrService {
     });
 
     return standard.toJSON ? standard.toJSON() : standard;
+  }
+
+  /**
+   * R2-5: updateStandard — 更新标准元数据
+   *
+   * 可更新字段：standard_name, standard_code, standard_type, is_active
+   * 用于修正纳管时填写不准确的元数据（如名称错填为编号）。
+   *
+   * @param {string} standardId
+   * @param {object} updates
+   * @returns {Promise<object|null>}
+   */
+  async updateStandard(standardId, updates = {}) {
+    const AppStandard = this._appStandard();
+    const standard = await AppStandard.findByPk(standardId, { raw: true });
+    if (!standard) return null;
+
+    const allowed = ['standard_name', 'standard_code', 'standard_type', 'is_active'];
+    const data = {};
+    for (const key of allowed) {
+      if (updates[key] !== undefined) {
+        data[key] = updates[key];
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return standard;
+    }
+
+    data.updated_at = new Date();
+    await AppStandard.update(data, { where: { id: standardId } });
+    return await AppStandard.findByPk(standardId, { raw: true });
   }
 }
 

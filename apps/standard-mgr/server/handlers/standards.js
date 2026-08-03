@@ -65,6 +65,12 @@ export async function get(ctx, deps) {
  */
 export async function post(ctx, deps) {
   try {
+    // R2-4：纳管操作需要管理员权限
+    if (!ctx.state.session?.isAdmin) {
+      ctx.error('需要管理员权限', 403);
+      return;
+    }
+
     const userId = getUserId(ctx);
     const service = new StandardMgrService(deps.db);
     const body = ctx.request.body;
@@ -105,5 +111,41 @@ export async function post(ctx, deps) {
       || (err.message?.includes('must be') ? 400 : null)
       || 500;
     ctx.error(err.message, status);
+  }
+}
+
+/**
+ * PUT /api/apps/standard-mgr/standards/:standardId — 更新标准元数据
+ *
+ * 可更新字段：standard_name, standard_code, standard_type, is_active
+ * 需要管理员权限（R2-4）。
+ */
+export async function put(ctx, deps) {
+  try {
+    // R2-4：管理员权限校验
+    if (!ctx.state.session?.isAdmin) {
+      ctx.error('需要管理员权限', 403);
+      return;
+    }
+
+    const service = new StandardMgrService(deps.db);
+    const { standardId } = ctx.params;
+    const body = ctx.request.body;
+
+    if (!standardId) {
+      ctx.error('standardId is required', 400);
+      return;
+    }
+
+    const result = await service.updateStandard(standardId, body);
+    if (!result) {
+      ctx.error('Standard not found', 404);
+      return;
+    }
+
+    ctx.success(result);
+  } catch (err) {
+    logger.error(`[standard-mgr] updateStandard error: ${err.message}`);
+    ctx.error(err.message, 400);
   }
 }

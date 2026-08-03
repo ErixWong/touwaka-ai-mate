@@ -239,8 +239,15 @@ async function main() {
     let standardId = null;
     if (!SKIP_ONBOARD) {
       console.log('[3/5] 纳管标准...');
+      // R2-5：standard_code 与 standard_name 分离
+      // standard_code 优先取环境变量 → 从标题提取编号部分 → 回退用标题
+      // standard_name 优先取环境变量 → 用文档标题（不含编号时需人工传）
       const code = STANDARD_CODE || doc.title?.match(/^[\w/\s-]+/)?.[0]?.trim() || doc.title;
       const name = STANDARD_NAME || doc.title;
+      if (!STANDARD_NAME) {
+        console.log('  ⚠️  STANDARD_NAME 未设置，使用文档标题作为标准名称（可能不准确）');
+        console.log(`     提示：设置 $env:STANDARD_NAME='完整的标准名称' 以传入正确名称`);
+      }
       try {
         const std = await onboardStandard(token, DOCUMENT_ID, STANDARD_TYPE, code, name);
         if (std) {
@@ -301,9 +308,15 @@ async function main() {
       onEvent: (event) => {
         runLog.events.push({ time: new Date().toISOString(), ...event });
 
-        // Track tool calls
+        // Track tool calls — R2-7: SSE tool_call 事件用 camelCase toolId
         if (event.event === 'tool_call_start' || event.event === 'tool_call') {
-          const toolName = event.data?.tool_name || event.data?.toolName || event.data?.name || 'unknown';
+          const toolName = event.data?.toolId
+            || event.data?.toolCallData?.tool_name
+            || event.data?.toolCallData?.toolName
+            || event.data?.tool_name
+            || event.data?.toolName
+            || event.data?.name
+            || 'unknown';
           const toolArgs = event.data?.arguments || event.data?.tool_args || null;
           runLog.toolCalls.push({
             time: new Date().toISOString(),
