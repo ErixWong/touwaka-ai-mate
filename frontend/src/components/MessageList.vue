@@ -19,6 +19,7 @@
       :key="message.id"
       :message="message"
       :all-messages="messages"
+      :tool-context-index="toolContextIndex"
       :expert-avatar="expertAvatar"
       :highlighted="highlightedMessageId === message.id"
       @retry="$emit('retry', $event)"
@@ -38,6 +39,8 @@
         <div class="thinking-indicator">{{ $t('chat.thinking') }}</div>
       </div>
     </div>
+
+    <div ref="bottomSentinel" class="bottom-sentinel" aria-hidden="true"></div>
   </div>
 </template>
 
@@ -45,6 +48,7 @@
 import { ref, computed } from 'vue'
 import MessageItem from './MessageItem.vue'
 import { useScrollManager } from '@/composables/useScrollManager'
+import { useToolDataParser, type ToolContextIndex } from '@/composables/useToolDataParser'
 import type { ChatMessage } from './ChatWindow.vue'
 
 const props = defineProps<{
@@ -61,7 +65,10 @@ const emit = defineEmits<{
 }>()
 
 const highlightedMessageId = ref<string | null>(null)
+const toolParser = useToolDataParser()
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
+
+const toolContextIndex = computed<ToolContextIndex>(() => toolParser.buildToolContextIndex(props.messages))
 
 const handleJumpToMessage = (messageId: string) => {
   highlightedMessageId.value = messageId
@@ -85,9 +92,8 @@ const handleJumpToMessage = (messageId: string) => {
 
 const {
   messagesContainer,
+  bottomSentinel,
   showScrollToBottom,
-  showNewMessagesHint,
-  pendingNewMessageCount,
   handleScroll,
   handleScrollToBottom,
   handleLoadMore,
@@ -104,9 +110,8 @@ defineExpose({
   scrollToBottom,
   handleScrollToBottom,
   messagesContainer,
+  bottomSentinel,
   showScrollToBottom,
-  showNewMessagesHint,
-  pendingNewMessageCount,
   cleanup,
 })
 </script>
@@ -209,5 +214,10 @@ defineExpose({
 .thinking-indicator {
   color: var(--text-secondary, #666);
   font-style: italic;
+}
+
+.bottom-sentinel {
+  width: 100%;
+  height: 1px;
 }
 </style>

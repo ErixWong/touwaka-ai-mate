@@ -104,6 +104,8 @@ export interface DocRevision {
 export interface DocRevisionsResponse {
   document_id: string
   current_revision_id: string | null
+  resolved_current_revision_id?: string | null
+  resolved_current_revision?: DocRevision | null
   items: DocRevision[]
 }
 
@@ -197,6 +199,8 @@ export interface DocResultImageAttachment {
 export interface DocResultDetail {
   document: DocDocument & {
     has_preview_result: boolean
+    resolved_current_revision_id: string | null
+    resolved_current_revision: DocRevision | null
   }
   revision: {
     id: string
@@ -229,6 +233,7 @@ export interface DocResultDetail {
     completed_at: string | null
     error_code: string | null
     error_message: string | null
+    import_source?: string | null
     preview_markdown_content?: string | null
     // 新语义（推荐使用）
     preview_markdown_attachment: DocAttachmentInfo | null
@@ -352,6 +357,7 @@ export interface CreateDocIntakeRequest {
   app_id: string
   collection_id: string
   schema_id?: string | null
+  revision_label?: string | null
   attachments: Array<{ id: string }>
 }
 
@@ -391,6 +397,20 @@ export async function createDocIntake(data: CreateDocIntakeRequest): Promise<Doc
   return apiRequest<DocIntakeResult>(apiClient.post('/docs/intakes', data))
 }
 
+export interface CreateIntakeRevisionRequest {
+  attachments: Array<{ id: string }>
+  revision_label?: string | null
+  change_summary?: string | null
+}
+
+export async function createIntakeRevision(documentId: string, data: CreateIntakeRevisionRequest): Promise<DocIntakeResult> {
+  return apiRequest<DocIntakeResult>(apiClient.post(`/docs/documents/${documentId}/intake-revision`, data))
+}
+
+export async function updateRevisionLabel(revisionId: string, revision_label: string): Promise<DocRevision> {
+  return apiRequest<DocRevision>(apiClient.patch(`/docs/revisions/${revisionId}/label`, { revision_label }))
+}
+
 export interface GatewayTaskProbe {
   task_id: string
   status: 'submitted' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'not_found'
@@ -416,8 +436,9 @@ export async function probeGatewayTask(taskId: string): Promise<GatewayTaskProbe
   return apiRequest<GatewayTaskProbe>(apiClient.get(`/docs/gateway-tasks/${encodeURIComponent(taskId)}`))
 }
 
-export async function importGatewayTask(data: { collection_id: string; task_id: string; title?: string; force?: boolean }): Promise<ImportGatewayTaskResult> {
-  return apiRequest<ImportGatewayTaskResult>(apiClient.post('/docs/intakes/import-task', data))
+export async function importGatewayTask(data: { collection_id: string; task_id: string; title?: string; revision_label?: string | null; force?: boolean }): Promise<ImportGatewayTaskResult> {
+  // 导入会同步下载网关全部产物（图片逐张下载），耗时可能远超默认 30s 超时
+  return apiRequest<ImportGatewayTaskResult>(apiClient.post('/docs/intakes/import-task', data, { timeout: 300000 }))
 }
 
 export async function submitOcr(documentId: string, data: SubmitOcrRequest = {}): Promise<SubmitOcrResult> {
@@ -428,8 +449,10 @@ export async function syncOcr(documentId: string): Promise<SyncOcrResult> {
   return apiRequest<SyncOcrResult>(apiClient.post(`/docs/documents/${documentId}/ocr/sync`))
 }
 
-export async function getDocumentResult(documentId: string): Promise<DocResultDetail> {
-  return apiRequest<DocResultDetail>(apiClient.get(`/docs/documents/${documentId}/result`))
+export async function getDocumentResult(documentId: string, revisionId?: string): Promise<DocResultDetail> {
+  return apiRequest<DocResultDetail>(apiClient.get(`/docs/documents/${documentId}/result`, {
+    params: revisionId ? { revision_id: revisionId } : undefined,
+  }))
 }
 
 export async function retryProcessing(documentId: string, reason?: string): Promise<DocRetryResult> {
@@ -439,6 +462,12 @@ export async function retryProcessing(documentId: string, reason?: string): Prom
 export async function setCurrentRevision(revisionId: string, reason?: string): Promise<{ document_id: string; current_revision_id: string }> {
   return apiRequest<{ document_id: string; current_revision_id: string }>(
     apiClient.post(`/docs/revisions/${revisionId}/set-current`, { reason: reason || 'manual' })
+  )
+}
+
+export async function deleteRevision(revisionId: string): Promise<{ deleted: boolean; revision_id: string; document_id: string }> {
+  return apiRequest<{ deleted: boolean; revision_id: string; document_id: string }>(
+    apiClient.delete(`/docs/revisions/${revisionId}`)
   )
 }
 

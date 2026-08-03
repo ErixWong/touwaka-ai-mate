@@ -2,6 +2,7 @@ import { ref, computed, reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { messageApi, topicApi } from '@/api/services'
 import type { Message, MessageStatus, Topic } from '@/types'
+import { compareMessages, mergeMessagesById } from './chat-message-merge.js'
 
 export const useChatStore = defineStore('chat', () => {
   const currentExpertId = ref<string | null>(null)
@@ -21,13 +22,13 @@ export const useChatStore = defineStore('chat', () => {
   const userMessageForAssistant = reactive<Map<string, string>>(new Map())
   const manuallyStoppedRequestIds = reactive<Set<string>>(new Set())
   const currentStreamingMessageId = ref<string | null>(null)
+  const currentExpertGeneration = ref(0)
 
   const sortedMessages = computed(() => messages.value)
 
-  const compareMessages = (a: Pick<Message, 'created_at' | 'id'>, b: Pick<Message, 'created_at' | 'id'>) => {
-    const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    if (timeDiff !== 0) return timeDiff
-    return a.id.localeCompare(b.id)
+  const replaceMessagesById = (nextMessages: Message[]) => {
+    messages.value = mergeMessagesById([], nextMessages, { replace: true })
+    rebuildIndexes()
   }
 
   const indexMessage = (message: Message) => {
@@ -102,6 +103,17 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.find(m => m.role === 'assistant' && m.status === 'streaming')
   }
 
+  const isServerMessage = (message: Pick<Message, 'id'>) => {
+    return !!message.id && !message.id.startsWith('temp-')
+  }
+
+  const getLatestServerMessageId = (): string | null => {
+    const serverMessages = messages.value.filter(isServerMessage)
+    if (serverMessages.length === 0) return null
+    const sortedServerMessages = [...serverMessages].sort(compareMessages)
+    return sortedServerMessages[sortedServerMessages.length - 1]?.id || null
+  }
+
   const setCurrentStreaming = (messageId: string | null) => {
     currentStreamingMessageId.value = messageId
   }
@@ -159,17 +171,23 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const loadMessagesByExpert = async (expert_id: string, page: number = 1, size: number = 30) => {
+    const generation = page === 1
+      ? currentExpertGeneration.value + 1
+      : currentExpertGeneration.value
+
     if (page === 1) {
       const hasStreamingMessage = messages.value.some(m => m.status === 'streaming')
       if (hasStreamingMessage) {
         return
       }
 
+      currentExpertGeneration.value = generation
       isLoading.value = true
       messages.value = []
       messageById.clear()
       requestToAssistantMessageId.clear()
       requestToUserMessageId.clear()
+      userMessageForAssistant.clear()
       currentExpertId.value = expert_id
     } else {
       isLoadingMore.value = true
@@ -178,23 +196,30 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       const response = await messageApi.getMessagesByExpert(expert_id, { page, size })
+      if (currentExpertId.value !== expert_id || currentExpertGeneration.value !== generation) {
+        return
+      }
+
       const items = response.items || []
 
       if (page === 1) {
-        messages.value = [...items].sort(compareMessages)
+        replaceMessagesById(items)
       } else {
-        messages.value = [...items, ...messages.value].sort(compareMessages)
+        mergeMessages(items)
       }
-      rebuildIndexes()
 
       hasMoreMessages.value = items.length === size
       currentPage.value = page
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load messages'
+      if (currentExpertId.value === expert_id && currentExpertGeneration.value === generation) {
+        error.value = err instanceof Error ? err.message : 'Failed to load messages'
+      }
       throw err
     } finally {
-      isLoading.value = false
-      isLoadingMore.value = false
+      if (currentExpertId.value === expert_id && currentExpertGeneration.value === generation) {
+        isLoading.value = false
+        isLoadingMore.value = false
+      }
     }
   }
 
@@ -214,6 +239,7 @@ export const useChatStore = defineStore('chat', () => {
     userMessageForAssistant.clear()
     currentPage.value = 1
     hasMoreMessages.value = true
+    currentExpertGeneration.value += 1
 
     if (expert_id) {
       await loadMessagesByExpert(expert_id, 1)
@@ -247,12 +273,16 @@ export const useChatStore = defineStore('chat', () => {
     if (existingIndex >= 0) {
       const existing = messages.value[existingIndex]
       if (existing) {
-        unindexMessage(existing.id)
-        existing.content = content || existing.content
-        existing.status = message.status || existing.status
-        existing.updated_at = new Date().toISOString()
-        indexMessage(existing)
-        return existing
+        const updatedMessage: Message = {
+          ...existing,
+          ...message,
+          id: existing.id,
+          content: content || existing.content,
+          status: message.status || existing.status,
+          updated_at: new Date().toISOString()
+        }
+        replaceMessage(existing.id, updatedMessage)
+        return updatedMessage
       }
     }
 
@@ -310,9 +340,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const updateMessageMetadata = (messageId: string, metadata: Message['metadata']) => {
-    const message = messageById.get(messageId)
-    if (message) {
-      message.metadata = { ...message.metadata, ...metadata }
+    const index = messages.value.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      const message = messages.value[index]
+      if (message) {
+        const newMessage: Message = {
+          ...message,
+          metadata: { ...message.metadata, ...metadata },
+          updated_at: new Date().toISOString()
+        }
+        messages.value.splice(index, 1, newMessage)
+        indexMessage(newMessage)
+      }
     }
   }
 
@@ -367,40 +406,23 @@ export const useChatStore = defineStore('chat', () => {
     if (index === -1) return
 
     const duplicateIndex = messages.value.findIndex((m, i) => i !== index && m.id === nextMessage.id)
-    if (duplicateIndex !== -1) {
-      unindexMessage(messages.value[duplicateIndex]!.id)
-      messages.value.splice(duplicateIndex, 1)
-    }
+    const removeIndexes = new Set([index])
+    if (duplicateIndex !== -1) removeIndexes.add(duplicateIndex)
 
     unindexMessage(messageId)
-    messages.value.splice(index, 1, nextMessage)
-    indexMessage(nextMessage)
+    if (duplicateIndex !== -1) {
+      unindexMessage(nextMessage.id)
+    }
+    messages.value = messages.value.filter((_, i) => !removeIndexes.has(i))
+    insertMessageSorted(nextMessage)
+    rebuildIndexes()
   }
 
   const mergeMessages = (incomingMessages: Message[]) => {
-    for (const incoming of incomingMessages) {
-      const index = messages.value.findIndex(m => m.id === incoming.id)
-      if (index !== -1) {
-        const current = messages.value[index]
-        if (current) {
-          unindexMessage(current.id)
-          const merged: Message = {
-            ...current,
-            ...incoming,
-            updated_at: incoming.updated_at || current.updated_at,
-          }
-          messages.value.splice(index, 1, merged)
-          indexMessage(merged)
-        }
-        continue
-      }
+    if (incomingMessages.length === 0) return
 
-      const newMsg: Message = {
-        ...incoming,
-        status: incoming.status || 'completed',
-      }
-      insertMessageSorted(newMsg)
-    }
+    messages.value = mergeMessagesById(messages.value, incomingMessages)
+    rebuildIndexes()
   }
 
   const removeMessage = (messageId: string) => {
@@ -408,6 +430,7 @@ export const useChatStore = defineStore('chat', () => {
     if (index >= 0) {
       unindexMessage(messageId)
       messages.value.splice(index, 1)
+      rebuildIndexes()
     }
     if (currentStreamingMessageId.value === messageId) {
       currentStreamingMessageId.value = null
@@ -422,6 +445,7 @@ export const useChatStore = defineStore('chat', () => {
     requestToUserMessageId.clear()
     userMessageForAssistant.clear()
     currentStreamingMessageId.value = null
+    currentExpertGeneration.value += 1
     currentPage.value = 1
     hasMoreMessages.value = true
     error.value = null
@@ -518,6 +542,7 @@ export const useChatStore = defineStore('chat', () => {
     getAssistantMessageByRequestId,
     getUserMessageByRequestId,
     getStreamingAssistant,
+    getLatestServerMessageId,
     setCurrentStreaming,
     markRequestManuallyStopped,
     clearManuallyStoppedRequest,

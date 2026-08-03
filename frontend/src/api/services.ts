@@ -31,7 +31,6 @@ import type {
   Task,
   CreateTaskRequest,
   TaskFile,
-  // 组织架构相关类型
   Department,
   CreateDepartmentRequest,
   UpdateDepartmentRequest,
@@ -40,13 +39,9 @@ import type {
   UpdatePositionRequest,
   UserOrganization,
   UpdateUserOrganizationRequest,
-  // 助理系统相关类型
-  Assistant,
-  AssistantRequest,
-  AssistantSummonRequest,
-  AssistantSummonResponse,
-  AssistantMessage,
   ChatRequestStatus,
+  MessageQueryRequest,
+  MessageQueryResponse,
 } from '@/types'
 
 /**
@@ -87,10 +82,29 @@ export const topicApi = {
 
 // 消息相关 API
 export const messageApi = {
+  // JSON 查询入口：filter / sort / pagination 放在 body 中
+  queryMessages: (data: MessageQueryRequest) =>
+    apiRequest<MessageQueryResponse>(apiClient.post('/messages/query', data)),
+
   // 按 expert 加载消息列表（主要入口）
   // 一个 expert 对一个 user 只有一个连续的对话 session
-  getMessagesByExpert: (expert_id: string, params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<Message>>(apiClient.get(`/messages/expert/${expert_id}`, { params })),
+  getMessagesByExpert: (expert_id: string, params?: PaginationParams) => {
+    const size = params?.size || params?.limit || params?.pageSize || 30
+    return messageApi.queryMessages({
+      filter: {
+        expert_id,
+      },
+      sort: [
+        { field: 'created_at', order: 'asc' },
+        { field: 'id', order: 'asc' },
+      ],
+      pagination: {
+        page: params?.page || 1,
+        size,
+        window: 'latest',
+      },
+    })
+  },
 
   // 获取消息列表（旧 API，按 topic，保留兼容）
   getMessages: (topic_id: string, params?: PaginationParams) =>
@@ -133,7 +147,13 @@ export const messageApi = {
 
   // 增量获取指定游标之后的消息
   getMessagesSince: (expert_id: string, params?: { after_message_id?: string; limit?: number }) =>
-    apiRequest<{ items: Message[]; latest_message_id: string | null; has_more: boolean }>(
+    apiRequest<{
+      items: Message[];
+      latest_message_id: string | null;
+      has_more: boolean;
+      cursor_initialized?: boolean;
+      anchor_found?: boolean;
+    }>(
       apiClient.get(`/messages/expert/${expert_id}/since`, { params })
     ),
 }
@@ -655,90 +675,6 @@ export const organizationApi = {
   // 更新用户组织信息
   updateUserOrganization: (userId: string, data: UpdateUserOrganizationRequest) =>
     apiRequest<UserOrganization>(apiClient.put(`/users/${userId}/organization`, data)),
-}
-
-// ============================================
-// 助理系统相关 API
-// ============================================
-
-export const assistantApi = {
-  // 获取可用助理列表
-  getAssistants: () =>
-    apiRequest<Assistant[]>(apiClient.get('/assistants')),
-
-  // 获取助理管理列表（包含停用助理和完整配置）
-  getManageAssistants: () =>
-    apiRequest<Assistant[]>(apiClient.get('/assistants/manage')),
-
-  // 获取单个助理详情
-  getAssistant: (id: string) =>
-    apiRequest<Assistant>(apiClient.get(`/assistants/${id}`)),
-
-  // 更新助理配置
-  updateAssistant: (id: string, data: Partial<Assistant>) =>
-    apiRequest<Assistant>(apiClient.put(`/assistants/${id}`, data)),
-
-  // 创建助理
-  createAssistant: (data: Partial<Assistant> & { name: string }) =>
-    apiRequest<Assistant>(apiClient.post('/assistants', data)),
-
-  // 删除助理
-  deleteAssistant: (id: string) =>
-    apiRequest<{ success: boolean; id: string }>(apiClient.delete(`/assistants/${id}`)),
-
-  // 召唤助理
-  summon: (data: AssistantSummonRequest) =>
-    apiRequest<AssistantSummonResponse>(apiClient.post('/assistants/call', data)),
-
-  // 查询委托状态
-  getRequest: (requestId: string) =>
-    apiRequest<AssistantRequest>(apiClient.get(`/assistants/requests/${requestId}`)),
-
-  // 查询委托列表
-  getRequests: (params?: {
-    status?: string
-    expert_id?: string
-    user_id?: string
-    assistant_id?: string
-    limit?: number
-  }) =>
-    apiRequest<AssistantRequest[]>(apiClient.get('/assistants/requests', { params })),
-
-  // 获取委托消息列表
-  getMessages: (requestId: string, debug = false) =>
-    apiRequest<{ request_id: string; messages: AssistantMessage[] }>(
-      apiClient.get(`/assistants/requests/${requestId}/messages`, { params: { debug } })
-    ),
-
-  // 归档委托
-  archiveRequest: (requestId: string) =>
-    apiRequest<{ request_id: string; is_archived: boolean }>(
-      apiClient.post(`/assistants/requests/${requestId}/archive`)
-    ),
-
-  // 取消归档
-  unarchiveRequest: (requestId: string) =>
-    apiRequest<{ request_id: string; is_archived: boolean }>(
-      apiClient.post(`/assistants/requests/${requestId}/unarchive`)
-    ),
-
-  // 删除委托
-  deleteRequest: (requestId: string) =>
-    apiRequest<{ request_id: string; deleted: boolean }>(
-      apiClient.delete(`/assistants/requests/${requestId}`)
-    ),
-
-  // 重新执行委托
-  retryRequest: (requestId: string) =>
-    apiRequest<{ request_id: string; original_request_id: string; message: string }>(
-      apiClient.post(`/assistants/requests/${requestId}/retry`)
-    ),
-
-  // 重发通知给专家
-  resendNotification: (requestId: string) =>
-    apiRequest<{ success: boolean; message: string; request_id: string }>(
-      apiClient.post(`/assistants/requests/${requestId}/resend-notification`)
-    ),
 }
 
 // ============================================

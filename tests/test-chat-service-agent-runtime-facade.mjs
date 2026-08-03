@@ -6,6 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import ChatService from '../lib/chat-service.js';
 import {
   buildRootAgentInvocationContext,
@@ -138,6 +139,8 @@ async function testStreamChatUsesRootAgentRuntime() {
   service._prepareTaskContext = async () => ({
     workspace_mode: 'task',
     absolute_workspace_path: 'D:/workspace/task',
+    logical_workspace_path: 'user_1/task_1/input',
+    current_path: 'input',
   });
   service.checkAndHandleTopicShift = async () => ({
     topic_id: 'topic_1',
@@ -173,7 +176,9 @@ async function testStreamChatUsesRootAgentRuntime() {
   assert.equal(invocation.request_id, 'request_1');
   assert.deepEqual(invocation.workspace_scope, {
     workdir: 'D:/workspace/task',
+    logical_workdir: 'user_1/task_1/input',
     workspace_mode: 'task',
+    current_path: 'input',
   });
   assert.deepEqual(invocation.capability_scope, {
     tools: ['demo_tool'],
@@ -271,11 +276,30 @@ function testChatServiceCanSetResidentDelegateRuntimeAfterConstruction() {
   assert.equal(residentRuntime.child_run_scheduler.resident_skill_manager, residentSkillManager);
 }
 
+async function testPrepareTaskContextSupportsRepoTaskDirectory() {
+  const service = new ChatService(createDbStub());
+  const working_path = 'docs/tasks/active/refactor-260728-03-agent-delegation-architecture';
+
+  const taskContext = await service._prepareTaskContext({
+    task_id: null,
+    user_id: 'user_1',
+    working_path,
+    session: { userId: 'user_1', roles: ['admin'], isAdmin: true },
+  });
+
+  assert.equal(taskContext.workspace_mode, 'repo_task');
+  assert.equal(taskContext.absolute_workspace_path, path.resolve(process.cwd(), working_path));
+  assert.equal(taskContext.logical_workspace_path, working_path);
+  assert.equal(taskContext.user_id, 'user_1');
+  assert.equal(taskContext.is_admin, true);
+}
+
 async function main() {
   await testStreamChatUsesRootAgentRuntime();
   await testChatServiceExecutesChildDelegation();
   testChatServiceCanUseResidentDelegateRuntime();
   testChatServiceCanSetResidentDelegateRuntimeAfterConstruction();
+  await testPrepareTaskContextSupportsRepoTaskDirectory();
 
   console.log('ChatService AgentRuntime facade tests passed.');
 }

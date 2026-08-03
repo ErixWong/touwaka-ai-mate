@@ -33,6 +33,7 @@
           v-if="message.role === 'assistant'"
           :message="message"
           :all-messages="allMessages"
+          :tool-context-index="toolContextIndex"
           @retry="$emit('retry', $event)"
           @jump-to-message="$emit('jumpToMessage', $event)"
         />
@@ -56,10 +57,12 @@ import AssistantMessage from './AssistantMessage.vue'
 import { useToolDataParser } from '@/composables/useToolDataParser'
 import { formatRelativeTime } from '@/composables/useTimeFormatter'
 import type { ChatMessage } from './ChatWindow.vue'
+import type { ToolContextIndex } from '@/composables/useToolDataParser'
 
 defineProps<{
   message: ChatMessage
   allMessages: ChatMessage[]
+  toolContextIndex?: ToolContextIndex
   expertAvatar?: string
   highlighted?: boolean
 }>()

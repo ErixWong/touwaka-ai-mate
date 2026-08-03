@@ -119,8 +119,13 @@ function startInternalApiServer(calls) {
       code: 200,
       message: 'success',
       data: {
-        fullContent: 'manager resident result',
-        received_run_id: body.delegation?.child_invocation?.run_id,
+        result: {
+          fullContent: 'manager resident result',
+          received_run_id: body.delegation?.child_invocation?.run_id,
+        },
+        events: [
+          { type: 'delta', content: 'manager event' },
+        ],
       },
     }));
   });
@@ -182,8 +187,10 @@ async function testResidentSkillManagerRunsAgentChildRunner() {
     }, {}, 5000);
     assert.equal(result.result.fullContent, 'manager resident result');
     assert.equal(result.result.received_run_id, 'child_run_manager_1');
+    assert.deepEqual(result.events, [{ type: 'delta', content: 'manager event' }]);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, '/internal/agent/child-run/execute');
+    assert.equal(calls[0].body.session, undefined);
   } finally {
     await manager.shutdown();
     server.close();

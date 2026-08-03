@@ -18,6 +18,10 @@ export default (controller) => {
   router.post('/intakes/import-task', authenticate(), controller.importGatewayTask.bind(controller));
   router.get('/gateway-tasks/:taskId', authenticate(), controller.probeGatewayTask.bind(controller));
 
+  // 为已有文档上传新版本（人工版本管理入口）— 2.1a
+  router.post('/documents/:documentId/intake-revision', authenticate(), controller.createIntakeRevision.bind(controller));
+  router.post('/documents/:documentId/intake-revision/import-task', authenticate(), controller.importGatewayTaskAsRevision.bind(controller));
+
   // 获取文档列表 — 2.2
   router.get('/documents', authenticate(), controller.listDocuments.bind(controller));
 
@@ -82,6 +86,12 @@ export default (controller) => {
 
   // 版本状态流转
   router.post('/revisions/:revisionId/transition', authenticate(), controller.transitionVersionStatus.bind(controller));
+
+  // 修改 revision_label（人工版本号编辑）
+  router.patch('/revisions/:revisionId/label', authenticate(), controller.updateRevisionLabel.bind(controller));
+
+  // 删除单个版本（不允许删除当前版本）
+  router.delete('/revisions/:revisionId', authenticate(), controller.deleteRevision.bind(controller));
 
   // 查询版本差异状态 — 2.7
   router.get('/revisions/:revisionId/diff-status', authenticate(), controller.getDiffStatus.bind(controller));

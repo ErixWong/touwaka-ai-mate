@@ -6,6 +6,8 @@
  */
 
 import assert from 'node:assert/strict';
+import fs from 'fs/promises';
+import path from 'path';
 import { AgentRuntime } from '../lib/agent/agent-runtime.js';
 import {
   AGENT_DELEGATE_TOOL_NAMES,
@@ -62,19 +64,22 @@ function createExpertService(toolContextCalls) {
   };
 }
 
-function createParentInvocation() {
+const PNG_1X1_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+function createParentInvocation(workspaceScope = {}) {
   return buildRootAgentInvocationContext({
     run_id: 'root_run_control_runtime_parent',
     principal_user_id: 'user_control_runtime',
     agent_id: 'expert_parent',
     topic_id: 'topic_control_runtime',
     task_id: 'task_control_runtime',
+    workspace_scope: workspaceScope,
   });
 }
 
-function createStartContext() {
+function createStartContext({ workspaceScope = {} } = {}) {
   return {
-    parent_invocation: createParentInvocation(),
+    parent_invocation: createParentInvocation(workspaceScope),
     caller_scope: {
       tools: ['search', 'write_file'],
       skills: ['search'],
@@ -89,6 +94,7 @@ function createStartContext() {
       tools: ['search'],
       skills: ['search'],
       can_use_skills: true,
+      ...workspaceScope,
     },
     session: { userId: 'user_control_runtime' },
   };
@@ -196,7 +202,99 @@ async function testRuntimeStartsAndCompletesChildRunEndToEnd() {
     expert_id: 'expert_child',
     expertId: 'expert_child',
     session: { userId: 'user_control_runtime' },
+    taskContext: null,
   }]);
+}
+
+async function testRuntimeResolvesDelegatedImageAttachmentIntoFirstChildTurn() {
+  const root = path.join(process.cwd(), 'temp', 'agent-delegate-control-runtime-attachment-test');
+  const workspace = path.join(root, 'workspace');
+  await fs.rm(root, { recursive: true, force: true });
+  await fs.mkdir(workspace, { recursive: true });
+  const imagePath = path.join(workspace, 'input.png');
+  await fs.writeFile(imagePath, Buffer.from(PNG_1X1_BASE64, 'base64'));
+
+  const loopCalls = [];
+  const toolContextCalls = [];
+  const runtime = createInMemoryAgentDelegateControlRuntime({
+    definition_resolver: {
+      async resolve() {
+        return {
+          agent_id: 'expert_child',
+          source_type: 'expert',
+          display_name: 'Vision Child',
+          system_prompt: 'Read images carefully.',
+          execution_policy: { mode: 'llm' },
+          capability_declarations: {
+            skills: [{ skill_id: 'skill_search', mark: 'search' }],
+          },
+          is_active: true,
+        };
+      },
+    },
+    agent_runtime: new AgentRuntime(),
+    agent_loop: {
+      async run(_receivedExpertService, input) {
+        loopCalls.push(input);
+        return {
+          fullContent: 'child saw image',
+          allToolCalls: [],
+          finalMessages: input.currentMessages,
+          llmCallsCount: 1,
+        };
+      },
+    },
+    get_expert_service: async () => ({
+      ...createExpertService(toolContextCalls),
+      getDefaultModelConfig() {
+        return {
+          model_name: 'child-vision-model',
+          provider_name: 'provider_1',
+          base_url: 'https://example.test/v1',
+          max_tokens: 4096,
+          max_output_tokens: 1024,
+          model_type: 'multimodal',
+        };
+      },
+    }),
+  });
+
+  const started = await runtime.control_facade.handleToolCall(
+    AGENT_DELEGATE_TOOL_NAMES.START,
+    {
+      source_type: 'expert',
+      agent_id: 'expert_child',
+      task: 'OCR image',
+      input: {
+        attachments: [
+          {
+            type: 'image',
+            source: 'workspace_path',
+            path: imagePath,
+            purpose: 'ocr',
+          },
+        ],
+      },
+      requested_scope: { tools: ['search'] },
+    },
+    createStartContext({
+      workspaceScope: {
+        workdir: workspace,
+        logical_workdir: 'temp/agent-delegate-control-runtime-attachment-test/workspace',
+        workspace_mode: 'test',
+        current_path: '',
+      },
+    }),
+  );
+
+  assert.equal(started.success, true);
+  await runtime.child_run_scheduler.waitForCompletion(started.data.child_run_id);
+  assert.equal(loopCalls.length, 1);
+  assert.equal(Array.isArray(loopCalls[0].currentMessages[1].content), true);
+  assert.equal(loopCalls[0].currentMessages[1].content[0].type, 'text');
+  assert.equal(loopCalls[0].currentMessages[1].content[1].type, 'image_url');
+  assert.match(loopCalls[0].currentMessages[1].content[1].image_url.url, /^data:image\/png;base64,/);
+  assert.deepEqual(loopCalls[0].llmPayload.messages, loopCalls[0].currentMessages);
 }
 
 function testRuntimeRequiresCompositionDependencies() {
@@ -264,6 +362,7 @@ async function testResidentRuntimeUsesResidentScheduler() {
 
 async function main() {
   await testRuntimeStartsAndCompletesChildRunEndToEnd();
+  await testRuntimeResolvesDelegatedImageAttachmentIntoFirstChildTurn();
   await testResidentRuntimeUsesResidentScheduler();
   testRuntimeRequiresCompositionDependencies();
 

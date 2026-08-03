@@ -36,11 +36,6 @@
       <ExpertSettingsTab />
     </div>
 
-    <!-- 助理设置 -->
-    <div v-if="activeTab === 'assistant'" class="settings-section assistant-section">
-      <AssistantSettingsTab />
-    </div>
-
     <!-- 系统配置（仅管理员） -->
     <div v-if="activeTab === 'system' && isAdmin" class="settings-section system-section">
       <SystemConfigTab />
@@ -488,7 +483,6 @@ import { userApi, roleApi } from '@/api/services'
 import type { UserListItem, CreateUserRequest, UpdateUserRequest, Role, Permission, ExpertSimple, UpdateRoleRequest } from '@/types'
 import OrganizationTab from '@/components/settings/OrganizationTab.vue'
 import SystemConfigTab from '@/components/settings/SystemConfigTab.vue'
-import AssistantSettingsTab from '@/components/settings/AssistantSettingsTab.vue'
 import InvitationTab from '@/components/settings/InvitationTab.vue'
 import ProfileSecurityTab from '@/components/settings/ProfileSecurityTab.vue'
 import ModelProviderTab from '@/components/settings/ModelProviderTab.vue'
@@ -538,7 +532,6 @@ const personalMenuItems = [
 const systemMenuItems = [
   { key: 'model', label: t('settings.modelAndProvider'), route: '/system/models' },
   { key: 'expert', label: t('settings.expertSettings'), route: '/system/experts' },
-  { key: 'assistant', label: t('settings.assistantSettings'), route: '/system/assistants' },
   { key: 'resident', label: t('settings.residentProcesses'), route: '/system/resident' },
   { key: 'attachment', label: t('settings.attachmentManagement'), route: '/system/attachments' },
   { key: 'mcp', label: t('settings.mcp.management'), route: '/system/mcp' },

@@ -140,7 +140,7 @@ async function loadData() {
     const tree = await departmentApi.getDepartmentTree()
     departmentTree.value = tree || []
   } catch {
-    ElMessage.error(t('common.error'))
+    ElMessage.error(t('docs.workspace.settings.loadDepartmentsFailed'))
   }
 }
 

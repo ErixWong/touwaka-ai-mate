@@ -10,7 +10,21 @@
 import { pathToFileURL } from 'url';
 import { AgentChildRunnerWorker } from '../../../lib/agent/agent-child-runner-worker.js';
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+function normalizeApiBase(value) {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+export function resolveApiBase(env = process.env) {
+  const explicitBase = env.INTERNAL_API_BASE || env.API_BASE;
+  if (explicitBase) {
+    return normalizeApiBase(explicitBase);
+  }
+
+  const protocol = env.INTERNAL_API_PROTOCOL || 'http';
+  const host = env.INTERNAL_API_HOST || 'localhost';
+  const port = env.API_PORT || env.PORT || '3000';
+  return `${protocol}://${host}:${port}`;
+}
 
 let buffer = '';
 
@@ -36,16 +50,23 @@ function buildAuthHeaders(session = {}) {
 async function executeChildRunViaInternalApi({
   delegation,
   session = null,
+  onDelta = null,
+  shouldStop = null,
+  abortSignal = null,
 }) {
-  const response = await fetch(`${API_BASE}/internal/agent/child-run/execute`, {
+  if (typeof shouldStop === 'function' && shouldStop()) {
+    throw new Error('Request aborted by user');
+  }
+
+  const response = await fetch(`${resolveApiBase()}/internal/agent/child-run/execute`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...buildAuthHeaders(session || {}),
     },
+    signal: abortSignal || undefined,
     body: JSON.stringify({
       delegation,
-      session,
     }),
   });
 
@@ -66,7 +87,16 @@ async function executeChildRunViaInternalApi({
     throw new Error(payload.message || 'Internal child run failed');
   }
 
-  return payload?.data ?? payload;
+  const data = payload?.data ?? payload;
+  if (Array.isArray(data?.events) && typeof onDelta === 'function') {
+    for (const event of data.events) {
+      onDelta(event);
+    }
+  }
+
+  return Object.prototype.hasOwnProperty.call(data || {}, 'result')
+    ? data.result
+    : data;
 }
 
 function createDefaultWorker() {
@@ -186,6 +216,7 @@ async function main() {
 export const __testing = {
   createDefaultWorker,
   executeChildRunViaInternalApi,
+  resolveApiBase,
   getWorker() {
     return worker;
   },
