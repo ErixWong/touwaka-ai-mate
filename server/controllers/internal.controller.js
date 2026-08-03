@@ -174,8 +174,13 @@ class InternalController {
       // 获取模型配置
       const modelConfig = expertService.getDefaultModelConfig();
 
-      // 获取工具定义（包含 MCP 工具）
-      const toolContext = { user_id, expert_id };
+      // 获取工具定义（包含 MCP 工具）；携带策略信息以保证 notes.* 等策略门控工具可见性正确
+      const toolContext = {
+        user_id,
+        expert_id,
+        context_strategy: expertService.expertConfig?.expert?.context_strategy || 'full',
+        enable_notes: expertService.expertConfig?.psyche?.enable_notes !== false,
+      };
       const tools = await expertService.toolManager.getToolDefinitions(toolContext);
 
       logger.info(`[Internal API] 开始生成专家回复: model=${modelConfig.model_name}, tools=${tools.length}`);
