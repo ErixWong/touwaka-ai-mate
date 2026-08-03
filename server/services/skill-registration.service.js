@@ -3,6 +3,7 @@ import path from 'path';
 import Utils from '../../lib/utils.js';
 import { getSkillPath, getSkillsPath } from '../../lib/paths.js';
 import { SkillDescriptorRunner, validateSkillDefinition } from '../../lib/skill-descriptor-runner.js';
+import { isRetiredSkill } from '../../lib/retired-skills.js';
 
 function normalizeLogicalSourcePath(fullPath) {
   const skillsRoot = path.resolve(getSkillsPath());
@@ -182,6 +183,10 @@ export class SkillRegistrationService {
   }
 
   async register({ sourcePath, fullPath = null, providedName = null, providedDescription = null } = {}) {
+    if (isRetiredSkill({ name: providedName, source_path: sourcePath })) {
+      throw new Error(`Skill is retired and cannot be registered: ${providedName || sourcePath}`);
+    }
+
     const described = await this.describe({
       sourcePath,
       fullPath,
@@ -190,6 +195,10 @@ export class SkillRegistrationService {
     });
     const { descriptor, skillPath, sourcePath: normalizedSourcePath } = described;
     const skill = descriptor.skill;
+
+    if (isRetiredSkill({ name: skill.name, source_path: normalizedSourcePath })) {
+      throw new Error(`Skill is retired and cannot be registered: ${skill.name}`);
+    }
 
     const existing = await this.Skill.findOne({
       where: { source_path: normalizedSourcePath },

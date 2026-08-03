@@ -12,6 +12,7 @@ import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { verifyAgentDelegationIntegrity } from '../../lib/agent/agent-delegation-integrity.js';
 import { getPermissionService } from '../services/permission.service.js';
+import { ResidentCapabilityError } from '../../lib/resident-capability-executor.js';
 
 class InternalController {
   /**
@@ -29,6 +30,7 @@ class InternalController {
     this.expertConnections = options.expertConnections || new Map();
     this.chatService = options.chatService || null;
     this.permissionService = options.permissionService || null;
+    this.residentCapabilityExecutor = options.residentCapabilityExecutor || null;
   }
 
   /**
@@ -635,40 +637,48 @@ class InternalController {
       }
 
       // 2. 获取参数
-      const { skill_id, tool_name, params, timeout } = ctx.request.body;
+      const { capability_id, skill_id, tool_name, params, timeout } = ctx.request.body;
 
-      if (!skill_id || !tool_name) {
-        ctx.error('缺少必要参数：skill_id, tool_name');
+      if (!capability_id && (!skill_id || !tool_name)) {
+        ctx.error('capability_id or skill_id/tool_name is required', 400);
         return;
       }
 
       // 3. 获取 ResidentSkillManager
-      if (!this.residentSkillManager) {
+      if (!this.residentSkillManager || !this.residentCapabilityExecutor) {
         ctx.status = 503;
-        ctx.error('驻留式技能管理器未初始化');
+        ctx.error('Resident capability executor is not initialized', 503);
         return;
       }
 
       // 4. 调用驻留工具
-      const result = await this.residentSkillManager.invokeByName(
-        skill_id,
-        tool_name,
+      const session = ctx.state.session || {};
+      const result = await this.residentCapabilityExecutor.invoke({
+        capabilityId: capability_id,
+        skillId: skill_id,
+        toolName: tool_name,
         params,
-        {
-          userId: ctx.state.session?.id || ctx.state.session?.userId || '',
-          accessToken: ctx.state.session?.accessToken || '',
-          expertId: ctx.state.session?.expertId || '',
-          isAdmin: ctx.state.session?.isAdmin || false,
-          workingDirectory: ctx.state.session?.workingDirectory || '',
+        userContext: {
+          userId: session.id || session.userId || '',
+          accessToken: session.accessToken || '',
+          expertId: session.expertId || '',
+          isAdmin: session.isAdmin || false,
+          workingDirectory: session.workingDirectory || '',
         },
-        timeout || 60000
-      );
+        authorizationContext: { session },
+        scope: 'internal',
+        timeout: timeout || 60000,
+      });
 
       // 5. 返回结果
       ctx.success(result);
 
     } catch (error) {
       logger.error('Internal API invoke resident tool error:', error);
+      if (error instanceof ResidentCapabilityError) {
+        ctx.error(error.message, error.statusCode, { code: error.code });
+        return;
+      }
       ctx.error(error.message || '调用驻留工具失败', 500);
     }
   }
@@ -736,6 +746,12 @@ class InternalController {
    */
   setResidentSkillManager(manager) {
     this.residentSkillManager = manager;
+    this.residentCapabilityExecutor?.setResidentSkillManager(manager);
+  }
+
+  setResidentCapabilityExecutor(executor) {
+    this.residentCapabilityExecutor = executor || null;
+    this.residentCapabilityExecutor?.setResidentSkillManager(this.residentSkillManager);
   }
 
   /**

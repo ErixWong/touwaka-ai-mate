@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import ToolManager from '../lib/tool-manager.js';
-import CapabilityRegistry from '../lib/capability-registry.js';
+import CapabilityRegistry, { CAPABILITY_KINDS } from '../lib/capability-registry.js';
 import StatelessHTTPTransport from '../lib/mcp-stateless-http.js';
 import { __testing as mcpClientTesting } from '../data/skills/mcp-client/index.js';
 
@@ -16,6 +16,8 @@ function createToolManager(residentSkillManager) {
     mcpToolRegistry: new Map(),
     getMcpToolDefinitions: ToolManager.prototype.getMcpToolDefinitions,
     getToolInfo: ToolManager.prototype.getToolInfo,
+    getCapabilityPermissionDenied: ToolManager.prototype.getCapabilityPermissionDenied,
+    getUserRole: ToolManager.prototype.getUserRole,
     executeMcpTool: ToolManager.prototype.executeMcpTool,
   };
 }
@@ -69,6 +71,11 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
       serverName: 'alpha',
       toolName: 'echo',
     });
+    toolManager.capabilityRegistry.register({
+      id: 'mcp_alpha_echo',
+      kind: CAPABILITY_KINDS.MCP,
+      definition: { type: 'function', function: { name: 'mcp_alpha_echo' } },
+    });
 
     const result = await toolManager.executeMcpTool(
       'mcp_alpha_echo',
@@ -92,6 +99,27 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
         workingDirectory: '/data/work/user-1/task-1',
       },
     });
+});
+
+test('ToolManager rejects unregistered MCP ids instead of parsing them', async () => {
+  let invokeCount = 0;
+  const toolManager = createToolManager({
+    async invokeByName() {
+      invokeCount += 1;
+      return { ok: true };
+    },
+  });
+
+  const result = await toolManager.executeMcpTool(
+    'mcp_alpha_unregistered_tool',
+    {},
+    { userId: 'user-1' },
+    'MCP/alpha/unregistered_tool',
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'MCP capability not registered: mcp_alpha_unregistered_tool');
+  assert.equal(invokeCount, 0);
 });
 
 test('connectServer rolls back state when tool caching fails after connect', async () => {

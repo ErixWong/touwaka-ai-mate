@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import ToolManager from '../lib/tool-manager.js';
+import { CAPABILITY_KINDS } from '../lib/capability-registry.js';
 
 function createManager() {
   return new ToolManager(null, 'expert-dispatch-test');
@@ -40,7 +41,11 @@ async function testBuiltinWinsOverRegistry() {
     return {};
   };
 
-  const result = await manager.executeTool('execute', { type: 'javascript' }, {});
+  const result = await manager.executeTool(
+    'execute',
+    { type: 'javascript' },
+    { session: { roles: ['creator'] } },
+  );
 
   assert.deepEqual(result, { success: true, route: 'builtin' });
   assert.deepEqual(calls.map(call => call.route), ['builtin']);
@@ -62,6 +67,15 @@ async function testMcpWinsOverRegistry() {
     skillName: 'Fake Skill',
     toolName: 'mcp_demo_search',
     scriptPath: 'index.js',
+  });
+  manager.mcpToolRegistry.set('mcp_demo_search', {
+    serverName: 'demo',
+    toolName: 'search',
+  });
+  manager.capabilityRegistry.register({
+    id: 'mcp_demo_search',
+    kind: CAPABILITY_KINDS.MCP,
+    definition: { type: 'function', function: { name: 'mcp_demo_search' } },
   });
   manager.executeMcpTool = async (toolId, params, context, display) => {
     calls.push({ route: 'mcp', toolId, params, context, display });
@@ -123,6 +137,11 @@ async function testResidentDispatchesBeforeSkillRunner() {
     toolName: 'exec',
     scriptPath: 'resident://exec',
   });
+  manager.capabilityRegistry.register({
+    id: 'ssh__exec',
+    kind: CAPABILITY_KINDS.RESIDENT,
+    definition: { type: 'function', function: { name: 'ssh__exec' } },
+  });
   manager.executeResidentTool = async (scriptPath, skillId, params, context, display, toolId) => {
     calls.push({ route: 'resident', scriptPath, skillId, params, context, display, toolId });
     return { success: true, route: 'resident' };
@@ -158,6 +177,11 @@ async function testNormalSkillDispatchesToSkillRunner() {
     skillName: 'SearXNG',
     toolName: 'search',
     scriptPath: 'index.js',
+  });
+  manager.capabilityRegistry.register({
+    id: 'searxng__search',
+    kind: CAPABILITY_KINDS.SKILL,
+    definition: { type: 'function', function: { name: 'searxng__search' } },
   });
   manager.skillLoader.executeSkillTool = async (skillId, toolName, params, context, scriptPath) => {
     calls.push({ route: 'skill', skillId, toolName, params, context, scriptPath });
@@ -215,6 +239,49 @@ async function testMissingToolReturnsHonestError() {
   }]);
 }
 
+async function testSkillExecutionUsesCapabilityPolicy() {
+  const manager = createManager();
+  let executionCount = 0;
+
+  manager.skills.set('restricted-skill', { id: 'restricted-skill', name: 'Restricted Skill' });
+  manager.toolRegistry.set('restricted__run', {
+    skillId: 'restricted-skill',
+    skillName: 'Restricted Skill',
+    toolName: 'run',
+    scriptPath: 'index.js',
+  });
+  manager.capabilityRegistry.register({
+    id: 'restricted__run',
+    kind: CAPABILITY_KINDS.SKILL,
+    definition: { type: 'function', function: { name: 'restricted__run' } },
+    metadata: { allowedRoles: ['admin'] },
+  });
+  manager.skillLoader.executeSkillTool = async () => {
+    executionCount += 1;
+    return { should_not_run: true };
+  };
+
+  const result = await manager.executeTool('restricted__run', {}, { session: { roles: ['user'] } });
+
+  assert.equal(result.permissionDenied, true);
+  assert.equal(executionCount, 0);
+}
+
+async function testMcpExecutionRequiresRegistration() {
+  const manager = createManager();
+  let executionCount = 0;
+  manager.executeMcpTool = async () => {
+    executionCount += 1;
+    return { success: true };
+  };
+
+  const result = await manager.executeTool('mcp_unregistered_search', {}, {});
+
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'MCP tool not registered: mcp_unregistered_search');
+  assert.equal(executionCount, 0);
+}
+
 async function main() {
   await testBuiltinWinsOverRegistry();
   await testMcpWinsOverRegistry();
@@ -222,6 +289,8 @@ async function main() {
   await testResidentDispatchesBeforeSkillRunner();
   await testNormalSkillDispatchesToSkillRunner();
   await testMissingToolReturnsHonestError();
+  await testSkillExecutionUsesCapabilityPolicy();
+  await testMcpExecutionRequiresRegistration();
 
   console.log('ToolManager dispatch tests passed.');
 }

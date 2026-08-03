@@ -40,6 +40,7 @@ import { createDocumentEmbeddingTask } from '../lib/document-embedding-worker.js
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
+import ResidentCapabilityExecutor from '../lib/resident-capability-executor.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
@@ -259,6 +260,7 @@ class ApiServer {
     this.chatService = null;
     this.scheduler = null;
     this.residentSkillManager = null;
+    this.residentCapabilityExecutor = null;
     this.mcpToolCaller = null;
     this.tokenCleanupJob = null;
     this.appClock = null;
@@ -379,6 +381,10 @@ class ApiServer {
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
     await this.residentSkillManager.initialize();
+    this.residentCapabilityExecutor = new ResidentCapabilityExecutor(this.db, {
+      residentSkillManager: this.residentSkillManager,
+    });
+    await this.residentCapabilityExecutor.initialize();
     this.chatService.setResidentSkillManager(this.residentSkillManager);
     this.mcpToolCaller = new McpToolCaller(this.db, {
       residentSkillManager: this.residentSkillManager,
@@ -401,6 +407,7 @@ class ApiServer {
       maxConsecutiveFailures: parseInt(process.env.APP_CLOCK_MAX_FAILURES, 10) || 3,
       failureCooldownMs: parseInt(process.env.APP_CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
       residentSkillManager: this.residentSkillManager,
+      residentCapabilityExecutor: this.residentCapabilityExecutor,
       mcpToolCaller: this.mcpToolCaller,
       skillLoader: new SkillLoader(this.db),
     });
@@ -498,6 +505,7 @@ class ApiServer {
       internal: new InternalController(this.db, {
         expertConnections: streamController.expertConnections, // 传递 SSE 连接池
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
+        residentCapabilityExecutor: this.residentCapabilityExecutor,
       }),
       internalDocs: new InternalDocsController(this.db),
       attachment: new AttachmentController(this.db),
@@ -652,6 +660,7 @@ class ApiServer {
     this.controllers.internal.setExpertConnections(this.controllers.stream.expertConnections);
     // 将 ResidentSkillManager 共享给 InternalController
     this.controllers.internal.setResidentSkillManager(this.residentSkillManager);
+    this.controllers.internal.setResidentCapabilityExecutor(this.residentCapabilityExecutor);
     // 将 ResidentSkillManager 共享给 DebugController
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
     // 将 Scheduler 共享给 DebugController

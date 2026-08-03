@@ -14,6 +14,10 @@ class FakeModel {
     return row ? { ...row } : null;
   }
 
+  async findAll() {
+    return this.rows.map(row => ({ ...row }));
+  }
+
   async upsert(row) {
     this.rows.push({ ...row });
   }
@@ -51,6 +55,8 @@ function makeDb() {
 }
 
 const skillPath = fs.mkdtempSync(path.join(getSkillsPath(), 'controller-registration-'));
+let staticListSkillPath = null;
+let createdSkillPath = null;
 fs.writeFileSync(path.join(skillPath, 'index.js'), `
   module.exports = {
     getSkillDefinition() {
@@ -81,8 +87,61 @@ try {
   assert.equal(response.data.action, 'created');
   assert.equal(response.data.tools_registered, 1);
   assert.equal(db.models.get('skill_tool').rows[0].script_path, 'index.js');
+
+  staticListSkillPath = fs.mkdtempSync(path.join(getSkillsPath(), 'controller-list-static-'));
+  fs.writeFileSync(path.join(staticListSkillPath, 'index.js'), `
+    module.exports = {
+      getSkillDefinition() {
+        throw new Error('listDirectories must not execute skill descriptors');
+      }
+    };
+  `, 'utf8');
+  db.models.get('skill').rows.push({
+    name: 'controller-list-static',
+    description: 'cached description',
+    source_path: `skills/${path.basename(staticListSkillPath)}`,
+  });
+
+  const directoryResponse = {};
+  await controller.listDirectories({
+    success(data) {
+      directoryResponse.data = data;
+    },
+    error(message, status) {
+      throw new Error(`Unexpected directory list error (${status}): ${message}`);
+    },
+  });
+
+  const listed = directoryResponse.data.directories.find(
+    directory => directory.name === path.basename(staticListSkillPath)
+  );
+  assert.equal(listed.description, 'cached description');
+  assert.equal(listed.descriptor_status, 'ready');
+  assert.equal(listed.entrypoint, 'index.js');
+
+  const createdName = `controller-created-${Date.now()}`;
+  createdSkillPath = path.join(getSkillsPath(), createdName);
+  const createResponse = {};
+  await controller.createDirectory({
+    request: { body: { name: createdName, description: 'generated skill' } },
+    success(data) {
+      createResponse.data = data;
+    },
+    error(message, status) {
+      throw new Error(`Unexpected directory create error (${status}): ${message}`);
+    },
+  });
+  assert.equal(createResponse.data.name, createdName);
+  assert.equal(fs.existsSync(path.join(createdSkillPath, 'index.js')), true);
+  assert.equal(fs.existsSync(path.join(createdSkillPath, 'SKILL.md')), false);
 } finally {
   fs.rmSync(skillPath, { recursive: true, force: true });
+  if (staticListSkillPath) {
+    fs.rmSync(staticListSkillPath, { recursive: true, force: true });
+  }
+  if (createdSkillPath) {
+    fs.rmSync(createdSkillPath, { recursive: true, force: true });
+  }
 }
 
 console.log('Skill controller registration tests passed.');

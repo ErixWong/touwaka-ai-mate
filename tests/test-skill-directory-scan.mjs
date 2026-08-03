@@ -35,7 +35,7 @@ async function testScanSkillsDirectory() {
     const discovered = await loader.scanSkillsDirectory();
     const ids = discovered.map(skill => skill.id).sort();
 
-    assert.deepEqual(ids, ['javascript-skill', 'python-skill']);
+    assert.deepEqual(ids, ['entry-only-skill', 'javascript-skill', 'python-skill']);
     assert.ok(discovered.every(skill => path.isAbsolute(skill.path)));
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
