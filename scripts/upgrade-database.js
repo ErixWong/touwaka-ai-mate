@@ -3978,6 +3978,19 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== standard-mgr: revision publish_date ====================
+  {
+    name: 'add publish_date to document_revisions',
+    check: async (conn) => await hasColumn(conn, 'document_revisions', 'publish_date'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE document_revisions
+          ADD COLUMN publish_date DATE NULL COMMENT '发布日期（标准等文档的正式发布日，用于引用版本判定）'
+      `);
+      console.log('  ✓ Added publish_date to document_revisions');
+    }
+  },
+
 ];
 
 /**

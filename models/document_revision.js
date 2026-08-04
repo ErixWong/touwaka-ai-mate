@@ -91,6 +91,11 @@ export default class document_revision extends Model {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    publish_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: "发布日期（标准等文档的正式发布日，用于引用版本判定）"
     }
   }, {
     sequelize,
