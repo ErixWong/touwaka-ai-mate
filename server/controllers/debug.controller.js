@@ -11,6 +11,7 @@ class DebugController {
     this.db = db;
     this.chatService = chatService;
     this.scheduler = null;
+    this.residentSkillManager = null;
   }
 
   /**
@@ -63,7 +64,7 @@ class DebugController {
   async getResidentStatus(ctx) {
     try {
       // 从全局获取 ResidentSkillManager
-      const residentSkillManager = global.residentSkillManager;
+      const residentSkillManager = this.residentSkillManager;
       
       if (!residentSkillManager) {
         ctx.success({
@@ -97,7 +98,7 @@ class DebugController {
       const { tool_id } = ctx.params;
       
       // 从全局获取 ResidentSkillManager
-      const residentSkillManager = global.residentSkillManager;
+      const residentSkillManager = this.residentSkillManager;
       
       if (!residentSkillManager) {
         ctx.error('ResidentSkillManager 未初始化', 503);
@@ -120,7 +121,7 @@ class DebugController {
    * 设置 ResidentSkillManager 引用
    */
   setResidentSkillManager(manager) {
-    global.residentSkillManager = manager;
+    this.residentSkillManager = manager || null;
   }
 
   /**

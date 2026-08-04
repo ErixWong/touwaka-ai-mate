@@ -406,4 +406,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'echarts',
+      name: 'echarts',
+      description: 'ECharts chart generation',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['chart', 'visualization'],
+      scenarios: [
+        { id: 'chart_generation', description: 'Generate charts from structured data', tools: ['generate'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

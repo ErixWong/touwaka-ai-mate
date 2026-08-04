@@ -1565,4 +1565,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'docx',
+      name: 'docx',
+      description: 'Word document reading, writing, editing and conversion',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['document', 'word'],
+      scenarios: [
+        { id: 'word_document_workflow', description: 'Read, write, edit and convert Word documents', tools: ['read', 'write', 'patch', 'edit', 'convert', 'image', 'link', 'toc'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

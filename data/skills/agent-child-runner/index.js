@@ -135,6 +135,25 @@ export function getTools() {
   ];
 }
 
+export function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'agent-child-runner',
+      name: 'agent-child-runner',
+      description: 'Resident process for delegated child-agent runs',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['agent', 'resident'],
+      scenarios: [
+        { id: 'child_agent_delegation', description: 'Start and manage delegated child-agent runs', tools: ['invoke'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
 let worker = createDefaultWorker();
 
 function processCommand(command, params = {}) {

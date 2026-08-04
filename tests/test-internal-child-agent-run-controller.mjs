@@ -7,6 +7,8 @@
 
 import assert from 'node:assert/strict';
 import InternalController from '../server/controllers/internal.controller.js';
+import ResidentCapabilityExecutor, { buildResidentCapabilityId } from '../lib/resident-capability-executor.js';
+import { CAPABILITY_KINDS } from '../lib/capability-registry.js';
 import { sealAgentDelegation } from '../lib/agent/agent-delegation-integrity.js';
 import {
   buildRootAgentInvocationContext,
@@ -87,6 +89,24 @@ function createCtx(body = {}) {
       this.body = { code: status, message, data: extra };
     },
   };
+}
+
+function createResidentCapabilityExecutor(residentSkillManager) {
+  const executor = new ResidentCapabilityExecutor(createDbStub(), {
+    residentSkillManager,
+  });
+  executor.capabilityRegistry.register({
+    id: buildResidentCapabilityId('agent-child-runner', 'invoke'),
+    kind: CAPABILITY_KINDS.RESIDENT,
+    definition: { type: 'function', function: { name: 'agent-child-runner/invoke' } },
+    metadata: {
+      skillId: 'agent-child-runner',
+      toolName: 'invoke',
+      scopes: ['internal'],
+      allowedRoles: ['*'],
+    },
+  });
+  return executor;
 }
 
 async function testExecuteChildAgentRunUsesChatService() {
@@ -208,6 +228,7 @@ async function testInvokeResidentToolPassesUserContextAndTimeout() {
       return { ok: true };
     },
   });
+  controller.setResidentCapabilityExecutor(createResidentCapabilityExecutor(controller.residentSkillManager));
   const ctx = createCtx({
     skill_id: 'agent-child-runner',
     tool_name: 'invoke',
@@ -241,6 +262,31 @@ async function testInvokeResidentToolPassesUserContextAndTimeout() {
   }]);
 }
 
+async function testInvokeResidentToolRejectsUnregisteredCapability() {
+  let invoked = false;
+  const residentSkillManager = {
+    async invokeByName() {
+      invoked = true;
+      return { ok: true };
+    },
+  };
+  const controller = new InternalController(createDbStub());
+  controller.setResidentSkillManager(residentSkillManager);
+  controller.setResidentCapabilityExecutor(createResidentCapabilityExecutor(residentSkillManager));
+
+  const ctx = createCtx({
+    skill_id: 'mcp-client',
+    tool_name: 'invoke',
+    params: { action: 'call_tool' },
+  });
+  await controller.invokeResidentTool(ctx);
+
+  assert.equal(invoked, false);
+  assert.equal(ctx.status, 404);
+  assert.equal(ctx.body.data.code, 'RESIDENT_CAPABILITY_NOT_REGISTERED');
+  assert.equal(controller.residentCapabilityExecutor.capabilityRegistry.has(buildResidentCapabilityId('mcp-client', 'invoke')), false);
+}
+
 async function main() {
   await testExecuteChildAgentRunUsesChatService();
   await testRejectsPrincipalMismatch();
@@ -248,6 +294,7 @@ async function main() {
   await testRejectsUnauthorizedChildExpert();
   await testRejectsMissingDelegation();
   await testInvokeResidentToolPassesUserContextAndTimeout();
+  await testInvokeResidentToolRejectsUnregisteredCapability();
 
   console.log('Internal child Agent run controller tests passed.');
 }

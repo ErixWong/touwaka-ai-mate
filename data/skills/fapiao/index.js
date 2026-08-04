@@ -1116,4 +1116,23 @@ async function execute(toolName, params, context = {}) {
   }
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'fapiao',
+      name: 'fapiao',
+      description: 'Structured extraction from invoice PDFs',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['invoice', 'pdf'],
+      scenarios: [
+        { id: 'invoice_extraction', description: 'Extract structured data from invoice PDFs', tools: ['extract'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

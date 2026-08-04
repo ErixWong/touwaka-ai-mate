@@ -13,7 +13,10 @@ PyPDF Skill - PDF 处理技能 (Python 版)
 注意：进程 cwd 已在 VM 启动时设置为正确的工作目录，技能代码直接使用相对路径即可。
 """
 
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+except ModuleNotFoundError:  # Descriptor mode must not require optional runtime dependencies.
+    fitz = None
 import os
 import sys
 import json
@@ -1272,6 +1275,26 @@ def getTools():
     ]
 
 
+def getSkillDefinition():
+    """Return the machine-readable SkillDefinition v1 descriptor."""
+    return {
+        "schema_version": 1,
+        "skill": {
+            "id": "pypdf",
+            "name": "pypdf",
+            "description": "PDF reading, extraction, rendering and writing tools",
+            "version": "1.0.0",
+            "runtime": "python",
+            "entrypoint": "index.py",
+            "tags": ["document", "pdf", "python"],
+            "scenarios": [
+                {"id": "pdf_workflow", "description": "Read, extract, render and transform PDF files", "tools": [tool["name"] for tool in getTools()]},
+            ],
+        },
+        "tools": getTools(),
+    }
+
+
 # 技能执行入口 - 适配 skill-runner.js 调用协议
 def execute(tool_name: str, params: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """技能执行入口 - 由 skill-runner.js 调用"""
@@ -1305,6 +1328,12 @@ def dispatch(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
             'success': False,
             'error': f'Unknown tool: {tool_name}'
         }
+
+    if fitz is None:
+        return {
+            'success': False,
+            'error': 'PyMuPDF (fitz) is required to execute the pypdf skill'
+        }
     
     try:
         func = tool_map[tool_name]
@@ -1335,6 +1364,10 @@ if __name__ == '__main__':
                 'error': 'Usage: python index.py <tool_name> [params_json]'
             }, ensure_ascii=False))
             sys.exit(1)
+
+        if sys.argv[1] == '--get-definition':
+            print(json.dumps(getSkillDefinition(), ensure_ascii=False))
+            sys.exit(0)
         
         tool_name = sys.argv[1]
         params = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
