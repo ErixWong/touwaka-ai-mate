@@ -555,146 +555,137 @@ class StandardMgrService {
   // 让 LLM 转写原文既贵又会引入内容漂移，违反原文保真原则。
   // ============================================================
 
+  // ── R3-1 归一化字符映射表 ──
+
   /**
-   * 查找子串在字符串中第 n 次出现的位置（0-indexed）
+   * 构建字符归一化映射表
+   *
+   * 归一化规则：
+   * - 全角标点 → 半角（：→: 等）
+   * - 折叠连续空白为单个空格
+   * - 中文引号/破折号归一化
+   *
+   * @returns {{ normalized: string, origPos: number[] }}
+   *   normalized: 归一化后的字符串
+   *   origPos: normalized[i] → 原文中的字符位置
    */
-  _nthIndexOf(str, search, n) {
-    if (n <= 0 || !search) return -1;
-    let pos = -1;
-    for (let i = 0; i < n; i++) {
-      pos = str.indexOf(search, pos + 1);
-      if (pos === -1) return -1;
+  _buildCharNormMap(text) {
+    // 全角→半角映射
+    const FW_MAP = {
+      '\u3000': ' ', '\uff1a': ':', '\uff0c': ',',
+      '\uff08': '(', '\uff09': ')', '\u3001': ',',
+      '\u3002': '.', '\uff0e': '.',
+      '\u2018': "'", '\u2019': "'",
+      '\u201c': '"', '\u201d': '"',
+      '\uff0d': '-', '\u2013': '-', '\u2014': '-',
+      '\uff0f': '/',
+    };
+
+    const isCJK = (cp) =>
+      (cp >= 0x4E00 && cp <= 0x9FFF)
+      || (cp >= 0x3400 && cp <= 0x4DBF)
+      || (cp >= 0xF900 && cp <= 0xFAFF);
+
+    // ── 阶段 1：逐字符映射 + 空白折叠 ──
+    const raw = [];       // 映射后字符
+    const rawPos = [];    // 对应原文位置
+    let prevSpace = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const m = FW_MAP[ch] !== undefined ? FW_MAP[ch] : ch;
+      if (m === ' ' || m === '\t' || m === '\n' || m === '\r') {
+        if (!prevSpace) { raw.push(' '); rawPos.push(i); prevSpace = true; }
+      } else {
+        raw.push(m); rawPos.push(i); prevSpace = false;
+      }
     }
-    return pos;
+
+    // ── 阶段 2：移除 CJK 间的 OCR artifact 空格 ──
+    // 例："试 验" (OCR 误加空格) → "试验"
+    const chars = [];
+    const origPos = [];
+    for (let i = 0; i < raw.length; i++) {
+      if (raw[i] === ' '
+        && i > 0 && i < raw.length - 1
+        && isCJK(raw[i - 1].codePointAt(0))
+        && isCJK(raw[i + 1].codePointAt(0))) {
+        // CJK 间空格：跳过（不加入 chars/origPos）
+        continue;
+      }
+      chars.push(raw[i]);
+      origPos.push(rawPos[i]);
+    }
+
+    return { normalized: chars.join(''), origPos };
   }
 
   /**
-   * 为指定标准重建全部带锚点副本
+   * 归一化模糊匹配：在原文（或已插入标记的 anchored text）中定位 source_text
    *
-   * 逻辑：
-   * 1. 按 source_outline_id 分组取该标准全部引用记录（按 occurrence_index 排序）
-   * 2. 从 document_outlines 取 original_text 与 text_hash
-   * 3. 在 original_text 中按 source_text 第 (occurrence_index+1) 次出现的位置后插入锚点标记
-   * 4. upsert app_standard_anchored_section（唯一键 revision_id+outline_id）
+   * R3-1：用于解决全角冒号等 OCR 识别差异导致的精确匹配失败。
    *
-   * 标记格式复用 ANCHOR_PATTERN：<anchor+ref_anchor_id>
+   * @param {string} text - 原文（可能含已插入的锚点标记）
+   * @param {string} search - 要搜索的源文本
+   * @param {number} fromIndex - 原文坐标起始搜索位置
+   * @returns {{ pos: number, end: number } | null}
+   */
+  _findFuzzy(text, search, fromIndex = 0) {
+    const { normalized: textN, origPos: tMap } = this._buildCharNormMap(text);
+    const { normalized: searchN } = this._buildCharNormMap(search);
+
+    // fromIndex → 归一化坐标
+    let nFrom = 0;
+    for (let i = 0; i < tMap.length; i++) {
+      if (tMap[i] >= fromIndex) { nFrom = i; break; }
+    }
+
+    const nPos = textN.indexOf(searchN, nFrom);
+    if (nPos < 0) return null;
+
+    const startOrig = tMap[nPos];
+    const endN = nPos + searchN.length - 1;
+    const endOrig = endN < tMap.length
+      ? tMap[endN] + (text[tMap[endN]] !== undefined && /[\u4e00-\u9fff]/.test(text[tMap[endN]]) ? 1 : 1)
+      : startOrig + search.length;
+
+    return { pos: startOrig, end: endOrig };
+  }
+
+  // ── R3-1+R3-2 带锚点副本重建（唯一实现） ──
+
+  /**
+   * 为指定标准重建全部带锚点副本，在自己的事务中完成。
+   *
+   * R3-2：不再重复实现，委托 _rebuildAnchoredSectionsInTx 处理。
+   * R3-4：miss 持久化（needs_review + last_anchor_build_error）。
    *
    * @param {string} standardId
    * @returns {Promise<{sections: number, anchors: number, misses: Array}>}
    */
   async rebuildAnchoredSections(standardId) {
-    const RefAnchor = this._refAnchor();
-    const AnchoredSection = this._anchoredSection();
     const AppStandard = this._appStandard();
-
-    // 校验标准存在
     const standard = await AppStandard.findByPk(standardId, { raw: true });
     if (!standard) throw new Error(`Standard not found: ${standardId}`);
 
-    // 获取该标准全部引用记录
-    const anchors = await RefAnchor.findAll({
-      where: { standard_id: standardId },
-      order: [['source_outline_id', 'ASC'], ['occurrence_index', 'ASC']],
-      raw: true,
-    });
-
-    if (anchors.length === 0) {
-      return { sections: 0, anchors: 0, misses: [] };
+    const tx = await this.db.sequelize.transaction();
+    try {
+      const result = await this._rebuildAnchoredSectionsInTx(standardId, tx);
+      await this._persistRebuildMisses(standardId, result.misses, tx);
+      await tx.commit();
+      return result;
+    } catch (error) {
+      await tx.rollback();
+      throw error;
     }
-
-    // 按 source_outline_id 分组
-    const byOutline = {};
-    for (const a of anchors) {
-      if (!byOutline[a.source_outline_id]) byOutline[a.source_outline_id] = [];
-      byOutline[a.source_outline_id].push(a);
-    }
-
-    // R2-1：先从 document_outlines 批量取原文
-    const DocOutline = this.db.getModel('document_outline');
-    const outlineIds = Object.keys(byOutline);
-    const outlineRows = await DocOutline.findAll({
-      where: { id: outlineIds },
-      attributes: ['id', 'revision_id', 'original_text', 'text_hash'],
-      raw: true,
-    });
-    const outlineMap = {};
-    for (const o of outlineRows) {
-      outlineMap[o.id] = o;
-    }
-
-    const misses = [];
-    let sectionCount = 0;
-
-    for (const [outlineId, outlineAnchors] of Object.entries(byOutline)) {
-      const outline = outlineMap[outlineId];
-      if (!outline || !outline.original_text) {
-        misses.push({ outline_id: outlineId, reason: 'outline or original_text not found' });
-        continue;
-      }
-
-      // 从原文派生带锚点副本：按 occurrence_index 升序插入标记
-      let anchoredText = outline.original_text;
-      let allMatched = true;
-
-      // 按 occurrence_index 升序处理（从小到大），每次插入后文本变长但不影响后续位置（后续在原字符串中位置不变）
-      for (const anchor of outlineAnchors) {
-        const searchText = anchor.source_text;
-        const nth = anchor.occurrence_index + 1; // occurrence_index 从 0 开始，nthIndexOf 从 1 开始
-        const pos = this._nthIndexOf(anchoredText, searchText, nth);
-
-        if (pos >= 0) {
-          const marker = `<anchor+${anchor.id}>`;
-          const end = pos + searchText.length;
-          anchoredText = anchoredText.slice(0, end) + marker + anchoredText.slice(end);
-        } else {
-          // 精确匹配失败——OCR 噪声导致 source_text 不是原文子串
-          allMatched = false;
-          misses.push({
-            ref_anchor_id: anchor.id,
-            outline_id: outlineId,
-            source_text: (searchText || '').slice(0, 80),
-            reason: 'source_text not found in original_text (OCR mismatch)',
-          });
-        }
-      }
-
-      // 即使部分锚点匹配失败，仍写入副本（含已成功插入的锚点）
-      const anchorCount = outlineAnchors.length - (allMatched ? 0 : misses.filter(m => m.outline_id === outlineId).length);
-
-      const existingSection = await AnchoredSection.findOne({
-        where: { revision_id: outline.revision_id, outline_id: outlineId },
-      });
-
-      if (existingSection) {
-        await existingSection.update({
-          anchored_text: anchoredText,
-          source_text_hash: outline.text_hash,
-          anchor_count: anchorCount,
-          updated_at: new Date(),
-        });
-      } else {
-        await AnchoredSection.create({
-          id: Utils.newID(),
-          standard_id: standardId,
-          revision_id: outline.revision_id,
-          outline_id: outlineId,
-          anchored_text: anchoredText,
-          source_text_hash: outline.text_hash,
-          anchor_count: anchorCount,
-        });
-      }
-
-      sectionCount++;
-    }
-
-    return { sections: sectionCount, anchors: anchors.length, misses };
   }
 
   /**
    * 更新标准的锚点构建状态
    *
-   * R2-2：当 status 转为 done 时，自动调用 rebuildAnchoredSections 生成带锚点副本，
+   * R2-2：当 status 转为 done 时，自动调用 _rebuildAnchoredSectionsInTx 生成带锚点副本，
    * 副本生成与状态完成在同一事务内原子化——避免"done 了但副本没建"的中间态。
+   * R3-4：status=done 时同时持久化 miss 信息到 needs_review 和 last_anchor_build_error。
    */
   async updateAnchorBuildStatus(standardId, status, errorMessage = null) {
     if (![ANCHOR_BUILD_STATUS.PENDING, ANCHOR_BUILD_STATUS.PROCESSING, ANCHOR_BUILD_STATUS.DONE, ANCHOR_BUILD_STATUS.ERROR].includes(status)) {
@@ -716,11 +707,14 @@ class StandardMgrService {
       updateData.last_anchor_build_error = null;
     }
 
-    // R2-2：status=done 时在同一事务内先生成副本再置状态
     if (status === ANCHOR_BUILD_STATUS.DONE) {
       const tx = await this.db.sequelize.transaction();
       try {
         const rebuildResult = await this._rebuildAnchoredSectionsInTx(standardId, tx);
+
+        // R3-4：miss 持久化 — 合并到 updateData
+        Object.assign(updateData, this._buildMissUpdateData(rebuildResult.misses));
+
         await AppStandard.update(updateData, { where: { id: standardId }, transaction: tx });
         await tx.commit();
         const updated = await AppStandard.findByPk(standardId, { raw: true });
@@ -736,8 +730,47 @@ class StandardMgrService {
   }
 
   /**
-   * R2-1 事务内版本：在给定事务中重建带锚点副本
-   * 由 updateAnchorBuildStatus(status=done) 在同一事务中调用
+   * R3-4：构造 miss 持久化字段
+   */
+  _buildMissUpdateData(misses) {
+    if (!misses || misses.length === 0) {
+      return { needs_review: 0, last_anchor_build_error: null };
+    }
+    const summary = misses.slice(0, 5).map(m =>
+      `[${m.ref_anchor_id || m.outline_id}] ${m.reason}`
+    ).join('; ');
+    const trail = misses.length > 5 ? ` …+${misses.length - 5} more` : '';
+    return {
+      needs_review: 1,
+      last_anchor_build_error: `misses=${misses.length}: ${summary}${trail}`,
+    };
+  }
+
+  /**
+   * R3-4：持久化 miss 信息（供 rebuildAnchoredSections 独立调用使用）
+   */
+  async _persistRebuildMisses(standardId, misses, tx) {
+    const AppStandard = this._appStandard();
+    const fields = this._buildMissUpdateData(misses);
+    await AppStandard.update(
+      { ...fields, updated_at: new Date() },
+      { where: { id: standardId }, transaction: tx },
+    );
+  }
+
+  /**
+   * 事务内重建带锚点副本（唯一实现，兼顾独立调用与 updateAnchorBuildStatus 调用）
+   *
+   * R3-1 算法：
+   * 1. 按 section 分组，按 occurrence_index 升序处理
+   * 2. 顺序扫描：维护 searchFrom 游标，每个锚点从游标后找 source_text 首次出现
+   * 3. 回退 1：游标后找不到 → 从 0 搜一次（容忍 agent 输出顺序小偏差）
+   * 4. 回退 2：精确匹配失败 → 归一化模糊匹配（全角/半角/空白折叠）
+   * 5. 插入标记并更新游标，为下一条锚点保持推进
+   *
+   * @param {string} standardId
+   * @param {object} tx - Sequelize 事务对象
+   * @returns {Promise<{sections: number, anchors: number, misses: Array}>}
    */
   async _rebuildAnchoredSectionsInTx(standardId, tx) {
     const RefAnchor = this._refAnchor();
@@ -779,25 +812,52 @@ class StandardMgrService {
         continue;
       }
 
+      // ── R3-1 顺序扫描算法 ──
       let anchoredText = outline.original_text;
-      let matchedCount = 0;
+      let searchFrom = 0; // 游标：从此位置开始搜索（原文坐标，随插入增长）
+      let sectionMisses = 0;
 
       for (const anchor of outlineAnchors) {
-        const pos = this._nthIndexOf(anchoredText, anchor.source_text, anchor.occurrence_index + 1);
+        let pos = -1;
+        let method = 'exact';
+
+        // 1. 从游标后精确匹配
+        pos = anchoredText.indexOf(anchor.source_text, searchFrom);
+
+        // 2. 回退：游标后找不到 → 全文搜一次（agent 顺序偏差）
+        if (pos < 0) {
+          pos = anchoredText.indexOf(anchor.source_text, 0);
+          if (pos >= 0) method = 'exact_fallback';
+        }
+
+        // 3. 回退：归一化模糊匹配（全角冒号等 OCR 差异）
+        if (pos < 0) {
+          const fuzzy = this._findFuzzy(anchoredText, anchor.source_text, searchFrom);
+          if (!fuzzy) {
+            const fuzzy0 = this._findFuzzy(anchoredText, anchor.source_text, 0);
+            if (fuzzy0) { pos = fuzzy0.pos; method = 'fuzzy_fallback'; }
+          } else {
+            pos = fuzzy.pos; method = 'fuzzy';
+          }
+        }
+
         if (pos >= 0) {
           const marker = `<anchor+${anchor.id}>`;
           const end = pos + anchor.source_text.length;
           anchoredText = anchoredText.slice(0, end) + marker + anchoredText.slice(end);
-          matchedCount++;
+          searchFrom = end + marker.length; // 推进游标到插入点之后
         } else {
+          sectionMisses++;
           misses.push({
             ref_anchor_id: anchor.id,
             outline_id: outlineId,
             source_text: (anchor.source_text || '').slice(0, 80),
-            reason: 'source_text not found (OCR mismatch)',
+            reason: 'source_text not found (OCR/fuzzy mismatch)',
           });
         }
       }
+
+      const matchedCount = outlineAnchors.length - sectionMisses;
 
       const existingSection = await AnchoredSection.findOne({
         where: { revision_id: outline.revision_id, outline_id: outlineId },
