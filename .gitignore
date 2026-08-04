@@ -27,3 +27,6 @@ frontend/auto-imports.d.ts
 
 # 任务文档
 docs/tasks/
+
+# 标准管理 demo 设计稿（本地参考，不入库）
+apps/standard-mgr/demo.html
