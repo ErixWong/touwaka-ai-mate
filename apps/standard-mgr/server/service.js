@@ -581,40 +581,20 @@ class StandardMgrService {
       '\uff0f': '/',
     };
 
-    const isCJK = (cp) =>
-      (cp >= 0x4E00 && cp <= 0x9FFF)
-      || (cp >= 0x3400 && cp <= 0x4DBF)
-      || (cp >= 0xF900 && cp <= 0xFAFF);
+    const isWhitespace = (ch) => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
 
-    // ── 阶段 1：逐字符映射 + 空白折叠 ──
-    const raw = [];       // 映射后字符
-    const rawPos = [];    // 对应原文位置
-    let prevSpace = false;
+    // ── R5-1：全量去空白（移除所有 \\s） + 全角→半角 ──
+    // 不再分两个阶段；去除全部空白（包括 ASCII↔CJK 边界的空格）
+    // tMap 保持归一化位置 → 原文坐标的映射
+    const chars = [];
+    const origPos = [];
 
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       const m = FW_MAP[ch] !== undefined ? FW_MAP[ch] : ch;
-      if (m === ' ' || m === '\t' || m === '\n' || m === '\r') {
-        if (!prevSpace) { raw.push(' '); rawPos.push(i); prevSpace = true; }
-      } else {
-        raw.push(m); rawPos.push(i); prevSpace = false;
-      }
-    }
-
-    // ── 阶段 2：移除 CJK 间的 OCR artifact 空格 ──
-    // 例："试 验" (OCR 误加空格) → "试验"
-    const chars = [];
-    const origPos = [];
-    for (let i = 0; i < raw.length; i++) {
-      if (raw[i] === ' '
-        && i > 0 && i < raw.length - 1
-        && isCJK(raw[i - 1].codePointAt(0))
-        && isCJK(raw[i + 1].codePointAt(0))) {
-        // CJK 间空格：跳过（不加入 chars/origPos）
-        continue;
-      }
-      chars.push(raw[i]);
-      origPos.push(rawPos[i]);
+      if (isWhitespace(m)) continue; // 跳过所有空白
+      chars.push(m);
+      origPos.push(i);
     }
 
     return { normalized: chars.join(''), origPos };
@@ -644,12 +624,8 @@ class StandardMgrService {
     if (nPos < 0) return null;
 
     const startOrig = tMap[nPos];
-    // R4-1: end 取归一化匹配终点的下一个字符在原文坐标系的位置
-    // stage-2 CJK 去空格后 tMap 可能跳跃 >1，必须用映射而非 +search.length
-    const afterEndN = nPos + searchN.length;
-    const endOrig = afterEndN < tMap.length
-      ? tMap[afterEndN]
-      : text.length;
+    // R5-2: end = 最后一个匹配字符的原文坐标 +1
+    const endOrig = tMap[nPos + searchN.length - 1] + 1;
 
     return { pos: startOrig, end: endOrig };
   }

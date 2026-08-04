@@ -3832,6 +3832,48 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== R5-3：source_text 描述加入"逐字"约束 ====================
+  // R4-2 迁移基于 target_outline_id 存在性做 check，第一次运行就写入了旧版 source_text
+  // 描述（不含"逐字"），后续编辑代码不会触发重跑。本迁移专门检查 source_text 描述
+  // 是否含"逐字"，若不含则就地 UPDATE parameters JSON。
+  {
+    name: 'add verbatim constraint to write_anchor_result source_text (R5-3)',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT parameters FROM skill_tools WHERE name = 'write_anchor_result' AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')"
+      );
+      if (rows.length === 0) return true; // 无记录，跳过
+      try {
+        const params = typeof rows[0].parameters === 'string' ? JSON.parse(rows[0].parameters) : rows[0].parameters;
+        const desc = params?.properties?.source_text?.description || '';
+        return desc.includes('逐字');
+      } catch {
+        return false; // JSON 解析失败，需要修复
+      }
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT parameters FROM skill_tools WHERE name = 'write_anchor_result' AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')"
+      );
+      if (rows.length === 0) return;
+
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const params = typeof rows[0].parameters === 'string' ? JSON.parse(rows[0].parameters) : rows[0].parameters;
+
+      params.properties.source_text.description =
+        '原始引用文本（必须是被引章节原文的逐字连续子串，禁止改写、合并、补字或转述）';
+
+      await conn.execute(
+        `UPDATE skill_tools
+         SET parameters = ?, updated_at = ?
+         WHERE name = 'write_anchor_result'
+           AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')`,
+        [JSON.stringify(params), now]
+      );
+      console.log('  ✓ Updated write_anchor_result source_text description → verbatim constraint');
+    }
+  },
+
   // ==================== revision_label 唯一性约束 ====================
   // 文档平台版本管理 P0 收敛：为 revision_label 添加 NOT NULL + UNIQUE 约束
   // 审计: audit-round02 §7.2 / audit-round03 §7.1
