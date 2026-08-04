@@ -369,7 +369,16 @@ export async function listDocuments(params?: {
   page?: number
   size?: number
 }): Promise<DocListResult> {
-  return apiRequest<DocListResult>(apiClient.get('/docs/documents', { params }))
+  const { size, ...rest } = params || {}
+  const result = await apiRequest<{ items: DocDocument[]; pagination: { page: number; page_size: number; total: number } }>(
+    apiClient.get('/docs/documents', { params: { ...rest, page_size: size } })
+  )
+  return {
+    items: result.items || [],
+    total: result.pagination?.total ?? 0,
+    page: result.pagination?.page ?? 1,
+    page_size: result.pagination?.page_size ?? size ?? 20,
+  }
 }
 
 export async function getDocument(documentId: string): Promise<DocDocument> {

@@ -137,7 +137,15 @@ export async function listCollectionDocuments(id: string, params?: {
   keyword?: string
   processing_status?: string
 }): Promise<CollectionDocumentListResult> {
-  return apiRequest<CollectionDocumentListResult>(apiClient.get(`/docs/collections/${id}/documents`, { params }))
+  const result = await apiRequest<{ items: CollectionDocumentItem[]; pagination: { page: number; page_size: number; total: number } }>(
+    apiClient.get(`/docs/collections/${id}/documents`, { params })
+  )
+  return {
+    items: result.items || [],
+    total: result.pagination?.total ?? 0,
+    page: result.pagination?.page ?? 1,
+    page_size: result.pagination?.page_size ?? params?.size ?? 20,
+  }
 }
 
 export async function addDocumentToCollection(collectionId: string, documentId: string): Promise<CollectionActionResult> {
