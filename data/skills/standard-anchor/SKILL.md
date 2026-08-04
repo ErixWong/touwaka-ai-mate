@@ -24,7 +24,7 @@ user-invocable: false
 | `select_revision_candidate` | 按版本线索筛选最匹配 revision（纯函数） | `revisions`, `hints` |
 | `find_section_candidates` | 按节号/标题查找候选 section | `document_id`, `revision_id`, `title_hint`, `seq_hint`, `query_text` |
 | `list_reference_gaps` | 列出待回填引用缺口 | `standard_id` |
-| `write_anchor_result` | 写入引用判断结果（幂等） | `standard_id`, `source_revision_id`, `source_outline_id`, `occurrence_index`, `source_text`, `ref_type`, `status`, `source` |
+| `write_anchor_result` | 写入引用判断结果（幂等） | `standard_id`, `source_revision_id`, `source_outline_id`, `occurrence_index`, `source_text`（必须是原文逐字连续子串），`ref_type`, `status`, `source` |
 
 ## 数据访问路径
 

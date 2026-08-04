@@ -644,10 +644,12 @@ class StandardMgrService {
     if (nPos < 0) return null;
 
     const startOrig = tMap[nPos];
-    const endN = nPos + searchN.length - 1;
-    const endOrig = endN < tMap.length
-      ? tMap[endN] + (text[tMap[endN]] !== undefined && /[\u4e00-\u9fff]/.test(text[tMap[endN]]) ? 1 : 1)
-      : startOrig + search.length;
+    // R4-1: end 取归一化匹配终点的下一个字符在原文坐标系的位置
+    // stage-2 CJK 去空格后 tMap 可能跳跃 >1，必须用映射而非 +search.length
+    const afterEndN = nPos + searchN.length;
+    const endOrig = afterEndN < tMap.length
+      ? tMap[afterEndN]
+      : text.length;
 
     return { pos: startOrig, end: endOrig };
   }
@@ -820,6 +822,7 @@ class StandardMgrService {
       for (const anchor of outlineAnchors) {
         let pos = -1;
         let method = 'exact';
+        let matchEnd = 0; // R4-1: 匹配区间在原文字符坐标系下的结束位置
 
         // 1. 从游标后精确匹配
         pos = anchoredText.indexOf(anchor.source_text, searchFrom);
@@ -833,17 +836,21 @@ class StandardMgrService {
         // 3. 回退：归一化模糊匹配（全角冒号等 OCR 差异）
         if (pos < 0) {
           const fuzzy = this._findFuzzy(anchoredText, anchor.source_text, searchFrom);
-          if (!fuzzy) {
-            const fuzzy0 = this._findFuzzy(anchoredText, anchor.source_text, 0);
-            if (fuzzy0) { pos = fuzzy0.pos; method = 'fuzzy_fallback'; }
+          if (fuzzy) {
+            pos = fuzzy.pos; matchEnd = fuzzy.end; method = 'fuzzy';
           } else {
-            pos = fuzzy.pos; method = 'fuzzy';
+            const fuzzy0 = this._findFuzzy(anchoredText, anchor.source_text, 0);
+            if (fuzzy0) { pos = fuzzy0.pos; matchEnd = fuzzy0.end; method = 'fuzzy_fallback'; }
           }
         }
 
         if (pos >= 0) {
           const marker = `<anchor+${anchor.id}>`;
-          const end = pos + anchor.source_text.length;
+          // R4-1: 模糊匹配时原文字符跨度 ≠ source_text.length（归一化前后差异），
+          // 必须用 _findFuzzy 返回的 end（经 tMap 映射回原文坐标系）
+          const end = (method === 'fuzzy' || method === 'fuzzy_fallback')
+            ? matchEnd
+            : pos + anchor.source_text.length;
           anchoredText = anchoredText.slice(0, end) + marker + anchoredText.slice(end);
           searchFrom = end + marker.length; // 推进游标到插入点之后
         } else {

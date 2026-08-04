@@ -468,7 +468,7 @@ function getTools() {
           source_revision_id: { type: 'string', description: '来源 revision ID' },
           source_outline_id: { type: 'string', description: '来源 outline ID' },
           occurrence_index: { type: 'number', description: '同 section 内出现序号（从 0 开始）' },
-          source_text: { type: 'string', description: '原始引用文本' },
+          source_text: { type: 'string', description: '原始引用文本（必须是被引章节原文的逐字连续子串，禁止改写、合并、补字或转述）' },
           context_text: { type: 'string', description: '引用上下文' },
           ref_type: { type: 'string', enum: ['explicit', 'implicit'], description: '引用类型' },
           status: { type: 'string', enum: ['valid', 'suspected', 'gap', 'invalid'], description: '引用状态' },
