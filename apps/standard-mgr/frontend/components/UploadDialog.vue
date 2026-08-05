@@ -34,6 +34,7 @@
               <div class="sm-doc-item-title">{{ doc.title }}</div>
               <div class="sm-doc-item-meta">
                 <el-tag size="small" type="info">{{ doc.doc_type || 'standard' }}</el-tag>
+                <span class="sm-doc-item-id">{{ doc.id }}</span>
                 <el-tag v-if="onboardedDocIds.has(doc.id)" size="small" type="success">
                   {{ $t('apps.standardMgr.alreadyOnboarded') }}
                 </el-tag>
@@ -41,11 +42,50 @@
             </div>
           </div>
         </div>
+
+        <!-- R9-2: 平台模式：选版本 -->
+        <div v-else-if="platformStep === 'revision'" class="sm-platform-revision">
+          <el-descriptions v-if="selectedDoc" :column="1" border size="small" style="margin-bottom:12px">
+            <el-descriptions-item :label="$t('apps.standardMgr.standardName')">
+              {{ selectedDoc.title }}
+            </el-descriptions-item>
+            <el-descriptions-item label="文档 ID">
+              <code class="sm-id-mono">{{ selectedDoc.id }}</code>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-loading="revisionLoading" class="sm-revision-list">
+            <div v-if="revisions.length === 0 && !revisionLoading" class="sm-doc-empty">
+              {{ $t('apps.standardMgr.noRevisions') }}
+            </div>
+            <el-radio-group v-model="selectedRevisionId" class="sm-revision-group">
+              <div
+                v-for="rev in revisions"
+                :key="rev.id"
+                class="sm-revision-item"
+                :class="{ current: rev.is_current }"
+              >
+                <el-radio :value="rev.id">
+                  <span class="sm-rev-label">{{ rev.revision_label || `v${rev.revision_no}` }}</span>
+                  <code class="sm-id-mono">{{ rev.id }}</code>
+                  <el-tag v-if="rev.is_current" size="small" type="success" class="sm-rev-current-tag">
+                    {{ $t('apps.standardMgr.currentRevision') }}
+                  </el-tag>
+                </el-radio>
+              </div>
+            </el-radio-group>
+          </div>
+        </div>
+
         <!-- 平台模式：表单 -->
         <div v-else-if="platformStep === 'form'">
           <el-descriptions v-if="selectedDoc" :column="1" border size="small" style="margin-bottom:16px">
             <el-descriptions-item :label="$t('apps.standardMgr.standardName')">
               {{ selectedDoc.title }}
+            </el-descriptions-item>
+            <el-descriptions-item label="文档 ID"><code class="sm-id-mono">{{ selectedDoc.id }}</code></el-descriptions-item>
+            <el-descriptions-item v-if="selectedRevision" :label="$t('apps.standardMgr.revisionLabel')">
+              {{ selectedRevision.revision_label || `v${selectedRevision.revision_no}` }}
+              <code class="sm-id-mono">{{ selectedRevision.id }}</code>
             </el-descriptions-item>
           </el-descriptions>
           <el-form :model="form" label-width="100px">
@@ -142,10 +182,16 @@
       <el-button @click="$emit('close')" :disabled="submitting">{{ $t('common.cancel') }}</el-button>
 
       <template v-if="activeMode === 'platform' && !submitting">
-        <el-button v-if="platformStep === 'form'" @click="platformStep = 'search'">
+        <el-button v-if="platformStep === 'revision'" @click="platformStep = 'search'">
           {{ $t('apps.standardMgr.prevStep') }}
         </el-button>
-        <el-button v-if="platformStep === 'search'" type="primary" :disabled="!selectedDoc" @click="goToPlatformForm">
+        <el-button v-if="platformStep === 'form'" @click="platformStep = 'revision'">
+          {{ $t('apps.standardMgr.prevStep') }}
+        </el-button>
+        <el-button v-if="platformStep === 'search'" type="primary" :disabled="!selectedDoc" @click="goToRevisionSelect">
+          {{ $t('apps.standardMgr.nextStep') }}
+        </el-button>
+        <el-button v-if="platformStep === 'revision'" type="primary" :disabled="!selectedRevisionId" @click="goToPlatformForm">
           {{ $t('apps.standardMgr.nextStep') }}
         </el-button>
         <el-button v-if="platformStep === 'form'" type="primary" :disabled="!canSubmitPlatform" :loading="submitting" @click="handlePlatformSubmit">
@@ -179,9 +225,11 @@ import {
   getDocumentStatus,
   createStandard,
   searchDocuments,
+  getDocumentRevisions,
   type StandardType,
   type DocCollection,
   type DocumentInfo,
+  type DocumentRevision,
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
 
@@ -201,12 +249,18 @@ type OnboardMode = 'platform' | 'upload'
 const activeMode = ref<OnboardMode>('platform')
 
 // ==================== 平台模式 ====================
-const platformStep = ref<'search' | 'form'>('search')
+const platformStep = ref<'search' | 'revision' | 'form'>('search')
 const searchKeyword = ref('')
 const docSearchLoading = ref(false)
 const searchResults = ref<DocumentInfo[]>([])
 const selectedDoc = ref<DocumentInfo | null>(null)
 const onboardedDocIds = computed(() => props.onboardedDocIds || new Set<string>())
+
+// R9-2: 版本选择
+const revisionLoading = ref(false)
+const revisions = ref<DocumentRevision[]>([])
+const selectedRevisionId = ref<string | null>(null)
+const selectedRevision = computed(() => revisions.value.find(r => r.id === selectedRevisionId.value) || null)
 
 // ==================== 上传模式 ====================
 const uploadStep = ref(1)
@@ -267,8 +321,32 @@ function selectPlatformDoc(doc: DocumentInfo) {
   form.value.standard_name = doc.title
 }
 
-function goToPlatformForm() {
+/** R9-2: 选中文档后获取版本列表 */
+async function goToRevisionSelect() {
   if (!selectedDoc.value) return
+  revisionLoading.value = true
+  revisions.value = []
+  selectedRevisionId.value = null
+  try {
+    revisions.value = await getDocumentRevisions(selectedDoc.value.id)
+    // 默认选中当前版本
+    const current = revisions.value.find(r => (r as any).is_current)
+    if (current) selectedRevisionId.value = current.id
+    else {
+      const first = revisions.value[0]
+      if (first) selectedRevisionId.value = first.id
+    }
+  } catch {
+    useToastStore().error(i18n.global.t('apps.standardMgr.loadRevisionsFailed'))
+    return
+  } finally {
+    revisionLoading.value = false
+  }
+  platformStep.value = 'revision'
+}
+
+function goToPlatformForm() {
+  if (!selectedRevisionId.value) return
   platformStep.value = 'form'
 }
 
@@ -281,6 +359,7 @@ async function handlePlatformSubmit() {
       standard_type: form.value.standard_type,
       standard_code: form.value.standard_code,
       standard_name: form.value.standard_name,
+      ...(selectedRevisionId.value ? { revision_id: selectedRevisionId.value } : {}),
     })
     useToastStore().success(i18n.global.t('apps.standardMgr.uploadSuccess'))
     emit('onboarded')
@@ -379,7 +458,16 @@ async function handleUploadSubmit() {
 .sm-doc-item:hover { border-color: #409eff; }
 .sm-doc-item.onboarded { opacity: .5; cursor: not-allowed; }
 .sm-doc-item-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
-.sm-doc-item-meta { display: flex; gap: 6px; }
+.sm-doc-item-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sm-doc-item-id { font-size: 11px; color: #909399; font-family: monospace; }
+.sm-id-mono { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; background: #f5f7fa; padding: 1px 4px; border-radius: 3px; }
+.sm-platform-revision { min-height: 200px; }
+.sm-revision-list { margin-top: 12px; }
+.sm-revision-group { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.sm-revision-item { padding: 6px 0; }
+.sm-revision-item.current { font-weight: 500; }
+.sm-rev-label { margin: 0 8px 0 4px; }
+.sm-rev-current-tag { margin-left: 8px; }
 .sm-upload-progress { padding: 20px; min-height: 150px; }
 .sm-upload-status-text { text-align: center; margin-top: 20px; font-size: 14px; color: #606266; }
 </style>

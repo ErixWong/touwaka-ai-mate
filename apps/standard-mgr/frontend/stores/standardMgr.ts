@@ -6,14 +6,14 @@
  * - 计数字段以服务端为唯一真相，禁止前端重算
  * - anchor_build_status 直接展示服务端字段
  *
- * R8-4: 多标准详情页签支持
- * - openTabs + activeTabId 管理页签生命周期
- * - tabCaches 按 standard_id 缓存详情/副本/锚点
- * - selectedStandardId / standardDetail 等保持向后兼容（computed from active tab）
+ * R9-1: 页签用唯一 tab_id 标识（允许同标准多页签）
+ * - openTabs 的 key 从 standard_id 改为 tab_id
+ * - openTab(standardId, {allowDuplicate}) 支持强制新建
+ * - 数据缓存仍按 standard_id 共享（tabCaches 不动）
  */
 
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import {
   listStandards,
   getStandard,
@@ -31,10 +31,11 @@ import { useToastStore } from '@/stores/toast'
 import { i18n } from '@/i18n'
 
 // ============================================================
-// R8-4: 页签/缓存类型
+// R9-1: 页签/缓存类型
 // ============================================================
 
 interface StandardTabDescriptor {
+  tab_id: string
   standard_id: string
   standard_code: string
   standard_name: string
@@ -45,6 +46,11 @@ interface TabCache {
   sections: AnchoredSection[]
   anchors: RefAnchor[]
   gaps: GapItem[]
+}
+
+let _tabSeq = 0
+function generateTabId(): string {
+  return `tab_${Date.now()}_${++_tabSeq}`
 }
 
 // ============================================================
@@ -60,10 +66,10 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // R8-4: 多页签管理
+  // R9-1: 多页签管理 — 以 tab_id 为身份
   const openTabs = ref<StandardTabDescriptor[]>([])
-  const activeTabId = ref<string | null>(null)
-  const tabCaches = ref<Record<string, TabCache>>({})
+  const activeTabId = ref<string | null>(null) // tab_id
+  const tabCaches = ref<Record<string, TabCache>>({}) // keyed by standard_id
 
   // UI 状态
   const selectedAnchorId = ref<string | null>(null)
@@ -71,37 +77,43 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   const rebuildError = ref<string | null>(null)
 
   // ============================================================
-  // 向后兼容的计算属性（从 active tab 派生）
+  // R9-1: activeTabId → standard_id 映射
   // ============================================================
 
-  /** @deprecated R8-4: 用 activeTabId 代替，保留兼容 */
-  const selectedStandardId = computed(() => activeTabId.value)
+  /** 当前激活页签对应的 standard_id */
+  const activeStandardId = computed(() => {
+    const tab = openTabs.value.find(t => t.tab_id === activeTabId.value)
+    return tab?.standard_id ?? null
+  })
+
+  /** @deprecated R9-1: 用 activeStandardId 代替，保留兼容 */
+  const selectedStandardId = computed(() => activeStandardId.value)
 
   const selectedStandard = computed(() => {
-    return standards.value.find(s => s.id === activeTabId.value) || null
+    return standards.value.find(s => s.id === activeStandardId.value) || null
   })
 
   /** 当前激活页签的详情 */
   const standardDetail = computed(() => {
-    const id = activeTabId.value
+    const id = activeStandardId.value
     return id ? (tabCaches.value[id]?.detail ?? null) : null
   })
 
   /** 当前激活页签的副本 */
   const anchoredSections = computed(() => {
-    const id = activeTabId.value
+    const id = activeStandardId.value
     return id ? (tabCaches.value[id]?.sections ?? []) : []
   })
 
   /** 当前激活页签的锚点 */
   const refAnchors = computed(() => {
-    const id = activeTabId.value
+    const id = activeStandardId.value
     return id ? (tabCaches.value[id]?.anchors ?? []) : []
   })
 
   /** 当前激活页签的 gaps */
   const gaps = computed(() => {
-    const id = activeTabId.value
+    const id = activeStandardId.value
     return id ? (tabCaches.value[id]?.gaps ?? []) : []
   })
 
@@ -126,7 +138,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   })
 
   // ============================================================
-  // R8-4: 页签操作
+  // R9-1: 页签操作
   // ============================================================
 
   /** 确保缓存槽存在 */
@@ -137,49 +149,62 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     return tabCaches.value[standardId]
   }
 
-  /** 打开/切换到标准 */
-  function openTab(standardId: string) {
-    // 查找已有页签
-    const existing = openTabs.value.find(t => t.standard_id === standardId)
+  /** R9-1: 打开/切换到标准。allowDuplicate=true 时总是新建页签 */
+  function openTab(standardId: string, opts?: { allowDuplicate?: boolean }): string {
+    const existing = !opts?.allowDuplicate
+      ? openTabs.value.find(t => t.standard_id === standardId)
+      : undefined
 
-    if (!existing) {
-      const std = standards.value.find(s => s.id === standardId)
-      if (!std) return
-      openTabs.value.push({
-        standard_id: standardId,
-        standard_code: std.standard_code || '',
-        standard_name: std.standard_name || '',
-      })
+    if (existing) {
+      activeTabId.value = existing.tab_id
+      selectedAnchorId.value = null
+      return existing.tab_id
     }
 
-    // 切到该页签
-    activeTabId.value = standardId
+    const std = standards.value.find(s => s.id === standardId)
+    if (!std) return ''
+
+    const tab_id = generateTabId()
+    openTabs.value.push({
+      tab_id,
+      standard_id: standardId,
+      standard_code: std.standard_code || '',
+      standard_name: std.standard_name || '',
+    })
+
+    activeTabId.value = tab_id
     selectedAnchorId.value = null
+    return tab_id
   }
 
-  /** 关闭页签 */
-  function closeTab(standardId: string) {
-    const idx = openTabs.value.findIndex(t => t.standard_id === standardId)
+  /** 关闭页签（按 tab_id） */
+  function closeTab(tabId: string) {
+    const idx = openTabs.value.findIndex(t => t.tab_id === tabId)
     if (idx === -1) return
 
-    openTabs.value.splice(idx, 1)
-    // 清理缓存
-    delete tabCaches.value[standardId]
+    const removed = openTabs.value.splice(idx, 1)[0]
+    if (!removed) return
+
+    // 清理缓存（仅当没有其他页签引用此 standard_id 时）
+    const stillOpen = openTabs.value.some(t => t.standard_id === removed.standard_id)
+    if (!stillOpen) {
+      delete tabCaches.value[removed.standard_id]
+    }
 
     // 激活相邻页签
-    if (activeTabId.value === standardId) {
+    if (activeTabId.value === tabId) {
       if (openTabs.value.length > 0) {
         const next = openTabs.value[Math.min(idx, openTabs.value.length - 1)]
-        if (next) activeTabId.value = next.standard_id
+        if (next) activeTabId.value = next.tab_id
       } else {
         activeTabId.value = null
       }
     }
   }
 
-  /** 切换页签 */
-  function switchTab(standardId: string) {
-    activeTabId.value = standardId
+  /** 切换页签（按 tab_id） */
+  function switchTab(tabId: string) {
+    activeTabId.value = tabId
     selectedAnchorId.value = null
   }
 
@@ -201,9 +226,9 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
   }
 
-  /** R8-4: 选择标准 → 打开页签 + 加载数据 */
+  /** R9-1: 选择标准 → 始终开新页签 + 加载数据 */
   async function selectStandard(standardId: string) {
-    openTab(standardId)
+    openTab(standardId, { allowDuplicate: true })
     await loadTabData(standardId)
   }
 
@@ -211,7 +236,6 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   async function loadTabData(standardId: string) {
     const cache = ensureCache(standardId)
 
-    // 若已缓存详情则跳过（但可手动刷新）
     const fetchTasks: Promise<void>[] = []
 
     if (!cache.detail) {
@@ -334,8 +358,9 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
         source: 'manual',
       })
       useToastStore().success(i18n.global.t('apps.standardMgr.manualFixSuccess'))
-      if (activeTabId.value) {
-        await loadTabData(activeTabId.value)
+      const stdId = activeStandardId.value || data.standard_id
+      if (stdId) {
+        await loadTabData(stdId)
       }
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.manualFixFailed'))
@@ -365,6 +390,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     activeTabId,
     // 计算
     selectedStandard,
+    activeStandardId,
     anchorStatusMap,
     anchorsByOutline,
     // 操作
@@ -373,7 +399,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     fetchGaps,
     triggerRebuild,
     submitManualFix,
-    // R8-4: 页签操作
+    // R9-1: 页签操作
     openTab,
     closeTab,
     switchTab,

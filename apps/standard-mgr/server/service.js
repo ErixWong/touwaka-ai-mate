@@ -561,13 +561,51 @@ class StandardMgrService {
     const limit = options.limit || 100;
     const offset = options.offset || 0;
 
-    return await RefAnchor.findAll({
+    const anchors = await RefAnchor.findAll({
       where,
       order: [['source_revision_id', 'ASC'], ['source_outline_id', 'ASC'], ['occurrence_index', 'ASC']],
       limit,
       offset,
       raw: true,
     });
+
+    // R9-3: 批量补 target_document_title + target_outline_title
+    return await this._enrichAnchorTargets(anchors);
+  }
+
+  /**
+   * R9-3: 为锚点列表补全目标文档标题和目标章节标题
+   */
+  async _enrichAnchorTargets(anchors) {
+    if (!anchors || anchors.length === 0) return anchors;
+
+    const Document = this.db.getModel('document');
+    const DocOutline = this.db.getModel('document_outline');
+
+    // 收集所有非空 target_document_id / target_outline_id
+    const docIds = [...new Set(anchors.map(a => a.target_document_id).filter(Boolean))];
+    const outlineIds = [...new Set(anchors.map(a => a.target_outline_id).filter(Boolean))];
+
+    const [docs, outlines] = await Promise.all([
+      docIds.length > 0
+        ? Document.findAll({ where: { id: docIds }, attributes: ['id', 'title'], raw: true })
+        : [],
+      outlineIds.length > 0
+        ? DocOutline.findAll({ where: { id: outlineIds }, attributes: ['id', 'title'], raw: true })
+        : [],
+    ]);
+
+    const docTitleMap = {};
+    for (const d of docs) docTitleMap[d.id] = d.title;
+
+    const outlineTitleMap = {};
+    for (const o of outlines) outlineTitleMap[o.id] = o.title;
+
+    return anchors.map(a => ({
+      ...a,
+      target_document_title: a.target_document_id ? (docTitleMap[a.target_document_id] || null) : null,
+      target_outline_title: a.target_outline_id ? (outlineTitleMap[a.target_outline_id] || null) : null,
+    }));
   }
 
   /**
@@ -1065,6 +1103,56 @@ class StandardMgrService {
     return { pos: startOrig, end: endOrig };
   }
 
+  /**
+   * R9-5: 片段近似匹配 —— 当精确匹配和归一化模糊匹配都失败时的最后手段
+   *
+   * OCR 极少把一句话的每个字符都打坏。从 source_text 头部取滑动窗口，
+   * 在归一化后的 anchored_text 中查找命中片段，映射回原文坐标。
+   *
+   * @param {string} text - 原文（可能含已插入的锚点标记）
+   * @param {string} search - 要搜索的源文本
+   * @param {number} fromIndex - 原文坐标起始搜索位置
+   * @returns {{ pos: number, end: number } | null}
+   */
+  _findApproximate(text, search, fromIndex = 0) {
+    if (!search || search.length < 4) return null;
+
+    const { normalized: textN, origPos: tMap } = this._buildCharNormMap(text);
+
+    // fromIndex → 归一化坐标
+    let nFrom = 0;
+    for (let i = 0; i < tMap.length; i++) {
+      if (tMap[i] >= fromIndex) { nFrom = i; break; }
+    }
+
+    const maxWindow = Math.min(12, search.length);
+    const { normalized: searchN } = this._buildCharNormMap(search);
+
+    // 滑动窗口：从 maxWindow 递减到 4
+    for (let w = maxWindow; w >= 4; w--) {
+      const window = searchN.slice(0, w);
+      if (window.length < w) continue; // 归一化后不足窗口长度
+
+      // 先从 searchFrom 后搜索
+      let nPos = textN.indexOf(window, nFrom);
+      if (nPos >= 0) {
+        const startOrig = tMap[nPos];
+        const endOrig = tMap[nPos + window.length - 1] + 1;
+        return { pos: startOrig, end: endOrig };
+      }
+
+      // 再从全文开头搜索
+      nPos = textN.indexOf(window, 0);
+      if (nPos >= 0) {
+        const startOrig = tMap[nPos];
+        const endOrig = tMap[nPos + window.length - 1] + 1;
+        return { pos: startOrig, end: endOrig };
+      }
+    }
+
+    return null;
+  }
+
   // ── R3-1+R3-2 带锚点副本重建（唯一实现） ──
 
   /**
@@ -1255,11 +1343,19 @@ class StandardMgrService {
           }
         }
 
+        // R9-5: 4. 回退：片段近似匹配（OCR 极少打坏全部字符——取 source_text 头部滑动窗口在原文中找）
+        if (pos < 0) {
+          const approx = this._findApproximate(anchoredText, anchor.source_text, searchFrom);
+          if (approx) {
+            pos = approx.pos; matchEnd = approx.end; method = 'approximate';
+          }
+        }
+
         if (pos >= 0) {
           const marker = `<anchor+${anchor.id}>`;
           // R4-1: 模糊匹配时原文字符跨度 ≠ source_text.length（归一化前后差异），
           // 必须用 _findFuzzy 返回的 end（经 tMap 映射回原文坐标系）
-          const end = (method === 'fuzzy' || method === 'fuzzy_fallback')
+          const end = (method === 'fuzzy' || method === 'fuzzy_fallback' || method === 'approximate')
             ? matchEnd
             : pos + anchor.source_text.length;
           anchoredText = anchoredText.slice(0, end) + marker + anchoredText.slice(end);
@@ -1324,10 +1420,11 @@ class StandardMgrService {
    * @param {string} params.standard_type - national / industry / enterprise / international
    * @param {string} params.standard_code - 标准编号
    * @param {string} params.standard_name - 标准名称
+   * @param {string} [params.revision_id] - R9-2: 可选指定版本
    * @param {string} [params.user_id] - 操作人 ID
    * @returns {Promise<object>} 创建的 app_standard 记录
    */
-  async createStandard({ document_id, standard_type, standard_code, standard_name, user_id }) {
+  async createStandard({ document_id, standard_type, standard_code, standard_name, revision_id, user_id }) {
     // ---- 1. 校验文档存在与类型 ----
     const Document = this.db.getModel('document');
     const doc = await Document.findByPk(document_id, {
@@ -1367,7 +1464,25 @@ class StandardMgrService {
       throw err;
     }
 
-    // ---- 3. 纳管 ----
+    // ---- 3. R9-2: 确定版本 —— 若指定 revision_id 则校验其属于该文档 ----
+    let effectiveRevisionId = doc.current_revision_id;
+
+    if (revision_id) {
+      const DocRevision = this.db.getModel('document_revision');
+      const rev = await DocRevision.findOne({
+        where: { id: revision_id, document_id },
+        attributes: ['id'],
+        raw: true,
+      });
+      if (!rev) {
+        const err = new Error(`Revision not found or not belonging to document: ${revision_id}`);
+        err.status = 400;
+        throw err;
+      }
+      effectiveRevisionId = revision_id;
+    }
+
+    // ---- 4. 纳管 ----
     const id = Utils.newID();
     const standard = await AppStandard.create({
       id,
@@ -1375,7 +1490,7 @@ class StandardMgrService {
       standard_type,
       standard_code,
       standard_name,
-      current_revision_id: doc.current_revision_id,
+      current_revision_id: effectiveRevisionId,
       is_active: true,
       anchor_build_status: ANCHOR_BUILD_STATUS.PENDING,
       reference_count: 0,

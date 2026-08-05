@@ -41,15 +41,15 @@
             </div>
 
             <!-- 中栏 + 右栏 -->
-            <div v-if="store.selectedStandardId" class="sm-content-area">
-              <!-- R8-4: 多详情页签栏 -->
+            <div v-if="store.activeStandardId" class="sm-content-area">
+              <!-- R9-1: 多详情页签栏（key 用 tab_id） -->
               <div class="sm-detail-tabs">
                 <div
                   v-for="tab in store.openTabs"
-                  :key="tab.standard_id"
+                  :key="tab.tab_id"
                   class="sm-detail-tab"
-                  :class="{ active: tab.standard_id === store.activeTabId }"
-                  @click="store.switchTab(tab.standard_id)"
+                  :class="{ active: tab.tab_id === store.activeTabId }"
+                  @click="store.switchTab(tab.tab_id)"
                 >
                   <span class="sm-detail-tab-label" :title="tab.standard_name || tab.standard_code">
                     {{ tab.standard_code || tab.standard_name || tab.standard_id.slice(0, 8) }}
@@ -58,7 +58,7 @@
                     text
                     size="small"
                     class="sm-detail-tab-close"
-                    @click.stop="handleCloseTab(tab.standard_id)"
+                    @click.stop="handleCloseTab(tab.tab_id)"
                   >
                     <el-icon><Close /></el-icon>
                   </el-button>
@@ -88,10 +88,10 @@
                   <AnchorPanel
                     :anchors="store.refAnchors"
                     :selected-anchor-id="store.selectedAnchorId"
-                    :standard-id="store.selectedStandardId"
+                    :standard-id="store.activeStandardId"
                     :sections="store.anchoredSections"
                     @anchor-click="handleSelectAnchor"
-                    @jump-to-anchor="handleSelectAnchor"
+                    @jump-to-anchor="handleJumpToAnchor"
                     @fix-anchor="handleOpenFixDialog"
                   />
                 </div>
@@ -100,7 +100,7 @@
 
             <!-- 未选择标准时的引导 -->
             <div v-else class="sm-content-area sm-content-empty">
-              <el-empty description="请从左侧列表选择标准查看详情" />
+              <el-empty :description="$t('apps.standardMgr.noDetailOpen')" />
             </div>
           </div>
         </el-tab-pane>
@@ -125,7 +125,7 @@
         {{ showLeftPanel ? '◀' : '▶' }}
       </el-button>
       <el-button
-        v-if="store.selectedStandardId"
+        v-if="store.activeStandardId"
         circle
         size="small"
         @click="showRightPanel = !showRightPanel"
@@ -154,9 +154,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { useStandardMgrStore } from '../stores/standardMgr'
+import { useToastStore } from '@/stores/toast'
+import { i18n } from '@/i18n'
 import StandardListPanel from '../components/StandardListPanel.vue'
 import StandardDetailView from '../components/StandardDetailView.vue'
 import AnchorPanel from '../components/AnchorPanel.vue'
@@ -192,18 +194,28 @@ function handleAnchorClick(anchorId: string) {
 
 function handleSelectAnchor(anchorId: string) {
   store.selectedAnchorId = anchorId
-  // 触发正文滚动（通过 data-anchor-id 查找）
-  const el = document.querySelector(`[data-anchor-id="${anchorId}"]`)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.add('anchor-highlight')
-    setTimeout(() => el.classList.remove('anchor-highlight'), 2000)
+  // 定位到锚点标记的具体位置（📌），而非整个章节
+  const markerEl = document.querySelector(`[data-anchor-id="${anchorId}"]`)
+  if (markerEl) {
+    markerEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    markerEl.classList.add('anchor-highlight')
+    setTimeout(() => markerEl.classList.remove('anchor-highlight'), 2000)
+    return
+  }
+  // 无标记（gap/未落版）→ 降级滚动到所在章节
+  const anchor = store.refAnchors.find(a => a.id === anchorId)
+  if (anchor?.source_outline_id) {
+    const sectionEl = document.querySelector(`[data-outline-id="${anchor.source_outline_id}"]`)
+    if (sectionEl) {
+      sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
   }
 }
 
 function handleRebuild() {
-  if (store.selectedStandardId) {
-    store.triggerRebuild(store.selectedStandardId)
+  const stdId = store.activeStandardId
+  if (stdId) {
+    store.triggerRebuild(stdId)
   }
 }
 
@@ -212,9 +224,50 @@ function handleOnboarded() {
   store.fetchStandards()
 }
 
-/** R8-4: 关闭页签 */
-function handleCloseTab(standardId: string) {
-  store.closeTab(standardId)
+/** R9-1: 关闭页签（按 tab_id） */
+function handleCloseTab(tabId: string) {
+  store.closeTab(tabId)
+}
+
+/** R9-1: 跳转——始终打开目标文档新页签（即使是同一文档也用 allowDuplicate） */
+async function handleJumpToAnchor(anchor: RefAnchor) {
+  if (anchor.status === 'gap') return
+
+  const targetDocId = anchor.target_document_id
+
+  // 确定目标 standard_id
+  let targetStandardId: string | null = null
+  if (targetDocId) {
+    // 跨文档：查找目标文档对应的标准
+    const ts = store.standards.find(s => s.document_id === targetDocId)
+    if (!ts) {
+      useToastStore().warning(i18n.global.t('apps.standardMgr.targetNotOnboarded'))
+      return
+    }
+    targetStandardId = ts.id
+  } else {
+    // 无 target_document_id → 同文档跳转，用当前 standard
+    targetStandardId = store.activeStandardId
+    if (!targetStandardId) return
+  }
+
+  // 始终 allowDuplicate，打开新页签
+  const tabId = store.openTab(targetStandardId, { allowDuplicate: true })
+  await store.loadTabData(targetStandardId)
+  store.switchTab(tabId)
+
+  // 滚动到目标章节
+  const outlineId = targetDocId ? anchor.target_outline_id : anchor.source_outline_id
+  if (outlineId) {
+    await nextTick()
+    await new Promise(r => requestAnimationFrame(r))
+    const el = document.querySelector(`[data-outline-id="${outlineId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      el.classList.add('anchor-highlight')
+      setTimeout(() => el.classList.remove('anchor-highlight'), 2000)
+    }
+  }
 }
 
 function handleOpenFixDialog(anchor: RefAnchor) {

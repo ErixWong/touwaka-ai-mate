@@ -75,7 +75,7 @@ export async function post(ctx, deps) {
     const service = new StandardMgrService(deps.db);
     const body = ctx.request.body;
 
-    const { document_id, standard_type, standard_code, standard_name } = body || {};
+    const { document_id, standard_type, standard_code, standard_name, revision_id } = body || {};
 
     // 参数校验
     if (!document_id) {
@@ -97,6 +97,7 @@ export async function post(ctx, deps) {
 
     const result = await service.createStandard({
       document_id,
+      revision_id,
       standard_type,
       standard_code,
       standard_name,

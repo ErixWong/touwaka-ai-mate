@@ -44,7 +44,7 @@
         </el-empty>
       </div>
 
-      <div v-for="section in sectionsWithAnchors" :key="section.outline_id" class="sm-section-block">
+      <div v-for="section in sectionsWithAnchors" :key="section.outline_id" class="sm-section-block" :data-outline-id="section.outline_id">
         <div class="sm-section-title" v-if="section.title">
           <span class="sm-section-seq">{{ section.seq }}.</span>
           {{ section.title }}

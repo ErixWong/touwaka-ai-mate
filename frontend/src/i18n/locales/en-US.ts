@@ -1462,6 +1462,10 @@ export default {
       manualFixTargetDoc: 'Target Document',
       manualFixTargetRevision: 'Target Revision',
       manualFixTargetOutline: 'Target Section',
+      // R9-3: Anchor detail target split
+      targetDocTitle: 'Target Document',
+      targetDocVersion: 'Target Doc ID',
+      targetOutline: 'Target Section',
       manualFixNote: 'Correction Note',
       manualFixSubmit: 'Submit',
       manualFixSuccess: 'Correction saved',
@@ -1497,12 +1501,17 @@ export default {
       noDocFound: 'No matching documents found',
       alreadyOnboarded: 'Already Onboarded',
       revisionLabel: 'Revision',
+      noRevisions: 'No revisions for this document',
+      currentRevision: 'Current',
+      loadRevisionsFailed: 'Failed to load revisions',
       selectDocHint: 'Select a completed document to onboard as standard',
       // R8-2 Anchor directory tree
       chapterEmpty: '(No anchors)',
       jumpToAnchor: 'Jump',
       detailView: 'Details',
       anchorNoMarker: 'Anchor not found in copy (OCR match failed)',
+      anchorNoSourceMarker: 'Source marker missing, will jump to target section',
+      targetNotOnboarded: 'Target document not onboarded',
       collapseAll: 'Collapse All',
       expandAll: 'Expand All',
       // R8-3 Filter page

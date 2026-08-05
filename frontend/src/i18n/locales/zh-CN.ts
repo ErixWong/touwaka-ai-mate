@@ -1404,6 +1404,10 @@ export default {
       manualFixTargetDoc: '目标文档',
       manualFixTargetRevision: '目标版本',
       manualFixTargetOutline: '目标章节',
+      // R9-3: 锚点详情目标拆分
+      targetDocTitle: '目标文档',
+      targetDocVersion: '目标文档 ID',
+      targetOutline: '目标章节',
       manualFixNote: '修正说明',
       manualFixSubmit: '提交修正',
       manualFixSuccess: '修正已保存',
@@ -1439,12 +1443,17 @@ export default {
       noDocFound: '未找到匹配的文档',
       alreadyOnboarded: '已纳管',
       revisionLabel: '版本',
+      noRevisions: '该文档暂无版本',
+      currentRevision: '当前版本',
+      loadRevisionsFailed: '加载版本列表失败',
       selectDocHint: '选择一篇已完成的文档纳管为标准',
       // R8-2 锚点目录树
       chapterEmpty: '（无锚点）',
       jumpToAnchor: '跳转',
       detailView: '详情',
       anchorNoMarker: '锚点未落入副本（OCR 匹配失败）',
+      anchorNoSourceMarker: '源标记缺失，将跳至目标章节',
+      targetNotOnboarded: '目标文档未纳管',
       collapseAll: '全部收起',
       expandAll: '全部展开',
       // R8-3 筛选页

@@ -103,6 +103,10 @@ export interface RefAnchor {
   target_document_id: string | null
   target_revision_id: string | null
   target_outline_id: string | null
+  /** R9-3: 后端补全的目标文档标题 */
+  target_document_title?: string | null
+  /** R9-3: 后端补全的目标章节标题 */
+  target_outline_title?: string | null
   candidates_json: object | null
   status_reason: string | null
   retry_count: number
@@ -139,6 +143,7 @@ export interface DocumentRevision {
   id: string
   revision_no: number
   revision_label: string | null
+  is_current?: boolean
   created_at: string
 }
 
@@ -165,6 +170,8 @@ export async function createStandard(data: {
   standard_type: StandardType
   standard_code: string
   standard_name: string
+  /** R9-2: 可选指定版本 */
+  revision_id?: string
 }): Promise<StandardItem> {
   return apiRequest<StandardItem>(apiClient.post(`${PREFIX}/standards`, data))
 }

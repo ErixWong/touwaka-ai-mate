@@ -13,16 +13,31 @@
       <el-empty :description="$t('apps.standardMgr.noAnchors')" :image-size="60" />
     </div>
 
-    <!-- R8-2: 全量章节目录树 -->
-    <div v-else class="sm-anchor-tree">
-      <div v-for="section in sortedSections" :key="section.outline_id" class="sm-tree-chapter">
+    <div v-else class="sm-anchor-body">
+      <!-- R9-4: 状态筛选 chips -->
+      <div class="sm-anchor-filters">
+        <el-button-group size="small" class="sm-filter-group">
+          <el-button
+            v-for="f in statusFilters"
+            :key="f.value"
+            :type="filterStatus === f.value ? 'primary' : 'default'"
+            @click="filterStatus = f.value"
+          >
+            {{ f.label }} ({{ f.count }})
+          </el-button>
+        </el-button-group>
+      </div>
+
+      <!-- R8-2: 全量章节目录树 -->
+      <div class="sm-anchor-tree">
+      <div v-for="section in sortedSections" :key="section.outline_id" class="sm-tree-chapter" :class="{ dimmed: isChapterDimmed(section.outline_id) }">
         <div class="sm-tree-chapter-header" @click="toggleChapter(section.outline_id)">
           <el-icon class="sm-tree-arrow" :class="{ expanded: expandedChapters.has(section.outline_id) }">
             <ArrowRight />
           </el-icon>
           <span class="sm-tree-chapter-title">{{ section.title || `${section.seq}` }}</span>
-          <el-tag v-if="getSectionAnchorCount(section.outline_id) > 0" size="small" type="info" class="sm-tree-chapter-badge">
-            {{ getSectionAnchorCount(section.outline_id) }}
+          <el-tag v-if="getSectionTotalAnchors(section.outline_id) > 0" size="small" type="info" class="sm-tree-chapter-badge">
+            {{ getSectionTotalAnchors(section.outline_id) }}
           </el-tag>
         </div>
 
@@ -32,7 +47,7 @@
             {{ $t('apps.standardMgr.chapterEmpty') }}
           </div>
 
-          <!-- 锚点条目 -->
+          <!-- 锚点条目：点击条目本身 → 滚动中间栏到该锚点所在章节 -->
           <div
             v-for="anchor in getSectionAnchors(section.outline_id)"
             :key="anchor.id"
@@ -44,6 +59,7 @@
               'status-suspected': anchor.status === 'suspected',
               'status-invalid': anchor.status === 'invalid',
             }"
+            @click="handleItemClick(anchor)"
           >
             <div class="sm-tree-anchor-top">
               <el-tag :type="anchorStatusTag(anchor.status)" size="small">
@@ -53,11 +69,25 @@
             </div>
             <div class="sm-tree-anchor-actions">
               <el-tooltip
-                v-if="!hasMarker(anchor)"
+                v-if="!canJump(anchor)"
                 :content="$t('apps.standardMgr.anchorNoMarker')"
                 placement="top"
               >
                 <el-button size="small" disabled>
+                  {{ $t('apps.standardMgr.jumpToAnchor') }}
+                </el-button>
+              </el-tooltip>
+              <el-tooltip
+                v-else-if="!hasMarker(anchor)"
+                :content="$t('apps.standardMgr.anchorNoSourceMarker')"
+                placement="top"
+              >
+                <el-button
+                  size="small"
+                  type="primary"
+                  link
+                  @click.stop="handleJump(anchor)"
+                >
                   {{ $t('apps.standardMgr.jumpToAnchor') }}
                 </el-button>
               </el-tooltip>
@@ -81,6 +111,7 @@
           </div>
         </div>
       </div>
+    </div>
     </div>
 
     <!-- R8-2: 锚点详情弹窗 -->
@@ -106,11 +137,21 @@
         <el-descriptions-item v-if="detailAnchor.status_reason" :label="$t('apps.standardMgr.manualFixReason')" :span="2">
           {{ detailAnchor.status_reason }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="detailAnchor.target_document_id" label="目标文档">
-          {{ detailAnchor.target_document_id?.slice(0, 12) }}...
+        <!-- R9-3: 目标拆分三行 -->
+        <el-descriptions-item :label="$t('apps.standardMgr.targetDocTitle')" :span="2">
+          {{ detailAnchor.target_document_title || '—' }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="detailAnchor.target_revision_id" label="目标版本">
-          {{ detailAnchor.target_revision_id?.slice(0, 12) }}...
+        <el-descriptions-item v-if="detailAnchor.target_document_id" :label="$t('apps.standardMgr.targetDocVersion')" :span="2">
+          <code class="sm-id-mono">{{ detailAnchor.target_document_id }}</code>
+          <el-button size="small" text @click="copyId(detailAnchor.target_document_id)">
+            <el-icon><CopyDocument /></el-icon>
+          </el-button>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detailAnchor.target_outline_id" :label="$t('apps.standardMgr.targetOutline')" :span="2">
+          {{ detailAnchor.target_outline_title || detailAnchor.target_outline_id }}
+          <el-button v-if="detailAnchor.target_outline_title" size="small" text @click="copyId(detailAnchor.target_outline_id!)">
+            <el-icon><CopyDocument /></el-icon>
+          </el-button>
         </el-descriptions-item>
         <el-descriptions-item v-if="detailAnchor.context_text" :label="$t('apps.standardMgr.manualFixTargetDoc')" :span="2">
           <span class="sm-context-text">{{ detailAnchor.context_text }}</span>
@@ -133,7 +174,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ArrowRight } from '@element-plus/icons-vue'
+import { ArrowRight, CopyDocument } from '@element-plus/icons-vue'
+import { i18n } from '@/i18n'
+import { useToastStore } from '@/stores/toast'
 import type { RefAnchor, RefStatus, AnchoredSection } from '../api/standard-mgr'
 
 const props = defineProps<{
@@ -146,13 +189,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   anchorClick: [anchorId: string]
-  jumpToAnchor: [anchorId: string]
+  /** R9-1: 跳转——传完整 anchor 供上层查找目标 */
+  jumpToAnchor: [anchor: RefAnchor]
   fixAnchor: [anchor: RefAnchor]
 }>()
 
 // ==================== 展开/收起 ====================
 
 const expandedChapters = ref(new Set<string>())
+const filterStatus = ref<string>('all')
 
 // 初始化展开所有含锚点章节
 const initExpand = () => {
@@ -160,6 +205,27 @@ const initExpand = () => {
   expandedChapters.value = new Set(anchorOutlineIds)
 }
 initExpand()
+
+// R9-4: 筛选选项
+const statusCounts = computed(() => {
+  const counts: Record<string, number> = { all: props.anchors.length }
+  for (const a of props.anchors) {
+    counts[a.status] = (counts[a.status] || 0) + 1
+  }
+  return counts
+})
+
+const statusFilters = computed(() => {
+  const statuses = ['valid', 'suspected', 'gap', 'invalid'] as const
+  return [
+    { value: 'all', label: i18n.global.t('common.all'), count: statusCounts.value.all },
+    ...statuses.map(s => ({
+      value: s,
+      label: i18n.global.t(anchorStatusLabel(s)),
+      count: statusCounts.value[s] || 0,
+    })),
+  ]
+})
 
 function toggleChapter(outlineId: string) {
   if (expandedChapters.value.has(outlineId)) {
@@ -195,27 +261,52 @@ const anchorsByOutline = computed(() => {
 })
 
 function getSectionAnchors(outlineId: string): RefAnchor[] {
-  return anchorsByOutline.value[outlineId] || []
+  const list = anchorsByOutline.value[outlineId] || []
+  if (filterStatus.value === 'all') return list
+  return list.filter(a => a.status === filterStatus.value)
 }
 
 function getSectionAnchorCount(outlineId: string): number {
   return getSectionAnchors(outlineId).length
 }
 
+/** R9-4: 某章节的总锚点数（不筛选） */
+function getSectionTotalAnchors(outlineId: string): number {
+  return (anchorsByOutline.value[outlineId] || []).length
+}
+
+/** R9-4: 筛选后章节是否完全无匹配（用于灰态） */
+function isChapterDimmed(outlineId: string): boolean {
+  return filterStatus.value !== 'all'
+    && getSectionTotalAnchors(outlineId) > 0
+    && getSectionAnchorCount(outlineId) === 0
+}
+
 // ==================== 标记检测 ====================
 
-/** 检查锚点在副本中是否有 marker */
+/** R9-0: 检查锚点在副本中是否有 marker。API 返回原始 <anchor+id> 格式 */
 function hasMarker(anchor: RefAnchor): boolean {
   if (!anchor.source_outline_id) return false
   const section = props.sections.find(s => s.outline_id === anchor.source_outline_id)
   if (!section || !section.anchored_text) return false
-  return section.anchored_text.includes(`data-anchor-id="${anchor.id}"`)
+  return section.anchored_text.includes(`<anchor+${anchor.id}>`)
 }
 
-// ==================== 跳转 ====================
+// ==================== 条目点击：选中 + 通知上层滚动到对应章节 ====================
+
+function handleItemClick(anchor: RefAnchor) {
+  emit('anchorClick', anchor.id)
+}
+
+// ==================== 跳转：始终打开目标文档新页签 ====================
+
+/** 是否可跳转——仅 gap 锚点（无目标）禁用 */
+function canJump(anchor: RefAnchor): boolean {
+  return anchor.status !== 'gap'
+}
 
 function handleJump(anchor: RefAnchor) {
-  emit('jumpToAnchor', anchor.id)
+  emit('jumpToAnchor', anchor)
 }
 
 // ==================== 详情弹窗 ====================
@@ -230,6 +321,16 @@ function handleFixFromDetail() {
   if (detailAnchor.value) {
     emit('fixAnchor', detailAnchor.value)
     detailAnchor.value = null
+  }
+}
+
+/** R9-3: 复制 ID 到剪贴板 */
+async function copyId(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    useToastStore().success(i18n.global.t('common.copied'))
+  } catch {
+    // fallback: 静默忽略
   }
 }
 
@@ -264,9 +365,14 @@ function anchorStatusLabel(status: RefStatus): string {
 .sm-toggle-all { margin-left: auto; }
 .sm-anchor-empty { padding: 20px 0; }
 
-.sm-anchor-tree { max-height: calc(100vh - 200px); overflow-y: auto; }
+/* R9-4: 筛选 chips */
+.sm-anchor-filters { margin-bottom: 10px; }
+.sm-filter-group { display: flex; flex-wrap: wrap; }
+
+.sm-anchor-tree { max-height: calc(100vh - 260px); overflow-y: auto; }
 
 .sm-tree-chapter { margin-bottom: 2px; }
+.sm-tree-chapter.dimmed .sm-tree-chapter-header { opacity: 0.5; }
 .sm-tree-chapter-header {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 6px; cursor: pointer; border-radius: 4px;
