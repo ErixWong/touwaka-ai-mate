@@ -103,6 +103,15 @@ export async function post(ctx, deps) {
       user_id: userId,
     });
 
+    // P1-3 触发①：纳管完成后异步执行 gap 回填（不阻塞主请求）
+    // R2-2: 传递 standard_id（而非仅 document_id），用标准编号做归一化比较
+    service.runGapBackfill({
+      trigger: 'onboard',
+      standard_id: result.id,
+    }).catch(err => {
+      logger.error(`[standard-mgr] backfill-onboard failed: ${err.message}`);
+    });
+
     ctx.success(result);
   } catch (err) {
     logger.error(`[standard-mgr] createStandard error: ${err.message}`);

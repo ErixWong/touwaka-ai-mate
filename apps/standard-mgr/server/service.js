@@ -447,6 +447,7 @@ class StandardMgrService {
    */
   async listAllStandards(options = {}) {
     const AppStandard = this._appStandard();
+    const Document = this.db.getModel('document');
     const where = {};
 
     if (options.is_active !== undefined) {
@@ -459,11 +460,29 @@ class StandardMgrService {
       where.standard_type = options.standard_type;
     }
 
-    return await AppStandard.findAll({
+    const standards = await AppStandard.findAll({
       where,
       order: [['created_at', 'DESC']],
       raw: true,
     });
+
+    // R2-8: 附上文档的 current_revision_id，用于前端版本差异提示
+    if (standards.length > 0) {
+      const docIds = [...new Set(standards.map(s => s.document_id).filter(Boolean))];
+      const docs = await Document.findAll({
+        where: { id: docIds },
+        attributes: ['id', 'current_revision_id'],
+        raw: true,
+      });
+      const docMap = {};
+      for (const d of docs) docMap[d.id] = d.current_revision_id;
+
+      for (const s of standards) {
+        s.document_current_revision_id = docMap[s.document_id] || null;
+      }
+    }
+
+    return standards;
   }
 
   /**
@@ -480,10 +499,23 @@ class StandardMgrService {
    */
   async getStandard(standardId) {
     const AppStandard = this._appStandard();
-    return await AppStandard.findOne({
+    const Document = this.db.getModel('document');
+
+    const standard = await AppStandard.findOne({
       where: { id: standardId },
       raw: true,
     });
+
+    // R2-8: 附上文档的 current_revision_id
+    if (standard && standard.document_id) {
+      const doc = await Document.findByPk(standard.document_id, {
+        attributes: ['current_revision_id'],
+        raw: true,
+      });
+      standard.document_current_revision_id = doc ? doc.current_revision_id : null;
+    }
+
+    return standard;
   }
 
   /**
@@ -546,6 +578,409 @@ class StandardMgrService {
       ...options,
       status: REF_STATUS.GAP,
     });
+  }
+
+  /**
+   * P0-2 / R2-5: 获取标准文档所有章节 + 锚点覆盖
+   *
+   * 返回文档的全部 outline（按 seq 排序），每个 outline 附：
+   *  - outline_id, revision_id, seq, title, description, original_text, text_hash
+   *  - anchored_text: 若存在锚点副本，返回带锚点的文本；否则为 original_text
+   *  - anchor_count: 该章节中锚点数量（0 = 无锚点副本）
+   *  - anchors: Array<{ anchor_id, source_text, target_outline_id }>
+   *  - has_anchored: boolean（等同于 anchor_count > 0）
+   *
+   * @param {string} standardId
+   * @returns {Promise<Array>}
+   */
+  async listAnchoredSections(standardId) {
+    const AppStandard = this._appStandard();
+    const AnchoredSection = this._anchoredSection();
+    const DocOutline = this.db.getModel('document_outline');
+    const Document = this.db.getModel('document');
+
+    // 1. 获取标准 → 文档 → 当前 revision
+    const standard = await AppStandard.findByPk(standardId, {
+      attributes: ['id', 'document_id'],
+      raw: true,
+    });
+    if (!standard || !standard.document_id) return [];
+
+    const doc = await Document.findByPk(standard.document_id, {
+      attributes: ['id', 'current_revision_id'],
+      raw: true,
+    });
+    if (!doc || !doc.current_revision_id) return [];
+
+    // 2. 获取该 revision 的全部 outline，按 seq 排序
+    const allOutlines = await DocOutline.findAll({
+      where: { revision_id: doc.current_revision_id },
+      attributes: ['id', 'revision_id', 'title', 'description', 'seq', 'original_text', 'text_hash'],
+      order: [['seq', 'ASC']],
+      raw: true,
+    });
+
+    // 3. 获取已存在的 anchored_section 记录
+    const anchoredRows = await AnchoredSection.findAll({
+      where: { standard_id: standardId },
+      attributes: ['outline_id', 'anchored_text', 'anchor_count'],
+      raw: true,
+    });
+    const anchoredMap = {};
+    for (const row of anchoredRows) anchoredMap[row.outline_id] = row;
+
+    // 4. 组装返回：所有 outline + 锚点覆盖
+    return allOutlines.map(outline => {
+      const anchored = anchoredMap[outline.id];
+      return {
+        outline_id: outline.id,
+        revision_id: outline.revision_id,
+        seq: outline.seq || 0,
+        title: outline.title || '',
+        description: outline.description || '',
+        original_text: outline.original_text || '',
+        text_hash: outline.text_hash || '',
+        anchor_count: anchored ? anchored.anchor_count : 0,
+        has_anchored: anchored ? anchored.anchor_count > 0 : false,
+        anchored_text: anchored ? anchored.anchored_text : outline.original_text,
+      };
+    });
+  }
+
+  // ============================================================
+  // P1-3: runGapBackfill — gap 回填最小闭环
+  //
+  // R2-2（重写匹配）：用标准编号（standard_code）做归一化比较，而非文档标题。
+  //   候选键 = 新纳管/新清洗标准的 standard_code；
+  //   gap 侧从 source_text 提取编号（确定性正则），双侧归一化后比较。
+  //   N2 根因：短文本"按GB/T2828…"不可能包含长标题"GB/T 2828-2012 计数抽样…"
+  //
+  // R2-3（修正触发②语义）：
+  //   clean_done：A 洗完 → 其他标准里引用 A 的 gap 被补齐（链式回填），而非填 A 自己。
+  //
+  // R2-3（retry 纪律）：skip 路径统一更新 retry_count+1 与 last_retry_at。
+  //
+  // 三个触发点：
+  // ① 纳管完成（createStandard 成功后）—— candidate = 新纳管标准的 standard_code
+  // ② 清洗完成（build-status=done 后）—— candidate = 刚洗完标准的 code/name
+  // ③ 新 revision 入库（按发布日期规则重指动态引用）
+  //
+  // 日期规则（README 决议 3）：
+  //   target(B) = max{B版本 | B版本.publish_date ≤ A.publish_date}
+  // ============================================================
+
+  /**
+   * R3-2: 从 source_text 中提取标准编号（确定性正则）
+   *
+   * 匹配模式：GB|QC|ISO|JB|YC|TW[/:]?T?数字序列
+   * 示例：GB/T 19001, QC/T 636, ISO 9001, GBT2828, JB/T 12345
+   * 年份后缀（-2000, .1-2012）由正则末尾 `[\d.\-]*` 覆盖。
+   */
+  _extractStandardCodes(text) {
+    if (!text) return [];
+    const codes = [];
+    // 支持的标准化组织前缀（含常见五类 + 行业前缀）
+    const prefix = '(?:GB|QC|ISO|JB|YC|TW|DB|CB|JT|JTJ|SY|SH|HG|NB|DL|SD|YD)';
+    // [/:]? 后接可选空格与可选 T，再接数字主体与可选版本/年份后缀
+    const re = new RegExp(`${prefix}[/:]?\\s*T?\\s*\\d+[\\d.\\-]*`, 'gi');
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      codes.push(m[0]);
+    }
+    return codes;
+  }
+
+  /**
+   * R3-2: 归一化标准编号——剔除全部非字母数字字符，大写
+   *
+   * N1 根因：旧实现保留 `/` 和 `-`，导致 QCT636-2000 ≠ QC/T636。
+   * 新实现：strip ALL non-alphanumeric → QCT6362000 vs QCT636 → 前缀命中。
+   */
+  _normalizeCode(code) {
+    if (!code) return '';
+    return code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  }
+
+  /**
+   * R3-2: 双向前缀匹配——任一侧是另一侧的前缀即命中
+   *
+   * 覆盖真实数据最常见形态：
+   * - 年份省略：QCT6362000 vs QCT636 → prefix match ✅
+   * - 空格/斜杠变异：QCT636 vs QCT636 → 全等 ✅
+   * - GB/T 2828 vs GB/T 2828.1 → 不误配 ✅（2828 不是 28281 的前缀，反之亦然）
+   *
+   * @param {string} candidate - 候选标准编号（已归一化）
+   * @param {string} extracted - gap 中提取的编号（已归一化）
+   * @returns {boolean}
+   */
+  _codeMatches(candidate, extracted) {
+    if (!candidate || !extracted) return false;
+    return candidate.startsWith(extracted) || extracted.startsWith(candidate);
+  }
+
+  /**
+   * 执行 gap 回填
+   *
+   * @param {object} params
+   * @param {string} params.trigger - 触发来源：'onboard' | 'clean_done' | 'new_revision'
+   * @param {string} [params.document_id] - 新入库文档 ID（onboard / new_revision 触发时传入）
+   * @param {string} [params.standard_id] - 标准 ID（onboard / clean_done 触发时传入）
+   * @returns {Promise<{filled: number, skipped: number, errors: number, details: Array}>}
+   */
+  async runGapBackfill({ trigger, document_id, standard_id } = {}) {
+    const startTime = Date.now();
+    const details = [];
+    let filled = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    try {
+      const RefAnchor = this._refAnchor();
+      const Document = this.db.getModel('document');
+      const AppStandard = this._appStandard();
+
+      let candidateCodes = [];    // 归一化后的标准编号
+      let candidateNames = [];    // 标准名称（用于 clean_done 辅助匹配）
+      let targetStandards = [];   // 要检查 gap 的目标标准列表
+      let candidateStandard = null;
+
+      if ((trigger === 'onboard' || trigger === 'new_revision') && standard_id) {
+        // R2-2: 触发①/③——用新纳管标准的 standard_code
+        candidateStandard = await this.getStandard(standard_id);
+        if (!candidateStandard) {
+          logger.warn(`[standard-mgr][backfill] Standard not found: ${standard_id}`);
+          return { filled: 0, skipped: 0, errors: 0, details: [] };
+        }
+        const normCode = this._normalizeCode(candidateStandard.standard_code);
+        if (normCode) candidateCodes.push(normCode);
+        if (candidateStandard.standard_name) candidateNames.push(candidateStandard.standard_name);
+
+        // R2-2: 同时获取 document 信息（用于写回时的 target）
+        // 遍历其他活跃标准（排除自身，onboard 场景自身还没 gap）
+        targetStandards = await AppStandard.findAll({
+          where: { is_active: true },
+          raw: true,
+        });
+        if (trigger === 'onboard') {
+          // 纳管场景：排除刚纳管的自身
+          targetStandards = targetStandards.filter(s => s.id !== standard_id);
+        }
+      } else if (trigger === 'clean_done' && standard_id) {
+        // R2-3: 触发②——A 洗完 → 其他标准里引用 A 的 gap 被补齐（链式回填）
+        candidateStandard = await this.getStandard(standard_id);
+        if (!candidateStandard) {
+          logger.warn(`[standard-mgr][backfill] Standard not found: ${standard_id}`);
+          return { filled: 0, skipped: 0, errors: 0, details: [] };
+        }
+        const normCode = this._normalizeCode(candidateStandard.standard_code);
+        if (normCode) candidateCodes.push(normCode);
+        if (candidateStandard.standard_name) candidateNames.push(candidateStandard.standard_name);
+
+        // R2-3: 排除自身，目标标准 = 其他活跃标准
+        targetStandards = await AppStandard.findAll({
+          where: { is_active: true },
+          raw: true,
+        });
+        targetStandards = targetStandards.filter(s => s.id !== standard_id);
+      } else if ((trigger === 'onboard' || trigger === 'new_revision') && document_id && !standard_id) {
+        // 兼容旧调用：仅有 document_id 没 standard_id
+        // 尝试从 app_standard 反查 standard_code
+        const onboardedStandard = await AppStandard.findOne({
+          where: { document_id },
+          raw: true,
+        });
+        if (onboardedStandard) {
+          const normCode = this._normalizeCode(onboardedStandard.standard_code);
+          if (normCode) candidateCodes.push(normCode);
+          if (onboardedStandard.standard_name) candidateNames.push(onboardedStandard.standard_name);
+        }
+        targetStandards = await AppStandard.findAll({
+          where: { is_active: true },
+          raw: true,
+        });
+        if (onboardedStandard) {
+          targetStandards = targetStandards.filter(s => s.id !== onboardedStandard.id);
+        }
+      }
+
+      if (targetStandards.length === 0) {
+        logger.info(`[standard-mgr][backfill] No target standards for trigger=${trigger}`);
+        return { filled: 0, skipped: 0, errors: 0, details: [] };
+      }
+
+      // ── 2. 获取候选标准对应的文档信息（用于写回 target） ──
+      let candidateDoc = null;
+      if (candidateStandard?.document_id) {
+        candidateDoc = await Document.findByPk(candidateStandard.document_id, {
+          attributes: ['id', 'current_revision_id'],
+          raw: true,
+        });
+      } else if (document_id) {
+        candidateDoc = await Document.findByPk(document_id, {
+          attributes: ['id', 'current_revision_id'],
+          raw: true,
+        });
+      }
+
+      // ── 3. 遍历目标标准，查找 gap 记录 ──
+      for (const standard of targetStandards) {
+        const gaps = await this.listGaps(standard.id);
+        if (gaps.length === 0) continue;
+
+        for (const gap of gaps) {
+          try {
+            // R3-2: 从 gap.source_text 提取标准编号并归一化
+            const gapCodes = this._extractStandardCodes(gap.source_text);
+            const gapCodesNorm = gapCodes.map(c => this._normalizeCode(c));
+
+            // R3-2: 双向前缀匹配（代替 R2-2 的全等比较）
+            // 覆盖 QC/T 636-2000 vs QC/T 636（年份省略 + 空格/斜杠变异）
+            const matched = gapCodesNorm.some(gc =>
+              candidateCodes.some(cc => this._codeMatches(cc, gc))
+            );
+
+            // 辅助检查：按名称模糊匹配（编号匹配失败时）
+            const sourceTextLower = (gap.source_text || '').toLowerCase();
+            const nameMatched = !matched && candidateNames.some(n =>
+              n && sourceTextLower.includes(n.toLowerCase())
+            );
+
+            if (!matched && !nameMatched) {
+              // R2-3: skip 路径统一更新 retry
+              skipped++;
+              await this._updateGapRetry(gap);
+              details.push({ gap_id: gap.id, result: 'skipped', reason: 'code/name not matched' });
+              continue;
+            }
+
+            // ── 4. 查找目标文档 ──
+            if (!candidateDoc || !candidateDoc.current_revision_id) {
+              skipped++;
+              await this._updateGapRetry(gap);
+              details.push({
+                gap_id: gap.id,
+                result: 'skipped',
+                reason: 'Candidate document has no current_revision_id',
+              });
+              continue;
+            }
+
+            // ── 5. 日期规则校验（仅 new_revision 触发时） ──
+            if (trigger === 'new_revision') {
+              const DocumentRevision = this.db.getModel('document_revision');
+              const sourceRevision = standard.current_revision_id
+                ? await DocumentRevision.findByPk(standard.current_revision_id, {
+                    attributes: ['publish_date'],
+                    raw: true,
+                  })
+                : null;
+
+              const newRevision = await DocumentRevision.findByPk(candidateDoc.current_revision_id, {
+                attributes: ['publish_date'],
+                raw: true,
+              });
+
+              if (sourceRevision && newRevision) {
+                const aDate = sourceRevision.publish_date;
+                const bDate = newRevision.publish_date;
+
+                if (!aDate || !bDate) {
+                  await RefAnchor.update(
+                    {
+                      status: REF_STATUS.SUSPECTED,
+                      status_reason: '回填时缺少发布日期，无法自动判定版本关系',
+                      retry_count: (gap.retry_count || 0) + 1,
+                      last_retry_at: new Date(),
+                      updated_at: new Date(),
+                    },
+                    { where: { id: gap.id } },
+                  );
+                  skipped++;
+                  details.push({
+                    gap_id: gap.id,
+                    result: 'suspected',
+                    reason: 'Missing publish_date for date rule',
+                  });
+                  continue;
+                }
+
+                if (bDate > aDate) {
+                  skipped++;
+                  await this._updateGapRetry(gap);
+                  details.push({
+                    gap_id: gap.id,
+                    result: 'skipped',
+                    reason: `B.publish_date(${bDate}) > A.publish_date(${aDate})`,
+                  });
+                  continue;
+                }
+              }
+            }
+
+            // ── 6. 写回 valid 记录 ──
+            await this.writeAnchorResult({
+              standard_id: standard.id,
+              source_revision_id: gap.source_revision_id,
+              source_outline_id: gap.source_outline_id,
+              occurrence_index: gap.occurrence_index,
+              source_text: gap.source_text,
+              context_text: gap.context_text,
+              ref_type: gap.ref_type,
+              status: REF_STATUS.VALID,
+              source: REF_SOURCE.AUTO_BACKFILL,
+              target_document_id: candidateDoc.id,
+              target_revision_id: candidateDoc.current_revision_id,
+              target_outline_id: null,
+              status_reason: `backfilled on ${trigger}`,
+            });
+
+            filled++;
+            details.push({
+              gap_id: gap.id,
+              result: 'filled',
+              target_document_id: candidateDoc.id,
+            });
+          } catch (gapErr) {
+            errors++;
+            logger.error(`[standard-mgr][backfill] Error processing gap ${gap.id}: ${gapErr.message}`);
+            details.push({
+              gap_id: gap.id,
+              result: 'error',
+              reason: gapErr.message,
+            });
+            await this._updateGapRetry(gap);
+          }
+        }
+      }
+    } catch (err) {
+      logger.error(`[standard-mgr][backfill] runGapBackfill failed: ${err.message}`);
+      errors++;
+    }
+
+    const elapsed = Date.now() - startTime;
+    logger.info(
+      `[standard-mgr][backfill] Completed: filled=${filled} skipped=${skipped} errors=${errors} ` +
+        `trigger=${trigger} elapsed=${elapsed}ms`,
+    );
+
+    return { filled, skipped, errors, details };
+  }
+
+  /**
+   * R2-3: 更新 gap 记录的 retry 信息
+   */
+  async _updateGapRetry(gap) {
+    try {
+      const RefAnchor = this._refAnchor();
+      await RefAnchor.update(
+        {
+          retry_count: (gap.retry_count || 0) + 1,
+          last_retry_at: new Date(),
+          updated_at: new Date(),
+        },
+        { where: { id: gap.id } },
+      );
+    } catch (_) { /* 静默 */ }
   }
 
   // ============================================================

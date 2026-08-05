@@ -44,6 +44,16 @@ export async function post(ctx, deps) {
 
     const result = await service.updateAnchorBuildStatus(standardId, status, error_message || null);
 
+    // P1-3 触发②：清洗完成后异步执行 gap 回填（不阻塞主请求）
+    if (status === 'done') {
+      service.runGapBackfill({
+        trigger: 'clean_done',
+        standard_id: standardId,
+      }).catch(err => {
+        logger.error(`[standard-mgr] backfill-clean-done failed: ${err.message}`);
+      });
+    }
+
     ctx.success(result);
   } catch (err) {
     logger.error(`[standard-mgr] build-status error: ${err.message}`);
