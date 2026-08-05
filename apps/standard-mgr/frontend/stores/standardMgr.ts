@@ -5,10 +5,15 @@
  * - 不新增任何前端侧状态机
  * - 计数字段以服务端为唯一真相，禁止前端重算
  * - anchor_build_status 直接展示服务端字段
+ *
+ * R8-4: 多标准详情页签支持
+ * - openTabs + activeTabId 管理页签生命周期
+ * - tabCaches 按 standard_id 缓存详情/副本/锚点
+ * - selectedStandardId / standardDetail 等保持向后兼容（computed from active tab）
  */
 
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   listStandards,
   getStandard,
@@ -25,21 +30,40 @@ import {
 import { useToastStore } from '@/stores/toast'
 import { i18n } from '@/i18n'
 
+// ============================================================
+// R8-4: 页签/缓存类型
+// ============================================================
+
+interface StandardTabDescriptor {
+  standard_id: string
+  standard_code: string
+  standard_name: string
+}
+
+interface TabCache {
+  detail: StandardItem | null
+  sections: AnchoredSection[]
+  anchors: RefAnchor[]
+  gaps: GapItem[]
+}
+
+// ============================================================
+// Store
+// ============================================================
+
 export const useStandardMgrStore = defineStore('standardMgr', () => {
   // ============================================================
   // 状态
   // ============================================================
 
   const standards = ref<StandardItem[]>([])
-  const selectedStandardId = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // 详情数据
-  const standardDetail = ref<StandardItem | null>(null)
-  const anchoredSections = ref<AnchoredSection[]>([])
-  const refAnchors = ref<RefAnchor[]>([])
-  const gaps = ref<GapItem[]>([])
+  // R8-4: 多页签管理
+  const openTabs = ref<StandardTabDescriptor[]>([])
+  const activeTabId = ref<string | null>(null)
+  const tabCaches = ref<Record<string, TabCache>>({})
 
   // UI 状态
   const selectedAnchorId = ref<string | null>(null)
@@ -47,11 +71,38 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   const rebuildError = ref<string | null>(null)
 
   // ============================================================
-  // 计算属性
+  // 向后兼容的计算属性（从 active tab 派生）
   // ============================================================
 
+  /** @deprecated R8-4: 用 activeTabId 代替，保留兼容 */
+  const selectedStandardId = computed(() => activeTabId.value)
+
   const selectedStandard = computed(() => {
-    return standards.value.find(s => s.id === selectedStandardId.value) || null
+    return standards.value.find(s => s.id === activeTabId.value) || null
+  })
+
+  /** 当前激活页签的详情 */
+  const standardDetail = computed(() => {
+    const id = activeTabId.value
+    return id ? (tabCaches.value[id]?.detail ?? null) : null
+  })
+
+  /** 当前激活页签的副本 */
+  const anchoredSections = computed(() => {
+    const id = activeTabId.value
+    return id ? (tabCaches.value[id]?.sections ?? []) : []
+  })
+
+  /** 当前激活页签的锚点 */
+  const refAnchors = computed(() => {
+    const id = activeTabId.value
+    return id ? (tabCaches.value[id]?.anchors ?? []) : []
+  })
+
+  /** 当前激活页签的 gaps */
+  const gaps = computed(() => {
+    const id = activeTabId.value
+    return id ? (tabCaches.value[id]?.gaps ?? []) : []
   })
 
   /** 锚点 ID → 状态映射（供正文渲染着色） */
@@ -75,6 +126,64 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   })
 
   // ============================================================
+  // R8-4: 页签操作
+  // ============================================================
+
+  /** 确保缓存槽存在 */
+  function ensureCache(standardId: string): TabCache {
+    if (!tabCaches.value[standardId]) {
+      tabCaches.value[standardId] = { detail: null, sections: [], anchors: [], gaps: [] }
+    }
+    return tabCaches.value[standardId]
+  }
+
+  /** 打开/切换到标准 */
+  function openTab(standardId: string) {
+    // 查找已有页签
+    const existing = openTabs.value.find(t => t.standard_id === standardId)
+
+    if (!existing) {
+      const std = standards.value.find(s => s.id === standardId)
+      if (!std) return
+      openTabs.value.push({
+        standard_id: standardId,
+        standard_code: std.standard_code || '',
+        standard_name: std.standard_name || '',
+      })
+    }
+
+    // 切到该页签
+    activeTabId.value = standardId
+    selectedAnchorId.value = null
+  }
+
+  /** 关闭页签 */
+  function closeTab(standardId: string) {
+    const idx = openTabs.value.findIndex(t => t.standard_id === standardId)
+    if (idx === -1) return
+
+    openTabs.value.splice(idx, 1)
+    // 清理缓存
+    delete tabCaches.value[standardId]
+
+    // 激活相邻页签
+    if (activeTabId.value === standardId) {
+      if (openTabs.value.length > 0) {
+        const next = openTabs.value[Math.min(idx, openTabs.value.length - 1)]
+        if (next) activeTabId.value = next.standard_id
+      } else {
+        activeTabId.value = null
+      }
+    }
+  }
+
+  /** 切换页签 */
+  function switchTab(standardId: string) {
+    activeTabId.value = standardId
+    selectedAnchorId.value = null
+  }
+
+  // ============================================================
   // 操作
   // ============================================================
 
@@ -92,24 +201,48 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
   }
 
+  /** R8-4: 选择标准 → 打开页签 + 加载数据 */
   async function selectStandard(standardId: string) {
-    selectedStandardId.value = standardId
-    standardDetail.value = null
-    anchoredSections.value = []
-    refAnchors.value = []
-    gaps.value = []
-    selectedAnchorId.value = null
+    openTab(standardId)
+    await loadTabData(standardId)
+  }
 
-    await Promise.all([
-      fetchStandardDetail(standardId),
-      fetchAnchoredSections(standardId),
-      fetchRefAnchors(standardId),
-    ])
+  /** 加载页签数据（若未缓存） */
+  async function loadTabData(standardId: string) {
+    const cache = ensureCache(standardId)
+
+    // 若已缓存详情则跳过（但可手动刷新）
+    const fetchTasks: Promise<void>[] = []
+
+    if (!cache.detail) {
+      fetchTasks.push(
+        getStandard(standardId).then(d => { cache.detail = d }).catch(err => {
+          useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadDetailFailed'))
+        })
+      )
+    }
+    if (cache.sections.length === 0) {
+      fetchTasks.push(
+        listAnchoredSections(standardId).then(s => { cache.sections = s }).catch(() => {
+          cache.sections = []
+        })
+      )
+    }
+    if (cache.anchors.length === 0) {
+      fetchTasks.push(
+        listRefAnchors(standardId, { limit: 500 }).then(a => { cache.anchors = a }).catch(err => {
+          useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
+        })
+      )
+    }
+
+    await Promise.all(fetchTasks)
   }
 
   async function fetchStandardDetail(standardId: string) {
     try {
-      standardDetail.value = await getStandard(standardId)
+      const cache = ensureCache(standardId)
+      cache.detail = await getStandard(standardId)
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadDetailFailed'))
     }
@@ -117,16 +250,17 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
 
   async function fetchAnchoredSections(standardId: string) {
     try {
-      anchoredSections.value = await listAnchoredSections(standardId)
-    } catch (err: any) {
-      // 副本可能不存在（尚未清洗），静默处理
-      anchoredSections.value = []
+      const cache = ensureCache(standardId)
+      cache.sections = await listAnchoredSections(standardId)
+    } catch {
+      ensureCache(standardId).sections = []
     }
   }
 
   async function fetchRefAnchors(standardId: string) {
     try {
-      refAnchors.value = await listRefAnchors(standardId, { limit: 500 })
+      const cache = ensureCache(standardId)
+      cache.anchors = await listRefAnchors(standardId, { limit: 500 })
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
     }
@@ -134,7 +268,8 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
 
   async function fetchGaps(standardId: string) {
     try {
-      gaps.value = await listGaps(standardId)
+      const cache = ensureCache(standardId)
+      cache.gaps = await listGaps(standardId)
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadGapsFailed'))
     }
@@ -145,20 +280,17 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     rebuildLoading.value = true
     rebuildError.value = null
     try {
-      // 先设为 processing
       await updateBuildStatus(standardId, 'processing')
-      // 刷新详情获取最新状态
       await fetchStandardDetail(standardId)
 
-      // 轮询直到 done 或 error
-      const result = await pollBuildStatus(standardId)
-      if (result.anchor_build_status === 'error') {
-        rebuildError.value = result.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
+      const detail = await pollBuildStatus(standardId)
+      if (detail.anchor_build_status === 'error') {
+        rebuildError.value = detail.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
         useToastStore().error(rebuildError.value!)
       } else {
         useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
-        // 刷新所有数据
-        await selectStandard(standardId)
+        // 刷新所有缓存数据
+        await loadTabData(standardId)
       }
     } catch (err: any) {
       const msg = err?.message || i18n.global.t('apps.standardMgr.rebuildFailed')
@@ -171,7 +303,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   }
 
   async function pollBuildStatus(standardId: string): Promise<StandardItem> {
-    const maxAttempts = 120 // 最多等 10 分钟（每 5 秒一次）
+    const maxAttempts = 120
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(resolve => setTimeout(resolve, 5000))
       const detail = await getStandard(standardId)
@@ -202,9 +334,8 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
         source: 'manual',
       })
       useToastStore().success(i18n.global.t('apps.standardMgr.manualFixSuccess'))
-      // 刷新数据
-      if (selectedStandardId.value) {
-        await selectStandard(selectedStandardId.value)
+      if (activeTabId.value) {
+        await loadTabData(activeTabId.value)
       }
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.manualFixFailed'))
@@ -229,6 +360,9 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     selectedAnchorId,
     rebuildLoading,
     rebuildError,
+    // R8-4: 页签状态
+    openTabs,
+    activeTabId,
     // 计算
     selectedStandard,
     anchorStatusMap,
@@ -239,5 +373,10 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     fetchGaps,
     triggerRebuild,
     submitManualFix,
+    // R8-4: 页签操作
+    openTab,
+    closeTab,
+    switchTab,
+    loadTabData,
   }
 })

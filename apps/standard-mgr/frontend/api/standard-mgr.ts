@@ -129,6 +129,17 @@ export interface DocumentInfo {
   doc_type: string
   processing_status: string
   current_revision_id: string | null
+  collection_id?: string
+  created_at?: string
+  metadata?: object | null
+}
+
+/** 文档版本信息 */
+export interface DocumentRevision {
+  id: string
+  revision_no: number
+  revision_label: string | null
+  created_at: string
 }
 
 // ============================================================
@@ -270,6 +281,28 @@ export async function findCandidates(data: {
   query_text?: string
 }): Promise<CandidateSection[]> {
   return apiRequest<CandidateSection[]>(apiClient.post(`${PREFIX}/sections/find-candidates`, data))
+}
+
+// ============================================================
+// R8-1: 文档平台选择器
+// ============================================================
+
+/** 从文档平台搜索文档 */
+export async function searchDocuments(params: {
+  keyword?: string
+  doc_type?: string
+  processing_status?: string
+  page?: number
+  page_size?: number
+}): Promise<{ items: DocumentInfo[]; pagination: { total: number; page: number } }> {
+  return apiRequest<{ items: DocumentInfo[]; pagination: { total: number; page: number } }>(
+    apiClient.get('/docs/documents', { params }),
+  )
+}
+
+/** 获取文档的版本列表 */
+export async function getDocumentRevisions(documentId: string): Promise<DocumentRevision[]> {
+  return apiRequest<DocumentRevision[]>(apiClient.get(`/docs/documents/${documentId}/revisions`))
 }
 
 

@@ -1432,6 +1432,35 @@ export default {
       docProcessTimeout: '文档处理超时（超过 10 分钟）',
       cleanSuccess: '清洗完成',
       cleanFailed: '清洗失败',
+      // R8-1 文档平台选择
+      selectFromPlatform: '从文档平台选择',
+      uploadNewFile: '上传新文件',
+      searchDocsPlaceholder: '搜索文档标题或编号...',
+      noDocFound: '未找到匹配的文档',
+      alreadyOnboarded: '已纳管',
+      revisionLabel: '版本',
+      selectDocHint: '选择一篇已完成的文档纳管为标准',
+      // R8-2 锚点目录树
+      chapterEmpty: '（无锚点）',
+      jumpToAnchor: '跳转',
+      detailView: '详情',
+      anchorNoMarker: '锚点未落入副本（OCR 匹配失败）',
+      collapseAll: '全部收起',
+      expandAll: '全部展开',
+      // R8-3 筛选页
+      filterTab: '标准筛选',
+      manageTab: '标准管理',
+      filterActive: '启用',
+      filterInactive: '停用',
+      filterStatus: '状态',
+      statusActive: '启用',
+      statusInactive: '停用',
+      advancedFilter: '高级筛选',
+      noFilterResult: '暂无匹配结果',
+      manageVersion: '版本号',
+      comingSoon: '即将上线',
+      // R8-4 多页签
+      noDetailOpen: '请从列表选择标准查看详情',
     },
 
     treeFilter: {

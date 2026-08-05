@@ -1490,6 +1490,35 @@ export default {
       docProcessTimeout: 'Document processing timed out (exceeded 10 minutes)',
       cleanSuccess: 'Cleaning completed',
       cleanFailed: 'Cleaning failed',
+      // R8-1 Doc platform selector
+      selectFromPlatform: 'Select from Document Platform',
+      uploadNewFile: 'Upload New File',
+      searchDocsPlaceholder: 'Search document title or code...',
+      noDocFound: 'No matching documents found',
+      alreadyOnboarded: 'Already Onboarded',
+      revisionLabel: 'Revision',
+      selectDocHint: 'Select a completed document to onboard as standard',
+      // R8-2 Anchor directory tree
+      chapterEmpty: '(No anchors)',
+      jumpToAnchor: 'Jump',
+      detailView: 'Details',
+      anchorNoMarker: 'Anchor not found in copy (OCR match failed)',
+      collapseAll: 'Collapse All',
+      expandAll: 'Expand All',
+      // R8-3 Filter page
+      filterTab: 'Standard Filter',
+      manageTab: 'Standard Manager',
+      filterActive: 'Active',
+      filterInactive: 'Inactive',
+      filterStatus: 'Status',
+      statusActive: 'Active',
+      statusInactive: 'Inactive',
+      advancedFilter: 'Advanced Filter',
+      noFilterResult: 'No matching results',
+      manageVersion: 'Version',
+      comingSoon: 'Coming Soon',
+      // R8-4 Multi-tab
+      noDetailOpen: 'Select a standard to view details',
     },
 
     treeFilter: {
