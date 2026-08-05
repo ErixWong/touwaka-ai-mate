@@ -1,12 +1,12 @@
 <template>
   <div class="sm-anchor-panel">
     <div class="sm-anchor-header">
-      <h3>引用锚点</h3>
-      <span class="sm-anchor-count">{{ anchors.length }} 条</span>
+      <h3>{{ $t('apps.standardMgr.anchors') }}</h3>
+      <span class="sm-anchor-count">{{ $t('apps.standardMgr.anchorsCount', { count: anchors.length }) }}</span>
     </div>
 
     <div v-if="anchors.length === 0" class="sm-anchor-empty">
-      <el-empty description="暂无锚点数据" :image-size="60" />
+      <el-empty :description="$t('apps.standardMgr.noAnchors')" :image-size="60" />
     </div>
 
     <!-- R2-8: 按章节目录树组织锚点列表 -->
@@ -14,7 +14,7 @@
       <template v-for="group in groupedAnchors" :key="group.outline_id">
         <div class="sm-anchor-group-header">
           <span class="sm-anchor-group-icon">📄</span>
-          <span class="sm-anchor-group-title">{{ group.section_title || '未归类' }}</span>
+          <span class="sm-anchor-group-title">{{ group.section_title || $t('apps.standardMgr.uncategorized') }}</span>
           <el-tag size="small" type="info">{{ group.anchors.length }}</el-tag>
         </div>
         <div
@@ -32,7 +32,7 @@
         >
           <div class="sm-anchor-item-header">
             <el-tag :type="anchorStatusTag(anchor.status)" size="small">
-              {{ anchorStatusLabel(anchor.status) }}
+              {{ $t(anchorStatusLabel(anchor.status)) }}
             </el-tag>
             <el-tag size="small" type="info" v-if="anchor.source !== 'auto'">
               {{ anchor.source }}
@@ -47,12 +47,12 @@
               <span class="sm-anchor-reason">{{ anchor.status_reason }}</span>
             </template>
             <template v-else>
-              <span class="sm-anchor-reason">待定位</span>
+              <span class="sm-anchor-reason">{{ $t('apps.standardMgr.pending') }}</span>
             </template>
           </div>
           <div class="sm-anchor-actions" v-if="anchor.status === 'gap'">
-            <el-button type="primary" link size="small" @click.stop="$emit('fixAnchor', anchor)">
-              修正
+            <el-button type="primary" link size="small" @click.stop="emit('fixAnchor', anchor)">
+              {{ $t('apps.standardMgr.fixAction') }}
             </el-button>
           </div>
         </div>
@@ -73,7 +73,7 @@ const props = defineProps<{
   sections: AnchoredSection[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   anchorClick: [anchorId: string]
   fixAnchor: [anchor: RefAnchor]
 }>()
@@ -83,7 +83,7 @@ const groupedAnchors = computed(() => {
   // 构建 outline_id → section title 映射
   const titleMap: Record<string, string> = {}
   for (const s of props.sections) {
-    titleMap[s.outline_id] = s.title || `章节 ${s.seq}`
+    titleMap[s.outline_id] = s.title || `${s.seq}`
   }
 
   const groups: Array<{ outline_id: string; section_title: string; anchors: RefAnchor[] }> = []
@@ -124,10 +124,10 @@ function anchorStatusTag(status: RefStatus): 'success' | 'warning' | 'danger' | 
 
 function anchorStatusLabel(status: RefStatus): string {
   const map: Record<RefStatus, string> = {
-    valid: '有效',
-    suspected: '存疑',
-    gap: '缺口',
-    invalid: '无效',
+    valid: 'apps.standardMgr.anchorValid',
+    suspected: 'apps.standardMgr.anchorSuspected',
+    gap: 'apps.standardMgr.anchorGap',
+    invalid: 'apps.standardMgr.anchorInvalid',
   }
   return map[status] || status
 }

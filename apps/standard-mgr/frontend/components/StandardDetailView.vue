@@ -9,11 +9,10 @@
           {{ $t('apps.standardMgr.' + statusLabelKey(standard.anchor_build_status)) }}
         </el-tag>
         <span class="sm-counts">
-          引用 {{ standard.reference_count }} |
-          有效 {{ standard.valid_reference_count }} |
-          存疑 {{ standard.suspected_reference_count }} |
-          缺口 {{ standard.gap_reference_count }} |
-          无效 {{ standard.invalid_reference_count }}
+          {{ $t('apps.standardMgr.anchorValid') }} {{ standard.valid_reference_count }} |
+          {{ $t('apps.standardMgr.anchorSuspected') }} {{ standard.suspected_reference_count }} |
+          {{ $t('apps.standardMgr.anchorGap') }} {{ standard.gap_reference_count }} |
+          {{ $t('apps.standardMgr.anchorInvalid') }} {{ standard.invalid_reference_count }}
         </span>
       </div>
       <div class="sm-detail-actions">
@@ -38,9 +37,9 @@
     <!-- 正文内容 -->
     <div v-else class="sm-detail-content">
       <div v-if="sections.length === 0" class="sm-no-sections">
-        <el-empty description="暂无清洗结果" :image-size="80">
+        <el-empty :description="$t('apps.standardMgr.notCleaned')" :image-size="80">
           <template v-if="standard.anchor_build_status === 'pending'">
-            该标准尚未清洗<br/>点击"重建锚点副本"按钮触发
+            {{ $t('apps.standardMgr.notCleanedHint') }}
           </template>
         </el-empty>
       </div>
@@ -50,9 +49,9 @@
           <span class="sm-section-seq">{{ section.seq }}.</span>
           {{ section.title }}
           <el-tag v-if="section.has_anchored" size="small" type="success" class="sm-section-tag">
-            {{ section.anchor_count }} 锚点
+            {{ $t('apps.standardMgr.sectionAnchorCount', { n: section.anchor_count }) }}
           </el-tag>
-          <el-tag v-else size="small" type="info" class="sm-section-tag">无锚点</el-tag>
+          <el-tag v-else size="small" type="info" class="sm-section-tag">{{ $t('apps.standardMgr.noAnchors') }}</el-tag>
         </div>
         <!-- eslint-disable-next-line vue/no-v-html -->
         <div

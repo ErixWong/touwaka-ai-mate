@@ -1,10 +1,11 @@
 <template>
   <el-dialog
     title="纳管标准"
-    :visible="true"
+    :model-value="dialogVisible"
     width="600px"
     :close-on-click-modal="false"
     @close="$emit('close')"
+    @update:model-value="(val) => { if (!val) $emit('close') }"
   >
     <!-- 步骤 1：上传文件 -->
     <div v-if="step === 1">
@@ -17,9 +18,9 @@
         accept=".pdf,.doc,.docx"
       >
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">将标准文档拖到此处或<em>点击上传</em></div>
+        <div class="el-upload__text">{{ $t('apps.standardMgr.uploadDragHint') }}</div>
         <template #tip>
-          <div class="el-upload__tip">支持 PDF / DOC / DOCX 格式</div>
+          <div class="el-upload__tip">{{ $t('apps.standardMgr.uploadTipFormat') }}</div>
         </template>
       </el-upload>
     </div>
@@ -27,24 +28,24 @@
     <!-- 步骤 2：填写元数据 -->
     <div v-else-if="step === 2">
       <el-form :model="form" label-width="100px">
-        <el-form-item label="标准编号" required>
-          <el-input v-model="form.standard_code" placeholder="如 GB/T 19001-2016" />
+        <el-form-item :label="$t('apps.standardMgr.standardCode')" required>
+          <el-input v-model="form.standard_code" :placeholder="$t('apps.standardMgr.standardCodePlaceholder')" />
         </el-form-item>
-        <el-form-item label="标准名称" required>
-          <el-input v-model="form.standard_name" placeholder="标准名称" />
+        <el-form-item :label="$t('apps.standardMgr.standardName')" required>
+          <el-input v-model="form.standard_name" :placeholder="$t('apps.standardMgr.standardName')" />
         </el-form-item>
-        <el-form-item label="标准类型" required>
-          <el-select v-model="form.standard_type" placeholder="选择类型">
-            <el-option label="国家标准" value="national" />
-            <el-option label="行业标准" value="industry" />
-            <el-option label="企业标准" value="enterprise" />
-            <el-option label="国际标准" value="international" />
+        <el-form-item :label="$t('apps.standardMgr.standardType')" required>
+          <el-select v-model="form.standard_type" :placeholder="$t('apps.standardMgr.selectTypePlaceholder')">
+            <el-option :label="$t('apps.standardMgr.typeNational')" value="national" />
+            <el-option :label="$t('apps.standardMgr.typeIndustry')" value="industry" />
+            <el-option :label="$t('apps.standardMgr.typeEnterprise')" value="enterprise" />
+            <el-option :label="$t('apps.standardMgr.typeInternational')" value="international" />
           </el-select>
         </el-form-item>
-        <el-form-item label="所属集合" required>
+        <el-form-item :label="$t('apps.standardMgr.collectionLabel')" required>
           <el-select
             v-model="form.collection_id"
-            placeholder="选择文档集合"
+            :placeholder="$t('apps.standardMgr.selectCollectionPlaceholder')"
             :loading="collectionLoading"
             filterable
           >
@@ -62,28 +63,28 @@
     <!-- 步骤 3：处理中 -->
     <div v-else-if="step === 3" class="sm-upload-progress">
       <el-steps :active="uploadStep" finish-status="success" align-center>
-        <el-step title="上传文件" />
-        <el-step title="文档解析" />
-        <el-step title="完成纳管" />
+        <el-step :title="$t('apps.standardMgr.uploadStepUpload')" />
+        <el-step :title="$t('apps.standardMgr.uploadStepParse')" />
+        <el-step :title="$t('apps.standardMgr.uploadStepDone')" />
       </el-steps>
       <div class="sm-upload-status-text">{{ uploadStatusText }}</div>
     </div>
 
     <template #footer>
-      <el-button @click="$emit('close')">取消</el-button>
+      <el-button @click="$emit('close')">{{ $t('common.cancel') }}</el-button>
       <el-button
         v-if="step === 1"
         type="primary"
         :disabled="!uploadFile"
         @click="goToStep2"
       >
-        下一步
+        {{ $t('apps.standardMgr.nextStep') }}
       </el-button>
       <el-button
         v-if="step === 2"
         @click="step = 1"
       >
-        上一步
+        {{ $t('apps.standardMgr.prevStep') }}
       </el-button>
       <el-button
         v-if="step === 2"
@@ -92,7 +93,7 @@
         :loading="submitting"
         @click="handleSubmit"
       >
-        纳管
+        {{ $t('apps.standardMgr.onboard') }}
       </el-button>
     </template>
   </el-dialog>
@@ -124,6 +125,7 @@ const uploadStatusText = ref('')
 const submitting = ref(false)
 const collectionLoading = ref(false)
 const collections = ref<DocCollection[]>([])
+const dialogVisible = ref(true)
 
 const form = ref({
   standard_code: '',

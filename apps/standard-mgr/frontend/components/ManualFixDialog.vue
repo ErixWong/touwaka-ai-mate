@@ -1,61 +1,62 @@
 <template>
   <el-dialog
     title="人工修正引用"
-    :visible="true"
+    :model-value="dialogVisible"
     width="600px"
     :close-on-click-modal="false"
     @close="$emit('close')"
+    @update:model-value="(val) => { if (!val) $emit('close') }"
   >
     <div class="sm-fix-form">
       <!-- 当前引用信息 -->
       <el-descriptions :column="1" border size="small" style="margin-bottom: 16px">
-        <el-descriptions-item label="引用原文">{{ anchor.source_text }}</el-descriptions-item>
-        <el-descriptions-item label="当前状态">
+        <el-descriptions-item :label="$t('apps.standardMgr.manualFixSourceText')">{{ anchor.source_text }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('apps.standardMgr.manualFixCurrentStatus')">
           <el-tag :type="statusTag(anchor.status)" size="small">
-            {{ statusLabel(anchor.status) }}
+            {{ $t(statusLabel(anchor.status)) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item v-if="anchor.status_reason" label="原因">
+        <el-descriptions-item v-if="anchor.status_reason" :label="$t('apps.standardMgr.manualFixReason')">
           {{ anchor.status_reason }}
         </el-descriptions-item>
       </el-descriptions>
 
       <!-- 修正表单 -->
       <el-form :model="fixForm" label-width="100px">
-        <el-form-item label="目标状态" required>
+        <el-form-item :label="$t('apps.standardMgr.manualFixTargetStatus')" required>
           <el-radio-group v-model="fixForm.status">
-            <el-radio value="valid">有效</el-radio>
-            <el-radio value="invalid">无效</el-radio>
+            <el-radio value="valid">{{ $t('apps.standardMgr.anchorValid') }}</el-radio>
+            <el-radio value="invalid">{{ $t('apps.standardMgr.anchorInvalid') }}</el-radio>
           </el-radio-group>
         </el-form-item>
 
         <template v-if="fixForm.status === 'valid'">
-          <el-form-item label="目标文档">
-            <el-input v-model="fixForm.targetDocumentId" placeholder="输入文档 ID（可选）" clearable />
+          <el-form-item :label="$t('apps.standardMgr.manualFixTargetDoc')">
+            <el-input v-model="fixForm.targetDocumentId" :placeholder="$t('apps.standardMgr.placeholderDocId')" clearable />
           </el-form-item>
-          <el-form-item label="目标版本">
-            <el-input v-model="fixForm.targetRevisionId" placeholder="输入版本 ID（可选）" clearable />
+          <el-form-item :label="$t('apps.standardMgr.manualFixTargetRevision')">
+            <el-input v-model="fixForm.targetRevisionId" :placeholder="$t('apps.standardMgr.placeholderRevisionId')" clearable />
           </el-form-item>
-          <el-form-item label="目标章节">
-            <el-input v-model="fixForm.targetOutlineId" placeholder="输入章节 ID（可选）" clearable />
+          <el-form-item :label="$t('apps.standardMgr.manualFixTargetOutline')">
+            <el-input v-model="fixForm.targetOutlineId" :placeholder="$t('apps.standardMgr.placeholderOutlineId')" clearable />
           </el-form-item>
         </template>
 
-        <el-form-item label="修正说明">
+        <el-form-item :label="$t('apps.standardMgr.manualFixNote')">
           <el-input
             v-model="fixForm.status_reason"
             type="textarea"
             :rows="2"
-            placeholder="修正原因说明"
+            :placeholder="$t('apps.standardMgr.placeholderFixReason')"
           />
         </el-form-item>
       </el-form>
     </div>
 
     <template #footer>
-      <el-button @click="$emit('close')">取消</el-button>
+      <el-button @click="$emit('close')">{{ $t('common.cancel') }}</el-button>
       <el-button type="primary" :loading="submitting" @click="handleSubmit">
-        提交修正
+        {{ $t('apps.standardMgr.manualFixSubmit') }}
       </el-button>
     </template>
   </el-dialog>
@@ -78,6 +79,7 @@ const emit = defineEmits<{
 
 const store = useStandardMgrStore()
 const submitting = ref(false)
+const dialogVisible = ref(true)
 
 const fixForm = reactive({
   status: 'valid' as 'valid' | 'invalid',
@@ -121,10 +123,10 @@ function statusTag(status: RefStatus): 'success' | 'warning' | 'danger' | 'info'
 
 function statusLabel(status: RefStatus): string {
   const map: Record<RefStatus, string> = {
-    valid: '有效',
-    suspected: '存疑',
-    gap: '缺口',
-    invalid: '无效',
+    valid: 'apps.standardMgr.anchorValid',
+    suspected: 'apps.standardMgr.anchorSuspected',
+    gap: 'apps.standardMgr.anchorGap',
+    invalid: 'apps.standardMgr.anchorInvalid',
   }
   return map[status] || status
 }

@@ -1,9 +1,9 @@
 <template>
   <div class="sm-list-panel">
     <div class="sm-list-header">
-      <h3>标准列表</h3>
+      <h3>{{ $t('apps.standardMgr.listTitle') }}</h3>
       <el-button type="primary" size="small" :icon="Plus" @click="$emit('uploadClick')">
-        纳管
+        {{ $t('apps.standardMgr.onboard') }}
       </el-button>
     </div>
 
@@ -19,7 +19,7 @@
         <div class="sm-item-name">{{ item.standard_name }}</div>
         <div class="sm-item-meta">
           <el-tag size="small" :type="statusTagType(item.anchor_build_status)">
-            {{ statusLabel(item.anchor_build_status) }}
+            {{ $t(statusLabel(item.anchor_build_status)) }}
           </el-tag>
           <el-badge
             v-if="item.needs_review"
@@ -29,10 +29,10 @@
           />
           <el-tooltip
             v-if="hasNewerVersion(item)"
-            content="平台有新版本待清洗"
+            :content="$t('apps.standardMgr.newVersionHint')"
             placement="top"
           >
-            <el-tag size="small" type="warning" class="sm-version-hint">新版本</el-tag>
+            <el-tag size="small" type="warning" class="sm-version-hint">{{ $t('apps.standardMgr.newVersionTag') }}</el-tag>
           </el-tooltip>
           <span class="sm-item-counts">
             引{{ item.reference_count }} · 有{{ item.valid_reference_count }} · 缺{{ item.gap_reference_count }}
@@ -76,10 +76,10 @@ function statusTagType(status: AnchorBuildStatus): 'success' | 'warning' | 'dang
 
 function statusLabel(status: AnchorBuildStatus): string {
   const map: Record<AnchorBuildStatus, string> = {
-    pending: '待清洗',
-    processing: '清洗中',
-    done: '已完成',
-    error: '错误',
+    pending: 'apps.standardMgr.statusPending',
+    processing: 'apps.standardMgr.statusProcessing',
+    done: 'apps.standardMgr.statusDone',
+    error: 'apps.standardMgr.statusError',
   }
   return map[status] || status
 }
