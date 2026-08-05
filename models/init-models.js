@@ -10,6 +10,7 @@ import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
 import _app_current_feature_rule_set from  "./app_current_feature_rule_set.js";
 import _app_current_feature_rule_stage from  "./app_current_feature_rule_stage.js";
 import _app_doc_binding from  "./app_doc_binding.js";
+import _app_enterprise from  "./app_enterprise.js";
 import _app_invoice_mgr_item from  "./app_invoice_mgr_item.js";
 import _app_invoice_mgr_record from  "./app_invoice_mgr_record.js";
 import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
@@ -90,6 +91,7 @@ export default function initModels(sequelize) {
   const app_current_feature_rule_set = _app_current_feature_rule_set.init(sequelize, DataTypes);
   const app_current_feature_rule_stage = _app_current_feature_rule_stage.init(sequelize, DataTypes);
   const app_doc_binding = _app_doc_binding.init(sequelize, DataTypes);
+  const app_enterprise = _app_enterprise.init(sequelize, DataTypes);
   const app_invoice_mgr_item = _app_invoice_mgr_item.init(sequelize, DataTypes);
   const app_invoice_mgr_record = _app_invoice_mgr_record.init(sequelize, DataTypes);
   const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
@@ -183,6 +185,8 @@ export default function initModels(sequelize) {
   app_contract_mgr_record.hasOne(app_contract_mgr_compare, { as: "app_contract_mgr_compare", foreignKey: "row_id"});
   app_contract_mgr_compare.belongsTo(app_contract_mgr_record, { as: "target_row", foreignKey: "target_row_id"});
   app_contract_mgr_record.hasMany(app_contract_mgr_compare, { as: "target_row_app_contract_mgr_compares", foreignKey: "target_row_id"});
+  app_standard.belongsTo(app_enterprise, { as: "enterprise", foreignKey: "enterprise_id"});
+  app_enterprise.hasMany(app_standard, { as: "app_standards", foreignKey: "enterprise_id"});
   app_invoice_mgr_item.belongsTo(app_invoice_mgr_record, { as: "row", foreignKey: "row_id"});
   app_invoice_mgr_record.hasMany(app_invoice_mgr_item, { as: "app_invoice_mgr_items", foreignKey: "row_id"});
   app_invoice_mgr_row.belongsTo(app_invoice_mgr_record, { as: "row", foreignKey: "row_id"});
@@ -399,6 +403,7 @@ export default function initModels(sequelize) {
     app_current_feature_rule_set,
     app_current_feature_rule_stage,
     app_doc_binding,
+    app_enterprise,
     app_invoice_mgr_item,
     app_invoice_mgr_record,
     app_invoice_mgr_row,

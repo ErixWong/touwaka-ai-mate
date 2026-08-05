@@ -33,7 +33,11 @@ export default class app_standard extends Model {
     enterprise_id: {
       type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "归属企业；NULL=公共标准库（承接国家\/行业\/国际标准），企业表建立后迁移为企业记录"
+      comment: "归属企业；NULL=公共标准库（承接国家\/行业\/国际标准），企业表建立后迁移为企业记录",
+      references: {
+        model: 'app_enterprise',
+        key: 'id'
+      }
     },
     current_revision_id: {
       type: DataTypes.STRING(32),

@@ -3991,6 +3991,48 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== standard-mgr: 企业花名册 ====================
+  {
+    name: 'app_enterprise create table',
+    check: async (conn) => await hasTable(conn, 'app_enterprise'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_enterprise (
+          id VARCHAR(24) PRIMARY KEY COMMENT '主键，Utils.newID()',
+          name VARCHAR(100) NOT NULL COMMENT '企业名称（如：吉利、小鹏、比亚迪）',
+          name_en VARCHAR(200) NULL COMMENT '企业英文名',
+          description TEXT NULL COMMENT '备注',
+          is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          created_by VARCHAR(32) NULL COMMENT '创建人 users.id',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_app_enterprise_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企业花名册（标准归属）'
+      `);
+      console.log('  ✓ Created app_enterprise table');
+    }
+  },
+
+  {
+    name: 'app_standard enterprise FK to app_enterprise',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_standard'
+          AND CONSTRAINT_NAME = 'fk_standard_enterprise'
+      `);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_standard
+          ADD CONSTRAINT fk_standard_enterprise
+          FOREIGN KEY (enterprise_id) REFERENCES app_enterprise(id)
+      `);
+      console.log('  ✓ Added FK app_standard.enterprise_id -> app_enterprise.id');
+    }
+  },
+
 ];
 
 /**
