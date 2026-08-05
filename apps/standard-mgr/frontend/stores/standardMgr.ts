@@ -23,6 +23,7 @@ import {
   type AnchoredSection,
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
+import { i18n } from '@/i18n'
 
 export const useStandardMgrStore = defineStore('standardMgr', () => {
   // ============================================================
@@ -83,7 +84,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     try {
       standards.value = await listStandards()
     } catch (err: any) {
-      const msg = err?.message || '加载标准列表失败'
+      const msg = err?.message || i18n.global.t('apps.standardMgr.loadListFailed')
       error.value = msg
       useToastStore().error(msg)
     } finally {
@@ -110,7 +111,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     try {
       standardDetail.value = await getStandard(standardId)
     } catch (err: any) {
-      useToastStore().error(err?.message || '加载标准详情失败')
+      useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadDetailFailed'))
     }
   }
 
@@ -127,7 +128,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     try {
       refAnchors.value = await listRefAnchors(standardId, { limit: 500 })
     } catch (err: any) {
-      useToastStore().error(err?.message || '加载引用锚点失败')
+      useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
     }
   }
 
@@ -135,7 +136,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     try {
       gaps.value = await listGaps(standardId)
     } catch (err: any) {
-      useToastStore().error(err?.message || '加载 gap 列表失败')
+      useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadGapsFailed'))
     }
   }
 
@@ -152,15 +153,15 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
       // 轮询直到 done 或 error
       const result = await pollBuildStatus(standardId)
       if (result.anchor_build_status === 'error') {
-        rebuildError.value = result.last_anchor_build_error || '清洗失败'
+        rebuildError.value = result.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
         useToastStore().error(rebuildError.value!)
       } else {
-        useToastStore().success('清洗完成')
+        useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
         // 刷新所有数据
         await selectStandard(standardId)
       }
     } catch (err: any) {
-      const msg = err?.message || '触发清洗失败'
+      const msg = err?.message || i18n.global.t('apps.standardMgr.rebuildFailed')
       rebuildError.value = msg
       useToastStore().error(msg)
       await fetchStandardDetail(standardId)
@@ -178,7 +179,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
         return detail
       }
     }
-    throw new Error('清洗超时（超过 10 分钟）')
+    throw new Error(i18n.global.t('apps.standardMgr.rebuildTimeout'))
   }
 
   /** 人工修正：写入锚点结果 */
@@ -200,13 +201,13 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
         ...data,
         source: 'manual',
       })
-      useToastStore().success('修正已保存')
+      useToastStore().success(i18n.global.t('apps.standardMgr.manualFixSuccess'))
       // 刷新数据
       if (selectedStandardId.value) {
         await selectStandard(selectedStandardId.value)
       }
     } catch (err: any) {
-      useToastStore().error(err?.message || '保存修正失败')
+      useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.manualFixFailed'))
       throw err
     }
   }

@@ -1,11 +1,11 @@
 <template>
   <el-dialog
-    title="人工修正引用"
+    :title="$t('apps.standardMgr.manualFixTitle')"
     :model-value="dialogVisible"
     width="600px"
     :close-on-click-modal="false"
     @close="$emit('close')"
-    @update:model-value="(val) => { if (!val) $emit('close') }"
+    @update:model-value="(val: boolean) => { if (!val) $emit('close') }"
   >
     <div class="sm-fix-form">
       <!-- 当前引用信息 -->

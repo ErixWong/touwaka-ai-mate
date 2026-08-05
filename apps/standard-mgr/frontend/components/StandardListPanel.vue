@@ -35,7 +35,7 @@
             <el-tag size="small" type="warning" class="sm-version-hint">{{ $t('apps.standardMgr.newVersionTag') }}</el-tag>
           </el-tooltip>
           <span class="sm-item-counts">
-            引{{ item.reference_count }} · 有{{ item.valid_reference_count }} · 缺{{ item.gap_reference_count }}
+            {{ $t('apps.standardMgr.countsFormat', { ref: item.reference_count, valid: item.valid_reference_count, gap: item.gap_reference_count }) }}
           </span>
         </div>
       </div>

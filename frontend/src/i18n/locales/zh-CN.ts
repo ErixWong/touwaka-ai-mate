@@ -1382,6 +1382,7 @@ export default {
       uploadStatusWaiting: '等待文档处理完成...',
       uploadStatusProcessing: '文档处理中 ({status})...',
       uploadStatusOnboarding: '正在纳管...',
+      uploadStatusCreatingDoc: '正在创建文档...',
       uploadSuccess: '纳管成功！可在详情页触发清洗',
       uploadFailed: '纳管失败',
       standardCode: '标准编号',
@@ -1425,6 +1426,12 @@ export default {
       placeholderRevisionId: '输入版本 ID（可选）',
       placeholderOutlineId: '输入章节 ID（可选）',
       placeholderFixReason: '修正原因说明',
+      collectionItemFormat: '{name} ({count} 文档)',
+      loadCollectionsFailed: '加载集合列表失败',
+      docProcessFailed: '文档处理失败',
+      docProcessTimeout: '文档处理超时（超过 10 分钟）',
+      cleanSuccess: '清洗完成',
+      cleanFailed: '清洗失败',
     },
 
     treeFilter: {

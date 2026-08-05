@@ -230,8 +230,10 @@ export async function writeAnchorResult(data: {
 export async function uploadAttachment(file: File): Promise<AttachmentInfo> {
   const fd = new FormData()
   fd.append('file', file)
+  fd.append('source_tag', 'doc-platform')
+  fd.append('source_id', 'temp')
   return apiRequest<AttachmentInfo>(
-    apiClient.post('/api/attachments/upload', fd, {
+    apiClient.post('/attachments/upload', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   )
@@ -239,7 +241,8 @@ export async function uploadAttachment(file: File): Promise<AttachmentInfo> {
 
 /** R2-4: 获取文档集合列表 */
 export async function listCollections(): Promise<DocCollection[]> {
-  return apiRequest<DocCollection[]>(apiClient.get('/api/docs/collections'))
+  const res = await apiRequest<{ items: DocCollection[] }>(apiClient.get('/docs/collections'))
+  return (res as any).items ?? []
 }
 
 /** R2-4: 纳管文档到平台 */
@@ -248,13 +251,13 @@ export async function intakeDocument(data: {
   collection_id: string
   attachments: Array<{ id: string }>
 }): Promise<IntakeResult> {
-  return apiRequest<IntakeResult>(apiClient.post('/api/docs/intakes', data))
+  return apiRequest<IntakeResult>(apiClient.post('/docs/intakes', data))
 }
 
 /** R2-4: 查询文档处理状态 */
 export async function getDocumentStatus(documentId: string): Promise<ProcessingStatus> {
   return apiRequest<ProcessingStatus>(
-    apiClient.get(`/api/docs/documents/${documentId}/processing`),
+    apiClient.get(`/docs/documents/${documentId}/processing`),
   )
 }
 

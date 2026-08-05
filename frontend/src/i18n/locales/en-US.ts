@@ -1440,6 +1440,7 @@ export default {
       uploadStatusWaiting: 'Waiting for document processing...',
       uploadStatusProcessing: 'Processing ({status})...',
       uploadStatusOnboarding: 'Onboarding...',
+      uploadStatusCreatingDoc: 'Creating document...',
       uploadSuccess: 'Onboarded! Cleaning can be triggered on the detail page',
       uploadFailed: 'Onboarding failed',
       standardCode: 'Standard Code',
@@ -1483,6 +1484,12 @@ export default {
       placeholderRevisionId: 'Enter Revision ID (optional)',
       placeholderOutlineId: 'Enter Section ID (optional)',
       placeholderFixReason: 'Reason for correction',
+      collectionItemFormat: '{name} ({count} documents)',
+      loadCollectionsFailed: 'Failed to load collection list',
+      docProcessFailed: 'Document processing failed',
+      docProcessTimeout: 'Document processing timed out (exceeded 10 minutes)',
+      cleanSuccess: 'Cleaning completed',
+      cleanFailed: 'Cleaning failed',
     },
 
     treeFilter: {

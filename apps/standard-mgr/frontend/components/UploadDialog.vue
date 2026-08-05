@@ -1,11 +1,11 @@
 <template>
   <el-dialog
-    title="纳管标准"
+    :title="$t('apps.standardMgr.uploadTitle')"
     :model-value="dialogVisible"
     width="600px"
     :close-on-click-modal="false"
     @close="$emit('close')"
-    @update:model-value="(val) => { if (!val) $emit('close') }"
+    @update:model-value="(val: boolean) => { if (!val) $emit('close') }"
   >
     <!-- 步骤 1：上传文件 -->
     <div v-if="step === 1">
@@ -52,7 +52,7 @@
             <el-option
               v-for="col in collections"
               :key="col.id"
-              :label="`${col.name} (${col.doc_count} 文档)`"
+              :label="$t('apps.standardMgr.collectionItemFormat', { name: col.name, count: col.doc_count })"
               :value="col.id"
             />
           </el-select>
@@ -67,7 +67,7 @@
         <el-step :title="$t('apps.standardMgr.uploadStepParse')" />
         <el-step :title="$t('apps.standardMgr.uploadStepDone')" />
       </el-steps>
-      <div class="sm-upload-status-text">{{ uploadStatusText }}</div>
+      <div class="sm-upload-status-text">{{ uploadStatusKey ? $t('apps.standardMgr.' + uploadStatusKey, uploadStatusParams) : '' }}</div>
     </div>
 
     <template #footer>
@@ -100,7 +100,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { UploadFilled } from '@element-plus/icons-vue'
 import {
   uploadAttachment,
@@ -113,6 +114,8 @@ import {
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
 
+const { t } = useI18n()
+
 const emit = defineEmits<{
   close: []
   onboarded: []
@@ -121,7 +124,8 @@ const emit = defineEmits<{
 const step = ref(1)
 const uploadFile = ref<File | null>(null)
 const uploadStep = ref(0)
-const uploadStatusText = ref('')
+const uploadStatusKey = ref('')
+const uploadStatusParams = ref<Record<string, string>>({})
 const submitting = ref(false)
 const collectionLoading = ref(false)
 const collections = ref<DocCollection[]>([])
@@ -150,7 +154,7 @@ async function goToStep2() {
     try {
       collections.value = await listCollections()
     } catch {
-      useToastStore().error('加载集合列表失败')
+      useToastStore().error(t('apps.standardMgr.loadCollectionsFailed'))
       return
     } finally {
       collectionLoading.value = false
@@ -167,12 +171,12 @@ async function handleSubmit() {
 
   try {
     // 步骤 1：上传附件
-    uploadStatusText.value = '正在上传文件...'
+    uploadStatusKey.value = 'uploadStatusUploading'
     const attachment = await uploadAttachment(uploadFile.value)
 
     // 步骤 2：纳管文档到平台
     uploadStep.value = 1
-    uploadStatusText.value = '正在创建文档...'
+    uploadStatusKey.value = 'uploadStatusCreatingDoc'
     const intake = await intakeDocument({
       app_id: 'standard-mgr',
       collection_id: form.value.collection_id,
@@ -180,7 +184,7 @@ async function handleSubmit() {
     })
 
     // 步骤 3：轮询等待处理完成
-    uploadStatusText.value = '等待文档处理完成...'
+    uploadStatusKey.value = 'uploadStatusWaiting'
     const maxAttempts = 120 // 最多等 10 分钟（每 5 秒）
     let ready = false
     for (let i = 0; i < maxAttempts; i++) {
@@ -192,22 +196,23 @@ async function handleSubmit() {
           break
         }
         if (status.processing_status === 'error') {
-          throw new Error(status.error_message || '文档处理失败')
+          throw new Error(status.error_message || t('apps.standardMgr.docProcessFailed'))
         }
-        uploadStatusText.value = `文档处理中 (${status.processing_status})...`
+        uploadStatusKey.value = 'uploadStatusProcessing'
+        uploadStatusParams.value = { status: status.processing_status }
       } catch (pollErr: any) {
-        if (pollErr.message?.includes('文档处理失败')) throw pollErr
+        if (pollErr.message?.includes(t('apps.standardMgr.docProcessFailed'))) throw pollErr
         // 其他错误继续轮询
       }
     }
 
     if (!ready) {
-      throw new Error('文档处理超时（超过 10 分钟）')
+      throw new Error(t('apps.standardMgr.docProcessTimeout'))
     }
 
     // 步骤 4：纳管为标准
     uploadStep.value = 2
-    uploadStatusText.value = '正在纳管...'
+    uploadStatusKey.value = 'uploadStatusOnboarding'
     await createStandard({
       document_id: intake.document_id,
       standard_type: form.value.standard_type,
@@ -215,10 +220,10 @@ async function handleSubmit() {
       standard_name: form.value.standard_name,
     })
 
-    useToastStore().success('纳管成功！可在详情页触发清洗')
+    useToastStore().success(t('apps.standardMgr.uploadSuccess'))
     emit('onboarded')
   } catch (err: any) {
-    useToastStore().error(err?.message || '纳管失败')
+    useToastStore().error(err?.message || t('apps.standardMgr.uploadFailed'))
     step.value = 1
   } finally {
     submitting.value = false
