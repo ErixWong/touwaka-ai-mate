@@ -101,7 +101,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
 import { UploadFilled } from '@element-plus/icons-vue'
 import {
   uploadAttachment,
@@ -113,8 +113,6 @@ import {
   type DocCollection,
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
-
-const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -154,7 +152,7 @@ async function goToStep2() {
     try {
       collections.value = await listCollections()
     } catch {
-      useToastStore().error(t('apps.standardMgr.loadCollectionsFailed'))
+      useToastStore().error(i18n.global.t('apps.standardMgr.loadCollectionsFailed'))
       return
     } finally {
       collectionLoading.value = false
@@ -196,18 +194,18 @@ async function handleSubmit() {
           break
         }
         if (status.processing_status === 'error') {
-          throw new Error(status.error_message || t('apps.standardMgr.docProcessFailed'))
+          throw new Error(status.error_message || i18n.global.t('apps.standardMgr.docProcessFailed'))
         }
         uploadStatusKey.value = 'uploadStatusProcessing'
         uploadStatusParams.value = { status: status.processing_status }
       } catch (pollErr: any) {
-        if (pollErr.message?.includes(t('apps.standardMgr.docProcessFailed'))) throw pollErr
+        if (pollErr.message?.includes(i18n.global.t('apps.standardMgr.docProcessFailed'))) throw pollErr
         // 其他错误继续轮询
       }
     }
 
     if (!ready) {
-      throw new Error(t('apps.standardMgr.docProcessTimeout'))
+      throw new Error(i18n.global.t('apps.standardMgr.docProcessTimeout'))
     }
 
     // 步骤 4：纳管为标准
@@ -220,10 +218,10 @@ async function handleSubmit() {
       standard_name: form.value.standard_name,
     })
 
-    useToastStore().success(t('apps.standardMgr.uploadSuccess'))
+    useToastStore().success(i18n.global.t('apps.standardMgr.uploadSuccess'))
     emit('onboarded')
   } catch (err: any) {
-    useToastStore().error(err?.message || t('apps.standardMgr.uploadFailed'))
+    useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.uploadFailed'))
     step.value = 1
   } finally {
     submitting.value = false
