@@ -195,9 +195,17 @@ const treeData = computed<TreeNode[]>(() => {
           count: grp.items.length + Object.values(subGroups).reduce((sum, arr) => sum + arr.length, 0),
           children: subNodes,
         })
+      } else {
+        // Always show enterprise group even when empty
+        nodes.push({
+          id: `group_${type}`,
+          label: grp.label,
+          type: 'group',
+          count: 0,
+          children: [],
+        })
       }
     } else {
-      if (grp.items.length === 0) continue
       nodes.push({
         id: `group_${type}`,
         label: grp.label,
@@ -343,5 +351,12 @@ function statusLabel(status: AnchorBuildStatus): string {
 .sm-item-counts {
   font-size: 11px;
   color: #909399;
+}
+
+/* R11-4: override el-tree node height for multi-line leaf content */
+:deep(.el-tree-node__content) {
+  height: auto;
+  align-items: flex-start;
+  padding: 2px 0;
 }
 </style>

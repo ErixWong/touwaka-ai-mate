@@ -39,6 +39,7 @@ export default {
     refresh: 'Refresh',
     reset: 'Reset',
     operationFailed: 'Operation failed',
+    all: 'All',
     none: 'None',
     seconds: 'seconds',
     restart: 'Restart',

@@ -40,6 +40,7 @@ export default {
     refresh: '刷新',
     reset: '重置',
     operationFailed: '操作失败',
+    all: '全部',
     none: '无',
     seconds: '秒',
     restart: '重启',

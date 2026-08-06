@@ -2,11 +2,42 @@
  * standard-mgr API 模块
  *
  * 照仓库惯例：const PREFIX = '/apps/standard-mgr'，不从 prop 推导
+ *
+ * ## 平台端点复合响应约定
+ *
+ * 部分平台 /api/docs/* 端点返回复合结构 `{ items: T[], ...meta }`（listDocuments,
+ * listVersions, listCollections 等），而非裸数组。本模块调用此类端点后**必须解包 .items**。
+ *
+ * 对应摘要：
+ * - **searchDocuments** → `{ items: DocumentInfo[], pagination: {...} }` → caller 取 .items ✅
+ * - **getDocumentRevisions** → `{ document_id, current_revision_id, items: DocumentRevision[] }` → unwrapItems()
+ * - **listCollections** → `{ items: DocCollection[] }` → 反回 .items ⚠️ (R5 已手动解包)
+ *
+ * 新增平台端点时请参照此表，不确定时优先用 unwrapItems() 兜底。
  */
 
 import apiClient, { apiRequest } from '@/api/client'
 
 const PREFIX = '/apps/standard-mgr'
+
+// ============================================================
+// 工具
+// ============================================================
+
+/**
+ * 解包复合端点响应的 `.items` 数组，同时兜底裸数组/非数组输入。
+ *
+ * - res 是数组 → 直接返回
+ * - res 有 .items（数组）→ 返回 res.items
+ * - 其他 → 返回空数组
+ */
+function unwrapItems<T>(res: unknown): T[] {
+  if (Array.isArray(res)) return res as T[]
+  const obj = res as Record<string, unknown> | null
+  if (obj && Array.isArray(obj.items)) return obj.items as T[]
+  // 极端兜底：某些端点返回 { items: undefined } 或裸 null
+  return []
+}
 
 // ============================================================
 // 类型定义（全栈 snake_case）
@@ -288,8 +319,8 @@ export async function uploadAttachment(file: File): Promise<AttachmentInfo> {
 
 /** R2-4: 获取文档集合列表 */
 export async function listCollections(): Promise<DocCollection[]> {
-  const res = await apiRequest<{ items: DocCollection[] }>(apiClient.get('/docs/collections'))
-  return (res as any).items ?? []
+  const res = await apiRequest<unknown>(apiClient.get('/docs/collections'))
+  return unwrapItems<DocCollection>(res)
 }
 
 /** R2-4: 纳管文档到平台 */
@@ -336,9 +367,24 @@ export async function searchDocuments(params: {
   )
 }
 
-/** 获取文档的版本列表 */
+/** 获取文档的版本列表（已标记 is_current） */
 export async function getDocumentRevisions(documentId: string): Promise<DocumentRevision[]> {
-  return apiRequest<DocumentRevision[]>(apiClient.get(`/docs/documents/${documentId}/revisions`))
+  const res = await apiRequest<{
+    resolved_current_revision_id: string | null
+    items: DocumentRevision[]
+  }>(apiClient.get(`/docs/documents/${documentId}/revisions`))
+  const items = res.items ?? []
+  // 标记当前版本，供 UI 默认选中
+  if (res.resolved_current_revision_id) {
+    const curId = res.resolved_current_revision_id
+    for (const item of items) {
+      if (item.id === curId) {
+        item.is_current = true
+        break
+      }
+    }
+  }
+  return items
 }
 
 // ============================================================
