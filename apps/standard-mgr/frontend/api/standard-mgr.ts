@@ -148,6 +148,31 @@ export interface DocumentRevision {
 }
 
 // ============================================================
+// R11: 企业花名册 & 归属推断
+// ============================================================
+
+export interface EnterpriseItem {
+  id: string
+  name: string
+  name_en: string | null
+  description: string | null
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  /** listEnterprises 时返回 */
+  standard_count?: number
+}
+
+export interface ClassifyPreviewResult {
+  standard_type: string
+  standard_code: string
+  standard_name: string
+  enterprise_id: string | null
+  enterprise_name: string | null
+}
+
+// ============================================================
 // API 函数
 // ============================================================
 
@@ -172,6 +197,8 @@ export async function createStandard(data: {
   standard_name: string
   /** R9-2: 可选指定版本 */
   revision_id?: string
+  /** R11-3: 可选企业归属 */
+  enterprise_id?: string | null
 }): Promise<StandardItem> {
   return apiRequest<StandardItem>(apiClient.post(`${PREFIX}/standards`, data))
 }
@@ -184,6 +211,8 @@ export async function updateStandard(
     standard_code?: string
     standard_type?: StandardType
     is_active?: boolean
+    /** R11-5: 企业归属 */
+    enterprise_id?: string | null
   },
 ): Promise<StandardItem> {
   return apiRequest<StandardItem>(apiClient.put(`${PREFIX}/standards/${standardId}`, data))
@@ -310,6 +339,40 @@ export async function searchDocuments(params: {
 /** 获取文档的版本列表 */
 export async function getDocumentRevisions(documentId: string): Promise<DocumentRevision[]> {
   return apiRequest<DocumentRevision[]>(apiClient.get(`/docs/documents/${documentId}/revisions`))
+}
+
+// ============================================================
+// R11: 企业花名册 & 归属推断 API
+// ============================================================
+
+/** 企业列表（含标准计数） */
+export async function listEnterprises(): Promise<EnterpriseItem[]> {
+  return apiRequest<EnterpriseItem[]>(apiClient.get(`${PREFIX}/enterprises`))
+}
+
+/** 新建企业 */
+export async function createEnterprise(data: {
+  name: string
+  name_en?: string
+  description?: string
+}): Promise<EnterpriseItem> {
+  return apiRequest<EnterpriseItem>(apiClient.post(`${PREFIX}/enterprises`, data))
+}
+
+/** 更新企业 */
+export async function updateEnterprise(
+  enterpriseId: string,
+  data: { name?: string; name_en?: string; description?: string; is_active?: boolean },
+): Promise<EnterpriseItem> {
+  return apiRequest<EnterpriseItem>(apiClient.put(`${PREFIX}/enterprises/${enterpriseId}`, data))
+}
+
+/** 归属推断预览 */
+export async function classifyPreview(data: {
+  document_id: string
+  revision_id: string
+}): Promise<ClassifyPreviewResult> {
+  return apiRequest<ClassifyPreviewResult>(apiClient.post(`${PREFIX}/standards/classify-preview`, data))
 }
 
 

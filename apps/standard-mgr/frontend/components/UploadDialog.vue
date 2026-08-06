@@ -103,6 +103,36 @@
                 <el-option :label="$t('apps.standardMgr.typeInternational')" value="international" />
               </el-select>
             </el-form-item>
+            <!-- R11-3: 企业归属 -->
+            <el-form-item :label="$t('apps.standardMgr.enterpriseLabel')">
+              <div class="sm-enterprise-row">
+                <el-select
+                  v-model="form.enterprise_id"
+                  :placeholder="enterprisePlaceholder"
+                  clearable
+                  filterable
+                  :loading="classifying"
+                  style="flex:1"
+                >
+                  <el-option
+                    v-for="ent in enterprises"
+                    :key="ent.id"
+                    :label="ent.name + (ent.name_en ? ` (${ent.name_en})` : '')"
+                    :value="ent.id"
+                  />
+                </el-select>
+                <el-button
+                  v-if="showNewEnterpriseBtn"
+                  type="primary"
+                  plain
+                  size="small"
+                  style="margin-left:8px"
+                  @click="handleNewEnterpriseInline"
+                >
+                  + {{ $t('apps.standardMgr.newEnterprise') }}
+                </el-button>
+              </div>
+            </el-form-item>
           </el-form>
         </div>
       </el-tab-pane>
@@ -156,6 +186,36 @@
                   :value="col.id"
                 />
               </el-select>
+            </el-form-item>
+            <!-- R11-3: 企业归属 -->
+            <el-form-item :label="$t('apps.standardMgr.enterpriseLabel')">
+              <div class="sm-enterprise-row">
+                <el-select
+                  v-model="form.enterprise_id"
+                  :placeholder="$t('apps.standardMgr.selectEnterprisePlaceholder')"
+                  clearable
+                  filterable
+                  :loading="enterprisesLoading"
+                  style="flex:1"
+                >
+                  <el-option
+                    v-for="ent in enterprises"
+                    :key="ent.id"
+                    :label="ent.name + (ent.name_en ? ` (${ent.name_en})` : '')"
+                    :value="ent.id"
+                  />
+                </el-select>
+                <el-button
+                  v-if="showNewEnterpriseBtn"
+                  type="primary"
+                  plain
+                  size="small"
+                  style="margin-left:8px"
+                  @click="handleNewEnterpriseInline"
+                >
+                  + {{ $t('apps.standardMgr.newEnterprise') }}
+                </el-button>
+              </div>
             </el-form-item>
           </el-form>
         </div>
@@ -218,6 +278,7 @@
 import { ref, computed, watch } from 'vue'
 import { i18n } from '@/i18n'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import {
   uploadAttachment,
   listCollections,
@@ -226,10 +287,15 @@ import {
   createStandard,
   searchDocuments,
   getDocumentRevisions,
+  classifyPreview,
+  listEnterprises,
+  createEnterprise,
   type StandardType,
   type DocCollection,
   type DocumentInfo,
   type DocumentRevision,
+  type EnterpriseItem,
+  type ClassifyPreviewResult,
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
 
@@ -274,11 +340,30 @@ const collections = ref<DocCollection[]>([])
 // ==================== 共享 ====================
 const submitting = ref(false)
 
+// R11-3: 企业归属
+const enterprises = ref<EnterpriseItem[]>([])
+const enterprisesLoading = ref(false)
+const classifying = ref(false)
+const classifyResult = ref<ClassifyPreviewResult | null>(null)
+
+const enterprisePlaceholder = computed(() =>
+  classifying.value
+    ? i18n.global.t('apps.standardMgr.classifying')
+    : i18n.global.t('apps.standardMgr.selectEnterprisePlaceholder'),
+)
+
+/** 新企业按钮可见：企业标准类型 + 搜索词在列表中无匹配 */
+const showNewEnterpriseBtn = computed(() =>
+  form.value.standard_type === 'enterprise' && form.value.standard_name &&
+  !enterprises.value.some(e => e.name === form.value.standard_name),
+)
+
 const form = ref({
   standard_code: '',
   standard_name: '',
   standard_type: 'national' as StandardType,
   collection_id: '',
+  enterprise_id: null as string | null,
 })
 
 const canSubmitPlatform = computed(() =>
@@ -345,8 +430,42 @@ async function goToRevisionSelect() {
   platformStep.value = 'revision'
 }
 
-function goToPlatformForm() {
-  if (!selectedRevisionId.value) return
+/** R11-3: 选版本后调 classify-preview 推断归属 + 加载企业列表 */
+async function goToPlatformForm() {
+  if (!selectedRevisionId.value || !selectedDoc.value) return
+
+  // 并行加载企业列表和推断
+  classifying.value = true
+  try {
+    const [entList, preview] = await Promise.all([
+      listEnterprises(),
+      classifyPreview({
+        document_id: selectedDoc.value.id,
+        revision_id: selectedRevisionId.value,
+      }),
+    ])
+    enterprises.value = entList
+    classifyResult.value = preview
+
+    // 预填充推断结果
+    if (preview.standard_type) form.value.standard_type = preview.standard_type as StandardType
+    if (preview.standard_code) form.value.standard_code = preview.standard_code
+    if (preview.standard_name && !form.value.standard_name) form.value.standard_name = preview.standard_name
+    if (preview.enterprise_id) form.value.enterprise_id = preview.enterprise_id
+  } catch (err: any) {
+    if (err?.message?.includes('404')) {
+      // classify-preview 不存在时静默失败
+    } else {
+      useToastStore().error(err?.message || '归属推断失败')
+    }
+    // 继续加载企业列表
+    try {
+      enterprises.value = await listEnterprises()
+    } catch { /* ignore */ }
+  } finally {
+    classifying.value = false
+  }
+
   platformStep.value = 'form'
 }
 
@@ -360,6 +479,7 @@ async function handlePlatformSubmit() {
       standard_code: form.value.standard_code,
       standard_name: form.value.standard_name,
       ...(selectedRevisionId.value ? { revision_id: selectedRevisionId.value } : {}),
+      ...(form.value.enterprise_id ? { enterprise_id: form.value.enterprise_id } : {}),
     })
     useToastStore().success(i18n.global.t('apps.standardMgr.uploadSuccess'))
     emit('onboarded')
@@ -367,6 +487,24 @@ async function handlePlatformSubmit() {
     useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.uploadFailed'))
   } finally {
     submitting.value = false
+  }
+}
+
+/** R11: 内联新建企业 */
+async function handleNewEnterpriseInline() {
+  const { value } = await (ElMessageBox as any).prompt(
+    i18n.global.t('apps.standardMgr.newEnterprisePrompt'),
+    i18n.global.t('apps.standardMgr.newEnterprise'),
+    { confirmButtonText: i18n.global.t('common.confirm'), cancelButtonText: i18n.global.t('common.cancel') },
+  )
+  if (!value?.trim()) return
+  try {
+    const ent = await createEnterprise({ name: value.trim() })
+    enterprises.value.push(ent)
+    form.value.enterprise_id = ent.id
+    useToastStore().success(i18n.global.t('apps.standardMgr.enterpriseCreated'))
+  } catch (err: any) {
+    useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.enterpriseCreateFailed'))
   }
 }
 
@@ -387,6 +525,12 @@ async function goToUploadForm() {
     } finally {
       collectionLoading.value = false
     }
+  }
+  // R11: 加载企业列表
+  if (enterprises.value.length === 0) {
+    enterprisesLoading.value = true
+    try { enterprises.value = await listEnterprises() } catch { /* ignore */ }
+    finally { enterprisesLoading.value = false }
   }
   uploadStep.value = 2
 }
@@ -434,6 +578,7 @@ async function handleUploadSubmit() {
       standard_type: form.value.standard_type,
       standard_code: form.value.standard_code,
       standard_name: form.value.standard_name,
+      ...(form.value.enterprise_id ? { enterprise_id: form.value.enterprise_id } : {}),
     })
 
     useToastStore().success(i18n.global.t('apps.standardMgr.uploadSuccess'))
@@ -470,4 +615,6 @@ async function handleUploadSubmit() {
 .sm-rev-current-tag { margin-left: 8px; }
 .sm-upload-progress { padding: 20px; min-height: 150px; }
 .sm-upload-status-text { text-align: center; margin-top: 20px; font-size: 14px; color: #606266; }
+/* R11: 企业行 */
+.sm-enterprise-row { display: flex; align-items: center; width: 100%; }
 </style>

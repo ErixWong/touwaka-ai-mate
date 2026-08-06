@@ -25,9 +25,60 @@
         >
           {{ rebuildLoading ? $t('apps.standardMgr.rebuilding') : $t('apps.standardMgr.rebuildAnchorCopy') }}
         </el-button>
+        <!-- R11-5: 编辑元数据 -->
+        <el-button size="small" @click="openEditDialog">
+          {{ $t('apps.standardMgr.editMetadata') }}
+        </el-button>
         <span v-if="rebuildError" class="sm-rebuild-error">{{ rebuildError }}</span>
       </div>
     </div>
+
+    <!-- R11-5: 元数据编辑对话框 -->
+    <el-dialog
+      v-if="standard"
+      v-model="showEditDialog"
+      :title="$t('apps.standardMgr.editMetadataTitle')"
+      width="480px"
+      destroy-on-close
+    >
+      <el-form label-width="100px" @submit.prevent="handleSaveMetadata">
+        <el-form-item :label="$t('apps.standardMgr.typeLabel')">
+          <el-select v-model="editForm.standard_type" style="width: 100%">
+            <el-option
+              v-for="opt in standardTypeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('apps.standardMgr.codeLabel')">
+          <el-input v-model="editForm.standard_code" />
+        </el-form-item>
+        <el-form-item :label="$t('apps.standardMgr.nameLabel')">
+          <el-input v-model="editForm.standard_name" />
+        </el-form-item>
+        <el-form-item :label="$t('apps.standardMgr.enterpriseLabel')">
+          <el-select
+            v-model="editForm.enterprise_id"
+            style="width: 100%"
+            clearable
+            :placeholder="$t('apps.standardMgr.selectEnterprisePlaceholder')"
+          >
+            <el-option
+              v-for="ent in enterprises"
+              :key="ent.id"
+              :label="ent.name"
+              :value="ent.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleSaveMetadata">{{ $t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 加载中 -->
     <div v-if="!standard" class="sm-detail-loading">
@@ -65,10 +116,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { renderAnchoredText } from '../utils/anchor-render'
-import type { StandardItem, AnchoredSection, RefAnchor, AnchorBuildStatus } from '../api/standard-mgr'
+import type { StandardItem, AnchoredSection, RefAnchor, AnchorBuildStatus, StandardType, EnterpriseItem } from '../api/standard-mgr'
+import { i18n } from '@/i18n'
 
 const props = defineProps<{
   standard: StandardItem | null
@@ -78,13 +130,63 @@ const props = defineProps<{
   selectedAnchorId: string | null
   rebuildLoading: boolean
   rebuildError: string | null
+  /** R11-5: 企业列表（用于编辑元数据时选择企业） */
+  enterprises?: EnterpriseItem[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   anchorClick: [anchorId: string]
   rebuild: []
   selectAnchor: [anchorId: string]
+  /** R11-5: 元数据更新 */
+  editMetadata: [standardId: string, data: {
+    standard_type?: StandardType
+    standard_code?: string
+    standard_name?: string
+    enterprise_id?: string | null
+  }]
 }>()
+
+// ---- R11-5: 元数据编辑 ----
+const showEditDialog = ref(false)
+const editForm = reactive<{
+  standard_type: StandardType
+  standard_code: string
+  standard_name: string
+  enterprise_id: string | null
+}>({
+  standard_type: '' as StandardType,
+  standard_code: '',
+  standard_name: '',
+  enterprise_id: null,
+})
+
+const standardTypeOptions = [
+  { value: 'national' as StandardType, label: i18n.global.t('apps.standardMgr.treeNational') },
+  { value: 'industry' as StandardType, label: i18n.global.t('apps.standardMgr.treeIndustry') },
+  { value: 'enterprise' as StandardType, label: i18n.global.t('apps.standardMgr.treeEnterprise') },
+  { value: 'international' as StandardType, label: i18n.global.t('apps.standardMgr.treeInternational') },
+]
+
+function openEditDialog() {
+  if (!props.standard) return
+  editForm.standard_type = props.standard.standard_type || ''
+  editForm.standard_code = props.standard.standard_code
+  editForm.standard_name = props.standard.standard_name
+  editForm.enterprise_id = props.standard.enterprise_id
+  showEditDialog.value = true
+}
+
+function handleSaveMetadata() {
+  if (!props.standard) return
+  emit('editMetadata', props.standard.id, {
+    standard_type: editForm.standard_type || undefined,
+    standard_code: editForm.standard_code,
+    standard_name: editForm.standard_name,
+    enterprise_id: editForm.enterprise_id,
+  })
+  showEditDialog.value = false
+}
 
 const markdownFormatter = useMarkdownFormatter()
 

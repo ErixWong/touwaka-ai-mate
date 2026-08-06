@@ -75,7 +75,7 @@ export async function post(ctx, deps) {
     const service = new StandardMgrService(deps.db);
     const body = ctx.request.body;
 
-    const { document_id, standard_type, standard_code, standard_name, revision_id } = body || {};
+    const { document_id, standard_type, standard_code, standard_name, revision_id, enterprise_id } = body || {};
 
     // 参数校验
     if (!document_id) {
@@ -101,6 +101,7 @@ export async function post(ctx, deps) {
       standard_type,
       standard_code,
       standard_name,
+      enterprise_id: enterprise_id || undefined,
       user_id: userId,
     });
 

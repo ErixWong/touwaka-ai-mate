@@ -152,6 +152,7 @@ class StandardMgrService {
   _appStandard() { return this.db.getModel('app_standard'); }
   _refAnchor() { return this.db.getModel('app_standard_ref_anchor'); }
   _anchoredSection() { return this.db.getModel('app_standard_anchored_section'); }
+  _enterprise() { return this.db.getModel('app_enterprise'); }
 
   // ============================================================
   // P1-2: writeAnchorResult — 唯一写入口
@@ -1424,7 +1425,7 @@ class StandardMgrService {
    * @param {string} [params.user_id] - 操作人 ID
    * @returns {Promise<object>} 创建的 app_standard 记录
    */
-  async createStandard({ document_id, standard_type, standard_code, standard_name, revision_id, user_id }) {
+  async createStandard({ document_id, standard_type, standard_code, standard_name, revision_id, user_id, enterprise_id }) {
     // ---- 1. 校验文档存在与类型 ----
     const Document = this.db.getModel('document');
     const doc = await Document.findByPk(document_id, {
@@ -1482,7 +1483,25 @@ class StandardMgrService {
       effectiveRevisionId = revision_id;
     }
 
-    // ---- 4. 纳管 ----
+    // ---- 4. R11-3: 校验 enterprise_id（如有） ----
+    let effectiveEnterpriseId = null;
+    if (enterprise_id) {
+      const Enterprise = this._enterprise();
+      const ent = await Enterprise.findByPk(enterprise_id, { attributes: ['id', 'is_active'], raw: true });
+      if (!ent) {
+        const err = new Error(`Enterprise not found: ${enterprise_id}`);
+        err.status = 400;
+        throw err;
+      }
+      if (!ent.is_active) {
+        const err = new Error(`Enterprise is inactive: ${enterprise_id}`);
+        err.status = 400;
+        throw err;
+      }
+      effectiveEnterpriseId = enterprise_id;
+    }
+
+    // ---- 5. 纳管 ----
     const id = Utils.newID();
     const standard = await AppStandard.create({
       id,
@@ -1490,6 +1509,7 @@ class StandardMgrService {
       standard_type,
       standard_code,
       standard_name,
+      enterprise_id: effectiveEnterpriseId,
       current_revision_id: effectiveRevisionId,
       is_active: true,
       anchor_build_status: ANCHOR_BUILD_STATUS.PENDING,
@@ -1510,8 +1530,8 @@ class StandardMgrService {
   /**
    * R2-5: updateStandard — 更新标准元数据
    *
-   * 可更新字段：standard_name, standard_code, standard_type, is_active
-   * 用于修正纳管时填写不准确的元数据（如名称错填为编号）。
+   * 可更新字段：standard_name, standard_code, standard_type, is_active, enterprise_id
+   * R11-5: 扩展 enterprise_id 用于人工修改企业归属
    *
    * @param {string} standardId
    * @param {object} updates
@@ -1522,11 +1542,29 @@ class StandardMgrService {
     const standard = await AppStandard.findByPk(standardId, { raw: true });
     if (!standard) return null;
 
-    const allowed = ['standard_name', 'standard_code', 'standard_type', 'is_active'];
+    const allowed = ['standard_name', 'standard_code', 'standard_type', 'is_active', 'enterprise_id'];
     const data = {};
     for (const key of allowed) {
       if (updates[key] !== undefined) {
         data[key] = updates[key];
+      }
+    }
+
+    // R11-5: 校验 enterprise_id（如有）
+    if (data.enterprise_id !== undefined) {
+      if (data.enterprise_id !== null) {
+        const Enterprise = this._enterprise();
+        const ent = await Enterprise.findByPk(data.enterprise_id, { attributes: ['id', 'is_active'], raw: true });
+        if (!ent) {
+          const err = new Error(`Enterprise not found: ${data.enterprise_id}`);
+          err.status = 400;
+          throw err;
+        }
+        if (!ent.is_active) {
+          const err = new Error(`Enterprise is inactive: ${data.enterprise_id}`);
+          err.status = 400;
+          throw err;
+        }
       }
     }
 
@@ -1537,6 +1575,291 @@ class StandardMgrService {
     data.updated_at = new Date();
     await AppStandard.update(data, { where: { id: standardId } });
     return await AppStandard.findByPk(standardId, { raw: true });
+  }
+
+  // ============================================================
+  // R11: 企业花名册 CRUD
+  // ============================================================
+
+  /**
+   * 列出企业花名册
+   * @param {object} [options]
+   * @param {boolean} [options.include_counts] 是否附带各企业标准计数
+   * @returns {Promise<Array>}
+   */
+  async listEnterprises(options = {}) {
+    const Enterprise = this._enterprise();
+    const enterprises = await Enterprise.findAll({
+      order: [['name', 'ASC']],
+      raw: true,
+    });
+
+    if (options.include_counts && enterprises.length > 0) {
+      const AppStandard = this._appStandard();
+      const counts = await AppStandard.findAll({
+        where: { is_active: 1, enterprise_id: { [Op.ne]: null } },
+        attributes: ['enterprise_id', [this.db.sequelize.fn('COUNT', this.db.sequelize.col('id')), 'cnt']],
+        group: ['enterprise_id'],
+        raw: true,
+      });
+      const countMap = {};
+      for (const c of counts) countMap[c.enterprise_id] = Number(c.cnt);
+
+      return enterprises.map(e => ({ ...e, standard_count: countMap[e.id] || 0 }));
+    }
+
+    return enterprises;
+  }
+
+  /** 获取单个企业 */
+  async getEnterprise(enterpriseId) {
+    const Enterprise = this._enterprise();
+    return await Enterprise.findByPk(enterpriseId, { raw: true });
+  }
+
+  /**
+   * 新建企业
+   * name 唯一冲突 → 409
+   */
+  async createEnterprise({ name, name_en, description, user_id }) {
+    const Enterprise = this._enterprise();
+
+    // 唯一性检查（DB 有唯一键兜底，这里提前给出友好错误）
+    const existing = await Enterprise.findOne({ where: { name }, raw: true });
+    if (existing) {
+      const err = new Error(`Enterprise name already exists: "${name}" (id: ${existing.id})`);
+      err.status = 409;
+      throw err;
+    }
+
+    const id = Utils.newID();
+    const record = await Enterprise.create({
+      id,
+      name,
+      name_en: name_en || null,
+      description: description || null,
+      is_active: true,
+      created_by: user_id || null,
+    });
+
+    return record.toJSON ? record.toJSON() : record;
+  }
+
+  /**
+   * 更新企业（改名/停用/描述）
+   */
+  async updateEnterprise(enterpriseId, updates = {}) {
+    const Enterprise = this._enterprise();
+    const existing = await Enterprise.findByPk(enterpriseId, { raw: true });
+    if (!existing) return null;
+
+    const data = {};
+    if (updates.name !== undefined) {
+      // 唯一性检查
+      const dup = await Enterprise.findOne({
+        where: { name: updates.name, id: { [Op.ne]: enterpriseId } },
+        raw: true,
+      });
+      if (dup) {
+        const err = new Error(`Enterprise name already exists: "${updates.name}" (id: ${dup.id})`);
+        err.status = 409;
+        throw err;
+      }
+      data.name = updates.name;
+    }
+    if (updates.name_en !== undefined) data.name_en = updates.name_en;
+    if (updates.description !== undefined) data.description = updates.description;
+    if (updates.is_active !== undefined) data.is_active = updates.is_active ? 1 : 0;
+
+    if (Object.keys(data).length === 0) return existing;
+
+    data.updated_at = new Date();
+    await Enterprise.update(data, { where: { id: enterpriseId } });
+    return await Enterprise.findByPk(enterpriseId, { raw: true });
+  }
+
+  // ============================================================
+  // R11-2: classifyPreview — 归属推断预览
+  // ============================================================
+
+  /**
+   * 根据文档标题 + 封面文本推断标准归属
+   *
+   * 规则（确定性，不写 AI）：
+   * - standard_code 前缀 → standard_type
+   * - Q/ 系 → enterprise，再从标题/封面文本匹配花名册企业名
+   *
+   * @param {{ document_id: string, revision_id: string }}
+   * @returns {Promise<{ standard_type: string, standard_code: string, standard_name: string, enterprise_id: string|null, enterprise_name: string|null }>}
+   */
+  async classifyPreview({ document_id, revision_id }) {
+    const Document = this.db.getModel('document');
+
+    // 1. 获取文档标题
+    const doc = await Document.findByPk(document_id, {
+      attributes: ['id', 'title'],
+      raw: true,
+    });
+    if (!doc) {
+      const err = new Error(`Document not found: ${document_id}`);
+      err.status = 404;
+      throw err;
+    }
+
+    const title = doc.title || '';
+
+    // 2. 尝试获取首节文本（用于企业匹配的辅助文本）
+    let firstSectionText = '';
+    try {
+      const DocOutline = this.db.getModel('document_outline');
+      const firstOutline = await DocOutline.findOne({
+        where: { revision_id, seq: 0 },
+        attributes: ['original_text'],
+        raw: true,
+      });
+      if (firstOutline?.original_text) {
+        firstSectionText = firstOutline.original_text;
+      }
+    } catch (_) {
+      // 首节获取失败不阻塞主逻辑
+    }
+
+    // 3. 从标题解析编号和名称
+    const { standard_code, standard_name, standard_type } = this._parseStandardFromTitle(title);
+
+    // 4. 企业匹配（仅 enterprise 类型）
+    let enterprise_id = null;
+    let enterprise_name = null;
+
+    if (standard_type === 'enterprise') {
+      const searchText = (title + ' ' + firstSectionText.slice(0, 500)).toLowerCase();
+      const enterprise = await this._matchEnterprise(searchText);
+      if (enterprise) {
+        enterprise_id = enterprise.id;
+        enterprise_name = enterprise.name;
+      }
+    }
+
+    return { standard_type, standard_code, standard_name, enterprise_id, enterprise_name };
+  }
+
+  /**
+   * 从标题解析标准编号和名称
+   *
+   * 现有导入标题多含前缀编号，如：
+   * - "QC T 636-2000 汽车电动玻璃升降器" → code=QC/T 636-2000, name=汽车电动玻璃升降器
+   * - "GB/T 19001-2016 质量管理体系" → code=GB/T 19001-2016, name=质量管理体系
+   *
+   * 解析策略：找标题开头的标准编号前缀，剩余部分为名称
+   */
+  _parseStandardFromTitle(title) {
+    if (!title || !title.trim()) {
+      return { standard_code: '', standard_name: '', standard_type: '' };
+    }
+
+    const trimmed = title.trim();
+
+    // 已知标准前缀列表（含常见分隔符）
+    const prefixPatterns = [
+      /^(GB[/\s]*T?\s*[\d.\-]+)/i,
+      /^(ISO[/\s]*[\d.\-]+)/i,
+      /^(IEC[/\s]*[\d.\-]+)/i,
+      /^(Q[/\s]*[\d.\-]+)/i,
+      /^([A-Z]{1,4}[/\s]*T?\s*[\d.\-]+)/i,  // QC/T, JB/T, YC/T 等行业标准
+    ];
+
+    let standard_code = '';
+    let standard_name = trimmed;
+
+    for (const pattern of prefixPatterns) {
+      const m = trimmed.match(pattern);
+      if (m) {
+        standard_code = m[1].replace(/\s+/g, '');  // 去除多余空格：QC T → QCT, 但保留 /
+        // 美化常见格式：QCT636 → QC/T 636, GBT19001 → GB/T 19001
+        standard_code = this._beautifyCode(standard_code);
+        standard_name = trimmed.slice(m[0].length).trim().replace(/^[\s\-—–]+/, '');
+        break;
+      }
+    }
+
+    const standard_type = this._inferStandardType(standard_code);
+
+    return { standard_code, standard_name, standard_type };
+  }
+
+  /**
+   * 美化标准编号格式
+   * QCT6362000 → QC/T 636-2000
+   * GBT190012016 → GB/T 19001-2016
+   */
+  _beautifyCode(raw) {
+    if (!raw) return raw;
+
+    // 在常见组织后缀后插入 /：QCT → QC/T, GBT → GB/T, JBT → JB/T
+    let code = raw;
+    code = code.replace(/^(GB|QC|JB|YC|TW|DB)(T)(\d)/i, '$1/T $3');
+    code = code.replace(/^(ISO|IEC)(\d)/i, '$1 $2');
+    code = code.replace(/^(Q)(\d)/i, '$1/$2');
+
+    // 如果还是纯连写数字，尝试在字母→数字交界处插入空格
+    if (!code.includes(' ') && !code.includes('/')) {
+      code = code.replace(/([A-Z])(\d)/i, '$1 $2');
+    }
+
+    return code;
+  }
+
+  /**
+   * 根据标准编号前缀推断类型（确定性规则）
+   */
+  _inferStandardType(code) {
+    if (!code) return '';
+
+    const upperCode = code.toUpperCase().trim();
+    const normalized = upperCode.replace(/[/\s]+/g, '');
+
+    if (/^GB/.test(normalized) && !/^GBT/.test(normalized)) {
+      // 纯 GB 不带 T 也是国标（如 GB 1495-2002）
+      // 但 normalized 去掉 / 后 GBT 也可能变成 GBT, 需要特殊处理
+      if (normalized.startsWith('GBT')) return 'national';
+      return 'national';
+    }
+    if (/^GBT/.test(normalized)) return 'national';
+    if (/^ISO/.test(normalized)) return 'international';
+    if (/^IEC/.test(normalized)) return 'international';
+    if (/^Q[/\s]/.test(upperCode) || /^Q\d/.test(upperCode)) return 'enterprise';
+
+    // 其余行业代号：QC/T, JB/T, YC/T 等
+    const industryPrefixes = ['QC', 'JB', 'YC', 'TW', 'DB', 'CB', 'JT', 'JTJ', 'SY', 'SH', 'HG', 'NB', 'DL', 'SD', 'YD'];
+    for (const prefix of industryPrefixes) {
+      if (normalized.startsWith(prefix)) return 'industry';
+    }
+
+    return '';
+  }
+
+  /**
+   * 在文本中匹配花名册企业名（包含匹配）
+   * 辅助推断，可错可改——不静默创建
+   */
+  async _matchEnterprise(searchText) {
+    if (!searchText || searchText.length < 2) return null;
+
+    const Enterprise = this._enterprise();
+    const all = await Enterprise.findAll({
+      where: { is_active: true },
+      attributes: ['id', 'name'],
+      order: [['name', 'DESC']], // 长名优先（如"浙江吉利"优于"吉利"）
+      raw: true,
+    });
+
+    for (const ent of all) {
+      if (searchText.includes(ent.name.toLowerCase())) {
+        return ent;
+      }
+    }
+
+    return null;
   }
 }
 

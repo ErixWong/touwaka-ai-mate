@@ -35,6 +35,7 @@
                 :standards="store.standards"
                 :selected-id="store.selectedStandardId"
                 :loading="store.loading"
+                :enterprises="store.enterprises"
                 @select="handleSelectStandard"
                 @upload-click="showUploadDialog = true"
               />
@@ -77,9 +78,11 @@
                     :selected-anchor-id="store.selectedAnchorId"
                     :rebuild-loading="store.rebuildLoading"
                     :rebuild-error="store.rebuildError"
+                    :enterprises="store.enterprises"
                     @anchor-click="handleAnchorClick"
                     @rebuild="handleRebuild"
                     @select-anchor="handleSelectAnchor"
+                    @edit-metadata="handleEditMetadata"
                   />
                 </div>
 
@@ -182,6 +185,7 @@ const onboardedDocIds = computed(() => new Set(store.standards.map(s => s.docume
 
 onMounted(() => {
   store.fetchStandards()
+  store.fetchEnterprises()
 })
 
 function handleSelectStandard(standardId: string) {
@@ -276,6 +280,14 @@ function handleOpenFixDialog(anchor: RefAnchor) {
 
 function handleFixComplete() {
   fixDialogTarget.value = null
+}
+
+/** R11-5: 元数据编辑 — 调用 store 更新后刷新详情 */
+async function handleEditMetadata(
+  standardId: string,
+  data: { standard_type?: string; standard_code?: string; standard_name?: string; enterprise_id?: string | null },
+) {
+  await store.updateStandardMeta(standardId, data)
 }
 </script>
 

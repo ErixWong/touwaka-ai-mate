@@ -22,10 +22,14 @@ import {
   listGaps,
   updateBuildStatus,
   writeAnchorResult,
+  updateStandard,
+  listEnterprises,
   type StandardItem,
+  type StandardType,
   type RefAnchor,
   type GapItem,
   type AnchoredSection,
+  type EnterpriseItem,
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
 import { i18n } from '@/i18n'
@@ -75,6 +79,10 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   const selectedAnchorId = ref<string | null>(null)
   const rebuildLoading = ref(false)
   const rebuildError = ref<string | null>(null)
+
+  // R11: 企业花名册
+  const enterprises = ref<EnterpriseItem[]>([])
+  const enterprisesLoading = ref(false)
 
   // ============================================================
   // R9-1: activeTabId → standard_id 映射
@@ -223,6 +231,43 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
       useToastStore().error(msg)
     } finally {
       loading.value = false
+    }
+  }
+
+  /** R11: 加载企业花名册 */
+  async function fetchEnterprises() {
+    enterprisesLoading.value = true
+    try {
+      enterprises.value = await listEnterprises()
+    } catch (err: any) {
+      useToastStore().error(err?.message || '加载企业列表失败')
+    } finally {
+      enterprisesLoading.value = false
+    }
+  }
+
+  /** R11-5: 更新标准元数据（含 enterprise_id） */
+  async function updateStandardMeta(
+    standardId: string,
+    data: { standard_type?: string; standard_code?: string; standard_name?: string; enterprise_id?: string | null },
+  ) {
+    try {
+      const updated = await updateStandard(standardId, {
+        ...data,
+        standard_type: data.standard_type as StandardType | undefined,
+      })
+      // 刷新列表 & 缓存
+      const listIdx = standards.value.findIndex(s => s.id === standardId)
+      if (listIdx !== -1) {
+        standards.value[listIdx] = updated
+      }
+      const cache = tabCaches.value[standardId]
+      if (cache) {
+        cache.detail = updated
+      }
+      useToastStore().success(i18n.global.t('common.saved'))
+    } catch (err: any) {
+      useToastStore().error(err?.message || i18n.global.t('common.saveFailed'))
     }
   }
 
@@ -388,6 +433,9 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     // R8-4: 页签状态
     openTabs,
     activeTabId,
+    // R11: 企业花名册
+    enterprises,
+    enterprisesLoading,
     // 计算
     selectedStandard,
     activeStandardId,
@@ -395,6 +443,8 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     anchorsByOutline,
     // 操作
     fetchStandards,
+    fetchEnterprises,
+    updateStandardMeta,
     selectStandard,
     fetchGaps,
     triggerRebuild,
