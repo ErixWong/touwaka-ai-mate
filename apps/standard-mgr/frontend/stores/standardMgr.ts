@@ -20,7 +20,6 @@ import {
   listAnchoredSections,
   listRefAnchors,
   listGaps,
-  updateBuildStatus,
   startCleaning,
   writeAnchorResult,
   updateStandard,
@@ -346,38 +345,28 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   }
 
   /**
-   * 触发重建/清洗
+   * 触发锚点清洗（调服务端 POST /clean）
    *
-   * R13-2：在服务端清洗引擎（POST /clean）落地前，按钮改为直接重建锚点副本
-   * （等价于置 done），不再置 processing、不再轮询，避免卡死。
-   * R13-1 落地后按钮将改为调 /clean 并恢复"开始清洗/重新清洗"命名。
+   * 流程：提交清洗任务 → 轮询等待完成 → 刷新数据
+   * 后端 15 分钟超时，前端最多等 120 轮（10 分钟）后报超时。
    */
   async function triggerRebuild(standardId: string) {
     rebuildLoading.value = true
     rebuildError.value = null
     try {
-      await updateBuildStatus(standardId, 'done')
-      await fetchStandardDetail(standardId)
-      useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
-      await loadTabData(standardId)
-    } catch (err: any) {
-      const msg = err?.message || i18n.global.t('apps.standardMgr.rebuildFailed')
-      rebuildError.value = msg
-      useToastStore().error(msg)
-      await fetchStandardDetail(standardId)
-    } finally {
-      rebuildLoading.value = false
-    }
-  }
-
-  /** 触发服务端清洗（R13-1 落地后使用） */
-  async function triggerCleaning(standardId: string) {
-    rebuildLoading.value = true
-    rebuildError.value = null
-    try {
+      // 1. 提交清洗任务
       await startCleaning(standardId)
       await fetchStandardDetail(standardId)
-      useToastStore().success(i18n.global.t('apps.standardMgr.cleaningStarted'))
+
+      // 2. 轮询等待完成
+      const detail = await pollBuildStatus(standardId)
+      if (detail.anchor_build_status === 'error') {
+        rebuildError.value = detail.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
+        useToastStore().error(rebuildError.value!)
+      } else {
+        useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
+        await loadTabData(standardId)
+      }
     } catch (err: any) {
       const msg = err?.message || i18n.global.t('apps.standardMgr.rebuildFailed')
       rebuildError.value = msg
@@ -388,9 +377,9 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
   }
 
-  /** R13-2 临时保留，R13-1 落地后前端不再需要轮询 */
+  /** 轮询等待清洗完成 */
   async function pollBuildStatus(standardId: string): Promise<StandardItem> {
-    const maxAttempts = 120
+    const maxAttempts = 120 // 10 分钟
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(resolve => setTimeout(resolve, 5000))
       const detail = await getStandard(standardId)
@@ -466,7 +455,6 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     selectStandard,
     fetchGaps,
     triggerRebuild,
-    triggerCleaning,
     submitManualFix,
     // R9-1: 页签操作
     openTab,

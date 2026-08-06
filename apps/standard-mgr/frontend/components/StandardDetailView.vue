@@ -23,7 +23,7 @@
           :disabled="standard.anchor_build_status === 'processing'"
           @click="$emit('rebuild')"
         >
-          {{ rebuildLoading ? $t('apps.standardMgr.rebuilding') : $t('apps.standardMgr.rebuildAnchorCopy') }}
+          {{ rebuildLoading ? $t('apps.standardMgr.rebuilding') : rebuildLabel }}
         </el-button>
         <!-- R11-5: 编辑元数据 -->
         <el-button size="small" @click="openEditDialog">
@@ -240,6 +240,14 @@ function statusLabelKey(status: AnchorBuildStatus): string {
   }
   return map[status] || status
 }
+
+/** 按钮文字：待清洗→开始清洗，已完成/失败→重新清洗 */
+const rebuildLabel = computed(() => {
+  if (!props.standard) return ''
+  return props.standard.anchor_build_status === 'pending'
+    ? i18n.global.t('apps.standardMgr.rebuild')
+    : i18n.global.t('apps.standardMgr.rebuildAgain')
+})
 </script>
 
 <style scoped>
