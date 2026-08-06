@@ -1495,6 +1495,7 @@ export default {
       docProcessTimeout: 'Document processing timed out (exceeded 10 minutes)',
       cleanSuccess: 'Cleaning completed',
       cleanFailed: 'Cleaning failed',
+      cleaningStarted: 'Cleaning submitted, will auto-update when done',
       // R8-1 Doc platform selector
       selectFromPlatform: 'Select from Document Platform',
       uploadNewFile: 'Upload New File',

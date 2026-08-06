@@ -283,6 +283,13 @@ export async function updateBuildStatus(
   )
 }
 
+/** R13-1: 触发服务端锚点清洗（异步，立即返回） */
+export async function startCleaning(standardId: string): Promise<{ accepted: boolean; standard_id: string }> {
+  return apiRequest<{ accepted: boolean; standard_id: string }>(
+    apiClient.post(`${PREFIX}/standards/${standardId}/clean`),
+  )
+}
+
 /** 写入锚点结果（人工修正等） */
 export async function writeAnchorResult(data: {
   standard_id: string

@@ -9,8 +9,7 @@
  */
 
 import StandardMgrService from '../service.js';
-import logger from '../../../../lib/logger.js';
-
+import logger from '../../../../lib/logger.js';import { runAnchorCleaning } from './standards/clean.js';
 function getUserId(ctx) {
   return ctx.state.session?.id || null;
 }
@@ -113,6 +112,24 @@ export async function post(ctx, deps) {
     }).catch(err => {
       logger.error(`[standard-mgr] backfill-onboard failed: ${err.message}`);
     });
+
+    // R13-3：纳管完成后异步触发锚点清洗（不阻塞主请求）
+    // 失败不阻断纳管，仅记录日志
+    const chatService = deps.request?.chatService;
+    if (chatService && result.document_id && result.current_revision_id) {
+      runAnchorCleaning({
+        chatService,
+        db: deps.db,
+        userId,
+        standardId: result.id,
+        documentId: result.document_id,
+        revisionId: result.current_revision_id,
+      }).catch(err => {
+        logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
+      });
+    } else {
+      logger.warn(`[standard-mgr] R13-3: chatService 不可用或缺少 document/revision，跳过自动清洗 standard=${result.id}`);
+    }
 
     ctx.success(result);
   } catch (err) {

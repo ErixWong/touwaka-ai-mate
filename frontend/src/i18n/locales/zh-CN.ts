@@ -1437,6 +1437,7 @@ export default {
       docProcessTimeout: '文档处理超时（超过 10 分钟）',
       cleanSuccess: '清洗完成',
       cleanFailed: '清洗失败',
+      cleaningStarted: '清洗任务已提交，完成后自动更新',
       // R8-1 文档平台选择
       selectFromPlatform: '从文档平台选择',
       uploadNewFile: '上传新文件',

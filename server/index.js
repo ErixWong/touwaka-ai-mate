@@ -539,6 +539,7 @@ class ApiServer {
     // 将数据库实例附加到 ctx 上，供中间件使用
     this.app.use(async (ctx, next) => {
       ctx.db = this.db;
+      ctx.chatService = this.chatService;
       await next();
     });
 
