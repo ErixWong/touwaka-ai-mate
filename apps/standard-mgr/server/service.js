@@ -1183,6 +1183,36 @@ class StandardMgrService {
   }
 
   /**
+   * R14-2：原子锁 — 条件 UPDATE，只有 pending/error/done 才允许置 processing。
+   * 避免 check-then-set 竞态导致同一标准被两个清洗会话同时处理。
+   *
+   * @returns {boolean} true 表示获取锁成功（已置 processing），false 表示已被占用
+   */
+  async tryLockForCleaning(standardId) {
+    const AppStandard = this._appStandard();
+    const [affected] = await AppStandard.update(
+      {
+        anchor_build_status: ANCHOR_BUILD_STATUS.PROCESSING,
+        last_anchor_build_error: null,
+        updated_at: new Date(),
+      },
+      {
+        where: {
+          id: standardId,
+          anchor_build_status: {
+            [this.db.Sequelize.Op.in]: [
+              ANCHOR_BUILD_STATUS.PENDING,
+              ANCHOR_BUILD_STATUS.ERROR,
+              ANCHOR_BUILD_STATUS.DONE,
+            ],
+          },
+        },
+      },
+    );
+    return affected > 0;
+  }
+
+  /**
    * 更新标准的锚点构建状态
    *
    * R2-2：当 status 转为 done 时，自动调用 _rebuildAnchoredSectionsInTx 生成带锚点副本，

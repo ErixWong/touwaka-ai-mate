@@ -53,12 +53,6 @@ export async function post(ctx, deps) {
       return;
     }
 
-    // 并发约束：已在 processing 中则拒绝
-    if (standard.anchor_build_status === 'processing') {
-      ctx.error('该标准正在清洗中，请勿重复触发', 409);
-      return;
-    }
-
     // 校验文档状态
     const documentId = standard.document_id;
     const revisionId = standard.current_revision_id;
@@ -74,14 +68,20 @@ export async function post(ctx, deps) {
       return;
     }
 
-    // 设置状态为 processing（获取锁）
-    await service.updateAnchorBuildStatus(standardId, 'processing');
+    // R14-2：原子锁 — 条件 UPDATE，只有 pending/error/done 才置 processing
+    const locked = await service.tryLockForCleaning(standardId);
+    if (!locked) {
+      ctx.error('该标准正在清洗中，请勿重复触发', 409);
+      return;
+    }
 
     // 异步执行清洗，不阻塞响应
+    const session = ctx.state.session;
     runAnchorCleaning({
       chatService,
       db: deps.db,
       userId,
+      session,
       standardId,
       documentId,
       revisionId,
@@ -110,6 +110,7 @@ export async function post(ctx, deps) {
  * @param {Object} params.chatService - ChatService 实例
  * @param {Object} params.db - 数据库实例
  * @param {string} params.userId - 触发用户 ID
+ * @param {Object} params.session - 用户会话对象（含 accessToken，透传给 streamChat 供工具鉴权）
  * @param {string} params.standardId - 标准 ID
  * @param {string} params.documentId - 文档 ID
  * @param {string} params.revisionId - 版本 ID
@@ -118,6 +119,7 @@ export async function runAnchorCleaning({
   chatService,
   db,
   userId,
+  session,
   standardId,
   documentId,
   revisionId,
@@ -153,6 +155,7 @@ export async function runAnchorCleaning({
           user_id: userId,
           expert_id: expertId,
           content,
+          session,
         },
         // onDelta — 可以留空，清洗不需要实时推送
         () => {},

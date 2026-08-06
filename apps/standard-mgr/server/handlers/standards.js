@@ -114,19 +114,24 @@ export async function post(ctx, deps) {
     });
 
     // R13-3：纳管完成后异步触发锚点清洗（不阻塞主请求）
-    // 失败不阻断纳管，仅记录日志
+    // 先获取原子锁；若已被其他请求抢占（如手动点击），跳过避免双发
     const chatService = deps.request?.chatService;
     if (chatService && result.document_id && result.current_revision_id) {
-      runAnchorCleaning({
-        chatService,
-        db: deps.db,
-        userId,
-        standardId: result.id,
-        documentId: result.document_id,
-        revisionId: result.current_revision_id,
-      }).catch(err => {
-        logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
-      });
+      if (await service.tryLockForCleaning(result.id)) {
+        runAnchorCleaning({
+          chatService,
+          db: deps.db,
+          userId,
+          session: ctx.state.session,
+          standardId: result.id,
+          documentId: result.document_id,
+          revisionId: result.current_revision_id,
+        }).catch(err => {
+          logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
+        });
+      } else {
+        logger.info(`[standard-mgr] R13-3: 清洗已被抢占，跳过自动清洗 standard=${result.id}`);
+      }
     } else {
       logger.warn(`[standard-mgr] R13-3: chatService 不可用或缺少 document/revision，跳过自动清洗 standard=${result.id}`);
     }
