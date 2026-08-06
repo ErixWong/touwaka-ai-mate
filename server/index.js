@@ -120,6 +120,7 @@ import elsRoutes from './routes/els.routes.js';
 import appClockRoutes from './routes/app-clock.routes.js';
 import { registerRouter } from './routes/route-registration.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
+import { DOC_PIPELINE_KEYS, mergeWithDefaults } from '../lib/doc-pipeline-defaults.js';
 
 const PROCESS_ERROR_STRING_LIMIT = 4000;
 const PROCESS_ERROR_OBJECT_KEYS_LIMIT = 20;
@@ -423,8 +424,25 @@ class ApiServer {
           callLlm: null,
           getDocPipelineConfig: async () => {
             try {
-              const systemSettingService = getSystemSettingService(this.db);
-              return await systemSettingService.getDocPipelineConfig?.() || null;
+              // 内联实现：systemSettingService 没有 getDocPipelineConfig 方法，
+              // 此前调用 systemSettingService.getDocPipelineConfig?.() 恒为 undefined，
+              // 导致阶段配置回落默认值（model_id=null），进而误用兜底模型。
+              const SystemSetting = this.db.getModel('system_setting');
+              if (!SystemSetting) return null;
+              const records = await SystemSetting.findAll({
+                where: { setting_key: DOC_PIPELINE_KEYS.map(k => `doc_pipeline.${k}`) },
+                raw: true,
+              });
+              const stored = {};
+              for (const record of records) {
+                const stageKey = record.setting_key.replace('doc_pipeline.', '');
+                try {
+                  stored[stageKey] = JSON.parse(record.setting_value);
+                } catch {
+                  stored[stageKey] = null;
+                }
+              }
+              return mergeWithDefaults(stored);
             } catch {
               return null;
             }
