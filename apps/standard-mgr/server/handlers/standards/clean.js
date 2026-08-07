@@ -230,21 +230,25 @@ async function findAnchorExpert(db) {
  * 构造清洗开工消息
  */
 function buildCleanMessage(documentId, revisionId, standardId) {
-  return `请对以下标准文档执行完整的引用清洗。
+  return `请对以下标准文档执行完整的引用清洗（含外部引用和内部交叉引用）。
 
 文档 ID: ${documentId}
 版本 ID: ${revisionId}
 标准 ID: ${standardId}
 
 请按以下流程执行：
-1. 调用 list_revision_sections 获取章节结构，**记录每条返回的 id（即 outline_id）**
-2. 逐节通读内容，识别引用
-3. 对每个引用定位目标文档/章节
+1. 调用 list_revision_sections 获取章节结构，**记录每条返回的 id（即 outline_id）以及 id→title 映射**
+2. 逐节通读内容，识别两类引用：
+   - 外部引用：对其他标准（GB/T、ISO、QC/T 等）的引用
+   - 内部交叉引用：对本文档其他章节的引用（如"符合 3.2.2 条""见 4.3"等），从步骤 1 的章节列表中匹配目标
+3. 对每个外部引用定位目标文档/章节
 4. 调用 write_anchor_result 写入结果
 
 ⚠️ 关键约束：
 - source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**，禁止自行编造、缩短、拼接或修改
 - 引用出现在哪个章节，就用那个章节的 outline_id
+- 内部交叉引用不要跳过，每条都要写入
+- OCR 可能导致章节边界不准（如正文中有 3.15.1 的内容但 outline 标题是 3.16），读到正文后以正文为准，不要因为标题不对就跳过内容
 
 请开始。`;
 }
