@@ -10,7 +10,9 @@
 
 import jwt from 'jsonwebtoken';
 import StandardMgrService from '../service.js';
-import logger from '../../../../lib/logger.js';import { runAnchorCleaning } from './standards/clean.js';
+import logger from '../../../../lib/logger.js';
+import { runAnchorCleaning } from './standards/clean.js';
+
 function getUserId(ctx) {
   return ctx.state.session?.id || null;
 }

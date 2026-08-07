@@ -38,60 +38,56 @@ const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有�
 ### 阶段 1：识别章节结构
 2. 识别"规范性引用文件""参考文献"等纯书目章节——只读不在此落锚点
 
-### 阶段 2：逐节通读（外部引用 + 内部交叉引用同时进行）
-3. 按章节顺序逐节调用 read_section_context 读取内容
-4. 在自然阅读中同时判断两类引用：
+### 阶段 2：读写交替（外部引用 + 内部交叉引用）
+3. **逐批读**：每轮同时调用 1-3 个 read_section_context，**读完立刻写**，不攒。
+   跳过"规范性引用文件""参考文献""前言""范围"等纯书目/元数据章节。
+4. **立刻分析并写入**：读完该批后，立即识别该批所有章节中的引用并调用 write_anchor_result 写入：
+
+   **子节扫描规则（关键！）**：read_section_context 返回的内容可能包含多个 \`##\` 标记的子节。
+   必须逐子节扫描，以每个 \`## {编号} {标题}\` 为分界。
+   - 每个 \`##\` 子节是一个独立的引用作用域
+   - 同一 outline 内，子节 A 和子节 B 引用同一条标准 → 两条独立引用，各自写入，occurrence_index 分别递增
+   - 同一子节内同一标准出现多次 → 只写一条（子节内去重）
 
    **外部引用**（对其他标准）：
    - 显式："见 GB/T xxxx""按第 x 章""应符合……的规定"
    - 隐式：上下文暗示某标准要求
+   - 外部引用先标记 ref_type/explicit 和 source_text 后立即写入，**无需在写入前逐个定位目标文档**（定位在阶段 3 单独处理）
 
    **内部交叉引用**（对本文档其他章节）：
    - 典型模式："应符合 3.2.2 条""按 3.2.4 条规定""见 4.3""参照 5.5.2 节""性能应符合 3.2.2 及 3.2.4 条规定"
-   - 匹配规则：从阶段 0 获取的章节列表中，查找 title 以引用节号开头的 outline
-     - "3.2.2" → 匹配 title 以 "3.2" 开头的 outline（因为 3.2.2 是 3.2 的子节）
-     - "3.2.4" → 同样匹配 "3.2"
-     - "4.3" → 匹配 title 以 "4.3" 开头的 outline
-   - 匹配到后直接调用 write_anchor_result 写入，无需再走文档定位工具链
+   - 匹配规则：从阶段 0 获取的章节列表中，查找 title 以引用节号最左前缀开头的 outline
+   - "3.2.2" → 匹配 title 以 "3.2" 开头的 outline（子节归属到父节）
+   - "4.3" → 匹配 title 以 "4.3" 开头的 outline
+   - 内部交叉引用匹配到后直接写入 valid，无需走文档定位工具链
 
-5. 对于长章节可用 read_revision_content 获取完整内容
+5. **写入前查重**：对每个要写的 section，先调 list_section_references 快速看一眼已有记录，从 max(existing_index)+1 开始编号。已有记录中同 source_text / 同 target 的不重复写。
+6. 写入该批后**立刻进入下一批读**（回到步骤 3），不攒、不等、不留到"最后统一写"。
+7. 重复直到所有章节处理完毕。
+   效率目标：每批处理 1-3 章节，~30 轮内覆盖全部 51 章节
 
-### 阶段 3：定位外部引用目标
-6. 对每个外部引用，调用定位工具链：
+8. 对于长章节可用 read_revision_content 获取完整内容
+
+### 阶段 3：补定位 + 追加写入（仅外部引用）
+8. 对阶段 2 中已写入的全部外部 gap 引用，逐条尝试定位目标文档/章节：
    a. find_documents_by_standard_code 或 find_documents_by_standard_name
    b. get_document_revisions
    c. select_revision_candidate
    d. find_section_candidates
-7. 收敛规则：
-   - 定位到唯一高置信目标 → 落 valid
-   - 多个候选无法确定 → 落 suspected
-   - 找不到任何目标 → 落 gap
-   - **内部交叉引用不经过此阶段，直接落 valid**
+9. 定位后调用 write_anchor_result 同幂等键回写 status/定位信息：
+   - 定位到唯一高置信目标 → status: "valid"，填入 target_* 字段
+   - 多个候选无法确定 → status: "suspected"
+   - 找不到任何目标 → 保持 "gap"（阶段 2 已写入）
+   - **内部交叉引用不经过此阶段，阶段 2 已直接落 valid**
 
-### 阶段 4：写入结果
-8. 每确定一条引用即调用 write_anchor_result
-
-   **外部引用参数**：
-   - source_revision_id / source_outline_id / occurrence_index
-   - source_text / context_text
+   **write_anchor_result 参数**：
+   - source_revision_id / source_outline_id / occurrence_index（幂等键，需与阶段 2 写入时一致）
+   - source_text（逐字复制）/ context_text
    - ref_type: explicit 或 implicit
    - status: valid / suspected / gap
    - target_document_id / target_revision_id / target_outline_id（定位工具返回）
-
-   **内部交叉引用参数**：
-   - source_revision_id: 当前清洗的 revision_id
-   - source_outline_id: 引用出现的章节 outline_id
-   - occurrence_index: 该章节内出现的序号（从 0 开始递增）
-   - source_text: 引用原文（逐字复制）
-   - ref_type: "explicit"
-   - status: "valid"（内部引用一定可定位）
-   - source: "auto"
-   - target_document_id: 当前文档的 document_id
-   - target_revision_id: 当前文档的 revision_id
-   - target_outline_id: 从阶段 0 的章节列表中匹配到的 outline_id
-   - status_reason: "internal_cross_ref"
-
-   - 幂等：同一 (source_revision_id, source_outline_id, occurrence_index) 重复调用不会产生重复记录
+   - **内部交叉引用**：source_outline_id 为引用出现的章节，target_outline_id 为被引用章节，status_reason: "internal_cross_ref"
+   - 幂等：同一 (source_revision_id, source_outline_id, occurrence_index) 重复调用不会产生重复记录，后调用会更新已有记录
 
 ## 纪律
 
@@ -104,7 +100,19 @@ const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有�
 7. 内部交叉引用也必须逐条写入，不允许"等内部引用不写了"这种省略
 8. 内部引用的节号匹配用最长前缀：如 "3.2.2 条" 匹配 title 以 "3.2" 开头的 outline（不是 "3.2.2"）
 9. 完成全部章节后报告完成摘要：总引用数、valid/suspected/gap 分布（内部交叉引用计入 valid）
-10. **章节错位容错**：OCR 可能导致 outline 边界不准（如 3.15.1 的正文被归入标题为"3.16"的 outline）。读到正文后发现实际内容与 outline title 不符时，**以正文为准**——正文里的任何引用（无论属于哪个小节）都要识别并写入，不要因为"这个章节标题是 3.16"就跳过正文中的 3.15.1 内容`;
+10. **章节错位容错**：OCR 可能导致 outline 边界不准。read_section_context 返回的内容可能包含邻近章节的正文：
+    - 正文以 \`## {编号} {标题}\` 为界。若当前 outline 标题是"3.16"但正文中包含 \`## 3.15.1 涂镀层和化学处理层\`，则 3.15.1 的内容**必须当作独立子节**逐段扫描
+    - 对于被错放到其他 outline 中的子节内容，引用仍以**当前 outline 的 outline_id** 写入（因内容在这里），但 occurrence_index 按实际出现的子节递增
+    - 不要因为"这个 outline 标题和子节编号对不上"就跳过正文中的引用
+11. **逐子节扫描**：read_section_context 返回的原文可能包含多个 \`##\` 标记的子节。每个 \`##\` 子节是独立作用域，必须逐个扫描：
+    - 同一标准在不同子节各出现一次 → 各写一条，分别递增 occurrence_index
+    - 同一子节内同一标准出现多次 → 只写一条（子节内去重）
+    - 不要因为"前面子节已经写过这个标准了"就跳过后面子节中的同标准引用
+12. **跨 outline 独立（关键！）**：每个 outline 是独立的引用作用域，**禁止跨 outline 去重**：
+    - 同一标准（如 QC/T 625）出现在 outline A（如 3.16）和 outline B（如 4.15）→ 各写一条，互不替代
+    - 内部交叉引用同理：outline A 引用 3.2.2 条 → 写；outline B 也引用 3.2.2 条 → 也必须写
+    - **严禁**因为"另一个 outline 已经写过这个标准了"就跳过当前 outline 中的同标准引用
+    - 第 3 章（技术要求）和第 4 章（试验方法）引用同一标准是完全正常且独立的两条锚点`;
 
 const promptFile = process.env.EXPERT_PROMPT_FILE;
 const PROMPT_TEMPLATE = promptFile
@@ -158,7 +166,7 @@ async function createExpert(token, expressiveModelId, reflectiveModelId) {
     introduction: '通读标准文档全文，识别对其他标准的引用并定位到目标章节，写入引用记录。',
     prompt_template: PROMPT_TEMPLATE,
     is_active: true,
-    max_tool_rounds: 50,
+    max_tool_rounds: 60,
   };
   if (expressiveModelId) body.expressive_model_id = expressiveModelId;
   if (reflectiveModelId) body.reflective_model_id = reflectiveModelId;
@@ -267,7 +275,7 @@ async function main() {
   console.log('=== 完成 ===');
   console.log(`专家 ID: ${expert.id}`);
   console.log(`技能 ID: ${skillId}`);
-  console.log(`max_tool_rounds: 50`);
+  console.log(`max_tool_rounds: 60`);
   console.log('\n下一步: node scripts/run-anchor-cleaning.mjs');
 }
 

@@ -139,10 +139,56 @@ function validateStatusTransition(fromStatus, toStatus, source) {
   return { allowed: true };
 }
 
+/**
+ * R15-2：归一化 source_text 用于去重比较。
+ * 去掉常见前缀（"本标准""国标""标准"）、空格、标点符号，统一大小写。
+ * 使 "本标准3.10.2条规定的高温试验" 和 "3.10.2条规定的高温试验" 归一到同一字符串。
+ */
+function _normalizeSourceText(text) {
+  if (!text) return '';
+  return text
+    .replace(/^本标准/g, '')
+    .replace(/^本规范/g, '')
+    .replace(/^标准/g, '')
+    .replace(/[\s,，。．.、/\\-]+/g, '')
+    .replace(/^应符合/g, '')
+    .replace(/^按/g, '')
+    .replace(/^见/g, '')
+    .toLowerCase();
+}
+
 class StandardMgrService {
   constructor(db) {
     this.db = db;
     this.docAccessService = new DocAccessService(db);
+  }
+
+  // ============================================================
+  // R15-6: deleteAutoRefAnchors — 清洗前置删除 auto 记录
+  // ============================================================
+
+  /**
+   * 删除指定标准/版本的 auto + auto_backfill 引用记录。
+   * manual / user_confirmed 记录永久保留。
+   *
+   * @param {string} standardId
+   * @param {string} revisionId - 限定版本范围（source_revision_id）
+   * @returns {Promise<number>} 删除条数
+   */
+  async deleteAutoRefAnchors(standardId, revisionId) {
+    const RefAnchor = this._refAnchor();
+    const deleted = await RefAnchor.destroy({
+      where: {
+        standard_id: standardId,
+        source_revision_id: revisionId,
+        source: [REF_SOURCE.AUTO, REF_SOURCE.AUTO_BACKFILL],
+      },
+    });
+    logger.info(
+      `[standard-mgr] deleteAutoRefAnchors: standard=${standardId} revision=${revisionId} ` +
+      `deleted=${deleted} rows`
+    );
+    return deleted;
   }
 
   // ============================================================
@@ -157,6 +203,43 @@ class StandardMgrService {
   // ============================================================
   // P1-2: writeAnchorResult — 唯一写入口
   // ============================================================
+
+  /**
+   * R15-2：在同 outline 中查找语义匹配的已有记录。
+   *
+   * 判定逻辑：
+   * 1. 遍历同 outline 下全部已有记录
+   * 2. 若已有记录有 target_outline_id（内部引用/已定位 valid）且与新 target 相同 → 匹配
+   * 3. 若已有记录的归一化 source_text 包含新 source_text 或被新 source_text 包含 → 匹配
+   *
+   * 仅匹配一条（最相似），无匹配返回 null。
+   */
+  async _findDedupCandidate(RefAnchor, source_revision_id, source_outline_id, source_text, target_outline_id, tx) {
+    const allExisting = await RefAnchor.findAll({
+      where: { source_revision_id, source_outline_id },
+      order: [['occurrence_index', 'ASC']],
+      transaction: tx,
+      raw: true,
+    });
+    if (!allExisting.length) return null;
+
+    const normNew = _normalizeSourceText(source_text);
+
+    for (const rec of allExisting) {
+      // 同 target（内部引用/已定位 valid）
+      if (target_outline_id && rec.target_outline_id && target_outline_id === rec.target_outline_id) {
+        return rec;
+      }
+      // 归一化 source_text 互相包含
+      const normOld = _normalizeSourceText(rec.source_text);
+      if (normNew && normOld) {
+        if (normNew.includes(normOld) || normOld.includes(normNew)) {
+          return rec;
+        }
+      }
+    }
+    return null;
+  }
 
   /**
    * 写入一个引用的完整判断结果
@@ -255,12 +338,62 @@ class StandardMgrService {
       const AnchoredSection = this._anchoredSection();
 
       // 1. 查找现有记录（幂等键）
-      const existing = await RefAnchor.findOne({
-        where: { source_revision_id, source_outline_id, occurrence_index },
+      let effectiveIndex = occurrence_index;
+      let existing = await RefAnchor.findOne({
+        where: { source_revision_id, source_outline_id, occurrence_index: effectiveIndex },
         transaction: tx,
       });
 
       let refAnchor;
+      if (existing) {
+        // 索引冲突检测：同一槽位被不同引用占用
+        if (existing.source_text !== source_text) {
+          // R15-2：语义去重检查（同 outline + 同 target 或归一化同义 source_text → 更新原记录）
+          const dedupMatch = await this._findDedupCandidate(
+            RefAnchor, source_revision_id, source_outline_id,
+            source_text, target_outline_id, tx
+          );
+          if (dedupMatch) {
+            logger.info(
+              `[standard-mgr] writeAnchorResult: semantic dedup merged ` +
+              `(outline=${source_outline_id}, dedupWith=#${dedupMatch.occurrence_index} "${dedupMatch.source_text.substring(0,30)}", ` +
+              `new="${source_text.substring(0,30)}")`
+            );
+            existing = dedupMatch;
+          } else {
+            // 无匹配 → 自动跳到 max+1
+            const maxRow = await RefAnchor.findOne({
+              where: { source_revision_id, source_outline_id },
+              attributes: ['occurrence_index'],
+              order: [['occurrence_index', 'DESC']],
+              transaction: tx,
+            });
+            effectiveIndex = (maxRow?.occurrence_index ?? -1) + 1;
+            logger.info(
+              `[standard-mgr] writeAnchorResult: occurrence_index conflict detected ` +
+              `(outline=${source_outline_id}, existing #${occurrence_index}="${existing.source_text.substring(0,30)}", ` +
+              `new="${source_text.substring(0,30)}") → auto-bumped to #${effectiveIndex}`
+            );
+            // 确认新槽位不冲突（理论上不会，但做防御性检查）
+            const newSlotExisting = await RefAnchor.findOne({
+              where: { source_revision_id, source_outline_id, occurrence_index: effectiveIndex },
+              transaction: tx,
+            });
+            if (newSlotExisting && newSlotExisting.source_text !== source_text) {
+              throw new Error(
+                `occurrence_index conflict after auto-bump: slot #${effectiveIndex} also occupied by different reference`
+              );
+            }
+            if (newSlotExisting) {
+              // 新槽位已有同 source_text 的记录 → 按更新逻辑继续
+              existing = newSlotExisting;
+            } else {
+              existing = null;
+            }
+          }
+        }
+      }
+
       if (existing) {
         // R2-9：状态转换校验（真实规则）
         const transition = validateStatusTransition(existing.status, status, source);
@@ -297,7 +430,7 @@ class StandardMgrService {
           standard_id,
           source_revision_id,
           source_outline_id,
-          occurrence_index,
+          occurrence_index: effectiveIndex,
           source_text,
           context_text,
           ref_type,

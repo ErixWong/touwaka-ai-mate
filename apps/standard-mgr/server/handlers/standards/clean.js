@@ -147,6 +147,10 @@ export async function runAnchorCleaning({
 
     logger.info(`[standard-mgr] 开始清洗: standard=${standardId} doc=${documentId} revision=${revisionId} expert=${expertId}`);
 
+    // R15-6：清空 auto/auto_backfill 记录，从头再生（manual/user_confirmed 永久保留）
+    const deletedCount = await service.deleteAutoRefAnchors(standardId, revisionId);
+    logger.info(`[standard-mgr] 清洗前置清理: 删除 ${deletedCount} 条 auto 记录`);
+
     // ── 2. 创建会话 ──
     const topicId = await chatService.createNewTopic(userId, expertId, `标准清洗 — ${standardId}`, null);
 
@@ -237,18 +241,27 @@ function buildCleanMessage(documentId, revisionId, standardId) {
 标准 ID: ${standardId}
 
 请按以下流程执行：
-1. 调用 list_revision_sections 获取章节结构，**记录每条返回的 id（即 outline_id）以及 id→title 映射**
-2. 逐节通读内容，识别两类引用：
-   - 外部引用：对其他标准（GB/T、ISO、QC/T 等）的引用
-   - 内部交叉引用：对本文档其他章节的引用（如"符合 3.2.2 条""见 4.3"等），从步骤 1 的章节列表中匹配目标
-3. 对每个外部引用定位目标文档/章节
-4. 调用 write_anchor_result 写入结果
+
+### 阶段 1：获取章节结构
+1. 调用 list_revision_sections 获取章节列表，记录 outline_id → title 映射
+
+### 阶段 2：读写交替（核心）
+2. **逐批读**：每轮调用 1-3 个 read_section_context（建议 1-3 节），跳过"规范性引用文件""参考文献""前言""范围"等书目章。**读完立刻分析并写入，不攒！**
+3. **立刻写**：读完当前这批后，立即识别所有引用并调用 write_anchor_result 写入：
+   - 外部引用：对其他标准（GB/T、ISO、QC/T 等）的引用，先落 gap（定位在阶段 3 做）
+   - 内部交叉引用：对本文档其他章节的引用（如"符合 3.2.2 条""见 4.3"等），从步骤 1 的章节列表匹配目标 outline_id，直接落 valid
+4. **写入前查重**：写某个 section 前先调 list_section_references 看一眼已有记录，从 max(existing_index)+1 开始编号，同 source_text/同 target 的不重复写
+5. 写入后立刻回到步骤 2 读下一批，不攒、不等
+   效率目标：每批 1-3 章节，~30 轮覆盖全部 51 章节
+
+### 阶段 3：补定位
+6. 对已写入的外部 gap 引用，逐条定位目标文档/章节并回写
 
 ⚠️ 关键约束：
-- source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**，禁止自行编造、缩短、拼接或修改
-- 引用出现在哪个章节，就用那个章节的 outline_id
-- 内部交叉引用不要跳过，每条都要写入
-- OCR 可能导致章节边界不准（如正文中有 3.15.1 的内容但 outline 标题是 3.16），读到正文后以正文为准，不要因为标题不对就跳过内容
+- source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**
+- **跨 outline 独立**：每个 outline 是独立引用作用域，**禁止跨 outline 去重**。同一标准出现在 3.x 章和 4.x 章 → 各写一条，不要因为"另一个章节写过了"就跳过
+- **逐子节扫描**：read_section_context 返回的原文按 \`##\` 分界为独立子节，每个子节必须扫描
+- OCR 可能导致章节边界不准（如 3.15.1 的正文出现在 3.16 的 chunk 中），读到正文后以正文为准，不要因为 outline 标题对不上就跳过内容
 
 请开始。`;
 }
