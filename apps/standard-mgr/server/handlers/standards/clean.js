@@ -11,10 +11,12 @@
  * 鉴权：以触发操作的管理员身份运行。
  */
 
+import jwt from 'jsonwebtoken';
 import StandardMgrService from '../../service.js';
 import logger from '../../../../../lib/logger.js';
 
 const CLEAN_TIMEOUT_MS = 15 * 60 * 1000; // 15 分钟
+const TASK_TOKEN_EXPIRY = '4h'; // 后台任务 token 有效期（需长于清洗超时）
 
 function getUserId(ctx) {
   return ctx.state.session?.id || null;
@@ -76,12 +78,21 @@ export async function post(ctx, deps) {
     }
 
     // 异步执行清洗，不阻塞响应
+    // 生成长期 token 替代用户短期 JWT，防止工具回调 401
     const session = ctx.state.session;
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const taskToken = jwt.sign(
+      { userId: userId, role: session.roles?.[0] || 'user' },
+      jwtSecret,
+      { expiresIn: TASK_TOKEN_EXPIRY },
+    );
+    const taskSession = { ...session, accessToken: taskToken };
+
     runAnchorCleaning({
       chatService,
       db: deps.db,
       userId,
-      session,
+      session: taskSession,
       standardId,
       documentId,
       revisionId,
@@ -226,10 +237,14 @@ function buildCleanMessage(documentId, revisionId, standardId) {
 标准 ID: ${standardId}
 
 请按以下流程执行：
-1. 调用 list_revision_sections 获取章节结构
+1. 调用 list_revision_sections 获取章节结构，**记录每条返回的 id（即 outline_id）**
 2. 逐节通读内容，识别引用
 3. 对每个引用定位目标文档/章节
 4. 调用 write_anchor_result 写入结果
+
+⚠️ 关键约束：
+- source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**，禁止自行编造、缩短、拼接或修改
+- 引用出现在哪个章节，就用那个章节的 outline_id
 
 请开始。`;
 }

@@ -241,6 +241,13 @@ class StandardMgrService {
       }
     }
 
+    // R15：source_outline_id 有效性校验 —— 防止 Agent 编造不存在的 ID
+    const DocOutline = this.db.getModel('document_outline');
+    const outlineExists = await DocOutline.findByPk(source_outline_id, { attributes: ['id'], raw: true });
+    if (!outlineExists) {
+      throw new Error(`source_outline_id "${source_outline_id}" 不存在，请从 list_revision_sections 返回值中逐字复制 outline_id，禁止自行编造`);
+    }
+
     // ---- 事务写入 ----
     const tx = await this.db.sequelize.transaction();
     try {
@@ -1200,7 +1207,7 @@ class StandardMgrService {
         where: {
           id: standardId,
           anchor_build_status: {
-            [this.db.Sequelize.Op.in]: [
+            [Op.in]: [
               ANCHOR_BUILD_STATUS.PENDING,
               ANCHOR_BUILD_STATUS.ERROR,
               ANCHOR_BUILD_STATUS.DONE,

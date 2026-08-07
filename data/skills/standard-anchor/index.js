@@ -100,16 +100,22 @@ async function apiPost(path, body) {
 /**
  * 按 revision_id 列出章节（outline）列表
  *
+ * ⚠️ 只返回 id/title/seq 三个字段，故意丢弃 original_text 等大字段。
+ * 原因：LLM 上下文窗口有限，Tool 结果超过 10000 字符会被截断，
+ * 如果 id 被截断，Agent 会编造不存在的 source_outline_id。
+ * 需要正文内容时使用 read_revision_content 或 read_section_context。
+ *
  * @param {object} params
  * @param {string} params.revision_id - 版本 ID
- * @returns {Promise<Array>} 章节列表
+ * @returns {Promise<Array>} 章节列表 [{ id, title, seq }]
  */
 async function listRevisionSections(params) {
   const { revision_id } = params;
   if (!revision_id) throw new Error('revision_id is required');
 
   const outlines = await apiGet(`/api/docs/revisions/${revision_id}/outlines`);
-  return outlines;
+  // 只保留 id/title/seq，丢弃 original_text 等大字段，防止 Tool 结果被截断导致 Agent 编造 ID
+  return outlines.map(({ id, title, seq }) => ({ id, title, seq }));
 }
 
 /**

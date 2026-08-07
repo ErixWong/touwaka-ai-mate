@@ -8,6 +8,7 @@
  * 路由扁平化（R2-3）：合并原 list.js + get.js 为单文件，按 ctx.params.standardId 有无分流。
  */
 
+import jwt from 'jsonwebtoken';
 import StandardMgrService from '../service.js';
 import logger from '../../../../lib/logger.js';import { runAnchorCleaning } from './standards/clean.js';
 function getUserId(ctx) {
@@ -118,11 +119,20 @@ export async function post(ctx, deps) {
     const chatService = deps.request?.chatService;
     if (chatService && result.document_id && result.current_revision_id) {
       if (await service.tryLockForCleaning(result.id)) {
+        // 生成长生命周期 token，防止工具回调 401
+        const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+        const taskToken = jwt.sign(
+          { userId, role: 'admin' },
+          jwtSecret,
+          { expiresIn: '4h' },
+        );
+        const taskSession = { ...ctx.state.session, accessToken: taskToken };
+
         runAnchorCleaning({
           chatService,
           db: deps.db,
           userId,
-          session: ctx.state.session,
+          session: taskSession,
           standardId: result.id,
           documentId: result.document_id,
           revisionId: result.current_revision_id,
